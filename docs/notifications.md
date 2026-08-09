@@ -32,18 +32,31 @@ notified only about the profiles they explicitly pick. Pick them under
 switched off there. A newly created profile has no recipient until someone
 chooses one.
 
-Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly
-recap** — a quiet once-a-week summary of your week (workouts, PRs, supplement
-adherence, a body-weight trend, aerobic base, and sleep regularity), covering the same
-"this week" your routine counters use per your **week mode** (a calendar week or
-a rolling seven days — **Settings → Health profile**), set the send day/hour
-under **Settings → Notifications**; and **milestone alerts** — a brief note when you cross a
-milestone (your 10th/50th/100th/… workout, or a completed goal). Both are
-rule-based and work with
-**no AI configured**. Milestones are always recorded to your **Timeline** (under
-the **Milestone** filter) regardless of the alert toggle. The recap is also
-available as an off-by-default **Weekly recap** dashboard card (enable it from
-the dashboard's **Customize** control).
+Beyond reminders, two opt-in retention nudges ride the same channels: a **recap**
+— a quiet periodic summary (workouts, PRs, supplement adherence, a body-weight
+trend, aerobic base, and sleep regularity), whose week covers the same "this
+week" your routine counters use per your **week mode** (a calendar week or a
+rolling seven days — **Settings → Health profile**), with the send day/time set
+under **Settings → Notifications**; and **milestone alerts** — a brief note when
+you cross a milestone (your 10th/50th/100th/… workout, or a completed goal). Both
+are rule-based and work with **no AI configured**. Milestones are always recorded
+to your **Timeline** (under the **Milestone** filter) regardless of the alert
+toggle. The recap is also available as an off-by-default **Recap** dashboard card
+(enable it from the dashboard's **Customize** control).
+
+The recap also has a **cadence** — _Weekly_, _Monthly_ or _Quarterly_, beside the
+day and time on the same row. It sets the **shortest** period the recap reports
+on, and **it never adds a message**: every recap arrives in that one slot you
+chose, so when a longer period ends on the same slot the longer recap **replaces**
+the shorter one instead of sending twice. On the first slot after a quarter ends —
+a week, a month and a quarter all closing together — you get one quarterly recap,
+not three messages. Choosing _Monthly_ or _Quarterly_ means strictly fewer
+messages, never more, and nothing but your own tap ever changes it.
+
+A monthly or quarterly recap says **different things**, not the same things added
+up: the _shape_ of your training rather than a session count, the weekday/weekend
+_pattern_ behind an adherence percentage, and where your weight is _heading_
+rather than what the scale said on one day. It never re-totals the weeks.
 
 **Which kinds reach which channel** is one table on **Settings → Notifications**
 — _Message kinds_, one row per kind and one column per channel. The box in a

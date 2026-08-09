@@ -8,8 +8,8 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { batteryForAge } from "@/lib/fitness-battery";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
-import { gatherRecapInput } from "@/lib/notifications/weekly-recap-data";
-import { buildWeeklyRecap } from "@/lib/weekly-recap";
+import { gatherRecapInput } from "@/lib/notifications/recap-data";
+import { buildRecap } from "@/lib/recap";
 
 function newProfile(name: string): number {
   const id = Number(
@@ -46,7 +46,7 @@ describe("gatherRecapInput — fitness-check completion line (#1307)", () => {
 
     const input = gatherRecapInput(profileId);
     expect(input.fitnessCheck).not.toBeNull();
-    const recap = buildWeeklyRecap(input);
+    const recap = buildRecap(input);
     expect(recap.lines.find((l) => l.key === "fitness-check")).toBeTruthy();
   });
 
@@ -54,7 +54,7 @@ describe("gatherRecapInput — fitness-check completion line (#1307)", () => {
     const profileId = newProfile("recap-fitness-none");
     const input = gatherRecapInput(profileId);
     expect(input.fitnessCheck ?? null).toBeNull();
-    const recap = buildWeeklyRecap(input);
+    const recap = buildRecap(input);
     expect(recap.lines.find((l) => l.key === "fitness-check")).toBeUndefined();
   });
 

@@ -72,8 +72,17 @@ export type KindControl =
   // Dynamic. Deliberately NOT generalised — only the digest waits, and a second
   // consumer is when this becomes shared vocabulary, not before (#2211 constraint 8).
   | { type: "digest-mode"; modeField: string; timeField: string }
-  // A weekday select (whose "Off" is the disable) plus a time control.
-  | { type: "day-time"; dayField: string; timeField: string };
+  // A weekday select (whose "Off" is the disable) plus a time control, and — for the
+  // recap (#2178) — the CADENCE the slot speaks at. The scale sits on the same control
+  // because it is the same consent: one slot, one arrival, and the cadence only decides
+  // which lengths of period may claim it. A second control would invite reading it as a
+  // second subscription, which is exactly what replace-never-stack forbids.
+  | {
+      type: "day-time";
+      dayField: string;
+      timeField: string;
+      scaleField?: string;
+    };
 
 // An extra opt-in that belongs to a kind's MESSAGE rather than being a kind of its
 // own — the morning digest's sleep section, the weekly recap's mood line. They render
@@ -262,20 +271,21 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
   },
   {
     kind: "weekly-recap",
-    label: "Weekly recap",
-    blurb: "A once-a-week summary of your last seven days.",
+    label: "Recap",
+    blurb: "A periodic summary of the last week, month or quarter.",
     safety: false,
     control: {
       type: "day-time",
       dayField: "recap_day",
       timeField: "recap_hour",
+      scaleField: "recap_scale",
     },
-    // Names the lines the recap ACTUALLY composes (lib/weekly-recap.ts). It
+    // Names the lines the recap ACTUALLY composes (lib/recap.ts). It
     // advertised "volume" and "streak" until #1966 noticed: #1935 cut both of
     // those lines, and this Settings blurb was the one place the sweep missed,
     // so the notification's own description promised two things it no longer
     // sent.
-    more: "Workouts, PRs, adherence, weight, sleep, and goals. Weeks with nothing to report are skipped.",
+    more: "Workouts, PRs, adherence, weight, sleep, and goals. Periods with nothing to report are skipped. Cadence sets the SHORTEST period the recap reports on, and it never adds a message: it arrives in this one slot, and when a longer period ends on the same slot the longer recap replaces the shorter one rather than sending twice. A monthly or quarterly recap says different things — the shape of your training, the pattern behind an adherence percentage, where your weight is heading — because those are what a month is the first window to show.",
   },
   {
     kind: "wear-reminder",

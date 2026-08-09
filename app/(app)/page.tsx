@@ -90,7 +90,7 @@ import { shiftDateStr, hhmmToMinutes, zonedDateParts } from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { recentLabHighlights } from "@/lib/recent-labs";
-import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
+import { getRecapCard } from "@/lib/notifications/recap-data";
 import {
   findingsForDashboardHome,
   resolveWidgetList,
@@ -630,10 +630,12 @@ export default async function Dashboard() {
     ? findingsForDashboardHome(activeCoaching, "data-quality")
     : [];
 
-  // weekly-recap — the last seven days, rule-based (no AI). Same gather as the
-  // weekly notification, so the card and the digest always agree.
+  // weekly-recap — the last period at the profile's chosen recap cadence (#2178),
+  // rule-based (no AI). Same gather as the recap notification, so the card and the
+  // message always agree. The widget id stays `weekly-recap`: it is a persisted
+  // dashboard-layout key, and renaming it would silently un-place every saved layout.
   const weeklyRecap = has("weekly-recap")
-    ? getWeeklyRecap(profile.id, units.weightUnit)
+    ? getRecapCard(profile.id, units.weightUnit)
     : null;
 
   // nutrition-today (#1221): today's protein against the goal band + the weekly average

@@ -1,19 +1,21 @@
 import { IconChartBar } from "@tabler/icons-react";
 import WidgetHeader from "./WidgetHeader";
-import {
-  recapLineAnnotation,
-  recapRangeLabel,
-  type WeeklyRecap,
-} from "@/lib/weekly-recap";
+import { recapLineAnnotation, recapRangeLabel, type Recap } from "@/lib/recap";
+import { recapScaleEntry } from "@/lib/recap-scale";
 import {
   DEFAULT_FORMAT_PREFS,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
 
-// Weekly recap (NEW, issue #32, fitness). A quiet, factual summary of the last
-// seven days — workouts, PRs, adherence, a robust weight trend, aerobic base, sleep
-// regularity — computed rule-based (no AI) in lib/weekly-recap. Off by default; when
-// the week had nothing to report it shows a gentle nudge rather than an empty card.
+// The recap card (issue #32, fitness; #2178 for the scale). A quiet, factual summary
+// of the last period — workouts, PRs, adherence, a robust weight trend, aerobic base,
+// sleep regularity — computed rule-based (no AI) in lib/recap. Off by default; when
+// the period had nothing to report it shows a gentle nudge rather than an empty card.
+//
+// It FOLLOWS the profile's chosen recap cadence (#2178): the heading and the empty
+// state are named by the scale registry, and the card shows the IN-PROGRESS period
+// while the send narrates the one that closed. One gather drives both (#221), so the
+// card and the message can never disagree about a number.
 //
 // Every parenthetical comes from the ONE shared recapLineAnnotation (#221), so the
 // card and the Telegram recap can never annotate the same line differently.
@@ -21,15 +23,16 @@ export default function WeeklyRecapWidget({
   recap,
   formatPrefs = DEFAULT_FORMAT_PREFS,
 }: {
-  recap: WeeklyRecap;
+  recap: Recap;
   formatPrefs?: DisplayFormatPrefs;
 }) {
+  const scale = recapScaleEntry(recap.scale);
   return (
     <div className="card" data-testid="weekly-recap">
-      <WidgetHeader title="Weekly recap" href="/timeline" />
+      <WidgetHeader title={scale.label} href="/timeline" />
       {recap.isEmpty || recap.lines.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Nothing logged in the last seven days — log a workout or a weigh-in to
+          Nothing logged this {scale.noun} — log a workout or a weigh-in to
           start your recap.
         </p>
       ) : (

@@ -1,40 +1,37 @@
 // Period-recap narrative (issue #20). Pure, no DB/network.
 //
-// The AI weekly/monthly narrative narrates over the SAME rule-based WeeklyRecap
-// the dashboard widget and Telegram digest already compute (lib/weekly-recap.ts)
+// The AI period narrative narrates over the SAME rule-based Recap
+// the dashboard widget and Telegram digest already compute (lib/recap.ts)
 // — so the AI read is grounded in the exact facts the rest of the app shows, the
 // prompt is compact (a handful of pre-computed lines, not a raw data dump), and
 // the offline fallback degrades to a deterministic prose rendering of those same
 // lines. This module owns three pure pieces:
 //   - RECAP_NARRATIVE_SYSTEM: the system prompt (medical tone: observations, not
 //     diagnoses; suggest discussing concerns with a clinician).
-//   - buildRecapNarrativePrompt: assembles the user prompt from a WeeklyRecap.
+//   - buildRecapNarrativePrompt: assembles the user prompt from a Recap.
 //   - composeRecapNarrativeOffline: the deterministic fallback prose.
 // All three are unit-tested with no network (lib/__tests__/recap-narrative.test.ts).
 
-import { recapLineAnnotation } from "./weekly-recap";
-import type { WeeklyRecap, RecapLine } from "./weekly-recap";
+import { recapLineAnnotation } from "./recap";
+import type { Recap, RecapLine } from "./recap";
+import { recapScaleEntry, type RecapScale } from "./recap-scale";
 
-// The AI narrative periods (issue #20). "week" = trailing 7 days, "month" = 30.
-export type NarrativePeriod = "week" | "month";
-
-// The recap window length in days for a period. The weekly/monthly split is the
-// only place these magic numbers live for the AI path.
-export function periodDaysFor(period: NarrativePeriod): number {
-  return period === "month" ? 30 : 7;
-}
+// The AI narrative period IS the recap scale (#2178): one vocabulary for the message,
+// the card and the stored narrative, so the AI read can never claim a different window
+// shape than the recap it narrates over.
+export type NarrativePeriod = RecapScale;
 
 // A human label for the period ("This week" / "This month"), for headings.
 export function periodLabel(period: NarrativePeriod): string {
-  return period === "month" ? "This month" : "This week";
+  return `This ${recapScaleEntry(period).noun}`;
 }
 
-// The adjective form ("weekly" / "monthly"), for prose.
+// The adjective form ("weekly" / "monthly" / "quarterly"), for prose.
 export function periodAdjective(period: NarrativePeriod): string {
-  return period === "month" ? "monthly" : "weekly";
+  return recapScaleEntry(period).adjective;
 }
 
-export const RECAP_NARRATIVE_SYSTEM = `You are a knowledgeable, encouraging personal health and fitness coach writing a short PERIOD recap (weekly or monthly) for a single user.
+export const RECAP_NARRATIVE_SYSTEM = `You are a knowledgeable, encouraging personal health and fitness coach writing a short PERIOD recap (weekly, monthly or quarterly) for a single user.
 You are given a pre-computed set of factual recap lines (training, PRs, adherence, body-weight trend, goals). Write a concise, warm narrative (about 120-180 words) that:
 1. Opens with a one-line summary of the period.
 2. Connects 2-4 of the actual numbers into observations about momentum and consistency (reference the real figures and comparisons you were given).
@@ -55,7 +52,7 @@ function lineClause(line: RecapLine): string {
 // a labeled block so they read as DATA the model narrates, mirroring the daily
 // insight's document fencing; the period + date window frame the ask.
 export function buildRecapNarrativePrompt(
-  recap: WeeklyRecap,
+  recap: Recap,
   period: NarrativePeriod,
   profileName?: string
 ): string {
@@ -100,7 +97,7 @@ function proseClause(line: RecapLine): string {
 // paragraph. Used when AI is unavailable (no key / disabled / rate-limited /
 // failed). Never throws; an empty recap yields one sensible nudge line.
 export function composeRecapNarrativeOffline(
-  recap: WeeklyRecap,
+  recap: Recap,
   period: NarrativePeriod
 ): string {
   const adj = periodAdjective(period);

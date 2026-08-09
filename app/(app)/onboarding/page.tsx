@@ -61,7 +61,7 @@ const ONBOARDING_WIDGET_DESCRIPTIONS: Record<string, string> = {
   "cycle-phase": "Your current cycle day and phase.",
   "goals-habits": "Goals and weekly habits.",
   "symptom-log": "A daily check-in — mood, feeling unwell, and as-needed meds.",
-  "weekly-recap": "A seven-day progress summary.",
+  "weekly-recap": "A periodic progress summary — weekly, monthly or quarterly.",
 };
 
 const ONBOARDING_STEP_LABELS = [

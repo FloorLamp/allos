@@ -1,6 +1,8 @@
-// Coaching / AI-narrative domain types (insights, weekly/monthly narratives,
-// N-of-1 protocols). Split out of lib/types.ts (#319); the `@/lib/types` barrel
+// Coaching / AI-narrative domain types (insights, period narratives, N-of-1
+// protocols). Split out of lib/types.ts (#319); the `@/lib/types` barrel
 // re-exports everything here, so import paths are unchanged.
+
+import type { RecapScale } from "../recap-scale";
 
 export interface Insight {
   id: number;
@@ -10,11 +12,14 @@ export interface Insight {
   created_at: string;
 }
 
-// A stored AI narrative (issue #20): a weekly/monthly period recap. kind selects the
-// period; period_end anchors it (the recap end date), period_start is the window
-// start. (The "labs" lab-trend kind was retired with the Trends → Biomarkers tab —
-// #1164; any rows stored under it are inert, read by no surface.)
-export type NarrativeKind = "week" | "month";
+// A stored AI narrative (issue #20): a period recap. kind selects the period;
+// period_end anchors it (the recap end date), period_start is the window start. (The
+// "labs" lab-trend kind was retired with the Trends → Biomarkers tab — #1164; any rows
+// stored under it are inert, read by no surface.) The column carries no CHECK, so
+// widening the union to `quarter` (#2178) needed no migration.
+// The narrative's period kind IS the recap scale (#2178) — one vocabulary, so a
+// stored narrative and the recap it narrates can never name their period differently.
+export type NarrativeKind = RecapScale;
 
 export interface Narrative {
   id: number;

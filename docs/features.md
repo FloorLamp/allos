@@ -84,8 +84,9 @@ is always what it renders), **weight trend**, combined **Goals and habits**,
 — a one-tap 5-point mood log (expand for energy, calm, factor chips, and a note;
 one entry per day, never range-checked, never gamified) composed with the
 illness front door's quiet "Not feeling well?" branch, which keeps offering the
-mood tap while an illness episode's cockpit is up in the hero; **Weekly recap**
-remains opt-in. Standalone cards for quick stats, care-plan due, starred
+mood tap while an illness episode's cockpit is up in the hero; the **Recap** card
+(weekly, monthly or quarterly, following the cadence set in Settings →
+Notifications) remains opt-in. Standalone cards for quick stats, care-plan due, starred
 biomarkers, biological age, recent activity, immunizations, today's insight,
 streak, low supply, active goals, and weekly routine were retired because Needs
 attention/Upcoming or a richer remaining card already answers them. Legacy saved

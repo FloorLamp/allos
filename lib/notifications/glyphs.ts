@@ -130,7 +130,7 @@ const VOCABULARY = {
     glyph: "📊",
     role: "topic",
     means:
-      "The weekly recap — a summary of a window that has already closed, which is what makes it a different message from the digest.",
+      "The periodic recap — a summary of a window that has already closed, which is what makes it a different message from the digest. ONE glyph across weekly, monthly and quarterly (#2178): the cadence changes how often the message arrives, never what it is, and a scale wearing its own face would tell the reader a second message had started.",
   },
   dose: {
     glyph: "💊",
@@ -550,8 +550,8 @@ export const GLYPH_MODULES: readonly { module: string; why: string }[] = [
     why: "The collapsed Tune panel: the control that opens it and the per-category on/off labels (#1714).",
   },
   {
-    module: "lib/weekly-recap.ts",
-    why: "The weekly recap message (#32) — the second system-initiated message a profile receives. In scope precisely because it does not live under lib/notifications/.",
+    module: "lib/recap.ts",
+    why: "The periodic recap message (#32/#2178) — the second system-initiated message a profile receives, at whichever of the three cadences the profile chose. In scope precisely because it does not live under lib/notifications/.",
   },
   {
     module: "lib/notifications/supplement-format.ts",
