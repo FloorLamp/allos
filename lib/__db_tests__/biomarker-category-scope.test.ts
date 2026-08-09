@@ -4,6 +4,11 @@
 // (reference) appear on NONE of: the biomarker list, the flagged hero source, the
 // digest, or the retest nudge. The mental-health/substance sensitivity is load-
 // bearing: a depression score can never reach the general health hero/digest.
+//
+// #2365 refined the `vitals` half from a CATEGORY decision to a PER-ANALYTE one — a
+// vital whose quantity owns a /trends/metric/<slug> chart is not catalogued, one with
+// no chart anywhere still is — so this suite also pins the browser's own gather over a
+// fixture holding both populations in that one category.
 // All fixture values are synthetic (obviously-fictional profile, plain names).
 
 import { describe, it, expect, vi } from "vitest";
