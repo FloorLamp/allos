@@ -808,3 +808,59 @@ export function getPracticeTrends(
       left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
     );
 }
+
+// Sessions + minutes per profile-local day AND practice, in [since, until] —
+// the gather behind the /wellness cross-practice day-history (the group×day
+// matrix over every practice, above the per-practice cards). Identity is
+// `practiceIdentity` — the canonical practice key every wellness surface binds
+// user-owned spellings through — with the first-seen raw spelling as the
+// display label. Rows whose name yields no identity (blank) are skipped.
+export interface PracticeDay {
+  date: string; // YYYY-MM-DD, profile-local
+  key: string; // practiceIdentity of the logged name
+  label: string; // display name (first-seen spelling)
+  count: number; // sessions of this practice that day
+  minutes: number; // total minutes (0 when durations are null)
+}
+
+export function getPracticeDays(
+  profileId: number,
+  since: string,
+  until: string
+): PracticeDay[] {
+  const rows = db
+    .prepare(
+      `SELECT date, practice, COALESCE(duration_min, 0) AS minutes
+         FROM practice_logs
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+        ORDER BY date ASC, id ASC`
+    )
+    .all(profileId, since, until) as {
+    date: string;
+    practice: string;
+    minutes: number;
+  }[];
+
+  const labelByKey = new Map<string, string>();
+  const byDayKey = new Map<string, PracticeDay>();
+  for (const r of rows) {
+    const key = practiceIdentity(r.practice);
+    if (!key) continue;
+    if (!labelByKey.has(key)) labelByKey.set(key, r.practice.trim());
+    const mapKey = `${r.date}|${key}`;
+    const entry = byDayKey.get(mapKey);
+    if (entry) {
+      entry.count += 1;
+      entry.minutes += r.minutes;
+    } else {
+      byDayKey.set(mapKey, {
+        date: r.date,
+        key,
+        label: labelByKey.get(key)!,
+        count: 1,
+        minutes: r.minutes,
+      });
+    }
+  }
+  return [...byDayKey.values()];
+}

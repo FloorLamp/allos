@@ -32,7 +32,7 @@ import { intensityLevel } from "./workout-heatmap";
 
 export type DayHistoryLevel = 0 | 1 | 2 | 3 | 4;
 
-export type DayHistoryDomainKey = "food" | "workout" | "dose";
+export type DayHistoryDomainKey = "food" | "workout" | "dose" | "practice";
 
 export interface DayHistoryDomainSpec {
   unitOne: string;
@@ -74,6 +74,15 @@ export const DAY_HISTORY_DOMAINS: Record<
     unitMany: "doses",
     calendarLevel: (total) =>
       total <= 0 ? 0 : total <= 3 ? 1 : total <= 6 ? 2 : total <= 10 ? 3 : 4,
+    cellLevel: intensityLevel,
+  },
+  // Wellness practices share the workout shape exactly (sessions + minutes,
+  // 1–2 a day) — a distinct key so the surfaces stay honestly named.
+  practice: {
+    unitOne: "session",
+    unitMany: "sessions",
+    detailSuffix: "min",
+    calendarLevel: intensityLevel,
     cellLevel: intensityLevel,
   },
 };
