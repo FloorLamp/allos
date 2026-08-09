@@ -187,6 +187,30 @@ describe("buildDigest", () => {
     const y = model?.sections.find((s) => s.heading === "Yesterday");
     expect(y?.lines).toEqual(["💊 Supplements: 2 skipped"]);
   });
+
+  // #2379 — the nutrition line rides the Yesterday section beside the other figures
+  // about the completed day. What it SAYS is pinned in lib/__tests__/nutrition-day.test.ts;
+  // what assembly owns is where it lands, that the section stamps the 🍽️ marker onto the
+  // producer's parts (#2391), and that a null one adds nothing.
+  it("carries the nutrition line in Yesterday, stamping its glyph", () => {
+    const model = buildDigest({
+      ...empty,
+      nutritionLine: {
+        head: "Nutrition",
+        notes: ["protein 84 g+ of 130 g", "fiber 18 g+ of 38 g"],
+      },
+    });
+    const y = model?.sections.find((s) => s.heading === "Yesterday");
+    expect(y?.lines).toEqual([
+      "🍽️ Nutrition — protein 84 g+ of 130 g · fiber 18 g+ of 38 g",
+    ]);
+  });
+
+  it("adds no Yesterday section for a day whose nutrition said nothing", () => {
+    // The common morning: targets met, or nothing logged, or no resolvable target. The
+    // digest gets shorter rather than carrying a line the reader learns to skip.
+    expect(buildDigest({ ...empty, nutritionLine: null })).toBeNull();
+  });
 });
 
 // ---- The delta and the fraction, merged when redundant (#1819 item 6) -----

@@ -15,7 +15,7 @@ import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { offerTextTail } from "./offer-tail";
-import { formatMessageLine } from "./message-line";
+import { formatMessageLine, type MessageLine } from "./message-line";
 import { joinBody } from "./rich-text";
 import { sriPresentation } from "../sleep-regularity";
 import { sleepVerdictPhrase } from "../sleep-summary";
@@ -179,6 +179,27 @@ export interface DigestInput {
   // target is declared or no reading exists — the digest states a comparison or says
   // nothing; it never prints a lonely number for the reader to evaluate.
   stepsLine?: string | null;
+  // Yesterday's protein and fibre against their resolved targets (#2379) — "Nutrition —
+  // protein 84 g+ of 130 g · fiber 18 g+ of 38 g", built by the ONE pure
+  // `nutritionDigestLine` over the SAME per-day adequacy verdicts the /nutrition day
+  // picker renders (#221). Both nutrients share one line: it is one question about one
+  // day's eating, from one gather.
+  //
+  // CARRIED AS PARTS, not as text (#2391). The head is the section noun "Nutrition" and
+  // each short nutrient is one NOTE, so the `·` between two nutrients is the grammar's
+  // own separator rather than a join this domain invented. The glyph is absent here and
+  // stamped by buildDigest, matching every sibling line in the Yesterday section.
+  //
+  // NULL ON MOST MORNINGS, deliberately, and each null is its own fact: a day that MET
+  // its targets is unremarkable and says nothing (so a typical digest gets SHORTER, not
+  // longer); a day with no food logged says nothing, because absence of logging is not
+  // evidence of low intake; and a nutrient whose target does not resolve says nothing
+  // rather than being scored against a guess. Its own optional field so the `nutrition`
+  // demotion category (#1714) has one switch.
+  //
+  // Adequacy is an OBSERVATION, never an obligation: no streak, no failure language, no
+  // escalation. The line states the number against the target and stops.
+  nutritionLine?: MessageLine | null;
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
   // The documents that finished extracting since the send cursor (#1913 item 3), each
@@ -631,6 +652,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // Steps vs the declared target (#1723 part 2) — a verdict, not a raw number (#1712).
   if (input.stepsLine)
     yLines.push(formatMessageLine({ glyph: "🚶", head: input.stepsLine }));
+  // Protein and fibre vs their resolved targets (#2379) — present only on a day that
+  // fell short of one, so the common morning carries nothing here at all. The producer
+  // returns PARTS and this call site stamps the marker, exactly as its siblings above
+  // do: the Yesterday section owns which glyph each of its lines wears.
+  if (input.nutritionLine)
+    yLines.push(formatMessageLine({ glyph: "🍽️", ...input.nutritionLine }));
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 
   // Sleep: a calm "how'd I sleep" (issue #1117) — last night's MAIN overnight

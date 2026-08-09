@@ -58,9 +58,13 @@ test.describe("Settings → Notifications: morning digest tuning", () => {
       // says so — nothing in this component decides which categories exist.
       await expect(card).toContainText("Lab results");
       await expect(card).toContainText("Activities");
+      // #2379's nutrition line registered as a category too, so it renders here for
+      // the same reason — the registry says so, not this component.
+      await expect(card).toContainText("Nutrition");
       // "Demote" is not "mute": the card states what still gets through.
       await expect(card).toContainText("out-of-range reading still appears");
       await expect(card).toContainText("personal record still appears");
+      await expect(card).toContainText("measured from tracked intake");
       // And for labs it states the floor plainly — this toggle cannot hide a flagged
       // result, which is the whole reason it is safe to offer.
       await expect(card).toContainText("never hides one");

@@ -14,6 +14,10 @@
 //                       still passes;
 //   • demoted activities — an ordinary training day stops; a day that set a personal
 //                       record still appears;
+//   • demoted nutrition — a HEDGED shortfall stops (one measured from a floor basis,
+//                       where untracked foods stay invisible); a shortfall measured
+//                       from a tracked full-day total still appears. A day that MET
+//                       its targets already says nothing at either setting (#2379);
 //   • demoted labs    — nothing stops, because a lab line is never routine: every one
 //                       the digest carries is flagged, i.e. floor class.
 //
@@ -38,8 +42,8 @@
 //   • the COLLECTOR owns its half — `RECENT_CHANGE_CATEGORIES`, so a category added to
 //     the collector tomorrow is tunable the day it exists, with nothing to update here;
 //   • this module owns the DIGEST'S OWN sections — `DIGEST_OWN_CATEGORIES` (`sleep`,
-//     `activities`), which the collector never produces and which apply where their
-//     section is gathered.
+//     `activities`, `nutrition`), which the collector never produces and which apply
+//     where their section is gathered.
 //
 // `labs` back in the set does NOT weaken the floor, it demonstrates it: every lab line
 // the digest carries is `flagged`, `flagged` implies notable in
@@ -59,8 +63,12 @@ import type { NotificationAction } from "./types";
 // in terms of which module produced the line. NOT collector categories: the collector
 // never emits them, `recentChangeDemotions` strips them before a preference reaches it,
 // and each applies where its section is gathered (`gatherDigestSleep` for sleep, the
-// Yesterday activity list for activities).
-export const DIGEST_OWN_CATEGORIES = ["sleep", "activities"] as const;
+// Yesterday activity list for activities, `getNutritionDay` for nutrition).
+export const DIGEST_OWN_CATEGORIES = [
+  "sleep",
+  "activities",
+  "nutrition",
+] as const;
 export type DigestOwnCategory = (typeof DIGEST_OWN_CATEGORIES)[number];
 
 // A category the digest's ⚙️ Tune control can demote: everything the collector
@@ -94,6 +102,7 @@ export const DIGEST_CATEGORY_LABELS: Record<DigestCategory, string> = {
   data: "Data arrival",
   sleep: "Sleep",
   activities: "Activities",
+  nutrition: "Nutrition",
 };
 
 // What SURVIVES a demotion, stated in the reader's words. The Settings mirror renders
@@ -112,6 +121,13 @@ export const DIGEST_CATEGORY_NOTABLE: Record<DigestCategory, string> = {
   data: "Sync failures still surface on Data → Review.",
   sleep: "A notably short or long night still appears.",
   activities: "A day that set a personal record still appears.",
+  // The line only ever states a SHORTFALL, so the demotion cannot be "routine days
+  // stop" — those already say nothing. What it turns down is the HEDGED shortfall: one
+  // measured from a floor (logged foods, quick-add grams, a fibre dose), which the copy
+  // marks "84 g+" precisely because untracked foods stay invisible and the real intake
+  // may already be there. A shortfall measured from a tracked full-day total is an
+  // asserted fact about the day, and survives.
+  nutrition: "A shortfall measured from tracked intake still appears.",
 };
 
 // Short button labels — a Telegram inline button has ~30 usable characters beside an
@@ -127,6 +143,7 @@ export const DIGEST_CATEGORY_SHORT: Record<DigestCategory, string> = {
   data: "Data",
   sleep: "Sleep",
   activities: "Training",
+  nutrition: "Nutrition",
 };
 
 // ---- Stored form -----------------------------------------------------------
@@ -250,6 +267,30 @@ export function activitiesSurviveDemotion(
   return personalRecords > 0;
 }
 
+// Does yesterday's Nutrition line survive the reader's preference (#2379)? The line only
+// ever states a SHORTFALL — a day that met its targets emits nothing at either setting —
+// so the demotion cannot be "routine days stop". What it turns down is the HEDGED
+// shortfall.
+//
+// The predicate is the classification the line ALREADY computes, never a threshold
+// invented here: `isFloor` is the #767/#976 floor discipline, the same fact the copy
+// prints as the trailing "+" on "84 g+". A floor-basis shortfall is explicitly NOT an
+// assertion — untracked foods stay invisible, so the real intake may already be there —
+// and that is exactly the line a reader who taps food groups sees most mornings. A
+// shortfall measured from a tracked full-day total is an asserted fact about the day and
+// survives every preference.
+//
+// Nutrition is coaching tier and carries no safety floor, so unlike `labs` this toggle
+// genuinely reduces contact — which is the only direction the doctrine allows a
+// preference to move on its own (docs/internals/findings.md §2, §8).
+export function nutritionSurvivesDemotion(
+  demoted: readonly DigestCategory[],
+  shortfalls: readonly { isFloor: boolean }[]
+): boolean {
+  if (!demoted.includes("nutrition")) return true;
+  return shortfalls.some((s) => !s.isFloor);
+}
+
 // ---- The keyboard ----------------------------------------------------------
 
 // Callback token namespaces, kept beside the builders so the parser and the renderer
@@ -291,8 +332,9 @@ export function collapsedTuneAction(
 // How many category buttons share one keyboard row. Two keeps every label readable on
 // a phone; the ▲ Done button always gets its own row.
 //
-// SIZE. The widened set (#1797) is 10 categories, so the largest keyboard this can
-// produce is 5 rows + Done = 11 buttons — well inside Telegram's 100-button cap, which
+// SIZE. The set is 11 categories (#1797's widening, plus #2379's nutrition), so the
+// largest keyboard this can produce is 6 rows + Done = 12 buttons — well inside
+// Telegram's 100-button cap, which
 // `capTelegramKeyboard` enforces for every keyboard anyway (whole leading rows kept, so
 // a pair is never split). Nothing extra is needed here, and the practical keyboard is
 // smaller still: `tunableCategoriesFor` offers only the categories in TODAY's message

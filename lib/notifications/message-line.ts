@@ -267,6 +267,10 @@ export const MESSAGE_LINE_MODULES: readonly { module: string; why: string }[] =
       why: "The digest's 'Log other…' tail (#1505). Registered so its keyboard-label separator is a REVIEWED exemption with a reason rather than an unexamined omission.",
     },
     {
+      module: "lib/nutrition-day.ts",
+      why: "The digest's yesterday nutrition line (#2379) — the homogeneous-tail case, where the head is a section noun and each short nutrient is one note. Registered although it is a domain module, because that is where the line's parts are composed; like lib/weekly-recap.ts it is in scope for what it produces, not for where it lives.",
+    },
+    {
       module: "lib/notifications/workout-recap-format.ts",
       why: "The post-workout finish nudge's weekly-status line (#981/#1122).",
     },
