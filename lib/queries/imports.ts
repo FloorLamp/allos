@@ -49,6 +49,7 @@ import {
   type DiffRow,
   type ImportSnapshot,
 } from "../import-diff";
+import { integrationsWithDelivery } from "../integrations/registry";
 import { getMedMatchStates } from "./intake/medications";
 import { foldConsolidatedMeds } from "../medication-renewal";
 import { parsePrescription } from "../prescription-parse";
@@ -153,29 +154,48 @@ export function getImportLog(profileId: number): ImportLogRow[] {
   ]);
 }
 
-// A profile's archive-import sync events, newest first. Fitbit Takeout is a one-off
-// user upload, not a recurring connected source, so its event history belongs beside
-// uploaded documents and paste jobs in Review's chronological Imports feed.
-function getArchiveImportSyncEvents(
+// The registered ATTENDED providers (#2301): the family whose runs only happen because
+// a person made them happen — a Takeout archive handed over by hand, a companion tool
+// signed in on the user's own machine. Read from the delivery axis rather than named,
+// which is the whole fix here: this query used to say `provider = 'fitbit-takeout'`,
+// enumerating a two-member family by naming ONE of its members. The consequence was
+// not cosmetic — patient-portals' recorded runs, failures included, appeared on NO
+// Review surface at all, because Connected sources excludes the kind (it is not
+// scheduled), this feed excluded the provider, and `getImportIssues` cannot reach it
+// (an attended provider is exempt from the silence rule, so it can never be `failing`).
+const ATTENDED_PROVIDERS: readonly string[] = integrationsWithDelivery(
+  "attended"
+).map((i) => i.id);
+
+// The placeholders for the IN list. Built from the registry at module load, so the SQL
+// is still a fixed shape per build and every value is bound, never interpolated.
+const ATTENDED_PLACEHOLDERS = ATTENDED_PROVIDERS.map(() => "?").join(", ");
+
+// A profile's ATTENDED-run sync events, newest first. An attended run is a one-off
+// where chronology is the point — exactly what this section already covers — so its
+// event history belongs beside uploaded documents and paste jobs in Review's
+// chronological Imports feed rather than in the latest-state Connected sources card.
+function getAttendedImportSyncEvents(
   profileId: number,
   limit: number
 ): FeedSyncEvent[] {
+  if (ATTENDED_PROVIDERS.length === 0) return [];
   return db
     .prepare(
       `SELECT id, provider, at, ok, window_start, window_end,
               inserted, updated, unchanged, written, suppressed, edited, skipped,
               error, raw_ref
          FROM integration_sync_events
-        WHERE profile_id = ? AND provider = 'fitbit-takeout'
+        WHERE profile_id = ? AND provider IN (${ATTENDED_PLACEHOLDERS})
         ORDER BY at DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, limit) as FeedSyncEvent[];
+    .all(profileId, ...ATTENDED_PROVIDERS, limit) as FeedSyncEvent[];
 }
 
 // The "Imports" feed behind Data → Review: a profile's ONE-OFF imports — uploaded
-// documents, paste/CSV jobs, and archive imports — merged newest-first, where
-// chronology is the point. Recurring integration syncs remain in their own
+// documents, paste/CSV jobs, and every ATTENDED provider's runs — merged newest-first,
+// where chronology is the point. SCHEDULED integration syncs remain in their own
 // "Connected sources" section (getConnectedSources), collapsed to latest-state, so
 // hourly sync noise cannot drown the occasional import. Capped at `limit` after the
 // merge.
@@ -198,8 +218,8 @@ export function getImportDocumentsFeed(
     })
   );
   const jobs = getImportLogJobs(profileId).map(jobEntry);
-  const archives = getArchiveImportSyncEvents(profileId, limit).map(syncEntry);
-  return mergeFeed([...documents, ...jobs, ...archives]).slice(0, limit);
+  const attended = getAttendedImportSyncEvents(profileId, limit).map(syncEntry);
+  return mergeFeed([...documents, ...jobs, ...attended]).slice(0, limit);
 }
 
 // Read a single scalar COUNT(*) from a prepared statement result.
