@@ -165,11 +165,26 @@ export default function DayHistory({
   // Both halves open at the RECENT edge — on a narrow screen the left of the
   // window is old history, and landing there reads as "no data". (The calendar
   // only actually scrolls when the window outgrows the screen — All time.)
+  // Keyed on the WINDOW only: a chip toggle or fold expansion must never yank
+  // a scroll position the user has chosen.
   useEffect(() => {
     for (const el of [matrixRef.current, calendarRef.current]) {
       if (el) el.scrollLeft = el.scrollWidth;
     }
-  }, [rows.length, days.length]);
+  }, [days.length]);
+
+  // A window change (range switch) can strand the selected day outside the new
+  // day list; a panel for an invisible day answers nothing — drop it.
+  useEffect(() => {
+    if (
+      selectedDay &&
+      (days.length === 0 ||
+        selectedDay < days[0] ||
+        selectedDay > days[days.length - 1])
+    ) {
+      setSelectedDay(null);
+    }
+  }, [days, selectedDay]);
 
   // Size calendar cells to fill the container when the window is short.
   useEffect(() => {
@@ -282,16 +297,7 @@ export default function DayHistory({
       )} in this window${minsSuffix}`;
 
   // Hover for pointers, focus for keyboards, tap for touch — `title` never
-  // fires on touch, so a tap pushes the same summary into the caption.
-  const hoverProps = (text: string) => ({
-    title: text,
-    onMouseEnter: () => setDetail(text),
-    onMouseLeave: () => setDetail(null),
-    onFocus: () => setDetail(text),
-    onBlur: () => setDetail(null),
-    onClick: () => setDetail(text),
-  });
-
+  // fires on touch, so taps push the same summaries into the caption.
   // Calendar cells drive the shared hover day; a click SELECTS (toggling),
   // never navigates.
   const calendarCellProps = (
@@ -769,12 +775,16 @@ export default function DayHistory({
             ))}
             <span>More</span>
           </span>
-          <span className="flex items-center gap-1">
-            <span
-              className={`h-[9px] w-[9px] rounded-[2px] ${chartActivityRamp.emptyClass} ${TODAY_RING}`}
-            />
-            today
-          </span>
+          {/* The key only renders when today is actually a cell — a window
+              ending in the past has no ringed day to explain. */}
+          {end === today && (
+            <span className="flex items-center gap-1">
+              <span
+                className={`h-[9px] w-[9px] rounded-[2px] ${chartActivityRamp.emptyClass} ${TODAY_RING}`}
+              />
+              today
+            </span>
+          )}
         </div>
       </div>
     </div>
