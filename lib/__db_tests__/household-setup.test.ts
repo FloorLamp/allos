@@ -30,7 +30,10 @@ import {
 } from "@/lib/settings";
 import { initialOnboardingState } from "@/lib/onboarding";
 import { getChannels } from "@/lib/notifications";
-import { profileRoutingFacts } from "@/lib/notifications/routing";
+import {
+  instanceHasAnyChannel,
+  profileRoutingFacts,
+} from "@/lib/notifications/routing";
 import { dismissFinding } from "@/lib/queries";
 import {
   gatherHouseholdSetupFacts,
@@ -267,7 +270,79 @@ describe("the four-profile household's setup rows (#2173)", () => {
       const routed =
         facts.profileChannelConfigured || facts.channelledLoginIds.length > 0;
       expect(getChannels().some((c) => c.isConfigured(p))).toBe(routed);
+      // The instance-wide gate is one fact about the SERVER: identical on every
+      // profile's facts, whatever that profile's own routing looks like. This fixture
+      // configures the Telegram bot token, so it is open here.
+      expect(facts.instanceHasAnyChannel).toBe(true);
     }
+  });
+
+  // The owner ruling on PR #2362, over the real settings tiers: with NO channel
+  // technology configured anywhere — no Telegram bot, no VAPID keys, no SMTP, no Home
+  // Assistant webhook on any profile — the check is silent for every member, and it
+  // comes back the moment one exists again.
+  describe("the instance gate", () => {
+    beforeEach(() => {
+      // A BARE instance: no bot token, no VAPID keys, no SMTP (the DB tier configures
+      // neither) and no Home Assistant webhook on ANY profile — the HA sweep is
+      // instance-wide, so an earlier test's webhook on an earlier profile would still
+      // count, correctly.
+      setTelegramBotConfig({ telegramBotToken: "", telegramMode: "poll" });
+      db.prepare("DELETE FROM profile_settings WHERE key LIKE 'ha_notify_%'").run();
+      expect(instanceHasAnyChannel()).toBe(false);
+    });
+
+    it("silences unroutable for EVERY member on a bare instance", () => {
+      for (const p of [adult, child])
+        expect(profileUnroutableReason(p, TODAY)).toBe(null);
+      // Only the unroutable line goes; the checks that are not about delivery stay.
+      expect(checkIds(adult)).toEqual([]);
+      expect(checkIds(child)).toEqual(["undosed-items"]);
+      expect(checkIds(toddler)).toEqual(["never-onboarded", "roster-inactive"]);
+    });
+
+    it("comes back when any ONE technology is configured again", () => {
+      // Each of the four, one at a time, from the bare state.
+      setTelegramBotConfig({
+        telegramBotToken: "bot-for-tests",
+        telegramMode: "poll",
+      });
+      expect(instanceHasAnyChannel()).toBe(true);
+      expect(profileUnroutableReason(adult, TODAY)).toBe("no-managing-login");
+      setTelegramBotConfig({ telegramBotToken: "", telegramMode: "poll" });
+
+      // Home Assistant has no instance-level half, so its instance question is whether
+      // ANY profile has a webhook — here the ADMIN's own profile, which is routable and
+      // is not the member being reported on.
+      setProfileHomeAssistant(adminSelf, {
+        enabled: true,
+        webhookUrl: "https://ha.example.com/api/webhook/fixture",
+        secret: "",
+        disabledKinds: [],
+      });
+      expect(instanceHasAnyChannel()).toBe(true);
+      expect(profileUnroutableReason(adult, TODAY)).toBe("no-managing-login");
+    });
+
+    // The fold this must NOT be. Every member of this household is unroutable, and the
+    // instance IS configured — the loudest true case, which the "all profiles came back
+    // unroutable, therefore suppress" shape would silence.
+    it("stays loud when every member is unreachable on a configured instance", () => {
+      setTelegramBotConfig({
+        telegramBotToken: "bot-for-tests",
+        telegramMode: "poll",
+      });
+      // Take the admin's own channel away: now NO profile on the instance has a route,
+      // while the instance's channel technology is plainly configured.
+      setLoginTelegram(adminLoginId, {
+        telegramEnabled: false,
+        telegramChatId: "",
+      });
+      for (const p of [adminSelf, adult, child]) {
+        expect(profileRoutingFacts(p).channelledLoginIds).toEqual([]);
+        expect(profileUnroutableReason(p, TODAY)).not.toBe(null);
+      }
+    });
   });
 
   it("a dismissal hides the row until a NEW check type fails", () => {

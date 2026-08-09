@@ -140,10 +140,15 @@ export interface SendSourceFacts {
 // `profileChannelConfigured` is the Home Assistant webhook, which is PROFILE-scoped: it
 // delivers with no managing login at all, so a profile that has one is routable even
 // with an empty edge set.
+//
+// `instanceHasAnyChannel` is the INSTANCE-WIDE gate below — one fact about the whole
+// server, filled once by `instanceHasAnyChannel()` (lib/notifications/routing.ts) and
+// carried on every profile's facts identically.
 export interface RoutingFacts {
   managingLoginIds: readonly number[];
   channelledLoginIds: readonly number[];
   profileChannelConfigured: boolean;
+  instanceHasAnyChannel: boolean;
 }
 
 export interface HouseholdSetupFacts {
@@ -201,6 +206,28 @@ export function hasSendSource(s: SendSourceFacts): boolean {
 // lib/__tests__/household-setup.test.ts pins that as an invariant rather than trusting
 // the prose.
 export function routingGap(routing: RoutingFacts): UnroutableReason | null {
+  // THE INSTANCE GATE (owner ruling on PR #2362), first, because it is a question about
+  // the SERVER rather than about this member. "Notifications are not set up yet" and
+  // "notifications are set up, and this member cannot be reached by them" are different
+  // states, and only the second is a household setup-health defect. So while NO channel
+  // technology is configured anywhere on the instance — no Telegram bot, no Web Push, no
+  // Home Assistant, no email — this stays silent for EVERY profile, and it starts firing
+  // the moment any channel exists anywhere, which is exactly when the asymmetry between
+  // members becomes real and worth naming.
+  //
+  // The accepted cost, stated so it is not rediscovered as a bug: an operator who never
+  // configures any channel at all never learns from this surface that their reminders go
+  // nowhere. That trade is deliberate — a fresh install that greets you with a warning
+  // per member on day one teaches people to ignore the surface, and an ignored surface
+  // cannot do its job on the day the asymmetry is real.
+  //
+  // NOTE THE SHAPE. This is an instance-wide fact, evaluated ONCE
+  // (`instanceHasAnyChannel()`, lib/notifications/routing.ts) — not per profile, and
+  // emphatically NOT "every profile came back unroutable, therefore suppress". That
+  // would be a different predicate, and it would also silence a fully configured
+  // instance on which every member happens to be unreachable, which is the LOUDEST true
+  // case and must stay loud.
+  if (!routing.instanceHasAnyChannel) return null;
   if (routing.profileChannelConfigured) return null;
   if (routing.channelledLoginIds.length > 0) return null;
   return routing.managingLoginIds.length === 0

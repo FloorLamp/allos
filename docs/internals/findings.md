@@ -245,13 +245,13 @@ composes them; `lib/household-setup.ts` decides and phrases):
 
 | Check                   | Fires when                                                                                                   | CTA                                                                               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `unroutable`            | the profile WOULD send something AND either the edge set is empty or no login in it has a configured channel | the grant UI (`/settings/family`) or the channel form (`/settings/notifications`) |
+| `unroutable`            | the instance has ANY channel configured AND the profile WOULD send something AND either the edge set is empty or no login in it has a configured channel | the grant UI (`/settings/family`) or the channel form (`/settings/notifications`) |
 | `never-onboarded`       | no `onboarding_state` row AND **thin presence** (not one onboarding data domain has a first value)           | that member's `/onboarding`                                                       |
 | `undosed-items`         | active, non-`may` items with zero un-retired dose rows — scheduled-shaped and never due                      | one item → its own edit form; several → the kind's surface                        |
 | `preventive-unactioned` | the preventive planner's own outstanding set: **overdue**, unbooked, unsuppressed                            | that member's `/upcoming`                                                         |
 | `roster-inactive`       | the whole roster is inactive and some of it is `must`/`should`                                               | **none** — SUGGEST-only                                                           |
 
-Six properties are load-bearing:
+Seven properties are load-bearing:
 
 - **Rendered aggregate, full stop.** It never sends and it never enters the digest —
   the digest is about the profile's HEALTH, not the household's CONFIGURATION. That is
@@ -261,6 +261,18 @@ Six properties are load-bearing:
 - **Severity reuses the existing banding.** Content may raise a row — an undeliverable
   `must` MEDICATION is `caution` where a `should` supplement is `action` — but the
   vocabulary is `FindingTone`, and both render. No new severity words.
+- **`unroutable` is gated on ONE instance-wide fact** (owner ruling, PR #2362). While
+  no channel technology is configured anywhere on the instance, it is silent for every
+  profile: "notifications are not set up yet" is a different state from "notifications
+  are set up, and this member cannot be reached by them", and only the second is a
+  setup-health defect. It starts firing the moment any channel exists anywhere. The
+  gate is `instanceHasAnyChannel()` (`lib/notifications/routing.ts`), asked once about
+  the SERVER — **not** the fold "every profile came back unroutable, therefore
+  suppress", which would also silence a configured instance where every member is
+  unreachable, the loudest true case. The accepted cost: an operator who configures no
+  channel at all never learns here that their reminders go nowhere — deliberate,
+  because a fresh install that warns on day one teaches people to ignore the surface.
+  See `docs/internals/notifications.md`.
 - **`unroutable` cannot double-fire with `notify_lifecycle`.** That marker records a
   channel that was ATTEMPTED and FAILED; the predicate returns null the moment ANY
   channel is configured. Disjoint by construction, pinned as an invariant test rather
@@ -270,7 +282,11 @@ Six properties are load-bearing:
   this set of problems" and a newly failing check type re-offers the row. A row
   carrying `unroutable` is marked **non-dismissible** — no control is rendered AND the
   action refuses to write one — because a standing "this profile is unroutable"
-  dismissal would recreate the silence this removes.
+  dismissal would recreate the silence this removes. Every refusal the action can
+  reach (row gone, row non-dismissible, posted key stale) still **revalidates
+  `/household`**: a refusal nobody can see is the quiet twin of confirming a success
+  unconditionally, and re-rendering the card against the current failing set is this
+  surface's own way of saying "that is not the row you were looking at".
 - **The roster question is SUGGEST-only** (#1505/#1668). Obligation and activity are
   user-written, always; the app asks and offers no write.
 - **Scope is the page's own.** The checks are per-member reads composed inside the loop

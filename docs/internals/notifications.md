@@ -79,6 +79,27 @@ login-keyed (`push_subscriptions.login_id`).
   #1324 already tells the last unmuted caregiver what they are doing — while
   unroutable is a gap nobody chose), and it counts the **profile-scoped Home
   Assistant webhook**, which delivers with no managing login at all.
+- **The instance gate on unroutable (owner ruling, PR #2362).** While **no channel
+  technology is configured anywhere on the instance** — no Telegram bot, no Web
+  Push, no Home Assistant, no email — `unroutable` is silent for **every** profile,
+  on both surfaces. "Notifications are not set up yet" and "notifications are set
+  up, and this member cannot be reached by them" are different states, and only the
+  second is a household setup-health defect; the check starts firing the moment any
+  channel exists anywhere, which is exactly when the asymmetry between members
+  becomes real. The accepted cost is stated rather than rediscovered: an operator
+  who never configures any channel never learns from this surface that their
+  reminders go nowhere — a fresh install that warns on day one teaches people to
+  ignore the surface, and an ignored surface cannot do its job on the day the
+  asymmetry is real. The gate is **`instanceHasAnyChannel()`**
+  (`lib/notifications/routing.ts`), one fact about the SERVER evaluated once and
+  carried on every profile's `RoutingFacts`: the three instance-level technologies
+  (`INSTANCE_CHANNEL_TECHNOLOGY`, the same source `loginHasAnyChannel` pairs with a
+  login's row) plus a sweep for a Home Assistant webhook on any profile, since HA
+  has no instance-level half and an HA-only household must still hear about the
+  sibling nothing reaches. It is emphatically **not** the fold "every profile came
+  back unroutable, therefore suppress" — that predicate would also silence a fully
+  configured instance on which every member happens to be unreachable, the loudest
+  true case, and `lib/__tests__/household-setup.test.ts` pins the difference.
 - **What stayed profile-keyed vs moved login-keyed.** The **fire decision**
   stays event-keyed **profile+slot+day** — one evaluation, unchanged: every
   `notify_last_*` marker, the per-profile **schedule** (digest hour, recap day,

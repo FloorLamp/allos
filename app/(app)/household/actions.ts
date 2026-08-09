@@ -105,15 +105,35 @@ export async function openMemberSetupAction(formData: FormData) {
 // a suppression for a non-dismissible one, so a hand-posted form cannot silence it
 // either. `householdSetupForProfile` is the same reader the card rendered from, so the
 // key can never be one the user was not actually offered.
+//
+// EVERY REFUSAL STILL REVALIDATES. The compare-and-swap can miss for three reasons, and
+// all three mean the same thing: the card in front of the user no longer describes the
+// member. The row is gone (their setup was fixed, or a prior dismissal already covers
+// it), the set now carries `unroutable` and may not be silenced at all, or the failing
+// set changed under an open tab so the posted key is stale. A bare `return` there is the
+// neighbour of the rule two sections up in AGENTS.md — never confirm success
+// unconditionally when the write can refuse — because a refusal nobody can SEE is the
+// same lie told quietly: the tap does nothing and the page does not even re-render.
+// Revalidating is the honest answer this surface can give in its own vocabulary: the
+// card re-renders against the CURRENT failing set, so the row either changes shape or
+// disappears, which reads as "that is not the row you were looking at". It writes
+// nothing on that path.
 export async function dismissMemberSetupAction(formData: FormData) {
   const profileId = Number(formData.get("profileId"));
+  // NOT the same case: no member was named at all, so there is no card to re-render and
+  // no claim to correct. Only a hand-posted form reaches this — every rendered control
+  // carries its member — so the answer is to do nothing, quietly and completely.
   if (!profileId) return;
   // Silencing a finding about someone is a WRITE against their profile, so it takes
   // write access to THAT profile, not to the active one.
   await requireProfileWriteAccess(profileId);
   const row = householdSetupForProfile(profileId, today(profileId));
-  if (!row || !row.dismissible) return;
-  if (row.dedupeKey !== String(formData.get("dedupe_key") ?? "")) return;
-  dismissFinding(profileId, row.dedupeKey);
+  if (
+    row &&
+    row.dismissible &&
+    row.dedupeKey === String(formData.get("dedupe_key") ?? "")
+  ) {
+    dismissFinding(profileId, row.dedupeKey);
+  }
   revalidateRoute("/household");
 }

@@ -52,6 +52,25 @@ function fixtureIds(): { okId: number; gapId: number; quietId: number } {
   }
 }
 
+// Whether THIS profile carries an enabled Home Assistant webhook — the one channel that
+// needs no managing login and no instance-level configuration. Read straight from
+// profile_settings, because it is the fact the instance gate below turns on.
+function hasHomeAssistantWebhook(profileId: number): boolean {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db
+        .prepare(
+          "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'ha_notify_enabled'"
+        )
+        .get(profileId) as { value?: string } | undefined
+    )?.value === "1";
+  } finally {
+    db.close();
+  }
+}
+
 // Drop any suppression this spec's dismiss test wrote, so a --repeat-each run (or a
 // retry) starts from the offered state again. Fixture ownership: only this spec ever
 // writes an upcoming_dismissals row for the QUIET profile.
@@ -72,6 +91,14 @@ test.describe("member setup health on /household (#2173)", () => {
     browser,
   }) => {
     const { okId, gapId } = fixtureIds();
+    // THE INSTANCE GATE (#2362 ruling) is a fact about the SERVER, not about the member.
+    // GAP has no channel technology of its own — no webhook, and no login in its edge set
+    // with a channel — and its card below still names the gap, because a SIBLING profile
+    // on this instance (the OK member's webhook) is configured. A per-profile gate would
+    // have silenced exactly this card; a fold over profiles ("they are all unroutable,
+    // so stay quiet") would have silenced it too, since OK carries no setup row at all.
+    expect(hasHomeAssistantWebhook(okId)).toBe(true);
+    expect(hasHomeAssistantWebhook(gapId)).toBe(false);
     const page = await loginAs(browser, {
       username: E2E_LOGIN_SETUP_HEALTH,
       password: E2E_MEMBER_PASSWORD,
