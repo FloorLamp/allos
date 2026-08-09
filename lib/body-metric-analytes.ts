@@ -84,12 +84,22 @@
 // is the same drift-proofing property the name derivation itself is built on.
 //
 // AND THE DECLARATION IS CHECKED, not trusted. Three of its four "reaches" mechanisms
-// are verifiable against the code that implements them, and the completeness test in
-// lib/__tests__/body-metric-analytes.test.ts verifies each one rather than reading the
-// prose beside it: `observations` against `METRIC_READING_STORE`, `observation-fold`
-// against `metricObservationFoldIdentity`, `import-projection` against the projector's
-// OWN recognizer (`bodyMetricKind` / `isHeightReading` / `isHeadCircReading`), asked
-// with the very names the slug claims. A declaration that stops being true fails CI.
+// are verifiable against the code that implements them, and the tests verify each one
+// rather than reading the prose beside it:
+//
+//   • `observations`      — against the pure reading model (a canonical identity with
+//                           NO stream source), in lib/__tests__/body-metric-analytes;
+//                           the DB tier separately cross-checks that this agrees with
+//                           `METRIC_READING_STORE`, which lives in a module that opens
+//                           the database and so cannot be reached from the pure tier.
+//   • `observation-fold`  — against `metricObservationFoldIdentity`.
+//   • `import-projection` — against the projector's OWN recognizer (`bodyMetricKind` /
+//                           `isHeightReading` / `isHeadCircReading`), asked with the
+//                           very names the slug claims.
+//
+// A declaration that stops being true fails CI. `derived-inputs` is the one arm with no
+// mechanical check — it is a judgement, which is why it has exactly one member and why
+// that member is the issue's own explicit ruling.
 //
 // A MISPLACED ROW IS THEN A PLACEMENT BUG, NOT A CATALOG PROBLEM. "Body Mass Index
 // (BMI)" arriving as a `medical_records` row is #2318's misplacement — under this rule
@@ -187,7 +197,8 @@ export const METRIC_DOCUMENT_REACH: Record<
   // hides nothing.
   weight: {
     reaches: "import-projection",
-    projectedBy: "bodyMetricKind → body_metrics.weight_kg (lib/body-metric-extract.ts)",
+    projectedBy:
+      "bodyMetricKind → body_metrics.weight_kg (lib/body-metric-extract.ts)",
   },
   height: {
     reaches: "import-projection",

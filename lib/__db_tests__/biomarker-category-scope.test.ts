@@ -269,7 +269,10 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     // Still here: an imported reading of these reaches NO chart, so the catalog is
     // still their home — a chart existing is not the same question as the reading
     // being able to get to it.
-    for (const unreachable of ["Heart Rate Variability", "Basal Metabolic Rate"]) {
+    for (const unreachable of [
+      "Heart Rate Variability",
+      "Basal Metabolic Rate",
+    ]) {
       expect(names).toContain(unreachable);
     }
     // Still here: the domain vitals #1076 was protecting, and the lab control.
@@ -293,9 +296,10 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     // `medical_records` without revisiting its reachability fails here.
     for (const slug of BODY_METRIC_SLUGS) {
       const claimed = METRIC_DOCUMENT_REACH[slug].reaches === "observations";
-      expect(METRIC_READING_STORE[slug]?.table === "medical_records", slug).toBe(
-        claimed
-      );
+      expect(
+        METRIC_READING_STORE[slug]?.table === "medical_records",
+        slug
+      ).toBe(claimed);
     }
   });
 

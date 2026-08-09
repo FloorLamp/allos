@@ -83,7 +83,8 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
 
   it("`observation-fold` matches metricObservationFoldIdentity", () => {
     for (const slug of BODY_METRIC_SLUGS) {
-      const claimed = METRIC_DOCUMENT_REACH[slug].reaches === "observation-fold";
+      const claimed =
+        METRIC_DOCUMENT_REACH[slug].reaches === "observation-fold";
       expect(metricObservationFoldIdentity(slug) !== null, slug).toBe(claimed);
     }
   });
@@ -96,17 +97,20 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
       const reach = METRIC_DOCUMENT_REACH[slug];
       if (reach.reaches !== "import-projection") continue;
       const recognizer = PROJECTION_RECOGNIZERS[slug];
-      expect(recognizer, `${slug} names a projector but binds no recognizer`)
-        .toBeDefined();
+      expect(
+        recognizer,
+        `${slug} names a projector but binds no recognizer`
+      ).toBeDefined();
       for (const name of [
         BODY_METRIC_META[slug].title,
         ...(bodyMetricHomeFor(BODY_METRIC_META[slug].label) === slug
           ? [BODY_METRIC_META[slug].label]
           : []),
       ])
-        expect(recognizer?.(name), `${slug} projector must accept "${name}"`).toBe(
-          true
-        );
+        expect(
+          recognizer?.(name),
+          `${slug} projector must accept "${name}"`
+        ).toBe(true);
     }
   });
 
@@ -162,7 +166,8 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
       expect(hasBodyMetricHome(name), name).toBe(true);
       const href = readingDetailHref(name);
       expect(
-        href.startsWith("/trends/metric/") || href.startsWith("/biomarkers/view"),
+        href.startsWith("/trends/metric/") ||
+          href.startsWith("/biomarkers/view"),
         `${name} → ${href}`
       ).toBe(true);
     }
