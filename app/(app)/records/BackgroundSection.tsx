@@ -1,4 +1,8 @@
-import { getSmokingHistory, getRiskAttributes } from "@/lib/settings";
+import {
+  getSmokingHistory,
+  getRiskAttributes,
+  getRiskAttributesReviewed,
+} from "@/lib/settings";
 import SmokingHistoryForm from "@/app/(app)/medical/background/SmokingHistoryForm";
 import RiskFactorsForm from "@/app/(app)/medical/background/RiskFactorsForm";
 
@@ -22,7 +26,13 @@ export default function BackgroundSection({
   return (
     <div className="space-y-6">
       <SmokingHistoryForm history={getSmokingHistory(profileId)} />
-      <RiskFactorsForm attributes={getRiskAttributes(profileId)} />
+      {/* The review marker (#1045) rides along so the form can offer the "none of
+          these apply" declaration while unreviewed and state the answer once made
+          (#2299) — one extra profile_settings read. */}
+      <RiskFactorsForm
+        attributes={getRiskAttributes(profileId)}
+        reviewed={getRiskAttributesReviewed(profileId)}
+      />
     </div>
   );
 }

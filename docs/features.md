@@ -153,7 +153,12 @@ smoking-history / risk-factors forms on Records › Care › Overview, the bioma
 add form prefilled with the first missing biological-age analyte, a sole
 unconfirmed medication's edit form (or the medication list filtered to the
 unconfirmed ones when several need it), and the child profile's growth quick-add
-focused on the height field — never a browse page. It's deliberately **not a
+focused on the height field — never a browse page. Where a gap clears on an
+explicit **review** rather than on a stored value, the form it links to carries
+the control that records it: the risk-factors card offers **"None of these
+apply"**, so the answer "none of the five" is a real answer rather than a card
+you can only dismiss, and once reviewed the card says so instead of looking
+identical to a profile that has never opened it. It's deliberately **not a
 completeness score** (no percentage ring — the same pillars-not-a-composite
 stance), covers **structural one-time fixes only** (never behavioral nagging
 like "log more weigh-ins"), self-hides when a profile has none, and rides the

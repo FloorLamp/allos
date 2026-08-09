@@ -37,6 +37,8 @@ import {
   DQ_CARE_CHILD_PROFILE,
   E2E_LOGIN_DQ_ADULT,
   DQ_ADULT_PROFILE,
+  E2E_LOGIN_RISK_REVIEW,
+  RISK_REVIEW_PROFILE,
   E2E_LOGIN_VISITLINKS,
   VISITLINKS_PROFILE,
   E2E_LOGIN_ENCRICH,
@@ -556,6 +558,29 @@ export function seedDataQualityGaps(): void {
     seedMemberLogin(E2E_LOGIN_DQ_ADULT, dqAdultId, "write");
     console.log(
       `e2e: seeded data-quality ADULT fixture — profile ${dqAdultId} (${DQ_ADULT_PROFILE}) (#1146/#1219)`
+    );
+  }
+
+  // (E) An adult whose ONLY structural gap is the risk-factor review (#2299):
+  // birthdate + sex + smoking status, and nothing else — no meds, no labs, no failed
+  // documents — with every risk flag off and the review marker unset. The widget
+  // therefore shows exactly one gap, and the form's "None of these apply" footer
+  // clears it with no checkbox touched, at which point the widget self-hides. Its
+  // spec owns the profile outright because that write is durable; synthetic values
+  // only.
+  {
+    const riskReviewId = fixtureProfileId(RISK_REVIEW_PROFILE);
+    clearProfileAttrs(riskReviewId);
+    db.prepare(
+      `DELETE FROM profile_settings WHERE profile_id = ? AND key LIKE 'risk\\_%' ESCAPE '\\'`
+    ).run(riskReviewId);
+    setAttr(riskReviewId, "sex", "female");
+    setAttr(riskReviewId, "birthdate", "1990-03-02");
+    setAttr(riskReviewId, "smoking_status", "never");
+    setAttr(riskReviewId, "smoking_source", "manual");
+    seedMemberLogin(E2E_LOGIN_RISK_REVIEW, riskReviewId, "write");
+    console.log(
+      `e2e: seeded risk-factor review fixture — profile ${riskReviewId} (${RISK_REVIEW_PROFILE}) (#2299)`
     );
   }
 }
