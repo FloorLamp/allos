@@ -176,10 +176,11 @@ export function formatMessageLine(line: MessageLine): string {
   return [head, tail, link].filter((s) => s.length > 0).join(" ");
 }
 
-// Render a rich message line, returning a plain string when nothing in it is emphasized
-// (richFrom's own contract) so a caller may hand the result straight to a channel.
-// Identical punctuation to formatMessageLine by construction — the two read the same
-// parts through the same ordering.
+// Render a rich message line as a `MessageBody` a channel can carry directly (the
+// renderers drop emphasis where the transport has none, keeping the words). Punctuated
+// identically to formatMessageLine by construction — the two read the same parts through
+// the same ordering, so the plain and the emphasized rendering of one line can only ever
+// differ in emphasis.
 export function formatRichMessageLine(line: RichMessageLine): MessageBody {
   const flat = (part: RichPart | readonly RichPart[]): RichPart[] =>
     Array.isArray(part) ? [...part] : [part as RichPart];
