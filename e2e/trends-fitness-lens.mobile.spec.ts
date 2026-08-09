@@ -69,6 +69,13 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     await expect(page.getByTestId("fitness-strength")).toBeVisible();
     await expect(page.getByTestId("fitness-sport")).toBeVisible();
 
+    // Inside Volume & cadence: the sessions-by-type matrix (the day-history
+    // composition twin of the density heatmap) renders a row per activity type
+    // the fixture trained in the window.
+    const typeMatrix = page.getByTestId("workout-type-matrix");
+    await expect(typeMatrix).toBeVisible();
+    await expect(typeMatrix.getByTestId("day-history-row")).not.toHaveCount(0);
+
     // The nested Strength|Cardio|Sport strip is GONE. The section navigation is
     // plain in-page anchors, never a third tab level — so no tab by those names
     // exists, and the only selected tab is the hub's own.

@@ -34,6 +34,10 @@ const ALLOWLIST = new Map<string, string>([
     "heatmap month/weekday/legend tick labels — deliberate 10px density aligned to the 3px-gap cell grid",
   ],
   [
+    "components/DayHistory.tsx",
+    "day-history calendar month/weekday/legend tick labels — the WorkoutHeatmap density decision on the same cell grid",
+  ],
+  [
     "components/BiomarkerScale.tsx",
     "gauge-scale numeric axis labels (low/high/band) — chart tick density",
   ],

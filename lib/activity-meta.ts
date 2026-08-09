@@ -119,6 +119,17 @@ export function resolveActivityType(name: string): ActivityType | null {
   return null;
 }
 
+// The display name per activity type — exhaustive per the ACTIVITY_TYPES
+// discipline, so a sixth type is a compile error here until it gets a label.
+// `unclassified` reads as the stated absence it is (#2272), not a category.
+export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
+  strength: "Strength",
+  cardio: "Cardio",
+  sport: "Sport",
+  recovery: "Recovery",
+  unclassified: "Unclassified",
+};
+
 // Activities for which a distance makes sense.
 const DISTANCE_KEYWORDS = [
   "run",

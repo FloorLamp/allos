@@ -107,6 +107,7 @@ surface — in a grid, every cell's neighbour is another cell.
 | composition over time                            | stacked bars                              | `StackedBarCard`, `ZoneMinutesCard`                      |
 | a relationship between two variables             | scatter                                   | `ScatterChartCard`                                       |
 | consistency / "did I show up"                    | calendar heatmap                          | `WorkoutHeatmap`, `ActiveDaysStrip`, `AdherenceCalendar` |
+| coverage + composition, per group per day        | day-history calendar + group×day matrix   | `DayHistory` (over `lib/day-history.ts`)                 |
 | growth against reference percentiles             | percentile bands + trajectory             | `GrowthChart`                                            |
 | ONE day, every layer, on a clock axis            | hand-drawn SVG day chart (scrub + zoom)   | `IntradayChart` (via `IntradayPanel`)                    |
 | an illness episode's temperature + doses         | hand-drawn SVG episode chart              | `illness/FeverChart`                                     |

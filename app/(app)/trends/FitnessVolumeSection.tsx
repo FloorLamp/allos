@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
 import WorkoutHeatmapSection from "./WorkoutHeatmapSection";
+import WorkoutTypeMatrixSection from "./WorkoutTypeMatrixSection";
 
 // Trends → Fitness → **Volume & cadence** (#1492), the tab's first section and
 // therefore its first chart: how much work the window held, and how it was spread
@@ -73,6 +74,10 @@ export default async function FitnessVolumeSection({
           window and compacted — a 90D window is ~13 columns, not the old
           unconditional 12-month wall above every nested tab. */}
       <WorkoutHeatmapSection weeks={weeks} end={window.to} />
+
+      {/* Composition: the same window split by activity type (the day-history
+          matrix). The heatmap answers "how often"; this answers "what". */}
+      <WorkoutTypeMatrixSection weeks={weeks} end={window.to} />
     </section>
   );
 }

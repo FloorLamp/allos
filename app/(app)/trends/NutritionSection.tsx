@@ -7,52 +7,30 @@ import {
   getFoodLogEntries,
   getConfirmedIntakeDosesInRange,
 } from "@/lib/queries";
-import { getDisplayFormatPrefs } from "@/lib/settings";
+import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
 import type { DateRange } from "@/lib/timeline-format";
-import { shiftDateStr } from "@/lib/date";
 import { dayFillWindow } from "@/lib/day-fill";
-import { filterSeriesByRange } from "@/lib/trends";
+import { filterSeriesByRange, lensWindow } from "@/lib/trends";
 import { MACROS_SERIES_KEY } from "@/lib/trend-sparkline";
 import { chartSeries } from "@/lib/chart-colors";
 import {
   buildMacroFiberSeries,
   aggregateFoodAdherenceByWeek,
-  buildIntakeMatrix,
+  NUTRITION_HISTORY_WEEK_CAPS,
   type AdherenceWeek,
 } from "@/lib/nutrition-trends";
-import type { FoodGroupTier } from "@/lib/food-groups";
+import { dayHistoryStart } from "@/lib/day-history";
+import { FOOD_GROUPS } from "@/lib/food-groups";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
+import DayHistory from "@/components/DayHistory";
 
 // Trends → Nutrition (issue #1166): the OVER-TIME nutrition view. `/nutrition` keeps the
 // log + today's adequacy + the raw servings rollup; this tab is the trend layer, re-homing
 // the nutrition trends that were scattered (macros on Body) or uncharted (fiber). Three
 // parts, each a formatter over an EXISTING gather (#221): the macros+fiber daily chart,
-// the food-goal adherence trend, and the intake-history pattern grid.
-
-// The intake grid is bounded so a wide range doesn't render hundreds of cells; the most
-// recent MAX_GRID_DAYS of the window read as a scannable routine at a glance.
-const MAX_GRID_DAYS = 42;
-
-// Tier tint for the intake-grid food-serving segments (matching FoodWeeklyRollup's tint
-// vocabulary): encourage green, limit amber, neutral slate.
-const TIER_SEGMENT: Record<FoodGroupTier, string> = {
-  encourage: "bg-emerald-500",
-  neutral: "bg-slate-300 dark:bg-slate-600",
-  limit: "bg-amber-500",
-};
-
-// Enumerate the calendar days in [from, to] inclusive, NEWEST first, capped.
-function daysDescending(from: string, to: string, cap: number): string[] {
-  const out: string[] = [];
-  let d = to;
-  while (d >= from && out.length < cap) {
-    out.push(d);
-    d = shiftDateStr(d, -1);
-  }
-  return out;
-}
+// the food-goal adherence trend, and the intake history (day-history calendar + matrix).
 
 // One week's hit-rate → a tint. High adherence green, partial amber, none slate; a
 // no-applicable-target week reads as a faint dashed placeholder (never a 0% miss).
@@ -72,8 +50,6 @@ export default async function NutritionSection({
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
-  const from = range.from ?? shiftDateStr(todayStr, -29);
-  const to = range.to ?? todayStr;
 
   // Part 1 — macros + fiber daily series (tracked totals; fiber the uncharted signal).
   // WINDOWED like every sibling chart (#2258 §4): this was the one Trends chart that
@@ -95,19 +71,39 @@ export default async function NutritionSection({
     getFoodHabitTrends(profile.id, formatPrefs)
   );
 
-  // Part 3 — intake-history pattern grid: food servings + confirmed doses per day.
-  const days = daysDescending(from, to, MAX_GRID_DAYS);
-  const gridFrom = days.length > 0 ? days[days.length - 1] : from;
+  // Part 3 — intake history: the generalized day-history (calendar + matrix)
+  // over food servings + confirmed doses. The window is the hub's shared range
+  // clamped to this lens's week caps and aligned to the profile's week start,
+  // so the calendar's columns and the matrix's day list cover identical days.
+  const win = lensWindow(range, todayStr, NUTRITION_HISTORY_WEEK_CAPS);
+  const weekStart = getWeekStart(profile.id);
+  const gridFrom = dayHistoryStart(win.to, win.weeks, weekStart);
   const foodEntries = getFoodLogEntries(profile.id, gridFrom).filter(
-    (e) => e.date <= to
+    (e) => e.date <= win.to
   );
   const doseDates = getConfirmedIntakeDosesInRange(profile.id, gridFrom)
-    .filter((d) => d.date <= to)
+    .filter((d) => d.date <= win.to)
     .map((d) => d.date);
-  const matrix = buildIntakeMatrix(days, foodEntries, doseDates);
-  const matrixHasIntake = matrix.some(
-    (d) => d.totalServings > 0 || d.doseCount > 0
-  );
+  const foodValues = foodEntries.map((e) => ({
+    date: e.date,
+    group: e.group_key,
+    value: e.servings,
+  }));
+  // Group vocabulary in catalog order (encourage-first), any retired/unknown
+  // slug appended so history still renders — the rollupServings discipline.
+  const presentGroups = new Set(foodEntries.map((e) => e.group_key));
+  const foodGroupsMeta = [
+    ...FOOD_GROUPS.filter((g) => presentGroups.has(g.slug)).map((g) => ({
+      key: g.slug,
+      label: g.name,
+      foodSlug: g.slug,
+      tier: g.tier,
+    })),
+    ...[...presentGroups]
+      .filter((k) => !FOOD_GROUPS.some((g) => g.slug === k))
+      .map((k) => ({ key: k, label: k })),
+  ];
+  const historyHasIntake = foodValues.length > 0 || doseDates.length > 0;
 
   return (
     <div className="space-y-6">
@@ -186,8 +182,10 @@ export default async function NutritionSection({
         )}
       </div>
 
-      {/* Part 3: intake-history pattern grid (links INTO the Timeline) */}
-      <div className="card" data-testid="intake-matrix">
+      {/* Part 3: intake history — day-history calendar (coverage) + group×day
+          matrix (composition), one shared group filter, days linking INTO the
+          Timeline. */}
+      <div className="card" data-testid="intake-history">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Intake history
@@ -200,56 +198,23 @@ export default async function NutritionSection({
           </Link>
         </div>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-          What you actually logged — food-group servings and supplement/med
-          doses, day by day. Tap a day for the full timeline.
+          What you actually logged — food-group servings and confirmed doses,
+          day by day. Filter by group; tap a day for its timeline.
         </p>
-        {!matrixHasIntake ? (
+        {!historyHasIntake ? (
           <EmptyState message="No food or doses logged in this range. Widen the date range or log on the Nutrition page." />
         ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {matrix.map((d) => (
-              <Link
-                key={d.date}
-                href={d.href}
-                data-testid="intake-matrix-day"
-                data-date={d.date}
-                title={`${d.date} · ${d.totalServings} serving${
-                  d.totalServings === 1 ? "" : "s"
-                }, ${d.doseCount} dose${d.doseCount === 1 ? "" : "s"}`}
-                className="flex w-9 flex-col items-center gap-1 rounded-md border border-black/5 p-1 transition hover:border-brand-300 hover:bg-brand-50/40 dark:border-white/10 dark:hover:border-brand-700 dark:hover:bg-brand-950/30"
-              >
-                {/* Food-serving segments, tier-tinted, stacked for the day. */}
-                <span className="flex h-12 w-3 flex-col-reverse overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800">
-                  {d.groups.flatMap((gr) =>
-                    Array.from({
-                      length: Math.min(Math.round(gr.servings), 6),
-                    }).map((_, i) => (
-                      <span
-                        key={`${gr.slug}-${i}`}
-                        className={`min-h-[3px] flex-1 ${
-                          TIER_SEGMENT[gr.tier] ?? TIER_SEGMENT.neutral
-                        } border-t border-white/60 dark:border-black/30`}
-                      />
-                    ))
-                  )}
-                </span>
-                {/* Dose dots (capped), then the day-of-month. */}
-                <span className="flex h-2 items-center gap-0.5">
-                  {Array.from({ length: Math.min(d.doseCount, 4) }).map(
-                    (_, i) => (
-                      <span
-                        key={i}
-                        className="h-1.5 w-1.5 rounded-full bg-brand-500"
-                      />
-                    )
-                  )}
-                </span>
-                <span className="text-xs tabular-nums text-slate-400">
-                  {d.date.slice(8)}
-                </span>
-              </Link>
-            ))}
-          </div>
+          <DayHistory
+            domain="food"
+            values={foodValues}
+            groups={foodGroupsMeta}
+            end={win.to}
+            weeks={win.weeks}
+            weekStart={weekStart}
+            today={todayStr}
+            extraDates={doseDates}
+            testId="intake-day-history"
+          />
         )}
       </div>
     </div>

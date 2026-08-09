@@ -5,6 +5,7 @@
 // is workout-specific and carries per-day counts/minutes, not just a date set.
 import { db, today } from "../../db";
 import { getWeekStart } from "../../settings";
+import type { ActivityType } from "../../types";
 import {
   buildWorkoutHeatmap,
   buildActiveDaysStrip,
@@ -33,6 +34,38 @@ export function getWorkoutDayDensity(
         ORDER BY date ASC`
     )
     .all(profileId, since) as WorkoutDayDensity[];
+}
+
+// Sessions + minutes per profile-local day AND activity type, in [since, until] —
+// the gather behind the Trends → Fitness sessions-by-type day history (the
+// group×day matrix twin of the density heatmap above). Same single grouped
+// pass, one extra GROUP BY column; `type` is the canonical clinical identity
+// for an activity row (the ACTIVITY_TYPES tuple), so the matrix keys on it
+// rather than re-deriving a family from free-text titles.
+export interface WorkoutTypeDay {
+  date: string; // YYYY-MM-DD, profile-local
+  type: ActivityType;
+  count: number; // sessions of this type that day
+  minutes: number; // total minutes (0 when all durations null)
+}
+
+export function getWorkoutTypeDays(
+  profileId: number,
+  since: string,
+  until: string
+): WorkoutTypeDay[] {
+  return db
+    .prepare(
+      `SELECT date,
+              type,
+              COUNT(*) AS count,
+              CAST(COALESCE(SUM(duration_min), 0) AS INTEGER) AS minutes
+         FROM activities
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+        GROUP BY date, type
+        ORDER BY date ASC, type ASC`
+    )
+    .all(profileId, since, until) as WorkoutTypeDay[];
 }
 
 // The trailing workout heatmap for the profile: `weeks` week-columns ending on the
