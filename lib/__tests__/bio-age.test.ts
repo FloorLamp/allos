@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   PHENOAGE_INPUT_NAMES,
+  PHENOAGE_INPUT_ACCEPTED_NAMES,
   PHENOAGE_INPUT_COUNT,
+  censoredInputNote,
   bioAgeDelta,
   bioAgeDeltaPhrase,
   paceOfAging,
@@ -20,6 +22,90 @@ describe("PhenoAge input catalogue", () => {
     expect(PHENOAGE_INPUT_NAMES).toContain(
       "High-Sensitivity C-Reactive Protein (hs-CRP)"
     );
+  });
+
+  it("asks for glucose ONCE, under the fasting name the formula prefers (#2334)", () => {
+    // The checklist is a list of things to go and get: an input that accepts two
+    // spellings is still ONE thing, and PhenoAge is defined on fasting glucose.
+    expect(PHENOAGE_INPUT_NAMES).toContain("Glucose, Fasting");
+    expect(PHENOAGE_INPUT_NAMES).not.toContain("Glucose");
+    // The accepted set is the wider one — a stored plain "Glucose" IS a bio-age
+    // input for surfaces asking about an arbitrary analyte name.
+    expect(PHENOAGE_INPUT_ACCEPTED_NAMES).toContain("Glucose");
+    expect(PHENOAGE_INPUT_ACCEPTED_NAMES).toContain("Glucose, Fasting");
+  });
+});
+
+// A single "biological age" number has no hollow dot to draw, so a censored input has
+// to be said in words (#2334).
+describe("censoredInputNote", () => {
+  const CRP = "High-Sensitivity C-Reactive Protein (hs-CRP)";
+  const exactInputs = [
+    { name: "Albumin", value: 4.4, unit: "g/dL" },
+    { name: CRP, value: 0.2, unit: "mg/L" },
+  ];
+
+  it("is null when every component was an exact number", () => {
+    expect(censoredInputNote({ inputs: exactInputs })).toBeNull();
+  });
+
+  it("names the input, its limit, and the direction of the bias", () => {
+    const note = censoredInputNote({
+      inputs: [
+        exactInputs[0],
+        { name: CRP, value: 0.2, unit: "mg/L", bound: "<" },
+      ],
+      censored: {
+        inputs: [{ name: CRP, label: "CRP", bound: "<" }],
+        bias: "over",
+      },
+    });
+    expect(note).toBe(
+      `Rests on a censored input: ${CRP} was reported below its detection limit and substituted at 0.2 mg/L. The estimate can only be too high from that substitution.`
+    );
+  });
+
+  it("says an above-limit reading is above, and an under-estimate is under", () => {
+    const note = censoredInputNote({
+      inputs: [{ name: "Albumin", value: 5.5, unit: "g/dL", bound: ">" }],
+      censored: {
+        inputs: [{ name: "Albumin", label: "Alb", bound: ">" }],
+        bias: "under",
+      },
+    });
+    expect(note).toContain("reported above its detection limit");
+    expect(note).toContain("can only be too low");
+  });
+
+  it("makes NO directional claim when the index declared none", () => {
+    const note = censoredInputNote({
+      inputs: [{ name: CRP, value: 0.2, unit: "mg/L", bound: "<" }],
+      censored: {
+        inputs: [{ name: CRP, label: "CRP", bound: "<" }],
+        bias: null,
+      },
+    });
+    expect(note).toContain("Rests on a censored input");
+    expect(note).not.toContain("can only be");
+  });
+
+  it("lists several censored inputs in one sentence", () => {
+    const note = censoredInputNote({
+      inputs: [
+        { name: "Albumin", value: 2, unit: "g/dL", bound: "<" },
+        { name: CRP, value: 0.2, unit: "mg/L", bound: "<" },
+      ],
+      censored: {
+        inputs: [
+          { name: "Albumin", label: "Alb", bound: "<" },
+          { name: CRP, label: "CRP", bound: "<" },
+        ],
+        bias: null,
+      },
+    });
+    expect(note).toContain("Rests on censored inputs");
+    expect(note).toContain("Albumin");
+    expect(note).toContain(CRP);
   });
 });
 
