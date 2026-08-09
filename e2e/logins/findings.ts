@@ -53,3 +53,13 @@ export const WEATHER_PROFILE = "Weather (e2e)";
 // test ahead of it and reddened an innocent PR. A test owns its fixture data.
 export const E2E_LOGIN_GOAL_PACE = "e2e_goal_pace";
 export const GOAL_PACE_PROFILE = "Goal Pacing (e2e)";
+
+// #2177 — the paired-observations registry. A dedicated ADULT profile carrying
+// #2177's own motivating fixture: 30 evenings, 21 with a standard drink logged and 9
+// without, each with the overnight HRV recorded on the morning after. Its own profile
+// because the pair's arms are computed over the WHOLE 90-day window: any other spec
+// logging a drink or an HRV reading on a shared profile would move both means, and a
+// finding whose numbers the spec asserts must own every row behind them. Read-only in
+// the spec apart from a dismissal it resets itself. Synthetic, no PHI.
+export const E2E_LOGIN_PAIRED_OBS = "e2e_paired_obs";
+export const PAIRED_OBS_PROFILE = "Paired Observations (e2e)";

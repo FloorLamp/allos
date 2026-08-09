@@ -12,6 +12,7 @@ import type { NarrativePeriod } from "@/lib/recap-narrative";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import { PAIRED_OBS_PREFIX } from "@/lib/paired-observations";
 
 // Generate (or regenerate) the AI daily insight for a date and store it for the
 // active profile. Moved here from the former standalone /insights page when AI
@@ -93,6 +94,24 @@ export async function dismissBodyHygiene(
     return formError("Couldn't dismiss that finding.");
   dismissFinding(profile.id, dedupeKey);
   revalidateRoute("/trends");
+  return formOk();
+}
+
+// Dismiss one registered paired observation (#2177), keyed
+// `paired-obs:<id>:<monthAnchor>`. Guarded to the paired-obs namespace (like
+// dismissBodyHygiene) so this action can only silence a paired-observation key;
+// profile-scoped via dismissFinding. Month-anchored, so the dismissal covers THIS
+// pair for THIS month and a pattern that persists resurfaces next month.
+export async function dismissPairedObservation(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(PAIRED_OBS_PREFIX))
+    return formError("Couldn't dismiss that observation.");
+  dismissFinding(profile.id, dedupeKey);
+  revalidateRoute("/trends");
+  revalidateRoute("/");
   return formOk();
 }
 

@@ -47,6 +47,8 @@ export * from "./queries/integrations";
 export * from "./queries/continuous-streams";
 export * from "./queries/protocols";
 export * from "./queries/situation-impact";
+// The declared factor × outcome pairs (#2177), compared over the user's own days.
+export * from "./queries/paired-observations";
 export * from "./queries/equipment";
 export * from "./queries/longevity";
 export * from "./queries/sun";

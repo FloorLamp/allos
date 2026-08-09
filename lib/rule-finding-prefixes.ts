@@ -49,6 +49,7 @@ import { SUBSTANCE_USE_PREFIX } from "./substance-use";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
+import { PAIRED_OBS_PREFIX } from "./paired-observations";
 import { MED_DUP_PREFIX } from "./medication-family";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
 import { CYCLE_BLEEDING_PREFIX } from "./cycle-observation";
@@ -260,6 +261,17 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SLEEP_MOOD_PREFIX,
     tier: "coaching",
     builder: "buildSleepMoodBridgeFindings",
+    reasons: [],
+  },
+  {
+    // The declared factor × outcome pairs (#2177): a deterministic between-arm mean
+    // comparison over two series the user already logs, silent below each pair's own
+    // datapoint gate and effect floor. COACHING tier — a correlation-shaped
+    // observation is coaching, never care: calm, hideable, no push, no hero, no
+    // Upcoming row, no digest line.
+    prefix: PAIRED_OBS_PREFIX,
+    tier: "coaching",
+    builder: "buildPairedObservationFindings",
     reasons: [],
   },
   {

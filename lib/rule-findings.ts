@@ -133,6 +133,13 @@ import {
   MOOD_LOW_WINDOW_DAYS,
   type LowMoodWindow,
 } from "./mood-observation";
+import {
+  pairedObservationDetail,
+  pairedObservationEvidence,
+  pairedObservationKey,
+  PAIRED_OBSERVATIONS,
+} from "./paired-observations";
+import { getPairedObservations } from "./queries/paired-observations";
 import { getMoodLogs, getMetricDailyTotals } from "./queries";
 import { getSleepRegularity } from "./queries/sleep";
 import { shiftDateStr, lastNDates } from "./date";
@@ -451,6 +458,7 @@ export function collectCoachingFindings(
     ...buildMobilitySuggestionFindings(profileId, today),
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
+    ...buildPairedObservationFindings(profileId, today),
     ...buildCycleBleedingFindings(profileId, today),
     ...buildTtcWorkupFindings(profileId, today),
     // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
@@ -569,6 +577,49 @@ export function buildSleepMoodBridgeFindings(
       actionLabel: "View trends",
     },
   ];
+}
+
+// ---- Paired observations (#2177): the declared factor × outcome registry ----
+
+// One calm finding per REGISTERED pair whose two arms cleared their declared gates.
+// The registry, the measure and every sentence are pure (lib/paired-observations.ts);
+// the gather resolves each pair's two profile-scoped series
+// (lib/queries/paired-observations.ts). Adding a pair is adding a registry row — this
+// builder never learns a pair's name.
+//
+// COACHING tier ONLY (#449), and the strictest shape of it. A correlation-shaped
+// observation is coaching, not care: PAIRED_OBS_PREFIX is registered `coaching`, the
+// findings join collectCoachingFindings, they render on Trends → Insights and in the
+// hideable dashboard rollup, and they NEVER notify, never reach the non-hideable hero,
+// never enter Upcoming, and carry no digest line. Nothing here is dated or due, so
+// there is no obligation to escalate — sleep, heart rate and body streams are
+// OBSERVATION domains (findings doctrine §3: an observation cannot be missed).
+//
+// Copy is co-occurrence only — both arms' n always visible, arms named by what was
+// LOGGED, no advice verb and no causal verb (`copyIsObservational` pins it). No owned
+// SQL added here.
+export function buildPairedObservationFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const monthAnchor = today.slice(0, 7);
+  // The substance rows are adult CONTENT (#1174/#1279) — the same gate
+  // buildSubstanceUseFindings applies, read off the registry's own `adultOnly` field.
+  const includeAdultOnly = !isMinor(getUserAge(profileId));
+  return getPairedObservations(profileId, today, { includeAdultOnly }).map((cmp) => {
+    const spec = PAIRED_OBSERVATIONS[cmp.id];
+    return {
+      domain: "paired-obs",
+      dedupeKey: pairedObservationKey(spec.id, monthAnchor),
+      title: spec.title,
+      detail: pairedObservationDetail(spec, cmp),
+      // Calm FYI — a pattern from the user's own logs, never an alarm.
+      tone: "info",
+      evidence: pairedObservationEvidence(spec, cmp),
+      actionHref: "/trends?tab=insights",
+      actionLabel: "View insights",
+    };
+  });
 }
 
 // ---- Endurance plans (#839): the calm weekly long-session nudge -------------

@@ -36,6 +36,10 @@ import {
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
 import { STEPS_PACE_PREFIX } from "./steps-target";
+import {
+  PAIRED_OBSERVATIONS,
+  type PairedObservationId,
+} from "./paired-observations";
 import { PR_CARDIO_PREFIX, PR_STRENGTH_PREFIX } from "./dismissal-keys";
 import { formatNotifyTime } from "./notifications/schedule";
 
@@ -159,6 +163,12 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
   "ttc-workup:": () => "Fertility conversation suggestion",
   "mood-obs:": () => "Mood observation",
   "sleep-mood:": () => "Sleep & mood observation",
+  // A registered paired observation (#2177), keyed `paired-obs:<id>:<monthAnchor>`.
+  // The registry id is the nameable part; the month is the episode anchor.
+  "paired-obs:": (t) => {
+    const spec = PAIRED_OBSERVATIONS[part(t, 0) as PairedObservationId];
+    return spec ? `Paired observation — ${spec.title}` : "Paired observation";
+  },
   "med-dup:": (t) => {
     const n = titleize(part(t, 0).replace(/[_-]/g, " "));
     return n ? `Duplicate ingredient — ${n}` : "Duplicate-ingredient note";

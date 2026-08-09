@@ -9,6 +9,7 @@ import {
   RECAP_KINDS,
 } from "@/lib/queries";
 import SituationImpactCards from "./SituationImpactCards";
+import PairedObservations from "./PairedObservations";
 import CompareSection from "./CompareSection";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
@@ -90,6 +91,11 @@ export default async function InsightsSection({
 
   return (
     <div className="space-y-6">
+      {/* Paired observations (#2177). Age-NEUTRAL at this level, like compare (#1489):
+          the gate lives one layer down, in the registry's per-row `adultOnly` field,
+          so a restricted profile keeps the training↔sleep pair and never sees the
+          substance ones. Renders nothing at all when no pair clears its gates. */}
+      <PairedObservations />
       {!restricted && (
         <div className="space-y-6" data-testid="insights-ai">
           <SituationImpactCards impacts={situationImpacts} />

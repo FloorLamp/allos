@@ -21,6 +21,8 @@ import {
   SUPPRESSED_PROFILE,
   E2E_LOGIN_VIDEO,
   VIDEO_PROFILE,
+  E2E_LOGIN_PAIRED_OBS,
+  PAIRED_OBS_PROFILE,
 } from "../fixture-logins";
 import { PROFILE_ID, ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -531,4 +533,64 @@ export function seedSuppressedCenter(): void {
       `e2e: seeded weather/UV fixture — profile ${wxId} (${WEATHER_PROFILE}), day ${wxToday} (#1172)`
     );
   }
+}
+
+// ── Paired observations ──
+export function seedPairedObservations(): void {
+  // ── Paired-observations fixture (#2177) ───────────────────────────────────────
+  // #2177's motivating fixture, laid on real days for a dedicated ADULT profile: 30
+  // evenings ending yesterday, 21 of them carrying one standard drink (the curated
+  // `alcohol` food group — a standard drink IS one serving, #998), each with the
+  // overnight HRV recorded on the morning AFTER. Drink evenings run 7-in-10 so both
+  // arms appear in both halves of the window (the spread gate), and the arm values are
+  // the issue's measured means, so Trends → Insights renders "42 ms" vs "54 ms" with
+  // n=21 and n=9. Its own profile: the arms span the whole 90-day window, so any shared
+  // profile's stray drink or HRV row would move the numbers the spec asserts.
+  // Idempotent; synthetic only.
+  const poId = fixtureProfileId(PAIRED_OBS_PROFILE);
+  seedMemberLogin(E2E_LOGIN_PAIRED_OBS, poId, "write");
+  // An adult: the substance pairs are adult CONTENT (#1174/#1279), declared per row
+  // in the registry's `adultOnly` field.
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-06-04')
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(poId);
+
+  const poToday = today(poId);
+  db.prepare(
+    `DELETE FROM food_log WHERE profile_id = ? AND group_key = 'alcohol'`
+  ).run(poId);
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'hrv_ms'`
+  ).run(poId);
+  db.prepare(
+    `DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key LIKE 'paired-obs:%'`
+  ).run(poId);
+
+  const insDrink = db.prepare(
+    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, 'alcohol', 1)
+       ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
+  );
+  const insHrv = db.prepare(
+    `INSERT INTO metric_samples
+       (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'oura', 'hrv_ms', ?, ?, ?, ?)`
+  );
+  for (let i = 0; i < 30; i++) {
+    const evening = shiftDateStr(poToday, -(i + 1));
+    const morning = shiftDateStr(poToday, -i);
+    const drank = i % 10 < 7;
+    if (drank) insDrink.run(poId, evening);
+    insHrv.run(
+      poId,
+      morning,
+      `${morning}T02:00:00Z`,
+      `${morning}T02:05:00Z`,
+      drank ? 42.4 : 54.4
+    );
+  }
+
+  console.log(
+    `e2e: seeded paired-observations fixture — profile ${poId} (${PAIRED_OBS_PROFILE}), alcohol↔HRV 21 vs 9 nights (#2177)`
+  );
 }

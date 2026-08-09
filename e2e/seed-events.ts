@@ -72,6 +72,7 @@ import {
 } from "./seed/metrics";
 import {
   seedGoalPacing,
+  seedPairedObservations,
   seedRuleDomains,
   seedSuppressedCenter,
 } from "./seed/findings";
@@ -150,6 +151,7 @@ seedMultiSourceMetric();
 seedTrainingZones();
 seedRuleDomains();
 seedGoalPacing();
+seedPairedObservations();
 seedDropReport();
 seedExtractionConfidence();
 seedTriageLinks();
