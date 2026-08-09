@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
 import { type ProfileScope } from "@/lib/scope";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
-import BioAgeHero from "@/components/BioAgeHero";
+import BioAgeInputsCard from "./BioAgeInputsCard";
 import TrajectoryFindings from "./TrajectoryFindings";
 import BiomarkersTable from "@/components/BiomarkersTable";
 import TableSortSelect from "@/components/TableSortSelect";
@@ -126,11 +126,13 @@ export default function BiomarkersSection({
             <TrajectoryFindings />
           </div>
 
-          {/* Biological-age hero (#209): the derived PhenoAge index (#157) surfaced as a
-          headline "how am I aging" result, pinned above the analyte table. Adult-
-          gated; renders nothing for child profiles. The derived table row remains. */}
+          {/* Biological-age INPUTS (#209 → split by #2367): which of the nine PhenoAge
+          analytes this profile has, which it still needs, and a link to the headline
+          result on Longevity — the hero itself renders on exactly one page, and the
+          catalog half of it belongs on the page where the missing analytes are added.
+          Adult-gated; renders nothing for child profiles. */}
           <div className={PHONE_STACK.glance}>
-            <BioAgeHero />
+            <BioAgeInputsCard />
           </div>
 
           <div className={PHONE_STACK.index}>

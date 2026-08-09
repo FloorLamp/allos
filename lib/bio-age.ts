@@ -21,9 +21,14 @@ import { theilSenSlopePerDay, type DatedPoint } from "./robust-stats";
 import {
   derivedInputCanonicalNamesFor,
   derivedInputKeysFor,
+  AGE_INPUT_KEY,
   type CensoredSummary,
+  type PhenoAgeInputEffect,
+  type PhenoAgeReference,
 } from "./derived-biomarkers";
 import { isAdultForClinical } from "./life-stage";
+import { optimalBand, referenceRange } from "./reference-range/selection";
+import type { CanonicalBiomarker, ReproductiveStatus, Sex } from "./types";
 
 // Julian year — matches the day→year conversion in lib/biomarker-trajectory.
 const DAYS_PER_YEAR = 365.25;
@@ -261,6 +266,93 @@ export function censoredInputNote(draw: BioAgeDrawInputs): string | null {
         ? " The estimate can only be too low from that substitution."
         : "";
   return `${lead}${bias}`;
+}
+
+// ── What moves the number (#2366) ─────────────────────────────────────────────
+//
+// The counterfactual itself is arithmetic on the model and lives with the model
+// (lib/derived-biomarkers → PhenoAgeInputEffect, computed in the same pass that
+// produced the reading). What lives HERE is the two things the surface needs and the
+// model has no business knowing: WHICH value each input is compared against, and how
+// to say the result in words that cannot be read as advice.
+
+// The reference value for one PhenoAge input, read off the curated canonical entry:
+// the OPTIMAL band's midpoint where one exists, else the reference band's midpoint —
+// so the counterfactual is "you, at the value this analyte is curated toward", the
+// comparison a reader is implicitly making anyway. A one-sided band (hs-CRP's
+// "optimal ≤1 mg/L", which has no lower edge) has no midpoint, so the stated bound
+// itself IS the target. An entry with NEITHER band — the unqualified `Glucose`, which
+// is deliberately band-less because a draw that never said whether the patient fasted
+// cannot be judged (#2337) — returns null, and the surface says it has no comparison
+// rather than inventing a target.
+//
+// The band is resolved through the app's own age/sex/status selectors, so an input
+// whose curated band is demographic-specific is compared against the band that
+// actually applies to this profile.
+export function phenoAgeReferenceValue(
+  cb: CanonicalBiomarker | null | undefined,
+  sex: Sex | null,
+  age: number | null,
+  status: ReproductiveStatus | null
+): PhenoAgeReference | null {
+  if (!cb) return null;
+  const optimal = optimalBand(cb, sex, age);
+  const ref = referenceRange(cb, sex, age, status);
+  const low = optimal.low ?? ref.low;
+  const high = optimal.high ?? ref.high;
+  const basis: PhenoAgeReference["basis"] =
+    optimal.low != null || optimal.high != null ? "optimal" : "reference";
+  if (low != null && high != null) return { value: (low + high) / 2, basis };
+  const single = low ?? high;
+  return single != null ? { value: single, basis } : null;
+}
+
+// How a reference value is described in one word, for the "vs 4.7 g/dL (optimal)"
+// caption. The basis is always shown: a target the reader can check beats a number
+// they have to trust.
+export function phenoAgeReferenceBasisLabel(r: PhenoAgeReference): string {
+  return r.basis === "model-floor"
+    ? "youngest modelled age"
+    : r.basis === "optimal"
+      ? "optimal"
+      : "reference";
+}
+
+// The row's effect as a signed year figure ("+1.4 yr" / "−0.6 yr"), or null when
+// there is no comparison to state. A minus sign, not a hyphen.
+export function bioAgeEffectLabel(e: PhenoAgeInputEffect): string | null {
+  if (e.effectYears == null) return null;
+  const v = round1(e.effectYears);
+  const sign = v > 0 ? "+" : v < 0 ? "−" : "±";
+  return `${sign}${Math.abs(v).toFixed(1)} yr`;
+}
+
+// The sentence under one row, phrased as a statement about the MODEL. PhenoAge is a
+// population mortality regression: "your CRP is costing you 1.4 years" is a claim
+// about the person that the model cannot support, while "the model reads 1.4 years
+// higher than it would with this input at 0.5 mg/L" is exactly what was computed. The
+// copy stays on the second side of that line — descriptive, never an instruction, and
+// never a prediction that changing the input would change anything (see the attention
+// doctrine in docs/internals/findings.md).
+export function bioAgeEffectPhrase(e: PhenoAgeInputEffect): string {
+  if (e.reference == null || e.effectYears == null) {
+    return `No curated reference value for ${e.name}, so this input has no comparison — not a zero effect.`;
+  }
+  const at = `${round1(e.reference.value)}${e.unit ? ` ${e.unit}` : ""} (${phenoAgeReferenceBasisLabel(e.reference)})`;
+  const years = Math.abs(round1(e.effectYears));
+  const unit = years === 1 ? "year" : "years";
+  if (years === 0) return `Reads the same with this input at ${at}.`;
+  const direction = e.effectYears > 0 ? "higher" : "lower";
+  const bounded = e.bound
+    ? " That input was reported beyond a detection limit, so this comparison rests on the substituted limit."
+    : "";
+  return `The model reads ${years} ${unit} ${direction} than it would with this input at ${at}.${bounded}`;
+}
+
+// Is the chronological-age row? The tenth input is not an analyte, so a surface links
+// the other nine to their series and this one to nothing.
+export function isBioAgeAgeInput(e: PhenoAgeInputEffect): boolean {
+  return e.key === AGE_INPUT_KEY;
 }
 
 // ── Adult gate ────────────────────────────────────────────────────────────────
