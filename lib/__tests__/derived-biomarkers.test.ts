@@ -285,8 +285,43 @@ describe("computeDerivedReadings — Triglyceride/HDL Ratio", () => {
   });
 });
 
+// HOMA-IR's glucose input REQUIRES the fasting frame (#2357) — the index is defined
+// on a fasting measurement and its own label says so, so the unqualified "Glucose"
+// entry (which since #2337 is explicitly the unknown-frame one) is not accepted.
 describe("computeDerivedReadings — HOMA-IR", () => {
-  it("computes (glucose mg/dL × insulin µU/mL) ÷ 405", () => {
+  it("computes (fasting glucose mg/dL × insulin µU/mL) ÷ 405", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Glucose, Fasting": [{ date: "2024-01-01", value: 96, unit: "mg/dL" }],
+        Insulin: [{ date: "2024-01-01", value: 9.5, unit: "uIU/mL" }],
+      }),
+      noDemo
+    );
+    // (96 × 9.5) / 405 = 2.2519
+    expect(find(r, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(2.25, 2);
+    // The reading names the entry the value came from.
+    expect(find(r, "HOMA-IR", "2024-01-01")?.inputs.map((i) => i.name)).toEqual(
+      ["Glucose, Fasting", "Insulin"]
+    );
+  });
+
+  it("matches from mmol/L glucose + pmol/L insulin (converted first)", () => {
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Glucose, Fasting": [
+          { date: "2024-01-01", value: 96 / 18.02, unit: "mmol/L" },
+        ],
+        Insulin: [{ date: "2024-01-01", value: 9.5 / 0.1439, unit: "pmol/L" }],
+      }),
+      noDemo
+    );
+    expect(find(r, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(2.25, 1);
+  });
+
+  it("produces NOTHING from an unqualified glucose, even with insulin on the draw", () => {
+    // The behaviour change of #2357, asserted as an ABSENCE: the draw is otherwise
+    // complete, and the index declines rather than computing on a frame the reading
+    // does not state. Not a zero, not a guess — no HOMA-IR at all.
     const r = computeDerivedReadings(
       seriesOf({
         Glucose: [{ date: "2024-01-01", value: 96, unit: "mg/dL" }],
@@ -294,19 +329,22 @@ describe("computeDerivedReadings — HOMA-IR", () => {
       }),
       noDemo
     );
-    // (96 × 9.5) / 405 = 2.2519
-    expect(find(r, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(2.25, 2);
+    expect(find(r, "HOMA-IR", "2024-01-01")).toBeUndefined();
+    expect(r.some((x) => x.name === "HOMA-IR")).toBe(false);
   });
 
-  it("matches from mmol/L glucose + pmol/L insulin (converted first)", () => {
+  it("ignores an unqualified glucose sitting beside the fasting one", () => {
+    // Both entries on one draw: the fasting value is the only one this index accepts,
+    // so the answer is the fasting answer and the other reading is not a fallback.
     const r = computeDerivedReadings(
       seriesOf({
-        Glucose: [{ date: "2024-01-01", value: 96 / 18.02, unit: "mmol/L" }],
-        Insulin: [{ date: "2024-01-01", value: 9.5 / 0.1439, unit: "pmol/L" }],
+        "Glucose, Fasting": [{ date: "2024-01-01", value: 96, unit: "mg/dL" }],
+        Glucose: [{ date: "2024-01-01", value: 150, unit: "mg/dL" }],
+        Insulin: [{ date: "2024-01-01", value: 9.5, unit: "uIU/mL" }],
       }),
       noDemo
     );
-    expect(find(r, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(2.25, 1);
+    expect(find(r, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(2.25, 2);
   });
 });
 
@@ -584,10 +622,12 @@ describe("computeDerivedReadings — PhenoAge", () => {
       expect(find(r, "PhenoAge", "2024-01-01")).toBeUndefined();
     });
 
-    it("does NOT feed the fasting sibling to HOMA-IR (no other index changes)", () => {
-      // HOMA-IR declares "Glucose" alone; the acceptance list is per-input, so it
-      // is unaffected. A fold of the two entries would have silently changed it.
-      const r = computeDerivedReadings(
+    it("leaves HOMA-IR's own acceptance list to HOMA-IR (#2357: the frame is now REQUIRED)", () => {
+      // The acceptance list is per-input, so PhenoAge's preference never decides what
+      // another index takes. HOMA-IR declares ["Glucose, Fasting"] alone — the fasting
+      // frame is required, not preferred — so the fasting-only draw below computes and
+      // the unqualified-only draw does not. Neither entry is folded into the other.
+      const fasting = computeDerivedReadings(
         seriesOf({
           "Glucose, Fasting": [
             { date: "2024-01-01", value: 90, unit: "mg/dL" },
@@ -596,7 +636,20 @@ describe("computeDerivedReadings — PhenoAge", () => {
         }),
         demo("male", 45)
       );
-      expect(find(r, "HOMA-IR", "2024-01-01")).toBeUndefined();
+      // (90 × 6) / 405 = 1.3333
+      expect(find(fasting, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(
+        1.33,
+        2
+      );
+
+      const unqualified = computeDerivedReadings(
+        seriesOf({
+          Glucose: [{ date: "2024-01-01", value: 90, unit: "mg/dL" }],
+          Insulin: [{ date: "2024-01-01", value: 6, unit: "uIU/mL" }],
+        }),
+        demo("male", 45)
+      );
+      expect(find(unqualified, "HOMA-IR", "2024-01-01")).toBeUndefined();
     });
   });
 
@@ -1077,7 +1130,22 @@ describe("derivedInputCanonicalNames", () => {
     expect(names).toContain("Glucose");
   });
 
+  it("gives HOMA-IR a glucose input that accepts ONLY the fasting entry (#2357)", () => {
+    // The acceptance list is what every downstream consumer reads — the retest clock,
+    // the Upcoming coverage gap — so the requirement is pinned here, not only in the
+    // arithmetic. The unqualified entry is absent on purpose: it is the one for a draw
+    // whose fasting state is unknown (#2337), and this index asserts that frame.
+    const names = derivedInputCanonicalNamesFor("HOMA-IR");
+    expect(names).toEqual(["Glucose, Fasting", "Insulin"]);
+    expect(derivedInputKeysFor("HOMA-IR")).toEqual([
+      "Glucose, Fasting",
+      "Insulin",
+    ]);
+  });
+
   it("groups the input slots by key, each with the names it accepts", () => {
+    // A UNION across the indices sharing the key: HOMA-IR contributes only the fasting
+    // entry, PhenoAge both (see derivedInputSlots' note on who may read this).
     const slot = derivedInputSlots().find((s) => s.key === "Glucose, Fasting");
     expect(slot?.accepts).toEqual(["Glucose, Fasting", "Glucose"]);
   });
