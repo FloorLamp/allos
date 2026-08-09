@@ -69,7 +69,11 @@ import {
   seedVitalsToday,
   seedBulkCorrection,
 } from "./seed/metrics";
-import { seedRuleDomains, seedSuppressedCenter } from "./seed/findings";
+import {
+  seedGoalPacing,
+  seedRuleDomains,
+  seedSuppressedCenter,
+} from "./seed/findings";
 import {
   seedMedicationCards,
   seedPrnLedger,
@@ -143,6 +147,7 @@ seedSleepWaiting();
 seedMultiSourceMetric();
 seedTrainingZones();
 seedRuleDomains();
+seedGoalPacing();
 seedDropReport();
 seedExtractionConfidence();
 seedMedicationCards();

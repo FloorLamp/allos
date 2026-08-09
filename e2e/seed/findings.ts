@@ -13,8 +13,10 @@ import { upsertConnection } from "../../lib/integrations/connections";
 import {
   E2E_LOGIN_WEATHER,
   WEATHER_PROFILE,
+  E2E_LOGIN_GOAL_PACE,
   E2E_LOGIN_PHOTOS,
   E2E_LOGIN_SUPPRESSED,
+  GOAL_PACE_PROFILE,
   PROGRESS_PHOTOS_PROFILE,
   SUPPRESSED_PROFILE,
   E2E_LOGIN_VIDEO,
@@ -26,9 +28,9 @@ import { PROFILE_ID, ins, seedMemberLogin, fixtureProfileId } from "./common";
 export function seedRuleDomains(): void {
   // ---- issue #45 rule-domain fixtures (domains 4–6) --------------------------
   // Deterministic fixtures so the new observational-findings surfaces have something
-  // to render in e2e. Goal pacing (domain 6) is already covered by the base seed's
-  // off-pace "Reach 74 kg" / "Cut to 78 kg" weight goals; these add the training
-  // plateau (domain 4) and the body-metric weight jump (domain 5). All idempotent.
+  // to render in e2e: the training plateau (domain 4) and the body-metric weight jump
+  // (domain 5). All idempotent. Goal pacing (domain 6) is NOT here — it owns a whole
+  // profile of its own, see seedGoalPacing below (#2353).
 
   // Domain 4 — a PLATEAUED lift: six weekly Skullcrusher sessions at a FIXED 30 kg × 10,
   // so the estimated 1RM is flat across ~5 weeks and the plateau rule fires on
@@ -173,6 +175,76 @@ export function seedRuleDomains(): void {
 
   console.log(
     `e2e: seeded an every-Friday evening-dose miss pattern for ${ADHERE_ITEM} (#45 domain 3)`
+  );
+}
+
+// ── Goal-pacing fixture (#45 domain 6, isolated by #2353) ──
+//
+// Domain 6 used to be asserted on PROFILE 1, against the base seed's "Reach 74 kg"
+// and "Cut to 78 kg" goals. Goal pacing is a verdict over the profile's WEIGHT
+// SERIES (buildGoalPacingFindings feeds getBodyMetricDailySeries into projectGoal),
+// and profile 1's weight series is written by many specs — so the finding's
+// existence depended on which of them had already run in the same worker. One
+// earlier test saving a single 72.5 kg weight (palette-actions' "Log weight",
+// #2184) bent the fitted pace steeply downwards, both seeded goals then projected
+// as reaching EARLY, and the card rendered nothing. Because Playwright shards by
+// test index, adding any spec file anywhere in the suite could slide that test in
+// front of rule-findings.spec.ts and red an unrelated PR.
+//
+// So the case owns its fixture: a dedicated profile, its own weight series, its own
+// goal, and its own member login. Nothing else in the suite writes here, so the
+// verdict is a property of this data and of nothing else.
+//
+// The series RISES while the goal asks for a lower weight, which is the
+// `status: "away"` branch — the one verdict that stays off pace no matter how the
+// deadline moves, so the fixture cannot drift back on pace as the frozen clock
+// changes. Twelve weekly points (≥ CONFIDENT_MIN_POINTS, perfectly collinear so the
+// pairwise slopes don't scatter) keep the projection at confidence "ok", i.e. no
+// "(rough estimate)" hedge. All values synthetic. Idempotent: the profile's own
+// weights and goals are recreated from scratch each boot, so the today-relative
+// dates stay correct across days.
+export function seedGoalPacing(): void {
+  const gpId = fixtureProfileId(GOAL_PACE_PROFILE);
+  seedMemberLogin(E2E_LOGIN_GOAL_PACE, gpId, "write");
+  const setGp = db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  );
+  // An adult, so /training is never age-gated for this login (lib/age-gate.ts).
+  setGp.run(gpId, "birthdate", "1988-03-12");
+  setGp.run(gpId, "sex", "male");
+
+  const gpToday = today(gpId);
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(gpId);
+  db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(gpId);
+
+  // Weekly weigh-ins over the trailing pacing window (GOAL_PACE_WINDOW_DAYS = 90),
+  // oldest first, creeping UP by 150 g a week.
+  const GP_BASELINE_KG = 86.4;
+  const GP_GAIN_PER_WEEK = 0.15;
+  const insGpWeight = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+     VALUES (?, ?, ?, 'manual')`
+  );
+  for (let week = 11; week >= 1; week--) {
+    insGpWeight.run(
+      gpId,
+      shiftDateStr(gpToday, -7 * week),
+      GP_BASELINE_KG + (11 - week) * GP_GAIN_PER_WEEK
+    );
+  }
+
+  // …and the goal that pace is measured against: down to 82 kg six weeks out, from a
+  // baseline the trend has been moving away from ever since.
+  const GP_GOAL_TITLE = "Reach 82 kg (e2e)";
+  db.prepare(
+    `INSERT INTO goals
+       (profile_id, title, category, target_value, body_metric, baseline_value, target_date, status)
+     VALUES (?, ?, 'body', 82, 'weight', ?, ?, 'active')`
+  ).run(gpId, GP_GOAL_TITLE, GP_BASELINE_KG, shiftDateStr(gpToday, 45));
+
+  console.log(
+    `e2e: seeded goal-pacing fixture — profile ${gpId} (${GOAL_PACE_PROFILE}), "${GP_GOAL_TITLE}" off pace (#45 domain 6, #2353)`
   );
 }
 
