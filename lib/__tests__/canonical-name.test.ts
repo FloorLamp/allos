@@ -1027,7 +1027,10 @@ describe("deliberately uncurated analytes (#2313)", () => {
     // and the completeness guard above would fail if this line ever blurred. Stated
     // separately because "declare the DEXA family" is exactly the instruction someone
     // would over-apply.
-    for (const total of ["Body Fat Percentage", "Bone Mineral Density T-Score"]) {
+    for (const total of [
+      "Body Fat Percentage",
+      "Bone Mineral Density T-Score",
+    ]) {
       expect(uncuratedAnalyte(total), total).toBeNull();
       expect(curatedKeys.has(normalizeCanonicalKey(total)), total).toBe(true);
     }

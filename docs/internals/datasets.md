@@ -298,9 +298,9 @@ tracked list — the system may stop offering something without deleting a choic
 somebody made.
 
 This is **disjoint from `NON_IDENTITY_CATEGORIES`** (#2318), and the two must
-not be conflated. That rule withholds biomarker identity from a whole *class* of
+not be conflated. That rule withholds biomarker identity from a whole _class_ of
 stored observation and is applied upstream inside `getUsedCanonicalNames`, so
-such a name never reaches detection at all. This is a per-*name* decision about
+such a name never reaches detection at all. This is a per-_name_ decision about
 a row that genuinely does carry identity. Do not re-filter by category in
 `lib/coverage-gaps.ts`; that guard already ran.
 
@@ -313,7 +313,7 @@ names, expanded from a cross product rather than hand-listed, all sharing **one*
 `out-of-scope` declaration: they are the outputs of a single scan rather than
 independent analytes, and no population reference band exists for left-arm fat
 percentage. `out-of-scope` and not `covered-elsewhere` — the whole-body totals
-(`Body Fat Percentage`, `Bone Mineral Density T-Score`) *are* curated, but a
+(`Body Fat Percentage`, `Bone Mineral Density T-Score`) _are_ curated, but a
 region is not its total, and pointing a reader at the total would claim their
 left arm is tracked when it isn't. Those totals stay curated; the completeness
 guard fails the day a declaration blurs that line.
