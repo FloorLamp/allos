@@ -92,9 +92,9 @@ test("the panel index leads on a phone, inside the first viewport (#1647)", asyn
   expect(await topOf(page.getByTestId("starred-biomarkers"))).toBeGreaterThan(
     header
   );
-  expect(
-    await topOf(page.getByTestId("bio-age-inputs-card"))
-  ).toBeGreaterThan(header);
+  expect(await topOf(page.getByTestId("bio-age-inputs-card"))).toBeGreaterThan(
+    header
+  );
 
   // The warning is the one card that keeps its place above the index.
   expect(await topOf(page.getByTestId("trajectory-findings"))).toBeLessThan(
@@ -115,7 +115,9 @@ test("the panel index leads on a phone, inside the first viewport (#1647)", asyn
     await topOf(page.getByTestId("trajectory-findings"))
   );
   expect(add).toBeLessThan(header);
-  expect(add).toBeLessThan(await topOf(page.getByTestId("bio-age-inputs-card")));
+  expect(add).toBeLessThan(
+    await topOf(page.getByTestId("bio-age-inputs-card"))
+  );
 
   await page.context().close();
 });
@@ -286,9 +288,9 @@ test("desktop renders every card whole, above the index, with no fold controls (
     );
   expect(new Set(lefts).size).toBe(3);
 
-  const card = page.getByTestId("bio-age-inputs-card");
-  await expect(card.getByTestId("bio-age-input")).toHaveCount(9);
-  for (const input of await card.getByTestId("bio-age-input").all())
+  const inputsCard = page.getByTestId("bio-age-inputs-card");
+  await expect(inputsCard.getByTestId("bio-age-input")).toHaveCount(9);
+  for (const input of await inputsCard.getByTestId("bio-age-input").all())
     await expect(input).toBeVisible();
 
   await page.context().close();
