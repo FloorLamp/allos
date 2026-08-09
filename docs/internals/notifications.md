@@ -1970,6 +1970,22 @@ that defect was an unstated contract on a **qualifier**, and the head has always
 the whole subject clause, first and unpunctuated. A qualifier smuggled into a head is
 what the scan fails a registered module for.
 
+**`notes` is the repeating group.** Nothing requires its entries to be
+heterogeneous. A line whose tail is N facts of the same kind — `protein 84 g+ of
+95 g · fiber 18 g+ of 38 g` — is N notes, not a second shape: the `·` between two
+nutrients does the same job as the `·` between a cause and a deadline, joining peer
+qualifiers of one head. The named roles exist to pin contract and order for the
+qualifiers that have one; `notes` is the ordered slot for the ones that are simply
+facts. A per-item hedge stays inside its own note, which is the only place it can be
+right when items disagree. The colon, correspondingly, introduces a head's own
+**value** (`Supplements: 8/9 taken`) — a head with no value takes the em dash for
+the first fact about it.
+
+**The glyph is a value.** Every producer passes it as the `glyph` field rather than
+concatenating a literal onto an assembled line, and a line whose caller decides the
+marker leaves the field absent so the call site can spread its own in
+(`formatMessageLine({ glyph: "•", ...recapMessageLine(l) })`).
+
 **The two grammars are one grammar.** The digest's `glyph title — because · dueText`
 and the recap's `label: value — note · comparison` differ only in their prefix — a
 glyph that says who acts, versus a row label folded into the head — and both are the
