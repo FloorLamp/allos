@@ -271,6 +271,7 @@ reprocess, and a future declaration takes effect everywhere at once.
 `serializeImportReport` folds the declined half back into the stored unresolved
 list so a re-persist cannot freeze today's registry into the blob and cost that
 retroactivity.
+
 ### What a canonical name must carry (#2335)
 
 The rule the curated dataset is held to, written down beside `CANONICAL_ALIASES`

@@ -306,9 +306,10 @@ describe("computeDerivedReadings — HOMA-IR", () => {
     // (96 × 9.5) / 405 = 2.2519
     expect(find(r, HOMA_IR, "2024-01-01")?.value).toBeCloseTo(2.25, 2);
     // The reading names the entry the value came from.
-    expect(find(r, HOMA_IR, "2024-01-01")?.inputs.map((i) => i.name)).toEqual(
-      ["Glucose, Fasting", "Insulin"]
-    );
+    expect(find(r, HOMA_IR, "2024-01-01")?.inputs.map((i) => i.name)).toEqual([
+      "Glucose, Fasting",
+      "Insulin",
+    ]);
   });
 
   it("matches from mmol/L glucose + pmol/L insulin (converted first)", () => {
@@ -643,10 +644,7 @@ describe("computeDerivedReadings — PhenoAge", () => {
         demo("male", 45)
       );
       // (90 × 6) / 405 = 1.3333
-      expect(find(fasting, HOMA_IR, "2024-01-01")?.value).toBeCloseTo(
-        1.33,
-        2
-      );
+      expect(find(fasting, HOMA_IR, "2024-01-01")?.value).toBeCloseTo(1.33, 2);
 
       const unqualified = computeDerivedReadings(
         seriesOf({
