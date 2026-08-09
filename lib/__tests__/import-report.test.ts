@@ -1005,7 +1005,12 @@ describe("declared-vs-unresolved split (#2313)", () => {
     // without going back to the registry itself.
     const egfr = declinedNames[0].declaration;
     expect(egfr.kind).toBe("covered-elsewhere");
-    expect(egfr.kind === "covered-elsewhere" && egfr.instead).toBe("eGFR");
+    // The CURATED name since #2335 — `instead` is resolved against the dataset by the
+    // registry's completeness guard and LINKED to by the debugger, so it moved with
+    // the rename rather than staying on the retired spelling.
+    expect(egfr.kind === "covered-elsewhere" && egfr.instead).toBe(
+      "Estimated Glomerular Filtration Rate (eGFR)"
+    );
     expect(declinedNames[1].declaration.kind).toBe("out-of-scope");
     // Counts and units survive the move — the declined half is the same row.
     expect(declinedNames[0].count).toBe(1);
