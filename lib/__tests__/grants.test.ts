@@ -3,6 +3,7 @@ import {
   normalizeGrantSelection,
   diffGrants,
   normalizeAccess,
+  grantAccessForRole,
   normalizeGrantInputs,
   diffGrantAccess,
   formatGrantDiff,
@@ -66,6 +67,25 @@ describe("normalizeAccess", () => {
     expect(normalizeAccess(undefined)).toBe("write");
     expect(normalizeAccess("READ")).toBe("write"); // exact match only
     expect(normalizeAccess("bogus")).toBe("write");
+  });
+});
+
+describe("grantAccessForRole (issue #2345)", () => {
+  it("honours a member's submitted level — the row IS their access", () => {
+    expect(grantAccessForRole("member", "read")).toBe("read");
+    expect(grantAccessForRole("member", "write")).toBe("write");
+    expect(grantAccessForRole("member", null)).toBe("write");
+  });
+
+  it("always stores the inert 'write' for an admin, whatever was submitted", () => {
+    // An admin's row means "notify me about this profile" — their access comes from
+    // their role, so the column has no readers and a submitted 'read' would encode a
+    // restriction nothing applies. Store the non-restricting value every other writer
+    // of an admin's row already uses.
+    expect(grantAccessForRole("admin", "read")).toBe("write");
+    expect(grantAccessForRole("admin", "write")).toBe("write");
+    expect(grantAccessForRole("admin", null)).toBe("write");
+    expect(grantAccessForRole("admin", "bogus")).toBe("write");
   });
 });
 

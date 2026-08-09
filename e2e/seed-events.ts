@@ -108,6 +108,7 @@ import {
   seedEmailNotify,
   seedHaConfig,
   seedNotifSweep,
+  seedNotifyScope,
   seedNotifyTickLog,
 } from "./seed/notifications";
 import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
@@ -230,3 +231,6 @@ seedDayOneAverages();
 // Appended LAST (#2209): two new profiles plus a direct write of data/logs/
 // notify.jsonl, so every existing fixture's row ids stay exactly where they were.
 seedNotifyTickLog();
+// Appended LAST (#2345): one admin login + two new profiles, so every existing
+// fixture's row ids stay exactly where they were.
+seedNotifyScope();

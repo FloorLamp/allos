@@ -45,6 +45,9 @@ import {
 } from "@/lib/notifications/email";
 import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
+import { notifyScopeForLogin } from "@/lib/notify-scope-db";
+import { notifyScopeCaption } from "@/lib/notify-scope";
+import NotifyScopeEditor from "@/components/NotifyScopeEditor";
 import PageContainer from "@/components/PageContainer";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import PushNotificationSettings from "./PushNotificationSettings";
@@ -116,6 +119,14 @@ function Section({
 // same preference is reachable both where it annoys you and where you go looking for
 // it (#221's one storage, two surfaces).
 //
+// And, for an ADMIN only, one ADDITION above them: the per-profile notification
+// scope (#2345). It is the same #221 shape — one storage (`login_profiles`), one
+// action (`setGrants`), two surfaces — with Settings → Family as the authoritative
+// editor for any login and this page as the same control scoped to SELF. It is here
+// because Family is admin-only and about OTHER people's logins, and an opt-in that
+// only exists where the person is not sent is not an opt-in (#2299). Members are not
+// offered it: for a member that row IS their access, which stays admin-managed.
+//
 // (2 and 3 render from ONE client component because they write through one action —
 // see NotificationPrefs.)
 //
@@ -135,6 +146,14 @@ export default async function NotificationsSettingsPage() {
   const bot = getTelegramBotConfig();
   const botConfigured = bot.telegramBotToken !== "";
   const ha = getProfileHomeAssistant(profile.id);
+  // An ADMIN's notification scope (#2345). The fan-out deliberately does not inherit
+  // admin-sees-all, so an admin receives nothing about a profile they have not opted
+  // into — and Settings → Family (admin-only, about OTHER people's logins) is not
+  // where someone goes to change what buzzes their own phone. Same control, same
+  // action, scoped to `self`. Members are not offered it: for a member the row IS
+  // their access, so it stays an admin-managed decision.
+  const notifyScope =
+    login.role === "admin" ? notifyScopeForLogin(login.id) : null;
 
   // The Telegram column is deliverable for THIS profile when at least one managing
   // login (deduped by chat) has an enabled chat — the login-scoped fan-out (#1072).
@@ -214,6 +233,30 @@ export default async function NotificationsSettingsPage() {
           )}
         </PageContainer>
       </Section>
+
+      {notifyScope && (
+        <Section
+          testId="notify-scope-section"
+          title="Profiles"
+          scope={notifyScopeCaption(true, login.username)}
+        >
+          <PageContainer width="form">
+            <NotifyScopeEditor
+              login={{
+                id: login.id,
+                username: login.username,
+                own_profile_id: notifyScope.ownProfileId,
+              }}
+              profiles={notifyScope.profiles}
+              granted={notifyScope.granted}
+              access={notifyScope.access}
+              self
+              // The Section above already carries the heading + caption.
+              chrome="bare"
+            />
+          </PageContainer>
+        </Section>
+      )}
 
       {!demoRestricted && (
         <>

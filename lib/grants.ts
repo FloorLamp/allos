@@ -49,6 +49,27 @@ export function normalizeAccess(value: unknown): Access {
   return value === "read" ? "read" : "write";
 }
 
+// The `access` level a grant row should STORE, given the role of the login it
+// belongs to (issue #2345). One question — "what goes in that column?" — answered
+// once for both writers (createLogin and setGrants).
+//
+// For a MEMBER the row is what GRANTS access, so the submitted level decides:
+// 'read' restricts, anything else is the permissive 'write'.
+//
+// For an ADMIN the row means exactly ONE thing — "notify me about this profile" —
+// because access was never in question. `accessForProfile` returns 'write' for an
+// admin BEFORE it reads this table, and `accessibleProfiles` never consults it at
+// all (lib/auth.ts), so the column is inert for them BY CONSTRUCTION. We therefore
+// store the non-restricting 'write' every other writer of an admin's row already
+// uses (bootstrapAuth, migration 105): a column DEFAULT, not a decision. A
+// hand-written 'read' on an admin's row still resolves 'write' — nothing reads it.
+export function grantAccessForRole(
+  role: "admin" | "member",
+  submitted: unknown
+): Access {
+  return role === "admin" ? "write" : normalizeAccess(submitted);
+}
+
 // Normalize a submitted selection of (profileId, access) grants: coerce access,
 // drop ids that aren't real profiles or aren't positive integers, dedupe on
 // profileId (last write wins), and sort by profileId. Order-independent.
