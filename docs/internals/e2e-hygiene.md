@@ -231,6 +231,49 @@ is a **convention gate, not a linter**:
   a fixture would flip a SHARED surface between states (single- vs multi-source,
   empty vs populated), give it its own profile.
 
+### A DERIVED verdict over a shared series is an exact count in disguise (#2353)
+
+The rule above is usually read as being about numbers on screen. It is not — it
+is about **what the assertion depends on**, and a rule-engine finding depends on
+the whole series it was fitted over. `expect(card).toBeVisible()` looks like the
+presence assertion the rule recommends, and is in fact strictly more fragile
+than `toHaveCount(2)`: the card renders only while a pure function over every
+row of a shared table still returns non-empty, and nothing in the spec names the
+rows it is betting on.
+
+That is what #2353 was. `rule-findings.spec.ts` asserted the goal-pacing card on
+**profile 1**, whose off-pace verdict is `projectGoal` (a Theil–Sen fit) over
+profile 1's weight series. `palette-actions.spec.ts`'s "Log weight" test saves
+one 72.5 kg reading against a series sitting around 80.5 kg — a legitimate write,
+in a spec about the command palette, that bends the fitted pace steeply downwards
+so both seeded goals project as reaching EARLY and the card renders nothing.
+
+The order-dependence that produces is uniquely nasty, because **CI shards by test
+index**: a shard is ~320 tests run sequentially in ONE worker against ONE
+database, and adding any spec file anywhere in `e2e/` shifts every later test's
+shard assignment. So the failure lands on whichever PR happens to add a spec —
+it blames the innocent, it is intermittent across PRs rather than across runs
+(so a re-run never clears it), and it is invisible to the PR author, whose
+changed-spec lane passes. Three PRs in one night, none of them touching training
+or goals, red on the same assertion.
+
+The fix is the fixture-ownership rule applied one level up from rows: the
+goal-pacing case now owns a whole profile (`seedGoalPacing`, `e2e/seed/findings.ts`)
+with its own weight series, its own goal and its own member login, and the spec
+signs in as that login. The verdict is then a property of data nothing else
+writes.
+
+Two things to carry forward when you fixture a rule/finding surface:
+
+- **Fixture the branch that cannot drift.** Goal pacing's `away` branch (the
+  trend moving away from the target) stays off pace however the frozen clock
+  moves the deadline; the `late` branch is a margin, and a margin is something a
+  future neighbor can cross. Pick the verdict that holds structurally — do NOT
+  widen a threshold so no plausible write can flip it, which hides the coupling
+  instead of removing it.
+- **Say which finding.** The spec asserts the fixture goal's own title, so a
+  card that renders for some OTHER reason cannot pass it.
+
 ## Assertion integrity — the two ways an assertion lies (#1543 / #1545)
 
 A spec can be green for two opposite bad reasons: it asserts something that

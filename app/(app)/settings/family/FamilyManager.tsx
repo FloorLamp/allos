@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Avatar from "@/components/Avatar";
+import NotifyScopeEditor from "@/components/NotifyScopeEditor";
 import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { NOTICE_TONE } from "@/components/Notice";
@@ -408,7 +409,12 @@ function LoginsCard({
   const [accessIds, setAccessIds] = useState<number[]>([]);
   const adminCount = logins.filter((a) => a.role === "admin").length;
   const choices = profileChoiceLabels(profiles);
-  const defaulted = defaultAccessSelection(username, profiles);
+  // The same-named-profile default exists to keep a MEMBER out of the grantless dead
+  // end (#1434). An admin has no such dead end — they reach every profile by role —
+  // and their rows are notification scope (#2345), which is opt-IN by policy, so
+  // nothing is pre-selected for them.
+  const defaulted =
+    role === "admin" ? [] : defaultAccessSelection(username, profiles);
   const selectedAccess = accessTouched ? accessIds : defaulted;
   // Passwordless when the invite carries the credential (issue #1434 part C): the
   // checkbox's own copy says "instead of setting a password", so the field is
@@ -431,13 +437,12 @@ function LoginsCard({
     fd.set("role", role);
     fd.set("email", email);
     if (invite) fd.set("invite", "1");
-    // Same field shape as the grants matrix; the action re-validates every id and
-    // ignores the selection entirely for an admin (implicit all-profile access).
-    if (role === "member") {
-      for (const id of selectedAccess) {
-        fd.append("profileId", String(id));
-        fd.set(`access_${id}`, "write");
-      }
+    // Same field shape as the grants matrix; the action re-validates every id. For a
+    // member these are ACCESS grants, for an admin their NOTIFICATION SCOPE (#2345) —
+    // one field shape, one action, the role decides what the row means.
+    for (const id of selectedAccess) {
+      fd.append("profileId", String(id));
+      fd.set(`access_${id}`, "write");
     }
     start(async () => {
       const r = await createLogin(fd);
@@ -537,51 +542,64 @@ function LoginsCard({
             Email an invite instead of setting a password out-of-band
           </label>
         )}
-        {/* Initial profile access (issue #1434): a member created with no grants
-            authenticates and then lands nowhere, so access is part of creating one.
-            Labels are disambiguated (#534) — two same-named profiles must never
-            render as identical rows in the place where picking the wrong one
-            matters most. Admins reach every profile, so the picker hides for them. */}
-        {role === "member" && (
-          <div data-testid="create-access" className="space-y-1">
-            <p className="label mb-0">Profile access</p>
-            {profiles.length === 0 ? (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Add a profile first — a member with no profile access can&apos;t
-                use the app.
-              </p>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {choices.map((c) => (
-                    <label
-                      key={c.id}
-                      className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedAccess.includes(c.id)}
-                        onChange={() => toggleAccess(c.id)}
-                        data-testid={`create-access-${c.id}`}
-                        className="h-4 w-4 accent-brand-600"
-                      />
-                      {c.label}
-                    </label>
-                  ))}
-                </div>
-                {selectedAccess.length === 0 && (
-                  <p
-                    data-testid="create-access-warning"
-                    className="text-xs text-amber-700 dark:text-amber-400"
+        {/* The login's starting profile rows. For a MEMBER that is ACCESS (issue
+            #1434): one created with no grants authenticates and then lands nowhere,
+            so access is part of creating it. For an ADMIN it is NOTIFICATION SCOPE
+            (#2345) — they reach every profile regardless, but the fan-out doesn't
+            inherit that, so this is where a new admin says what should reach their
+            phone. Labels are disambiguated (#534) — two same-named profiles must
+            never render as identical rows where picking the wrong one matters most. */}
+        <div data-testid="create-access" className="space-y-1">
+          <p className="label mb-0">
+            {role === "admin" ? "Notifications" : "Profile access"}
+          </p>
+          {role === "admin" && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Which profiles&apos; reminders reach this login&apos;s channels.
+              Admins can already see every profile; this only decides what gets
+              pushed.
+            </p>
+          )}
+          {profiles.length === 0 ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {role === "admin"
+                ? "Add a profile first — there is nothing to be notified about yet."
+                : "Add a profile first — a member with no profile access can’t use the app."}
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {choices.map((c) => (
+                  <label
+                    key={c.id}
+                    className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
                   >
-                    With no profile selected this login can sign in but has
-                    nowhere to land — you can grant access later under Access.
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        )}
+                    <input
+                      type="checkbox"
+                      checked={selectedAccess.includes(c.id)}
+                      onChange={() => toggleAccess(c.id)}
+                      data-testid={`create-access-${c.id}`}
+                      className="h-4 w-4 accent-brand-600"
+                    />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+              {/* The dead-end warning is about ACCESS, so it is a MEMBER-only
+                  signal: an admin with nothing selected can still use the app,
+                  they simply won't be notified about anyone yet. */}
+              {role === "member" && selectedAccess.length === 0 && (
+                <p
+                  data-testid="create-access-warning"
+                  className="text-xs text-amber-700 dark:text-amber-400"
+                >
+                  With no profile selected this login can sign in but has
+                  nowhere to land — you can grant access later under Access.
+                </p>
+              )}
+            </>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -868,7 +886,8 @@ function GrantsCard({
           Which profiles each member login can open, and at what level. A{" "}
           <strong>read-only</strong> grant can view everything but can’t add,
           edit, upload, or delete. Admins have full access to every profile
-          automatically.
+          automatically — their rows here choose which profiles’{" "}
+          <strong>notifications</strong> reach them, nothing more.
         </p>
       </div>
 
@@ -967,7 +986,19 @@ function GrantsSummaryRow({
       {everOpened && (
         <div className={open ? "block" : "hidden"}>
           <div className="mt-3 space-y-2 border-t border-black/10 pt-3 dark:border-white/10">
-            {!isAdmin && (
+            {isAdmin ? (
+              // An admin's row is NOTIFICATION SCOPE, not access (#2345) — the same
+              // control Settings → Notifications renders for the signed-in login,
+              // here targeting any login. No read/write selector: it would change
+              // nothing for a login that reaches every profile by role.
+              <NotifyScopeEditor
+                login={login}
+                profiles={profiles}
+                granted={granted}
+                access={access}
+                self={false}
+              />
+            ) : (
               <GrantsRow
                 login={login}
                 profiles={profiles}

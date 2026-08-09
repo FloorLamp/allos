@@ -54,6 +54,19 @@ import { getMedMatchStates } from "./intake/medications";
 import { foldConsolidatedMeds } from "../medication-renewal";
 import { parsePrescription } from "../prescription-parse";
 import type { PersistInput, PersistRecord } from "../import-shape";
+import { getRecordsForDocument } from "./medical";
+import { recordCategoryRank, recordsTabKey } from "../import-browser";
+import { encounterTypeDisplay } from "../encounter-kind";
+import { variantDisplayLabel } from "../genomic-variant";
+import { studyDisplayLabel } from "../imaging-study";
+import { prescriptionDisplayLabel } from "../optical-prescription";
+import { dentalDisplayLabel } from "../dental";
+import type { ConfidenceKind } from "../extraction-confidence";
+import {
+  recordConfidenceKind,
+  triageRowId,
+  type TriageRow,
+} from "../confidence-triage";
 
 export interface ImportLogDocumentRow {
   kind: "document";
@@ -756,6 +769,139 @@ export function getDocumentProviders(
       profileId,
       docId
     ) as Provider[];
+}
+
+// ---- Triage candidates for the "Check these first" links (#2339) ----
+
+// The rows a confidence flag's LABEL could name, for the kinds this document
+// actually hedged on. No SQL of its own: it composes the same profile-scoped,
+// document-traced reads the tabs render from, so the row a triage link lands on is
+// by construction a row that tab shows.
+//
+// `labels` carries every name a row goes by, because the flag records the name the
+// MODEL used while the panel renders the name the row was STORED under: a
+// canonicalized analyte ("Ferritin" vs the printed spelling), a family-history row
+// the extractor labelled "Mother: Diabetes", an encounter flagged by its raw type
+// and rendered through encounterTypeDisplay. Matching any one of them is a match;
+// matching none is an honest "missing", never a near-miss guess.
+//
+// Only the requested kinds are read — a document that hedged on two labs does not
+// pay for thirteen domain queries.
+export function getDocumentTriageRows(
+  profileId: number,
+  docId: number,
+  kinds: ConfidenceKind[]
+): TriageRow[] {
+  const want = new Set(kinds);
+  const rows: TriageRow[] = [];
+  const push = (
+    kind: ConfidenceKind,
+    tabKey: string,
+    id: number,
+    labels: (string | null | undefined)[]
+  ) => rows.push({ kind, tabKey, rowId: triageRowId(tabKey, id), labels });
+
+  // medical_records covers three kinds at once (a prescription row is flagged as a
+  // medication, a vitals row as a vital, everything else as a lab), so one read
+  // serves whichever of them were hedged on. Ordered by the tab strip's own
+  // category order, so "the first match's tab" means the leftmost tab.
+  if (want.has("lab") || want.has("vitals") || want.has("medication")) {
+    const records = getRecordsForDocument(profileId, docId)
+      .map((r) => ({ r, rank: recordCategoryRank(r.category) }))
+      .sort((a, b) => a.rank - b.rank || a.r.id - b.r.id);
+    for (const { r } of records) {
+      const kind = recordConfidenceKind(r.category);
+      if (!want.has(kind)) continue;
+      push(kind, recordsTabKey(r.category), r.id, [r.name, r.canonical_name]);
+    }
+  }
+  if (want.has("encounter")) {
+    for (const e of getDocumentVisits(profileId, docId)) {
+      push("encounter", "visits", e.id, [
+        e.type,
+        encounterTypeDisplay(e.type, e.class_code),
+      ]);
+    }
+  }
+  if (want.has("condition")) {
+    for (const c of getDocumentConditions(profileId, docId)) {
+      push("condition", "conditions", c.id, [c.name]);
+    }
+  }
+  if (want.has("allergy")) {
+    for (const a of getDocumentAllergies(profileId, docId)) {
+      push("allergy", "allergies", a.id, [a.substance]);
+    }
+  }
+  if (want.has("immunization")) {
+    for (const im of getDocumentImmunizations(profileId, docId)) {
+      push("immunization", "immunizations", im.id, [im.vaccine]);
+    }
+  }
+  if (want.has("procedure")) {
+    for (const p of getDocumentProcedures(profileId, docId)) {
+      push("procedure", "procedures", p.id, [p.name]);
+    }
+  }
+  if (want.has("family_history")) {
+    for (const f of getDocumentFamilyHistory(profileId, docId)) {
+      push("family_history", "family-history", f.id, [
+        f.condition,
+        f.relation ? `${f.relation}: ${f.condition}` : null,
+      ]);
+    }
+  }
+  if (want.has("care_plan")) {
+    for (const c of getDocumentCarePlanItems(profileId, docId)) {
+      push("care_plan", "care-plan", c.id, [c.description]);
+    }
+  }
+  if (want.has("care_goal")) {
+    for (const g of getDocumentCareGoals(profileId, docId)) {
+      push("care_goal", "care-goals", g.id, [g.description]);
+    }
+  }
+  if (want.has("genomic_variant")) {
+    for (const v of getDocumentGenomicVariants(profileId, docId)) {
+      push("genomic_variant", "genomic-variants", v.id, [
+        v.gene,
+        variantDisplayLabel(v),
+      ]);
+    }
+  }
+  if (want.has("imaging_study")) {
+    for (const s of getDocumentImagingStudies(profileId, docId)) {
+      push("imaging_study", "imaging-studies", s.id, [
+        s.body_region,
+        s.modality,
+        studyDisplayLabel(s),
+      ]);
+    }
+  }
+  if (want.has("optical_prescription")) {
+    for (const p of getDocumentOpticalPrescriptions(profileId, docId)) {
+      push("optical_prescription", "optical-prescriptions", p.id, [
+        p.kind,
+        prescriptionDisplayLabel(p),
+      ]);
+    }
+  }
+  if (want.has("dental_procedure")) {
+    for (const d of getDocumentDentalProcedures(profileId, docId)) {
+      push("dental_procedure", "dental-procedures", d.id, [
+        d.name,
+        dentalDisplayLabel(d),
+      ]);
+    }
+  }
+  // The medication a prescription BECAME (#1178/#1232) lives in intake_items, so a
+  // medication flag can name either that row or a prescription record above.
+  if (want.has("medication")) {
+    for (const m of getDocumentMedications(profileId, docId)) {
+      push("medication", "medications", m.id, [m.name]);
+    }
+  }
+  return rows;
 }
 
 // The currently-persisted rows a document produced, reduced to the neutral

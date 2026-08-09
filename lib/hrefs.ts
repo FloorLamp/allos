@@ -300,6 +300,22 @@ export function importHref(id: number): AppRoute {
   return href as AppRoute;
 }
 
+// One tab of an import document's records browser, optionally FOCUSED on a row
+// label (#2339). The param shape is a rule, not a literal: `?focus=` carries the
+// LABEL — never a row id, which would be stale the moment the row is edited or the
+// document reprocessed — and the destination re-resolves it against the rows that
+// exist then. Shared by the "Check these first" links, the focus notice's "Show
+// all rows" escape, and their tests, so one edit moves all three.
+export function importTabHref(
+  id: number,
+  tabKey: string,
+  focusLabel?: string
+): AppRoute {
+  const params = new URLSearchParams({ tab: tabKey });
+  if (focusLabel) params.set("focus", focusLabel);
+  return `${importHref(id)}?${params.toString()}` as AppRoute;
+}
+
 // An encounter (visit/appointment) detail page.
 export function encounterHref(id: number): AppRoute {
   const href: Route<`/encounters/${number}`> = `/encounters/${id}`;

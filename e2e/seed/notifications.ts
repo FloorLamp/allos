@@ -14,13 +14,53 @@ import {
   E2E_LOGIN_EMAIL_NOTIFY,
   E2E_LOGIN_HA_NOTIFY,
   E2E_LOGIN_NOTIF_SWEEP,
+  E2E_LOGIN_NOTIFY_SCOPE,
+  E2E_MEMBER_PASSWORD,
   EMAIL_NOTIFY_PROFILE,
   HA_NOTIFY_PROFILE,
   NOTIF_SWEEP_PROFILE,
   NOTIFY_LOG_BUSY_PROFILE,
   NOTIFY_LOG_QUIET_PROFILE,
+  NOTIFY_SCOPE_OWN_PROFILE,
+  NOTIFY_SCOPE_WARD_PROFILE,
 } from "../fixture-logins";
 import { seedMemberLogin, fixtureProfileId } from "./common";
+import { db } from "../../lib/db";
+import { hashPasswordSync } from "../../lib/password";
+
+// ── Admin notification opt-in (#2345) ──
+export function seedNotifyScope(): void {
+  // A dedicated ADMIN login for notify-scope.spec.ts. It has to be an admin — that is
+  // the case under test — and it has to be its OWN admin rather than the shared
+  // storageState one, because the spec writes the login_profiles rows the fan-out
+  // reads: doing that to the storageState admin would enrol every other spec's
+  // session as a notification recipient. Reuses the shared member password constant
+  // (no new credential-shaped literal in the repo).
+  const ownId = fixtureProfileId(NOTIFY_SCOPE_OWN_PROFILE);
+  fixtureProfileId(NOTIFY_SCOPE_WARD_PROFILE);
+  db.prepare(
+    "INSERT OR IGNORE INTO logins (username, password_hash, role) VALUES (?, ?, 'admin')"
+  ).run(E2E_LOGIN_NOTIFY_SCOPE, hashPasswordSync(E2E_MEMBER_PASSWORD));
+  const loginId = (
+    db
+      .prepare("SELECT id FROM logins WHERE username = ?")
+      .get(E2E_LOGIN_NOTIFY_SCOPE) as { id: number }
+  ).id;
+  // The instance's own shape (#2345): the admin holds exactly ONE row, for the
+  // profile that is also its own_profile_id — so the ward starts un-opted-in and the
+  // own row renders locked-on with its reason. Idempotent for a reused dev server.
+  db.prepare(
+    `INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')
+       ON CONFLICT(login_id, profile_id) DO UPDATE SET access = excluded.access`
+  ).run(loginId, ownId);
+  db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+    ownId,
+    loginId
+  );
+  console.log(
+    `e2e: seeded admin notify-scope fixture — ${E2E_LOGIN_NOTIFY_SCOPE} own=${NOTIFY_SCOPE_OWN_PROFILE} (${ownId}), ward=${NOTIFY_SCOPE_WARD_PROFILE} (#2345)`
+  );
+}
 
 // ── Home Assistant notification config ──
 export function seedHaConfig(): void {

@@ -36,6 +36,7 @@ import {
   seedImportFeed,
   seedDropReport,
   seedExtractionConfidence,
+  seedTriageLinks,
   seedRecordsBrowser,
 } from "./seed/imports";
 import {
@@ -69,7 +70,11 @@ import {
   seedVitalsToday,
   seedBulkCorrection,
 } from "./seed/metrics";
-import { seedRuleDomains, seedSuppressedCenter } from "./seed/findings";
+import {
+  seedGoalPacing,
+  seedRuleDomains,
+  seedSuppressedCenter,
+} from "./seed/findings";
 import {
   seedMedicationCards,
   seedPrnLedger,
@@ -108,6 +113,7 @@ import {
   seedEmailNotify,
   seedHaConfig,
   seedNotifSweep,
+  seedNotifyScope,
   seedNotifyTickLog,
 } from "./seed/notifications";
 import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
@@ -143,8 +149,10 @@ seedSleepWaiting();
 seedMultiSourceMetric();
 seedTrainingZones();
 seedRuleDomains();
+seedGoalPacing();
 seedDropReport();
 seedExtractionConfidence();
+seedTriageLinks();
 seedMedicationCards();
 seedPrnLedger();
 seedRecordsBrowser();
@@ -230,3 +238,6 @@ seedDayOneAverages();
 // Appended LAST (#2209): two new profiles plus a direct write of data/logs/
 // notify.jsonl, so every existing fixture's row ids stay exactly where they were.
 seedNotifyTickLog();
+// Appended LAST (#2345): one admin login + two new profiles, so every existing
+// fixture's row ids stay exactly where they were.
+seedNotifyScope();

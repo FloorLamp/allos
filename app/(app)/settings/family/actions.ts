@@ -34,6 +34,7 @@ import {
   normalizeGrantInputs,
   diffGrantAccess,
   normalizeAccess,
+  grantAccessForRole,
   formatGrantDiff,
   grantSignature,
   type GrantInput,
@@ -417,29 +418,31 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
     if (!strength.ok) return { ok: false, error: strength.error };
   }
 
-  // The profiles this login should be able to open from day one (issue #1434 part
-  // B) — access is part of CREATING a member, not a separate discipline the admin
-  // has to remember afterwards. Admins are implicit-all and never carry
-  // login_profiles rows, so their submitted selection is ignored. Same field shape
-  // as setGrants (repeated `profileId` + `access_<id>`), normalized through the same
-  // pure helpers against the REAL profile ids, so a forged id can't be granted.
+  // The profiles this login starts with (issue #1434 part B). What the row MEANS
+  // depends on the role, and both meanings are chosen at create time:
+  //   • MEMBER — the profiles it should be able to open from day one. Access is part
+  //     of CREATING a member, not a separate discipline the admin has to remember.
+  //   • ADMIN  — its NOTIFICATION SCOPE (issue #2345). An admin already reaches every
+  //     profile, so the row adds no access; it is the fan-out's opt-in, which used to
+  //     be forced empty here (and refused by setGrants), leaving an admin with no way
+  //     to receive anything at all. Still opt-IN: nothing is pre-selected for them.
+  // Same field shape either way (repeated `profileId` + `access_<id>`), normalized
+  // through the same pure helpers against the REAL profile ids, so a forged id can't
+  // be granted; `grantAccessForRole` decides what lands in the `access` column.
   const validIds = (
     db.prepare("SELECT id FROM profiles").all() as { id: number }[]
   ).map((r) => r.id);
-  const initialGrants: GrantInput[] =
-    role === "admin"
-      ? []
-      : normalizeGrantInputs(
-          formData
-            .getAll("profileId")
-            .map((v) => Number(v))
-            .filter((n) => Number.isFinite(n))
-            .map((profileId) => ({
-              profileId,
-              access: normalizeAccess(formData.get(`access_${profileId}`)),
-            })),
-          validIds
-        );
+  const initialGrants: GrantInput[] = normalizeGrantInputs(
+    formData
+      .getAll("profileId")
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n))
+      .map((profileId) => ({
+        profileId,
+        access: grantAccessForRole(role, formData.get(`access_${profileId}`)),
+      })),
+    validIds
+  );
 
   const passwordHash = invitePath
     ? await unusablePasswordHash()
@@ -524,7 +527,12 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
   revalidateRoute("/", "layout"); // an initial grant changes the member's switcher
   const base =
     role === "admin"
-      ? `Created admin “${username}”.`
+      ? // An admin's rows are notification scope, never access (#2345) — say which
+        // one was chosen, and say plainly when none was, since that (correctly) means
+        // nothing will reach them.
+        initialGrants.length > 0
+        ? `Created admin “${username}”, notified about ${initialGrants.length} ${initialGrants.length === 1 ? "profile" : "profiles"}.`
+        : `Created admin “${username}”. They can see every profile but won’t be notified about any until you choose some.`
       : initialGrants.length > 0
         ? `Created “${username}” with access to ${initialGrants.length} ${initialGrants.length === 1 ? "profile" : "profiles"}.`
         : `Created “${username}”. Grant it a profile below — it can’t sign in usefully until you do.`;
@@ -726,11 +734,28 @@ export async function revokeLoginSessions(
 
 // ---- Access grants (login × profile) ----
 
-// Replace a member login's granted profiles (and their access LEVELS) with the
-// submitted set. Admins are implicit-all and never have login_profiles rows
-// managed here — editing an admin's grants is rejected. Each granted profile
-// arrives as a repeated `profileId` field plus an `access_<id>` field carrying
-// 'read' | 'write' (issue #33); a missing/garbled access defaults to 'write'.
+// Replace a login's `login_profiles` rows with the submitted set. What that row
+// MEANS depends on the target login's role, and this is the one writer of both
+// meanings (issue #2345):
+//
+//   • MEMBER — ACCESS. The row is what lets the login open the profile, and its
+//     `access_<id>` level ('read' | 'write', issue #33) is what it may do there.
+//     Notification scope rides along, because the two are the same question for a
+//     login whose reach comes from the row.
+//   • ADMIN — NOTIFICATION SCOPE, and nothing else. An admin reaches every profile
+//     by ROLE (accessibleProfiles/accessForProfile never read this table for them),
+//     so the row cannot widen or narrow what they can see; it means exactly "notify
+//     me about this profile". That is the opt-in `lib/notifications/fan-out.ts`
+//     already tells admins to perform — the fan-out deliberately does NOT inherit
+//     admin-sees-all, so without a row an admin receives nothing about that profile.
+//     This action used to refuse every admin ("Admins already have access to every
+//     profile"), which was true about access and irrelevant to notifications, and
+//     left the opt-in unperformable. There is no access selector for an admin: it
+//     would change nothing. `grantAccessForRole` stores the inert, non-restricting
+//     'write' for them — see its comment.
+//
+// Each granted profile arrives as a repeated `profileId` field plus (members only)
+// an `access_<id>` field; a missing/garbled access defaults to 'write'.
 export async function setGrants(formData: FormData): Promise<FamilyResult> {
   const admin = await requireAdmin();
   const loginId = Number(formData.get("loginId"));
@@ -740,11 +765,7 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     .prepare("SELECT id, role FROM logins WHERE id = ?")
     .get(loginId) as { id: number; role: Role } | undefined;
   if (!acct) return { ok: false, error: "Login not found." };
-  if (acct.role === "admin")
-    return {
-      ok: false,
-      error: "Admins already have access to every profile.",
-    };
+  const targetIsAdmin = acct.role === "admin";
 
   const validIds = (
     db.prepare("SELECT id FROM profiles").all() as { id: number }[]
@@ -755,7 +776,10 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     .filter((n) => Number.isFinite(n))
     .map((profileId) => ({
       profileId,
-      access: normalizeAccess(formData.get(`access_${profileId}`)),
+      access: grantAccessForRole(
+        acct.role,
+        formData.get(`access_${profileId}`)
+      ),
     }));
   const desired = normalizeGrantInputs(submitted, validIds);
   // The signature of the grants the admin's form LOADED with (issue #467).
@@ -809,18 +833,26 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     // login's own-profile drops the association too (an own-profile must stay within
     // the login's accessible set). resolveScope re-validates on read as well, so this
     // is the stored twin of that re-derivation.
-    const ownNull = db.prepare(
-      "UPDATE logins SET own_profile_id = NULL WHERE id = ? AND own_profile_id = ?"
-    );
-    for (const pid of diff.remove) ownNull.run(loginId, pid);
+    //
+    // MEMBERS ONLY (issue #2345). An admin's accessible set is every profile, by role
+    // — removing their notification-scope row cannot put their own-profile outside it,
+    // so nulling the association here would silently spend a column this action has no
+    // business touching (and would drop them out of the recipient union as well).
+    if (!targetIsAdmin) {
+      const ownNull = db.prepare(
+        "UPDATE logins SET own_profile_id = NULL WHERE id = ? AND own_profile_id = ?"
+      );
+      for (const pid of diff.remove) ownNull.run(loginId, pid);
+    }
     return { kind: "applied", diff };
   });
 
   if (outcome.kind === "conflict")
     return {
       ok: false,
-      error:
-        "This login’s access changed since you opened this form. Reload and try again.",
+      error: targetIsAdmin
+        ? "This login’s notification scope changed since you opened this form. Reload and try again."
+        : "This login’s access changed since you opened this form. Reload and try again.",
     };
   if (outcome.kind === "nochange") return { ok: true, message: "No changes." };
 
@@ -835,8 +867,15 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
   });
 
   revalidateRoute("/settings/family");
+  // The SAME control renders on Settings → Notifications for the signed-in login
+  // (#2345 "one action, two renderers"), so a save on either surface must repaint
+  // the other.
+  revalidateRoute("/settings/notifications");
   revalidateRoute("/", "layout"); // the member's switcher reflects new access
-  return { ok: true, message: "Access updated." };
+  return {
+    ok: true,
+    message: targetIsAdmin ? "Notifications updated." : "Access updated.",
+  };
 }
 
 // Admin path for the own-profile association (issue #1013): set (or clear) which

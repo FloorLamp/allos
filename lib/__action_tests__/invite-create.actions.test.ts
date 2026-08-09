@@ -164,11 +164,27 @@ describe("createLogin — initial profile access (#1434)", () => {
     ]);
   });
 
-  it("ignores a selection for an ADMIN (implicit all-profile access)", async () => {
+  it("keeps an ADMIN's selection as its notification scope (#2345)", async () => {
+    // This selection used to be DISCARDED ("admins are implicit-all"), which is true
+    // about access and irrelevant to notifications: the fan-out excludes the admin
+    // role, so an admin with no row receives nothing about anyone. The row is now
+    // kept, at the inert 'write' the column has no readers for.
     const p1 = createProfile("Access Admin");
     const username = `adminsel_${++seq}`;
     const res = await createLoginAction(
       form({ username, password: STRONG, role: "admin" }, [p1.id])
+    );
+    expect(res.ok).toBe(true);
+    expect(grantsFor(loginRow(username)!.id)).toEqual([
+      { profileId: p1.id, access: "write" },
+    ]);
+  });
+
+  it("still creates an ADMIN with no rows when none were selected (#2345)", async () => {
+    // Opt-IN stays opt-in: nothing is chosen for them, on creation or ever.
+    const username = `adminbare_${++seq}`;
+    const res = await createLoginAction(
+      form({ username, password: STRONG, role: "admin" })
     );
     expect(res.ok).toBe(true);
     expect(grantsFor(loginRow(username)!.id)).toEqual([]);

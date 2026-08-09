@@ -60,9 +60,11 @@ export interface CreateLoginOpts {
   // for one. Only meaningful together with `invite`; the returned `password` is
   // empty, since nothing can sign in until the invitee spends their token.
   passwordless?: boolean;
-  // Initial profile access for a MEMBER (issue #1434) — profile ids to check in the
-  // create form's access picker, so the login isn't born into the grantless dead
-  // end. Omit to accept the form's own default (a same-named profile, else none).
+  // Profile ids to check in the create form's picker. For a MEMBER these are ACCESS
+  // grants (issue #1434), so the login isn't born into the grantless dead end; for an
+  // ADMIN they are its NOTIFICATION SCOPE (#2345), since an admin reaches everything
+  // anyway. Omit to accept the form's own default (a member's same-named profile;
+  // nothing for an admin, whose scope is opt-in).
   accessProfileIds?: readonly number[];
 }
 
@@ -110,10 +112,11 @@ export async function createLoginViaFamily(
     if (role !== "member") {
       await page.getByTestId("create-role").selectOption(role);
     }
-    // Initial profile access (#1434) — before the invite toggle, so a passwordless
-    // create still picks its grants while the picker is on screen (it renders for a
-    // member regardless). settledCheck waits for the controlled checkbox's onChange.
-    if (opts.accessProfileIds && role === "member") {
+    // The new login's initial profile rows — ACCESS for a member (#1434), NOTIFICATION
+    // SCOPE for an admin (#2345). Set before the invite toggle, so a passwordless
+    // create still picks them while the picker is on screen (it renders for either
+    // role). settledCheck waits for the controlled checkbox's onChange.
+    if (opts.accessProfileIds) {
       for (const id of opts.accessProfileIds) {
         await settledCheck(page, page.getByTestId(`create-access-${id}`), true);
       }

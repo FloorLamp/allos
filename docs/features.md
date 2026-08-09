@@ -2543,6 +2543,16 @@ and editable either way, nothing is auto-accepted or auto-rejected, and a
 document with no such signal (a MyChart/FHIR import, or an upload extracted
 without an AI key) shows neither.
 
+Each name in that card **opens the row it points at**, switching to the tab that
+holds it and highlighting it in place — and the row itself carries the hedge and
+its reason, so the records table is self-describing for anyone who never read the
+card. The link is resolved by NAME, and it will not guess: where a name fits
+several rows the tab is **filtered** to them and none is selected (being sent to
+the wrong row is worse than a short list, because you might edit it), and where a
+name fits nothing — the row was renamed or deleted since the import — the card
+says **"no longer in this import"** rather than offering a link that goes
+nowhere.
+
 ### Failures and duplicates
 
 Spanning both sections at the top are any integration that's **currently

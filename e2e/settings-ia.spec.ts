@@ -195,10 +195,14 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
     await expect(page.getByTestId("digest-tune-disclosure")).toBeVisible();
 
     // The schedule/kind cards autosave now, so their explicit Save buttons are gone.
-    // Two channel cards keep their own Save (Telegram validates a chat id; the
-    // email card commits a deliberate content-mode choice, #1855) — so exactly TWO
-    // remain, and a spec clicking "Save" here must scope to its card.
-    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(2);
+    // THREE deliberate exceptions remain, and a spec clicking "Save" here must scope
+    // to its card: two channel cards (Telegram validates a chat id; the email card
+    // commits a deliberate content-mode choice, #1855), plus — for an ADMIN, which
+    // this shared session is — the per-profile notification scope (#2345), whose
+    // control is the Family grant editor and therefore carries #467's loaded-snapshot
+    // concurrency check rather than a per-tick autosave.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(3);
+    await expect(page.getByTestId("notify-scope-section")).toBeVisible();
   });
 
   test("a member sees the group index without admin groups, and no Server section", async ({
@@ -225,6 +229,9 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       await expect(member.getByTestId("push-settings")).toBeVisible();
       await expect(member.getByTestId("notification-kinds")).toBeVisible();
       await expect(member.getByTestId("server-telegram")).toHaveCount(0);
+      // Nor the admin notification-scope section (#2345): for a MEMBER that row IS
+      // their access, so it stays an admin-managed decision on Settings → Family.
+      await expect(member.getByTestId("notify-scope-section")).toHaveCount(0);
     } finally {
       await member.context().close();
     }

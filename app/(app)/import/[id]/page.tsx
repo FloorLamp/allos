@@ -23,6 +23,7 @@ import {
   getDocumentMedications,
   getDocumentBodyRows,
   getDocumentProviders,
+  getDocumentTriageRows,
   createVisitOffers,
 } from "@/lib/queries";
 import { today } from "@/lib/db";
@@ -39,6 +40,8 @@ import ReassignDocument from "@/components/ReassignDocument";
 import ExtractedRecords from "@/components/ExtractedRecords";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import ImportTabStrip from "@/components/ImportTabStrip";
+import ConfidenceBadge from "@/components/ConfidenceBadge";
+import TriageFocusScroll from "@/components/TriageFocus";
 import ProducedListing from "@/components/ProducedListing";
 import ProducedProviders from "@/components/ProducedProviders";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
@@ -80,10 +83,15 @@ import {
 } from "@/lib/import-browser";
 import {
   confidenceKindLabel,
-  confidenceLabel,
   confidenceTotal,
-  type ExtractionConfidence,
+  type ConfidenceFlag,
 } from "@/lib/extraction-confidence";
+import {
+  resolveTriageTarget,
+  triageFocus,
+  triageRowId,
+} from "@/lib/confidence-triage";
+import { importTabHref } from "@/lib/hrefs";
 import {
   parseImportReport,
   summarizeCoverage,
@@ -96,16 +104,6 @@ import {
 } from "@/lib/import-report";
 
 export const dynamic = "force-dynamic";
-
-// Per-record confidence badges (#1601). Warmer as the extractor's certainty drops —
-// rose for the rows to open first, amber for "check it", and a muted chip for a row
-// the extractor rated high but that still landed in a flagged list (it can't, today,
-// but the map stays total so a vocabulary change can't render an unstyled badge).
-const CONFIDENCE_BADGE: Record<ExtractionConfidence, string> = {
-  low: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
-  medium: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  high: "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300",
-};
 
 const STATUS_STYLE: Record<string, string> = {
   done: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
@@ -204,6 +202,7 @@ export default async function ImportDetailPage(props: {
     q?: string;
     sort?: string;
     dir?: string;
+    focus?: string;
   }>;
 }) {
   const searchParams = await props.searchParams;
@@ -324,6 +323,51 @@ export default async function ImportDetailPage(props: {
     activeTab?.kind === "providers"
       ? providerItems(getDocumentProviders(profile.id, id))
       : [];
+
+  // ── Triage links for the "Check these first" card (#2339) ────────────────────
+  // The card names rows that are ALREADY on this page, so each flagged row becomes
+  // a link to the row it names. Resolution is by LABEL — never a stored row id,
+  // which is stale the moment a row is edited or the document reprocessed — and it
+  // refuses to guess: one match links at the row, several filter the owning tab,
+  // none says so in the card rather than offering a link that goes nowhere.
+  const flags = confidence?.flags ?? [];
+  const triageRows = flags.length
+    ? getDocumentTriageRows(profile.id, id, [
+        ...new Set(flags.map((f) => f.kind)),
+      ])
+    : [];
+  const triageTargets = flags.map((f) => resolveTriageTarget(f, triageRows));
+  // The extractor's hedge attached to the ONE row it names, so the records table
+  // says what the card says (#2339 follow-through). Only unambiguous matches: a
+  // hedge that fits two rows describes one of them, and badging both would state
+  // something false about one.
+  const rowFlags: Record<string, ConfidenceFlag> = {};
+  triageTargets.forEach((t, i) => {
+    if (t.status === "row") rowFlags[t.rowId] = flags[i];
+  });
+  // A `?focus=` label, RE-RESOLVED against the active tab's rows as they are now —
+  // so a row deleted since the card rendered degrades to an honest notice instead
+  // of a highlight that silently lands nowhere.
+  const activeKey = activeTab?.key;
+  const focusLabel = searchParams.focus?.trim() || undefined;
+  const focus =
+    focusLabel && activeKey
+      ? triageFocus(
+          focusLabel,
+          triageRows.filter((r) => r.tabKey === activeKey)
+        )
+      : null;
+  const focusedRowId = focus?.mode === "highlight" ? focus.rowIds[0] : null;
+  // Several matches: show only those rows and select none of them.
+  const focusFilter = focus?.mode === "filter" ? new Set(focus.rowIds) : null;
+  const visibleRecords =
+    focusFilter && activeKey
+      ? records.filter((r) => focusFilter.has(triageRowId(activeKey, r.id)))
+      : records;
+  const visibleItems =
+    focusFilter && activeKey
+      ? items.filter((it) => focusFilter.has(triageRowId(activeKey, it.id)))
+      : items;
   // The mapping field's canonical-name picker (#1675): relevance-ranked over the
   // same shared builder the Biomarkers page uses, so re-mapping an import row offers
   // the analytes that matter before the A–Z body of ~200.
@@ -462,16 +506,53 @@ export default async function ImportDetailPage(props: {
             category tab (the analyte grid for lab/biomarker/genomics, a read-only
             value/date table for the rest — #1182), the per-document Providers
             listing, or a read-only deep-linking listing for every other type. */}
+            {/* A "Check these first" link that resolved to SEVERAL rows, or to none
+            at all, says so here rather than selecting a row a reviewer might then
+            edit (#2339). The single-match case needs no notice — the row itself is
+            scrolled to and tinted. */}
+            {activeTab && focus && focus.mode !== "highlight" && (
+              <Notice
+                tone={focus.mode === "missing" ? "amber" : "slate"}
+                icon={focus.mode === "missing"}
+                testid="triage-focus-notice"
+                action={
+                  <Link
+                    href={importTabHref(id, activeTab.key)}
+                    className="whitespace-nowrap text-sm font-medium hover:underline"
+                  >
+                    Show all rows
+                  </Link>
+                }
+              >
+                {focus.mode === "missing" ? (
+                  <>
+                    Nothing on this tab is named <strong>{focus.label}</strong>{" "}
+                    any more — that row was renamed or deleted after this import
+                    was extracted.
+                  </>
+                ) : (
+                  <>
+                    More than one row here is named{" "}
+                    <strong>{focus.label}</strong>, so none was picked for you.
+                    These are the rows carrying that name.
+                  </>
+                )}
+              </Notice>
+            )}
+
             {activeTab &&
               (activeTab.kind === "records" ? (
                 <ExtractedRecords
                   title={activeTab.label}
                   analyte={usesAnalyteGrid(activeTab.category)}
                   processing={doc.extraction_status === "processing"}
-                  records={records}
+                  records={visibleRecords}
                   q={q}
                   range={range}
                   sort={sort}
+                  tabKey={activeTab.key}
+                  focusedRowId={focusedRowId}
+                  rowFlags={rowFlags}
                   emptyMessage={
                     q || range
                       ? "No records in this document match these filters."
@@ -486,8 +567,16 @@ export default async function ImportDetailPage(props: {
                   providers={providerItemsList}
                 />
               ) : (
-                <ProducedListing title={activeTab.label} items={items} />
+                <ProducedListing
+                  title={activeTab.label}
+                  items={visibleItems}
+                  tabKey={activeTab.kind === "body" ? null : activeTab.key}
+                  focusedRowId={focusedRowId}
+                  rowFlags={rowFlags}
+                />
               ))}
+            {/* Bring the focused row into view once its tab has rendered. */}
+            {focusedRowId && <TriageFocusScroll rowId={focusedRowId} />}
 
             {/* Coverage (import debugger) */}
             {report && coverage && (
@@ -700,7 +789,9 @@ export default async function ImportDetailPage(props: {
                   read from context, a hedged diagnosis. They{" "}
                   <strong>were all imported</strong> and nothing was
                   auto-accepted or auto-rejected: this only decides what a human
-                  looks at first.
+                  looks at first. Each name below{" "}
+                  <strong>opens the row it points at</strong>, on the tab that
+                  holds it.
                 </p>
                 {/* Viewport-bounded like the Dropped card: a long import can hedge on
                 dozens of rows without the card dominating the page. */}
@@ -709,29 +800,66 @@ export default async function ImportDetailPage(props: {
                   data-testid="confidence-scroll"
                 >
                   <ul className="text-sm text-slate-600 dark:text-slate-300">
-                    {confidence.flags.map((f, i) => (
-                      <li
-                        key={`${f.kind}-${f.label}-${i}`}
-                        data-testid="confidence-row"
-                        className="flex flex-wrap items-baseline gap-x-2 border-b border-black/5 py-1 last:border-0 dark:border-white/10"
-                      >
-                        <span className="font-medium">{f.label}</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {confidenceKindLabel(f.kind)}
-                        </span>
-                        {f.reason && (
-                          <span className="text-xs italic text-slate-500 dark:text-slate-400">
-                            {f.reason}
-                          </span>
-                        )}
-                        <span
-                          data-testid="confidence-badge"
-                          className={`ml-auto rounded px-1.5 py-0.5 text-xs ${CONFIDENCE_BADGE[f.confidence]}`}
+                    {confidence.flags.map((f, i) => {
+                      // Where this name goes (#2339): the row itself, the owning
+                      // tab filtered to the name when several rows carry it, or
+                      // nowhere — in which case the row says so instead of
+                      // offering a link that lands on nothing.
+                      const target = triageTargets[i];
+                      return (
+                        <li
+                          key={`${f.kind}-${f.label}-${i}`}
+                          data-testid="confidence-row"
+                          className="flex flex-wrap items-baseline gap-x-2 border-b border-black/5 py-1 last:border-0 dark:border-white/10"
                         >
-                          {confidenceLabel(f.confidence)}
-                        </span>
-                      </li>
-                    ))}
+                          {target.status === "missing" ? (
+                            <span className="font-medium">{f.label}</span>
+                          ) : (
+                            <Link
+                              href={importTabHref(id, target.tabKey, f.label)}
+                              data-testid="confidence-row-link"
+                              title={
+                                target.status === "row"
+                                  ? `Go to ${f.label} in the rows below`
+                                  : `Show the rows named ${f.label}`
+                              }
+                              className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+                            >
+                              {f.label}
+                            </Link>
+                          )}
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {confidenceKindLabel(f.kind)}
+                          </span>
+                          {f.reason && (
+                            <span className="text-xs italic text-slate-500 dark:text-slate-400">
+                              {f.reason}
+                            </span>
+                          )}
+                          {target.status === "missing" && (
+                            <span
+                              data-testid="confidence-row-missing"
+                              className="text-xs text-slate-500 dark:text-slate-400"
+                            >
+                              no longer in this import
+                            </span>
+                          )}
+                          {target.status === "filter" && (
+                            <span
+                              data-testid="confidence-row-ambiguous"
+                              className="text-xs text-slate-500 dark:text-slate-400"
+                            >
+                              several rows share this name
+                            </span>
+                          )}
+                          <ConfidenceBadge
+                            confidence={f.confidence}
+                            testid="confidence-badge"
+                            className="ml-auto"
+                          />
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               </div>

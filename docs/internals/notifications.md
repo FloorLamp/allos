@@ -35,7 +35,22 @@ login-keyed (`push_subscriptions.login_id`).
   the "admins reach every profile" rule is deliberately not inherited: a
   notification is a push into someone's pocket, so an admin who can act as every
   profile must OPT specific profiles into their notification scope by granting
-  themselves. The resolution lives in `lib/notifications/fan-out.ts` —
+  themselves. **That opt-in is performable since #2345.** `setGrants` used to
+  refuse every admin ("Admins already have access to every profile" — true about
+  access, irrelevant to notification scope), so the rule described a write nothing
+  could make and an instance whose only login was an admin delivered nothing about
+  any profile but their own. For an admin a `login_profiles` row now means exactly
+  **"notify me about this profile"** (their access never came from it —
+  `accessForProfile` returns `write` before reading the table), and the control for
+  it is `components/NotifyScopeEditor.tsx`: a plain per-profile checkbox list with
+  **no read/write selector** (it would change nothing), rendered by **two**
+  surfaces over the **one** action — Settings → Family for any login, and Settings
+  → Notifications for the signed-in one, because an opt-in that only exists where
+  the person isn't sent is not an opt-in. Their **own profile** shows on and is not
+  toggleable (it is already in the union via `own_profile_id`). Admins are still
+  **never** auto-granted, on profile creation or otherwise, and the fan-out
+  exclusion itself is untouched. The resolution lives in
+  `lib/notifications/fan-out.ts` —
   `managingLoginIdsForProfile(profileId)` (grants only, id-ordered), the pure
   `dedupeRecipientsByChat` (first login wins per distinct chat, empties
   dropped), and `resolveTelegramRecipients(profileId)` (managing logins that
