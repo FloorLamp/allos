@@ -276,6 +276,20 @@ function sortSelect(page: Page) {
     .getByTestId("table-sort-select");
 }
 
+// Below `sm` the facets and the sort select sit behind one **Filters** disclosure
+// (#2316) — the phone used to carry ~350px of always-open chrome above the first
+// reading. A spec that DRIVES one of those controls has to open it first; one that
+// only reads a value or an option list does not, since the controls are in the DOM
+// either way (one disclosure over one DOM, `hidden` below `sm` and forced open by
+// CSS above it). Idempotent: an already-open block is left alone, so a call after a
+// filter has opened it can't toggle it shut.
+async function openFilters(page: Page): Promise<void> {
+  const toggle = page.getByTestId("medical-filters-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) === "true") return;
+  await hydratedClick(page, toggle);
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
 // Clinical order, `other` last. Seven panels come from stored readings; `lipids`,
 // `glycemic` and `kidney` also absorb derived indices, and `biological-age` exists
 // ONLY because the derived PhenoAge row lands there.
@@ -340,6 +354,7 @@ test("no filter change leaves a group the reader opened collapsed (#1581 section
   // so the reader's expansion is never yanked shut by reaching for a filter. "Current
   // values only" was the last one that did not count as a narrowing, which is why it
   // is the one driven here.
+  await openFilters(page);
   await settledCheck(page, page.getByLabel("Current values only"), true);
   await expect(page).toHaveURL(/current=1/);
   await expect(group(page, "thyroid")).toHaveAttribute("data-open", "true");
@@ -349,6 +364,7 @@ test("no filter change leaves a group the reader opened collapsed (#1581 section
   // the same set, and the collapse is the default view. What it must NOT do is what
   // the pager did: reset the reader mid-list on a navigation that showed them the
   // same rows they were already reading. There is no such navigation left.
+  await openFilters(page);
   await settledSelect(page, sortSelect(page), "date:desc", {
     destination: /sort=date/,
   });

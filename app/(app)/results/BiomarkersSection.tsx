@@ -7,6 +7,11 @@ import StarredBiomarkers from "@/components/StarredBiomarkers";
 import BioAgeHero from "@/components/BioAgeHero";
 import TrajectoryFindings from "./TrajectoryFindings";
 import BiomarkersTable from "@/components/BiomarkersTable";
+import TableSortSelect from "@/components/TableSortSelect";
+import {
+  BIOMARKER_SORT_CHOICES,
+  DEFAULT_BIOMARKER_SORT,
+} from "@/lib/derived-table";
 import RecordForm from "@/components/RecordForm";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
@@ -141,6 +146,20 @@ export default function BiomarkersSection({
               range={range}
               q={q}
               current={current}
+              // The card-mode sort control (#1426) travels with the facets since
+              // #2316: below `sm` "narrow this list" and "reorder this list" are one
+              // job behind one disclosure, instead of two strips of chrome stacked
+              // above the first reading. Offered only when there is something to
+              // order — the empty state has no rows to sort.
+              sortControl={
+                panelGroups.length > 0 ? (
+                  <TableSortSelect
+                    choices={BIOMARKER_SORT_CHOICES}
+                    defaultSort={DEFAULT_BIOMARKER_SORT}
+                    label="Sort by"
+                  />
+                ) : undefined
+              }
               action={
                 <AddEntryPanel
                   // A same-route ?new=1 Link preserves this client component. Change

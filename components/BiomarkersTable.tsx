@@ -6,7 +6,6 @@ import { IconChevronRight } from "@tabler/icons-react";
 import type { MedicalRecord } from "@/lib/types";
 import { Tag, MedicalValue } from "./ui";
 import SortableHeader from "./SortableHeader";
-import TableSortSelect from "./TableSortSelect";
 import { ResponsiveTable, Td } from "./ResponsiveTable";
 import NotesText from "./NotesText";
 import SourceDocumentLink from "./SourceDocumentLink";
@@ -19,11 +18,8 @@ import { loadBiomarkerPanelRows } from "@/app/(app)/results/actions";
 import type { BiomarkersSearchParams } from "@/app/(app)/results/biomarker-index";
 import type { ReferenceCell } from "@/lib/reading-reference-cell";
 import { groupContiguous } from "@/lib/table-sort";
-import {
-  isBiomarkerStale,
-  daysBetween,
-  humanizeAge,
-} from "@/lib/reference-range";
+import { isBiomarkerStale } from "@/lib/reference-range";
+import { DATE_AGE_SEPARATOR, readingDateLine } from "@/lib/reading-date-line";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { readingDetailHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
@@ -62,15 +58,6 @@ type TableRecord = MedicalRecord & {
 export interface BiomarkersMultiView {
   actingProfileId: number;
 }
-
-// The sortable columns, as the card-mode select knows them (#1426). One list, kept
-// beside the SortableHeaders it mirrors: same column ids, same default directions
-// (Date opens newest-first), so the two affordances can't disagree about what
-// "sorted by date" means.
-const SORT_CHOICES = [
-  { column: "name", label: "Name" },
-  { column: "date", label: "Date", defaultDir: "desc" as const },
-];
 
 // The column ordered when the URL names none. Read from lib/derived-table rather than
 // restated, so the (hidden) header arrows, the card-mode select and the server's
@@ -164,44 +151,39 @@ function nameCell(r: {
   );
 }
 
-// Date cell: the reading's date, age, and an explicitly labelled provenance link.
-// The date itself is not navigation: the source import is not a reading detail page.
-// The latest reading of a biomarker shows its age ("8 months ago"), flagged amber
-// once it's over a year old (a yearly-retest heuristic). Older readings omit age.
+// Date cell: ONE line, at both viewports (#2316) — `2026-06-03 · 2mo`.
+//
+// It used to be a `flex-col` of three: the ISO date, the same fact re-notated as
+// "2 months ago", and a "Source document" link. On a card that is three stacked
+// lines under one DATE label, two of which say the same thing and one of which is
+// not a date at all. The age is the shared compact formatter now (#1216, via
+// lib/reading-date-line) so this row and the dashboard's recent-labs widget round
+// into the same buckets, the over-a-year amber treatment and its title ride on the
+// AGE token (the age is what went stale), and the provenance link moved to the row's
+// ⋯ menu, which is what that menu is for. Older readings in a run still omit the age.
 function dateCell(
-  r: { date: string; category: string | null; document_id: number | null },
+  r: { date: string; category: string | null },
   now: string,
   showAge: boolean
 ) {
-  const ageDays = daysBetween(r.date, now);
-  const stale = isBiomarkerStale(r.date, r.category, now);
-  const relative = ageDays <= 0 ? "today" : `${humanizeAge(ageDays)} ago`;
+  const line = readingDateLine(r, now, showAge);
   return (
-    <div className="flex flex-col">
-      <span className="whitespace-nowrap">{r.date}</span>
-      {showAge ? (
-        <span
-          className={`text-xs ${
-            stale
-              ? "text-amber-600 dark:text-amber-400"
-              : "text-slate-500 dark:text-slate-400"
-          }`}
-          title={stale ? "Over a year old — consider retesting" : undefined}
-        >
-          {stale && "⚠️ "}
-          {relative}
-        </span>
+    <span className="whitespace-nowrap">
+      {line.date}
+      {line.age ? (
+        <>
+          {DATE_AGE_SEPARATOR}
+          <span
+            data-testid="biomarker-age"
+            className={`text-xs ${line.ageClassName}`}
+            title={line.ageTitle ?? undefined}
+          >
+            {line.stale && "⚠️ "}
+            {line.age}
+          </span>
+        </>
       ) : null}
-      {r.document_id != null ? (
-        <SourceDocumentLink
-          documentId={r.document_id}
-          className="text-xs text-brand-700 hover:underline dark:text-brand-300"
-          testId="biomarker-source-document-link"
-        >
-          Source document
-        </SourceDocumentLink>
-      ) : null}
-    </div>
+    </span>
   );
 }
 
@@ -217,6 +199,12 @@ function dateCell(
 // That fallback row is deliberately NOT a filter link: "everything drawn at
 // LabCorp" is the useless facet this issue removed, and `?panel=other` (reachable
 // from the filter chip) is the meaningful "unclassified" view.
+//
+// DESKTOP-ONLY DETAIL since #2316 — no `slot`, so the column stays (with its filter
+// link) at `md` and up and claims no card line below `sm`. Grouping (#1499) is what
+// made it redundant there: the server always groups, `PanelGroupHeader` prints the
+// group's label, so inside a group headed "Lipids" every card also said
+// `PANEL Lipids`. See the meta-slot rule in components/ResponsiveTable.tsx.
 function PanelCell({
   record,
   href,
@@ -228,7 +216,7 @@ function PanelCell({
   const reported = record.panel?.trim() || null;
   if (id !== OTHER_PANEL) {
     return (
-      <Td slot="meta" label="Panel" className="hidden md:table-cell">
+      <Td label="Panel" className="hidden md:table-cell">
         <Link
           href={href(id)}
           title={reported ? `Reported under “${reported}”` : undefined}
@@ -240,12 +228,7 @@ function PanelCell({
     );
   }
   return (
-    <Td
-      slot="meta"
-      label="Panel"
-      empty={!reported}
-      className="hidden md:table-cell"
-    >
+    <Td label="Panel" empty={!reported} className="hidden md:table-cell">
       {reported ? (
         <span
           className="text-xs text-slate-500 dark:text-slate-400"
@@ -361,6 +344,11 @@ function BiomarkerRow({
         subjectCanWrite: r.subject?.access === "write",
       })
     : true;
+  // What the ⋯ menu would hold (#2316). Edit + delete are the WRITE items;
+  // "View source document" is provenance navigation and is offered on any row that
+  // has a document, read-only or not. The menu renders when at least one item does.
+  const canViewSource = r.document_id != null;
+  const hasMenu = canWrite || canViewSource;
   const showChip =
     !!multiView && !!r.subject && subjectChipVisible({ multi: true, isActing });
   const writeProfileId = multiView ? r.profileId : undefined;
@@ -442,8 +430,8 @@ function BiomarkerRow({
         >
           {r.derived_formula ?? ""}
         </Td>
+        {/* Desktop-only detail (#2316), like the stored row's Category cell. */}
         <Td
-          slot="meta"
           label="Category"
           empty={!r.category}
           className="hidden md:table-cell"
@@ -501,12 +489,10 @@ function BiomarkerRow({
       >
         <NotesText notes={r.notes} />
       </Td>
-      <Td
-        slot="meta"
-        label="Category"
-        empty={!r.category}
-        className="hidden md:table-cell"
-      >
+      {/* Desktop-only detail (#2316): no `slot`, so the column and its filter link
+          stay at `md` and up and the card stops reprinting a value that is constant
+          inside every real panel — see components/ResponsiveTable.tsx. */}
+      <Td label="Category" empty={!r.category} className="hidden md:table-cell">
         <Link
           href={qs({
             category: r.category,
@@ -527,9 +513,16 @@ function BiomarkerRow({
         {dateCell(r, now, !!r.is_latest)}
       </Td>
       <Td slot="actions">
-        {/* Multi-view (#1331): a row whose SUBJECT is read-only-granted shows no
-            edit/delete; single-view rows are always the acting profile. */}
-        {canWrite ? (
+        {/* The menu renders whenever it has at least one item (#2316). It used to be
+            `canWrite ? … : null` (#1331), which was right while every item was a
+            WRITE — but "View source document" is provenance NAVIGATION, and a
+            household-granted read-only row is exactly the row whose reader most
+            needs to see where a value came from. So a read-only row with a source
+            document gets a menu holding that one item; a read-only row without one
+            still gets no menu, because an empty menu is a worse affordance than
+            none. Multi-view (#1331): a row whose SUBJECT is read-only-granted keeps
+            showing no edit/delete; single-view rows are always the acting profile. */}
+        {hasMenu ? (
           <div className="flex items-center justify-end">
             <OverflowMenu
               label="Record actions"
@@ -538,49 +531,67 @@ function BiomarkerRow({
             >
               {({ close }) => (
                 <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setEditing(true);
-                      close();
-                    }}
-                    className={MENU_ITEM}
-                  >
-                    Edit
-                  </button>
+                  {canWrite ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEditing(true);
+                        close();
+                      }}
+                      className={MENU_ITEM}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
                   {/* Plain button (not a form action): confirm() opens a modal the
                     user must answer, which would deadlock inside a form-action
                     transition. */}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={MENU_ITEM_DANGER}
-                    onClick={async () => {
-                      const ok = await confirm({
-                        title: "Delete record",
-                        // Name it the way the row the user clicked names it —
-                        // tableNameKey is the same canonical-preferred identity
-                        // nameCell renders (#1501), so the confirm can't say
-                        // "URIC ACID" about a row labelled "Uric Acid".
-                        message: `Delete “${tableNameKey(r)}”? You can undo this.`,
-                        confirmLabel: "Delete",
-                        danger: true,
-                      });
-                      if (!ok) return;
-                      close();
-                      const fd = new FormData();
-                      fd.set("id", String(r.id));
-                      // Multi-view: target the ROW's subject profile (gateItemProfile).
-                      if (writeProfileId)
-                        fd.set("profile_id", String(writeProfileId));
-                      await undoable(deleteRecord, fd, {
-                        deletedMessage: "Record deleted.",
-                      });
-                    }}
-                  >
-                    Delete
-                  </button>
+                  {canWrite ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={MENU_ITEM_DANGER}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: "Delete record",
+                          // Name it the way the row the user clicked names it —
+                          // tableNameKey is the same canonical-preferred identity
+                          // nameCell renders (#1501), so the confirm can't say
+                          // "URIC ACID" about a row labelled "Uric Acid".
+                          message: `Delete “${tableNameKey(r)}”? You can undo this.`,
+                          confirmLabel: "Delete",
+                          danger: true,
+                        });
+                        if (!ok) return;
+                        close();
+                        const fd = new FormData();
+                        fd.set("id", String(r.id));
+                        // Multi-view: target the ROW's subject profile
+                        // (gateItemProfile).
+                        if (writeProfileId)
+                          fd.set("profile_id", String(writeProfileId));
+                        await undoable(deleteRecord, fd, {
+                          deletedMessage: "Record deleted.",
+                        });
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                  {/* Provenance navigation, moved off the card's date line (#2316).
+                      Last, under the writes, and the ONLY item a read-only row has. */}
+                  {canViewSource ? (
+                    <SourceDocumentLink
+                      documentId={r.document_id}
+                      className={MENU_ITEM}
+                      testId="biomarker-source-document-link"
+                      role="menuitem"
+                      onClick={close}
+                    >
+                      View source document
+                    </SourceDocumentLink>
+                  ) : null}
                 </>
               )}
             </OverflowMenu>
@@ -906,17 +917,13 @@ export default function BiomarkersTable({
 
   return (
     <div className="card mb-6 overflow-hidden p-0">
-      {/* Stacked-row mode hides `thead`, so the header's sort links go with it — this
-          select is the same sorting, one control instead of a header strip
-          (#1426). It writes the SAME `?sort=`/`?dir=` params SortableHeader does,
-          so the server ordering below is untouched. */}
-      <div className="border-b border-black/5 px-3 py-2 sm:hidden dark:border-white/10">
-        <TableSortSelect
-          choices={SORT_CHOICES}
-          defaultSort={DEFAULT_SORT}
-          label="Sort by"
-        />
-      </div>
+      {/* Stacked-row mode hides `thead`, so the header's sort links go with it. The
+          replacement select (#1426) now lives in the filter block above the table
+          (#2316), inside the same disclosure as the facets: on a phone "narrow this
+          list" and "reorder this list" are one job, and splitting them across two
+          strips is what made the chrome above the first reading a screen tall. It is
+          the same control writing the same `?sort=`/`?dir=` params — see
+          BiomarkersSection, which passes it to MedicalFilters. */}
       {/* The height cap is a desktop affordance (a tall table under a sticky
           header); on a phone the rows flow with the page instead of trapping a
           second scroll region inside it. */}
