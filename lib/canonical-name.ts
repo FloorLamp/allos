@@ -338,9 +338,10 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Peak Flow", "Peak Expiratory Flow"],
   ["Peak Expiratory Flow Rate", "Peak Expiratory Flow"],
   // "FEV1" and "FVC" — and their long forms — are auto-derived from the two
-  // "Full Name (ABBR)" entries (#2335), so the four rows that used to spell them out
-  // here are gone. These two survive because the token set of a SPACED or HYPHENATED
-  // "FEV 1" ({1, fev}) is not the token set of "FEV1" ({fev1}).
+  // "Full Name (ABBR)" entries (#2335), so the two rows that used to spell them out
+  // here ("Forced Expiratory Volume in 1 Second", "Forced Vital Capacity") are gone.
+  // These two survive because the token set of a SPACED or HYPHENATED "FEV 1"
+  // ({1, fev}) is not the token set of "FEV1" ({fev1}).
   ["FEV-1", "Forced Expiratory Volume in 1 Second (FEV1)"],
   ["FEV 1", "Forced Expiratory Volume in 1 Second (FEV1)"],
   ["FEV1/FVC", "FEV1/FVC Ratio"],
