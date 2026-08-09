@@ -2620,7 +2620,12 @@ all surfaced with a badge on the **Data** nav entry.
 Track the catalog **coverage gaps** — the biomarkers/medications/conditions the
 curated catalogs don't cover yet, with the track / local-AI-enrich /
 de-identified-catalog-request paths — under **Data → Coverage** (#1086; moved
-here from the Health record page as a catalog/data-management workflow).
+here from the Health record page as a catalog/data-management workflow). Some
+things are uncatalogued **on purpose**, and those say so in their own section
+rather than being offered for tracking (#2319): a DEXA scan's per-region
+decomposition — left-arm fat percentage, lumbar-spine bone density, the
+compartment masses — is the output of one scan rather than fifty analytes, and
+no population reference band exists for it, so there is nothing to request.
 Finally, browse and export everything you've logged under **Data → Manage &
 Export** — the "Export all my data" download is one portable ZIP (every dataset
 as JSON + CSV, the clinical passport as a FHIR bundle, and copies of your

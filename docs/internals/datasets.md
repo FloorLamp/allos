@@ -272,6 +272,52 @@ reprocess, and a future declaration takes effect everywhere at once.
 list so a re-persist cannot freeze today's registry into the blob and cost that
 retroactivity.
 
+#### The second consumer: Coverage candidacy (#2319)
+
+Data → Coverage → **Uncatalogued items** asks a different question of a
+different set — `detectBiomarkerGaps` compares the profile's used canonical
+names as `biomarkerCoverageKey` **families** against the curated
+(`source = 'seed'`) vocabulary, where the debugger compares `isSeededCanonical`
+on the exact name — and it reached the same wrong conclusion: a settled decision
+rendered as an open invitation to track the item or ask for it to be catalogued.
+
+It consults `uncuratedAnalyte` **unchanged**. That was the point of shaping the
+registry as a question about the analyte rather than about the debugger: a
+second consumer imports it as-is, and neither surface owns a list or an opinion.
+`detectBiomarkerGaps` now returns `{ candidates, declined }` — a partition of
+the same uncovered set on the same family key — and `getCoverageCandidacy`
+(`lib/queries/coverage.ts`) serves both from one read of the used names.
+`getCoverageGapCandidates` remains as the candidate-only reader.
+
+Declined items render in their own **"Not catalogued, on purpose"** section with
+the declaration's reason (and its `instead` link where there is one), never with
+a Track button and never with the catalog-request link. Hiding them outright
+would read as data we lost; offering them is what the declaration exists to
+stop. A declared analyte a user had **already** opted to track stays in their
+tracked list — the system may stop offering something without deleting a choice
+somebody made.
+
+This is **disjoint from `NON_IDENTITY_CATEGORIES`** (#2318), and the two must
+not be conflated. That rule withholds biomarker identity from a whole _class_ of
+stored observation and is applied upstream inside `getUsedCanonicalNames`, so
+such a name never reaches detection at all. This is a per-_name_ decision about
+a row that genuinely does carry identity. Do not re-filter by category in
+`lib/coverage-gaps.ts`; that guard already ran.
+
+The family that carries the volume is a **DEXA scan's regional decomposition**:
+per-region fat percentage, per-site bone mineral density and content, the
+compartment-mass grid (with and without the `(g)` a report prints inside the
+name — `normalizeCanonicalKey` keeps it as a token, so the two spellings are two
+keys), and the derived depot ratios and mass indices. Around ninety declared
+names, expanded from a cross product rather than hand-listed, all sharing **one**
+`out-of-scope` declaration: they are the outputs of a single scan rather than
+independent analytes, and no population reference band exists for left-arm fat
+percentage. `out-of-scope` and not `covered-elsewhere` — the whole-body totals
+(`Body Fat Percentage`, `Bone Mineral Density T-Score`) _are_ curated, but a
+region is not its total, and pointing a reader at the total would claim their
+left arm is tracked when it isn't. Those totals stay curated; the completeness
+guard fails the day a declaration blurs that line.
+
 ### What a canonical name must carry (#2335)
 
 The rule the curated dataset is held to, written down beside `CANONICAL_ALIASES`
