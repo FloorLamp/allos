@@ -320,7 +320,7 @@ column is where a `reported` row's basis is already displayed.
 **And the page states each fact once.** The subtitle used to append the curated
 `note` beside the reading count while the explainer card fifteen lines below rendered
 the curated `description`; for at least one analyte those are near-paraphrases. The
-card keeps the description. The note's one distinct clause — *why* this analyte has
+card keeps the description. The note's one distinct clause — _why_ this analyte has
 no band — is extracted by `bandNoteClause()` and rendered in the summary card, beside
 the value and the absent range, which is where a reader asks the question it answers.
 It selects clauses that negate a band/range/cutoff or state a band table in place of
