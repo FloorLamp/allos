@@ -185,7 +185,7 @@ function buildSuggestion(
   //    cross-reactive), medication interaction, condition→nutrient. Survivors render;
   //    if every primary is struck, the curated alternative is screened and surfaced in
   //    its place; if that is struck too, nothing is offered at all.
-  const surviving: SuggestedSupplement[] = [];
+  const surviving: SupplementSource[] = [];
   let firstDrop: "allergen" | "interaction" | "condition" | null = null;
   for (const s of entry.supplements) {
     const drop = screen(s, safety);
@@ -193,22 +193,26 @@ function buildSuggestion(
       firstDrop ??= drop.field;
       continue;
     }
-    surviving.push(toSuggested(s, false));
+    surviving.push(s);
   }
 
-  let supplements = surviving;
+  let rendered = surviving;
+  let isAlternative = false;
   if (surviving.length === 0) {
     const alt = entry.allergyAlternative;
     if (!alt || screen(alt, safety)) return null; // nothing safe to offer
-    supplements = [toSuggested(alt, true)];
+    rendered = [alt];
+    isAlternative = true;
     notes.push({ kind: "allergy", text: struckNote(firstDrop ?? "allergen") });
   }
 
   // 4. Medication TIMING notes from the food–drug inverse index — the same advice copy
-  //    the food engine attaches, deduped by entry key. Never a drop (a hard drop is step
-  //    3's job); a separation window is guidance, not a contraindication.
+  //    the food engine attaches, deduped by entry key. Read off what is ACTUALLY being
+  //    rendered (the alternative carries its own keys when it stands in), so the notes
+  //    always describe the substance on screen. Never a drop (a hard drop is step 3's
+  //    job); a separation window is guidance, not a contraindication.
   const seen = new Set<string>();
-  for (const s of entry.supplements) {
+  for (const s of rendered) {
     for (const k of s.interactionKeys ?? []) {
       if (seen.has(k)) continue;
       const hit = drugHits.get(k);
@@ -224,7 +228,7 @@ function buildSuggestion(
     label: entry.label,
     origin: "curated",
     triggeredBy,
-    supplements,
+    supplements: rendered.map((s) => toSuggested(s, isAlternative)),
     evidence: entry.evidence,
     source: entry.source,
     caveat: entry.caveat,
