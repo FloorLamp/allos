@@ -18,7 +18,9 @@
 // — an admin who can act as every profile must NOT receive every profile's dose
 // reminders (fan-out.ts's "the one deliberate departure from admin-sees-all"); they
 // opt profiles into their notification scope via an explicit grant or their own-
-// profile association. These reads touch login/grant tables (login_profiles, logins)
+// profile association — a write `setGrants` refused for every admin until #2345, and
+// performs now. THIS DERIVATION IS UNCHANGED by that fix: the union was always right,
+// the row was simply uncreatable. These reads touch login/grant tables (login_profiles, logins)
 // — NOT profile-owned data — so they are not (and cannot be) profile_id-scoped in the
 // owned-table sense; the profile filter lives in the query itself. Auth-blind: these
 // are the raw relation, not an access check (a scope value is data, not a gate).

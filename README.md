@@ -112,6 +112,12 @@ For a household, an administrator can create:
 
 Manage these under **Settings → People & access**.
 
+Admins already reach every profile, so their entry there is not access — it
+chooses which profiles' **reminders** reach them. Notifications are opt-in per
+profile for an admin (a reminder is a push to your phone, not a page you can
+open), and an admin can change their own under **Settings → Notifications →
+Profiles**.
+
 ## Updating
 
 The default Compose file pulls the published image from GitHub Container

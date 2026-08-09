@@ -473,6 +473,27 @@ describe("access scoping", () => {
     expect(accessForProfile(admin.id, "admin", readP)).toBe("write");
   });
 
+  it("an admin's OWN grant row is inert for access, at any level (#2345)", () => {
+    // Since #2345 an admin's login_profiles row means "notify me about this profile"
+    // — the notification fan-out's opt-in, riding the same table. That is only safe
+    // because the access paths never consult it for an admin, so pin BOTH directions
+    // against the real module: a row adds nothing, and even a hand-written 'read'
+    // (a legacy row, a migration, a direct edit) cannot restrict them.
+    const admin = mkLogin("admin");
+    const a = mkProfile("Opted in");
+    const b = mkProfile("Not opted in");
+    const before = accessibleProfilesForLogin(admin.id).map((p) => p.id);
+    expect(before).toEqual(expect.arrayContaining([a, b]));
+
+    grant(admin.id, a, "read");
+
+    expect(accessibleProfilesForLogin(admin.id).map((p) => p.id)).toEqual(
+      before
+    );
+    expect(accessForProfile(admin.id, "admin", a)).toBe("write");
+    expect(accessForProfile(admin.id, "admin", b)).toBe("write");
+  });
+
   it("canAccessProfile mirrors the accessible set", () => {
     const member = mkLogin("member");
     const a = mkProfile("Reachable");

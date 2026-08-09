@@ -13,6 +13,14 @@
 // single place the "admins reach every profile" rule is intentionally not inherited
 // — a notification is a push into someone's pocket, not a read.
 //
+// That opt-in is PERFORMABLE since #2345: `setGrants` used to refuse every admin
+// ("Admins already have access to every profile" — true about access, irrelevant to
+// notifications), so the sentence above described a write nothing could make. An
+// admin's `login_profiles` row now means exactly "notify me about this profile", and
+// the control for it renders on Settings → Family (any login) and Settings →
+// Notifications (the signed-in one). Nothing here changed: the exclusion stands, and
+// an admin still receives only what they explicitly checked.
+//
 // The DB reads here are login/grant tables (login_profiles, login_settings) — NOT
 // profile-owned data — so they are not (and cannot be) profile_id-scoped in the
 // owned-table sense; the profile filter lives in the grant subquery. The pure

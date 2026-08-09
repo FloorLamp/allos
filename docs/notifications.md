@@ -20,6 +20,18 @@ control states the trade-off, and nothing but your own choice ever widens it.
 Email can't carry one-tap buttons, so the button-only nudges (the food nudge,
 the mood check-in) never send there.
 
+**Who a profile's reminders reach.** A channel belongs to a **login** (a person
+with a phone); an event is about a **profile** (a toddler has no phone, their
+caregiver does). So each reminder goes to the logins that manage that profile —
+the ones granted it, plus whoever has it set as their own profile. **Admins are
+the deliberate exception**: they can open every profile, but a reminder is a
+push to your pocket rather than a page you chose to visit, so an admin is
+notified only about the profiles they explicitly pick. Pick them under
+**Settings → Notifications → Profiles** (your own login), or for any login under
+**Settings → People & access**. Your own profile is always included and can't be
+switched off there. A newly created profile has no recipient until someone
+chooses one.
+
 Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly
 recap** — a quiet once-a-week summary of your week (workouts, PRs, supplement
 adherence, a body-weight trend, aerobic base, and sleep regularity), covering the same

@@ -45,3 +45,14 @@ export const NOTIF_SWEEP_PROFILE = "Notif Sweep (e2e)";
 // declined things, and one QUIET one the tick evaluated and had nothing to say about.
 export const NOTIFY_LOG_BUSY_PROFILE = "Notify Log Busy (e2e)";
 export const NOTIFY_LOG_QUIET_PROFILE = "Notify Log Quiet (e2e)";
+
+// A dedicated ADMIN login + two profiles for the admin notification opt-in (#2345).
+// It must be an admin (that is the whole case) and its own — never the shared admin
+// storageState — because the spec writes login_profiles rows that decide who the
+// fan-out reaches, and doing that to the storageState admin would quietly enrol
+// every other spec's session as a recipient. OWN is declared as the login's
+// own_profile_id (so the locked-on "your own profile" row has something to be), WARD
+// is the un-opted-in profile the spec checks and unchecks.
+export const E2E_LOGIN_NOTIFY_SCOPE = "e2e_notify_scope";
+export const NOTIFY_SCOPE_OWN_PROFILE = "Notify Scope Own (e2e)";
+export const NOTIFY_SCOPE_WARD_PROFILE = "Notify Scope Ward (e2e)";
