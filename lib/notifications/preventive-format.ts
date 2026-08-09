@@ -12,6 +12,7 @@
 
 import type { PreventiveNudgeItem } from "../preventive-nudge";
 import type { NotificationAction, NotificationMessage } from "./types";
+import { formatMessageLine } from "./message-line";
 
 // Render ONE screening's nudge. Names the profile (a shared/caregiver chat may
 // carry several profiles) and the screening. A deep-link "go do it" button (#1083)
@@ -60,7 +61,8 @@ export function renderPreventiveMessage(
   );
   return {
     title: `🩺 Preventive care: ${who}${item.name}`,
-    body: detail ? `${tag} — ${detail}` : tag,
+    // The gather's own detail line qualifies the state — a note on it, not its cause.
+    body: formatMessageLine({ head: tag, notes: [detail] }),
     actions,
     kind: "preventive",
   };

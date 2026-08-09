@@ -15,6 +15,7 @@ import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { offerTextTail } from "./offer-tail";
+import { formatMessageLine } from "./message-line";
 import { joinBody } from "./rich-text";
 import { sriPresentation } from "../sleep-regularity";
 import { sleepVerdictPhrase } from "../sleep-summary";
@@ -309,11 +310,14 @@ export function digestDocumentLine(
     .filter((s): s is string => !!s)
     .join(", ");
   const where = context ? ` (${context})` : "";
-  const split = documentSplitPhrase(doc.extracted);
-  const what = split ? ` — ${split}` : "";
   const base = deepLinkBase.replace(/\/$/, "");
-  const link = base ? ` ${base}${importHref(doc.id)}` : "";
-  return `📄 New: ${doc.title}${where}${what}${link}`;
+  return formatMessageLine({
+    glyph: "📄",
+    head: `New: ${doc.title}${where}`,
+    // WHAT THE IMPORT PRODUCED is a supporting fact about the document, not its cause.
+    notes: [documentSplitPhrase(doc.extracted)],
+    link: base ? `${base}${importHref(doc.id)}` : null,
+  });
 }
 
 // How many documents a morning names before it collapses to a count. A multi-document
@@ -344,6 +348,17 @@ export interface DigestModel {
   timeActions?: NotificationAction[];
 }
 
+// The digest's own title. The profile name is a NOTE on it — a shared chat can carry
+// several profiles — which is why an unnamed profile yields "☀️ Morning digest" rather
+// than a line ending in an orphaned dash.
+function digestTitle(profileName: string): string {
+  return formatMessageLine({
+    glyph: "☀️",
+    head: "Morning digest",
+    notes: [profileName],
+  });
+}
+
 // Human sleep duration: "7h 20m", "8h", "45m". Minutes in, rounded.
 function fmtSleepDuration(min: number): string {
   const total = Math.round(min);
@@ -354,19 +369,21 @@ function fmtSleepDuration(min: number): string {
   return `${h}h ${m}m`;
 }
 
-// Short key stat for an activity line: distance for cardio, else duration.
-function activityStat(a: DigestActivity): string {
+// Short key stat for an activity line: distance for cardio, else duration. A NOTE on the
+// line (a supporting fact about the session), never its cause.
+function activityStat(a: DigestActivity): string | null {
   if (a.type === "cardio" && a.distanceKm != null) {
     // Canonical km per the notification unit policy (a chat has no login-unit
     // context), rounded via the shared formatter rather than the raw stored float
     // (#1109) — matches the adjacent fmtWeight line.
-    return ` — ${fmtDistance(a.distanceKm, "km")}`;
+    return fmtDistance(a.distanceKm, "km");
   }
-  if (a.durationMin != null) return ` — ${a.durationMin} min`;
-  return "";
+  if (a.durationMin != null) return `${a.durationMin} min`;
+  return null;
 }
 
-// The activity line's PROVENANCE clause (#1913 item 1): " · Strava".
+// The activity line's PROVENANCE note (#1913 item 1): "Strava". A note on the line, so
+// the grammar punctuates it and this only decides WHETHER there is one.
 //
 // The arrival line the digest used to carry — "📥 Strava: workouts" — was provenance
 // and nothing else, stated about a session the message already listed one section down.
@@ -377,10 +394,10 @@ function activityStat(a: DigestActivity): string {
 // A MANUAL row gets nothing. "Manual" beside a session you logged yourself is not
 // provenance, it is noise — the clause exists to answer "where did this come from?",
 // which only has an answer when something else put it there.
-function activitySource(a: DigestActivity): string {
+function activitySource(a: DigestActivity): string | null {
   const source = a.source ?? null;
-  if (activityProvenanceKey(source) === JOURNAL_SOURCE_MANUAL) return "";
-  return ` · ${activityProvenanceLabel(source)}`;
+  if (activityProvenanceKey(source) === JOURNAL_SOURCE_MANUAL) return null;
+  return activityProvenanceLabel(source);
 }
 
 // Doses are summarized by the Today dose-count headline, so they're dropped from
@@ -501,7 +518,11 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // only lines in the whole message with no emoji.
     for (const line of due.lines) todayLines.push(`🗓️ ${line}`);
     for (const h of due.highlights) {
-      todayLines.push(`⚑ ${h.title} — ${h.reason}`);
+      // The item's TOP reason (#656) is a cause fragment about the title — the
+      // `because` role, declared rather than positional.
+      todayLines.push(
+        formatMessageLine({ glyph: "⚑", head: h.title, because: h.reason })
+      );
     }
     // Data-plumbing asks, named (#1685/#1757) — and since #1913 item 5 these are the
     // ONLY entry each one gets: the band above no longer counts them, so a single broken
@@ -519,10 +540,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // it is the only deadline that ask has.
     const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
     for (const s of due.syncIssues) {
-      const because = s.because ? ` — ${s.because}` : "";
-      const when = s.dueText ? ` · ${s.dueText}` : "";
-      const link = base ? ` ${base}${s.href}` : "";
-      todayLines.push(`${s.glyph} ${s.title}${because}${when}${link}`);
+      todayLines.push(
+        formatMessageLine({
+          glyph: s.glyph,
+          head: s.title,
+          because: s.because,
+          deadline: s.dueText,
+          link: base ? `${base}${s.href}` : null,
+        })
+      );
     }
   }
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });
@@ -530,7 +556,13 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // Yesterday: what happened.
   const yLines: string[] = [];
   for (const a of input.activities) {
-    yLines.push(`🏋️ ${a.title}${activityStat(a)}${activitySource(a)}`);
+    yLines.push(
+      formatMessageLine({
+        glyph: "🏋️",
+        head: a.title,
+        notes: [activityStat(a), activitySource(a)],
+      })
+    );
   }
   // The delta headline LEADS the intake report (#1505 part 3): "which of the things
   // that push me changed state" is the news; the fraction below is the supporting
@@ -562,10 +594,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       // bug (#380 nit); state the skips plainly instead.
       yLines.push(`💊 ${cap(noun)}: ${skipped} skipped`);
     } else {
-      const skipNote = skipped > 0 ? ` · ${skipped} skipped` : "";
-      const explain = mergedClause ? ` — ${mergedClause}` : "";
       yLines.push(
-        `💊 ${cap(noun)}: ${taken}/${intended} taken${skipNote}${explain}`
+        formatMessageLine({
+          glyph: "💊",
+          head: `${cap(noun)}: ${taken}/${intended} taken`,
+          // The merged delta EXPLAINS the gap ("missed Glycine (1 day)") — it is the
+          // cause, so it leads the qualifiers; the skip count is a supporting note.
+          because: mergedClause,
+          notes: [skipped > 0 ? `${skipped} skipped` : null],
+        })
       );
     }
   }
@@ -589,7 +626,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       stages.push(`deep ${fmtSleepDuration(s.deepMin)}`);
     if (s.remMin != null && s.remMin > 0)
       stages.push(`REM ${fmtSleepDuration(s.remMin)}`);
-    const stageNote = stages.length ? ` · ${stages.join(", ")}` : "";
+    const stageNote = stages.length ? stages.join(", ") : null;
     // STATE THE VERDICT, don't just print two numbers (#1712). The comparison the
     // reader was left to do is carried in words plus a direction marker, from the same
     // baseline the line already read. Below-baseline reads neutrally — the digest is
@@ -604,9 +641,11 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // rest of the message uses for exactly that (#1819 item 7) — interpolated with a
     // bare space it read as one run-on quantity, "6h 38m about typical".
     sleepLines.push(
-      `😴 Last night: ${fmtSleepDuration(s.lastNightMin)}${
-        verdict ? ` — ${verdict}` : ""
-      }${stageNote}`
+      formatMessageLine({
+        glyph: "😴",
+        head: `Last night: ${fmtSleepDuration(s.lastNightMin)}`,
+        notes: [verdict, stageNote],
+      })
     );
     // A same-day nap on its own line — kept apart from the overnight total.
     if (s.napMin != null && s.napMin > 0) {
@@ -619,7 +658,13 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       // every SRI surface reads, and by #992's contract it qualifies the schedule's
       // consistency — never the sleeper.
       const sri = sriPresentation(s.sri);
-      sleepLines.push(`📈 Sleep regularity ${sri.value} — ${sri.qualifier}`);
+      sleepLines.push(
+        formatMessageLine({
+          glyph: "📈",
+          head: `Sleep regularity ${sri.value}`,
+          notes: [sri.qualifier],
+        })
+      );
     }
     sections.push({ heading: "Sleep", lines: sleepLines });
   }
@@ -685,7 +730,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     });
     if (timingSection) sections.push(timingSection);
     return {
-      title: `☀️ Morning digest — ${input.profileName}`,
+      title: digestTitle(input.profileName),
       sections,
       offerTail: input.offerTail ?? null,
       // A tail-only digest has no category content, so there is nothing to tune.
@@ -695,7 +740,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   if (timingSection) sections.push(timingSection);
   return {
-    title: `☀️ Morning digest — ${input.profileName}`,
+    title: digestTitle(input.profileName),
     sections,
     offerCount: input.offerCount ?? 0,
     offerTail: input.offerTail ?? null,

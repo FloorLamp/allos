@@ -10,7 +10,8 @@
 import { foodGroupBySlug, foodGroupEmoji, foodGroupName } from "../food-groups";
 import { FOOD_QUICK_COUNT } from "../food-rank";
 import type { ProteinNudgeLineParts } from "../protein";
-import { bold, joinBody, rich, richFrom, type MessageBody } from "./rich-text";
+import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
+import { formatRichMessageLine } from "./message-line";
 import {
   DEFAULT_PROTEIN_PRESET_GRAMS,
   isProteinNudgeKey,
@@ -156,11 +157,14 @@ function proteinBody(
   if (!parts) return null;
   // No goal band ⇒ no conclusion to state, and none is invented.
   if (typeof parts === "string") return parts;
-  const tail = parts.statusWords ? ` — ${parts.statusWords}` : "";
-  // The joiner is the plain line's (#1822 item 4), with the figure emphasized: the
-  // parts already separate amount/band/status, so the two renderings can only differ
-  // in emphasis, never in what they claim.
-  return rich`${parts.emoji} Protein: ${bold(parts.amount)} so far · goal ${parts.band}${tail}`;
+  // The ONE grammar, with the figure emphasized (#1822 item 4 / #2391): the parts
+  // already separate amount/band/status, so the plain and the emphasized rendering can
+  // only differ in emphasis, never in what they claim or how they are punctuated.
+  return formatRichMessageLine({
+    glyph: parts.emoji,
+    head: ["Protein: ", bold(parts.amount), " so far"],
+    notes: [`goal ${parts.band}`, parts.statusWords],
+  });
 }
 
 // Two buttons per keyboard row, so six groups render as a tidy 3×2 grid.

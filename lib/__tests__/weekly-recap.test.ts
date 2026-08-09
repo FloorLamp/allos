@@ -297,7 +297,7 @@ describe("buildWeeklyRecap", () => {
     const recap = buildWeeklyRecap(baseInput({ sri: 82, socialJetlagMin: 78 }));
     const line = recap.lines.find((l) => l.key === "sleepRegularity")!;
     expect(line.value).toBe("SRI 82");
-    expect(line.note).toBe("1.3h weekend shift");
+    expect(line.notes).toEqual(["1.3h weekend shift"]);
     // A weekend shift is context, not a comparison — the line compares nothing.
     expect(line.comparison.kind).toBe("none");
   });
@@ -357,7 +357,7 @@ describe("buildWeeklyRecap", () => {
     );
     const line = recap.lines.find((l) => l.key === "prs")!;
     expect(line.value).toBe("4");
-    expect(line.note).toBe("Bench press, Squat, Deadlift +1 more");
+    expect(line.notes).toEqual(["Bench press, Squat, Deadlift +1 more"]);
     expect(line.comparison.kind).toBe("none");
     expect(recap.headline).toContain("4 PRs");
   });
@@ -368,7 +368,8 @@ describe("buildWeeklyRecap", () => {
     );
     const line = recap.lines.find((l) => l.key === "adherence")!;
     expect(line.value).toBe("86%");
-    expect(line.note).toBe("12/14 doses");
+    // A LIST of declared notes since #2391; the grammar punctuates them.
+    expect(line.notes).toEqual(["12/14 doses", null]);
     expect(line.comparison.kind).toBe("none");
   });
 
@@ -384,8 +385,8 @@ describe("buildWeeklyRecap", () => {
     );
     const line = recap.lines.find((l) => l.key === "weight")!;
     expect(line.value).toBe("73 kg");
-    expect(line.note).toContain("−"); // net loss over the window
-    expect(line.note).toContain("kg");
+    expect(line.notes?.[0]).toContain("−"); // net loss over the window
+    expect(line.notes?.[0]).toContain("kg");
   });
 
   it("marks a week with no workouts, adherence, or weight as empty", () => {
@@ -456,6 +457,35 @@ describe("renderRecapMessage", () => {
     );
     const msg = renderRecapMessage(recap, "Ada", "   ")!;
     expect(msg.body).toContain("• Workouts: 1");
+  });
+
+  // THE DOCUMENTED GRAMMAR, exactly (#2391 / #2389 item 2). The recap used to wrap its
+  // annotation in parentheses while the digest composed with declared parts, so the two
+  // system-initiated messages a profile receives were punctuated by different rules —
+  // and only the digest's was nesting-proof. This is the one visible copy change the
+  // unification forces, pinned line for line.
+  it("composes each bullet as head — note · comparison, with no parentheses", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({
+        workouts: [
+          { date: "2026-07-06", type: "strength" },
+          { date: "2026-07-08", type: "cardio" },
+        ],
+        prevWorkouts: [{ date: "2026-06-30", type: "strength" }],
+        prLabels: ["Romanian Deadlift (Rep Trap Bar)"],
+        adherence: { taken: 12, skipped: 1, due: 14 },
+      })
+    );
+    const lines = String(recap.lines.length ? renderRecapMessage(recap, "Ada")!.body : "")
+      .split("\n")
+      .slice(1);
+    expect(lines).toEqual([
+      "• Workouts: 2 (strength 1, cardio 1) — 1 last week",
+      "• PRs: 1 — Romanian Deadlift (Rep Trap Bar)",
+      "• Adherence: 92% — 12/13 doses · 1 skipped",
+    ]);
+    // A label that legitimately contains parentheses no longer nests inside another set.
+    expect(lines.join("\n")).not.toMatch(/\(\(|\)\)/);
   });
 });
 

@@ -1875,7 +1875,10 @@ the surface the signal exists to save them from.
   `getImportIssues` gates on `standingEscalates`, so an `intermittent` provider (a
   failure with a recent success beside it) never reaches a push channel.
 - The grammar is `glyph title — because · dueText`, each part declared rather than
-  inferred. **`because`** is a short cause fragment each producer writes for this
+  inferred — and since #2391 it is a **type with one formatter over it**
+  (`MessageLine` / `formatMessageLine`, `lib/notifications/message-line.ts`), not a
+  convention this line follows. See **The message-line grammar** below.
+  **`because`** is a short cause fragment each producer writes for this
   surface — the `${title} — ${detail}` join silently assumed `detail` was one, which
   held for the integration producer and made the portal line say its imperative
   twice. `syncRequestCopy` stays the one formatter and gained the fragment beside
@@ -1923,9 +1926,65 @@ sleeper.
 
 **Separator grammar.** One rule across the digest: `:` introduces a label's
 content, `—` attaches a clause that qualifies the statement before it, and `·`
-joins peers on one line (`,` joins peers within one group). Applied wherever the
-above lines touch; a line that predates the rule and was not otherwise edited
-still follows it or is a candidate for the next pass.
+joins peers on one line (`,` joins peers within one group). It is no longer a rule
+a line follows by hand — see below.
+
+## The message-line grammar (#2391)
+
+**One type, one formatter, one scan.** The grammar above was documented and nothing
+implemented it: every producer interpolated its own `—` and `·`, so it was a
+convention re-implemented at each call site and nothing could tell when a site
+stopped following it. `lib/notifications/message-line.ts` is now its implementation.
+
+**The shape.** A head, then declared qualifiers — the first introduced by an em
+dash, the rest separated by `·`:
+
+```
+[glyph ]head[ — q₁][ · q₂ · q₃ …][ link]
+```
+
+`MessageLineParts` names every part: `glyph`, `head`, `because`, `notes[]`,
+`comparison`, `deadline`, `link`. `formatMessageLine` renders it; the qualifiers are
+ordered `because → notes → comparison → deadline`, absent and blank parts are
+dropped, and a line with no qualifier is its head alone with no invented
+punctuation. `formatRichMessageLine` is the same grammar over rich parts (the
+protein nudge bolds its figure), punctuated identically by construction.
+`messageLineQualifiers` hands the ordered parts to a surface that lays them out
+itself rather than rendering a line — the recap card's annotation span.
+
+**Why a type and not a join helper.** The digest's own bug is the argument:
+`${title} — ${detail}` assumed `detail` was a cause fragment, and a shared
+`join(parts, " · ")` would have produced that line just as happily. What fixed it
+was making `because` a **declared field with a stated contract**. So the field
+contracts are the deliverable and the separators are a detail the formatter owns: a
+producer holding a cause fragment and an expiry cannot pass them in the wrong roles,
+and a producer holding neither renders a bare head.
+
+**The head is opaque, deliberately.** The type models no structure inside the head —
+not the emphasized token a sentence turns on (`Nothing logged for **Midday**
+today.`), not a relative day, not a row label. Those are what the clause *says*; a
+role for each would be a copy template wearing a grammar's clothes, re-invented per
+sentence shape. A rich head takes a sequence of parts instead, so emphasis lands
+where the sentence needs it. This is not the hole `${title} — ${detail}` left open:
+that defect was an unstated contract on a **qualifier**, and the head has always been
+the whole subject clause, first and unpunctuated. A qualifier smuggled into a head is
+what the scan fails a registered module for.
+
+**The two grammars are one grammar.** The digest's `glyph title — because · dueText`
+and the recap's `label: value — note · comparison` differ only in their prefix — a
+glyph that says who acts, versus a row label folded into the head — and both are the
+shape above. The recap had drifted to a parenthesis grammar (#2389 item 2); it now
+composes through `recapMessageLine` + `formatMessageLine`, so the two
+system-initiated messages a profile receives are punctuated by one rule and neither
+can nest a parenthetical against a label that legitimately contains one.
+
+**Scope is declared, not inferred.** `·` is ordinary punctuation elsewhere —
+`lib/activity-import-details.ts` joins heart-rate samples with it — so scope is the
+explicit `MESSAGE_LINE_MODULES` registry, not a pattern over the character.
+`lib/__tests__/message-line.test.ts` fails a registered module that hand-assembles
+`—`/`·` into a string literal, with an allowlist carrying a written reason per
+survivor (keyboard button labels, lists of coequal facts, prose). Adding a module to
+the registry is how a new message surface opts in.
 
 ## The Telegram command vocabulary (#1895)
 

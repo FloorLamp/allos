@@ -11,6 +11,7 @@
 import type { BandGroup, UpcomingDomain, UpcomingItem } from "../upcoming";
 import { primaryReason } from "../reasons";
 import type { AppRoute } from "../hrefs";
+import { formatMessageLine } from "./message-line";
 
 // Singular noun per domain; the summary pluralizes with a trailing "s". "lab"
 // reads naturally as the retest signal ("1 lab, 2 labs"); "training target" and
@@ -405,9 +406,13 @@ export function buildUpcomingDigest(
   // integration reaching nothing again, which is the whole bug.
   if (lines.length === 0 && syncIssues.length === 0) return null;
   const total = nonEmpty.reduce((n, g) => n + g.items.length, 0);
-  const who = profileName ? ` — ${profileName}` : "";
   return {
-    title: `🔔 Due soon${who}`,
+    // The profile name is a NOTE on the title — a shared chat can carry several.
+    title: formatMessageLine({
+      glyph: "🔔",
+      head: "Due soon",
+      notes: [profileName],
+    }),
     lines,
     highlights: digestHighlights(nonEmpty),
     syncIssues,
