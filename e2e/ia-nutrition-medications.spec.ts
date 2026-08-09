@@ -300,6 +300,67 @@ test("supplement suggestion provenance stays visually bounded", async ({
   }
 });
 
+test("a curated supplement suggestion is visibly distinct from a generated one (#2378)", async ({
+  page,
+}) => {
+  // Two suggestions side by side in the same panel: one from the committed
+  // biomarker→supplement map (no model involved), one from the AI route. They are
+  // different CLAIMS, so they must not render identically — each carries an origin
+  // badge naming where it came from.
+  const generatedName = "Generated draft (e2e)";
+  const db = new Database(dbPath());
+  db.pragma("busy_timeout = 5000");
+  const cleanup = () => {
+    db.prepare(
+      "DELETE FROM intake_item_suggestions WHERE profile_id = 1 AND name = ?"
+    ).run(generatedName);
+    db.prepare(
+      "DELETE FROM medical_records WHERE profile_id = 1 AND canonical_name = 'Folate'"
+    ).run();
+  };
+  try {
+    cleanup();
+    // A flagged-low Folate reading — a family the curated map covers, absent from the
+    // seed, and one the seeded stack does not already supplement.
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, flag)
+       VALUES (1, ?, 'lab', 'Folate', '3.1', 'ng/mL', 'Folate', 'low')`
+    ).run(frozenNow().toISOString().slice(0, 10));
+    db.prepare(
+      `INSERT INTO intake_item_suggestions
+         (profile_id, name, rationale, trigger, status, food_timing)
+       VALUES (1, ?, 'Fixture rationale', 'labs', 'pending', 'any')`
+    ).run(generatedName);
+
+    await page.goto("/nutrition?tab=supplements");
+    await page.getByTestId("supplement-suggestions-badge").click();
+    const dialog = page.getByRole("dialog", { name: "Suggestions" });
+
+    // The curated card: badged Curated, naming the flagged biomarker, with no dose.
+    const curated = dialog.getByTestId("curated-supplement-suggestion-folate");
+    await expect(curated).toBeVisible();
+    await expect(curated).toHaveAttribute("data-origin", "curated");
+    await expect(curated.getByTestId("suggestion-origin-badge")).toHaveText(
+      "Curated"
+    );
+    await expect(curated).toContainText("Folate");
+    await expect(curated).toContainText("Folic acid");
+
+    // The AI card: same panel, badged Generated.
+    const generated = dialog
+      .locator('[data-origin="generated"]')
+      .filter({ hasText: generatedName });
+    await expect(generated).toBeVisible();
+    await expect(generated.getByTestId("suggestion-origin-badge")).toHaveText(
+      "Generated"
+    );
+  } finally {
+    cleanup();
+    db.close();
+  }
+});
+
 test("the Medications page renders its list and inline add workflow (#746)", async ({
   page,
 }) => {

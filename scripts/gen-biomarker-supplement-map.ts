@@ -336,8 +336,15 @@ const ENTRIES: BiomarkerSupplementEntry[] = [
     direction: "low",
     supplements: [
       {
-        name: "Fish oil (EPA and DHA)",
-        matchTokens: ["fish oil", "omega 3", "omega-3", "epa", "dha"],
+        name: "Fish or krill oil (EPA and DHA)",
+        matchTokens: [
+          "fish oil",
+          "krill oil",
+          "omega 3",
+          "omega-3",
+          "epa",
+          "dha",
+        ],
         foodTiming: "with_food",
         note: "Taken with a meal for absorption and to reduce the aftertaste.",
       },

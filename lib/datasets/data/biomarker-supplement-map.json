@@ -213,9 +213,10 @@
       "direction": "low",
       "supplements": [
         {
-          "name": "Fish oil (EPA and DHA)",
+          "name": "Fish or krill oil (EPA and DHA)",
           "matchTokens": [
             "fish oil",
+            "krill oil",
             "omega 3",
             "omega-3",
             "epa",
