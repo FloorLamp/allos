@@ -1,3 +1,21 @@
+// The AI supplement-suggestion route — the FALLBACK half of biomarker→supplement
+// (issue #2378), no longer the only route.
+//
+// The deterministic half is lib/supplement-suggest-curated.ts: a curated,
+// human-reviewable map answers the biomarker families it covers with no model call at
+// all. THIS module answers everything the map does not cover — free-text feedback, the
+// long tail of flagged labs, the goal/training context a curated table can't hold. Its
+// prompt is told which families are already answered deterministically so it doesn't
+// restate them, and its drafts land in intake_item_suggestions where the UI renders
+// them with a GENERATED badge. A curated recommendation and a generated one are
+// different claims and must never render identically.
+//
+// Everything here still runs through the same deterministic safety belt
+// (screenSuggestionSafety) over the same ingestible-conservative gather the curated
+// engine screens against, and still degrades to an empty result plus a note when no AI
+// credentials are configured — with the curated map present, an uncovered family with
+// no credentials is simply silent.
+
 import Anthropic from "@anthropic-ai/sdk";
 import { db, writeTx } from "./db";
 import { isAllergyActionable } from "./allergy-reactions";
@@ -9,7 +27,7 @@ import {
   getGoals,
   getMedicalRecords,
   getSupplements,
-  getIntakeSafetyContext,
+  getIngestibleSafetyContext,
 } from "./queries";
 import { biomarkerFamily } from "./canonical-name";
 import { isGoalLive } from "./goals";
@@ -37,6 +55,7 @@ import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { strOrNull } from "./parse";
 import { biomarkerSuggestionSource } from "./supplement-suggestion-source";
+import { isCuratedSupplementBiomarker } from "./supplement-suggest-curated";
 
 const log = createLogger("supplement-suggest");
 
@@ -244,6 +263,25 @@ function buildContext(
   );
   lines.push("<<<END UNTRUSTED EXTRACTED DOCUMENT DATA>>>");
 
+  // The curated map (#2378) already answers some flagged families DETERMINISTICALLY,
+  // and the user is already looking at those answers. This route is the FALLBACK for
+  // what the map does not cover, so name the covered labs and tell the model not to
+  // restate them: a generated duplicate of a curated claim is exactly the output that
+  // would blur the distinction the two surfaces exist to keep.
+  const coveredLabs = [
+    ...new Set(
+      oorLabs
+        .map((r) => r.canonical_name || r.name)
+        .filter((n) => isCuratedSupplementBiomarker(n))
+    ),
+  ];
+  if (coveredLabs.length > 0) {
+    lines.push("\n## Already answered by the curated map — do NOT duplicate");
+    lines.push(
+      `These labs already have a deterministic, curated supplement answer shown to the user: ${coveredLabs.join(", ")}. Do not propose a supplement for them; suggest only for what is NOT in this list.`
+    );
+  }
+
   if (opts.feedback) lines.push(`\n## User note\n${opts.feedback}`);
 
   // The deterministic belt's facts come from getSuggestSafetyContext (#691): active
@@ -256,20 +294,13 @@ function buildContext(
   return { text: lines.join("\n"), lowLabNames, safety };
 }
 
-// The deterministic SAFETY belt's facts for the supplement-suggest path. Non-allergen
-// facts (active medications + active conditions, plus the food engine's situations)
-// come straight from the ONE shared intake-safety gather (getIntakeSafetyContext, #661)
-// so the prompt and the belt can't drift. The ALLERGEN set is deliberately BROADER than
-// that shared gather's active-only list (#691): the belt screens ALL recorded allergens
-// INCLUDING resolved ones — dropping an ingestible suggestion should stay conservative
-// even after an allergy is marked resolved (the prompt still hides resolved allergies
-// from the model; this is the belt that distrusts the model). Exported for the DB-tier
-// test that pins this gather over a seeded resolved allergy.
+// The deterministic SAFETY belt's facts for the supplement-suggest path. The gather
+// itself now lives in the query layer (getIngestibleSafetyContext, lib/queries/intake/
+// safety.ts) because the CURATED engine (#2378) needs exactly the same widened context
+// — the belt and the curated engine must screen an ingestible against identical facts.
+// Kept here as the named entry point this module and its DB-tier test have always used.
 export function getSuggestSafetyContext(profileId: number): SafetyContext {
-  return {
-    ...getIntakeSafetyContext(profileId),
-    allergens: getAllergies(profileId).map((a) => a.substance),
-  };
+  return getIngestibleSafetyContext(profileId);
 }
 
 const str = strOrNull;

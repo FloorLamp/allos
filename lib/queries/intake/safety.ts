@@ -78,3 +78,21 @@ export function getIntakeSafetyContext(profileId: number): IntakeSafetyContext {
   const situations = getActiveSituations(profileId);
   return { allergens, allergyRecords, medications, conditions, situations };
 }
+
+// The gather for a path that PROPOSES AN INGESTIBLE — the AI supplement route's
+// deterministic belt (#691) and the curated biomarker→supplement engine (#2378).
+// Identical to the shared context above except for one deliberate widening: the
+// ALLERGEN set is ALL recorded allergens, resolved ones included. Dropping an
+// ingestible suggestion should stay conservative even after an allergy is marked
+// resolved, so a mis-marked or corrected-then-reverted allergy can't let one through.
+// (The AI prompt still shows the model only live allergies; this is the belt that
+// distrusts it.) Everything else — active medications, active conditions, situations —
+// comes straight from the one shared gather so the surfaces can't drift.
+export function getIngestibleSafetyContext(
+  profileId: number
+): IntakeSafetyContext {
+  return {
+    ...getIntakeSafetyContext(profileId),
+    allergens: getAllergies(profileId).map((a) => a.substance),
+  };
+}
