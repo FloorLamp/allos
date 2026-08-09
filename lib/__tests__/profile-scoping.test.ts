@@ -323,6 +323,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 169 (#2232) AUTOINCREMENT preservation, restore half: bumps the rebuilt table's sqlite_sequence back to the pre-rebuild high-water mark — schema bookkeeping, never profile rows.",
   },
   {
+    file: "lib/migrations/versions/176-unqualified-glucose-unflag.ts",
+    includes:
+      "UPDATE medical_records SET flag = NULL WHERE canonical_name = 'Glucose'",
+    why: "migration 176 (#2337): a one-shot, deliberately GLOBAL clear of the flags allos derived for an unqualified `Glucose` against a fasting band the catalog no longer publishes — the band was wrong for EVERY profile, so the pass is keyed on the analyte (canonical_name) and on the flags the numeric reconcile writes, never on a subject. A profile predicate would leave some profiles judged against a retired band.",
+  },
+  {
     file: "lib/migrations/versions/171-temperature-note-times.ts",
     includes: "SELECT id, profile_id, date, notes, occurred_at",
     why: "migration 171 (#2154) temperature note-time data move: a one-shot boot-time sweep over EVERY profile's smuggled 'HH:MM' temperature notes — it selects profile_id per row precisely to resolve each profile's own timezone, and the per-row UPDATEs below key on the ids this scan produced.",

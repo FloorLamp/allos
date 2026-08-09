@@ -641,9 +641,11 @@ describe("reassignDocument", () => {
       ...makeInput(),
       records: [
         {
+          // The FASTING entry (#2337): unqualified "Glucose" is band-less by
+          // decision, so only a banded analyte can prove a dest-side reconcile ran.
           category: "lab",
-          name: "Glucose",
-          canonical: "Glucose",
+          name: "Glucose, Fasting",
+          canonical: "Glucose, Fasting",
           value: "130",
           value_num: 130,
           unit: "mg/dL",

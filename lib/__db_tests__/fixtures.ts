@@ -35,8 +35,10 @@ export interface SeededProfile {
 
 export interface SeedOpts {
   weightKg?: number;
-  /** Glucose reading; the default (130) is above the canonical ref_high (99) so
-   *  reconcileFlags derives a 'high' flag. */
+  /** Glucose reading, seeded UNQUALIFIED (the document never stated a fasting
+   *  state). That entry is deliberately band-less (#2337), so reconcileFlags derives
+   *  NO flag from it at any value — a test that needs a derived out-of-range flag
+   *  seeds `Glucose, Fasting` (70–99) instead. */
   glucoseValueNum?: number;
   /** Units on hand for the tracked supplement (default 8 → below the 10-day
    *  low-supply threshold, so the refill read reports "low"). */
