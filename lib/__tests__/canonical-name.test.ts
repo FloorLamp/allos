@@ -680,6 +680,94 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     );
   });
 
+  // THE ROWS #2335 DELETED, pinned against the real dataset.
+  //
+  // Taking the "Long Name (ABBR)" form is not cosmetic: buildCanonicalIndex derives
+  // BOTH the bare abbreviation and the bare long name from such an entry, so the
+  // hand-written alias rows for these spellings became redundant the moment the entry
+  // was renamed, and were removed in the same change. This is the test that says the
+  // coverage did not go with them — a route these names once travelled must still
+  // exist, now via the derivation instead of the table.
+  it("auto-derives the routes whose curated alias rows the rename made redundant", () => {
+    for (const [spelling, canonical] of [
+      // eGFR: the bare abbreviation, the bare long form, and the comma-inverted long
+      // form ("Glomerular Filtration Rate, Estimated") — three rows, one derivation,
+      // because a token set is order-independent.
+      ["eGFR", "Estimated Glomerular Filtration Rate (eGFR)"],
+      [
+        "Estimated Glomerular Filtration Rate",
+        "Estimated Glomerular Filtration Rate (eGFR)",
+      ],
+      [
+        "Glomerular Filtration Rate, Estimated",
+        "Estimated Glomerular Filtration Rate (eGFR)",
+      ],
+      // Spirometry.
+      ["FEV1", "Forced Expiratory Volume in 1 Second (FEV1)"],
+      [
+        "Forced Expiratory Volume in 1 Second",
+        "Forced Expiratory Volume in 1 Second (FEV1)",
+      ],
+      ["FVC", "Forced Vital Capacity (FVC)"],
+      ["Forced Vital Capacity", "Forced Vital Capacity (FVC)"],
+      // The other entries the same rename gave an acronym parenthetical — their bare
+      // abbreviations were never hand-aliased and never need to be.
+      ["RPR", "Rapid Plasma Reagin (RPR)"],
+      ["Rapid Plasma Reagin", "Rapid Plasma Reagin (RPR)"],
+      [
+        "HOMA-IR",
+        "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
+      ],
+      [
+        "Homeostatic Model Assessment of Insulin Resistance",
+        "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
+      ],
+    ] as const)
+      expect(snapCanonicalName(spelling, index), spelling).toBe(canonical);
+
+    // And the curated table really is rid of them: a row for any of these would be
+    // inert (the derivation claims the key first), so leaving one behind is the
+    // hand-maintenance this convention exists to delete.
+    const aliasKeys = new Set(
+      canonicalAliases().map(([alias]) => normalizeCanonicalKey(alias))
+    );
+    for (const gone of [
+      "eGFR",
+      "Estimated Glomerular Filtration Rate",
+      "Glomerular Filtration Rate, Estimated",
+      "FEV1",
+      "Forced Expiratory Volume in 1 Second",
+      "FVC",
+      "Forced Vital Capacity",
+    ])
+      expect(aliasKeys.has(normalizeCanonicalKey(gone)), gone).toBe(false);
+  });
+
+  // The counterpart: a parenthetical containing a SPACE is not an acronym
+  // (looksLikeAbbreviation rejects it), so these entries derive their bare long name
+  // but NOT their bare print form — which is why the thyroid and ANA routes are
+  // load-bearing rather than redundant, and must NOT be deleted alongside the others.
+  it("keeps the curated routes the abbreviation heuristic cannot derive", () => {
+    for (const [spelling, canonical] of [
+      ["Free T4", "Thyroxine, Free (Free T4)"],
+      ["T4, Free", "Thyroxine, Free (Free T4)"],
+      ["Free T3", "Triiodothyronine, Free (Free T3)"],
+      ["Total T4", "Thyroxine, Total (Total T4)"],
+      ["Total T3", "Triiodothyronine, Total (Total T3)"],
+      [
+        "ANA Screen, IFA",
+        "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
+      ],
+    ] as const)
+      expect(snapCanonicalName(spelling, index), spelling).toBe(canonical);
+
+    // Bare "ANA" is deliberately NOT routed: this screen is run by INDIRECT
+    // IMMUNOFLUORESCENCE, and an EIA/multiplex ANA screen is a different method with
+    // different operating characteristics, so routing an unqualified "ANA" here would
+    // merge two assays.
+    expect(snapCanonicalName("ANA", index)).toBe("ANA");
+  });
+
   // The issue's acceptance criterion, run over SYNTHETIC names rather than the
   // owner's corpus: every remaining unresolved analyte name resolves to a seeded
   // canonical entry — which is exactly what the AI import path's unresolved tally
