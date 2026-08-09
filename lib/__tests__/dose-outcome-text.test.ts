@@ -51,7 +51,7 @@ describe("doseConfirmMessage", () => {
   });
 
   it("names the status that actually stands for an already-skipped dose", () => {
-    // Never let the ✅ button confirm its own action against the ⏭ log.
+    // Never let the ✅ button confirm its own action against the ⏭️ log.
     expect(doseConfirmMessage("already-skipped").text.toLowerCase()).toContain(
       "skipped"
     );

@@ -15,8 +15,12 @@ import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { offerTextTail } from "./offer-tail";
-import { formatMessageLine, type MessageLine } from "./message-line";
-import { joinBody } from "./rich-text";
+import {
+  formatEmphasizedLine,
+  formatMessageLine,
+  type MessageLine,
+} from "./message-line";
+import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
 import { sriPresentation } from "../sleep-regularity";
 import { sleepVerdictPhrase } from "../sleep-summary";
 import {
@@ -33,6 +37,7 @@ import {
   activityProvenanceLabel,
   JOURNAL_SOURCE_MANUAL,
 } from "../journal-format";
+import { GLYPH } from "./glyphs";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -323,7 +328,7 @@ export function shortDocumentDate(date: string | null): string | null {
 export function digestDocumentLine(
   doc: DigestDocument,
   deepLinkBase = ""
-): string {
+): MessageBody {
   const context = [
     shortDocumentDate(doc.date),
     doc.acquiredVia ? `via ${doc.acquiredVia}` : null,
@@ -332,8 +337,8 @@ export function digestDocumentLine(
     .join(", ");
   const where = context ? ` (${context})` : "";
   const base = deepLinkBase.replace(/\/$/, "");
-  return formatMessageLine({
-    glyph: "📄",
+  return formatEmphasizedLine({
+    glyph: GLYPH.document,
     head: `New: ${doc.title}${where}`,
     // WHAT THE IMPORT PRODUCED is a supporting fact about the document, not its cause.
     notes: [documentSplitPhrase(doc.extracted)],
@@ -348,7 +353,13 @@ export const MAX_NAMED_DOCUMENTS = 3;
 
 export interface DigestSection {
   heading: string;
-  lines: string[];
+  // A line is a MessageBody since #2392, not a string: the digest emits RICH TEXT, so a
+  // line composed through formatEmphasizedLine carries the emphasis its declared parts
+  // earned. A `string` stays a legal line and renders exactly as it always did — the
+  // lines this module receives already formatted from elsewhere (the recent-changes
+  // collector, the workout preview, the time suggestion) are plain by construction, and
+  // the digest cannot know their heads well enough to emphasize them.
+  lines: MessageBody[];
 }
 
 export interface DigestModel {
@@ -374,7 +385,7 @@ export interface DigestModel {
 // than a line ending in an orphaned dash.
 function digestTitle(profileName: string): string {
   return formatMessageLine({
-    glyph: "☀️",
+    glyph: GLYPH.sun,
     head: "Morning digest",
     notes: [profileName],
   });
@@ -448,7 +459,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (input.openEpisodeLine) {
     sections.push({
       heading: "Illness",
-      lines: [`🤒 ${input.openEpisodeLine}`],
+      lines: [
+        formatEmphasizedLine({
+          glyph: GLYPH.illness,
+          head: input.openEpisodeLine,
+        }),
+      ],
     });
   }
 
@@ -457,12 +473,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // training-restriction apply to the whole morning message. The dose count is the
   // glance headline; the banded lines cover everything else; the "why" highlights
   // (#656) explain the important items.
-  const todayLines: string[] = [];
+  const todayLines: MessageBody[] = [];
   // Dose glance headline — the count of DUE doses from collectUpcoming (bus-honored
   // + #558 predicted-training-day, both applied by collectUpcoming's dose items).
   if (input.doseCount > 0) {
     todayLines.push(
-      `💊 ${input.doseCount} ${itemNoun} dose${input.doseCount === 1 ? "" : "s"} scheduled`
+      formatEmphasizedLine({
+        glyph: GLYPH.dose,
+        head: `${input.doseCount} ${itemNoun} dose${input.doseCount === 1 ? "" : "s"} scheduled`,
+      })
     );
   }
   // Situation-activation mention (#662 item 1): the SAME "N situational items now
@@ -471,7 +490,9 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     input.situationalActiveCount ?? 0
   );
   if (situationLine)
-    todayLines.push(formatMessageLine({ glyph: "🧭", head: situationLine }));
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.context, head: situationLine })
+    );
   // Held-items mention (#1296): the visible held state in the morning message, via the
   // one shared heldSummaryLine formatter — so a pause situation silencing reminders is
   // never a silent blackout.
@@ -480,12 +501,14 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       ? heldSummaryLine(input.heldCount ?? 0, input.heldSituation)
       : null;
   if (heldLine)
-    todayLines.push(formatMessageLine({ glyph: "⏸️", head: heldLine }));
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.paused, head: heldLine })
+    );
   // Derived-context acknowledgment (#1292/#1298): the SAME basis-aware lines the bar +
   // check-in show ("Rough night (…) — N sleep-support items active today (auto)";
   // "Period logged — N items active"), so the extra due items are never a surprise.
   for (const line of input.derivedSituationLines ?? []) {
-    todayLines.push(formatMessageLine({ glyph: "🌙", head: line }));
+    todayLines.push(formatEmphasizedLine({ glyph: GLYPH.context, head: line }));
   }
   // Today's recommended workout (#1712 §2) — a heads-up at 7am, formatted from the
   // SAME recommendation the dedicated nudge builds later (no second engine, no second
@@ -501,7 +524,9 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // workoutPreview above) so the per-category demotion control, when it lands, has one
   // category to switch off without touching the rest of the section.
   for (const line of input.weatherPlanLines ?? []) {
-    todayLines.push(formatMessageLine({ glyph: "\u{1F6B4}", head: line }));
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.outdoorPlan, head: line })
+    );
   }
 
   // The weather-aware light window (#1723 part 1). Present only on a day whose
@@ -510,13 +535,13 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // to decide here. It states a WINDOW, never an instruction with a deadline.
   if (input.lightExposureLine) {
     todayLines.push(
-      formatMessageLine({ glyph: "☀️", head: input.lightExposureLine })
+      formatEmphasizedLine({ glyph: GLYPH.sun, head: input.lightExposureLine })
     );
   }
   // The daily step target (#1723 part 2), stated only when it is genuinely informative.
   if (input.stepsTodayLine)
     todayLines.push(
-      formatMessageLine({ glyph: "🚶", head: input.stepsTodayLine })
+      formatEmphasizedLine({ glyph: GLYPH.steps, head: input.stepsTodayLine })
     );
 
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
@@ -545,12 +570,18 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // One bullet grammar for the section (#1819 item 5): the band summaries were the
     // only lines in the whole message with no emoji.
     for (const line of due.lines)
-      todayLines.push(formatMessageLine({ glyph: "🗓️", head: line }));
+      todayLines.push(
+        formatEmphasizedLine({ glyph: GLYPH.dueToday, head: line })
+      );
     for (const h of due.highlights) {
       // The item's TOP reason (#656) is a cause fragment about the title — the
       // `because` role, declared rather than positional.
       todayLines.push(
-        formatMessageLine({ glyph: "⚑", head: h.title, because: h.reason })
+        formatEmphasizedLine({
+          glyph: GLYPH.priority,
+          head: h.title,
+          because: h.reason,
+        })
       );
     }
     // Data-plumbing asks, named (#1685/#1757) — and since #1913 item 5 these are the
@@ -570,7 +601,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
     for (const s of due.syncIssues) {
       todayLines.push(
-        formatMessageLine({
+        formatEmphasizedLine({
           glyph: s.glyph,
           head: s.title,
           because: s.because,
@@ -583,11 +614,11 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });
 
   // Yesterday: what happened.
-  const yLines: string[] = [];
+  const yLines: MessageBody[] = [];
   for (const a of input.activities) {
     yLines.push(
-      formatMessageLine({
-        glyph: "🏋️",
+      formatEmphasizedLine({
+        glyph: GLYPH.training,
         head: a.title,
         notes: [activityStat(a), activitySource(a)],
       })
@@ -614,7 +645,9 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       ? intakeGapExplainedBy(deltas, intended - adherence.taken)
       : null;
   if (deltaLine && !mergedClause) {
-    yLines.push(formatMessageLine({ glyph: "🔁", head: deltaLine }));
+    yLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.changed, head: deltaLine })
+    );
   }
   if (adherence) {
     const { taken, skipped } = adherence;
@@ -622,15 +655,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       // Everything due was deliberately skipped — a "0/0 taken" line reads as a
       // bug (#380 nit); state the skips plainly instead.
       yLines.push(
-        formatMessageLine({
-          glyph: "💊",
+        formatEmphasizedLine({
+          glyph: GLYPH.dose,
           head: `${cap(noun)}: ${skipped} skipped`,
         })
       );
     } else {
       yLines.push(
-        formatMessageLine({
-          glyph: "💊",
+        formatEmphasizedLine({
+          glyph: GLYPH.dose,
           head: `${cap(noun)}: ${taken}/${intended} taken`,
           // The merged delta EXPLAINS the gap ("missed Glycine (1 day)") — it is the
           // cause, so it leads the qualifiers; the skip count is a supporting note.
@@ -643,21 +676,25 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (input.weightKg != null) {
     // Rounded, kg per the notification unit policy documented on weightKg above.
     yLines.push(
-      formatMessageLine({
-        glyph: "⚖️",
+      formatEmphasizedLine({
+        glyph: GLYPH.weight,
         head: `Weight: ${fmtWeight(input.weightKg, "kg")}`,
       })
     );
   }
   // Steps vs the declared target (#1723 part 2) — a verdict, not a raw number (#1712).
   if (input.stepsLine)
-    yLines.push(formatMessageLine({ glyph: "🚶", head: input.stepsLine }));
+    yLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.steps, head: input.stepsLine })
+    );
   // Protein and fibre vs their resolved targets (#2379) — present only on a day that
   // fell short of one, so the common morning carries nothing here at all. The producer
   // returns PARTS and this call site stamps the marker, exactly as its siblings above
   // do: the Yesterday section owns which glyph each of its lines wears.
   if (input.nutritionLine)
-    yLines.push(formatMessageLine({ glyph: "🍽️", ...input.nutritionLine }));
+    yLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.food, ...input.nutritionLine })
+    );
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 
   // Sleep: a calm "how'd I sleep" (issue #1117) — last night's MAIN overnight
@@ -666,7 +703,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // it states the numbers, never "you slept badly".
   if (input.sleep) {
     const s = input.sleep;
-    const sleepLines: string[] = [];
+    const sleepLines: MessageBody[] = [];
     const stages: string[] = [];
     if (s.deepMin != null && s.deepMin > 0)
       stages.push(`deep ${fmtSleepDuration(s.deepMin)}`);
@@ -687,8 +724,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // rest of the message uses for exactly that (#1819 item 7) — interpolated with a
     // bare space it read as one run-on quantity, "6h 38m about typical".
     sleepLines.push(
-      formatMessageLine({
-        glyph: "😴",
+      formatEmphasizedLine({
+        glyph: GLYPH.sleep,
         head: `Last night: ${fmtSleepDuration(s.lastNightMin)}`,
         notes: [verdict, stageNote],
       })
@@ -696,8 +733,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // A same-day nap on its own line — kept apart from the overnight total.
     if (s.napMin != null && s.napMin > 0) {
       sleepLines.push(
-        formatMessageLine({
-          glyph: "💤",
+        formatEmphasizedLine({
+          glyph: GLYPH.sleep,
           head: `+ ${fmtSleepDuration(s.napMin)} nap`,
         })
       );
@@ -710,8 +747,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       // consistency — never the sleeper.
       const sri = sriPresentation(s.sri);
       sleepLines.push(
-        formatMessageLine({
-          glyph: "📈",
+        formatEmphasizedLine({
+          glyph: GLYPH.trend,
           head: `Sleep regularity ${sri.value}`,
           notes: [sri.qualifier],
         })
@@ -721,11 +758,14 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
 
   // New since the last digest: things to look at.
-  const newLines: string[] = [];
+  const newLines: MessageBody[] = [];
   for (const b of input.newFlaggedBiomarkers) {
     const val = b.value ? ` ${b.value}` : "";
     newLines.push(
-      formatMessageLine({ glyph: "🚩", head: `${b.name}${val} (${b.flag})` })
+      formatEmphasizedLine({
+        glyph: GLYPH.flagged,
+        head: `${b.name}${val} (${b.flag})`,
+      })
     );
   }
   // New documents, one line each (#1913 item 3). "1 new document: ccda" answered neither
@@ -739,8 +779,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   const moreDocs = input.newDocuments.length - namedDocs.length;
   if (moreDocs > 0) {
     newLines.push(
-      formatMessageLine({
-        glyph: "📄",
+      formatEmphasizedLine({
+        glyph: GLYPH.document,
         head: `+${moreDocs} more document${moreDocs === 1 ? "" : "s"}`,
       })
     );
@@ -782,8 +822,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     sections.push({
       heading: "Today",
       lines: [
-        "✅ Nothing scheduled." +
-          (offered > 0 ? ` ➕ ${offerTextTail(offered)}.` : ""),
+        `${GLYPH.done} Nothing scheduled.` +
+          (offered > 0 ? ` ${GLYPH.more} ${offerTextTail(offered)}.` : ""),
       ],
     });
     if (timingSection) sections.push(timingSection);
@@ -811,16 +851,31 @@ export function buildDigest(input: DigestInput): DigestModel | null {
 // section's heading followed by its bulleted lines; the title (bolded by the
 // Telegram renderer) already names the profile.
 export function renderDigestMessage(model: DigestModel): NotificationMessage {
-  const body = model.sections
-    .map((s) => [s.heading, ...s.lines.map((l) => `• ${l}`)].join("\n"))
-    .join("\n\n");
+  // THE SECTION HEADINGS ARE THE SPINE (#2392). Bolding them is the single largest
+  // skimmability win in a message that routinely runs four sections and a dozen lines:
+  // "Today", "Yesterday", "Sleep", "New" is the outline a reader navigates by, and it
+  // was set in exactly the same weight as every fact underneath it.
+  const body = joinBody(
+    model.sections.map((s) =>
+      joinBody(
+        [
+          richFrom([bold(s.heading)]),
+          // The bullet joins with NO separator, so a plain line stays a plain string and
+          // renders byte-identically to what it rendered before.
+          ...s.lines.map((l) => joinBody([`${GLYPH.bullet} `, l], "")),
+        ],
+        "\n"
+      )
+    ),
+    "\n\n"
+  );
   // The offer tail's TEXT line goes ONLY to the channels that cannot render its
   // control (#1712). On Telegram the button IS the line — it names the slot and the
   // count — so a body line there duplicated the control beside it and, when the tail
   // was expanded, claimed "+3 available" while the keyboard already listed all three.
   const availableLine = offerTextTail(model.offerCount ?? 0);
   const textTailBody = availableLine
-    ? joinBody([body, `➕ ${availableLine}`], "\n\n")
+    ? joinBody([body, `${GLYPH.more} ${availableLine}`], "\n\n")
     : null;
   // Actions, in reach order: the guaranteed access tail first (#1505 — it is the one
   // affordance that is always correct to offer), then the collapsed ⚙️ Tune control

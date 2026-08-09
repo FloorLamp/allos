@@ -362,13 +362,13 @@ describe("escalation buttons (caregiver two-way)", () => {
   });
 });
 
-// ---- Dose reminder ✅/⏭ buttons: stale cross-action taps (#280) ----
+// ---- Dose reminder ✅/⏭️ buttons: stale cross-action taps (#280) ----
 // A reminder message is a frozen snapshot, so its button pair survives an
 // out-of-band resolution (web UI, another device). The stale tap writes nothing
 // — and the toast must name the status that actually stands, not confirm the
 // tapped action.
 describe("stale dose-button taps answer with the standing status (#280)", () => {
-  it("⏭ Skip on a dose already TAKEN never answers 'Skipped'", async () => {
+  it("⏭️ Skip on a dose already TAKEN never answers 'Skipped'", async () => {
     // The fixture already logged the supplement dose as taken today.
     const date = today(p.profileId);
     await handleCallbackQuery(
@@ -385,7 +385,7 @@ describe("stale dose-button taps answer with the standing status (#280)", () => 
     expect(row?.status).toBe("taken");
     expect(lastAnswerText()).toMatch(/^Not skipped/);
     expect(lastAnswerText()).toMatch(/taken/i);
-    expect(lastAnswerText()).not.toContain("Skipped ⏭");
+    expect(lastAnswerText()).not.toContain("Skipped ⏭️");
   });
 
   it("✅ Take on a dose already SKIPPED never answers 'Logged'", async () => {
@@ -422,7 +422,7 @@ describe("stale dose-button taps answer with the standing status (#280)", () => 
 // one profile, so a family chat can tell two kids' identical "💊 Morning
 // supplements" apart. The tap-rebuild paths re-render from scratch and must
 // re-apply the SAME prefix (prefixForProfile — one computation) or the message
-// collapses to an unattributable title with live ✅/⏭/✅-All buttons — a parent
+// collapses to an unattributable title with live ✅/⏭️/✅-All buttons — a parent
 // could then confirm the WRONG child's remaining doses (the safety-tier worst case).
 describe("shared-chat attribution survives a tap (#377)", () => {
   // A sibling profile so the instance has >1 profile → the prefix applies. Both

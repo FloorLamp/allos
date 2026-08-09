@@ -27,6 +27,7 @@ import {
   FOOD_TIME_PREFIXES,
 } from "./correction-rows";
 import type { NotificationAction, NotificationMessage } from "./types";
+import { GLYPH } from "./glyphs";
 
 // The food nudge rides the morning/midday/evening supplement slots (issue #682) —
 // NOT Bedtime (logging food at bedtime is noise). A distinct type from the
@@ -220,7 +221,7 @@ function proteinBody(
 // slots a template decided.
 export function foodWindowGapLine(gap: FoodWindowGap): MessageBody {
   return formatRichMessageLine({
-    glyph: "📋",
+    glyph: GLYPH.ledger,
     head: [
       "Nothing logged for ",
       bold(gap.window),
@@ -236,7 +237,7 @@ function rowFor(index: number): string {
 
 // The day-total tally line (#1016): groups with a positive count TODAY, most-logged first
 // (name breaks ties), labeled so a slot-framed message makes clear the tally answers "where
-// am I on the DAY" (the buttons answer "what have I had this SLOT"): "✓ Today: Leafy greens
+// am I on the DAY" (the buttons answer "what have I had this SLOT"): "✅ Today: Leafy greens
 // ×2 · Berries ×1". Reads the DAY counter (food_log via getFoodServingsOnDate), never the
 // slot counts. Empty string when nothing's been logged yet today (the caller shows the
 // prompt instead). The reserved __protein__ key can't appear (it never lands in food_log),
@@ -255,7 +256,7 @@ function tallyLine(dayServings: Map<string, number>): MessageBody | null {
   // the line already wraps on a phone — and each is led by its catalog glyph, which is
   // what makes a five-group tally scannable rather than a run-on sentence. The counts
   // stay plain so the eye lands on WHAT was eaten first.
-  const parts: (string | ReturnType<typeof bold>)[] = ["✓ Today: "];
+  const parts: (string | ReturnType<typeof bold>)[] = [`${GLYPH.done} Today: `];
   logged.forEach((x, i) => {
     if (i > 0) parts.push(" · ");
     if (x.emoji) parts.push(`${x.emoji} `);
@@ -327,7 +328,7 @@ export function renderFoodNudge(
   // Ranked keys: catalog food-group slugs, possibly with the reserved __protein__ pseudo-
   // group at its ranked position (#1073).
   rankedKeys: string[],
-  // Day-total per-group counts — BOTH the button "(n)" suffix and the "✓ Today:" tally.
+  // Day-total per-group counts — BOTH the button "(n)" suffix and the "✅ Today:" tally.
   //
   // THE SUFFIX USED TO BE SLOT-SCOPED (#1016) and #2019 retired that meaning. The slot it
   // counted was derived at read time from the tap instant, which is precisely the guess
@@ -386,7 +387,7 @@ export function renderFoodNudge(
   // while ranked keys remain below the fold (drops automatically once all are shown).
   if (visibleCount < rankedKeys.length) {
     actions.push({
-      label: "➕ Show more",
+      label: `${GLYPH.more} Show more`,
       data: foodMoreCallbackData(profileId, window, date),
       row: "food-showmore",
     });
@@ -406,7 +407,7 @@ export function renderFoodNudge(
   // ship.
   if (visible.length > FOOD_QUICK_COUNT) {
     actions.push({
-      label: "➖ Show less",
+      label: `${GLYPH.less} Show less`,
       data: foodLessCallbackData(profileId, window, date),
       row: "food-showmore",
     });
@@ -464,7 +465,7 @@ export function renderFoodNudge(
         : corrections
           ? // Says what the chips now SAY (#2206): each one names the time it will store,
             // so the sentence only has to explain that they can be pressed again.
-            "🕐 Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time."
+            `${GLYPH.eventTime} Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time.`
           : null,
       // The statement of record (#2264 bug 1): once a burst is corrected, the BODY names
       // the stored time — the row's label states it too, but Telegram truncates buttons
@@ -476,5 +477,10 @@ export function renderFoodNudge(
     "\n"
   );
 
-  return { title: `🍽️ ${window} food log`, body, actions, kind: "food" };
+  return {
+    title: `${GLYPH.food} ${window} food log`,
+    body,
+    actions,
+    kind: "food",
+  };
 }

@@ -327,7 +327,7 @@ describe("resolveHouseholdTapAccess + the tap handler (#1459 §3)", () => {
         chat: { id: chatId },
         text: "💊 Household doses",
         reply_markup: {
-          inline_keyboard: [[{ text: "✓", callback_data: data }]],
+          inline_keyboard: [[{ text: "✅", callback_data: data }]],
         },
       },
     };

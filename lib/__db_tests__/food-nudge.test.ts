@@ -42,7 +42,7 @@ describe("buildFoodNudge", () => {
       `food:${p.profileId}:Morning:${t}:leafy_greens`
     );
     // The tally line is the DAY total, labeled.
-    expect(plainBody(msg!.body)).toContain("✓ Today: 🥬 Leafy greens ×4");
+    expect(plainBody(msg!.body)).toContain("✅ Today: 🥬 Leafy greens ×4");
     expect(plainBody(msg!.body)).toContain("Fatty fish ×1");
     expect(msg!.kind).toBe("food");
   });
@@ -57,7 +57,7 @@ describe("buildFoodNudge", () => {
     );
     // Labels lead with the group's catalog glyph since #1710.
     expect(leafy?.label).toBe("🥬 Leafy greens (4)");
-    expect(plainBody(msg!.body)).toContain("✓ Today: 🥬 Leafy greens ×4");
+    expect(plainBody(msg!.body)).toContain("✅ Today: 🥬 Leafy greens ×4");
   });
 
   it("still leads with the group eaten NEAR this window (#2019 proximity ranking)", () => {

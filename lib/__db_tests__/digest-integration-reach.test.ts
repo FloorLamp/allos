@@ -26,6 +26,7 @@ import { setTelegramBotConfig, getProfileSetting } from "@/lib/settings";
 import { runDigest, gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest } from "@/lib/notifications/digest";
 import { seedLoginTelegram } from "./fixtures";
+import { plainBody } from "@/lib/notifications/rich-text";
 
 function newProfile(name: string): number {
   return Number(
@@ -120,7 +121,7 @@ describe("a broken sync rides the morning digest (#1685)", () => {
     const body = sentBody(fetchMock);
     // ONE ENTRY (#1913 items 2/5). It used to appear twice — once in the band line and
     // again as the named 🔌 line — which is the same 503 restated in one message.
-    expect(body).toContain("🔌 Strava sync needs attention");
+    expect(body).toContain("🔌 <b>Strava sync needs attention</b>");
     expect(body).toContain("401");
     expect(body).not.toContain("🗓️ Today: Strava sync needs attention");
     expect(body.match(/Strava sync needs attention/g)).toHaveLength(1);
@@ -151,7 +152,7 @@ describe("a broken sync rides the morning digest (#1685)", () => {
 
     const model = buildDigest(gatherDigestInput(p, "DigestHealthy"));
     const text = (model?.sections ?? [])
-      .flatMap((s) => [s.heading, ...s.lines])
+      .flatMap((s) => [s.heading, ...s.lines.map(plainBody)])
       .join("\n");
     expect(text).not.toContain("sync issue");
     expect(text).not.toContain("🔌");
@@ -201,7 +202,7 @@ describe("the digest's sync lines consume the flap-aware standing (#1913 item 2)
   const digestText = (profileId: number, name: string): string => {
     const model = buildDigest(gatherDigestInput(profileId, name));
     return (model?.sections ?? [])
-      .flatMap((s) => [s.heading, ...s.lines])
+      .flatMap((s) => [s.heading, ...s.lines.map(plainBody)])
       .join("\n");
   };
 

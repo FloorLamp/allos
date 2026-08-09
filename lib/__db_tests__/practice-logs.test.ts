@@ -332,7 +332,7 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     ).toBe(true);
 
     // #1718: the nudge carries a deep link and a real, routable kind, so it is honest
-    // on Web Push and Home Assistant (which strip the "✓ Done" buttons) instead of
+    // on Web Push and Home Assistant (which strip the "✅ Done" buttons) instead of
     // telling those users to "tap when you've done a session".
     const linked = buildPracticeReminder(pid, "e2e0", "https://allos.example")!;
     expect(linked.actions?.at(-1)?.url).toBe("https://allos.example/wellness");
@@ -515,7 +515,7 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(inferPracticeSchedule(tapped, "Breathwork").hour).toBe(7);
   });
 
-  it("stamps the Telegram Done ✓ tap too — it was starving the nudge it feeds", () => {
+  it("stamps the Telegram Done ✅ tap too — it was starving the nudge it feeds", () => {
     const pid = makeProfile("quick-time-telegram");
     const tid = practiceTarget(pid, "Red light therapy", 3, null);
     expect(logPracticeByTargetId(pid, tid)).toMatchObject({ kind: "logged" });

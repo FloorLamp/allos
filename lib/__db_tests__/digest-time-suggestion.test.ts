@@ -59,6 +59,7 @@ import {
 } from "@/lib/rule-finding-prefixes";
 import { resolveSuppressedKeyDisplay } from "@/lib/suppression-display";
 import { seedLoginTelegram } from "./fixtures";
+import { plainBody } from "@/lib/notifications/rich-text";
 
 const editKeyboardMock = vi.mocked(editMessageReplyMarkupRaw);
 const answerMock = vi.mocked(answerCallbackQuery);
@@ -168,7 +169,7 @@ function seedProfile(
 
 function digestLines(profileId: number, name = "Fixture Fiona"): string[] {
   const model = buildDigest(gatherDigestInput(profileId, name));
-  return (model?.sections ?? []).flatMap((s) => s.lines);
+  return (model?.sections ?? []).flatMap((s) => s.lines.map(plainBody));
 }
 
 function cq(chatId: string, data: string) {
@@ -284,7 +285,7 @@ describe("the in-digest line (owner decision, 2026-08-06)", () => {
     // first, and when it arrives is a footnote to that.
     expect(headings.at(-1)).toBe(DIGEST_TIME_SECTION_HEADING);
     expect(headings.length).toBeGreaterThan(1);
-    expect(model.sections.at(-1)!.lines).toEqual([
+    expect(model.sections.at(-1)!.lines.map(plainBody)).toEqual([
       "🕘 Last night’s sleep usually lands by 07:40. Your digest sends at 07:00, so it often goes out before the data arrives.",
     ]);
     // Its exits ride the keyboard, after everything else the message offers.

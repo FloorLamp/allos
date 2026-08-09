@@ -73,7 +73,7 @@ describe("renderFoodNudge", () => {
     // and a tap minutes past a boundary would tick nobody's button.
     expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name} (3)`);
     expect(plainBody(msg.body)).toContain(
-      `✓ Today: ${foodGroupEmoji(top.slug)} ${top.name} ×3`
+      `✅ Today: ${foodGroupEmoji(top.slug)} ${top.name} ×3`
     );
   });
 
@@ -133,7 +133,7 @@ describe("renderFoodNudge", () => {
   it("prompts to tap when nothing is logged yet, with no tally", () => {
     const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map());
     expect(msg.body).toContain("Tap what you've eaten");
-    expect(msg.body).not.toContain("✓");
+    expect(msg.body).not.toContain("✅");
   });
 
   // #1807 pin: the nudge carries NO url button at all. The renderer no longer takes a
@@ -188,7 +188,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     );
     expect(proteinBtn?.label).toBe("💪 ＋25g protein (3)");
     // The tally line is empty (no real food group logged) — the reserved key is filtered.
-    expect(msg.body).not.toContain("✓ Today:");
+    expect(msg.body).not.toContain("✅ Today:");
     expect(msg.body).not.toContain("__protein__");
   });
 

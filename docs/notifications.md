@@ -95,7 +95,7 @@ admin-only); enable notifications, set the chat ID, and choose per-profile
 schedule and message kinds under **Settings → Notifications**.
 
 Several nudges carry one-tap action buttons that make the obvious response
-without opening the app: a **dose reminder** has ✅ take / ⏭ skip (and ✅ All);
+without opening the app: a **dose reminder** has ✅ take / ⏭️ skip (and ✅ All);
 a **preventive** nudge has ✅ Done / 🚫 Not applicable / ⏰ Remind later; a
 **refill** nudge has 📦 Ordered — remind me in 3 days (plus a link to the refill
 form); and a **missed-dose escalation** has ✅ Confirmed taken / 👍 I'm on it

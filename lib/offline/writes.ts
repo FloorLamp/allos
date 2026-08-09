@@ -64,7 +64,7 @@ import {
 //
 // There is NO offline-specific dose write. markDoseTaken / markDoseSkipped are the
 // one implementation every confirm path goes through — the page tri-state's sibling,
-// the dashboard hero, the household cockpit, the Telegram ✅/⏭ taps — and a replayed
+// the dashboard hero, the household cockpit, the Telegram ✅/⏭️ taps — and a replayed
 // tap is just a late tap, so it runs the identical rules: profile-scoped ownership
 // from the dose row's own item_id, the retired-dose and PAUSED-ITEM refusals, the
 // per-(dose,date) idempotency exists-check under BEGIN IMMEDIATE, the amount snapshot,

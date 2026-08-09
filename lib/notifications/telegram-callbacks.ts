@@ -174,6 +174,7 @@ import {
   handleSymptomPick,
   handleSymptomSeverity,
 } from "./telegram-quick-log";
+import { GLYPH } from "./glyphs";
 
 // The cadence phrase for an OFF-DAY confirm, or null on every other outcome (#1602).
 // Gated on the outcome so the ordinary confirm path never pays for the lookup, and
@@ -204,7 +205,7 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // A dose tap is either ✅ take or ⏭ skip (#232); both carry the same token
+  // A dose tap is either ✅ take or ⏭️ skip (#232); both carry the same token
   // shape and share the rebuild path, differing only in which write they apply
   // and how they answer.
   const take = parseTakeCallback(cq.data);
@@ -250,7 +251,7 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // Stale-workout nudge (#1205): 🏁 Finish workout / 🗑 Discard — resolve a quiet
+  // Stale-workout nudge (#1205): 🏁 Finish workout / 🗑️ Discard — resolve a quiet
   // live draft in place through the shared finish/discard cores.
   const workoutFinish = parseWorkoutFinishCallback(cq.data);
   if (workoutFinish) {
@@ -370,7 +371,7 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // Wellness-practice "Done ✓" (#1259): a button from the pace-aware practice nudge
+  // Wellness-practice "Done ✅" (#1259): a button from the pace-aware practice nudge
   // logs one session NOW for the target's practice, and is consumed on tap.
   const practiceDone = parsePracticeDoneCallback(cq.data);
   if (practiceDone) {
@@ -565,7 +566,9 @@ async function handleRefillTap(
   await answerCallbackQuery(cq.id, refillAnswerText(outcome));
   await consumeRow(
     cq,
-    outcome === "snoozed" ? "Refill reminder snoozed 📦" : OUTDATED_MESSAGE_TEXT
+    outcome === "snoozed"
+      ? `Refill reminder snoozed ${GLYPH.ordered}`
+      : OUTDATED_MESSAGE_TEXT
   );
 }
 
@@ -603,7 +606,7 @@ async function handleEscalationTap(
   }
 
   if (esc.action === "skip") {
-    // ⏭ Skip → markDoseSkipped, the SAME write the dose reminder's skip performs, so
+    // ⏭️ Skip → markDoseSkipped, the SAME write the dose reminder's skip performs, so
     // the ledger cannot tell the two apart (#1716). A skip is a decision: it ends the
     // escalation loop through the existing skippedDoseIds gate rather than needing a
     // marker of its own. Never an unconditional confirm — an already-taken or stale
@@ -652,7 +655,7 @@ async function handleEscalationTap(
   await replaceMessage(cq, escalationAckCloseText(ack));
 }
 
-// Handle a stale-workout nudge "🏁 Finish workout" / "🗑 Discard" tap (#1205). Resolve
+// Handle a stale-workout nudge "🏁 Finish workout" / "🗑️ Discard" tap (#1205). Resolve
 // WHO the session belongs to from the chat (a family chat may map to several profiles;
 // the token's profile id disambiguates, cross-checked against the chat like every other
 // button), run the shared finishWorkoutSession/discardWorkoutSession core (which
@@ -662,7 +665,7 @@ async function handleEscalationTap(
 // post-workout-dose summary (the SAME renderPostWorkoutFinishMessage the tick sends,
 // so the button- and tick-driven finishes can't disagree — #221), and set the #924
 // finish marker as delivered so the hourly tick sends no SECOND notification. With no
-// pending doses the message becomes a plain "Workout finished ✓". Rebuild rides the one
+// pending doses the message becomes a plain "Workout finished ✅". Rebuild rides the one
 // chokepoint (rebuildMessage), which re-applies the shared-chat "[Name] " prefix.
 async function handleWorkoutFinishTap(
   cq: TelegramCallbackQuery,
@@ -689,7 +692,7 @@ async function handleWorkoutFinishTap(
         replacementWithTitle(
           cq.message?.text,
           outcome.kind === "discarded"
-            ? "Draft discarded 🗑"
+            ? `Draft discarded ${GLYPH.discarded}`
             : OUTDATED_MESSAGE_TEXT
         )
       );
@@ -725,7 +728,7 @@ async function handleWorkoutFinishTap(
     await closeMessage(
       chatId,
       messageId,
-      replacementWithTitle(cq.message?.text, "Workout finished ✅")
+      replacementWithTitle(cq.message?.text, `Workout finished ${GLYPH.done}`)
     );
   }
 }
@@ -758,7 +761,7 @@ async function handleActivityTypeAskTap(
   await consumeRow(cq, activityTypeAskAnswerText(outcome));
 }
 
-// Apply a single ✅ take or ⏭ skip tap: resolve the acting profile from the chat,
+// Apply a single ✅ take or ⏭️ skip tap: resolve the acting profile from the chat,
 // run the verified write, answer honestly from the outcome union, then rebuild
 // the session message so resolved doses drop their buttons.
 async function handleDoseTap(
@@ -871,7 +874,9 @@ async function handleDoseTap(
       messageId,
       replacementWithTitle(
         cq.message?.text,
-        tapResolved(outcome) ? "All done 💊✅" : OUTDATED_MESSAGE_TEXT
+        tapResolved(outcome)
+          ? `All done ${GLYPH.dose}${GLYPH.done}`
+          : OUTDATED_MESSAGE_TEXT
       )
     );
   } else {
@@ -879,7 +884,7 @@ async function handleDoseTap(
   }
 }
 
-// A household-round confirm (#1459): a caregiver taps "✓ Ada · Vitamin D3" in their
+// A household-round confirm (#1459): a caregiver taps "✅ Ada · Vitamin D3" in their
 // OWN chat to log a dose for ANOTHER profile. The two-way principle's qualifying case
 // exactly — one idempotent, low-risk state change through an existing server function
 // (markDoseTaken) — so it earns a button rather than a deep link.
@@ -961,7 +966,7 @@ async function handleHouseholdDoseTap(
       replacementWithTitle(
         cq.message?.text,
         tapResolved(outcome)
-          ? "Household round done 💊✅"
+          ? `Household round done ${GLYPH.dose}${GLYPH.done}`
           : OUTDATED_MESSAGE_TEXT
       )
     );
@@ -1030,11 +1035,11 @@ async function handleAllTaken(
     entries.length === 0
       ? "Not logged — this reminder is out of date. Open the app."
       : logged > 0
-        ? "All logged ✅"
+        ? `All logged ${GLYPH.done}`
         : // Everything due was already resolved (e.g. two caregivers race-tapping
           // ✅ All) — nothing was inserted, so don't claim "Logged ✅" (#280
           // outcome-honesty; #380).
-          "Already logged ✓"
+          `Already logged ${GLYPH.done}`
   );
 
   const messageId = cq.message?.message_id;

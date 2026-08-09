@@ -34,7 +34,7 @@
 //
 // SCOPE IS DECLARED, NOT INFERRED — see MESSAGE_LINE_MODULES at the bottom of this file.
 
-import { richFrom, type MessageBody, type RichPart } from "./rich-text";
+import { bold, richFrom, type MessageBody, type RichPart } from "./rich-text";
 
 // The two separators, named once. A caller never types either of them.
 const LEAD = "—"; // em dash — introduces the FIRST qualifier
@@ -197,6 +197,42 @@ export function formatRichMessageLine(line: RichMessageLine): MessageBody {
   });
   if (isPresent(line.link)) push(flat(line.link));
   return richFrom(out);
+}
+
+// THE EMPHASIS RULE, in one place for the two largest messages the app sends (#2392).
+//
+// #1720 built the rich-text seam so a builder could emit emphasis deliberately, naming
+// "#1712 digest" in its own rationale; the digest and the recap were nonetheless the two
+// surfaces that never adopted it, so the flat wall it set out to end stayed the lived
+// experience of exactly the messages long enough to need skimming. This is the adoption,
+// and the rule is one sentence:
+//
+//   THE HEAD IS EMPHASIZED WHEN THE LINE HAS QUALIFIERS TO BE DISTINGUISHED FROM.
+//
+// Emphasis is CONTRAST, so it is spent only where there is something to contrast with.
+// "🏋️ Bench press — 45 min · Strava" gains a subject the eye can find at a glance and
+// three qualifiers that visibly rank below it; "☀️ Sunny, UV moderate until 4pm — good
+// window for light exposure." is one clause with nothing beside it, and bolding a whole
+// sentence marks nothing while costing the message the one weight it had left. That is
+// the same rule the glyph vocabulary states one layer down: weight carries meaning, and
+// weight applied everywhere carries none.
+//
+// It is deliberately NOT a per-call-site choice. A line's emphasis follows from its
+// declared parts, so a producer that adds a qualifier gets the contrast without asking
+// and cannot spend it on a line that has nothing to contrast.
+//
+// The words are untouched: plainBody() of this is byte-identical to formatMessageLine of
+// the same parts, so Web Push, Home Assistant and email carry exactly what they carried
+// before. Only the channels that can render emphasis see a difference.
+export function formatEmphasizedLine(line: MessageLine): MessageBody {
+  // A BLANK head is absent, not an empty emphasized run — `isPresent` drops a blank
+  // string but cannot see inside a declared run, so wrapping one would leave the
+  // formatter punctuating around a head that is not there and break the parity below.
+  const emphasize =
+    isPresent(line.head) && messageLineQualifiers(line).length > 0;
+  return formatRichMessageLine(
+    emphasize ? { ...line, head: bold(line.head) } : line
+  );
 }
 
 // ---------------------------------------------------------------------------

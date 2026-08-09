@@ -39,6 +39,7 @@ import { parseUtcSql } from "../date";
 import { now as clockNow } from "../clock";
 import { createLogger } from "../log";
 import type { NotificationAction } from "./types";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("notify");
 
@@ -142,7 +143,7 @@ export async function runRedoseNotices(
     // AdministrationOutcome and the nonce is the dedup token.
     const actions: NotificationAction[] = [
       {
-        label: `💊 Log dose`,
+        label: `${GLYPH.dose} Log dose`,
         data: `prn:${profileId}:${item.id}:${prnLogToken()}`,
       },
     ];

@@ -58,6 +58,7 @@ import {
 } from "../recent-changes";
 import { sleepVerdict } from "../sleep-summary";
 import type { NotificationAction } from "./types";
+import { GLYPH } from "./glyphs";
 
 // The digest's OWN sections, tuned by the same control because a reader does not think
 // in terms of which module produced the line. NOT collector categories: the collector
@@ -323,7 +324,7 @@ export function collapsedTuneAction(
   date: string
 ): NotificationAction {
   return {
-    label: "⚙️ Tune",
+    label: `${GLYPH.tune} Tune`,
     data: tuneExpandToken(profileId, date),
     row: "digest-tune",
   };
@@ -356,7 +357,7 @@ export function expandedTuneActions(
 ): NotificationAction[] {
   const shown = DIGEST_TUNABLE_CATEGORIES.filter((c) => categories.includes(c));
   const actions: NotificationAction[] = shown.map((c, i) => ({
-    label: `${demoted.includes(c) ? "🔕" : "🔔"} ${DIGEST_CATEGORY_SHORT[c]}`,
+    label: `${demoted.includes(c) ? GLYPH.muted : GLYPH.reminding} ${DIGEST_CATEGORY_SHORT[c]}`,
     data: tuneToggleToken(profileId, date, c),
     row: `tune-${Math.floor(i / TUNE_ROW_WIDTH)}`,
   }));

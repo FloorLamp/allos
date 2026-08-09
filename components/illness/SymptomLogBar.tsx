@@ -699,7 +699,7 @@ export default function SymptomLogBar({
 
                   {intakeStaged.temperature && (
                     <div className="text-xs text-slate-600 dark:text-slate-300">
-                      🌡 Temperature {intakeStaged.temperature.value}°
+                      🌡️ Temperature {intakeStaged.temperature.value}°
                       {intakeStaged.temperature.unit} — will be logged
                     </div>
                   )}

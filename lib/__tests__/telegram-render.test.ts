@@ -38,7 +38,7 @@ describe("chokepoint rebuild composition is byte-identical (#377/#454)", () => {
     body: "D3 · Magnesium",
     actions: [
       { label: "✅ D3", data: "take:2:12:34:2026-07-03", row: "d12" },
-      { label: "⏭", data: "skip:2:12:34:2026-07-03", row: "d12" },
+      { label: "⏭️", data: "skip:2:12:34:2026-07-03", row: "d12" },
       { label: "✅ All (2)", data: "all:2:Morning:2026-07-03" },
     ],
   };
@@ -57,11 +57,11 @@ describe("chokepoint rebuild composition is byte-identical (#377/#454)", () => {
     // messageKeyboard on the prefixed message equals messageKeyboard on the raw
     // message (prefix touches the title only), so a rebuild's buttons don't drift.
     expect(messageKeyboard(attributed)).toEqual(messageKeyboard(rebuilt));
-    // And the ✅/⏭ pair sharing row "d12" sits on one row; ✅ All on its own.
+    // And the ✅/⏭️ pair sharing row "d12" sits on one row; ✅ All on its own.
     expect(messageKeyboard(rebuilt)).toEqual([
       [
         { text: "✅ D3", callback_data: "take:2:12:34:2026-07-03" },
-        { text: "⏭", callback_data: "skip:2:12:34:2026-07-03" },
+        { text: "⏭️", callback_data: "skip:2:12:34:2026-07-03" },
       ],
       [{ text: "✅ All (2)", callback_data: "all:2:Morning:2026-07-03" }],
     ]);

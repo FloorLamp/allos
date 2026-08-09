@@ -64,7 +64,7 @@ export function renderMessageHtml(msg: NotificationMessage): string {
 
 // One button per row keeps long labels readable, EXCEPT that consecutive actions
 // sharing a `row` group key sit side by side on one row (#232 — a dose's ✅ take +
-// ⏭ skip). Empty when the message has no actions (e.g. a completed session).
+// ⏭️ skip). Empty when the message has no actions (e.g. a completed session).
 export function messageKeyboard(msg: NotificationMessage): InlineKeyboard {
   const rows: InlineKeyboard = [];
   let prevRow: string | undefined;

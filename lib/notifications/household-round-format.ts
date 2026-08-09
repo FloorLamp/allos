@@ -21,6 +21,7 @@ import type { NotificationAction, NotificationMessage } from "./types";
 import type { AppRoute } from "../hrefs";
 import { householdDoseCallback } from "./callback-data";
 import { formatMessageLine } from "./message-line";
+import { GLYPH } from "./glyphs";
 
 // One member's due-unconfirmed doses for the round. `name` arrives ALREADY
 // disambiguated (#534) — the builder resolves two "Alex"es to stable labels before
@@ -97,7 +98,7 @@ export function renderHouseholdRoundMessage(input: {
           head: s.name,
           notes: [spansDates ? sectionDateLabel(s.date) : null],
         })}:`,
-        ...s.doses.map((d) => `• ${householdDoseLabel(d)}`),
+        ...s.doses.map((d) => `${GLYPH.bullet} ${householdDoseLabel(d)}`),
       ].join("\n")
     )
     .join("\n\n");
@@ -105,7 +106,7 @@ export function renderHouseholdRoundMessage(input: {
   const total = householdRoundDoseCount(sections);
   const memberNoun = sections.length === 1 ? "member" : "members";
   const title = formatMessageLine({
-    glyph: "💊",
+    glyph: GLYPH.dose,
     head: "Household doses",
     notes: [`${total} due across ${sections.length} ${memberNoun}`],
   });
@@ -145,7 +146,7 @@ function sectionDateLabel(date: string): string {
 // Per-dose confirm buttons, grouped one row per MEMBER (`row` keys by profile id, so
 // consecutive doses for the same member share a row). Each label names the member as
 // well as the item — the button is the only thing a tapping thumb reads, and a bare
-// "✓ Vitamin D3" in a two-child round is exactly the #531 label collision.
+// "✅ Vitamin D3" in a two-child round is exactly the #531 label collision.
 function confirmActions(
   receiverProfileId: number,
   sections: readonly HouseholdRoundSection[]
@@ -154,7 +155,7 @@ function confirmActions(
   for (const section of sections) {
     for (const dose of section.doses) {
       actions.push({
-        label: `✓ ${section.name} · ${householdDoseLabel(dose)}`,
+        label: `${GLYPH.done} ${section.name} · ${householdDoseLabel(dose)}`,
         data: householdDoseCallback({
           receiverProfileId,
           memberProfileId: section.profileId,

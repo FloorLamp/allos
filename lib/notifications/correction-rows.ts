@@ -38,6 +38,7 @@ import {
 } from "../correction-time";
 import type { NotificationAction } from "./types";
 import { formatMessageLine } from "./message-line";
+import { GLYPH } from "./glyphs";
 
 // The two callback prefixes one domain's correction affordance uses.
 export interface CorrectionPrefixes {
@@ -74,7 +75,7 @@ export function correctionActions(
   for (const burst of bursts) {
     const row = `${prefixes.chip}-${burst.fromId}`;
     out.push({
-      label: `🕐 ${burstLabel(burst, tz)}`,
+      label: `${GLYPH.eventTime} ${burstLabel(burst, tz)}`,
       data: correctionAtToken(prefixes.at, profileId, burst.fromId, {
         kind: "open",
       }),
@@ -117,7 +118,7 @@ export function correctionPickerActions(
     row: `pick${Math.floor(i / 3)}`,
   }));
   out.push({
-    label: "↩︎ Back",
+    label: `${GLYPH.back} Back`,
     data: correctionAtToken(prefixes.at, profileId, burst.fromId, {
       kind: "back",
     }),
@@ -146,7 +147,7 @@ export function correctionBodyStatement(
   const corrected = bursts.filter((b) => b.corrected);
   if (corrected.length === 0) return null;
   return formatMessageLine({
-    glyph: "🕐",
+    glyph: GLYPH.eventTime,
     head: `Recorded: ${corrected.map((b) => burstLabel(b, tz)).join(" · ")}`,
   });
 }
@@ -160,7 +161,7 @@ export function correctionPickerTitle(
   tz: string
 ): string {
   return formatMessageLine({
-    glyph: "🕐",
+    glyph: GLYPH.eventTime,
     head: burstSubject(burst, tz),
     notes: [`${verb}?`],
   });

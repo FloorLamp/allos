@@ -436,6 +436,21 @@ freeze / self-healing-sweep decision is `planNudgeCadence`
 (`lib/nudge-cadence.ts`) — the refill, preventive, illness-care and follow-up
 planners are adapters over it, not four copies.
 
+A message BODY is composed, never assembled. `lib/notifications/rich-text.ts` owns
+emphasis (a builder declares runs and never writes markup; `plainBody()` gives every
+other channel the same words), `lib/notifications/message-line.ts` owns the line
+grammar as a type with declared parts, and `lib/notifications/glyphs.ts` owns the
+glyph vocabulary: every glyph registered once with its meaning, its role (who acts /
+what this needs / what it is about / where it stands / what a control does) and ONE
+canonical encoding including its variation selector. One concept gets one glyph —
+adding a synonym means retiring the incumbent into `RETIRED_GLYPHS`, not sitting
+beside it — and a presentation-ambiguous codepoint must declare U+FE0F or U+FE0E, so
+the same symbol can never render two ways again. The digest and the weekly recap emit
+`RichText` through `formatEmphasizedLine`, which bolds a head only when the line has
+qualifiers to be distinguished from. Scope is declared: `MESSAGE_LINE_MODULES` and
+`GLYPH_MODULES` register the message builders, and their scans fail a hand-assembled
+separator or an emoji literal with a written reason per allowlisted survivor.
+
 Delivery health is stored in `notify_lifecycle` and follows the shared
 set/clear/freeze decision in `lib/notifications/delivery-status.ts`. Clear an
 error only after a healthy dispatch actually attempted the affected channel.
