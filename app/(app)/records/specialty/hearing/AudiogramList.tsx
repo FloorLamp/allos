@@ -8,16 +8,19 @@ import {
   AUDIOGRAM_EARS,
   AUDIOGRAM_FREQUENCIES_HZ,
   audiogramSeriesKey,
+  conductionLabel,
   earLabel,
   frequencyLabel,
   hearingGrade,
   hearingGradeLabel,
   NORMAL_THRESHOLD_DB_HL,
-  pureToneAverage,
+  ptaSeriesKey,
+  resolvePureToneAverages,
   thresholdShiftLabel,
   type Audiogram,
   type AudiogramPoint,
   type HearingBaseline,
+  type ResolvedPta,
 } from "@/lib/audiogram";
 import type { FormResult } from "@/lib/types";
 
@@ -29,6 +32,18 @@ import type { FormResult } from "@/lib/types";
 //
 // This is a RECORD, not an assessment: it transcribes, averages, and compares what an
 // audiologist measured. It never diagnoses, and the copy says so.
+
+// Where a rendered pure-tone average came from, in one short phrase (#2322). Always
+// shown: "reported" and "derived" are different claims, and only the reader can decide
+// what to do with that difference.
+function ptaProvenance(pta: ResolvedPta): string {
+  if (pta.source === "reported")
+    return `as reported (${conductionLabel(pta.conduction)})`;
+  return `averaged from ${pta.usedHz.length} recorded ${
+    pta.usedHz.length === 1 ? "frequency" : "frequencies"
+  }`;
+}
+
 export default function AudiogramList({
   audiograms,
   baseline,
@@ -57,7 +72,7 @@ export default function AudiogramList({
   async function remove(date: string) {
     const ok = await confirm({
       title: "Delete this hearing test?",
-      message: `Every threshold recorded on ${date} will be removed.`,
+      message: `Every threshold and reported average recorded on ${date} will be removed.`,
       confirmLabel: "Delete",
       danger: true,
     });
@@ -108,6 +123,12 @@ export default function AudiogramList({
         const testedFrequencies = AUDIOGRAM_FREQUENCIES_HZ.filter((hz) =>
           AUDIOGRAM_EARS.some((ear) => byKey.has(audiogramSeriesKey(ear, hz)))
         );
+        // Reported-over-derived, per (ear, conduction) (#2322). When BOTH exist for
+        // one series the REPORTED value is the one shown, and the derived duplicate
+        // is not rendered at all — the same thing the derived-biomarker table does
+        // when a lab reports an index directly. The line always names which it is,
+        // so the reader never has to guess whether the app did the arithmetic.
+        const ptas = resolvePureToneAverages(points, a.reportedPtas);
         return (
           <div
             key={a.date}
@@ -127,85 +148,96 @@ export default function AudiogramList({
             </div>
 
             <div className="flex flex-wrap gap-4 text-sm">
-              {AUDIOGRAM_EARS.map((ear) => {
-                const pta = pureToneAverage(points, ear);
-                if (!pta) return null;
-                return (
-                  <p key={ear} data-testid={`audiogram-pta-${a.date}-${ear}`}>
-                    <span className="capitalize">{earLabel(ear)}</span> average{" "}
-                    <span className="font-medium">{pta.dbHl} dB HL</span>{" "}
-                    <span className="text-slate-500 dark:text-slate-400">
-                      · {hearingGradeLabel(hearingGrade(pta.dbHl))}
-                    </span>
-                  </p>
-                );
-              })}
+              {ptas.map((pta) => (
+                <p
+                  key={ptaSeriesKey(pta.ear, pta.conduction)}
+                  data-testid={`audiogram-pta-${a.date}-${pta.ear}-${pta.conduction}`}
+                >
+                  <span className="capitalize">{earLabel(pta.ear)}</span>{" "}
+                  {pta.conduction === "bone" ? "bone-conduction " : ""}average{" "}
+                  <span className="font-medium">{pta.dbHl} dB HL</span>{" "}
+                  <span className="text-slate-500 dark:text-slate-400">
+                    · {hearingGradeLabel(hearingGrade(pta.dbHl))} ·{" "}
+                    {ptaProvenance(pta)}
+                  </span>
+                </p>
+              ))}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    <th scope="col" className="w-24 py-1 text-left">
-                      Frequency
-                    </th>
-                    {AUDIOGRAM_EARS.map((ear) => (
-                      <th
-                        key={ear}
-                        scope="col"
-                        className="py-1 text-left capitalize"
-                      >
-                        {earLabel(ear)}
+            {testedFrequencies.length === 0 ? (
+              <p
+                className="text-sm text-slate-500 dark:text-slate-400"
+                data-testid={`audiogram-no-thresholds-${a.date}`}
+              >
+                This report gave the average only — it carried no individual
+                frequency thresholds, so there is no audiogram to chart.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      <th scope="col" className="w-24 py-1 text-left">
+                        Frequency
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {testedFrequencies.map((hz) => (
-                    <tr key={hz}>
-                      <th
-                        scope="row"
-                        className="py-1 pr-2 text-left text-xs font-medium text-slate-600 dark:text-slate-300"
-                      >
-                        {frequencyLabel(hz)}
-                      </th>
-                      {AUDIOGRAM_EARS.map((ear) => {
-                        const r = byKey.get(audiogramSeriesKey(ear, hz));
-                        if (!r)
+                      {AUDIOGRAM_EARS.map((ear) => (
+                        <th
+                          key={ear}
+                          scope="col"
+                          className="py-1 text-left capitalize"
+                        >
+                          {earLabel(ear)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {testedFrequencies.map((hz) => (
+                      <tr key={hz}>
+                        <th
+                          scope="row"
+                          className="py-1 pr-2 text-left text-xs font-medium text-slate-600 dark:text-slate-300"
+                        >
+                          {frequencyLabel(hz)}
+                        </th>
+                        {AUDIOGRAM_EARS.map((ear) => {
+                          const r = byKey.get(audiogramSeriesKey(ear, hz));
+                          if (!r)
+                            return (
+                              <td
+                                key={ear}
+                                className="py-1 pr-2 text-slate-500 dark:text-slate-400"
+                              >
+                                —
+                              </td>
+                            );
+                          const above = r.dbHl > NORMAL_THRESHOLD_DB_HL;
                           return (
-                            <td
-                              key={ear}
-                              className="py-1 pr-2 text-slate-500 dark:text-slate-400"
-                            >
-                              —
+                            <td key={ear} className="py-1 pr-2">
+                              <span
+                                className={
+                                  above
+                                    ? "font-medium text-amber-700 dark:text-amber-400"
+                                    : undefined
+                                }
+                              >
+                                {r.dbHl} dB HL
+                              </span>
+                              {above && (
+                                <span className="sr-only">
+                                  {" "}
+                                  above the normal band
+                                </span>
+                              )}
                             </td>
                           );
-                        const above = r.dbHl > NORMAL_THRESHOLD_DB_HL;
-                        return (
-                          <td key={ear} className="py-1 pr-2">
-                            <span
-                              className={
-                                above
-                                  ? "font-medium text-amber-700 dark:text-amber-400"
-                                  : undefined
-                              }
-                            >
-                              {r.dbHl} dB HL
-                            </span>
-                            {above && (
-                              <span className="sr-only">
-                                {" "}
-                                above the normal band
-                              </span>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             <NotesText
               notes={a.notes}

@@ -1178,3 +1178,70 @@ describe("extractionToPersistInput — per-record confidence (#1601)", () => {
     expect(confidence.scrutiny).toBe(1);
   });
 });
+
+describe("extractionToPersistInput — the duration door (#2322)", () => {
+  function inputOf(over: Parameters<typeof doneExtraction>[0]) {
+    return extractionToPersistInput(doneExtraction(over), "2099-12-31");
+  }
+
+  it("normalizes a min:sec exercise duration to whole seconds", () => {
+    const input = inputOf({
+      results: [
+        mkResult({
+          name: "Exercise Duration",
+          canonical_name: "Exercise Duration",
+          value: "10:30",
+          unit: "min:sec",
+        }),
+      ],
+    });
+    expect(input.records).toHaveLength(1);
+    expect(input.records[0]).toMatchObject({
+      value: "630",
+      value_num: 630,
+      unit: "s",
+    });
+  });
+
+  it("takes the colon text over a numeric field the model filled more coarsely", () => {
+    // The failure mode this door introduced: a page printing "10:30" invites the
+    // model to put 10 in value_num. 600 s would be silently wrong by 5%.
+    const input = inputOf({
+      results: [
+        mkResult({
+          name: "Exercise Duration",
+          canonical_name: "Exercise Duration",
+          value: "10:30",
+          value_num: 10,
+          unit: "min:sec",
+        }),
+      ],
+    });
+    expect(input.records[0]).toMatchObject({ value_num: 630, unit: "s" });
+  });
+
+  it("DROPS an unparsable duration with a reason instead of storing the string", () => {
+    const input = inputOf({
+      results: [
+        mkResult({
+          name: "Exercise Duration",
+          canonical_name: "Exercise Duration",
+          value: "not recorded",
+          unit: "min:sec",
+        }),
+        mkResult({
+          name: "Glucose",
+          value: "99",
+          value_num: 99,
+          unit: "mg/dL",
+        }),
+      ],
+    });
+    expect(input.records.map((r) => r.name)).toEqual(["Glucose"]);
+    const report = parseImportReport(input.meta.importReport);
+    const drop = report?.drops.find((d) => d.label === "Exercise Duration");
+    expect(drop?.reason).toBe("unparsable_value");
+    // The drop counts toward `considered`, so the coverage card stays honest.
+    expect(report?.considered).toBe((report?.imported ?? 0) + 1);
+  });
+});

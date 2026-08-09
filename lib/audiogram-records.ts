@@ -37,15 +37,18 @@ import {
 import {
   AUDIOGRAM_CANONICAL_NAMES,
   NORMAL_THRESHOLD_DB_HL,
+  PTA_CANONICAL_NAMES,
   audiogramAnalyteName,
   groupAudiogramReadings,
   hearingBaselineFromReadings,
   parseAudiogramAnalyte,
+  parsePtaAnalyte,
   type Audiogram,
   type AudiogramEar,
   type AudiogramFrequencyHz,
   type AudiogramReading,
   type HearingBaseline,
+  type ReportedPta,
 } from "./audiogram";
 
 // The unit and printed reference range every threshold row carries — the same strings
@@ -57,6 +60,17 @@ export const AUDIOGRAM_REFERENCE_RANGE = `≤${NORMAL_THRESHOLD_DB_HL} dB HL`;
 const AUDIOGRAM_PANEL = "hearing";
 
 const NAME_PLACEHOLDERS = AUDIOGRAM_CANONICAL_NAMES.map(() => "?").join(",");
+const PTA_NAME_PLACEHOLDERS = PTA_CANONICAL_NAMES.map(() => "?").join(",");
+// Every canonical name this domain owns — thresholds AND reported pure-tone averages
+// (#2322). The preimage for the "does this profile have any hearing data" probe and
+// for the delete that removes one dated test, so both stay one question.
+const HEARING_CANONICAL_NAMES: readonly string[] = [
+  ...AUDIOGRAM_CANONICAL_NAMES,
+  ...PTA_CANONICAL_NAMES,
+];
+const HEARING_NAME_PLACEHOLDERS = HEARING_CANONICAL_NAMES.map(() => "?").join(
+  ","
+);
 
 // ---- Reads ------------------------------------------------------------------
 
@@ -98,9 +112,53 @@ export function getAudiogramReadings(profileId: number): AudiogramReading[] {
   return out;
 }
 
+// Every REPORTED pure-tone average for a profile, newest first (#2322) — the averages
+// a document stated directly, with no per-frequency thresholds behind them. Same shape
+// as the threshold reader: a finite canonical preimage in SQL, parsePtaAnalyte as the
+// belt that turns a row back into (ear, conduction).
+export function getReportedPtaReadings(profileId: number): ReportedPta[] {
+  const rows = db
+    .prepare(
+      `SELECT id, date, canonical_name AS canon, value_num AS db_hl, notes, flag
+         FROM medical_records
+        WHERE profile_id = ?
+          AND canonical_name IN (${PTA_NAME_PLACEHOLDERS})
+          AND value_num IS NOT NULL
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, ...PTA_CANONICAL_NAMES) as {
+    id: number;
+    date: string;
+    canon: string;
+    db_hl: number;
+    notes: string | null;
+    flag: string | null;
+  }[];
+  const out: ReportedPta[] = [];
+  for (const r of rows) {
+    const parsed = parsePtaAnalyte(r.canon);
+    if (!parsed) continue;
+    out.push({
+      id: r.id,
+      date: r.date,
+      ear: parsed.ear,
+      conduction: parsed.conduction,
+      dbHl: r.db_hl,
+      notes: r.notes,
+      flag: r.flag,
+    });
+  }
+  return out;
+}
+
 // The profile's dated audiograms, newest first — what the Hearing surface renders.
+// Thresholds and reported averages are grouped onto the same dates, so a document that
+// reported only an average still lists as a hearing test (#2322).
 export function getAudiograms(profileId: number): Audiogram[] {
-  return groupAudiogramReadings(getAudiogramReadings(profileId));
+  return groupAudiogramReadings(
+    getAudiogramReadings(profileId),
+    getReportedPtaReadings(profileId)
+  );
 }
 
 // The hearing baseline a medication-safety note cites, or null when the profile has no
@@ -109,18 +167,20 @@ export function getHearingBaseline(profileId: number): HearingBaseline | null {
   return hearingBaselineFromReadings(getAudiogramReadings(profileId));
 }
 
-// Whether the profile has any recorded threshold — the cheap EXISTS probe the nav
-// relevance gather uses. Deliberately not `getAudiogramReadings(...).length > 0`: this
-// runs on every layout render.
+// Whether the profile has any recorded hearing measurement — a threshold OR a reported
+// pure-tone average (#2322; a summary report that carried only averages must not leave
+// the Hearing pane looking empty). The cheap EXISTS probe the nav relevance gather
+// uses. Deliberately not `getAudiogramReadings(...).length > 0`: this runs on every
+// layout render.
 export function hasAudiogramRows(profileId: number): boolean {
   return (
     db
       .prepare(
         `SELECT 1 FROM medical_records
-          WHERE profile_id = ? AND canonical_name IN (${NAME_PLACEHOLDERS})
+          WHERE profile_id = ? AND canonical_name IN (${HEARING_NAME_PLACEHOLDERS})
           LIMIT 1`
       )
-      .get(profileId, ...AUDIOGRAM_CANONICAL_NAMES) != null
+      .get(profileId, ...HEARING_CANONICAL_NAMES) != null
   );
 }
 
@@ -259,8 +319,10 @@ export function recordAudiogram(
 export type DeleteAudiogramOutcome =
   { kind: "deleted"; removed: number } | { kind: "not-found" };
 
-// Remove ONE dated audiogram — every threshold row this profile has on that date.
-// Guarded to the canonical audiogram analytes so it can never be pointed at an
+// Remove ONE dated audiogram — every threshold row AND every reported pure-tone
+// average this profile has on that date (#2322: the card renders both, so Delete must
+// remove both; leaving the average behind would resurrect the card with half its
+// content). Guarded to the canonical hearing analytes so it can never be pointed at an
 // unrelated reading. No undo capture: the shared undo substrate is single-ROOT
 // (captureDelete takes one row id), and an audiogram is up to twelve peer rows, so
 // twelve independent undo entries would be a worse affordance than the confirm-first
@@ -276,9 +338,9 @@ export function deleteAudiogram(
       .prepare(
         `DELETE FROM medical_records
           WHERE profile_id = ? AND date = ?
-            AND canonical_name IN (${NAME_PLACEHOLDERS})`
+            AND canonical_name IN (${HEARING_NAME_PLACEHOLDERS})`
       )
-      .run(profileId, date, ...AUDIOGRAM_CANONICAL_NAMES);
+      .run(profileId, date, ...HEARING_CANONICAL_NAMES);
     return info.changes;
   });
   if (removed === 0) return { kind: "not-found" };

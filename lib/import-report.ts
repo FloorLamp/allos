@@ -24,6 +24,7 @@ export type DropReason =
   | "null_flavor" // the value was explicitly null-flavored (e.g. <value nullFlavor="NA"/>)
   | "unmapped_loinc" // the code has no canonical mapping we understand (also unmapped CVX)
   | "placeholder_noise" // a resolved value that is a bare placeholder ("—", "N/A", …)
+  | "unparsable_value" // the source declared a unit the value doesn't satisfy — e.g. a `min:sec` duration whose value isn't a duration (#2322); storing it would be a reading that is really a string
   | "deduped" // a duplicate of a reading already imported (same external_id)
   | "no_value" // the observation carried no productive value at all
   | "non_analyte" // an administrative/structural observation (specimen date, "Approved By", accession #) — not a measurement (#681/#693)
@@ -428,6 +429,7 @@ const REASON_LABELS: Record<DropReason, string> = {
   null_flavor: "No value (null-flavored)",
   unmapped_loinc: "Unrecognized code",
   placeholder_noise: "Placeholder / noise",
+  unparsable_value: "Unparsable value",
   deduped: "Duplicate (already imported)",
   no_value: "No value",
   non_analyte: "Non-analyte / administrative",
@@ -447,6 +449,7 @@ const REASON_ORDER: DropReason[] = [
   "no_value",
   "null_flavor",
   "placeholder_noise",
+  "unparsable_value",
   "non_analyte",
   "derived_percentile",
   "negated",

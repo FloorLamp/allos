@@ -38,13 +38,16 @@ import {
   effTime,
   loincDisplayName,
   loincFromCode,
+  rawQuantity,
   readValue,
   resolveNarrativeText,
   sectionIs,
   textOf,
   truthyNegation,
+  unitFromEntryRelationships,
   vaccineCodeFrom,
 } from "./normalize";
+import { normalizeDurationValue } from "../duration-value";
 
 function sectionTitle(section: CdaSection): string {
   const t = section.title?.trim();
@@ -117,8 +120,20 @@ function classifyObservationDrop(
     const v = Array.isArray(obs?.value) ? obs.value[0] : obs?.value;
     if (v?.["@_nullFlavor"] != null) reason = "null_flavor";
     else {
-      const { value, value_num } = readValue(obs?.value);
-      if (value == null && value_num == null) {
+      const { value, value_num, unit: valueUnit } = readValue(obs?.value);
+      const rawPq = rawQuantity(obs?.value);
+      // The duration door (#2322): the source declared a colon-formatted duration
+      // unit and the value did not state one, so mapObservation refused it rather
+      // than storing a string that looks like a reading. Classified here — before
+      // the value branches below, which would otherwise report it as "no value"
+      // and hide the fact that a real value was rejected on purpose.
+      const duration = normalizeDurationValue(
+        value ?? rawPq.text,
+        value_num,
+        valueUnit ?? unitFromEntryRelationships(obs) ?? rawPq.unit
+      );
+      if (duration.kind === "unparsable") reason = "unparsable_value";
+      else if (value == null && value_num == null) {
         const rawText = v ? (v["@_displayName"] ?? textOf(v)) : null;
         reason =
           rawText != null && String(rawText).trim() !== ""
