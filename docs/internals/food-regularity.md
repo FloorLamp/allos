@@ -92,7 +92,7 @@ public outcome. The early `toLog.length === 0` return is a plain return **and
 only that one is**: nothing has been written at that point, so committing an
 empty transaction and reporting "nothing to log" are the same fact.
 `lib/__db_tests__/food-regularity.test.ts` pins it by forcing one group of a pair
-to refuse and asserting the day counter *and* its ledger events are empty — the
+to refuse and asserting the day counter _and_ its ledger events are empty — the
 outcome alone would have passed against the defect.
 
 `food_log` is deliberately _not_ a gated `STATEFUL_WRITE_TABLES` member (a second

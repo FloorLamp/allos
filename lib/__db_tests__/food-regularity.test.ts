@@ -30,8 +30,7 @@ import {
 // real core); a test opts one group into refusing by naming it in `refusal.groupKey`.
 const refusal = vi.hoisted(() => ({ groupKey: null as string | null }));
 vi.mock("@/lib/food-log-write", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/food-log-write")>();
+  const actual = await importOriginal<typeof import("@/lib/food-log-write")>();
   return {
     ...actual,
     logFoodServingCore: (
