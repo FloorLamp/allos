@@ -383,12 +383,28 @@ const DERIVED_DEFS: DerivedDef[] = [
     unit: "index",
     decimals: 2,
     formulaLabel: "(Fasting glucose mg/dL × fasting insulin µU/mL) ÷ 405",
+    // The glucose input REQUIRES the fasting frame (#2357): a one-name preference
+    // list, deliberately with no fallback to the unqualified entry. HOMA-IR is
+    // defined on fasting glucose — the label above says so — and since #2337 the
+    // unqualified "Glucose" entry is explicitly the one for a draw whose fasting
+    // state is UNKNOWN, band-less precisely because neither frame can be assumed.
+    // Accepting it here would be a stated contradiction: the index would assert a
+    // frame the value's own canonical entry says it does not have.
+    //
+    // The consequence is intended, not overlooked: a draw carrying only an
+    // unqualified glucose now produces NO HOMA-IR, where it used to produce one. An
+    // index defined on a fasting measurement should decline rather than compute on
+    // an unknown frame — the same argument that made the unqualified entry
+    // band-less. This is NOT the shape of PhenoAge's ["Glucose, Fasting", "Glucose"]
+    // below: Levine's model is a population mortality regression that merely PREFERS
+    // the fasting analyte, whereas HOMA-IR's arithmetic is only that index on the
+    // fasting frame, so the two lists differ on purpose.
     inputs: [
-      { canonical: "Glucose", unit: "mg/dL", label: "Glucose" },
+      { canonical: ["Glucose, Fasting"], unit: "mg/dL", label: "Glucose" },
       { canonical: "Insulin", unit: "uIU/mL", label: "Insulin" },
     ],
     compute: (v) => {
-      const homa = (v["Glucose"] * v["Insulin"]) / 405;
+      const homa = (v["Glucose, Fasting"] * v["Insulin"]) / 405;
       return Number.isFinite(homa) ? homa : null;
     },
   },
@@ -635,6 +651,15 @@ export function derivedInputCanonicalNames(): string[] {
 // name) and the canonical names it accepts. The query layer uses this to decide
 // whether a profile HAS an input — a slot is present when any accepted name is —
 // without re-deriving the preference rule.
+//
+// Slots are keyed ACROSS indices, so two indices sharing a key share a slot and its
+// `accepts` is their UNION. Since #2357 that is no longer hypothetical: HOMA-IR and
+// PhenoAge both key glucose on "Glucose, Fasting" while accepting different lists,
+// so the shared slot reads present for a profile holding only the unqualified entry
+// — true for PhenoAge, which computes from it, and NOT for HOMA-IR, which declines.
+// It is correct for the only consumer today (`presentInputs` is read by the bio-age
+// completeness checklist alone, and the union is exactly PhenoAge's own list). A
+// per-INDEX presence question needs `derivedInputCanonicalNamesFor`, not this.
 export function derivedInputSlots(): {
   key: string;
   accepts: readonly string[];
