@@ -22,7 +22,12 @@
 // across the server/client boundary.
 
 import { shiftDateStr, weekdayOrder } from "./date";
-import { dayGrid, dayGridMonthLabels, gridStartFor } from "./day-grid";
+import {
+  dayGrid,
+  dayGridMonthLabels,
+  gridStartFor,
+  weekSpan,
+} from "./day-grid";
 import { intensityLevel } from "./workout-heatmap";
 
 export type DayHistoryLevel = 0 | 1 | 2 | 3 | 4;
@@ -83,6 +88,9 @@ export interface DayHistoryValue {
   // a cell — duration is frequently null upstream, so a minutes-driven level
   // would read half the matrix as empty (the workout-heatmap precedent).
   detail?: number;
+  // Optional free-text annotation for hover copy (a dose's amount). Unique
+  // notes are collected per cell, never summed.
+  note?: string;
 }
 
 // A group's display identity, supplied by the surface from its own vocabulary
@@ -91,6 +99,10 @@ export interface DayHistoryValue {
 export interface DayHistoryGroupMeta {
   key: string;
   label: string;
+  // Abbreviated display form for dense surfaces (chips, matrix row labels);
+  // the full label stays in tooltips and aria copy. Optional — falls back to
+  // `label`.
+  short?: string;
   foodSlug?: string;
   tier?: string;
 }
@@ -99,6 +111,7 @@ export interface DayHistoryCell {
   date: string;
   value: number;
   detail: number;
+  notes: string[]; // unique value notes (dose amounts), first-seen order
   level: DayHistoryLevel;
   today: boolean;
 }
@@ -109,6 +122,7 @@ export const FOLDED_ROW_KEY = "__folded__";
 export interface DayHistoryRow {
   key: string; // group key, or FOLDED_ROW_KEY
   label: string;
+  short: string; // abbreviated label for the row gutter (falls back to label)
   foodSlug: string | null;
   tier: string | null;
   total: number;
@@ -123,6 +137,28 @@ export function historyDays(start: string, end: string): string[] {
   const out: string[] = [];
   for (let d = start; d <= end; d = shiftDateStr(d, 1)) out.push(d);
   return out;
+}
+
+// The week-column count after trimming LEADING all-empty weeks — the day-fill
+// doctrine applied at week grain: a window that opens before the first logged
+// day renders a wall of empty cells that says nothing, so the grid starts on
+// the week of the first UNFILTERED value instead. Unfiltered deliberately:
+// toggling a chip must never reflow the grid. Trailing emptiness is KEPT — a
+// quiet recent stretch is the live signal. No data at all keeps the full
+// window (the caller's empty-state decision, not this one's).
+export function activeHistoryWeeks(
+  values: DayHistoryValue[],
+  end: string,
+  weeks: number,
+  weekStart = 0
+): number {
+  let first: string | null = null;
+  for (const v of values) {
+    if (v.value > 0 && v.date <= end && (first === null || v.date < first))
+      first = v.date;
+  }
+  if (first === null) return weeks;
+  return Math.max(1, Math.min(weeks, weekSpan(first, end, weekStart)));
 }
 
 // Per-day totals over the selected groups (`null` = all). The calendar's input.
@@ -158,16 +194,20 @@ export function buildDayHistoryRows(opts: {
   const vocabOrder = new Map(groups.map((g, i) => [g.key, i]));
 
   // Sum per group+date and per group, honoring the filter.
-  const byGroupDate = new Map<string, Map<string, { v: number; d: number }>>();
+  const byGroupDate = new Map<
+    string,
+    Map<string, { v: number; d: number; notes: string[] }>
+  >();
   const totals = new Map<string, number>();
   for (const v of values) {
     if (!(v.value > 0)) continue;
     if (selected && !selected.has(v.group)) continue;
     let dates = byGroupDate.get(v.group);
     if (!dates) byGroupDate.set(v.group, (dates = new Map()));
-    const cell = dates.get(v.date) ?? { v: 0, d: 0 };
+    const cell = dates.get(v.date) ?? { v: 0, d: 0, notes: [] };
     cell.v += v.value;
     cell.d += v.detail ?? 0;
+    if (v.note && !cell.notes.includes(v.note)) cell.notes.push(v.note);
     dates.set(v.date, cell);
     totals.set(v.group, (totals.get(v.group) ?? 0) + v.value);
   }
@@ -192,11 +232,13 @@ export function buildDayHistoryRows(opts: {
     const cells = days.map((date) => {
       let v = 0;
       let d = 0;
+      const notes: string[] = [];
       for (const k of keys) {
         const cell = byGroupDate.get(k)?.get(date);
         if (cell) {
           v += cell.v;
           d += cell.d;
+          for (const n of cell.notes) if (!notes.includes(n)) notes.push(n);
         }
       }
       if (v > 0) {
@@ -207,6 +249,7 @@ export function buildDayHistoryRows(opts: {
         date,
         value: v,
         detail: d,
+        notes,
         level: cellLevel(v),
         today: date === today,
       } satisfies DayHistoryCell;
@@ -215,6 +258,7 @@ export function buildDayHistoryRows(opts: {
     return {
       key,
       label,
+      short: m?.short ?? label,
       foodSlug: m?.foodSlug ?? null,
       tier: m?.tier ?? null,
       total,

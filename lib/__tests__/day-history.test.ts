@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DAY_HISTORY_DOMAINS,
   FOLDED_ROW_KEY,
+  activeHistoryWeeks,
   buildDayHistoryCalendar,
   buildDayHistoryRows,
   dayHistoryStart,
@@ -201,6 +202,44 @@ describe("buildDayHistoryRows", () => {
     expect(rows.map((r) => r.key)).toEqual(["b"]);
   });
 
+  it("collects unique value notes per cell, and the fold row merges them", () => {
+    const rows = buildDayHistoryRows({
+      days,
+      values: [
+        { date: "2026-07-01", group: "a", value: 1, note: "500 mg" },
+        { date: "2026-07-01", group: "a", value: 1, note: "500 mg" },
+        { date: "2026-07-01", group: "a", value: 1, note: "1000 mg" },
+      ],
+      groups,
+      selected: null,
+      maxRows: 8,
+      cellLevel,
+      today: "2026-07-04",
+    });
+    expect(rows[0].cells[0].notes).toEqual(["500 mg", "1000 mg"]);
+    expect(rows[0].cells[1].notes).toEqual([]);
+  });
+
+  it("rows carry the abbreviated label, falling back to the full one", () => {
+    const rows = buildDayHistoryRows({
+      days,
+      values: [
+        { date: "2026-07-01", group: "a", value: 1 },
+        { date: "2026-07-01", group: "b", value: 1 },
+      ],
+      groups: [
+        { key: "a", label: "Alpha Workout", short: "Alpha" },
+        { key: "b", label: "Beta" },
+      ],
+      selected: null,
+      maxRows: 8,
+      cellLevel,
+      today: "2026-07-04",
+    });
+    expect(rows.find((r) => r.key === "a")?.short).toBe("Alpha");
+    expect(rows.find((r) => r.key === "b")?.short).toBe("Beta");
+  });
+
   it("an unknown group key still renders, labeled by its key", () => {
     const rows = buildDayHistoryRows({
       days,
@@ -213,6 +252,51 @@ describe("buildDayHistoryRows", () => {
     });
     expect(rows[0].label).toBe("retired_group");
     expect(rows[0].foodSlug).toBeNull();
+  });
+});
+
+describe("activeHistoryWeeks", () => {
+  it("trims leading all-empty weeks to the week of the first value", () => {
+    // end = Wed 2026-07-08, weekStart 0. First value Jul 1 (Wed of the prior
+    // week) → 2 week columns instead of the requested 13.
+    expect(
+      activeHistoryWeeks(
+        [{ date: "2026-07-01", group: "a", value: 1 }],
+        "2026-07-08",
+        13,
+        0
+      )
+    ).toBe(2);
+  });
+
+  it("never grows the window and keeps it whole when data spans it", () => {
+    expect(
+      activeHistoryWeeks(
+        [{ date: "2026-01-01", group: "a", value: 1 }],
+        "2026-07-08",
+        13,
+        0
+      )
+    ).toBe(13);
+  });
+
+  it("keeps the full window when there is no data at all (the caller's empty-state call)", () => {
+    expect(activeHistoryWeeks([], "2026-07-08", 13, 0)).toBe(13);
+  });
+
+  it("ignores zero values and values after end", () => {
+    expect(
+      activeHistoryWeeks(
+        [
+          { date: "2026-05-01", group: "a", value: 0 },
+          { date: "2026-07-20", group: "a", value: 3 },
+          { date: "2026-07-06", group: "a", value: 2 },
+        ],
+        "2026-07-08",
+        13,
+        0
+      )
+    ).toBe(1);
   });
 });
 

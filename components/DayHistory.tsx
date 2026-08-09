@@ -7,6 +7,7 @@ import { timelineDayHref } from "@/lib/hrefs";
 import {
   DAY_HISTORY_DOMAINS,
   FOLDED_ROW_KEY,
+  activeHistoryWeeks,
   buildDayHistoryCalendar,
   buildDayHistoryRows,
   dayHistoryStart,
@@ -26,12 +27,20 @@ import FoodGroupIcon, {
 // Three-letter weekday labels indexed by 0=Sun … 6=Sat, overlaid on the grid.
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Cell geometry, shared by the cells and the overlaid label offsets.
+// Cell geometry, shared by the cells and the overlaid label offsets. The
+// calendar cell GROWS from the 24px base to fill the container when the
+// window is short (a 4-week range gets ~34px cells, 13 weeks keeps 24).
 const CAL_CELL = 24;
+const CAL_CELL_MAX = 34;
 const CAL_GAP = 3;
-const CAL_STEP = CAL_CELL + CAL_GAP;
-const MTX_STEP = 18 + 2; // matrix cell width + gap
+const MTX_CELL_W = 18;
+const MTX_CELL_H = 26;
+const MTX_GAP = 2;
+const MTX_STEP = MTX_CELL_W + MTX_GAP;
 const MTX_LABEL_W = 112; // the sticky row-label column (w-28)
+// Extra gap before each new week column in the matrix — the weekly rhythm the
+// calendar gets for free from its columns.
+const MTX_WEEK_GAP = 5;
 
 // The overlaid axis labels: all-caps pills floating ON the grid (no reserved
 // gutter rows/columns — the cells get the full width), kept legible over any
@@ -59,6 +68,11 @@ const SCROLLER = "overflow-x-auto pb-1 pt-2 -mx-4 px-4 sm:-mx-1 sm:px-1";
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+// Minutes → compact duration copy for the summary line.
+function durationLabel(minutes: number): string {
+  return minutes >= 90 ? `${Math.round(minutes / 60)}h` : `${minutes} min`;
 }
 
 // The generalized group×day history (calendar + matrix) — the client half of
@@ -94,12 +108,20 @@ export default function DayHistory({
   const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [calCell, setCalCell] = useState(CAL_CELL);
   const matrixRef = useRef<HTMLDivElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
 
+  // Leading all-empty weeks are trimmed (the day-fill doctrine at week grain),
+  // on the UNFILTERED values so chip toggles never reflow the grid.
+  const shownWeeks = useMemo(
+    () => activeHistoryWeeks(values, end, weeks, weekStart),
+    [values, end, weeks, weekStart]
+  );
+
   const days = useMemo(
-    () => historyDays(dayHistoryStart(end, weeks, weekStart), end),
-    [end, weeks, weekStart]
+    () => historyDays(dayHistoryStart(end, shownWeeks, weekStart), end),
+    [end, shownWeeks, weekStart]
   );
 
   const rows = useMemo(
@@ -122,13 +144,13 @@ export default function DayHistory({
         ? buildDayHistoryCalendar({
             totals: dayTotals(values, selected),
             end,
-            weeks,
+            weeks: shownWeeks,
             weekStart,
             calendarLevel: spec.calendarLevel,
             today,
           })
         : null,
-    [showCalendar, values, selected, end, weeks, weekStart, spec, today]
+    [showCalendar, values, selected, end, shownWeeks, weekStart, spec, today]
   );
 
   // Both halves open at the RECENT edge — on a narrow screen the left of the
@@ -139,6 +161,39 @@ export default function DayHistory({
       if (el) el.scrollLeft = el.scrollWidth;
     }
   }, [rows.length, days.length]);
+
+  // Size calendar cells to fill the container when the window is short.
+  useEffect(() => {
+    const el = calendarRef.current;
+    if (!el || !showCalendar) return;
+    const measure = () => {
+      const cs = getComputedStyle(el);
+      const avail =
+        el.clientWidth -
+        parseFloat(cs.paddingLeft) -
+        parseFloat(cs.paddingRight) -
+        (shownWeeks - 1) * CAL_GAP;
+      setCalCell(
+        Math.max(
+          CAL_CELL,
+          Math.min(CAL_CELL_MAX, Math.floor(avail / shownWeeks))
+        )
+      );
+    };
+    measure();
+    let t: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(measure, 150);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [showCalendar, shownWeeks]);
+
+  const calStep = calCell + CAL_GAP;
 
   const isOn = (key: string) => selected === null || selected.has(key);
   const toggle = (key: string) => {
@@ -167,6 +222,18 @@ export default function DayHistory({
     );
   }, [groups, values]);
 
+  // Total of the secondary quantity (workout minutes) over the FILTERED view,
+  // for the summary line.
+  const totalDetail = useMemo(() => {
+    let sum = 0;
+    for (const v of values) {
+      if (!(v.value > 0)) continue;
+      if (selected && !selected.has(v.group)) continue;
+      sum += v.detail ?? 0;
+    }
+    return sum;
+  }, [values, selected]);
+
   const calendarCellSummary = (cell: DayHistoryCalendarCell): string => {
     const base =
       cell.value === 0
@@ -181,31 +248,39 @@ export default function DayHistory({
       cell.detail > 0 && spec.detailSuffix
         ? ` · ${cell.detail} ${spec.detailSuffix}`
         : "";
+    const notes = cell.notes.length > 0 ? ` · ${cell.notes.join(", ")}` : "";
     return `${row.label} · ${cell.date} — ${plural(
       cell.value,
       spec.unitOne,
       spec.unitMany
-    )}${mins}`;
+    )}${mins}${notes}`;
   };
 
+  const minsSuffix =
+    spec.detailSuffix === "min" && totalDetail > 0
+      ? ` · ${durationLabel(totalDetail)}`
+      : "";
   const summary = calendar
     ? `${plural(calendar.totalValue, spec.unitOne, spec.unitMany)} over ${plural(
         calendar.activeDays,
         "day",
         "days"
-      )}`
+      )}${minsSuffix}`
     : `${plural(
         rows.reduce((s, r) => s + r.total, 0),
         spec.unitOne,
         spec.unitMany
-      )} in this window`;
+      )} in this window${minsSuffix}`;
 
+  // Hover for pointers, focus for keyboards, tap for touch — `title` never
+  // fires on touch, so a tap pushes the same summary into the caption.
   const hoverProps = (text: string) => ({
     title: text,
     onMouseEnter: () => setDetail(text),
     onMouseLeave: () => setDetail(null),
     onFocus: () => setDetail(text),
     onBlur: () => setDetail(null),
+    onClick: () => setDetail(text),
   });
 
   return (
@@ -224,6 +299,8 @@ export default function DayHistory({
               data-testid="day-history-chip"
               data-group={g.key}
               aria-pressed={isOn(g.key)}
+              aria-label={g.label}
+              title={g.label}
               onClick={() => toggle(g.key)}
               className={`flex min-h-7 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition ${
                 isOn(g.key)
@@ -241,7 +318,7 @@ export default function DayHistory({
                   }`}
                 />
               )}
-              {g.label}
+              <span className="max-w-28 truncate">{g.short ?? g.label}</span>
             </button>
           ))}
           <button
@@ -263,7 +340,7 @@ export default function DayHistory({
 
       {/* Calendar half: coverage. Labels are OVERLAID on the grid (no gutter
           rows/columns), so the cells themselves get the full width — on a
-          phone the 13-week window fills the screen edge to edge. */}
+          phone the window fills the screen edge to edge. */}
       {calendar && (
         <div
           ref={calendarRef}
@@ -271,22 +348,23 @@ export default function DayHistory({
           data-testid="day-history-calendar"
         >
           <div className="relative inline-block align-top">
-            <div className="flex gap-[3px]">
+            <div className="flex" style={{ gap: CAL_GAP }}>
               {calendar.columns.map((col, ci) => (
-                <div key={ci} className="flex flex-col gap-[3px]">
+                <div
+                  key={ci}
+                  className="flex flex-col"
+                  style={{ gap: CAL_GAP }}
+                >
                   {col.map((cell) => {
+                    const size = { width: calCell, height: calCell };
                     if (cell.future) {
                       return (
-                        <div
-                          key={cell.date}
-                          className="h-6 w-6"
-                          aria-hidden="true"
-                        />
+                        <div key={cell.date} style={size} aria-hidden="true" />
                       );
                     }
-                    const cls = `h-6 w-6 rounded-[5px] ${
-                      LEVEL_CLASS[cell.level]
-                    }${cell.today ? ` ${TODAY_RING}` : ""}`;
+                    const cls = `rounded-[5px] ${LEVEL_CLASS[cell.level]}${
+                      cell.today ? ` ${TODAY_RING}` : ""
+                    }`;
                     const common = hoverProps(calendarCellSummary(cell));
                     if (cell.value > 0) {
                       return (
@@ -297,6 +375,7 @@ export default function DayHistory({
                           data-date={cell.date}
                           data-level={cell.level}
                           aria-label={calendarCellSummary(cell)}
+                          style={size}
                           className={`${cls} block ring-brand-400 hover:ring-2 focus:outline-none focus:ring-2`}
                           {...common}
                         />
@@ -307,6 +386,7 @@ export default function DayHistory({
                         key={cell.date}
                         data-date={cell.date}
                         aria-label={calendarCellSummary(cell)}
+                        style={size}
                         className={cls}
                         {...common}
                       />
@@ -320,7 +400,7 @@ export default function DayHistory({
                 key={m.col}
                 aria-hidden="true"
                 className={`${OVERLAY_LABEL} -top-1.5 z-[2]`}
-                style={{ left: m.col * CAL_STEP }}
+                style={{ left: m.col * calStep }}
               >
                 {m.label}
               </span>
@@ -331,7 +411,7 @@ export default function DayHistory({
                   key={row}
                   aria-hidden="true"
                   className={`${OVERLAY_LABEL} -left-1 z-[2]`}
-                  style={{ top: row * CAL_STEP + (CAL_CELL - 16) / 2 }}
+                  style={{ top: row * calStep + (calCell - 16) / 2 }}
                 >
                   {DOW[wd]}
                 </span>
@@ -341,7 +421,8 @@ export default function DayHistory({
         </div>
       )}
 
-      {/* Matrix half: composition — one row per group, one cell per day. */}
+      {/* Matrix half: composition — one row per group, one cell per day, an
+          extra gap at each week boundary so the weekly rhythm reads. */}
       {rows.length > 0 && (
         <div
           ref={matrixRef}
@@ -358,7 +439,9 @@ export default function DayHistory({
                   key={d}
                   aria-hidden="true"
                   className={`${OVERLAY_LABEL} -top-1.5 z-[1] tabular-nums`}
-                  style={{ left: MTX_LABEL_W + i * MTX_STEP }}
+                  style={{
+                    left: MTX_LABEL_W + i * MTX_STEP + (i / 7) * MTX_WEEK_GAP,
+                  }}
                 >
                   {parseInt(d.slice(8), 10)}
                 </span>
@@ -376,7 +459,7 @@ export default function DayHistory({
                       }`}
                     />
                   )}
-                  <span className="truncate">{row.label}</span>
+                  <span className="truncate">{row.short}</span>
                 </>
               );
               return (
@@ -411,14 +494,24 @@ export default function DayHistory({
                       {labelInner}
                     </span>
                   )}
-                  <span className="flex gap-[2px] pr-1" aria-hidden="true">
+                  <span className="flex pr-1" aria-hidden="true">
                     {row.cells.map((cell, ci) => (
                       <span
                         key={cell.date}
                         data-date={cell.date}
-                        className={`h-[26px] w-[18px] rounded-[4px] ${
-                          LEVEL_CLASS[cell.level]
-                        }${cell.today ? ` ${TODAY_RING}` : ""}`}
+                        style={{
+                          width: MTX_CELL_W,
+                          height: MTX_CELL_H,
+                          marginLeft:
+                            ci === 0
+                              ? 0
+                              : ci % 7 === 0
+                                ? MTX_GAP + MTX_WEEK_GAP
+                                : MTX_GAP,
+                        }}
+                        className={`rounded-[4px] ${LEVEL_CLASS[cell.level]}${
+                          cell.today ? ` ${TODAY_RING}` : ""
+                        }`}
                         {...hoverProps(matrixCellSummary(row, ci))}
                       />
                     ))}

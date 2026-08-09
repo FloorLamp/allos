@@ -21,7 +21,7 @@ import {
   type AdherenceWeek,
 } from "@/lib/nutrition-trends";
 import { dayHistoryStart } from "@/lib/day-history";
-import { FOOD_GROUPS } from "@/lib/food-groups";
+import { FOOD_GROUPS, foodGroupShortName } from "@/lib/food-groups";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
@@ -79,6 +79,7 @@ export default async function NutritionSection({
     ...FOOD_GROUPS.filter((g) => presentGroups.has(g.slug)).map((g) => ({
       key: g.slug,
       label: g.name,
+      short: foodGroupShortName(g.slug),
       foodSlug: g.slug,
       tier: g.tier,
     })),
@@ -97,6 +98,8 @@ export default async function NutritionSection({
     date: d.date,
     group: d.name,
     value: 1,
+    // The confirmed amount rides along as hover copy ("2 doses · 1000 mg").
+    note: d.amount ?? undefined,
   }));
   const doseGroups = [...new Set(doseRows.map((d) => d.name))]
     .sort((a, b) => a.localeCompare(b))

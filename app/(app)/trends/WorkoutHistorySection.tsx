@@ -42,7 +42,13 @@ export default async function WorkoutHistorySection({
   }
   const groups = [...totals.entries()]
     .sort((a, b) => b[1].total - a[1].total)
-    .map(([key, v]) => ({ key, label: v.label }));
+    .map(([key, v]) => ({
+      key,
+      label: v.label,
+      // Chip/row abbreviation: the routine word alone ("Chest Workout" →
+      // "Chest") — the full label stays in tooltips and aria copy.
+      short: v.label.replace(/\s+(workout|day)$/i, "") || v.label,
+    }));
 
   return (
     <section data-testid="workout-history">
