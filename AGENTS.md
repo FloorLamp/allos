@@ -78,7 +78,7 @@ npm run dev              # development server on http://localhost:3000
 npm run seed             # realistic sample data
 npm run build            # production build and TypeScript gate
 npm run lint             # ESLint
-npm run typecheck        # tsc --noEmit
+npm run typecheck        # next typegen && tsc --noEmit
 
 npm test                 # pure unit tests
 npm run test:watch       # pure unit tests in watch mode
@@ -569,6 +569,11 @@ See `docs/internals/e2e-hygiene.md`.
   it owns routing policy; otherwise use the typed literal.
   `lib/__tests__/typed-route-props.test.ts` fails any `href`/`…Href` field
   left as `string`, with an allowlist for external URLs and live pathnames.
+  `AppRoute` only HAS a route union when Next's generated `.next/types/routes.d.ts`
+  exists — it falls back to `string & {}` silently, accepting every dead literal —
+  and `/.next/` is gitignored. So `npm run typecheck` generates the route types
+  before it runs `tsc` (#2293), at a measured ~1s. Do not strip it back to a bare
+  `tsc`, and if a route literal ever stops being checked, look there first.
 - A directory under `app/(app)/` implies a served route. Components and Server
   Actions for a surface live under the route that renders them (or in
   `components/` when several surfaces share them) — never under the name of a
