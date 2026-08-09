@@ -128,6 +128,15 @@ export function seedDropReport(): void {
     unmappedLoincs: [
       { loinc: "11111-1", name: "E2E Novel Marker", unit: "ng/mL", count: 3 },
     ],
+    // Unresolved analyte NAMES (#918 §4), stored in the pre-#2313 flat shape — one
+    // genuine gap alongside two names the repo has since DECLARED it doesn't curate.
+    // The split happens on read, so this fixture is also the retroactivity proof:
+    // nothing about the stored blob knows about the registry.
+    unresolvedNames: [
+      { name: "E2E Unknown Analyte", count: 2, unit: "ng/mL" },
+      { name: "eGFR, African American", count: 1, unit: "mL/min/1.73" },
+      { name: "Diuretic Screen, Urine", count: 1, unit: null },
+    ],
     // Source-text reconciliation flags (AI PDF path): one of each verdict, so the
     // "Source reconciliation" card renders with both badge variants. Synthetic
     // analyte names; the value is a bare number with no unit/date context.
@@ -153,8 +162,41 @@ export function seedDropReport(): void {
            '2026-07-08 09:45:00')`
   ).run(DROP_DOC_ID, PROFILE_ID, JSON.stringify(dropReport));
 
+  // A second document whose unresolved list is ENTIRELY declared names (#2313):
+  // the "Unresolved analytes" card must not render at all here, because there is
+  // no outstanding work — the honest answer. Its own id so the spec owns it and
+  // 907's counts stay undisturbed.
+  const DECLINED_ONLY_DOC_ID = 911;
+  db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(
+    DECLINED_ONLY_DOC_ID
+  );
+  db.prepare(
+    `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, import_report, uploaded_at)
+   VALUES (?, ?, 'e2e-declined-only.pdf', '', 'application/pdf', 1024,
+           'Lab report', 'upload', 'done', 3, ?,
+           '2026-07-08 09:50:00')`
+  ).run(
+    DECLINED_ONLY_DOC_ID,
+    PROFILE_ID,
+    JSON.stringify({
+      drops: [],
+      coverage: [
+        { key: "results", title: "Results", consumed: true, present: 3 },
+      ],
+      imported: 3,
+      considered: 3,
+      unresolvedNames: [
+        { name: "eGFR, Non-African-American", count: 1, unit: "mL/min/1.73" },
+        { name: "eGFR, Thai", count: 1, unit: "mL/min/1.73" },
+        { name: "Beta Adrenergic Blocker Screen", count: 1, unit: null },
+      ],
+    })
+  );
+
   console.log(
-    `e2e: seeded import document ${DROP_DOC_ID} with a 260-drop report + an unmapped LOINC (#270)`
+    `e2e: seeded import document ${DROP_DOC_ID} with a 260-drop report + an unmapped LOINC (#270), and ${DECLINED_ONLY_DOC_ID} with declared-only unresolved names (#2313)`
   );
 }
 

@@ -91,7 +91,7 @@ import {
   triageFocus,
   triageRowId,
 } from "@/lib/confidence-triage";
-import { importTabHref } from "@/lib/hrefs";
+import { importTabHref, readingDetailHref } from "@/lib/hrefs";
 import {
   parseImportReport,
   summarizeCoverage,
@@ -255,7 +255,13 @@ export default async function ImportDetailPage(props: {
   // The AI path's parallel: labs whose canonical NAME matched no curated entry, so
   // they imported under their raw name with no reference band (#918 §4). Kept, like
   // unmapped LOINCs — not a drop.
+  //
+  // Split (#2313) by parseImportReport against the CURRENT registry: `unresolvedNames`
+  // is the genuinely-unknown remainder — an actual gap, worth reporting — and
+  // `declinedNames` are the ones this repo has decided not to curate, which are
+  // not-applicable rather than due and carry no report action.
   const unresolvedNames = report?.unresolvedNames ?? [];
+  const declinedNames = report?.declinedNames ?? [];
   // Source-text reconciliation (AI PDF path): rows the report's own text/OCR could
   // not corroborate. A review signal, not a proven error.
   const reconciliation = report?.reconciliation ?? null;
@@ -767,6 +773,61 @@ export default async function ImportDetailPage(props: {
                         Report unresolved analyte{" "}
                         <IconExternalLink className="h-3.5 w-3.5" />
                       </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Deliberately uncurated analytes (#2313): names this repo has DECLARED
+            it doesn't curate. They are not a gap, so they don't count toward the
+            "Unresolved analytes" number above and carry no report link — that link
+            would ask someone to file a duplicate of a decision already made. The
+            reason is the point of the block: a race-branched eGFR reads as untracked
+            kidney function until it says otherwise. */}
+            {report && declinedNames.length > 0 && (
+              <div className="card" data-testid="declined-names-card">
+                <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+                  Not curated, on purpose ({declinedNames.length})
+                </h2>
+                <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                  These labs <strong>are imported</strong> and stay visible on
+                  this document, but Allos deliberately doesn’t curate them as
+                  trendable analytes. Nothing is outstanding here and there’s
+                  nothing to report.
+                </p>
+                <ul className="text-sm text-slate-600 dark:text-slate-300">
+                  {declinedNames.map((d) => (
+                    <li
+                      key={d.name}
+                      data-testid="declined-name-row"
+                      className="border-b border-black/5 py-1.5 last:border-0 dark:border-white/10"
+                    >
+                      <div className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="font-medium">{d.name}</span>
+                        {d.unit && (
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {d.unit}
+                          </span>
+                        )}
+                        {d.count > 1 && (
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            ×{d.count}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        {d.declaration.reason}
+                      </p>
+                      {d.declaration.kind === "covered-elsewhere" && (
+                        <Link
+                          href={readingDetailHref(d.declaration.instead)}
+                          data-testid="declined-name-instead"
+                          className="mt-0.5 inline-block text-xs text-brand-700 hover:underline dark:text-brand-400"
+                        >
+                          See {d.declaration.instead}
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ul>

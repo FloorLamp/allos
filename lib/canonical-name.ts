@@ -450,6 +450,95 @@ export function canonicalAliases(): readonly [string, string][] {
   return CANONICAL_ALIASES;
 }
 
+// --- Deliberately uncurated analytes (#2313) --------------------------------
+//
+// CANONICAL_ALIASES declares the names we DO route. This declares the other half:
+// names we have decided NOT to curate, and why. That decision already existed —
+// it is the "NOT aliased, on purpose" prose above — but only as a source comment,
+// so every surface that meets one of these names has to guess. The import
+// debugger guessed wrong in the way that costs somebody something: it counted a
+// settled question as outstanding work and offered a "Report unresolved analyte"
+// link that files a public duplicate of a decision this repo already made.
+//
+// Two rules from elsewhere in the codebase, applied here:
+//
+//   • MetricKnowledge's `{ source: "none"; reason: string }` — the reason is
+//     MANDATORY, because saying it out loud is the point. A reader who sees an
+//     eGFR variant listed as "unresolved" reasonably concludes their kidney
+//     function is untracked. It isn't; it is tracked better. Only the reason can
+//     say so, and a declaration without one would silently inherit "unjudged".
+//   • FreshnessState's `not-applicable`, which must never fold into `due`. A
+//     deliberately-uncurated analyte is not a to-do, and counting it as one
+//     overstates the work outstanding.
+//
+// Keyed by normalizeCanonicalKey, exactly like the aliases, so spelling, casing
+// and word-order variants of a declared name collapse onto one declaration.
+//
+// This registry is NOT the debugger's: it answers "has this repo decided not to
+// curate this analyte?", which is a question about the analyte. Any surface that
+// would otherwise present one of these names as an open gap reads it through
+// `uncuratedAnalyte` — no per-surface copy of the list, and no per-surface
+// opinion about what the decision means.
+export type UncuratedAnalyte =
+  // The quantity IS tracked — under a different identity. `instead` names the
+  // canonical entry that carries it, so a surface can point at the real series
+  // rather than leaving the reader to deduce that one exists. The completeness
+  // guard pins that the target is a real curated entry: a dangling `instead`
+  // promises a series that doesn't exist.
+  | { kind: "covered-elsewhere"; instead: string; reason: string }
+  // Not a thing this app models as a biomarker at all.
+  | { kind: "out-of-scope"; reason: string };
+
+// The three race/ethnicity-branched eGFR equations share ONE declaration: they are
+// the same decision, made once. The reason is written FOR A USER, not for a
+// maintainer — it is the sentence that turns "your kidney function is unresolved"
+// into "your kidney function is measured a better way".
+const EGFR_RACE_BRANCHED: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "eGFR",
+  reason:
+    "Race- and ethnicity-adjusted eGFR equations return different values for the same draw, so they cannot share one series. Allos derives the race-free CKD-EPI 2021 value from your creatinine instead — that is the eGFR you see.",
+};
+
+const TOXICOLOGY_SCREEN: UncuratedAnalyte = {
+  kind: "out-of-scope",
+  reason:
+    "Toxicology screens aren't biomarkers with reference bands. The result is imported and visible on the document, but it isn't curated as a trendable analyte.",
+};
+
+const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
+  ["eGFR, African American", EGFR_RACE_BRANCHED],
+  ["eGFR, Non-African-American", EGFR_RACE_BRANCHED],
+  ["eGFR, Thai", EGFR_RACE_BRANCHED],
+  ["Beta Adrenergic Blocker Screen", TOXICOLOGY_SCREEN],
+  ["Diuretic Screen, Urine", TOXICOLOGY_SCREEN],
+];
+
+const UNCURATED_BY_KEY = new Map<string, UncuratedAnalyte>(
+  UNCURATED_ANALYTES.map(([name, declaration]) => [
+    normalizeCanonicalKey(name),
+    declaration,
+  ])
+);
+
+// THE lookup. "Have we decided not to curate this analyte?" — null means no such
+// decision exists, which is genuinely-not-curated-yet and stays actionable.
+export function uncuratedAnalyte(
+  name: string | null | undefined
+): UncuratedAnalyte | null {
+  const key = name ? normalizeCanonicalKey(name) : "";
+  return (key && UNCURATED_BY_KEY.get(key)) || null;
+}
+
+// The declarations with their declared spellings, for the completeness guard
+// (mirrors canonicalAliases() — same shape, same purpose).
+export function uncuratedAnalytes(): readonly (readonly [
+  string,
+  UncuratedAnalyte,
+])[] {
+  return UNCURATED_ANALYTES;
+}
+
 // Snap a model-produced canonical name onto a known vocabulary entry when they
 // describe the same analyte; otherwise return the name unchanged (so genuinely
 // new analytes still coin a new canonical name, as intended). Pass a prebuilt

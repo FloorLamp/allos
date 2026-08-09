@@ -20,6 +20,7 @@ import type { PersistInput } from "@/lib/import-shape";
 import { getMedicalDocument } from "@/lib/queries";
 import {
   parseImportReport,
+  reconcileStoredReportCounts,
   rowDropCount,
   serializeImportReport,
   type ImportReport,
@@ -497,5 +498,102 @@ describe("the stored report's counts are the footprint tally (#1827)", () => {
     expect(report.imported).toBe(countImportedDocumentRows(profileC, docC));
     // Restore the full footprint for any later reader of this document.
     persistDocumentImport(profileC, docC, everyDomainInput());
+  });
+});
+
+// ---- #2313: the deliberately-uncurated split is RETROACTIVE ----
+
+// The design's main claim: the split happens on READ, so a report written when the
+// registry did not exist — the actual state of every stored report before this
+// change — splits correctly the moment the declaration ships. No migration, no
+// reprocess, and nothing rewritten on disk. Proving it needs a row that was
+// genuinely written in the old shape, which is what this does: it puts the legacy
+// JSON straight into the column and then reads it back the way the detail page
+// does (getMedicalDocument → parseImportReport).
+describe("a report stored BEFORE the registry splits on read (#2313)", () => {
+  // Exactly the shape the AI import path stored: one flat unresolved list, no
+  // knowledge that three of these names were already settled questions.
+  const LEGACY_REPORT = JSON.stringify({
+    drops: [],
+    coverage: [
+      { key: "results", title: "Results", consumed: true, present: 6 },
+    ],
+    imported: 6,
+    considered: 6,
+    unresolvedNames: [
+      { name: "eGFR, African American", count: 1, unit: "mL/min/1.73" },
+      { name: "eGFR, Non-African-American", count: 1, unit: "mL/min/1.73" },
+      { name: "Diuretic Screen, Urine", count: 1, unit: null },
+      { name: "DB-Tier Novel Marker", count: 2, unit: "ng/mL" },
+    ],
+  });
+
+  let legacyProfile: number;
+  let legacyDoc: number;
+
+  beforeAll(() => {
+    legacyProfile = newProfile("REPORT-LEGACY");
+    legacyDoc = newDocument(legacyProfile);
+    db.prepare(
+      `UPDATE medical_documents SET import_report = ?, extraction_status = 'done'
+        WHERE id = ? AND profile_id = ?`
+    ).run(LEGACY_REPORT, legacyDoc, legacyProfile);
+  });
+
+  it("counts only the genuinely-unknown name as unresolved", () => {
+    const parsed = parseImportReport(
+      getMedicalDocument(legacyProfile, legacyDoc)!.import_report
+    )!;
+    // What the debugger's "Unresolved analytes (N)" header counts: 1, not 4.
+    expect(parsed.unresolvedNames).toEqual([
+      { name: "DB-Tier Novel Marker", count: 2, unit: "ng/mL" },
+    ]);
+  });
+
+  it("moves the declared names to the declined half, reason and all", () => {
+    const parsed = parseImportReport(
+      getMedicalDocument(legacyProfile, legacyDoc)!.import_report
+    )!;
+    expect(parsed.declinedNames?.map((d) => d.name)).toEqual([
+      "eGFR, African American",
+      "eGFR, Non-African-American",
+      "Diuretic Screen, Urine",
+    ]);
+    for (const d of parsed.declinedNames ?? [])
+      expect(d.declaration.reason.length).toBeGreaterThan(0);
+    const egfr = parsed.declinedNames![0].declaration;
+    expect(egfr.kind === "covered-elsewhere" && egfr.instead).toBe("eGFR");
+  });
+
+  it("leaves the stored blob untouched — the split is a view, not a migration", () => {
+    const stored = db
+      .prepare(
+        `SELECT import_report AS report FROM medical_documents
+          WHERE id = ? AND profile_id = ?`
+      )
+      .get(legacyDoc, legacyProfile) as { report: string };
+    expect(stored.report).toBe(LEGACY_REPORT);
+  });
+
+  it("survives a persist-time count reconcile without freezing the split", () => {
+    // reconcileStoredReportCounts is the one path that parses a stored report and
+    // writes it back (the #1827 footprint rebind). It must not bake today's registry
+    // into the column: the declared names go back into the stored unresolved list,
+    // so a name declared LATER still splits out of this same document.
+    const rewritten = reconcileStoredReportCounts(LEGACY_REPORT, 6)!;
+    const storedNames = (
+      JSON.parse(rewritten) as { unresolvedNames: { name: string }[] }
+    ).unresolvedNames.map((n) => n.name);
+    expect(storedNames.sort()).toEqual(
+      [
+        "DB-Tier Novel Marker",
+        "Diuretic Screen, Urine",
+        "eGFR, African American",
+        "eGFR, Non-African-American",
+      ].sort()
+    );
+    expect(JSON.parse(rewritten).declinedNames).toBeUndefined();
+    // And re-reading it still splits the same way.
+    expect(parseImportReport(rewritten)!.declinedNames).toHaveLength(3);
   });
 });

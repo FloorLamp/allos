@@ -16,6 +16,7 @@ import {
   parseConfidenceSummary,
   type ExtractionConfidenceSummary,
 } from "./extraction-confidence";
+import { uncuratedAnalyte, type UncuratedAnalyte } from "./canonical-name";
 
 // Why a candidate reading didn't make it into the imported set. A closed enum so
 // the UI can group + label consistently and a stored report stays stable.
@@ -91,6 +92,31 @@ export interface UnresolvedName {
   unit?: string | null;
 }
 
+// An unresolved name the repo has DECLARED it doesn't curate (#2313) — same row,
+// carrying the declaration that says so. Never a to-do: it is the analyte world's
+// `not-applicable`, and the surfaces that render it must not offer the "report
+// this" action that only makes sense for a genuine gap.
+export interface DeclinedName extends UnresolvedName {
+  declaration: UncuratedAnalyte;
+}
+
+// Partition an unresolved-name tally into the genuinely-unknown names and the
+// declared ones, against the CURRENT registry. Pure and order-preserving; the
+// only place either side of the split is decided.
+export function splitDeclaredNames(names: readonly UnresolvedName[]): {
+  unresolvedNames: UnresolvedName[];
+  declinedNames: DeclinedName[];
+} {
+  const unresolvedNames: UnresolvedName[] = [];
+  const declinedNames: DeclinedName[] = [];
+  for (const n of names) {
+    const declaration = uncuratedAnalyte(n.name);
+    if (declaration) declinedNames.push({ ...n, declaration });
+    else unresolvedNames.push(n);
+  }
+  return { unresolvedNames, declinedNames };
+}
+
 // One extracted row that the source PDF's own text could NOT corroborate — the AI
 // path cross-checked against the report's text/OCR (lib/medical-extract/reconcile)
 // and this row's value wasn't found next to its name (value_mismatch), or the name
@@ -150,7 +176,15 @@ export interface ImportReport {
   // path's parallel to unmappedLoincs (it has no LOINC). Optional so reports stored
   // before this field, and every CCD report, stay valid; parseImportReport defaults
   // it to [].
+  //
+  // On a PARSED report this holds only the genuinely-unknown names: the ones the
+  // repo has declared it doesn't curate are split out into `declinedNames` below.
   unresolvedNames?: UnresolvedName[];
+  // The declared half of that split (#2313) — READ-time only. It is never stored:
+  // serializeImportReport folds it back into `unresolvedNames`, because the split
+  // is a view over the CURRENT registry and a stored report must not freeze today's
+  // answer. Optional for the same reason the field above is.
+  declinedNames?: DeclinedName[];
   // Source-text reconciliation for an AI-extracted PDF (this branch). Absent for CCD
   // reports, non-PDF sources, and reports stored before this field.
   reconciliation?: ReconciliationSummary | null;
@@ -173,6 +207,7 @@ export function emptyReport(): ImportReport {
     considered: 0,
     unmappedLoincs: [],
     unresolvedNames: [],
+    declinedNames: [],
   };
 }
 
@@ -536,6 +571,17 @@ export function mergeReports(
 ): ImportReport {
   const present = reports.filter((r): r is ImportReport => r != null);
   if (present.length === 0) return emptyReport();
+  // Unresolved names merge as ONE pool and re-split (#2313): a merged package's
+  // declared/undeclared partition is decided by the registry, not by which half of
+  // which document's report a name happened to be sitting in.
+  const names = splitDeclaredNames(
+    tallyUnresolvedNames(
+      present.flatMap((r) => [
+        ...(r.unresolvedNames ?? []),
+        ...(r.declinedNames ?? []),
+      ])
+    )
+  );
   return {
     drops: present.flatMap((r) => r.drops),
     coverage: present.flatMap((r) => r.coverage),
@@ -544,9 +590,8 @@ export function mergeReports(
     unmappedLoincs: tallyUnmappedLoincs(
       present.flatMap((r) => r.unmappedLoincs ?? [])
     ),
-    unresolvedNames: tallyUnresolvedNames(
-      present.flatMap((r) => r.unresolvedNames ?? [])
-    ),
+    unresolvedNames: names.unresolvedNames,
+    declinedNames: names.declinedNames,
     // Reconciliation is single-document (the AI path never merges); carry the first
     // present one through rather than trying to combine across documents.
     reconciliation:
@@ -565,7 +610,23 @@ export function serializeImportReport(
   report: ImportReport | null | undefined
 ): string | null {
   if (!report) return null;
-  return JSON.stringify(report);
+  // The declined split (#2313) is a READ-time view over the current registry, so
+  // storage keeps the whole unresolved set exactly as it always did: fold the
+  // declared half back in. Otherwise a persist that round-trips a parsed report
+  // (reconcileStoredReportCounts) would freeze today's registry into the blob, and
+  // a name declared LATER would still read as unresolved on every old document —
+  // losing the retroactivity that is the whole reason the split is at read time.
+  const { declinedNames, ...rest } = report;
+  if (!declinedNames?.length) return JSON.stringify(rest);
+  return JSON.stringify({
+    ...rest,
+    // The tally rebuilds each row from name/count/unit, so the declaration — which
+    // is derived, not data — is dropped rather than stored.
+    unresolvedNames: tallyUnresolvedNames([
+      ...(rest.unresolvedNames ?? []),
+      ...declinedNames,
+    ]),
+  });
 }
 
 // Parse a stored import_report JSON string back into a report, tolerating null /
@@ -589,9 +650,22 @@ export function parseImportReport(raw: string | null): ImportReport | null {
     const unmappedLoincs = Array.isArray(obj.unmappedLoincs)
       ? (obj.unmappedLoincs as UnmappedLoinc[])
       : [];
-    const unresolvedNames = Array.isArray(obj.unresolvedNames)
-      ? (obj.unresolvedNames as UnresolvedName[])
-      : [];
+    // The declared/unresolved split happens HERE, on READ, against the current
+    // registry (#2313) — never at write time. That is what makes a new declaration
+    // retroactive: every already-stored report splits correctly the moment the
+    // declaration ships, with no migration and nothing to reprocess. `declinedNames`
+    // is read back too (nothing writes it today — serializeImportReport folds it
+    // away — but a blob that carries one must not lose the name), and the whole pool
+    // is re-partitioned rather than trusted.
+    const storedNames = [
+      ...(Array.isArray(obj.unresolvedNames)
+        ? (obj.unresolvedNames as UnresolvedName[])
+        : []),
+      ...(Array.isArray(obj.declinedNames)
+        ? (obj.declinedNames as UnresolvedName[])
+        : []),
+    ];
+    const { unresolvedNames, declinedNames } = splitDeclaredNames(storedNames);
     const reconciliation =
       obj.reconciliation &&
       typeof obj.reconciliation === "object" &&
@@ -605,6 +679,7 @@ export function parseImportReport(raw: string | null): ImportReport | null {
       considered,
       unmappedLoincs,
       unresolvedNames,
+      declinedNames,
       reconciliation,
       // Per-record confidence (#1601). Its own tolerant parser: a legacy report has
       // no such key, and a garbled one must degrade to "no signal" rather than break
