@@ -4,7 +4,11 @@ import { tickCached } from "@/lib/tick-cache";
 import { toUtcInstant, utcInstant } from "@/lib/date";
 import { instantNow } from "@/lib/clock";
 import { getTimezone } from "@/lib/settings";
-import type { IntegrationId, IntegrationSyncEvent } from "@/lib/types";
+import type {
+  IntegrationId,
+  IntegrationKind,
+  IntegrationSyncEvent,
+} from "@/lib/types";
 import {
   staleSyncs,
   staleSyncDetail,
@@ -27,6 +31,10 @@ import {
   type ProviderStanding,
   type SyncVocabulary,
 } from "@/lib/integrations/provider-state";
+import {
+  isScheduledKind,
+  type IntegrationDelivery,
+} from "@/lib/integrations/delivery";
 import { timelineDayHref, readingDetailHref, type AppRoute } from "@/lib/hrefs";
 import {
   getIntegrationBackfillJobs,
@@ -35,6 +43,7 @@ import {
 import {
   INTEGRATIONS,
   getIntegration,
+  integrationDelivery,
   isPullIntegration,
 } from "@/lib/integrations/registry";
 import {
@@ -207,6 +216,9 @@ interface ProviderFacts {
   // for the "no data since" copy. Null otherwise.
   stale: StaleSync | null;
   standing: ProviderStanding;
+  // WHO MOVES THE DATA (#2301) — resolved from the registry kind here and carried, so
+  // the standing and every surface reading it agree on which family it came from.
+  delivery: IntegrationDelivery;
 }
 
 function resolveProviderFacts(
@@ -245,6 +257,7 @@ function resolveProviderFacts(
         nowAt
       )[0] ?? null)
     : null;
+  const delivery = integrationDelivery(def);
   return {
     connected,
     needsReauth,
@@ -252,7 +265,9 @@ function resolveProviderFacts(
     window,
     lastSuccessAt,
     stale,
+    delivery,
     standing: providerStanding({
+      delivery,
       connected,
       needsReauth,
       latest,
@@ -658,7 +673,14 @@ export function getLatestSyncEvent(
 export interface IntegrationState {
   id: IntegrationId;
   name: string;
-  kind: string; // IntegrationKind: 'push' | 'oauth' | 'token' | 'public'
+  // TYPED (#2301), not `string`. Every surface that asks a kind question — which
+  // dialect, which run noun, which delivery family — now gets an exhaustive answer
+  // instead of one that silently defaults.
+  kind: IntegrationKind;
+  // WHO MOVES THE DATA, resolved once here so no surface re-derives it. It decides
+  // which FAMILY of standings this provider's `standing` is drawn from, and therefore
+  // which questions the surface may ask about it at all.
+  delivery: IntegrationDelivery;
   connected: boolean;
   // The provider's credential died (dead/revoked token) and it flipped to
   // `needs_reauth` (issue #326) — distinct from a never-configured / user-removed
@@ -708,15 +730,14 @@ export interface IntegrationState {
 // record — the name is the surface's, the shape is the model's.
 export type ConnectedSource = IntegrationState;
 
-// The integration kinds that produce a RECURRING sync stream, and therefore belong in
-// "Connected sources": push (Health Connect), oauth (Strava, Withings), token (Oura),
-// and public (Weather & UV — keyless, but it runs on the hourly tick and appends a
-// sync event per run exactly like the others). Excluded: 'archive' (Fitbit Takeout is
-// a one-off upload and lives in the chronological Imports feed) and 'feed' (the
-// outbound calendar subscription, which imports nothing). Weather was missing here,
-// which left its successful history unreachable while its failures still showed under
-// Needs attention (#1614).
-const RECURRING_SOURCE_KINDS = new Set(["push", "oauth", "token", "public"]);
+// "Connected sources" is the SCHEDULED family, and since #2301 it says so by reading
+// the declared delivery axis (`isScheduledKind` over `KIND_DELIVERY`) instead of
+// re-enumerating members. It used to be `RECURRING_SOURCE_KINDS`, a `Set<string>`
+// naming four of the seven kinds by hand — and that hand-enumeration had already
+// caused this exact bug once: `public` was missing, which left Weather's successful
+// history unreachable while its failures still showed under Needs attention (#1614).
+// Attended providers (a Takeout archive, patient portals) reach Review through the
+// chronological Imports feed instead; the outbound calendar feed imports nothing.
 
 // The recurring-stream providers for the "Connected sources" section, each collapsed
 // to its latest sync outcome plus a short expandable history. Profile-scoped via the
@@ -727,7 +748,7 @@ const RECURRING_SOURCE_KINDS = new Set(["push", "oauth", "token", "public"]);
 // "Not connected" card.
 export function getConnectedSources(profileId: number): ConnectedSource[] {
   return INTEGRATIONS.filter(
-    (i) => i.status === "available" && RECURRING_SOURCE_KINDS.has(i.kind)
+    (i) => i.status === "available" && isScheduledKind(i.kind)
   )
     .map((i) => getIntegrationState(profileId, i.id, REVIEW_HISTORY_LIMIT))
     .filter((s): s is IntegrationState => s !== null)
@@ -771,6 +792,7 @@ export function getIntegrationState(
     id: def.id,
     name: def.name,
     kind: def.kind,
+    delivery: facts.delivery,
     connected: facts.connected,
     needsReauth: facts.needsReauth,
     // Which providers can be synced on demand is a REGISTRY fact now (#2040): a

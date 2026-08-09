@@ -75,9 +75,12 @@ export default function IntegrationStatusHeader({
   watchBackfills?: boolean;
 }) {
   const { latest, standing, vocabulary } = state;
-  const badge = standingBadge(standing);
-  const perRun = detail === "run";
+  // The run noun selects the attended dialect too (#2301) — "Last import" for an
+  // archive, "Last upload" for an attended tool — and is NULL for the outbound feed,
+  // which records no runs to name.
   const noun = syncRunNounForKind(state.kind);
+  const badge = standingBadge(standing, noun);
+  const perRun = detail === "run";
   const coverage = perRun && latest ? formatCoverage(latest, vocabulary) : null;
   const provenance = state.provenanceCounts;
   const written = latest ? writtenCount(latest) : 0;
@@ -97,6 +100,11 @@ export default function IntegrationStatusHeader({
     vocabulary
   );
   const cadence = successCadenceLabel(state.successCadenceMinutes);
+  // "No syncs yet" is a PROMISE that a sync is coming, and it is only true for the
+  // SCHEDULED family (#2301): the outbound feed will never sync anything in, and an
+  // attended source already states its own emptiness through the badge and the
+  // headline ("Set up — nothing imported yet"). Nothing where nothing is true.
+  const awaitFirstRun = state.delivery === "scheduled";
 
   return (
     <div data-testid={testid}>
@@ -158,12 +166,12 @@ export default function IntegrationStatusHeader({
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           {latest ? (
             <SyncOutcomeLine ev={latest} vocabulary={vocabulary} />
-          ) : (
+          ) : awaitFirstRun ? (
             <span className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
               <IconCircle className="h-4 w-4 shrink-0" stroke={1.75} />
               No syncs yet
             </span>
-          )}
+          ) : null}
           {coverage && (
             <span className="text-xs text-slate-500 dark:text-slate-400">
               {coverage}
@@ -176,7 +184,7 @@ export default function IntegrationStatusHeader({
             {standingHeadline(standing, noun)}
             {activity ? ` — ${activity}.` : "."}
           </p>
-          {!latest && (
+          {!latest && awaitFirstRun && (
             <p className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
               <IconCircle className="h-4 w-4 shrink-0" stroke={1.75} />
               No syncs yet

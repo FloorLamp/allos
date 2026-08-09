@@ -15,10 +15,12 @@
 // badge, a different outcome sentence, or a different history shape has to change it
 // here, where all three change together.
 
+import type { IntegrationKind } from "@/lib/types/integrations";
 import { formatSplitLabel, formatWindow } from "./sync-log";
 import { isTruncatedSyncEvent } from "./sync-details";
 import { formatTolerance, isSyncStale } from "./staleness";
 import { parseSyncEventAt } from "./pull-cadence";
+import type { IntegrationDelivery } from "./delivery";
 
 // The event fields every state answer is derived from. Structurally typed rather than
 // importing the row type, so the pure tier never drags @/lib/db in behind it.
@@ -52,20 +54,57 @@ export type SyncVocabulary = "records" | "forecast";
 // Derived from the provider KIND, never from a provider id: `public` is the keyless
 // shared-cache kind, and any future provider of that kind gets the right dialect for
 // free.
-export function syncVocabularyForKind(kind: string): SyncVocabulary {
-  return kind === "public" ? "forecast" : "records";
+//
+// TYPED `IntegrationKind`, not `string` (#2301). The old signature is why `archive`
+// and `external-attended` fell into the polled dialect silently — the comment promised
+// that "a future provider of a known kind gets the right word for free", which was
+// true only for the kinds the function happened to name, because a `string` parameter
+// has no exhaustiveness to fail. The two attended kinds resolve to `records`, which is
+// the value they already got: only the TYPING changes here. It is the guard, not a
+// behaviour fix.
+export function syncVocabularyForKind(kind: IntegrationKind): SyncVocabulary {
+  switch (kind) {
+    case "public":
+      return "forecast";
+    case "push":
+    case "oauth":
+    case "token":
+    case "feed":
+    case "archive":
+    case "external-attended":
+      return "records";
+  }
 }
 
 // What ONE RUN of this provider is called (#1991). The day-grouped history counts
 // runs — "26 pushes today" — and a phone exporter pushing to us is not "syncing", nor
 // is a keyless forecast fetch. Derived from the provider KIND for the same reason the
 // vocabulary is: a future provider of a known kind gets the right word for free.
-export type SyncRunNoun = "push" | "sync" | "refresh";
+//
+// `import` (archive) and `upload` (external-attended) joined in #2301 — the two
+// attended kinds had been silently taking the polled word.
+export type SyncRunNoun = "push" | "sync" | "refresh" | "import" | "upload";
 
-export function syncRunNounForKind(kind: string): SyncRunNoun {
-  if (kind === "push") return "push";
-  if (kind === "public") return "refresh";
-  return "sync";
+// NULL FOR `feed`, and deliberately: a noun for a run is a fiction where no runs are
+// recorded. Outbound surfaces never ask for one, and giving them "sync" is how
+// "No syncs yet" ended up rendering forever on a card nothing will ever sync into.
+// (Same reasoning as the registry's refusal to declare paging tunables for Weather.)
+export function syncRunNounForKind(kind: IntegrationKind): SyncRunNoun | null {
+  switch (kind) {
+    case "push":
+      return "push";
+    case "public":
+      return "refresh";
+    case "oauth":
+    case "token":
+      return "sync";
+    case "archive":
+      return "import";
+    case "external-attended":
+      return "upload";
+    case "feed":
+      return null;
+  }
 }
 
 // The semantic tone of a status/outcome, resolved to classes in exactly one place
@@ -74,8 +113,25 @@ export type StatusTone = "good" | "caution" | "bad" | "neutral";
 
 // ---- Standing --------------------------------------------------------------
 
-// What kind of shape a provider is in, as one closed vocabulary every surface reads.
-export type ProviderStanding =
+// ONE union, THREE DISJOINT FAMILIES (#2301). Every state below used to describe a
+// live connection, and the model applied them to sources allos does not drive: a
+// ten-day-old Takeout file read "Connected", green; an outbound calendar feed read
+// "Connected" plus a permanent "No syncs yet"; a hand-run portal tool read
+// "Intermittent", whose own contract ("a successful run landed inside the provider's
+// silence tolerance") is vacuous when the tolerance is null. The green tone was the
+// sharpest part: `good` is a HEALTH verdict, the one claim allos cannot make about a
+// source it does not drive.
+//
+// So the union grew two families and `providerStanding` gained a DELIVERY, which it
+// dispatches on. The producer is where illegal combinations become unrepresentable:
+// each private derivation returns its own subtype, so no future code path can hand an
+// attended provider `failing`. The consumers stay ONE function each — `standingBadge`,
+// `standingHeadline`, `standingEscalates`, `needsAttention` — switching over the whole
+// union with no `default`, which is what makes growing the union a compile error at
+// every surface rather than a silent fall-through.
+
+// The seven original states, UNCHANGED, and now stated to be about a connection.
+export type ScheduledStanding =
   // Connected, and every recent run succeeded cleanly.
   | "healthy"
   // Connected, most recent run succeeded but stopped early (#1614) — real data
@@ -105,6 +161,42 @@ export type ProviderStanding =
   // Connected but nothing has run yet.
   | "never-synced";
 
+// The ATTENDED vocabulary — PROMOTED, not invented (#2301). Two surfaces had already
+// opted out of the shared model rather than be described wrongly by it, and both had
+// hand-rolled the honest words: the Fitbit Takeout page states
+// `Last import ${when}.` / "Set up, but nothing imported yet." / "No archive imported
+// yet.", and lib/portal-status.ts does the same for portals ("this integration is
+// attended, so a quiet login is a login nobody has run yet, not a broken one"). Those
+// three states are these three; writing fresh copy here would have produced a THIRD
+// dialect for a problem caused by there being two.
+//
+// `attempt-failed` is the state the hand-rolled versions LACKED. An import genuinely
+// can fail, and before this it read as `intermittent`.
+//
+// No `needs-reauth` here: a revoked upload token surfaces as a failed attempt, which
+// is what the user sees and what they act on. Fewer states, same information. And
+// `not-set-up` rather than `not-connected`, because "Not connected" frames a file
+// import as a link you failed to make.
+export type AttendedStanding =
+  // The last recorded attempt succeeded. The honest statement is WHEN something last
+  // arrived; the reader decides whether that is fine.
+  | "imported"
+  // The last recorded attempt failed. An attention item, never an escalation.
+  | "attempt-failed"
+  // Set up, nothing in yet.
+  | "never-imported"
+  // No connection and no history at all.
+  | "not-set-up";
+
+// The OUTBOUND vocabulary. Allos publishes; nothing arrives, and no runs are
+// recorded — which is why the outbound surfaces state the feed's state and then say
+// nothing about runs at all.
+export type OutboundStanding = "feed-enabled" | "feed-off";
+
+// What kind of shape a provider is in, as one closed vocabulary every surface reads.
+export type ProviderStanding =
+  ScheduledStanding | AttendedStanding | OutboundStanding;
+
 // How many recent runs the standing derivation looks at. Deliberately the same
 // depth every surface resolves (getIntegrationState reads this window regardless
 // of how much display history the caller asked for), so the grid card, the source
@@ -132,6 +224,10 @@ export function consecutiveLeadingFailures(
 // three freshness fields compose the ONE escalation rule (isSyncStale — the same
 // derivation the silent-stop signal uses, not a duplicate of it).
 export interface ProviderStandingFacts {
+  // WHO MOVES THE DATA (#2301) — the axis that decides WHICH question is being asked,
+  // and therefore which family of answers is even representable. Derived from the
+  // provider's kind (KIND_DELIVERY), never declared per provider.
+  delivery: IntegrationDelivery;
   connected: boolean;
   needsReauth: boolean;
   latest: SyncEventFacts | null;
@@ -144,11 +240,46 @@ export interface ProviderStandingFacts {
 }
 
 // THE standing derivation (#1772, flap-aware since #1880, one silence rule since
-// #2263). One shared decision: the Review badge, Needs attention, the grid card, the
-// source page, and the digest all read this — latest-event-wins is gone. Only
-// `failing` and `needs-reauth` escalate (standingEscalates); `intermittent` stays a
-// calm rendered fact.
+// #2263, delivery-dispatched since #2301). One shared decision: the Review badge,
+// Needs attention, the grid card, the source page, and the digest all read this —
+// latest-event-wins is gone. Only `failing` and `needs-reauth` escalate
+// (standingEscalates), both scheduled-only; `intermittent` stays a calm rendered fact.
+//
+// THE PRODUCER IS WHERE ILLEGAL COMBINATIONS BECOME UNREPRESENTABLE: each branch
+// returns its own subtype, so an attended provider cannot be handed a connection
+// verdict by this or any future code path.
 export function providerStanding(s: ProviderStandingFacts): ProviderStanding {
+  switch (s.delivery) {
+    case "scheduled":
+      return scheduledStanding(s);
+    case "attended":
+      return attendedStanding(s);
+    case "outbound":
+      return outboundStanding(s);
+  }
+}
+
+// A source allos does not drive, read by its LAST ATTEMPT. There is no run window to
+// consult and no flap to detect: "3 of the last 10 runs failed" describes a connection
+// misbehaving on its own, and nothing here happens on its own. The freshness fields
+// are ignored on purpose — an attended provider declares `silenceToleranceMinutes:
+// null` because allos may never call it late.
+function attendedStanding(s: ProviderStandingFacts): AttendedStanding {
+  if (s.latest) return s.latest.ok ? "imported" : "attempt-failed";
+  // No attempt has ever been recorded, so the only question left is whether this was
+  // ever set up. `needsReauth` is deliberately not consulted (see AttendedStanding).
+  return s.connected ? "never-imported" : "not-set-up";
+}
+
+// Allos publishes; nothing arrives. The only fact is whether the feed is live.
+function outboundStanding(s: ProviderStandingFacts): OutboundStanding {
+  return s.connected ? "feed-enabled" : "feed-off";
+}
+
+// The original seven-state derivation, MOVED HERE VERBATIM: the #2263 silence rule,
+// `intermittent`, and the flap window are untouched for the providers they were
+// written for. This refactor must not move a single scheduled verdict.
+function scheduledStanding(s: ProviderStandingFacts): ScheduledStanding {
   if (s.needsReauth) return "needs-reauth";
   if (!s.connected) return "not-connected";
   if (!s.latest) return "never-synced";
@@ -187,11 +318,37 @@ export interface ProviderBadge {
   tone: StatusTone;
 }
 
+// The attended family's word for one run — "import" for an `archive`, "upload" for an
+// `external-attended` tool. Falls back to "import", the more common of the two, for a
+// caller with no noun in hand.
+function attendedWord(noun: SyncRunNoun | null): {
+  run: string;
+  past: string;
+} {
+  return noun === "upload"
+    ? { run: "upload", past: "Uploaded" }
+    : { run: "import", past: "Imported" };
+}
+
 // ONE badge vocabulary. The grid card, the setup-page status header, and Review's
 // card all render this — they used to hand-roll three different sets of words and
 // tints for the same three states.
-export function standingBadge(standing: ProviderStanding): ProviderBadge {
+//
+// TONE IS THE POINT of the #2301 split. `good` is a HEALTH verdict, and the attended
+// and outbound families are never given one: green asserts a connection is working,
+// and for a source allos does not drive the honest statement is only WHEN something
+// last arrived — the reader decides whether that is fine. `neutral` throughout there,
+// with `caution` reserved for a run that actually failed.
+//
+// `noun` selects the attended dialect (import / upload); the scheduled and outbound
+// labels ignore it.
+export function standingBadge(
+  standing: ProviderStanding,
+  noun: SyncRunNoun | null = null
+): ProviderBadge {
+  const word = attendedWord(noun);
   switch (standing) {
+    // ── scheduled: the connection verdicts, unchanged ──
     case "healthy":
       return { label: "Connected", tone: "good" };
     case "partial":
@@ -206,6 +363,23 @@ export function standingBadge(standing: ProviderStanding): ProviderBadge {
       return { label: "Not connected", tone: "caution" };
     case "never-synced":
       return { label: "Connected", tone: "good" };
+    // ── attended: never green, because nothing here is a connection ──
+    case "imported":
+      return { label: `Last ${word.run}`, tone: "neutral" };
+    case "attempt-failed":
+      return { label: `Last ${word.run} failed`, tone: "caution" };
+    case "never-imported":
+      return {
+        label: `Nothing ${word.past.toLowerCase()} yet`,
+        tone: "neutral",
+      };
+    case "not-set-up":
+      return { label: "Not set up", tone: "neutral" };
+    // ── outbound ──
+    case "feed-enabled":
+      return { label: "Feed enabled", tone: "neutral" };
+    case "feed-off":
+      return { label: "Feed off", tone: "neutral" };
   }
 }
 
@@ -213,6 +387,13 @@ export function standingBadge(standing: ProviderStanding): ProviderBadge {
 // profile-menu/Data badge, the dashboard hero item, and the digest's 🔌 lines all
 // gate on this. Everything else — including `intermittent` — is a rendered fact on
 // calm surfaces only; the reach of a flapping provider may only ever narrow.
+//
+// EXACTLY the two scheduled states, still — which since #2301 means NO attended or
+// outbound state can ever escalate, and that is the property that makes the split
+// worth doing rather than three more members on a flat union. Allos cannot claim an
+// attended source is *still* broken: only the user knows whether they will run the
+// tool again, and a morning digest line about a portal tool last touched on someone's
+// laptop is the crying-wolf failure #1880 exists to prevent.
 export function standingEscalates(standing: ProviderStanding): boolean {
   return standing === "failing" || standing === "needs-reauth";
 }
@@ -224,11 +405,30 @@ export function standingEscalates(standing: ProviderStanding): boolean {
 // the hourly tick is working as designed, and the staleness detector (#1685) is what
 // escalates one that never starts. `intermittent` is deliberately NOT attention
 // either (#1880): it collapses to a calm amber one-liner stating the pattern.
+//
+// `attempt-failed` joins `partial` and `not-connected` here (#2301): expanded in
+// Review, no badge, no digest 🔌 line. A reach reduction plus one calm rendered
+// surface, which the contact-consent rule permits. `not-set-up` and `feed-off` are
+// deliberately NOT attention — an integration nobody set up is not an unfinished task.
 export function needsAttention(standing: ProviderStanding): boolean {
   return (
     standingEscalates(standing) ||
     standing === "partial" ||
-    standing === "not-connected"
+    standing === "not-connected" ||
+    standing === "attempt-failed"
+  );
+}
+
+// Has this provider been SET UP at all? Asked by the Import grid, which shows a
+// compact STATUS card for anything set up and the original pitch card for anything
+// that is not — its owner either bought it or unbought it. ONE decision rather than a
+// member list per surface: `not-connected` is the scheduled "set up once, later
+// removed" (#294), `not-set-up` is its attended twin, `feed-off` its outbound one.
+export function standingUnconfigured(standing: ProviderStanding): boolean {
+  return (
+    standing === "not-connected" ||
+    standing === "not-set-up" ||
+    standing === "feed-off"
   );
 }
 
@@ -302,8 +502,9 @@ export const INTERMITTENT_HEADLINE = "Working, with interruptions";
 // renders underneath. Two copies of one event on one screen was the defect.
 export function standingHeadline(
   standing: ProviderStanding,
-  noun: SyncRunNoun = "sync"
+  noun: SyncRunNoun | null = "sync"
 ): string {
+  const word = attendedWord(noun);
   switch (standing) {
     case "healthy":
       return noun === "push" ? "Receiving normally" : "Syncing normally";
@@ -318,7 +519,25 @@ export function standingHeadline(
     case "not-connected":
       return "Not connected";
     case "never-synced":
-      return `Connected — waiting for the first ${noun}`;
+      return `Connected — waiting for the first ${noun ?? "sync"}`;
+    // ── attended. "Syncing normally" and "the next successful sync catches up" were
+    //    what an attended page adopting this component would have rendered (#2301):
+    //    nothing will catch up, because there is no next run until a person starts
+    //    one. These state what happened and stop. ──
+    case "imported":
+      // The surface appends WHEN — it already renders the timestamp.
+      return word.past;
+    case "attempt-failed":
+      return `The last ${word.run} failed`;
+    case "never-imported":
+      return `Set up — nothing ${word.past.toLowerCase()} yet`;
+    case "not-set-up":
+      return "Not set up";
+    // ── outbound ──
+    case "feed-enabled":
+      return "Publishing to your calendar";
+    case "feed-off":
+      return "Feed off";
   }
 }
 
@@ -329,9 +548,12 @@ export function standingHeadline(
 export function periodActivityLabel(
   day: { runs: number; inserted: number; updated: number } | null,
   isToday: boolean,
-  noun: SyncRunNoun = "sync",
+  noun: SyncRunNoun | null = "sync",
   vocabulary: SyncVocabulary = "records"
 ): string | null {
+  // A provider with no run noun records no runs (the outbound `feed`), so there is no
+  // activity to aggregate — never a count in an invented word.
+  if (!noun) return null;
   if (!day || !isToday || day.runs === 0) return null;
   const head = `${day.runs} ${day.runs === 1 ? noun : pluralRunNoun(noun)} today`;
   if (vocabulary === "forecast") {
@@ -346,19 +568,45 @@ export function periodActivityLabel(
   return parts.length ? `${head}, ${parts.join(", ")}` : `${head}, nothing new`;
 }
 
-// "push" → "pushes", "refresh" → "refreshes", "sync" → "syncs".
+// A DECLARED TABLE, not a suffix rule (#2301). The old `${noun}es` fallback happened
+// to be right for exactly the three nouns that existed and yields "importes" and
+// "uploades" for the two added here — an English pluralisation rule is not something
+// to derive, and `Record<SyncRunNoun, string>` makes a new noun a build error until it
+// declares its plural.
+const RUN_NOUN_PLURAL: Record<SyncRunNoun, string> = {
+  push: "pushes",
+  sync: "syncs",
+  refresh: "refreshes",
+  import: "imports",
+  upload: "uploads",
+};
+
 export function pluralRunNoun(noun: SyncRunNoun): string {
-  return noun === "sync" ? "syncs" : `${noun}es`;
+  return RUN_NOUN_PLURAL[noun];
 }
 
 // The escalation policy, stated visibly on the source page (#1880 item 1): the one
 // shared rule, so the page can promise what the badge and the digest will do. Null
-// for an EXEMPT provider — it has no cadence to be late against, so there is no
-// policy to promise and an invented sentence would be worse than silence.
+// for an EXEMPT SCHEDULED provider — it has no cadence to be late against, so there is
+// no policy to promise and an invented sentence would be worse than silence.
+//
+// THE ATTENDED INVERSE (#2301). Returning null there was honest silence, but the page
+// can now state the POSITIVE, which is the thing a reader of that page actually wants
+// to know: allos will never mark this source late, because only they can start it.
+// Outbound stays silent — nothing arrives, so there is no lateness either way and no
+// sentence to write about it.
 export function escalationPolicyLabel(
   toleranceMinutes: number | null,
-  noun: SyncRunNoun = "sync"
+  noun: SyncRunNoun | null = "sync",
+  delivery: IntegrationDelivery = "scheduled"
 ): string | null {
+  if (delivery === "outbound") return null;
+  if (delivery === "attended") {
+    return (
+      `This source is only ever as fresh as your last ${attendedWord(noun).run} — ` +
+      "allos never marks it late, because only you can start it."
+    );
+  }
   if (toleranceMinutes == null) return null;
   return (
     `This source escalates to “Sync failing” when no ${noun} has succeeded ` +
