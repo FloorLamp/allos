@@ -344,18 +344,30 @@ test("the index lists every panel in the data, with no pager (#1581 section A)",
     group(page, "cbc").getByTestId("biomarker-panel-toggle")
   ).toHaveAttribute("aria-label", "Complete blood count · 7 analytes");
 
-  // The differential, end to end (#2335). Searching the BARE analyte still finds the
-  // row — the reader keeps typing what a lab prints — and the row that comes back
-  // SAYS which measure it is. A bare "Lymphocytes" heading is the defect: it meant
-  // the percentage while a bare "Monocytes" two rows down meant a cell count.
-  await page.goto(`${BIOMARKERS}?q=Lymphocytes`);
+  await page.context().close();
+});
+
+test("a differential row states which measure it is (#2335)", async ({
+  browser,
+}) => {
+  // Searching the BARE analyte still finds the row — the reader keeps typing what a
+  // lab prints, and the retired spelling routes through CANONICAL_ALIASES — while the
+  // row that comes back SAYS which measure it is. A bare "Lymphocytes" heading is the
+  // defect this closed: it meant the percentage, while a bare "Monocytes" in the same
+  // panel meant a cell count. `current=1` keeps the fixture's three draws down to the
+  // one current reading, so the row is named exactly once.
+  const page = await openIndex(
+    browser,
+    `${BIOMARKERS}?q=Lymphocytes&current=1`
+  );
   const cbc = group(page, "cbc");
   await expect(cbc).toHaveAttribute("data-open", "true");
   await expect(
     cbc.getByRole("link", { name: "Lymphocytes, Relative", exact: true })
   ).toBeVisible();
+  // …and the retired bare heading is nowhere on the page it used to head.
   await expect(
-    cbc.getByRole("link", { name: "Lymphocytes", exact: true })
+    page.getByRole("link", { name: "Lymphocytes", exact: true })
   ).toHaveCount(0);
 
   await page.context().close();
