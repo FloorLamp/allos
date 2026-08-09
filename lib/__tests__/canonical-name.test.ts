@@ -839,8 +839,10 @@ describe("deliberately uncurated analytes (#2313)", () => {
   it("looks a declaration up by normalized key, so spelling variants collapse", () => {
     const egfr = uncuratedAnalyte("eGFR, African American");
     expect(egfr?.kind).toBe("covered-elsewhere");
+    // The curated name since #2335 — `instead` must resolve against the dataset,
+    // so it moved with the rename rather than staying on the retired spelling.
     expect(egfr && egfr.kind === "covered-elsewhere" && egfr.instead).toBe(
-      "eGFR"
+      "Estimated Glomerular Filtration Rate (eGFR)"
     );
     // Casing, punctuation and word order all fold — the alias table's key rule.
     expect(uncuratedAnalyte("african american egfr")).toBe(egfr);

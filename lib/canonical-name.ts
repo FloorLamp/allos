@@ -561,7 +561,11 @@ export type UncuratedAnalyte =
 // into "your kidney function is measured a better way".
 const EGFR_RACE_BRANCHED: UncuratedAnalyte = {
   kind: "covered-elsewhere",
-  instead: "eGFR",
+  // The CURATED name, not the bare spelling (#2335 renamed it). `instead` is the
+  // one field here that must resolve against the dataset — the completeness guard
+  // checks it, and the debugger LINKS to it — so it cannot ride the retired-spelling
+  // alias the way an incoming document may. A bare "eGFR" would have dangled.
+  instead: "Estimated Glomerular Filtration Rate (eGFR)",
   reason:
     "Race- and ethnicity-adjusted eGFR equations return different values for the same draw, so they cannot share one series. Allos derives the race-free CKD-EPI 2021 value from your creatinine instead — that is the eGFR you see.",
 };

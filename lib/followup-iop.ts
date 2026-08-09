@@ -16,8 +16,8 @@
 // per-eye (OD/OS) and the two eyes are stored as SEPARATE canonical analytes
 // ("Intraocular Pressure, Right Eye" / "…, Left Eye" / "…, Unspecified Eye" for a
 // report that states no laterality) so their CHART SERIES stay separate and the
-// cross-source dedup never
-// merges two equal same-day pressures — they are the same assay but DIFFERENT
+// cross-source dedup never merges two equal same-day pressures — they are the same
+// assay but DIFFERENT
 // subjects. The data model carries no structured OD/OS column; laterality lives in the
 // canonical name. So the "one question" collapse is scoped HERE, in the adapter, not in
 // the global biomarkerFamily(): this adapter treats ANY IOP reading (either eye,
