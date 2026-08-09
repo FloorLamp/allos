@@ -276,6 +276,58 @@ BiomarkerScale, the Longevity section, the import preview — keep the `sr-only`
 until each is considered against its own density; without the prop the behavior is
 byte-identical.
 
+### And the DETAIL page must be able to point at what it coloured (#2340)
+
+#2315 fixed the list. The detail page (`/biomarkers/view`) had the mirror-image
+defect: it coloured its latest value from `latest.flag` while building its range
+display — `referenceEntries` / `optimalEntries` — **exclusively from the curated
+entry**. When the catalog carries no band those lists are empty and no range renders
+at all, while the range the flag came from sits on the row, in
+`medical_records.reference_range`, unread by that surface. An alarming value with no
+basis for the alarm, and worst precisely where it is most likely: an analyte the
+catalog **deliberately** declines to band is exactly when the curated list is
+guaranteed empty and the lab's own range is present.
+
+`biomarkerValueBasis()` (`lib/biomarker-value-basis.ts`) is the decision, and it
+returns both halves at once — what to render as the basis, and the flag the value is
+allowed to carry — so a caller cannot take one without the other:
+
+- **curated** — the app's own band is on screen. Unchanged.
+- **reported** — no curated band, but the row carries the source's printed range.
+  It renders, **attributed**: `Reference range (as reported)`. The attribution is
+  load-bearing. Two readings of one such analyte in a single database can carry
+  DIFFERENT source ranges — labs band leptin by sex and body composition — which is
+  precisely why the catalog publishes none, and means the source's range is the only
+  range that ever applied to that draw.
+- **qualitative** — the reading states its own verdict in words ("Detected",
+  "Reactive"), and that word IS the value on screen. A positive infection screen is
+  flagged `abnormal` by `qualitativeFlagResolution` against the classifier, never
+  against a range; its basis is displayable and displayed. The page supplies this
+  from the SAME `classifyQualitativeResult` the flag came from.
+- **none** — nothing displayable. The value renders **neutral**.
+
+The suppression happens at the **flag**, not at the colour, and that is what makes it
+compose with #2315's `showFlagLabel`: handing that mode a basis-less flag would have
+replaced an unexplained red with an unexplained red PLUS the word "Low". One decision
+covers the colour, the caret and the word. It only suppresses a flag whose
+`flagTone` is `bad` or `warn` — `immune` renders its own emerald status and makes no
+claim the page must support, so deleting its label would remove an honest one.
+Nothing about the stored `flag` column changes; this is what the page CLAIMS.
+
+The same call runs per row of the readings table, whose neighbouring "Lab reference"
+column is where a `reported` row's basis is already displayed.
+
+**And the page states each fact once.** The subtitle used to append the curated
+`note` beside the reading count while the explainer card fifteen lines below rendered
+the curated `description`; for at least one analyte those are near-paraphrases. The
+card keeps the description. The note's one distinct clause — *why* this analyte has
+no band — is extracted by `bandNoteClause()` and rendered in the summary card, beside
+the value and the absent range, which is where a reader asks the question it answers.
+It selects clauses that negate a band/range/cutoff or state a band table in place of
+one, deliberately not a bare `/band/`: "Immature (band) neutrophils" is a cell type,
+and matching it would re-import the description the change exists to stop
+duplicating.
+
 ## Phase 2 (shipped): one write core, one editability contract
 
 `lib/reading-placement.ts` is the pure policy; `lib/reading-writes.ts` executes

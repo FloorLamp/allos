@@ -42,6 +42,10 @@ import {
   daysBetween,
   humanizeAge,
 } from "@/lib/reference-range";
+import {
+  bandNoteClause,
+  biomarkerValueBasis,
+} from "@/lib/biomarker-value-basis";
 import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
@@ -426,6 +430,40 @@ export default async function BiomarkerDetailPage(props: {
       optimalEntries.push({ label: "Optimal range (female)", range: female });
   }
 
+  // WHAT THE PAGE CAN SHOW AS THE BASIS FOR A COLOUR (#2340). The entries above are
+  // the app's OWN bands; when both lists are empty — guaranteed for an analyte the
+  // catalog deliberately declines to band — the flag's only visible basis is the range
+  // the source document printed on the row itself, which this surface never consulted.
+  // `biomarkerValueBasis` decides, per reading, which basis exists and therefore
+  // whether the value may be coloured at all: a reading with none renders neutral,
+  // its caret and its severity word included, because the suppression happens at the
+  // flag rather than at the colour (see the module header for why those travel
+  // together, and what it means for #2343's visible severity label below).
+  const hasCuratedBand =
+    referenceEntries.length > 0 || optimalEntries.length > 0;
+  const basisFor = (r: MedicalRecord) =>
+    biomarkerValueBasis({
+      flag: r.flag,
+      hasCuratedBand,
+      reportedRange: r.reference_range,
+      // The SAME classifier the qualitative timeline reads and the stored flag was
+      // resolved against, so "the value states its own verdict" cannot mean one thing
+      // to the flag and another to the basis.
+      qualitative:
+        classifyQualitativeResult(
+          canonical,
+          r.value,
+          r.notes,
+          r.reference_range,
+          r.loinc
+        ) != null,
+    });
+  const latestBasis = basisFor(latest);
+  // WHY there is no band, taken from the curated note and rendered where the band is
+  // missing instead of in the page subtitle (#2340 part 2). Only when the page shows
+  // no curated band — that is the question it answers.
+  const bandNote = hasCuratedBand ? null : bandNoteClause(cb?.note);
+
   // Judge the latest reading in the canonical unit: out of range, non-optimal,
   // or optimal. Bounded readings ("<0.10") are judged at their limit, like the
   // chart plots them.
@@ -526,11 +564,14 @@ export default async function BiomarkerDetailPage(props: {
         <IconArrowLeft className="h-4 w-4" /> Back to biomarkers
       </Link>
 
+      {/* One prose surface per fact (#2340). The subtitle used to append the curated
+          `note`, which for at least one analyte is a near-paraphrase of the explainer
+          card's `description` fifteen lines below — the same fact twice, in different
+          words. The card keeps the description; the note's band clause moves to the
+          summary card, beside the band it explains the absence of. */}
       <PageHeader
         title={canonical}
-        subtitle={`${series.length} reading${series.length === 1 ? "" : "s"}${
-          cb?.note ? ` · ${cb.note}` : ""
-        }`}
+        subtitle={`${series.length} reading${series.length === 1 ? "" : "s"}`}
         action={
           <StarButton
             itemKey={bioSeriesKey(canonical)}
@@ -563,9 +604,14 @@ export default async function BiomarkerDetailPage(props: {
 
       {/* Educational explainer: what this biomarker is and why it generally
           matters. Rendered only when a curated description exists; graceful when
-          absent. Informational, not personal interpretation. */}
+          absent. Informational, not personal interpretation. This is the page's ONE
+          prose surface for that fact (#2340) — the subtitle no longer paraphrases it
+          out of the curated `note`. */}
       {info && (
-        <div className="card mb-6 border-l-4 border-l-brand-300 dark:border-l-brand-700">
+        <div
+          data-testid="biomarker-explainer"
+          className="card mb-6 border-l-4 border-l-brand-300 dark:border-l-brand-700"
+        >
           <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
             {info.full_name}
             {info.abbreviation && info.abbreviation !== info.full_name && (
@@ -584,11 +630,16 @@ export default async function BiomarkerDetailPage(props: {
       <div className="card mb-6 flex flex-wrap items-center gap-x-8 gap-y-3">
         <div>
           <div className="label">Latest</div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+          <div
+            className="text-2xl font-bold text-slate-900 dark:text-slate-100"
+            data-testid="biomarker-latest-value"
+            data-basis={latestBasis.kind}
+          >
+            {/* Coloured only against a basis the page can show (#2340). */}
             <MedicalValue
               value={latest.value}
               unit={latest.unit}
-              flag={latest.flag}
+              flag={latestBasis.displayFlag}
             />
           </div>
           <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -603,6 +654,18 @@ export default async function BiomarkerDetailPage(props: {
             </div>
           </div>
         ))}
+        {/* The source document's OWN printed range, when the catalog publishes none
+            (#2340). Attributed, because it is the lab's band for that draw and not a
+            population band the app endorses — two readings of one such analyte can
+            carry different ones. */}
+        {latestBasis.reportedEntry && (
+          <div data-testid="biomarker-reported-range">
+            <div className="label">{latestBasis.reportedEntry.label}</div>
+            <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {latestBasis.reportedEntry.range}
+            </div>
+          </div>
+        )}
         {optimalEntries.map((e) => (
           <div key={e.label}>
             <div className="label">{e.label}</div>
@@ -672,6 +735,21 @@ export default async function BiomarkerDetailPage(props: {
               kind={isIop ? "iop" : "lab"}
             />
           </div>
+        )}
+        {/* Why this analyte has no band (#2340), from the curated note — the one
+            clause the explainer card's description does not carry, rendered where the
+            reader asks the question it answers rather than in a header subtitle.
+            `basis-full` so it reads as prose under the value row, not as a chip. */}
+        {bandNote && (
+          <p
+            data-testid="biomarker-band-note"
+            className="basis-full text-sm leading-relaxed text-slate-600 dark:text-slate-300"
+          >
+            <span className="font-semibold text-slate-800 dark:text-slate-100">
+              No reference band.
+            </span>{" "}
+            {bandNote}
+          </p>
         )}
       </div>
 
@@ -823,74 +901,82 @@ export default async function BiomarkerDetailPage(props: {
               </tr>
             </thead>
             <tbody>
-              {[...series].reverse().map((r) => (
-                <tr
-                  key={r.id}
-                  className="border-b border-black/5 dark:border-white/10"
-                >
-                  <td className="td whitespace-nowrap">{r.date}</td>
-                  <td className="td">
-                    {/* The severity word visibly, not only in the accessibility
+              {[...series].reverse().map((r) => {
+                const basis = basisFor(r);
+                return (
+                  <tr
+                    key={r.id}
+                    className="border-b border-black/5 dark:border-white/10"
+                  >
+                    <td className="td whitespace-nowrap">{r.date}</td>
+                    <td className="td" data-basis={basis.kind}>
+                      {/* The severity word visibly, not only in the accessibility
                         tree (#1220/#2315): this list intermixes out-of-range and
                         above-optimal readings of the same analyte, so red-vs-amber
                         alone was the only channel separating them for a sighted
                         reader. The bands themselves are the cards above — this
-                        column is the LAB's stated range, provenance for each row. */}
-                    <MedicalValue
-                      value={r.value}
-                      unit={r.unit}
-                      flag={r.flag}
-                      showFlagLabel
-                    />
-                    {/* How this result was collected and where it sits in the lab
+                        column is the LAB's stated range, provenance for each row.
+                        Every row goes through the same basis decision as the value
+                        above it (#2340): with no curated band AND no printed range in
+                        the neighbouring cell, a visible "Low" would be the louder
+                        version of exactly the unsupported claim this closes, so the
+                        row goes neutral — colour, caret and word together. */}
+                      <MedicalValue
+                        value={r.value}
+                        unit={r.unit}
+                        flag={basis.displayFlag}
+                        showFlagLabel
+                      />
+                      {/* How this result was collected and where it sits in the lab
                         lifecycle (#1404) — shown only when the source said. */}
-                    {readingAttributes(r).length > 0 && (
-                      <div
-                        className="text-xs text-slate-500 dark:text-slate-400"
-                        data-testid="reading-attributes"
-                      >
-                        {readingAttributes(r).join(" · ")}
-                      </div>
-                    )}
-                    {(revisionsByRecord.get(r.id) ?? []).map((rev) => (
-                      <div
-                        key={rev.id}
-                        className="text-xs text-amber-700 dark:text-amber-400"
-                        data-testid="reading-revision"
-                      >
-                        {revisionSummary(rev)}
-                      </div>
-                    ))}
-                  </td>
-                  <td className="td text-slate-500 dark:text-slate-400">
-                    {r.reference_range ?? "—"}
-                  </td>
-                  <td className="td">
-                    {r.derived ? (
-                      <span
-                        className="text-slate-500 dark:text-slate-400"
-                        title={r.derived_formula}
-                      >
-                        Computed
-                      </span>
-                    ) : r.document_id ? (
-                      <Link
-                        href={`/import/${r.document_id}`}
-                        className="text-brand-700 hover:underline dark:text-brand-400"
-                      >
-                        {docLabels.get(r.document_id) ?? "Document"}
-                      </Link>
-                    ) : (
-                      <span className="text-slate-500 dark:text-slate-400">
-                        Manual entry
-                      </span>
-                    )}
-                  </td>
-                  <td className="td text-slate-500 dark:text-slate-400">
-                    {r.name}
-                  </td>
-                </tr>
-              ))}
+                      {readingAttributes(r).length > 0 && (
+                        <div
+                          className="text-xs text-slate-500 dark:text-slate-400"
+                          data-testid="reading-attributes"
+                        >
+                          {readingAttributes(r).join(" · ")}
+                        </div>
+                      )}
+                      {(revisionsByRecord.get(r.id) ?? []).map((rev) => (
+                        <div
+                          key={rev.id}
+                          className="text-xs text-amber-700 dark:text-amber-400"
+                          data-testid="reading-revision"
+                        >
+                          {revisionSummary(rev)}
+                        </div>
+                      ))}
+                    </td>
+                    <td className="td text-slate-500 dark:text-slate-400">
+                      {r.reference_range ?? "—"}
+                    </td>
+                    <td className="td">
+                      {r.derived ? (
+                        <span
+                          className="text-slate-500 dark:text-slate-400"
+                          title={r.derived_formula}
+                        >
+                          Computed
+                        </span>
+                      ) : r.document_id ? (
+                        <Link
+                          href={`/import/${r.document_id}`}
+                          className="text-brand-700 hover:underline dark:text-brand-400"
+                        >
+                          {docLabels.get(r.document_id) ?? "Document"}
+                        </Link>
+                      ) : (
+                        <span className="text-slate-500 dark:text-slate-400">
+                          Manual entry
+                        </span>
+                      )}
+                    </td>
+                    <td className="td text-slate-500 dark:text-slate-400">
+                      {r.name}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </ScrollFade>
