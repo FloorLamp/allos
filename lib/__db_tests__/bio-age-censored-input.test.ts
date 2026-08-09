@@ -180,8 +180,9 @@ describe("bio-age: what moves the number, against the curated bands", () => {
     const byKey = new Map(effects.map((e) => [e.key, e]));
     // hs-CRP is curated one-sided ("optimal ≤1 mg/L"), so the stated bound IS the
     // target — there is no midpoint of a half-open band.
-    expect(byKey.get("High-Sensitivity C-Reactive Protein (hs-CRP)")?.reference)
-      .toEqual({ value: 1, basis: "optimal" });
+    expect(
+      byKey.get("High-Sensitivity C-Reactive Protein (hs-CRP)")?.reference
+    ).toEqual({ value: 1, basis: "optimal" });
     // RDW's optimal ceiling closed with the reference floor: 11.5–13 → 12.25.
     expect(byKey.get("Red Cell Distribution Width (RDW)")?.reference).toEqual({
       value: 12.25,

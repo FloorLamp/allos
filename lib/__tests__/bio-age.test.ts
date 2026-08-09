@@ -17,10 +17,7 @@ import {
   completenessChecklistMessage,
   isBioAgeHiddenForAge,
 } from "../bio-age";
-import {
-  AGE_INPUT_KEY,
-  type PhenoAgeInputEffect,
-} from "../derived-biomarkers";
+import { AGE_INPUT_KEY, type PhenoAgeInputEffect } from "../derived-biomarkers";
 import canonicalSeed from "../canonical-biomarkers.json";
 import type { CanonicalBiomarker } from "../types";
 
@@ -364,14 +361,20 @@ describe("phenoAgeReferenceValue", () => {
   it("answers for every curated PhenoAge input except the band-less glucose", () => {
     // The seed JSON carries the curated FIELDS; the stored-row columns (source,
     // created_at) are added at seed time and are irrelevant to a band lookup.
-    const seed = (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers;
+    const seed = (canonicalSeed as { biomarkers: { name: string }[] })
+      .biomarkers;
     const byName = new Map(
       seed.map((b) => [b.name, b as Partial<CanonicalBiomarker>])
     );
     for (const name of PHENOAGE_INPUT_ACCEPTED_NAMES) {
       const cb = byName.get(name);
       expect(cb, name).toBeDefined();
-      const r = phenoAgeReferenceValue(cb as CanonicalBiomarker, "male", 45, null);
+      const r = phenoAgeReferenceValue(
+        cb as CanonicalBiomarker,
+        "male",
+        45,
+        null
+      );
       if (name === "Glucose") expect(r, name).toBeNull();
       else expect(r, name).not.toBeNull();
     }
@@ -379,7 +382,9 @@ describe("phenoAgeReferenceValue", () => {
 });
 
 describe("bio-age effect copy", () => {
-  function effect(over: Partial<PhenoAgeInputEffect> = {}): PhenoAgeInputEffect {
+  function effect(
+    over: Partial<PhenoAgeInputEffect> = {}
+  ): PhenoAgeInputEffect {
     return {
       key: "Red Cell Distribution Width (RDW)",
       name: "Red Cell Distribution Width (RDW)",

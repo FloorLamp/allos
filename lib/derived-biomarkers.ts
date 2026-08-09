@@ -369,7 +369,8 @@ function phenoAgeFromCanonical(
     // Keyed by the input's PREFERRED name (see InputSpec.canonical) — the value is
     // whichever accepted glucose entry the draw actually carried.
     glucoseMmolL: v["Glucose, Fasting"] * GLUCOSE_MGDL_TO_MMOLL,
-    crpMgDl: v["High-Sensitivity C-Reactive Protein (hs-CRP)"] * CRP_MGL_TO_MGDL,
+    crpMgDl:
+      v["High-Sensitivity C-Reactive Protein (hs-CRP)"] * CRP_MGL_TO_MGDL,
     lymphocytePct: v["Lymphocytes, Relative"],
     mcvFl: v["Mean Corpuscular Volume (MCV)"],
     rdwPct: v["Red Cell Distribution Width (RDW)"],
@@ -977,7 +978,10 @@ function phenoAgeInputEffects(
         reference == null
           ? null
           : effect(
-              phenoAgeFromCanonical({ ...vals, [key]: reference.value }, ageYears)
+              phenoAgeFromCanonical(
+                { ...vals, [key]: reference.value },
+                ageYears
+              )
             ),
     };
   });
