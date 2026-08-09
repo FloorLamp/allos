@@ -1770,7 +1770,7 @@ reference band (70–99 mg/dL). The unqualified entry deliberately carries none 
 draw that never said whether the patient fasted has not given us enough to flag
 against, and the fasting and non-fasting frames differ by roughly 40 mg/dL at the
 top of normal — so an unqualified reading shows its value, no flag, and the reason
-it has none. PhenoAge is unaffected either way: it consumes the glucose *value*, not
+it has none. PhenoAge is unaffected either way: it consumes the glucose _value_, not
 its band.
 
 A component your lab reported **beyond a detection limit** ("<0.2") is used at

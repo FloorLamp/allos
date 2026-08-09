@@ -41,7 +41,9 @@ function preMigrationDb(): Database.Database {
       flag TEXT
     );
   `);
-  mem.prepare("INSERT INTO profiles (id, name) VALUES (1, 'A'), (2, 'B')").run();
+  mem
+    .prepare("INSERT INTO profiles (id, name) VALUES (1, 'A'), (2, 'B')")
+    .run();
   const rec = mem.prepare(
     `INSERT INTO medical_records
        (profile_id, date, category, name, canonical_name, value, value_num, unit,
