@@ -122,6 +122,28 @@ maternal-vs-paternal line are extracted only when the document states them — a
 side is never read off a diagnosis name, and an ordinary relative is left
 unqualified rather than labeled.
 
+The same discipline governs the reading's **identity**, where getting it wrong is
+not cosmetic (#2338). A canonical name may carry qualifiers the document encodes
+**structurally** — the specimen, the panel/section a row sits under, laterality,
+method — because inferring those RECOVERS what the layout says: a bare `GLUCOSE`
+row inside a urinalysis section really is `Glucose, Urine`. It may not carry a
+**patient-state** condition the document does not print — fasting/non-fasting,
+post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise — because
+those describe how the patient was _prepared_, and a report either states one or
+it does not. The qualifier selects the reference band (normal glucose tops out at
+99 fasting and around 140 otherwise), so an inferred one decides whether a
+reading is flagged, and it forks the analyte's series across two canonical names
+by document. The rule is in the system prompt and the `canonical_name` schema
+field, and enforced in code by `stateAwareCanonical`
+(`lib/patient-state-qualifiers.ts`), which `normalizeResults` applies after the
+unit arbitration: a state qualifier the row's printed name and panel heading do
+not carry is dropped back to the unqualified entry. Evidence is verbatim printed
+text only — deliberately not the row's own `fasting` answer, which is the same
+model judgment that over-qualified the name. Nothing is lost either way:
+`medical_records.name` keeps the printed name and the `fasting` column keeps what
+the report said about the draw. A document that genuinely prints the condition
+("FBG (Glucose Fasting)") still lands on `Glucose, Fasting`.
+
 Every extracted row also carries the extractor's own **confidence** — a coarse
 `high` / `medium` / `low` plus a short reason for a non-high row (a smudged
 figure, an ambiguous unit, a date read from context, a hedged diagnosis). It is
