@@ -172,7 +172,9 @@ test("a flapping source is amber Intermittent on all three surfaces and escalate
   await expect(summary).toContainText("succeeding about every 2 hours");
   // The visible escalation policy states the ONE rule the badge and digest use.
   const policy = page.getByTestId("escalation-policy");
-  await expect(policy).toContainText("no refresh has succeeded in 12 hours");
+  await expect(policy).toContainText(
+    "“Sync failing” appears after 12 hours without a successful refresh"
+  );
   await expect(policy).not.toContainText("consecutive");
 
   // Upcoming carries no item for it — intermittent never increases contact.
@@ -235,6 +237,13 @@ test("silence past the tolerance escalates every surface at once, rendered once 
   const failureRun = page.getByTestId("sync-history-failure-run");
   await expect(failureRun).toContainText("Failed ×3");
   await expect(failureRun).toContainText(`${ERR} — all 3 runs`);
+  // Matching top-level errors may still carry different per-run diagnostics or raw
+  // payloads, so the collapsed streak is a summary, never a dead end.
+  const itemizedBefore = await page.getByTestId(/^sync-run-/).count();
+  await failureRun.getByTestId("sync-history-show-failures").click();
+  const itemizedRuns = page.getByTestId(/^sync-run-/);
+  await expect(itemizedRuns).toHaveCount(itemizedBefore + 3);
+  await expect(itemizedRuns.getByText(ERR, { exact: true })).toHaveCount(3);
 
   // Upcoming carries the shared attention item.
   await page.goto("/upcoming");

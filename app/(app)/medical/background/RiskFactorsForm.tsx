@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { saveRiskFactors } from "./actions";
+import CardFootnote from "@/components/CardFootnote";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 import type { RiskAttributes } from "@/lib/risk-stratification";
@@ -169,10 +170,10 @@ export default function RiskFactorsForm({
         )}
       </div>
 
-      <p className="border-t border-black/5 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
+      <CardFootnote>
         Privacy: like the rest of this profile&rsquo;s medical passport, anyone
         granted access to this profile (and any admin) can see these.
-      </p>
+      </CardFootnote>
     </div>
   );
 }

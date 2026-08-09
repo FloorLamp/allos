@@ -164,7 +164,22 @@ body::before {
      `sm`, the unchanged p-5 from `sm` up — ONE tokenized change here rather than
      a per-page sweep, so every card on every surface tightens together. */
   .card {
+    --card-gutter: 1rem;
+    --card-radius: 0.75rem;
     @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-4 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 sm:p-5 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
+  }
+  @media (min-width: 640px) {
+    .card {
+      --card-gutter: 1.25rem;
+    }
+  }
+  .card-footnote {
+    margin-inline: calc(var(--card-gutter, 0px) * -1);
+    margin-bottom: calc(var(--card-gutter, 0px) * -1);
+    padding-inline: var(--card-gutter, 0px);
+    padding-bottom: var(--card-gutter, 0px);
+    border-end-start-radius: calc(var(--card-radius, 0.75rem) - 1px);
+    border-end-end-radius: calc(var(--card-radius, 0.75rem) - 1px);
   }
   /* backdrop-filter makes every .card its own stacking context. Elevate every
      card ancestor of an OPEN combobox so the listbox can clear later sibling

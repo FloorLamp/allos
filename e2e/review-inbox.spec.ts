@@ -186,6 +186,7 @@ test.describe("Data → Review import inbox", () => {
     const history = page.getByTestId("sync-history");
     await expect(history).toBeVisible();
     await openAllSyncDays(history);
+    await expect(history.getByTestId("sync-history-latest")).toHaveCount(1);
 
     // The window the runs cover is stated ONCE above the history instead of
     // repeating verbatim on every row (and since #1991 it is the only place it
@@ -199,7 +200,10 @@ test.describe("Data → Review import inbox", () => {
     // slots with rows that say nothing.
     // (How many land on which day depends on the run's pinned timezone, so assert
     // the SHAPE of the collapsed line rather than a count that would drift.)
-    await expect(history).toContainText(/\d+ syncs · routine/);
+    const routine = history.getByTestId("sync-history-range");
+    await expect(routine).toHaveCount(1);
+    await expect(routine).toContainText("Routine");
+    await expect(routine).toContainText(/\d+ syncs/);
 
     // The seeded truncated run reports what it DID land and is explicitly marked
     // partial, so a page cap / rate limit can't read as a fully green sync.

@@ -19,6 +19,7 @@ import {
 } from "@/lib/bio-age";
 import { formatLongDate } from "@/lib/format-date";
 import { readingDetailHref } from "@/lib/hrefs";
+import CardFootnote from "./CardFootnote";
 import PhoneFold from "./PhoneFold";
 
 // The biological-age hero (issue #209). Surfaces the derived PhenoAge index (#157)
@@ -52,15 +53,12 @@ const DELTA_CLASS: Record<BioAgeDirection, string> = {
 // validated adult population, and that it moves with the inputs (never a verdict).
 function EstimateNote() {
   return (
-    <p
-      className="mt-4 border-t border-black/5 pt-3 text-xs leading-relaxed text-slate-500 dark:border-white/10 dark:text-slate-400"
-      data-testid="bio-age-estimate"
-    >
+    <CardFootnote data-testid="bio-age-estimate">
       An <strong>estimate</strong> from the Levine PhenoAge model (2018), an
       NHANES-validated index for adults (~20–84). It moves with the nine inputs
       below and is a population-level signal, not a precise verdict — discuss
       anything concerning with a clinician.
-    </p>
+    </CardFootnote>
   );
 }
 

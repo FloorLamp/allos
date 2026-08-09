@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CoachingTone, Recommendation } from "@/lib/coaching";
 import { canAcknowledgeRest } from "@/lib/coaching";
 import { coachingDedupeKey } from "@/lib/findings";
+import CardFootnote from "@/components/CardFootnote";
 import SubmitButton from "@/components/SubmitButton";
 import { snoozeCoaching, acknowledgeRest } from "@/app/(app)/actions";
 import WidgetHeader from "./WidgetHeader";
@@ -116,10 +117,7 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
             </form>
           </div>
           {secondary && (
-            <p
-              className="mt-3 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400"
-              data-testid="coaching-secondary"
-            >
+            <CardFootnote data-testid="coaching-secondary">
               <span className="font-medium">Next:</span>{" "}
               {/* The secondary rec carries the same actionHref as the top one
                   (#1219) — render it as a compact link, not inert text. */}
@@ -134,7 +132,7 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
                 secondary.title
               )}{" "}
               — {secondary.detail}
-            </p>
+            </CardFootnote>
           )}
         </div>
       ) : (

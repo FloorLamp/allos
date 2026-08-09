@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { formatRelativeTime, formatTimestamp } from "@/lib/format-date";
+import {
+  formatClock,
+  formatRelativeTime,
+  formatTimestamp,
+} from "@/lib/format-date";
 
 // The ONE timestamp treatment for a sync (#1772): the absolute local time AND the
 // relative one, together. The surfaces disagreed three ways — the setup pages printed
@@ -20,12 +24,17 @@ export default function SyncTimestamp({
   value,
   className,
   relativeOnly = false,
+  clockOnly = false,
 }: {
   value: string;
   className?: string;
   // Dense rows (the grid card's one-line hint) take the relative half alone, with the
   // absolute time still on the tooltip — never the raw stored string.
   relativeOnly?: boolean;
+  // Day-grouped ledgers already establish the calendar date in their header. Their
+  // aligned TIME column uses only the reader's clock, with the full absolute stamp
+  // retained in the tooltip.
+  clockOnly?: boolean;
 }) {
   const prefs = useFormatPrefs();
   const [relative, setRelative] = useState(() => formatRelativeTime(value));
@@ -45,15 +54,20 @@ export default function SyncTimestamp({
   const machine = Number.isNaN(parsed.getTime())
     ? undefined
     : parsed.toISOString();
+  const clock = Number.isNaN(parsed.getTime())
+    ? value
+    : formatClock(prefs.timeFormat, parsed.getHours(), parsed.getMinutes());
 
   return (
     <time
       dateTime={machine}
-      title={relativeOnly ? absolute : undefined}
+      title={relativeOnly || clockOnly ? absolute : undefined}
       className={className}
       suppressHydrationWarning
     >
-      {relativeOnly ? (
+      {clockOnly ? (
+        clock
+      ) : relativeOnly ? (
         relative
       ) : (
         <>

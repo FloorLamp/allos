@@ -20,7 +20,7 @@ import { E2E_LOGIN_SYNC_HISTORY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // nothing else may add to.
 
 test.describe("day-grouped sync history (#1991)", () => {
-  test("a day of pushes is one line that opens onto its anomaly, not seventy rows", async ({
+  test("a busy day stays one line inside complete-day pagination", async ({
     browser,
   }) => {
     test.slow();
@@ -33,19 +33,29 @@ test.describe("day-grouped sync history (#1991)", () => {
       const history = member.getByTestId("sync-history");
       await expect(history).toBeVisible();
 
-      // ONE day line for the whole stream — that is the change.
+      // The first page is seven COMPLETE local days, not seven runs.
       const days = history.getByTestId("sync-day-summary");
-      await expect(days).toHaveCount(1);
+      await expect(days).toHaveCount(7);
+      // The ledger leads with the calendar hierarchy, then aligns the expanded
+      // details under stable scan columns instead of flowing every fact together.
+      const newestGroup = history.locator("details[open]");
+      const newestDay = newestGroup.getByTestId("sync-day-summary");
+      await expect(newestDay.getByTestId("sync-day-name")).toHaveText("Today");
+      await expect(
+        newestGroup.getByText("Changes and details", { exact: true })
+      ).toBeVisible();
       // It counts runs in the provider's own noun and carries the day's totals.
-      await expect(days).toHaveText(/\d+ pushes · \d+ new · \d+ changed/);
+      await expect(newestDay).toContainText("30 pushes");
+      await expect(newestDay).toHaveText(/30 pushes · \d+ new · \d+ changed/);
       // …and the day's ONE anomaly is on that line, so you never have to hunt it.
-      await expect(days).toContainText("6 skipped");
+      await expect(newestDay).toContainText("6 skipped");
 
       // The newest day opens by default — it is what you came to check. Inside it,
       // the routine middle is a RANGE, not a row per push.
       const range = history.getByTestId("sync-history-range");
       await expect(range).toHaveCount(2); // before and after the anomaly
-      await expect(range.nth(0)).toContainText(/\d+ pushes · routine/);
+      await expect(range.nth(0)).toContainText("Routine");
+      await expect(range.nth(0)).toContainText(/\d+ pushes/);
 
       // The individual runs stay reachable; they are just not the default view.
       const before = await history.getByTestId(/^sync-run-/).count();
@@ -53,6 +63,19 @@ test.describe("day-grouped sync history (#1991)", () => {
       await expect
         .poll(async () => history.getByTestId(/^sync-run-/).count())
         .toBeGreaterThan(before);
+
+      // Opening another day is a user choice, not a render default. Appending an
+      // older page must preserve it instead of resetting the disclosure list.
+      const secondDay = history.locator("details").nth(1);
+      await secondDay.locator("summary").click();
+      await expect(secondDay).toHaveJSProperty("open", true);
+
+      // Older history appends by whole day and exhausts after the final two days.
+      const loadOlder = history.getByTestId("sync-history-load-older");
+      await loadOlder.click();
+      await expect(days).toHaveCount(9);
+      await expect(secondDay).toHaveJSProperty("open", true);
+      await expect(loadOlder).toHaveCount(0);
 
       // The WINDOW column is gone: structurally constant for this provider, and the
       // rows never carried signal with it.

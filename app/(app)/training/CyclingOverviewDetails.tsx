@@ -1,4 +1,5 @@
 import Link from "next/link";
+import CardFootnote from "@/components/CardFootnote";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import LineChartCard from "@/components/LineChartCard";
 import { StatBox } from "@/components/StatBox";
@@ -494,9 +495,7 @@ export default function CyclingOverviewDetails({
             ))}
           </ul>
           {data.zoneModel ? (
-            <p className="mt-3 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
-              {data.zoneModel.formula}
-            </p>
+            <CardFootnote>{data.zoneModel.formula}</CardFootnote>
           ) : null}
         </CardGroup>
       ) : null}

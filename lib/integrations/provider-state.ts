@@ -609,10 +609,9 @@ export function escalationPolicyLabel(
   }
   if (toleranceMinutes == null) return null;
   return (
-    `This source escalates to “Sync failing” when no ${noun} has succeeded ` +
-    `in ${formatTolerance(toleranceMinutes)} — the same rule the Review badge and ` +
-    "the morning digest use. Individual failures with a recent success behind them " +
-    "do not: the next good run catches up."
+    `“Sync failing” appears after ${formatTolerance(toleranceMinutes)} without a ` +
+    `successful ${noun}. The Review badge and morning digest use the same rule. ` +
+    "An isolated failure will not trigger it; the next good run catches up."
   );
 }
 

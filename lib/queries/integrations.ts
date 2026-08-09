@@ -35,6 +35,7 @@ import {
   isScheduledKind,
   type IntegrationDelivery,
 } from "@/lib/integrations/delivery";
+import { syncEventDay } from "@/lib/integrations/sync-history-days";
 import { timelineDayHref, readingDetailHref, type AppRoute } from "@/lib/hrefs";
 import {
   getIntegrationBackfillJobs,
@@ -91,6 +92,80 @@ export function getIntegrationSyncEvents(
         LIMIT ?`
     )
     .all(profileId, provider, limit) as IntegrationSyncEvent[];
+}
+
+// The provider page promises the FULL retained history, whose age is bounded by the
+// #388 sweep. This deliberately has no row cap: a cap can bisect a profile-local day,
+// making that day's aggregate false and hiding an anomaly earlier in the same day.
+// Review remains a short status window and uses getIntegrationSyncEvents instead.
+export function getRetainedIntegrationSyncEvents(
+  profileId: number,
+  provider: string
+): IntegrationSyncEvent[] {
+  return db
+    .prepare(
+      `SELECT * FROM integration_sync_events
+        WHERE profile_id = ? AND provider = ?
+        ORDER BY at DESC, id DESC`
+    )
+    .all(profileId, provider) as IntegrationSyncEvent[];
+}
+
+export const SYNC_HISTORY_PAGE_DAYS = 7;
+
+export interface IntegrationSyncEventPage {
+  events: IntegrationSyncEvent[];
+  // Exclusive profile-local day cursor for the next older page.
+  nextBefore: string | null;
+}
+
+// Page over COMPLETE profile-local days. The retained ledger is age-bounded and is
+// scanned here only on the server; the client receives events for seven days at a
+// time, so a busy push source no longer ships its whole 90-day history on first load.
+export function getIntegrationSyncEventPage(
+  profileId: number,
+  provider: string,
+  timeZone: string,
+  beforeDay: string | null,
+  dayLimit = SYNC_HISTORY_PAGE_DAYS
+): IntegrationSyncEventPage {
+  const limit = Math.max(1, dayLimit);
+  const eligible = getRetainedIntegrationSyncEvents(profileId, provider).filter(
+    (event) => beforeDay == null || syncEventDay(event.at, timeZone) < beforeDay
+  );
+  const dayKeys: string[] = [];
+  for (const event of eligible) {
+    const day = syncEventDay(event.at, timeZone);
+    if (dayKeys[dayKeys.length - 1] !== day) dayKeys.push(day);
+  }
+  const selectedDays = dayKeys.slice(0, limit);
+  if (selectedDays.length === 0) return { events: [], nextBefore: null };
+  const selected = new Set(selectedDays);
+  return {
+    events: eligible.filter((event) =>
+      selected.has(syncEventDay(event.at, timeZone))
+    ),
+    nextBefore:
+      dayKeys.length > limit ? selectedDays[selectedDays.length - 1] : null,
+  };
+}
+
+// Lazy range expansion: resolve only the ids the already-authorized page supplied,
+// and re-check both profile and provider at the SQL boundary.
+export function getIntegrationSyncEventsByIds(
+  profileId: number,
+  provider: string,
+  ids: readonly number[]
+): IntegrationSyncEvent[] {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(",");
+  return db
+    .prepare(
+      `SELECT * FROM integration_sync_events
+        WHERE profile_id = ? AND provider = ? AND id IN (${placeholders})
+        ORDER BY at DESC, id DESC`
+    )
+    .all(profileId, provider, ...ids) as IntegrationSyncEvent[];
 }
 
 // Timestamp of the most recent SUCCESSFUL sync for a provider, or null — powers the
@@ -690,6 +765,9 @@ export interface IntegrationState {
   canSyncNow: boolean;
   latest: IntegrationSyncEvent | null;
   history: IntegrationSyncEvent[];
+  // Older-day cursor for the provider page. Review's short status window is not
+  // paged and carries null.
+  historyNextBefore: string | null;
   // How many rows the drill-in can actually LIST, per event id, among `latest` +
   // `history` (#1771, corrected in #1991). An event absent from this map recorded no
   // provenance and gets no expander at all rather than one that apologizes on open.
@@ -762,10 +840,9 @@ export function getConnectedSources(profileId: number): ConnectedSource[] {
 
 // How many events each surface loads. Review is an inbox — it shows the current
 // state, so it needs only enough history to say whether the latest run is typical.
-// The setup page is the provider's HOME and owns the full history table, so it reads
-// deeper (the #388 retention sweep already bounds how much exists).
+// The setup page is the provider's HOME and owns the paged retained ledger.
 const REVIEW_HISTORY_LIMIT = 10;
-export const SETUP_HISTORY_LIMIT = 25;
+export const SETUP_HISTORY_LIMIT = "paged" as const;
 
 // ONE provider's complete state, for whichever surface is asking (#1772): the
 // Integrations grid card, its setup page's status header + history table, or Review's
@@ -774,18 +851,26 @@ export const SETUP_HISTORY_LIMIT = 25;
 export function getIntegrationState(
   profileId: number,
   providerId: string,
-  historyLimit: number = REVIEW_HISTORY_LIMIT
+  historyLimit: number | typeof SETUP_HISTORY_LIMIT = REVIEW_HISTORY_LIMIT
 ): IntegrationState | null {
   const def = getIntegration(providerId as IntegrationId);
   if (!def) return null;
   const facts = resolveProviderFacts(profileId, def.id);
-  // The DISPLAY history is the caller's depth; the STANDING window is always
-  // resolveProviderFacts' STANDING_RUN_WINDOW, so a surface that renders no history
-  // (the grid card) still derives the same standing as one that renders 25 rows.
-  const history =
-    historyLimit <= STANDING_RUN_WINDOW
-      ? facts.window.slice(0, Math.max(0, historyLimit))
-      : getIntegrationSyncEvents(profileId, def.id, historyLimit);
+  const timeZone = getTimezone(profileId);
+  // The DISPLAY history is independent from the fixed STANDING window. Setup gets
+  // seven complete local days; Review keeps its short event slice.
+  let historyNextBefore: string | null = null;
+  let history: IntegrationSyncEvent[];
+  if (historyLimit === SETUP_HISTORY_LIMIT) {
+    const page = getIntegrationSyncEventPage(profileId, def.id, timeZone, null);
+    history = page.events;
+    historyNextBefore = page.nextBefore;
+  } else {
+    history =
+      historyLimit <= STANDING_RUN_WINDOW
+        ? facts.window.slice(0, Math.max(0, historyLimit))
+        : getIntegrationSyncEvents(profileId, def.id, historyLimit);
+  }
   const ids = history.map((e) => e.id);
   if (facts.latest) ids.push(facts.latest.id);
   return {
@@ -801,6 +886,7 @@ export function getIntegrationState(
     canSyncNow: isPullIntegration(def),
     latest: facts.latest,
     history,
+    historyNextBefore,
     provenanceCounts: ids.length
       ? provenanceCountsByEvent(profileId, def.id, Math.min(...ids))
       : {},
@@ -813,7 +899,7 @@ export function getIntegrationState(
       failed: facts.window.filter((e) => !e.ok).length,
     },
     successCadenceMinutes: observedSuccessCadenceMinutes(facts.window),
-    timeZone: getTimezone(profileId),
+    timeZone,
     today: today(profileId),
     backfills: getIntegrationBackfillJobs(profileId, def.id),
   };

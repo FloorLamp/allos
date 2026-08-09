@@ -7,6 +7,7 @@ import {
   IconChevronRight,
 } from "@tabler/icons-react";
 import ActivityProvenance from "@/components/ActivityProvenance";
+import CardFootnote from "@/components/CardFootnote";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import NotesText from "@/components/NotesText";
 import PageContainer from "@/components/PageContainer";
@@ -973,9 +974,7 @@ export default async function RideDetailPage(props: {
                         ))}
                       </ul>
                       {data.zoneModel ? (
-                        <p className="mt-3 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
-                          {data.zoneModel.formula}
-                        </p>
+                        <CardFootnote>{data.zoneModel.formula}</CardFootnote>
                       ) : null}
                     </div>
                   </CardGroupSection>

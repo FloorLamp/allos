@@ -378,6 +378,7 @@ export function seedIntegrationSyncEvents(): void {
 // Its OWN profile: the assertions are about a stream nothing else may add to, and the
 // shared profile's Health Connect state is relied on by review-inbox.spec.
 const SYNC_HISTORY_PUSHES = 30;
+const SYNC_HISTORY_OLDER_DAYS = 8;
 // Minutes between pushes, and which push (counting back from the newest) skipped rows.
 const PUSH_INTERVAL_MIN = 20;
 const SYNC_HISTORY_ANOMALY_BACK = 12;
@@ -421,6 +422,27 @@ export function seedSyncHistoryDay(): void {
       73, // unchanged → the repeating figure that made the log unreadable
       skipped,
       null, // raw_ref
+      null
+    );
+  }
+
+  // Eight quiet older days exercise the provider page's seven-complete-day cursor.
+  // They stay one run each so the dense-day assertions remain about TODAY's stream.
+  for (let daysBack = SYNC_HISTORY_OLDER_DAYS; daysBack >= 1; daysBack--) {
+    ins.run(
+      profileId,
+      "health-connect",
+      sqlStamp(new Date(now - daysBack * 86_400_000)),
+      1,
+      null,
+      null,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      null,
       null
     );
   }
