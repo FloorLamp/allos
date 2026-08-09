@@ -18,6 +18,7 @@ import {
   getFiberOnDate,
   getProteinLoggedGrams,
   getProteinQuickAddPreset,
+  getHabitualFoodGroups,
 } from "@/lib/queries";
 import { formatWeekdayDate } from "@/lib/format-date";
 import {
@@ -245,6 +246,12 @@ export default async function FoodTab() {
   const proteinRankBySlot = Object.fromEntries(
     FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].proteinRank])
   ) as Record<FoodSlot, number | null>;
+  // Food regularity (#2380): the groups this profile logs in each window nearly every
+  // time that window is logged at all, over a bounded three-week span, with
+  // cap-direction groups removed. An OBSERVATION, never a target — its only use is the
+  // bar's "log my usual" shortcut, and a window under the declared gate is simply
+  // absent here, which the bar renders as nothing rather than as a hedge.
+  const usualBySlot = getHabitualFoodGroups(profile.id);
   // Preference legibility (#980 item 4): a muted "showing <pattern>-friendly sources" note
   // for the suggestions summary, so #975's demote/substitute is explicable on-surface.
   // Null (no chrome) when no preference is set. Editing stays on the profile-settings
@@ -356,6 +363,7 @@ export default async function FoodTab() {
               groupsBySlot={groupsBySlot}
               proteinRankBySlot={proteinRankBySlot}
               excludedGroups={excludedGroups}
+              usualBySlot={usualBySlot}
               slot={slot}
               // The same boundaries the tallies derive windows from, so the correction
               // sheet's follow-the-hour Meal default (#2227 d4) can never disagree with
