@@ -19,10 +19,16 @@ import {
   getAudiogramReadings,
   getAudiograms,
   getHearingBaseline,
+  getReportedPtaReadings,
   hasAudiogramRows,
   recordAudiogram,
+  AUDIOGRAM_UNIT,
 } from "@/lib/audiogram-records";
-import { audiogramAnalyteName } from "@/lib/audiogram";
+import {
+  audiogramAnalyteName,
+  ptaAnalyteName,
+  resolvePureToneAverages,
+} from "@/lib/audiogram";
 import { getOtotoxicWarnings } from "@/lib/queries";
 import { ototoxicDetail, ototoxicHasShift } from "@/lib/ototoxic";
 
@@ -282,5 +288,116 @@ describe("the ototoxic crosscheck cites the hearing baseline (#1600)", () => {
     // The finding's identity and reach are UNCHANGED by the hearing record — a
     // baseline makes the note more specific, it never turns it into a new send.
     expect(hit.dedupeKey).toBe(`ototoxic:${hit.medId}:aminoglycoside`);
+  });
+});
+
+// ── Reported pure-tone averages (#2322) ─────────────────────────────────────────
+// A document may report the AVERAGE and nothing else. It lands in the same
+// medical_records store under its own canonical name, and the substrate reads it back
+// beside — and in preference to — the average derived from thresholds.
+
+describe("reported pure-tone averages (#2322)", () => {
+  function insertReportedPta(
+    profileId: number,
+    date: string,
+    ear: "right" | "left",
+    conduction: "air" | "bone",
+    dbHl: number
+  ): void {
+    const canonical = ptaAnalyteName(ear, conduction);
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+       VALUES (?, ?, 'vitals', ?, ?, ?, ?, ?, 'Audiology report')`
+    ).run(
+      profileId,
+      date,
+      canonical,
+      String(dbHl),
+      dbHl,
+      AUDIOGRAM_UNIT,
+      canonical
+    );
+  }
+
+  it("reads a reported average back with its ear and conduction", () => {
+    const profileId = makeProfile("pta-read");
+    insertReportedPta(profileId, "2026-05-01", "left", "bone", 18);
+    expect(getReportedPtaReadings(profileId)).toMatchObject([
+      { date: "2026-05-01", ear: "left", conduction: "bone", dbHl: 18 },
+    ]);
+  });
+
+  it("lists an averages-only report as a dated hearing test with no threshold grid", () => {
+    const profileId = makeProfile("pta-only");
+    expect(hasAudiogramRows(profileId)).toBe(false);
+    insertReportedPta(profileId, "2026-05-01", "right", "air", 22);
+    expect(hasAudiogramRows(profileId)).toBe(true);
+    const [audiogram] = getAudiograms(profileId);
+    expect(audiogram.date).toBe("2026-05-01");
+    expect(audiogram.readings).toHaveLength(0);
+    expect(audiogram.reportedPtas).toHaveLength(1);
+    // No frequencies were reported, so none are invented.
+    expect(getAudiogramReadings(profileId)).toHaveLength(0);
+  });
+
+  it("lets the reported average win over the derived one, per (ear, conduction)", () => {
+    const profileId = makeProfile("pta-precedence");
+    recordAudiogram(profileId, {
+      date: "2026-05-01",
+      thresholds: [
+        { ear: "right", hz: 500, dbHl: 10 },
+        { ear: "right", hz: 1000, dbHl: 10 },
+        { ear: "right", hz: 2000, dbHl: 10 },
+        { ear: "right", hz: 4000, dbHl: 10 },
+        { ear: "left", hz: 500, dbHl: 20 },
+        { ear: "left", hz: 1000, dbHl: 20 },
+        { ear: "left", hz: 2000, dbHl: 20 },
+        { ear: "left", hz: 4000, dbHl: 20 },
+      ],
+    });
+    insertReportedPta(profileId, "2026-05-01", "right", "air", 18);
+    const [audiogram] = getAudiograms(profileId);
+    const resolved = resolvePureToneAverages(
+      audiogram.readings.map((r) => ({ ear: r.ear, hz: r.hz, dbHl: r.dbHl })),
+      audiogram.reportedPtas
+    );
+    expect(resolved).toEqual([
+      {
+        ear: "right",
+        conduction: "air",
+        dbHl: 18,
+        source: "reported",
+        usedHz: [],
+      },
+      {
+        ear: "left",
+        conduction: "air",
+        dbHl: 20,
+        source: "derived",
+        usedHz: [500, 1000, 2000, 4000],
+      },
+    ]);
+  });
+
+  it("deletes the reported averages along with the thresholds of that date", () => {
+    const profileId = makeProfile("pta-delete");
+    recordAudiogram(profileId, {
+      date: "2026-05-01",
+      thresholds: [{ ear: "right", hz: 4000, dbHl: 30 }],
+    });
+    insertReportedPta(profileId, "2026-05-01", "right", "air", 22);
+    expect(deleteAudiogram(profileId, "2026-05-01")).toEqual({
+      kind: "deleted",
+      removed: 2,
+    });
+    expect(getAudiograms(profileId)).toHaveLength(0);
+    expect(hasAudiogramRows(profileId)).toBe(false);
+  });
+
+  it("leaves the ototoxic baseline alone — an average states no frequencies", () => {
+    const profileId = makeProfile("pta-no-baseline");
+    insertReportedPta(profileId, "2026-05-01", "right", "air", 45);
+    expect(getHearingBaseline(profileId)).toBeNull();
   });
 });

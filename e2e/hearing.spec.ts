@@ -33,6 +33,12 @@ const MED_PREFIX = "E2E Ototoxic";
 // purpose: it is only ever compared to itself, so it is week-mode- and clock-agnostic,
 // and it can't collide with the seed's relative audiogram dates.
 const AUDIOGRAM_DATE = "2019-03-05";
+// Two more marker dates this spec owns, for the reported pure-tone average (#2322):
+// one hearing test carrying BOTH thresholds and a reported right-ear average (so the
+// precedence is visible side by side), and one report that carried the average alone.
+const PTA_DATE = "2019-04-09";
+const PTA_ONLY_DATE = "2019-05-14";
+const HEARING_DATES = [AUDIOGRAM_DATE, PTA_DATE, PTA_ONLY_DATE];
 
 function dbPath(): string {
   return workerDbPath();
@@ -55,11 +61,13 @@ function cleanup(): void {
     );
     // The audiogram this spec enters through the form (#1600) — keyed on its marker
     // date so the seed's own audiograms are never touched.
-    db.prepare(
+    const drop = db.prepare(
       `DELETE FROM medical_records
         WHERE profile_id = 1 AND date = ?
-          AND canonical_name LIKE 'Hearing Threshold,%'`
-    ).run(AUDIOGRAM_DATE);
+          AND (canonical_name LIKE 'Hearing Threshold,%'
+               OR canonical_name LIKE 'Pure Tone Average,%')`
+    );
+    for (const date of HEARING_DATES) drop.run(date);
   } finally {
     db.close();
   }
@@ -74,6 +82,25 @@ function seed(): void {
       `INSERT INTO intake_items (profile_id, name, active, kind, obligation)
        VALUES (1, ?, 1, 'medication', 'must')`
     ).run(MED);
+    // #2322 — reported pure-tone averages, stored exactly as a document import leaves
+    // them: canonical `vitals` medical_records rows under their own analyte name.
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+       VALUES (1, ?, 'vitals', ?, ?, ?, 'dB HL', ?, 'E2E audiology report')`
+    );
+    const reading = (date: string, canonical: string, dbHl: number) =>
+      insert.run(date, canonical, String(dbHl), dbHl, canonical);
+    // A test with BOTH: right ear thresholds averaging 10, plus a reported 18 that
+    // must win; the left ear has thresholds only and keeps its derived 20.
+    for (const hz of [500, 1000, 2000, 4000]) {
+      const label = hz >= 1000 ? `${hz / 1000} kHz` : `${hz} Hz`;
+      reading(PTA_DATE, `Hearing Threshold, Right Ear ${label}`, 10);
+      reading(PTA_DATE, `Hearing Threshold, Left Ear ${label}`, 20);
+    }
+    reading(PTA_DATE, "Pure Tone Average, Right Ear (Air Conduction)", 18);
+    // A summary report: the average and nothing else.
+    reading(PTA_ONLY_DATE, "Pure Tone Average, Right Ear (Air Conduction)", 22);
   } finally {
     db.close();
   }
@@ -165,11 +192,11 @@ test.describe("Hearing / audiology (#713, #717, #1600)", () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card).toContainText("15 dB HL");
     await expect(
-      card.getByTestId(`audiogram-pta-${AUDIOGRAM_DATE}-right`)
+      card.getByTestId(`audiogram-pta-${AUDIOGRAM_DATE}-right-air`)
     ).toContainText("10 dB HL");
     // A frequency left blank stays "not tested", never a fabricated 0.
     await expect(
-      card.getByTestId(`audiogram-pta-${AUDIOGRAM_DATE}-left`)
+      card.getByTestId(`audiogram-pta-${AUDIOGRAM_DATE}-left-air`)
     ).toContainText("10 dB HL");
 
     // Confirm-first removal, scoped to this card (every audiogram row has a Delete).
@@ -179,6 +206,41 @@ test.describe("Hearing / audiology (#713, #717, #1600)", () => {
       .getByRole("button", { name: "Delete", exact: true })
       .click();
     await expect(card).toHaveCount(0, { timeout: 15_000 });
+  });
+
+  test("a REPORTED pure-tone average wins over the derived one, per ear (#2322)", async ({
+    page,
+  }) => {
+    await page.goto("/records/specialty/hearing");
+    await expect(page.getByTestId("records-hearing")).toBeVisible();
+
+    const card = page.getByTestId(`audiogram-${PTA_DATE}`);
+    await expect(card).toBeVisible();
+    // Right ear: the document's own 18 dB HL, not the 10 dB HL its thresholds imply,
+    // and the line says which it is.
+    const right = card.getByTestId(`audiogram-pta-${PTA_DATE}-right-air`);
+    await expect(right).toContainText("18 dB HL");
+    await expect(right).toContainText("as reported");
+    // The OTHER ear is untouched — the precedence is per ear, never per document.
+    const left = card.getByTestId(`audiogram-pta-${PTA_DATE}-left-air`);
+    await expect(left).toContainText("20 dB HL");
+    await expect(left).toContainText("averaged from 4 recorded frequencies");
+    // The thresholds behind the derived value still render.
+    await expect(card).toContainText("4 kHz");
+  });
+
+  test("a report carrying only the average lists as a hearing test, and says so (#2322)", async ({
+    page,
+  }) => {
+    await page.goto("/records/specialty/hearing");
+    const card = page.getByTestId(`audiogram-${PTA_ONLY_DATE}`);
+    await expect(card).toBeVisible();
+    await expect(
+      card.getByTestId(`audiogram-pta-${PTA_ONLY_DATE}-right-air`)
+    ).toContainText("22 dB HL");
+    await expect(
+      card.getByTestId(`audiogram-no-thresholds-${PTA_ONLY_DATE}`)
+    ).toBeVisible();
   });
 
   test("the ototoxic finding surfaces on Upcoming (#717)", async ({ page }) => {

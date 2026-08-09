@@ -1535,6 +1535,27 @@ on Results → Biomarkers. Each ear/frequency stays its own independently-flaggi
 series (deliberately never collapsed into one "hearing" family, so a normal
 frequency can't hide a flagged one). This change added **no migration**.
 
+**A reported average (#2322).** Clinical documents often carry
+`Pure Tone Average, {Left,Right} Ear ({Air,Bone} Conduction)` in dB HL and no
+per-frequency thresholds at all — the average is stated, and no audiogram can be
+reconstructed from it. Those readings are **not curated as biomarkers** (that
+would fork the hearing series this domain already owns); the substrate accepts
+them instead. They land in the same `medical_records` store under their own
+canonical name (**no migration**), and the Hearing tab lists an averages-only
+report as a dated hearing test with an explicit "this report gave the average
+only" note where the frequency grid would be.
+
+Where a reported and a derived average both exist, the **reported one wins** —
+the same precedence the derived-index table applies when a lab reports an index
+directly. The precedence is per **(ear, conduction) per date**, never per
+document: a reported right-ear air average suppresses only the right ear's
+derived air average, and the left ear (and the same ear's bone conduction) are
+untouched. Every average on the card **names its provenance** — "as reported
+(air conduction)" or "averaged from 4 recorded frequencies" — because the two
+are different claims. A reported average is deliberately **not** an input to the
+ototoxic crosscheck's baseline or to the ASHA threshold-shift criteria: both are
+stated per frequency, and an average states none.
+
 Around the record: a new age-related **hearing screening** preventive rule (a
 `hearing` audiology appointment/audiogram satisfies it) that recorded **noise
 exposure** (Settings → Health risk factors) or an active **ototoxic medication**
