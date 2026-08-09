@@ -55,6 +55,7 @@ import {
   tuneToggleToken,
 } from "@/lib/notifications/digest-tune";
 import { seedLoginTelegram } from "./fixtures";
+import { plainBody } from "@/lib/notifications/rich-text";
 
 const editKeyboardMock = vi.mocked(editMessageReplyMarkupRaw);
 const answerMock = vi.mocked(answerCallbackQuery);
@@ -114,7 +115,7 @@ function seedMood(profileId: number, date: string, valence: number) {
 
 function digestLines(profileId: number, name: string): string[] {
   const model = buildDigest(gatherDigestInput(profileId, name));
-  return (model?.sections ?? []).flatMap((s) => s.lines);
+  return (model?.sections ?? []).flatMap((s) => s.lines.map(plainBody));
 }
 
 function tuneCq(chatId: string, data: string) {

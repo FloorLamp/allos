@@ -411,9 +411,9 @@ the same link as its notification click-through
 (`buildPushPayload`/`pushClickThroughUrl` in `push-core.ts`) and Home Assistant
 forwards it in the payload's `links[]`, refill 📦 Ordered onto a
 `refillSignalKey` bus-snooze (+ deep link; no amount-bearing "mark refilled"),
-escalation ✅ Confirmed taken/⏭ Skip/👍 I'm on it onto `markDoseTaken`/
+escalation ✅ Confirmed taken/⏭️ Skip/👍 I'm on it onto `markDoseTaken`/
 `markDoseSkipped`/an ack that sets the episode marker without logging the dose.
-The ⏭ Skip (#1716) is the dose reminder's own precedent applied to the
+The ⏭️ Skip (#1716) is the dose reminder's own precedent applied to the
 escalation: a skip is a RECORDED DELIBERATE DECISION — distinct from silence —
 written through the same `markDoseSkipped` core, so the ledger cannot tell an
 escalation skip from a reminder skip, and the existing `skippedDoseIds` gate
@@ -547,7 +547,7 @@ top-ranked quick-log buttons two per row — the SAME `rankFoodGroups` the
 each carrying a day-total "(n)" suffix,
 plus the reserved `__protein__`
 pseudo-group's "💪 ＋Xg protein" button at its ranked position, over a day-total
-"✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
+"✅ Today:" tally line and the protein status line. Buttons are **not consumed**: a
 tap logs one serving and the message re-renders from `buildFoodNudge`, the one
 builder every send, tap-rebuild and reconcile goes through.
 
@@ -1005,7 +1005,7 @@ working out? Finish or discard" note when an `active` session's draft has gone
 quiet past `STALE_MIN` (45 min) — suggest-only (#560), never auto-ends, one-shot
 per activity id (`notify_stale_workout_<activityId>`), waking-gated (a soft
 coaching suggest, not a safety signal). **Actionable finish (#1205):** the nudge
-now carries a **🏁 Finish workout** and **🗑 Discard** inline button alongside
+now carries a **🏁 Finish workout** and **🗑️ Discard** inline button alongside
 the "Open workout" deep-link (the two-way principle — ids only:
 `wofinish:<profileId>:<activityId>` / `wodiscard:<profileId>:<activityId>`; the
 callback resolves activity→profile against the chat like every other family-chat
@@ -1099,11 +1099,11 @@ one-tap surface, never about the field.
 treats an OMITTED `time` as "the caller is a tap, stamp the profile-local
 instant" — distinct from an explicit `null`, which stays the expanded form's
 "this session has no instant". Until #2202 nothing read `practice_logs.time`, so
-the quick sheet and this Done ✓ button both wrote null; once `modalHour` became
+the quick sheet and this Done ✅ button both wrote null; once `modalHour` became
 its reader that inverted into a defect where the fastest logging paths starved
 the inference that reschedules their own nudge. The stamp is bounded to the
 profile's today, so a backdated correction never acquires a fabricated instant. Each behind practice carries an inline
-**"Done ✓"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
+**"Done ✅"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
 one session for TODAY through the shared write core (`logPracticeByTargetId` →
 `logPracticeSession`); the handler answers from the typed `PracticeLogOutcome`
 (never an unconditional confirm — a session log is NOT idempotent, multi-session
@@ -2016,6 +2016,9 @@ the surface the signal exists to save them from.
   broke and allos will keep retrying"; `🙋` marks a line only a person can close,
   away from the device they are reading on. It is declared beside the domain, so a
   new named-line domain must choose one rather than defaulting into `🔌` silently.
+  Since #2392 that discipline generalises: both are entries in the glyph vocabulary
+  with `role: "actor"`, and the domain declares `GLYPH.allosRetries` /
+  `GLYPH.personActs` rather than a literal. See **The glyph vocabulary** below.
 
 ```
 • 🙋 Run the portal tool for tbh — never checked · expires in 6 days
@@ -2112,7 +2115,9 @@ the first fact about it.
 **The glyph is a value.** Every producer passes it as the `glyph` field rather than
 concatenating a literal onto an assembled line, and a line whose caller decides the
 marker leaves the field absent so the call site can spread its own in
-(`formatMessageLine({ glyph: "•", ...recapMessageLine(l) })`).
+(`formatEmphasizedLine({ glyph: GLYPH.bullet, ...recapMessageLine(l) })`). That is what
+made the glyph vocabulary (#2392) a value swap at each call site with no signature change
+here — see **The glyph vocabulary** below.
 
 **The two grammars are one grammar.** The digest's `glyph title — because · dueText`
 and the recap's `label: value — note · comparison` differ only in their prefix — a
@@ -2141,6 +2146,86 @@ helper. So it is a known edge, not a guarantee: the scan proves nobody re-implem
 punctuation. The recap's remaining breakdown parenthetical (`value: "7 (strength 4,
 cardio 3)"`) is exactly such a case and is #2389 item 1's to re-cut — a breakdown
 decomposing the head's own figure, left deliberately.
+
+## The glyph vocabulary (#2392)
+
+**53 distinct base glyphs across 42 files, every one an inline literal.** No registry,
+no declared meaning, and nothing to consult before adding the fifty-fourth — so the
+vocabulary drifted into synonyms (✅ / ✓ / 👍 all affirmative; 🌙 / 😴 / 🛌 / 💤 all
+"sleep"; a flagged lab wearing 🚩 while the flagged vital one function away wore 🩺) and
+into an encoding split: 🌡 appeared both with and without U+FE0F — a colour emoji on one
+platform, a monochrome text glyph on the next, in one product.
+
+`lib/notifications/glyphs.ts` is the registry. Every producer references `GLYPH.<concept>`;
+nothing types a literal.
+
+**Two rules, stated in the registry itself.**
+
+1. **One concept, one glyph.** Adding a synonym requires _retiring_ the incumbent, not
+   sitting beside it. Retirement is a first-class record (`RETIRED_GLYPHS`), pointing at
+   the survivor with a written reason, so a reintroduced `✓` fails the scan **by name**.
+2. **A glyph carries meaning, not decoration — and which meaning is declared.** Every
+   entry names a `role`: **actor** (who must act — #1913 item 8's `🔌` / `🙋`), **alert**
+   (what needs attention), **topic** (what the line is about), **state** (where the thing
+   stands, or where a tap puts it), **control** (what a control does to the _view_,
+   recording nothing). A producer that cannot answer that question for its glyph does not
+   have a glyph; it has decoration.
+
+**Encoding is settled by construction.** Each entry holds one canonical form _including_
+its variation selector, and the completeness test derives the requirement from Unicode
+rather than a hand-kept list: a base that is `\p{Emoji}` but not `\p{Emoji_Presentation}`
+is presentation-ambiguous and MUST carry an explicit U+FE0F or U+FE0E; one that is
+already unambiguous must carry neither, because a redundant selector is a second spelling
+waiting to drift. That is why `🌡️`, `🗑️` and `⏭️` now carry selectors — and why nothing
+in the vocabulary can disagree with itself again.
+
+**What collapsed, and what deliberately did not.** `✓ → ✅`, `💤 → 😴` (the nap line sat
+directly under the overnight line's own face), `🌙 → 🧭` (it marked the derived-context
+line, which fires for a logged period as well as a rough night, one row above the
+situation line asking the identical question), and the flagged **vital** joined the
+flagged **lab** under `🚩`. Three did NOT: `👍` stays distinct from `✅` because the
+escalation's "I'm on it" sits one button from "Confirmed taken" and its own reply says
+_dose not marked taken_; `🔴` is an **obligation** marker on a dose list, not an alarm;
+and `⚑` ranks a due item while `🚩` states a reading is out of range — dressing the first
+as the second is a false alarm in the direction that costs trust.
+
+**Scope is declared, not inferred.** An emoji here is not always a message glyph:
+`lib/datasets/food-groups.ts` carries one icon per catalog row and `lib/mood.ts` a graded
+1–5 scale of faces, and UI surfaces use `✓` and `★` as styled typography. So
+`GLYPH_MODULES` lists the modules that compose text a person reads **in a message**, and
+`lib/__tests__/glyph-vocabulary.test.ts` fails any of them for an emoji literal, with an
+allowlist carrying a written reason per survivor (today: three `why:` paragraphs in
+`reconcile-registry.ts` that quote a button label rather than produce one). The scan
+unescapes `\uXXXX` first, so a codepoint escape is not a way around it — that is how the
+digest's `"\u{1F6B4}"` was found.
+
+## Rich text in the digest and the recap (#2392)
+
+**The seam existed and the two largest messages ignored it.** `lib/notifications/rich-text.ts`
+(#1720) named "#1712 digest" in its own rationale and the digest never adopted it; nor did
+the recap. Both do now: `DigestSection.lines` is `MessageBody`, and both compose through
+`formatEmphasizedLine`.
+
+**The rule is one sentence: the head is emphasized when the line has qualifiers to be
+distinguished from.** Emphasis is contrast, so it is spent only where there is something
+to contrast with. `💊 **Supplements: 8/9 taken** — missed Glycine (1 day) · 2 skipped`
+gains a subject the eye finds at a glance; `☀️ Sunny, UV moderate until 4pm — good window
+for light exposure.` is one clause with nothing beside it, and bolding a whole sentence
+marks nothing while spending the only weight the message had left. It is deliberately not
+a per-call-site choice: a producer that adds a qualifier gets the contrast without asking.
+
+The digest additionally bolds its **section headings** — `Today` / `Yesterday` / `Sleep` /
+`New` is the outline a reader navigates by, and it was set in the same weight as every
+fact under it. The recap bolds its range label for the same reason. A line the digest did
+not compose (a recent-changes line, the workout preview, the time suggestion) stays plain:
+the digest cannot know where a preformatted string's head ends, and guessing is how
+emphasis stops meaning anything. A stored recap narrative (#421) is prose and takes none.
+
+**Channel parity is free and tested.** `plainBody()` of an emphasized line is
+byte-identical to `formatMessageLine` over the same parts, so Web Push, Home Assistant and
+email carry exactly the words they carried before. Every string assertion in
+`lib/__tests__/digest.test.ts` and `lib/__tests__/weekly-recap.test.ts` reads `plainBody`,
+which makes each one a parity check.
 
 ## The Telegram command vocabulary (#1895)
 

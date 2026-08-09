@@ -14,7 +14,7 @@ import type { DoseTakenOutcome } from "./types";
 // OUTCOME is one computation and stays one — this is a formatter over it, the
 // same relationship the Telegram answer has. The two differ only in channel
 // register, and unavoidably so: the Telegram copy ends "Open the app to change
-// it", which is nonsense read inside the app, and carries the ✅/⏭ glyphs a chat
+// it", which is nonsense read inside the app, and carries the ✅/⏭️ glyphs a chat
 // message needs to be scannable while a toast has tone colour instead. Sharing
 // one string would make one of the two lie about where the reader is.
 //

@@ -23,7 +23,7 @@ export async function handleDoseCommand(
     await sendTelegramMessage(
       chatId,
       {
-        title: "💊 Log a PRN dose",
+        title: `${GLYPH.dose} Log a PRN dose`,
         body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
         kind: "prn-list",
       },
@@ -43,7 +43,7 @@ export async function handleDoseCommand(
     const prefix = multi ? `${getProfileNameById(pid) ?? "Profile"}: ` : "";
     for (const m of getPrnMedicationsForQuickLog(pid)) {
       actions.push({
-        label: `💊 ${prnQuickLogLabel({
+        label: `${GLYPH.dose} ${prnQuickLogLabel({
           name: m.name,
           prefix,
           dose: formatMedicationDoseProduct(m.amount, m.product),
@@ -64,7 +64,7 @@ export async function handleDoseCommand(
     await sendTelegramMessage(
       chatId,
       {
-        title: "💊 Log a PRN dose",
+        title: `${GLYPH.dose} Log a PRN dose`,
         body: "No as-needed medications are set up. Add one under Medications in the app.",
         kind: "prn-list",
       },
@@ -79,7 +79,7 @@ export async function handleDoseCommand(
   await sendTelegramMessage(
     chatId,
     {
-      title: "💊 Log a PRN dose",
+      title: `${GLYPH.dose} Log a PRN dose`,
       body: "Tap a medication to record a dose now:",
       actions,
       kind: "prn-list",
@@ -128,7 +128,7 @@ export async function handlePrnLogTap(
   );
 }
 
-// A practice "Done ✓" tap (#1259): log one session NOW for the tapped target's practice,
+// A practice "Done ✅" tap (#1259): log one session NOW for the tapped target's practice,
 // scoped to the profile resolved from the chat (never the token's profile id alone).
 // Answers from the typed PracticeLogOutcome — never an unconditional confirm (a session
 // log is not idempotent) — and CONSUMES the tapped button so a stale message can't
@@ -159,7 +159,9 @@ export async function handlePracticeDoneTap(
       messageId,
       replacementWithTitle(
         cq.message?.text,
-        outcome.kind === "logged" ? "Logged ✅" : OUTDATED_MESSAGE_TEXT
+        outcome.kind === "logged"
+          ? `Logged ${GLYPH.done}`
+          : OUTDATED_MESSAGE_TEXT
       )
     );
   } else {
@@ -248,7 +250,7 @@ export async function handleSymptomPick(
     row: "sev",
   }));
   await rebuildMessage(profileId, chatId, messageId, {
-    title: `🤒 Log a symptom: ${label}`,
+    title: `${GLYPH.illness} Log a symptom: ${label}`,
     body: "How bad is it?",
     actions,
     kind: "symptom",
@@ -362,7 +364,11 @@ export async function handleSymptomSeverity(
     cq.id,
     `Logged: ${label} (${sevLabel.toLowerCase()})`
   );
-  await closeMessage(chatId, messageId, `✅ Logged ${label} — ${sevLabel}.`);
+  await closeMessage(
+    chatId,
+    messageId,
+    `${GLYPH.done} Logged ${label} — ${sevLabel}.`
+  );
 }
 
 // `/temp` command (#859 item 5): prompt the chat to REPLY with a reading. The prompt
@@ -432,7 +438,7 @@ export async function handleTempReply(
     await sendTelegramMessage(
       chatId,
       {
-        title: "🌡️ Temperature not logged",
+        title: `${GLYPH.temperature} Temperature not logged`,
         body: "That profile isn't linked to this chat anymore.",
       },
       CHAT_WIDE
@@ -445,7 +451,7 @@ export async function handleTempReply(
     await sendTelegramMessage(
       chatId,
       {
-        title: "🌡️ Temperature not logged",
+        title: `${GLYPH.temperature} Temperature not logged`,
         body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
       },
       markedProfile
@@ -464,7 +470,7 @@ export async function handleTempReply(
     await sendTelegramMessage(
       chatId,
       {
-        title: "🌡️ Temperature not logged",
+        title: `${GLYPH.temperature} Temperature not logged`,
         body: outcome.error,
       },
       markedProfile
@@ -493,7 +499,7 @@ export async function handleTempReply(
   await sendTelegramMessage(
     chatId,
     {
-      title: `🌡️ Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
+      title: `${GLYPH.temperature} Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
       body:
         redFlag ?? `${fmtTemp(outcome.degF, parsed.unit)} recorded for today.`,
       ...(base && episodeId != null
@@ -560,7 +566,7 @@ export async function handleMoodCommand(
     await sendTelegramMessage(
       chatId,
       {
-        title: "🙂 Check-in",
+        title: `${GLYPH.mood} Check-in`,
         body: alreadyLogged.length
           ? `Already checked in today${multi ? ` (${alreadyLogged.join(", ")})` : ""} — open the app to change it.`
           : "The daily check-in is off. Turn it on under Settings → Notifications.",
@@ -577,7 +583,7 @@ export async function handleMoodCommand(
   await sendTelegramMessage(
     chatId,
     {
-      title: "🙂 How are you today?",
+      title: `${GLYPH.mood} How are you today?`,
       body: "One tap logs your day — or just skip this.",
       actions,
       kind: "mood",
@@ -639,7 +645,7 @@ export async function handleFoodCommand(
     await sendTelegramMessage(
       chatId,
       {
-        title: "🍽️ Log food",
+        title: `${GLYPH.food} Log food`,
         body: "Food-group logging doesn't apply here yet. Everything else is in the app.",
         kind: "food",
       },
@@ -689,7 +695,7 @@ export async function handlePracticeCommand(
     await sendTelegramMessage(
       chatId,
       {
-        title: "🧘 Log a practice",
+        title: `${GLYPH.practice} Log a practice`,
         body: "No wellness practices are tracked yet. Add one under Practices in the app.",
         kind: "practice-list",
       },
@@ -701,7 +707,7 @@ export async function handlePracticeCommand(
   await sendTelegramMessage(
     chatId,
     {
-      title: "🧘 Log a practice",
+      title: `${GLYPH.practice} Log a practice`,
       body: lines.join("\n"),
       actions,
       kind: "practice-list",
@@ -759,7 +765,7 @@ export async function handleWeightReply(
     await sendTelegramMessage(
       chatId,
       {
-        title: "⚖️ Weight not logged",
+        title: `${GLYPH.weight} Weight not logged`,
         body: "That profile isn't linked to this chat anymore.",
       },
       CHAT_WIDE
@@ -775,7 +781,7 @@ export async function handleWeightReply(
     await sendTelegramMessage(
       chatId,
       {
-        title: "⚖️ Weight not logged",
+        title: `${GLYPH.weight} Weight not logged`,
         body:
           parsed.error ??
           "Couldn't read a weight there — reply with a number like 82.5.",
@@ -799,11 +805,11 @@ export async function handleWeightReply(
     chatId,
     wrote
       ? {
-          title: `⚖️ Weight logged: ${fmtWeight(toKg(parsed.value, parsed.unit), "kg")}`,
+          title: `${GLYPH.weight} Weight logged: ${fmtWeight(toKg(parsed.value, parsed.unit), "kg")}`,
           body: "Recorded for today.",
         }
       : {
-          title: "⚖️ Weight not logged",
+          title: `${GLYPH.weight} Weight not logged`,
           body: "Couldn't record that weight — try again in the app.",
         },
     markedProfile
@@ -949,7 +955,9 @@ export async function handleSymptomTextIntake(
   const extras: string[] = [];
   if (outcome.mapping.temperature) {
     const t = outcome.mapping.temperature;
-    extras.push(`🌡 Temperature ${t.value}°${t.unit} — log it with /temp.`);
+    extras.push(
+      `${GLYPH.temperature} Temperature ${t.value}°${t.unit} — log it with /temp.`
+    );
   }
   const notMapped = [
     ...outcome.mapping.symptoms.filter((s) => s.isCustom).map((s) => s.label),
@@ -1121,6 +1129,7 @@ import {
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
 import { prefixMessage, type NotificationAction } from "./types";
+import { GLYPH } from "./glyphs";
 
 // An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
 // one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.
@@ -1252,7 +1261,7 @@ export async function handleDemoteTap(
 // a number off the button — a stale button on a practice whose cadence recovered
 // refuses instead of shrinking a commitment nobody is suggesting shrinking.
 //
-// The tapped ROW is consumed on success (both the ✓ and the ⤓ for that practice become
+// The tapped ROW is consumed on success (both the ✅ and the ⤓ for that practice become
 // stale once its floor moved); the rest of the nudge's buttons survive so the message
 // stays usable.
 export async function handleRightSizeLowerTap(

@@ -309,7 +309,7 @@ describe("Static — today's behavior, to the minute (the regression that must n
     const fetchMock = stubFetch();
     await runMorning(p, "StaticIncomplete", null);
     const body = sentBody(fetchMock);
-    expect(body).not.toContain("😴 Last night:");
+    expect(body).not.toContain("😴 <b>Last night:");
     expect(body).toContain("Session");
   });
 });
@@ -322,7 +322,7 @@ describe("Dynamic — sends the moment last night lands", () => {
     const fetchMock = stubFetch();
     expect(await runMorning(p, "Dynamic", 7 * 60 + 26)).toEqual([7 * 60 + 30]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(sentBody(fetchMock)).toContain("😴 Last night:");
+    expect(sentBody(fetchMock)).toContain("😴 <b>Last night:");
     expect(getProfileSetting(p, DIGEST_MARKER_KEY)).toBe(FROZEN_DAY);
   });
 
@@ -348,7 +348,7 @@ describe("Dynamic — sends the moment last night lands", () => {
       Math.ceil(DEADLINE / TICK_MINUTES) * TICK_MINUTES
     );
     const body = sentBody(fetchMock);
-    expect(body).not.toContain("😴 Last night:");
+    expect(body).not.toContain("😴 <b>Last night:");
     expect(body).toContain("Session");
   });
 
@@ -358,7 +358,7 @@ describe("Dynamic — sends the moment last night lands", () => {
     expect(await runMorning(p, "DynamicLate", 8 * 60 + 30)).toEqual([
       DEADLINE_TICK,
     ]);
-    expect(sentBody(fetchMock)).not.toContain("😴 Last night:");
+    expect(sentBody(fetchMock)).not.toContain("😴 <b>Last night:");
   });
 
   it("admits exactly ONE send either way, however often the tick runs", async () => {

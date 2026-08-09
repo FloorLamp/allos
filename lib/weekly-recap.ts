@@ -47,10 +47,18 @@ import { sriPresentation } from "./sleep-regularity";
 import type { WeekMode, WeekStart, WeightUnit } from "./settings";
 import type { NotificationMessage } from "./notifications/types";
 import {
+  formatEmphasizedLine,
   formatMessageLine,
   messageLineQualifiers,
   type MessageLine,
 } from "./notifications/message-line";
+import {
+  bold,
+  joinBody,
+  richFrom,
+  type MessageBody,
+} from "./notifications/rich-text";
+import { GLYPH } from "./notifications/glyphs";
 
 // The seven-day window ending on `today` (inclusive) plus the preceding seven-day
 // comparison window. All bounds are YYYY-MM-DD strings in the profile's timezone.
@@ -690,17 +698,29 @@ export function renderRecapMessage(
 ): NotificationMessage | null {
   if (recap.isEmpty || recap.lines.length === 0) return null;
   const narr = narrative?.trim();
-  const body = narr
-    ? narr
-    : recap.lines
-        // THE DOCUMENTED GRAMMAR, not a parenthesis of its own (#2391/#2389 item 2).
-        // The recap composed with parentheses while the digest moved to declared parts,
-        // so the two system-initiated messages a profile receives were punctuated by
-        // different rules — and only one of them was nesting-proof. A label legitimately
-        // contains parentheses ("Romanian Deadlift (Rep Trap Bar)"), and wrapping an
-        // annotation containing one in another set nested.
-        .map((l) => formatMessageLine({ glyph: "•", ...recapMessageLine(l) }))
-        .join("\n");
+  // THE DOCUMENTED GRAMMAR, not a parenthesis of its own (#2391/#2389 item 2). The
+  // recap composed with parentheses while the digest moved to declared parts, so the two
+  // system-initiated messages a profile receives were punctuated by different rules —
+  // and only one of them was nesting-proof. A label legitimately contains parentheses
+  // ("Romanian Deadlift (Rep Trap Bar)"), and wrapping an annotation containing one in
+  // another set nested.
+  //
+  // EMPHASIS since #2392, on the same rule the digest follows. A recap line's head is
+  // "Workouts: 7" — a label and the figure the week turned on — and its qualifiers are
+  // the breakdown and the comparison beneath it: precisely the shape formatEmphasizedLine
+  // was written for. A stored NARRATIVE (#421) replaces the bullets with prose and takes
+  // no emphasis: it is one paragraph with no head to mark.
+  const lines: MessageBody[] = narr
+    ? [narr]
+    : recap.lines.map((l) =>
+        formatEmphasizedLine({ glyph: GLYPH.bullet, ...recapMessageLine(l) })
+      );
+  // The range label is the recap's one structural header — the digest's section headings
+  // one surface over — so it carries the same weight they do.
+  const body = joinBody(
+    [richFrom([bold(recapRangeLabel(recap.start, recap.end))]), ...lines],
+    "\n"
+  );
   // The recap was the only builder that took no deepLinkBase and returned no actions
   // (#1722 item 2) — a week's summary with nowhere to go and look. Every sibling
   // carries one.
@@ -708,11 +728,11 @@ export function renderRecapMessage(
   return {
     // The profile name is a NOTE on the title — a shared chat can carry several.
     title: formatMessageLine({
-      glyph: "📊",
+      glyph: GLYPH.recap,
       head: "Weekly recap",
       notes: [profileName],
     }),
-    body: `${recapRangeLabel(recap.start, recap.end)}\n${body}`,
+    body,
     kind: "weekly-recap",
     ...(base
       ? { actions: [{ label: "Open Trends →", url: `${base}/trends` }] }

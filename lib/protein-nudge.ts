@@ -8,10 +8,12 @@
 //   • the catalog (FOOD_GROUPS / foodGroupSlugs): it's not in the dataset JSON, and
 //     canonicalFoodGroup() rejects it, so a forged food-log token for it lands nothing;
 //   • the food_log day counter + the serving tally line (its contribution is the day's
-//     protein GRAMS, shown on its own line, never mixed into "✓ Today: Leafy greens ×2");
+//     protein GRAMS, shown on its own line, never mixed into "✅ Today: Leafy greens ×2");
 //   • dietary-exclusion demotion (#975) and any group-semantics — it has no group.
 // The double-underscore form cannot collide with a catalog slug (snake_case, no leading
 // underscore). Pure — no DB/network — so the guard tests live in the pure tier.
+
+import { GLYPH } from "./notifications/glyphs";
 
 // The reserved key written to food_log_events (never to food_log) for a protein log.
 export const PROTEIN_NUDGE_KEY = "__protein__";
@@ -31,7 +33,7 @@ export const DEFAULT_PROTEIN_PRESET_GRAMS = 30;
 // exception — one keyboard speaking two label grammars. Deliberately NOT one of the
 // FOOD_GROUP_EMOJI glyphs: the protein button is the shake path, not a serving of any
 // catalog group, and reusing a group's glyph would claim otherwise.
-export const PROTEIN_NUDGE_EMOJI = "💪";
+export const PROTEIN_NUDGE_EMOJI = GLYPH.protein;
 
 // The "💪 ＋Xg protein" button label — the grams preset, deliberately distinct from a
 // food-group name so it reads as the shake path, not a serving.

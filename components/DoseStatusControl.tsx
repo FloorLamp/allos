@@ -19,7 +19,7 @@ import {
 
 // Tri-state dose check-off (issue #232): one dose is taken, deliberately skipped,
 // or clear. Shared by MedicationCard and EditableSupplementRow so BOTH surfaces
-// (and every viewport) get the same control — a ✅ take toggle and a ⏭ skip
+// (and every viewport) get the same control — a ✅ take toggle and a ⏭️ skip
 // toggle, each flipping its state back to clear when pressed again.
 //
 // Online every transition calls the setDoseStatus Server Action with an explicit

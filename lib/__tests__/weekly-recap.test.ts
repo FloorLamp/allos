@@ -17,6 +17,7 @@ import { recentPRs, type ExerciseSummary } from "@/lib/coaching";
 import { weekWindow } from "@/lib/week-window";
 import { shiftDateStr, daysBetweenDateStr } from "@/lib/date";
 import type { WeekStart } from "@/lib/settings";
+import { plainBody } from "@/lib/notifications/rich-text";
 
 const TODAY = "2026-07-09"; // a Thursday
 
@@ -427,9 +428,9 @@ describe("renderRecapMessage", () => {
     );
     const msg = renderRecapMessage(recap, "Ada")!;
     expect(msg.title).toBe("📊 Weekly recap — Ada");
-    expect(msg.body).toContain("Jul 3 – Jul 9");
-    expect(msg.body).toContain("• Workouts: 1");
-    expect(msg.body).toContain("• Adherence: 100%");
+    expect(plainBody(msg.body)).toContain("Jul 3 – Jul 9");
+    expect(plainBody(msg.body)).toContain("• Workouts: 1");
+    expect(plainBody(msg.body)).toContain("• Adherence: 100%");
   });
 
   // #421: a stored recap narrative replaces the bare bullets when present.
@@ -445,10 +446,10 @@ describe("renderRecapMessage", () => {
       "Ada",
       "A strong week — one lift and perfect adherence."
     )!;
-    expect(msg.body).toContain("Jul 3 – Jul 9");
-    expect(msg.body).toContain("A strong week");
+    expect(plainBody(msg.body)).toContain("Jul 3 – Jul 9");
+    expect(plainBody(msg.body)).toContain("A strong week");
     // The narrative supersedes the bullet lines.
-    expect(msg.body).not.toContain("• Workouts:");
+    expect(plainBody(msg.body)).not.toContain("• Workouts:");
   });
 
   it("falls back to bullets when the narrative is empty/whitespace", () => {
@@ -456,7 +457,7 @@ describe("renderRecapMessage", () => {
       baseInput({ workouts: [{ date: "2026-07-08", type: "strength" }] })
     );
     const msg = renderRecapMessage(recap, "Ada", "   ")!;
-    expect(msg.body).toContain("• Workouts: 1");
+    expect(plainBody(msg.body)).toContain("• Workouts: 1");
   });
 
   // THE DOCUMENTED GRAMMAR, exactly (#2391 / #2389 item 2). The recap used to wrap its
@@ -476,7 +477,7 @@ describe("renderRecapMessage", () => {
         adherence: { taken: 12, skipped: 1, due: 14 },
       })
     );
-    const lines = String(
+    const lines = plainBody(
       recap.lines.length ? renderRecapMessage(recap, "Ada")!.body : ""
     )
       .split("\n")
@@ -659,11 +660,11 @@ describe("recap coverage rule (#1935)", () => {
 
   it("says none of it in the rendered message either", () => {
     const msg = renderRecapMessage(everything(), "Ada")!;
-    expect(msg.body).not.toMatch(/Volume|kcal|streak|active day/i);
+    expect(plainBody(msg.body)).not.toMatch(/Volume|kcal|streak|active day/i);
     // The line the volume percentage was restating is still there, and is the
     // honest version of the same claim.
-    expect(msg.body).toContain("• Workouts: 2 (strength 2)");
-    expect(msg.body).toContain("3 last week");
+    expect(plainBody(msg.body)).toContain("• Workouts: 2 (strength 2)");
+    expect(plainBody(msg.body)).toContain("3 last week");
   });
 
   it("keeps every line that does earn week scale", () => {
@@ -790,9 +791,9 @@ describe("intake delta line renders once, unprefixed (#1935/#1505)", () => {
       })
     );
     const msg = renderRecapMessage(recap, "Ada")!;
-    expect(msg.body).toContain("• Missed: Glycine (2 days)");
-    expect(msg.body).not.toContain("Changed:");
-    expect(String(msg.body).match(/Missed:/g)).toHaveLength(1);
+    expect(plainBody(msg.body)).toContain("• Missed: Glycine (2 days)");
+    expect(plainBody(msg.body)).not.toContain("Changed:");
+    expect(plainBody(msg.body).match(/Missed:/g)).toHaveLength(1);
   });
 });
 

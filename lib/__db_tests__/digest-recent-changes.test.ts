@@ -34,6 +34,7 @@ import { buildDigest } from "@/lib/notifications/digest";
 import { collectUpcoming } from "@/lib/queries";
 import { stepsPaceKey } from "@/lib/steps-target";
 import { practiceIdentity } from "@/lib/practice";
+import { plainBody } from "@/lib/notifications/rich-text";
 
 function newProfile(name: string): number {
   const id = Number(
@@ -283,7 +284,9 @@ describe("collectRecentChanges — the digest's 24h window (#1713)", () => {
     expect(model).not.toBeNull();
     const section = model!.sections.find((s) => s.heading === "New");
     expect(section).toBeDefined();
-    expect(section!.lines.join("\n")).toContain("Blood Pressure Systolic");
+    expect(section!.lines.map(plainBody).join("\n")).toContain(
+      "Blood Pressure Systolic"
+    );
   });
 
   it("the household 7-day window and the digest 24h window agree on their overlap", () => {
@@ -421,8 +424,10 @@ describe("data arrival — the digest's overnight line (#1819)", () => {
 
     const model = buildDigest(gatherDigestInput(pid, "Digest Dana"));
     const New = model?.sections.find((s) => s.heading === "New");
-    expect(New?.lines).toContain("📥 First data from Oura Ring: sleep");
-    expect(New?.lines.join("\n")).not.toContain("Weather");
+    expect(New?.lines.map(plainBody)).toContain(
+      "📥 First data from Oura Ring: sleep"
+    );
+    expect(New?.lines.map(plainBody).join("\n")).not.toContain("Weather");
   });
 });
 
@@ -543,7 +548,7 @@ describe("light-exposure line (#1723 part 1)", () => {
     seedDay(td, 0, 4);
     const model = buildDigest(gatherDigestInput(pid, "Digest Dee"));
     const todaySection = model!.sections.find((s) => s.heading === "Today");
-    expect(todaySection!.lines.join("\n")).toContain(
+    expect(todaySection!.lines.map(plainBody).join("\n")).toContain(
       "good window for light exposure"
     );
     // The digest is the ONLY channel: nothing here mints an action or a second kind.
@@ -588,7 +593,9 @@ describe("daily step target (#1723 part 2)", () => {
     seedSteps(pid, shiftDateStr(td, -1), 5100);
     const model = buildDigest(gatherDigestInput(pid, "Walker Wren"));
     const yesterday = model!.sections.find((s) => s.heading === "Yesterday");
-    expect(yesterday!.lines.join("\n")).toContain("5,100 of 8,000 steps");
+    expect(yesterday!.lines.map(plainBody).join("\n")).toContain(
+      "5,100 of 8,000 steps"
+    );
   });
 
   it("the afternoon observation appears in Upcoming when the day is well behind", () => {
@@ -745,7 +752,9 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
 
     const model = buildDigest(gatherDigestInput(pid, "Provenance Pat"));
     const yesterday = model?.sections.find((s) => s.heading === "Yesterday");
-    expect(yesterday?.lines).toContain("🏋️ Morning Ride — 18.85 km · Strava");
+    expect(yesterday?.lines.map(plainBody)).toContain(
+      "🏋️ Morning Ride — 18.85 km · Strava"
+    );
   });
 
   it("says nothing about provenance for a session logged by hand", () => {
@@ -758,6 +767,6 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
 
     const model = buildDigest(gatherDigestInput(pid, "Manual Mo"));
     const yesterday = model?.sections.find((s) => s.heading === "Yesterday");
-    expect(yesterday?.lines).toEqual(["🏋️ Squats — 45 min"]);
+    expect(yesterday?.lines.map(plainBody)).toEqual(["🏋️ Squats — 45 min"]);
   });
 });

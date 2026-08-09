@@ -59,7 +59,7 @@ describe("rebuild keeps the profile prefix (issue #377)", () => {
     body: "D3 · Magnesium",
     actions: [
       { label: "✅ D3", data: "take:2:12:34:2026-07-03", row: "d12" },
-      { label: "⏭", data: "skip:2:12:34:2026-07-03", row: "d12" },
+      { label: "⏭️", data: "skip:2:12:34:2026-07-03", row: "d12" },
       { label: "✅ All (2)", data: "all:2:Morning:2026-07-03" },
     ],
   };

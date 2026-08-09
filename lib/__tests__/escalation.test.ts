@@ -262,10 +262,10 @@ describe("renderEscalationMessage", () => {
     expect(msg.body).not.toContain("(");
   });
 
-  // The THREE caregiver buttons (#233 + #1716): ✅ Confirmed taken (esctake), ⏭ Skip
+  // The THREE caregiver buttons (#233 + #1716): ✅ Confirmed taken (esctake), ⏭️ Skip
   // (escskip) and 👍 I'm on it (escack), carrying profile/dose/supp ids + the day —
   // never a name — so a late tap resolves the right dose on the right date.
-  it("carries the ✅ confirm, ⏭ skip and 👍 ack buttons with id-only tokens", () => {
+  it("carries the ✅ confirm, ⏭️ skip and 👍 ack buttons with id-only tokens", () => {
     const msg = renderEscalationMessage(
       "Mom",
       {

@@ -60,6 +60,8 @@
 // `typicalBedTime` anchor tighten it later; neither is a dependency.
 
 /** Minutes of stream silence before the watch is presumed off the wrist at bedtime. */
+import { GLYPH } from "./notifications/glyphs";
+
 export const WEAR_QUIET_TOLERANCE_MIN = 40;
 
 export interface BedtimeWearSignals {
@@ -146,4 +148,4 @@ export function bedtimeWearBody(lastSeenLocalHhmm: string): string {
   return `Your watch hasn't recorded anything since ${lastSeenLocalHhmm} — still on the charger? Tonight's sleep won't be recorded without it.`;
 }
 
-export const BEDTIME_WEAR_TITLE = "⌚ Heading to bed?";
+export const BEDTIME_WEAR_TITLE = `${GLYPH.wearable} Heading to bed?`;

@@ -20,6 +20,7 @@ import { collectUpcoming } from "@/lib/queries";
 import { getOutdoorPlans } from "@/lib/queries/weather-training";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest } from "@/lib/notifications/digest";
+import { plainBody } from "@/lib/notifications/rich-text";
 
 const LNG = -74;
 let seq = 0;
@@ -127,7 +128,7 @@ function upcomingPlanItems(profileId: number) {
 function digestText(profileId: number, name: string): string {
   const model = buildDigest(gatherDigestInput(profileId, name));
   return (model?.sections ?? [])
-    .flatMap((s) => [s.heading, ...s.lines])
+    .flatMap((s) => [s.heading, ...s.lines.map(plainBody)])
     .join("\n");
 }
 

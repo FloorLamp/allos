@@ -21,7 +21,7 @@ describe("extractDoses", () => {
       kind: "dose",
       actions: [
         { label: "✅ take", data: "take:2:41:9:2026-07-11", row: "d41" },
-        { label: "⏭ skip", data: "skip:2:41:9:2026-07-11", row: "d41" },
+        { label: "⏭️ skip", data: "skip:2:41:9:2026-07-11", row: "d41" },
       ],
     };
     expect(extractDoses(msg)).toEqual([
@@ -97,7 +97,7 @@ describe("buildHomeAssistantPayload", () => {
       kind: "dose",
       actions: [
         { label: "✅ take", data: "take:2:41:9:2026-07-11", row: "d41" },
-        { label: "⏭ skip", data: "skip:2:41:9:2026-07-11", row: "d41" },
+        { label: "⏭️ skip", data: "skip:2:41:9:2026-07-11", row: "d41" },
       ],
     };
     expect(

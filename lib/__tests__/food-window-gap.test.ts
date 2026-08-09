@@ -394,8 +394,8 @@ describe("foodWindowGapLine", () => {
       }).body
     ).split("\n");
     const at = (needle: string) => lines.findIndex((l) => l.includes(needle));
-    expect(at("✓ Today:")).toBeGreaterThanOrEqual(0);
-    expect(at("Nothing logged for Midday")).toBe(at("✓ Today:") + 1);
+    expect(at("✅ Today:")).toBeGreaterThanOrEqual(0);
+    expect(at("Nothing logged for Midday")).toBe(at("✅ Today:") + 1);
     expect(at("Protein 40 g")).toBe(at("Nothing logged for Midday") + 1);
   });
 

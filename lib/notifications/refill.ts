@@ -41,6 +41,7 @@ import {
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("notify");
 
@@ -71,14 +72,14 @@ export function renderRefillMessage(
   // the title and the CTA that are already on screen.
   const lines = items.map(
     (it) =>
-      `• ${it.name}: ≈${it.daysLeft} day${it.daysLeft === 1 ? "" : "s"} left (below your ${DEFAULT_LOW_SUPPLY_DAYS}-day threshold)`
+      `${GLYPH.bullet} ${it.name}: ≈${it.daysLeft} day${it.daysLeft === 1 ? "" : "s"} left (below your ${DEFAULT_LOW_SUPPLY_DAYS}-day threshold)`
   );
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] = items.flatMap((it) => {
     const row = `rf:${it.id}`;
     const perItem: NotificationAction[] = [
       {
-        label: "📦 Ordered — remind me in 3 days",
+        label: `${GLYPH.ordered} Ordered — remind me in 3 days`,
         data: `rfsnooze:${profileId}:${it.id}`,
         row,
       },
@@ -93,7 +94,7 @@ export function renderRefillMessage(
     return perItem;
   });
   return {
-    title: `🔄 Refill due: ${who}${head}`,
+    title: `${GLYPH.resupply} Refill due: ${who}${head}`,
     body: lines.join("\n"),
     actions,
     kind: "refill",

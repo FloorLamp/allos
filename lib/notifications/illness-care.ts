@@ -42,6 +42,7 @@ import { episodeHref } from "../hrefs";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("notify");
 
@@ -72,7 +73,7 @@ export function renderIllnessCareMessage(
       ? [{ label: "View episode", url: `${base}${episodeHref(episodeId)}` }]
       : [];
   return {
-    title: `🌡️ Illness check: ${who}${finding.title}`,
+    title: `${GLYPH.temperature} Illness check: ${who}${finding.title}`,
     body: illnessCareFullDetail(finding),
     actions,
     kind: "illness-care",

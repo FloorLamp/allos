@@ -56,6 +56,7 @@ import { managingLoginIdsForProfile } from "./managing-logins";
 import { dispatch } from "./index";
 import type { NotificationMessage } from "./types";
 import { createLogger } from "../log";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("notify");
 
@@ -81,11 +82,11 @@ export function renderPoolRefillMessage(
   const lines = pools.map((p) => {
     const n = memberCounts.get(p.id) ?? 0;
     const who = n > 1 ? ` · shared by ${n} people` : "";
-    return `• ${p.name}: ≈${p.daysLeft} day${p.daysLeft === 1 ? "" : "s"} left${who}`;
+    return `${GLYPH.bullet} ${p.name}: ≈${p.daysLeft} day${p.daysLeft === 1 ? "" : "s"} left${who}`;
   });
   const base = deepLinkBase.replace(/\/$/, "");
   return {
-    title: `🔄 Shared supply running low: ${head}`,
+    title: `${GLYPH.resupply} Shared supply running low: ${head}`,
     // The preamble restated the title and the button beneath it (#1722 item 4).
     body: lines.join("\n"),
     actions: base

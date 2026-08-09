@@ -162,13 +162,13 @@ describe("renderWindowMessage", () => {
     expect(msg.title).toBe("💊 Morning supplements");
     expect(msg.body).toBe("🔴 Vitamin D — 2000 IU\n• Magnesium — 400 mg");
     // With ≥2 pending, an "All" tap leads; each pending dose then gets a paired
-    // ✅ take + ⏭ skip (same `row` group so they sit side by side). #232
+    // ✅ take + ⏭️ skip (same `row` group so they sit side by side). #232
     expect(msg.actions).toEqual([
       { label: "✅ All (2)", data: "all:1:Morning:2026-07-05" },
       { label: "✅ Vitamin D", data: "take:1:10:1:2026-07-05", row: "dose:10" },
-      { label: "⏭ Skip", data: "skip:1:10:1:2026-07-05", row: "dose:10" },
+      { label: "⏭️ Skip", data: "skip:1:10:1:2026-07-05", row: "dose:10" },
       { label: "✅ Magnesium", data: "take:1:11:2:2026-07-05", row: "dose:11" },
-      { label: "⏭ Skip", data: "skip:1:11:2:2026-07-05", row: "dose:11" },
+      { label: "⏭️ Skip", data: "skip:1:11:2:2026-07-05", row: "dose:11" },
     ]);
   });
 
@@ -177,10 +177,10 @@ describe("renderWindowMessage", () => {
       entry({ doseId: 10, suppId: 1, name: "Vitamin D", amount: "2000 IU" }),
       entry({ doseId: 11, suppId: 2, name: "Magnesium", taken: true }),
     ]);
-    // Only the single pending dose's ✅ take + ⏭ skip — no redundant "All".
+    // Only the single pending dose's ✅ take + ⏭️ skip — no redundant "All".
     expect(msg.actions).toEqual([
       { label: "✅ Vitamin D", data: "take:1:10:1:2026-07-05", row: "dose:10" },
-      { label: "⏭ Skip", data: "skip:1:10:1:2026-07-05", row: "dose:10" },
+      { label: "⏭️ Skip", data: "skip:1:10:1:2026-07-05", row: "dose:10" },
     ]);
   });
 
@@ -198,10 +198,10 @@ describe("renderWindowMessage", () => {
     expect(msg.title).toBe("💊 Evening supplements");
     // pending first, taken (✅) after
     expect(msg.body).toBe("• Magnesium — 400 mg\n✅ Vitamin D — 2000 IU");
-    // only the pending dose gets buttons (✅ take + ⏭ skip)
+    // only the pending dose gets buttons (✅ take + ⏭️ skip)
     expect(msg.actions).toEqual([
       { label: "✅ Magnesium", data: "take:2:11:2:2026-07-05", row: "dose:11" },
-      { label: "⏭ Skip", data: "skip:2:11:2:2026-07-05", row: "dose:11" },
+      { label: "⏭️ Skip", data: "skip:2:11:2:2026-07-05", row: "dose:11" },
     ]);
   });
 
@@ -334,15 +334,15 @@ describe("renderWindowMessage", () => {
       entry({ doseId: 12, suppId: 3, name: "Iron", obligation: "should" }),
     ]);
     expect(msg.body).toBe("🔴 Creatine\n• Iron\n• Zinc");
-    // Buttons follow the sorted lines; each dose contributes ✅ then ⏭. #232
+    // Buttons follow the sorted lines; each dose contributes ✅ then ⏭️. #232
     expect(msg.actions?.map((a) => a.label)).toEqual([
       "✅ All (3)",
       "✅ Creatine",
-      "⏭ Skip",
+      "⏭️ Skip",
       "✅ Iron",
-      "⏭ Skip",
+      "⏭️ Skip",
       "✅ Zinc",
-      "⏭ Skip",
+      "⏭️ Skip",
     ]);
     // The take + skip for one dose share a `row` group; "All" stands alone.
     expect(msg.actions?.map((a) => a.row)).toEqual([

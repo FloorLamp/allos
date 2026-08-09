@@ -3,12 +3,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   MESSAGE_LINE_MODULES,
+  formatEmphasizedLine,
   formatMessageLine,
   formatRichMessageLine,
   messageLineQualifiers,
 } from "@/lib/notifications/message-line";
 import { bold, plainBody } from "@/lib/notifications/rich-text";
 import { REPO } from "./sql-scan";
+import { stringLiterals, type Literal } from "./source-literals";
 
 // ---------------------------------------------------------------------------
 // THE FORMATTER (#2391)
@@ -214,6 +216,71 @@ describe("a head-only line adds nothing to what the producer wrote", () => {
 });
 
 // ---------------------------------------------------------------------------
+// THE EMPHASIS RULE (#2392)
+// ---------------------------------------------------------------------------
+
+// The rule is one sentence — the head is emphasized when the line has qualifiers to be
+// distinguished from — and both halves of it are load-bearing. A message where every
+// head is bold has spent its only weight and marks nothing; a bolded prose sentence with
+// nothing beside it is the same mistake at line scale.
+describe("formatEmphasizedLine: emphasis is contrast, so it is spent on contrast", () => {
+  it("bolds the head of a line that HAS qualifiers", () => {
+    const line = formatEmphasizedLine({
+      glyph: "💊",
+      head: "Supplements: 8/9 taken",
+      because: "missed Glycine (1 day)",
+      notes: ["2 skipped"],
+    });
+    expect(typeof line === "string" ? [] : line.spans).toEqual([
+      { text: "💊 " },
+      { text: "Supplements: 8/9 taken", bold: true },
+      { text: " — missed Glycine (1 day) · 2 skipped" },
+    ]);
+  });
+
+  it("leaves a head-only line unemphasized", () => {
+    const line = formatEmphasizedLine({
+      glyph: "☀️",
+      head: "Sunny, UV moderate until 4pm — good window for light exposure.",
+    });
+    expect(typeof line === "string" ? [] : line.spans).toEqual([
+      {
+        text: "☀️ Sunny, UV moderate until 4pm — good window for light exposure.",
+      },
+    ]);
+  });
+
+  // THE PARITY GUARANTEE, which is what makes this safe to adopt across the two largest
+  // messages the app sends: the words never move. Web Push, Home Assistant and email
+  // read plainBody(), and it is byte-identical to the plain formatter over the same
+  // parts, emphasized or not.
+  it("says exactly what the plain formatter says, on every shape", () => {
+    const shapes = [
+      { head: "H" },
+      { glyph: "🙋", head: "H" },
+      { head: "H", because: "b" },
+      { glyph: "🔌", head: "H", because: "b", deadline: "d" },
+      {
+        glyph: "•",
+        head: "Workouts: 7",
+        notes: ["strength 4, cardio 3"],
+        comparison: "5 last week",
+      },
+      {
+        head: "H",
+        notes: [null, "n", undefined],
+        link: "https://example.test/x",
+      },
+    ] as const;
+    for (const shape of shapes) {
+      expect(plainBody(formatEmphasizedLine(shape))).toBe(
+        formatMessageLine(shape)
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // THE SCAN (#2391)
 // ---------------------------------------------------------------------------
 
@@ -233,15 +300,6 @@ describe("a head-only line adds nothing to what the producer wrote", () => {
 // nothing about whether a producer put a fact in the RIGHT role — that is what the
 // field contracts on MessageLineParts are for, and what review reads.
 
-interface Literal {
-  text: string;
-  line: number;
-  // A TEMPLATE chunk is composition — its neighbours are interpolated values. A QUOTED
-  // string is content unless it is nothing but a separator, which is what a
-  // `.join(" · ")` argument looks like.
-  kind: "template" | "quoted";
-}
-
 // Is this literal ASSEMBLING the grammar, rather than containing its characters?
 //
 // The distinction the scan has to make is composition versus PROSE. "All weekly targets
@@ -253,124 +311,6 @@ interface Literal {
 function assemblesSeparator(lit: Literal): boolean {
   if (lit.kind === "quoted") return /^\s*[—·]\s*$/.test(lit.text);
   return /(^|\s)[—·](\s|$)/.test(lit.text);
-}
-
-interface Cursor {
-  i: number;
-  line: number;
-}
-
-// Read a single- or double-quoted string. A quote that never closes on its own line is
-// not a string literal (most often the inside of a regex, e.g. /["']/) — the cursor is
-// rewound and the character treated as ordinary code, so one regex cannot swallow the
-// rest of the file.
-function readQuoted(src: string, cur: Cursor, quote: string, out: Literal[]) {
-  const start = cur.i;
-  const startLine = cur.line;
-  let i = cur.i + 1;
-  let buf = "";
-  while (i < src.length && src[i] !== quote) {
-    if (src[i] === "\n") {
-      cur.i = start + 1;
-      return;
-    }
-    if (src[i] === "\\") {
-      buf += src[i + 1] ?? "";
-      i += 2;
-      continue;
-    }
-    buf += src[i];
-    i++;
-  }
-  cur.i = i + 1;
-  out.push({ text: buf, line: startLine, kind: "quoted" });
-}
-
-function readTemplate(src: string, cur: Cursor, out: Literal[]) {
-  let buf = "";
-  let startLine = cur.line;
-  while (cur.i < src.length && src[cur.i] !== "`") {
-    if (src[cur.i] === "\\") {
-      buf += src[cur.i + 1] ?? "";
-      cur.i += 2;
-      continue;
-    }
-    if (src[cur.i] === "$" && src[cur.i + 1] === "{") {
-      if (buf) out.push({ text: buf, line: startLine, kind: "template" });
-      buf = "";
-      cur.i += 2;
-      readCode(src, cur, out, true);
-      startLine = cur.line;
-      continue;
-    }
-    if (src[cur.i] === "\n") cur.line++;
-    buf += src[cur.i];
-    cur.i++;
-  }
-  cur.i++;
-  if (buf) out.push({ text: buf, line: startLine, kind: "template" });
-}
-
-// Walk code, skipping comments (where `—` is ordinary prose) and collecting every string
-// and template chunk. `untilBrace` stops at the `}` closing a `${…}` interpolation, so a
-// nested template — `${verdict ? ` — ${verdict}` : ""}` — is scanned rather than skipped.
-function readCode(
-  src: string,
-  cur: Cursor,
-  out: Literal[],
-  untilBrace: boolean
-) {
-  let depth = 0;
-  while (cur.i < src.length) {
-    const c = src[cur.i];
-    if (c === "\n") {
-      cur.line++;
-      cur.i++;
-      continue;
-    }
-    if (c === "/" && src[cur.i + 1] === "/") {
-      while (cur.i < src.length && src[cur.i] !== "\n") cur.i++;
-      continue;
-    }
-    if (c === "/" && src[cur.i + 1] === "*") {
-      cur.i += 2;
-      while (
-        cur.i < src.length &&
-        !(src[cur.i] === "*" && src[cur.i + 1] === "/")
-      ) {
-        if (src[cur.i] === "\n") cur.line++;
-        cur.i++;
-      }
-      cur.i += 2;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      readQuoted(src, cur, c, out);
-      continue;
-    }
-    if (c === "`") {
-      cur.i++;
-      readTemplate(src, cur, out);
-      continue;
-    }
-    if (untilBrace) {
-      if (c === "{") depth++;
-      else if (c === "}") {
-        if (depth === 0) {
-          cur.i++;
-          return;
-        }
-        depth--;
-      }
-    }
-    cur.i++;
-  }
-}
-
-export function stringLiterals(src: string): Literal[] {
-  const out: Literal[] = [];
-  readCode(src, { i: 0, line: 1 }, out, false);
-  return out;
 }
 
 // A reviewed survivor: a separator inside a registered module that is legitimately NOT a
@@ -399,7 +339,7 @@ const ALLOW: { module: string; includes: string; why: string }[] = [
   },
   {
     module: "lib/notifications/household-round-format.ts",
-    includes: "label: `✓ ${section.name}",
+    includes: "label: `${GLYPH.done} ${section.name}",
     why: "The confirm BUTTON's label, carrying householdDoseLabel above. Same reason: a button is a control, not a message line.",
   },
   {
@@ -415,7 +355,7 @@ const ALLOW: { module: string; includes: string; why: string }[] = [
   {
     module: "lib/notifications/food-format.ts",
     includes: 'if (i > 0) parts.push(" ',
-    why: "tallyLine lists the food groups logged today ('✓ Today: 🥬 Leafy greens ×2 · 🫐 Berries ×1', #1016) — a list of coequal counts about different foods, none qualifying another, with the group names emphasized individually.",
+    why: "tallyLine lists the food groups logged today ('✅ Today: 🥬 Leafy greens ×2 · 🫐 Berries ×1', #1016) — a list of coequal counts about different foods, none qualifying another, with the group names emphasized individually.",
   },
   {
     module: "lib/weekly-recap.ts",
@@ -426,6 +366,11 @@ const ALLOW: { module: string; includes: string; why: string }[] = [
     module: "lib/weekly-recap.ts",
     includes: "`recovering ",
     why: "A headline CLAUSE, not a line: the headline is a comma-joined phrase ('4 workouts, 2 PRs') and this is one of its parts, where the em dash is ordinary prose punctuation inside a single clause (#837). Nothing here has a head and qualifiers.",
+  },
+  {
+    module: "lib/notifications/food-format.ts",
+    includes: "Ate earlier than you tapped?",
+    why: "A HINT PARAGRAPH under the correction chips (#2264), not a line: one sentence explaining what the chips do, where the em dash is ordinary prose punctuation inside that sentence. It read as a quoted string until #2392 gave its glyph a registry reference, which is the only reason the scan can see it at all — the words are unchanged.",
   },
   {
     module: "lib/notifications/preventive-format.ts",

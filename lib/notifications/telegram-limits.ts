@@ -140,7 +140,7 @@ export function splitTelegramHtml(
 }
 
 // Trim an inline keyboard to at most `max` buttons, keeping whole rows (a row is
-// an atomic group — e.g. a dose's paired ✅ take + ⏭ skip) so a kept row is never
+// an atomic group — e.g. a dose's paired ✅ take + ⏭️ skip) so a kept row is never
 // half-usable. Leading rows are kept (the "✅ All" / highest-priority actions come
 // first), and `dropped` reports how many buttons were left off so the caller can
 // append an overflow line pointing the user to the app.

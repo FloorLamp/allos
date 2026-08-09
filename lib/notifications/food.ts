@@ -40,6 +40,7 @@ import {
   type NotificationAction,
   type NotificationMessage,
 } from "./types";
+import { GLYPH } from "./glyphs";
 
 // Build the food-log nudge for a window, or null when the profile shouldn't get one.
 // The only gate here is life stage — food-group serving logging is meaningless for
@@ -152,7 +153,7 @@ export function buildFoodNudge(
 export function buildFoodOptInPrompt(profileId: number): NotificationMessage {
   const actions: NotificationAction[] = [
     {
-      label: "🍽️ Enable food logging",
+      label: `${GLYPH.food} Enable food logging`,
       data: foodOptInCallbackData(profileId, true),
       row: "foodoptin",
     },
@@ -163,7 +164,7 @@ export function buildFoodOptInPrompt(profileId: number): NotificationMessage {
     },
   ];
   return {
-    title: "🍽️ Log food from Telegram?",
+    title: `${GLYPH.food} Log food from Telegram?`,
     body: "Want to log what you eat right from here? I'll show your most-eaten foods at your reminder times. You can change this any time in Settings → Profile.",
     actions,
     kind: "food",

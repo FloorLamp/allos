@@ -164,7 +164,7 @@ describe("tap outcome → answer", () => {
   });
 });
 
-// ⏭ Skip button (#232): same token shape as take, "skip" prefix.
+// ⏭️ Skip button (#232): same token shape as take, "skip" prefix.
 describe("parseSkipCallback", () => {
   it("parses a well-formed skip token", () => {
     expect(parseSkipCallback("skip:2:12:34:2026-07-03")).toEqual({
@@ -193,20 +193,20 @@ describe("parseSkipCallback", () => {
   });
 });
 
-// A ⏭ Skip tap answers honestly per outcome. A skip never overwrites an already-
+// A ⏭️ Skip tap answers honestly per outcome. A skip never overwrites an already-
 // resolved dose, and (#280) the acknowledgement must match the status that
-// actually stands: "Skipped ⏭" only for a fresh skip or a repeat of one — a
-// stale ⏭ tap on a dose already logged as TAKEN must never read as a skip.
+// actually stands: "Skipped ⏭️" only for a fresh skip or a repeat of one — a
+// stale ⏭️ tap on a dose already logged as TAKEN must never read as a skip.
 describe("skip tap outcome → answer", () => {
-  it("answers 'Skipped ⏭' for a fresh skip and an idempotent repeat", () => {
-    expect(tapSkipAnswerText("skipped")).toBe("Skipped ⏭");
-    expect(tapSkipAnswerText("already-skipped")).toBe("Skipped ⏭");
+  it("answers 'Skipped ⏭️' for a fresh skip and an idempotent repeat", () => {
+    expect(tapSkipAnswerText("skipped")).toBe("Skipped ⏭️");
+    expect(tapSkipAnswerText("already-skipped")).toBe("Skipped ⏭️");
   });
 
-  it("a ⏭ tap on a dose meanwhile TAKEN names the taken log, not 'Skipped' (#280)", () => {
+  it("a ⏭️ tap on a dose meanwhile TAKEN names the taken log, not 'Skipped' (#280)", () => {
     expect(tapSkipAnswerText("already-taken")).toMatch(/^Not skipped/);
     expect(tapSkipAnswerText("already-taken")).toMatch(/taken/i);
-    expect(tapSkipAnswerText("already-taken")).not.toContain("Skipped ⏭");
+    expect(tapSkipAnswerText("already-taken")).not.toContain("Skipped ⏭️");
   });
 
   it("says 'Not logged' for a stale or paused skip tap", () => {

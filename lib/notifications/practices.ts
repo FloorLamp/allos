@@ -4,7 +4,7 @@
 // the ceiling (a dose-limited practice is never pushed toward MORE) — and holds a target
 // whose `practice:<id>` Upcoming twin is dismissed/snoozed (dismiss once, silence
 // everywhere, #227). NEVER safety-tier (a missed red-light session is not a missed
-// medication). Each behind practice gets an inline "Done ✓" button that logs a session
+// medication). Each behind practice gets an inline "Done ✅" button that logs a session
 // through the shared write core; the button carries ids only and is consumed on tap.
 //
 // One computation (#221): the behind decision is exactly the Upcoming practiceItems
@@ -40,6 +40,7 @@ import {
 } from "./callback-data";
 import { PRACTICES_HREF } from "../hrefs";
 import type { NotificationAction, NotificationMessage } from "./types";
+import { GLYPH } from "./glyphs";
 
 // Cap the buttons so the keyboard stays tappable; the rest still reads in the body.
 const MAX_PRACTICE_BUTTONS = 4;
@@ -148,14 +149,16 @@ export function buildPracticeList(
   const shown = rows.slice(0, MAX_PRACTICE_BUTTONS);
   const dropped = rows.length - shown.length;
   return {
-    title: "🧘 Log a practice",
+    title: `${GLYPH.practice} Log a practice`,
     body:
-      shown.map((b) => `• ${practiceShortfallLine(b)}`).join("\n") +
+      shown
+        .map((b) => `${GLYPH.bullet} ${practiceShortfallLine(b)}`)
+        .join("\n") +
       (dropped > 0
-        ? `\n⚠️ +${dropped} more — open the app to log the rest.`
+        ? `\n${GLYPH.caution} +${dropped} more — open the app to log the rest.`
         : ""),
     actions: shown.map((b) => ({
-      label: `✓ ${b.name}`,
+      label: `${GLYPH.done} ${b.name}`,
       data: practiceLogCallback(profileId, b.targetId, nonce),
     })),
     kind: "practice-list",
@@ -218,11 +221,13 @@ export function buildPracticeReminder(
   // Per-item lines adopt the recap's VERDICT shape (#1722 item 5b): numbers, then
   // what they mean and what's next — never a bare ratio. Silent about the next step
   // when there is nothing true to say.
-  const lines = behind.map((b) => `• ${practiceShortfallLine(b)}`);
+  const lines = behind.map(
+    (b) => `${GLYPH.bullet} ${practiceShortfallLine(b)}`
+  );
   const actions: NotificationAction[] = [];
   for (const b of behind.slice(0, MAX_PRACTICE_BUTTONS)) {
     actions.push({
-      label: `✓ ${b.name}`,
+      label: `${GLYPH.done} ${b.name}`,
       data: practiceDoneCallback(profileId, b.targetId, nonce),
     });
     const floor = rightSizeFloor.get(b.targetId);
@@ -233,10 +238,10 @@ export function buildPracticeReminder(
       });
   }
   // A deep link so the message works on EVERY channel (#1718). Web Push and Home
-  // Assistant strip the "✓ Done" buttons, and the old body then told those users to
+  // Assistant strip the "✅ Done" buttons, and the old body then told those users to
   // "tap when you've done a session" — an instruction to tap nothing. The link is the
   // affordance that survives everywhere; the line that named the buttons is gone,
-  // because on Telegram it merely restated the adjacent `✓ Meditation` button.
+  // because on Telegram it merely restated the adjacent `✅ Meditation` button.
   const base = deepLinkBase.replace(/\/$/, "");
   if (base) {
     actions.push({
@@ -252,11 +257,11 @@ export function buildPracticeReminder(
   const dropped = Math.max(0, behind.length - MAX_PRACTICE_BUTTONS);
   const overflowNote =
     dropped > 0
-      ? `\n⚠️ +${dropped} more — open the app to act on the rest.`
+      ? `\n${GLYPH.caution} +${dropped} more — open the app to act on the rest.`
       : "";
 
   return {
-    title: "🧘 Practice check-in",
+    title: `${GLYPH.practice} Practice check-in`,
     body:
       behind.length === 1
         ? `${practiceShortfallLine(behind[0])}${overflowNote}`

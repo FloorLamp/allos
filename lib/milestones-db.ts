@@ -17,6 +17,7 @@ import { getProfileSetting } from "./settings";
 import { dispatch } from "./notifications";
 import type { NotificationMessage } from "./notifications/types";
 import { createLogger } from "./log";
+import { GLYPH } from "./notifications/glyphs";
 
 const log = createLogger("notify");
 
@@ -91,12 +92,14 @@ export function renderMilestoneMessage(
     .map((m) => {
       const detail = m.detail?.trim();
       if (milestones.length === 1) return detail || m.title;
-      return detail ? `• ${m.title} — ${detail}` : `• ${m.title}`;
+      return detail
+        ? `${GLYPH.bullet} ${m.title} — ${detail}`
+        : `${GLYPH.bullet} ${m.title}`;
     })
     .join("\n");
   const base = deepLinkBase.replace(/\/$/, "");
   return {
-    title: `🏁 Milestone${who}: ${head}`,
+    title: `${GLYPH.finish} Milestone${who}: ${head}`,
     body,
     kind: "milestone",
     // Milestones always land on the Timeline, so that is where "see it" goes.

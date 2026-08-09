@@ -12,6 +12,7 @@ import type { BandGroup, UpcomingDomain, UpcomingItem } from "../upcoming";
 import { primaryReason } from "../reasons";
 import type { AppRoute } from "../hrefs";
 import { formatMessageLine } from "./message-line";
+import { GLYPH } from "./glyphs";
 
 // Singular noun per domain; the summary pluralizes with a trailing "s". "lab"
 // reads naturally as the retest signal ("1 lab, 2 labs"); "training target" and
@@ -257,17 +258,17 @@ interface NamedLineDomain {
 
 const NAMED_LINE_DOMAINS: Partial<Record<UpcomingDomain, NamedLineDomain>> = {
   integration: {
-    glyph: "🔌",
+    glyph: GLYPH.allosRetries,
     carriesDeadline: false,
     why: "A connection is broken and allos will keep retrying (#1685). Nobody has to go anywhere, and there is no date by which it stops mattering — the item's `dueText` is the CTA ('Reconnect' / 'No recent data'), which is not a deadline.",
   },
   "portal-sync": {
-    glyph: "🙋",
+    glyph: GLYPH.personActs,
     carriesDeadline: true,
-    why: "An errand only a PERSON can run, away from the device reading the message (#1757). 🙋 is deliberately domain-neutral rather than 🖥️: the distinction is who acts, not what hardware is involved, so a future errand line in another domain inherits it. The request EXPIRES, and that expiry is the only deadline the ask has.",
+    why: `An errand only a PERSON can run, away from the device reading the message (#1757). ${GLYPH.personActs} is deliberately domain-neutral rather than ${GLYPH.device}: the distinction is who acts, not what hardware is involved, so a future errand line in another domain inherits it. The request EXPIRES, and that expiry is the only deadline the ask has.`,
   },
   "records-recency": {
-    glyph: "🙋",
+    glyph: GLYPH.personActs,
     carriesDeadline: false,
     why: "The domain-neutral errand glyph, inherited exactly as the portal line's comment anticipated (#2164/#2176): downloading a Takeout archive or photographing a paper result is an errand only a person can run. It carries NO deadline — unlike a portal request, nothing here expires, and the item's `dueText` states the drift ('6 weeks behind'), so printing it as a deadline would invent one.",
   },
@@ -409,7 +410,7 @@ export function buildUpcomingDigest(
   return {
     // The profile name is a NOTE on the title — a shared chat can carry several.
     title: formatMessageLine({
-      glyph: "🔔",
+      glyph: GLYPH.reminding,
       head: "Due soon",
       notes: [profileName],
     }),
