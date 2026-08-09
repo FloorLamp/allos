@@ -1760,6 +1760,21 @@ always wins over a computed one. Indirect bilirubin is recorded when a lab print
 it but never computed: when either component is reported below the detection
 limit the subtraction is undefined, which is why labs print "Can't Calc".
 
+An index's input can name **more than one acceptable analyte**, in preference
+order — PhenoAge's glucose input takes `Glucose, Fasting` first (Levine's model
+is defined on fasting serum glucose) and the unqualified `Glucose` otherwise, so
+a fasting panel and an older draw both compute. The acceptance lives on that one
+input: the curated glucose entries stay separate analytes everywhere else, with
+their own reference bands, flags, charts and retest clocks.
+
+A component your lab reported **beyond a detection limit** ("<0.2") is used at
+that limit — the same substitution the charts plot — and the derived value says
+so: it names the censored input, shows the reported `<` beside the value it
+stood in for, and, where the index has declared how that input moves it, states
+which way the substitution can bias the number (a below-limit hs-CRP can only
+make PhenoAge read too high). A censored input is never silently rounded into an
+apparently exact result.
+
 PhenoAge is also surfaced as a **biological-age card** pinned
 above the Biomarkers table: your estimated biological age, how it compares to
 your calendar age (younger is better), your pace of aging across draws, and the

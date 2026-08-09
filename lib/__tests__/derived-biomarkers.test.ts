@@ -4,6 +4,9 @@ import {
   ckdEpi2021,
   phenoAge,
   derivedInputCanonicalNames,
+  derivedInputCanonicalNamesFor,
+  derivedInputKeysFor,
+  derivedInputSlots,
   DERIVED_NAMES,
   DERIVED_DEFS_BY_NAME,
   type ComponentReading,
@@ -511,6 +514,203 @@ describe("computeDerivedReadings — PhenoAge", () => {
     );
     expect(find(r, "PhenoAge", "2024-01-01")).toBeUndefined();
   });
+
+  // ── The glucose input's accepted siblings (#2334) ──────────────────────────
+  //
+  // A lab reporting a fasting panel imports the analyte under the curated
+  // "Glucose, Fasting" entry, which is a DIFFERENT canonical name from "Glucose".
+  // The input accepts both, fasting first — Levine's model is defined on fasting
+  // serum glucose, so it is the better input where both exist, not a fallback.
+  describe("its glucose input accepts the fasting sibling", () => {
+    // The same draw with the glucose value filed under a chosen canonical name.
+    function drawWithGlucose(
+      date: string,
+      under: Record<string, number>
+    ): Record<string, ComponentReading[]> {
+      const draw = fullDraw(date);
+      delete draw["Glucose"];
+      for (const [name, value] of Object.entries(under))
+        draw[name] = [{ date, value, unit: "mg/dL" }];
+      return draw;
+    }
+
+    it("computes from a draw carrying ONLY 'Glucose, Fasting'", () => {
+      const r = computeDerivedReadings(
+        seriesOf(drawWithGlucose("2024-01-01", { "Glucose, Fasting": 90 })),
+        demo("male", 45)
+      );
+      const pheno = find(r, "PhenoAge", "2024-01-01");
+      // Identical to the unqualified-glucose draw of the same value — the analyte
+      // was always there, only the name differed.
+      expect(pheno?.value).toBeCloseTo(35.7, 1);
+      // The reading names the entry the value actually came from, so the surface
+      // links to the series it was read out of.
+      expect(pheno?.inputs.map((i) => i.name)).toContain("Glucose, Fasting");
+      expect(pheno?.inputs.map((i) => i.name)).not.toContain("Glucose");
+    });
+
+    it("computes from a draw carrying ONLY the unqualified 'Glucose'", () => {
+      const r = computeDerivedReadings(
+        seriesOf(drawWithGlucose("2024-01-01", { Glucose: 90 })),
+        demo("male", 45)
+      );
+      const pheno = find(r, "PhenoAge", "2024-01-01");
+      expect(pheno?.value).toBeCloseTo(35.7, 1);
+      expect(pheno?.inputs.map((i) => i.name)).toContain("Glucose");
+    });
+
+    it("PREFERS the fasting value when the draw carries both", () => {
+      const r = computeDerivedReadings(
+        seriesOf(
+          drawWithGlucose("2024-01-01", {
+            "Glucose, Fasting": 90,
+            Glucose: 140,
+          })
+        ),
+        demo("male", 45)
+      );
+      const pheno = find(r, "PhenoAge", "2024-01-01");
+      const glucose = pheno?.inputs.find((i) => i.name === "Glucose, Fasting");
+      expect(glucose?.value).toBe(90);
+      // …and the result is the fasting-value answer, not the random-glucose one.
+      expect(pheno?.value).toBeCloseTo(35.7, 1);
+    });
+
+    it("still declines when NEITHER glucose entry is on the draw", () => {
+      const r = computeDerivedReadings(
+        seriesOf(drawWithGlucose("2024-01-01", {})),
+        demo("male", 45)
+      );
+      expect(find(r, "PhenoAge", "2024-01-01")).toBeUndefined();
+    });
+
+    it("does NOT feed the fasting sibling to HOMA-IR (no other index changes)", () => {
+      // HOMA-IR declares "Glucose" alone; the acceptance list is per-input, so it
+      // is unaffected. A fold of the two entries would have silently changed it.
+      const r = computeDerivedReadings(
+        seriesOf({
+          "Glucose, Fasting": [
+            { date: "2024-01-01", value: 90, unit: "mg/dL" },
+          ],
+          Insulin: [{ date: "2024-01-01", value: 6, unit: "uIU/mL" }],
+        }),
+        demo("male", 45)
+      );
+      expect(find(r, "HOMA-IR", "2024-01-01")).toBeUndefined();
+    });
+  });
+
+  // ── Censored components (#2334) ────────────────────────────────────────────
+  //
+  // hs-CRP below the detection limit ("<0.2") is the COMMON, GOOD case. The app's
+  // convention is substitute the limit, keep the marker, show it — so the draw
+  // completes, and the marker travels to the result rather than being laundered
+  // into an apparently exact biological age.
+  describe("censored components", () => {
+    const CENSORED_CRP = {
+      "High-Sensitivity C-Reactive Protein (hs-CRP)": [
+        {
+          date: "2024-01-01",
+          value: 0.2,
+          unit: "mg/L",
+          bound: "<" as const,
+        },
+      ],
+    };
+
+    it("computes the same value a reading exactly AT the limit would", () => {
+      const censored = computeDerivedReadings(
+        seriesOf(fullDraw("2024-01-01", CENSORED_CRP)),
+        demo("male", 45)
+      );
+      const exact = computeDerivedReadings(
+        seriesOf(
+          fullDraw("2024-01-01", {
+            "High-Sensitivity C-Reactive Protein (hs-CRP)": [
+              { date: "2024-01-01", value: 0.2, unit: "mg/L" },
+            ],
+          })
+        ),
+        demo("male", 45)
+      );
+      expect(find(censored, "PhenoAge", "2024-01-01")?.value).toBe(
+        find(exact, "PhenoAge", "2024-01-01")?.value
+      );
+    });
+
+    it("carries the marker onto the input and the reading, and names the input", () => {
+      const r = computeDerivedReadings(
+        seriesOf(fullDraw("2024-01-01", CENSORED_CRP)),
+        demo("male", 45)
+      );
+      const pheno = find(r, "PhenoAge", "2024-01-01");
+      const crp = pheno?.inputs.find((i) =>
+        i.name.startsWith("High-Sensitivity")
+      );
+      expect(crp?.bound).toBe("<");
+      expect(pheno?.censored?.inputs).toEqual([
+        {
+          name: "High-Sensitivity C-Reactive Protein (hs-CRP)",
+          label: "CRP",
+          bound: "<",
+        },
+      ]);
+      // The substituted formula string keeps the marker too.
+      expect(pheno?.formula).toContain("CRP <0.2");
+    });
+
+    it("states the bias direction from the index's declared input directions", () => {
+      // hs-CRP RAISES PhenoAge and the true value is BELOW the limit, so the
+      // computed age can only be an over-estimate from that term.
+      const r = computeDerivedReadings(
+        seriesOf(fullDraw("2024-01-01", CENSORED_CRP)),
+        demo("male", 45)
+      );
+      expect(find(r, "PhenoAge", "2024-01-01")?.censored?.bias).toBe("over");
+    });
+
+    it("flips the bias for an input that LOWERS the index", () => {
+      // Albumin carries a negative coefficient: a below-limit albumin substituted
+      // at its limit can only make the age too LOW.
+      const r = computeDerivedReadings(
+        seriesOf(
+          fullDraw("2024-01-01", {
+            Albumin: [
+              { date: "2024-01-01", value: 2, unit: "g/dL", bound: "<" },
+            ],
+          })
+        ),
+        demo("male", 45)
+      );
+      expect(find(r, "PhenoAge", "2024-01-01")?.censored?.bias).toBe("under");
+    });
+
+    it("says nothing about censoring on an all-exact draw", () => {
+      const r = computeDerivedReadings(
+        seriesOf(fullDraw("2024-01-01")),
+        demo("male", 45)
+      );
+      const pheno = find(r, "PhenoAge", "2024-01-01");
+      expect(pheno?.censored).toBeUndefined();
+      expect(pheno?.inputs.every((i) => i.bound === undefined)).toBe(true);
+    });
+
+    it("still declines when a censored component is not a usable number at all", () => {
+      // ln(CRP) is undefined at zero: a ">"-bounded zero is still zero. The
+      // censoring convention substitutes, it does not invent.
+      const r = computeDerivedReadings(
+        seriesOf(
+          fullDraw("2024-01-01", {
+            "High-Sensitivity C-Reactive Protein (hs-CRP)": [
+              { date: "2024-01-01", value: 0, unit: "mg/L", bound: "<" },
+            ],
+          })
+        ),
+        demo("male", 45)
+      );
+      expect(find(r, "PhenoAge", "2024-01-01")).toBeUndefined();
+    });
+  });
 });
 
 describe("computeDerivedReadings — pairing rules", () => {
@@ -832,6 +1032,9 @@ describe("derivedInputCanonicalNames", () => {
         "HDL Cholesterol",
         "Triglycerides",
         "Glucose",
+        // PhenoAge's glucose input accepts the fasting sibling too, so BOTH series
+        // must be loaded for it (#2334).
+        "Glucose, Fasting",
         "Insulin",
         "Creatinine",
         "Albumin",
@@ -848,6 +1051,35 @@ describe("derivedInputCanonicalNames", () => {
         "Omega-3 Total (OmegaCheck)",
       ])
     );
+  });
+
+  it("lists an input's accepted siblings as separate series to load", () => {
+    // The query layer keys the series map by exact canonical name, so BOTH glucose
+    // entries have to be asked for — and they stay separate series, never folded.
+    const names = derivedInputCanonicalNames();
+    expect(names).toContain("Glucose");
+    expect(names).toContain("Glucose, Fasting");
+  });
+
+  it("gives PhenoAge nine input KEYS, one per input, glucose under its preferred name", () => {
+    const keys = derivedInputKeysFor("PhenoAge");
+    expect(keys).toHaveLength(9);
+    expect(keys).toContain("Glucose, Fasting");
+    expect(keys).not.toContain("Glucose");
+    expect(derivedInputKeysFor("Not An Index")).toEqual([]);
+  });
+
+  it("reports BOTH accepted spellings as PhenoAge's inputs for the retest clock", () => {
+    // The freshness question is "has this input been redrawn?", and either entry
+    // answers it — so the clock must see both.
+    const names = derivedInputCanonicalNamesFor("PhenoAge");
+    expect(names).toContain("Glucose, Fasting");
+    expect(names).toContain("Glucose");
+  });
+
+  it("groups the input slots by key, each with the names it accepts", () => {
+    const slot = derivedInputSlots().find((s) => s.key === "Glucose, Fasting");
+    expect(slot?.accepts).toEqual(["Glucose, Fasting", "Glucose"]);
   });
 
   it("asks for the URINE creatinine as its own series, not the serum one (#2300)", () => {
@@ -875,6 +1107,23 @@ describe("derived indices ↔ the canonical dataset", () => {
         DERIVED_DEFS_BY_NAME[name].unit
       );
     }
+  });
+
+  it("keeps the two glucose entries DISTINCT everywhere outside the input (#2334)", () => {
+    // PhenoAge's input accepts either spelling; the dataset and the identity model
+    // must not follow it. Both are curated rows with their own reference bands, and
+    // they are separate families — so nothing dedups them, marks one current off the
+    // other, or judges a fasting glucose against the unqualified entry's band.
+    // Two separate curated rows (each carrying its own bands, whatever those are)…
+    expect(canonicalBiomarkerForName("Glucose, Fasting")?.name).toBe(
+      "Glucose, Fasting"
+    );
+    expect(canonicalBiomarkerForName("Glucose")?.name).toBe("Glucose");
+    // …and two separate identities, which is what keeps the dedup partition, the
+    // is_latest marker and the flag path from ever treating one as the other.
+    expect(biomarkerFamily("Glucose, Fasting")).not.toBe(
+      biomarkerFamily("Glucose")
+    );
   });
 
   it("puts the lipid indices on the lipids panel, beside their components", () => {
