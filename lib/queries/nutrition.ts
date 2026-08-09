@@ -84,6 +84,10 @@ import {
   type FiberAdequacy,
 } from "../fiber";
 import {
+  nutritionDayPosition,
+  type NutritionDayPosition,
+} from "../nutrition-day";
+import {
   getUserSex,
   getUserAge,
   getExcludedFoodGroups,
@@ -1329,4 +1333,36 @@ export function getFiberOnDate(
     sex: getUserSex(profileId),
   });
   return assessFiberAdequacy(intake, target);
+}
+
+// ---- One day, both nutrients (issue #2379) ----
+
+// "Where did ONE day's eating land against its protein and fibre targets?" — the single
+// gather behind the morning digest's nutrition line and, by #2383, the curated-food
+// follow-up sized from the same shortfall.
+//
+// IT ASSEMBLES, IT DOES NOT DECIDE. Both verdicts come from the per-day gathers the
+// /nutrition day picker already reads (`getProteinOnDate` + `assessProteinAdequacy`,
+// `getFiberOnDate`), so the digest and the page state one day's position from one
+// computation (#221). The composition, the gap and the copy are pure in
+// `lib/nutrition-day.ts`. No new SQL, no new threshold, no second adequacy rule.
+//
+// PROTEIN'S TARGET IS RESOLVED AS OF THAT DAY (`getProteinOnDate` → `proteinTargetOnDate`),
+// so a weigh-in recorded since cannot leak backward into a claim about a past day.
+//
+// Returns null when NEITHER nutrient can be positioned: a day with no food logged, or a
+// profile with no bodyweight to scale a protein band by and no quantified fibre. Absence
+// of logging is not evidence of low intake, so it produces silence rather than a zero.
+export function getNutritionDay(
+  profileId: number,
+  date: string
+): NutritionDayPosition | null {
+  const proteinDay = getProteinOnDate(profileId, date);
+  return nutritionDayPosition({
+    date,
+    protein: proteinDay?.todayIntake
+      ? assessProteinAdequacy(proteinDay.todayIntake, proteinDay.target)
+      : null,
+    fiber: getFiberOnDate(profileId, date),
+  });
 }

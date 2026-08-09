@@ -1571,7 +1571,8 @@ happens.
 **Morning digest (one merged message, #1108).** The tick sends ONE summary per
 profile per day at the time its MODE resolves (see below), hard-deduped by the single
 `notify_last_digest` marker. Sections in order: **Illness** (open-episode
-headline) → **Today** → **Yesterday** (activities/adherence/weight) → **Sleep**
+headline) → **Today** → **Yesterday** (activities/adherence/weight/steps/nutrition)
+→ **Sleep**
 (#1117; ON by default when the digest is enabled as of #1378 — an opt-OUT
 toggle, `getProfileSleepDigest` reads absent-means-on, a stored `"0"` still off,
 and the freshness + no-data gates in `gatherDigestSleep` are unchanged so a
@@ -1595,6 +1596,72 @@ declared ∪ derived). The separate "what's due" upcoming digest and its
 key); the `upcoming` NotificationKind is retained in the type union /
 `parseDisabledKinds` for back-compat but is no longer a toggleable matrix row —
 the single `digest` kind governs the merged message.
+
+### Yesterday's protein and fibre (#2379)
+
+The digest covered sleep, training, doses, biomarkers and situations and said
+nothing about the two nutrition targets the app already models end to end. This is
+a **reach** change, not a new engine: `lib/protein.ts` and `lib/fiber.ts` already
+own the intake composition, the resolved target and the adequacy verdict, and the
+`/nutrition` day picker already reads them per calendar day.
+
+- **One gather, one computation (#221).** `getNutritionDay(profileId, date)`
+  (`lib/queries/nutrition.ts`) composes the SAME per-day verdicts the day picker
+  renders — `getProteinOnDate` + `assessProteinAdequacy`, and `getFiberOnDate` —
+  into the pure `nutritionDayPosition` (`lib/nutrition-day.ts`). No new SQL, no new
+  threshold, no second adequacy rule. The digest's adapter is
+  `gatherDigestNutrition` (`lib/notifications/digest-data.ts`), which resolves the
+  day's shortfalls and the reader's preference from that one call.
+- **What the position carries.** Per nutrient: `grams`, the target's FLOOR
+  (`targetGrams` — protein's `gramsLow`, fibre's DRI Adequate Intake),
+  the engine's own `status`, the `shortfallGrams` gap, and `isFloor` — TRUE for
+  every non-`tracked` basis, the #767/#976 floor discipline carried rather than
+  flattened. `nutritionShortfalls(position)` is the entry point a curated-food
+  follow-up (#2383) sizes a suggestion from; nothing downstream re-derives a gap.
+- **YESTERDAY, the same `yd` the activities and adherence are scored on.** The
+  completed day is what the digest reports; today's eating is the food nudge's
+  question. Protein's target is resolved **as of that day**, so a weigh-in recorded
+  since cannot leak backward into a claim about the past.
+- **Three silences, three different facts.** A day that MET its targets emits
+  nothing at all (so a typical morning gets SHORTER, not longer — a line that always
+  renders trains people to skip the digest). A day with nothing logged emits
+  nothing, because absence of logging is not evidence of low intake. A nutrient
+  whose target does not resolve — protein with no bodyweight on record — is omitted
+  rather than scored against a guess, and the other nutrient still stands on its own.
+  A verdict with a 0 g figure (a lone unquantifiable fibre capsule) is also omitted:
+  the day has a signal but no number.
+- **Adequacy is an observation, not an obligation.** No streak, no failure language,
+  no escalation, and no dueness — the figure against the target, and stop.
+- **The line is the #2391 grammar's parts, not text.** `nutritionDigestLine` returns
+  a `MessageLine`: the head is the section noun `Nutrition` and each short nutrient
+  is one **note**, in `NUTRIENT_KEYS` order — the homogeneous-tail case that section
+  describes, where N facts of the same kind are N notes rather than a second shape.
+  `lib/nutrition-day.ts` is registered in `MESSAGE_LINE_MODULES` and types no
+  separator at all: the em dash before the first nutrient and the `·` between two
+  come from `formatMessageLine`, and the head takes **no colon** because it has no
+  value of its own. The per-nutrient floor hedge (`84 g+`) stays inside its own
+  note — the only place it can be right when the two nutrients disagree about it.
+  The `🍽️` marker is stamped by `buildDigest`, like every other line in the
+  Yesterday section, so the producer's parts carry no glyph:
+
+  ```
+  🍽️ Nutrition — protein 84 g+ of 95 g · fiber 18 g+ of 38 g
+  ```
+
+- **A tunable category, with a declared notable predicate.** `nutrition` joins
+  `DIGEST_OWN_CATEGORIES`, so it appears in the ⚙️ Tune keyboard and the Settings
+  mirror with no hand-maintained list to update. Its notable predicate is
+  `nutritionSurvivesDemotion`, and because the line only ever states a shortfall the
+  demotion cannot be "routine days stop" — those already say nothing. What it turns
+  down is the **hedged** shortfall, one measured from a floor basis (the trailing
+  "+" on `84 g+`); a shortfall measured from a **tracked** full-day total is an
+  asserted fact and survives. Nutrition is coaching tier with no safety floor, so
+  the toggle genuinely reduces contact — the one direction the doctrine lets a
+  preference move (`docs/internals/findings.md` §2, §8).
+- **NO new send marker.** The line rides the digest's existing
+  `notify_last_digest`; it can neither cause a send nor be one. Adding a line to a
+  message the reader already opted into is not an increase in contact — and this
+  one makes the common morning shorter.
 
 **When the digest sends: two modes, no `auto` (#2211).** The decision is pure in
 `lib/notifications/digest-schedule.ts` (`planDigestTick`); `planProfileDigestTick`

@@ -67,10 +67,25 @@ describe("the tunable category set (#1714, widened by #1797)", () => {
     }
   });
 
-  it("sleep and activities are the digest's own, so the collector never sees them", () => {
+  it("sleep, activities and nutrition are the digest's own, so the collector never sees them", () => {
     expect(
-      recentChangeDemotions(["labs", "vitals", "sleep", "mood", "activities"])
+      recentChangeDemotions([
+        "labs",
+        "vitals",
+        "sleep",
+        "mood",
+        "activities",
+        "nutrition",
+      ])
     ).toEqual(["labs", "vitals", "mood"]);
+  });
+
+  // #2379: the requirement on a new digest line is not a length budget but a declared
+  // notable predicate and a tunable registration. Pinned so the line cannot lose either.
+  it("nutrition is tunable, with a notable promise of its own", () => {
+    expect(isDigestCategory("nutrition")).toBe(true);
+    expect(DIGEST_TUNABLE_CATEGORIES).toContain("nutrition");
+    expect(DIGEST_CATEGORY_NOTABLE.nutrition).toContain("tracked intake");
   });
 });
 
