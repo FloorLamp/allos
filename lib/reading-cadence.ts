@@ -74,6 +74,12 @@ export const CATEGORY_CADENCE = {
   instrument: "episodic",
   prescription: "episodic",
   report: "episodic",
+  // A non-measurement assessment or qualifier (#2318). It is dated like everything
+  // else here, so it is episodic — but note that this map answers "what cadence can
+  // this category contain", not "does it earn a reading page": an `assessment` never
+  // reaches one, because it never claims a biomarker identity in the first place
+  // (NON_IDENTITY_CATEGORIES).
+  assessment: "episodic",
   // The emptied pre-#1076 bucket. Nothing canonical carries it any more; it stays
   // in the enum, so it stays classified.
   biomarker: "episodic",

@@ -139,8 +139,8 @@ const FUNCTIONAL_STATUS = `
 
 // A Functional Status assessment whose LOINC COLLIDES with a vital-sign code
 // (8302-2 Body height): a contrived-but-plausible cross-section code reuse. The
-// assessment must stay a `lab` record — never be reclassified to "vitals" by the
-// #681 code-based routing (#694).
+// assessment must never be reclassified to "vitals" by the #681 code-based routing
+// (#694) — it stays in the section's own class, which is `assessment` since #2318.
 const FUNCTIONAL_STATUS_VITAL_COLLISION = `
 <section>
   <templateId root="2.16.840.1.113883.10.20.22.2.14"/>
@@ -275,7 +275,9 @@ describe("Functional Status (47420-5, #268)", () => {
       "Cognitive status",
     ]);
     const amb = byName.get("Ambulation")!;
-    expect(amb.category).toBe("lab");
+    // #2318: the section's class is `assessment`, not `lab` — these are findings,
+    // not analytes, so they claim no biomarker identity on the NAME axis either.
+    expect(amb.category).toBe("assessment");
     expect(amb.value).toBe("Independent walking");
     expect(amb.date).toBe("2026-06-01");
     expect(byName.get("Cognitive status")!.value).toBe("Well in self");
@@ -301,14 +303,15 @@ describe("Functional Status (47420-5, #268)", () => {
   });
 
   // #694: an assessment reusing a VITAL_LOINCS code (8302-2 height) must NOT be
-  // reclassified to "vitals" — the mapper's vitals-override is disabled for the
-  // functional-status extractor, so the record stays a `lab` assessment (and its
-  // loinc is still stripped, so the misclassification can't hide either).
-  it("keeps a vital-LOINC-colliding assessment as a lab, never 'vitals' (#694)", () => {
+  // reclassified to "vitals". Since #2318 the mapper decides the `assessment` class
+  // BEFORE the vital-code override is consulted, which subsumes the old
+  // allowCategoryOverride=false flag (and its loinc is still stripped, so the
+  // misclassification can't hide either).
+  it("keeps a vital-LOINC-colliding assessment out of 'vitals' (#694)", () => {
     const r = extractFromCcda(doc(FUNCTIONAL_STATUS_VITAL_COLLISION));
     const rec = r.records.find((x) => x.name === "Reach ability");
     expect(rec, "assessment record present").toBeTruthy();
-    expect(rec!.category).toBe("lab");
+    expect(rec!.category).toBe("assessment");
     expect(rec!.value).toBe("Full reach");
     expect(rec!.loinc).toBeNull();
     // And it never leaks into the vitals category.

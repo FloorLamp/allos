@@ -36,7 +36,11 @@ Rules:
   reference range applies, so an unprinted one must never be assumed.
 - category: use "lab" for blood/urine/serum lab analytes; "scan" for DEXA, body composition,
   and imaging metrics; "genomics" for genetic results; "prescription" for medications;
-  "vitals" for vital signs (BP, HR, temp); "biomarker" only if nothing else fits.
+  "vitals" for vital signs (BP, HR, temp); "assessment" for a dated observation that is
+  NOT a measurement — a functional-status finding, one questionnaire/screening ITEM's
+  answer, a qualifier such as the body site a temperature was taken at, a bare
+  result-status word; "instrument" for a scored screening TOTAL (a PHQ-9 sum), which IS
+  a measurement and must never be "assessment"; "biomarker" only if nothing else fits.
 - value: the result as shown. Keep qualitative values verbatim ("NEGATIVE", "YELLOW",
   "Pattern A", "RH(D) POSITIVE"). value_num: the same value as a number ONLY when it is
   purely numeric; otherwise null. For "<0.10" or "<10", set value as the string and

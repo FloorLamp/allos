@@ -27,7 +27,9 @@ import {
   mapMedication,
   mapObservation,
   narrativeDrugName,
+  type ObservationClass,
 } from "./extractors";
+import { isImmunizationAttributeLabel } from "../non-analyte-observations";
 import {
   asArray,
   buildNarrativeIdMap,
@@ -89,7 +91,7 @@ function observationLabel(obs: any, ids: Record<string, string>): string {
 // explicit nullFlavor, a placeholder ("—"/"N/A"), or truly no value.
 function classifyObservationDrop(
   obs: any,
-  category: "lab" | "vitals",
+  category: ObservationClass,
   ids: Record<string, string>,
   section: string
 ): ImportDrop {
@@ -105,6 +107,12 @@ function classifyObservationDrop(
   else if (isNonAnalyteLoinc(loincFromCode(obs?.code))) reason = "non_analyte";
   else if (isDerivedPercentileLoinc(loincFromCode(obs?.code)))
     reason = "derived_percentile";
+  // A vaccine lot number / expiry filed as an observation (#2318) — an attribute of
+  // the immunization entry, refused by name in mapObservation right after the name
+  // resolves and before its (real, textual) value is read, so it lands here rather
+  // than in the value branches below. Same class of drop as the administrative rows
+  // above: recognized and not a measurement.
+  else if (isImmunizationAttributeLabel(label)) reason = "non_analyte";
   else {
     const v = Array.isArray(obs?.value) ? obs.value[0] : obs?.value;
     if (v?.["@_nullFlavor"] != null) reason = "null_flavor";
@@ -238,11 +246,18 @@ function collectSectionDrops(
   const ids = buildNarrativeIdMap(section.raw?.text);
   const title = sectionTitle(section);
   // functionalStatus (#268) routes through the SAME observation walk/mapper as
-  // Results (as qualitative `lab` records — the stored-record loinc strip in its
-  // extractor doesn't change whether an observation maps), so its drops are
-  // itemized identically.
+  // Results (as qualitative `assessment` records since #2318 — neither the class nor
+  // the stored-record loinc strip in its extractor changes WHETHER an observation
+  // maps), so its drops are itemized identically.
   if (key === "results" || key === "vitals" || key === "functionalStatus") {
-    const cat = key === "vitals" ? "vitals" : "lab";
+    // The SAME class the kept-path extractor passes, so a row the mapper maps is
+    // never itemized as a drop: functionalStatus is `assessment` (#2318).
+    const cat: ObservationClass =
+      key === "vitals"
+        ? "vitals"
+        : key === "functionalStatus"
+          ? "assessment"
+          : "lab";
     for (const o of observationNodesOf(section.entries)) {
       // A radiology-study observation is CONSUMED into imaging_studies, and a
       // narrative report observation (ED-valued culture/gram-stain/cytology) is
@@ -305,8 +320,11 @@ export function unmappedLoincsFromRecords(records: ImportedRecord[]) {
     records
       // A `report` row carries a report LOINC (34574-4/11502-2/33718-8) that is
       // deliberately NOT an analyte — it must never surface as an "add to
-      // LOINC_TO_CANONICAL" suggestion (#708).
-      .filter((r) => r.category !== "report")
+      // LOINC_TO_CANONICAL" suggestion (#708). An `assessment` row is the same
+      // statement on the other axis (#2318): a questionnaire item can carry a real
+      // survey LOINC, and suggesting it for the canonical map is precisely the wrong
+      // addition the functional-status LOINC strip was written to prevent.
+      .filter((r) => r.category !== "report" && r.category !== "assessment")
       .filter((r) => isUnmappedLabLoinc(r.loinc))
       // unit is catalog identity (it rides into the "Report unmapped code"
       // prefill) — never the measured value itself.

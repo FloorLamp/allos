@@ -13,6 +13,11 @@ import type {
   ImportedRecord,
 } from "../../health-import";
 import type { MedicalFlag } from "../../types";
+import {
+  isAssessmentScaleTemplate,
+  isImmunizationAttributeLabel,
+  isNonAnalyteObservation,
+} from "../../non-analyte-observations";
 import { normalizeLaterality, normalizeModality } from "../../imaging-study";
 import {
   VITAL_CANONICAL,
@@ -102,25 +107,33 @@ function interpretationFlag(obs: any): MedicalFlag | null {
   return null;
 }
 
-// Map a lab / vital-sign <observation> to an ImportedRecord of `category`.
+// Whether an observation node declares a C-CDA assessment-scale template — the
+// instrument itself (4.69) or one of its answered ITEMS (4.86). Exported so the drop
+// classifier reads the same signal the mapper routes on.
+export function isAssessmentScaleObs(obs: any): boolean {
+  return asArray(obs?.templateId).some((t: any) =>
+    isAssessmentScaleTemplate(t?.["@_root"])
+  );
+}
+
+// The SECTION-level class an observation walk starts from. `assessment` is not a
+// section shape but a CLASS (#2318): the Functional Status section declares it for
+// everything it carries, and the Results walk can promote an individual observation
+// into it (see the routing block in mapObservation).
+export type ObservationClass = "lab" | "vitals" | "assessment";
+
+// Map a lab / vital-sign / assessment <observation> to an ImportedRecord.
 // `narrativeIds` is the section's <text> id→text index (built once per section),
 // so an observation whose printed name lives only in the narrative table — reached
 // via <text><reference value="#id"/> — resolves instead of falling back to
 // "Result".
 export function mapObservation(
   obs: any,
-  category: "lab" | "vitals",
+  category: ObservationClass,
   narrativeIds: Record<string, string> = {},
   // The performing org resolved off the parent organizer, used when the
   // observation itself carries no <performer> (Epic puts it at either level).
-  fallbackProvider: ImportedProvider | null = null,
-  // Whether a vital-sign LOINC may override the section's category to "vitals".
-  // True for the Results/Vitals extractors (Epic files body weight/BMI/height under
-  // Results, and they ARE vitals — #681). False for the functionalStatusExtractor:
-  // a functional-status assessment that happens to reuse a VITAL_LOINCS code must
-  // stay a `lab` assessment, not become a "vitals" record (#694) — its own extractor
-  // nulls the loinc AFTER mapping, too late to undo a category override.
-  allowCategoryOverride = true
+  fallbackProvider: ImportedProvider | null = null
 ): ImportedRecord | null {
   if (!obs || truthyNegation(obs["@_negationInd"])) return null;
   // The source time at ITS OWN grain (#2243): `date` is the day the document stated
@@ -140,13 +153,6 @@ export function mapObservation(
   // (BMI/weight-for-length/head-circ percentile), which the app recomputes from the
   // raw measurements rather than importing as range-less lab rows.
   if (isNonAnalyteLoinc(loinc) || isDerivedPercentileLoinc(loinc)) return null;
-  // A vital-sign LOINC that arrives in a lab/results section — Epic reports body
-  // weight and BMI there — is still a vital: classify by the code, not the section
-  // (#681). Mirrors how the FHIR path routes category off isVitalLoinc. Gated by
-  // allowCategoryOverride so a functional-status assessment reusing a vital LOINC is
-  // NOT reclassified (#694).
-  const recordCategory: "lab" | "vitals" =
-    allowCategoryOverride && isVitalLoinc(loinc) ? "vitals" : category;
   const canonicalName = canonicalBiomarkerForLoinc(loinc);
   // Name resolution order:
   //   1. structured @_displayName on the code, then
@@ -168,6 +174,12 @@ export function mapObservation(
     canonicalName ||
     null;
   const name = resolvedName || "Result";
+  // A vaccine's LOT NUMBER or EXPIRY filed as a free-standing observation (#2318):
+  // it is an attribute of the immunization ENTRY, which has its own store and
+  // already carries the lot as provenance. Refused outright — emitting a
+  // `ccda:obs:` record for it is what let a manufacturer string coin an analyte
+  // name. Checked on the printed label, which is all these rows carry.
+  if (isImmunizationAttributeLabel(name)) return null;
   const { value, value_num, unit: valueUnit } = readValue(obs.value);
   // Unit is on the numeric value when present, else on a COMP "units" component
   // (Epic ships many results this way).
@@ -178,6 +190,36 @@ export function mapObservation(
   // the app would otherwise surface as an empty "—"). Qualitative results keep a
   // string value, so "Positive"/"Detected"/etc. survive.
   if (value == null && value_num == null) return null;
+  // The reading's own stated range, read ONCE: it is both a stored field (labs only)
+  // and one of the four facts the assessment/qualifier routing below asks about.
+  const sourceRange = referenceRangeText(obs, narrativeIds);
+  // ── What CLASS of row is this? (#2318) ──────────────────────────────────────
+  // `assessment` wins first. The Functional Status section declares it for
+  // everything it carries; a Results-section observation is PROMOTED into it when it
+  // states no measurement and claims no analyte identity (isNonAnalyteObservation) —
+  // a temperature's body site, a questionnaire item's free-text answer, a generic
+  // status word. This also subsumes the #694 rule the old `allowCategoryOverride`
+  // flag encoded: an assessment reusing a VITAL_LOINCS code is still an assessment,
+  // because the class is decided before the vital-code override is even consulted.
+  //
+  // Then the #681 override: a vital-sign LOINC that arrives in a lab/results section
+  // — Epic reports body weight and BMI there — is still a vital, classified by the
+  // code, not the section. Mirrors how the FHIR path routes off isVitalLoinc.
+  const isAssessment =
+    category === "assessment" ||
+    (category === "lab" &&
+      isNonAnalyteObservation({
+        loinc,
+        valueNum: value_num,
+        unit,
+        referenceRange: sourceRange,
+        assessmentScale: isAssessmentScaleObs(obs),
+      }));
+  const recordCategory: ObservationClass = isAssessment
+    ? "assessment"
+    : isVitalLoinc(loinc)
+      ? "vitals"
+      : category;
   // Resolve to a canonical biomarker name by LOINC when one exists, so the
   // reading groups with the same concept elsewhere in the app; otherwise keep
   // the printed name.
@@ -186,6 +228,9 @@ export function mapObservation(
   // normalization below), so a reading's identity is stable across normalization
   // changes — a re-import of a document whose Celsius reading was stored
   // pre-conversion (#1018) matches the existing row instead of duplicating it.
+  // NOTE (#2318): an `assessment` keeps the `obs` prefix a `lab` had, so re-importing
+  // a document whose rows were stored (and then re-categorised by migration 177)
+  // BEFORE this classification existed still dedupes onto them instead of duplicating.
   const external_id = `ccda:${recordCategory === "vitals" ? "vital" : "obs"}:${String(
     loinc || name
   ).toLowerCase()}:${date}:${value_num ?? value ?? ""}`;
@@ -200,9 +245,10 @@ export function mapObservation(
     stored = normalizeImportedTemperature(value_num, unit) ?? stored;
   }
   // The lab's own range + interpretation (#761 follow-up), captured on labs only —
-  // vitals keep their dedicated flag engines.
-  const reference_range =
-    recordCategory === "lab" ? referenceRangeText(obs, narrativeIds) : null;
+  // vitals keep their dedicated flag engines, and an assessment has no band to be
+  // in or out of (the Functional Status section can print one; it describes the
+  // instrument, not a measurement).
+  const reference_range = recordCategory === "lab" ? sourceRange : null;
   const flag = recordCategory === "lab" ? interpretationFlag(obs) : null;
   return {
     category: recordCategory,
@@ -229,9 +275,8 @@ export function mapObservation(
 
 function observationsFromEntries(
   entries: any[],
-  category: "lab" | "vitals",
-  narrativeIds: Record<string, string> = {},
-  allowCategoryOverride = true
+  category: ObservationClass,
+  narrativeIds: Record<string, string> = {}
 ): ImportedRecord[] {
   const out: ImportedRecord[] = [];
   for (const entry of entries) {
@@ -249,13 +294,7 @@ function observationsFromEntries(
       // A narrative report observation (ED-valued culture/gram-stain/cytology) routes
       // to a `report` record below — never a (null-value) lab.
       if (isReportNarrativeObs(o)) continue;
-      const rec = mapObservation(
-        o,
-        category,
-        narrativeIds,
-        orgProvider,
-        allowCategoryOverride
-      );
+      const rec = mapObservation(o, category, narrativeIds, orgProvider);
       if (rec) out.push(rec);
     }
   }
@@ -580,27 +619,34 @@ export const vitalSignsExtractor: SectionExtractor = {
 };
 
 // Functional Status (#268): assessment observations ("ambulates independently",
-// ADL/IADL findings, …) carried as organizer→component or bare observations — the
-// SAME node shapes the Results walker reads, with coded (qualitative) or numeric
-// values, so they route through the shared observation mapper as `lab` records.
+// ADL/IADL findings, the body SITE a temperature was taken at, …) carried as
+// organizer→component or bare observations — the SAME node shapes the Results
+// walker reads, with coded (qualitative) or numeric values, so they route through
+// the shared observation mapper.
+//
 // The assessment LOINC is stripped from the STORED record (after the mapper has
 // used it for the name fallback and the stable external_id): these are assessment
 // instruments, not lab analytes, so carrying the code forward would list every
 // functional-status code in the "Unmapped lab codes" report — inviting canonical
 // biomarker-map additions that would be wrong — and could misroute a coded
 // assessment through the LOINC-keyed vitals/height recognizers.
+//
+// That reasoning was right, and it is why the section's class is now `assessment`
+// rather than `lab` (#2318). The strip guarded the CODE axis only; identity also
+// runs on the NAME, so the same rows still registered a canonical name, still
+// became Coverage candidates, and still drew bandless series — the very outcome
+// the strip exists to prevent, one surface over. The class carries the guard on
+// BOTH axes, and it subsumes the #694 rule too: an assessment reusing a
+// VITAL_LOINCS code can no longer flip to "vitals", because mapObservation decides
+// `assessment` before the vital-code override is consulted.
 export const functionalStatusExtractor: SectionExtractor = {
   key: "functionalStatus",
   matches: (s) => sectionIs(s, SECTIONS.functionalStatus),
   extract: (s) => ({
-    // allowCategoryOverride=false: a functional-status assessment reusing a
-    // VITAL_LOINCS code must stay a `lab` assessment, never flip to "vitals"
-    // (#694) — nulling the loinc below is too late to undo a category override.
     records: observationsFromEntries(
       s.entries,
-      "lab",
-      buildNarrativeIdMap(s.raw?.text),
-      false
+      "assessment",
+      buildNarrativeIdMap(s.raw?.text)
     ).map((r) => ({ ...r, loinc: null })),
   }),
 };

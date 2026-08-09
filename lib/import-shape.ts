@@ -82,6 +82,7 @@ import type {
   ToothSystem,
 } from "./types/medical";
 import { isRealIsoDate } from "./date";
+import { carriesBiomarkerIdentity } from "./medical-categories";
 import {
   bodyMetricsFromExtraction,
   bodyMetricsFromReadings,
@@ -1056,8 +1057,12 @@ export function extractionToPersistInput(
       importReport: serializeImportReport(report),
     },
     // Register only the names that stay as records (body metrics aren't
-    // biomarkers, so they don't enter the vocabulary).
-    canonicalNamesToRegister: records.map((r) => r.canonical),
+    // biomarkers, so they don't enter the vocabulary), and only from the
+    // categories that carry a biomarker identity at all (#2318) — an `assessment`
+    // row names a questionnaire item or a qualifier, never an analyte.
+    canonicalNamesToRegister: records
+      .filter((r) => carriesBiomarkerIdentity(r.category))
+      .map((r) => r.canonical),
     providers,
   };
 }
@@ -1328,6 +1333,9 @@ export function healthRecordToPersistInput(
       // The deterministic CCD/FHIR parse carries the drop/coverage report.
       importReport: serializeImportReport(parsed.report),
     },
+    // `lab` only — a vital has its own home, and a `report` / `assessment` row
+    // carries no analyte identity at all (#708/#2318), so this filter is already the
+    // strictest form of the NON_IDENTITY_CATEGORIES rule the AI path applies.
     canonicalNamesToRegister: parsed.records
       .filter((r) => r.category === "lab")
       .map((r) => r.canonical),

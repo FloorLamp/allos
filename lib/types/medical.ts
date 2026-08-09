@@ -132,7 +132,15 @@ export type MedicalCategory =
   // trends, flags, or lands in the biomarker catalog; it surfaces on Results →
   // Reports. Distinct from `lab` (a measured reading) and `scan` (a numeric imaging
   // measurement).
-  | "report";
+  | "report"
+  // Assessments and qualifiers (#2318 CDA feed): a dated observation a document
+  // carries that is NOT a measurement — a functional-status finding, an individual
+  // questionnaire-item answer, the body SITE a temperature was taken at, a generic
+  // result-status word. Stored, dated and viewable on its document like any other
+  // row, but excluded from BIOMARKER IDENTITY: it registers no canonical name, is
+  // never a Coverage candidate, and never renders as a (bandless) series. The
+  // name-axis twin of the assessment-LOINC strip in functionalStatusExtractor.
+  | "assessment";
 
 // "non-optimal" is the legacy directionless value (older rows, pre-migration);
 // new derivations use the directional "-high"/"-low" variants so the UI can show

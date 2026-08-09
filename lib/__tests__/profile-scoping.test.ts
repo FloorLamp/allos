@@ -511,6 +511,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 106 (#708) replay/partial-handle guard: a sqlite_master metadata probe (does the table carry the 'report' CHECK yet?) that reads schema, not rows — identical to migration 090's guard",
   },
   {
+    file: "lib/migrations/versions/177-assessment-category.ts",
+    includes:
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
+    why: "migration 177 (#2318) replay/partial-handle guard: a sqlite_master metadata probe (does the table carry the 'assessment' CHECK yet?) that reads schema, not rows — identical to migrations 090 and 106. The one-shot DATA move it then runs is profile-scoped in lib/assessment-reclass-db.ts, so it needs no entry of its own.",
+  },
+  {
     file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
     includes: "JOIN medical_records r ON r.id = ii.source_record_id",
     why: "migration 092 (#1178) one-shot consolidation: enumerates each PAIRED (med, prescription-record) twin BY the source_record_id back-link the import wrote — the join key itself is the med↔record identity, and both rows share the same profile_id by construction (a med is projected within one profile's import). The per-row re-key/UPDATE it drives all carry the row's own profile_id; this SELECT never reads one profile's data into another's.",
