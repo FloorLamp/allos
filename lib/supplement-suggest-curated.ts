@@ -55,8 +55,26 @@ import type { FoodTiming } from "./types";
 
 const ENTRIES: BiomarkerSupplementEntry[] = BIOMARKER_SUPPLEMENT_ENTRIES;
 
+// The covered biomarker set, built ONCE at module load — the map is a frozen committed
+// dataset, so there is nothing to rebuild per call. Lowercased name → display spelling,
+// which is the spelling the gather compares against (see curatedSupplementBiomarkers).
+const COVERED_NAMES = new Map<string, string>(
+  ENTRIES.flatMap((e) =>
+    e.biomarkers.map((b) => [b.trim().toLowerCase(), b] as const)
+  )
+);
+
 export interface CuratedSupplementInput {
   // Currently-flagged biomarker readings (family-collapsed, current-only per #557).
+  //
+  // WHICH SPELLING ARRIVES HERE, because the next entry's author will otherwise guess:
+  // getCurrentFlaggedBiomarkers emits
+  // `COALESCE(NULLIF(TRIM(canonical_name), ''), name)` — the reading's CANONICAL name
+  // when it has been reconciled to one, else the raw document name. So a map entry's
+  // `biomarkers` must be spelled exactly as lib/canonical-biomarkers.json spells it
+  // ("Ferritin", not "Ferritin, Serum"; "Vitamin D, 25-Hydroxy", not "Vitamin D"). The
+  // dataset test enforces that every referenced name resolves there, so a wrong guess
+  // fails CI rather than silently never matching.
   flagged: FlaggedReading[];
   // Recorded allergen substances. The ingestible-conservative set (resolved allergies
   // included, #691) — see getIngestibleSafetyContext.
@@ -283,16 +301,14 @@ export function suggestCuratedSupplements(
 // it falls through to the AI route (lib/supplement-suggest.ts). Both the AI prompt (so
 // it doesn't duplicate a curated answer) and the anti-drift dataset test read it.
 export function curatedSupplementBiomarkers(): string[] {
-  const names = new Set<string>();
-  for (const e of ENTRIES) for (const b of e.biomarkers) names.add(b);
-  return [...names];
+  return [...COVERED_NAMES.values()];
 }
 
 // Whether the curated map answers a given canonical biomarker name (case-insensitive).
 export function isCuratedSupplementBiomarker(name: string): boolean {
   const needle = (name ?? "").trim().toLowerCase();
   if (!needle) return false;
-  return curatedSupplementBiomarkers().some((n) => n.toLowerCase() === needle);
+  return COVERED_NAMES.has(needle);
 }
 
 export { BIOMARKER_SUPPLEMENT_ENTRIES } from "./datasets/biomarker-supplement-map";

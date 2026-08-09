@@ -45,6 +45,23 @@ describe("coverage — what the curated map answers and what falls through", () 
     expect(isCuratedSupplementBiomarker("Zinc")).toBe(false);
   });
 
+  it("triggers iron on FERRITIN only — a low serum Iron is not a status finding", () => {
+    // Serum iron swings through the day, falls in inflammation, and rises after one
+    // iron-containing meal; ferritin is the status marker. The one substance here with a
+    // real overdose risk does not fire off the weakest reading in the map.
+    expect(
+      suggestCuratedSupplements(
+        baseInput({ flagged: [{ name: "Iron", flag: "low" }] })
+      )
+    ).toEqual([]);
+    expect(isCuratedSupplementBiomarker("Iron")).toBe(false);
+    expect(
+      suggestCuratedSupplements(
+        baseInput({ flagged: [{ name: "Ferritin", flag: "low" }] })
+      ).map((s) => s.key)
+    ).toEqual(["iron"]);
+  });
+
   it("only answers the LOW side — a high reading is a different question", () => {
     const out = suggestCuratedSupplements(
       baseInput({ flagged: [{ name: "Ferritin", flag: "high" }] })
@@ -211,6 +228,61 @@ describe("the medication screens — the same shared machinery", () => {
     expect(med[0].text).toMatch(/hours apart|≥4 hours|absorption/i);
     // A timing note NEVER drops the suggestion — the iron still shows.
     expect(out[0].supplements).toHaveLength(1);
+  });
+
+  it("warns a profile on a blood thinner about supplemental omega-3, and only that profile", () => {
+    // The bleeding-time caution is TARGETED, not generic small print in the caveat: it
+    // fires off the stack, through the same curated food–drug index.
+    const bare = suggestCuratedSupplements(baseInput({ flagged: LOW_OMEGA }));
+    expect(bare[0].safetyNotes.filter((n) => n.kind === "medication")).toEqual(
+      []
+    );
+
+    for (const med of [
+      { name: "Warfarin", rxcui: "11289", rxcuiIngredients: null },
+      { name: "Eliquis", rxcui: null, rxcuiIngredients: null },
+      { name: "Clopidogrel", rxcui: "32968", rxcuiIngredients: null },
+    ]) {
+      const out = suggestCuratedSupplements(
+        baseInput({ flagged: LOW_OMEGA, medications: [med] })
+      );
+      const notes = out[0].safetyNotes.filter((n) => n.kind === "medication");
+      expect(notes.map((n) => n.text).join(" "), med.name).toMatch(
+        /bleeding time/i
+      );
+    }
+  });
+
+  it("keeps that warning on the ALGAL alternative — same EPA/DHA, same caution", () => {
+    const out = suggestCuratedSupplements(
+      baseInput({
+        flagged: LOW_OMEGA,
+        allergens: ["fish"],
+        medications: [
+          { name: "Warfarin", rxcui: "11289", rxcuiIngredients: null },
+        ],
+      })
+    );
+    expect(out[0].supplements[0].isAlternative).toBe(true);
+    expect(
+      out[0].safetyNotes.filter((n) => n.kind === "medication")
+    ).toHaveLength(1);
+  });
+
+  it("attaches the levothyroxine separation window to magnesium as well as iron", () => {
+    for (const bm of ["Magnesium", "Ferritin"]) {
+      const out = suggestCuratedSupplements(
+        baseInput({
+          flagged: [{ name: bm, flag: "low" }],
+          medications: [
+            { name: "Levothyroxine", rxcui: "10582", rxcuiIngredients: null },
+          ],
+        })
+      );
+      const notes = out[0].safetyNotes.filter((n) => n.kind === "medication");
+      expect(notes, bm).toHaveLength(1);
+      expect(notes[0].text, bm).toMatch(/empty stomach/i);
+    }
   });
 
   it("attaches nothing when the stack has no matching drug", () => {

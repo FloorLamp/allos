@@ -124,8 +124,7 @@
       "key": "iron",
       "label": "Iron",
       "biomarkers": [
-        "Ferritin",
-        "Iron"
+        "Ferritin"
       ],
       "direction": "low",
       "supplements": [
@@ -191,7 +190,8 @@
           "note": "The organic salts (glycinate, citrate) are absorbed better and are gentler on the gut than magnesium oxide.",
           "interactionKeys": [
             "dairy-fluoroquinolone",
-            "dairy-tetracycline"
+            "dairy-tetracycline",
+            "dairy-levothyroxine"
           ]
         }
       ],
@@ -223,7 +223,10 @@
             "dha"
           ],
           "foodTiming": "with_food",
-          "note": "Taken with a meal for absorption and to reduce the aftertaste."
+          "note": "Taken with a meal for absorption and to reduce the aftertaste.",
+          "interactionKeys": [
+            "fish-oil-anticoagulant"
+          ]
         }
       ],
       "allergyAlternative": {
@@ -233,7 +236,10 @@
           "algae oil"
         ],
         "foodTiming": "with_food",
-        "note": "Supplies EPA and DHA directly without fish or shellfish."
+        "note": "Supplies EPA and DHA directly without fish or shellfish.",
+        "interactionKeys": [
+          "fish-oil-anticoagulant"
+        ]
       },
       "evidence": "The omega-3 index measures the EPA and DHA carried in red-cell membranes, and supplemental EPA/DHA raises exactly that, dose-dependently — the supplement and the measurement are the same substance.",
       "source": "NIH Office of Dietary Supplements — Omega-3 Fatty Acids fact sheet",

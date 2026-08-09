@@ -117,10 +117,10 @@
         "unithroid",
         "thyroxine"
       ],
-      "food": "Coffee, dairy, calcium, and high-fiber foods",
+      "food": "Coffee, dairy, calcium, iron, magnesium, and high-fiber foods",
       "severity": "moderate",
-      "advice": "Take on an empty stomach with water 30–60 min before eating; keep coffee, dairy, calcium, and iron ≥4 hours apart — they cut absorption.",
-      "mechanism": "Food, coffee, and polyvalent cations (calcium, iron) bind levothyroxine in the gut and reduce how much is absorbed, lowering its effect.",
+      "advice": "Take on an empty stomach with water 30–60 min before eating; keep coffee, dairy, calcium, iron, and magnesium ≥4 hours apart — they cut absorption.",
+      "mechanism": "Food, coffee, and polyvalent cations (calcium, iron, magnesium) bind levothyroxine in the gut and reduce how much is absorbed, lowering its effect.",
       "source": "FDA levothyroxine prescribing information (DailyMed)",
       "catalog": {
         "groups": ["dairy"],
@@ -314,6 +314,36 @@
         "groups": [],
         "rule": "none",
         "reason": "The food is 'anything but plain water' within 30 minutes of the dose — a separation window against the whole catalog, which day-granular counts cannot express. Excluded here; unblocked by the eaten-at capture (#2019 rung 2)."
+      }
+    },
+    {
+      "key": "fish-oil-anticoagulant",
+      "drugLabel": "Anticoagulants & antiplatelets (warfarin, apixaban, rivaroxaban, dabigatran, clopidogrel)",
+      "rxcuis": ["11289", "1037045", "1114195", "1364430", "32968"],
+      "synonyms": [
+        "warfarin",
+        "coumadin",
+        "jantoven",
+        "apixaban",
+        "eliquis",
+        "rivaroxaban",
+        "xarelto",
+        "dabigatran",
+        "pradaxa",
+        "edoxaban",
+        "savaysa",
+        "clopidogrel",
+        "plavix"
+      ],
+      "food": "Fish oil / omega-3 supplements (EPA & DHA)",
+      "severity": "moderate",
+      "advice": "Talk to your prescriber before starting or increasing a fish-oil / omega-3 supplement — omega-3s lengthen bleeding time and can add to a blood thinner's effect. Eating oily fish in ordinary amounts is not the concern.",
+      "mechanism": "High-dose EPA/DHA reduces platelet aggregation and prolongs bleeding time, which adds to the effect of an anticoagulant or antiplatelet drug; the omega-3 product labels direct that patients on such drugs be monitored.",
+      "source": "FDA omega-3-acid ethyl esters prescribing information (DailyMed); NIH ODS Omega-3 Fatty Acids fact sheet",
+      "catalog": {
+        "groups": [],
+        "rule": "none",
+        "reason": "The concern is a high-dose SUPPLEMENT, not a food: the labels warn about omega-3 products, and eating oily fish in ordinary amounts is explicitly not what this is about. No logged food group can honestly stand in for a capsule, so the ledger never fires on it."
       }
     }
   ]

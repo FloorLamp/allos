@@ -128,6 +128,32 @@ describe("getCuratedSupplementSuggestions (#2378)", () => {
     ).toHaveLength(1);
   });
 
+  it("warns an anticoagulated profile about supplemental omega-3, off the real stack", () => {
+    const pid = makeProfile("curated-supp-omega3-anticoag");
+    insertReading(pid, { name: "Omega-3 EPA", flag: "low" });
+    expect(
+      getCuratedSupplementSuggestions(pid)[0].safetyNotes.filter(
+        (n) => n.kind === "medication"
+      )
+    ).toEqual([]);
+
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation, rxcui)
+         VALUES (?, 'Warfarin', 1, 'medication', 'daily', 'must', '11289')`
+    ).run(pid);
+    const notes = getCuratedSupplementSuggestions(pid)[0].safetyNotes.filter(
+      (n) => n.kind === "medication"
+    );
+    expect(notes).toHaveLength(1);
+    expect(notes[0].text).toMatch(/bleeding time/i);
+  });
+
+  it("does not answer a low serum Iron — ferritin is the status marker (#2378 review)", () => {
+    const pid = makeProfile("curated-supp-serum-iron");
+    insertReading(pid, { name: "Iron", flag: "low" });
+    expect(getCuratedSupplementSuggestions(pid)).toEqual([]);
+  });
+
   it("says nothing about a substance already in the ACTIVE stack, and speaks again once it is stopped", () => {
     const pid = makeProfile("curated-supp-already-taking");
     insertReading(pid, { name: "Vitamin D, 25-Hydroxy", flag: "low" });

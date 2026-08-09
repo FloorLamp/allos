@@ -1012,6 +1012,11 @@ and it lives at the top of the generator:
   `source` (a public citation). No one-liner, no entry.
 - **no entry states a dose**, anywhere in its text. The dataset test fails one
   that tries.
+- **the trigger must be a status marker, not merely an analyte.** The `iron` entry
+  fires on `Ferritin` alone: serum iron swings through the day, falls in
+  inflammation and rises after one iron-containing meal, so triggering the one
+  substance here with a real overdose risk off that reading is the combination not
+  to ship.
 - the map starts **small and ships mostly empty on purpose**. An uncovered
   family falls through to the AI route and loses nothing, so **coverage is a
   measurable thing that grows** rather than a gate on the feature landing. Do not
@@ -1027,7 +1032,12 @@ condition/situation tags go through `conditionOrSituationMatches`, the matcher t
 food engine uses. Medication timing notes come from `stackFoodDrugHits`, the food
 engine's own inverse index. Magnesium × CKD is deliberately NOT declared in this
 map: `CONDITION_NUTRIENT_RULES` already carries it, and a second copy is the drift
-the shared rule exists to prevent. A struck primary falls back to the entry's
+the shared rule exists to prevent. Where the shared machinery genuinely lacked a
+rule the map needed, the rule was added to the SHARED dataset rather than
+special-cased here: `fish-oil-anticoagulant` (supplemental EPA/DHA × warfarin / DOACs
+/ clopidogrel, from the omega-3 product labelling) is a food–drug entry both
+engines and the medication surfaces read, so the bleeding-time caution reaches the
+profiles it concerns instead of sitting in prose every reader sees. A struck primary falls back to the entry's
 curated alternative (itself screened); if nothing safe remains the whole
 suggestion is **withheld** — absence is never an all-clear.
 

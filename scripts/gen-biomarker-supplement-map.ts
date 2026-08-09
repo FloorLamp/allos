@@ -37,6 +37,16 @@
 //      excluded so far, and the reason:
 //        • Zinc — serum zinc is a poor status marker (it falls with inflammation and
 //          low albumin) and sustained supplementation induces copper deficiency.
+//        • SERUM IRON as a trigger (the `Iron` analyte, as distinct from `Ferritin`) —
+//          held to the same standard as zinc and failing it harder. Serum iron swings
+//          widely through the day, falls in inflammation, and rises for hours after a
+//          single iron-containing meal, so one draw says little about iron status;
+//          FERRITIN is the status marker, and it is what the `iron` entry triggers on.
+//          Triggering the one substance in this map with a serious overdose risk off
+//          the weakest marker in it is the combination not to ship. A low serum iron
+//          with a normal ferritin therefore produces nothing here and falls through to
+//          the AI route, which is the right home for a reading that needs interpreting
+//          rather than answering.
 //        • Selenium — narrow window between sufficiency and toxicity; a low serum
 //          selenium is not by itself a supplementation indication.
 //        • Iodine — supplementing iodine can precipitate thyroid dysfunction in both
@@ -107,8 +117,12 @@ export interface BiomarkerSupplementEntry {
   key: string;
   // Display label ("Vitamin D").
   label: string;
-  // Canonical biomarker names (lib/canonical-biomarkers.json) whose CURRENT reading
-  // being flagged low triggers this suggestion. Matched case-insensitively.
+  // Canonical biomarker names whose CURRENT reading being flagged low triggers this
+  // suggestion, matched case-insensitively. Spell them EXACTLY as
+  // lib/canonical-biomarkers.json spells them: the gather feeds the engine
+  // `COALESCE(NULLIF(TRIM(canonical_name), ''), name)`, i.e. the post-collapse canonical
+  // spelling — "Ferritin", not "Ferritin, Serum". The dataset test resolves every name
+  // against that file, so a wrong guess fails CI instead of silently never matching.
   biomarkers: string[];
   // Which flag direction triggers it. Always "low": a supplement can answer a shortfall,
   // and "stop taking something" is a different question this map does not answer.
@@ -240,7 +254,9 @@ const ENTRIES: BiomarkerSupplementEntry[] = [
   {
     key: "iron",
     label: "Iron",
-    biomarkers: ["Ferritin", "Iron"],
+    // Ferritin ONLY — see the exclusion note above for why serum iron does not
+    // trigger the one substance in this map with a serious overdose risk.
+    biomarkers: ["Ferritin"],
     direction: "low",
     supplements: [
       {
@@ -310,7 +326,11 @@ const ENTRIES: BiomarkerSupplementEntry[] = [
         ],
         foodTiming: "with_food",
         note: "The organic salts (glycinate, citrate) are absorbed better and are gentler on the gut than magnesium oxide.",
-        interactionKeys: ["dairy-fluoroquinolone", "dairy-tetracycline"],
+        interactionKeys: [
+          "dairy-fluoroquinolone",
+          "dairy-tetracycline",
+          "dairy-levothyroxine",
+        ],
       },
     ],
     allergyAlternative: null,
@@ -347,6 +367,10 @@ const ENTRIES: BiomarkerSupplementEntry[] = [
         ],
         foodTiming: "with_food",
         note: "Taken with a meal for absorption and to reduce the aftertaste.",
+        // The bleeding-time caution is a TARGETED note, not generic small print: it
+        // fires only for a profile whose stack actually carries an anticoagulant or
+        // antiplatelet. The caveat still says it in prose for everyone.
+        interactionKeys: ["fish-oil-anticoagulant"],
       },
     ],
     allergyAlternative: {
@@ -354,6 +378,9 @@ const ENTRIES: BiomarkerSupplementEntry[] = [
       matchTokens: ["algal oil", "algae oil"],
       foodTiming: "with_food",
       note: "Supplies EPA and DHA directly without fish or shellfish.",
+      // Same EPA/DHA, same bleeding-time caution — the alternative carries the key too,
+      // so swapping the fish out never drops the note.
+      interactionKeys: ["fish-oil-anticoagulant"],
     },
     evidence:
       "The omega-3 index measures the EPA and DHA carried in red-cell membranes, and supplemental EPA/DHA raises exactly that, dose-dependently — the supplement and the measurement are the same substance.",
