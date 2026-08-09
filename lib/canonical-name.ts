@@ -519,10 +519,35 @@ const FULL_ABBR_RE = /^(.+) \(([^()]+)\)$/;
 // value (leave to a curated alias): no internal space, and either ≥2 uppercase
 // letters or a digit — matches RDW / MCV / hs-CRP / CO2 / IGF-1, rejects
 // "Bicarbonate" / "Retinol" / "50 g".
-function looksLikeAbbreviation(s: string): boolean {
+//
+// Exported since #2365: the body-metric home derivation asks the same question of a
+// metric's short LABEL ("BMI", "RHR" are the analyte's name; "Body Temp", "Avg HR"
+// are chart chrome), and a second realization of "is this an acronym?" is exactly the
+// drift this module exists to prevent.
+export function looksLikeAbbreviation(s: string): boolean {
   if (/\s/.test(s)) return false;
   const uppers = (s.match(/[A-Z]/g) ?? []).length;
   return uppers >= 2 || /\d/.test(s);
+}
+
+/**
+ * The two OTHER spellings a name written "Full Name (ACRONYM)" is known by — the bare
+ * full name and the bare acronym — or `[]` when the name is not written that way.
+ *
+ * For an ARBITRARY name, not a vocabulary entry (#2365: is an imported
+ * "Body Mass Index (BMI)" the quantity the metric registry calls "Body Mass Index"?).
+ * Hence the one deliberate difference from `canonicalAliasRoutes`, which routes the
+ * bare full name for a WORD parenthetical too: that liberty is safe for a curated
+ * entry, which is the authority on its own spelling, and unsafe here, because a word
+ * parenthetical is usually a QUALIFIER that changes the quantity — dropping it would
+ * turn "Blood Pressure Systolic (Peak Exercise)" into resting blood pressure. The
+ * acronym gate is shared, so the two can never disagree about what an ACRONYM is.
+ */
+export function acronymNameForms(name: string): string[] {
+  const m = FULL_ABBR_RE.exec(name.trim());
+  if (!m) return [];
+  const [, full, abbr] = m;
+  return looksLikeAbbreviation(abbr) ? [full, abbr] : [];
 }
 
 // The curated alias routes, exposed for the vocabulary-integrity test (it pins

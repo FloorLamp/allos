@@ -21,14 +21,29 @@
 //     site. They are viewable on their document but carry no biomarker identity at
 //     all (see NON_IDENTITY_CATEGORIES below), so the analyte catalog is one of the
 //     several surfaces they must never reach.
-// 'vitals' STAYS browsable here on purpose (#1076): the physiologic vitals gained a
-// Trends → Vitals trend home, but the DOMAIN vitals catalogued here — audiogram
-// hearing thresholds (#713), intraocular pressure / visual acuity (#697), periodontal
-// depth (#705) — have no dedicated chart surface in this codebase, so the flat
-// biomarker catalog remains their reachable home; removing them would STRAND them
-// (the issue's own "nothing stranded" rule). The TRAJECTORY tab (Trends → Biomarkers)
-// separately scopes to lab-only — that is where the years-axis grammar lives. 'genomics'
-// and 'scan' are out of #1076's scope and stay browsable (numeric DEXA measurements).
+// 'vitals' is browsable, but it is the one category whose membership is decided PER
+// ANALYTE rather than as a class (#2365). #1076 kept the whole category to protect the
+// DOMAIN vitals catalogued here — audiogram hearing thresholds (#713), intraocular
+// pressure / visual acuity (#697), periodontal depth (#705) — which have no dedicated
+// chart surface, so the flat catalog is their only reachable home and removing them
+// would STRAND them. That reasoning still holds; the granularity was wrong. The
+// category holds two populations, and keeping it whole to protect the small one dragged
+// the large one along: on one real profile, 131 of 145 `vitals` rows were blood
+// pressure / SpO2 / respiratory rate / body temperature / BMI — every one a quantity
+// with its own `/trends/metric/<slug>` chart.
+//
+// So the "nothing stranded" rule is kept and applied a level finer: an analyte is
+// listed unless a HOME EXISTS for it. `lib/body-metric-analytes.ts` decides, derived
+// from the metric registries (`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) rather than
+// hand-listed, so a future slug removes its analyte with no second edit here and the
+// registries cannot drift apart. Category membership in BIOMARKER_CATEGORIES therefore
+// no longer settles the vitals question on its own — ask that module, which both the
+// row gather (app/(app)/results/biomarker-index.ts) and the panel facet
+// (lib/biomarker-panel-reach.ts) go through.
+//
+// The TRAJECTORY tab (Trends → Biomarkers) separately scopes to lab-only — that is
+// where the years-axis grammar lives. 'genomics' and 'scan' are out of #1076's scope
+// and stay browsable whole (numeric DEXA measurements).
 import type { MedicalCategory, MedicalFlag } from "@/lib/types";
 
 export const MEDICAL_CATEGORIES = [

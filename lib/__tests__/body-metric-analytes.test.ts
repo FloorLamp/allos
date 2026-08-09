@@ -1,0 +1,269 @@
+import { describe, it, expect } from "vitest";
+import {
+  bodyMetricHomeFor,
+  hasBodyMetricHome,
+  listedInBiomarkerBrowser,
+} from "../body-metric-analytes";
+import { acronymNameForms } from "../canonical-name";
+import { CANONICAL_BIOMARKERS } from "../datasets/canonical-biomarkers";
+import { METRIC_KNOWLEDGE } from "../metric-judgment";
+import {
+  BODY_METRIC_META,
+  BODY_METRIC_SLUGS,
+  type BodyMetricSlug,
+} from "../trends-body-metrics";
+
+// #2365 — a `vitals` analyte with a body-metric home is not listed in the flat
+// Biomarkers browser; one without a home stays. BOTH directions are asserted, over the
+// REAL registries rather than a fixture list: a test that only proves the slugged
+// analytes left is half a test, and the removing direction is the expensive one — a
+// domain vital with no other home would disappear from the app.
+//
+// PHI: every name here is a controlled-vocabulary analyte name or an invented spelling;
+// no values, no subjects.
+
+describe("the derivation is the registries, not a list (#2365)", () => {
+  it("every canonical name METRIC_KNOWLEDGE declares resolves to its own slug", () => {
+    // The curated half: a slug whose knowledge names a canonical entry must claim that
+    // exact name. This is what makes the mapping fall out of the registry instead of
+    // being restated — and what breaks if METRIC_KNOWLEDGE is re-pointed.
+    const declared: [BodyMetricSlug, string][] = [];
+    for (const slug of BODY_METRIC_SLUGS) {
+      const k = METRIC_KNOWLEDGE[slug];
+      if ("canonical" in k) declared.push([slug, k.canonical]);
+    }
+    // Non-empty, or the assertion below proves nothing.
+    expect(declared.length).toBeGreaterThan(4);
+    for (const [slug, canonical] of declared)
+      expect(bodyMetricHomeFor(canonical)).toBe(slug);
+  });
+
+  it("every registered metric's own title resolves to it", () => {
+    // The other half: a metric can have a home and no curated band (bmi's knowledge is
+    // honestly `none`), so the registry title has to carry the name. Total over the
+    // slug enum, so a metric added tomorrow is covered without a second edit.
+    for (const slug of BODY_METRIC_SLUGS)
+      expect(bodyMetricHomeFor(BODY_METRIC_META[slug].title)).toBe(slug);
+  });
+
+  it("no name key is claimed by two different slugs", () => {
+    // The map takes first-registration-wins; this is what keeps that from being a
+    // silent tie-break when a future metric's title collides with another's.
+    const owners = new Map<string, BodyMetricSlug>();
+    for (const slug of BODY_METRIC_SLUGS) {
+      const meta = BODY_METRIC_META[slug];
+      const k = METRIC_KNOWLEDGE[slug];
+      const names = [meta.title, ...("canonical" in k ? [k.canonical] : [])];
+      for (const name of names) {
+        const home = bodyMetricHomeFor(name);
+        const prior = owners.get(name);
+        expect(prior ?? slug).toBe(slug);
+        owners.set(name, slug);
+        expect(home).toBe(slug);
+      }
+    }
+  });
+});
+
+describe("what LEAVES the browser (#2365)", () => {
+  // The whole `vitals` half of the controlled vocabulary, partitioned by the rule. Kept
+  // as an exact list on both sides so a vocabulary change that moves an analyte across
+  // the line has to be looked at.
+  const vitalsEntries = CANONICAL_BIOMARKERS.filter(
+    (e) => e.category === "vitals"
+  );
+
+  it("exactly the seven canonical vitals with a metric chart", () => {
+    const leaving = vitalsEntries
+      .filter((e) => hasBodyMetricHome(e.name))
+      .map((e) => e.name);
+    expect(leaving.sort()).toEqual(
+      [
+        "Blood Pressure Diastolic",
+        "Blood Pressure Systolic",
+        "Body Temperature",
+        "Oxygen Saturation",
+        "Peak Expiratory Flow",
+        "Resting Heart Rate",
+        "Respiratory Rate",
+      ].sort()
+    );
+  });
+
+  it("BMI, however the document spelled it", () => {
+    // #2318's misplaced row. It stops being browsable for the RIGHT reason — the
+    // quantity has a home — whatever the placement bug does next. The parenthetical
+    // form is the one a real import produced.
+    for (const spelling of [
+      "Body Mass Index (BMI)",
+      "Body Mass Index",
+      "BMI",
+      "body mass index",
+    ])
+      expect(bodyMetricHomeFor(spelling)).toBe("bmi");
+  });
+
+  it("the body measurements a document import already streams elsewhere", () => {
+    // Weight / body fat / resting HR are projected into body_metrics and height / head
+    // circumference into metric_samples by the import path, so the same reading is on
+    // its chart: removing the catalog copy hides nothing.
+    expect(bodyMetricHomeFor("Weight")).toBe("weight");
+    expect(bodyMetricHomeFor("Height")).toBe("height");
+    expect(bodyMetricHomeFor("Head Circumference")).toBe("head-circ");
+  });
+});
+
+describe("what STAYS in the browser (#2365)", () => {
+  it("every canonical `vitals` analyte with no metric chart", () => {
+    const staying = CANONICAL_BIOMARKERS.filter(
+      (e) => e.category === "vitals" && !hasBodyMetricHome(e.name)
+    ).map((e) => e.name);
+    // The specialty domains #1076 was protecting, in full.
+    for (const name of [
+      "Intraocular Pressure, Right Eye",
+      "Intraocular Pressure, Left Eye",
+      "Visual Acuity, Right Eye",
+      "Visual Acuity, Left Eye",
+      "Periodontal Probing Depth",
+      "Bleeding on Probing",
+      "Clinical Attachment Loss",
+      "Hearing Threshold, Right Ear 4 kHz",
+      "Hearing Threshold, Left Ear 8 kHz",
+      "Forced Expiratory Volume in 1 Second (FEV1)",
+      "Forced Vital Capacity (FVC)",
+      "FEV1/FVC Ratio",
+      "VO2 Max",
+      "Grip Strength",
+      "30-Second Chair Stand",
+      "Single-Leg Balance",
+    ])
+      expect(staying).toContain(name);
+    // Every hearing threshold, not just the two spot-checked above.
+    expect(
+      staying.filter((n) => n.startsWith("Hearing Threshold")).length
+    ).toBe(12);
+  });
+
+  it("the un-canonicalized domain vitals the issue counted", () => {
+    // The 14 rows the flat catalog exists to rescue. None of them is a body metric, and
+    // none may be dragged out by a loose match.
+    for (const name of [
+      "Pure Tone Average",
+      "Pure Tone Average, Right Ear",
+      "Pure Tone Average, Left Ear",
+      "Visual Acuity",
+      "Color Vision",
+      "Ankle-Brachial Index",
+      "Ankle-Brachial Index, Left",
+      "Ankle-Brachial Index, Right",
+      "Cardio-Ankle Vascular Index, Left",
+      "Cardio-Ankle Vascular Index, Right",
+    ])
+      expect(bodyMetricHomeFor(name)).toBeNull();
+  });
+
+  it("Waist Circumference — a body metric by ruling, not yet a slug (#2322)", () => {
+    // The owner has ruled it belongs in BODY_METRIC_SLUGS. Until that slug lands it has
+    // no home, so it stays browsable — and it leaves on its own the day #2322 adds it,
+    // with no edit here. That property IS the deliverable.
+    expect(bodyMetricHomeFor("Waist Circumference")).toBeNull();
+    // And it is not dragged out by the head-circumference title, the nearest neighbour.
+    expect(bodyMetricHomeFor("Head Circumference")).toBe("head-circ");
+  });
+
+  it("stress-test vitals — a qualified quantity is not the resting one", () => {
+    // The #482 trap, and the reason the stored name is only ever stripped of a trailing
+    // ACRONYM: dropping a word parenthetical would turn a peak-exercise blood pressure
+    // into resting blood pressure and delete it from the only surface that shows it.
+    for (const name of [
+      "Blood Pressure Systolic (Peak Exercise)",
+      "Blood Pressure Diastolic (Peak Exercise)",
+      "Peak Heart Rate (Stress Test)",
+      "Heart Rate Recovery",
+      "Exercise Duration",
+      "Metabolic Equivalents (METs)",
+    ])
+      expect(bodyMetricHomeFor(name)).toBeNull();
+    expect(acronymNameForms("Blood Pressure Systolic (Peak Exercise)")).toEqual(
+      []
+    );
+    expect(acronymNameForms("Body Mass Index (BMI)")).toEqual([
+      "Body Mass Index",
+      "BMI",
+    ]);
+  });
+
+  it("a clinic pulse is not the daily-average heart-rate metric", () => {
+    // `hr` is an aggregate over hr_minutes — a different quantity from a single
+    // measured pulse, and METRIC_KNOWLEDGE says so. Matching them would strand the
+    // measured one.
+    expect(bodyMetricHomeFor("Heart Rate")).toBeNull();
+    expect(bodyMetricHomeFor("Pulse")).toBeNull();
+    expect(bodyMetricHomeFor("Heart Rate (Daily Avg)")).toBe("hr");
+  });
+});
+
+describe("listedInBiomarkerBrowser scopes the rule to `vitals`", () => {
+  it("drops a homed vitals row and keeps a homeless one", () => {
+    expect(
+      listedInBiomarkerBrowser({
+        category: "vitals",
+        name: "Blood Pressure Systolic",
+        canonical_name: "Blood Pressure Systolic",
+      })
+    ).toBe(false);
+    expect(
+      listedInBiomarkerBrowser({
+        category: "vitals",
+        name: "Periodontal Probing Depth",
+        canonical_name: "Periodontal Probing Depth",
+      })
+    ).toBe(true);
+  });
+
+  it("never touches another category, however the analyte is named", () => {
+    // The rule is about the one category that holds two populations. A `scan` body-fat
+    // reading is a DEXA measurement and keeps its catalog row; a lab keeps its.
+    expect(
+      listedInBiomarkerBrowser({
+        category: "scan",
+        name: "Body Fat Percentage",
+        canonical_name: "Body Fat Percentage",
+      })
+    ).toBe(true);
+    expect(
+      listedInBiomarkerBrowser({ category: "lab", name: "LDL Cholesterol" })
+    ).toBe(true);
+    expect(
+      listedInBiomarkerBrowser({ category: "genomics", name: "APOE Genotype" })
+    ).toBe(true);
+  });
+
+  it("keys on the identity the table renders — canonical name, else the printed one", () => {
+    // biomarkerNameKey's COALESCE, in JS. A document that printed "BMI" and snapped
+    // onto a canonical spelling is one analyte, matched either way.
+    expect(
+      listedInBiomarkerBrowser({
+        category: "vitals",
+        name: "BMI",
+        canonical_name: null,
+      })
+    ).toBe(false);
+    expect(
+      listedInBiomarkerBrowser({
+        category: "vitals",
+        name: "TEMP",
+        canonical_name: "Body Temperature",
+      })
+    ).toBe(false);
+    // A blank canonical name falls through to the printed one rather than matching
+    // nothing.
+    expect(
+      listedInBiomarkerBrowser({
+        category: "vitals",
+        name: "Oxygen Saturation",
+        canonical_name: "   ",
+      })
+    ).toBe(false);
+  });
+});
