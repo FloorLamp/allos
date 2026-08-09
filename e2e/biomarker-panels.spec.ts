@@ -311,14 +311,16 @@ test("Panel and Category keep their columns, filter links and sorting at desktop
     /category=lab/
   );
 
-  // Header sorting is untouched: the Date header still opens newest-first and the
-  // params it writes are the ones the server orders by.
-  await followLink(
-    page,
-    page.getByRole("columnheader", { name: "Date" }).getByRole("link"),
-    /sort=date/
-  );
-  await expect(page).toHaveURL(/dir=desc/);
+  // Header sorting is untouched: the Date header still opens newest-first, and the
+  // params it writes are the ones the server orders by. The direction is asserted on
+  // the HREF rather than after the click — followLink may re-click past the
+  // hydration window, and a second click on the active column legitimately toggles.
+  const dateSort = page
+    .getByRole("columnheader", { name: "Date" })
+    .getByRole("link");
+  await expect(dateSort).toHaveAttribute("href", /sort=date&dir=desc/);
+  await followLink(page, dateSort, /sort=date/);
+  await expect(table).toBeVisible();
   // The sort select is the phone's stand-in for that strip and stays hidden here,
   // even though it now renders inside the filter block.
   await expect(page.getByTestId("table-sort-select")).toBeHidden();

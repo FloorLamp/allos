@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { expectNoClippedContent, followLink, settledSelect } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+  settledSelect,
+} from "./helpers";
 
 // Mobile-viewport spec (390×844, the `mobile` project — #1420) because the feature
 // IS what a wide `<table>` becomes on a phone. At 1280px every one of these
@@ -43,15 +48,27 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     const value = card.locator('td[data-card="value"]');
     await expect(value).toBeVisible();
 
-    // Category is hidden below `md` in TABLE mode — the phone used to lose it
-    // outright. It comes back as a labeled meta line on the card.
+    // A meta cell carries its own label in card mode, because `thead` is hidden.
+    // Date is the one every reading has, so it proves the label round-trip.
     await expect(
       table
-        .locator('td[data-card="meta"] .card-cell-label', {
-          hasText: "Category",
-        })
+        .locator('td[data-card="meta"] .card-cell-label', { hasText: "Date" })
         .first() // first-ok: one labeled meta cell proves the label round-trip; which row owns it is irrelevant
     ).toBeVisible();
+    // Panel and Category claim NO card line (#2316). The mechanism is unchanged —
+    // a cell with no `slot` is desktop-only detail — but these two stopped
+    // distinguishing anything once grouping landed: inside a group headed "Lipids"
+    // every card reprinted `PANEL Lipids`, and every real panel is one category.
+    await expect(
+      table.locator('td[data-card="meta"] .card-cell-label', {
+        hasText: "Panel",
+      })
+    ).toHaveCount(0);
+    await expect(
+      table.locator('td[data-card="meta"] .card-cell-label', {
+        hasText: "Category",
+      })
+    ).toHaveCount(0);
 
     // The point of the exercise: no element hangs off the right edge, and no
     // horizontal scroller is doing the work.
@@ -82,6 +99,10 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     const firstTitle = table.locator('td[data-card="title"]').first(); // first-ok: the assertion is that whatever is first CHANGES when the sort flips — an ordering, not a fixture identity
     const ascending = (await firstTitle.innerText()).trim();
 
+    // The select moved into the filter block's phone disclosure (#2316): "narrow
+    // this list" and "reorder this list" are one job on a phone, so they are one
+    // strip of chrome instead of two stacked above the first reading.
+    await hydratedClick(page, page.getByTestId("medical-filters-toggle"));
     const select = page.getByTestId("table-sort-select");
     await settledSelect(page, select, "name:desc", {
       destination: /sort=name&dir=desc/,
