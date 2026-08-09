@@ -14,8 +14,9 @@
 //
 // #698 §3 / #482 identity — the LATERALITY decision (documented deliberately): IOP is
 // per-eye (OD/OS) and the two eyes are stored as SEPARATE canonical analytes
-// ("Intraocular Pressure, Right Eye" / "…, Left Eye" / a generic "Intraocular
-// Pressure") so their CHART SERIES stay separate and the cross-source dedup never
+// ("Intraocular Pressure, Right Eye" / "…, Left Eye" / "…, Unspecified Eye" for a
+// report that states no laterality) so their CHART SERIES stay separate and the
+// cross-source dedup never
 // merges two equal same-day pressures — they are the same assay but DIFFERENT
 // subjects. The data model carries no structured OD/OS column; laterality lives in the
 // canonical name. So the "one question" collapse is scoped HERE, in the adapter, not in
@@ -42,7 +43,7 @@ export type IopFollowUpRecord = LabFollowUpRecord;
 // query layer needs (#394 — SQL can't call the JS matcher), and the anchor for the JS
 // matcher below.
 export const IOP_CANONICAL_NAMES = [
-  "Intraocular Pressure",
+  "Intraocular Pressure, Unspecified Eye",
   "Intraocular Pressure, Right Eye",
   "Intraocular Pressure, Left Eye",
 ] as const;

@@ -130,9 +130,15 @@ const TSH = {
   canonical: "Thyroid-Stimulating Hormone (TSH)",
   label: "TSH (thyroid)",
 };
-const FREE_T4 = { canonical: "Free T4", label: "Free T4" };
+const FREE_T4 = {
+  canonical: "Thyroxine, Free (Free T4)",
+  label: "Free T4",
+};
 const CREATININE = { canonical: "Creatinine", label: "creatinine" };
-const EGFR = { canonical: "eGFR", label: "eGFR (kidney function)" };
+const EGFR = {
+  canonical: "Estimated Glomerular Filtration Rate (eGFR)",
+  label: "eGFR (kidney function)",
+};
 const CALCIUM = { canonical: "Calcium", label: "calcium" };
 const POTASSIUM = { canonical: "Potassium", label: "potassium" };
 const SODIUM = { canonical: "Sodium", label: "sodium" };

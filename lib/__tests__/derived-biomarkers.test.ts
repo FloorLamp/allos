@@ -22,6 +22,12 @@ import {
 import { panelForCanonicalName } from "../biomarker-panels";
 import canonicalSeed from "../canonical-biomarkers.json";
 
+// The two derived indices whose canonical names are long "Full Name (ABBR)" forms
+// since #2335 — aliased here so the assertions below stay readable.
+const HOMA_IR =
+  "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)";
+const EGFR = "Estimated Glomerular Filtration Rate (eGFR)";
+
 // A demographics resolver with a fixed age + sex (eGFR needs both).
 function demo(
   sex: DerivedDemographics["sex"],
@@ -298,9 +304,9 @@ describe("computeDerivedReadings — HOMA-IR", () => {
       noDemo
     );
     // (96 × 9.5) / 405 = 2.2519
-    expect(find(r, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(2.25, 2);
+    expect(find(r, HOMA_IR, "2024-01-01")?.value).toBeCloseTo(2.25, 2);
     // The reading names the entry the value came from.
-    expect(find(r, "HOMA-IR", "2024-01-01")?.inputs.map((i) => i.name)).toEqual(
+    expect(find(r, HOMA_IR, "2024-01-01")?.inputs.map((i) => i.name)).toEqual(
       ["Glucose, Fasting", "Insulin"]
     );
   });
@@ -315,7 +321,7 @@ describe("computeDerivedReadings — HOMA-IR", () => {
       }),
       noDemo
     );
-    expect(find(r, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(2.25, 1);
+    expect(find(r, HOMA_IR, "2024-01-01")?.value).toBeCloseTo(2.25, 1);
   });
 
   it("produces NOTHING from an unqualified glucose, even with insulin on the draw", () => {
@@ -329,8 +335,8 @@ describe("computeDerivedReadings — HOMA-IR", () => {
       }),
       noDemo
     );
-    expect(find(r, "HOMA-IR", "2024-01-01")).toBeUndefined();
-    expect(r.some((x) => x.name === "HOMA-IR")).toBe(false);
+    expect(find(r, HOMA_IR, "2024-01-01")).toBeUndefined();
+    expect(r.some((x) => x.name === HOMA_IR)).toBe(false);
   });
 
   it("ignores an unqualified glucose sitting beside the fasting one", () => {
@@ -344,7 +350,7 @@ describe("computeDerivedReadings — HOMA-IR", () => {
       }),
       noDemo
     );
-    expect(find(r, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(2.25, 2);
+    expect(find(r, HOMA_IR, "2024-01-01")?.value).toBeCloseTo(2.25, 2);
   });
 });
 
@@ -363,7 +369,7 @@ describe("computeDerivedReadings — eGFR (CKD-EPI 2021)", () => {
       }),
       demo("male", 40)
     );
-    expect(find(r, "eGFR", "2024-01-01")?.value).toBe(111);
+    expect(find(r, EGFR, "2024-01-01")?.value).toBe(111);
   });
 
   it("converts umol/L creatinine before applying the equation", () => {
@@ -376,7 +382,7 @@ describe("computeDerivedReadings — eGFR (CKD-EPI 2021)", () => {
       }),
       demo("male", 40)
     );
-    expect(find(r, "eGFR", "2024-01-01")?.value).toBe(111);
+    expect(find(r, EGFR, "2024-01-01")?.value).toBe(111);
   });
 
   it("declines eGFR when sex is unknown (never guesses)", () => {
@@ -386,7 +392,7 @@ describe("computeDerivedReadings — eGFR (CKD-EPI 2021)", () => {
       }),
       demo(null, 40)
     );
-    expect(find(r, "eGFR", "2024-01-01")).toBeUndefined();
+    expect(find(r, EGFR, "2024-01-01")).toBeUndefined();
   });
 
   it("declines eGFR when age is unknown (never guesses)", () => {
@@ -396,7 +402,7 @@ describe("computeDerivedReadings — eGFR (CKD-EPI 2021)", () => {
       }),
       demo("male", null)
     );
-    expect(find(r, "eGFR", "2024-01-01")).toBeUndefined();
+    expect(find(r, EGFR, "2024-01-01")).toBeUndefined();
   });
 
   it("declines eGFR below the adult floor — CKD-EPI is adult-only (#490)", () => {
@@ -409,7 +415,7 @@ describe("computeDerivedReadings — eGFR (CKD-EPI 2021)", () => {
       }),
       demo("male", 10)
     );
-    expect(find(child, "eGFR", "2024-01-01")).toBeUndefined();
+    expect(find(child, EGFR, "2024-01-01")).toBeUndefined();
     // Still produced for an adult at exactly the floor.
     const adult = computeDerivedReadings(
       seriesOf({
@@ -417,7 +423,7 @@ describe("computeDerivedReadings — eGFR (CKD-EPI 2021)", () => {
       }),
       demo("male", 18)
     );
-    expect(find(adult, "eGFR", "2024-01-01")?.value).toBeGreaterThan(0);
+    expect(find(adult, EGFR, "2024-01-01")?.value).toBeGreaterThan(0);
   });
 });
 
@@ -492,7 +498,7 @@ describe("computeDerivedReadings — PhenoAge", () => {
       "High-Sensitivity C-Reactive Protein (hs-CRP)": [
         { date, value: 0.5, unit: "mg/L" },
       ],
-      Lymphocytes: [{ date, value: 35, unit: "%" }],
+      "Lymphocytes, Relative": [{ date, value: 35, unit: "%" }],
       "Mean Corpuscular Volume (MCV)": [{ date, value: 90, unit: "fL" }],
       "Red Cell Distribution Width (RDW)": [{ date, value: 13, unit: "%" }],
       "Alkaline Phosphatase": [{ date, value: 65, unit: "U/L" }],
@@ -637,7 +643,7 @@ describe("computeDerivedReadings — PhenoAge", () => {
         demo("male", 45)
       );
       // (90 × 6) / 405 = 1.3333
-      expect(find(fasting, "HOMA-IR", "2024-01-01")?.value).toBeCloseTo(
+      expect(find(fasting, HOMA_IR, "2024-01-01")?.value).toBeCloseTo(
         1.33,
         2
       );
@@ -649,7 +655,7 @@ describe("computeDerivedReadings — PhenoAge", () => {
         }),
         demo("male", 45)
       );
-      expect(find(unqualified, "HOMA-IR", "2024-01-01")).toBeUndefined();
+      expect(find(unqualified, HOMA_IR, "2024-01-01")).toBeUndefined();
     });
   });
 
@@ -1092,7 +1098,7 @@ describe("derivedInputCanonicalNames", () => {
         "Creatinine",
         "Albumin",
         "High-Sensitivity C-Reactive Protein (hs-CRP)",
-        "Lymphocytes",
+        "Lymphocytes, Relative",
         "Mean Corpuscular Volume (MCV)",
         "Red Cell Distribution Width (RDW)",
         "Alkaline Phosphatase",
@@ -1135,9 +1141,9 @@ describe("derivedInputCanonicalNames", () => {
     // the Upcoming coverage gap — so the requirement is pinned here, not only in the
     // arithmetic. The unqualified entry is absent on purpose: it is the one for a draw
     // whose fasting state is unknown (#2337), and this index asserts that frame.
-    const names = derivedInputCanonicalNamesFor("HOMA-IR");
+    const names = derivedInputCanonicalNamesFor(HOMA_IR);
     expect(names).toEqual(["Glucose, Fasting", "Insulin"]);
-    expect(derivedInputKeysFor("HOMA-IR")).toEqual([
+    expect(derivedInputKeysFor(HOMA_IR)).toEqual([
       "Glucose, Fasting",
       "Insulin",
     ]);

@@ -39,6 +39,29 @@ export function normalizeCanonicalKey(name: string): string {
   return tokens.join(" ");
 }
 
+// WHAT A CANONICAL NAME MUST CARRY (#2335)
+//
+// The rule the dataset is held to, written down here because this is where the
+// naming discipline already lives — and enforced, so it can't regrow: the scan in
+// lib/__tests__/canonical-naming-rule.test.ts fails a bare name that has a qualified
+// sibling in canonical-biomarkers.json.
+//
+//   • A bare name is permitted ONLY where a single universal convention fixes its
+//     meaning. In practice that is the SERUM specimen: "Albumin", "Creatinine",
+//     "Magnesium" and "Folate" beside their ", Urine" / ", RBC" siblings are
+//     unambiguous to every clinician and stay bare.
+//   • Where two members of ONE family differ by measure (relative/absolute),
+//     specimen (blood/urine), fraction (free/total), or side (left/right), EVERY
+//     member states its qualifier — INCLUDING the one that feels like the default.
+//
+// The second half is what the CBC differential taught. It held both conventions at
+// once: bare "Neutrophils" was the percentage while bare "Monocytes" was the cell
+// count, so within one panel a bare name meant opposite things. Picking a convention
+// and fixing the outliers would not have held — a bare name keeps attracting
+// mis-mapped imports whatever we declare it to mean. Explicit names plus the
+// unit-aware arbitration in lib/canonical-unit-guard (which resolved exactly this
+// %-versus-count collision on a real import) is the combination that does.
+
 // Curated alias -> canonical-name routes for synonym/abbreviation drift.
 // normalizeCanonicalKey folds case, punctuation and word order (plus the
 // vitamin-D synonyms), but NOT abbreviation<->spelled-out or clinical synonyms —
@@ -51,8 +74,10 @@ export function normalizeCanonicalKey(name: string): string {
 // vocabulary). Discipline: alias ONLY spellings of the SAME analyte — never merge
 // genuinely distinct assays (plain CRP vs hs-CRP, Free vs Total hormone fractions,
 // a serum vs a urine/RBC specimen, a total vs an active metabolite). A dataset
-// entry written "Full Name (ABBREV)" needs BOTH the bare abbreviation AND the bare
-// full name aliased, since its combined-token key matches neither alone.
+// entry written "Full Name (ABBREV)" needs NEITHER its bare abbreviation nor its
+// bare full name listed — buildCanonicalIndex derives both (see FULL_ABBR_RE and the
+// NB at the end of this table). Only WORD synonyms, and parentheticals the
+// abbreviation heuristic rejects, need a curated route.
 const CANONICAL_ALIASES: [string, string][] = [
   // Glycated hemoglobin
   ["HbA1c", "Hemoglobin A1c"],
@@ -75,9 +100,12 @@ const CANONICAL_ALIASES: [string, string][] = [
   // Renal
   ["Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
   ["Blood Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
-  ["Estimated GFR", "eGFR"],
-  ["GFR, Estimated", "eGFR"],
-  ["Glomerular Filtration Rate, Estimated", "eGFR"],
+  // The bare "eGFR" abbreviation AND the bare "Estimated Glomerular Filtration Rate"
+  // long form are auto-derived from the "Full Name (ABBR)" entry (#2335), so neither
+  // is listed — nor is "Glomerular Filtration Rate, Estimated", whose token set is
+  // that long form's. Only the GFR-abbreviating spellings need a curated route.
+  ["Estimated GFR", "Estimated Glomerular Filtration Rate (eGFR)"],
+  ["GFR, Estimated", "Estimated Glomerular Filtration Rate (eGFR)"],
   // Thyroid
   ["Thyroid Stimulating Hormone", "Thyroid-Stimulating Hormone (TSH)"],
   // The model sometimes mirrors the "Full Name (ABBREV)" print form even though the
@@ -143,24 +171,21 @@ const CANONICAL_ALIASES: [string, string][] = [
   // Iron
   ["Total Iron Binding Capacity", "Total Iron-Binding Capacity (TIBC)"],
   // CBC differential — ABSOLUTE counts (cells/uL). The model prefixes "Absolute"
-  // where the vocabulary either suffixes ", Absolute" (neutrophils) or uses the bare
-  // name (the others — whose "%" form is the ", Relative" entry). Routing the wrong
-  // way would drop a cells/uL value onto a "%" series (#549/#482), so each targets
-  // the cells/uL entry, checked against its unit (#918). Strongest signal was
-  // "Absolute Neutrophil Count", which missed in three separate extractions.
+  // where the vocabulary suffixes ", Absolute". Routing the wrong way would drop a
+  // cells/uL value onto a "%" series (#549/#482), so each targets the cells/uL entry,
+  // checked against its unit (#918). Strongest signal was "Absolute Neutrophil
+  // Count", which missed in three separate extractions. The bare-plural spellings
+  // ("Absolute Monocytes") are NOT listed: their token set IS the ", Absolute"
+  // entry's, so the entry claims that key itself and a curated row would be inert
+  // (#2335 — the entries the differential rename gave an explicit ", Absolute").
   ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
-  ["Absolute Neutrophils", "Neutrophils, Absolute"],
   // Lymphocytes were the ONE cell line the curated "Absolute X Count" set skipped
   // (#1195) — the ", Absolute" entry exists but the prefixed print form orphaned.
   // Route it to the cells/uL entry like its neutrophil sibling above.
   ["Absolute Lymphocyte Count", "Lymphocytes, Absolute"],
-  ["Absolute Lymphocytes", "Lymphocytes, Absolute"],
-  ["Absolute Monocyte Count", "Monocytes"],
-  ["Absolute Monocytes", "Monocytes"],
-  ["Absolute Eosinophil Count", "Eosinophils"],
-  ["Absolute Eosinophils", "Eosinophils"],
-  ["Absolute Basophil Count", "Basophils"],
-  ["Absolute Basophils", "Basophils"],
+  ["Absolute Monocyte Count", "Monocytes, Absolute"],
+  ["Absolute Eosinophil Count", "Eosinophils, Absolute"],
+  ["Absolute Basophil Count", "Basophils, Absolute"],
   // Vitamins / cofactors
   ["B12", "Vitamin B12"],
   ["Vitamin B-12", "Vitamin B12"],
@@ -269,11 +294,10 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Epithelial Cells, Urine", "Squamous Epithelial Cells, Urine"],
   ["Urine Clarity", "Urine Appearance"],
   // Drift a FRESH re-extraction surfaced (#918): the model, given the same
-  // vocabulary, still coined off-list names. The neutrophil %-form is bare
-  // "Neutrophils" (no "Relative" suffix, unlike mono/eos/baso); the CBC counts often
-  // print as bare abbreviations; specific gravity is always a urine test.
-  ["Neutrophils, Relative", "Neutrophils"],
-  ["Neutrophils Relative", "Neutrophils"],
+  // vocabulary, still coined off-list names. The CBC counts often print as bare
+  // abbreviations; specific gravity is always a urine test. (The two neutrophil
+  // "Relative" routes that lived here are gone: since #2335 the %-form entry IS
+  // "Neutrophils, Relative", so both rows became identity routes onto it.)
   ["WBC", "White Blood Cell Count"],
   ["RBC", "Red Blood Cell Count"],
   ["Specific Gravity", "Urine Specific Gravity"],
@@ -313,12 +337,54 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["PEFR", "Peak Expiratory Flow"],
   ["Peak Flow", "Peak Expiratory Flow"],
   ["Peak Expiratory Flow Rate", "Peak Expiratory Flow"],
-  ["FEV-1", "FEV1"],
-  ["FEV 1", "FEV1"],
-  ["Forced Expiratory Volume in 1 Second", "FEV1"],
-  ["Forced Vital Capacity", "FVC"],
+  // "FEV1" and "FVC" — and their long forms — are auto-derived from the two
+  // "Full Name (ABBR)" entries (#2335), so the four rows that used to spell them out
+  // here are gone. These two survive because the token set of a SPACED or HYPHENATED
+  // "FEV 1" ({1, fev}) is not the token set of "FEV1" ({fev1}).
+  ["FEV-1", "Forced Expiratory Volume in 1 Second (FEV1)"],
+  ["FEV 1", "Forced Expiratory Volume in 1 Second (FEV1)"],
   ["FEV1/FVC", "FEV1/FVC Ratio"],
+  // The spellings #2335 RETIRED. Each was a canonical entry until the rename that
+  // made every member of its family state its qualifier; a document that still
+  // reports the old form has to land on the surviving entry, so each old spelling
+  // routes here. The differential's bare names are the reason the rule exists — and
+  // routing them is safe precisely because the unit is the arbiter after the snap: a
+  // bare "Monocytes" printed in "%" snaps to the ", Absolute" entry and
+  // unitAwareCanonical then re-resolves it to ", Relative" (its %-sibling), and the
+  // same in reverse for the neutrophil/lymphocyte pair.
+  ["Neutrophils", "Neutrophils, Relative"],
+  ["Lymphocytes", "Lymphocytes, Relative"],
+  ["Monocytes", "Monocytes, Absolute"],
+  ["Eosinophils", "Eosinophils, Absolute"],
+  ["Basophils", "Basophils, Absolute"],
+  ["Immature Granulocytes", "Immature Granulocytes, Relative"],
+  ["Nucleated Red Blood Cells", "Nucleated Red Blood Cells, Relative"],
+  ["Reticulocytes", "Reticulocytes, Relative"],
+  // The eye pair. A report that states no laterality is not a third measurement, so
+  // the surviving entry SAYS the eye is unstated rather than reading like "the" IOP —
+  // which is also exactly what LOINC 56844-4 ("of Eye (unspecified)") names.
+  ["Intraocular Pressure", "Intraocular Pressure, Unspecified Eye"],
+  ["Visual Acuity", "Visual Acuity, Unspecified Eye"],
+  // The thyroid fractions. Their parentheticals contain a SPACE, so
+  // looksLikeAbbreviation rejects them and the bare print form is NOT auto-derived —
+  // these four routes are load-bearing, unlike the FEV1/FVC/eGFR ones the same
+  // rename deleted. One route covers both word orders ("Free T4" and "T4, Free"
+  // share a token set).
+  ["Free T4", "Thyroxine, Free (Free T4)"],
+  ["Free T3", "Triiodothyronine, Free (Free T3)"],
+  ["Total T4", "Thyroxine, Total (Total T4)"],
+  ["Total T3", "Triiodothyronine, Total (Total T3)"],
+  // The ANA screen, for the same reason (its "(ANA IFA)" parenthetical is spaced).
+  [
+    "ANA Screen, IFA",
+    "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
+  ],
   // NOT aliased, on purpose:
+  //  • bare "ANA" — the screen is run by INDIRECT IMMUNOFLUORESCENCE here, and EIA /
+  //    multiplex ANA screens are a different method with different operating
+  //    characteristics. Routing an unqualified "ANA" onto the IFA entry would merge
+  //    two assays, which the discipline above forbids; an EIA screen should coin its
+  //    own entry rather than inherit IFA's identity.
   //  • bare "pH" — specimen-ambiguous (an arterial-blood-gas pH is not urine pH); the
   //    §2 trap. Needs a specimen qualifier to resolve.
   //  • ALL THREE race/ethnicity-branched eGFR variants — "eGFR, African American",
@@ -326,12 +392,12 @@ const CANONICAL_ALIASES: [string, string][] = [
   //    DIFFERENT number, so a report listing several would collapse distinct values
   //    onto one date. The NON-African-American branch belongs here with the other two
   //    and is the easy one to get wrong: it is the other side of a RACE-ADJUSTED
-  //    equation, not a race-free result, so routing it to the bare "eGFR" entry would
-  //    quietly file a race-adjusted number as the race-free one. Leaving all three
+  //    equation, not a race-free result, so routing it to the race-free eGFR entry
+  //    would quietly file a race-adjusted number as the race-free one. Leaving all three
   //    unresolved is also what lets the race-free CKD-EPI 2021 derivation
   //    (lib/derived-biomarkers.ts) fill that draw's eGFR instead, which it does.
-  //  • "Atypical Lymphocytes" / "Band Neutrophils" — NOT aliased onto "Lymphocytes" /
-  //    "Neutrophils" (#2300). A differential reports them ALONGSIDE the parent
+  //  • "Atypical Lymphocytes" / "Band Neutrophils" — NOT aliased onto
+  //    "Lymphocytes, Relative" / "Neutrophils, Relative" (#2300). A differential reports them ALONGSIDE the parent
   //    fraction, so an alias would land two distinct same-date percentages on one
   //    series and silently drop one. Each has its OWN canonical entry instead.
 

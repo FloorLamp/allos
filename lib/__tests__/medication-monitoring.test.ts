@@ -56,7 +56,7 @@ describe("buildMedMonitoring — matching", () => {
       [fam("Lithium"), recent],
       [fam("Thyroid-Stimulating Hormone (TSH)"), recent],
       [fam("Creatinine"), recent],
-      [fam("eGFR"), recent],
+      [fam("Estimated Glomerular Filtration Rate (eGFR)"), recent],
       [fam("Calcium"), recent],
     ]);
     expect(buildMedMonitoring([lithium()], labDates, TODAY)).toEqual([]);
@@ -70,7 +70,7 @@ describe("buildMedMonitoring — matching", () => {
       [fam("Lithium"), stale],
       [fam("Thyroid-Stimulating Hormone (TSH)"), fresh],
       [fam("Creatinine"), fresh],
-      [fam("eGFR"), fresh],
+      [fam("Estimated Glomerular Filtration Rate (eGFR)"), fresh],
       [fam("Calcium"), fresh],
     ]);
     const hits = buildMedMonitoring([lithium()], labDates, TODAY);

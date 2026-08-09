@@ -326,7 +326,7 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
   // low/zero reading is never flagged). Whole-year bands are coarse for a birth
   // phenomenon that clears in days — interpret a neonate against age in days.
   // (Nathan & Oski's Hematology and Oncology of Infancy and Childhood.)
-  "Nucleated Red Blood Cells": [
+  "Nucleated Red Blood Cells, Relative": [
     {
       min_age: 0,
       max_age: 1,
@@ -347,7 +347,7 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
   // Immature granulocytes carry a modest physiologic left shift in early infancy
   // (higher than the near-zero adult reference), so a single infancy band lifts
   // only the upper bound. (Sysmex IG parameter pediatric intervals; Nathan & Oski.)
-  "Immature Granulocytes": [
+  "Immature Granulocytes, Relative": [
     { min_age: 0, max_age: 1, ref_low: null, ref_high: 2 },
   ],
   "Immature Granulocytes, Absolute": [
@@ -358,11 +358,12 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
 // Curated lab entries that don't require the model — well-established, standard
 // reference ranges added to the committed dataset API-free (mirrors AGE_BANDS).
 // Two groups:
-//  1. CBC differential complements: the existing "Neutrophils"/
-//     "Lymphocytes" entries hold the % form and "Monocytes"/"Eosinophils"/
-//     "Basophils" the absolute (cells/uL) form, so the complementary form of each
-//     needs its own entry (a % and an absolute count are not interconvertible
-//     without the WBC).
+//  1. CBC differential complements: the neutrophil/lymphocyte entries held the %
+//     form and the monocyte/eosinophil/basophil entries the absolute (cells/uL) one,
+//     so the complementary form of each needed its own entry (a % and an absolute
+//     count are not interconvertible without the WBC). Since #2335 every member of
+//     the differential SAYS which it is, so both halves read "…, Relative" and
+//     "…, Absolute" and neither is the unstated default.
 //  2. Common clinical-lab analytes genuinely missing from the AI-generated
 //     vocabulary but routinely mapped from a CCD/SHC (Total T4/T3, ESR, Direct
 //     Bilirubin, LDH, CK, Anion Gap, Reticulocytes % and absolute).
@@ -453,7 +454,7 @@ export const CURATED_LABS: Biomarker[] = [
   // NB: named "…, Relative" (the standard clinical term for a %-differential),
   // NOT "…, %". normalizeCanonicalKey (lib/canonical-name) strips "%" as
   // punctuation, so "Monocytes, %" collapses to the token set {monocytes} and
-  // collides with the pre-existing absolute "Monocytes" (cells/uL) entry — making
+  // collides with the absolute "Monocytes, Absolute" (cells/uL) entry — making
   // the percent entry UNREACHABLE via snapCanonicalName (the import routing). The
   // "relative" token keeps the key distinct: {monocytes, relative} ≠ {monocytes}.
   {
@@ -506,7 +507,7 @@ export const CURATED_LABS: Biomarker[] = [
   // Sources: Nathan & Oski's Hematology and Oncology of Infancy and Childhood
   // (neonatal NRBC clearance); Sysmex IG parameter reference intervals; Mayo/ARUP.
   {
-    name: "Nucleated Red Blood Cells",
+    name: "Nucleated Red Blood Cells, Relative",
     category: "lab",
     unit: "%",
     ref_low: null,
@@ -528,7 +529,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Absolute nucleated-red-cell count (×10^3/uL). Normally ≈0 in children/adults; elevated at birth and clears within the first week (see infancy age band). Companion to the NRBC percentage.",
   },
   {
-    name: "Immature Granulocytes",
+    name: "Immature Granulocytes, Relative",
     category: "lab",
     unit: "%",
     ref_low: null,
@@ -591,7 +592,7 @@ export const CURATED_LABS: Biomarker[] = [
   },
   // ── Missing common clinical-lab analytes ──────────────────────────────────
   {
-    name: "Total T4",
+    name: "Thyroxine, Total (Total T4)",
     category: "lab",
     unit: "ug/dL",
     ref_low: 4.5,
@@ -602,7 +603,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Total thyroxine. Elevated by high thyroxine-binding globulin (pregnancy, estrogen); Free T4 is more specific.",
   },
   {
-    name: "Total T3",
+    name: "Triiodothyronine, Total (Total T3)",
     category: "lab",
     unit: "ng/dL",
     ref_low: 80,
@@ -676,7 +677,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Varies widely by analyzer (direct-ISE methods run lower) and whether K+ is included in the calculation; range is intentionally broad.",
   },
   {
-    name: "Reticulocytes",
+    name: "Reticulocytes, Relative",
     category: "lab",
     unit: "%",
     ref_low: 0.5,
@@ -1402,7 +1403,7 @@ export const CURATED_LABS: Biomarker[] = [
   // Foundation, "What Is Considered Normal Eye Pressure Range?"
   // (https://glaucoma.org/articles/what-is-considered-normal-eye-pressure).
   {
-    name: "Intraocular Pressure",
+    name: "Intraocular Pressure, Unspecified Eye",
     category: "vitals",
     unit: "mmHg",
     ref_low: 10,
@@ -1440,7 +1441,7 @@ export const CURATED_LABS: Biomarker[] = [
   // renders as a dated timeline instead of a misleading flat chart. Per-eye + a
   // generic entry. INFORMATIONAL, NOT MEDICAL ADVICE.
   {
-    name: "Visual Acuity",
+    name: "Visual Acuity, Unspecified Eye",
     category: "vitals",
     unit: null,
     ref_low: null,
@@ -1858,7 +1859,7 @@ export const CURATED_LABS: Biomarker[] = [
   // `lab` (not `reference`) because — unlike an immutable blood group — an infection
   // result is a real clinical finding that can recur and is worth surfacing.
   {
-    name: "RPR",
+    name: "Rapid Plasma Reagin (RPR)",
     category: "lab",
     unit: null,
     ref_low: null,
@@ -2214,7 +2215,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Peak expiratory flow (PEF) — the fastest speed you can blow out, in litres per minute, from a peak-flow meter. Deliberately carries NO population band: an action plan reads a blow as a percentage of your OWN personal best (green ≥80%, yellow 50–80%, red <50%), so the zone is computed against your recorded best and there is no verdict without one. National Heart, Lung, and Blood Institute / GINA asthma action-plan zones.",
   },
   {
-    name: "FEV1",
+    name: "Forced Expiratory Volume in 1 Second (FEV1)",
     category: "vitals",
     unit: "L",
     ref_low: null,
@@ -2225,7 +2226,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Forced expiratory volume in one second, in litres — the air you can force out in the first second of a full blow, measured by spirometry. No fixed band: normal is a percent of the value predicted for your height, age and sex, so it is trended as an absolute series and read beside the FEV1/FVC ratio. American Thoracic Society / European Respiratory Society.",
   },
   {
-    name: "FVC",
+    name: "Forced Vital Capacity (FVC)",
     category: "vitals",
     unit: "L",
     ref_low: null,
@@ -2511,7 +2512,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Total omega-6 fatty acids as a percentage of total fatty acids by weight. It counts species the panel does not itemize (DGLA and minor omega-6s), so it is NOT the sum of the printed arachidonic and linoleic acid lines.",
   },
   {
-    name: "ANA Screen, IFA",
+    name: "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
     category: "lab",
     unit: null,
     ref_low: null,

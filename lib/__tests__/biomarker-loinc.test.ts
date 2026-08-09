@@ -82,7 +82,9 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
 
   it("routes every eGFR LOINC variant to the single canonical eGFR entry", () => {
     for (const code of ["33914-3", "98979-8", "48642-3", "48643-1", "62238-1"])
-      expect(canonicalBiomarkerForLoinc(code)).toBe("eGFR");
+      expect(canonicalBiomarkerForLoinc(code)).toBe(
+        "Estimated Glomerular Filtration Rate (eGFR)"
+      );
   });
 
   it("returns null for an unmapped code", () => {
@@ -194,11 +196,11 @@ describe("CBC differential — the two report forms map to unit-matched entries"
   // never both onto one identity.
   const pairs: [string, string, string, string][] = [
     // absLoinc, absName(cells/uL), pctLoinc, pctName(%)
-    ["751-8", "Neutrophils, Absolute", "770-8", "Neutrophils"],
-    ["731-0", "Lymphocytes, Absolute", "736-9", "Lymphocytes"],
-    ["742-7", "Monocytes", "5905-5", "Monocytes, Relative"],
-    ["711-2", "Eosinophils", "713-8", "Eosinophils, Relative"],
-    ["704-7", "Basophils", "706-2", "Basophils, Relative"],
+    ["751-8", "Neutrophils, Absolute", "770-8", "Neutrophils, Relative"],
+    ["731-0", "Lymphocytes, Absolute", "736-9", "Lymphocytes, Relative"],
+    ["742-7", "Monocytes, Absolute", "5905-5", "Monocytes, Relative"],
+    ["711-2", "Eosinophils, Absolute", "713-8", "Eosinophils, Relative"],
+    ["704-7", "Basophils, Absolute", "706-2", "Basophils, Relative"],
   ];
   it.each(pairs)(
     "%s(abs)→%s / %s(%%)→%s with matching units",
@@ -267,7 +269,7 @@ describe("hematology extras — NRBC / immature granulocytes / Hgb fractions (#7
       "Nucleated Red Blood Cells, Absolute"
     );
     expect(canonicalBiomarkerForLoinc("58413-6")).toBe(
-      "Nucleated Red Blood Cells"
+      "Nucleated Red Blood Cells, Relative"
     );
     // Immature granulocytes — both alternate LOINCs of each form to the one entry
     for (const code of ["34165-1", "51584-1"])
@@ -275,12 +277,14 @@ describe("hematology extras — NRBC / immature granulocytes / Hgb fractions (#7
         "Immature Granulocytes, Absolute"
       );
     for (const code of ["71695-1", "38518-7"])
-      expect(canonicalBiomarkerForLoinc(code)).toBe("Immature Granulocytes");
+      expect(canonicalBiomarkerForLoinc(code)).toBe(
+        "Immature Granulocytes, Relative"
+      );
     // Distinct identities, unit-matched (count ×10^3/uL vs fraction %).
     expect(cb("Nucleated Red Blood Cells, Absolute").unit).toBe("10^3/uL");
-    expect(cb("Nucleated Red Blood Cells").unit).toBe("%");
+    expect(cb("Nucleated Red Blood Cells, Relative").unit).toBe("%");
     expect(cb("Immature Granulocytes, Absolute").unit).toBe("10^3/uL");
-    expect(cb("Immature Granulocytes").unit).toBe("%");
+    expect(cb("Immature Granulocytes, Relative").unit).toBe("%");
   });
 
   it("maps each hemoglobin-electrophoresis fraction to its own % entry", () => {
@@ -312,7 +316,7 @@ describe("hematology extras — NRBC / immature granulocytes / Hgb fractions (#7
     // A count reported in cells/uL (exponent 0) still converts to the 10^3/uL entry.
     expect(convertToCanonical(500, "cells/uL", nrbcAbs)).toBeCloseTo(0.5);
 
-    const nrbcPct = cb("Nucleated Red Blood Cells");
+    const nrbcPct = cb("Nucleated Red Blood Cells, Relative");
     expect(reconciledFlag(null, 4, "%", nrbcPct, null, 40)).toBe("high");
     expect(reconciledFlag(null, 4, "%", nrbcPct, null, 0)).toBeUndefined(); // band 0–1: ≤10
 
@@ -321,7 +325,7 @@ describe("hematology extras — NRBC / immature granulocytes / Hgb fractions (#7
       reconciledFlag(null, 0.02, "10^3/uL", igAbs, null, 40)
     ).toBeUndefined();
     expect(reconciledFlag(null, 0.2, "10^3/uL", igAbs, null, 40)).toBe("high");
-    const igPct = cb("Immature Granulocytes");
+    const igPct = cb("Immature Granulocytes, Relative");
     expect(reconciledFlag(null, 0.3, "%", igPct, null, 40)).toBeUndefined();
     expect(reconciledFlag(null, 1.5, "%", igPct, null, 40)).toBe("high");
     // No false "low" anywhere (lower_better, open low bound): a zero is never low.
@@ -355,14 +359,21 @@ describe("hematology extras — NRBC / immature granulocytes / Hgb fractions (#7
     expect(
       snapCanonicalName("Nucleated Red Blood Cells, Absolute", index)
     ).toBe("Nucleated Red Blood Cells, Absolute");
+    expect(snapCanonicalName("Nucleated Red Blood Cells, Relative", index)).toBe(
+      "Nucleated Red Blood Cells, Relative"
+    );
+    // The retired bare spelling routes onto it (#2335).
     expect(snapCanonicalName("Nucleated Red Blood Cells", index)).toBe(
-      "Nucleated Red Blood Cells"
+      "Nucleated Red Blood Cells, Relative"
     );
     expect(snapCanonicalName("Immature Granulocytes, Absolute", index)).toBe(
       "Immature Granulocytes, Absolute"
     );
+    expect(snapCanonicalName("Immature Granulocytes, Relative", index)).toBe(
+      "Immature Granulocytes, Relative"
+    );
     expect(snapCanonicalName("Immature Granulocytes", index)).toBe(
-      "Immature Granulocytes"
+      "Immature Granulocytes, Relative"
     );
     for (const n of ["Hemoglobin A", "Hemoglobin A2", "Hemoglobin F"])
       expect(snapCanonicalName(n, index)).toBe(n);
@@ -388,7 +399,9 @@ describe("full clinical-lab panel mappings", () => {
     expect(canonicalBiomarkerForLoinc("3016-3")).toBe(
       "Thyroid-Stimulating Hormone (TSH)"
     );
-    expect(canonicalBiomarkerForLoinc("3024-7")).toBe("Free T4");
+    expect(canonicalBiomarkerForLoinc("3024-7")).toBe(
+      "Thyroxine, Free (Free T4)"
+    );
     expect(canonicalBiomarkerForLoinc("2276-4")).toBe("Ferritin");
     expect(canonicalBiomarkerForLoinc("2502-3")).toBe("Transferrin Saturation");
     expect(canonicalBiomarkerForLoinc("62292-8")).toBe("Vitamin D, 25-Hydroxy");
@@ -401,8 +414,12 @@ describe("full clinical-lab panel mappings", () => {
   });
 
   it("maps the newly-added canonical entries (Total T4/T3, ESR, LDH, CK, retics)", () => {
-    expect(canonicalBiomarkerForLoinc("3026-2")).toBe("Total T4");
-    expect(canonicalBiomarkerForLoinc("3053-6")).toBe("Total T3");
+    expect(canonicalBiomarkerForLoinc("3026-2")).toBe(
+      "Thyroxine, Total (Total T4)"
+    );
+    expect(canonicalBiomarkerForLoinc("3053-6")).toBe(
+      "Triiodothyronine, Total (Total T3)"
+    );
     expect(canonicalBiomarkerForLoinc("4537-7")).toBe(
       "Erythrocyte Sedimentation Rate (ESR)"
     );
@@ -412,7 +429,9 @@ describe("full clinical-lab panel mappings", () => {
     );
     expect(canonicalBiomarkerForLoinc("2157-6")).toBe("Creatine Kinase (CK)");
     expect(canonicalBiomarkerForLoinc("33037-3")).toBe("Anion Gap");
-    expect(canonicalBiomarkerForLoinc("17849-1")).toBe("Reticulocytes");
+    expect(canonicalBiomarkerForLoinc("17849-1")).toBe(
+      "Reticulocytes, Relative"
+    );
     expect(canonicalBiomarkerForLoinc("60474-4")).toBe(
       "Reticulocytes, Absolute"
     );
@@ -772,9 +791,10 @@ describe("end-to-end import routing through snapCanonicalName", () => {
     expect(route("5905-5", "Monocytes")).toBe("Monocytes, Relative");
     expect(route("713-8", "Eosinophils")).toBe("Eosinophils, Relative");
     expect(route("706-2", "Basophils")).toBe("Basophils, Relative");
-    // And the absolute-count LOINCs still route to the base (cells/uL) entries.
-    expect(route("742-7", "Monocytes")).toBe("Monocytes");
-    expect(route("704-7", "Basophils")).toBe("Basophils");
+    // And the absolute-count LOINCs still route to the cells/uL entries — which
+    // since #2335 spell their measure out too.
+    expect(route("742-7", "Monocytes")).toBe("Monocytes, Absolute");
+    expect(route("704-7", "Basophils")).toBe("Basophils, Absolute");
   });
 
   it("flags a monocytosis via the routed entry (6% in-range, 15% high)", () => {
@@ -818,7 +838,7 @@ describe("classifyLoinc — the single precedence authority", () => {
   it("carries the qualitative class as an orthogonal facet on a mapped lab", () => {
     const rpr = classifyLoinc("20507-0");
     expect(rpr.disposition).toBe("lab");
-    expect(rpr.canonical).toBe("RPR");
+    expect(rpr.canonical).toBe("Rapid Plasma Reagin (RPR)");
     expect(rpr.qualitative).toBe("infection");
   });
 

@@ -137,11 +137,11 @@ export const RETEST_DAYS: Record<string, number> = {
   Glucose: 180,
   "Glucose, Fasting": 180,
   Insulin: 180,
-  "HOMA-IR": 180,
+  "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)": 180,
   "C-Peptide": 180,
   TSH: 180,
-  "Free T4": 180,
-  "Free T3": 180,
+  "Thyroxine, Free (Free T4)": 180,
+  "Triiodothyronine, Free (Free T3)": 180,
   "Vitamin D, 25-Hydroxy": 180,
   // The D2/D3 fractions share the total's redraw clock (biomarkerRetestIdentity), so
   // when a fraction is the newest family member it reads on the same 180d cadence
@@ -161,7 +161,7 @@ export const RETEST_DAYS: Record<string, number> = {
   Homocysteine: 365,
   "Uric Acid": 365,
   Creatinine: 365,
-  eGFR: 365,
+  "Estimated Glomerular Filtration Rate (eGFR)": 365,
   "Vitamin B12": 365,
   "Testosterone, Total": 365,
   "Testosterone, Free": 365,
@@ -203,7 +203,7 @@ export const ENZYME_IU_INTERCHANGEABLE: string[] = [
 //  - PSA ~0.75 ng/mL/yr: a PSA velocity above ~0.75/yr is a long-standing
 //    prostate-cancer-risk threshold, meaningful even with a total PSA under 4.
 export const VELOCITY_PER_YEAR: Record<string, number> = {
-  eGFR: 5,
+  "Estimated Glomerular Filtration Rate (eGFR)": 5,
   PSA: 0.75,
 };
 
@@ -231,7 +231,7 @@ export const RETEST_WORTHY: string[] = [
   "Glucose",
   "Glucose, Fasting",
   "Insulin",
-  "HOMA-IR",
+  "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
   "C-Peptide",
   // Lipids
   "Total Cholesterol",
@@ -246,11 +246,11 @@ export const RETEST_WORTHY: string[] = [
   "Triglyceride/HDL Ratio",
   // Thyroid
   "Thyroid-Stimulating Hormone (TSH)",
-  "Free T4",
-  "Free T3",
+  "Thyroxine, Free (Free T4)",
+  "Triiodothyronine, Free (Free T3)",
   // Renal
   "Creatinine",
-  "eGFR",
+  "Estimated Glomerular Filtration Rate (eGFR)",
   "Blood Urea Nitrogen (BUN)",
   "Cystatin C",
   "Uric Acid",

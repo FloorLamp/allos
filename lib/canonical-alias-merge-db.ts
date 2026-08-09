@@ -89,6 +89,14 @@ function planMerges(db: Database.Database): Plan {
 
 // Move one profile's readings and name-keyed side-state from `from` onto `to`.
 //
+// EXPORTED because a DATASET rename asks the identical question. This pass discovers
+// its renames from the vocabulary (an ai row an alias supersedes); migration 177
+// (#2335) knows its renames up front — 20 curated entries whose names changed so each
+// states what it measures — but the carry is the same one, and duplicating this
+// checklist is how a rename silently orphans a star or a protocol link. The caller
+// supplies the pairs and its own transaction; this owns what a canonical name is
+// keyed by.
+//
 // EVERYTHING KEYED ON THE CANONICAL NAME (the AGENTS.md row-ops checklist — children,
 // nullable links, provenance, tombstones, saved/dismissed side-state, filesystem
 // artifacts — enumerated for this domain rather than assumed):
@@ -119,7 +127,7 @@ function planMerges(db: Database.Database): Plan {
 // than duplicating. `from` and `to` always differ case-insensitively
 // (CanonicalMerge's contract), so a DELETE of the old key can never hit the row the
 // UPDATE just moved.
-function applyRename(
+export function applyCanonicalRename(
   db: Database.Database,
   profileId: number,
   { from, to }: CanonicalMerge
@@ -213,7 +221,7 @@ export function mergeSupersededCanonicalNames(
           report.renames.push({
             profileId,
             merge,
-            records: applyRename(db, profileId, merge),
+            records: applyCanonicalRename(db, profileId, merge),
           });
       for (const merge of plan.vocabulary) {
         drop.run(merge.from);

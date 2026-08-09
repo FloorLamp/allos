@@ -86,7 +86,7 @@
           "label": "creatinine"
         },
         {
-          "canonical": "eGFR",
+          "canonical": "Estimated Glomerular Filtration Rate (eGFR)",
           "label": "eGFR (kidney function)"
         },
         {
@@ -117,7 +117,7 @@
           "label": "TSH (thyroid)"
         },
         {
-          "canonical": "Free T4",
+          "canonical": "Thyroxine, Free (Free T4)",
           "label": "Free T4"
         },
         {
@@ -228,7 +228,7 @@
           "label": "creatinine"
         },
         {
-          "canonical": "eGFR",
+          "canonical": "Estimated Glomerular Filtration Rate (eGFR)",
           "label": "eGFR (kidney function)"
         },
         {
@@ -260,7 +260,7 @@
           "label": "creatinine"
         },
         {
-          "canonical": "eGFR",
+          "canonical": "Estimated Glomerular Filtration Rate (eGFR)",
           "label": "eGFR (kidney function)"
         },
         {

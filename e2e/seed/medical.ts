@@ -977,7 +977,7 @@ export function seedPanelGroups(): void {
     null,
     LAB
   );
-  add(recent, "Free T4", "Free T4", 1.3, "ng/dL", null, LAB);
+  add(recent, "Free T4", "Thyroxine, Free (Free T4)", 1.3, "ng/dL", null, LAB);
 
   // Un-canonicalized — the reserved `other` bucket, never dropped, always last.
   add(
@@ -1088,11 +1088,11 @@ export function seedPanelIndex(): void {
     ["White Blood Cell Count", "10^3/uL", 5.8, null],
     ["Mean Corpuscular Volume (MCV)", "fL", 89, null],
     ["Red Cell Distribution Width (RDW)", "%", 13.1, null],
-    ["Lymphocytes", "%", 30, null],
+    ["Lymphocytes, Relative", "%", 30, null],
     ["Platelet Count", "10^3/uL", 232, null],
     // Thyroid
     ["Thyroid-Stimulating Hormone (TSH)", "uIU/mL", 2.2, null],
-    ["Free T4", "ng/dL", 1.3, null],
+    ["Thyroxine, Free (Free T4)", "ng/dL", 1.3, null],
   ];
 
   const add = db.prepare(

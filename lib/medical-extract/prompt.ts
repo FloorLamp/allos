@@ -179,12 +179,13 @@ Rules:
     There is no separate audiogram object — thresholds are results only.
   - SPIROMETRY / pulmonary function test: when the document is a spirometry or PFT report,
     put each measured value into "results" as its own analyte, category "vitals", using the
-    canonical names "FEV1" (unit "L"), "FVC" (unit "L"), "FEV1/FVC Ratio" (unit "%", so a
-    printed 0.68 becomes 68) and "Peak Expiratory Flow" (unit "L/min"). Emit the MEASURED
-    value, never the predicted one, and prefer the post-bronchodilator column when both are
-    printed. A percent-of-predicted column is NOT the same analyte as the litres value —
-    if you emit it at all, keep it under its own printed name rather than folding it onto
-    "FEV1". There is no separate spirometry object — these are results only.
+    canonical names "Forced Expiratory Volume in 1 Second (FEV1)" (unit "L"), "Forced Vital
+    Capacity (FVC)" (unit "L"), "FEV1/FVC Ratio" (unit "%", so a printed 0.68 becomes 68) and
+    "Peak Expiratory Flow" (unit "L/min"). Emit the MEASURED value, never the predicted one,
+    and prefer the post-bronchodilator column when both are printed. A percent-of-predicted
+    column is NOT the same analyte as the litres value — if you emit it at all, keep it under
+    its own printed name rather than folding it onto FEV1. There is no separate spirometry
+    object — these are results only.
 - confidence: on EVERY row you emit (in results and in every clinical array), state how
   sure you are that the row you just wrote matches the document: "high" when the text is
   clean and unambiguous, "medium" when you had to interpret something (a cramped or

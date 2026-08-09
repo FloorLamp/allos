@@ -379,7 +379,7 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       ["Aspartate Aminotransferase", "Aspartate Aminotransferase (AST)"],
       ["Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
       ["Thyroid Stimulating Hormone", "Thyroid-Stimulating Hormone (TSH)"],
-      ["Estimated GFR", "eGFR"],
+      ["Estimated GFR", "Estimated Glomerular Filtration Rate (eGFR)"],
       ["Apolipoprotein B", "Apolipoprotein B (ApoB)"],
       ["Cobalamin", "Vitamin B12"],
       ["Folic Acid", "Folate"],
@@ -430,20 +430,26 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
   });
 
   it("routes the differential ABSOLUTE-count spellings to cells/uL entries, not the % ones", () => {
-    // The bare Monocytes/Eosinophils/Basophils entries ARE the cells/uL counts; their
-    // "%" form is the ", Relative" entry (neutrophils invert it: ", Absolute" is the
-    // count, bare is the %). A wrong route mis-groups a cells/uL value onto a % series
-    // (#549/#482), so pin the direction.
-    expect(snapCanonicalName("Absolute Neutrophil Count", index)).toBe(
-      "Neutrophils, Absolute"
-    );
-    for (const [abs, bare] of [
-      ["Absolute Monocytes", "Monocytes"],
-      ["Absolute Eosinophils", "Eosinophils"],
-      ["Absolute Basophils", "Basophils"],
+    // Since #2335 EVERY differential member states its measure, so the count entry is
+    // always "…, Absolute" and the percentage always "…, Relative". A wrong route
+    // mis-groups a cells/uL value onto a % series (#549/#482), so pin the direction —
+    // for the prefixed "Absolute X Count" print form (a curated route) and for the
+    // bare-plural "Absolute X" (which the ", Absolute" entry claims by token set, so
+    // no curated row is needed and none exists).
+    for (const [spelling, count] of [
+      ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
+      ["Absolute Lymphocyte Count", "Lymphocytes, Absolute"],
+      ["Absolute Monocyte Count", "Monocytes, Absolute"],
+      ["Absolute Eosinophil Count", "Eosinophils, Absolute"],
+      ["Absolute Basophil Count", "Basophils, Absolute"],
+      ["Absolute Monocytes", "Monocytes, Absolute"],
+      ["Absolute Eosinophils", "Eosinophils, Absolute"],
+      ["Absolute Basophils", "Basophils, Absolute"],
     ] as const) {
-      expect(snapCanonicalName(abs, index)).toBe(bare);
-      expect(snapCanonicalName(abs, index)).not.toBe(`${bare}, Relative`);
+      expect(snapCanonicalName(spelling, index)).toBe(count);
+      expect(snapCanonicalName(spelling, index)).not.toBe(
+        count.replace(", Absolute", ", Relative")
+      );
     }
   });
 
@@ -576,11 +582,15 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
   });
 
   it("routes the off-list names a FRESH re-extraction coined, and leaves the ambiguous ones alone", () => {
-    // A fresh model run, given the same vocabulary, still drifted (#918): the
-    // neutrophil %-form is bare "Neutrophils"; CBC counts print as bare abbrevs;
-    // specific gravity is always urine.
+    // A fresh model run, given the same vocabulary, still drifted (#918): CBC counts
+    // print as bare abbrevs; specific gravity is always urine. The neutrophil %-form
+    // no longer needs a route — since #2335 the entry IS "Neutrophils, Relative", so
+    // both spellings land on it by token set.
     expect(snapCanonicalName("Neutrophils Relative", index)).toBe(
-      "Neutrophils"
+      "Neutrophils, Relative"
+    );
+    expect(snapCanonicalName("Neutrophils, Relative", index)).toBe(
+      "Neutrophils, Relative"
     );
     expect(snapCanonicalName("WBC", index)).toBe("White Blood Cell Count");
     expect(snapCanonicalName("RBC", index)).toBe("Red Blood Cell Count");
@@ -643,22 +653,31 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     expect(snapCanonicalName("Band Neutrophils", index)).toBe(
       "Band Neutrophils"
     );
-    expect(snapCanonicalName("Lymphocytes", index)).toBe("Lymphocytes");
-    expect(snapCanonicalName("Neutrophils", index)).toBe("Neutrophils");
+    // The parent fractions themselves are the RETIRED bare spellings (#2335): they
+    // route onto the explicit %-entry, which is a different identity from either
+    // extra line above.
+    expect(snapCanonicalName("Lymphocytes", index)).toBe(
+      "Lymphocytes, Relative"
+    );
+    expect(snapCanonicalName("Neutrophils", index)).toBe(
+      "Neutrophils, Relative"
+    );
   });
 
   it("leaves ALL THREE race-branched eGFR variants unresolved (#2300)", () => {
     // Including the NON-African-American branch: it is the other side of a
-    // race-ADJUSTED equation, not a race-free result, so folding it onto the bare
-    // "eGFR" entry would file it as one. Unresolved is what lets the race-free
-    // CKD-EPI 2021 derivation fill the draw instead.
+    // race-ADJUSTED equation, not a race-free result, so folding it onto the
+    // race-free eGFR entry would file it as one. Unresolved is what lets the
+    // race-free CKD-EPI 2021 derivation fill the draw instead.
     for (const variant of [
       "eGFR, African American",
       "eGFR, Non-African-American",
       "eGFR, Thai",
     ])
       expect(snapCanonicalName(variant, index)).toBe(variant);
-    expect(snapCanonicalName("Estimated GFR", index)).toBe("eGFR");
+    expect(snapCanonicalName("Estimated GFR", index)).toBe(
+      "Estimated Glomerular Filtration Rate (eGFR)"
+    );
   });
 
   // The issue's acceptance criterion, run over SYNTHETIC names rather than the
