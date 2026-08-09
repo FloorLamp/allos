@@ -88,6 +88,65 @@ const TIER_BADGE_CLASS: Record<FoodGroupTier, string> = {
   neutral: "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-300",
   limit: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
 };
+
+// What a food row SAYS about its group — the name, its tier badge, and the serving
+// line — in ONE component (#2305). It used to be written twice, once inside the phone
+// disclosure button and once inside the `md:block` static twin, and only the phone copy
+// carried testids: at a desktop viewport `getByTestId("food-tier-…").toHaveText(…)` was
+// therefore passing against a `md:hidden` element (`toHaveText` does not require
+// visibility) while the badge people actually see was covered by nothing. The two copies
+// had already drifted — the desktop name span had lost `truncate`, so a long name wrapped
+// there and pushed the row taller instead of clipping — which is exactly the failure mode
+// a second, untested copy produces.
+//
+// The wrappers still differ, because they genuinely do: on a phone the label is a
+// disclosure BUTTON that expands the truncated serving line, above `md` it is static text.
+// Only the wrapper is per-breakpoint; the content is this.
+//
+// Both mounts are in the DOM at every width, so the testids follow the ProfileIdentityBar
+// convention: the same ids declared once here, with the phone mount suffixed `-mobile`.
+// The UNSUFFIXED ids belong to the mount that is visible at desktop widths, which is where
+// the default Playwright project runs — so an assertion on `food-tier-<slug>` now names
+// something a person can see.
+function FoodRowLabel({
+  group,
+  expanded,
+  mobile,
+}: {
+  group: FoodGroup;
+  // Whether the serving line shows in full. Always true above `md`: the static twin has
+  // no disclosure to collapse.
+  expanded: boolean;
+  mobile?: boolean;
+}) {
+  const tid = (base: string) => (mobile ? `${base}-mobile` : base);
+  return (
+    <>
+      <span className="flex min-w-0 items-center gap-2">
+        <span
+          data-testid={tid(`food-name-${group.slug}`)}
+          className="truncate font-medium text-slate-800 dark:text-slate-100"
+        >
+          {group.name}
+        </span>
+        <span
+          data-testid={tid(`food-tier-${group.slug}`)}
+          className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold leading-none ${TIER_BADGE_CLASS[group.tier]}`}
+        >
+          {TIER_LABEL[group.tier]}
+        </span>
+      </span>
+      <span
+        className={`block text-xs text-slate-500 dark:text-slate-400 ${
+          expanded ? "" : "truncate"
+        }`}
+      >
+        {group.serving}
+      </span>
+    </>
+  );
+}
+
 // A pressed/unpressed eating-time chip (#2053). Pressed reads as the brand-tinted
 // selection the meal cards already use, so "a statement is in force" is legible at a
 // glance rather than only from the note under the row.
@@ -889,27 +948,7 @@ export default function FoodLogBar({
               className="flex min-w-0 flex-1 items-center gap-1.5 text-left md:hidden"
             >
               <span className="min-w-0 flex-1">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span
-                    data-testid={`food-name-${g.slug}`}
-                    className="truncate font-medium text-slate-800 dark:text-slate-100"
-                  >
-                    {g.name}
-                  </span>
-                  <span
-                    data-testid={`food-tier-${g.slug}`}
-                    className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold leading-none ${TIER_BADGE_CLASS[g.tier]}`}
-                  >
-                    {TIER_LABEL[g.tier]}
-                  </span>
-                </span>
-                <span
-                  className={`block text-xs text-slate-500 dark:text-slate-400 ${
-                    isExpanded ? "" : "truncate"
-                  }`}
-                >
-                  {g.serving}
-                </span>
+                <FoodRowLabel group={g} expanded={isExpanded} mobile />
               </span>
               <IconChevronDown
                 className={`h-3.5 w-3.5 shrink-0 text-slate-300 transition-transform dark:text-slate-600 ${
@@ -922,19 +961,9 @@ export default function FoodLogBar({
               data-testid={`detail-static-${g.slug}`}
               className="hidden min-w-0 flex-1 md:block"
             >
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="font-medium text-slate-800 dark:text-slate-100">
-                  {g.name}
-                </span>
-                <span
-                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold leading-none ${TIER_BADGE_CLASS[g.tier]}`}
-                >
-                  {TIER_LABEL[g.tier]}
-                </span>
-              </span>
-              <span className="block text-xs text-slate-500 dark:text-slate-400">
-                {g.serving}
-              </span>
+              {/* Above `md` there is no disclosure, so the serving line is always
+                  shown in full — the same content, told to stay expanded. */}
+              <FoodRowLabel group={g} expanded />
             </div>
             <button
               type="button"
