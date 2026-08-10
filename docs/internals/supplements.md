@@ -579,6 +579,27 @@ is always available.
   may items on offer today into Upcoming's collapsed **available** disclosure. The
   hero and the #1504 count read the due list; availability is deliberately outside
   the page total. Demotion is therefore a visible MOVE, not a disappearance.
+- _User-initiated LOGGING — dueness gates nudging, never logging_ (#2419). Every
+  ACTIVE, unpaused item renders its one-tap log control on
+  the web, whatever its dueness says: `EditableSupplementRow` gates
+  `DoseStatusControl` on the item's state and the row's DAY (a past day stays
+  read-only, showing its recorded outcome), not on `due`, so a `may` item, an
+  off-cadence row and a situation-inactive one are all one tap away from the
+  collapsed "More supplements" section; and `offeredItems` carries the item's FIRST
+  ACTIVE dose so Upcoming's "Available when you want them" rows render the same
+  `RowAction` "Mark taken" chip the due rows use. Still ONE row per item — collapse
+  is presentation, not data loss — and a multi-dose item logs its first active dose's
+  amount. The logged day is TODAY: a tap says "I took this now", never that the item
+  was scheduled. Before this, both collapsed surfaces were look-but-don't-log, and
+  taking a situation-bound item meant flipping its situation ACTIVE first, purely to
+  make a button exist — corrupting one's own data to use the app. Three things the
+  tap does NOT do, each pinned by a test: it creates no expectation (adherence is
+  computed from dueness, so a taken row on a non-due day scores `na` and no miss,
+  streak or rate moves), it is not a lifecycle write (no situation row and no dated
+  transition changes), and it pushes nothing new anywhere. The write is the shared
+  `setDoseStatusCore` / `markDoseTaken` core, whose refusals are retired-dose and
+  paused-item — never dueness — so the optimistic ledger, the offline queue and the
+  honest refusal wording all come along unchanged.
 - _User-initiated access — always reachable_: the Supplements page and quick-log in
   app; on Telegram the **guaranteed** path is the daily digest's slot-labelled
   "Log other (N for <slot>)" tail (its first inline button), which expands IN PLACE
