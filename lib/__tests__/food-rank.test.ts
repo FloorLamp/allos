@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { blendFoodOrder, proteinSplitIndex } from "@/lib/food-rank";
+import {
+  blendFoodOrder,
+  FOOD_QUICK_COUNT,
+  proteinSplitIndex,
+} from "@/lib/food-rank";
 
 // Pure slot-aware blend (issue #950): slot frecency LEADS, overall frecency BACKFILLS,
 // catalog order breaks the final tie. The degrade-to-overall property is the load-
@@ -36,7 +40,15 @@ describe("blendFoodOrder", () => {
     const slot = [{ name: "fatty_fish", date: TODAY }];
     const ordered = blendFoodOrder(CATALOG, overall, slot, TODAY);
     expect(ordered[0]).toBe("fatty_fish"); // slot leads
-    expect(ordered[1]).toBe("whole_grains"); // overall backfills
+    // …and whole_grains does NOT backfill second any more (#2369): twenty servings with
+    // none of them in this window is the ledger saying it is not a this-window food, so
+    // it sinks below the groups that have said nothing either way. It used to rank 2nd.
+    expect(ordered).toEqual([
+      "fatty_fish",
+      "leafy_greens",
+      "berries",
+      "whole_grains",
+    ]);
   });
 
   it("among groups WITH slot signal, more slot taps rank higher", () => {
@@ -77,6 +89,167 @@ describe("blendFoodOrder", () => {
     expect(ordered.indexOf("berries")).toBeLessThan(
       ordered.indexOf("leafy_greens")
     );
+  });
+});
+
+// ---- The slot axis is TWO-SIDED (#2369) ----
+//
+// The bug: the slot signal only ever BOOSTED, so "logged twenty times and never in this
+// window" contributed exactly what "never logged at all" contributed — zero — and the
+// heavier of the two won on overall frecency. On a morning window that put alcohol and
+// red meat in the quick six, which since #2225 is also the six the morning nudge sends.
+// The fix reads the group's slot SHARE, so a group whose own ledger says it is not eaten
+// here sinks BELOW the groups whose ledger says nothing at all.
+
+// A morning-window fixture in the shape #2369 describes: three staples with morning taps,
+// four heavily-logged groups whose taps all fall outside the window (proximity 0 → no slot
+// occurrences at all), three groups never logged.
+const MORNING_CATALOG = [
+  "fatty_fish",
+  "leafy_greens",
+  "berries",
+  "whole_grains",
+  "legumes",
+  "fruit",
+  "nuts_seeds",
+  "red_meat",
+  "alcohol",
+  "added_sugar",
+];
+// Decayed weights equal raw servings when everything is dated TODAY, which keeps the
+// numbers in these fixtures readable as serving counts.
+const MORNING_OVERALL = [
+  { name: "leafy_greens", date: TODAY, weight: 84 },
+  { name: "fruit", date: TODAY, weight: 56 },
+  { name: "whole_grains", date: TODAY, weight: 28 },
+  { name: "legumes", date: TODAY, weight: 19 }, // midday
+  { name: "alcohol", date: TODAY, weight: 18 }, // evening
+  { name: "nuts_seeds", date: TODAY, weight: 14 }, // afternoon
+  { name: "red_meat", date: TODAY, weight: 12 }, // evening
+];
+const MORNING_SLOT = [
+  ...Array.from({ length: 20 }, () => ({ name: "leafy_greens", date: TODAY })),
+  ...Array.from({ length: 14 }, () => ({ name: "fruit", date: TODAY })),
+  ...Array.from({ length: 10 }, () => ({ name: "whole_grains", date: TODAY })),
+];
+
+describe("blendFoodOrder's negative slot evidence (#2369)", () => {
+  it("keeps a never-eaten-here staple OUT of the window's quick six", () => {
+    const ordered = blendFoodOrder(
+      MORNING_CATALOG,
+      MORNING_OVERALL,
+      MORNING_SLOT,
+      TODAY
+    );
+    const six = ordered.slice(0, FOOD_QUICK_COUNT);
+    // The reported defect, in one assertion: the morning six no longer offers a drink.
+    expect(six).not.toContain("alcohol");
+    expect(six).not.toContain("red_meat");
+    // What it offers instead: the three groups this profile actually eats in the morning,
+    // then the groups with NO history — which say nothing either way and stay neutral.
+    expect(six).toEqual([
+      "leafy_greens",
+      "fruit",
+      "whole_grains",
+      "fatty_fish",
+      "berries",
+      "added_sugar",
+    ]);
+    // ORDERING ONLY (#559). Every group is still there, exactly once, one disclosure
+    // away — and the demoted tail keeps its own overall order, heaviest first, because
+    // position is a speed affordance even at the bottom.
+    expect(ordered.slice(FOOD_QUICK_COUNT)).toEqual([
+      "legumes",
+      "alcohol",
+      "nuts_seeds",
+      "red_meat",
+    ]);
+    expect(new Set(ordered).size).toBe(MORNING_CATALOG.length);
+  });
+
+  it("a COLD slot still collapses to pure overall order (no-cliff guarantee)", () => {
+    // Same heavy ledger, no slot signal anywhere — a pre-#950 profile, or a person who
+    // has simply never logged at this hour. Nothing may be demoted: with no group carrying
+    // window evidence there is no evidence to read, and the order is the pre-#950 one.
+    const ordered = blendFoodOrder(MORNING_CATALOG, MORNING_OVERALL, [], TODAY);
+    expect(ordered).toEqual([
+      "leafy_greens",
+      "fruit",
+      "whole_grains",
+      "legumes",
+      "alcohol",
+      "nuts_seeds",
+      "red_meat",
+      // The untouched catalog tail, in catalog order.
+      "fatty_fish",
+      "berries",
+      "added_sugar",
+    ]);
+  });
+
+  it("does NOT demote a group with one lifetime log outside the window", () => {
+    // The floor. One evening tap is not evidence about mornings, so `red_meat` keeps its
+    // ordinary backfill position ABOVE the groups with no history — demoting it there
+    // would be over-reading a single tap.
+    const ordered = blendFoodOrder(
+      ["fatty_fish", "berries", "red_meat"],
+      [{ name: "red_meat", date: TODAY, weight: 1 }],
+      [{ name: "fatty_fish", date: TODAY }],
+      TODAY
+    );
+    expect(ordered).toEqual(["fatty_fish", "red_meat", "berries"]);
+  });
+
+  it("engages AT the evidence floor and not below it", () => {
+    const order = (weight: number) =>
+      blendFoodOrder(
+        ["fatty_fish", "berries", "red_meat"],
+        [{ name: "red_meat", date: TODAY, weight }],
+        [{ name: "fatty_fish", date: TODAY }],
+        TODAY
+      );
+    // Just under eight decayed servings: still no claim either way.
+    expect(order(7.9)).toEqual(["fatty_fish", "red_meat", "berries"]);
+    // At eight: (2/3)^8 ≈ 3.9%, so silence in this window is read as a habit.
+    expect(order(8)).toEqual(["fatty_fish", "berries", "red_meat"]);
+  });
+
+  it("one real tap in the window is presence; edge crumbs are not", () => {
+    // A single tap at proximity 0.5 (within two hours of the anchor) against twenty
+    // servings is a 2.5% share — above the near-zero bar, so the group is NOT demoted.
+    const withTap = blendFoodOrder(
+      ["berries", "alcohol"],
+      [{ name: "alcohol", date: TODAY, weight: 20 }],
+      [{ name: "alcohol", date: TODAY, weight: 0.5 }],
+      TODAY
+    );
+    expect(withTap).toEqual(["alcohol", "berries"]);
+    // The same twenty servings whose only morning signal is a sliver from the far edge of
+    // the proximity span (a 3h55m-away tap is worth 0.02) is dust, and does not buy its
+    // way out of the demotion.
+    const withCrumb = blendFoodOrder(
+      ["berries", "alcohol"],
+      [{ name: "alcohol", date: TODAY, weight: 20 }],
+      [{ name: "alcohol", date: TODAY, weight: 0.02 }],
+      TODAY
+    );
+    expect(withCrumb).toEqual(["berries", "alcohol"]);
+  });
+
+  it("is a TOTAL order — the same inputs give the same six every time", () => {
+    // The bar and the nudge each slice FOOD_QUICK_COUNT off this one ranking, so a tie
+    // that resolved differently run to run would show a person two different sixes.
+    const run = (overall: typeof MORNING_OVERALL, slot: typeof MORNING_SLOT) =>
+      blendFoodOrder(MORNING_CATALOG, overall, slot, TODAY);
+    const first = run(MORNING_OVERALL, MORNING_SLOT);
+    for (let i = 0; i < 5; i++) {
+      expect(run(MORNING_OVERALL, MORNING_SLOT)).toEqual(first);
+    }
+    // …including when the ledger rows arrive in a different order, since the weights are
+    // summed and the last tiebreak is the unique catalog index.
+    expect(
+      run([...MORNING_OVERALL].reverse(), [...MORNING_SLOT].reverse())
+    ).toEqual(first);
   });
 });
 

@@ -288,6 +288,13 @@ test("a recent day can be viewed and backfilled in a specific meal", async ({
   await page.getByTestId("food-slot-evening").click();
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Evening");
 
+  // Re-reveal: the day+slot switch re-renders the bar, which re-ranks for the EVENING
+  // window and collapses the disclosure, so a group revealed for the initial slot can be
+  // folded away again. Since #2369 the slot axis is two-sided — a group with history and
+  // none of it in this window sorts BELOW the never-logged ones — so which groups the
+  // quick six holds is per window, and this spec must not assume its subject stayed in.
+  // The helper is a no-op when the row is already visible.
+  await revealFoodGroup(page, slug);
   const olderCount = page.getByTestId(`count-${slug}`);
   const olderBefore = Number((await olderCount.textContent())?.trim() || "0");
   await settledClick(page, page.getByTestId(`log-${slug}`));

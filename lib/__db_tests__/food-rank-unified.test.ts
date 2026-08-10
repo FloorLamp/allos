@@ -15,10 +15,12 @@
 //   • an EXCLUDED group is still the only demotion, and still reachable at the tail;
 //   • a profile that doesn't track protein has no `__protein__` key on EITHER surface.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getFoodBarOrder, rankFoodGroups } from "@/lib/queries";
+import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
+import { logFoodServingCore } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-log-write";
 import { setProfileSetting } from "@/lib/settings";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
@@ -101,5 +103,59 @@ describe("rankFoodGroups is the ONE ranking (#1980)", () => {
     expect(keys).not.toContain(PROTEIN_NUDGE_KEY);
     expect(keys).toEqual(foodGroupSlugs());
     expect(getFoodBarOrder(profileId, "Morning").proteinRank).toBeNull();
+  });
+});
+
+// ---- The slot axis is TWO-SIDED (#2369), through the REAL gather ----
+//
+// The pure decision is pinned in lib/__tests__/food-rank.test.ts; this drives it through
+// the actual ledger read and proximity weighting, on the profile the issue describes: a
+// drink logged night after night and never in the morning. Before #2369 that group took a
+// morning quick slot on overall frecency alone, on the page AND in the nudge, because the
+// slot axis could only ever boost.
+describe("a never-eaten-here staple sinks in that window (#2369)", () => {
+  let profileId: number;
+  let anchor: string;
+
+  beforeAll(() => {
+    ({ profileId, anchor } = makeProfile("rank-slot-share"));
+    // Default UTC timezone and default anchors (Morning 08:00, Evening 18:30), so a
+    // 20:30Z tap is two hours from the evening anchor — well inside the four-hour
+    // proximity span — and eleven and a half hours from the morning one, which is
+    // outside it entirely. logFoodServingCore writes the day counter AND the event
+    // ledger, so both halves of the blend see this history.
+    for (let i = 0; i < 10; i++) {
+      const date = shiftDateStr(anchor, -i);
+      logFoodServingCore(profileId, "alcohol", date, `${date}T20:30:00Z`);
+    }
+    for (let i = 0; i < 4; i++) {
+      const date = shiftDateStr(anchor, -i);
+      logFoodServingCore(profileId, "leafy_greens", date, `${date}T08:00:00Z`);
+    }
+  });
+
+  it("keeps it out of the MORNING quick six on both surfaces", () => {
+    const keys = rankFoodGroups(profileId, "Morning");
+    expect(keys[0]).toBe("leafy_greens");
+    const six = keys.slice(0, FOOD_QUICK_COUNT);
+    expect(six).not.toContain("alcohol");
+    // The bar takes the same head of the same list (#2225), so the two agree by
+    // construction rather than by coincidence.
+    expect(
+      getFoodBarOrder(profileId, "Morning")
+        .groups.slice(0, FOOD_QUICK_COUNT)
+        .map((g) => g.slug)
+    ).toEqual(six);
+    // Ordering only (#559): still present exactly once, one disclosure away.
+    expect(keys.filter((k) => k === "alcohol")).toHaveLength(1);
+    expect(keys).toHaveLength(foodGroupSlugs().length);
+  });
+
+  it("still LEADS the window it is actually eaten in", () => {
+    // The same ledger read from the evening: presence is unchanged, and a heavily-logged
+    // capped group still leads on frecency alone (#1980).
+    expect(rankFoodGroups(profileId, "Evening")[0]).toBe("alcohol");
+    // And with no window at all — the pure overall order — it leads too.
+    expect(rankFoodGroups(profileId)[0]).toBe("alcohol");
   });
 });
