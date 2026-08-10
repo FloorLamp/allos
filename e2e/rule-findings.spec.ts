@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_GOAL_PACE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
@@ -102,7 +103,12 @@ test("a body-hygiene finding can be dismissed (#45)", async ({ page }) => {
     .filter({ hasText: "92 kg" });
   await expect(finding).toBeVisible();
 
-  await finding.getByTestId("body-hygiene-findings-dismiss").click();
+  // Same FindingRow <form action={dismiss}> Server-Action submit as the
+  // adherence dismiss.
+  await settledClick(
+    page,
+    finding.getByTestId("body-hygiene-findings-dismiss")
+  );
 
   // After the server action + re-render, THIS finding is gone — other specs'
   // incidental weight findings (if any) legitimately remain.

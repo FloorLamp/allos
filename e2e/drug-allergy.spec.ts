@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { hydratedClick, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_DRUG_ALLERGY,
@@ -139,9 +140,12 @@ test("the allergy finding is a care-persistent Needs-attention item: a page dism
 
   // Its menu is SNOOZE-ONLY: a live contraindication offers time-boxed snoozes but
   // no permanent Dismiss (the #942/#553 safety stance — a dismiss can't silence it).
-  await heroFinding()
-    .getByRole("button", { name: "Snooze or dismiss" })
-    .click();
+  // The OverflowMenu trigger is a pure client toggle, so a click landing in the
+  // hydration window is swallowed — and a retry would toggle it back shut.
+  await hydratedClick(
+    page,
+    heroFinding().getByRole("button", { name: "Snooze or dismiss" })
+  );
   const menu = page.getByRole("menu");
   await expect(menu.getByRole("menuitem", { name: "1 day" })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Dismiss" })).toHaveCount(0);
@@ -159,13 +163,16 @@ test("the allergy finding is a care-persistent Needs-attention item: a page dism
 
   // But a deliberate time-boxed SNOOZE still defers it (the honored affordance).
   try {
-    await heroFinding()
-      .getByRole("button", { name: "Snooze or dismiss" })
-      .click();
-    await page
-      .getByRole("menu")
-      .getByRole("menuitem", { name: "1 week" })
-      .click();
+    await hydratedClick(
+      page,
+      heroFinding().getByRole("button", { name: "Snooze or dismiss" })
+    );
+    // The menuitem submits a Server Action; OverflowMenu awaits it before closing
+    // and toasting, so the toast below is only reachable once the POST resolved.
+    await settledClick(
+      page,
+      page.getByRole("menu").getByRole("menuitem", { name: "1 week" })
+    );
     await expect(page.getByText("Snoozed for 1 week")).toBeVisible();
     await expect(heroFinding()).toHaveCount(0);
   } finally {

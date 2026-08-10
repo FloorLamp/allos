@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { settledClick, settledFill } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Issue #342: the ACTIVITY-level equipment link. The seed links its "Zone 2 bike"
@@ -242,7 +242,11 @@ test("the strength picker creates and selects a travel machine without losing th
   await expect(row).toBeVisible();
   // Delete moved into the shared ⋯ menu (#1491): open the row's menu, then click
   // the (portaled) Delete item.
-  await row.getByRole("button", { name: "Equipment actions" }).click();
+  // Client-only OverflowMenu toggle, so the click must land after hydration.
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Equipment actions" })
+  );
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
     page,

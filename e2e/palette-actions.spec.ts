@@ -206,9 +206,12 @@ test.describe("command palette — per-hit actions (#662)", () => {
       await hydratedClick(page, page.getByTestId("add-visit-panel-toggle"));
       const visitDialog = page.getByRole("dialog", { name: "Add visit" });
       await visitDialog.getByLabel("Reason / title").fill(APPT_MARKER);
-      await visitDialog
-        .getByRole("button", { name: "Add", exact: true })
-        .click();
+      // AppointmentForm submits a Server Action; the toast below only appears once
+      // it resolved, and it was being asserted on the 5s default.
+      await settledClick(
+        page,
+        visitDialog.getByRole("button", { name: "Add", exact: true })
+      );
       await expect(page.getByText("Appointment saved")).toBeVisible();
 
       // Find it in the palette and complete it from the hit's action chip.
