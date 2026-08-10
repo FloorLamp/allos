@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 //
 // SCOPE. `page.tsx` and `layout.tsx` — the route files that own a page's content
 // width. Deliberately NOT the whole tree: an inner `max-w-2xl` on a paragraph or
-// a `max-w-[14rem]` on a thumbnail is a content measure, not a page measure, and
+// a `max-w-56` on a thumbnail is a content measure, not a page measure, and
 // a rule that flagged those would be an allowlist wearing a guard's clothes.
 // `error.tsx` / `not-found.tsx` are out for the same reason — they render a
 // centered fallback CARD, with no page beneath it.

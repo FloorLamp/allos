@@ -103,7 +103,7 @@ function JsonNode({
         onClick={() => tree.toggle(path)}
         aria-expanded={open}
         data-testid="raw-node-toggle"
-        className="flex w-full items-baseline gap-1 rounded font-mono text-xs text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-200 dark:hover:bg-ink-800"
+        className="flex w-full items-baseline gap-1 rounded-sm font-mono text-xs text-slate-700 hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-200 dark:hover:bg-ink-800"
       >
         <Caret open={open} />
         {label != null && (
@@ -215,7 +215,7 @@ function XmlNode({
         onClick={() => tree.toggle(path)}
         aria-expanded={open}
         data-testid="raw-node-toggle"
-        className="flex w-full items-baseline gap-1 rounded font-mono text-xs hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-ink-800"
+        className="flex w-full items-baseline gap-1 rounded-sm font-mono text-xs hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-ink-800"
       >
         <Caret open={open} />
         <span className="text-brand-700 dark:text-brand-300">

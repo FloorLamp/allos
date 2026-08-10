@@ -377,7 +377,7 @@ function RideHeaderNavigation({
               ? cyclingRideHref(previous.id, lens)
               : `/training/rides/${previous.id}`
           }
-          className="group min-w-0 border-r border-black/5 pr-3 text-left transition hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-white/5 dark:hover:text-brand-300"
+          className="group min-w-0 border-r border-black/5 pr-3 text-left transition hover:text-brand-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-white/5 dark:hover:text-brand-300"
           aria-label={linkTitle("Previous", previous)}
           title={linkTitle("Previous", previous)}
           data-testid="ride-previous-link"
@@ -402,7 +402,7 @@ function RideHeaderNavigation({
           href={
             lens ? cyclingRideHref(next.id, lens) : `/training/rides/${next.id}`
           }
-          className="group min-w-0 pl-3 text-right transition hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:text-brand-300"
+          className="group min-w-0 pl-3 text-right transition hover:text-brand-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:text-brand-300"
           aria-label={linkTitle("Next", next)}
           title={linkTitle("Next", next)}
           data-testid="ride-next-link"
@@ -441,7 +441,7 @@ function RideSectionNavigation({
         <a
           key={section.id}
           href={`#${section.id}`}
-          className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-center text-xs font-semibold text-slate-600 transition hover:bg-white hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-300 dark:hover:bg-ink-700 dark:hover:text-brand-300 sm:text-sm"
+          className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-center text-xs font-semibold text-slate-600 transition hover:bg-white hover:text-brand-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-300 dark:hover:bg-ink-700 dark:hover:text-brand-300 sm:text-sm"
         >
           {section.label}
         </a>
@@ -746,7 +746,7 @@ export default async function RideDetailPage(props: {
             canWrite={session.access === "write"}
           />
         }
-        className="!mb-3"
+        className="mb-3!"
       />
 
       <RideHeaderNavigation

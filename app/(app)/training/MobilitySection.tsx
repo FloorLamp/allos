@@ -143,7 +143,7 @@ export default async function MobilitySection({
                 {row.label}
               </span>
               <span
-                className="h-2.5 min-w-[0.375rem] rounded-full bg-sky-500/80"
+                className="h-2.5 min-w-1.5 rounded-full bg-sky-500/80"
                 style={{
                   width: `${coverageMax > 0 ? (row.days / coverageMax) * 100 : 0}%`,
                 }}

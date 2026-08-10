@@ -149,8 +149,8 @@ export default function SleepMoodSection({
         <div className="card overflow-hidden p-0">
           <ScrollFade data-testid="sleep-history-scroll-fade">
             <table
-              className={`w-full min-w-[22rem] text-left text-sm ${
-                hasSupplementContext ? "sm:min-w-[60rem]" : "sm:min-w-[52rem]"
+              className={`w-full min-w-88 text-left text-sm ${
+                hasSupplementContext ? "sm:min-w-240" : "sm:min-w-208"
               }`}
               data-testid="sleep-mood-history"
             >

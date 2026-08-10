@@ -549,7 +549,7 @@ export default async function BodyMetricDetailPage(props: {
           <div className="flex min-w-0 items-start gap-2 sm:block">
             <BackLink />
             <PageHeader
-              className="!mb-0 min-w-0 flex-1 sm:mt-3"
+              className="mb-0! min-w-0 flex-1 sm:mt-3"
               title={meta.title}
               subtitle={latestSummary}
               action={starAction}
@@ -775,7 +775,7 @@ function PeriodStatsCard({
 
   return (
     <section
-      className="card overflow-hidden !p-0"
+      className="card overflow-hidden p-0!"
       data-testid="metric-period-stats"
       aria-labelledby="metric-period-stats-heading"
     >

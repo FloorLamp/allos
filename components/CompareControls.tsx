@@ -56,7 +56,7 @@ function SeriesPicker({
   );
 
   return (
-    <div className="min-w-[10rem] flex-1">
+    <div className="min-w-40 flex-1">
       <label htmlFor={id} className="label">
         {label}
       </label>

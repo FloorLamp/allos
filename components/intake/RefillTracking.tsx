@@ -49,7 +49,7 @@ export default function RefillTracking({
           type="checkbox"
           checked={enabled}
           onChange={(event) => setEnabled(event.target.checked)}
-          className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+          className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
         />
         Track supply and refills
       </label>

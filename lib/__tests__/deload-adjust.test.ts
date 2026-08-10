@@ -46,7 +46,7 @@ describe("deloadAdjust — set reduction", () => {
 });
 
 describe("deloadAdjust — load reduction, plate-loadable", () => {
-  it("cuts a compound's load ~10%, rounded to its 5 kg increment", () => {
+  it("cuts a compound's load ~10%, rounded-sm to its 5 kg increment", () => {
     // Squat increment is 5 kg; 100 * 0.9 = 90 → nearest 5 kg = 90.
     const out = deloadAdjust({
       exercise: "Back Squat",
@@ -57,7 +57,7 @@ describe("deloadAdjust — load reduction, plate-loadable", () => {
     expect(out.nextSet!.reps).toBe(5); // reps unchanged
   });
 
-  it("cuts an isolation lift's load ~10%, rounded to its 2.5 kg increment", () => {
+  it("cuts an isolation lift's load ~10%, rounded-sm to its 2.5 kg increment", () => {
     // Curl increment is 2.5 kg; 30 * 0.9 = 27 → nearest 2.5 = 27.5.
     const out = deloadAdjust({
       exercise: "Barbell Curl",

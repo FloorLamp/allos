@@ -24,13 +24,13 @@ import type { OpticalPrescription } from "@/lib/types";
 function ExpiryBadge({ state }: { state: RxExpiryState }) {
   if (state === "expired")
     return (
-      <span className="rounded bg-rose-100 px-1.5 py-0.5 text-xs text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+      <span className="rounded-sm bg-rose-100 px-1.5 py-0.5 text-xs text-rose-700 dark:bg-rose-950 dark:text-rose-300">
         Expired
       </span>
     );
   if (state === "expiring-soon")
     return (
-      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+      <span className="rounded-sm bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
         Expires soon
       </span>
     );

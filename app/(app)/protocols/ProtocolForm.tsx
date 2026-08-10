@@ -37,7 +37,7 @@ export type ProtocolFormResult =
 // One geometry for both creation and edit. Wide enough for the outcome picker,
 // but deliberately below the app shell's largest work-surface modal.
 export const PROTOCOL_MODAL_CLASS =
-  "flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white p-4 shadow-xl outline-none sm:max-h-[calc(100dvh-4rem)] sm:p-6 dark:bg-ink-900";
+  "flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white p-4 shadow-xl outline-hidden sm:max-h-[calc(100dvh-4rem)] sm:p-6 dark:bg-ink-900";
 
 // The protocol's "Activate situation" field. Same vocabulary, same widget, same
 // context as the situation picker on the supplement and medication forms (#1676):

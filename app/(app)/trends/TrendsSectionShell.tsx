@@ -66,8 +66,8 @@ export function TrendsSectionSkeleton({ label }: { label: string }) {
       data-testid="trends-section-loading"
       data-section={label}
     >
-      <div className="h-4 w-40 rounded bg-slate-200 dark:bg-ink-800" />
-      <div className="mt-4 h-32 rounded bg-slate-100 dark:bg-ink-850" />
+      <div className="h-4 w-40 rounded-sm bg-slate-200 dark:bg-ink-800" />
+      <div className="mt-4 h-32 rounded-sm bg-slate-100 dark:bg-ink-850" />
       <span className="sr-only">Loading {label}…</span>
     </div>
   );

@@ -183,13 +183,13 @@ export default function TrendMiniCard({
   if (compact) {
     return (
       <div
-        className="card flex items-stretch overflow-hidden !p-0"
+        className="card flex items-stretch overflow-hidden p-0!"
         data-testid={testid}
       >
         <Link
           href={href}
           data-testid="trend-mini-header-link"
-          className="group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:hover:bg-brand-950/40"
+          className="group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:hover:bg-brand-950/40"
         >
           <span
             className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:whitespace-normal sm:text-clip dark:text-slate-400 dark:group-hover:text-brand-300"
@@ -274,7 +274,7 @@ export default function TrendMiniCard({
         <Link
           href={href}
           data-testid="trend-mini-header-link"
-          className={`group flex min-h-11 min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-tl-xl px-4 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:bg-brand-50/80 hover:text-brand-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:text-slate-400 dark:hover:bg-brand-950/40 dark:hover:text-brand-300 ${
+          className={`group flex min-h-11 min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-tl-xl px-4 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:bg-brand-50/80 hover:text-brand-800 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:text-slate-400 dark:hover:bg-brand-950/40 dark:hover:text-brand-300 ${
             isEmpty
               ? ""
               : "sm:flex-row sm:items-baseline sm:justify-between sm:gap-3"
@@ -308,14 +308,14 @@ export default function TrendMiniCard({
             data-testid="trend-mini-single-marker"
             aria-hidden="true"
           >
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-slate-300 dark:to-slate-600" />
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15">
+            <span className="h-px flex-1 bg-linear-to-r from-transparent to-slate-300 dark:to-slate-600" />
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white shadow-xs ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15">
               <span
                 className="h-2.5 w-2.5 rounded-full bg-brand-500"
                 style={color ? { backgroundColor: color } : undefined}
               />
             </span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-slate-300 dark:to-slate-600" />
+            <span className="h-px flex-1 bg-linear-to-l from-transparent to-slate-300 dark:to-slate-600" />
           </div>
           <p className={`-mt-1 text-center ${footerTextClass}`}>
             {readingDate && readingDateLabel ? (

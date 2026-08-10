@@ -991,7 +991,7 @@ function BenchmarkCard({
               )}
               <div className="relative z-10 flex h-5 w-5 items-center justify-center">
                 <span
-                  className={`rounded-full border-2 border-white shadow-sm dark:border-ink-800 ${
+                  className={`rounded-full border-2 border-white shadow-xs dark:border-ink-800 ${
                     isCurrent
                       ? "h-4 w-4 bg-slate-950 ring-2 ring-brand-200 dark:bg-white dark:ring-brand-900/70"
                       : "h-3 w-3 bg-slate-300 dark:bg-slate-600"

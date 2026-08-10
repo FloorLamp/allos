@@ -120,7 +120,7 @@ export default function EditableSupplementRow({
     <>
       <div
         data-testid="supplement-row"
-        className={`card grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 !rounded-lg !border-black/10 !bg-white !px-3 !py-3 !shadow-none !backdrop-blur-none dark:!border-white/10 dark:!bg-ink-900 ${
+        className={`card grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 rounded-lg! border-black/10! bg-white! px-3! py-3! shadow-none! backdrop-blur-none! dark:border-white/10! dark:bg-ink-900! ${
           !s.active ? "opacity-50" : ""
         } ${menuOpen ? "relative z-20" : ""}`}
       >
@@ -128,7 +128,7 @@ export default function EditableSupplementRow({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span
               data-testid="medicine-name"
-              className="min-w-0 break-words font-medium text-slate-800 dark:text-slate-100"
+              className="min-w-0 wrap-break-word font-medium text-slate-800 dark:text-slate-100"
             >
               {s.name}
             </span>
@@ -392,7 +392,7 @@ export default function EditableSupplementRow({
         <ModalShell
           title={`Edit ${s.name}`}
           onClose={() => setEditing(false)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <div
             data-testid="supplement-edit-panel"

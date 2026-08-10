@@ -403,9 +403,9 @@ export default function ConsumptionSection({
                 {formatMonthDay(week.start, formatPrefs)}
                 {week.isCurrent ? " (now)" : ""}
               </span>
-              <div className="h-2 flex-1 rounded bg-black/5 dark:bg-white/5">
+              <div className="h-2 flex-1 rounded-sm bg-black/5 dark:bg-white/5">
                 <div
-                  className="h-2 rounded bg-brand-400/70"
+                  className="h-2 rounded-sm bg-brand-400/70"
                   style={{ width: `${(week.count / maxTrend) * 100}%` }}
                 />
               </div>
@@ -419,7 +419,7 @@ export default function ConsumptionSection({
         <ModalShell
           title={`Add ${def.label.toLowerCase()} entry`}
           onClose={() => setAddOpen(false)}
-          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <form
             className="mt-4 grid gap-3 sm:grid-cols-2"
@@ -457,7 +457,7 @@ export default function ConsumptionSection({
         <ModalShell
           title={`${capSet ? "Change" : "Set"} ${def.label.toLowerCase()} weekly cap`}
           onClose={() => setCapOpen(false)}
-          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <form
             className="mt-4 space-y-4"

@@ -47,7 +47,7 @@ export default function DeleteBodyMetricButton({
       disabled={busy}
       aria-label="Delete entry"
       title="Delete entry"
-      className="tap-target inline-flex h-8 w-8 items-center justify-center rounded text-slate-300 transition hover:bg-slate-100 hover:text-rose-500 disabled:opacity-50 dark:hover:bg-ink-800"
+      className="tap-target inline-flex h-8 w-8 items-center justify-center rounded-sm text-slate-300 transition hover:bg-slate-100 hover:text-rose-500 disabled:opacity-50 dark:hover:bg-ink-800"
     >
       <IconX className="h-4 w-4" />
     </button>

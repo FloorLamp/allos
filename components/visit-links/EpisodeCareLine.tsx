@@ -60,7 +60,7 @@ export default function EpisodeCareLine({
 
   return (
     <section
-      className="rounded-xl border border-black/5 bg-white/60 p-4 shadow-sm dark:border-white/10 dark:bg-black/10"
+      className="rounded-xl border border-black/5 bg-white/60 p-4 shadow-xs dark:border-white/10 dark:bg-black/10"
       data-testid="episode-care"
     >
       <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">

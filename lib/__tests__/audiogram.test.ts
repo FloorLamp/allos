@@ -151,7 +151,7 @@ describe("grouping and current thresholds", () => {
 });
 
 describe("pure-tone average and grade", () => {
-  it("averages the PTA frequencies present, rounded to whole decibels", () => {
+  it("averages the PTA frequencies present, rounded-sm to whole decibels", () => {
     const points = [
       point("right", 500, 10),
       point("right", 1000, 15),

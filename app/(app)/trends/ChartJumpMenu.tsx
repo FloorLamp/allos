@@ -92,7 +92,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
             }
             moveFocus(event.key === "ArrowDown" ? 1 : -1);
           }}
-          className="inline-flex h-9 min-w-24 items-center justify-between gap-2 rounded-md px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-200 dark:hover:bg-ink-800"
+          className="inline-flex h-9 min-w-24 items-center justify-between gap-2 rounded-md px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-200 dark:hover:bg-ink-800"
         >
           <span>{activeLabel}</span>
           <IconChevronDown

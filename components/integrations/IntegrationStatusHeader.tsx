@@ -198,7 +198,7 @@ export default function IntegrationStatusHeader({
           honestly says "Refreshed/Synced" and THIS states what is wrong. */}
       {state.stale && latest?.ok ? (
         <p
-          className="mt-1 break-words text-sm text-rose-700 dark:text-rose-300"
+          className="mt-1 wrap-break-word text-sm text-rose-700 dark:text-rose-300"
           data-testid={`sync-stale-${state.id}`}
         >
           {staleSyncDetail(state.name, state.stale)}
@@ -206,7 +206,7 @@ export default function IntegrationStatusHeader({
       ) : null}
       {standing !== "intermittent" && latest && !latest.ok && latest.error && (
         <p
-          className="mt-1 break-words text-sm text-rose-700 dark:text-rose-300"
+          className="mt-1 wrap-break-word text-sm text-rose-700 dark:text-rose-300"
           data-testid={`sync-error-${latest.id}`}
         >
           {latest.error}

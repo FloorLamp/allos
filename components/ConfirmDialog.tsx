@@ -144,9 +144,9 @@ function ConfirmModal({
       title={title}
       testId="confirm-dialog"
       presentation="dialog"
-      // Above the toasts (`z-[100]`): a confirm is a question the viewer has to
+      // Above the toasts (`z-100`): a confirm is a question the viewer has to
       // answer before anything else, so nothing may paint over it.
-      zIndexClass="z-[110]"
+      zIndexClass="z-110"
       // Focus the confirm button on open so Enter confirms — the keyboard
       // contract this dialog has always had.
       initialFocusRef={confirmRef}

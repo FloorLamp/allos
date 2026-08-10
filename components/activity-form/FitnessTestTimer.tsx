@@ -218,7 +218,7 @@ export default function FitnessTestTimer({
       aria-modal="true"
       aria-label={`${label} timer`}
       data-testid={`${base}-panel`}
-      className="fixed inset-0 z-[60] flex flex-col bg-white p-5 dark:bg-slate-900 sm:inset-8 sm:rounded-3xl sm:border sm:border-black/10 sm:shadow-2xl md:inset-x-[22%] md:inset-y-[12%] dark:sm:border-white/10"
+      className="fixed inset-0 z-60 flex flex-col bg-white p-5 dark:bg-slate-900 sm:inset-8 sm:rounded-3xl sm:border sm:border-black/10 sm:shadow-2xl md:inset-x-[22%] md:inset-y-[12%] dark:sm:border-white/10"
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">

@@ -91,7 +91,7 @@ function PrefillBadge() {
   return (
     <span
       data-testid="prefill-badge"
-      className="ml-2 inline-block rounded bg-brand-50 px-1.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+      className="ml-2 inline-block rounded-sm bg-brand-50 px-1.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-950 dark:text-brand-300"
     >
       from label defaults
     </span>
@@ -1078,7 +1078,7 @@ export default function MedicationForm({
               data-testid="redose-optin"
               checked={redoseNotice}
               onChange={(e) => setRedoseNotice(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+              className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
             />
             Remind me when the redose window opens
           </label>
@@ -1095,7 +1095,7 @@ export default function MedicationForm({
             data-testid="rx-toggle"
             checked={rxFlag}
             onChange={(e) => setRxFlag(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+            className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
           />
           Prescription medication
         </label>

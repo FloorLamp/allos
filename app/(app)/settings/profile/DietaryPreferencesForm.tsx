@@ -139,7 +139,7 @@ export default function DietaryPreferencesForm({
                       data-testid={`dietary-exclude-${g.slug}`}
                       checked={set.has(g.slug)}
                       onChange={() => toggle(g.slug)}
-                      className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+                      className="h-4 w-4 rounded-sm border-black/20 dark:border-white/20"
                     />
                     {g.name}
                   </label>

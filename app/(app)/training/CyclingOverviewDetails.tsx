@@ -295,10 +295,10 @@ export default function CyclingOverviewDetails({
                     <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
                       {month.observedMonths > 0 ? month.rides : ""}
                     </span>
-                    <span className="flex h-24 w-full items-end justify-center rounded-sm bg-slate-100 dark:bg-ink-800">
+                    <span className="flex h-24 w-full items-end justify-center rounded-xs bg-slate-100 dark:bg-ink-800">
                       {month.observedMonths > 0 ? (
                         <span
-                          className="block w-full rounded-sm"
+                          className="block w-full rounded-xs"
                           style={{
                             height: `${height}%`,
                             backgroundColor: chartSeries.brand,

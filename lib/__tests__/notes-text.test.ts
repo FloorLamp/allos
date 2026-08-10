@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 // `{x.notes}` JSX child — CCD/extraction notes flatten to one run-on line and a URL
 // overflows a min-w-0 flex/table cell. The fix routes every notes surface through
 // <NotesText notes={…} /> (components/NotesText.tsx), which applies
-// `whitespace-pre-wrap break-words`.
+// `whitespace-pre-wrap wrap-break-word`.
 //
 // NotesText takes the note as a PROP precisely so this scan has a reliable
 // signature to ban: a `.notes` value rendered as a bare JSX child (`{x.notes}`,
@@ -100,6 +100,6 @@ describe("notes rendering convention (issue #794 cluster 11a)", () => {
       "utf8"
     );
     expect(/export default function NotesText\b/.test(src)).toBe(true);
-    expect(src.includes("whitespace-pre-wrap break-words")).toBe(true);
+    expect(src.includes("whitespace-pre-wrap wrap-break-word")).toBe(true);
   });
 });

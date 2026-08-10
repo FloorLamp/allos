@@ -172,7 +172,7 @@ export default function HealthConnectSetup({
           />
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             This token comes from the{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-ink-800">
+            <code className="rounded-sm bg-slate-100 px-1 py-0.5 dark:bg-ink-800">
               HEALTH_CONNECT_TOKEN
             </code>{" "}
             environment fallback — it&apos;s a static value with no expiry or

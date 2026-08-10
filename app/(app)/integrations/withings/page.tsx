@@ -134,7 +134,7 @@ export default async function WithingsPage(props: {
                 developer.withings.com
               </a>{" "}
               and set its <strong>Callback URI</strong> to{" "}
-              <code className="break-all rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-ink-800">
+              <code className="break-all rounded-sm bg-slate-100 px-1 py-0.5 text-xs dark:bg-ink-800">
                 {callbackUrl}
               </code>
               .

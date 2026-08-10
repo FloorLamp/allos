@@ -28,7 +28,7 @@ export default function TrackFollowUpControl({
     return (
       <span
         data-testid={`imaging-followup-state-${studyId}`}
-        className="whitespace-nowrap rounded bg-brand-100 px-1.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-500/20 dark:text-brand-300"
+        className="whitespace-nowrap rounded-sm bg-brand-100 px-1.5 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-500/20 dark:text-brand-300"
       >
         Follow-up: {label}
       </span>

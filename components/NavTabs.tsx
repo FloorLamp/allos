@@ -29,7 +29,7 @@ function stripClassName({
   return `overflow-x-auto overflow-y-hidden border-b border-black/10 dark:border-white/10 ${
     prominentOnMobile
       ? mobileLayout === "scroll"
-        ? "flex gap-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-1"
+        ? "flex gap-0 scrollbar-none [&::-webkit-scrollbar]:hidden md:gap-1"
         : `grid ${MOBILE_GRID_COLUMNS[mobileColumns]} md:flex md:gap-1`
       : "flex gap-0.5 sm:gap-1"
   } ${className ?? (flush ? "mb-0" : "mb-4")}`;

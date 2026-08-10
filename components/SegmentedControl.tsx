@@ -48,7 +48,7 @@ export default function SegmentedControl<T extends string | number>({
             {...option.dataAttributes}
             className={`shrink-0 rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
               active
-                ? "bg-white text-slate-900 shadow-sm dark:bg-ink-700 dark:text-slate-100"
+                ? "bg-white text-slate-900 shadow-xs dark:bg-ink-700 dark:text-slate-100"
                 : "text-slate-500 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:text-slate-100 dark:disabled:hover:text-slate-400"
             }`}
           >

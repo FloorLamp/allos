@@ -117,7 +117,7 @@ function RunLine({
           <div className="space-y-1 sm:col-span-2 sm:col-start-3">
             {run.error && (
               <p
-                className="break-words text-xs text-rose-700 dark:text-rose-300"
+                className="wrap-break-word text-xs text-rose-700 dark:text-rose-300"
                 data-testid={`sync-error-${run.id}`}
               >
                 {run.error}
@@ -280,7 +280,7 @@ function FailureRunLine({
         <span className={`text-sm font-medium ${STATUS_TEXT_TONE.bad}`}>
           Failed ×{entry.count}
         </span>
-        <p className="break-words text-xs text-rose-700 dark:text-rose-300">
+        <p className="wrap-break-word text-xs text-rose-700 dark:text-rose-300">
           {entry.reason ?? "No error detail was recorded."}
         </p>
         <button

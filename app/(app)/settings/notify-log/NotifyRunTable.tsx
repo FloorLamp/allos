@@ -208,7 +208,7 @@ export default function NotifyRunTable({
                                   </span>
                                 </div>
                                 {e.detail && (
-                                  <div className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-slate-500 dark:text-slate-400">
+                                  <div className="mt-1 whitespace-pre-wrap wrap-break-word font-mono text-xs text-slate-500 dark:text-slate-400">
                                     {e.detail}
                                   </div>
                                 )}

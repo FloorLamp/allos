@@ -357,8 +357,8 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     name: "Exercise or activity",
   });
   await expect(activityTitle).toHaveValue("Cycling");
-  await expect(activityTitle).toHaveClass(/!border-0/);
-  await expect(activityTitle).toHaveClass(/!py-1/);
+  await expect(activityTitle).toHaveClass(/border-0!/);
+  await expect(activityTitle).toHaveClass(/py-1!/);
   await expect(cyclingShell.getByTestId("combobox-title-text")).toHaveText(
     "Cycling"
   );

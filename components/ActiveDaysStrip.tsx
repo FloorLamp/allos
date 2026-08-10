@@ -55,7 +55,7 @@ export default function ActiveDaysStrip({
               data-count={day.count}
               title={summary(day)}
               aria-label={summary(day)}
-              className={`${classes} ring-brand-400 hover:ring-2 focus:outline-none focus:ring-2`}
+              className={`${classes} ring-brand-400 hover:ring-2 focus:outline-hidden focus:ring-2`}
             />
           ) : (
             <span

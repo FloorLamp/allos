@@ -206,7 +206,7 @@ describe("bloodTypeFromReadings", () => {
 });
 
 describe("computeBmi", () => {
-  it("computes BMI rounded to one decimal", () => {
+  it("computes BMI rounded-sm to one decimal", () => {
     expect(computeBmi(70, 175)).toBe(22.9);
   });
 

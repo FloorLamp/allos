@@ -126,7 +126,7 @@ export default function PullToRefresh() {
       data-state={pending ? "refreshing" : state.kind}
       data-refreshes={refreshes}
       aria-hidden
-      className="pointer-events-none fixed inset-x-0 top-0 z-[90] flex justify-center print:hidden"
+      className="pointer-events-none fixed inset-x-0 top-0 z-90 flex justify-center print:hidden"
       style={{
         // Transform + opacity only — never layout. Both numbers, and the badge's
         // rotation below, come from the pure `indicatorPresentation`.

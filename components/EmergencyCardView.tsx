@@ -293,7 +293,7 @@ export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
                   {a.substance}
                 </span>
                 {a.severity && (
-                  <span className="rounded bg-rose-100 px-1.5 py-0.5 text-xs font-medium text-rose-700 print:bg-white print:text-black dark:bg-rose-950/50 dark:text-rose-300">
+                  <span className="rounded-sm bg-rose-100 px-1.5 py-0.5 text-xs font-medium text-rose-700 print:bg-white print:text-black dark:bg-rose-950/50 dark:text-rose-300">
                     {a.severity}
                   </span>
                 )}

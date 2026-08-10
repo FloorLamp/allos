@@ -36,7 +36,7 @@ export default function CrisisResources({
           {resources.map((r, i) => (
             <li key={i} className="flex flex-wrap gap-x-2">
               {r.label && <span className="font-medium">{r.label}:</span>}
-              <span className="break-words">{r.contact}</span>
+              <span className="wrap-break-word">{r.contact}</span>
             </li>
           ))}
         </ul>

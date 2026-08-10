@@ -15,7 +15,7 @@
 // token here never carries a duration.
 
 // The backdrop behind any overlay. One treatment: the drawer used to add a
-// `backdrop-blur-sm` that the sheet did not, which made the same dimming read as
+// `backdrop-blur-xs` that the sheet did not, which made the same dimming read as
 // two different depths depending on which surface opened it. The blur went
 // rather than spread — it is a full-viewport GPU cost on the app's most
 // frequently opened surface, for an effect the opacity already delivers.
@@ -59,8 +59,8 @@ export const OVERLAY_DRAG_HANDLE_BAR =
 // FOUR fixed surfaces converge on the phone's bottom edge and, before this,
 // each one hand-wrote its own inset and picked its own z-index in isolation:
 // the workout dock (full-width, `z-40`), the offline-queue pill (bottom-left,
-// `z-[100]`), that queue's error panel (bottom-right, `z-[101]`) and the toast
-// stack (bottom-right, `z-[100]`). Since three of them anchored to `bottom:
+// `z-100`), that queue's error panel (bottom-right, `z-101`) and the toast
+// stack (bottom-right, `z-100`). Since three of them anchored to `bottom:
 // max(1rem, safe-area)` regardless of the dock, a toast raised during a live
 // workout landed ON TOP of the dock — the notice covered the "still working
 // out?" bar it was competing with for the same 60px of screen.
@@ -102,5 +102,5 @@ export const BOTTOM_EDGE_GUTTER_RIGHT =
 export const BOTTOM_EDGE_GUTTER_LEFT =
   "left-[max(1rem,env(safe-area-inset-left))]";
 export const BOTTOM_EDGE_DOCK_LAYER = "z-40";
-export const BOTTOM_EDGE_NOTICE_LAYER = "z-[100]";
-export const BOTTOM_EDGE_ALERT_LAYER = "z-[101]";
+export const BOTTOM_EDGE_NOTICE_LAYER = "z-100";
+export const BOTTOM_EDGE_ALERT_LAYER = "z-101";

@@ -43,7 +43,7 @@ export default function UpdateReadyBar({
 }) {
   return (
     <div
-      className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_LEFT} ${BOTTOM_EDGE_NOTICE_LAYER} mb-12 flex max-w-[min(22rem,calc(100vw-2rem))] items-center gap-3 rounded-lg border border-black/10 bg-white/95 px-3 py-2 text-sm shadow-lg backdrop-blur dark:border-white/10 dark:bg-ink-850/95`}
+      className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_LEFT} ${BOTTOM_EDGE_NOTICE_LAYER} mb-12 flex max-w-[min(22rem,calc(100vw-2rem))] items-center gap-3 rounded-lg border border-black/10 bg-white/95 px-3 py-2 text-sm shadow-lg backdrop-blur-sm dark:border-white/10 dark:bg-ink-850/95`}
       data-testid="update-ready-bar"
       role="status"
     >
@@ -84,7 +84,7 @@ export default function UpdateReadyBar({
         onClick={onDismiss}
         aria-label="Dismiss the update notice"
         title="Dismiss"
-        className="shrink-0 rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+        className="shrink-0 rounded-sm p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-ink-750 dark:hover:text-slate-300"
         data-testid="update-ready-dismiss"
       >
         <IconX className="h-4 w-4" stroke={1.75} aria-hidden />

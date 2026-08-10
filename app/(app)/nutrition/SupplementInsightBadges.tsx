@@ -51,7 +51,7 @@ export default function SupplementInsightBadges({
         <ModalShell
           title="Patterns"
           onClose={() => setOpen(null)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <div
             id="supplement-patterns-panel"
@@ -66,7 +66,7 @@ export default function SupplementInsightBadges({
         <ModalShell
           title="Suggestions"
           onClose={() => setOpen(null)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <div
             id="supplement-suggestions-panel"

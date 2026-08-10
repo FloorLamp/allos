@@ -158,7 +158,7 @@ export default function LogsStream({
                   {e.error}
                 </span>
               ) : (
-                <span className="whitespace-pre-wrap break-words text-slate-500 dark:text-slate-400">
+                <span className="whitespace-pre-wrap wrap-break-word text-slate-500 dark:text-slate-400">
                   {e.detail ?? ""}
                 </span>
               )}

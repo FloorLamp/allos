@@ -90,7 +90,7 @@ function RowSummary({
             {badge}
           </span>
         )}
-        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-ink-800 dark:text-slate-300">
+        <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-ink-800 dark:text-slate-300">
           {sourceLabel(source)}
         </span>
         <span className="font-medium text-slate-800 dark:text-slate-100">

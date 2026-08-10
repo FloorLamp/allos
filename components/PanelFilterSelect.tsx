@@ -56,7 +56,7 @@ export default function PanelFilterSelect({
           browser ellipsizes the selected label; the open list is unaffected) and
           leave desktop unconstrained. */}
       <select
-        className="input w-auto max-w-[10rem] min-w-0 sm:max-w-none"
+        className="input w-auto max-w-40 min-w-0 sm:max-w-none"
         data-testid="panel-filter"
         value={value ?? ""}
         onChange={(e) => setPanel(e.target.value)}

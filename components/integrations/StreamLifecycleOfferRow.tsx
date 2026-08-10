@@ -63,7 +63,7 @@ export default function StreamLifecycleOfferRow({
       <p className="font-medium text-slate-800 dark:text-slate-100">
         {offer.title}
       </p>
-      <p className="mt-0.5 break-words text-sm text-slate-600 dark:text-slate-300">
+      <p className="mt-0.5 wrap-break-word text-sm text-slate-600 dark:text-slate-300">
         {offer.body}
       </p>
       <div className="mt-2.5 flex flex-wrap items-center gap-2">

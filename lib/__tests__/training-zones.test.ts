@@ -22,7 +22,7 @@ import {
 } from "../training-zones";
 
 describe("estimateMaxHr (Tanaka)", () => {
-  it("is 208 − 0.7 × age, rounded", () => {
+  it("is 208 − 0.7 × age, rounded-sm", () => {
     expect(estimateMaxHr(40)).toBe(180); // 208 - 28 = 180
     expect(estimateMaxHr(30)).toBe(187); // 208 - 21 = 187
     expect(estimateMaxHr(25)).toBe(191); // 208 - 17.5 = 190.5 → 191

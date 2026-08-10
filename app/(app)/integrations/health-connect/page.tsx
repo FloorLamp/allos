@@ -115,11 +115,11 @@ export default async function HealthConnectPage() {
                 <li>
                   Add a webhook with the <strong>Endpoint URL</strong> above and
                   an{" "}
-                  <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-ink-800">
+                  <code className="rounded-sm bg-slate-100 px-1 py-0.5 text-xs dark:bg-ink-800">
                     Authorization
                   </code>{" "}
                   header of{" "}
-                  <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-ink-800">
+                  <code className="rounded-sm bg-slate-100 px-1 py-0.5 text-xs dark:bg-ink-800">
                     Bearer &lt;token&gt;
                   </code>
                   .
@@ -232,7 +232,7 @@ function RecommendedSettings() {
               >
                 <td className="td">{row.label}</td>
                 <td className="td">
-                  <code className="rounded bg-slate-100 px-1 py-0.5 font-mono dark:bg-ink-800">
+                  <code className="rounded-sm bg-slate-100 px-1 py-0.5 font-mono dark:bg-ink-800">
                     {SETTING_LABEL[row.setting]}
                   </code>
                 </td>

@@ -19,7 +19,7 @@ export default function ProfilePathChoices({
     <div className="space-y-4">
       <form action={saveOnboardingProfilePath} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="relative flex cursor-pointer items-start rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-[:checked]:border-brand-400 has-[:checked]:bg-brand-50/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400/50 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-[:checked]:border-brand-500/60 dark:has-[:checked]:bg-brand-500/10">
+          <label className="relative flex cursor-pointer items-start rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-checked:border-brand-400 has-checked:bg-brand-50/60 has-focus-visible:ring-2 has-focus-visible:ring-brand-400/50 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-checked:border-brand-500/60 dark:has-checked:bg-brand-500/10">
             <input
               type="radio"
               name="profile_path"
@@ -30,7 +30,7 @@ export default function ProfilePathChoices({
                 setAdvancing(true);
                 event.currentTarget.form?.requestSubmit();
               }}
-              className="peer absolute top-3 right-3 h-5 w-5 cursor-pointer appearance-none rounded-full border border-slate-300 bg-white transition checked:border-brand-600 checked:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50 disabled:cursor-default dark:border-slate-600 dark:bg-ink-900 dark:checked:border-brand-500 dark:checked:bg-brand-500"
+              className="peer absolute top-3 right-3 h-5 w-5 cursor-pointer appearance-none rounded-full border border-slate-300 bg-white transition checked:border-brand-600 checked:bg-brand-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400/50 disabled:cursor-default dark:border-slate-600 dark:bg-ink-900 dark:checked:border-brand-500 dark:checked:bg-brand-500"
             />
             <span className="pointer-events-none absolute top-3 right-3 flex h-5 w-5 items-center justify-center text-white opacity-0 transition peer-checked:opacity-100">
               <IconCheck
@@ -48,7 +48,7 @@ export default function ProfilePathChoices({
               </span>
             </span>
           </label>
-          <label className="relative flex cursor-pointer items-start rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-[:checked]:border-brand-400 has-[:checked]:bg-brand-50/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400/50 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-[:checked]:border-brand-500/60 dark:has-[:checked]:bg-brand-500/10">
+          <label className="relative flex cursor-pointer items-start rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-checked:border-brand-400 has-checked:bg-brand-50/60 has-focus-visible:ring-2 has-focus-visible:ring-brand-400/50 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-checked:border-brand-500/60 dark:has-checked:bg-brand-500/10">
             <input
               type="radio"
               name="profile_path"
@@ -59,7 +59,7 @@ export default function ProfilePathChoices({
                 setAdvancing(true);
                 event.currentTarget.form?.requestSubmit();
               }}
-              className="peer absolute top-3 right-3 h-5 w-5 cursor-pointer appearance-none rounded-full border border-slate-300 bg-white transition checked:border-brand-600 checked:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50 disabled:cursor-default dark:border-slate-600 dark:bg-ink-900 dark:checked:border-brand-500 dark:checked:bg-brand-500"
+              className="peer absolute top-3 right-3 h-5 w-5 cursor-pointer appearance-none rounded-full border border-slate-300 bg-white transition checked:border-brand-600 checked:bg-brand-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400/50 disabled:cursor-default dark:border-slate-600 dark:bg-ink-900 dark:checked:border-brand-500 dark:checked:bg-brand-500"
             />
             <span className="pointer-events-none absolute top-3 right-3 flex h-5 w-5 items-center justify-center text-white opacity-0 transition peer-checked:opacity-100">
               <IconCheck

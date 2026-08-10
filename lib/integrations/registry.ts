@@ -221,7 +221,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // (#2263).
     silenceToleranceMinutes: 3 * 24 * 60,
     stoppedConsequence:
-      "Sleep, HRV, and workouts from your ring have stopped arriving.",
+      "Sleep, HRV, and workouts from your ring-3 have stopped arriving.",
     docsUrl: "https://cloud.ouraring.com/personal-access-tokens",
     pull: {
       // A personal access token against Oura's own per-token budget. The data is

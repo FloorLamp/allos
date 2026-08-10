@@ -259,7 +259,7 @@ export default function Combobox({
         }}
         className={
           titleAppearance
-            ? `input relative z-10 !w-auto max-w-full !rounded-none !border-0 !bg-transparent !px-0 !py-1 !pr-7 text-2xl leading-tight font-semibold tracking-tight !text-transparent !shadow-none caret-brand-600 focus:!border-transparent focus:!ring-0 md:text-3xl dark:!text-transparent dark:caret-brand-400 ${inputClassName}`
+            ? `input relative z-10 w-auto! max-w-full rounded-none! border-0! bg-transparent! px-0! py-1! pr-7! text-2xl leading-tight font-semibold tracking-tight text-transparent! shadow-none! caret-brand-600 focus:border-transparent! focus:ring-0! md:text-3xl dark:text-transparent! dark:caret-brand-400 ${inputClassName}`
             : `input pl-9 ${inputClassName} ${
                 badge ? (value && !disabled ? "pr-36" : "pr-28") : ""
               } ${value && !disabled && !badge ? "pr-10" : ""} ${
@@ -287,7 +287,7 @@ export default function Combobox({
           // lookups now that the input carries an aria-label (#1177).
           aria-label="Clear"
           title="Clear"
-          className="absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-center rounded-r-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+          className="absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-center rounded-r-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             onChange("");

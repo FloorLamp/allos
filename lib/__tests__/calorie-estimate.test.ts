@@ -59,7 +59,7 @@ describe("metsForActivity", () => {
 });
 
 describe("estimateKcal", () => {
-  it("computes METs × weight × hours, rounded", () => {
+  it("computes METs × weight × hours, rounded-sm", () => {
     // 8 METs, 80 kg, 60 min → 8 * 80 * 1 = 640
     expect(estimateKcal(8, 80, 60)).toBe(640);
     // 10 METs, 70 kg, 30 min → 10 * 70 * 0.5 = 350

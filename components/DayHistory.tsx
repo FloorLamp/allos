@@ -48,7 +48,7 @@ const MTX_WEEK_GAP = 5;
 // beneath keep their hover and links. z-index is per use: the matrix's day
 // numbers must slide UNDER its sticky row labels.
 const OVERLAY_LABEL =
-  "pointer-events-none absolute rounded bg-white/70 px-1 text-xs font-semibold uppercase tracking-wide text-slate-700 backdrop-blur-[2px] dark:bg-ink-950/60 dark:text-slate-200";
+  "pointer-events-none absolute rounded-sm bg-white/70 px-1 text-xs font-semibold uppercase tracking-wide text-slate-700 backdrop-blur-[2px] dark:bg-ink-950/60 dark:text-slate-200";
 
 // Color bucket per level, from the ONE blessed activity ramp (#1445).
 const LEVEL_CLASS = [
@@ -488,7 +488,7 @@ export default function DayHistory({
                           aria-label={calendarCellSummary(cell)}
                           aria-pressed={isSelected}
                           style={size}
-                          className={`${cls} block ring-brand-400 hover:ring-2 focus:outline-none focus:ring-2`}
+                          className={`${cls} block ring-brand-400 hover:ring-2 focus:outline-hidden focus:ring-2`}
                           {...calendarCellProps(
                             calendarCellSummary(cell),
                             cell.date,
@@ -519,7 +519,7 @@ export default function DayHistory({
               <span
                 key={m.col}
                 aria-hidden="true"
-                className={`${OVERLAY_LABEL} -top-1.5 z-[2]`}
+                className={`${OVERLAY_LABEL} -top-1.5 z-2`}
                 style={{ left: m.col * calStep }}
               >
                 {m.label}
@@ -530,7 +530,7 @@ export default function DayHistory({
                 <span
                   key={row}
                   aria-hidden="true"
-                  className={`${OVERLAY_LABEL} -left-1 z-[2]`}
+                  className={`${OVERLAY_LABEL} -left-1 z-2`}
                   style={{ top: row * calStep + (calCell - 16) / 2 }}
                 >
                   {DOW[wd]}
@@ -628,7 +628,7 @@ export default function DayHistory({
                 <span
                   key={d}
                   aria-hidden="true"
-                  className={`${OVERLAY_LABEL} -top-1.5 z-[1] tabular-nums`}
+                  className={`${OVERLAY_LABEL} -top-1.5 z-1 tabular-nums`}
                   style={{
                     left: MTX_LABEL_W + i * MTX_STEP + (i / 7) * MTX_WEEK_GAP,
                   }}
@@ -679,13 +679,13 @@ export default function DayHistory({
                       data-testid="day-history-expand"
                       onClick={() => setExpanded(true)}
                       title={row.foldedKeys.map(labelFor).join(", ")}
-                      className="sticky left-0 z-[2] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs font-medium text-brand-700 backdrop-blur-sm hover:underline dark:bg-ink-950/70 dark:text-brand-400"
+                      className="sticky left-0 z-2 flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs font-medium text-brand-700 backdrop-blur-xs hover:underline dark:bg-ink-950/70 dark:text-brand-400"
                     >
                       {labelInner}
                     </button>
                   ) : (
                     <span
-                      className="sticky left-0 z-[2] flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs text-slate-600 backdrop-blur-sm dark:bg-ink-950/70 dark:text-slate-300"
+                      className="sticky left-0 z-2 flex w-28 shrink-0 items-center justify-end gap-1 self-stretch bg-white/70 pr-2 text-xs text-slate-600 backdrop-blur-xs dark:bg-ink-950/70 dark:text-slate-300"
                       title={row.label}
                     >
                       {labelInner}

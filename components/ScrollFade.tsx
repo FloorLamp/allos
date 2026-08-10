@@ -56,7 +56,7 @@ export default function ScrollFade({
       ref={ref}
       onScroll={update}
       data-testid={testId}
-      className={`overflow-x-auto ${hideScrollbar ? "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : ""} ${className ?? ""}`}
+      className={`overflow-x-auto ${hideScrollbar ? "scrollbar-none [&::-webkit-scrollbar]:hidden" : ""} ${className ?? ""}`}
       style={mask ? { WebkitMaskImage: mask, maskImage: mask } : undefined}
     >
       {children}

@@ -116,17 +116,17 @@ describe("btn family guard (issue #794 cluster 2)", () => {
     ).toEqual([]);
   });
 
-  it("the .btn family + .btn-sm modifier are defined with a focus ring", () => {
+  it("the .btn family + .btn-sm modifier are defined with a focus ring-3", () => {
     const css = fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8");
-    expect(css).toMatch(/\.btn\s*\{/);
-    expect(css).toMatch(/\.btn-ghost\s*\{/);
-    expect(css).toMatch(/\.btn-danger\s*\{/);
-    expect(css).toMatch(/\.btn-sm\s*\{/);
+    expect(css).toMatch(/@utility\s+btn\s*\{/);
+    expect(css).toMatch(/@utility\s+btn-ghost\s*\{/);
+    expect(css).toMatch(/@utility\s+btn-danger\s*\{/);
+    expect(css).toMatch(/@utility\s+btn-sm\s*\{/);
     // 8c: every button in the family carries the shared focus-visible ring.
-    for (const cls of [".btn", ".btn-ghost", ".btn-danger"]) {
-      const block = css.slice(css.indexOf(cls + " {"));
+    for (const utility of ["btn", "btn-ghost", "btn-danger"]) {
+      const block = css.slice(css.indexOf(`@utility ${utility} {`));
       const body = block.slice(0, block.indexOf("}"));
-      expect(body, `${cls} needs focus-visible:ring-brand-500`).toMatch(
+      expect(body, `.${utility} needs focus-visible:ring-brand-500`).toMatch(
         /focus-visible:ring-2 focus-visible:ring-brand-500/
       );
     }

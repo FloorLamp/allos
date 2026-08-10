@@ -40,7 +40,7 @@ export function IntakeSafetyScope({
       data-testid="safety-scope-footer"
     >
       <summary
-        className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded outline-none transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:text-slate-200"
+        className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm outline-hidden transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:text-slate-200"
         data-testid="safety-scope-summary"
       >
         <span>Curated safety screen · no flags found</span>
@@ -116,7 +116,7 @@ export default function IntakeWarnings({
       data-testid="intake-warnings"
       open={total <= 2}
     >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg outline-none transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:text-slate-200">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg outline-hidden transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:text-slate-200">
         <span className="min-w-0">
           <span className="flex items-center gap-2">
             <IconAlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />

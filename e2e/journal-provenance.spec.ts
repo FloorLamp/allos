@@ -1,4 +1,23 @@
 import { test, expect } from "./fixtures";
+import { type Locator } from "@playwright/test";
+
+// Tailwind 4 emits palette colors through CSS Color 4 variables, whose computed
+// serialization is lab() rather than the rgb() string Tailwind 3 produced.
+// Compare against the utility's own rendered color so this still catches a
+// cascade regression without pinning a browser-specific serialization.
+async function expectUtilityColor(locator: Locator, utility: string) {
+  const colors = await locator.evaluate((element, className) => {
+    const reference = document.createElement("span");
+    reference.className = className;
+    document.body.append(reference);
+    const actual = getComputedStyle(element).color;
+    const expected = getComputedStyle(reference).color;
+    reference.remove();
+    return { actual, expected };
+  }, utility);
+  expect(colors.actual).toBe(colors.expected);
+}
+
 // #11: Journal (activity) cards show provenance — where the row came from — plus
 // when it was added. The seed carries a Strava-imported ride alongside the
 // hand-logged workouts, so the two provenance states are both on the page: the
@@ -152,7 +171,7 @@ test("journal cards prioritize a summary and progressively disclose details", as
   await expect(summary).toContainText("148/171 bpm");
   const heartRate = ride.getByTestId("activity-heart-rate");
   await expect(heartRate).toHaveAttribute("title", "Zone 3 · Tempo");
-  await expect(heartRate).toHaveCSS("color", "rgb(71, 85, 105)");
+  await expectUtilityColor(heartRate, "text-slate-600");
   await expect(heartRate.getByTestId("activity-heart-rate-icon")).toHaveCSS(
     "color",
     "rgb(234, 179, 8)"
@@ -395,6 +414,7 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   await expect(primary.locator(":scope > div")).toHaveCount(4);
   await expect(primary).toContainText("Heart rate148 bpm171 max");
   const heartRate = primary.getByTestId("imported-heart-rate");
+  // This one is an inline domain color, not a Tailwind palette utility.
   await expect(heartRate).toHaveCSS("color", "rgb(234, 179, 8)");
   await expect(heartRate).toHaveAttribute("title", "Zone 3 · Tempo");
   await expect(primary).toContainText("Power186 W193 weighted · 612 max");

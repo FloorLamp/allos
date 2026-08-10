@@ -168,7 +168,7 @@ export default function ReviewInbox({
                       />
                     </div>
                     {ev.error && (
-                      <p className="mt-1 break-words text-sm text-rose-700 dark:text-rose-300">
+                      <p className="mt-1 wrap-break-word text-sm text-rose-700 dark:text-rose-300">
                         {ev.error}
                       </p>
                     )}

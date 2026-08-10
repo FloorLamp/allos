@@ -1161,7 +1161,7 @@ export default function FoodLogBar({
     <div>
       <div
         data-testid="food-log-context"
-        className="-mx-2 mb-3 bg-white/95 px-2 py-2 md:sticky md:top-0 md:z-10 md:backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
+        className="-mx-2 mb-3 bg-white/95 px-2 py-2 md:sticky md:top-0 md:z-10 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -1559,7 +1559,7 @@ export default function FoodLogBar({
         <ModalShell
           title="Dietary preferences"
           onClose={() => setPreferencesOpen(false)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <div className="mt-4 min-h-0 overflow-y-auto pr-1">
             <DietaryPreferencesForm
@@ -1591,7 +1591,7 @@ export default function FoodLogBar({
             setEditing(null);
             setDraft(null);
           }}
-          className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <div data-testid="food-correct-modal" className="mt-4 space-y-3">
             <p

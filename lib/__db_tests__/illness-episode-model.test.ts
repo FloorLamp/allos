@@ -128,7 +128,7 @@ describe("stable episode-condition migration (#856 corrective)", () => {
     expect(condition.external_id).toBe(`illness-episode:${episodeId}`);
     expect(condition.status).toBe("resolved");
     expect(condition.onset_date).toBe("2026-04-01");
-    // 062 ran against the EXCLUSIVE ended_at era, so it resolved on end-1 — the value
+    // 062 ran against the EXCLUSIVE ended_at era, so it resolved on inset-e-1 — the value
     // migration 169 later carries forward unchanged (conditions are not rewritten).
     expect(condition.resolved_date).toBe("2026-04-04");
   });

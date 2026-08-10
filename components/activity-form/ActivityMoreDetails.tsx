@@ -66,7 +66,7 @@ export default function ActivityMoreDetails({
         </span>
         <IconChevronRight
           data-testid="more-details-chevron"
-          className={`h-4 w-4 shrink-0 text-slate-400 transition-[color,filter,transform] group-hover:text-brand-500 group-hover:[filter:drop-shadow(0_0_3px_currentColor)] ${open ? "rotate-90" : ""}`}
+          className={`h-4 w-4 shrink-0 text-slate-400 transition-[color,filter,transform] group-hover:text-brand-500 group-hover:filter-[drop-shadow(0_0_3px_currentColor)] ${open ? "rotate-90" : ""}`}
         />
       </button>
       {open && (

@@ -38,7 +38,7 @@ export default function ProvidersIndex({
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[12rem]">
+        <div className="relative flex-1 min-w-48">
           <IconSearch
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
             stroke={1.75}
@@ -52,7 +52,7 @@ export default function ProvidersIndex({
           />
         </div>
         <select
-          className="input max-w-[10rem]"
+          className="input max-w-40"
           value={type}
           onChange={(e) => setType(e.target.value as TypeFilter)}
           data-testid="provider-type-filter"

@@ -17,7 +17,7 @@ export default function CardFootnote({
   return (
     <p
       {...props}
-      className={`${divided ? "card-footnote mt-4 border-t border-black/5 bg-black/[0.025] pt-3 dark:border-white/10 dark:bg-white/[0.025]" : ""} text-xs leading-relaxed text-slate-500 dark:text-slate-400`}
+      className={`${divided ? "card-footnote mt-4 border-t border-black/5 bg-black/2.5 pt-3 dark:border-white/10 dark:bg-white/2.5" : ""} text-xs leading-relaxed text-slate-500 dark:text-slate-400`}
     />
   );
 }

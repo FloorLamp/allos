@@ -166,7 +166,7 @@ export default async function AuditLogPage(props: {
             <td className="td text-slate-500 dark:text-slate-400">
               {e.target ?? "—"}
             </td>
-            <td className="td break-words text-slate-500 dark:text-slate-400">
+            <td className="td wrap-break-word text-slate-500 dark:text-slate-400">
               {e.detail ?? ""}
             </td>
           </tr>

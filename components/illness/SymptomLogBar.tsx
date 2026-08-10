@@ -689,7 +689,7 @@ export default function SymptomLogBar({
                           aria-label={`Remove ${s.label} suggestion`}
                           title="Remove suggestion"
                           onClick={() => dropStaged(idx)}
-                          className="rounded p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                          className="rounded-sm p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                         >
                           <IconX className="h-3.5 w-3.5" />
                         </button>
@@ -1005,7 +1005,7 @@ export default function SymptomLogBar({
                       title="Clear severity"
                       disabled={sev <= 0}
                       onClick={() => clear(key)}
-                      className="rounded p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 dark:hover:text-slate-200"
+                      className="rounded-sm p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 dark:hover:text-slate-200"
                     >
                       <IconX className="h-3.5 w-3.5" />
                     </button>

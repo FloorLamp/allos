@@ -82,7 +82,7 @@ export default function JournalCalendar({
           type="button"
           onClick={() => shift(-1)}
           disabled={atMin}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
           aria-label="Previous month"
           title="Previous month"
         >
@@ -129,7 +129,7 @@ export default function JournalCalendar({
           type="button"
           onClick={() => shift(1)}
           disabled={atMax}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
           aria-label="Next month"
           title="Next month"
         >

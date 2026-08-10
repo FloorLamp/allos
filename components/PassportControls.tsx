@@ -165,7 +165,7 @@ export default function PassportControls({
                       name="field"
                       value={f.key}
                       defaultChecked
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded-sm border-slate-300"
                     />
                     {f.label}
                   </label>

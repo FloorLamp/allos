@@ -53,7 +53,7 @@ export function WeeklyTargetChip({
         {Array.from({ length: Math.max(1, perWeek) }).map((_, j) => (
           <span
             key={j}
-            className={`h-3 w-3 rounded-sm ${
+            className={`h-3 w-3 rounded-xs ${
               j < count ? PACE_FILL_CLASS[tone] : "bg-slate-300 dark:bg-ink-700"
             }`}
           />

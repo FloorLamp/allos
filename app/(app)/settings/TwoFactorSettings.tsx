@@ -212,7 +212,7 @@ export default function TwoFactorSettings({
               Manual key (base32)
             </p>
             <code
-              className="block break-all rounded bg-black/5 p-2 font-mono text-sm dark:bg-white/5"
+              className="block break-all rounded-sm bg-black/5 p-2 font-mono text-sm dark:bg-white/5"
               data-testid="twofa-secret"
             >
               {secret}
@@ -223,7 +223,7 @@ export default function TwoFactorSettings({
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 otpauth:// URI (paste into your app if it supports it)
               </p>
-              <code className="block break-all rounded bg-black/5 p-2 font-mono text-xs dark:bg-white/5">
+              <code className="block break-all rounded-sm bg-black/5 p-2 font-mono text-xs dark:bg-white/5">
                 {otpauthUrl}
               </code>
             </div>

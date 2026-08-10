@@ -146,7 +146,7 @@ export default function ProtocolControls({
         including the compact mobile size — as every other page. */}
         <PageHeader
           title={protocol.name}
-          className="!mb-0 max-sm:flex-wrap max-sm:gap-2 max-sm:[&>div:first-child]:w-full"
+          className="mb-0! max-sm:flex-wrap max-sm:gap-2 max-sm:[&>div:first-child]:w-full"
           subtitle={
             ongoing
               ? `Started ${formatLongDate(protocol.start_date, formatPrefs)}`

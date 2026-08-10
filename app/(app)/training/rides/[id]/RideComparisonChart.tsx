@@ -94,7 +94,7 @@ export default function RideComparisonChart({
                 type="button"
                 aria-pressed={active}
                 onClick={() => setSelectedKey(metric.key)}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950 ${
+                className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950 ${
                   active
                     ? "bg-brand-600 text-white"
                     : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -128,7 +128,7 @@ export default function RideComparisonChart({
                 className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 rounded-md px-1 py-1.5 sm:grid-cols-[minmax(6.5rem,1.3fr)_minmax(7rem,2fr)_6.5rem] sm:px-2 ${
                   point.current
                     ? "bg-brand-50 dark:bg-brand-950/30"
-                    : "transition hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+                    : "transition hover:bg-slate-50 dark:hover:bg-white/3"
                 }`}
               >
                 <div className="min-w-0">
@@ -166,7 +166,7 @@ export default function RideComparisonChart({
                   <span
                     className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 ${
                       point.current
-                        ? "h-3.5 w-3.5 shadow-sm"
+                        ? "h-3.5 w-3.5 shadow-xs"
                         : "h-2.5 w-2.5 bg-white dark:bg-ink-900"
                     }`}
                     style={{
@@ -214,7 +214,7 @@ export default function RideComparisonChart({
                         : `/training/rides/${point.id}`
                     }
                     data-testid="ride-comparison-link"
-                    className="block rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950"
+                    className="block rounded-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950"
                     aria-label={`Open ${point.title} from ${formatLongDate(
                       point.date,
                       formatPrefs,

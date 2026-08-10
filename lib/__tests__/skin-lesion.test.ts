@@ -95,7 +95,7 @@ describe("skin-lesion normalizers (#715)", () => {
     expect(normalizeBodyRegion("torso")).toBeNull();
     expect(normalizeBodyRegion("left widget")).toBeNull(); // stripped core still unknown
     // A multi-word core that isn't a listed phrase stays null.
-    expect(normalizeBodyRegion("hand ring finger")).toBeNull();
+    expect(normalizeBodyRegion("hand ring-3 finger")).toBeNull();
     // The manual form's canonical tokens still pass through unchanged.
     for (const r of ["scalp", "face", "arm", "leg", "foot", "other"]) {
       expect(normalizeBodyRegion(r)).toBe(r);

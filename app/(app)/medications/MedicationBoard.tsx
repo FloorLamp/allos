@@ -160,7 +160,7 @@ export default function MedicationBoard({
 
       {data.past.length > 0 && !filter ? (
         <details className="card group" data-testid="past-medications">
-          <summary className="-m-2 flex w-[calc(100%+1rem)] cursor-pointer list-none items-center justify-between gap-4 rounded-lg p-2 outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:bg-ink-850">
+          <summary className="-m-2 flex w-[calc(100%+1rem)] cursor-pointer list-none items-center justify-between gap-4 rounded-lg p-2 outline-hidden transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:bg-ink-850">
             <span className="min-w-0">
               <span className="block text-base font-semibold text-slate-700 dark:text-slate-200">
                 Past medications

@@ -582,7 +582,7 @@ export default async function OverviewSection() {
                       {row.label}
                     </span>
                     <span
-                      className="h-2.5 min-w-[0.375rem] rounded-full bg-emerald-500/80"
+                      className="h-2.5 min-w-1.5 rounded-full bg-emerald-500/80"
                       style={{
                         width: `${coverageMax > 0 ? (row.sets / coverageMax) * 100 : 0}%`,
                       }}
@@ -617,7 +617,7 @@ export default async function OverviewSection() {
                 color: bandPresentation(bandVerdict(row.muscle, row.sets))
                   .color,
               }))}
-              className="mx-auto w-full max-w-[14rem] shrink-0 sm:mx-0 sm:w-52"
+              className="mx-auto w-full max-w-56 shrink-0 sm:mx-0 sm:w-52"
             />
           </div>
         )}

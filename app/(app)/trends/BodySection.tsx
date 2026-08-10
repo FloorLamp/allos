@@ -1656,7 +1656,7 @@ export default async function BodySection({
           viewport rule. */}
       {intraday && (
         <div
-          className={`${stackContainerClass(view)} !mt-2`}
+          className={`${stackContainerClass(view)} mt-2!`}
           data-testid="body-intraday-view"
         >
           {bodyStack.length > 0 ? (
@@ -1675,7 +1675,7 @@ export default async function BodySection({
       {/* The same census component renders both presentations. CSS selects the
           viewport-safe one; there is no forked mobile census. */}
       <div
-        className={`${tilesContainerClass(view)} !mt-2`}
+        className={`${tilesContainerClass(view)} mt-2!`}
         data-testid="body-tiles-view"
       >
         <BodyMetricTiles
@@ -1713,7 +1713,7 @@ export default async function BodySection({
           {/* The classic full-chart stack — desktop only. Carries the per-chart
               `#id` anchors used by the chart dropdown (#1067 Phase 1). */}
           <div
-            className={`${stackContainerClass(view)} !mt-2 space-y-6`}
+            className={`${stackContainerClass(view)} mt-2! space-y-6`}
             data-testid="body-charts-all"
           >
             {/* ONE flat ranked stack (#1674): the ★ run first in saved order, then

@@ -57,7 +57,7 @@ function LinkedVisitRow({ visit }: { visit: CareTrailLinkedVisit }) {
     <li>
       <Link
         href={encounterHref(visit.encounterId)}
-        className="flex items-center gap-2 rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-ink-800"
+        className="flex items-center gap-2 rounded-sm px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-ink-800"
         data-testid="care-trail-linked-visit"
         data-encounter-id={visit.encounterId}
       >

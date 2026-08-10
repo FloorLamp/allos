@@ -182,7 +182,7 @@ export default function RoutinesManager({
               <div
                 key={r.id}
                 data-testid="routine-card"
-                className={`card !p-3 text-sm ${
+                className={`card p-3! text-sm ${
                   active ? "ring-1 ring-brand-400 dark:ring-brand-500" : ""
                 }`}
               >

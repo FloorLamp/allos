@@ -99,7 +99,7 @@ export default function ServerTelegramSettings({
             Last notification delivery failed
             {lastError.channel ? ` (${lastError.channel})` : ""}
           </div>
-          <div className="mt-0.5 break-words">{lastError.error}</div>
+          <div className="mt-0.5 wrap-break-word">{lastError.error}</div>
           {lastError.at && (
             <div className="mt-0.5 opacity-80">
               {formatTimestamp(lastError.at, formatPrefs, { zone: "utc" })} UTC

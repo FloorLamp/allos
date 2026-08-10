@@ -509,7 +509,7 @@ export default function CommandPalette({
       title="Search"
       onClose={close}
       initialFocusRef={inputRef}
-      className="mt-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:mt-8 sm:p-5 dark:bg-ink-900"
+      className="mt-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:mt-8 sm:p-5 dark:bg-ink-900"
     >
       <div className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="relative">
@@ -601,7 +601,7 @@ export default function CommandPalette({
                             data-testid="ask-records-citation"
                             className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-xs text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-800"
                           >
-                            <span className="shrink-0 rounded bg-slate-200 px-1 font-mono text-xs text-slate-600 dark:bg-ink-700 dark:text-slate-300">
+                            <span className="shrink-0 rounded-sm bg-slate-200 px-1 font-mono text-xs text-slate-600 dark:bg-ink-700 dark:text-slate-300">
                               {c.index}
                             </span>
                             <span className="min-w-0 flex-1 truncate">

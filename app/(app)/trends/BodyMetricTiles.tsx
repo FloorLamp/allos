@@ -85,7 +85,7 @@ export default function BodyMetricTiles({
       data-testid="body-metric-tiles"
     >
       {ordered.map((d) => (
-        <div key={d.slug} className="h-full [&>*]:h-full">
+        <div key={d.slug} className="h-full *:h-full">
           {nodeBySlug.get(d.slug)}
         </div>
       ))}

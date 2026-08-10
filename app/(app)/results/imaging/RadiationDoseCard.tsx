@@ -50,7 +50,7 @@ export default function RadiationDoseCard({
           {formatMsv(total)}
         </span>
         {estimated && (
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             includes estimates
           </span>
         )}

@@ -116,7 +116,7 @@ export default async function StarredBiomarkers({
         key={b.canonical_name}
         href={readingDetailHref(b.canonical_name)}
         data-testid="starred-tile"
-        className="rounded-lg border border-black/5 p-3 transition hover:border-brand-200 hover:shadow-sm dark:border-white/10"
+        className="rounded-lg border border-black/5 p-3 transition hover:border-brand-200 hover:shadow-xs dark:border-white/10"
       >
         <div className="flex items-start justify-between gap-2">
           <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">

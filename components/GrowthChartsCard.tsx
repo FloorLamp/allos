@@ -80,7 +80,7 @@ export default function GrowthChartsCard({
                 valueRound={view.valueRound}
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center [&>*]:w-full">
+              <div className="flex h-full w-full items-center justify-center *:w-full">
                 <EmptyState
                   message={
                     !view.referenceAvailable

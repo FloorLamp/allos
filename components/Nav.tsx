@@ -262,7 +262,7 @@ const leafClass = (active: boolean, nested: boolean) =>
     nested ? "pl-10 pr-3" : "px-3"
   } ${
     active
-      ? "bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-sm"
+      ? "bg-linear-to-r from-brand-500 to-brand-600 text-white shadow-xs"
       : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
   }`;
 
@@ -300,7 +300,7 @@ function NavLink({
         <span
           data-testid={BADGE_TESTID[leaf.badgeKey]}
           aria-label={BADGE_LABEL[leaf.badgeKey](badgeCount)}
-          className={`flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-semibold ${
+          className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-semibold ${
             active ? "bg-white/25 text-white" : "bg-rose-500 text-white"
           }`}
         >
