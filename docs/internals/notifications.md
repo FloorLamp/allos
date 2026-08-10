@@ -808,6 +808,27 @@ food groups **plus** its protein stepper, while the nudge leaves `__protein__` i
 `rankedKeys` where it consumes one of the six keyboard slots. The six budget slots in
 their own medium — one control that is a button in a chat and a stepper on a page.
 
+**The slot axis is two-sided (#2369).** It reads absence as well as presence. The slot
+signal used to be a positive boost only, so a group with no taps in this window
+contributed 0 — and so did a group with no history at all. Those are opposite facts, and
+tying them meant the heaviest never-eaten-here groups took the backfill on overall
+frecency alone: the morning six offered 🍷 Alcohol and 🥩 Red meat to a profile that has
+never logged either before noon, and since #2225 that six is also what the morning nudge
+sends. `blendFoodOrder` now reads a group's slot **share** — its slot weight against its
+OWN overall weight — and sinks a group with real history and essentially none of it here
+BELOW the groups that have said nothing either way. Two thresholds, both derived from the
+three-window day: `SLOT_ABSENCE_MIN_OVERALL` (8 decayed servings, the count at which
+never-landing-here drops under 5% for a group with no time-of-day preference, since
+(2/3)⁸ ≈ 3.9%) is the floor before absence counts as evidence at all, and
+`SLOT_ABSENCE_MAX_SHARE` (2%) is what "near-zero" means — below one ordinary in-window tap
+per twenty servings, above the sliver a far-edge proximity weight contributes. A **cold
+slot** — no group carrying any weight in the window — reads no evidence and collapses to
+pure overall frecency, so the no-cliff guarantee for fresh and pre-ledger profiles is
+untouched. This is still not a verdict about food: the only input is the profile's own
+ledger, and a hard-coded "no drinks before noon" denylist was rejected for the reason the
+paragraphs above give. It is ORDER, never availability (#559) — alcohol stays one tap away
+in the full catalog and one disclosure away on both surfaces.
+
 **One label grammar, one protein line.** Every quick-log button leads with a glyph
 (#1710); `PROTEIN_NUDGE_EMOJI` gave the protein button the one it was missing
 (#1822 item 6), deliberately not a catalog group's glyph since it is the shake

@@ -7,12 +7,13 @@
 //   • SLOT frecency, from the food_log_events ledger, counting only the taps whose
 //     derived window matches the current window (each tap × recency decay).
 //
-// Blend is LEXICOGRAPHIC: slot weight leads, overall weight backfills, catalog order
-// breaks the final tie. So a group eaten in THIS slot leads (fish at lunch), and
-// groups with no slot signal keep their overall order among themselves — a cold slot
-// (all slot weights 0) sorts purely by overall, reproducing today's ranking. Ranking
-// is presentation-only; every catalog group still appears exactly once (#559 — context
-// gates order, never what CAN be logged).
+// Blend is LEXICOGRAPHIC: slot ABSENCE sinks (see below), then slot weight leads,
+// overall weight backfills, catalog order breaks the final tie. So a group eaten in
+// THIS slot leads (fish at lunch), groups with no slot signal keep their overall order
+// among themselves, and a group whose own ledger says it is never eaten here sinks
+// beneath them — a cold slot (all slot weights 0) sorts purely by overall, reproducing
+// the pre-#950 ranking. Ranking is presentation-only; every catalog group still appears
+// exactly once (#559 — context gates order, never what CAN be logged).
 
 import { decayedWeight } from "./decay";
 import { clockDistanceMin } from "./food-slot";
@@ -38,15 +39,92 @@ export function blendFoodOrder(
 ): string[] {
   const overallW = decayWeights(overall, today, halfLifeDays);
   const slotW = decayWeights(slot, today, halfLifeDays);
+  // A COLD SLOT says nothing about anything (#2369). When no group carries any weight in
+  // this window — a fresh profile, a pre-ledger one, or simply a person who has never
+  // logged at this hour — there is no slot evidence to read either way, so the two-sided
+  // axis stays switched off and the order collapses to pure overall frecency, byte-
+  // identical to the pre-#950 ranking. Without this guard the absence rule would fire on
+  // EVERY logged group at once and hand a cold window's head to the catalog tail.
+  const slotIsCold = ![...slotW.values()].some((w) => w > 0);
   return curated
-    .map((name, i) => ({
-      name,
-      i,
-      s: slotW.get(name) ?? 0,
-      o: overallW.get(name) ?? 0,
-    }))
-    .sort((a, b) => b.s - a.s || b.o - a.o || a.i - b.i)
+    .map((name, i) => {
+      const s = slotW.get(name) ?? 0;
+      const o = overallW.get(name) ?? 0;
+      return { name, i, s, o, absent: !slotIsCold && slotAbsence(s, o) };
+    })
+    .sort(
+      (a, b) =>
+        Number(a.absent) - Number(b.absent) ||
+        b.s - a.s ||
+        b.o - a.o ||
+        a.i - b.i
+    )
     .map((x) => x.name);
+}
+
+// ---- The slot axis is TWO-SIDED (issue #2369) ----
+//
+// The slot signal used to be a positive boost ONLY, which made "no taps in this window"
+// indistinguishable from "no history at all" — both contribute 0. Those are opposite
+// facts. A group logged twenty times, in the evening and at midday, and not once in the
+// morning, is the ledger SAYING something about mornings; a group never logged at all
+// says nothing. Tying them let the heaviest never-eaten-here groups (alcohol, red meat)
+// take the morning quick six on overall frecency alone — and since #2225 that six is
+// also what the morning nudge sends.
+//
+// So the axis reads the group's slot SHARE — its slot weight against its OWN overall
+// weight — and sinks a group with real history and essentially none of it here BELOW the
+// groups with no history. It is still not a verdict about food (#1980/#992/#716): the
+// only input is the profile's own ledger, and the demotion is ORDER, never availability
+// (#559 — alcohol stays one tap away in the full catalog). A hard-coded "no drinks before
+// noon" rule was rejected in #2369 for exactly the reason the rest of this file gives:
+// the ranker does not editorialize, it reads evidence.
+
+// How much decayed overall weight a group needs before its ABSENCE from a window counts
+// as evidence. Food space has three windows (lib/food-slot.ts), so a group with no
+// time-of-day preference lands in any one of them about a third of the time, and never
+// landing in this one across n logged servings has probability ≈ (2/3)^n: 67% at n=1,
+// 20% at n=4, 8.8% at n=6, 3.9% at n=8. Eight is the first count where "never here" is
+// likelier a habit than a coincidence at the conventional 5% — which is exactly the gap
+// #2369 names between "one lifetime log, in the evening" (no evidence of anything, and
+// demoting it below a never-logged group would be over-reading one tap) and "logged on
+// the order of twenty times, never in the morning" (evidence). The units are DECAYED
+// servings, so this is the conservative reading of that count: eight decayed servings
+// takes at least eight real ones, and more the older they are — a habit from ten months
+// ago is weaker evidence about this morning, which is the direction we want to err in,
+// since a wrong demotion is invisible to the person it happens to.
+export const SLOT_ABSENCE_MIN_OVERALL = 8;
+
+// What counts as a NEAR-ZERO share of that weight. The demotion is for groups whose slot
+// signal is arithmetic dust, not for ones with a genuine minority presence here, so the
+// bar sits between the two: proximity weighting (`slotProximityWeight`) gives a tap at
+// the very edge of the span a sliver — a tap 3h55m from a 4h-span anchor contributes
+// 0.02, i.e. a share of 0.003 against the floor above — while ONE ordinary tap inside the
+// window (proximity ≥ 0.5, within two hours of the anchor) is worth 0.025 even against
+// twenty logged servings. Two per cent separates them: a group whose entire slot signal
+// is edge crumbs sinks, a group with one real tap here does not. It is also far below the
+// ~1/3 share a group with no time-of-day preference would show, so the rule only ever
+// fires on a clear absence.
+export const SLOT_ABSENCE_MAX_SHARE = 0.02;
+
+// Does this group's own ledger say it is not eaten in this window? Both sides must hold:
+// enough overall weight for silence to mean anything, and a near-zero share of it here.
+// Below the floor the answer is always false — no evidence is not negative evidence.
+//
+// Both boundaries are decided, not incidental: the floor engages AT its value (a group
+// carrying exactly eight decayed servings is read), and the share does NOT (a share of
+// exactly 2% counts as presence). Ties go to leaving the group where it was, because the
+// demotion is the claim being made and the claim is the thing that has to be earned.
+//
+// Pure and total: the comparator that consumes this falls through to the catalog index,
+// which is unique, so the same inputs always produce the same order — the bar and the
+// nudge slice the same six from one call, and must not disagree run to run.
+function slotAbsence(slotWeight: number, overallWeight: number): boolean {
+  // The floor also guarantees a positive denominator, so a group with slot taps and no
+  // overall weight at all (the reserved __protein__ entry, which rides the event ledger
+  // only) can never be demoted and never divides by zero.
+  if (overallWeight < SLOT_ABSENCE_MIN_OVERALL) return false;
+  return slotWeight / overallWeight < SLOT_ABSENCE_MAX_SHARE;
 }
 
 // ---- Ranking does not editorialize (owner ruling, #1980 reversing #1822 item 5) ----
