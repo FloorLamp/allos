@@ -6,7 +6,7 @@
         {
           "pr": 2362,
           "title": "Household says when a member's reminders reach no one",
-          "body": "A profile can build reminders every day and deliver them nowhere — no login has been granted it, and the admin role deliberately does not count. That state was completely silent. /household now names it per member, alongside four more setup checks: never onboarded, items with no dose recorded, overdue preventive care, and a whole roster switched off.",
+          "body": "A profile can build reminders every day and deliver them nowhere — no login has been granted it, and the admin role deliberately does not count. That state was completely silent. Household now names it per member, alongside four more setup checks: never onboarded, items with no dose recorded, overdue preventive care, and a whole roster switched off.",
           "kind": "feature",
           "issues": [2173]
         },
