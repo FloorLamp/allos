@@ -11,6 +11,13 @@
           "issues": [2173]
         },
         {
+          "pr": 2373,
+          "title": "Blood-count names say whether they are a count or a percentage",
+          "body": "Within one panel “Neutrophils” was a percentage and “Monocytes” a cell count, so side by side they read as the same measure. Every member of the differential now states which it is — “Neutrophils, Relative”, “Monocytes, Absolute” — and a dozen long names gained their abbreviation. Readings you already had were renamed to match; none of the values, ranges or flags changed.",
+          "kind": "fix",
+          "issues": [2335]
+        },
+        {
           "pr": 2388,
           "title": "A biomarker reading costs three lines on a phone, not eight",
           "body": "Inside a group headed Lipids, every card also printed “Panel Lipids” and “Category lab” — the heading, reprinted once per row. Both are desktop columns now, so roughly twice as many readings fit on a phone screen. Notes, which genuinely differ from reading to reading, keep their line.",
