@@ -224,10 +224,14 @@ describe("useDeployedVersion (#2329)", () => {
     );
     await settleReads();
     expect(fetchCalls).toBe(1);
+    // SETTLED, and still asking. Those are two different questions (#2329): the read
+    // has an answer — which is what `waitingWorkerPlan` blocks on, so reporting it
+    // unsettled would suppress the bar and defer #1905's silent activation forever —
+    // while the answer can still change, so the poll keeps going.
     expect(watch.current()).toEqual({
       sha: PAGE_SHA,
       commitMessage: "The running build",
-      settled: false,
+      settled: true,
     });
 
     // A deploy lands under the open tab: nothing about this document changes, and
@@ -244,6 +248,28 @@ describe("useDeployedVersion (#2329)", () => {
     // Settled means settled: the answer can no longer change, so the asking stops.
     await vi.advanceTimersByTimeAsync(UPDATE_CHECK_MS * 3);
     expect(fetchCalls).toBe(2);
+  });
+
+  it("reports a failed read as answered, and asks again anyway", async () => {
+    // The trap the retired "once" mode hid: it settled on EVERY outcome because
+    // #1905's plan blocks on the read, and a poll that only settled on a mismatch
+    // would hold `plan === "wait"` — bar suppressed, waiting worker never consumed —
+    // for as long as the server stayed unreachable. Answering in the dark is safe
+    // precisely because the poll corrects it on the next tick.
+    reply = { status: 200, sha: null, commitMessage: null };
+    const watch = hooks.mount(() =>
+      useDeployedVersion({ baseline: PAGE_SHA, mode: "poll", generation: 0 })
+    );
+    await settleReads();
+    expect(watch.current()).toEqual({
+      sha: null,
+      commitMessage: null,
+      settled: true,
+    });
+
+    reply = { status: 200, sha: DEPLOYED_SHA, commitMessage: "Ship the thing" };
+    await vi.advanceTimersByTimeAsync(UPDATE_CHECK_MS);
+    expect(watch.current().sha).toBe(DEPLOYED_SHA);
   });
 
   it("asks nothing with no baseline to compare against", async () => {

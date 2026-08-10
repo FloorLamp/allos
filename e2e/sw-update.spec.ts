@@ -39,6 +39,12 @@ const SW_SETTLE_MS = 20_000;
 // /api/version to name a build this page is not on makes the simulated deploy read
 // as a real one. Without it, the update would (rightly) never be offered — a
 // waiting worker for the build the page already runs is consumed silently (#1905).
+//
+// The two #1700 tests install it only AFTER the page is loaded and controlled. The
+// sha read is the DETECTOR now (#2329), so intercepting before the load would raise
+// the bar off the poll before their hand-registered worker even exists — a different
+// path, tested below, and one that would leave these two asserting the resolution
+// mechanic against a bar the resolution mechanic did not raise.
 const DEPLOYED = { sha: "1700abc", commitMessage: "e2e worker deploy" };
 
 async function interceptVersion(page: Page) {
@@ -74,11 +80,11 @@ test("a new build waits instead of taking over the open page (#1700)", async ({
     sessionStorage.setItem("swSpecLoads", String(n + 1));
   });
 
-  await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
   const before = await controllerScript(page);
   expect(before).toContain("/sw.js?v=");
+  await interceptVersion(page);
 
   // Type into a form and leave it unsaved — the state a takeover used to destroy.
   await page
@@ -136,9 +142,9 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
       raised;
   }, UPDATE_PENDING_KEY);
 
-  await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
+  await interceptVersion(page);
 
   await page.evaluate(
     (v) => navigator.serviceWorker.register(`/sw.js?v=${v}`),
