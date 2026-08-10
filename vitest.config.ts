@@ -1,7 +1,9 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
+import { specsNeedingIsolation } from "./vitest.isolation";
 
-const alias = { "@": fileURLToPath(new URL(".", import.meta.url)) };
+const root = fileURLToPath(new URL(".", import.meta.url));
+const alias = { "@": root };
 
 // DB integration tests (migrations/upgrades) and the server-action write-path
 // tests are a separate, impure tier that opens real SQLite handles and mocks the
@@ -13,24 +15,21 @@ const NOT_PURE = [
   "node_modules/**",
 ];
 
-// The two specs that call process.chdir(). Worker threads do not support it at
-// all, and under a shared registry it would not be safe even on `forks`: the
-// change of directory would outlive the file and follow every later spec in that
-// worker. They get their own isolated, forked project instead.
-const CHDIR_SPECS = [
-  "lib/__tests__/ai-log-redaction.test.ts",
-  "lib/__tests__/notify-log-sink.test.ts",
-];
+// Routed by scanning, never by hand — see vitest.isolation.ts for what disqualifies
+// a spec from the shared registry and why that is a scan rather than a list. Today
+// this finds the two specs that call process.chdir() plus the single vi.mock user.
+const ISOLATED = specsNeedingIsolation(root, ["lib/__tests__"]);
 
 // Tests target pure logic only (no DB/network), so the default `node`
 // environment is enough. The `@/*` alias mirrors tsconfig.json `paths` so test
 // files can import app modules the same way the app does.
 //
 // TWO PROJECTS, ONE `npm test`. The bulk run with a SHARED module registry
-// (`isolate: false`): with no database and only one vi.mock in 833 files, nothing
-// here needs a private registry, and re-importing the same module graph for every
-// file was over half the run — importing it once per worker took the suite from
-// 31s to 13s. The chdir pair keeps the old per-file isolation.
+// (`isolate: false`): almost nothing here needs a private registry, and
+// re-importing the same module graph for every file was over half the run —
+// importing it once per worker took the suite from 31s to 13s. The handful that
+// genuinely cannot share keep the old per-file isolation, routed there by the
+// scan in vitest.isolation.ts rather than by anyone remembering to list them.
 export default defineConfig({
   resolve: { alias },
   test: {
@@ -40,7 +39,7 @@ export default defineConfig({
         test: {
           name: "pure",
           include: ["lib/**/*.test.ts"],
-          exclude: [...NOT_PURE, ...CHDIR_SPECS],
+          exclude: [...NOT_PURE, ...ISOLATED],
           pool: "threads",
           isolate: false,
         },
@@ -48,8 +47,8 @@ export default defineConfig({
       {
         resolve: { alias },
         test: {
-          name: "pure-chdir",
-          include: CHDIR_SPECS,
+          name: "pure-isolated",
+          include: ISOLATED,
           exclude: NOT_PURE,
           pool: "forks",
         },

@@ -235,7 +235,10 @@ describe("stateful-write registry (#1893)", () => {
         ).toBe(true);
       }
     }
-  });
+    // Re-reads and re-parses every source file once per registered table. That
+    // fits the default 5s budget on Linux CI but not on a Windows filesystem,
+    // where the per-file read overhead is enough to overrun it.
+  }, 30_000);
 
   it("the gate module holds no DML of its own — it reaches the table through the store", () => {
     // lib/cycle-write.ts is the guard layer: it owns the typed refusals and calls the

@@ -596,6 +596,27 @@ query composition, or a Server Action write/auth path. Every findings builder
 must have a realistic DB fixture that asserts its end-to-end output and
 registered dedupe-key prefix.
 
+Both unit tiers run most specs with a **shared module registry** (`isolate:
+false`) — one module graph per worker instead of per file, which is where most of
+their speed comes from. Writing a spec needs no special knowledge: a spec that
+calls `vi.mock()` or `process.chdir()` is routed to the tier's isolated project
+automatically by the scan in `vitest.isolation.ts`, where it behaves exactly as
+the tier did before. It is only slower, so prefer not to reach for either.
+
+Two things the scan cannot see, both about state that now outlives the file that
+set it:
+
+- A module-scope cache fed by DB reads must be reset per file in
+  `lib/__db_tests__/setup-shared.ts`. It already resets the timezone memo, the
+  #2066 dose-schedule memo, the `next/cache` spies and the acting session. A
+  cache that is missed does not fail — it answers the next file with the
+  previous file's data, which is worse.
+- A module-scope prepared statement must use `hoistedStatement()` from
+  `lib/db.ts`, never a bare `db.prepare(...)`. The shared tier swaps the database
+  between files, and a statement compiled against the closed connection throws.
+  Inline `db.prepare(...)` inside a function is unaffected. The owned-table scans
+  read both forms, so scoping stays enforced either way.
+
 Every rendered UI feature must add or extend a browser test. The E2E harness
 seeds a template once, gives each worker its own database and `next start`
 server, and freezes the run's clock. Specs import `test` and `expect` from
