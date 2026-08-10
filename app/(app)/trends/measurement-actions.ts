@@ -7,6 +7,7 @@ import { submittedWeightUnit } from "@/lib/units";
 import {
   insertBodyMetric,
   insertGrowth,
+  insertWaistCirc,
   insertVitals,
 } from "@/lib/offline/writes";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
@@ -19,13 +20,13 @@ import type { StatedTimeRefusal } from "@/lib/stated-time";
 // action over the THREE existing write cores, chosen by which fields the submission
 // actually carries.
 //
-// It adds NO write path. `insertBodyMetric` / `insertVitals` / `insertGrowth` are
-// the same auth-blind, profileId-first cores the offline replay route runs, so a
-// value entered here is byte-for-byte the value the old per-domain form wrote — same
-// tables, same canonical names, same reference-range reconcile. The three stay
-// SEPARATE cores because they land in three different stores (body_metrics,
+// It adds NO write path. `insertBodyMetric` / `insertVitals` / `insertGrowth` /
+// `insertWaistCirc` are the same auth-blind, profileId-first cores the offline replay
+// route runs, so a value entered here is byte-for-byte the value the old per-domain
+// form wrote — same tables, same canonical names, same reference-range reconcile.
+// They stay SEPARATE cores because they land in different stores (body_metrics,
 // medical_records + metric_samples, metric_samples); this action is the composition,
-// not a fourth writer.
+// not another writer.
 //
 // PARTIAL SUBMISSIONS ARE THE NORM. Every field is optional and a section whose
 // fields are all blank is simply skipped, so "log only a BP" writes no body_metrics
@@ -160,6 +161,17 @@ export async function addMeasurements(
         heightUnit: str("height_unit"),
         headCirc: str("head_circ"),
         headCircUnit: str("head_circ_unit"),
+      }) || wrote;
+  }
+
+  // 4. Waist circumference (metric_samples) — ungated: a tape reading applies at
+  //    every life stage, so unlike the growth pair above it is always rendered and
+  //    always accepted (#2322).
+  if (filled("waist_circ")) {
+    wrote =
+      insertWaistCirc(profile.id, date, {
+        waistCirc: str("waist_circ"),
+        waistCircUnit: str("waist_circ_unit"),
       }) || wrote;
   }
 

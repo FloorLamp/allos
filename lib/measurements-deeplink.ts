@@ -31,6 +31,10 @@ export function deepLinkFieldId(
     // "Log a reading" affordance), so peak flow gets a focus target like the rest.
     case "peak-flow":
       return "m-peak-flow";
+    // #2322: the waist metric's detail page and its tile link here to log a tape
+    // reading, so it gets a focus target like every other manually-entered metric.
+    case "waist-circ":
+      return "m-waist-circ";
   }
   switch (created) {
     case "weight":
@@ -93,6 +97,9 @@ const FIELD_GROUP: Record<string, MeasurementGroup> = {
   "m-body-fat": "body",
   "m-height": "body",
   "m-head-circ": "body",
+  // Waist circumference (#2322). In BODY beside weight and height: it is a body
+  // measurement someone takes with a tape in the same sitting they weigh themselves.
+  "m-waist-circ": "body",
   "m-sleep": "sleep",
   "m-hrv": "sleep",
 };
@@ -161,6 +168,10 @@ export function measurementGroupSummary(
     add(
       value("head_circ"),
       (v) => `${v} ${value("head_circ_unit") ?? "cm"} head`
+    );
+    add(
+      value("waist_circ"),
+      (v) => `${v} ${value("waist_circ_unit") ?? "cm"} waist`
     );
   } else {
     add(value("sleep_hours"), (v) => `${v} hrs sleep`);

@@ -25,6 +25,8 @@ import {
 } from "@/lib/vitals-input";
 import { statedInstantOnDate } from "@/lib/stated-time";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
+import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
+import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
 import {
@@ -418,6 +420,35 @@ export function insertGrowth(
     for (const s of normalized.samples) {
       upsertManualSample(profileId, s.metric, date, s.value);
     }
+  });
+  return true;
+}
+
+// ── waist circumference (issue #2322) ─────────────────────────────────────────
+
+// Persist a manual waist-circumference measurement. The SIBLING of insertGrowth
+// rather than a member of it: "growth" is the life-stage-gated pair the WHO/CDC
+// percentile card reads, and a waist measurement is neither gated nor plotted against
+// a growth curve — what the two share is the STORE and the discipline.
+//
+// Waist circumference has a single home in metric_samples (metric
+// 'waist_circumference_cm') — the SAME place the document-extraction writer lands it
+// (lib/waist-circ-extract.ts) — so a tape reading typed at home feeds the
+// `waist-circ` chart identically to an imported one. A point metric uses a fixed
+// midnight start, so the natural key (profile_id, metric, source='manual',
+// origin=NULL, start_time) is stable across re-entries: logging the same date again
+// CORRECTS that day rather than stacking a second point. Auth-blind + profileId-first
+// like its neighbours. Returns false on a rejected/empty input, true on a write.
+export function insertWaistCirc(
+  profileId: number,
+  date: string,
+  raw: WaistInputRaw
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const normalized = normalizeWaistInput(raw);
+  if ("error" in normalized) return false;
+  writeTx(() => {
+    upsertManualSample(profileId, WAIST_CIRC_METRIC, date, normalized.valueCm);
   });
   return true;
 }
