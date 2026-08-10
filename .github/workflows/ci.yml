@@ -249,12 +249,21 @@ jobs:
         # back as `strategy.job-total`, so re-splitting the suite is a one-line
         # edit that cannot leave a stale `/4` behind.
         #
-        # Six, not four, because the browser suite is the critical path: at four
-        # it ran 683-838s against the `check` job's 543s, so every push waited on
-        # e2e alone. Six lands it near check, which is the point of balance —
-        # splitting further would buy wall-clock only until check became the
-        # bound, while still paying another runner's ~2min setup per shard.
-        shard: [1, 2, 3, 4, 5, 6]
+        # The browser suite is the whole critical path — since #2429 split the
+        # non-browser work, the slowest of check/test-db/test-unit is ~204s while
+        # e2e sits at ~650s, so every push waits on this matrix and nothing else.
+        #
+        # Measured across the 4- and 6-way runs, a shard costs
+        # `179s + 2872s/N`: a 179s floor (146s setup, of which 110s is the Next
+        # build, plus 33s of Playwright start-up) over ~2872s of test work. That
+        # predicted 658s at six against an actual ~650s.
+        #
+        # Eight puts it near 538s. The floor is why this stops here rather than
+        # going further: at ten it is ~466s and at twelve ~418s, so each extra
+        # pair of runners buys progressively less while costing a full 179s of
+        # setup each. Lowering the FLOOR — or the 2872s itself — is what would
+        # move this next, not more shards.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
       # brings both parents — enough for the docs-only diff below (HEAD^1 is the
