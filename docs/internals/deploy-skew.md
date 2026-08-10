@@ -17,10 +17,8 @@ and keep the shell cache that build was compiled against. Nothing is taken over
 mid-form. The page raises one calm, dismissible "Update ready" bar, and the reload
 happens on the user's tap.
 
-Two detectors, **one** pending state (#1795): the waiting worker wherever a worker
-exists (it is the thing that decides which build a reload lands on), a `/api/version`
-sha read where none does (private mode, unsupported browsers, failed registration,
-development). `resolveUpdateState()` merges them, so one deploy produces one notice.
+Two signals, **one** pending state (#1795): a waiting worker, and the `/api/version`
+sha read. `resolveUpdateState()` merges them, so one deploy produces one notice.
 
 `shouldReloadOnControllerChange()` holds the only-the-asking-tab rule (#1806):
 activation is registration-wide, so every open tab sees `controllerchange`, and only
@@ -37,15 +35,75 @@ cannot loop, because `controllerchange` fires once per activation and a committe
 reload destroys the document that asked. The reloaded-once flag still guards the
 fallback timer itself.
 
+## Detection and resolution are different jobs (#2329)
+
+#1795 also made those two **mutually exclusive** — "the worker wins wherever it
+exists" — and that half was the bug. A waiting worker is the mechanism that
+**resolves** an update; it is not, and structurally cannot be, a **detector** for a
+tab that is already open:
+
+- `public/sw.js` reads its version from its own URL (`?v=<sha>`), so a deploy changes
+  **not one byte** of the script.
+- `registration.update()` therefore refetches the URL this document registered, gets
+  identical bytes, and installs nothing.
+- Nothing re-registers an open tab. `register()` runs once per document load, with
+  that document's sha — only a **fresh document** ever discovers a new worker.
+
+So in a tab with a worker, `swWaiting` was false forever and the poll was off:
+`pending` was false forever, and the bar was unreachable in exactly the long-lived
+PWA tab it exists for. The one context that still worked was the one with **no**
+worker — the inverse of where it is needed.
+
+The rule now: **the sha poll runs wherever there is a baseline to compare against.**
+
+```ts
+const mode: VersionWatchMode = sha ? "poll" : "off";
+```
+
+Picking a detector was never what kept one deploy to one notice — the merge is, plus
+one component, one `pending` and one `UpdateReadyBar`. Three things went with the
+exclusion: `deployDetectorFor()` and the `DeployDetector` type, the
+`registration.update()` tick (a byte-identical refetch every minute per tab that
+could never install anything; a worker installed by _another_ tab still arrives
+through scope-wide `updatefound`), and the poll's `"once"` mode.
+
+`"once"` collapsed into `"poll"` because a poll that finds a mismatch already learns
+what shipped. The one thing it did that the poll did not is now the poll's: **the
+first read happens on mount.** `waitingWorkerPlan()` blocks on `deployedSettled`, so
+a deferred first read left a fresh load after a deploy on `plan === "wait"` — bar
+suppressed — for up to a full interval. The mount read is free: a document this
+server just rendered is on this server's build, so it normally reports the same sha,
+finds no mismatch, and settles the read the plan is waiting for.
+
+What is deliberately **not** done, and why: `sw.js` is not version-stamped in its
+bytes (that would make every deploy invalidate the script for every tab, in service
+of a detector the sha read already provides more cheaply and more honestly); there is
+no push/SSE deploy signal (a minute was never the complaint); and the `?v=<sha>`
+registration URL stays (it names the cache generation).
+
+Everything downstream of the signal was already correct and is untouched: the
+wait-then-offer posture, `shouldOfferUpdate()`'s controlled-page discriminator,
+`waitingWorkerPlan()`'s silent consume, the SKIP_WAITING handshake and its fallback
+timer, the late-swap re-answer, the dismissal posture, and the #1906 skew marker.
+None of them had ever run, because `pending` was never true.
+
+The reload path is right for this case as it stands. An open tab that noticed the
+deploy through the poll has **no** waiting worker, so `reloadPlanFor()` returns
+`plain` — and a plain reload is correct: navigations are network-first (`sw.js` never
+caches HTML), so it lands on the new build's document, whose hashed chunk URLs the old
+cache does not hold and are therefore fetched fresh. That document registers
+`/sw.js?v=<new sha>`, its worker installs, `pageSha === deployedSha`, and #1905
+consumes it silently.
+
 ## A refresh consumes the update (#1905)
 
 A manual refresh (F5, pull-to-refresh) fetches the new build's HTML and assets, but
 it **never activates a waiting worker** — only the skip-waiting handshake or closing
 every tab of the origin does. And on the first load after a deploy the new worker is
 usually not waiting **yet**: the page's own `register("/sw.js?v=<new sha>")` call is
-what tells the browser a deploy happened at all (the update tick refetches the old
-versioned URL, whose bytes a deploy does not change), so the worker installs seconds
-after load, through `updatefound`. Both shapes used to re-offer — the second one
+what tells the browser a deploy happened at all — a fresh document is the only thing
+that ever does, since the script's bytes never change (#2329) — so the worker installs
+seconds after load, through `updatefound`. Both shapes used to re-offer — the second one
 even after the first was fixed, because the fix keyed on "waiting at load" — a bar
 advertising an update to the build the page was already running, coming back on the
 very refresh that was supposed to clear it.
@@ -85,8 +143,8 @@ worker's activate step drops it. Those unvisited-route chunks were already doome
 the deploy removed them from the server — so this widens no failure window; it only
 makes an existing one arrive sooner. What that tab then hits is skew, below.
 
-Only the worker path ever looped. The sha fallback's baseline is the freshly-served
-sha, so a refresh always self-clears it.
+Only the worker path ever looped. The sha read's baseline is the freshly-served sha,
+so a refresh always self-clears it.
 
 ## Skew: the tab that navigates while stale (#1906)
 
@@ -219,9 +277,24 @@ stale-action case, the guard's state machine including a 25-pass broken-deploy
 simulation that must produce exactly one reload, the marker contract, and that the
 two error-card palettes genuinely invert rather than merely differ.
 
-Browser: `e2e/sw-update.spec.ts` drives the real deferred-activation posture;
-`e2e/update-notice.spec.ts` drives the no-worker fallback detector and pins the
-pending marker being written, and kept across a dismissal.
+Pure (`lib/__tests__/deployed-version-watch.test.ts`): **how the signal is produced**,
+which is the half nothing tested before #2329 — every other pure test takes
+`swWaiting` / `deployedSha` as an input and verifies the decision made from it, which
+is why a permanently-false input went unnoticed for a week. It executes the real
+`useDeployedVersion` against a minimal hook runtime (the pure tier is node-only by
+design, so `react`'s three primitives are mocked with an order-indexed
+implementation): the mount read, the poll continuing after a read that found no
+mismatch, the session-gated settle, the per-generation re-arm. Its second half is a
+source scan of the registrar's call site, because whether the hook is switched on at
+all is a call-site fact — exactly the fact #1795 got wrong — that no test of the hook
+in isolation can see.
+
+Browser: `e2e/sw-update.spec.ts` drives the real deferred-activation posture and,
+since #2329, the **deploy shape production actually has**: a tab that is open,
+worker-registered and controlled while the server moves to a new build, with nothing
+registering a second worker. Both of those tests fail on the pre-#2329 tree at the
+bar never appearing. `e2e/update-notice.spec.ts` drives the no-worker context and pins
+the pending marker being written, and kept across a dismissal.
 `e2e/stale-build-save.spec.ts` drives the Server Action half with the real client
 error (action POSTs answered with the not-found marker): the live editor's stale
 banner, the draft surviving in live mode and restoring after the reload, and the
@@ -234,7 +307,11 @@ outlives a successful save.
 A real deploy moves the server's sha together with the worker's URL; the harness can
 only move the second, so `e2e/sw-update.spec.ts` moves the first itself by
 intercepting `/api/version` — without that, the fix would (rightly) consume the
-simulated update silently instead of offering it. The reload test then drops the
+simulated update silently instead of offering it. The two #1700 tests additionally
+hand-register a second worker version against the open page. **That is not what a
+deploy does** — the claim that it was is the sentence that hid #2329 for a week —
+but it is a valid drive for the _resolution_ path, which is what those two tests are
+about. The reload test then drops the
 interception and pins the other half of #1905: the page's own re-registered worker
 generation is consumed silently instead of ping-ponging back as a fresh offer. Its
 settle point is the pending marker's raise-then-clear, **not** the generation

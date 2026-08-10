@@ -135,9 +135,13 @@ export function useDeployedVersion({
     // other halves: someone returning to a tab after a deploy shouldn't wait it out
     // either.
     void check({ onMount: true });
-    intervalId = setInterval(() => void check({ onMount: false }), UPDATE_CHECK_MS);
+    intervalId = setInterval(
+      () => void check({ onMount: false }),
+      UPDATE_CHECK_MS
+    );
     const onVisible = () => {
-      if (document.visibilityState === "visible") void check({ onMount: false });
+      if (document.visibilityState === "visible")
+        void check({ onMount: false });
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {

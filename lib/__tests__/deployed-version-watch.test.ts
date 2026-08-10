@@ -69,7 +69,8 @@ const hooks = vi.hoisted(() => {
 
   function useRef<T>(initial: T) {
     const slot = cellIndex++;
-    if (cells[slot] === undefined) cells[slot] = { value: { current: initial } };
+    if (cells[slot] === undefined)
+      cells[slot] = { value: { current: initial } };
     return cells[slot].value as { current: T };
   }
 
@@ -119,7 +120,8 @@ const hooks = vi.hoisted(() => {
     cellIndex = 0;
     effectIndex = 0;
     effectDeps = [];
-    for (const cleanup of cleanups) if (typeof cleanup === "function") cleanup();
+    for (const cleanup of cleanups)
+      if (typeof cleanup === "function") cleanup();
     cleanups = [];
     queued = [];
     render = null;
@@ -324,9 +326,10 @@ describe("the registrar switches the detector on (#2329)", () => {
     const declaration = /const mode: VersionWatchMode =([^;]*);/.exec(
       REGISTRAR_CODE
     );
-    expect(declaration, "the registrar declares one version-watch mode").not.toBe(
-      null
-    );
+    expect(
+      declaration,
+      "the registrar declares one version-watch mode"
+    ).not.toBe(null);
     const expression = declaration![1];
     for (const forbidden of ["swWaiting", "swStatus", "deployDetector"]) {
       expect(expression).not.toContain(forbidden);
