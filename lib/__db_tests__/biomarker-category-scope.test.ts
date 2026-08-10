@@ -178,8 +178,10 @@ function seedMixedProfile(): number {
     valueNum: 3,
     unit: "mm",
   });
-  // Ruled a body metric on #2322 but not yet a slug, so it is still browsable — and
-  // leaves on its own the day the slug lands.
+  // Ruled a body metric on #2322, and the `waist-circ` slug + its import projector
+  // landed with that ruling — so this row's quantity is answered by a chart and it is
+  // no longer browsable. Kept in the fixture on the LEAVING side (below) rather than
+  // deleted: the point of the seed is that the rule is applied to a real stored row.
   insert(pid, "vitals", "Waist Circumference", {
     value: "84",
     valueNum: 84,
@@ -263,6 +265,9 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
       "Blood Pressure Systolic",
       "Body Temperature",
       "Body Mass Index (BMI)",
+      // #2322: a body metric with a slug AND a projector that carries an imported
+      // reading to its chart, so the catalog is no longer its home.
+      "Waist Circumference",
     ]) {
       expect(names).not.toContain(homed);
     }
@@ -280,7 +285,6 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
       "Hearing Threshold, Right Ear 4 kHz",
       "Intraocular Pressure, Left Eye",
       "Periodontal Probing Depth",
-      "Waist Circumference",
       "Blood Pressure Systolic (Peak Exercise)",
       "LDL Cholesterol",
     ]) {

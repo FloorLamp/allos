@@ -152,6 +152,32 @@ export const METRIC_KNOWLEDGE: Record<BodyMetricSlug, MetricKnowledge> = {
     source: "growth-percentile",
     renderedBy: "the growth card (lib/growth.ts)",
   },
+  // ── WAIST CIRCUMFERENCE: an ARGUED `none`, not an oversight (#2322) ─────────
+  //
+  // Published thresholds for it certainly exist — the IDF/WHO central-obesity
+  // cut-offs — and they are the reason this entry needs an argument rather than a
+  // shrug. They are branched on SEX **and on POPULATION**: ≥94 cm / ≥80 cm for
+  // European men and women, ≥90 cm / ≥80 cm for South Asian, Chinese and Japanese
+  // ones, with further region-specific tables, and the IDF's own text says the
+  // ethnic-group value is the one to apply.
+  //
+  // The curated vocabulary has a SEX axis (`ref_*_male` / `ref_*_female`, the fields
+  // #2407 used for Fat Mass Index) and an AGE axis. It has no POPULATION axis, and
+  // this repo does not store the subject's ethnicity — nor should it acquire one to
+  // hang a band on. Curating the European cut-off would silently judge every profile
+  // against one population's threshold and stamp a flag on the row saying so, which
+  // is the borrowed-band failure #482 and #2086 both exist to prevent, in a place
+  // where the borrowed answer is wrong by a full 4 cm for most of the world.
+  //
+  // Half a band is not available either: the entry the owner ruled AGAINST creating
+  // is the only thing a `canonical` source could name, so `none` is also the only
+  // declaration consistent with the ruling. The chart still shows the trend, which is
+  // the question the ruling says this quantity is for.
+  "waist-circ": {
+    source: "none",
+    reason:
+      "The published cut-offs (IDF/WHO central obesity) are branched by SEX and by POPULATION — ≥94 cm for European men against ≥90 cm for South Asian ones — and the canonical vocabulary has a sex axis but no population axis, so a single curated band would judge every profile against one population's threshold. Per #2322's ruling this is a body metric with no biomarker entry at all, so there is nothing for a range to be curated ON; the trend is the question here.",
+  },
   // No band exists — each reason is specific, because a generic "n/a" would hide
   // exactly the distinctions that make these different questions.
   hrv: {

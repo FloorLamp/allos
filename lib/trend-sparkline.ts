@@ -142,6 +142,10 @@ export const METRIC_GAP: Readonly<Record<string, SeriesGap>> = {
   hr: "bridge",
   height: "bridge",
   "head-circ": "bridge",
+  // Waist circumference is a level too (#2322): your waist has a value on the days
+  // between tape measurements, so the stroke may cross the hole and densification
+  // buys honest calendar spacing between two measurements a month apart.
+  "waist-circ": "bridge",
   // Clinical vitals are levels too: your blood pressure, oxygen saturation,
   // respiratory rate, temperature and peak flow all exist on the days between
   // readings. Densifying them buys the SPACING (a clinic visit three weeks after

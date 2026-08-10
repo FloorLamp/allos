@@ -106,10 +106,11 @@
 // it stops being browsable for the RIGHT reason (the quantity is answered), independent
 // of whether that placement is fixed; `/trends/metric/bmi` computes it from the weight
 // and height that came in beside it, and both of those are themselves projected onto
-// their own charts. `Waist Circumference` is a body metric by the owner's ruling on
-// #2322 but is NOT yet a slug, so it stays browsable today and leaves on its own the
-// moment that slug lands. This module answers only "is this quantity answered
-// elsewhere"; which store a given row went to is `placeReading()`'s question.
+// their own charts. `Waist Circumference` then made the round trip this module was
+// built to make cheap: #2322 added the slug AND the projector that carries an imported
+// row to its chart, so the analyte left the catalog with NO edit here — the registry
+// changed and the derivation followed. This module answers only "is this quantity
+// answered elsewhere"; which store a given row went to is `placeReading()`'s question.
 //
 // PURE: registries and string keys, no DB, no React. The projectors are deliberately
 // NOT imported here — they pull the extraction types in behind them, and the check
@@ -209,6 +210,17 @@ export const METRIC_DOCUMENT_REACH: Record<
     reaches: "import-projection",
     projectedBy:
       "isHeadCircReading → metric_samples 'head_circumference_cm' (lib/head-circ-extract.ts)",
+  },
+  // #2322's slug, and the reason its PR built a projector rather than only a
+  // registry entry. Declaring `reaches` is what removes "Waist Circumference" from
+  // the flat catalog, so the declaration had to be EARNED: a slug that swallowed the
+  // analyte name without a path from an imported row to its chart would delete the
+  // reading from the only surface showing it. The projector is the third arm of the
+  // same length-measure family as height and head circumference.
+  "waist-circ": {
+    reaches: "import-projection",
+    projectedBy:
+      "isWaistCircReading → metric_samples 'waist_circumference_cm' (lib/waist-circ-extract.ts)",
   },
 
   // ── Derived from inputs that arrive with it ───────────────────────────────────

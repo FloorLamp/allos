@@ -49,6 +49,13 @@ export const BODY_METRIC_SLUGS = [
   "resting-hr",
   "height",
   "head-circ",
+  // Waist circumference (#2322) — the owner's ruling, and the same argument
+  // `peak-flow` used: it is SELF-MEASURED with a tape, it arrives at the metric
+  // cadence, and it sits beside weight / body fat / height rather than in the
+  // biomarker catalog. Deliberately NOT a curated canonical entry: a body metric
+  // imported as a biomarker is the `Body Mass Index (BMI)` mistake #2318 spent an
+  // issue undoing, and making it twice in one cluster is the outcome to avoid.
+  "waist-circ",
   // Sun / outdoor daylight minutes (#1171) — a derived DAILY series (it aggregates
   // outdoor activity against the solar day at the home location, so it has no
   // per-row store of its own). It became a registered kind in #1488 so the Body
@@ -269,6 +276,23 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     title: "Head Circumference",
     unit: " cm",
     color: chartSeries.sky,
+    decimals: 1,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: "measurements",
+  },
+  // Waist circumference (#2322). Stored in centimetres like its two length
+  // neighbours — `Kg`/`Km` are the branded canonical units and a length in cm is
+  // neither, so it follows what `height` and `head-circ` already do rather than
+  // inventing a third convention. Its LABEL is the bare word "Waist" on purpose:
+  // `looksLikeAbbreviation` rejects it, so the label claims no analyte name and only
+  // the full title routes an imported reading here.
+  "waist-circ": {
+    slug: "waist-circ",
+    label: "Waist",
+    title: "Waist Circumference",
+    unit: " cm",
+    color: chartSeries.amber,
     decimals: 1,
     windowed: true,
     goalMetric: null,
