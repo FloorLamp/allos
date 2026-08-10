@@ -263,3 +263,123 @@ test("a medication's obligation control defaults to Must and states each level's
     db.close();
   }
 });
+
+// ---- #2419: the collapsed rows can be LOGGED --------------------------------
+//
+// The doctrine's other promise — a `may` item is "always one tap away", and every
+// collapsed row is COLLAPSED, not filtered out. Both web surfaces were
+// look-but-don't-log until now, which made taking a situation-bound item mean
+// flipping its situation active first, just to make a take button exist. Dueness
+// gates NUDGING; logging is a statement about what happened.
+
+const SITUATION_NAME = "Heat Wave (e2e)";
+const SITUATION_ITEM = "Situation Bound (e2e)";
+const OFFER_ITEM = "Offer Tap (e2e)";
+
+// How many taken rows this dose has — polled after a tap, so the assertion waits on
+// the write rather than on a repaint.
+function takenCount(db: Database.Database, doseId: number): number {
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM intake_item_logs
+          WHERE dose_id = ? AND status = 'taken'`
+      )
+      .get(doseId) as { n: number }
+  ).n;
+}
+
+test("a situation-inactive item logs in one tap from More supplements, and the situation stays off (#2419)", async ({
+  page,
+}) => {
+  const db = openDb();
+  let itemId: number | null = null;
+  let situationId: number | null = null;
+  try {
+    const item = seedItem(db, SITUATION_ITEM, "should", 30);
+    itemId = item.itemId;
+    // Bound to a situation that is NOT active, so the item is off every due path
+    // and lands under "More supplements" — the owner-reported case.
+    situationId = Number(
+      db
+        .prepare(
+          `INSERT INTO situations (profile_id, name, active, illness_type)
+           VALUES (1, ?, 0, 0)`
+        )
+        .run(SITUATION_NAME).lastInsertRowid
+    );
+    db.prepare(
+      "UPDATE intake_items SET condition = 'situational', situation_id = ? WHERE id = ?"
+    ).run(situationId, item.itemId);
+
+    await page.goto("/nutrition?tab=supplements");
+    const notScheduled = page.getByTestId("not-scheduled-section");
+    await notScheduled.locator("summary").click();
+    const row = notScheduled
+      .getByTestId("supplement-row")
+      .filter({ hasText: SITUATION_ITEM });
+    await expect(row).toBeVisible();
+
+    // One tap, from the collapsed section, with no edit and no situation change.
+    await settledClick(page, row.getByTestId("dose-take"));
+    await expect.poll(() => takenCount(db, item.doseId)).toBe(1);
+
+    // Invariant 2: logging is not a lifecycle write. The situation is exactly where
+    // it was — nothing implied it, nothing turned it on.
+    expect(
+      (
+        db
+          .prepare("SELECT active FROM situations WHERE id = ?")
+          .get(situationId) as { active: number }
+      ).active
+    ).toBe(0);
+    // Invariant 3: dueness did not move either. The row is still collapsed — it was
+    // logged, not promoted into today's schedule — and now reads as taken.
+    await expect(
+      notScheduled
+        .getByTestId("supplement-row")
+        .filter({ hasText: SITUATION_ITEM })
+        .getByTestId("dose-take")
+    ).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    dropItem(db, itemId);
+    if (situationId != null) {
+      db.prepare("DELETE FROM situations WHERE id = ?").run(situationId);
+    }
+    db.close();
+  }
+});
+
+test("an Upcoming Available row logs in one tap and stays available rather than becoming due (#2419)", async ({
+  page,
+}) => {
+  const db = openDb();
+  let itemId: number | null = null;
+  try {
+    const item = seedItem(db, OFFER_ITEM, "may", 30);
+    itemId = item.itemId;
+
+    await page.goto("/upcoming");
+    const available = page.getByTestId("available-section");
+    await available.locator("summary").click();
+    const row = available
+      .getByTestId("available-row")
+      .filter({ hasText: OFFER_ITEM });
+    await expect(row).toBeVisible();
+
+    await settledClick(page, row.getByTestId("available-mark-taken"));
+    await expect.poll(() => takenCount(db, item.doseId)).toBe(1);
+
+    // Carrying a dose id did not make the offer into work: still no due row, and the
+    // item is still in the disclosure it was collapsed into.
+    await expect(
+      page.getByTestId(`upcoming-item-dose:${item.doseId}`)
+    ).toHaveCount(0);
+    await expect(
+      available.getByTestId("available-row").filter({ hasText: OFFER_ITEM })
+    ).toBeVisible();
+  } finally {
+    dropItem(db, itemId);
+    db.close();
+  }
+});
