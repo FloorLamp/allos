@@ -1,6 +1,130 @@
 {
   "days": [
     {
+      "date": "2026-08-10",
+      "entries": [
+        {
+          "pr": 2362,
+          "title": "Household says when a member's reminders reach no one",
+          "body": "A profile can build reminders every day and deliver them nowhere — no login has been granted it, and the admin role deliberately does not count. That state was completely silent. Household now names it per member, alongside four more setup checks: never onboarded, items with no dose recorded, overdue preventive care, and a whole roster switched off.",
+          "kind": "feature",
+          "issues": [2173]
+        },
+        {
+          "pr": 2373,
+          "title": "Blood-count names say whether they are a count or a percentage",
+          "body": "Within one panel “Neutrophils” was a percentage and “Monocytes” a cell count, so side by side they read as the same measure. Every member of the differential now states which it is — “Neutrophils, Relative”, “Monocytes, Absolute” — and a dozen long names gained their abbreviation. Readings you already had were renamed to match; none of the values, ranges or flags changed.",
+          "kind": "fix",
+          "issues": [2335]
+        },
+        {
+          "pr": 2388,
+          "title": "A biomarker reading costs three lines on a phone, not eight",
+          "body": "Inside a group headed Lipids, every card also printed “Panel Lipids” and “Category lab” — the heading, reprinted once per row. Both are desktop columns now, so roughly twice as many readings fit on a phone screen. Notes, which genuinely differ from reading to reading, keep their line.",
+          "kind": "fix",
+          "issues": [2316]
+        },
+        {
+          "pr": 2390,
+          "title": "Sync history reads as a day-by-day ledger",
+          "body": "A chatty provider could file dozens of near-identical runs in a day and bury the one that mattered. History is now grouped by day with routine stretches folded away and “Load older days” for the rest, and every clock is shown in the tracked profile's timezone rather than the viewing device's.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2400,
+          "title": "See which inputs are moving your biological age",
+          "body": "The bio-age block now ranks its inputs by effect in years: each line re-runs the model with that one marker moved to its optimal value and nothing else changed, so you can see what the number is actually made of. The full block lives on Longevity; the biomarker results page keeps the checklist of which analytes you still need.",
+          "kind": "feature",
+          "issues": [2366, 2367]
+        },
+        {
+          "pr": 2402,
+          "title": "One tap for the breakfast you log every day",
+          "body": "When the same two or more groups turn up in a window on most of the days you log it, the food bar offers “Your usual morning” — one tap that logs each of them, and the button names every group it will write. It wants a full week of that window before it will call anything a habit, and says nothing at all until then.",
+          "kind": "feature",
+          "issues": [2380]
+        },
+        {
+          "pr": 2404,
+          "title": "A meal window that closed with nothing logged gets a mention",
+          "body": "In practice a missing window was a forgotten log rather than a skipped meal, and nothing said so. The next food nudge now carries a short note — the morning one covers last night's evening, midday covers the morning — and logging anything into that window makes it disappear. No new message, and nothing to dismiss.",
+          "kind": "feature",
+          "issues": [2376]
+        },
+        {
+          "pr": 2405,
+          "title": "Your digest says how yesterday's protein and fibre landed",
+          "body": "One line against the two nutrition targets the app already models, on the same day the rest of the digest is scored on: the grams you reached and the floor you were aiming for. It appears only when a nutrient finished below its target — a day that met them says nothing, and neither does a day with nothing logged.",
+          "kind": "feature",
+          "issues": [2379]
+        },
+        {
+          "pr": 2406,
+          "title": "The biomarker list stops repeating readings that have their own page",
+          "body": "Vitals lifted out of an imported document were listed in the flat biomarker catalog as well as on the tile, chart and detail page that already answer them — on one real profile, 131 rows out of 145. A reading is listed there now only when nothing else in the app answers it, so audiogram thresholds, eye pressure and gum depth stay.",
+          "kind": "fix",
+          "issues": [2365]
+        },
+        {
+          "pr": 2407,
+          "title": "ECG, vascular and body-composition results are recognised",
+          "body": "Nineteen more analytes are curated: a full electrocardiogram panel — PR interval, QRS duration, QTc, the axes, ventricular rate — plus ankle-brachial index, arterial stiffness, fat and lean mass index, exercise METs, and four written interpretations. Where no defensible population range exists, the entry ships without one rather than with an invented one.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2409,
+          "title": "Supplement suggestions come from a curated map first",
+          "body": "What to take for a low marker used to be answered by the model every time. Six of the commonest — vitamin D, B12, folate, iron, magnesium and omega-3 — now come from a curated map, each with the evidence, a public source, a plainly stated caveat, and no dose anywhere. Anything the map does not cover still falls through to the AI route.",
+          "kind": "feature",
+          "issues": [2378]
+        },
+        {
+          "pr": 2412,
+          "title": "Your periodic review can arrive weekly, monthly or quarterly",
+          "body": "The recap gains a cadence under Settings → Notifications, and a longer one replaces the weekly message rather than stacking on top of it. Longer windows speak in shapes rather than sums — your training mix, the weekday and weekend split in adherence, a weight trajectory — because “47 workouts” is four weekly numbers added together. Existing recaps stay weekly.",
+          "kind": "feature",
+          "issues": [2178]
+        },
+        {
+          "pr": 2415,
+          "title": "One day-by-day history for food, doses, workouts and practices",
+          "body": "Trends → Nutrition, Trends → Fitness and Wellness each lead with the same pair: a calendar of the days you logged, and a matrix of what was actually in them, row by row, with chips to filter down to what you care about. It replaces the workout heatmap and the hand-built intake grid, and adds a composition view where there was none.",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2421,
+          "title": "The morning food buttons stop offering what you never eat in the morning",
+          "body": "Ranking counted “logged twenty times, never before noon” exactly like “never logged at all”, so the heavier of the two won — which is how alcohol and red meat reached the six quick buttons the morning nudge sends. A group with real history and essentially none of it in this window now sinks below one the ledger says nothing about. Nothing is hidden; it stays one tap away in the full list.",
+          "kind": "fix",
+          "issues": [2369]
+        },
+        {
+          "pr": 2422,
+          "title": "The wear reminder stops firing while the watch is on your wrist",
+          "body": "It measured how old the newest heart-rate minute was, which mixes “off the wrist” with “the phone has not pushed yet” — one evening it fired at 40 minutes of “silence” while the watch had been recording throughout. It now asks whether the stream moved: a worn watch advances on every push, a watch on the charger stays frozen while pushes keep landing.",
+          "kind": "fix",
+          "issues": [2341]
+        },
+        {
+          "pr": 2423,
+          "title": "Waist circumference is a body measurement",
+          "body": "It sat in the flat biomarker catalog, so it had no tile, no chart, no detail page and no way to star it. It is now a body metric beside weight, body fat and height — entered on the measurements form, read out of documents in centimetres or inches, and the readings you already had were moved onto the chart.",
+          "kind": "feature",
+          "issues": [2322]
+        },
+        {
+          "pr": 2424,
+          "title": "A missed protein or fibre target comes with something to eat",
+          "body": "The digest's nutrition line no longer just reports the gap — it names one food group that would close it, with what a serving is worth: “try legumes & beans (8 g fiber a serving)”. The suggestions are curated rather than generated, and screened against your allergies, medications and conditions the same way the biomarker ones already are. A day that met its targets, or logged nothing, is still silent.",
+          "kind": "feature",
+          "issues": [2383]
+        }
+      ]
+    },
+    {
       "date": "2026-08-09",
       "entries": [
         {
