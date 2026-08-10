@@ -13,19 +13,24 @@ import { UPDATE_CHECK_MS } from "@/lib/sw-update";
 // the poll survives as a hook that reports only what the server said, and the single
 // decision is made by resolveUpdateState() for the single bar.
 //
-// TWO REASONS TO ASK, hence the mode:
-//   * "poll" — this context has no service worker, so the sha is the ONLY way to
-//     notice a deploy. Ask on the shared cadence, and when the tab regains focus so
-//     someone returning after a deploy doesn't wait out the interval.
-//   * "once" — the worker has already reported an update waiting; the only thing left
-//     to learn is WHAT was deployed, so the bar can name it. One read, no interval.
-//   * "off" — a worker is watching and has nothing to report. Ask nothing.
+// THE ONLY THING THAT CAN NOTICE A DEPLOY IN AN OPEN TAB (issue #2329). #1795 turned
+// this poll OFF wherever a service worker existed, on the premise that the worker
+// would notice instead. It cannot: public/sw.js reads its version from its own URL,
+// so a deploy changes none of its bytes, `registration.update()` installs nothing,
+// and nothing re-registers a document that is already open. A waiting worker RESOLVES
+// an update; asking the server is how a running tab NOTICES one. So the mode is now
+// only about whether there is anything to ask:
+//
+//   * "poll" — there is a baseline sha to compare against. Ask on the shared cadence,
+//     immediately on mount, and whenever the tab regains focus so someone returning
+//     after a deploy doesn't wait out the interval.
+//   * "off" — no baseline, so there is no question. Ask nothing.
 
 export type DeployedVersion = {
   sha: string | null;
   commitMessage: string | null;
   /**
-   * This hook has finished asking — the answer below is final for this mode.
+   * This hook has finished asking — the answer below is final.
    *
    * `sha: null, settled: true` is a real outcome, not a transient one: /api/version
    * is session-gated (#390), so an anonymous tab settles knowing nothing. The
@@ -35,7 +40,7 @@ export type DeployedVersion = {
   settled: boolean;
 };
 
-export type VersionWatchMode = "poll" | "once" | "off";
+export type VersionWatchMode = "poll" | "off";
 
 const NOTHING: DeployedVersion = {
   sha: null,
@@ -62,10 +67,10 @@ export function useDeployedVersion({
 }): DeployedVersion {
   const [deployed, setDeployed] = useState<DeployedVersion>(NOTHING);
   // Stop asking once the answer can no longer change: the server has named a build
-  // we are not on, or we were told to read once, or nobody is allowed to ask. A ref
-  // (not state) because the in-flight fetch closure needs the CURRENT value, not its
-  // render's snapshot. The comparison here decides only whether to keep ASKING — the
-  // pending-state decision stays in lib/sw-update.ts.
+  // we are not on, or nobody is allowed to ask. A ref (not state) because the
+  // in-flight fetch closure needs the CURRENT value, not its render's snapshot. The
+  // comparison here decides only whether to keep ASKING — the pending-state decision
+  // stays in lib/sw-update.ts.
   const settledRef = useRef(false);
   const generationRef = useRef(generation);
 
@@ -76,7 +81,7 @@ export function useDeployedVersion({
       setDeployed(NOTHING);
     }
     // No baseline means nothing to compare a sha against, so there is no question to
-    // ask; `off` means the worker is answering it instead.
+    // ask.
     if (mode === "off" || !baseline || settledRef.current) return;
 
     let cancelled = false;
@@ -87,13 +92,13 @@ export function useDeployedVersion({
       setDeployed((prev) => (prev.settled ? prev : { ...prev, settled: true }));
     };
 
-    async function check() {
-      // Background tabs are not POLLED — but the one-shot read still happens in a
-      // hidden tab: it is what the load-time worker decision waits on (#1905), and
-      // deferring it would leave a tab that loaded in the background holding the bar
-      // until it was looked at.
+    async function check({ onMount }: { onMount: boolean }) {
+      // Background tabs are not POLLED — but the mount read still happens in a hidden
+      // tab: it is what the load-time worker decision waits on (#1905), and deferring
+      // it would leave a tab that loaded in the background holding the bar until it
+      // was looked at.
       if (settledRef.current) return;
-      if (mode === "poll" && document.visibilityState === "hidden") return;
+      if (!onMount && document.visibilityState === "hidden") return;
       try {
         const res = await fetch("/api/version", { cache: "no-store" });
         // The endpoint is session-gated (#390). An anonymous context — the login
@@ -115,33 +120,24 @@ export function useDeployedVersion({
           sha: body.sha,
           commitMessage: body.commitMessage ?? null,
         }));
-        if (mode === "once" || body.sha !== baseline) settle();
+        if (body.sha !== baseline) settle();
       } catch {
         // Network blip, or a deploy caught mid-restart — ask again next tick.
       }
     }
 
-    if (mode === "once") {
-      // The worker has already decided an update is pending; this read exists only
-      // to name it, so it happens now and never again. It settles on EVERY outcome —
-      // a 5xx, an offline blip, an unparseable body — because the load-time worker
-      // decision (#1905) blocks on this read and a read that never settles would
-      // hold the bar back forever.
-      void check().finally(() => {
-        if (!cancelled) settle();
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    // Polling cadence unchanged from the watcher this absorbed: the first read is one
-    // tick away, not on mount, because a document this server just rendered is by
-    // definition on this server's build. The visibility hook is the other half —
-    // someone returning to a tab after a deploy shouldn't wait out the interval.
-    intervalId = setInterval(check, UPDATE_CHECK_MS);
+    // THE FIRST READ IS ON MOUNT (#2329), not one tick away. A document this server
+    // just rendered is by definition on this server's build, so the mount read
+    // normally reports the same sha, finds no mismatch and costs one cheap request —
+    // but it is the read `waitingWorkerPlan` blocks on (`plan === "wait"` suppresses
+    // the bar until it settles), so deferring it held a fresh post-deploy load
+    // silent for up to a full interval. The interval and the visibility hook are the
+    // other halves: someone returning to a tab after a deploy shouldn't wait it out
+    // either.
+    void check({ onMount: true });
+    intervalId = setInterval(() => void check({ onMount: false }), UPDATE_CHECK_MS);
     const onVisible = () => {
-      if (document.visibilityState === "visible") void check();
+      if (document.visibilityState === "visible") void check({ onMount: false });
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {

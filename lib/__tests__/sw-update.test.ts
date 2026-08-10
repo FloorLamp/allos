@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  deployDetectorFor,
   isDeploymentSkewError,
   isStaleActionError,
   nextSkewGuard,
@@ -68,22 +67,12 @@ describe("shouldReloadOnControllerChange", () => {
   });
 });
 
-describe("one detector per context (#1795)", () => {
-  it("lets the worker answer wherever there is one", () => {
-    expect(deployDetectorFor("active")).toBe("service-worker");
-  });
-
-  it("falls back to the sha poll where no worker exists", () => {
-    // Private mode, an unsupported browser, a failed registration, development.
-    expect(deployDetectorFor("unavailable")).toBe("version-poll");
-  });
-
-  it("asks nothing while registration hasn't answered", () => {
-    // A poll started in that window would race the worker for the same deploy —
-    // which is how one deploy came to raise two notices in the first place.
-    expect(deployDetectorFor("probing")).toBe("none");
-  });
-});
+// The per-context detector choice (`deployDetectorFor`) was DELETED with #2329: it
+// switched the sha poll off wherever a worker existed, and a worker cannot notice a
+// deploy under an already-open tab. Picking a detector was never what kept one deploy
+// to one notice — the merge below is, and it is now the whole of that guarantee. The
+// production shape those tests never described is driven by
+// lib/__tests__/deployed-version-watch.test.ts and e2e/sw-update.spec.ts.
 
 describe("resolveUpdateState (#1795)", () => {
   const OLD = "aaaaaaa";
