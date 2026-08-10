@@ -1805,6 +1805,62 @@ own the intake composition, the resolved target and the adequacy verdict, and th
   message the reader already opted into is not an increase in contact — and this
   one makes the common morning shorter.
 
+#### …and the one food that would close it (#2383)
+
+A line that reports a gap and offers nothing is a scoreboard; the same line with a
+next action is a loop. So a shortfall may carry **one** curated food group as its
+last note. This is the **same engine pointed at a second input**, not a new one:
+`lib/food-suggest.ts` (#577) already turns a nutrient gap into safety-screened,
+curated food sources, and #2383 gives it a second door in.
+
+- **Two doors, one engine.** `FoodSuggestInput.targets` takes a `TargetTrigger` —
+  an entry `key`, a `direction`, and the caller's own `reason` — so a curated entry
+  can be named DIRECTLY instead of being found by matching a flagged biomarker.
+  Everything after selection is untouched, because everything after selection is
+  about the FOOD: the same allergy screen (`allergenConflict`), the same food–drug
+  inverse (`stackFoodDrugHits`), the same condition/situation contraindications
+  (`conditionOrSituationMatches`), the same dietary-preference filter, the same
+  alternative fallback and the same dedupe namespaces. `direction` is declared
+  rather than assumed, so the restrictive twin (#2377) slots in by emitting
+  `reduce` triggers.
+- **Curated only.** `protein` and `fiber` are two new entries in
+  `lib/datasets/data/nutrient-food-map.json` with an EMPTY `biomarkers` list —
+  neither has an assay here, which is precisely why the target door exists. No
+  generation path, no fallback food, no suggestion from outside the map.
+- **The adapter is `lib/nutrition-food-suggestion.ts`.** It reads the shortfalls
+  `nutritionShortfalls` already resolved, feeds them to the engine, and reduces the
+  screened result to the one thing a digest line has room for. It owns four
+  decisions and nothing else: which shortfall (the bigger **relative** gap — grams
+  would always favour whichever nutrient is counted in bigger numbers), which food
+  (the first surviving source whose group is in the food-group catalog **and** which
+  the catalog scores as carrying that nutrient), when not to compress, and the gap
+  that rounds to zero.
+- **One tap from being acted on.** The chosen group is a slug in
+  `lib/datasets/data/food-groups.json`, which is the catalog the one-tap food bar is
+  built from and the vocabulary `food_log.group_key` stores — so the suggestion names
+  a row the reader can actually log. The per-serving figure comes from that catalog's
+  own `protein_g` / `fiber_g`, which is also what makes the offer honest: a group the
+  catalog scores at no fibre could not move the number the line just reported.
+- **A caveat is never what gets dropped.** A one-line offer has room for a food and
+  nothing else, so a screened suggestion still carrying a **condition**, **medication**
+  or **biomarker** caution is not compressed at all — the offer goes, not the note.
+  (An allergy or preference note is different in kind: it reports that the unsafe
+  sources were already removed, so what remains is safe to name alone.) A
+  drop-severity contraindication — CKD × protein, the same shape as the map's
+  CKD × potassium — withholds the whole thing, and absence is never an all-clear.
+- **The four silences are inherited, not re-derived.** A met target, an unresolved
+  target and a day with nothing logged never reach this module: there is no shortfall
+  to answer. The one it adds is a `below` whose gap rounds to zero. The line then
+  renders exactly as it did before:
+
+  ```
+  🍽️ Nutrition — protein 44 g+ of 95 g · fiber 8 g+ of 38 g · try legumes & beans (8 g fiber a serving)
+  ```
+
+- **"try", not "eat".** Adequacy stays an observation (#992). The offer can be
+  declined, and nothing follows it — no escalation, no streak, no send. The suggestion
+  is gathered only when the line survives the reader's own demotion.
+
 **When the digest sends: two modes, no `auto` (#2211).** The decision is pure in
 `lib/notifications/digest-schedule.ts` (`planDigestTick`); `planProfileDigestTick`
 (`lib/notifications/digest-data.ts`) resolves its stored inputs.

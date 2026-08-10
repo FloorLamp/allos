@@ -24,6 +24,14 @@
 //     withholds the whole suggestion; a "caution" hit annotates it (pregnancy + fatty
 //     fish → low-mercury note).
 //
+// TWO DOORS INTO ONE ENGINE (issue #2383). A curated entry is selected either by a
+// FLAGGED BIOMARKER (the #577 route above) or by a caller naming it DIRECTLY through a
+// `TargetTrigger` — the shape a resolved daily target the day's logs fell short of takes
+// (protein and fibre, which have no assay here). Everything after selection is identical,
+// because everything after selection is about the FOOD: the same allergy screen, the same
+// food–drug inverse, the same contraindications, the same preference filter, the same
+// dedupe namespaces. See TargetTrigger below.
+//
 // Framing is informational, food-first, never prescriptive — and the ABSENCE of a
 // suggestion is never an all-clear.
 //
@@ -93,9 +101,44 @@ export interface FlaggedReading {
   flag: string | null;
 }
 
+// THE SECOND INPUT (issue #2383). A curated entry named DIRECTLY, rather than found by
+// matching a flagged biomarker against the entry's `biomarkers` list.
+//
+// WHY THE ENGINE NEEDED A SECOND DOOR AND NOT A SECOND ENGINE. Everything downstream of
+// "which entry applies" — the allergy screen, the food–drug inverse, the condition
+// contraindications, the preference filter, the alternative fallback, the dedupe
+// namespaces — is about the FOOD, and none of it cares how the entry was reached. What
+// differs between a flagged vitamin D and a missed fibre target is only the QUESTION that
+// selected the nutrient: an assay read low, versus a resolved daily target the day's logs
+// did not reach. So the resolution step takes a second source and the rest is untouched.
+//
+// A TRIGGER IS A CLAIM THE CALLER ALREADY OWNS. This type carries no threshold and no
+// verdict: the caller has already decided that this nutrient is short (or, for the limit
+// direction, over) and states the entry key plus the reason it will be shown as. The
+// engine never re-derives that — it screens the foods and hands them back.
+//
+// DIRECTION IS DECLARED, NOT ASSUMED. `add` looks the key up in the low-side `entries`;
+// `reduce` looks it up in `meta.reduceEntries`. Only `add` has a producer today (#2383 is
+// the additive half); the restrictive twin (#2377) slots in by emitting `reduce` triggers
+// and needs no change to this shape or to the resolution below.
+export interface TargetTrigger {
+  // The curated entry key — `entry.key` in the table this trigger's `direction` names.
+  // A key with no entry is simply not followed (never a guess, never a default).
+  key: string;
+  // Which curated table the key names. See the paragraph above.
+  direction: "add" | "reduce";
+  // What the suggestion should cite as its reason, in the caller's own words — the
+  // `triggeredBy` a flagged reading would have supplied its biomarker name for. For the
+  // nutrition shortfall route this is the day's figure against its target.
+  reason: string;
+}
+
 export interface FoodSuggestInput {
   // Currently-flagged biomarker readings (family-collapsed, current-only per #557).
   flagged: FlaggedReading[];
+  // Curated entries named directly by a caller that already resolved its own shortfall
+  // (#2383) — see TargetTrigger. Omitted/[] = the biomarker route only.
+  targets?: readonly TargetTrigger[];
   // Recorded allergen substances (getAllergies(...).map(a => a.substance)).
   allergens: string[];
   // The active stack's medications, for the food–drug inverse screen.
@@ -346,8 +389,26 @@ function buildReduceSuggestion(
   };
 }
 
-// The pure engine: currently-flagged readings + profile safety context → safety-
-// screened food suggestions, in the curated map's order. Deterministic; no DB/clock.
+// The reasons each directly-named entry was triggered with, keyed `direction:key` so the
+// two curated tables can share one index without a key in one shadowing a key in the
+// other. Order within a key follows the caller's declared order.
+function indexTargets(
+  targets: readonly TargetTrigger[] | undefined
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const t of targets ?? []) {
+    const key = t.key.trim();
+    const reason = t.reason.trim();
+    if (!key || !reason) continue;
+    const id = `${t.direction}:${key}`;
+    out.set(id, [...(out.get(id) ?? []), reason]);
+  }
+  return out;
+}
+
+// The pure engine: currently-flagged readings and/or directly-named targets + profile
+// safety context → safety-screened food suggestions, in the curated map's order.
+// Deterministic; no DB/clock.
 export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
   // Index flagged readings by lowercased name for O(1) family lookup, split by side.
   const flaggedLow = new Map<string, string>(); // lower(name) -> original name
@@ -357,7 +418,13 @@ export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
     if (isLowFlag(r.flag)) flaggedLow.set(lower, r.name);
     else if (isHighFlag(r.flag)) flaggedHighNames.set(lower, r.name);
   }
-  if (flaggedLow.size === 0 && flaggedHighNames.size === 0) return [];
+  const targeted = indexTargets(input.targets);
+  if (
+    flaggedLow.size === 0 &&
+    flaggedHighNames.size === 0 &&
+    targeted.size === 0
+  )
+    return [];
 
   const flaggedHigh = new Set(flaggedHighNames.keys());
   const drugHits = stackFoodDrugHits(input.medications);
@@ -367,13 +434,17 @@ export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
   const excluded = new Set(input.excludedGroups ?? []);
   const out: FoodSuggestion[] = [];
 
-  // Low side (ADD): a flagged-low nutrient → the curated food sources, safety-screened.
+  // Low side (ADD): a flagged-low nutrient, OR a directly-named shortfall target (#2383),
+  // → the curated food sources, safety-screened. The two doors compose: a nutrient that is
+  // both flagged low and short against its target cites both reasons on ONE suggestion,
+  // under the one dedupeKey the family already owns.
   for (const entry of ENTRIES) {
     const triggeredBy: string[] = [];
     for (const bm of entry.biomarkers) {
       const original = flaggedLow.get(bm.trim().toLowerCase());
       if (original) triggeredBy.push(original);
     }
+    triggeredBy.push(...(targeted.get(`add:${entry.key}`) ?? []));
     if (triggeredBy.length === 0) continue;
     const suggestion = buildSuggestion(
       entry,
@@ -394,6 +465,10 @@ export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
       const original = flaggedHighNames.get(bm.trim().toLowerCase());
       if (original) triggeredBy.push(original);
     }
+    // The same second door, on the excess side. No producer emits a `reduce` target today
+    // — the restrictive direction is #2377 — but the resolution is the SAME line of code
+    // rather than a fork waiting to be written.
+    triggeredBy.push(...(targeted.get(`reduce:${entry.key}`) ?? []));
     if (triggeredBy.length === 0) continue;
     out.push(buildReduceSuggestion(entry, triggeredBy));
   }

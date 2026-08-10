@@ -89,6 +89,13 @@ export interface NutrientFoodEntry {
   label: string;
   // The canonical biomarker names (lib/canonical-biomarkers.json) whose CURRENT reading
   // being flagged in `direction` triggers this suggestion. Matched case-insensitively.
+  //
+  // EMPTY IS A REAL STATE, not an omission: a nutrient the app has no blood biomarker for
+  // is simply not reachable through the flagged-reading door. Vitamin C has been that way
+  // since #578 (the RDA-adequacy surface links its foods by DRI key); protein and fibre
+  // (#2383) are that way because the question about them is answered from what was LOGGED
+  // against a resolved target, not from an assay — the engine reaches them through a
+  // declared `TargetTrigger` instead (lib/food-suggest.ts).
   biomarkers: string[];
   // Which flag direction triggers the suggestion. "low" = below the reference/optimal
   // range (the diet-addressable case); we never suggest eating MORE of something for a
@@ -167,8 +174,10 @@ export interface Contraindication {
   severity?: "caution" | "drop";
 }
 
-// ── Curated biomarker → nutrient → food table ─────────────────────────────────
-// Diet-responsive analytes only, each with a genuine food lever. Public dietary facts
+// ── Curated nutrient → food table ─────────────────────────────────────────────
+// Diet-responsive nutrients only, each with a genuine food lever — reached either by a
+// flagged biomarker (#577) or, for the two macronutrients the app models end to end, by a
+// missed daily target (#2383). Public dietary facts
 // from the NIH Office of Dietary Supplements nutrient fact sheets
 // (https://ods.od.nih.gov/factsheets/list-all/) and the Dietary Guidelines for
 // Americans. INFORMATIONAL — human-review before trusting.
@@ -701,6 +710,117 @@ const ENTRIES: NutrientFoodEntry[] = [
     caveat:
       "Molybdenum deficiency is essentially unknown in people eating a normal diet — a low reading rarely calls for a dietary change.",
   },
+  // ── The two MACRONUTRIENTS the app models end to end (issue #2383) ──────────
+  // Reached by a declared TargetTrigger rather than by a flagged reading (see the
+  // `biomarkers` field's contract above): protein and fibre have no assay here, and the
+  // shortfall that triggers them is a LOGGED day measured against a resolved target
+  // (lib/protein.ts / lib/fiber.ts). Everything else about them is an ordinary low-side
+  // entry — same screens, same shape, same engine.
+  //
+  // Their foods deliberately lead with the catalog groups the one-tap food bar already
+  // offers, so a suggestion is one tap from being acted on rather than an off-catalog
+  // instruction.
+  {
+    key: "protein",
+    label: "Protein",
+    biomarkers: [],
+    direction: "low",
+    foods: [
+      {
+        food: "Poultry, fish, and lean meat",
+        foodGroup: "poultry",
+        serving:
+          "A palm-sized portion at a main meal — the densest everyday protein serving there is.",
+      },
+      {
+        food: "Greek yogurt, cottage cheese, and eggs",
+        foodGroup: "eggs",
+        serving:
+          "Eggs and cultured dairy carry protein into breakfast and snacks, which is where most short days lose it.",
+      },
+      {
+        food: "Legumes, tofu, and tempeh",
+        foodGroup: "legumes",
+        serving:
+          "A serving of beans, lentils, tofu, or tempeh is the densest plant protein.",
+      },
+    ],
+    evidence:
+      "Protein intake tracks directly with what is eaten: animal foods (poultry, fish, eggs, dairy) carry the most per serving, and legumes, tofu, and tempeh are the densest plant sources.",
+    source:
+      "IOM/NASEM Dietary Reference Intakes for protein; Dietary Guidelines for Americans (protein foods)",
+    contraindications: [
+      {
+        match: "chronic kidney",
+        caution:
+          "With reduced kidney function, protein intake is set by your clinician and is usually RESTRICTED — do not raise it on an app's suggestion.",
+        severity: "drop",
+      },
+    ],
+    allergyAlternative: {
+      food: "Whole grains, seeds, and quinoa",
+      foodGroup: "whole_grains",
+      serving:
+        "Covers protein without fish, eggs, dairy, or legumes for the allergies that rule those out.",
+    },
+    caveat:
+      "Spreading protein across the day's meals is easier than making it all up in one large serving at dinner.",
+  },
+  {
+    key: "fiber",
+    label: "Fiber",
+    biomarkers: [],
+    direction: "low",
+    foods: [
+      {
+        food: "Legumes — beans, lentils, and chickpeas",
+        foodGroup: "legumes",
+        serving:
+          "Half a cup of cooked beans or lentils is the single densest fiber serving in the food catalog.",
+        foodDrugKeys: ["dairy-levothyroxine"],
+      },
+      {
+        food: "Berries and whole fruit",
+        foodGroup: "berries",
+        serving:
+          "Berries carry more fiber per serving than most fruit — skins and seeds included.",
+      },
+      {
+        food: "Whole grains — oats, barley, brown rice, quinoa",
+        foodGroup: "whole_grains",
+        serving:
+          "Swapping a refined grain for a whole one adds fiber without adding a serving.",
+      },
+    ],
+    evidence:
+      "Dietary fiber comes only from plants; legumes are the densest common source, with berries, whole fruit, and whole grains close behind.",
+    source:
+      "IOM 2005 Dietary Reference Intakes (total fiber Adequate Intake); Dietary Guidelines for Americans (fiber as a nutrient of public health concern)",
+    contraindications: [
+      // CAUTION, never drop. A low-residue diet is prescribed during a FLARE, and the app
+      // cannot see a flare — so the honest move is to annotate rather than to withhold, and
+      // to keep the rule out of CONDITION_NUTRIENT_RULES, which would otherwise block the
+      // psyllium supplement that is standard care in exactly these conditions.
+      {
+        match: "inflammatory bowel",
+        caution:
+          "With inflammatory bowel disease, fiber is helpful in remission and restricted during a flare — follow your clinician's current advice rather than a general target.",
+      },
+      {
+        match: "irritable bowel",
+        caution:
+          "With IBS, some fibers help and others worsen symptoms — increase slowly, and prefer soluble sources (oats, psyllium) over bran.",
+      },
+      {
+        match: "gastroparesis",
+        caution:
+          "With delayed gastric emptying, high-fiber foods can make symptoms worse — check with your clinician before increasing them.",
+      },
+    ],
+    allergyAlternative: null,
+    caveat:
+      "Raise fiber gradually and drink more water alongside it — a sudden jump is what causes the bloating people blame on the fiber itself.",
+  },
 ];
 
 // ── Curated high-side REDUCE table (issue #775) ───────────────────────────────
@@ -856,11 +976,13 @@ export function buildNutrientFoodMap(): NutrientFoodMap {
     id: "nutrient-food-map",
     title: "Biomarker→nutrient→food recommendation map",
     description:
-      "Baked biomarker→nutrient→food map for the DETERMINISTIC food-recommendation " +
+      "Baked nutrient→food map for the DETERMINISTIC food-recommendation " +
       "engine (issue #577): when a diet-responsive biomarker family reads low, the " +
       "curated food sources that address it (`entries`); and when a core-panel/toxin " +
       "biomarker reads high, the limit-tier foods to reduce (`meta.reduceEntries`, " +
-      "issue #775). Each carries an evidence note + source; low entries add " +
+      "issue #775). An entry with NO biomarkers is reached by a declared target trigger " +
+      "instead — the protein and fibre shortfall route (issue #2383). " +
+      "Each carries an evidence note + source; low entries add " +
       "contraindication tags + an allergy alternative. Committed + HUMAN-REVIEWABLE. " +
       "Regenerate with `npm run gen:nutrient-food-map`. INFORMATIONAL food-first " +
       "guidance, NOT medical advice — every suggestion is safety-screened before it " +

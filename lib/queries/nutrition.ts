@@ -93,8 +93,13 @@ import {
 } from "../fiber";
 import {
   nutritionDayPosition,
+  type NutrientPosition,
   type NutritionDayPosition,
 } from "../nutrition-day";
+import {
+  shortfallFoodSuggestion,
+  type ShortfallFoodSuggestion,
+} from "../nutrition-food-suggestion";
 import {
   getUserSex,
   getUserAge,
@@ -1408,5 +1413,36 @@ export function getNutritionDay(
       ? assessProteinAdequacy(proteinDay.todayIntake, proteinDay.target)
       : null,
     fiber: getFiberOnDate(profileId, date),
+  });
+}
+
+// The curated food group offered against those shortfalls (issue #2383), or null.
+//
+// TAKES THE SHORTFALLS, DOES NOT RE-READ THE DAY. The caller has already resolved the
+// position (`getNutritionDay` → `nutritionShortfalls`) to decide whether there is a line
+// at all; gathering it a second time here would pay for the day's food, dose and metric
+// reads twice and let the offer disagree with the figures it rides beside.
+//
+// The safety facts come from `getIntakeSafetyContext` — the SAME shared gather (#661) the
+// biomarker food route and the AI supplement belt screen against, so a food suggested for
+// a missed target and one suggested for a flagged lab cannot disagree about the profile's
+// allergies, stack or conditions. Dietary preferences (#975) ride along as the softer
+// filter they are.
+//
+// Returns null the moment there is nothing to offer, which is most days. The decision is
+// pure and lives in `shortfallFoodSuggestion`; this only assembles its inputs.
+export function getShortfallFoodSuggestion(
+  profileId: number,
+  shortfalls: readonly NutrientPosition[]
+): ShortfallFoodSuggestion | null {
+  if (shortfalls.length === 0) return null;
+  const { allergens, medications, conditions, situations } =
+    getIntakeSafetyContext(profileId);
+  return shortfallFoodSuggestion(shortfalls, {
+    allergens,
+    medications,
+    conditions,
+    situations,
+    excludedGroups: getExcludedFoodGroups(profileId),
   });
 }

@@ -19,7 +19,11 @@
 // WHAT #2383 CALLS. `nutritionShortfalls(position)` — the nutrients that finished below a
 // RESOLVED target, each carrying its `shortfallGrams` and whether the intake figure it was
 // measured from is a floor. A curated-food follow-up needs nothing else from this side and
-// must not re-derive any of it.
+// must not re-derive any of it. It landed exactly there: `lib/nutrition-food-suggestion.ts`
+// reads those positions, feeds them to the #577 engine as targets, and hands back ONE note
+// fragment this module's line appends. The suggestion arrives here as text on purpose —
+// which food it is, and whether there is one at all, is a question about the curated map
+// and the profile's safety facts, neither of which this module knows or should.
 //
 // THE FLOOR DISCIPLINE IS CARRIED, NEVER FLATTENED (#767/#976). Every non-`tracked` basis
 // is a FLOOR — untracked foods stay invisible — so a shortfall measured from one is not an
@@ -212,10 +216,27 @@ export function nutrientPositionPhrase(p: NutrientPosition): string {
 // fibre share the line because they are one question asked of one day's eating, from one
 // gather; splitting them would double the digest's nutrition footprint for no added
 // meaning.
+//
+// THE FOOD NOTE (#2383) is the ONE thing that may follow the figures: a single curated,
+// safety-screened food group that would close the biggest of them, resolved by
+// `lib/nutrition-food-suggestion.ts` and passed in as a finished fragment. It is one more
+// NOTE in the same repeating group — a peer qualifier of the same head, punctuated by the
+// same `·` as the nutrients before it — not a second line and not a second shape. It is
+// OPTIONAL at every level: absent whenever the curated map, the safety screens, or the
+// food catalog leave nothing honest to name, and the line then reads exactly as it did
+// before. A reported gap with no offer is still a complete line; an offer with no gap is
+// impossible, because the notes it would qualify are what put the line here at all.
 export function nutritionDigestLine(
-  position: NutritionDayPosition | null
+  position: NutritionDayPosition | null,
+  // The curated food offer, already worded (`shortfallFoodPhrase`). Nullish ⇒ figures only.
+  foodNote?: string | null
 ): MessageLine | null {
   const short = nutritionShortfalls(position);
   if (short.length === 0) return null;
-  return { head: "Nutrition", notes: short.map(nutrientPositionPhrase) };
+  const notes = short.map(nutrientPositionPhrase);
+  // Appended rather than passed as a nullish slot: the formatter would drop an absent one
+  // either way, but the PARTS are what the tests and the reconcile path compare, and a
+  // line with no offer should hold no trace of one.
+  if (foodNote) notes.push(foodNote);
+  return { head: "Nutrition", notes };
 }

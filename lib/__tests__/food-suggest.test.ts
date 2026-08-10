@@ -443,3 +443,119 @@ describe("suggestFoods — mercury qualifier on omega-3 (#775)", () => {
     expect(out[0].safetyNotes.some((n) => n.kind === "biomarker")).toBe(false);
   });
 });
+
+// ── #2383: the second door — a curated entry named DIRECTLY by a target trigger ──
+//
+// The claim under test is that this is one engine with two ways IN, not two engines: the
+// screens, the shapes and the dedupe namespaces below are the flagged route's own.
+describe("suggestFoods — target triggers (#2383)", () => {
+  it("resolves a curated entry by key, with the caller's reason as the rationale", () => {
+    const out = suggestFoods(
+      baseInput({
+        targets: [
+          { key: "fiber", direction: "add", reason: "fiber 18 g+ of 38 g" },
+        ],
+      })
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      key: "fiber",
+      direction: "add",
+      dedupeKey: foodSuggestSignalKey("fiber"),
+      triggeredBy: ["fiber 18 g+ of 38 g"],
+    });
+    expect(out[0].foods.length).toBeGreaterThan(0);
+    expect(out[0].source.length).toBeGreaterThan(0);
+  });
+
+  it("runs the SAME screens a flagged reading would have run", () => {
+    // A drop-severity contraindication withholds it exactly as CKD × potassium does on
+    // the flagged route, and an allergy leaves its note behind on the survivors.
+    expect(
+      suggestFoods(
+        baseInput({
+          targets: [
+            { key: "protein", direction: "add", reason: "protein short" },
+          ],
+          conditions: ["Chronic kidney disease"],
+        })
+      )
+    ).toEqual([]);
+
+    const allergic = suggestFoods(
+      baseInput({
+        targets: [
+          { key: "protein", direction: "add", reason: "protein short" },
+        ],
+        allergens: ["fish"],
+      })
+    );
+    expect(allergic).toHaveLength(1);
+    expect(allergic[0].safetyNotes.some((n) => n.kind === "allergy")).toBe(
+      true
+    );
+    expect(allergic[0].foods.some((f) => /fish/i.test(f.food))).toBe(false);
+  });
+
+  it("refuses a key with no curated entry rather than guessing one", () => {
+    expect(
+      suggestFoods(
+        baseInput({
+          targets: [
+            { key: "__not_a_nutrient__", direction: "add", reason: "made up" },
+          ],
+        })
+      )
+    ).toEqual([]);
+  });
+
+  it("composes with the flagged route on ONE suggestion when both name a nutrient", () => {
+    // Iron is reachable both ways in principle; the family's dedupeKey must stay single
+    // so a dismissal still covers it (#482).
+    const out = suggestFoods(
+      baseInput({
+        flagged: [{ name: "Ferritin", flag: "low" }],
+        targets: [
+          { key: "iron", direction: "add", reason: "a directly named gap" },
+        ],
+      })
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].triggeredBy).toEqual(["Ferritin", "a directly named gap"]);
+    expect(out[0].dedupeKey).toBe(foodSuggestSignalKey("iron"));
+  });
+
+  it("routes a reduce-direction trigger to the reduce table (the shape #2377 slots into)", () => {
+    // No producer emits one today; the resolution is deliberately the same line of code
+    // as the add side rather than a fork waiting to be written.
+    const out = suggestFoods(
+      baseInput({
+        targets: [
+          { key: "glucose", direction: "reduce", reason: "a named excess" },
+        ],
+      })
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      key: "glucose",
+      direction: "reduce",
+      dedupeKey: foodReduceSignalKey("glucose"),
+      triggeredBy: ["a named excess"],
+    });
+    // The namespaces stay disjoint: an add key never reaches the reduce table.
+    expect(
+      suggestFoods(
+        baseInput({
+          targets: [
+            { key: "glucose", direction: "add", reason: "wrong table" },
+          ],
+        })
+      )
+    ).toEqual([]);
+  });
+
+  it("changes nothing for a caller that passes no targets", () => {
+    expect(suggestFoods(baseInput({ flagged: [] }))).toEqual([]);
+    expect(suggestFoods(baseInput({ targets: [] }))).toEqual([]);
+  });
+});

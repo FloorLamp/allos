@@ -195,6 +195,12 @@ export interface DigestInput {
   // own separator rather than a join this domain invented. The glyph is absent here and
   // stamped by buildDigest, matching every sibling line in the Yesterday section.
   //
+  // A LAST NOTE MAY BE AN OFFER (#2383) — "try legumes & beans (8 g fiber a serving)", one
+  // curated, safety-screened food group that would close the biggest of the gaps just
+  // stated. It is what turns the line from a scoreboard into a loop, and it names a group
+  // the one-tap food bar can actually log rather than an off-catalog instruction. Optional
+  // in both directions: most short days carry the figures alone.
+  //
   // NULL ON MOST MORNINGS, deliberately, and each null is its own fact: a day that MET
   // its targets is unremarkable and says nothing (so a typical digest gets SHORTER, not
   // longer); a day with no food logged says nothing, because absence of logging is not
