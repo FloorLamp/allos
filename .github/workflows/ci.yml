@@ -222,19 +222,20 @@ jobs:
   # lint/type/unit feedback. No secrets; no ANTHROPIC_API_KEY, so AI features
   # degrade gracefully (the flows under test don't need them).
   #
-  # SHARDED 4-way (flaky-e2e hardening): each shard is a fresh runner + fresh
-  # `npx playwright test --shard=N/4` invocation → a fresh seeded template and
-  # fresh per-worker servers per chunk. This cuts the per-push e2e wall-clock roughly in half AND removes the
+  # SHARDED (flaky-e2e hardening): each shard is a fresh runner + fresh
+  # `npx playwright test --shard=N/TOTAL` invocation → a fresh seeded template and
+  # fresh per-worker servers per chunk. This cuts the per-push e2e wall-clock AND removes the
   # long-lived-server cumulative degradation the orchestration runbook documents
   # for single-process full runs (docs/orchestration.md). fail-fast is off so a
   # red shard still lets the others finish — one push yields the full failure
   # picture instead of a partial one.
   #
   # This runs `npm run test:e2e` unfiltered, so the phone-viewport `mobile`
-  # project (#1420) rides along and its tests distribute across the four shards.
+  # project (#1420) rides along and its tests distribute across the shards.
   # That is deliberately cheap: the project is OPT-IN (smoke.spec.ts +
   # `*.mobile.spec.ts` only — see playwright.config.ts), so it adds ~23 tests
-  # (~1.5 min total, ~25 s per shard) rather than a mobile clone of the suite. It
+  # (~1.5 min total, well under a minute per shard) rather than a mobile clone
+  # of the suite. It
   # needs no job of its own — a separate job would pay a whole extra runner's
   # checkout + npm ci + `next build` (~4 min) to run ~25 s of tests.
   e2e:
@@ -242,7 +243,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # The shard COUNT lives here and nowhere else — the steps below read it
+        # back as `strategy.job-total`, so re-splitting the suite is a one-line
+        # edit that cannot leave a stale `/4` behind.
+        #
+        # Six, not four, because the browser suite is the critical path: at four
+        # it ran 683-838s against the `check` job's 543s, so every push waited on
+        # e2e alone. Six lands it near check, which is the point of balance —
+        # splitting further would buy wall-clock only until check became the
+        # bound, while still paying another runner's ~2min setup per shard.
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
       # brings both parents — enough for the docs-only diff below (HEAD^1 is the
@@ -271,9 +281,9 @@ jobs:
       - uses: ./.github/actions/e2e-setup
         if: steps.changes.outputs.code == 'true'
 
-      - name: E2E (Playwright, shard ${{ matrix.shard }}/4)
+      - name: E2E (Playwright, shard ${{ matrix.shard }}/${{ strategy.job-total }})
         if: steps.changes.outputs.code == 'true'
-        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
       # Flake telemetry (retained). The sharded matrix now runs at zero retries
       # (playwright.config.ts, #1159), so there is no "flaky" status here and this

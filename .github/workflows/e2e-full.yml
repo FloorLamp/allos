@@ -13,7 +13,9 @@ name: E2E full suite (on demand)
 # first try). Bump repeat_each to 3 to apply the changed-spec lane's bar
 # suite-wide when hardening (expect ~3x the runtime).
 #
-# Same 4-way shard shape as ci.yml's e2e job: fresh runner + fresh servers per
+# Same sharded shape as ci.yml's e2e job, on its own 4-way split (this is an
+# on-demand census, so wall-clock matters less than it does per push): fresh
+# runner + fresh servers per
 # chunk, no cumulative degradation, full failure picture (fail-fast off).
 #
 # WEEKLY DRIFT CENSUS: the suite runs clean at retries=0 (the flake burn-down,
