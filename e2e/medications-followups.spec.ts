@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
@@ -239,7 +239,10 @@ test("logs, edits, and deletes a historical medication dose", async ({
     .filter({ hasText: loggedAmount });
   await loggedRow.getByRole("button", { name: "Dose actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
-  const editForm = loggedRow.getByTestId("historical-dose-form");
+  // The row swaps its cells for the edit form in place (the shared
+  // EntryHistoryTable, #2417), so the amount text the row was FILTERED on is gone
+  // while the editor is open — the form is scoped to the panel instead.
+  const editForm = history.getByTestId("historical-dose-form");
   await editForm.getByLabel("Amount").fill(updatedAmount);
   await editForm.getByTestId("historical-dose-time").fill("04:18");
   await settledClick(
@@ -253,7 +256,16 @@ test("logs, edits, and deletes a historical medication dose", async ({
     .filter({ hasText: updatedAmount });
   await expect(updatedRow).toContainText(/(?:4:18am|04:18)/);
   await updatedRow.getByRole("button", { name: "Dose actions" }).click();
-  await settledClick(page, page.getByRole("menuitem", { name: "Delete" }));
+  // Removing one logged event confirms first and undoes after — the shared delete
+  // path every EntryHistoryTable row now goes through. The menu item only OPENS the
+  // dialog; the write happens when the dialog is answered.
+  await hydratedClick(page, page.getByRole("menuitem", { name: "Delete" }));
+  await settledClick(
+    page,
+    page
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "Delete dose" })
+  );
   await expect(page.getByText("Dose deleted.")).toBeVisible();
   await expect(updatedRow).toHaveCount(0);
   await settledClick(page, page.getByRole("button", { name: "Undo" }));
@@ -266,7 +278,13 @@ test("logs, edits, and deletes a historical medication dose", async ({
   // so --repeat-each starts from the same dose history instead of accumulating
   // duplicate rows with identical timestamps.
   await restoredRow.getByRole("button", { name: "Dose actions" }).click();
-  await settledClick(page, page.getByRole("menuitem", { name: "Delete" }));
+  await hydratedClick(page, page.getByRole("menuitem", { name: "Delete" }));
+  await settledClick(
+    page,
+    page
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "Delete dose" })
+  );
   await expect(restoredRow).toHaveCount(0);
 
   // The administration and course correction are one write: editing immediately
@@ -276,4 +294,40 @@ test("logs, edits, and deletes a historical medication dose", async ({
   await expect(
     page.locator('input[type="hidden"][name="started_on"]')
   ).toHaveValue(beforeStart);
+});
+
+// #2417: the medications surface carries the same one-click door onto the cross-item
+// dose ledger the supplements tab does — one component, two doors — and it opens
+// PRE-FILTERED to medications, with the kind filter as the thing that widens it.
+test("the medications page reaches the dose ledger, pre-filtered to medications", async ({
+  page,
+}) => {
+  await page.goto("/medications");
+  await followLink(
+    page,
+    page.getByTestId("dose-ledger-link"),
+    /\/medications\/dose-history/
+  );
+
+  // The kind filter opens on this surface's own kind.
+  const kinds = page.getByTestId("dose-ledger-kind-filter");
+  await expect(
+    kinds.getByRole("link", { name: "Medications" })
+  ).toHaveAttribute("aria-current", "true");
+
+  // The seeded PRN medication's own confirmed doses are in the ledger, named by item.
+  const ledger = page.getByTestId("dose-ledger");
+  await expect(
+    ledger.getByTestId("dose-ledger-row").filter({ hasText: PRN_MED })
+  ).not.toHaveCount(0);
+
+  // Widening to All keeps the same table and reaches the other kind's items.
+  await followLink(page, kinds.getByRole("link", { name: "All" }), /kind=all/);
+  await expect(page.getByTestId("dose-ledger")).toBeVisible();
+
+  // The chart half of the same question is one link away.
+  await expect(page.getByTestId("dose-ledger-trends-link")).toHaveAttribute(
+    "href",
+    "/trends?tab=nutrition#dose-history"
+  );
 });

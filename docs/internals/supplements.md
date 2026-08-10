@@ -496,7 +496,50 @@ One panel renders it on both surfaces — `components/intake/DoseHistoryPanel.ts
 inline in the medication card and behind the supplement row's ⋯ "Dose history"
 disclosure — over the Server Actions in
 `app/(app)/nutrition/supplement-actions.ts` (the kind-agnostic intake action
-module), each rendering its core's typed outcome.
+module), each rendering its core's typed outcome. Since #2417 that panel's ROWS
+are the shared `components/EntryHistoryTable.tsx` (the ⋯ menu, the in-place edit
+row, the confirm-then-undo delete), settling the debt that component's own header
+had recorded: dose history was the one clone of that shape it never absorbed.
+
+### The cross-item dose ledger (#2417)
+
+"What did I actually take last week, across items" used to cost one navigation per
+item, because dose history existed ONLY as a per-item disclosure two menus deep.
+It is the same question at a wider scope, so it is the same reader and the same
+renderer:
+
+- `getIntakeDoseHistoryAll(profileId, since, { kind?, itemId?, untilDate? })`
+  (`lib/queries/intake/adherence.ts`) is the third member of the dose-history read
+  family — same taken-only semantics, same ordering, same profile scoping through
+  the parent item, plus the item's name and kind. The JOIN is on the item's
+  PROFILE only, never on `active`: **history outlives retirement**, and a dose
+  taken from a bottle since paused or retired still happened. Narrowed to one item
+  it returns exactly what `getIntakeDoseHistory` returns for that item over the
+  same window — asserted row-for-row in
+  `lib/__db_tests__/supplement-dose-history.test.ts`, which is what makes the
+  ledger and the panel two views of one record rather than two answers.
+- `components/intake/DoseLedgerView.tsx` (server) + `DoseLedgerTable.tsx` (client)
+  render it on `EntryHistoryTable` with the SAME ⋯ Edit / Delete-with-undo over
+  the same unchanged cores. Columns: date · time · item · amount · product,
+  newest first.
+- Two routes, one component: `/nutrition/dose-history` and
+  `/medications/dose-history`, each opening **pre-filtered to its own surface's
+  kind** — the same kind→surface seam `intakeHref` encodes one level up, spelled
+  by `doseLedgerHref` (`lib/hrefs.ts`). Both surfaces carry the one-click door
+  (`components/intake/DoseLedgerLink.tsx`).
+- Filters ride the URL, so a filtered ledger is a deep link and every filter
+  narrows the QUERY: kind (the `all` state widens), item (every item the profile
+  owns, active or not), and the shared `DateRange` vocabulary with
+  `DOSE_HISTORY_DAYS` as the default window and `?range=all` as the explicit
+  all-time sentinel. The pure half is `lib/dose-ledger.ts`.
+- **"Log past dose" is a top-level entry** on the ledger — the same
+  `HistoricalDoseForm` with an item picker in front, which opens on the item the
+  ledger is filtered to. The per-item panel keeps its own entry: an item-scoped
+  question stays answerable on the item.
+- Cross-linked with the Trends → Nutrition **Dose history** chart (#2415) both
+  ways: the ledger links to the chart, and a tapped day in that chart's day panel
+  links back to the ledger filtered to that day (`dayLink` on the `dose` entry of
+  `DAY_HISTORY_DOMAINS`).
 
 What "everything editable" carries:
 

@@ -554,6 +554,18 @@ export default function DayHistory({
               {selectedDay === today ? " · today" : ""}
             </span>
             <span className="flex items-center gap-3">
+              {/* The domain's own row-level surface, when it has one (#2417: the
+                  dose ledger filtered to this day). Declared per domain in
+                  lib/day-history.ts, never per caller. */}
+              {spec.dayLink && (
+                <Link
+                  href={spec.dayLink.href(selectedDay)}
+                  data-testid="day-history-day-link"
+                  className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+                >
+                  {spec.dayLink.label} →
+                </Link>
+              )}
               <Link
                 href={timelineDayHref(selectedDay)}
                 className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"

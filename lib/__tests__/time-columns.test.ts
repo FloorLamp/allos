@@ -233,8 +233,8 @@ describe("the published index cannot fall behind the declaration", () => {
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 7,
-    why: "the adherence reader's SQL — one projection and six ORDER BY / MAX() expressions walking the recorded_at → taken_at RECORD CHAIN. Correct values (the owner's #2205 ruling settled that both links answer one question), spelled by hand in seven places. Routing them through recordInstant means selecting both columns and ordering in JS, which changes the perf shape of the medication surface's hottest query — a read-path change with its own PR.",
+    count: 8,
+    why: "the adherence reader's SQL — one projection and six ORDER BY / MAX() expressions walking the recorded_at → taken_at RECORD CHAIN. Correct values (the owner's #2205 ruling settled that both links answer one question), spelled by hand in seven places. Routing them through recordInstant means selecting both columns and ordering in JS, which changes the perf shape of the medication surface's hottest query — a read-path change with its own PR. The eighth (#2417) is the cross-item dose ledger's ORDER BY, which is the SAME expression its two item-scoped siblings order by — the ledger narrowed to one item has to return that item's rows in exactly the panel's order, so this pairing is the sibling's, copied deliberately rather than invented.",
   },
   "lib/queries/nutrition.ts": {
     count: 3,

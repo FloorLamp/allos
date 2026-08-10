@@ -57,6 +57,7 @@ import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
+import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
@@ -1191,6 +1192,7 @@ export default async function SupplementsTab({
                         trainingRestricted={trainingRestricted}
                       />
                       <SharedSuppliesLink count={cabinetCount} />
+                      <DoseLedgerLink kind="supplement" />
                     </div>
                   </section>
                 </div>
@@ -1246,7 +1248,10 @@ export default async function SupplementsTab({
                   </section>
                   <section className="p-4">
                     <h2 className="mb-3 section-label">Manage</h2>
-                    <SharedSuppliesLink count={cabinetCount} />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <SharedSuppliesLink count={cabinetCount} />
+                      <DoseLedgerLink kind="supplement" />
+                    </div>
                   </section>
                 </div>
               </aside>

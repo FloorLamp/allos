@@ -13,7 +13,7 @@ import { dayFillWindow } from "@/lib/day-fill";
 import { filterSeriesByRange, lensWindow } from "@/lib/trends";
 import { MACROS_SERIES_KEY } from "@/lib/trend-sparkline";
 import { chartSeries } from "@/lib/chart-colors";
-import { intakeHref } from "@/lib/hrefs";
+import { doseLedgerHref, DOSE_LEDGER_ALL_KINDS } from "@/lib/hrefs";
 import {
   buildMacroFiberSeries,
   aggregateFoodAdherenceByWeek,
@@ -166,16 +166,20 @@ export default async function NutritionSection({
 
       {/* Part 2: dose history — confirmed supplement/med doses as their own
           day-history (one row per item). */}
-      <section data-testid="dose-history">
+      <section id="dose-history" data-testid="dose-history">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Dose history
           </h2>
+          {/* The TABULAR counterpart of this chart (#2417): the calendar shows the
+              pattern, the ledger shows the rows behind it — and a tapped day in the
+              panel below links into that ledger filtered to the day. */}
           <Link
-            href={intakeHref("supplement")}
+            href={doseLedgerHref("supplement", { kind: DOSE_LEDGER_ALL_KINDS })}
+            data-testid="dose-history-ledger-link"
             className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
-            Supplements →
+            Dose ledger →
           </Link>
         </div>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
