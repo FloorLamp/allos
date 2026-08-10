@@ -1495,6 +1495,29 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  stream_frontiers: [
+    {
+      column: "frontier_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "The newest EVENT instant the stream had reached when ingest last looked — a watermark copied from the stream table's own event column (hr_minutes.ts today), so it carries that column's semantic. NULL while the stream has never delivered a row. Migration 179 (#2341), born canonical.",
+    },
+    {
+      column: "advanced_at",
+      semantic: "lifecycle",
+      grain: "instant",
+      convention: "canonical",
+      note: "When the frontier was last observed to MOVE. A transition in this watermark row's own life, not in the subject's: it is the instant the observation was made, never the instant the data carries. Migration 179 (#2341), born canonical.",
+    },
+    {
+      column: "observed_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "canonical",
+      note: "When ingest last looked at all, advancing or not — the stamp that makes `syncs_since_advance` auditable. Migration 179 (#2341), born canonical.",
+    },
+  ],
   substance_log: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {

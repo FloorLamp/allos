@@ -79,6 +79,9 @@ export const INTEGRATIONS: IntegrationDef[] = [
         // row about it every morning is how a surface earns being ignored.
         expectedActive: { windowDays: 3, minDays: 2 },
         quiet: {
+          // A FLOOR on the frontier's age since #2341, not the discriminator. The
+          // measurement below is what places it; what changed is the quantity it
+          // bounds, which no longer carries this pipeline's 30–61 minute ingest lag.
           dipToleranceMin: 150,
           because:
             "Measured over 56 days of one real profile's hr_minutes. The gap " +
@@ -96,8 +99,29 @@ export const INTEGRATIONS: IntegrationDef[] = [
         },
         // #2161's bedtime reminder watches THIS stream. Declared rather than
         // hard-coded in the notification module, so "which streams have a reminder"
-        // is a registry question (#2162).
-        reminder: "bedtime-wear",
+        // is a registry question (#2162) — and, since #2341, so is the threshold it
+        // is asked at, which used to be a bare constant in the notification module
+        // and is the half of this pair that got things wrong.
+        reminder: {
+          id: "bedtime-wear",
+          frontierFloorMin: 40,
+          because:
+            "40 minutes, the number #2161 shipped with, now bounding a different " +
+            "quantity. It used to threshold `now − MAX(hr_minutes.ts)`, which is " +
+            "(minutes off the wrist) + (ingest lag); this exporter's lag was " +
+            "measured at 60.8 and 30.7 minutes from two snapshots at known " +
+            "instants, and #2263's census over 1223 pushes puts the push gap at " +
+            "median 16 / p90 34 / p99 67 minutes — the same range as the silence " +
+            "being detected, so on 2026-08-08 the reminder fired at exactly 40 on " +
+            "lag alone while the watch was recording. Since #2341 the decision is " +
+            "whether the frontier MOVED, and this is only a floor on the " +
+            "frontier's own age: long enough that a watch put down minutes before " +
+            "the slot is not announced on two quiet pushes, short enough that the " +
+            "measured incident (charger at 21:05, bedtime slot 22:00, ~55 minutes) " +
+            "still clears it at both attempts of the slot. Raising it was the " +
+            "tempting fix and it is unavailable: allow for a 60-minute lag and that " +
+            "incident becomes undetectable.",
+        },
       },
     ],
     docsUrl: "https://github.com/mcnaveen/health-connect-webhook",

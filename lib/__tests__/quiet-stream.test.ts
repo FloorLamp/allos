@@ -11,9 +11,12 @@
 //
 //   • a dip inside tolerance — the evening charge, the shower, the workout removal.
 //     Fire on those and the signal is noise within a week.
-//   • a gap window with NO ok syncs — the phone is off, not the watch. That is the
-//     #1685 staleness detector's case, it already names it, and two rows for one
-//     outage is exactly what constraint 1 exists to prevent.
+//   • a frontier that is still MOVING — the pushes carrying it are simply late.
+//     #2341 measured this pipeline running 30–61 minutes behind the wrist, so elapsed
+//     silence alone cannot tell a slow push from a device that stopped; only whether
+//     the frontier advanced can. It is also what keeps this disjoint from #1685: with
+//     the phone off, no push lands, nothing is observed, and the staleness detector
+//     owns the outage it already names.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -54,7 +57,9 @@ function offWrist(over: Partial<QuietStreamSignals> = {}): QuietStreamSignals {
     // 21:05 → 06:24, the worst of the five measured events: the watch spent the night
     // on the charger and the profile lost its only sleep night in eight weeks.
     minutesSinceStream: 9 * HOUR + 19,
-    syncedDuringGap: true,
+    // Frozen across two successive pushes (#2341) — the evidence that the SOURCE
+    // stopped, as distinct from the pipeline running late.
+    syncsSinceAdvance: 2,
     toleranceMin: TOLERANCE,
     ...over,
   };
@@ -92,23 +97,39 @@ describe("quietStreamVerdict (#2146)", () => {
     ).toMatchObject({ quiet: true });
   });
 
-  it("does NOT fire on a connection outage — no ok syncs in the window (constraint 1)", () => {
-    // The load-bearing clause. Same silence, but nothing synced during it: the PHONE
-    // is off, not the watch. #1685's staleness detector owns this and already names
-    // it, so reporting it here would be two rows and two voices for one fault.
-    expect(quietStreamVerdict(offWrist({ syncedDuringGap: false }))).toEqual({
+  it("does NOT fire while the frontier is still MOVING (#2341)", () => {
+    // THE discriminator. Same nine hours of "silence" — but the last push advanced the
+    // frontier, so what is being measured is this pipeline's ingest lag and not the
+    // wrist. No threshold on the elapsed number can see the difference; this can.
+    expect(quietStreamVerdict(offWrist({ syncsSinceAdvance: 0 }))).toEqual({
       quiet: false,
-      skip: "no-ok-sync",
+      skip: "frontier-advanced",
+    });
+  });
+
+  it("does NOT fire on one quiet push, or with no observation at all (constraint 1)", () => {
+    // One push carrying nothing new is jitter. NONE at all is the PHONE being off,
+    // not the watch: #1685's staleness detector owns that and already names it, so
+    // reporting it here would be two rows and two voices for one fault.
+    expect(quietStreamVerdict(offWrist({ syncsSinceAdvance: 1 }))).toEqual({
+      quiet: false,
+      skip: "no-recent-sync",
+    });
+    expect(quietStreamVerdict(offWrist({ syncsSinceAdvance: null }))).toEqual({
+      quiet: false,
+      skip: "no-recent-sync",
     });
   });
 
   it("does NOT fire on a backfilled gap — the stream's newest row moved forward", () => {
-    // Backfill heals retroactively with no marker to clear: the predicate is a
-    // function of max(ts), and a backfilled batch moves max(ts) to the present.
-    expect(quietStreamVerdict(offWrist({ minutesSinceStream: 3 }))).toEqual({
-      quiet: false,
-      skip: "stream-live",
-    });
+    // Backfill heals retroactively with no marker to clear: a backfilled batch moves
+    // max(ts) to the present, and the push that carried it is recorded as an ADVANCE,
+    // so both halves of the predicate go quiet in the same push.
+    expect(
+      quietStreamVerdict(
+        offWrist({ minutesSinceStream: 3, syncsSinceAdvance: 0 })
+      )
+    ).toEqual({ quiet: false, skip: "stream-live" });
   });
 
   it("does NOT fire for a provider already carrying a failing/stale row (constraint 7)", () => {
@@ -170,7 +191,7 @@ describe("quietStreams — one row per provider", () => {
   it("drops every candidate that does not fire", () => {
     expect(
       quietStreams([
-        candidate({ syncedDuringGap: false }),
+        candidate({ syncsSinceAdvance: 0 }),
         candidate({ minutesSinceStream: 30 }),
         candidate({ providerHealthy: false }),
       ])
@@ -266,6 +287,17 @@ describe("the registry declaration", () => {
     expect(hc?.stream.quiet?.because).toMatch(/bimodal/i);
   });
 
+  it("declares the bedtime reminder's floor BESIDE it, with its own evidence (#2341)", () => {
+    // The thing #2341 item 2 exists for: this number used to be a bare constant in
+    // lib/wear-reminder.ts, while its sibling for the SAME stream lived here with its
+    // measurement written out. One stream, two thresholds, opposite answers on the
+    // same night — and the one that was wrong was the one living away from its sibling.
+    const hc = continuousStream("health-connect", "heart-rate");
+    expect(hc?.stream.reminder?.id).toBe("bedtime-wear");
+    expect(hc?.stream.reminder?.frontierFloorMin).toBe(40);
+    expect(hc?.stream.reminder?.because).toMatch(/lag/i);
+  });
+
   it("exempts a provider with no continuous streams BY CONSTRUCTION (constraint 3)", () => {
     // No exemption list anywhere in lib/: a provider with nothing continuous to
     // deliver simply declares nothing, and the detector never sees it. This is the
@@ -323,6 +355,12 @@ describe("the registry declaration", () => {
         expect(stream.quiet.dipToleranceMin).toBeGreaterThan(0);
         expect(stream.quiet.because.length).toBeGreaterThan(40);
         expect(stream.quiet.prompt.length).toBeGreaterThan(10);
+      }
+      // A reminder facet carries its threshold AND its justification, exactly as the
+      // quiet facet does — a number without evidence beside it is what #2341 ended.
+      if (stream.reminder) {
+        expect(stream.reminder.frontierFloorMin).toBeGreaterThan(0);
+        expect(stream.reminder.because.length).toBeGreaterThan(40);
       }
     }
   });

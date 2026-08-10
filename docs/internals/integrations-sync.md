@@ -1272,8 +1272,9 @@ saw no recorded failure, and `isSleepTracking` was still true.
 **The declaration.** A provider states its CONTINUOUS streams in the registry
 beside `silenceToleranceMinutes` (`continuousStreams`, read only through
 `lib/integrations/continuous-streams.ts`). Health Connect declares one:
-`heart-rate` on `hr_minutes`, ~60 rows/hour, a **2.5 h** dip tolerance, and the
-2-of-3-days activity window it shares with #2097. The tolerance is **declared,
+`heart-rate` on `hr_minutes`, ~60 rows/hour, a **2.5 h** dip tolerance, the
+**40-minute** bedtime floor #2341 moved here from `lib/wear-reminder.ts`, and the
+2-of-3-days activity window it shares with #2097. Both thresholds are **declared,
 never inferred** — there is no wear-pattern learner and there must not be one —
 and its evidence rides the declaration as data: the measured gap distribution is
 bimodal with an empty valley at 2.1–2.5 h, separating 16 routine removals
@@ -1293,23 +1294,64 @@ than widened.
 **The predicate** (`lib/integrations/quiet-stream.ts`, pure; gathered by
 `lib/queries/continuous-streams.ts`):
 
-> the declared stream has been silent longer than its tolerance, **while the
-> provider kept syncing ok in that window**.
+> the declared stream's **frontier has not moved** across the last N successful
+> pushes, and the frontier is older than the stream's declared dip tolerance.
 
-The second clause is load-bearing. A gap window with **no** ok syncs is the
-staleness detector's case — the phone is off, not the watch — and #1685 already
-owns and names it; without the clause this would be a second row, in a second
-voice, for one outage. It is two cheap reads: `MAX(ts)` on the stream and
-`MAX(at)` over the provider's ok events, with "an ok sync landed inside the gap"
-being exactly `maxOkSyncAt > lastStreamAt`. There is **no stored state**: nothing
-is written, no marker is set, and a backfill heals the row retroactively because
-it moves `MAX(ts)` forward.
+**The first clause is the discriminator (#2341).** It used to read "while the
+provider kept syncing ok in that window", and that clause discriminated the
+CONNECTION, never the device: a push that is merely _late_ is still a successful
+push. What was being thresholded was
 
-**Three timestamp conventions, joined through their declarations.** The predicate
-spans `hr_minutes.ts` (a canonical UTC instant since migration 164 — it _was_ a
+```
+now − MAX(stream.ts)  =  (minutes the device was not producing) + (ingest lag)
+```
+
+and the second term is not small — measured directly on this exporter at **60.8**
+and **30.7** minutes from two snapshots at known instants, with #2263's census
+over 1223 pushes putting the push gap at median 16 / p90 34 / **p99 67** minutes.
+Both terms live in the same range, so **no threshold on that quantity can
+separate them**. A watch on a wrist behind a slow pipeline **advances**
+`MAX(stream.ts)` on every push; a watch on a charger leaves it **frozen** while
+pushes keep landing. That distinction contains no lag term, and it is what both
+readers now ask.
+
+`N = 2`: one push carrying nothing new is ordinary jitter, two consecutive ones
+with the provider healthy means the source stopped producing. It is declared once,
+as `FROZEN_SYNC_EVIDENCE` in `lib/stream-frontier.ts`, because it is a property of
+what a push MEANS rather than of any one stream's wear pattern. What each surface
+declares for itself is the **floor on the frontier's own age**.
+
+The two detectors stay disjoint for the reason they always were, restated: with
+the phone off, no push lands, so nothing is ever OBSERVED frozen — that is #1685's
+connection outage, which already owns and names it.
+
+**The stored watermark.** `stream_frontiers` (migration 179) holds one row per
+`(profile_id, provider, stream)`: the frontier as last observed, when it was last
+seen to ADVANCE, when it was last looked at, and how many successful syncs have
+landed since. The pure fold is `observeFrontier` (`lib/stream-frontier.ts`); the
+ingest-path writer is `lib/stream-frontier-db.ts`; the read is
+`readStreamFrontier` in the query module. Not `integration_sync_rows` (its
+`target_table` CHECK excludes the stream tables by design, and it stores ~1500
+rows/day for this stream alone) and not `window_start`/`window_end` (the
+exporter's day-grained rolling window, not a data frontier).
+
+The write runs at the end of a **successful** ingest, in one immediate transaction
+that reads `MAX(stream.ts)` and writes the row derived from it — read and write
+atomic with respect to each other. It deliberately does **not** piggyback on a
+stream upsert's transaction: a push is written in bounded per-chunk transactions
+(#1064), so there are N of them, and the push that matters most opens **none** —
+a watch on a charger produces no rows, and that push is the entire signal. A push
+that threw records nothing.
+
+The detector itself still stores nothing of its own: no marker to set, none to
+clear, and a backfill still heals the row retroactively, because a backfilled
+batch moves `MAX(ts)` forward and the very next push therefore records an advance.
+
+**Timestamp conventions, joined through their declarations.** The readers span
+`hr_minutes.ts` (a canonical UTC instant since migration 164 — it _was_ a
 profile-local wall clock), `integration_sync_events.at` (canonical since
-migration 163, with pre-163 rows still on SQLite's bare shape) and
-`metric_samples`. Nothing here parses a stored stamp by hand: every read goes
+migration 163, with pre-163 rows still on SQLite's bare shape),
+`stream_frontiers`' three born-canonical instants, and `metric_samples`. Nothing here parses a stored stamp by hand: every read goes
 through `eventInstant` (`lib/row-instants.ts`) against the column's declared
 meaning in `lib/time-columns.ts`, and every comparison is on epoch milliseconds,
 never on text — a bare stamp sorts below a `Z` stamp, which is wrong in a way
@@ -1333,12 +1375,16 @@ count.
 
 The one **send** in this family is #2161's opt-in bedtime wear reminder, which
 exists only because an explicit Settings → Notifications toggle is the user's
-consent. It now resolves its provider and stream from the same registry
-declaration (`reminder: "bedtime-wear"`) and reads the stream through the same
-`latestStreamInstant`, so the two cannot drift apart on a convention again — they
-did: the reminder still converted `hr_minutes.ts` with `zonedWallIsoToUtc` after
-migration 164, which refuses a stamp carrying `Z`, so it resolved null for every
-real row and could not fire at all.
+consent. It resolves its provider and stream from the same registry declaration
+(the `reminder` facet), reads the stream through the same `latestStreamInstant`,
+and since #2341 asks the same frontier question — so the two cannot drift apart
+again. They did, twice: the reminder still converted `hr_minutes.ts` with
+`zonedWallIsoToUtc` after migration 164, which refuses a stamp carrying `Z`, so it
+resolved null for every real row and could not fire at all; and once revived it
+fired on its own bare 40-minute constant while its sibling's declared 150-minute
+tolerance stayed correctly silent on the same night. Its threshold now lives in
+the registry beside that sibling (`reminder.frontierFloorMin`, with its evidence
+as data) and is a **floor on the frontier's age**, not the decision.
 
 **…and the lifecycle around both of them: on/offboarding (#2162).** Detection
 (#2146), a consented send (#2161) and a multi-day tracking predicate (#2097)

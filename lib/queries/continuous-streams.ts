@@ -1,6 +1,6 @@
 // The DB half of the quiet-stream detector (#2146). The decision is pure and lives in
 // lib/integrations/quiet-stream.ts; nothing here re-derives it. This module only
-// (a) binds a reader to each declared stream table, (b) asks the three questions the
+// (a) binds a reader to each declared stream table, (b) asks the questions the
 // predicate needs, and (c) maps the verdicts onto the shared attention shape.
 //
 // ── The reader binding, and why the registry does not build SQL ──────────────
@@ -12,7 +12,7 @@
 // declaration. Adding a stream on a new table is a new entry here; the compiler names
 // the file when the union grows.
 //
-// ── THE THREE TIMESTAMP CONVENTIONS, joined on purpose ───────────────────────
+// ── THE TIMESTAMP CONVENTIONS, joined on purpose ─────────────────────────────
 //
 // #2146 constraint 6 is the whole reason this module reads times the way it does. The
 // predicate joins across columns that have not all carried the same convention, and
@@ -30,10 +30,11 @@
 //     in this change) silently stopped resolving anything at all, because
 //     `zonedWallIsoToUtc` REFUSES a stamp carrying `Z`. Going through the declaration
 //     means the next conversion moves this reader with it.
-//   • `integration_sync_events.at` — declared `event` / `instant` / canonical since
-//     migration 163, with pre-163 rows still on SQLite's bare shape. `toUtcInstant`
-//     inside the resolver reads both, so a legacy row is compared correctly instead of
-//     sorting as a different day.
+//   • `stream_frontiers.frontier_at` — declared `event` / `instant` / canonical, born
+//     that way in migration 179 (#2341). It is a WATERMARK copied from the stream
+//     table's own event column, so it inherits that column's meaning; it is read back
+//     as-is rather than re-resolved, because the writer took it from `latestStreamInstant`
+//     above and nothing else may write it.
 //   • the DAY the expected-active gate counts — a third question, not a third column.
 //     A day is profile-local (#94) and is never a substring of a UTC instant, so the
 //     gate bounds each day with `localDayRange` rather than slicing `ts`; migration
@@ -46,11 +47,13 @@
 //
 // ── Two cheap reads per stream ───────────────────────────────────────────────
 //
-// `MAX(ts)` on the stream (one indexed seek on the primary key) and `MAX(at)` over the
-// provider's ok events (one indexed seek). "Was there an ok sync inside the gap
-// window" is exactly `maxOkSyncAt > lastStreamAt`, which needs no window predicate and
-// no second query. The expected-active gate adds one bounded EXISTS per day of the
-// declared window (three, today).
+// `MAX(ts)` on the stream (one indexed seek on the primary key) for the frontier's AGE,
+// and one seek on `stream_frontiers`' unique key for whether it is MOVING (#2341). The
+// second replaced a `MAX(at)` over the provider's ok events, which cost the same and
+// answered the wrong question: a push that is merely LATE is still a successful push,
+// so "an ok sync landed inside the gap" was true whether the watch was on a charger or
+// on a wrist behind this pipeline's measured 30–61 minute ingest lag. The expected-
+// active gate adds one bounded EXISTS per day of the declared window (three, today).
 
 import { db, today as profileToday } from "@/lib/db";
 import { cache } from "@/lib/request-cache";
@@ -62,7 +65,12 @@ import { localDayRange } from "@/lib/local-day-window";
 import { eventInstant } from "@/lib/row-instants";
 import { formatClockValue } from "@/lib/format-date";
 import { isStreamActive } from "@/lib/stream-activity";
-import type { ContinuousStreamTable, IntegrationId } from "@/lib/types";
+import type { StreamFrontierState } from "@/lib/stream-frontier";
+import type {
+  ContinuousStreamId,
+  ContinuousStreamTable,
+  IntegrationId,
+} from "@/lib/types";
 import type { AttentionIntegration } from "@/lib/attention";
 import { integrationDetailHref } from "@/lib/hrefs";
 import {
@@ -195,24 +203,47 @@ export function streamDeliveredDays(
 }
 
 /**
- * The newest SUCCESSFUL sync instant for a provider, canonical UTC, or null.
+ * The stored FRONTIER observation for one (profile, provider, stream), or null when
+ * no push has ever been observed against it (#2341).
  *
- * One seek, and it answers the syncs-continued question outright: at least one ok sync
- * landed inside the gap window `(lastStreamAt, now]` exactly when this value is
- * greater than `lastStreamAt`.
+ * One seek on the table's unique key. This is the read half of the watermark whose
+ * write half is lib/stream-frontier-db.ts — deliberately here rather than there, so
+ * the ingest-path writer can import the stream readers above without this query module
+ * having to import the writer back.
+ *
+ * `latestOkSyncInstant` used to live in this spot and answered the question this
+ * replaces: "did SOME ok sync land after the stream's last row". #2341 retired it —
+ * a push that is merely LATE is still a successful push, so that clause was true both
+ * when the watch was off and when it was on a wrist behind a 30–61 minute ingest lag.
+ * It discriminated the connection, never the wrist.
  */
-export function latestOkSyncInstant(
+export function readStreamFrontier(
   profileId: number,
-  provider: string
-): string | null {
+  provider: string,
+  stream: ContinuousStreamId
+): StreamFrontierState | null {
   const row = db
     .prepare(
-      `SELECT MAX(at) AS at FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ? AND ok = 1`
+      `SELECT frontier_at, advanced_at, observed_at, syncs_since_advance
+         FROM stream_frontiers
+        WHERE profile_id = ? AND provider = ? AND stream = ?`
     )
-    .get(profileId, provider) as { at: string | null } | undefined;
-  const at = eventInstant("integration_sync_events", { at: row?.at ?? null });
-  return at.known ? at.at : null;
+    .get(profileId, provider, stream) as
+    | {
+        frontier_at: string | null;
+        advanced_at: string;
+        observed_at: string;
+        syncs_since_advance: number;
+      }
+    | undefined;
+  return row
+    ? {
+        frontierAt: row.frontier_at,
+        advancedAt: row.advanced_at,
+        observedAt: row.observed_at,
+        syncsSinceAdvance: row.syncs_since_advance,
+      }
+    : null;
 }
 
 /**
@@ -274,8 +305,8 @@ export const getQuietStreams = cache(function getQuietStreams(
 
     // Everything below is only asked once there is a gap worth asking about. A live
     // stream is the overwhelmingly common case and it costs exactly the one MAX(ts)
-    // seek above; the expected-active window (one seek per declared day) and the ok-
-    // sync seek are paid only when the answer could be "quiet".
+    // seek above; the expected-active window (one seek per declared day) and the
+    // frontier seek are paid only when the answer could be "quiet".
     const overTolerance =
       minutesSinceStream != null && minutesSinceStream > quiet.dipToleranceMin;
 
@@ -291,8 +322,12 @@ export const getQuietStreams = cache(function getQuietStreams(
         )
       : [];
 
-    const okSyncMs = overTolerance
-      ? ms(latestOkSyncInstant(profileId, provider))
+    // THE discriminator since #2341: how many successful pushes have landed against
+    // this exact frontier. `null` when no push has ever been observed for the stream
+    // (a fresh deploy, a just-connected provider) — the predicate treats that as "no
+    // evidence" and stays silent until the next push writes one.
+    const frontier = overTolerance
+      ? readStreamFrontier(profileId, provider, stream.id)
       : null;
     candidates.push({
       provider,
@@ -309,10 +344,7 @@ export const getQuietStreams = cache(function getQuietStreams(
         stream.expectedActive.minDays
       ),
       minutesSinceStream,
-      // STRICTLY after the last row: a sync landing exactly at that instant is the one
-      // that DELIVERED it, not evidence that syncing continued without it.
-      syncedDuringGap:
-        sinceMs != null && okSyncMs != null && okSyncMs > sinceMs,
+      syncsSinceAdvance: frontier?.syncsSinceAdvance ?? null,
       toleranceMin: quiet.dipToleranceMin,
       sinceAt,
       sinceLocalHhmm: sinceAt != null ? localHhmm(tz, sinceAt) : null,

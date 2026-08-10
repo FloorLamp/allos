@@ -118,6 +118,9 @@ export const OWNED_TABLES = [
   "integration_connections",
   "integration_sync_events",
   "integration_backfill_jobs",
+  // The continuous-stream watermark (#2341): one row per (profile, provider, stream)
+  // holding the frontier and whether the last pushes advanced it.
+  "stream_frontiers",
   "profile_share_links",
   "upcoming_dismissals",
   "import_pair_decisions",

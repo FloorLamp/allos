@@ -85,6 +85,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "integration sync audit log — operational, not a health record",
   },
   {
+    table: "stream_frontiers",
+    why: "the continuous-stream watermark (#2341): how far a provider's stream had got when ingest last looked, and whether the last pushes moved it. Operational detection state about the PIPELINE, in the same class as integration_sync_events above — the heart-rate minutes it watches export in full via their own dataset, and on another instance the watermark is not merely useless but wrong, since it describes pushes that instance never received. It rebuilds itself from the first push after an import.",
+  },
+  {
     table: "integration_backfill_jobs",
     why: "transient provider-enrichment progress, quota timing, and retry state; operational and meaningless without this instance's non-portable integration connection",
   },

@@ -176,5 +176,6 @@
   "175-telemetry-stream-summary.ts": "5e6f857e6fcc0c57e5eeb255753762b29c6f192f510fac582e6670d39c993c8d",
   "176-unqualified-glucose-unflag.ts": "9772a544077edf8d09340e8bc1fd297c6401f6fbfe449de46ae5b613d741d0e3",
   "177-assessment-category.ts": "3cc38edeae6dc689ef2cdb8d3f0ff2c530101443c54a5ee95f8ee56b6e211045",
-  "178-canonical-name-qualifiers.ts": "ae5921482a6b5159b430a0bfdcc9a0785d046f078d823287739c2f1ad9d21c24"
+  "178-canonical-name-qualifiers.ts": "ae5921482a6b5159b430a0bfdcc9a0785d046f078d823287739c2f1ad9d21c24",
+  "179-stream-frontiers.ts": "eb443211941646061769276fbf2c173ff3f33cece0c282396535f08a0e57a8bd"
 }

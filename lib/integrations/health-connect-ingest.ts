@@ -16,6 +16,7 @@ import {
   type IngestCounts,
 } from "./normalize";
 import { HEALTH_CONNECT_ID, type ParsedPayload } from "./health-connect";
+import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 
@@ -194,6 +195,36 @@ export function ingestHealthConnectPayload(
     }
   } catch (err) {
     throw new HealthConnectWriteError(err, snapshot());
+  }
+
+  // THE FRONTIER OBSERVATION (#2341). Every declared continuous stream is asked, on
+  // every SUCCESSFUL push, whether this push moved it — and the answer is stored.
+  //
+  // It runs UNCONDITIONALLY, not under `if (parsed.hrMinutes.length)`: a push that
+  // carried nothing for the stream is the entire signal. A watch on a charger produces
+  // no heart-rate minutes, so its owner's phone keeps pushing batches with zero of
+  // them, and it is that repetition — not elapsed clock, which on this pipeline is
+  // 30–61 minutes of ingest lag plus whatever the wrist did — that says the source
+  // stopped producing.
+  //
+  // Placed AFTER every chunk committed and BEFORE the return, so it describes exactly
+  // what this push left on disk; it is skipped entirely on the throw paths above,
+  // because a failed push is not a successful sync that landed without new data. Its
+  // own transaction reads the frontier it records — see lib/stream-frontier-db.ts.
+  //
+  // ISOLATED like the post-commit work above (#1285): the rows are durable and the
+  // accounting is settled, so a failure here must not misreport an otherwise-successful
+  // batch. A missed observation costs one push of evidence; the next push re-observes.
+  try {
+    observeStreamFrontiers(profileId, source);
+  } catch (err) {
+    log.error(
+      "stream frontier observation failed after Health Connect ingest",
+      {
+        profileId,
+        err,
+      }
+    );
   }
 
   return {

@@ -142,6 +142,12 @@ export type ContinuousStreamReminderId = "bedtime-wear";
 // here and there must not be one — the threshold is a policy about when it is worth
 // telling someone, and measurement's job is to check the policy clears the stream's
 // ordinary variance, not to set it.
+//
+// SINCE #2341 IT IS A FLOOR, NOT THE DECISION. The discriminator is whether the
+// stream's frontier MOVED across the last pushes (lib/stream-frontier.ts); this number
+// bounds the frontier's own age on top of that, so a stream that went quiet two
+// minutes ago is not announced on the strength of two quiet pushes. The quantity it
+// bounds no longer contains the ingest-lag term that made it unthresholdable.
 export interface ContinuousStreamQuietFacet {
   dipToleranceMin: number;
   // The evidence behind the number, carried as data so it is impossible to move the
@@ -171,6 +177,28 @@ export interface ContinuousStreamActivityWindow {
   minDays: number;
 }
 
+// The #2161 send adapter watching a stream, as a DECLARATION rather than a bare id
+// (#2341).
+//
+// The reminder's threshold used to be `WEAR_QUIET_TOLERANCE_MIN`, a bare constant in
+// lib/wear-reminder.ts — while the quiet facet's sibling threshold for the SAME stream
+// lived here with its evidence beside it. One stream, two thresholds, opposite answers
+// on the same night, and the one that was wrong was the one living away from its
+// sibling: it never got the scrutiny the declared one got. #2146 moved stream
+// declarations into the registry precisely so "what does this stream expect" has one
+// answer; this is that threshold finally joining it.
+export interface ContinuousStreamReminderFacet {
+  id: ContinuousStreamReminderId;
+  // A FLOOR on the frontier's own age, in whole minutes — not the decision. The
+  // decision is whether the frontier moved across the last pushes
+  // (lib/stream-frontier.ts); this stops a watch removed moments before the slot from
+  // being announced on two quiet pushes.
+  frontierFloorMin: number;
+  // The evidence behind the number, carried as data exactly as `quiet.because` is, so
+  // it is impossible to move the threshold without restating why.
+  because: string;
+}
+
 export interface ContinuousStreamDef {
   id: ContinuousStreamId;
   // What the user calls this stream, lowercase, for mid-sentence use
@@ -185,8 +213,9 @@ export interface ContinuousStreamDef {
   // The #2146 detection facet. Absent = this stream is enumerated (so #2162 can
   // offer it) but never reported quiet.
   quiet?: ContinuousStreamQuietFacet;
-  // The #2161 send adapter watching this stream, when one exists.
-  reminder?: ContinuousStreamReminderId;
+  // The #2161 send adapter watching this stream, when one exists — the adapter's id
+  // AND the threshold it is asked at (#2341).
+  reminder?: ContinuousStreamReminderFacet;
 }
 
 // ── The ARCHIVE REFRESH facet (#2164) ────────────────────────────────────────
