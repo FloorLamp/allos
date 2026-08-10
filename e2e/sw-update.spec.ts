@@ -40,21 +40,47 @@ const SW_SETTLE_MS = 20_000;
 // as a real one. Without it, the update would (rightly) never be offered — a
 // waiting worker for the build the page already runs is consumed silently (#1905).
 //
-// The two #1700 tests install it only AFTER the page is loaded and controlled. The
-// sha read is the DETECTOR now (#2329), so intercepting before the load would raise
-// the bar off the poll before their hand-registered worker even exists — a different
-// path, tested below, and one that would leave these two asserting the resolution
-// mechanic against a bar the resolution mechanic did not raise.
+// INSTALLED BEFORE goto, ARMED LATER — both halves load-bearing.
+//
+// Armed later, because the sha read is the DETECTOR now (#2329): the mount read
+// must be answered HONESTLY (the page really is on the served build), or the bar
+// rises off the poll before a test's hand-registered worker even exists, and the
+// #1700 tests would assert the resolution mechanic against a bar it did not raise.
+// While disarmed the route passes through, which answers that read from the real
+// server.
+//
+// Installed before goto, because `page.route` installed into a page ALREADY
+// CONTROLLED by a service worker sometimes never applies to that page — and the
+// miss is permanent for the page's lifetime, so no retry can recover it. When it
+// struck, the "deploy" un-happened mid-test: the re-armed sha read reached the
+// real server, answered "you are on the deployed build", and the plan silently
+// consumed the spec's worker (:123) or detected nothing at all (:308) — the bar
+// then had no path to render inside any ceiling. Reproduced outside the harness
+// at ~8–13% per cold-started browser, with the route seeing ZERO requests in
+// every failing run; routes registered before navigation predate the worker and
+// were hit in 15/15. See the diagnosis on the PR.
 const DEPLOYED = { sha: "1700abc", commitMessage: "e2e worker deploy" };
 
-async function interceptVersion(page: Page) {
-  await page.route("**/api/version", (route) =>
-    route.fulfill({
+async function interceptVersion(
+  page: Page
+): Promise<{ arm: () => void; disarm: () => void }> {
+  let armed = false;
+  await page.route("**/api/version", (route) => {
+    if (!armed) return route.continue();
+    return route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(DEPLOYED),
-    })
-  );
+    });
+  });
+  return {
+    arm: () => {
+      armed = true;
+    },
+    disarm: () => {
+      armed = false;
+    },
+  };
 }
 
 async function waitForController(page: Page) {
@@ -80,11 +106,12 @@ test("a new build waits instead of taking over the open page (#1700)", async ({
     sessionStorage.setItem("swSpecLoads", String(n + 1));
   });
 
+  const deploy = await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
   const before = await controllerScript(page);
   expect(before).toContain("/sw.js?v=");
-  await interceptVersion(page);
+  deploy.arm();
 
   // Type into a form and leave it unsaved — the state a takeover used to destroy.
   await page
@@ -142,9 +169,10 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
       raised;
   }, UPDATE_PENDING_KEY);
 
+  const deploy = await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
-  await interceptVersion(page);
+  deploy.arm();
 
   await page.evaluate(
     (v) => navigator.serviceWorker.register(`/sw.js?v=${v}`),
@@ -153,10 +181,11 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
   const bar = page.getByTestId("update-ready-bar");
   await expect(bar).toBeVisible({ timeout: SW_SETTLE_MS });
 
-  // The deploy is over from here on: drop the interception so the reloaded page
-  // reads the sha it was actually served with, the way a tab that took a real
-  // update does.
-  await page.unroute("**/api/version");
+  // The deploy is over from here on: disarm, so the reloaded page's reads pass
+  // through to the sha it was actually served with, the way a tab that took a
+  // real update does. Disarm rather than unroute — the pre-installed route must
+  // survive for the reloaded page, where installing a new one could miss again.
+  deploy.disarm();
   await bar.getByTestId("update-ready-reload").click();
 
   // Assert the OUTCOME (the page loaded a second time) rather than catching the
@@ -279,6 +308,7 @@ test("a deploy under a controlled tab raises the bar, with no second worker (#23
   page,
 }) => {
   test.slow();
+  const deploy = await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
   expect(await controllerScript(page)).toContain("/sw.js?v=");
@@ -290,7 +320,7 @@ test("a deploy under a controlled tab raises the bar, with no second worker (#23
   // commit this document was not served with. No new script, no register() call, no
   // waiting worker — the document is already open, and only a fresh one ever
   // discovers a worker.
-  await interceptVersion(page);
+  deploy.arm();
   const bar = await provokeVersionCheck(page);
 
   await expect(bar).toContainText("Update ready");
@@ -309,19 +339,21 @@ test("that bar's Reload loads the document, and nothing re-offers (#2329)", asyn
   page,
 }) => {
   test.slow();
+  const deploy = await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
 
-  await interceptVersion(page);
+  deploy.arm();
   const bar = await provokeVersionCheck(page);
 
   // A window sentinel proves a real document load, not just a router transition.
   await page.evaluate(() => {
     (window as unknown as Record<string, unknown>).__preRefresh = true;
   });
-  // The deploy is over from here on: drop the interception so the reloaded page reads
-  // the sha it was actually served with, the way a tab that took a real update does.
-  await page.unroute("**/api/version");
+  // The deploy is over from here on: disarm (not unroute — the pre-installed route
+  // must survive for the reloaded page), so it reads the sha it was actually served
+  // with, the way a tab that took a real update does.
+  deploy.disarm();
   await bar.getByTestId("update-ready-reload").click();
   await expect
     .poll(
