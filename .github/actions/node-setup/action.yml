@@ -1,0 +1,36 @@
+# Node + node_modules for the non-browser jobs (static analysis and the two test
+# tiers). Extracted for the same reason as e2e-setup: those jobs run the identical
+# three steps, and a cache key that drifts between them silently costs every one of
+# them a two-minute `npm ci`. Checkout stays in the calling job — fetch-depth is a
+# per-job decision.
+#
+# e2e-setup deliberately keeps its own copy of these steps rather than nesting this
+# action: it additionally needs Chromium and the Next build, and the browser jobs'
+# setup is the thing #61's caching work tuned as a unit.
+name: Node setup
+description: Node and node_modules, restored from cache when the lockfile is unchanged
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    # Whole-node_modules cache: the single biggest step in every one of these jobs
+    # is `npm ci` (~2 min, dominated by better-sqlite3's native compile). The key
+    # pins the exact lockfile AND .nvmrc (native modules are built per node ABI),
+    # so a hit is byte-identical to what npm ci would produce and the install is
+    # skipped entirely. No restore-keys on purpose: a stale node_modules under a
+    # changed lockfile must never be reused.
+    - name: Cache node_modules
+      id: modules
+      uses: actions/cache@v6
+      with:
+        path: node_modules
+        key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
+
+    - run: npm ci
+      if: steps.modules.outputs.cache-hit != 'true'
+      shell: bash
