@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { bodyFor } from "@/lib/notifications/types";
-import { plainBody } from "@/lib/notifications/rich-text";
+import { plainBody, type MessageBody } from "@/lib/notifications/rich-text";
 import {
   buildDigest,
   dedupeFlaggedByAnalyte,
@@ -16,6 +16,13 @@ import type {
 } from "../upcoming";
 import type { Reason } from "../reasons";
 import type { IntakeDeltas } from "../intake-deltas";
+
+// THE DIGEST EMITS RICH TEXT (#2392), so a section's lines are MessageBody, not string.
+// Every assertion in this file reads them as PLAIN TEXT — which makes each one a parity
+// check too: these strings are byte-for-byte what the digest carried before it adopted
+// the seam, and what Web Push, Home Assistant and email still carry.
+const plain = (lines: readonly MessageBody[] | undefined): string[] =>
+  (lines ?? []).map(plainBody);
 
 let n = 0;
 const item = (
@@ -67,7 +74,7 @@ describe("buildDigest", () => {
     expect(model?.sections.map((s) => s.heading)).toEqual(["Today"]);
     // The dose glance headline, then the banded "what's due" summary (goals now
     // come from collectUpcoming, not a hand-computed goal line) — issue #1108.
-    expect(model?.sections[0].lines).toEqual([
+    expect(plain(model?.sections[0].lines)).toEqual([
       "💊 3 supplement doses scheduled",
       // One item in the band, so it is NAMED rather than counted (#1819 item 5), and
       // the band line carries the section's bullet emoji like every other line.
@@ -78,7 +85,7 @@ describe("buildDigest", () => {
   it("mentions active situational items in Today (#662 item 1)", () => {
     const model = buildDigest({ ...empty, situationalActiveCount: 3 });
     expect(model?.sections[0].heading).toBe("Today");
-    expect(model?.sections[0].lines).toContain(
+    expect(plain(model?.sections[0].lines)).toContain(
       "🧭 3 situational items now active"
     );
   });
@@ -87,7 +94,7 @@ describe("buildDigest", () => {
     expect(buildDigest({ ...empty, situationalActiveCount: 0 })).toBeNull();
     const model = buildDigest({ ...empty, doseCount: 1 });
     expect(
-      model?.sections[0].lines.some((l) => l.includes("situational"))
+      plain(model?.sections[0].lines).some((l) => l.includes("situational"))
     ).toBe(false);
   });
 
@@ -112,7 +119,7 @@ describe("buildDigest", () => {
       weightKg: 72.5,
     });
     const y = model?.sections.find((s) => s.heading === "Yesterday");
-    expect(y?.lines).toEqual([
+    expect(plain(y?.lines)).toEqual([
       "🏋️ Morning run — 5 km", // cardio → distance
       "🏋️ Upper body — 45 min", // strength → duration
       "💊 Supplements: 4/5 taken",
@@ -138,7 +145,7 @@ describe("buildDigest", () => {
       ],
     });
     const s = model?.sections.find((x) => x.heading === "New");
-    expect(s?.lines).toEqual([
+    expect(plain(s?.lines)).toEqual([
       "🚩 LDL 160 mg/dL (high)",
       "🚩 Ferritin (low)",
       "📄 New: Quest Labs (Jul 28) — 12 labs",
@@ -147,7 +154,9 @@ describe("buildDigest", () => {
 
   it("uses singular wording for a single dose", () => {
     const model = buildDigest({ ...empty, doseCount: 1 });
-    expect(model?.sections[0].lines[0]).toBe("💊 1 supplement dose scheduled");
+    expect(plain(model?.sections[0].lines)[0]).toBe(
+      "💊 1 supplement dose scheduled"
+    );
   });
 
   it("titles a medications-only profile 'medications', not 'supplements' (#380)", () => {
@@ -157,9 +166,11 @@ describe("buildDigest", () => {
       intakeKinds: ["medication"],
       adherence: { taken: 1, skipped: 0, due: 2 },
     });
-    expect(model?.sections[0].lines[0]).toBe("💊 2 medication doses scheduled");
+    expect(plain(model?.sections[0].lines)[0]).toBe(
+      "💊 2 medication doses scheduled"
+    );
     const y = model?.sections.find((s) => s.heading === "Yesterday");
-    expect(y?.lines).toContain("💊 Medications: 1/2 taken");
+    expect(plain(y?.lines)).toContain("💊 Medications: 1/2 taken");
   });
 
   it("uses 'supplements & meds' for a mixed profile (#380)", () => {
@@ -168,7 +179,7 @@ describe("buildDigest", () => {
       doseCount: 3,
       intakeKinds: ["supplement", "medication"],
     });
-    expect(model?.sections[0].lines[0]).toBe(
+    expect(plain(model?.sections[0].lines)[0]).toBe(
       "💊 3 supplement & med doses scheduled"
     );
   });
@@ -176,7 +187,7 @@ describe("buildDigest", () => {
   it("rounds an integration-sourced weight float instead of printing it raw (#380)", () => {
     const model = buildDigest({ ...empty, weightKg: 78.4523 });
     const y = model?.sections.find((s) => s.heading === "Yesterday");
-    expect(y?.lines).toEqual(["⚖️ Weight: 78.5 kg"]);
+    expect(plain(y?.lines)).toEqual(["⚖️ Weight: 78.5 kg"]);
   });
 
   it("states skips plainly instead of '0/0 taken' when everything due was skipped (#380 nit)", () => {
@@ -185,7 +196,31 @@ describe("buildDigest", () => {
       adherence: { taken: 0, skipped: 2, due: 2 },
     });
     const y = model?.sections.find((s) => s.heading === "Yesterday");
-    expect(y?.lines).toEqual(["💊 Supplements: 2 skipped"]);
+    expect(plain(y?.lines)).toEqual(["💊 Supplements: 2 skipped"]);
+  });
+
+  // #2379 — the nutrition line rides the Yesterday section beside the other figures
+  // about the completed day. What it SAYS is pinned in lib/__tests__/nutrition-day.test.ts;
+  // what assembly owns is where it lands, that the section stamps the 🍽️ marker onto the
+  // producer's parts (#2391), and that a null one adds nothing.
+  it("carries the nutrition line in Yesterday, stamping its glyph", () => {
+    const model = buildDigest({
+      ...empty,
+      nutritionLine: {
+        head: "Nutrition",
+        notes: ["protein 84 g+ of 130 g", "fiber 18 g+ of 38 g"],
+      },
+    });
+    const y = model?.sections.find((s) => s.heading === "Yesterday");
+    expect(plain(y?.lines)).toEqual([
+      "🍽️ Nutrition — protein 84 g+ of 130 g · fiber 18 g+ of 38 g",
+    ]);
+  });
+
+  it("adds no Yesterday section for a day whose nutrition said nothing", () => {
+    // The common morning: targets met, or nothing logged, or no resolvable target. The
+    // digest gets shorter rather than carrying a line the reader learns to skip.
+    expect(buildDigest({ ...empty, nutritionLine: null })).toBeNull();
   });
 });
 
@@ -206,7 +241,9 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
   });
 
   const yesterday = (input: Parameters<typeof buildDigest>[0]) =>
-    buildDigest(input)?.sections.find((s) => s.heading === "Yesterday")?.lines;
+    plain(
+      buildDigest(input)?.sections.find((s) => s.heading === "Yesterday")?.lines
+    );
 
   it("MERGES into one line when the delta fully explains the gap", () => {
     expect(
@@ -259,7 +296,10 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
       })
     ).toEqual([
       "🔁 Missed: Glycine (test) (1 day)",
-      "💊 Supplements: 8/8 taken · 1 skipped",
+      // The em dash introduces the FIRST qualifier a line actually has (#2391): with
+      // no merged clause to explain the gap, the skip count leads the tail instead of
+      // arriving after a `·` with nothing in front of it.
+      "💊 Supplements: 8/8 taken — 1 skipped",
     ]);
   });
 
@@ -306,7 +346,7 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
       ],
     });
     const today = model?.sections.find((s) => s.heading === "Today");
-    expect(today?.lines).toEqual([
+    expect(plain(today?.lines)).toEqual([
       // <= 3 items: named, peers joined by ", " and domains by " · " (#1819 item 5).
       "🗓️ Overdue: Colonoscopy · CBC, Lipid panel",
       "🗓️ Today: Dentist",
@@ -332,7 +372,7 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
       ],
     });
     const today = model?.sections.find((s) => s.heading === "Today");
-    expect(today?.lines).toEqual([
+    expect(plain(today?.lines)).toEqual([
       "🗓️ This week: 2 of 4 training targets on pace — behind on Back, Chest",
     ]);
   });
@@ -356,7 +396,7 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
       ],
     });
     const today = model?.sections.find((s) => s.heading === "Today");
-    expect(today?.lines).toEqual([
+    expect(plain(today?.lines)).toEqual([
       "🗓️ This week: 1 appointment, 1 goal, 2 training targets",
     ]);
   });
@@ -376,7 +416,7 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
     });
     const today = model?.sections.find((s) => s.heading === "Today");
     // The dose headline counts the doses; the band line lists everything BUT doses.
-    expect(today?.lines).toEqual([
+    expect(plain(today?.lines)).toEqual([
       "💊 3 supplement doses scheduled",
       "🗓️ Today: appointment",
     ]);
@@ -389,7 +429,7 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
       todayGroups: [band("today", "Today", [item("dose"), item("dose")])],
     });
     const today = model?.sections.find((s) => s.heading === "Today");
-    expect(today?.lines).toEqual(["💊 2 supplement doses scheduled"]);
+    expect(plain(today?.lines)).toEqual(["💊 2 supplement doses scheduled"]);
   });
 
   it("surfaces the high-priority why lines (#656) under Today", () => {
@@ -406,7 +446,7 @@ describe("buildDigest — merged Today section (issue #1108)", () => {
       ],
     });
     const today = model?.sections.find((s) => s.heading === "Today");
-    expect(today?.lines).toEqual([
+    expect(plain(today?.lines)).toEqual([
       "🗓️ Overdue: Retest LDL Cholesterol",
       "⚑ Retest LDL Cholesterol — Family history of heart disease",
     ]);
@@ -429,9 +469,69 @@ describe("renderDigestMessage", () => {
     })!;
     const msg = renderDigestMessage(model);
     expect(msg.title).toBe("☀️ Morning digest — Mom");
-    expect(msg.body).toContain("Today\n• 💊 1 supplement dose scheduled");
-    expect(msg.body).toContain("Yesterday\n• ⚖️ Weight: 70 kg");
+    // The WORDS are byte-identical to what the digest sent before it emitted RichText
+    // (#2392) — this is the parity every channel without emphasis reads.
+    expect(plainBody(msg.body)).toContain(
+      "Today\n• 💊 1 supplement dose scheduled"
+    );
+    expect(plainBody(msg.body)).toContain("Yesterday\n• ⚖️ Weight: 70 kg");
     expect(msg.actions).toBeUndefined();
+  });
+
+  // THE ADOPTION #1720 NAMED THE DIGEST FOR AND THE DIGEST NEVER TOOK (#2392). Two
+  // things carry emphasis and nothing else does: the section headings, which are the
+  // outline a reader navigates by, and the head of a line that has qualifiers to be
+  // distinguished from.
+  it("emphasizes the section headings and nothing beside them", () => {
+    const msg = renderDigestMessage(
+      buildDigest({ ...empty, doseCount: 1, weightKg: 70 })!
+    );
+    const bolded = (typeof msg.body === "string" ? [] : msg.body.spans)
+      .filter((sp) => sp.bold)
+      .map((sp) => sp.text);
+    expect(bolded).toEqual(["Today", "Yesterday"]);
+  });
+
+  it("emphasizes the head of a line that carries qualifiers", () => {
+    const msg = renderDigestMessage(
+      buildDigest({
+        ...empty,
+        activities: [
+          {
+            title: "Morning run",
+            type: "cardio",
+            durationMin: 32,
+            distanceKm: 5.2,
+            source: "strava",
+          },
+        ],
+      })!
+    );
+    const spans = typeof msg.body === "string" ? [] : msg.body.spans;
+    expect(spans.filter((sp) => sp.bold).map((sp) => sp.text)).toEqual([
+      "Yesterday",
+      "Morning run",
+    ]);
+    // …and the line still reads exactly as the plain formatter renders it.
+    expect(plainBody(msg.body)).toContain("• 🏋️ Morning run — 5.2 km · Strava");
+  });
+
+  // A LINE THE DIGEST DID NOT COMPOSE stays plain: the digest cannot know where the head
+  // of a preformatted string ends, and guessing is how emphasis stops meaning anything.
+  it("leaves a preformatted line alone", () => {
+    const msg = renderDigestMessage(
+      buildDigest({
+        ...empty,
+        doseCount: 1,
+        recentChangeLines: ["🚩 LDL 160 mg/dL (high)"],
+      })!
+    );
+    const spans = typeof msg.body === "string" ? [] : msg.body.spans;
+    expect(spans.filter((sp) => sp.bold).map((sp) => sp.text)).toEqual([
+      "Today",
+      "New",
+    ]);
+    expect(plainBody(msg.body)).toContain("• 🚩 LDL 160 mg/dL (high)");
   });
 });
 
@@ -475,8 +575,9 @@ describe("digest renders bounded-precision numbers (issue #1109)", () => {
         },
       ],
     });
-    const line = model?.sections.find((s) => s.heading === "Yesterday")
-      ?.lines[0];
+    const line = plain(
+      model?.sections.find((s) => s.heading === "Yesterday")?.lines
+    )[0];
     expect(line).toBe("🏋️ Morning ride — 32.4 km");
   });
 
@@ -533,14 +634,16 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
     // 15m above a 7h5m baseline is inside the typical band — the line says so rather
     // than manufacturing a "+15m" delta (#1712).
     // #1819 item 7: the verdict is a clause about the figure, so it takes the em-dash.
-    expect(sleep?.lines[0]).toBe(
+    expect(plain(sleep?.lines)[0]).toBe(
       "😴 Last night: 7h 20m — about typical · deep 1h 5m, REM 1h 35m"
     );
     // The nap is a SEPARATE line, never folded into the overnight figure.
-    expect(sleep?.lines).toContain("💤 + 45m nap");
+    expect(plain(sleep?.lines)).toContain("😴 + 45m nap");
     // The acronym and the naked number are gone: the banded qualifier says what the
     // index means, about the SCHEDULE and never about the sleeper (#992/#1819 item 7).
-    expect(sleep?.lines).toContain("📈 Sleep regularity 82 — very consistent");
+    expect(plain(sleep?.lines)).toContain(
+      "📈 Sleep regularity 82 — very consistent"
+    );
   });
 
   it("omits stages, nap, and SRI when absent (calm, minimal)", () => {
@@ -549,7 +652,7 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       sleep: { lastNightMin: 480, baselineMin: 470 },
     });
     const sleep = model?.sections.find((s) => s.heading === "Sleep");
-    expect(sleep?.lines).toEqual(["😴 Last night: 8h — about typical"]);
+    expect(plain(sleep?.lines)).toEqual(["😴 Last night: 8h — about typical"]);
   });
 
   // #1712 §3: the line printed two numbers and left the conclusion to the reader.
@@ -559,7 +662,9 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       sleep: { lastNightMin: 445, baselineMin: 404 }, // 7h25 vs ~6h44
     });
     const sleep = model?.sections.find((s) => s.heading === "Sleep");
-    expect(sleep?.lines[0]).toBe("😴 Last night: 7h 25m — ▲ 41m above typical");
+    expect(plain(sleep?.lines)[0]).toBe(
+      "😴 Last night: 7h 25m — ▲ 41m above typical"
+    );
   });
 
   it("reads a short night neutrally — the digest never nags about sleep", () => {
@@ -567,7 +672,9 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       ...empty,
       sleep: { lastNightMin: 330, baselineMin: 425 }, // 5h30 vs ~7h5
     });
-    const line = model?.sections.find((s) => s.heading === "Sleep")?.lines[0]!;
+    const line = plain(
+      model?.sections.find((s) => s.heading === "Sleep")?.lines
+    )[0];
     expect(line).toBe("😴 Last night: 5h 30m — ▼ 1h 35m below typical");
     // #1292's poor-sleep acknowledgment owns the "rough night" framing; the digest
     // must not double up with alarm of its own.
@@ -579,9 +686,9 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       ...empty,
       sleep: { lastNightMin: 445, baselineMin: 0 },
     });
-    expect(model?.sections.find((s) => s.heading === "Sleep")?.lines[0]).toBe(
-      "😴 Last night: 7h 25m"
-    );
+    expect(
+      plain(model?.sections.find((s) => s.heading === "Sleep")?.lines)[0]
+    ).toBe("😴 Last night: 7h 25m");
   });
 
   it("collapses entirely when there is no sleep data", () => {
@@ -603,7 +710,7 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       sleep: { lastNightMin: 400, baselineMin: 400, napMin: 0 },
     });
     const sleep = model?.sections.find((s) => s.heading === "Sleep");
-    expect(sleep?.lines.some((l) => l.includes("nap"))).toBe(false);
+    expect(plain(sleep?.lines).some((l) => l.includes("nap"))).toBe(false);
   });
 });
 
@@ -666,9 +773,14 @@ describe("digest offer tail per channel (#1712)", () => {
 // it, and no mention of the expiry that is the only deadline the ask has.
 
 describe("buildDigest — the named data-plumbing line", () => {
+  // PLAIN TEXT, deliberately. The digest emits RichText since #2392, so every string
+  // assertion below is also a parity assertion: it is what Web Push, Home Assistant and
+  // email carry, and it is byte-identical to what the message carried before.
   const todayLines = (input: DigestInput): string[] =>
-    buildDigest(input)?.sections.find((s) => s.heading === "Today")?.lines ??
-    [];
+    (
+      buildDigest(input)?.sections.find((s) => s.heading === "Today")?.lines ??
+      []
+    ).map(plainBody);
 
   it("renders a broken integration exactly as it did, and only once", () => {
     const lines = todayLines({
@@ -757,9 +869,11 @@ describe("buildDigest — the named data-plumbing line", () => {
 
 describe("buildDigest — the new-document line", () => {
   const newLines = (over: Partial<DigestInput>): string[] =>
-    buildDigest({ ...empty, ...over })?.sections.find(
-      (s) => s.heading === "New"
-    )?.lines ?? [];
+    (
+      buildDigest({ ...empty, ...over })?.sections.find(
+        (s) => s.heading === "New"
+      )?.lines ?? []
+    ).map(plainBody);
 
   const doc = (over: Partial<DigestDocument> = {}): DigestDocument => ({
     id: 42,
@@ -828,9 +942,11 @@ describe("buildDigest — the new-document line", () => {
 
 describe("buildDigest — activity provenance", () => {
   const yesterdayLines = (activities: DigestInput["activities"]): string[] =>
-    buildDigest({ ...empty, activities })?.sections.find(
-      (s) => s.heading === "Yesterday"
-    )?.lines ?? [];
+    (
+      buildDigest({ ...empty, activities })?.sections.find(
+        (s) => s.heading === "Yesterday"
+      )?.lines ?? []
+    ).map(plainBody);
 
   it("names the source that put an imported session there", () => {
     expect(

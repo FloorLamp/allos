@@ -75,7 +75,9 @@ describe("getMedMonitoringItems — active monitored meds (#995)", () => {
     for (const lab of [
       "Thyroid-Stimulating Hormone (TSH)",
       "Creatinine",
-      "eGFR",
+      // The dataset names the kidney index by its canonical entry (#2335); a lab
+      // filed under the retired bare spelling would not satisfy the requirement.
+      "Estimated Glomerular Filtration Rate (eGFR)",
       "Calcium",
     ]) {
       addLab(profileId, lab, shiftDateStr(td, -20));

@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   buildMacroFiberSeries,
   aggregateFoodAdherenceByWeek,
-  buildIntakeMatrix,
 } from "../nutrition-trends";
 import type { HabitWeekCell } from "../food-habit-trend";
 
@@ -136,44 +135,5 @@ describe("aggregateFoodAdherenceByWeek (#1166 Part 2)", () => {
 
   it("is empty for a profile tracking no food habits", () => {
     expect(aggregateFoodAdherenceByWeek(new Map())).toEqual([]);
-  });
-});
-
-describe("buildIntakeMatrix (#1166 Part 3)", () => {
-  it("rolls up food servings and counts confirmed doses per day, in the given order", () => {
-    const out = buildIntakeMatrix(
-      ["2026-01-03", "2026-01-02", "2026-01-01"],
-      [
-        { date: "2026-01-03", group_key: "leafy_greens", servings: 2 },
-        { date: "2026-01-03", group_key: "fruit", servings: 1 },
-        { date: "2026-01-01", group_key: "legumes", servings: 1 },
-      ],
-      ["2026-01-03", "2026-01-03", "2026-01-02"]
-    );
-    expect(out.map((d) => d.date)).toEqual([
-      "2026-01-03",
-      "2026-01-02",
-      "2026-01-01",
-    ]);
-    expect(out[0].totalServings).toBe(3);
-    expect(out[0].doseCount).toBe(2);
-    expect(out[0].href).toContain("/timeline?from=2026-01-03&to=2026-01-03");
-    // A day with doses but no food still renders (dose-only day).
-    expect(out[1]).toMatchObject({ totalServings: 0, doseCount: 1 });
-    // A day with food but no doses.
-    expect(out[2]).toMatchObject({ totalServings: 1, doseCount: 0 });
-  });
-
-  it("orders each day's groups encourage-first via the shared rollup", () => {
-    const out = buildIntakeMatrix(
-      ["2026-01-01"],
-      [
-        { date: "2026-01-01", group_key: "added_sugar", servings: 1 },
-        { date: "2026-01-01", group_key: "leafy_greens", servings: 1 },
-      ],
-      []
-    );
-    // rollupServings emits catalog order (encourage groups before limit groups).
-    expect(out[0].groups[0].slug).toBe("leafy_greens");
   });
 });

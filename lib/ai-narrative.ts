@@ -1,5 +1,6 @@
-// AI narrative layer (issue #20): the AI-powered weekly/monthly period recap.
-// It narrates over ALREADY-GATHERED, structured facts — the rule-based WeeklyRecap —
+// AI narrative layer (issue #20): the AI-powered period recap, at whichever scale is
+// asked for (#2178). It narrates over ALREADY-GATHERED, structured facts — the
+// rule-based Recap —
 // so the AI read is grounded and the prompt is compact. It reuses the existing
 // guardrails: the shared model config (lib/ai-client), the ai.jsonl audit log
 // (feature "narrative"), the per-profile daily usage cap (kind "narrative"), and
@@ -18,11 +19,10 @@ import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, narrativeDailyLimit } from "./ai-usage";
 import { getUnitPrefs, type WeightUnit } from "./settings";
 import type { NarrativeKind } from "./types";
-import { getPeriodRecap } from "./notifications/weekly-recap-data";
+import { getScaleRecap } from "./notifications/recap-data";
 import {
   buildRecapNarrativePrompt,
   composeRecapNarrativeOffline,
-  periodDaysFor,
   RECAP_NARRATIVE_SYSTEM,
   type NarrativePeriod,
 } from "./recap-narrative";
@@ -157,7 +157,7 @@ export async function generateRecapNarrative(
 ): Promise<NarrativeResult> {
   const wu: WeightUnit =
     weightUnit ?? (loginId != null ? getUnitPrefs(loginId).weightUnit : "kg");
-  const recap = getPeriodRecap(profileId, periodDaysFor(period), wu);
+  const recap = getScaleRecap(profileId, period, wu);
   const offline = () => composeRecapNarrativeOffline(recap, period);
   // Nothing logged this period — don't burn a usage unit / API call on an empty
   // recap; the deterministic composer already says the right quiet thing.

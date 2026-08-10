@@ -80,7 +80,7 @@ function tapInstant(profileId: number, date: string): string | null {
 // no consumer is precision that a later reader invents a meaning for. `lib/weekly-rhythm.ts`
 // is now that consumer — `modalHour()` picks each practice's typical session hour and
 // the retimed pace nudge fires at it — which inverted the old omission into a real
-// defect: every quick-sheet tap and every Telegram "Done ✓" wrote a null time, so the
+// defect: every quick-sheet tap and every Telegram "Done ✅" wrote a null time, so the
 // FASTER a path was, the more it starved the inference that reschedules its own nudge.
 // Stamping here rather than at each call site is what makes that one fix instead of
 // three, and keeps the timezone authority server-side (#450) — a device clock is not
@@ -167,7 +167,7 @@ export function updatePracticeSession(
 // "Telegram stamps its own time-of-day for free" — which was never true of the ROW:
 // the chat message carries a timestamp, `practice_logs.time` was written null, and
 // #2202 then retimed this very nudge onto a typical-hour inference that this path was
-// feeding nothing. A one-tap Done ✓ is a statement that the session is happening now,
+// feeding nothing. A one-tap Done ✅ is a statement that the session is happening now,
 // and that is what the row records.
 export function logPracticeByTargetId(
   profileId: number,

@@ -1,17 +1,15 @@
-// Workout-density heatmap — DB read layer (issue #186). One profile-scoped grouped
-// pass over `activities` (sessions + total minutes per day), assembled into the
-// trailing-12-month grid by the pure builder in lib/workout-heatmap. Distinct from
-// the sidebar calendar's `getActivityDates` (which spans ALL activity kinds) — this
-// is workout-specific and carries per-day counts/minutes, not just a date set.
+// Workout day-density — DB read layer (issue #186). Profile-scoped grouped passes
+// over `activities` (sessions + total minutes per day, and per day AND type for
+// the Trends day-history). Distinct from the sidebar calendar's
+// `getActivityDates` (which spans ALL activity kinds) — this is workout-specific
+// and carries per-day counts/minutes, not just a date set.
 import { db, today } from "../../db";
-import { getWeekStart } from "../../settings";
+import { workoutActivityLabel } from "../../activity-meta";
+import { activityHistoryKey } from "../../activities-catalog";
 import {
-  buildWorkoutHeatmap,
   buildActiveDaysStrip,
-  heatmapStart,
   type ActiveDaysStrip,
   type WorkoutDayDensity,
-  type WorkoutHeatmap,
 } from "../../workout-heatmap";
 import { shiftDateStr } from "../../date";
 
@@ -35,25 +33,96 @@ export function getWorkoutDayDensity(
     .all(profileId, since) as WorkoutDayDensity[];
 }
 
-// The trailing workout heatmap for the profile: `weeks` week-columns ending on the
-// week of `end` (default "today" in the profile timezone), aligned to the profile's
-// first weekday. The query window is derived from the same alignment so no data
-// outside the grid is fetched.
+// Sessions + minutes per profile-local day AND named activity, in
+// [since, until] — the gather behind the Trends → Fitness workout day-history
+// matrix ("top N activities", the owner's PPL-breakdown ask: rows like Push
+// Day / Pull Day / Cycling, not the coarse strength/cardio buckets).
 //
-// `weeks`/`end` are what let the grid honor the Trends hub's shared range (#1492):
-// a 90D window draws ~13 columns ending on the window's last day, all time keeps
-// the trailing-12-month cap. Callers resolve the column count through
-// `fitnessWindowWeeks` (lib/trends-fitness.ts).
-export function getWorkoutHeatmap(
+// Identity, in order:
+//   1. A cardio/sport row's SOLE component names the activity itself
+//      ("Cycling", "Pickleball") — the same component identity the cardio
+//      analytics key on, and a far better one than a freeform provider title
+//      (a Strava ride is titled "Pizza Hut", not "Cycling"). A STRENGTH row's
+//      components are its EXERCISES, never the activity, so strength never
+//      takes this path.
+//   2. Otherwise `activityHistoryKey(workoutActivityLabel(title))` — the
+//      #1931 canonical activity key over the title normalized of its
+//      time-of-day/duration decoration — so "Push day", "Afternoon Push Day"
+//      and "Morning Push Day Session" land on ONE row.
+// The label is the first-seen form for the key.
+export interface WorkoutActivityDay {
+  date: string; // YYYY-MM-DD, profile-local
+  key: string; // activityHistoryKey of the resolved activity name
+  label: string; // display name (first-seen resolved form)
+  count: number; // sessions of this activity that day
+  minutes: number; // total minutes (0 when all durations null)
+}
+
+function soleComponentActivity(
+  type: string,
+  componentsJson: string | null
+): string | null {
+  if (type === "strength" || !componentsJson) return null;
+  try {
+    const parts = JSON.parse(componentsJson) as { name?: unknown }[];
+    if (
+      Array.isArray(parts) &&
+      parts.length === 1 &&
+      typeof parts[0]?.name === "string" &&
+      parts[0].name.trim()
+    ) {
+      return parts[0].name.trim();
+    }
+  } catch {
+    // Malformed JSON → fall through to the title identity.
+  }
+  return null;
+}
+
+export function getWorkoutActivityDays(
   profileId: number,
-  weeks = 53,
-  endDate?: string
-): WorkoutHeatmap {
-  const end = endDate ?? today(profileId);
-  const weekStart = getWeekStart(profileId);
-  const since = heatmapStart(end, weeks, weekStart);
-  const density = getWorkoutDayDensity(profileId, since);
-  return buildWorkoutHeatmap(density, end, weeks, weekStart);
+  since: string,
+  until: string
+): WorkoutActivityDay[] {
+  const rows = db
+    .prepare(
+      `SELECT date, title, type, components, COALESCE(duration_min, 0) AS minutes
+         FROM activities
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+        ORDER BY date ASC, id ASC`
+    )
+    .all(profileId, since, until) as {
+    date: string;
+    title: string;
+    type: string;
+    components: string | null;
+    minutes: number;
+  }[];
+
+  const labelByKey = new Map<string, string>();
+  const byDayKey = new Map<string, WorkoutActivityDay>();
+  for (const r of rows) {
+    const label =
+      soleComponentActivity(r.type, r.components) ??
+      workoutActivityLabel(r.title);
+    const key = activityHistoryKey(label);
+    if (!labelByKey.has(key)) labelByKey.set(key, label);
+    const mapKey = `${r.date}|${key}`;
+    const entry = byDayKey.get(mapKey);
+    if (entry) {
+      entry.count += 1;
+      entry.minutes += r.minutes;
+    } else {
+      byDayKey.set(mapKey, {
+        date: r.date,
+        key,
+        label: labelByKey.get(key)!,
+        count: 1,
+        minutes: r.minutes,
+      });
+    }
+  }
+  return [...byDayKey.values()];
 }
 
 export function getActiveDaysStrip(

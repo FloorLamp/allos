@@ -63,7 +63,7 @@ const DOSE_ACTION_BY_PREFIX: Record<string, "taken" | "skipped"> = {
 // Extract the actionable doses from a message's action tokens. The dose tokens are
 // "<prefix>:<profileId>:<doseId>:<suppId>:<date>" (take/skip/esctake) — the same
 // shape the Telegram keyboard uses — so the dose id is field 2 and the date field 4.
-// Deduped on (dose_id, action) so a message with both a ✅ and a ⏭ for one dose
+// Deduped on (dose_id, action) so a message with both a ✅ and a ⏭️ for one dose
 // yields two distinct entries but never a repeat. A deep-link (`url`) action carries
 // no token and contributes nothing here.
 export function extractDoses(msg: NotificationMessage): HomeAssistantDose[] {

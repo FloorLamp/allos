@@ -34,6 +34,8 @@ import {
   RECAP_PROFILE,
   E2E_LOGIN_FOODSLOT,
   FOOD_SLOT_PROFILE,
+  E2E_LOGIN_FOODUSUAL,
+  FOOD_USUAL_PROFILE,
   E2E_LOGIN_FOODPIN,
   FOOD_PIN_PROFILE,
   FOOD_PIN_GROUP,
@@ -430,6 +432,54 @@ export function seedFoodSlots(): void {
   seedMemberLogin(E2E_LOGIN_FOODSLOT, foodSlotId, "write");
   console.log(
     `e2e: seeded food-slot ranking + habit-trend fixture — profile ${foodSlotId} (${FOOD_SLOT_PROFILE}) (#950/#954)`
+  );
+}
+
+// ── Food regularity: the usual-breakfast shortcut ──
+export function seedFoodUsual(): void {
+  // ── The food-regularity one-tap shortcut fixture (#2380) ─────────────────────
+  // A dedicated adult profile whose ledger is REGULAR rather than merely skewed: every
+  // one of the last three weeks' mornings (excluding today) holds the same two groups
+  // and nothing else, which is the shape the issue observed — two groups, the same two
+  // nearly every day. That clears FOOD_REGULARITY_MIN_WINDOW_DAYS with two habitual
+  // groups, and today's Morning is EMPTY, so `usualFoodOffer` stands and the button
+  // renders whatever hour the run's frozen clock lands on.
+  //
+  // The evenings carry a daily alcohol habit over the same span. It is measured and it
+  // is never offered — the cap-direction exclusion (#2380 / #998) — so the spec can
+  // assert the silence rather than trusting the comment. Default timezone is UTC and
+  // the default boundaries are 11:00/15:00, so 08:00Z is Morning and 19:00Z Evening.
+  // Idempotent: the fixture's own food rows are cleared first.
+  const usualId = fixtureProfileId(FOOD_USUAL_PROFILE);
+  setTimezone(usualId, "UTC");
+  const usualAnchor = today(usualId);
+  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(usualId);
+  db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(usualId);
+  {
+    const fLog = db.prepare(
+      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+       ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
+    );
+    const fEvent = db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+       VALUES (?, ?, ?, ?)`
+    );
+    const log = (date: string, group: string, hourZ: string) => {
+      fLog.run(usualId, date, group);
+      fEvent.run(usualId, group, date, `${date}T${hourZ}Z`);
+    };
+    // Yesterday back three weeks — today stays empty so the offer is live on arrival.
+    for (let d = 21; d >= 1; d--) {
+      const date = shiftDateStr(usualAnchor, -d);
+      log(date, "fermented", "08:00:00");
+      log(date, "berries", "08:00:02"); // the issue's 1.4 seconds apart, rounded up
+      log(date, "alcohol", "19:00:00");
+      log(date, "leafy_greens", "19:05:00");
+    }
+  }
+  seedMemberLogin(E2E_LOGIN_FOODUSUAL, usualId, "write");
+  console.log(
+    `e2e: seeded food-regularity shortcut fixture — profile ${usualId} (${FOOD_USUAL_PROFILE}) (#2380)`
   );
 }
 

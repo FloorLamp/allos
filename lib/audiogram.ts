@@ -149,6 +149,97 @@ export function audiogramSeriesKey(
   return `${ear}:${hz}`;
 }
 
+// ---- Conduction, and the REPORTED pure-tone average (issue #2322) ------------
+//
+// Clinical documents arrive carrying `Pure Tone Average, {Left,Right} Ear ({Air,Bone}
+// Conduction)` in dB HL — the AVERAGE, with the individual frequencies nowhere in the
+// source, so no audiogram can be reconstructed from one. Curating those four names as
+// biomarkers would FORK the series this module already owns, so instead the substrate
+// ACCEPTS them: a reported PTA is a first-class pure-tone average that a surface reads
+// beside (and in preference to) the one derived from the thresholds.
+//
+// The precedence is the one lib/derived-biomarkers.ts already applies — "a lab that
+// reports the index directly is never shadowed by a computed duplicate" — and it is
+// resolved at exactly the same grain that rule uses: PER SERIES, PER DATE. There the
+// series is the derived analyte name and the date is the draw; here the series is
+// (ear, conduction) and the date is the hearing test. So a reported RIGHT-ear air PTA
+// suppresses only the derived right-ear air PTA: the LEFT ear's derived value still
+// renders, and so does the same ear's other conduction. It is never a whole-document
+// switch.
+//
+// No schema, for the same reason recording an audiogram needs none: a reported PTA is
+// already a dated `medical_records` reading with a value, a unit and a canonical name.
+// The only thing that was missing was a reader that recognises it.
+
+export const AUDIOGRAM_CONDUCTIONS = ["air", "bone"] as const;
+export type AudiogramConduction = (typeof AUDIOGRAM_CONDUCTIONS)[number];
+
+// The conduction the per-frequency thresholds this module stores are measured by —
+// air conduction, as the store note at the top of this file states. It is therefore
+// the ONLY conduction a DERIVED pure-tone average can ever carry: a bone-conduction
+// average exists only when a document reports one.
+export const DERIVED_PTA_CONDUCTION: AudiogramConduction = "air";
+
+// "Air Conduction" / "Bone Conduction" — the spelling inside the canonical analyte
+// name (title case, as the documents print it).
+export function conductionCanonicalLabel(c: AudiogramConduction): string {
+  return c === "air" ? "Air Conduction" : "Bone Conduction";
+}
+
+// "air conduction" / "bone conduction" — for prose.
+export function conductionLabel(c: AudiogramConduction): string {
+  return c === "air" ? "air conduction" : "bone conduction";
+}
+
+// The canonical_name a REPORTED pure-tone average is stored under. The single place
+// that spelling is produced, exactly like audiogramAnalyteName for a threshold.
+export function ptaAnalyteName(
+  ear: AudiogramEar,
+  conduction: AudiogramConduction
+): string {
+  return `Pure Tone Average, ${earCanonicalLabel(ear)} (${conductionCanonicalLabel(
+    conduction
+  )})`;
+}
+
+// All four reported-PTA canonical names — the finite preimage the SQL reader needs
+// (#394), the twin of AUDIOGRAM_CANONICAL_NAMES.
+export const PTA_CANONICAL_NAMES: readonly string[] = AUDIOGRAM_EARS.flatMap(
+  (ear) => AUDIOGRAM_CONDUCTIONS.map((c) => ptaAnalyteName(ear, c))
+);
+
+// The inverse: recover (ear, conduction) from a stored analyte name, or null when the
+// name is not a reported pure-tone average. Tolerant of case and of the hyphenated
+// "pure-tone" spelling. An ear is REQUIRED — a PTA states which ear it is of, and a
+// nameless one is refused rather than defaulted. A conduction is not: an unqualified
+// pure-tone average means AIR conduction in audiometry (air conduction is what defines
+// hearing level; bone conduction is always named when it is meant), so only an
+// explicit "bone" reads as bone.
+export function parsePtaAnalyte(
+  name: string | null | undefined
+): { ear: AudiogramEar; conduction: AudiogramConduction } | null {
+  const s = (name ?? "").trim().toLowerCase();
+  if (!s.includes("pure tone average") && !s.includes("pure-tone average"))
+    return null;
+  const ear: AudiogramEar | null = /\bright\b/.test(s)
+    ? "right"
+    : /\bleft\b/.test(s)
+      ? "left"
+      : null;
+  if (!ear) return null;
+  return { ear, conduction: /\bbone\b/.test(s) ? "bone" : "air" };
+}
+
+// THE identity a pure-tone average is current per — one series per ear per
+// conduction. What `latestByGroup` partitions reported PTAs on, and the key the
+// reported-over-derived precedence is resolved at.
+export function ptaSeriesKey(
+  ear: AudiogramEar,
+  conduction: AudiogramConduction
+): string {
+  return `${ear}:${conduction}`;
+}
+
 // ---- Reading + audiogram shapes ---------------------------------------------
 
 // One stored threshold reading. Extends LatestRow (date + id) so it drops straight
@@ -167,38 +258,84 @@ export interface AudiogramPoint {
   dbHl: number;
 }
 
+// One REPORTED pure-tone average reading (#2322): the average itself, as a document
+// stated it, with no per-frequency thresholds behind it. Extends LatestRow so it drops
+// into the shared latest-per-group helper exactly like a threshold.
+export interface ReportedPta extends LatestRow {
+  ear: AudiogramEar;
+  conduction: AudiogramConduction;
+  dbHl: number;
+  notes: string | null;
+  flag: string | null;
+}
+
 // One dated hearing test: the readings that share a date, which is how a user thinks
 // about it ("my audiogram from March"). Derived, never stored — see the store note.
 export interface Audiogram {
   date: string;
   readings: AudiogramReading[];
+  // The pure-tone averages this test's document REPORTED (#2322). Usually empty — a
+  // real audiogram carries its frequencies and the average is derived from them — but
+  // a summary report may carry only these, in which case `readings` is empty and this
+  // is the whole test.
+  reportedPtas: ReportedPta[];
   notes: string | null;
 }
 
-// Group threshold readings into dated audiograms, NEWEST FIRST; within an audiogram
-// the readings are ordered right ear then left, low → high frequency, so the rendered
-// table is stable regardless of insert order. A date's notes are the first non-empty
-// note among its readings (the form writes one note onto every row of a session).
+// Group threshold readings AND reported pure-tone averages into dated audiograms,
+// NEWEST FIRST; within an audiogram the readings are ordered right ear then left, low
+// → high frequency, so the rendered table is stable regardless of insert order. A
+// date's notes are the first non-empty note among its readings (the form writes one
+// note onto every row of a session).
+//
+// A date carried by reported PTAs alone still produces an audiogram (#2322): the
+// document said something measurable about this person's hearing on that day, and the
+// surface that owns hearing is where it belongs — even though its frequency grid is
+// empty and always will be.
 export function groupAudiogramReadings(
-  readings: readonly AudiogramReading[]
+  readings: readonly AudiogramReading[],
+  reportedPtas: readonly ReportedPta[] = []
 ): Audiogram[] {
-  const byDate = new Map<string, AudiogramReading[]>();
-  for (const r of readings) {
-    const list = byDate.get(r.date);
-    if (list) list.push(r);
-    else byDate.set(r.date, [r]);
-  }
+  const byDate = new Map<
+    string,
+    { readings: AudiogramReading[]; ptas: ReportedPta[] }
+  >();
+  const bucket = (date: string) => {
+    const cur = byDate.get(date);
+    if (cur) return cur;
+    const next = {
+      readings: [] as AudiogramReading[],
+      ptas: [] as ReportedPta[],
+    };
+    byDate.set(date, next);
+    return next;
+  };
+  for (const r of readings) bucket(r.date).readings.push(r);
+  for (const p of reportedPtas) bucket(p.date).ptas.push(p);
+
   const order = new Map(
     AUDIOGRAM_CANONICAL_NAMES.map((n, i) => [n, i] as const)
   );
   const rank = (r: AudiogramReading) =>
     order.get(audiogramAnalyteName(r.ear, r.hz)) ?? Number.MAX_SAFE_INTEGER;
+  const ptaOrder = new Map(PTA_CANONICAL_NAMES.map((n, i) => [n, i] as const));
+  const ptaRank = (p: ReportedPta) =>
+    ptaOrder.get(ptaAnalyteName(p.ear, p.conduction)) ??
+    Number.MAX_SAFE_INTEGER;
   return [...byDate.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
     .map(([date, rows]) => ({
       date,
-      readings: [...rows].sort((a, b) => rank(a) - rank(b) || a.id - b.id),
-      notes: rows.find((r) => (r.notes ?? "").trim().length > 0)?.notes ?? null,
+      readings: [...rows.readings].sort(
+        (a, b) => rank(a) - rank(b) || a.id - b.id
+      ),
+      reportedPtas: [...rows.ptas].sort(
+        (a, b) => ptaRank(a) - ptaRank(b) || a.id - b.id
+      ),
+      notes:
+        [...rows.readings, ...rows.ptas].find(
+          (r) => (r.notes ?? "").trim().length > 0
+        )?.notes ?? null,
     }));
 }
 
@@ -244,6 +381,77 @@ export function pureToneAverage(
     dbHl: Math.round(sum / used.length),
     usedHz: used.map((p) => p.hz),
   };
+}
+
+// Where a rendered pure-tone average came from. ALWAYS carried, never inferred at a
+// surface, and always shown to the reader: "10 dB HL" means something different when
+// an audiologist printed it than when this app averaged four thresholds, and the
+// reader is entitled to know which one they are looking at.
+export type PtaSource = "reported" | "derived";
+
+export interface ResolvedPta {
+  ear: AudiogramEar;
+  conduction: AudiogramConduction;
+  dbHl: number;
+  source: PtaSource;
+  // Which PTA_FREQUENCIES_HZ contributed. Populated for a DERIVED average only; a
+  // reported one states no frequencies (that is the whole reason it exists), so it
+  // carries an empty list rather than a fabricated one.
+  usedHz: number[];
+}
+
+// THE pure-tone averages for one dated hearing test (#2322), reported-over-derived.
+//
+// `points` are that test's per-frequency thresholds and `reported` its reported
+// averages — both already narrowed to ONE date by groupAudiogramReadings, which is
+// what makes the precedence per-date as well as per-series.
+//
+// Resolution, in order:
+//   1. DERIVE an average per ear from the thresholds. Those thresholds are air
+//      conduction, so a derived value is only ever DERIVED_PTA_CONDUCTION.
+//   2. A REPORTED average OVERWRITES the entry at its own ptaSeriesKey — its ear AND
+//      its conduction — and nothing else. This is the lib/derived-biomarkers.ts rule
+//      ("a lab that reports the index directly is never shadowed by a computed
+//      duplicate") at this domain's grain: one reported right-ear air average cannot
+//      suppress the left ear's derived average, nor the right ear's bone average.
+//      Same-key duplicates on the date resolve through the shared latestByGroup.
+//
+// The result is ordered right ear then left, air conduction then bone.
+export function resolvePureToneAverages(
+  points: readonly AudiogramPoint[],
+  reported: readonly ReportedPta[] = []
+): ResolvedPta[] {
+  const byKey = new Map<string, ResolvedPta>();
+  for (const ear of AUDIOGRAM_EARS) {
+    const pta = pureToneAverage(points, ear);
+    if (!pta) continue;
+    byKey.set(ptaSeriesKey(ear, DERIVED_PTA_CONDUCTION), {
+      ear,
+      conduction: DERIVED_PTA_CONDUCTION,
+      dbHl: pta.dbHl,
+      source: "derived",
+      usedHz: pta.usedHz,
+    });
+  }
+  for (const [key, r] of latestByGroup(reported, (p) =>
+    ptaSeriesKey(p.ear, p.conduction)
+  )) {
+    byKey.set(key, {
+      ear: r.ear,
+      conduction: r.conduction,
+      dbHl: r.dbHl,
+      source: "reported",
+      usedHz: [],
+    });
+  }
+  const out: ResolvedPta[] = [];
+  for (const ear of AUDIOGRAM_EARS) {
+    for (const conduction of AUDIOGRAM_CONDUCTIONS) {
+      const hit = byKey.get(ptaSeriesKey(ear, conduction));
+      if (hit) out.push(hit);
+    }
+  }
+  return out;
 }
 
 export type HearingGrade =
@@ -408,7 +616,13 @@ export interface HearingBaseline {
   shifts: ThresholdShift[];
 }
 
-// Build the baseline from a profile's threshold readings. The "current" side uses
+// Build the baseline from a profile's threshold readings. A REPORTED pure-tone average
+// (#2322) is deliberately NOT an input here: every fact this shape carries — the worst
+// current threshold, and the ASHA shift criteria — is stated per FREQUENCY, and a
+// reported average states none. Feeding it in would mean inventing frequencies it
+// never had, so a profile whose only hearing data is reported averages still has no
+// comparable baseline, and the ototoxic crosscheck correctly says nothing extra.
+// The "current" side uses
 // currentThresholds() — the shared latest-per-group answer — so the citation and the
 // Biomarkers is_latest marker are the same computation; the comparison side is the
 // EARLIEST dated audiogram, which is what "since your baseline" means clinically.

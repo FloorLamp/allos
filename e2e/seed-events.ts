@@ -104,6 +104,7 @@ import { seedCoverageGaps } from "./seed/coverage-gaps";
 import {
   seedNutritionTrio,
   seedFoodSlots,
+  seedFoodUsual,
   seedFoodPinSplit,
 } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
@@ -171,6 +172,7 @@ seedSourceCompare();
 seedBulkCorrection();
 seedIllness();
 seedFoodSlots();
+seedFoodUsual();
 seedFoodPinSplit();
 seedEndurancePlans();
 seedFlaggedFollowups();

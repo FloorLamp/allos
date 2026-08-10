@@ -96,6 +96,26 @@ export function conditionMatchesTerm(
   return conditionInputName(condition).toLowerCase().includes(needle);
 }
 
+// Whether any active condition OR active situation satisfies a curated dataset `match`
+// term. Conditions go through the shared per-term matcher above (stored code first,
+// name substring fallback, #1030); situations are plain user-owned labels and keep the
+// substring test. THE one place this two-sided question is asked — the food engine
+// (lib/food-suggest) and the curated supplement engine
+// (lib/supplement-suggest-curated, #2378) both call it, so a contraindication tag
+// cannot mean two different things on the two halves of one question.
+export function conditionOrSituationMatches(
+  term: string,
+  conditions: readonly ConditionInput[],
+  situations: readonly string[]
+): boolean {
+  const needle = term.trim().toLowerCase();
+  if (!needle) return false;
+  return (
+    conditions.some((c) => conditionMatchesTerm(needle, c)) ||
+    situations.some((s) => (s ?? "").toLowerCase().includes(needle))
+  );
+}
+
 // Active conditions that trigger a drop rule for a given nutrient KEY — the read the
 // UL caveat uses (dri keys nutrients the same way the map does). Each hit carries the
 // matched condition (display form) and the curated caution. Accepts bare names or

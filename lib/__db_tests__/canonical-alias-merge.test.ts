@@ -336,3 +336,92 @@ describe("the flag reconcile is re-armed only when something actually moved", ()
     ).toBe("keep-me");
   });
 });
+
+// #2319 — the SINGULAR urine-cast spellings, and the claim the PR makes about them:
+// the three new CANONICAL_ALIASES routes take effect RETROACTIVELY, so a database
+// that already imported "Hyaline Cast, Urine" needs no re-import. That is only true
+// because #2306 shipped; before it, an alias added in response to a real document was
+// inert on the very database that motivated it. Proven here rather than asserted.
+//
+// The three singular spellings arrive in two different states on purpose:
+//   • BLOCKED — the import coined an `ai` vocabulary row for the spelling, so the row
+//     owns the key the new route wants (the #2306 defect proper).
+//   • no vocabulary row at all — only stored rows carry the spelling. The route was
+//     never blocked, but nothing ever re-pointed the rows either.
+describe("the singular cast spellings resolve retroactively (#2319)", () => {
+  const SINGULAR: [string, string][] = [
+    ["Hyaline Cast, Urine", "Casts, Hyaline, Urine"],
+    ["Granular Cast, Urine", "Casts, Granular, Urine"],
+    ["RBC Cast, Urine", "Casts, RBC, Urine"],
+  ];
+
+  it("re-points already-stored readings onto the curated plural entry after ONE boot", () => {
+    const profileId = newProfile("CASTS-2319");
+    // Two of the three also coined an ai vocabulary row at import time; the third
+    // exists only as stored rows.
+    coinVocabulary(SINGULAR[0][0]);
+    coinVocabulary(SINGULAR[1][0]);
+    for (const [singular] of SINGULAR) addReading(profileId, singular, "0-2");
+    // The word-order variant a different report prints, which shares the singular's
+    // token set and so rides the same route.
+    addReading(profileId, "Urine Hyaline Cast", "1-3");
+
+    // BEFORE: the curated plural entries exist and the stored rows are NOT on them —
+    // a curated entry and an uncatalogued twin, side by side.
+    for (const [, curated] of SINGULAR)
+      expect(vocabularyHas(curated)).toBe(true);
+    expect(storedNames(profileId)).toEqual([
+      "Granular Cast, Urine",
+      "Hyaline Cast, Urine",
+      "RBC Cast, Urine",
+      "Urine Hyaline Cast",
+    ]);
+
+    bootTasks(db);
+
+    // AFTER: every stored row is on its curated entry — no re-import, no manual edit.
+    expect(storedNames(profileId)).toEqual([
+      "Casts, Granular, Urine",
+      "Casts, Hyaline, Urine",
+      "Casts, Hyaline, Urine",
+      "Casts, RBC, Urine",
+    ]);
+    // The ai rows the import coined are retired, so the vocabulary stops offering the
+    // singular spelling back to the extractor…
+    for (const [singular] of SINGULAR)
+      expect(vocabularyHas(singular)).toBe(false);
+    // …and a FRESH import of any of the three now snaps onto the curated entry.
+    const vocab = getCanonicalVocabulary();
+    for (const [singular, curated] of SINGULAR)
+      expect(snapCanonicalName(singular, vocab)).toBe(curated);
+  });
+
+  it("carries the ★ and the tracked coverage gap with the readings", () => {
+    const profileId = newProfile("CASTS-2319-SIDE");
+    const [singular, curated] = SINGULAR[0];
+    coinVocabulary(singular);
+    addReading(profileId, singular, "0-2");
+    db.prepare(
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+    ).run(profileId, singular);
+    db.prepare(
+      "INSERT INTO coverage_gaps (profile_id, kind, item_key, label) VALUES (?, 'biomarker', ?, ?)"
+    ).run(profileId, biomarkerCoverageKey(singular), singular);
+
+    mergeSupersededCanonicalNames(db);
+
+    expect(storedNames(profileId)).toEqual([curated]);
+    expect(stars(profileId)).toEqual([curated]);
+    // The tracked gap moved onto the curated family key, so it reads as covered
+    // rather than lingering as a phantom gap for an analyte nobody now has.
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT item_key AS k FROM coverage_gaps WHERE profile_id = ?"
+          )
+          .get(profileId) as { k: string }
+      ).k
+    ).toBe(biomarkerCoverageKey(curated));
+  });
+});

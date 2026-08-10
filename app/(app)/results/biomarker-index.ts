@@ -23,6 +23,7 @@ import { parseSortDir } from "@/lib/table-sort";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { listedInBiomarkerBrowser } from "@/lib/body-metric-analytes";
 import { parsePanelId, type PanelId } from "@/lib/biomarker-panels";
 import {
   groupRowsByPanel,
@@ -174,7 +175,7 @@ export function biomarkerIndexRows(
     return withReferenceCells(
       scope,
       prepareTableRecords(
-        getMedicalRecords(profileId, storedFilters),
+        listedRows(getMedicalRecords(profileId, storedFilters)),
         filterDerivedForTable(
           getDerivedBiomarkerReadings(profileId),
           derivedFilters
@@ -186,7 +187,7 @@ export function biomarkerIndexRows(
 
   const ids = scope.viewIds;
   const storedTagged = readForProfiles(ids, (id) =>
-    getMedicalRecords(id, storedFilters)
+    listedRows(getMedicalRecords(id, storedFilters))
   );
   const derivedTagged = readForProfiles(ids, (id) =>
     filterDerivedForTable(getDerivedBiomarkerReadings(id), derivedFilters)
@@ -198,6 +199,21 @@ export function biomarkerIndexRows(
   });
   return withReferenceCells(scope, stampSubjects(scope, merged));
 }
+
+// Drop the rows whose analyte already has a body-metric home (#2365) — a `vitals`
+// reading of a quantity that owns a `/trends/metric/<slug>` chart. The exclusion is
+// PER ANALYTE, derived from the metric registries rather than hand-listed, so the
+// domain vitals that have no other surface (audiogram thresholds, intraocular
+// pressure, visual acuity, periodontal depth, the functional-fitness markers) stay
+// exactly where #1076 left them.
+//
+// It runs in JS rather than as a `category NOT IN (…)` clause because the question is
+// about the analyte's NAME, matched on the normalized token key SQL cannot compute —
+// and it runs BEFORE prepareTableRecords, so a dropped analyte never counts toward a
+// panel header or claims an is_latest marker. Grouping is per analyte family, so
+// removing one leaves every other analyte's rows and markers untouched.
+const listedRows = (rows: MedicalRecord[]): MedicalRecord[] =>
+  rows.filter(listedInBiomarkerBrowser);
 
 // Resolve every stored row's Reference cell (#2315) — the bands the row's own flag
 // was derived from, or the lab's printed string relabelled when nothing canonical

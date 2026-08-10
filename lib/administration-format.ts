@@ -10,6 +10,7 @@ import {
   formatCompactRelativeTime,
   type TimeFormat,
 } from "./format-date";
+import { GLYPH } from "./notifications/glyphs";
 
 // Render a stored UTC administration time ("YYYY-MM-DD HH:MM:SS") as a profile-local
 // clock ("4:02pm") for the "last …" line. Empty string on a missing/garbage value so
@@ -81,8 +82,8 @@ export function administrationOutcomeText(
   switch (outcome.kind) {
     case "logged":
       return outcome.count > 1
-        ? `Logged ✅ ${name} — ${outcome.count} today`
-        : `Logged ✅ ${name}`;
+        ? `Logged ${GLYPH.done} ${name} — ${outcome.count} today`
+        : `Logged ${GLYPH.done} ${name}`;
     case "duplicate":
       return `Already logged ${name} moments ago — not counting it twice.`;
     case "invalid-time":

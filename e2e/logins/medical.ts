@@ -181,10 +181,11 @@ export const PANEL_GROUPS_OTHER_ANALYTE = "E2E Unmapped Assay";
 // ones a 50-row alphabetical slice happened to reach.
 //
 // It also carries the two cards #1578 caps: six starred analytes (past the phone
-// tile cap) and one complete nine-analyte PhenoAge draw (so the bio-age hero renders
-// its headline variant, not the checklist). Both are needed on ONE profile because
-// the geometry assertion — "the first panel header is inside the first viewport" —
-// is about their combined height.
+// tile cap) and one complete nine-analyte PhenoAge draw — which since #2367 renders
+// as the input panel here and as the full hero on Longevity, both of which its specs
+// exercise. Both cards are needed on ONE profile because the geometry assertion —
+// "the first panel header is inside the first viewport" — is about their combined
+// height.
 //
 // Spec-owned (#868): the index publishes counts and the specs assert an exact panel
 // list, neither of which can be said about a shared seed. Read-only in its specs

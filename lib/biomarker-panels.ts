@@ -93,6 +93,8 @@ export const PANEL_IDS = [
   "heavy-metals",
   "pfas",
   "vital-signs",
+  "cardiac-electrical",
+  "arterial-function",
   "body-composition",
   "fitness",
   "vision",
@@ -141,6 +143,8 @@ export const PANEL_LABELS: Record<PanelId, { label: string; order: number }> = {
   "heavy-metals": { label: "Heavy metals", order: 250 },
   pfas: { label: "PFAS", order: 260 },
   "vital-signs": { label: "Vital signs", order: 270 },
+  "cardiac-electrical": { label: "Cardiac electrical activity", order: 272 },
+  "arterial-function": { label: "Arterial function", order: 274 },
   "body-composition": { label: "Body composition", order: 280 },
   fitness: { label: "Functional fitness", order: 290 },
   vision: { label: "Vision", order: 300 },
@@ -226,7 +230,7 @@ export const BIOMARKER_PANELS: Record<
     "Glucose, Fasting",
     "Hemoglobin A1c",
     "Insulin",
-    "HOMA-IR",
+    "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
     "C-Peptide",
     "Glucose, Gestational Screen (50 g)",
     "Leptin",
@@ -240,7 +244,7 @@ export const BIOMARKER_PANELS: Record<
   kidney: [
     "Blood Urea Nitrogen (BUN)",
     "Creatinine",
-    "eGFR",
+    "Estimated Glomerular Filtration Rate (eGFR)",
     "Cystatin C",
     "BUN/Creatinine Ratio",
     "Uric Acid",
@@ -285,21 +289,21 @@ export const BIOMARKER_PANELS: Record<
     "Mean Corpuscular Hemoglobin Concentration (MCHC)",
     "Red Cell Distribution Width (RDW)",
     "Mean Platelet Volume (MPV)",
-    "Neutrophils",
+    "Neutrophils, Relative",
     "Neutrophils, Absolute",
-    "Lymphocytes",
+    "Lymphocytes, Relative",
     "Lymphocytes, Absolute",
-    "Monocytes",
+    "Monocytes, Absolute",
     "Monocytes, Relative",
-    "Eosinophils",
+    "Eosinophils, Absolute",
     "Eosinophils, Relative",
-    "Basophils",
+    "Basophils, Absolute",
     "Basophils, Relative",
-    "Immature Granulocytes",
+    "Immature Granulocytes, Relative",
     "Immature Granulocytes, Absolute",
-    "Nucleated Red Blood Cells",
+    "Nucleated Red Blood Cells, Relative",
     "Nucleated Red Blood Cells, Absolute",
-    "Reticulocytes",
+    "Reticulocytes, Relative",
     "Reticulocytes, Absolute",
     // Reported ALONGSIDE their parent fraction, never instead of it (#2300) — an
     // atypical-lymphocyte % and a band % are extra smear lines, so they are their own
@@ -322,10 +326,10 @@ export const BIOMARKER_PANELS: Record<
   ],
   thyroid: [
     "Thyroid-Stimulating Hormone (TSH)",
-    "Free T4",
-    "Free T3",
-    "Total T4",
-    "Total T3",
+    "Thyroxine, Free (Free T4)",
+    "Triiodothyronine, Free (Free T3)",
+    "Thyroxine, Total (Total T4)",
+    "Triiodothyronine, Total (Total T3)",
     "Thyroid Peroxidase Antibodies (TPOAb)",
     "Thyroglobulin Antibodies (TgAb)",
   ],
@@ -388,7 +392,7 @@ export const BIOMARKER_PANELS: Record<
     // The ANA screen joins the autoantibody half of this panel for the same reason RF
     // does (#2300): it is an immunoglobulin assay, and a one-member `autoimmune` panel
     // would be a thinner grouping than the one a report actually arrives on.
-    "ANA Screen, IFA",
+    "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
   ],
   allergy: [
     "Immunoglobulin E (Total)",
@@ -430,7 +434,7 @@ export const BIOMARKER_PANELS: Record<
     "Hepatitis B Surface Antibody (HBsAb)",
     "Hepatitis C Antibody (Anti-HCV)",
     "HIV Antigen/Antibody",
-    "RPR",
+    "Rapid Plasma Reagin (RPR)",
     "Chlamydia trachomatis NAAT",
     "Neisseria gonorrhoeae NAAT",
     "HPV, High-Risk",
@@ -523,23 +527,58 @@ export const BIOMARKER_PANELS: Record<
     "Oxygen Saturation",
     "Body Temperature",
   ],
+  // Cardiac electrical activity (#2322). ONE tracing prints all of these: the
+  // intervals, the three frontal-plane axes, the ventricular rate the machine
+  // measured off that strip, and the reading clinician's verdict on the whole
+  // thing. They are not vital signs — a ventricular rate is not a pulse and a QTc
+  // is not monitored the way a temperature is — so they get their own panel rather
+  // than diluting `vital-signs`, which is the cuff-and-thermometer set.
+  "cardiac-electrical": [
+    "Ventricular Rate",
+    "PR Interval",
+    "QRS Duration",
+    "QT Interval",
+    "QTc Interval",
+    "P Axis",
+    "QRS Axis",
+    "T Axis",
+    "Electrocardiogram (ECG) Interpretation",
+  ],
+  // Arterial function (#2322) — the non-invasive vascular study: ABI screens the leg
+  // arteries for narrowing, CAVI measures how stiff the arterial tree is. Both are
+  // printed per side by the same cuff-based device on the same report, which is the
+  // "one order" criterion this taxonomy assigns by.
+  "arterial-function": [
+    "Ankle-Brachial Index (ABI), Left",
+    "Ankle-Brachial Index (ABI), Right",
+    "Cardio-Ankle Vascular Index (CAVI), Left",
+    "Cardio-Ankle Vascular Index (CAVI), Right",
+  ],
   "body-composition": [
     "Body Fat Percentage",
     "Visceral Adipose Tissue",
+    "Fat Mass Index",
+    "Lean Mass Index",
     "Appendicular Lean Mass Index",
     "Bone Mineral Density T-Score",
   ],
+  // The functional-fitness markers plus the exercise TEST that measures capacity:
+  // peak METs and the supervising clinician's verdict arrive on one stress-test
+  // report, and METs is the same quantity VO2 Max expresses in other units.
   fitness: [
     "VO2 Max",
+    "Metabolic Equivalents (METs)",
+    "Exercise Stress Test Result",
     "Grip Strength",
     "30-Second Chair Stand",
     "Single-Leg Balance",
   ],
   vision: [
-    "Visual Acuity",
+    "Color Vision",
+    "Visual Acuity, Unspecified Eye",
     "Visual Acuity, Right Eye",
     "Visual Acuity, Left Eye",
-    "Intraocular Pressure",
+    "Intraocular Pressure, Unspecified Eye",
     "Intraocular Pressure, Right Eye",
     "Intraocular Pressure, Left Eye",
   ],
@@ -556,6 +595,7 @@ export const BIOMARKER_PANELS: Record<
     "Hearing Threshold, Left Ear 2 kHz",
     "Hearing Threshold, Left Ear 4 kHz",
     "Hearing Threshold, Left Ear 8 kHz",
+    "Audiologic Diagnosis",
   ],
   dental: [
     "Periodontal Probing Depth",
@@ -567,7 +607,12 @@ export const BIOMARKER_PANELS: Record<
   // they ARE one order — a pulmonology report prints all four together — so they are
   // one panel, which is what makes the cross-reference chip on a peak-flow reading
   // point at the spirometry it was taken alongside.
-  respiratory: ["Peak Expiratory Flow", "FEV1", "FVC", "FEV1/FVC Ratio"],
+  respiratory: [
+    "Peak Expiratory Flow",
+    "Forced Expiratory Volume in 1 Second (FEV1)",
+    "Forced Vital Capacity (FVC)",
+    "FEV1/FVC Ratio",
+  ],
   "mental-health": ["PHQ-9", "GAD-7", "AUDIT", "AUDIT-C", "DAST-10"],
   "biological-age": ["Biological Age", "PhenoAge"],
 };

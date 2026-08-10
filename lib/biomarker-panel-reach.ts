@@ -36,6 +36,7 @@ import {
   type PanelId,
 } from "./biomarker-panels";
 import { BIOMARKER_CATEGORIES } from "./medical-categories";
+import { listedInBiomarkerBrowser } from "./body-metric-analytes";
 import type { MedicalCategory } from "./types";
 
 // The medical categories the browser lists, as a lookup.
@@ -45,10 +46,17 @@ const LISTED = new Set<string>(BIOMARKER_CATEGORIES as readonly string[]);
 //
 // Three sources, all of them rows the browser can actually render:
 //
-//  1. A canonical entry whose curated `category` is one the browser lists. This is
-//     the bulk of the taxonomy, and it is why `vital-signs`, `vision`, `hearing`,
-//     `dental`, `fitness` (all `vitals`) and `body-composition` (`scan`) STAY —
-//     #1076 kept those browsable on purpose because they have no other home.
+//  1. A canonical entry the browser LISTS — its curated `category` is one of
+//     BIOMARKER_CATEGORIES, and (since #2365) the analyte itself is not one whose
+//     quantity already owns a `/trends/metric/<slug>` home. This is the bulk of the
+//     taxonomy, and it is why `vision`, `hearing`, `dental`, `fitness` (all `vitals`)
+//     and `body-composition` (`scan`) STAY — #1076 kept those browsable on purpose
+//     because they have no other home. It is also why `vital-signs` no longer does:
+//     ALL SIX of its curated members (blood pressure ×2, oxygen saturation,
+//     respiratory rate, resting heart rate, body temperature) are body metrics with a
+//     chart of their own, so the facet option can only ever return "No records match".
+//     The panel itself is untouched — it still groups those readings on the surfaces
+//     that DO show them; what goes is a filter that answers nothing here.
 //  2. A read-time DERIVED index (#40). Those are virtual rows synthesized with
 //     category `lab` regardless of what their canonical entry says, so PhenoAge —
 //     canonically `derived`, and re-homed to the bio-age hero — still renders here
@@ -62,6 +70,12 @@ const REACHABLE: ReadonlySet<PanelId> = (() => {
   const reachable = new Set<PanelId>([OTHER_PANEL]);
   for (const entry of CANONICAL_BIOMARKERS) {
     if (!LISTED.has(entry.category as MedicalCategory)) continue;
+    // The SAME predicate the row gather applies (#2365), so the facet can never offer
+    // a panel whose every member the gather drops.
+    if (
+      !listedInBiomarkerBrowser({ category: entry.category, name: entry.name })
+    )
+      continue;
     reachable.add(panelForCanonicalName(entry.name));
   }
   for (const name of DERIVED_NAMES) reachable.add(panelForCanonicalName(name));

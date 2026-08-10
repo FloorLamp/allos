@@ -17,6 +17,9 @@ import { getBioAgeReadings, getDerivedBiomarkerReadings } from "@/lib/queries";
 import { setUserBirthdate } from "@/lib/settings";
 import { db } from "@/lib/db";
 
+// The canonical name since #2335 — aliased so the assertions stay readable.
+const HOMA_IR = "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)";
+
 const DATE = "2024-05-01";
 
 function newProfile(name: string): number {
@@ -141,7 +144,7 @@ describe("bio-age: a fasting-glucose draw with a censored hs-CRP", () => {
     insertLab(profileId, CRP, "mg/L", "0.4", 0.4);
 
     const derived = getDerivedBiomarkerReadings(profileId);
-    expect(derived.some((r) => r.name === "HOMA-IR")).toBe(true);
+    expect(derived.some((r) => r.name === HOMA_IR)).toBe(true);
     expect(derived.some((r) => r.name === "PhenoAge")).toBe(true);
   });
 
@@ -154,7 +157,7 @@ describe("bio-age: a fasting-glucose draw with a censored hs-CRP", () => {
     insertLab(profileId, CRP, "mg/L", "0.4", 0.4);
 
     const derived = getDerivedBiomarkerReadings(profileId);
-    expect(derived.some((r) => r.name === "HOMA-IR")).toBe(false);
+    expect(derived.some((r) => r.name === HOMA_IR)).toBe(false);
     expect(derived.some((r) => r.name === "PhenoAge")).toBe(true);
   });
 

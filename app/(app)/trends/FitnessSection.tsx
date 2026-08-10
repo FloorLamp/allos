@@ -9,6 +9,7 @@ import {
 } from "@/lib/trends-fitness";
 import ChartJumpMenu from "./ChartJumpMenu";
 import FitnessPRs from "./FitnessPRs";
+import WorkoutHistorySection from "./WorkoutHistorySection";
 import FitnessVolumeSection from "./FitnessVolumeSection";
 import FitnessZonesSection from "./FitnessZonesSection";
 import FitnessStrengthSection from "./FitnessStrengthSection";
@@ -23,8 +24,12 @@ import FitnessSportSection from "./FitnessSportSection";
 // defaulted to 90D (#1485 G) every other tab windowed and this one silently would
 // not. It is now four SECTIONS, composition PINNED by the owner (2026-07-25):
 //
-//   1. Volume & cadence      — windowed training volume (bars) + the heatmap,
-//                              re-scoped to the window and compacted
+// The tab LEADS with the Workout history (owner-directed, 2026-08-09): the
+// generalized day-history calendar + by-type matrix over the window, which
+// replaced the bespoke #186 heatmap that used to sit inside Volume & cadence.
+// Below it, the four pinned sections:
+//
+//   1. Volume & cadence      — windowed training volume (bars)
 //   2. Zones & cardio        — windowed HR-zone minutes / Zone 2 / polarization
 //                              (#159) + windowed weekly cardio volume + mix
 //   3. Strength progression  — windowed est-1RM movement + PR rate
@@ -66,9 +71,13 @@ export default async function FitnessSection({ range }: { range: DateRange }) {
         <ChartJumpMenu items={FITNESS_SECTIONS.map((s) => ({ ...s }))} />
       </div>
 
+      <WorkoutHistorySection weeks={weeks} end={window.to} />
+
+      <hr className="border-black/5 dark:border-white/10" />
+
       <FitnessPRs window={window} />
 
-      <FitnessVolumeSection window={window} weeks={weeks} />
+      <FitnessVolumeSection window={window} />
       <FitnessZonesSection window={window} weeks={weeks} />
       <FitnessStrengthSection window={window} weeks={weeks} />
       <FitnessSportSection window={window} />

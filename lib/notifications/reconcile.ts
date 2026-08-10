@@ -515,7 +515,7 @@ const householdRound: FamilyReconciler = {
   // member's doses confirmed and another's skipped is exactly the fact a bare "handled
   // in the app" destroyed. The member's name LEADS its group, which is the same
   // attribution the round's own body sections ("Ada:") and button labels
-  // ("✓ Ada · Vitamin D") already carry (#377) — so the close discloses nothing this
+  // ("✅ Ada · Vitamin D") already carry (#377) — so the close discloses nothing this
   // chat was not already shown.
   //
   // Every read is scoped to the MEMBER whose ledger the button confirms against, never

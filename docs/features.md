@@ -84,8 +84,9 @@ is always what it renders), **weight trend**, combined **Goals and habits**,
 — a one-tap 5-point mood log (expand for energy, calm, factor chips, and a note;
 one entry per day, never range-checked, never gamified) composed with the
 illness front door's quiet "Not feeling well?" branch, which keeps offering the
-mood tap while an illness episode's cockpit is up in the hero; **Weekly recap**
-remains opt-in. Standalone cards for quick stats, care-plan due, starred
+mood tap while an illness episode's cockpit is up in the hero; the **Recap** card
+(weekly, monthly or quarterly, following the cadence set in Settings →
+Notifications) remains opt-in. Standalone cards for quick stats, care-plan due, starred
 biomarkers, biological age, recent activity, immunizations, today's insight,
 streak, low supply, active goals, and weekly routine were retired because Needs
 attention/Upcoming or a richer remaining card already answers them. Legacy saved
@@ -318,7 +319,8 @@ to improve.
 Route: `/longevity`.
 
 The healthspan pillars expand into one page of anchored sections: **biological
-age** (the PhenoAge hero with pace-of-aging and a missing-inputs checklist),
+age** (the PhenoAge hero, its pace-of-aging, and the per-input breakdown below —
+the one page the hero renders on),
 **fitness-check percentiles** (a read view over your guided fitness checks, “Run
 a fitness check” deep-links into Training), **sleep regularity** (SRI, timing
 spread, trend), and the per-marker breakdown behind **“N of M biomarkers
@@ -1376,6 +1378,36 @@ scroll: every reading is grouped under its normalized clinical panel ("Lipids ·
 panel whose current readings include an out-of-range one says so on its header,
 so a flagged group self-identifies while collapsed.
 
+**What it lists is decided per analyte, not per category (#2365).** Labs,
+genomics and imaging-derived measurements are listed whole; the classes with a
+dedicated home (medications, screening scores, bio-age composites, immutable
+passport facts, narrative report bodies, non-measurement assessments) are
+excluded whole. `vitals` is the one category that holds both populations, so the
+question is asked of the ANALYTE — and the question is not "does a chart exist"
+but **"can a document-imported reading of this quantity reach that chart?"**
+
+A vital that answers yes is not catalogued here: blood pressure, SpO2,
+respiratory rate and body temperature (the chart plots those very rows), resting
+heart rate, body fat and peak expiratory flow (the chart folds the clinical
+reading in beside the device ones), weight, height and head circumference (the
+import writes the charted row itself), and BMI (computed from the weight and
+height that arrive with it). Everything else stays, including the **domain
+vitals with no chart anywhere** — audiogram thresholds, intraocular pressure,
+visual acuity, periodontal measures, spirometry volumes, the functional-fitness
+markers, waist circumference, ankle-brachial index, the stress-test vitals — and
+also **HRV and BMR**, which _have_ charts fed exclusively by integration streams:
+a cardiology report's HRV or a calorimetry BMR can reach neither, so the catalog
+remains their home.
+
+This is #1076's "nothing stranded" rule at a finer grain — membership follows
+whether the reading is answered elsewhere — and it stopped the catalog listing
+ten measurements that already were for every one it rescued (measured on a real
+profile: 131 of 145 `vitals` rows). It is **derived** from the metric registries
+(`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug reachability
+declaration, never hand-listed, so an analyte that gains a dedicated surface
+leaves the browser with no second edit and a newly registered metric must state
+whether an imported reading can reach it before it can remove anything.
+
 The index is the **whole** filtered set — there is no pager. A row cap would be
 the wrong unit here (one panel with a few years of draws can be dozens of rows,
 so a page could split a panel and print partial counts on each half); the panel
@@ -1396,11 +1428,13 @@ Readings sort by **name** (A–Z, newest reading first within an analyte) or by
 date; panel is not a sort, because the groups are already emitted in clinical
 order. Filters are free-text search, category, clinical **panel**, an
 all/non-optimal/out-of-range lens, and "current values only". The panel facet
-offers a stable list — the taxonomy minus the panels whose analytes live in
-categories this browser deliberately doesn't list (mental-health screening
-scores, which are re-homed to Medical → Health record → Specialty, and blood
-type, which lives in the passport), so it never offers a filter that returns
-nothing for anyone.
+offers a stable list — the taxonomy minus the panels whose analytes this browser
+doesn't list (mental-health screening scores, which are re-homed to Medical →
+Health record → Specialty; blood type, which lives in the passport; and, since
+#2365, **vital signs**, whose six members are all body metrics with charts of
+their own), so it never offers a filter that returns nothing for anyone.
+Respiratory function is the mixed case and stays offered: peak flow leaves for
+its metric page while the spirometry volumes remain.
 
 **On a phone the index leads.** The trajectory-watch card keeps its place above
 it — a warning has to find you rather than be looked up — showing its headline
@@ -1533,6 +1567,27 @@ same curated WHO ≤25 dB HL band, and the same rows that already trend and flag
 on Results → Biomarkers. Each ear/frequency stays its own independently-flagging
 series (deliberately never collapsed into one "hearing" family, so a normal
 frequency can't hide a flagged one). This change added **no migration**.
+
+**A reported average (#2322).** Clinical documents often carry
+`Pure Tone Average, {Left,Right} Ear ({Air,Bone} Conduction)` in dB HL and no
+per-frequency thresholds at all — the average is stated, and no audiogram can be
+reconstructed from it. Those readings are **not curated as biomarkers** (that
+would fork the hearing series this domain already owns); the substrate accepts
+them instead. They land in the same `medical_records` store under their own
+canonical name (**no migration**), and the Hearing tab lists an averages-only
+report as a dated hearing test with an explicit "this report gave the average
+only" note where the frequency grid would be.
+
+Where a reported and a derived average both exist, the **reported one wins** —
+the same precedence the derived-index table applies when a lab reports an index
+directly. The precedence is per **(ear, conduction) per date**, never per
+document: a reported right-ear air average suppresses only the right ear's
+derived air average, and the left ear (and the same ear's bone conduction) are
+untouched. Every average on the card **names its provenance** — "as reported
+(air conduction)" or "averaged from 4 recorded frequencies" — because the two
+are different claims. A reported average is deliberately **not** an input to the
+ototoxic crosscheck's baseline or to the ASHA threshold-shift criteria: both are
+stated per frequency, and an average states none.
 
 Around the record: a new age-related **hearing screening** preventive rule (a
 `hearing` audiology appointment/audiogram satisfies it) that recorded **noise
@@ -1802,12 +1857,35 @@ which way the substitution can bias the number (a below-limit hs-CRP can only
 make PhenoAge read too high). A censored input is never silently rounded into an
 apparently exact result.
 
-PhenoAge is also surfaced as a **biological-age card** pinned
-above the Biomarkers table: your estimated biological age, how it compares to
-your calendar age (younger is better), your pace of aging across draws, and the
-nine inputs it's built from (folded behind a toggle on a phone) — with a
-checklist prompt when the panel is incomplete. It's framed as a population-level estimate (Levine 2018,
-NHANES-validated adults ~20–84) and is hidden for child profiles.
+PhenoAge is also surfaced as a **biological-age hero**, on the Longevity page and
+nowhere else: your estimated biological age, how it compares to your calendar age
+(younger is better), your pace of aging across draws, and — ranked by how much
+each one moves the result — the inputs behind it. Results › Biomarkers keeps the
+half of that block which is about the analyte catalog: which of the nine inputs
+you have, which you still need, and a link to the hero. That is the page where
+the missing analytes get added, so the prompt to complete the panel lives there
+while the number lives with the other longevity pillars. Both are framed as a
+population-level estimate (Levine 2018, NHANES-validated adults ~20–84) and are
+hidden for child profiles.
+
+**What moves the number.** The hero lists every input with its value and its
+effect **in years**: the model is re-run with that one input moved to a reference
+value and nothing else changed, and the difference is what the row reports. It is
+a counterfactual, not a share of the formula's linear predictor — that would be
+wrong in a way that looks plausible, because the predictor reaches years through
+a non-linear mortality transform and hs-CRP enters logarithmically. The reference
+is the analyte's curated optimal band midpoint where there is one, otherwise its
+reference band midpoint (a one-sided band, like hs-CRP's "optimal ≤1 mg/L", uses
+the stated bound itself), and the row names which. **Chronological age is in the
+list**, compared against the youngest age the model is applied at, because it is
+usually the largest term and hiding it would make every lab term look far more
+influential than it is. An input the curated dataset gives no target for — the
+unqualified `Glucose`, which is deliberately band-less — says it has **no
+comparison** rather than reading as a zero effect, and a row resting on a
+censored value says the comparison rests on the substituted limit. These are
+properties of the model, not predictions about you: PhenoAge is a population
+mortality regression with several years of error, which is why the estimate
+caveat sits under the list rather than beside a single number.
 
 ## Allergies
 
@@ -2227,7 +2305,7 @@ tri-state — a deliberate skip is a decision, not a missed dose), with adherenc
 and refill tracking. Skips are excluded from the adherence percentage and shown
 as their own count, never decrement your on-hand supply, and never trigger a
 missed-dose escalation; each reminder (web and Telegram) offers a **✅ take**
-and a **⏭ skip** beside each dose.
+and a **⏭️ skip** beside each dose.
 
 ### Nutrient reference values
 
@@ -2574,6 +2652,18 @@ name fits nothing — the row was renamed or deleted since the import — the ca
 says **"no longer in this import"** rather than offering a link that goes
 nowhere.
 
+**A value has to be a number to be a reading (#2322).** A stress test reports
+`Exercise Duration` with the unit `min:sec` and a colon-formatted value
+("10:30"). That is a string, and a string filed as a reading can never plot,
+flag or trend — it just sits in the analyte's series looking like data. Every
+ingest door (CCD, FHIR, and the AI extractor) now normalises a colon-formatted
+duration to **whole seconds** at the door, storing `630` in `s`: seconds is the
+finest grain the source states and keeps its digits exact, where minutes would
+turn 10:20 into a repeating 10.3333…. When the parse cannot produce a number the
+observation is **dropped with a reason** rather than stored — it appears in the
+document's Dropped list under **"Unparsable value"**, so a refusal is visible
+instead of silent.
+
 ### Failures and duplicates
 
 Spanning both sections at the top are any integration that's **currently
@@ -2596,7 +2686,12 @@ all surfaced with a badge on the **Data** nav entry.
 Track the catalog **coverage gaps** — the biomarkers/medications/conditions the
 curated catalogs don't cover yet, with the track / local-AI-enrich /
 de-identified-catalog-request paths — under **Data → Coverage** (#1086; moved
-here from the Health record page as a catalog/data-management workflow).
+here from the Health record page as a catalog/data-management workflow). Some
+things are uncatalogued **on purpose**, and those say so in their own section
+rather than being offered for tracking (#2319): a DEXA scan's per-region
+decomposition — left-arm fat percentage, lumbar-spine bone density, the
+compartment masses — is the output of one scan rather than fifty analytes, and
+no population reference band exists for it, so there is nothing to request.
 Finally, browse and export everything you've logged under **Data → Manage &
 Export** — the "Export all my data" download is one portable ZIP (every dataset
 as JSON + CSV, the clinical passport as a FHIR bundle, and copies of your

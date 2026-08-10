@@ -30,6 +30,8 @@ import type {
 } from "../types";
 import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
+import { formatMessageLine } from "./message-line";
+import { GLYPH } from "./glyphs";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
@@ -184,7 +186,7 @@ function adherenceNotes(a: AdherenceSummary): string[] {
   return notes;
 }
 
-// One body line: ✅ once taken, ⏭ once deliberately skipped (#232), otherwise the
+// One body line: ✅ once taken, ⏭️ once deliberately skipped (#232), otherwise the
 // priority marker (🔴 mandatory, • everything else), then the amount and a
 // "·"-separated tail of the take-with condition (pending only — it's guidance for
 // taking) and the adherence percentage.
@@ -197,14 +199,13 @@ function doseLine(
     e.supp.kind === "medication"
       ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
       : e.dose.amount;
-  const amt = doseDetail ? ` — ${doseDetail}` : "";
   const mark = e.taken
-    ? "✅ "
+    ? GLYPH.done
     : e.skipped
-      ? "⏭ "
+      ? GLYPH.skipped
       : e.supp.obligation === "must"
-        ? "🔴 "
-        : "• ";
+        ? GLYPH.required
+        : GLYPH.bullet;
   const tail: string[] = [];
   if (showFood) {
     const food = foodNote(e.dose);
@@ -247,8 +248,14 @@ function doseLine(
     if (foodDrug) tail.push(foodDrug);
   }
   tail.push(...adherenceNotes(e.adherence));
-  const suffix = tail.length ? ` · ${tail.join(" · ")}` : "";
-  return `${mark}${e.supp.name}${amt}${suffix}`;
+  // The mark is the line's glyph, the item its head, and the amount the first of its
+  // notes — the same shape as every other message line, so the take-with condition and
+  // the adherence percentage that follow are punctuated by the grammar and not here.
+  return formatMessageLine({
+    glyph: mark,
+    head: e.supp.name,
+    notes: [doseDetail, ...tail],
+  });
 }
 
 // Build the message for a window from its entries. Pending doses (each with a
@@ -269,7 +276,7 @@ export function renderWindowMessage(
   const pending = entries
     .filter((e) => !e.taken && !e.skipped)
     .sort(byPriority);
-  // Resolved doses (taken or skipped) list after the pending ones; ⏭ marks a skip.
+  // Resolved doses (taken or skipped) list after the pending ones; ⏭️ marks a skip.
   const resolved = entries.filter((e) => e.taken || e.skipped).sort(byPriority);
 
   const label = INTAKE_SLOT_LABELS[window];
@@ -284,10 +291,14 @@ export function renderWindowMessage(
     const body = resolved.map((e) => doseLine(e, false, age)).join("\n");
     // Title reflects the whole session: "all N taken" when nothing was skipped,
     // else a taken/skipped breakdown so a skip isn't misread as a take.
-    const title =
-      skippedN === 0
-        ? `💊 ${label} ${noun} — all ${takenN} taken ✅`
-        : `💊 ${label} ${noun} — ${takenN} taken · ${skippedN} skipped`;
+    const title = formatMessageLine({
+      glyph: GLYPH.dose,
+      head: `${label} ${noun}`,
+      notes:
+        skippedN === 0
+          ? [`all ${takenN} taken ${GLYPH.done}`]
+          : [`${takenN} taken`, `${skippedN} skipped`],
+    });
     return { title, body };
   }
 
@@ -296,11 +307,16 @@ export function renderWindowMessage(
     ...resolved.map((e) => doseLine(e, false, age)),
   ].join("\n");
   const actions = doseSessionActions(profileId, window, date, pending, false);
-  return { title: `💊 ${label} ${noun}`, body, actions, kind: "dose" };
+  return {
+    title: `${GLYPH.dose} ${label} ${noun}`,
+    body,
+    actions,
+    kind: "dose",
+  };
 }
 
 // The button set for one slot's pending doses. Each pending dose gets a ✅ take
-// and a ⏭ skip button, side by side (same `row` group). The dose + supplement id
+// and a ⏭️ skip button, side by side (same `row` group). The dose + supplement id
 // and date are baked into each token so a late tap still resolves the correct
 // dose to the correct day. There is NO "skip all" — a blanket skip is a footgun
 // (#232); skip stays per-dose only. With 2+ doses pending, a single "✅ All" tap
@@ -317,20 +333,20 @@ function doseSessionActions(
   if (pending.length >= 2) {
     actions.push({
       label: labelAll
-        ? `✅ All ${INTAKE_SLOT_LABELS[slot]} (${pending.length})`
-        : `✅ All (${pending.length})`,
+        ? `${GLYPH.done} All ${INTAKE_SLOT_LABELS[slot]} (${pending.length})`
+        : `${GLYPH.done} All (${pending.length})`,
       data: `all:${profileId}:${slot}:${date}`,
     });
   }
   for (const { dose, supp, demotable } of pending) {
     const row = `dose:${dose.id}`;
     actions.push({
-      label: `✅ ${supp.name}`,
+      label: `${GLYPH.done} ${supp.name}`,
       data: `take:${profileId}:${dose.id}:${supp.id}:${date}`,
       row,
     });
     actions.push({
-      label: "⏭ Skip",
+      label: `${GLYPH.skipped} Skip`,
       data: `skip:${profileId}:${dose.id}:${supp.id}:${date}`,
       row,
     });
@@ -403,10 +419,11 @@ export function renderMergedIntakeMessage(
     actions.push(...doseSessionActions(profileId, p.slot, date, pending, true));
   }
 
-  const title =
-    pendingTotal === 0
-      ? `💊 ${labels.join(" & ")} ${noun} — all done ✅`
-      : `💊 ${labels.join(" & ")} ${noun}`;
+  const title = formatMessageLine({
+    glyph: GLYPH.dose,
+    head: `${labels.join(" & ")} ${noun}`,
+    notes: [pendingTotal === 0 ? `all done ${GLYPH.done}` : null],
+  });
   return {
     title,
     body: sections.join("\n\n"),

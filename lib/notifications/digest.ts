@@ -15,7 +15,12 @@ import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { offerTextTail } from "./offer-tail";
-import { joinBody } from "./rich-text";
+import {
+  formatEmphasizedLine,
+  formatMessageLine,
+  type MessageLine,
+} from "./message-line";
+import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
 import { sriPresentation } from "../sleep-regularity";
 import { sleepVerdictPhrase } from "../sleep-summary";
 import {
@@ -32,6 +37,7 @@ import {
   activityProvenanceLabel,
   JOURNAL_SOURCE_MANUAL,
 } from "../journal-format";
+import { GLYPH } from "./glyphs";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -178,6 +184,27 @@ export interface DigestInput {
   // target is declared or no reading exists — the digest states a comparison or says
   // nothing; it never prints a lonely number for the reader to evaluate.
   stepsLine?: string | null;
+  // Yesterday's protein and fibre against their resolved targets (#2379) — "Nutrition —
+  // protein 84 g+ of 130 g · fiber 18 g+ of 38 g", built by the ONE pure
+  // `nutritionDigestLine` over the SAME per-day adequacy verdicts the /nutrition day
+  // picker renders (#221). Both nutrients share one line: it is one question about one
+  // day's eating, from one gather.
+  //
+  // CARRIED AS PARTS, not as text (#2391). The head is the section noun "Nutrition" and
+  // each short nutrient is one NOTE, so the `·` between two nutrients is the grammar's
+  // own separator rather than a join this domain invented. The glyph is absent here and
+  // stamped by buildDigest, matching every sibling line in the Yesterday section.
+  //
+  // NULL ON MOST MORNINGS, deliberately, and each null is its own fact: a day that MET
+  // its targets is unremarkable and says nothing (so a typical digest gets SHORTER, not
+  // longer); a day with no food logged says nothing, because absence of logging is not
+  // evidence of low intake; and a nutrient whose target does not resolve says nothing
+  // rather than being scored against a guess. Its own optional field so the `nutrition`
+  // demotion category (#1714) has one switch.
+  //
+  // Adequacy is an OBSERVATION, never an obligation: no streak, no failure language, no
+  // escalation. The line states the number against the target and stops.
+  nutritionLine?: MessageLine | null;
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
   // The documents that finished extracting since the send cursor (#1913 item 3), each
@@ -301,7 +328,7 @@ export function shortDocumentDate(date: string | null): string | null {
 export function digestDocumentLine(
   doc: DigestDocument,
   deepLinkBase = ""
-): string {
+): MessageBody {
   const context = [
     shortDocumentDate(doc.date),
     doc.acquiredVia ? `via ${doc.acquiredVia}` : null,
@@ -309,11 +336,14 @@ export function digestDocumentLine(
     .filter((s): s is string => !!s)
     .join(", ");
   const where = context ? ` (${context})` : "";
-  const split = documentSplitPhrase(doc.extracted);
-  const what = split ? ` — ${split}` : "";
   const base = deepLinkBase.replace(/\/$/, "");
-  const link = base ? ` ${base}${importHref(doc.id)}` : "";
-  return `📄 New: ${doc.title}${where}${what}${link}`;
+  return formatEmphasizedLine({
+    glyph: GLYPH.document,
+    head: `New: ${doc.title}${where}`,
+    // WHAT THE IMPORT PRODUCED is a supporting fact about the document, not its cause.
+    notes: [documentSplitPhrase(doc.extracted)],
+    link: base ? `${base}${importHref(doc.id)}` : null,
+  });
 }
 
 // How many documents a morning names before it collapses to a count. A multi-document
@@ -323,7 +353,13 @@ export const MAX_NAMED_DOCUMENTS = 3;
 
 export interface DigestSection {
   heading: string;
-  lines: string[];
+  // A line is a MessageBody since #2392, not a string: the digest emits RICH TEXT, so a
+  // line composed through formatEmphasizedLine carries the emphasis its declared parts
+  // earned. A `string` stays a legal line and renders exactly as it always did — the
+  // lines this module receives already formatted from elsewhere (the recent-changes
+  // collector, the workout preview, the time suggestion) are plain by construction, and
+  // the digest cannot know their heads well enough to emphasize them.
+  lines: MessageBody[];
 }
 
 export interface DigestModel {
@@ -344,6 +380,17 @@ export interface DigestModel {
   timeActions?: NotificationAction[];
 }
 
+// The digest's own title. The profile name is a NOTE on it — a shared chat can carry
+// several profiles — which is why an unnamed profile yields "☀️ Morning digest" rather
+// than a line ending in an orphaned dash.
+function digestTitle(profileName: string): string {
+  return formatMessageLine({
+    glyph: GLYPH.sun,
+    head: "Morning digest",
+    notes: [profileName],
+  });
+}
+
 // Human sleep duration: "7h 20m", "8h", "45m". Minutes in, rounded.
 function fmtSleepDuration(min: number): string {
   const total = Math.round(min);
@@ -354,19 +401,21 @@ function fmtSleepDuration(min: number): string {
   return `${h}h ${m}m`;
 }
 
-// Short key stat for an activity line: distance for cardio, else duration.
-function activityStat(a: DigestActivity): string {
+// Short key stat for an activity line: distance for cardio, else duration. A NOTE on the
+// line (a supporting fact about the session), never its cause.
+function activityStat(a: DigestActivity): string | null {
   if (a.type === "cardio" && a.distanceKm != null) {
     // Canonical km per the notification unit policy (a chat has no login-unit
     // context), rounded via the shared formatter rather than the raw stored float
     // (#1109) — matches the adjacent fmtWeight line.
-    return ` — ${fmtDistance(a.distanceKm, "km")}`;
+    return fmtDistance(a.distanceKm, "km");
   }
-  if (a.durationMin != null) return ` — ${a.durationMin} min`;
-  return "";
+  if (a.durationMin != null) return `${a.durationMin} min`;
+  return null;
 }
 
-// The activity line's PROVENANCE clause (#1913 item 1): " · Strava".
+// The activity line's PROVENANCE note (#1913 item 1): "Strava". A note on the line, so
+// the grammar punctuates it and this only decides WHETHER there is one.
 //
 // The arrival line the digest used to carry — "📥 Strava: workouts" — was provenance
 // and nothing else, stated about a session the message already listed one section down.
@@ -377,10 +426,10 @@ function activityStat(a: DigestActivity): string {
 // A MANUAL row gets nothing. "Manual" beside a session you logged yourself is not
 // provenance, it is noise — the clause exists to answer "where did this come from?",
 // which only has an answer when something else put it there.
-function activitySource(a: DigestActivity): string {
+function activitySource(a: DigestActivity): string | null {
   const source = a.source ?? null;
-  if (activityProvenanceKey(source) === JOURNAL_SOURCE_MANUAL) return "";
-  return ` · ${activityProvenanceLabel(source)}`;
+  if (activityProvenanceKey(source) === JOURNAL_SOURCE_MANUAL) return null;
+  return activityProvenanceLabel(source);
 }
 
 // Doses are summarized by the Today dose-count headline, so they're dropped from
@@ -410,7 +459,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (input.openEpisodeLine) {
     sections.push({
       heading: "Illness",
-      lines: [`🤒 ${input.openEpisodeLine}`],
+      lines: [
+        formatEmphasizedLine({
+          glyph: GLYPH.illness,
+          head: input.openEpisodeLine,
+        }),
+      ],
     });
   }
 
@@ -419,12 +473,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // training-restriction apply to the whole morning message. The dose count is the
   // glance headline; the banded lines cover everything else; the "why" highlights
   // (#656) explain the important items.
-  const todayLines: string[] = [];
+  const todayLines: MessageBody[] = [];
   // Dose glance headline — the count of DUE doses from collectUpcoming (bus-honored
   // + #558 predicted-training-day, both applied by collectUpcoming's dose items).
   if (input.doseCount > 0) {
     todayLines.push(
-      `💊 ${input.doseCount} ${itemNoun} dose${input.doseCount === 1 ? "" : "s"} scheduled`
+      formatEmphasizedLine({
+        glyph: GLYPH.dose,
+        head: `${input.doseCount} ${itemNoun} dose${input.doseCount === 1 ? "" : "s"} scheduled`,
+      })
     );
   }
   // Situation-activation mention (#662 item 1): the SAME "N situational items now
@@ -432,7 +489,10 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   const situationLine = situationActivationLine(
     input.situationalActiveCount ?? 0
   );
-  if (situationLine) todayLines.push(`🧭 ${situationLine}`);
+  if (situationLine)
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.context, head: situationLine })
+    );
   // Held-items mention (#1296): the visible held state in the morning message, via the
   // one shared heldSummaryLine formatter — so a pause situation silencing reminders is
   // never a silent blackout.
@@ -440,12 +500,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     input.heldSituation && (input.heldCount ?? 0) > 0
       ? heldSummaryLine(input.heldCount ?? 0, input.heldSituation)
       : null;
-  if (heldLine) todayLines.push(`⏸️ ${heldLine}`);
+  if (heldLine)
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.paused, head: heldLine })
+    );
   // Derived-context acknowledgment (#1292/#1298): the SAME basis-aware lines the bar +
   // check-in show ("Rough night (…) — N sleep-support items active today (auto)";
   // "Period logged — N items active"), so the extra due items are never a surprise.
   for (const line of input.derivedSituationLines ?? []) {
-    todayLines.push(`🌙 ${line}`);
+    todayLines.push(formatEmphasizedLine({ glyph: GLYPH.context, head: line }));
   }
   // Today's recommended workout (#1712 §2) — a heads-up at 7am, formatted from the
   // SAME recommendation the dedicated nudge builds later (no second engine, no second
@@ -461,7 +524,9 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // workoutPreview above) so the per-category demotion control, when it lands, has one
   // category to switch off without touching the rest of the section.
   for (const line of input.weatherPlanLines ?? []) {
-    todayLines.push(`\u{1F6B4} ${line}`);
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.outdoorPlan, head: line })
+    );
   }
 
   // The weather-aware light window (#1723 part 1). Present only on a day whose
@@ -469,10 +534,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // lives in the pure predicate, so by the time the line exists there is nothing left
   // to decide here. It states a WINDOW, never an instruction with a deadline.
   if (input.lightExposureLine) {
-    todayLines.push(`☀️ ${input.lightExposureLine}`);
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.sun, head: input.lightExposureLine })
+    );
   }
   // The daily step target (#1723 part 2), stated only when it is genuinely informative.
-  if (input.stepsTodayLine) todayLines.push(`🚶 ${input.stepsTodayLine}`);
+  if (input.stepsTodayLine)
+    todayLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.steps, head: input.stepsTodayLine })
+    );
 
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
   // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
@@ -499,9 +569,20 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (due) {
     // One bullet grammar for the section (#1819 item 5): the band summaries were the
     // only lines in the whole message with no emoji.
-    for (const line of due.lines) todayLines.push(`🗓️ ${line}`);
+    for (const line of due.lines)
+      todayLines.push(
+        formatEmphasizedLine({ glyph: GLYPH.dueToday, head: line })
+      );
     for (const h of due.highlights) {
-      todayLines.push(`⚑ ${h.title} — ${h.reason}`);
+      // The item's TOP reason (#656) is a cause fragment about the title — the
+      // `because` role, declared rather than positional.
+      todayLines.push(
+        formatEmphasizedLine({
+          glyph: GLYPH.priority,
+          head: h.title,
+          because: h.reason,
+        })
+      );
     }
     // Data-plumbing asks, named (#1685/#1757) — and since #1913 item 5 these are the
     // ONLY entry each one gets: the band above no longer counts them, so a single broken
@@ -519,18 +600,29 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // it is the only deadline that ask has.
     const base = (input.deepLinkBase ?? "").replace(/\/$/, "");
     for (const s of due.syncIssues) {
-      const because = s.because ? ` — ${s.because}` : "";
-      const when = s.dueText ? ` · ${s.dueText}` : "";
-      const link = base ? ` ${base}${s.href}` : "";
-      todayLines.push(`${s.glyph} ${s.title}${because}${when}${link}`);
+      todayLines.push(
+        formatEmphasizedLine({
+          glyph: s.glyph,
+          head: s.title,
+          because: s.because,
+          deadline: s.dueText,
+          link: base ? `${base}${s.href}` : null,
+        })
+      );
     }
   }
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });
 
   // Yesterday: what happened.
-  const yLines: string[] = [];
+  const yLines: MessageBody[] = [];
   for (const a of input.activities) {
-    yLines.push(`🏋️ ${a.title}${activityStat(a)}${activitySource(a)}`);
+    yLines.push(
+      formatEmphasizedLine({
+        glyph: GLYPH.training,
+        head: a.title,
+        notes: [activityStat(a), activitySource(a)],
+      })
+    );
   }
   // The delta headline LEADS the intake report (#1505 part 3): "which of the things
   // that push me changed state" is the news; the fraction below is the supporting
@@ -553,28 +645,56 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       ? intakeGapExplainedBy(deltas, intended - adherence.taken)
       : null;
   if (deltaLine && !mergedClause) {
-    yLines.push(`🔁 ${deltaLine}`);
+    yLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.changed, head: deltaLine })
+    );
   }
   if (adherence) {
     const { taken, skipped } = adherence;
     if (intended <= 0) {
       // Everything due was deliberately skipped — a "0/0 taken" line reads as a
       // bug (#380 nit); state the skips plainly instead.
-      yLines.push(`💊 ${cap(noun)}: ${skipped} skipped`);
-    } else {
-      const skipNote = skipped > 0 ? ` · ${skipped} skipped` : "";
-      const explain = mergedClause ? ` — ${mergedClause}` : "";
       yLines.push(
-        `💊 ${cap(noun)}: ${taken}/${intended} taken${skipNote}${explain}`
+        formatEmphasizedLine({
+          glyph: GLYPH.dose,
+          head: `${cap(noun)}: ${skipped} skipped`,
+        })
+      );
+    } else {
+      yLines.push(
+        formatEmphasizedLine({
+          glyph: GLYPH.dose,
+          head: `${cap(noun)}: ${taken}/${intended} taken`,
+          // The merged delta EXPLAINS the gap ("missed Glycine (1 day)") — it is the
+          // cause, so it leads the qualifiers; the skip count is a supporting note.
+          because: mergedClause,
+          notes: [skipped > 0 ? `${skipped} skipped` : null],
+        })
       );
     }
   }
   if (input.weightKg != null) {
     // Rounded, kg per the notification unit policy documented on weightKg above.
-    yLines.push(`⚖️ Weight: ${fmtWeight(input.weightKg, "kg")}`);
+    yLines.push(
+      formatEmphasizedLine({
+        glyph: GLYPH.weight,
+        head: `Weight: ${fmtWeight(input.weightKg, "kg")}`,
+      })
+    );
   }
   // Steps vs the declared target (#1723 part 2) — a verdict, not a raw number (#1712).
-  if (input.stepsLine) yLines.push(`🚶 ${input.stepsLine}`);
+  if (input.stepsLine)
+    yLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.steps, head: input.stepsLine })
+    );
+  // Protein and fibre vs their resolved targets (#2379) — present only on a day that
+  // fell short of one, so the common morning carries nothing here at all. The producer
+  // returns PARTS and this call site stamps the marker, exactly as its siblings above
+  // do: the Yesterday section owns which glyph each of its lines wears.
+  if (input.nutritionLine)
+    yLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.food, ...input.nutritionLine })
+    );
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 
   // Sleep: a calm "how'd I sleep" (issue #1117) — last night's MAIN overnight
@@ -583,13 +703,13 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // it states the numbers, never "you slept badly".
   if (input.sleep) {
     const s = input.sleep;
-    const sleepLines: string[] = [];
+    const sleepLines: MessageBody[] = [];
     const stages: string[] = [];
     if (s.deepMin != null && s.deepMin > 0)
       stages.push(`deep ${fmtSleepDuration(s.deepMin)}`);
     if (s.remMin != null && s.remMin > 0)
       stages.push(`REM ${fmtSleepDuration(s.remMin)}`);
-    const stageNote = stages.length ? ` · ${stages.join(", ")}` : "";
+    const stageNote = stages.length ? stages.join(", ") : null;
     // STATE THE VERDICT, don't just print two numbers (#1712). The comparison the
     // reader was left to do is carried in words plus a direction marker, from the same
     // baseline the line already read. Below-baseline reads neutrally — the digest is
@@ -604,13 +724,20 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // rest of the message uses for exactly that (#1819 item 7) — interpolated with a
     // bare space it read as one run-on quantity, "6h 38m about typical".
     sleepLines.push(
-      `😴 Last night: ${fmtSleepDuration(s.lastNightMin)}${
-        verdict ? ` — ${verdict}` : ""
-      }${stageNote}`
+      formatEmphasizedLine({
+        glyph: GLYPH.sleep,
+        head: `Last night: ${fmtSleepDuration(s.lastNightMin)}`,
+        notes: [verdict, stageNote],
+      })
     );
     // A same-day nap on its own line — kept apart from the overnight total.
     if (s.napMin != null && s.napMin > 0) {
-      sleepLines.push(`💤 + ${fmtSleepDuration(s.napMin)} nap`);
+      sleepLines.push(
+        formatEmphasizedLine({
+          glyph: GLYPH.sleep,
+          head: `+ ${fmtSleepDuration(s.napMin)} nap`,
+        })
+      );
     }
     if (s.sri != null) {
       // "Sleep regularity 94 — very consistent" (#1819 item 7). The old line paired an
@@ -619,16 +746,27 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       // every SRI surface reads, and by #992's contract it qualifies the schedule's
       // consistency — never the sleeper.
       const sri = sriPresentation(s.sri);
-      sleepLines.push(`📈 Sleep regularity ${sri.value} — ${sri.qualifier}`);
+      sleepLines.push(
+        formatEmphasizedLine({
+          glyph: GLYPH.trend,
+          head: `Sleep regularity ${sri.value}`,
+          notes: [sri.qualifier],
+        })
+      );
     }
     sections.push({ heading: "Sleep", lines: sleepLines });
   }
 
   // New since the last digest: things to look at.
-  const newLines: string[] = [];
+  const newLines: MessageBody[] = [];
   for (const b of input.newFlaggedBiomarkers) {
     const val = b.value ? ` ${b.value}` : "";
-    newLines.push(`🚩 ${b.name}${val} (${b.flag})`);
+    newLines.push(
+      formatEmphasizedLine({
+        glyph: GLYPH.flagged,
+        head: `${b.name}${val} (${b.flag})`,
+      })
+    );
   }
   // New documents, one line each (#1913 item 3). "1 new document: ccda" answered neither
   // "which?" nor "what was produced?" — it printed the raw doc_type. A multi-document
@@ -640,7 +778,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   const moreDocs = input.newDocuments.length - namedDocs.length;
   if (moreDocs > 0) {
-    newLines.push(`📄 +${moreDocs} more document${moreDocs === 1 ? "" : "s"}`);
+    newLines.push(
+      formatEmphasizedLine({
+        glyph: GLYPH.document,
+        head: `+${moreDocs} more document${moreDocs === 1 ? "" : "s"}`,
+      })
+    );
   }
   // The recent-changes lines (#1713) join the SAME section, below the flagged results
   // and new documents the digest's own send-cursor window already reported. That order
@@ -679,13 +822,13 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     sections.push({
       heading: "Today",
       lines: [
-        "✅ Nothing scheduled." +
-          (offered > 0 ? ` ➕ ${offerTextTail(offered)}.` : ""),
+        `${GLYPH.done} Nothing scheduled.` +
+          (offered > 0 ? ` ${GLYPH.more} ${offerTextTail(offered)}.` : ""),
       ],
     });
     if (timingSection) sections.push(timingSection);
     return {
-      title: `☀️ Morning digest — ${input.profileName}`,
+      title: digestTitle(input.profileName),
       sections,
       offerTail: input.offerTail ?? null,
       // A tail-only digest has no category content, so there is nothing to tune.
@@ -695,7 +838,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   if (timingSection) sections.push(timingSection);
   return {
-    title: `☀️ Morning digest — ${input.profileName}`,
+    title: digestTitle(input.profileName),
     sections,
     offerCount: input.offerCount ?? 0,
     offerTail: input.offerTail ?? null,
@@ -708,16 +851,31 @@ export function buildDigest(input: DigestInput): DigestModel | null {
 // section's heading followed by its bulleted lines; the title (bolded by the
 // Telegram renderer) already names the profile.
 export function renderDigestMessage(model: DigestModel): NotificationMessage {
-  const body = model.sections
-    .map((s) => [s.heading, ...s.lines.map((l) => `• ${l}`)].join("\n"))
-    .join("\n\n");
+  // THE SECTION HEADINGS ARE THE SPINE (#2392). Bolding them is the single largest
+  // skimmability win in a message that routinely runs four sections and a dozen lines:
+  // "Today", "Yesterday", "Sleep", "New" is the outline a reader navigates by, and it
+  // was set in exactly the same weight as every fact underneath it.
+  const body = joinBody(
+    model.sections.map((s) =>
+      joinBody(
+        [
+          richFrom([bold(s.heading)]),
+          // The bullet joins with NO separator, so a plain line stays a plain string and
+          // renders byte-identically to what it rendered before.
+          ...s.lines.map((l) => joinBody([`${GLYPH.bullet} `, l], "")),
+        ],
+        "\n"
+      )
+    ),
+    "\n\n"
+  );
   // The offer tail's TEXT line goes ONLY to the channels that cannot render its
   // control (#1712). On Telegram the button IS the line — it names the slot and the
   // count — so a body line there duplicated the control beside it and, when the tail
   // was expanded, claimed "+3 available" while the keyboard already listed all three.
   const availableLine = offerTextTail(model.offerCount ?? 0);
   const textTailBody = availableLine
-    ? joinBody([body, `➕ ${availableLine}`], "\n\n")
+    ? joinBody([body, `${GLYPH.more} ${availableLine}`], "\n\n")
     : null;
   // Actions, in reach order: the guaranteed access tail first (#1505 — it is the one
   // affordance that is always correct to offer), then the collapsed ⚙️ Tune control

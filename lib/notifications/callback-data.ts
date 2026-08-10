@@ -30,6 +30,7 @@ import {
   TUNE_TOGGLE_PREFIX,
   type DigestCategory,
 } from "./digest-tune";
+import { GLYPH } from "./glyphs";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
@@ -113,7 +114,7 @@ export function parseTakeCallback(data: unknown): TakeCallback | null {
   return parseDoseCallback(data, "take");
 }
 
-// Parse a "skip:<profileId>:<doseId>:<suppId>:<date>" button token — the ⏭ Skip
+// Parse a "skip:<profileId>:<doseId>:<suppId>:<date>" button token — the ⏭️ Skip
 // action (#232), mirroring parseTakeCallback exactly (same shape, "skip" prefix).
 export function parseSkipCallback(data: unknown): TakeCallback | null {
   return parseDoseCallback(data, "skip");
@@ -190,16 +191,16 @@ export function tapAnswerText(
   switch (outcome) {
     case "logged":
     case "already-taken": // idempotent repeat of a taken log — honest
-      return "Logged ✅";
+      return `Logged ${GLYPH.done}`;
     // Logged, but NOT on one of this item's days (#1602). A frozen reminder message can
     // outlive the day it was built for, and a cadence makes that gap meaningful: the
     // answer says so rather than confirming as though the dose had been owed.
     case "logged-off-day":
       return cadence
-        ? `Logged ✅ — note: scheduled for ${cadence}`
-        : "Logged ✅ — note: not scheduled today";
+        ? `Logged ${GLYPH.done} — note: scheduled for ${cadence}`
+        : `Logged ${GLYPH.done} — note: not scheduled today`;
     case "already-skipped":
-      return "Not logged — already marked skipped ⏭. Open the app to change it.";
+      return `Not logged — already marked skipped ${GLYPH.skipped}. Open the app to change it.`;
     case "inactive":
       return "Not logged — this item is paused. Open the app to log it.";
     case "stale-dose":
@@ -208,8 +209,8 @@ export function tapAnswerText(
   }
 }
 
-// The Telegram callback-answer toast for a ⏭ Skip tap (#232), per markDoseSkipped
-// outcome. "Skipped ⏭" is honest for a fresh skip or an idempotent repeat of one
+// The Telegram callback-answer toast for a ⏭️ Skip tap (#232), per markDoseSkipped
+// outcome. "Skipped ⏭️" is honest for a fresh skip or an idempotent repeat of one
 // ("already-skipped"); a dose meanwhile resolved as TAKEN (issue #280) was NOT
 // overwritten, so the answer says the taken log stands instead of falsely
 // confirming a skip. The paused/stale cases mirror tapAnswerText.
@@ -217,10 +218,10 @@ export function tapSkipAnswerText(outcome: DoseTakenOutcome): string {
   switch (outcome) {
     case "skipped":
     case "already-skipped": // idempotent repeat of a skip — honest
-      return "Skipped ⏭";
+      return `Skipped ${GLYPH.skipped}`;
     case "logged-off-day":
     case "already-taken":
-      return "Not skipped — already logged as taken ✅. Open the app to change it.";
+      return `Not skipped — already logged as taken ${GLYPH.done}. Open the app to change it.`;
     case "inactive":
       return "Not logged — this item is paused. Open the app to log it.";
     case "stale-dose":
@@ -321,11 +322,11 @@ export type PreventiveTapOutcome =
 export function preventiveAnswerText(outcome: PreventiveTapOutcome): string {
   switch (outcome.kind) {
     case "done":
-      return "Marked done ✅";
+      return `Marked done ${GLYPH.done}`;
     case "not-applicable":
-      return "Marked not applicable 🚫";
+      return `Marked not applicable ${GLYPH.notApplicable}`;
     case "reminded":
-      return `Snoozed until ${formatRecordDate(outcome.snoozeUntil)} ⏰`;
+      return `Snoozed until ${formatRecordDate(outcome.snoozeUntil)} ${GLYPH.snoozed}`;
     case "unknown-rule":
     default:
       return "Not recorded — this reminder is out of date. Open the app.";
@@ -339,13 +340,13 @@ export function preventiveAnswerText(outcome: PreventiveTapOutcome): string {
 export function preventiveCloseText(outcome: PreventiveTapOutcome): string {
   switch (outcome.kind) {
     case "done":
-      return "Marked done ✅ — recorded to preventive care.";
+      return `Marked done ${GLYPH.done} — recorded to preventive care.`;
     case "not-applicable":
-      return "Marked not applicable 🚫 — it won't be suggested again.";
+      return `Marked not applicable ${GLYPH.notApplicable} — it won't be suggested again.`;
     case "reminded":
       return `Snoozed until ${formatRecordDate(
         outcome.snoozeUntil
-      )} ⏰ — hidden from Upcoming and reminders until then (restore it on Upcoming any time).`;
+      )} ${GLYPH.snoozed} — hidden from Upcoming and reminders until then (restore it on Upcoming any time).`;
     case "unknown-rule":
     default:
       return OUTDATED_MESSAGE_TEXT;
@@ -377,7 +378,7 @@ export type RefillTapOutcome = "snoozed" | "stale-item";
 
 export function refillAnswerText(outcome: RefillTapOutcome): string {
   return outcome === "snoozed"
-    ? "Got it 📦 — I'll remind you in 3 days."
+    ? `Got it ${GLYPH.ordered} — I'll remind you in 3 days.`
     : "Not recorded — this reminder is out of date. Open the app.";
 }
 
@@ -387,7 +388,7 @@ export function refillAnswerText(outcome: RefillTapOutcome): string {
 // The token mirrors a dose tap's shape (profile/dose/supp/date) under distinct
 // "esctake"/"escack" prefixes.
 
-// ⏭ Skip joins the two original affordances (#1716): a skip is a RECORDED DELIBERATE
+// ⏭️ Skip joins the two original affordances (#1716): a skip is a RECORDED DELIBERATE
 // DECISION, distinct from silence, and skipped doses already end the escalation loop.
 export type EscalationAction = "take" | "ack" | "skip";
 
@@ -451,11 +452,11 @@ export function resolveEscalationTap(
 export function escalationAckAnswerText(outcome: EscalationAckOutcome): string {
   switch (outcome) {
     case "acknowledged":
-      return "Thanks 👍 — we'll hold off (dose not marked taken).";
+      return `Thanks ${GLYPH.acknowledged} — we'll hold off (dose not marked taken).`;
     case "already-taken":
-      return "Already confirmed taken ✅";
+      return `Already confirmed taken ${GLYPH.done}`;
     case "already-skipped":
-      return "Already resolved — this dose was marked skipped ⏭.";
+      return `Already resolved — this dose was marked skipped ${GLYPH.skipped}.`;
     case "inactive":
       return "This item is paused — open the app.";
     case "stale-dose":
@@ -470,14 +471,14 @@ export function escalationAckAnswerText(outcome: EscalationAckOutcome): string {
 // SKIPPED (issue #280) is resolved-but-not-taken and must say so — the old
 // tapResolved gate rendered "Confirmed taken ✅" over a skipped log.
 export function escalationTakeCloseText(outcome: DoseTakenOutcome): string {
-  if (tapLogged(outcome)) return "Confirmed taken ✅";
+  if (tapLogged(outcome)) return `Confirmed taken ${GLYPH.done}`;
   if (outcome === "already-skipped") {
-    return "This dose was marked skipped ⏭ — check the app.";
+    return `This dose was marked skipped ${GLYPH.skipped} — check the app.`;
   }
   return OUTDATED_MESSAGE_TEXT;
 }
 
-// Replacement message body after an escalation ⏭ Skip tap (#1716), per
+// Replacement message body after an escalation ⏭️ Skip tap (#1716), per
 // markDoseSkipped's outcome. A skip that STANDS closes the escalation honestly; an
 // already-taken dose is not silently overwritten, and a stale/paused dose says so.
 // Shares the ledger — and therefore the vocabulary — with the dose reminder's own skip.
@@ -485,10 +486,10 @@ export function escalationSkipCloseText(outcome: DoseTakenOutcome): string {
   switch (outcome) {
     case "skipped":
     case "already-skipped":
-      return "Skipped ⏭ — recorded as a decision, not a miss.";
+      return `Skipped ${GLYPH.skipped} — recorded as a decision, not a miss.`;
     case "logged-off-day":
     case "already-taken":
-      return "Already confirmed taken ✅";
+      return `Already confirmed taken ${GLYPH.done}`;
     case "inactive":
     case "stale-dose":
     default:
@@ -502,11 +503,11 @@ export function escalationSkipCloseText(outcome: DoseTakenOutcome): string {
 export function escalationAckCloseText(outcome: EscalationAckOutcome): string {
   switch (outcome) {
     case "acknowledged":
-      return "Acknowledged 👍 — we'll hold off.";
+      return `Acknowledged ${GLYPH.acknowledged} — we'll hold off.`;
     case "already-taken":
-      return "Already confirmed taken ✅";
+      return `Already confirmed taken ${GLYPH.done}`;
     case "already-skipped":
-      return "This dose was marked skipped ⏭ — check the app.";
+      return `This dose was marked skipped ${GLYPH.skipped} — check the app.`;
     case "inactive":
     case "stale-dose":
     default:
@@ -551,7 +552,7 @@ export function parsePrnLogCallback(data: unknown): PrnLogCallback | null {
   return { profileId, itemId, token };
 }
 
-// ---- Wellness-practice "Done ✓" logging over Telegram (#1259 phase 2) ----
+// ---- Wellness-practice "Done ✅" logging over Telegram (#1259 phase 2) ----
 // A "pdone:<profileId>:<targetId>:<token>" button logs one practice session NOW for the
 // target's practice. Like a dose/PRN tap the profile id is a cross-check (the handler
 // re-resolves the acting profile from the chat, and logPracticeByTargetId re-verifies the
@@ -715,9 +716,9 @@ export function parseWorkoutFinishCallback(
 export function workoutFinishAnswerText(outcome: FinishWorkoutOutcome): string {
   switch (outcome.kind) {
     case "finished":
-      return "Workout finished ✅";
+      return `Workout finished ${GLYPH.done}`;
     case "already-finished":
-      return "Already finished ✅";
+      return `Already finished ${GLYPH.done}`;
     case "empty-draft":
       return "Nothing logged yet — add a set or discard the draft.";
     case "not-found":
@@ -732,7 +733,7 @@ export function workoutDiscardAnswerText(
 ): string {
   switch (outcome.kind) {
     case "discarded":
-      return "Draft discarded 🗑";
+      return `Draft discarded ${GLYPH.discarded}`;
     case "already-finished":
       return "Already finished — nothing to discard.";
     case "not-found":
@@ -793,7 +794,7 @@ export function activityTypeAskAnswerText(
 ): string {
   switch (outcome.kind) {
     case "classified":
-      return `Saved as ${outcome.type} ✅`;
+      return `Saved as ${outcome.type} ${GLYPH.done}`;
     case "already-classified":
       return `Already saved as ${outcome.type}.`;
     case "not-found":
@@ -858,7 +859,7 @@ export function foodProteinAnswerText(
   if (outcome.kind === "invalid") {
     return "Not logged — that entry is out of date. Open the app.";
   }
-  return `Logged ✅ ＋${grams} g protein — ${outcome.grams} g today`;
+  return `Logged ${GLYPH.done} ＋${grams} g protein — ${outcome.grams} g today`;
 }
 
 // A food-nudge expansion tap — "➕ Show more" (#1075) or "➖ Show less" (#1807):
@@ -962,14 +963,14 @@ export function foodLogAnswerText(
   }
   const name = foodGroupName(group);
   return outcome.servings > 1
-    ? `Logged ✅ ${name} ×${outcome.servings} today`
-    : `Logged ✅ ${name}`;
+    ? `Logged ${GLYPH.done} ${name} ×${outcome.servings} today`
+    : `Logged ${GLYPH.done} ${name}`;
 }
 
 // The Telegram toast after an opt-in prompt tap.
 export function foodOptInAnswerText(enable: boolean): string {
   return enable
-    ? "Food logging on 🍽️ — you'll see it at your reminder times."
+    ? `Food logging on ${GLYPH.food} — you'll see it at your reminder times.`
     : "No problem — enable it any time in Settings → Profile.";
 }
 
@@ -977,7 +978,7 @@ export function foodOptInAnswerText(enable: boolean): string {
 // retained above it by replacementWithTitle).
 export function foodOptInCloseText(enable: boolean): string {
   return enable
-    ? "Food logging enabled 🍽️ — tap your foods at your reminder times."
+    ? `Food logging enabled ${GLYPH.food} — tap your foods at your reminder times.`
     : "No food logging — you can turn it on later in Settings → Profile.";
 }
 
@@ -1073,7 +1074,7 @@ export type MoodKeepOutcome = "kept" | "already-active" | "not-enabled";
 export function moodKeepAnswerText(outcome: MoodKeepOutcome): string {
   switch (outcome) {
     case "kept":
-      return "Got it — daily check-ins continue 🙂";
+      return `Got it — daily check-ins continue ${GLYPH.mood}`;
     case "already-active":
       return "Check-ins are already running — nothing to resume.";
     case "not-enabled":
@@ -1086,7 +1087,7 @@ export function moodKeepAnswerText(outcome: MoodKeepOutcome): string {
 // above it by replacementWithTitle).
 export function moodKeepCloseText(outcome: MoodKeepOutcome): string {
   return outcome === "kept"
-    ? "Daily check-ins will keep coming 🙂"
+    ? `Daily check-ins will keep coming ${GLYPH.mood}`
     : moodKeepAnswerText(outcome);
 }
 

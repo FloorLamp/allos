@@ -74,7 +74,7 @@ export const chartSleepStage = {
 
 // ── Sequential cell ramps (issue #1445, Part 3a/4d) ──────────────────────────
 //
-// The calendar surfaces (WorkoutHeatmap, ActiveDaysStrip, medications'
+// The calendar surfaces (DayHistory, ActiveDaysStrip, medications'
 // AdherenceCalendar) are charts too, but their cells are Tailwind CLASSES, not
 // SVG fills — which is exactly how three hand-rolled `emerald-200/900` ramps
 // drifted past the hex scan that guards the series palette. So the blessed ramp
@@ -99,7 +99,7 @@ export interface CellRamp {
 
 /** Workout/activity density — the brand green, since activity is the brand's own
  *  metric. Four steps (1, 2, 3, 4+ sessions) over a neutral empty cell.
- *  Consumed by `WorkoutHeatmap` and `ActiveDaysStrip`. */
+ *  Consumed by `DayHistory` and `ActiveDaysStrip`. */
 export const chartActivityRamp: CellRamp = {
   emptyClass: "bg-slate-100 dark:bg-ink-800",
   stepClasses: [

@@ -13,6 +13,7 @@ import type { LifecycleSuppressionPolicy } from "../lifecycle";
 import type { SupplementKind } from "../types/intake";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { intakeHref } from "../hrefs";
+import { GLYPH } from "./glyphs";
 
 // The send slots escalation chases: the four fixed windows plus the PreWorkout
 // pseudo-slot (#1154) — a critical `anytime` pre_workout dose whose reminder
@@ -172,7 +173,7 @@ export function elapsedLabel(minutes: number): string {
 //
 // THREE caregiver affordances, not two (#233 + #1716): ✅ Confirmed taken routes
 // through markDoseTaken's outcome union (a stale tap never falsely logs a critical
-// med), ⏭ Skip records the DELIBERATE decision through markDoseSkipped — exactly the
+// med), ⏭️ Skip records the DELIBERATE decision through markDoseSkipped — exactly the
 // dose reminder's own precedent, and a skipped dose already ends the escalation loop —
 // and 👍 I'm on it acknowledges + suppresses re-nudge WITHOUT claiming the dose was
 // taken. Without Skip, "we decided not to give it" forced a false confirm, an
@@ -195,17 +196,17 @@ export function renderEscalationMessage(
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] = [
     {
-      label: "✅ Confirmed taken",
+      label: `${GLYPH.done} Confirmed taken`,
       data: `esctake:${profileId}:${due.doseId}:${suppId}:${date}`,
       row: "esc",
     },
     {
-      label: "⏭ Skip",
+      label: `${GLYPH.skipped} Skip`,
       data: `escskip:${profileId}:${due.doseId}:${suppId}:${date}`,
       row: "esc",
     },
     {
-      label: "👍 I'm on it",
+      label: `${GLYPH.acknowledged} I'm on it`,
       data: `escack:${profileId}:${due.doseId}:${suppId}:${date}`,
       row: "esc",
     },
@@ -218,7 +219,7 @@ export function renderEscalationMessage(
     });
   }
   return {
-    title: `⚠️ Missed dose: ${who}${due.supplementName}`,
+    title: `${GLYPH.caution} Missed dose: ${who}${due.supplementName}`,
     body:
       `${due.supplementName}${amt} — ${escalationWindowPhrase(due.window)} slot, ` +
       `unconfirmed for ${elapsedLabel(due.unconfirmedMinutes)}.`,

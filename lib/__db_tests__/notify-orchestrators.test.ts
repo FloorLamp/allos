@@ -33,11 +33,19 @@ import {
   setWeekStart,
 } from "@/lib/settings";
 import {
-  runWeeklyRecap,
-  getWeeklyRecap,
-} from "@/lib/notifications/weekly-recap-data";
+  runRecap,
+  getRecapCard,
+  gatherRecapInput,
+} from "@/lib/notifications/recap-data";
 import { weekWindow } from "@/lib/week-window";
-import { recapRangeLabel } from "@/lib/weekly-recap";
+import {
+  periodFor,
+  recapRangeLabel,
+  buildRecap,
+  lineSpeaksAt,
+} from "@/lib/recap";
+import { RECAP_SCALES, type RecapScale } from "@/lib/recap-scale";
+import { recapMarkerKey } from "@/lib/notifications/send-markers";
 import { runRefills } from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runEscalations } from "@/lib/notifications/escalate";
@@ -54,7 +62,42 @@ import { runEaseBack, easeBackMarkerKey } from "@/lib/notifications/ease-back";
 import { gatherCoachingInput } from "@/lib/queries";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
 import { shiftDateStr } from "@/lib/date";
+import { setRecapScale, getWeekMode, getWeekStart } from "@/lib/settings";
 import { seedProfile, seedLoginTelegram } from "./fixtures";
+
+// The period a SCALE covers for this profile, read through the profile's OWN week
+// settings rather than a hardcoded pair. The week scale honours `week_mode`, whose
+// default is `calendar` — an expectation computed as "rolling" describes a window the
+// code never builds, which is a test asserting against a second implementation of the
+// thing under test.
+function periodOf(
+  profileId: number,
+  scale: RecapScale,
+  td: string,
+  completed: boolean
+) {
+  return periodFor(
+    scale,
+    td,
+    getWeekMode(profileId),
+    getWeekStart(profileId),
+    completed
+  );
+}
+
+// Pre-spend the scales this test is not about, so the precedence rule cannot flip which
+// scale claims the slot (#2178's precedence rule is real behaviour, and these tests
+// exercise ONE scale at a time on purpose).
+function onlyScale(profileId: number, keep: RecapScale, td: string): void {
+  for (const e of RECAP_SCALES) {
+    if (e.scale === keep) continue;
+    setProfileSetting(
+      profileId,
+      recapMarkerKey(e.scale),
+      periodOf(profileId, e.scale, td, true).end
+    );
+  }
+}
 
 // ---- fixtures ----
 
@@ -704,7 +747,7 @@ describe("runEscalations orchestrator", () => {
     configureTelegram(p);
     stubFetch();
 
-    // The escalation's ⏭ Skip performs markDoseSkipped — the SAME write the dose
+    // The escalation's ⏭️ Skip performs markDoseSkipped — the SAME write the dose
     // reminder's own skip performs, so the ledger cannot tell the two apart.
     const outcome = markDoseSkipped(p, doseId, null, date);
     expect(outcome).toBe("skipped");
@@ -757,12 +800,12 @@ describe("buildWorkoutTargetReminder", () => {
 });
 
 // =====================================================================
-// runWeeklyRecap — calendar-mode completed-week window (issue #1021). The
+// runRecap — calendar-mode completed-week window (issue #1021). The
 // notification summarizes the last COMPLETED calendar week; the dashboard card
-// (getWeeklyRecap) keeps the in-progress window (#223). One gather, one
+// (getRecapCard) keeps the in-progress window (#223). One gather, one
 // window-selection parameter (#221) — this pins the two surfaces apart end-to-end.
 // =====================================================================
-describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
+describe("runRecap calendar-mode completed week (#1021)", () => {
   const MONDAY = 1;
 
   it("notification names + summarizes the completed week; the dashboard keeps the in-progress window", async () => {
@@ -780,11 +823,13 @@ describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
     ).run(p, w.prevEnd);
 
     configureTelegram(p);
+    onlyScale(p, "week", td);
     const fetchMock = stubFetch();
-    const res = await runWeeklyRecap(p, "RecapCalendar", td);
+    const res = await runRecap(p, "RecapCalendar", td);
     expect(res.failed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(getProfileSetting(p, "notify_last_weekly_recap")).toBe(td);
+    // The marker records the PERIOD the scale spoke for (#2178), not the send date.
+    expect(getProfileSetting(p, recapMarkerKey("week"))).toBe(w.prevEnd);
 
     // The message's date range names the SUMMARIZED (completed) week — never a
     // window ending today — and counts the completed week's workout.
@@ -798,7 +843,7 @@ describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
     // The dashboard card renders the SAME gather with the in-progress window:
     // its range ends today and the completed week's workout sits in its
     // comparison slot, not its subject.
-    const card = getWeeklyRecap(p, "kg");
+    const card = getRecapCard(p, "kg");
     expect(card.start).toBe(w.start);
     expect(card.end).toBe(td);
   });
@@ -820,8 +865,9 @@ describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
     ).run(p, td);
 
     configureTelegram(p);
+    onlyScale(p, "week", td);
     const fetchMock = stubFetch();
-    await runWeeklyRecap(p, "RecapCalendarLeak", td);
+    await runRecap(p, "RecapCalendarLeak", td);
     const text = String(
       JSON.parse(fetchMock.mock.calls[0][1].body as string).text
     );
@@ -831,7 +877,232 @@ describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
     // completed week demoted to the comparison slot; now the comparison is the
     // week BEFORE the completed one (empty).
     expect(text).toContain(recapRangeLabel(w.prevStart, w.prevEnd));
-    expect(text).toContain("Workouts: 1 (strength 1) (0 last week)");
+    // The documented grammar, not a second parenthetical (#2391/#2389 item 2).
+    // The recap emphasizes a head that carries qualifiers (#2392); pin that rather
+    // than loosen the assertion, so the whole line is still checked.
+    expect(text).toContain("<b>Workouts: 1 (strength 1)</b> — 0 last week");
+  });
+});
+
+// =====================================================================
+// runRecap — the recap CADENCE (#2178). One engine, three scales, replace-never-stack.
+// These pin the parts only a real DB can prove: that the profile setting selects the
+// scale end to end, that the widget and the send agree at every cadence (#221), and
+// that the period-anchored markers make a superseded scale spent rather than queued.
+// =====================================================================
+describe("runRecap cadence (#2178)", () => {
+  // THE ARRIVAL DAY, chosen rather than waited for. The DB tier runs on the real
+  // clock, so a fixture pinned to `today()` asserts a different thing every day —
+  // these tests failed for exactly that reason. `runRecap` takes the profile-local
+  // date as an argument, so the date is an INPUT here, not an ambient fact.
+  //
+  // Why this date works, from the rule rather than from a lookup: a scale arrives at
+  // the FIRST configured weekday on or after its period closed, and runRecap reads the
+  // slot weekday off the date it is given. A date in the first seven days of a month is
+  // therefore always its own month's arrival day — the first occurrence of that weekday
+  // on or after the 1st is the date itself. 2026-08-03 is such a date, and it is NOT a
+  // quarter arrival (Q2 closed 2026-06-30, so the quarter arrived in early July), which
+  // is what leaves the month as the longest applicable scale.
+  const ARRIVAL = "2026-08-03";
+
+  // A profile with a month's worth of training and weigh-ins inside the LAST COMPLETED
+  // calendar month, so the monthly recap has real lines to speak.
+  function seedCompletedMonth(name: string): { p: number; td: string } {
+    const p = newProfile(name);
+    const td = ARRIVAL;
+    const month = periodOf(p, "month", td, true);
+    const days = [1, 5, 9, 13, 17, 21, 25];
+    for (const [i, d] of days.entries())
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min)
+         VALUES (?, ?, ?, 'Session', 45)`
+      ).run(
+        p,
+        shiftDateStr(month.start, d),
+        i % 3 === 0 ? "cardio" : "strength"
+      );
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)`
+    ).run(p, shiftDateStr(month.start, 1), 82);
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)`
+    ).run(p, shiftDateStr(month.start, 26), 80.4);
+    return { p, td };
+  }
+
+  it("the setting selects the scale: a monthly profile is sent month-scale lines", async () => {
+    const { p, td } = seedCompletedMonth("RecapMonthly");
+    setRecapScale(p, "month");
+    const month = periodOf(p, "month", td, true);
+    // The quarter is pre-spent so this test is about the month, not about which of the
+    // two claims the slot — the precedence rule itself is pinned in the pure tier.
+    setProfileSetting(
+      p,
+      recapMarkerKey("quarter"),
+      periodOf(p, "quarter", td, true).end
+    );
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+
+    const res = await runRecap(p, "RecapMonthly", td);
+    expect(res.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const text = String(
+      JSON.parse(fetchMock.mock.calls[0][1].body as string).text
+    );
+    // The message names the scale and the CLOSED calendar month it narrates.
+    expect(text).toContain("Monthly recap");
+    expect(text).toContain(recapRangeLabel(month.start, month.end));
+    // Month-scale lines — a composition share and a trajectory…
+    expect(text).toContain("Training mix");
+    expect(text).toContain("sessions/week");
+    expect(text).toContain("Weight trend");
+    // …and NOT the week-scale count line, which would be the re-total the inclusion
+    // rule forbids.
+    expect(text).not.toContain("Workouts:");
+    // The marker records the PERIOD, so the same month can never be sent twice.
+    expect(getProfileSetting(p, recapMarkerKey("month"))).toBe(month.end);
+  });
+
+  it("the widget follows the setting and shows the SAME numbers as the send (#221)", async () => {
+    const { p, td } = seedCompletedMonth("RecapWidgetAgrees");
+    setRecapScale(p, "month");
+    setProfileSetting(
+      p,
+      recapMarkerKey("quarter"),
+      periodOf(p, "quarter", td, true).end
+    );
+
+    // The CARD: the in-progress period at the profile's chosen scale.
+    const card = getRecapCard(p, "kg");
+    expect(card.scale).toBe("month");
+    expect(card.end).toBe(today(p));
+    expect(card.start).toBe(periodOf(p, "month", today(p), false).start);
+    // Every line it renders is one the month scale declares — no week-only line leaks
+    // onto a monthly card.
+    for (const l of card.lines) expect(lineSpeaksAt(l.key, "month")).toBe(true);
+
+    // THE INVARIANT (#221): the send is the SAME gather and the SAME builder, differing
+    // only in the window-selection parameter. So the numbers cannot drift — every line
+    // the send speaks is byte-identical to rebuilding it from the same gather.
+    const sendRecap = buildRecap(gatherRecapInput(p, "kg", "month", true, td));
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+    await runRecap(p, "RecapWidgetAgrees", td);
+    const text = String(
+      JSON.parse(fetchMock.mock.calls[0][1].body as string).text
+    );
+    expect(sendRecap.lines.length).toBeGreaterThan(0);
+    for (const l of sendRecap.lines) expect(text).toContain(l.value);
+
+    setRecapScale(p, "week");
+    expect(getRecapCard(p, "kg").scale).toBe("week");
+  });
+
+  it("does not re-send a period the marker already records", async () => {
+    const { p, td } = seedCompletedMonth("RecapNoDouble");
+    setRecapScale(p, "month");
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+    await runRecap(p, "RecapNoDouble", td);
+    const first = fetchMock.mock.calls.length;
+    expect(first).toBeGreaterThan(0);
+    // The retry attempt an hour later — the same slot, the same closed period.
+    await runRecap(p, "RecapNoDouble", td);
+    expect(fetchMock.mock.calls.length).toBe(first);
+  });
+
+  it("a cadence switch mid-period sends the NEW cadence's next completed period", async () => {
+    const { p, td } = seedCompletedMonth("RecapSwitch");
+    const week = periodOf(p, "week", td, true);
+    const month = periodOf(p, "month", td, true);
+    onlyScale(p, "week", td);
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+
+    // Week cadence: this slot's week goes out and the week marker advances.
+    await runRecap(p, "RecapSwitch", td);
+    expect(getProfileSetting(p, recapMarkerKey("week"))).toBe(week.end);
+    const afterWeek = fetchMock.mock.calls.length;
+    expect(afterWeek).toBeGreaterThan(0);
+
+    // The user switches to monthly mid-period. The month was pre-spent by onlyScale, so
+    // nothing is re-delivered — the switch does not resurrect a period already covered.
+    setRecapScale(p, "month");
+    await runRecap(p, "RecapSwitch", td);
+    expect(fetchMock.mock.calls.length).toBe(afterWeek);
+
+    // Clearing the month marker models the next month closing: exactly ONE send, at
+    // month scale, and it narrates the closed month rather than the week.
+    setProfileSetting(p, recapMarkerKey("month"), "");
+    await runRecap(p, "RecapSwitch", td);
+    expect(fetchMock.mock.calls.length).toBe(afterWeek + 1);
+    const text = String(
+      JSON.parse(fetchMock.mock.calls.at(-1)![1].body as string).text
+    );
+    expect(text).toContain("Monthly recap");
+    expect(text).toContain(recapRangeLabel(month.start, month.end));
+  });
+
+  it("a superseded scale is marked spent, not queued", async () => {
+    // The week and the month both close on this slot (the month marker is clear, the
+    // quarter's is spent). ONE message goes out — the month's — and the WEEK's marker
+    // is advanced anyway, so next tick does not deliver those same days again.
+    const { p, td } = seedCompletedMonth("RecapSupersede");
+    const week = periodOf(p, "week", td, true);
+    const month = periodOf(p, "month", td, true);
+    setProfileSetting(
+      p,
+      recapMarkerKey("quarter"),
+      periodOf(p, "quarter", td, true).end
+    );
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+    await runRecap(p, "RecapSupersede", td);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const text = String(
+      JSON.parse(fetchMock.mock.calls[0][1].body as string).text
+    );
+    expect(text).toContain("Monthly recap");
+    expect(getProfileSetting(p, recapMarkerKey("month"))).toBe(month.end);
+    expect(getProfileSetting(p, recapMarkerKey("week"))).toBe(week.end);
+
+    // ...and the very next call is silent.
+    await runRecap(p, "RecapSupersede", td);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a quiet period spent without sending", async () => {
+    const p = newProfile("RecapQuiet");
+    const td = ARRIVAL;
+    setRecapScale(p, "month");
+    const month = periodOf(p, "month", td, true);
+    setProfileSetting(
+      p,
+      recapMarkerKey("quarter"),
+      periodOf(p, "quarter", td, true).end
+    );
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+    const res = await runRecap(p, "RecapQuiet", td);
+    expect(res.failed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getProfileSetting(p, recapMarkerKey("month"))).toBe(month.end);
+  });
+
+  it("leaves the markers alone when no channel is configured", async () => {
+    const { p, td } = seedCompletedMonth("RecapNoChannel");
+    setRecapScale(p, "month");
+    setProfileSetting(
+      p,
+      recapMarkerKey("quarter"),
+      periodOf(p, "quarter", td, true).end
+    );
+    const res = await runRecap(p, "RecapNoChannel", td);
+    expect(res.failed).toBe(false);
+    // Unmarked, so the first recap after a channel is added is not silently lost.
+    expect(getProfileSetting(p, recapMarkerKey("month"))).toBeUndefined();
   });
 });
 

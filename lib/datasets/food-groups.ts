@@ -100,3 +100,49 @@ export function foodGroupEmoji(slug: string): string {
 
 // The catalog map itself, for the reflection test and any surface iterating groups.
 export { FOOD_GROUP_EMOJI };
+
+// ---- One SHORT name per group ----
+//
+// The abbreviation vocabulary for dense surfaces — the Trends day-history
+// filter chips and matrix row labels, AND the Telegram food nudge's half-width
+// quick-log buttons and tally line (one vocabulary across surfaces, the #221
+// discipline the emoji map already follows): the full catalog name where it is
+// already compact, a curated abbreviation where it is not — each keeping the
+// word that actually distinguishes the group (never "Fish" for two fish
+// groups). Same contract as the emoji map: one entry per catalog slug, pinned
+// by `datasets-food-groups.test.ts`.
+const FOOD_GROUP_SHORT: Readonly<Record<string, string>> = {
+  fatty_fish: "Fatty fish",
+  lean_fish: "Lean fish",
+  shellfish: "Shellfish",
+  leafy_greens: "Greens",
+  cruciferous: "Cruciferous",
+  other_vegetables: "Other veg",
+  legumes: "Legumes",
+  nuts_seeds: "Nuts",
+  whole_grains: "Whole grains",
+  fruit: "Fruit",
+  berries: "Berries",
+  fermented: "Fermented",
+  poultry: "Poultry",
+  eggs: "Eggs",
+  dairy: "Dairy",
+  red_meat: "Red meat",
+  tubers: "Potatoes",
+  water: "Water",
+  processed_meat: "Processed",
+  refined_grains: "Refined",
+  fried_food: "Fried",
+  added_sugar: "Sweets",
+  sugary_drinks: "Sugary drinks",
+  alcohol: "Alcohol",
+};
+
+// The short display name for a slug, falling back to the full name (and so to
+// the slug itself) for a retired/unknown one.
+export function foodGroupShortName(slug: string): string {
+  const canonical = matcher.match(slug)?.slug ?? slug;
+  return FOOD_GROUP_SHORT[canonical] ?? foodGroupName(slug);
+}
+
+export { FOOD_GROUP_SHORT };

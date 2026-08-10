@@ -28,6 +28,12 @@ import {
 // marker, an audiogram threshold) keeps the reference-range page, because the rule is
 // cadence and not category.
 //
+// #2365 finished the thought the routing started: a vital whose quantity owns a metric
+// surface is no longer LISTED in the flat catalog either, so the first test below is
+// the catalog's half — the row is gone, and everything it used to lead to is on the
+// surface that owns the quantity. The remaining entry points (a stale bookmark, the
+// panel cross-reference) still land there, which is what the rest of the spec pins.
+//
 // Fixture (#868 hygiene): the dedicated E2E_LOGIN_VITALS_DAY profile, whose
 // vitals (SpO2, blood pressure, respiratory rate, body temperature) live nowhere else,
 // so --repeat-each and a neighbour's writes can't move them. The #1932 routing
@@ -42,17 +48,25 @@ async function vitalsDayPage(browser: Parameters<typeof loginAs>[0]) {
 }
 
 test.describe("a vital renders on its own cadence's surface (#1932)", () => {
-  test("the biomarkers list opens a vital on the metric detail surface", async ({
+  test("the flat catalog no longer lists a vital that owns a metric surface (#2365)", async ({
     browser,
   }) => {
     const page = await vitalsDayPage(browser);
-    await page.goto("/results/biomarkers");
+    await page.goto(
+      "/results/biomarkers?q=" + encodeURIComponent("Oxygen Saturation")
+    );
 
-    // The reading is listed in the catalog exactly as before — what changed is
-    // where its name goes.
-    const row = page.getByRole("link", { name: "Oxygen Saturation" });
-    await followLink(page, row, /\/trends\/metric\/spo2/);
+    // #1932 sent the catalog row's name to the metric page; #2365 removed the row.
+    // The quantity has a home, so the flat catalog stopped duplicating it — while the
+    // domain vitals with no home stay listed (pinned in biomarker-category-scope).
+    await expect(
+      page
+        .getByTestId("results-biomarkers")
+        .getByRole("link", { name: "Oxygen Saturation" })
+    ).toHaveCount(0);
 
+    // Nothing was lost with the row: the surface that owns the quantity carries it.
+    await page.goto("/trends/metric/spo2");
     await expect(page.getByTestId("metric-detail-page")).toBeVisible();
     // The two things the lab page could not give a daily reading: a windowed chart
     // and the trailing 7/30/90-day summary (#1909).

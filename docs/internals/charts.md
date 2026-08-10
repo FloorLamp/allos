@@ -83,7 +83,7 @@ renders) and per-theme hexes (what the validator checks) — and both move
 together:
 
 - `chartActivityRamp` — brand green, 4 steps over a neutral empty cell.
-  `WorkoutHeatmap`, `ActiveDaysStrip`.
+  `DayHistory`, `ActiveDaysStrip`.
 - `chartAdherenceState` — `taken`/`partial` are two steps of the same brand
   ramp, `skipped` the neutral, `missed` the rose. `AdherenceCalendar`.
 
@@ -96,23 +96,24 @@ surface — in a grid, every cell's neighbour is another cell.
 
 ## 2. Choosing a form
 
-| The data's job                                   | Form                                      | Component                                                |
-| ------------------------------------------------ | ----------------------------------------- | -------------------------------------------------------- |
-| a value over time                                | time series                               | `LineChartCard`                                          |
-| a value over time, in a grid tile                | **sparkline** (`LineChartCard sparkline`) | `TrendMiniCard`                                          |
-| a per-day QUANTITY, in a grid tile               | **bar sparkline**                         | `BarSparkline` (via `TrendMiniCard sparklineShape`)      |
-| two series compared over time                    | overlay on one time axis                  | `CompareChart`                                           |
-| one analyte over time, against ranges            | banded time series                        | `BiomarkerChart`                                         |
-| one metric, several reporting devices            | series-per-source                         | `SourceCompareChart`                                     |
-| composition over time                            | stacked bars                              | `StackedBarCard`, `ZoneMinutesCard`                      |
-| a relationship between two variables             | scatter                                   | `ScatterChartCard`                                       |
-| consistency / "did I show up"                    | calendar heatmap                          | `WorkoutHeatmap`, `ActiveDaysStrip`, `AdherenceCalendar` |
-| growth against reference percentiles             | percentile bands + trajectory             | `GrowthChart`                                            |
-| ONE day, every layer, on a clock axis            | hand-drawn SVG day chart (scrub + zoom)   | `IntradayChart` (via `IntradayPanel`)                    |
-| an illness episode's temperature + doses         | hand-drawn SVG episode chart              | `illness/FeverChart`                                     |
-| _panel before/after (not built — #1445 Part 3b)_ | _slope / dumbbell_                        | —                                                        |
-| _actual vs target vs pace (not built)_           | _bullet tile_                             | —                                                        |
-| _"what's my normal range" (not built)_           | _dot strip with a median marker_          | —                                                        |
+| The data's job                                   | Form                                      | Component                                           |
+| ------------------------------------------------ | ----------------------------------------- | --------------------------------------------------- |
+| a value over time                                | time series                               | `LineChartCard`                                     |
+| a value over time, in a grid tile                | **sparkline** (`LineChartCard sparkline`) | `TrendMiniCard`                                     |
+| a per-day QUANTITY, in a grid tile               | **bar sparkline**                         | `BarSparkline` (via `TrendMiniCard sparklineShape`) |
+| two series compared over time                    | overlay on one time axis                  | `CompareChart`                                      |
+| one analyte over time, against ranges            | banded time series                        | `BiomarkerChart`                                    |
+| one metric, several reporting devices            | series-per-source                         | `SourceCompareChart`                                |
+| composition over time                            | stacked bars                              | `StackedBarCard`, `ZoneMinutesCard`                 |
+| a relationship between two variables             | scatter                                   | `ScatterChartCard`                                  |
+| consistency / "did I show up"                    | calendar heatmap                          | `ActiveDaysStrip`, `AdherenceCalendar`              |
+| coverage + composition, per group per day        | day-history calendar + group×day matrix   | `DayHistory` (over `lib/day-history.ts`)            |
+| growth against reference percentiles             | percentile bands + trajectory             | `GrowthChart`                                       |
+| ONE day, every layer, on a clock axis            | hand-drawn SVG day chart (scrub + zoom)   | `IntradayChart` (via `IntradayPanel`)               |
+| an illness episode's temperature + doses         | hand-drawn SVG episode chart              | `illness/FeverChart`                                |
+| _panel before/after (not built — #1445 Part 3b)_ | _slope / dumbbell_                        | —                                                   |
+| _actual vs target vs pace (not built)_           | _bullet tile_                             | —                                                   |
+| _"what's my normal range" (not built)_           | _dot strip with a median marker_          | —                                                   |
 
 **No dual axis without a unit difference.** Two y-scales make line crossings an
 artifact of the scale choice rather than a fact about the data. `CompareChart`

@@ -25,11 +25,27 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
   await page.goto("/longevity");
   const main = page.getByRole("main");
 
-  // §1 BioAge — the reused hero (value + delta + estimate note).
+  // §1 BioAge — the hero, which since #2367 renders HERE and nowhere else (value +
+  // delta + estimate note), plus the #2366 per-input breakdown.
   const bioAge = main.getByTestId("longevity-bio-age");
   await expect(bioAge).toBeVisible();
-  await expect(bioAge.getByTestId("bio-age-hero")).toBeVisible();
-  await expect(bioAge.getByTestId("bio-age-value")).toBeVisible();
+  const hero = bioAge.getByTestId("bio-age-hero");
+  await expect(hero).toBeVisible();
+  await expect(hero.getByTestId("bio-age-value")).toBeVisible();
+
+  // What moves the number (#2366): the nine analytes PLUS chronological age, each
+  // with an effect in years against a stated reference, ranked by magnitude. Age is
+  // in the list rather than hidden — it is usually the largest term, and seeing that
+  // is what stops the number reading as a verdict on the labs alone.
+  const inputs = hero.getByTestId("bio-age-input");
+  await expect(inputs).toHaveCount(10);
+  await expect(inputs.filter({ hasText: "Chronological age" })).toHaveCount(1);
+  // Every row states an effect; the first one is the largest by construction.
+  await expect(hero.getByTestId("bio-age-effect")).toHaveCount(10);
+  await expect(inputs.first()).toContainText(/[+−±]\d+\.\d yr/); // first-ok: the ranked list's leading row IS the assertion
+  // The copy frames it as a property of the MODEL, never as advice.
+  await expect(hero).toContainText("re-runs the whole model");
+  await expect(hero).toContainText("not predictions about you");
 
   // §2 Fitness — pillar stat(s) + the read view over fitness_assessments with
   // the "run a check" deep link into Training.

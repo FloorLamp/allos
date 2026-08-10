@@ -52,10 +52,14 @@ describe("tableNameKey", () => {
   });
 });
 
+// The kidney index's canonical spelling since #2335. Named once so the assertions
+// below read as "the eGFR row" rather than repeating the long form five times.
+const EGFR = "Estimated Glomerular Filtration Rate (eGFR)";
+
 describe("filterDerivedForTable", () => {
   const rows = [
     derived(-1, "Non-HDL Cholesterol", "2024-01-01", "non-optimal-high"),
-    derived(-2, "eGFR", "2024-01-01", "high"),
+    derived(-2, EGFR, "2024-01-01", "high"),
   ];
 
   it("keeps lab-category derived rows when unfiltered", () => {
@@ -76,27 +80,29 @@ describe("filterDerivedForTable", () => {
     );
     expect(
       filterDerivedForTable(rows, { panel: "kidney" }).map((r) => r.name)
-    ).toEqual(["eGFR"]);
+    ).toEqual([EGFR]);
     // A panel neither derived index belongs to keeps nothing.
     expect(filterDerivedForTable(rows, { panel: "thyroid" })).toHaveLength(0);
   });
 
   it("range=oor keeps only clinical-flagged rows", () => {
     const out = filterDerivedForTable(rows, { range: "oor" });
-    expect(out.map((r) => r.name)).toEqual(["eGFR"]);
+    expect(out.map((r) => r.name)).toEqual([EGFR]);
   });
 
   it("range=nonoptimal keeps non-optimal rows too", () => {
     const out = filterDerivedForTable(rows, { range: "nonoptimal" });
-    expect(out.map((r) => r.name).sort()).toEqual([
-      "Non-HDL Cholesterol",
-      "eGFR",
-    ]);
+    expect(out.map((r) => r.name).sort()).toEqual(
+      [EGFR, "Non-HDL Cholesterol"].sort()
+    );
   });
 
+  // The free-text needle is still the bare abbreviation: since #2335 the canonical
+  // name spells the index out, and the abbreviation survives inside its parenthetical
+  // — which is exactly what keeps a search for "egfr" finding it.
   it("free-text q matches the name", () => {
     const out = filterDerivedForTable(rows, { q: "egfr" });
-    expect(out.map((r) => r.name)).toEqual(["eGFR"]);
+    expect(out.map((r) => r.name)).toEqual([EGFR]);
   });
 
   it("free-text q matches the CANONICAL name (the row heading), not just the raw name (#383)", () => {

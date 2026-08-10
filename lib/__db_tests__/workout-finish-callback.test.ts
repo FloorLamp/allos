@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — the stale-workout nudge's "🏁 Finish workout" / "🗑 Discard"
+// DB INTEGRATION TIER — the stale-workout nudge's "🏁 Finish workout" / "🗑️ Discard"
 // inline buttons (issue #1205) driven end-to-end through handleCallbackQuery against
 // the REAL query + finish cores, with only the Telegram network surface stubbed.
 // Proves: a Finish tap stamps end_time through the shared finishWorkoutSession core,
@@ -114,7 +114,7 @@ function cq(data: string, chatId: string, text = "⏱️ Still working out?") {
           [
             { text: "🏁 Finish workout", callback_data: data },
             {
-              text: "🗑 Discard",
+              text: "🗑️ Discard",
               callback_data: data.replace("wofinish", "wodiscard"),
             },
           ],

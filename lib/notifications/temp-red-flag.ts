@@ -29,6 +29,7 @@ import { episodeHref } from "../hrefs";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
+import { GLYPH } from "./glyphs";
 
 const log = createLogger("notify");
 
@@ -53,7 +54,7 @@ export function renderTempRedFlagMessage(
       ? [{ label: "View episode", url: `${base}${episodeHref(episodeId)}` }]
       : [];
   return {
-    title: `🌡️ Fever check: ${who}${title}`,
+    title: `${GLYPH.temperature} Fever check: ${who}${title}`,
     body,
     actions,
     kind: "illness-care",

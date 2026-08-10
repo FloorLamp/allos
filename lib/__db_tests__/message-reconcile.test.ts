@@ -440,7 +440,7 @@ describe("a dose keyboard lives as long as the write core honors the tap (#2018)
             callback_data: `wofinish:${pid}:${activityId}`,
           },
           {
-            text: "🗑 Discard",
+            text: "🗑️ Discard",
             callback_data: `wodiscard:${pid}:${activityId}`,
           },
         ],
@@ -698,7 +698,7 @@ describe("class 1 — the other state-claim families", () => {
             callback_data: `esctake:${pid}:${doseId}:${itemId}:${td}`,
           },
           {
-            text: "⏭ Skipped",
+            text: "⏭️ Skipped",
             callback_data: `escskip:${pid}:${doseId}:${itemId}:${td}`,
           },
         ],
@@ -736,13 +736,13 @@ describe("class 1 — the other state-claim families", () => {
       keyboard: [
         [
           {
-            text: "✓ Ana",
+            text: "✅ Ana",
             callback_data: `hh:${carer}:${wardA}:${a.doseId}:${a.itemId}:${td}`,
           },
         ],
         [
           {
-            text: "✓ Bo",
+            text: "✅ Bo",
             callback_data: `hh:${carer}:${wardB}:${b.doseId}:${b.itemId}:${td}`,
           },
         ],
@@ -1610,7 +1610,7 @@ describe("workout-draft: finished and discarded are OPPOSITE outcomes (#2275)", 
       "[Fern] ⏱️ Still working out?",
       [
         { text: "🏁 Finish workout", callback_data: `wofinish:${pid}:${id}` },
-        { text: "🗑 Discard", callback_data: `wodiscard:${pid}:${id}` },
+        { text: "🗑️ Discard", callback_data: `wodiscard:${pid}:${id}` },
       ]
     );
     expect(text).toBe("[Fern] ⏱️ Still working out? — session finished.");
@@ -1631,7 +1631,7 @@ describe("workout-draft: finished and discarded are OPPOSITE outcomes (#2275)", 
       "[Dev] ⏱️ Still working out?",
       [
         { text: "🏁 Finish workout", callback_data: `wofinish:${pid}:${id}` },
-        { text: "🗑 Discard", callback_data: `wodiscard:${pid}:${id}` },
+        { text: "🗑️ Discard", callback_data: `wodiscard:${pid}:${id}` },
       ]
     );
     expect(text).toBe("[Dev] ⏱️ Still working out? — session discarded.");
@@ -1814,7 +1814,7 @@ describe("practice: the close names which practice caught up (#2275)", () => {
       7010,
       "practice",
       "[Pat] 🧘 Practices behind pace",
-      [{ text: "✓ Meditation", callback_data: `pdone:${pid}:${targetId}:n1` }]
+      [{ text: "✅ Meditation", callback_data: `pdone:${pid}:${targetId}:n1` }]
     );
     expect(text).toBe("[Pat] 🧘 Practices behind pace — done for the week.");
   });
@@ -1861,11 +1861,11 @@ describe("household-round: the close is per MEMBER (#2275)", () => {
       "[Cam] 💊 Household doses — 2 due across 2 members",
       [
         {
-          text: "✓ Ada · Ada D3",
+          text: "✅ Ada · Ada D3",
           callback_data: `hh:${receiver}:${ada}:${adaDose.doseId}:${adaDose.itemId}:${d}`,
         },
         {
-          text: "✓ Bo · Bo Iron",
+          text: "✅ Bo · Bo Iron",
           callback_data: `hh:${receiver}:${bo}:${boDose.doseId}:${boDose.itemId}:${d}`,
         },
       ]
@@ -1896,7 +1896,7 @@ describe("escalation: a caregiver's chat is named too (#2274)", () => {
           callback_data: `esctake:${pid}:${doseId}:${itemId}:${d}`,
         },
         {
-          text: "⏭ Skip",
+          text: "⏭️ Skip",
           callback_data: `escskip:${pid}:${doseId}:${itemId}:${d}`,
         },
         {

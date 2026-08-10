@@ -2,11 +2,16 @@ import { describe, it, expect } from "vitest";
 import {
   proteinIntake,
   proteinTarget,
-  proteinTodayNudgeLine,
   proteinTodayNudgeParts,
   proteinTodayStatus,
   type ProteinToday,
 } from "@/lib/protein";
+import { proteinNudgeLine } from "@/lib/notifications/food-format";
+
+// The plain rendering moved to the module that serves the surface (#2391); the parts
+// still come from lib/protein, so this stays a test of one conclusion rendered once.
+const proteinTodayNudgeLine = (t: ProteinToday) =>
+  proteinNudgeLine(proteinTodayNudgeParts(t));
 
 // Pure-tier tests for the #974 protein band gauge model + food-nudge status line. The
 // gather (getProteinToday) is DB-tier-tested; here we pin the pure formatters and the
@@ -41,7 +46,7 @@ describe("proteinTodayNudgeLine", () => {
     );
     // #1822 item 4: the floor marker survives (#767) but stops stacking hedges —
     // "at least 55 g of ~95–130 g" became "55 g+ so far · goal 95–130 g".
-    expect(line).toBe("🍗 Protein: 55 g+ so far · goal 95–130 g"); // rounded band (96→95, 128→130)
+    expect(line).toBe("🍗 Protein: 55 g+ so far — goal 95–130 g"); // rounded band (96→95, 128→130)
     expect(line).not.toContain("at least");
   });
 
@@ -90,8 +95,10 @@ describe("proteinTodayNudgeLine", () => {
     // The parts and the joined line can't disagree.
     const t = makeToday({ todayGrams: 140 });
     const parts = proteinTodayNudgeParts(t);
+    // The em dash introduces the FIRST qualifier the line has and `·` separates the
+    // rest (#2391) — the same grammar every other system-initiated line uses.
     expect(proteinTodayNudgeLine(t)).toBe(
-      `${parts.emoji} Protein: ${parts.amount} so far · goal ${parts.band} — ${parts.statusWords}`
+      `${parts.emoji} Protein: ${parts.amount} so far — goal ${parts.band} · ${parts.statusWords}`
     );
   });
 
@@ -106,7 +113,7 @@ describe("proteinTodayNudgeLine", () => {
   // is still carried, and the below-band tone contract (#1710/#992) is untouched.
   it("carries the identical facts in one pass — floor marker, band, no nag", () => {
     const below = proteinTodayNudgeLine(makeToday({ todayGrams: 36 }));
-    expect(below).toBe("🍗 Protein: 36 g+ so far · goal 95–130 g");
+    expect(below).toBe("🍗 Protein: 36 g+ so far — goal 95–130 g");
     // The three stacked hedges are gone: no "at least", no "of", no "~".
     expect(below).not.toMatch(/at least|~| of /);
     // Still neutral below the band — a marker, not a nag.

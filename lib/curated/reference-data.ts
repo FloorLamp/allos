@@ -326,7 +326,7 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
   // low/zero reading is never flagged). Whole-year bands are coarse for a birth
   // phenomenon that clears in days — interpret a neonate against age in days.
   // (Nathan & Oski's Hematology and Oncology of Infancy and Childhood.)
-  "Nucleated Red Blood Cells": [
+  "Nucleated Red Blood Cells, Relative": [
     {
       min_age: 0,
       max_age: 1,
@@ -347,7 +347,7 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
   // Immature granulocytes carry a modest physiologic left shift in early infancy
   // (higher than the near-zero adult reference), so a single infancy band lifts
   // only the upper bound. (Sysmex IG parameter pediatric intervals; Nathan & Oski.)
-  "Immature Granulocytes": [
+  "Immature Granulocytes, Relative": [
     { min_age: 0, max_age: 1, ref_low: null, ref_high: 2 },
   ],
   "Immature Granulocytes, Absolute": [
@@ -358,11 +358,12 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
 // Curated lab entries that don't require the model — well-established, standard
 // reference ranges added to the committed dataset API-free (mirrors AGE_BANDS).
 // Two groups:
-//  1. CBC differential complements: the existing "Neutrophils"/
-//     "Lymphocytes" entries hold the % form and "Monocytes"/"Eosinophils"/
-//     "Basophils" the absolute (cells/uL) form, so the complementary form of each
-//     needs its own entry (a % and an absolute count are not interconvertible
-//     without the WBC).
+//  1. CBC differential complements: the neutrophil/lymphocyte entries held the %
+//     form and the monocyte/eosinophil/basophil entries the absolute (cells/uL) one,
+//     so the complementary form of each needed its own entry (a % and an absolute
+//     count are not interconvertible without the WBC). Since #2335 every member of
+//     the differential SAYS which it is, so both halves read "…, Relative" and
+//     "…, Absolute" and neither is the unstated default.
 //  2. Common clinical-lab analytes genuinely missing from the AI-generated
 //     vocabulary but routinely mapped from a CCD/SHC (Total T4/T3, ESR, Direct
 //     Bilirubin, LDH, CK, Anion Gap, Reticulocytes % and absolute).
@@ -453,7 +454,7 @@ export const CURATED_LABS: Biomarker[] = [
   // NB: named "…, Relative" (the standard clinical term for a %-differential),
   // NOT "…, %". normalizeCanonicalKey (lib/canonical-name) strips "%" as
   // punctuation, so "Monocytes, %" collapses to the token set {monocytes} and
-  // collides with the pre-existing absolute "Monocytes" (cells/uL) entry — making
+  // collides with the absolute "Monocytes, Absolute" (cells/uL) entry — making
   // the percent entry UNREACHABLE via snapCanonicalName (the import routing). The
   // "relative" token keeps the key distinct: {monocytes, relative} ≠ {monocytes}.
   {
@@ -506,7 +507,7 @@ export const CURATED_LABS: Biomarker[] = [
   // Sources: Nathan & Oski's Hematology and Oncology of Infancy and Childhood
   // (neonatal NRBC clearance); Sysmex IG parameter reference intervals; Mayo/ARUP.
   {
-    name: "Nucleated Red Blood Cells",
+    name: "Nucleated Red Blood Cells, Relative",
     category: "lab",
     unit: "%",
     ref_low: null,
@@ -528,7 +529,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Absolute nucleated-red-cell count (×10^3/uL). Normally ≈0 in children/adults; elevated at birth and clears within the first week (see infancy age band). Companion to the NRBC percentage.",
   },
   {
-    name: "Immature Granulocytes",
+    name: "Immature Granulocytes, Relative",
     category: "lab",
     unit: "%",
     ref_low: null,
@@ -591,7 +592,7 @@ export const CURATED_LABS: Biomarker[] = [
   },
   // ── Missing common clinical-lab analytes ──────────────────────────────────
   {
-    name: "Total T4",
+    name: "Thyroxine, Total (Total T4)",
     category: "lab",
     unit: "ug/dL",
     ref_low: 4.5,
@@ -602,7 +603,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Total thyroxine. Elevated by high thyroxine-binding globulin (pregnancy, estrogen); Free T4 is more specific.",
   },
   {
-    name: "Total T3",
+    name: "Triiodothyronine, Total (Total T3)",
     category: "lab",
     unit: "ng/dL",
     ref_low: 80,
@@ -676,7 +677,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Varies widely by analyzer (direct-ISE methods run lower) and whether K+ is included in the calculation; range is intentionally broad.",
   },
   {
-    name: "Reticulocytes",
+    name: "Reticulocytes, Relative",
     category: "lab",
     unit: "%",
     ref_low: 0.5,
@@ -1402,7 +1403,7 @@ export const CURATED_LABS: Biomarker[] = [
   // Foundation, "What Is Considered Normal Eye Pressure Range?"
   // (https://glaucoma.org/articles/what-is-considered-normal-eye-pressure).
   {
-    name: "Intraocular Pressure",
+    name: "Intraocular Pressure, Unspecified Eye",
     category: "vitals",
     unit: "mmHg",
     ref_low: 10,
@@ -1440,7 +1441,7 @@ export const CURATED_LABS: Biomarker[] = [
   // renders as a dated timeline instead of a misleading flat chart. Per-eye + a
   // generic entry. INFORMATIONAL, NOT MEDICAL ADVICE.
   {
-    name: "Visual Acuity",
+    name: "Visual Acuity, Unspecified Eye",
     category: "vitals",
     unit: null,
     ref_low: null,
@@ -1858,7 +1859,7 @@ export const CURATED_LABS: Biomarker[] = [
   // `lab` (not `reference`) because — unlike an immutable blood group — an infection
   // result is a real clinical finding that can recur and is worth surfacing.
   {
-    name: "RPR",
+    name: "Rapid Plasma Reagin (RPR)",
     category: "lab",
     unit: null,
     ref_low: null,
@@ -2214,7 +2215,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Peak expiratory flow (PEF) — the fastest speed you can blow out, in litres per minute, from a peak-flow meter. Deliberately carries NO population band: an action plan reads a blow as a percentage of your OWN personal best (green ≥80%, yellow 50–80%, red <50%), so the zone is computed against your recorded best and there is no verdict without one. National Heart, Lung, and Blood Institute / GINA asthma action-plan zones.",
   },
   {
-    name: "FEV1",
+    name: "Forced Expiratory Volume in 1 Second (FEV1)",
     category: "vitals",
     unit: "L",
     ref_low: null,
@@ -2225,7 +2226,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Forced expiratory volume in one second, in litres — the air you can force out in the first second of a full blow, measured by spirometry. No fixed band: normal is a percent of the value predicted for your height, age and sex, so it is trended as an absolute series and read beside the FEV1/FVC ratio. American Thoracic Society / European Respiratory Society.",
   },
   {
-    name: "FVC",
+    name: "Forced Vital Capacity (FVC)",
     category: "vitals",
     unit: "L",
     ref_low: null,
@@ -2511,7 +2512,7 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Total omega-6 fatty acids as a percentage of total fatty acids by weight. It counts species the panel does not itemize (DGLA and minor omega-6s), so it is NOT the sum of the printed arachidonic and linoleic acid lines.",
   },
   {
-    name: "ANA Screen, IFA",
+    name: "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
     category: "lab",
     unit: null,
     ref_low: null,
@@ -2520,5 +2521,231 @@ export const CURATED_LABS: Biomarker[] = [
     optimal_high: null,
     direction: "in_range",
     note: "Antinuclear antibody screen by indirect immunofluorescence (IFA) — the first-line test for autoimmune connective-tissue disease. Qualitative (Negative / Positive); a positive is normally followed by a titer and a staining pattern, and low-level positives are common in healthy people.",
+  },
+  // ---- #2322: the uncatalogued analytes that had no home -------------------
+  //
+  // Three families a clinical document prints that the catalog had nothing for.
+  // Every band below states its source in the entry's own note, and where a
+  // measure has no defensible population band it is curated WITHOUT one rather
+  // than given an invented range: the raw QT (rate-dependent, which is what the
+  // rate-corrected QTc exists to fix), the T axis (read against the QRS axis, not
+  // an arc), the whole-body Lean Mass Index (an age/sex percentile), peak METs
+  // (age/sex predicted; it carries an optimal target only), and the four
+  // qualitative verdicts, which are a clinician's judgement rather than a
+  // measurement and therefore never flag.
+  {
+    name: "PR Interval",
+    category: "vitals",
+    unit: "ms",
+    ref_low: 120,
+    ref_high: 200,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Time from the start of atrial depolarization to the start of the ventricular QRS, in milliseconds — how long the electrical signal takes to cross from the atria to the ventricles. Normal in adults is 120–200 ms; longer is first-degree AV block, shorter suggests pre-excitation. AHA/ACCF/HRS 2009 recommendations for the standardization and interpretation of the electrocardiogram.",
+  },
+  {
+    name: "QRS Duration",
+    category: "vitals",
+    unit: "ms",
+    ref_low: null,
+    ref_high: 110,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "How long the ventricles take to depolarize, in milliseconds. Normal adult QRS is about 70–100 ms and 110 ms is the usual upper limit; wider than that points to a bundle-branch block or another intraventricular conduction delay. Only the upper bound is banded — a short QRS is not a finding. AHA/ACCF/HRS 2009 ECG standardization recommendations.",
+  },
+  {
+    name: "QT Interval",
+    category: "vitals",
+    unit: "ms",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Time from the start of the QRS to the end of the T wave, in milliseconds — the whole ventricular depolarization-plus-recovery cycle. Deliberately carries NO band: the raw QT shortens as heart rate rises, so the same 400 ms is normal at 60 bpm and prolonged at 100 bpm. The rate-corrected QTc is the value that is read against a threshold, and it is curated separately. AHA/ACCF/HRS 2009 ECG standardization recommendations.",
+  },
+  {
+    name: "QTc Interval",
+    category: "vitals",
+    unit: "ms",
+    ref_low: null,
+    ref_high: 450,
+    ref_high_male: 450,
+    ref_high_female: 460,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "The QT interval corrected for heart rate (usually by Bazett), in milliseconds — the ECG value that actually carries the clinical weight here. Prolongation is the actionable finding: ≥450 ms in men and ≥460 ms in women is prolonged, and ≥500 ms marks a substantially raised risk of torsades de pointes. Several common medications are monitored with it. Only the upper bound is banded; the rare short-QT syndromes are not screened for this way. AHA/ACCF/HRS 2009 recommendations for the standardization and interpretation of the electrocardiogram, Part IV (ST segment, T and U waves, and the QT interval).",
+  },
+  {
+    name: "P Axis",
+    category: "vitals",
+    unit: "degrees",
+    ref_low: 0,
+    ref_high: 75,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "The average direction of atrial depolarization in the frontal plane, in degrees — an orientation, not an amount. The conventional normal arc in adults is 0° to +75°; outside it suggests a non-sinus atrial rhythm or lead misplacement. A wide arc, so a value near either edge is not by itself meaningful. AHA/ACCF/HRS 2009 ECG standardization recommendations.",
+  },
+  {
+    name: "QRS Axis",
+    category: "vitals",
+    unit: "degrees",
+    ref_low: -30,
+    ref_high: 90,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "The average direction of ventricular depolarization in the frontal plane, in degrees. The conventional normal arc in adults is −30° to +90°; more negative is left axis deviation and more positive is right axis deviation, both of which are read alongside the rest of the tracing rather than on their own. AHA/ACCF/HRS 2009 ECG standardization recommendations.",
+  },
+  {
+    name: "T Axis",
+    category: "vitals",
+    unit: "degrees",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "The average direction of ventricular repolarization in the frontal plane, in degrees. Deliberately carries NO band: unlike the P and QRS axes it is not read against an absolute arc but against the QRS axis it sits beside — a wide frontal-plane QRS–T angle is the finding, and that comparison is made on the tracing. Trended as a dated series only. AHA/ACCF/HRS 2009 ECG standardization recommendations.",
+  },
+  {
+    name: "Ventricular Rate",
+    category: "vitals",
+    unit: "bpm",
+    ref_low: 60,
+    ref_high: 100,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "How many times the ventricles contracted per minute during the ECG recording. Normal is 60–100/min. It is the ECG's own measured rate and is kept separate from resting heart rate on purpose: in atrial fibrillation or flutter the ventricular rate is the response to a much faster atrial rate, so the two are genuinely different numbers on the same tracing. AHA/ACCF/HRS 2009 ECG standardization recommendations.",
+  },
+  {
+    name: "Electrocardiogram (ECG) Interpretation",
+    category: "vitals",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: 'The reading clinician\'s overall verdict on an ECG, in words ("normal sinus rhythm", "sinus bradycardia", "anterior infarct, age undetermined"). Qualitative — a judgement rather than a measurement, so it carries no reference band and never flags; it is kept as a dated timeline beside the intervals the same tracing measured.',
+  },
+  {
+    name: "Ankle-Brachial Index (ABI), Left",
+    category: "vitals",
+    unit: "ratio",
+    ref_low: 1.0,
+    ref_high: 1.4,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Left ankle systolic pressure divided by the higher brachial (arm) pressure — a unitless ratio screening for peripheral artery disease. 1.00–1.40 is normal, 0.91–0.99 borderline, ≤0.90 abnormal and diagnostic of PAD, and above 1.40 means the vessels are too stiff to compress rather than healthy. Kept as a separate series from the right leg. AHA 2012 scientific statement on measurement and interpretation of the ankle-brachial index.",
+  },
+  {
+    name: "Ankle-Brachial Index (ABI), Right",
+    category: "vitals",
+    unit: "ratio",
+    ref_low: 1.0,
+    ref_high: 1.4,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Right ankle systolic pressure divided by the higher brachial (arm) pressure — a unitless ratio screening for peripheral artery disease. 1.00–1.40 is normal, 0.91–0.99 borderline, ≤0.90 abnormal and diagnostic of PAD, and above 1.40 means the vessels are too stiff to compress rather than healthy. Kept as a separate series from the left leg. AHA 2012 scientific statement on measurement and interpretation of the ankle-brachial index.",
+  },
+  {
+    name: "Cardio-Ankle Vascular Index (CAVI), Left",
+    category: "vitals",
+    unit: "index",
+    ref_low: null,
+    ref_high: 8.0,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "A blood-pressure-independent measure of arterial stiffness from the heart to the left ankle, reported as a unitless index. Under 8.0 is normal, 8.0–9.0 borderline, and 9.0 or above suggests arteriosclerosis; it rises with age. Kept as a separate series from the right side. Device criteria of the VaSera oscillometric method (Shirai et al., J Atheroscler Thromb).",
+  },
+  {
+    name: "Cardio-Ankle Vascular Index (CAVI), Right",
+    category: "vitals",
+    unit: "index",
+    ref_low: null,
+    ref_high: 8.0,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "A blood-pressure-independent measure of arterial stiffness from the heart to the right ankle, reported as a unitless index. Under 8.0 is normal, 8.0–9.0 borderline, and 9.0 or above suggests arteriosclerosis; it rises with age. Kept as a separate series from the left side. Device criteria of the VaSera oscillometric method (Shirai et al., J Atheroscler Thromb).",
+  },
+  {
+    name: "Fat Mass Index",
+    category: "scan",
+    unit: "kg/m2",
+    ref_low: null,
+    ref_high: null,
+    ref_low_male: 3,
+    ref_high_male: 6,
+    ref_low_female: 5,
+    ref_high_female: 9,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "WHOLE-BODY fat mass divided by height squared — the fat half of body composition expressed the way BMI is, so it is comparable between people of different heights. The normal-fat range is 3–6 kg/m² in men and 5–9 kg/m² in women; above it is excess fat and below it is fat depletion. Sex-specific by nature, so no sex-neutral band is drawn. Schutz, Kyle & Pichard, Int J Obes 2002; NHANES DXA reference values, Kelly et al., PLoS ONE 2009.",
+  },
+  {
+    name: "Lean Mass Index",
+    category: "scan",
+    unit: "kg/m2",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "higher_better",
+    note: "WHOLE-BODY lean (fat-free) mass divided by height squared — trunk and head included, which is what separates it from the Appendicular Lean Mass Index, the arms-and-legs-only measure sarcopenia thresholds are defined on. Carries no fixed band: it is read as an age- and sex-specific percentile against DXA reference data rather than against a cutoff. NHANES DXA body-composition reference values, Kelly et al., PLoS ONE 2009.",
+  },
+  {
+    name: "Metabolic Equivalents (METs)",
+    category: "vitals",
+    unit: "METs",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: 10,
+    optimal_high: null,
+    direction: "higher_better",
+    note: "Peak functional capacity reached on an exercise test, in metabolic equivalents — multiples of resting energy use, where 1 MET is about 3.5 mL/kg/min of oxygen. No population reference band, because the expected value depends on age and sex; the prognostic reading is broad instead — under 5 METs is poor capacity, 5–10 moderate to good, and 10 or more is excellent, which is the optimal target carried here. ACC/AHA exercise-testing guidance; FRIEND registry reference standards.",
+  },
+  {
+    name: "Exercise Stress Test Result",
+    category: "vitals",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: 'The supervising clinician\'s overall verdict on an exercise stress test, in words ("negative for ischemia", "positive", "non-diagnostic — target heart rate not reached"). Qualitative — a judgement rather than a measurement, so it carries no reference band and never flags; it is kept as a dated timeline beside the capacity the same test measured.',
+  },
+  {
+    name: "Color Vision",
+    category: "vitals",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: 'The examiner\'s verdict on a colour-vision screen such as the Ishihara plates ("normal", "red-green deficiency", "12/14 plates correct"). Qualitative — a judgement rather than a measurement, so it carries no reference band and never flags; most colour-vision deficiency is inherited and lifelong, so the value rarely moves.',
+  },
+  {
+    name: "Audiologic Diagnosis",
+    category: "vitals",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: 'The audiologist\'s verdict on a hearing evaluation, in words ("normal hearing bilaterally", "mild high-frequency sensorineural hearing loss, left"). Qualitative — a judgement rather than a measurement, so it carries no reference band and never flags; the per-ear, per-frequency thresholds it summarises are curated separately and are what the audiogram surface plots.',
   },
 ];

@@ -562,7 +562,10 @@ describe("a report stored BEFORE the registry splits on read (#2313)", () => {
     for (const d of parsed.declinedNames ?? [])
       expect(d.declaration.reason.length).toBeGreaterThan(0);
     const egfr = parsed.declinedNames![0].declaration;
-    expect(egfr.kind === "covered-elsewhere" && egfr.instead).toBe("eGFR");
+    // The curated name since #2335 — see the pure twin of this assertion.
+    expect(egfr.kind === "covered-elsewhere" && egfr.instead).toBe(
+      "Estimated Glomerular Filtration Rate (eGFR)"
+    );
   });
 
   it("leaves the stored blob untouched — the split is a view, not a migration", () => {

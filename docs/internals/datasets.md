@@ -1,9 +1,9 @@
 # Curated-dataset framework
 
-Status: **partial** · framework + harness + linter shipped; **21 datasets
+Status: **partial** · framework + harness + linter shipped; **22 datasets
 migrated** onto the framework (#860 Track B, waves 1–3 + the deferred
 canonical-biomarkers): `allergen-cross-reactivity`, `biomarker-descriptions`,
-`bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`,
+`biomarker-supplement-map`, `bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`,
 `drug-interactions`, `fitness-norms`, `food-drug-interactions`, `food-groups`,
 `growth-charts`, `icd10-common`, `illness-thresholds`,
 `medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`,
@@ -271,6 +271,136 @@ reprocess, and a future declaration takes effect everywhere at once.
 `serializeImportReport` folds the declined half back into the stored unresolved
 list so a re-persist cannot freeze today's registry into the blob and cost that
 retroactivity.
+
+#### The second consumer: Coverage candidacy (#2319)
+
+Data → Coverage → **Uncatalogued items** asks a different question of a
+different set — `detectBiomarkerGaps` compares the profile's used canonical
+names as `biomarkerCoverageKey` **families** against the curated
+(`source = 'seed'`) vocabulary, where the debugger compares `isSeededCanonical`
+on the exact name — and it reached the same wrong conclusion: a settled decision
+rendered as an open invitation to track the item or ask for it to be catalogued.
+
+It consults `uncuratedAnalyte` **unchanged**. That was the point of shaping the
+registry as a question about the analyte rather than about the debugger: a
+second consumer imports it as-is, and neither surface owns a list or an opinion.
+`detectBiomarkerGaps` now returns `{ candidates, declined }` — a partition of
+the same uncovered set on the same family key — and `getCoverageCandidacy`
+(`lib/queries/coverage.ts`) serves both from one read of the used names.
+`getCoverageGapCandidates` remains as the candidate-only reader.
+
+Declined items render in their own **"Not catalogued, on purpose"** section with
+the declaration's reason (and its `instead` link where there is one), never with
+a Track button and never with the catalog-request link. Hiding them outright
+would read as data we lost; offering them is what the declaration exists to
+stop. A declared analyte a user had **already** opted to track stays in their
+tracked list — the system may stop offering something without deleting a choice
+somebody made.
+
+This is **disjoint from `NON_IDENTITY_CATEGORIES`** (#2318), and the two must
+not be conflated. That rule withholds biomarker identity from a whole _class_ of
+stored observation and is applied upstream inside `getUsedCanonicalNames`, so
+such a name never reaches detection at all. This is a per-_name_ decision about
+a row that genuinely does carry identity. Do not re-filter by category in
+`lib/coverage-gaps.ts`; that guard already ran.
+
+The family that carries the volume is a **DEXA scan's regional decomposition**:
+per-region fat percentage, per-site bone mineral density and content, the
+compartment-mass grid (with and without the `(g)` a report prints inside the
+name — `normalizeCanonicalKey` keeps it as a token, so the two spellings are two
+keys), and the derived depot ratios. Around ninety declared names, expanded from
+a cross product rather than hand-listed, all sharing **one** `out-of-scope`
+declaration: they are the outputs of a single scan rather than independent
+analytes, and no population reference band exists for left-arm fat percentage.
+`out-of-scope` and not `covered-elsewhere` — the whole-body totals
+(`Body Fat Percentage`, `Bone Mineral Density T-Score`) _are_ curated, but a
+region is not its total, and pointing a reader at the total would claim their
+left arm is tracked when it isn't. Those totals stay curated; the completeness
+guard fails the day a declaration blurs that line.
+
+`Fat Mass Index` and `Lean Mass Index` were in that expansion and left it in
+**#2322**. They failed the declaration's own test: they divide by the subject's
+**height**, not by a scan segment, which is what makes them comparable between
+people, and both have published population references (Schutz 2002 / NHANES DXA,
+Kelly 2009) — so "no population reference range exists for them" was simply
+false about those two. The dataset was already carrying the counter-example:
+`Appendicular Lean Mass Index` had been a curated `kg/m2` entry the whole time.
+Both are curated entries now, and the completeness guard would fail if either
+name were left declared as well.
+
+#### The stress test's two halves (#2322)
+
+The five `Stress Test …` vitals are the registry's clearest illustration that a
+family is not automatically one decision. A treadmill report prints a blood
+pressure and a heart rate **twice** — at rest before the test and at peak effort
+— in exactly the units the curated vitals already use. Curating either half
+would fork the blood-pressure and heart-rate series, so neither is curated. But
+they are declined for **opposite** reasons:
+
+- **Resting** (`Stress Test Resting Blood Pressure Systolic` / `Diastolic`) is
+  `covered-elsewhere`. The prefix names the appointment, not a different
+  measurement, so each side points `instead` at the entry that genuinely carries
+  it (`Blood Pressure Systolic` / `Blood Pressure Diastolic`) — one target per
+  side, because a shared declaration would have sent a diastolic reading to the
+  systolic entry.
+- **Peak** (`… Maximum Blood Pressure Systolic` / `Diastolic`,
+  `Stress Test Maximum Heart Rate`) is `out-of-scope`, one declaration for all
+  three. A peak-exercise value is not the resting series, and pointing it at
+  `Resting Heart Rate` would be exactly the dangling-promise failure `instead` is
+  guarded against. Whether peak-exercise vitals deserve a series of their own is
+  a design question about what the app models, not something a catalog addition
+  can settle.
+
+### What a canonical name must carry (#2335)
+
+The rule the curated dataset is held to, written down beside `CANONICAL_ALIASES`
+in `lib/canonical-name.ts` and **enforced** by
+`lib/__tests__/canonical-naming-rule.test.ts`:
+
+- A bare name is permitted **only** where a single universal convention fixes its
+  meaning. In practice that is the **serum specimen**: `Albumin`, `Creatinine`,
+  `Magnesium` and `Folate` beside their `, Urine` / `, RBC` siblings are
+  unambiguous to every clinician and stay bare.
+- Where two members of one family differ by **measure** (relative/absolute),
+  **specimen**, **fraction** (free/total) or **side** (left/right), **every**
+  member states its qualifier — including the one that feels like the default.
+
+The second half is what the CBC differential taught. It held both conventions at
+once: bare `Neutrophils` was the percentage while bare `Monocytes` was the cell
+count, so within one panel a bare name meant opposite things. Picking a
+convention and fixing the outliers would not have held — a bare name keeps
+attracting mis-mapped imports whatever we declare it to mean. Qualifying every
+member makes the ambiguity **unrepresentable** rather than merely resolved, and
+`unitAwareCanonical` (which resolved exactly this %-versus-count collision on a
+real import) arbitrates anything that still arrives bare.
+
+The scan pairs entries by their **comma-qualifier** — an entry `X` sitting beside
+an entry `X, <qualifier>` — rather than by a general token-subset test, which
+drowns in coincidences (`Insulin` is a sub-name of `Insulin-Like Growth Factor 1`)
+and would need exactly the long allowlist that makes a half-scan worthless. Every
+qualifier that actually sits beside a bare sibling is declared with its **axis**,
+and the axis decides whether a bare form may exist, so the scan fails two ways:
+on an undeclared qualifier (a new axis nobody thought about) and on a declared one
+whose axis forbids a bare sibling.
+
+The same pass finished the **`Long Name (ABBR)`** convention. That form is not
+cosmetic: `buildCanonicalIndex` auto-derives BOTH the bare abbreviation and the
+bare long name from such an entry (`FULL_ABBR_RE`), so a hand-written alias row
+for either is redundant — the `FEV1`, `FVC` and `eGFR` routes were deleted when
+those entries took the long form. A parenthetical containing a **space** is not
+treated as an acronym (`looksLikeAbbreviation`), so the thyroid fractions and the
+ANA screen keep load-bearing curated routes.
+
+**Migration 177** carries the 20 renamed entries, reusing #2306's
+`applyCanonicalRename` rather than duplicating its checklist of what a canonical
+name is keyed by. It also **deletes** the retired vocabulary rows, which #2306's
+pass deliberately never does: there the retired row is `ai`-coined and a curated
+row is the authority, whereas here the retired name IS the curated one the dataset
+just dropped, and `seedCanonicalBiomarkers` has no delete pass — so left in place
+it would win its own key forever and block the alias route added to rescue it.
+Because `name` is a `FLAG_RELEVANT_FIELD`, `canonicalFlagsSignature()` moves on
+its own and the boot reconcile re-derives once; `FLAG_LOGIC_VERSION` is
+deliberately **not** bumped, since no range, unit or direction changed.
 
 ## Migrating the next dataset (a thin PR)
 

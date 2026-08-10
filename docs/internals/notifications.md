@@ -411,9 +411,9 @@ the same link as its notification click-through
 (`buildPushPayload`/`pushClickThroughUrl` in `push-core.ts`) and Home Assistant
 forwards it in the payload's `links[]`, refill 📦 Ordered onto a
 `refillSignalKey` bus-snooze (+ deep link; no amount-bearing "mark refilled"),
-escalation ✅ Confirmed taken/⏭ Skip/👍 I'm on it onto `markDoseTaken`/
+escalation ✅ Confirmed taken/⏭️ Skip/👍 I'm on it onto `markDoseTaken`/
 `markDoseSkipped`/an ack that sets the episode marker without logging the dose.
-The ⏭ Skip (#1716) is the dose reminder's own precedent applied to the
+The ⏭️ Skip (#1716) is the dose reminder's own precedent applied to the
 escalation: a skip is a RECORDED DELIBERATE DECISION — distinct from silence —
 written through the same `markDoseSkipped` core, so the ledger cannot tell an
 escalation skip from a reminder skip, and the existing `skippedDoseIds` gate
@@ -547,7 +547,7 @@ top-ranked quick-log buttons two per row — the SAME `rankFoodGroups` the
 each carrying a day-total "(n)" suffix,
 plus the reserved `__protein__`
 pseudo-group's "💪 ＋Xg protein" button at its ranked position, over a day-total
-"✓ Today:" tally line and the protein status line. Buttons are **not consumed**: a
+"✅ Today:" tally line and the protein status line. Buttons are **not consumed**: a
 tap logs one serving and the message re-renders from `buildFoodNudge`, the one
 builder every send, tap-rebuild and reconcile goes through.
 
@@ -556,6 +556,67 @@ window derivation it depended on. The protein button's count is the one that can
 come from the `food_log` day counter — the reserved key never lands there — so it is
 counted off `food_log_events` (`getProteinTapsOnDate`) and merged into the same map,
 which keeps ONE suffix rule for every button on the keyboard.
+
+### A window that closed empty is noticed on the next nudge (#2376)
+
+Every food window missing from the ledger that motivated this was a **forgotten
+log**, not a skipped meal, and nothing in the app noticed. The obvious fix — a
+"you missed lunch" message — is the one §2 of the attention doctrine forbids, so
+the notice is a **clause on a send that was already going to fire**: the food
+nudge for the window that FOLLOWS the empty one.
+
+The reporting slot is **cyclic**, so every window has exactly one and no window
+needs a fourth send invented for it:
+
+| the nudge firing for | carries the gap for |
+| -------------------- | ------------------- |
+| Morning              | YESTERDAY's Evening |
+| Midday               | today's Morning     |
+| Evening              | today's Midday      |
+
+`lib/food-window-gap.ts` is the whole decision, and it is pure: a trailing slice
+of the ledger in, a `FoodWindowGap` or `null` out. There is **no state** — no
+`notify_*` marker (`SEND_MARKER_REGISTRY` is untouched; this rides the food
+nudge's existing `notify_last_food_<Window>` key), no dedupe key, nothing on the
+suppression bus. Log something in the window and the clause disappears on its
+own. `null` — say nothing — is the answer for every case that is not an
+established window observably closing empty: the predecessor has not closed yet
+on the profile's own boundaries; it derived at least one event (a protein tap
+included — a shake is eating); or the profile does not habitually log that
+window. The **habit gate** is a strict majority of the profile's recent logging
+days over `FOOD_WINDOW_HABIT_DAYS` (14), needing at least
+`FOOD_WINDOW_HABIT_MIN_DAYS` (5) logging days before "a majority" means
+anything — which is also how a profile that has never logged food, and one whose
+history predates the events ledger, stay silent. Fourteen days nests strictly
+inside both other engines over this ledger — `RIGHTSIZE_WINDOW_DAYS` (28) and
+`FOOD_REGULARITY_SPAN_DAYS` (21) — per the window-coherence convention in
+`docs/internals/findings.md` §4, asserted in the pure tier.
+
+**It is not #2380's measure, and must not be folded into it.** Food regularity
+(`lib/food-regularity.ts`) reads the same events and asks which GROUPS recur
+inside a window; its denominator is deliberately the days that window was logged
+_at all_, precisely so a day with no morning log stays evidence about **logging**
+rather than about eating. This gate asks that other question — is the window
+logged — so the two are separate computations by that module's own ruling, not a
+duplication to collapse. What they owe each other is the nesting above.
+
+**What the clause may claim.** The app cannot tell a forgotten log from a skipped
+meal and never will, so the sentence has no agent and is about the LEDGER: `📋
+Nothing logged for **Midday** today.` It deliberately borrows no adherence
+language — a window is not a dose and carries no dueness — and it stops there
+rather than saying how to fill the gap: a quick-log tap on that keyboard is
+stamped NOW and lands in the CURRENT window, so "tap to fill it" would be false,
+and the 🕐 eating-time rows that could move it are a ride-along that is often not
+on the keyboard at all (§6). `lib/__tests__/food-window-gap.test.ts` pins the
+absence of agency and dueness words across all six window×day combinations.
+
+`foodWindowGapLine` (`lib/notifications/food-format.ts`) is the copy, composed
+through the message-line grammar below as the **head-only case**: the whole
+sentence is the head, every qualifier role is absent, and the formatter therefore
+adds nothing — no dash, no dot, no words. Each absence is a decision, not an
+omission: a `because` would state a cause the app has no evidence for (which is
+the accusation), a `deadline` would invent a dueness the domain does not have,
+and a `comparison` would be an adherence score.
 
 ### The declared food timing becomes a live check (#2022)
 
@@ -944,7 +1005,7 @@ working out? Finish or discard" note when an `active` session's draft has gone
 quiet past `STALE_MIN` (45 min) — suggest-only (#560), never auto-ends, one-shot
 per activity id (`notify_stale_workout_<activityId>`), waking-gated (a soft
 coaching suggest, not a safety signal). **Actionable finish (#1205):** the nudge
-now carries a **🏁 Finish workout** and **🗑 Discard** inline button alongside
+now carries a **🏁 Finish workout** and **🗑️ Discard** inline button alongside
 the "Open workout" deep-link (the two-way principle — ids only:
 `wofinish:<profileId>:<activityId>` / `wodiscard:<profileId>:<activityId>`; the
 callback resolves activity→profile against the chat like every other family-chat
@@ -1038,11 +1099,11 @@ one-tap surface, never about the field.
 treats an OMITTED `time` as "the caller is a tap, stamp the profile-local
 instant" — distinct from an explicit `null`, which stays the expanded form's
 "this session has no instant". Until #2202 nothing read `practice_logs.time`, so
-the quick sheet and this Done ✓ button both wrote null; once `modalHour` became
+the quick sheet and this Done ✅ button both wrote null; once `modalHour` became
 its reader that inverted into a defect where the fastest logging paths starved
 the inference that reschedules their own nudge. The stamp is bounded to the
 profile's today, so a backdated correction never acquires a fabricated instant. Each behind practice carries an inline
-**"Done ✓"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
+**"Done ✅"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
 one session for TODAY through the shared write core (`logPracticeByTargetId` →
 `logPracticeSession`); the handler answers from the typed `PracticeLogOutcome`
 (never an unconditional confirm — a session log is NOT idempotent, multi-session
@@ -1289,7 +1350,7 @@ A key whose tail is interpolated from a free-form variable is invisible to any
 scan, which is how four namespaces stayed unregistered. Those now mint through
 declared builders in the same module — `foodNudgeMarkerKey`,
 `intakeSlotMarkerKey`, `TICK_SLOT_MARKER_KEYS`, `DIGEST_MARKER_KEY`,
-`WEEKLY_RECAP_MARKER_KEY` — over closed, typed slot vocabularies.
+`recapMarkerKey` — over closed, typed slot vocabularies.
 
 **One cadence decision, four planners.** `planNudgeCadence`
 (`lib/nudge-cadence.ts`) is the pure "given what has already been sent, what is
@@ -1325,14 +1386,14 @@ for **every** `NotificationKind`, what owns its cadence — either
 `nudge-cadence` (naming the adapter module) or one of the exemption owners, each
 with a written reason:
 
-| Owner               | What decides the send                                                                    | Families                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `nudge-cadence`     | `planNudgeCadence` — episode opens, one (or N spaced) sends, marker swept when it closes | refill, preventive, illness-care, followup                |
-| `user-schedule`     | a schedule the user configured; a per-day marker only stops a double send within the day | dose, digest, weekly-recap, workout, food, mood, practice |
-| `item-clock`        | a per-subject clock: the PRN redose interval, the missed-dose escalation ladder          | escalation, redose                                        |
-| `per-subject-event` | one send per subject, id-keyed; the subject cannot happen twice                          | workout-recap, workout-stale, ease-back, milestone        |
-| `on-demand`         | the user's own request, one second earlier                                               | prn-list, symptom, temp, test                             |
-| `not-dispatched`    | nothing mints the kind                                                                   | upcoming, other                                           |
+| Owner               | What decides the send                                                                                             | Families                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `nudge-cadence`     | `planNudgeCadence` — episode opens, one (or N spaced) sends, marker swept when it closes                          | refill, preventive, illness-care, followup                |
+| `user-schedule`     | a schedule the user configured; a per-day (or per-period) marker only stops the same subject being reported twice | dose, digest, weekly-recap, workout, food, mood, practice |
+| `item-clock`        | a per-subject clock: the PRN redose interval, the missed-dose escalation ladder                                   | escalation, redose                                        |
+| `per-subject-event` | one send per subject, id-keyed; the subject cannot happen twice                                                   | workout-recap, workout-stale, ease-back, milestone        |
+| `on-demand`         | the user's own request, one second earlier                                                                        | prn-list, symptom, temp, test                             |
+| `not-dispatched`    | nothing mints the kind                                                                                            | upcoming, other                                           |
 
 The exemptions are the point, not an admission. `planNudgeCadence` answers one
 question — when does an **episode** nudge repeat, and when is its marker stale?
@@ -1354,6 +1415,99 @@ the declaration, and a declaration cannot claim an adapter that does not exist.
 A safety kind may never be declared a member: the planner's freeze rule is a
 suppression-bus lookup, and putting that between a person and their medication
 is the one policy that must not move.
+
+## The review has a cadence (#2178)
+
+The periodic review is **one engine at three scales** — weekly, monthly,
+quarterly — with the scale as a **declared axis**, and it **replaces, never
+stacks**.
+
+**The engine.** `buildRecap` (`lib/recap.ts`) is the ONE pure computation. Every
+difference between a weekly, a monthly and a quarterly recap is a row in
+`RECAP_SCALES` (`lib/recap-scale.ts`) — the period arithmetic, the send marker,
+the narrative kind, the nouns the copy speaks, the gather bound — plus a column
+in `RECAP_LINE_MODEL`, where **every line declares which scales it speaks at and
+why**. `buildRecap` never branches on the scale; it resolves the declared period
+and emits the lines whose declared scale set contains it. Adding a fourth length
+is a row and a column, not a code path. The DB gather
+(`lib/notifications/recap-data.ts`) reads the same declaration and **skips the
+queries whose line does not speak at this scale**, so the registry is
+load-bearing for cost as well as for content.
+
+**The period model.** `PeriodComparison` is the typed "this period vs the
+immediately prior same-shaped period" #2166 asked for. **Months and quarters are
+always calendar** — `week_mode` defines only weeks, and no rolling-month
+convention is invented. Weeks still go through `resolveRecapWindow`, so #223's
+"this week matches the routine counters" and #1021's completed-week send are
+byte-for-byte unchanged.
+
+**The inclusion test**, generalized from #1935's owner-decided coverage rule: a
+line appears at a scale only if its fact **becomes visible** at that scale, and
+**no scale re-totals the smaller periods**. "You did 47 workouts" is four weekly
+lines summed and handed back with an authority none of them had, so the count
+lines (`workouts`, `adherence`, `zone2`) are declared week-only and the longer
+scales speak **shares, rates and directions** instead — `training-mix`
+(composition + sessions/week), `adherence-pattern` (the weekday/weekend split and
+the drift, which is what a monthly percentage averages away), `weight-trajectory`
+(robust net change, a per-week rate, and the same figure one period back). A line
+that merely still _works_ at a longer scale is not admitted.
+
+**The precedence rule — replace, never stack.** A profile has ONE recap slot: the
+weekday and time it already configured (`notify_recap_day` / `notify_recap_hour`,
+off by default). Every scale arrives in that slot and nowhere else.
+
+> At a recap slot, a scale is **applicable** when it is at or above the profile's
+> chosen cadence, its calendar period has closed, and this slot is the **first**
+> one on or after the day it closed. Exactly one recap is sent: the applicable
+> scale with the **longest** period. The scales it outranks are marked spent for
+> their own period without sending — their news is inside the one that went out,
+> so they are spent, not queued.
+
+`planRecapSend` (`lib/recap-scale.ts`) is that rule, pure and DB-free; the tick
+only decides that the slot is open. On the first slot on or after Jan 1 / Apr 1 /
+Jul 1 / Oct 1 a weekly profile has a week, a month **and** a quarter closed at
+once — the **quarter-end Sunday** — and receives one quarterly recap rather than
+three messages. The "first arrival" clause is what keeps it self-limiting: a
+deploy, or a recap re-enabled in mid-May, never delivers March out of nowhere,
+because March's arrival day is long past.
+
+**Reach and consent.** The attention doctrine (`docs/internals/findings.md`) lets
+the system reduce contact unilaterally and never increase it. Monthly and
+quarterly recaps therefore need **no new consent**: a longer scale can only ever
+_replace_ the send that was already going to happen in a slot the user
+configured. A weekly profile receives exactly one recap per slot (52 a year: 40
+weekly, 8 monthly, 4 quarterly — pinned by
+`lib/__tests__/recap-scale.test.ts`); a monthly or quarterly profile receives
+strictly fewer. Choosing a longer cadence is a contact **reduction**, which is a
+user's to make freely, and the system never moves the setting itself. Running two
+cadences at once is not offered.
+
+**The marker.** `notify_last_recap_<scale>`, minted through `recapMarkerKey` over
+the closed scale union, cadence class `per-period`: the value is the **end date of
+the period the scale last spoke for**, not a send date. That is what retires a
+superseded scale — a quarterly recap advances the week's marker to the week it
+would have reported, so those days are never delivered twice. The old
+`notify_last_weekly_recap` is `legacy` with its residue stated: nothing reads it,
+it is deliberately not migrated, and the changeover costs nothing because the new
+week marker reads as absent and the first recap fires at the profile's normal
+slot — the day it would have fired anyway.
+
+**Settings.** The cadence is `notify_recap_scale`, profile-scoped **content**
+beside the profile-scoped schedule; delivery channels stay login-scoped, per the
+mixed-scope Notifications model. It renders as a third select on the recap row's
+`day-time` control, because it is the same consent as the day and the time: one
+slot, one arrival.
+
+**The dashboard card** follows the setting — the same gather drives card and send
+(#221's identical-numbers invariant), the card on the **in-progress** period and
+the send on the one that **closed**. The persisted widget id stays `weekly-recap`;
+renaming it would silently un-place every saved dashboard layout.
+
+**Not a fourth cadence.** The annual retrospective (#2179) is deliberately absent
+from `RECAP_SCALES` — a profile whose only review arrives every twelve months has
+no review, and a year does not fit in a message. It is a rendered surface with a
+pointer send, and because it would _stack_ beside the chosen cadence it carries
+its own toggle. This registry owns the review; it does not own the retrospective.
 
 ## The tick has a memo of its own (#2118, #2111, #2249, #2283)
 
@@ -1510,7 +1664,8 @@ happens.
 **Morning digest (one merged message, #1108).** The tick sends ONE summary per
 profile per day at the time its MODE resolves (see below), hard-deduped by the single
 `notify_last_digest` marker. Sections in order: **Illness** (open-episode
-headline) → **Today** → **Yesterday** (activities/adherence/weight) → **Sleep**
+headline) → **Today** → **Yesterday** (activities/adherence/weight/steps/nutrition)
+→ **Sleep**
 (#1117; ON by default when the digest is enabled as of #1378 — an opt-OUT
 toggle, `getProfileSleepDigest` reads absent-means-on, a stored `"0"` still off,
 and the freshness + no-data gates in `gatherDigestSleep` are unchanged so a
@@ -1534,6 +1689,72 @@ declared ∪ derived). The separate "what's due" upcoming digest and its
 key); the `upcoming` NotificationKind is retained in the type union /
 `parseDisabledKinds` for back-compat but is no longer a toggleable matrix row —
 the single `digest` kind governs the merged message.
+
+### Yesterday's protein and fibre (#2379)
+
+The digest covered sleep, training, doses, biomarkers and situations and said
+nothing about the two nutrition targets the app already models end to end. This is
+a **reach** change, not a new engine: `lib/protein.ts` and `lib/fiber.ts` already
+own the intake composition, the resolved target and the adequacy verdict, and the
+`/nutrition` day picker already reads them per calendar day.
+
+- **One gather, one computation (#221).** `getNutritionDay(profileId, date)`
+  (`lib/queries/nutrition.ts`) composes the SAME per-day verdicts the day picker
+  renders — `getProteinOnDate` + `assessProteinAdequacy`, and `getFiberOnDate` —
+  into the pure `nutritionDayPosition` (`lib/nutrition-day.ts`). No new SQL, no new
+  threshold, no second adequacy rule. The digest's adapter is
+  `gatherDigestNutrition` (`lib/notifications/digest-data.ts`), which resolves the
+  day's shortfalls and the reader's preference from that one call.
+- **What the position carries.** Per nutrient: `grams`, the target's FLOOR
+  (`targetGrams` — protein's `gramsLow`, fibre's DRI Adequate Intake),
+  the engine's own `status`, the `shortfallGrams` gap, and `isFloor` — TRUE for
+  every non-`tracked` basis, the #767/#976 floor discipline carried rather than
+  flattened. `nutritionShortfalls(position)` is the entry point a curated-food
+  follow-up (#2383) sizes a suggestion from; nothing downstream re-derives a gap.
+- **YESTERDAY, the same `yd` the activities and adherence are scored on.** The
+  completed day is what the digest reports; today's eating is the food nudge's
+  question. Protein's target is resolved **as of that day**, so a weigh-in recorded
+  since cannot leak backward into a claim about the past.
+- **Three silences, three different facts.** A day that MET its targets emits
+  nothing at all (so a typical morning gets SHORTER, not longer — a line that always
+  renders trains people to skip the digest). A day with nothing logged emits
+  nothing, because absence of logging is not evidence of low intake. A nutrient
+  whose target does not resolve — protein with no bodyweight on record — is omitted
+  rather than scored against a guess, and the other nutrient still stands on its own.
+  A verdict with a 0 g figure (a lone unquantifiable fibre capsule) is also omitted:
+  the day has a signal but no number.
+- **Adequacy is an observation, not an obligation.** No streak, no failure language,
+  no escalation, and no dueness — the figure against the target, and stop.
+- **The line is the #2391 grammar's parts, not text.** `nutritionDigestLine` returns
+  a `MessageLine`: the head is the section noun `Nutrition` and each short nutrient
+  is one **note**, in `NUTRIENT_KEYS` order — the homogeneous-tail case that section
+  describes, where N facts of the same kind are N notes rather than a second shape.
+  `lib/nutrition-day.ts` is registered in `MESSAGE_LINE_MODULES` and types no
+  separator at all: the em dash before the first nutrient and the `·` between two
+  come from `formatMessageLine`, and the head takes **no colon** because it has no
+  value of its own. The per-nutrient floor hedge (`84 g+`) stays inside its own
+  note — the only place it can be right when the two nutrients disagree about it.
+  The `🍽️` marker is stamped by `buildDigest`, like every other line in the
+  Yesterday section, so the producer's parts carry no glyph:
+
+  ```
+  🍽️ Nutrition — protein 84 g+ of 95 g · fiber 18 g+ of 38 g
+  ```
+
+- **A tunable category, with a declared notable predicate.** `nutrition` joins
+  `DIGEST_OWN_CATEGORIES`, so it appears in the ⚙️ Tune keyboard and the Settings
+  mirror with no hand-maintained list to update. Its notable predicate is
+  `nutritionSurvivesDemotion`, and because the line only ever states a shortfall the
+  demotion cannot be "routine days stop" — those already say nothing. What it turns
+  down is the **hedged** shortfall, one measured from a floor basis (the trailing
+  "+" on `84 g+`); a shortfall measured from a **tracked** full-day total is an
+  asserted fact and survives. Nutrition is coaching tier with no safety floor, so
+  the toggle genuinely reduces contact — the one direction the doctrine lets a
+  preference move (`docs/internals/findings.md` §2, §8).
+- **NO new send marker.** The line rides the digest's existing
+  `notify_last_digest`; it can neither cause a send nor be one. Adding a line to a
+  message the reader already opted into is not an increase in contact — and this
+  one makes the common morning shorter.
 
 **When the digest sends: two modes, no `auto` (#2211).** The decision is pure in
 `lib/notifications/digest-schedule.ts` (`planDigestTick`); `planProfileDigestTick`
@@ -1875,7 +2096,10 @@ the surface the signal exists to save them from.
   `getImportIssues` gates on `standingEscalates`, so an `intermittent` provider (a
   failure with a recent success beside it) never reaches a push channel.
 - The grammar is `glyph title — because · dueText`, each part declared rather than
-  inferred. **`because`** is a short cause fragment each producer writes for this
+  inferred — and since #2391 it is a **type with one formatter over it**
+  (`MessageLine` / `formatMessageLine`, `lib/notifications/message-line.ts`), not a
+  convention this line follows. See **The message-line grammar** below.
+  **`because`** is a short cause fragment each producer writes for this
   surface — the `${title} — ${detail}` join silently assumed `detail` was one, which
   held for the integration producer and made the portal line say its imperative
   twice. `syncRequestCopy` stays the one formatter and gained the fragment beside
@@ -1885,6 +2109,9 @@ the surface the signal exists to save them from.
   broke and allos will keep retrying"; `🙋` marks a line only a person can close,
   away from the device they are reading on. It is declared beside the domain, so a
   new named-line domain must choose one rather than defaulting into `🔌` silently.
+  Since #2392 that discipline generalises: both are entries in the glyph vocabulary
+  with `role: "actor"`, and the domain declares `GLYPH.allosRetries` /
+  `GLYPH.personActs` rather than a literal. See **The glyph vocabulary** below.
 
 ```
 • 🙋 Run the portal tool for tbh — never checked · expires in 6 days
@@ -1923,9 +2150,175 @@ sleeper.
 
 **Separator grammar.** One rule across the digest: `:` introduces a label's
 content, `—` attaches a clause that qualifies the statement before it, and `·`
-joins peers on one line (`,` joins peers within one group). Applied wherever the
-above lines touch; a line that predates the rule and was not otherwise edited
-still follows it or is a candidate for the next pass.
+joins peers on one line (`,` joins peers within one group). It is no longer a rule
+a line follows by hand — see below.
+
+## The message-line grammar (#2391)
+
+**One type, one formatter, one scan.** The grammar above was documented and nothing
+implemented it: every producer interpolated its own `—` and `·`, so it was a
+convention re-implemented at each call site and nothing could tell when a site
+stopped following it. `lib/notifications/message-line.ts` is now its implementation.
+
+**The shape.** A head, then declared qualifiers — the first introduced by an em
+dash, the rest separated by `·`:
+
+```
+[glyph ]head[ — q₁][ · q₂ · q₃ …][ link]
+```
+
+`MessageLineParts` names every part: `glyph`, `head`, `because`, `notes[]`,
+`comparison`, `deadline`, `link`. `formatMessageLine` renders it; the qualifiers are
+ordered `because → notes → comparison → deadline`, absent and blank parts are
+dropped, and a line with no qualifier is its head alone with no invented
+punctuation. `formatRichMessageLine` is the same grammar over rich parts (the
+protein nudge bolds its figure), punctuated identically by construction.
+`messageLineQualifiers` hands the ordered parts to a surface that lays them out
+itself rather than rendering a line — the recap card's annotation span.
+
+**Why a type and not a join helper.** The digest's own bug is the argument:
+`${title} — ${detail}` assumed `detail` was a cause fragment, and a shared
+`join(parts, " · ")` would have produced that line just as happily. What fixed it
+was making `because` a **declared field with a stated contract**. So the field
+contracts are the deliverable and the separators are a detail the formatter owns: a
+producer holding a cause fragment and an expiry cannot pass them in the wrong roles,
+and a producer holding neither renders a bare head.
+
+**The head is opaque, deliberately.** The type models no structure inside the head —
+not the emphasized token a sentence turns on (`Nothing logged for **Midday**
+today.`), not a relative day, not a row label. Those are what the clause _says_; a
+role for each would be a copy template wearing a grammar's clothes, re-invented per
+sentence shape. A rich head takes a sequence of parts instead, so emphasis lands
+where the sentence needs it. This is not the hole `${title} — ${detail}` left open:
+that defect was an unstated contract on a **qualifier**, and the head has always been
+the whole subject clause, first and unpunctuated. A qualifier smuggled into a head is
+what the scan fails a registered module for.
+
+**`notes` is the repeating group.** Nothing requires its entries to be
+heterogeneous. A line whose tail is N facts of the same kind — `protein 84 g+ of
+95 g · fiber 18 g+ of 38 g` — is N notes, not a second shape: the `·` between two
+nutrients does the same job as the `·` between a cause and a deadline, joining peer
+qualifiers of one head. The named roles exist to pin contract and order for the
+qualifiers that have one; `notes` is the ordered slot for the ones that are simply
+facts. A per-item hedge stays inside its own note, which is the only place it can be
+right when items disagree. The colon, correspondingly, introduces a head's own
+**value** (`Supplements: 8/9 taken`) — a head with no value takes the em dash for
+the first fact about it.
+
+**The glyph is a value.** Every producer passes it as the `glyph` field rather than
+concatenating a literal onto an assembled line, and a line whose caller decides the
+marker leaves the field absent so the call site can spread its own in
+(`formatEmphasizedLine({ glyph: GLYPH.bullet, ...recapMessageLine(l) })`). That is what
+made the glyph vocabulary (#2392) a value swap at each call site with no signature change
+here — see **The glyph vocabulary** below.
+
+**The two grammars are one grammar.** The digest's `glyph title — because · dueText`
+and the recap's `label: value — note · comparison` differ only in their prefix — a
+glyph that says who acts, versus a row label folded into the head — and both are the
+shape above. The recap had drifted to a parenthesis grammar (#2389 item 2); it now
+composes through `recapMessageLine` + `formatMessageLine`, so the two
+system-initiated messages a profile receives are punctuated by one rule and neither
+can nest a parenthetical against a label that legitimately contains one.
+
+**Scope is declared, not inferred.** `·` is ordinary punctuation elsewhere —
+`lib/activity-import-details.ts` joins heart-rate samples with it — so scope is the
+explicit `MESSAGE_LINE_MODULES` registry, not a pattern over the character.
+`lib/__tests__/message-line.test.ts` fails a registered module that hand-assembles
+`—`/`·` into a string literal, with an allowlist carrying a written reason per
+survivor (keyboard button labels, lists of coequal facts, prose). Adding a module to
+the registry is how a new message surface opts in.
+
+**What the scan does NOT catch, stated so nobody discovers it by shipping.** It keys
+on the grammar's own two separators. A producer that qualifies its head with
+**parentheses, a colon, or a semicolon** — `Workouts: 7 (5 last week)`, the shape the
+recap drifted into in the first place — passes the scan clean. That is the right
+scope for now: keying on every punctuation mark that could ever join two clauses is
+how the scan stops being readable and the abstraction under it turns into a join
+helper. So it is a known edge, not a guarantee: the scan proves nobody re-implements
+`—`/`·`, and REVIEW is what keeps a qualifier out of a head under different
+punctuation. The recap's remaining breakdown parenthetical (`value: "7 (strength 4,
+cardio 3)"`) is exactly such a case and is #2389 item 1's to re-cut — a breakdown
+decomposing the head's own figure, left deliberately.
+
+## The glyph vocabulary (#2392)
+
+**53 distinct base glyphs across 42 files, every one an inline literal.** No registry,
+no declared meaning, and nothing to consult before adding the fifty-fourth — so the
+vocabulary drifted into synonyms (✅ / ✓ / 👍 all affirmative; 🌙 / 😴 / 🛌 / 💤 all
+"sleep"; a flagged lab wearing 🚩 while the flagged vital one function away wore 🩺) and
+into an encoding split: 🌡 appeared both with and without U+FE0F — a colour emoji on one
+platform, a monochrome text glyph on the next, in one product.
+
+`lib/notifications/glyphs.ts` is the registry. Every producer references `GLYPH.<concept>`;
+nothing types a literal.
+
+**Two rules, stated in the registry itself.**
+
+1. **One concept, one glyph.** Adding a synonym requires _retiring_ the incumbent, not
+   sitting beside it. Retirement is a first-class record (`RETIRED_GLYPHS`), pointing at
+   the survivor with a written reason, so a reintroduced `✓` fails the scan **by name**.
+2. **A glyph carries meaning, not decoration — and which meaning is declared.** Every
+   entry names a `role`: **actor** (who must act — #1913 item 8's `🔌` / `🙋`), **alert**
+   (what needs attention), **topic** (what the line is about), **state** (where the thing
+   stands, or where a tap puts it), **control** (what a control does to the _view_,
+   recording nothing). A producer that cannot answer that question for its glyph does not
+   have a glyph; it has decoration.
+
+**Encoding is settled by construction.** Each entry holds one canonical form _including_
+its variation selector, and the completeness test derives the requirement from Unicode
+rather than a hand-kept list: a base that is `\p{Emoji}` but not `\p{Emoji_Presentation}`
+is presentation-ambiguous and MUST carry an explicit U+FE0F or U+FE0E; one that is
+already unambiguous must carry neither, because a redundant selector is a second spelling
+waiting to drift. That is why `🌡️`, `🗑️` and `⏭️` now carry selectors — and why nothing
+in the vocabulary can disagree with itself again.
+
+**What collapsed, and what deliberately did not.** `✓ → ✅`, `💤 → 😴` (the nap line sat
+directly under the overnight line's own face), `🌙 → 🧭` (it marked the derived-context
+line, which fires for a logged period as well as a rough night, one row above the
+situation line asking the identical question), and the flagged **vital** joined the
+flagged **lab** under `🚩`. Three did NOT: `👍` stays distinct from `✅` because the
+escalation's "I'm on it" sits one button from "Confirmed taken" and its own reply says
+_dose not marked taken_; `🔴` is an **obligation** marker on a dose list, not an alarm;
+and `⚑` ranks a due item while `🚩` states a reading is out of range — dressing the first
+as the second is a false alarm in the direction that costs trust.
+
+**Scope is declared, not inferred.** An emoji here is not always a message glyph:
+`lib/datasets/food-groups.ts` carries one icon per catalog row and `lib/mood.ts` a graded
+1–5 scale of faces, and UI surfaces use `✓` and `★` as styled typography. So
+`GLYPH_MODULES` lists the modules that compose text a person reads **in a message**, and
+`lib/__tests__/glyph-vocabulary.test.ts` fails any of them for an emoji literal, with an
+allowlist carrying a written reason per survivor (today: three `why:` paragraphs in
+`reconcile-registry.ts` that quote a button label rather than produce one). The scan
+unescapes `\uXXXX` first, so a codepoint escape is not a way around it — that is how the
+digest's `"\u{1F6B4}"` was found.
+
+## Rich text in the digest and the recap (#2392)
+
+**The seam existed and the two largest messages ignored it.** `lib/notifications/rich-text.ts`
+(#1720) named "#1712 digest" in its own rationale and the digest never adopted it; nor did
+the recap. Both do now: `DigestSection.lines` is `MessageBody`, and both compose through
+`formatEmphasizedLine`.
+
+**The rule is one sentence: the head is emphasized when the line has qualifiers to be
+distinguished from.** Emphasis is contrast, so it is spent only where there is something
+to contrast with. `💊 **Supplements: 8/9 taken** — missed Glycine (1 day) · 2 skipped`
+gains a subject the eye finds at a glance; `☀️ Sunny, UV moderate until 4pm — good window
+for light exposure.` is one clause with nothing beside it, and bolding a whole sentence
+marks nothing while spending the only weight the message had left. It is deliberately not
+a per-call-site choice: a producer that adds a qualifier gets the contrast without asking.
+
+The digest additionally bolds its **section headings** — `Today` / `Yesterday` / `Sleep` /
+`New` is the outline a reader navigates by, and it was set in the same weight as every
+fact under it. The recap bolds its range label for the same reason. A line the digest did
+not compose (a recent-changes line, the workout preview, the time suggestion) stays plain:
+the digest cannot know where a preformatted string's head ends, and guessing is how
+emphasis stops meaning anything. A stored recap narrative (#421) is prose and takes none.
+
+**Channel parity is free and tested.** `plainBody()` of an emphasized line is
+byte-identical to `formatMessageLine` over the same parts, so Web Push, Home Assistant and
+email carry exactly the words they carried before. Every string assertion in
+`lib/__tests__/digest.test.ts` and `lib/__tests__/recap.test.ts` reads `plainBody`,
+which makes each one a parity check.
 
 ## The Telegram command vocabulary (#1895)
 

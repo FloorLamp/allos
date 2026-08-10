@@ -2,16 +2,16 @@ import { describe, it, expect } from "vitest";
 import {
   buildRecapNarrativePrompt,
   composeRecapNarrativeOffline,
-  periodDaysFor,
   periodLabel,
   periodAdjective,
   RECAP_NARRATIVE_SYSTEM,
 } from "../recap-narrative";
-import { recapWindow, periodNounFor } from "../weekly-recap";
-import type { WeeklyRecap } from "../weekly-recap";
+import { recapWindow } from "../recap";
+import type { Recap } from "../recap";
 
-function recap(over: Partial<WeeklyRecap> = {}): WeeklyRecap {
+function recap(over: Partial<Recap> = {}): Recap {
   return {
+    scale: "week",
     start: "2026-07-03",
     end: "2026-07-09",
     headline: "4 workouts, 2 PRs",
@@ -27,14 +27,14 @@ function recap(over: Partial<WeeklyRecap> = {}): WeeklyRecap {
         label: "PRs",
         value: "2",
         comparison: { kind: "none" },
-        note: "Bench press, Squat",
+        notes: ["Bench press, Squat"],
       },
       {
         key: "adherence",
         label: "Adherence",
         value: "90%",
         comparison: { kind: "none" },
-        note: "9/10 doses",
+        notes: ["9/10 doses"],
       },
     ],
     isEmpty: false,
@@ -43,16 +43,16 @@ function recap(over: Partial<WeeklyRecap> = {}): WeeklyRecap {
 }
 
 describe("period helpers", () => {
-  it("maps periods to window lengths", () => {
-    expect(periodDaysFor("week")).toBe(7);
-    expect(periodDaysFor("month")).toBe(30);
-  });
-
+  // The narrative's period vocabulary IS the recap scale registry (#2178) — one
+  // source, so a stored narrative can never name its window differently from the
+  // recap it narrates over.
   it("labels and adjectives per period", () => {
     expect(periodLabel("week")).toBe("This week");
     expect(periodLabel("month")).toBe("This month");
+    expect(periodLabel("quarter")).toBe("This quarter");
     expect(periodAdjective("week")).toBe("weekly");
     expect(periodAdjective("month")).toBe("monthly");
+    expect(periodAdjective("quarter")).toBe("quarterly");
   });
 });
 
@@ -72,13 +72,6 @@ describe("recapWindow generalization (issue #20)", () => {
     expect(w.start).toBe("2026-07-02"); // 31 - 29
     expect(w.prevEnd).toBe("2026-07-01"); // 31 - 30
     expect(w.prevStart).toBe("2026-06-02"); // 31 - 59
-  });
-
-  it("names the period noun (7 -> week, 30 -> month, else period)", () => {
-    expect(periodNounFor(7)).toBe("week");
-    expect(periodNounFor(30)).toBe("month");
-    expect(periodNounFor(31)).toBe("month");
-    expect(periodNounFor(14)).toBe("period");
   });
 });
 

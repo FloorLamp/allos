@@ -955,7 +955,7 @@ appears in all three, and that is the point.
 
 | Class                         | Who initiates               | Examples                                                                                                  | Rule                                                                                                                 |
 | ----------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **1. System-initiated sends** | the system, unprompted      | dose reminders, missed-dose escalation, refill nudges, the morning digest, the weekly recap               | Costs the user's attention. Needs a standing reason and an obligation behind it.                                     |
+| **1. System-initiated sends** | the system, unprompted      | dose reminders, missed-dose escalation, refill nudges, the morning digest, the periodic recap             | Costs the user's attention. Needs a standing reason and an obligation behind it.                                     |
 | **2. Rendered aggregates**    | the user, by opening a page | Upcoming, the dashboard hero, the #1504 count, the Household card                                         | Costs nothing until looked at, but competes for scarce space — so it ranks and folds rather than listing everything. |
 | **3. User-initiated access**  | the user, by asking         | the Supplements page, quick-log overlays, the digest's "Log other…" tail, a reminder's More… row, `/dose` | Costs nothing. Must be COMPLETE — anything the user owns has to be reachable here, or it is effectively deleted.     |
 
@@ -1010,6 +1010,28 @@ their re-consent, so waiting never fixes it. A signal that only reaches surfaces
 you must open to see inverts the feature it is reporting on. That is a reach
 argument, not a severity one — which is why it stops at decorating an existing
 send rather than earning its own.
+
+**Ride-the-SLOT: a longer-scale REVIEW (#2178).** The periodic review gained a
+cadence — weekly / monthly / quarterly — and the reach question it raises is the
+one this rule is for: a monthly recap that sends where nothing sent before is an
+increase in contact, and no amount of "but it's better content" makes it not one.
+
+The answer is structural rather than editorial. A profile has ONE recap slot —
+the weekday and time it already configured, off by default — and **every scale
+arrives in that slot and nowhere else**. At a slot, the applicable scale with the
+longest closed period wins and the shorter ones are marked spent without sending
+(`planRecapSend`, `lib/recap-scale.ts`). So the monthly and quarterly recap can
+only ever **replace** the message that was already going out, never add one: a
+weekly profile receives exactly one recap per slot, a monthly or quarterly
+profile strictly fewer. Choosing a longer cadence is a contact REDUCTION, which
+is a user's to make freely; the system never moves the setting itself, and
+running two cadences at once is not offered.
+
+That is why the feature needs no new consent and ships to every profile with the
+recap enabled. The counter-example is its own sibling: the annual retrospective
+(#2179) would STACK beside the chosen cadence rather than replace it, so it is a
+contact increase and correctly carries its own toggle. "Does it occupy a slot
+that was already going to fire?" is the whole test.
 
 **Ride-the-nag applied to a portal SYNC REQUEST (#1757).** The same argument, one
 step further along: a portal run cannot happen without a person at a specific
@@ -1225,6 +1247,21 @@ non-members rather than gaps:
   Settings → Nutrition declaration. Right-sizing a food habit stops the weekly
   ask and leaves the group loggable, which is the domain's actual
   no-expectation state.
+- **The empty food window notice is not a member either (#2376).** It shares two
+  of the four properties and neither of the other two, which is exactly why it is
+  worth naming here rather than leaving to be re-derived. It HAS
+  revealed-preference detection (a trailing slice of the food ledger, never a
+  self-report) and it self-clears on recovery (a pure function of that slice, no
+  dismissal bookkeeping) — but it SUGGESTS NOTHING and has no accept, so
+  properties 2 and 4 have nothing to apply to. There is no commitment to shrink:
+  food logging declares no floor, so "downward only" has no direction to point
+  and "suggest, never write" has no field to leave unwritten. It is an
+  OBSERVATION riding a send — one agentless clause about the ledger on a nudge
+  the profile already receives — and the family's shape would actively mislead it:
+  offering to "log this window less" would manufacture the very obligation the
+  domain does not have. Its window still nests inside `RIGHTSIZE_WINDOW_DAYS`
+  under the convention above, because the coherence rule is about two engines
+  reading one ledger and is not a membership test.
 
 **The three #1670 domains share ONE detector, not three.** All of them declare
 their floor as a `frequency_targets` row, so `lib/target-rightsize.ts` is one

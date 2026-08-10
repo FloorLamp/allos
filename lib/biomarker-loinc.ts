@@ -43,20 +43,20 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // NOT interconvertible without the WBC, so each LOINC form maps to the canonical
   // entry carrying the MATCHING unit (never both forms onto one identity):
   //   absolute-count LOINC  → the cells/uL canonical entry
-  //   /100-leukocytes LOINC → the "…, Relative" (%) canonical entry. The %-forms
-  //     are named "Relative", NOT "…, %": normalizeCanonicalKey strips "%", so
-  //     "Monocytes, %" would collide with the absolute "Monocytes" entry and never
-  //     route. Neutrophils/Lymphocytes have no absolute/percent name clash (the
-  //     base name is the % form; "…​, Absolute" is the count form).
+  //   /100-leukocytes LOINC → the "…, Relative" (%) canonical entry. Since #2335
+  //     EVERY member states its measure, so the two forms are always "…, Relative"
+  //     and "…, Absolute" and no bare name is in play. They are named "Relative", NOT
+  //     "…, %": normalizeCanonicalKey strips "%", so "Monocytes, %" would collapse to
+  //     the token set {monocytes} and could never route.
   "751-8": "Neutrophils, Absolute", // Neutrophils [#/volume] by Automated count (cells/uL)
-  "770-8": "Neutrophils", // Neutrophils/100 leukocytes by Automated count (%)
+  "770-8": "Neutrophils, Relative", // Neutrophils/100 leukocytes by Automated count (%)
   "731-0": "Lymphocytes, Absolute", // Lymphocytes [#/volume] by Automated count (cells/uL)
-  "736-9": "Lymphocytes", // Lymphocytes/100 leukocytes by Automated count (%)
-  "742-7": "Monocytes", // Monocytes [#/volume] by Automated count (cells/uL)
+  "736-9": "Lymphocytes, Relative", // Lymphocytes/100 leukocytes by Automated count (%)
+  "742-7": "Monocytes, Absolute", // Monocytes [#/volume] by Automated count (cells/uL)
   "5905-5": "Monocytes, Relative", // Monocytes/100 leukocytes by Automated count (%)
-  "711-2": "Eosinophils", // Eosinophils [#/volume] by Automated count (cells/uL)
+  "711-2": "Eosinophils, Absolute", // Eosinophils [#/volume] by Automated count (cells/uL)
   "713-8": "Eosinophils, Relative", // Eosinophils/100 leukocytes by Automated count (%)
-  "704-7": "Basophils", // Basophils [#/volume] by Automated count (cells/uL)
+  "704-7": "Basophils, Absolute", // Basophils [#/volume] by Automated count (cells/uL)
   "706-2": "Basophils, Relative", // Basophils/100 leukocytes by Automated count (%)
 
   // ── Comprehensive Metabolic Panel (CMP) ─────────────────────────────────────
@@ -83,11 +83,11 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "6768-6": "Alkaline Phosphatase", // Alkaline phosphatase [Enzymatic activity/volume] (U/L)
   // eGFR is fragmented across many LOINCs (formula + population variants); all
   // resolve to the one canonical eGFR entry (mL/min/1.73m2).
-  "33914-3": "eGFR", // GFR/1.73 sq M.predicted by Creatinine-based formula (MDRD)
-  "98979-8": "eGFR", // GFR/1.73 sq M.predicted, Creatinine-based formula (CKD-EPI 2021)
-  "48642-3": "eGFR", // GFR/1.73 sq M.predicted among non-blacks (CKD-EPI/MDRD)
-  "48643-1": "eGFR", // GFR/1.73 sq M.predicted among blacks (CKD-EPI/MDRD)
-  "62238-1": "eGFR", // GFR/1.73 sq M.predicted by Creatinine-based formula (CKD-EPI)
+  "33914-3": "Estimated Glomerular Filtration Rate (eGFR)", // GFR/1.73 sq M.predicted by Creatinine-based formula (MDRD)
+  "98979-8": "Estimated Glomerular Filtration Rate (eGFR)", // GFR/1.73 sq M.predicted, Creatinine-based formula (CKD-EPI 2021)
+  "48642-3": "Estimated Glomerular Filtration Rate (eGFR)", // GFR/1.73 sq M.predicted among non-blacks (CKD-EPI/MDRD)
+  "48643-1": "Estimated Glomerular Filtration Rate (eGFR)", // GFR/1.73 sq M.predicted among blacks (CKD-EPI/MDRD)
+  "62238-1": "Estimated Glomerular Filtration Rate (eGFR)", // GFR/1.73 sq M.predicted by Creatinine-based formula (CKD-EPI)
 
   // ── Lipid panel ─────────────────────────────────────────────────────────────
   // All map to existing canonical entries (mg/dL, except ratio / Lp(a)).
@@ -118,12 +118,12 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
 
   // ── Thyroid ─────────────────────────────────────────────────────────────────
   "3016-3": "Thyroid-Stimulating Hormone (TSH)", // Thyrotropin [Units/volume] in Serum/Plasma (uIU/mL)
-  "3024-7": "Free T4", // Thyroxine (T4) free [Mass/volume] in Serum/Plasma (ng/dL)
-  "3051-0": "Free T3", // Triiodothyronine (T3) free [Mass/volume] in Serum/Plasma (pg/mL)
+  "3024-7": "Thyroxine, Free (Free T4)", // Thyroxine (T4) free [Mass/volume] in Serum/Plasma (ng/dL)
+  "3051-0": "Triiodothyronine, Free (Free T3)", // Triiodothyronine (T3) free [Mass/volume] in Serum/Plasma (pg/mL)
   "8099-4": "Thyroid Peroxidase Antibodies (TPOAb)", // Thyroperoxidase Ab [Units/volume] (IU/mL)
   "8098-6": "Thyroglobulin Antibodies (TgAb)", // Thyroglobulin Ab [Units/volume] (IU/mL)
-  "3026-2": "Total T4", // Thyroxine (T4) [Mass/volume] in Serum/Plasma (ug/dL)
-  "3053-6": "Total T3", // Triiodothyronine (T3) [Mass/volume] in Serum/Plasma (ng/dL)
+  "3026-2": "Thyroxine, Total (Total T4)", // Thyroxine (T4) [Mass/volume] in Serum/Plasma (ug/dL)
+  "3053-6": "Triiodothyronine, Total (Total T3)", // Triiodothyronine (T3) [Mass/volume] in Serum/Plasma (ng/dL)
 
   // ── Iron studies ────────────────────────────────────────────────────────────
   "2276-4": "Ferritin", // Ferritin [Mass/volume] in Serum/Plasma (ng/mL)
@@ -190,8 +190,8 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // (nmol/L). NOT 25130-6, which is a urine Pyridinoline/Creatinine ratio.
 
   // ── Hematology (reticulocytes) ──────────────────────────────────────────────
-  "17849-1": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood by Automated count (%)
-  "4679-7": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood (method-less; %)
+  "17849-1": "Reticulocytes, Relative", // Reticulocytes/Erythrocytes in Blood by Automated count (%)
+  "4679-7": "Reticulocytes, Relative", // Reticulocytes/Erythrocytes in Blood (method-less; %)
   "60474-4": "Reticulocytes, Absolute", // Reticulocytes [#/volume] in Blood (10^3/uL)
 
   // ── Hematology (nucleated RBC, immature granulocytes) — issue #723 ──────────
@@ -201,11 +201,11 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // identity. Epic emits alternate LOINCs per form (automated-count vs method-less),
   // all routing to the one entry (like the eGFR / platelet variants above).
   "771-6": "Nucleated Red Blood Cells, Absolute", // Nucleated erythrocytes [#/volume] in Blood (10^3/uL)
-  "58413-6": "Nucleated Red Blood Cells", // Nucleated erythrocytes/100 leukocytes in Blood (%)
+  "58413-6": "Nucleated Red Blood Cells, Relative", // Nucleated erythrocytes/100 leukocytes in Blood (%)
   "34165-1": "Immature Granulocytes, Absolute", // Immature granulocytes [#/volume] in Blood (10^3/uL)
   "51584-1": "Immature Granulocytes, Absolute", // Immature granulocytes [#/volume] in Blood by Automated count (10^3/uL)
-  "71695-1": "Immature Granulocytes", // Immature granulocytes/100 leukocytes in Blood (%)
-  "38518-7": "Immature Granulocytes", // Immature granulocytes/100 leukocytes in Blood by Automated count (%)
+  "71695-1": "Immature Granulocytes, Relative", // Immature granulocytes/100 leukocytes in Blood (%)
+  "38518-7": "Immature Granulocytes, Relative", // Immature granulocytes/100 leukocytes in Blood by Automated count (%)
 
   // ── Hemoglobin electrophoresis fractions — issue #723 ───────────────────────
   // Distinct from Hemoglobin (g/dL, LOINC 718-7) and Hemoglobin A1c (%); each
@@ -246,7 +246,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // flaggable reading that the glaucoma follow-up loop (#700) can hook.
   "79892-6": "Intraocular Pressure, Right Eye", // Right eye Intraocular pressure
   "79893-4": "Intraocular Pressure, Left Eye", // Left eye Intraocular pressure
-  "56844-4": "Intraocular Pressure", // Intraocular pressure of Eye (unspecified)
+  "56844-4": "Intraocular Pressure, Unspecified Eye", // Intraocular pressure of Eye (unspecified)
   // Mental-health instrument total scores (#716) — the panel-total LOINCs, so an
   // extracted questionnaire result routes to the right biomarker series.
   "44261-6": "PHQ-9", // Patient Health Questionnaire 9 item total score
@@ -264,7 +264,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // and the positive-is-bad polarity comes from the 'infection' class in
   // QUALITATIVE_CLASS_BY_LOINC below. Two LOINCs for one analyte (N. gonorrhoeae
   // amplification variants) route to the same identity on purpose.
-  "20507-0": "RPR", // Rapid plasma reagin (syphilis)
+  "20507-0": "Rapid Plasma Reagin (RPR)", // Rapid plasma reagin (syphilis)
   "56888-1": "HIV Antigen/Antibody", // HIV Ag/Ab 4th-gen screen
   "5196-1": "Hepatitis B Surface Antigen (HBsAg)", // existing entry (parenthetical form)
   "13955-0": "Hepatitis C Antibody (Anti-HCV)", // existing entry (parenthetical form)

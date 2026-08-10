@@ -52,7 +52,12 @@ function tokenize(s: string): string {
 // Whether `needle` appears as a CONTIGUOUS token subsequence of `haystack` — a
 // word-boundary containment so "fish" hits "fish oil" but "egg" never hits inside
 // "eggplant". Both sides are singularized token-wise first.
-function tokenContains(haystack: string, needle: string): boolean {
+//
+// Exported because it is THE substance-name matcher every screen in this module uses,
+// and the curated supplement engine's "already in your stack" screen (#2378) asks the
+// same question of the same kind of string ("does this intake item name carry this
+// substance?"). A second tokenizer there would drift from these three.
+export function tokenContains(haystack: string, needle: string): boolean {
   const n = tokenize(needle);
   if (!n) return false;
   return ` ${tokenize(haystack)} `.includes(` ${n} `);

@@ -38,8 +38,8 @@ export const DERIVED_NAMES = [
   "Cholesterol/HDL Ratio",
   "LDL/HDL Ratio",
   "Triglyceride/HDL Ratio",
-  "HOMA-IR",
-  "eGFR",
+  "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
+  "Estimated Glomerular Filtration Rate (eGFR)",
   "PhenoAge",
   "Microalbumin/Creatinine Ratio, Urine",
   "HDL as % of Cholesterol",
@@ -92,6 +92,69 @@ export interface CensoredSummary {
   bias: CensoredBias | null;
 }
 
+// ── PhenoAge leave-one-out effects (#2366) ────────────────────────────────────
+//
+// "Which of these inputs is moving my number, and by how much?" is a question about
+// the PhenoAge COMPUTATION, not about a page, so it is answered here, once, beside
+// the formula — both bio-age surfaces format this one result.
+//
+// The definition matters more than the arithmetic. A term's share of the linear
+// predictor `xb` is the obvious decomposition and it is WRONG in a way that looks
+// plausible: `xb` reaches years through a Gompertz mortality transform, so a term's
+// share of `xb` is not its share of the years; CRP enters as ln(CRP), so a linear
+// share misstates its scale; and chronological age is itself a term, usually the
+// dominant one. What is reported instead is a COUNTERFACTUAL in years — re-run the
+// whole model with ONE input moved to a stated reference value and report the
+// difference — which handles the log and age terms correctly for free because the
+// transform runs end to end each time.
+
+// Where an input's reference value came from. "optimal"/"reference" are the curated
+// bands (resolved by the caller, which owns the dataset read); "model-floor" is the
+// chronological-age row, whose reference is the youngest age this model is applied
+// at (PHENOAGE_MIN_AGE) — there is no curated "optimal age" and inventing one would
+// be worse than naming the model's own boundary.
+export type PhenoAgeReferenceBasis = "optimal" | "reference" | "model-floor";
+
+// A reference value for one input, in that input's CANONICAL unit (years for age).
+export interface PhenoAgeReference {
+  value: number;
+  basis: PhenoAgeReferenceBasis;
+}
+
+// What one input contributes to a PhenoAge, as a counterfactual in years.
+export interface PhenoAgeInputEffect {
+  // The input's key (its preferred canonical name), or AGE_INPUT_KEY for the
+  // chronological-age term.
+  key: string;
+  // The canonical name the value ACTUALLY came from (which glucose spelling the draw
+  // carried), so a surface links to the series it was read out of.
+  name: string;
+  // The short formula token ("CRP", "RDW", "Age").
+  label: string;
+  // The profile's own value, in the input's canonical unit, and its unit.
+  value: number;
+  unit: string;
+  // Set when `value` is a substituted detection limit — the effect computed FROM a
+  // censored value is itself bounded, and a surface must say so rather than present
+  // it as exact.
+  bound?: "<" | ">";
+  // The value the counterfactual moved this input TO, or null when nothing curated
+  // states one (an analyte with neither an optimal nor a reference band).
+  reference: PhenoAgeReference | null;
+  // Years this input ADDS to the result relative to its reference: positive = the
+  // number reads this much higher than it would with the input at reference,
+  // negative = this much lower. NULL — never 0 — when there is no reference to
+  // compare against, or when the counterfactual model run is undefined. An absent
+  // comparison must never read as "this input does nothing".
+  effectYears: number | null;
+}
+
+// The chronological-age term's key. Not a canonical analyte — it is the model's tenth
+// input, and it is shown in the same ranked list rather than hidden, because it is
+// usually the dominant term and seeing that is what stops the number being read as a
+// verdict on the labs alone.
+export const AGE_INPUT_KEY = "Chronological age";
+
 // One computed derived reading. `value` is already rounded to the index's display
 // precision; `unit` is the canonical output unit; `formula` is a human-readable
 // expression with the actual component values substituted, for the "derived"
@@ -115,6 +178,11 @@ export interface DerivedReading {
   // the way a chart dot can, so the censoring is carried on the reading itself and
   // every surface that renders the number says which input it rests on.
   censored?: CensoredSummary;
+  // PhenoAge only, and only when the caller supplied a reference resolver: each input
+  // ranked by how many years it moves this reading (#2366). Computed HERE, in the same
+  // pass and from the same exact component values that produced `value`, so the
+  // decomposition and the number can never disagree.
+  effects?: PhenoAgeInputEffect[];
 }
 
 interface InputSpec {
@@ -286,6 +354,32 @@ const GLUCOSE_MGDL_TO_MMOLL = 1 / 18.0182; // mg/dL → mmol/L (MW 180.156 g/mol
 const CRP_MGL_TO_MGDL = 1 / 10; // mg/L → mg/dL
 // WBC 10^3/µL is numerically identical to 10^9/L (the formula's unit); no factor.
 
+// PhenoAge from the app's CANONICAL-unit component values, keyed by input key — the
+// ONE place the canonical→formula unit conversions above are applied. Both callers go
+// through it: the spec's compute() (which produces the reading) and the leave-one-out
+// decomposition (which re-runs it with one value swapped), so a counterfactual can
+// never be evaluated by a second, drifting copy of the model.
+function phenoAgeFromCanonical(
+  v: Record<string, number>,
+  ageYears: number
+): number | null {
+  return phenoAge({
+    albuminGL: v["Albumin"] * ALBUMIN_GDL_TO_GL,
+    creatinineUmolL: v["Creatinine"] * CREATININE_MGDL_TO_UMOLL,
+    // Keyed by the input's PREFERRED name (see InputSpec.canonical) — the value is
+    // whichever accepted glucose entry the draw actually carried.
+    glucoseMmolL: v["Glucose, Fasting"] * GLUCOSE_MGDL_TO_MMOLL,
+    crpMgDl:
+      v["High-Sensitivity C-Reactive Protein (hs-CRP)"] * CRP_MGL_TO_MGDL,
+    lymphocytePct: v["Lymphocytes, Relative"],
+    mcvFl: v["Mean Corpuscular Volume (MCV)"],
+    rdwPct: v["Red Cell Distribution Width (RDW)"],
+    alpUL: v["Alkaline Phosphatase"],
+    wbcThousandUl: v["White Blood Cell Count"],
+    ageYears,
+  });
+}
+
 // PhenoAge is developed/validated in ADULTS (NHANES III/IV, ages ~20–84); it is
 // not meaningful for children, so — like every adult-population surface — the deriver
 // emits NOTHING below the adult floor. This is the SAME line (ADULT_MIN_AGE from the
@@ -379,7 +473,7 @@ const DERIVED_DEFS: DerivedDef[] = [
     },
   },
   {
-    name: "HOMA-IR",
+    name: "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
     unit: "index",
     decimals: 2,
     formulaLabel: "(Fasting glucose mg/dL × fasting insulin µU/mL) ÷ 405",
@@ -409,7 +503,7 @@ const DERIVED_DEFS: DerivedDef[] = [
     },
   },
   {
-    name: "eGFR",
+    name: "Estimated Glomerular Filtration Rate (eGFR)",
     unit: "mL/min/1.73m2",
     decimals: 0,
     formulaLabel: "CKD-EPI 2021 (creatinine, age, sex; race-free)",
@@ -447,7 +541,7 @@ const DERIVED_DEFS: DerivedDef[] = [
       Creatinine: "+",
       "Glucose, Fasting": "+",
       "High-Sensitivity C-Reactive Protein (hs-CRP)": "+",
-      Lymphocytes: "-",
+      "Lymphocytes, Relative": "-",
       "Mean Corpuscular Volume (MCV)": "+",
       "Red Cell Distribution Width (RDW)": "+",
       "Alkaline Phosphatase": "+",
@@ -474,7 +568,7 @@ const DERIVED_DEFS: DerivedDef[] = [
         unit: "mg/L",
         label: "CRP",
       },
-      { canonical: "Lymphocytes", unit: "%", label: "Lym%" },
+      { canonical: "Lymphocytes, Relative", unit: "%", label: "Lym%" },
       { canonical: "Mean Corpuscular Volume (MCV)", unit: "fL", label: "MCV" },
       {
         canonical: "Red Cell Distribution Width (RDW)",
@@ -488,21 +582,7 @@ const DERIVED_DEFS: DerivedDef[] = [
       const age = demo.ageOn(date);
       // Never guess: PhenoAge needs a known chronological age, and is adult-only.
       if (age == null || age < PHENOAGE_MIN_AGE) return null;
-      return phenoAge({
-        albuminGL: v["Albumin"] * ALBUMIN_GDL_TO_GL,
-        creatinineUmolL: v["Creatinine"] * CREATININE_MGDL_TO_UMOLL,
-        // Keyed by the input's PREFERRED name (see InputSpec.canonical) — the value is
-        // whichever accepted glucose entry the draw actually carried.
-        glucoseMmolL: v["Glucose, Fasting"] * GLUCOSE_MGDL_TO_MMOLL,
-        crpMgDl:
-          v["High-Sensitivity C-Reactive Protein (hs-CRP)"] * CRP_MGL_TO_MGDL,
-        lymphocytePct: v["Lymphocytes"],
-        mcvFl: v["Mean Corpuscular Volume (MCV)"],
-        rdwPct: v["Red Cell Distribution Width (RDW)"],
-        alpUL: v["Alkaline Phosphatase"],
-        wbcThousandUl: v["White Blood Cell Count"],
-        ageYears: age,
-      });
+      return phenoAgeFromCanonical(v, age);
     },
   },
   // ── The four #2300 indices ──────────────────────────────────────────────────
@@ -682,6 +762,16 @@ export function derivedInputKeysFor(name: string): string[] {
   return def ? def.inputs.map(inputKey) : [];
 }
 
+// The CANONICAL UNIT each input of one derived index is declared in, keyed by input
+// key. A caller comparing a curated band against an input's value has to state it in
+// the same unit the formula consumes — the dataset entry's own unit is not always
+// that unit — so the declaration is read from here rather than re-guessed.
+export function derivedInputUnitsFor(name: string): Record<string, string> {
+  const def = DERIVED_DEFS_BY_NAME[name as DerivedName];
+  if (!def) return {};
+  return Object.fromEntries(def.inputs.map((i) => [inputKey(i), i.unit]));
+}
+
 // The canonical input analytes ONE derived index depends on, or [] when `name`
 // isn't a derived index. The retest clock (#482 scope 2) uses this: a derived
 // value's retest is satisfied when its INPUTS are fresh — a stored Non-HDL is not
@@ -840,6 +930,93 @@ function censoringOf(
   };
 }
 
+// Resolve the reference value one PhenoAge input is compared AGAINST. The rule lives
+// with the caller because the values come from the curated canonical dataset (a DB
+// read, and an age/sex-resolved band): this module states WHAT the counterfactual is,
+// not where the target came from. Returning null means the dataset states no target —
+// which produces an explicit "no comparison", never a zero effect.
+export type PhenoAgeReferenceResolver = (input: {
+  key: string;
+  // The canonical name the draw's value actually came from — the entry whose bands
+  // apply, so a draw carrying the band-less unqualified "Glucose" (#2337) honestly
+  // reports that it has no reference.
+  name: string;
+  date: string;
+}) => PhenoAgeReference | null;
+
+// The leave-one-out decomposition of ONE complete PhenoAge draw, in years, ranked by
+// magnitude. `vals`/`hits` are the exact canonical-unit component values that produced
+// `baseline`, so every row is a genuine counterfactual on the same draw.
+function phenoAgeInputEffects(
+  def: DerivedDef,
+  vals: Record<string, number>,
+  hits: Record<string, ResolvedComponent>,
+  ageYears: number,
+  baseline: number,
+  date: string,
+  resolve: PhenoAgeReferenceResolver
+): PhenoAgeInputEffect[] {
+  // Years this run of the model differs from the actual result. Null when the
+  // counterfactual is undefined (the model declines at that value) — an unanswerable
+  // comparison is reported as absent, not as no effect.
+  const effect = (counterfactual: number | null): number | null =>
+    counterfactual == null ? null : roundTo(baseline - counterfactual, 1);
+
+  const rows: PhenoAgeInputEffect[] = def.inputs.map((spec) => {
+    const key = inputKey(spec);
+    const hit = hits[key];
+    const reference = resolve({ key, name: hit.name, date });
+    return {
+      key,
+      name: hit.name,
+      label: spec.label,
+      value: roundTo(hit.value, 2),
+      unit: spec.unit,
+      ...(hit.bound ? { bound: hit.bound } : {}),
+      reference,
+      effectYears:
+        reference == null
+          ? null
+          : effect(
+              phenoAgeFromCanonical(
+                { ...vals, [key]: reference.value },
+                ageYears
+              )
+            ),
+    };
+  });
+
+  // The tenth input. Its reference is the model's own floor rather than a curated
+  // band: "you, at the youngest age this model is applied at", which is checkable and
+  // stated, where an "optimal age" would be invented.
+  rows.push({
+    key: AGE_INPUT_KEY,
+    name: AGE_INPUT_KEY,
+    label: "Age",
+    value: ageYears,
+    unit: "years",
+    reference: { value: PHENOAGE_MIN_AGE, basis: "model-floor" },
+    effectYears: effect(phenoAgeFromCanonical(vals, PHENOAGE_MIN_AGE)),
+  });
+
+  // Ranked by absolute effect, largest first — the ordering IS the insight, and it is
+  // stable and explainable. Rows with no comparison sort last (they are not "zero"),
+  // keeping spec order among themselves.
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => {
+      const ea = a.row.effectYears;
+      const eb = b.row.effectYears;
+      if (ea == null || eb == null) {
+        if (ea == null && eb == null) return a.i - b.i;
+        return ea == null ? 1 : -1;
+      }
+      const d = Math.abs(eb) - Math.abs(ea);
+      return d !== 0 ? d : a.i - b.i;
+    })
+    .map((x) => x.row);
+}
+
 export interface ComputeOptions {
   // Loosen same-draw pairing to inputs within this many days of the anchor draw.
   // Default 0 (strict same-date) — the safe default; a larger window is a caller's
@@ -849,6 +1026,10 @@ export interface ComputeOptions {
   // per derived name — those dates are skipped so a lab that reports e.g. Non-HDL
   // or eGFR directly is never shadowed by a computed duplicate.
   storedDatesByName?: Partial<Record<DerivedName, Set<string>>>;
+  // Supply this to attach the PhenoAge leave-one-out decomposition (#2366) to each
+  // complete PhenoAge reading. Omitted (the sidecar/notification callers, every
+  // non-bio-age surface) → no `effects`, and no extra model runs.
+  phenoAgeReference?: PhenoAgeReferenceResolver;
 }
 
 // Compute every derivable index from the component series. `seriesByCanonical`
@@ -904,6 +1085,23 @@ export function computeDerivedReadings(
 
       const value = roundTo(raw, def.decimals);
       const censored = censoringOf(def, hits);
+      // The decomposition rides along with the number it decomposes: same pass, same
+      // exact component values, same evaluation function (#2366). PhenoAge is the one
+      // index that has one — it is the only linear-predictor model here, and the only
+      // index whose output unit (years) makes a counterfactual readable as itself.
+      const age = def.name === "PhenoAge" ? demo.ageOn(date) : null;
+      const effects =
+        opts.phenoAgeReference && age != null
+          ? phenoAgeInputEffects(
+              def,
+              vals,
+              hits,
+              age,
+              raw,
+              date,
+              opts.phenoAgeReference
+            )
+          : undefined;
       out.push({
         name: def.name,
         date,
@@ -922,6 +1120,7 @@ export function computeDerivedReadings(
           };
         }),
         ...(censored ? { censored } : {}),
+        ...(effects ? { effects } : {}),
       });
     }
   }

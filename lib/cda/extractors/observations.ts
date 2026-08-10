@@ -35,6 +35,7 @@ import {
   loincDisplayName,
   loincFromCode,
   providerFromPerformer,
+  rawQuantity,
   readValue,
   resolveNarrativeText,
   sectionIs,
@@ -43,6 +44,7 @@ import {
   unitFromEntryRelationships,
 } from "../normalize";
 import { sourceDay, sourceInstant } from "../../source-time";
+import { normalizeDurationValue } from "../../duration-value";
 
 // ── Source-stated reference range + abnormal flag (CDA labs) ────────────────
 // A CCD lab observation carries its OWN normal range (<referenceRange>) and the lab's
@@ -184,12 +186,34 @@ export function mapObservation(
   // Unit is on the numeric value when present, else on a COMP "units" component
   // (Epic ships many results this way).
   const unit = valueUnit ?? unitFromEntryRelationships(obs);
+  // ── The DURATION door (#2322) ───────────────────────────────────────────────
+  // A stress test's `Exercise Duration` arrives with the unit `min:sec` and a
+  // colon-formatted value. Read at the SOURCE's grain (the raw <value> attributes,
+  // because a non-numeric PQ leaves readValue with nothing) and narrowed to the one
+  // number + one unit the destination declares — see lib/duration-value.ts. A value
+  // the declared unit cannot explain is DROPPED with a reason rather than stored as a
+  // string that looks like a reading; the drop is reported as `unparsable_value`.
+  const rawPq = rawQuantity(obs.value);
+  const duration = normalizeDurationValue(
+    value ?? rawPq.text,
+    value_num,
+    unit ?? rawPq.unit
+  );
+  if (duration.kind === "unparsable") return null;
+  const resolved =
+    duration.kind === "normalized"
+      ? {
+          value: duration.value,
+          value_num: duration.value_num,
+          unit: duration.unit,
+        }
+      : { value, value_num, unit };
   // Drop noise: an observation with no productive value carries nothing to
   // record — whether it's a nameless "Result.Type" marker or a named-but-empty
   // row like Epic's "Comment(s)" (LOINC 8251-1, <value nullFlavor="NA"/>, which
   // the app would otherwise surface as an empty "—"). Qualitative results keep a
   // string value, so "Positive"/"Detected"/etc. survive.
-  if (value == null && value_num == null) return null;
+  if (resolved.value == null && resolved.value_num == null) return null;
   // The reading's own stated range, read ONCE: it is both a stored field (labs only)
   // and one of the four facts the assessment/qualifier routing below asks about.
   const sourceRange = referenceRangeText(obs, narrativeIds);
@@ -210,8 +234,8 @@ export function mapObservation(
     (category === "lab" &&
       isNonAnalyteObservation({
         loinc,
-        valueNum: value_num,
-        unit,
+        valueNum: resolved.value_num,
+        unit: resolved.unit,
         referenceRange: sourceRange,
         assessmentScale: isAssessmentScaleObs(obs),
       }));
@@ -231,18 +255,22 @@ export function mapObservation(
   // NOTE (#2318): an `assessment` keeps the `obs` prefix a `lab` had, so re-importing
   // a document whose rows were stored (and then re-categorised by migration 177)
   // BEFORE this classification existed still dedupes onto them instead of duplicating.
+  // (The raw PQ text is the last fallback so a duration the door just recovered gets a
+  // distinguishing key — before #2322 such a row had no value at all and was dropped,
+  // so no already-stored external_id can shift under this.)
   const external_id = `ccda:${recordCategory === "vitals" ? "vital" : "obs"}:${String(
     loinc || name
-  ).toLowerCase()}:${date}:${value_num ?? value ?? ""}`;
+  ).toLowerCase()}:${date}:${value_num ?? value ?? rawPq.text ?? ""}`;
   // Body Temperature converts to canonical °F at the import boundary (#1018), the
   // same conversion every live-entry writer performs — a MyChart "38.5 Cel" must
   // join the series as 101.3 degF, not as an unconvertible verbatim row that never
   // charts or flags. Recognized spellings only (UCUM Cel/[degF], °C/°F, text
   // forms); an unrecognized unit or an implausible converted value stays verbatim
   // (the heightToCm skip-don't-guess posture).
-  let stored = { value, value_num, unit };
+  let stored = resolved;
   if (canonical === VITAL_CANONICAL.temperature.canonical) {
-    stored = normalizeImportedTemperature(value_num, unit) ?? stored;
+    stored =
+      normalizeImportedTemperature(resolved.value_num, resolved.unit) ?? stored;
   }
   // The lab's own range + interpretation (#761 follow-up), captured on labs only —
   // vitals keep their dedicated flag engines, and an assessment has no band to be

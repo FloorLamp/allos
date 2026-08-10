@@ -379,7 +379,7 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       ["Aspartate Aminotransferase", "Aspartate Aminotransferase (AST)"],
       ["Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
       ["Thyroid Stimulating Hormone", "Thyroid-Stimulating Hormone (TSH)"],
-      ["Estimated GFR", "eGFR"],
+      ["Estimated GFR", "Estimated Glomerular Filtration Rate (eGFR)"],
       ["Apolipoprotein B", "Apolipoprotein B (ApoB)"],
       ["Cobalamin", "Vitamin B12"],
       ["Folic Acid", "Folate"],
@@ -430,20 +430,26 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
   });
 
   it("routes the differential ABSOLUTE-count spellings to cells/uL entries, not the % ones", () => {
-    // The bare Monocytes/Eosinophils/Basophils entries ARE the cells/uL counts; their
-    // "%" form is the ", Relative" entry (neutrophils invert it: ", Absolute" is the
-    // count, bare is the %). A wrong route mis-groups a cells/uL value onto a % series
-    // (#549/#482), so pin the direction.
-    expect(snapCanonicalName("Absolute Neutrophil Count", index)).toBe(
-      "Neutrophils, Absolute"
-    );
-    for (const [abs, bare] of [
-      ["Absolute Monocytes", "Monocytes"],
-      ["Absolute Eosinophils", "Eosinophils"],
-      ["Absolute Basophils", "Basophils"],
+    // Since #2335 EVERY differential member states its measure, so the count entry is
+    // always "…, Absolute" and the percentage always "…, Relative". A wrong route
+    // mis-groups a cells/uL value onto a % series (#549/#482), so pin the direction —
+    // for the prefixed "Absolute X Count" print form (a curated route) and for the
+    // bare-plural "Absolute X" (which the ", Absolute" entry claims by token set, so
+    // no curated row is needed and none exists).
+    for (const [spelling, count] of [
+      ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
+      ["Absolute Lymphocyte Count", "Lymphocytes, Absolute"],
+      ["Absolute Monocyte Count", "Monocytes, Absolute"],
+      ["Absolute Eosinophil Count", "Eosinophils, Absolute"],
+      ["Absolute Basophil Count", "Basophils, Absolute"],
+      ["Absolute Monocytes", "Monocytes, Absolute"],
+      ["Absolute Eosinophils", "Eosinophils, Absolute"],
+      ["Absolute Basophils", "Basophils, Absolute"],
     ] as const) {
-      expect(snapCanonicalName(abs, index)).toBe(bare);
-      expect(snapCanonicalName(abs, index)).not.toBe(`${bare}, Relative`);
+      expect(snapCanonicalName(spelling, index)).toBe(count);
+      expect(snapCanonicalName(spelling, index)).not.toBe(
+        count.replace(", Absolute", ", Relative")
+      );
     }
   });
 
@@ -576,11 +582,15 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
   });
 
   it("routes the off-list names a FRESH re-extraction coined, and leaves the ambiguous ones alone", () => {
-    // A fresh model run, given the same vocabulary, still drifted (#918): the
-    // neutrophil %-form is bare "Neutrophils"; CBC counts print as bare abbrevs;
-    // specific gravity is always urine.
+    // A fresh model run, given the same vocabulary, still drifted (#918): CBC counts
+    // print as bare abbrevs; specific gravity is always urine. The neutrophil %-form
+    // no longer needs a route — since #2335 the entry IS "Neutrophils, Relative", so
+    // both spellings land on it by token set.
     expect(snapCanonicalName("Neutrophils Relative", index)).toBe(
-      "Neutrophils"
+      "Neutrophils, Relative"
+    );
+    expect(snapCanonicalName("Neutrophils, Relative", index)).toBe(
+      "Neutrophils, Relative"
     );
     expect(snapCanonicalName("WBC", index)).toBe("White Blood Cell Count");
     expect(snapCanonicalName("RBC", index)).toBe("Red Blood Cell Count");
@@ -634,6 +644,43 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     expect(snapCanonicalName("Urine Color", index)).toBe("Urine Color");
   });
 
+  // #2319 — the SINGULAR cast spellings. #2300 curated the three casts plural and
+  // comma-inverted; normalizeCanonicalKey folds case, punctuation and word order but
+  // NOT inflection, so the singular form a real report prints was a different key and
+  // orphaned into its own band-less series beside its own curated entry.
+  it("routes the singular urine-cast spellings onto their curated plural entries (#2319)", () => {
+    for (const [singular, curated] of [
+      ["Hyaline Cast, Urine", "Casts, Hyaline, Urine"],
+      ["Granular Cast, Urine", "Casts, Granular, Urine"],
+      ["RBC Cast, Urine", "Casts, RBC, Urine"],
+    ] as const) {
+      expect(snapCanonicalName(singular, index)).toBe(curated);
+      // Word order folds on top of the route, as it does for every alias.
+      expect(snapCanonicalName(`Urine ${singular.split(",")[0]}`, index)).toBe(
+        curated
+      );
+      // The plural entry still resolves to itself — the route ADDS a spelling.
+      expect(snapCanonicalName(curated, index)).toBe(curated);
+    }
+  });
+
+  it("does NOT fold a trailing s globally to reach the casts (#2319)", () => {
+    // Three explicit routes, deliberately not an inflection rule in the normalizer:
+    // folding `s` everywhere is how two genuinely distinct analytes eventually merge.
+    // The keys stay distinct; only the curated route bridges them.
+    expect(normalizeCanonicalKey("Hyaline Cast, Urine")).not.toBe(
+      normalizeCanonicalKey("Casts, Hyaline, Urine")
+    );
+    // A pair the normalizer must keep apart, proving no global rule slipped in.
+    expect(normalizeCanonicalKey("Ketone")).not.toBe(
+      normalizeCanonicalKey("Ketones")
+    );
+    // And an undeclared cast type coins its own name rather than riding a rule.
+    expect(snapCanonicalName("Waxy Cast, Urine", index)).toBe(
+      "Waxy Cast, Urine"
+    );
+  });
+
   it("keeps the differential's extra lines OFF their parent fraction (#2300)", () => {
     // A CBC prints these ALONGSIDE the parent %, so an alias would put two distinct
     // same-date values on one series and lose one of them.
@@ -643,22 +690,119 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     expect(snapCanonicalName("Band Neutrophils", index)).toBe(
       "Band Neutrophils"
     );
-    expect(snapCanonicalName("Lymphocytes", index)).toBe("Lymphocytes");
-    expect(snapCanonicalName("Neutrophils", index)).toBe("Neutrophils");
+    // The parent fractions themselves are the RETIRED bare spellings (#2335): they
+    // route onto the explicit %-entry, which is a different identity from either
+    // extra line above.
+    expect(snapCanonicalName("Lymphocytes", index)).toBe(
+      "Lymphocytes, Relative"
+    );
+    expect(snapCanonicalName("Neutrophils", index)).toBe(
+      "Neutrophils, Relative"
+    );
   });
 
   it("leaves ALL THREE race-branched eGFR variants unresolved (#2300)", () => {
     // Including the NON-African-American branch: it is the other side of a
-    // race-ADJUSTED equation, not a race-free result, so folding it onto the bare
-    // "eGFR" entry would file it as one. Unresolved is what lets the race-free
-    // CKD-EPI 2021 derivation fill the draw instead.
+    // race-ADJUSTED equation, not a race-free result, so folding it onto the
+    // race-free eGFR entry would file it as one. Unresolved is what lets the
+    // race-free CKD-EPI 2021 derivation fill the draw instead.
     for (const variant of [
       "eGFR, African American",
       "eGFR, Non-African-American",
       "eGFR, Thai",
     ])
       expect(snapCanonicalName(variant, index)).toBe(variant);
-    expect(snapCanonicalName("Estimated GFR", index)).toBe("eGFR");
+    expect(snapCanonicalName("Estimated GFR", index)).toBe(
+      "Estimated Glomerular Filtration Rate (eGFR)"
+    );
+  });
+
+  // THE ROWS #2335 DELETED, pinned against the real dataset.
+  //
+  // Taking the "Long Name (ABBR)" form is not cosmetic: buildCanonicalIndex derives
+  // BOTH the bare abbreviation and the bare long name from such an entry, so the
+  // hand-written alias rows for these spellings became redundant the moment the entry
+  // was renamed, and were removed in the same change. This is the test that says the
+  // coverage did not go with them — a route these names once travelled must still
+  // exist, now via the derivation instead of the table.
+  it("auto-derives the routes whose curated alias rows the rename made redundant", () => {
+    for (const [spelling, canonical] of [
+      // eGFR: the bare abbreviation, the bare long form, and the comma-inverted long
+      // form ("Glomerular Filtration Rate, Estimated") — three rows, one derivation,
+      // because a token set is order-independent.
+      ["eGFR", "Estimated Glomerular Filtration Rate (eGFR)"],
+      [
+        "Estimated Glomerular Filtration Rate",
+        "Estimated Glomerular Filtration Rate (eGFR)",
+      ],
+      [
+        "Glomerular Filtration Rate, Estimated",
+        "Estimated Glomerular Filtration Rate (eGFR)",
+      ],
+      // Spirometry.
+      ["FEV1", "Forced Expiratory Volume in 1 Second (FEV1)"],
+      [
+        "Forced Expiratory Volume in 1 Second",
+        "Forced Expiratory Volume in 1 Second (FEV1)",
+      ],
+      ["FVC", "Forced Vital Capacity (FVC)"],
+      ["Forced Vital Capacity", "Forced Vital Capacity (FVC)"],
+      // The other entries the same rename gave an acronym parenthetical — their bare
+      // abbreviations were never hand-aliased and never need to be.
+      ["RPR", "Rapid Plasma Reagin (RPR)"],
+      ["Rapid Plasma Reagin", "Rapid Plasma Reagin (RPR)"],
+      [
+        "HOMA-IR",
+        "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
+      ],
+      [
+        "Homeostatic Model Assessment of Insulin Resistance",
+        "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
+      ],
+    ] as const)
+      expect(snapCanonicalName(spelling, index), spelling).toBe(canonical);
+
+    // And the curated table really is rid of them: a row for any of these would be
+    // inert (the derivation claims the key first), so leaving one behind is the
+    // hand-maintenance this convention exists to delete.
+    const aliasKeys = new Set(
+      canonicalAliases().map(([alias]) => normalizeCanonicalKey(alias))
+    );
+    for (const gone of [
+      "eGFR",
+      "Estimated Glomerular Filtration Rate",
+      "Glomerular Filtration Rate, Estimated",
+      "FEV1",
+      "Forced Expiratory Volume in 1 Second",
+      "FVC",
+      "Forced Vital Capacity",
+    ])
+      expect(aliasKeys.has(normalizeCanonicalKey(gone)), gone).toBe(false);
+  });
+
+  // The counterpart: a parenthetical containing a SPACE is not an acronym
+  // (looksLikeAbbreviation rejects it), so these entries derive their bare long name
+  // but NOT their bare print form — which is why the thyroid and ANA routes are
+  // load-bearing rather than redundant, and must NOT be deleted alongside the others.
+  it("keeps the curated routes the abbreviation heuristic cannot derive", () => {
+    for (const [spelling, canonical] of [
+      ["Free T4", "Thyroxine, Free (Free T4)"],
+      ["T4, Free", "Thyroxine, Free (Free T4)"],
+      ["Free T3", "Triiodothyronine, Free (Free T3)"],
+      ["Total T4", "Thyroxine, Total (Total T4)"],
+      ["Total T3", "Triiodothyronine, Total (Total T3)"],
+      [
+        "ANA Screen, IFA",
+        "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
+      ],
+    ] as const)
+      expect(snapCanonicalName(spelling, index), spelling).toBe(canonical);
+
+    // Bare "ANA" is deliberately NOT routed: this screen is run by INDIRECT
+    // IMMUNOFLUORESCENCE, and an EIA/multiplex ANA screen is a different method with
+    // different operating characteristics, so routing an unqualified "ANA" here would
+    // merge two assays.
+    expect(snapCanonicalName("ANA", index)).toBe("ANA");
   });
 
   // The issue's acceptance criterion, run over SYNTHETIC names rather than the
@@ -820,8 +964,10 @@ describe("deliberately uncurated analytes (#2313)", () => {
   it("looks a declaration up by normalized key, so spelling variants collapse", () => {
     const egfr = uncuratedAnalyte("eGFR, African American");
     expect(egfr?.kind).toBe("covered-elsewhere");
+    // The curated name since #2335 — `instead` must resolve against the dataset,
+    // so it moved with the rename rather than staying on the retired spelling.
     expect(egfr && egfr.kind === "covered-elsewhere" && egfr.instead).toBe(
-      "eGFR"
+      "Estimated Glomerular Filtration Rate (eGFR)"
     );
     // Casing, punctuation and word order all fold — the alias table's key rule.
     expect(uncuratedAnalyte("african american egfr")).toBe(egfr);
@@ -841,5 +987,112 @@ describe("deliberately uncurated analytes (#2313)", () => {
       expect(uncuratedAnalyte(undeclared)).toBeNull();
     expect(uncuratedAnalyte(null)).toBeNull();
     expect(uncuratedAnalyte(undefined)).toBeNull();
+  });
+
+  // #2319 — the DEXA regional decomposition, the family that carries the volume.
+  it("declares the DEXA regional decomposition out of scope (#2319)", () => {
+    const declared = [
+      // Per-region fat, in the comma-inverted form and the word order a report uses.
+      "Body Fat Percentage, Left Arm",
+      "Body Fat Percentage, Android",
+      "Right Leg Body Fat Percentage",
+      // Per-site bone density and mineral content.
+      "Bone Mineral Density, Lumbar Spine",
+      "Bone Mineral Content, Pelvis",
+      "Bone Mineral Density Z-Score",
+      // The compartment-mass grid, with and without the gram suffix a report prints
+      // inside the name (normalizeCanonicalKey keeps "(g)" as a token, so the two
+      // spellings are different keys and both are declared).
+      "Trunk Fat Mass",
+      "Trunk Fat Mass (g)",
+      "Subtotal Lean Mass (g)",
+      "Total Mass (g)",
+      // The derived depot ratios. The two mass INDICES left this list in #2322 —
+      // they divide by height rather than by a segment and have published
+      // population references, so they are curated entries now (asserted below).
+      "Android/Gynoid Ratio",
+      "Trunk to Legs Fat Ratio",
+    ];
+    for (const name of declared) {
+      const d = uncuratedAnalyte(name);
+      expect(d?.kind, name).toBe("out-of-scope");
+      expect(d?.reason, name).toContain("per-region decomposition");
+    }
+    // ONE decision, shared by the whole family — not fifty separate opinions.
+    expect(new Set(declared.map((n) => uncuratedAnalyte(n))).size).toBe(1);
+  });
+
+  it("leaves the whole-body totals a DEXA also prints CURATED (#2319)", () => {
+    // The regions are declared; the totals they decompose are real curated analytes,
+    // and the completeness guard above would fail if this line ever blurred. Stated
+    // separately because "declare the DEXA family" is exactly the instruction someone
+    // would over-apply.
+    for (const total of [
+      "Body Fat Percentage",
+      "Bone Mineral Density T-Score",
+    ]) {
+      expect(uncuratedAnalyte(total), total).toBeNull();
+      expect(curatedKeys.has(normalizeCanonicalKey(total)), total).toBe(true);
+    }
+    // And the two mass INDICES #2322 promoted out of the DEXA family are curated
+    // entries now — the same shape as the totals above, for the same reason: they
+    // are whole-body measures with published references, not a scan's segments.
+    for (const promoted of ["Fat Mass Index", "Lean Mass Index"]) {
+      expect(uncuratedAnalyte(promoted), promoted).toBeNull();
+      expect(curatedKeys.has(normalizeCanonicalKey(promoted)), promoted).toBe(
+        true
+      );
+    }
+    // The #2322 curations proper. `uncuratedAnalyte` is null for a CURATED name
+    // exactly as it is for an unknown one — the registry only ever speaks about
+    // names this repo declined — so the curated half is pinned against the dataset.
+    for (const curated of [
+      "QTc Interval",
+      "Ankle-Brachial Index (ABI), Left",
+      "Electrocardiogram (ECG) Interpretation",
+    ]) {
+      expect(uncuratedAnalyte(curated), curated).toBeNull();
+      expect(curatedKeys.has(normalizeCanonicalKey(curated)), curated).toBe(
+        true
+      );
+    }
+  });
+
+  // #2322 — the stress test's own vitals. The interesting property is that ONE
+  // report's two halves are declined for OPPOSITE reasons, which is the case a
+  // single family-wide declaration would have flattened.
+  it("splits the stress test's resting and peak vitals (#2322)", () => {
+    // RESTING is the resting series under a visit label, so it points at it. Each
+    // side of the cuff gets its OWN target — a shared declaration would have sent
+    // a diastolic reading to the systolic entry.
+    const systolic = uncuratedAnalyte(
+      "Stress Test Resting Blood Pressure Systolic"
+    );
+    const diastolic = uncuratedAnalyte(
+      "Stress Test Resting Blood Pressure Diastolic"
+    );
+    expect(systolic?.kind).toBe("covered-elsewhere");
+    expect(
+      systolic && systolic.kind === "covered-elsewhere" && systolic.instead
+    ).toBe("Blood Pressure Systolic");
+    expect(
+      diastolic && diastolic.kind === "covered-elsewhere" && diastolic.instead
+    ).toBe("Blood Pressure Diastolic");
+    // PEAK is not the resting series, so it has nothing to point at — pointing it
+    // at the resting entry is the false promise `instead` exists to prevent. All
+    // three peak names are ONE decision.
+    const peak = [
+      "Stress Test Maximum Blood Pressure Systolic",
+      "Stress Test Maximum Blood Pressure Diastolic",
+      "Stress Test Maximum Heart Rate",
+    ].map((n) => uncuratedAnalyte(n));
+    for (const d of peak) expect(d?.kind).toBe("out-of-scope");
+    expect(new Set(peak).size).toBe(1);
+    // Neither half is curated — curating either would fork the vitals series.
+    for (const name of [
+      "Stress Test Resting Blood Pressure Systolic",
+      "Stress Test Maximum Heart Rate",
+    ])
+      expect(curatedKeys.has(normalizeCanonicalKey(name)), name).toBe(false);
   });
 });

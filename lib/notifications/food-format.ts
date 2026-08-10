@@ -7,16 +7,22 @@
 // several servings / several groups), so a rebuild after a tap keeps every button
 // and only refreshes the per-button count + the tally line.
 
-import { foodGroupBySlug, foodGroupEmoji, foodGroupName } from "../food-groups";
+import {
+  foodGroupBySlug,
+  foodGroupEmoji,
+  foodGroupShortName,
+} from "../food-groups";
 import { FOOD_QUICK_COUNT } from "../food-rank";
 import type { ProteinNudgeLineParts } from "../protein";
-import { bold, joinBody, rich, richFrom, type MessageBody } from "./rich-text";
+import { bold, joinBody, richFrom, type MessageBody } from "./rich-text";
+import { formatMessageLine, formatRichMessageLine } from "./message-line";
 import {
   DEFAULT_PROTEIN_PRESET_GRAMS,
   isProteinNudgeKey,
   proteinNudgeButtonLabel,
 } from "../protein-nudge";
 import type { CorrectionBurst } from "../correction-time";
+import type { FoodWindowGap } from "../food-window-gap";
 import {
   correctionActions,
   correctionBodyStatement,
@@ -25,6 +31,7 @@ import {
   FOOD_TIME_PREFIXES,
 } from "./correction-rows";
 import type { NotificationAction, NotificationMessage } from "./types";
+import { GLYPH } from "./glyphs";
 
 // The food nudge rides the morning/midday/evening supplement slots (issue #682) —
 // NOT Bedtime (logging food at bedtime is noise). A distinct type from the
@@ -150,17 +157,81 @@ export function foodOptInCallbackData(
 // isn't a problem — and below the band is a neutral marker: no nag, no praise. The
 // classification itself is lib/protein's `proteinTodayStatus`, shared with every other
 // surface that states a conclusion (#221).
+// The protein line's qualifiers, declared once for both renderings: the goal band, then
+// the status words when there are any (the below-band case is deliberately NEUTRAL —
+// a marker, no nag, no praise, #1710/#992).
+function proteinLineNotes(parts: ProteinNudgeLineParts): (string | null)[] {
+  return [`goal ${parts.band}`, parts.statusWords];
+}
+
+// The food-nudge protein status line as PLAIN text (issue #974/#1710/#1822 item 4):
+// "🍗 Protein: 36 g+ so far — goal 80–105 g". The channels that carry no emphasis get
+// this; it is the same MessageLine as the emphasized body above, which is what keeps
+// #221's one-conclusion-one-set-of-words true across channels.
+export function proteinNudgeLine(parts: ProteinNudgeLineParts): string {
+  return formatMessageLine({
+    glyph: parts.emoji,
+    head: `Protein: ${parts.amount} so far`,
+    notes: proteinLineNotes(parts),
+  });
+}
+
 function proteinBody(
   parts: ProteinNudgeLineParts | string | null | undefined
 ): MessageBody | null {
   if (!parts) return null;
   // No goal band ⇒ no conclusion to state, and none is invented.
   if (typeof parts === "string") return parts;
-  const tail = parts.statusWords ? ` — ${parts.statusWords}` : "";
-  // The joiner is the plain line's (#1822 item 4), with the figure emphasized: the
-  // parts already separate amount/band/status, so the two renderings can only differ
-  // in emphasis, never in what they claim.
-  return rich`${parts.emoji} Protein: ${bold(parts.amount)} so far · goal ${parts.band}${tail}`;
+  // The ONE grammar, with the figure emphasized (#1822 item 4 / #2391): the two
+  // renderings read the SAME declared parts, so they can only differ in emphasis —
+  // never in what they claim or how they are punctuated.
+  return formatRichMessageLine({
+    glyph: parts.emoji,
+    head: ["Protein: ", bold(parts.amount), " so far"],
+    notes: proteinLineNotes(parts),
+  });
+}
+
+// The empty-window notice (#2376): one line stating what the LEDGER does and does not
+// contain for the window that just closed.
+//
+// The copy is load-bearing, so it is written here once and nowhere else. The app cannot
+// tell a forgotten log from a skipped meal — the evidence says forgotten is the common
+// case, but that is a fact about a population and never about THIS window — so the
+// sentence has no agent and makes no claim about the person: nothing was LOGGED, which
+// is a statement about the ledger the message is already about. It deliberately does not
+// borrow adherence language ("missed", "overdue", "you didn't"), because food logging
+// carries no dueness — a window is not a dose, and there is nothing here to have been
+// obliged to do (docs/internals/findings.md §3).
+//
+// It also stops there rather than telling anyone how to fill the gap. A quick-log tap on
+// this keyboard is stamped NOW and lands in the CURRENT window, so "tap to fill it" would
+// be false, and the 🕐 eating-time rows that could move it are a ride-along that is often
+// not on the keyboard at all — naming an affordance the message may not be carrying is
+// exactly what §6 forbids.
+//
+// COMPOSED THROUGH THE ONE FORMATTER (#2391), as the HEAD-ONLY case. Every qualifier
+// role is absent, and each absence is a decision this notice already made above: there is
+// no `because`, because stating a cause is precisely the accusation ("nothing logged for
+// Midday — you were out" is a claim about the person, and the app has no such evidence);
+// no `deadline`, because a food window carries no dueness to be late against; no
+// `comparison`, because "fewer windows than last week" would be an adherence score; and
+// no `notes`, because the only fact worth adding would be the how-to-fix pointer the
+// paragraph above rules out. So the formatter renders the sentence and NOTHING else — no
+// dash, no dot, no invented words — which is the guarantee that makes composing through
+// it free here rather than a copy hazard. The head stays one opaque clause the producer
+// writes: `MessageLineParts` deliberately models no structure inside it, so the
+// emphasized window name and the relative day remain part of the sentence rather than
+// slots a template decided.
+export function foodWindowGapLine(gap: FoodWindowGap): MessageBody {
+  return formatRichMessageLine({
+    glyph: GLYPH.ledger,
+    head: [
+      "Nothing logged for ",
+      bold(gap.window),
+      gap.sameDay ? " today." : " yesterday.",
+    ],
+  });
 }
 
 // Two buttons per keyboard row, so six groups render as a tidy 3×2 grid.
@@ -170,7 +241,7 @@ function rowFor(index: number): string {
 
 // The day-total tally line (#1016): groups with a positive count TODAY, most-logged first
 // (name breaks ties), labeled so a slot-framed message makes clear the tally answers "where
-// am I on the DAY" (the buttons answer "what have I had this SLOT"): "✓ Today: Leafy greens
+// am I on the DAY" (the buttons answer "what have I had this SLOT"): "✅ Today: Leafy greens
 // ×2 · Berries ×1". Reads the DAY counter (food_log via getFoodServingsOnDate), never the
 // slot counts. Empty string when nothing's been logged yet today (the caller shows the
 // prompt instead). The reserved __protein__ key can't appear (it never lands in food_log),
@@ -180,7 +251,9 @@ function tallyLine(dayServings: Map<string, number>): MessageBody | null {
     .filter(([slug, n]) => n > 0 && !isProteinNudgeKey(slug))
     .map(([slug, n]) => ({
       emoji: foodGroupEmoji(slug),
-      name: foodGroupName(slug),
+      // The SHORT catalog name — one abbreviation vocabulary with the Trends
+      // day-history chips, and what keeps a five-group tally on a phone line.
+      name: foodGroupShortName(slug),
       n,
     }))
     .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
@@ -189,7 +262,7 @@ function tallyLine(dayServings: Map<string, number>): MessageBody | null {
   // the line already wraps on a phone — and each is led by its catalog glyph, which is
   // what makes a five-group tally scannable rather than a run-on sentence. The counts
   // stay plain so the eye lands on WHAT was eaten first.
-  const parts: (string | ReturnType<typeof bold>)[] = ["✓ Today: "];
+  const parts: (string | ReturnType<typeof bold>)[] = [`${GLYPH.done} Today: `];
   logged.forEach((x, i) => {
     if (i > 0) parts.push(" · ");
     if (x.emoji) parts.push(`${x.emoji} `);
@@ -238,6 +311,12 @@ export interface FoodNudgeRenderOpts {
   // Keeping them also means the `food:` tokens survive, so `↩︎ Back` can rebuild the exact
   // nudge from the live keyboard rather than guessing at a window.
   picker?: { burst: CorrectionBurst; now: Date };
+  // The window that closed empty (#2376), already decided by the pure engine
+  // (lib/food-window-gap.ts) from the profile's ledger. Null/omitted is the common case
+  // and the only case for a profile that does not habitually log that window — the
+  // renderer adds no gate of its own, because "is this worth saying" is the decision the
+  // engine exists to make.
+  gap?: FoodWindowGap | null;
 }
 
 // Build the food-log nudge for a window from the profile's RANKED keys (all of them,
@@ -255,7 +334,7 @@ export function renderFoodNudge(
   // Ranked keys: catalog food-group slugs, possibly with the reserved __protein__ pseudo-
   // group at its ranked position (#1073).
   rankedKeys: string[],
-  // Day-total per-group counts — BOTH the button "(n)" suffix and the "✓ Today:" tally.
+  // Day-total per-group counts — BOTH the button "(n)" suffix and the "✅ Today:" tally.
   //
   // THE SUFFIX USED TO BE SLOT-SCOPED (#1016) and #2019 retired that meaning. The slot it
   // counted was derived at read time from the tap instant, which is precisely the guess
@@ -299,10 +378,13 @@ export function renderFoodNudge(
     const g = foodGroupBySlug(key);
     if (!g) return; // a retired/unknown slug can't render a button (belt; rankedKeys are catalog)
     const n = dayServings.get(key) ?? 0;
-    // The catalog glyph leads the label (#1710) — the same vocabulary the tally and the
-    // web food bar use, which is what makes the 3×2 grid readable at a glance.
+    // The catalog glyph leads the label (#1710) and the SHORT catalog name follows —
+    // the same abbreviation vocabulary the tally and the Trends day-history chips
+    // use, which is what keeps a half-width button ("🍬 Sweets") from truncating
+    // mid-word the way "Sugary foods & desserts" did.
     const emoji = foodGroupEmoji(key);
-    const name = emoji ? `${emoji} ${g.name}` : g.name;
+    const short = foodGroupShortName(key);
+    const name = emoji ? `${emoji} ${short}` : short;
     actions.push({
       label: n > 0 ? `${name} (${n})` : name,
       data: foodLogCallbackData(profileId, window, date, key),
@@ -314,7 +396,7 @@ export function renderFoodNudge(
   // while ranked keys remain below the fold (drops automatically once all are shown).
   if (visibleCount < rankedKeys.length) {
     actions.push({
-      label: "➕ Show more",
+      label: `${GLYPH.more} Show more`,
       data: foodMoreCallbackData(profileId, window, date),
       row: "food-showmore",
     });
@@ -334,7 +416,7 @@ export function renderFoodNudge(
   // ship.
   if (visible.length > FOOD_QUICK_COUNT) {
     actions.push({
-      label: "➖ Show less",
+      label: `${GLYPH.less} Show less`,
       data: foodLessCallbackData(profileId, window, date),
       row: "food-showmore",
     });
@@ -380,6 +462,10 @@ export function renderFoodNudge(
     [
       tally ? null : "Tap what you've eaten to log a serving.",
       tally,
+      // Beside the tally, because the two are the same kind of statement — what the
+      // day's ledger holds — and above the protein line, which is about a goal rather
+      // than about the log's coverage.
+      opts.gap ? foodWindowGapLine(opts.gap) : null,
       proteinBody(opts.proteinLine),
       // Stated once, above the rows, rather than repeated on every chip: the row names
       // WHAT it is about, and the sentence says what the numbers do.
@@ -388,7 +474,7 @@ export function renderFoodNudge(
         : corrections
           ? // Says what the chips now SAY (#2206): each one names the time it will store,
             // so the sentence only has to explain that they can be pressed again.
-            "🕐 Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time."
+            `${GLYPH.eventTime} Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time.`
           : null,
       // The statement of record (#2264 bug 1): once a burst is corrected, the BODY names
       // the stored time — the row's label states it too, but Telegram truncates buttons
@@ -400,5 +486,10 @@ export function renderFoodNudge(
     "\n"
   );
 
-  return { title: `🍽️ ${window} food log`, body, actions, kind: "food" };
+  return {
+    title: `${GLYPH.food} ${window} food log`,
+    body,
+    actions,
+    kind: "food",
+  };
 }

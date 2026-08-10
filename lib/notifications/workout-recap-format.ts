@@ -20,6 +20,8 @@ import { formatRecapLine, type Recap } from "../session-recap";
 import { frequencyScopeLabel } from "../goals";
 import { fmtDistance } from "../units";
 import { activityTypeAskCallback } from "./callback-data";
+import { formatMessageLine } from "./message-line";
+import { GLYPH } from "./glyphs";
 
 // The workout-affectable frequency scopes (#1122): the target kinds a lifting/cardio
 // session can actually advance. `food_group` (a nutrition scope, #580) and
@@ -78,7 +80,10 @@ export function weeklyRemainingLine(
       t.target.scope_kind,
       t.target.scope_value
     );
-    return `${label} — ${t.count} of ${t.per_week} this week, ${tail}.`;
+    return formatMessageLine({
+      head: label,
+      notes: [`${t.count} of ${t.per_week} this week, ${tail}.`],
+    });
   }
 
   // Nothing in progress: a calm celebratory line when every workout target is met,
@@ -162,9 +167,9 @@ export function importedRecapLine(facts: ImportedSessionFacts): string | null {
 // The three answers the ask offers. Deliberately NOT the full ActivityType set:
 // `recovery` has its own surface, and `unclassified` is the question, not an answer.
 export const ACTIVITY_TYPE_ASK_CHOICES = [
-  { type: "strength", label: "🏋️ Strength" },
-  { type: "cardio", label: "🏃 Cardio" },
-  { type: "sport", label: "⚽ Sport" },
+  { type: "strength", label: `${GLYPH.training} Strength` },
+  { type: "cardio", label: `${GLYPH.cardio} Cardio` },
+  { type: "sport", label: `${GLYPH.sport} Sport` },
 ] as const;
 
 export type ActivityTypeAskChoice =
@@ -230,7 +235,7 @@ export function composeFinishNudge(
     };
   }
   return {
-    title: "🏋️ Workout complete",
+    title: `${GLYPH.training} Workout complete`,
     body: ask ? joinBody([recapLine!, ask.prompt], "\n\n") : recapLine!,
     ...(ask ? { actions: ask.actions } : {}),
     kind: "workout-recap",

@@ -32,6 +32,7 @@ export {
   renderMessageHtml,
   type InlineKeyboard,
 } from "./telegram-render";
+import { GLYPH } from "./glyphs";
 
 // The subset of Telegram's Update / CallbackQuery shapes the app consumes —
 // shared by the webhook route and the getUpdates poller.
@@ -155,7 +156,7 @@ export async function sendMessageRaw(
   let html = renderMessageHtml(msg);
   if (dropped > 0) {
     html += `\n${esc(
-      `⚠️ +${dropped} more — open the app to act on the rest.`
+      `${GLYPH.caution} +${dropped} more — open the app to act on the rest.`
     )}`;
   }
 

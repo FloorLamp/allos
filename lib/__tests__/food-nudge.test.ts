@@ -15,6 +15,7 @@ import {
   foodLessCallbackData,
   foodOptInCallbackData,
   countVisibleFoodButtons,
+  proteinNudgeLine,
   FOOD_NUDGE_WINDOWS,
 } from "@/lib/notifications/food-format";
 import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
@@ -23,13 +24,13 @@ import {
   FOOD_GROUPS,
   FOOD_GROUP_EMOJI,
   foodGroupEmoji,
+  foodGroupShortName,
   foodGroupSlugs,
 } from "@/lib/food-groups";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { correctionBursts } from "@/lib/correction-time";
 import { correctionBodyStatement } from "@/lib/notifications/correction-rows";
 import {
-  proteinTodayNudgeLine,
   proteinTodayNudgeParts,
   proteinIntake,
   proteinTarget,
@@ -53,7 +54,7 @@ describe("renderFoodNudge", () => {
     // the tally and the web food bar use.
     expect(logButtons.map((a) => a.label)).toEqual(
       RANKED_GROUPS.slice(0, FOOD_QUICK_COUNT).map(
-        (g) => `${foodGroupEmoji(g.slug)} ${g.name}`
+        (g) => `${foodGroupEmoji(g.slug)} ${foodGroupShortName(g.slug)}`
       )
     );
     expect(logButtons[0].data).toBe(
@@ -71,9 +72,11 @@ describe("renderFoodNudge", () => {
     // #1016's "n this slot" is gone with the read-time window derivation it depended on:
     // a Telegram tap no longer asserts a meal, so "this slot" would have to be re-derived
     // and a tap minutes past a boundary would tick nobody's button.
-    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name} (3)`);
+    expect(first.label).toBe(
+      `${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)} (3)`
+    );
     expect(plainBody(msg.body)).toContain(
-      `✓ Today: ${foodGroupEmoji(top.slug)} ${top.name} ×3`
+      `✅ Today: ${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)} ×3`
     );
   });
 
@@ -88,7 +91,9 @@ describe("renderFoodNudge", () => {
       new Map([[other.slug, 2]])
     );
     const first = (msg.actions ?? [])[0];
-    expect(first.label).toBe(`${foodGroupEmoji(top.slug)} ${top.name}`);
+    expect(first.label).toBe(
+      `${foodGroupEmoji(top.slug)} ${foodGroupShortName(top.slug)}`
+    );
   });
 
   it("appends the #974 protein status line when one is supplied, and equals the gauge figure", () => {
@@ -114,10 +119,12 @@ describe("renderFoodNudge", () => {
     });
     // The nudge renders the SAME line lib/protein composes for any other surface —
     // one classification, one set of words (#221).
-    expect(plainBody(msg.body)).toContain(proteinTodayNudgeLine(t));
+    expect(plainBody(msg.body)).toContain(
+      proteinNudgeLine(proteinTodayNudgeParts(t))
+    );
     // #1822 item 4: the same facts, unstacked — the floor marker is the trailing "+".
     expect(plainBody(msg.body)).toContain(
-      "Protein: 55 g+ so far · goal 95–130 g"
+      "Protein: 55 g+ so far — goal 95–130 g"
     );
     expect(plainBody(msg.body)).not.toContain("at least");
     expect(String(Math.round(t.todayGrams))).toBe("55");
@@ -131,7 +138,7 @@ describe("renderFoodNudge", () => {
   it("prompts to tap when nothing is logged yet, with no tally", () => {
     const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map());
     expect(msg.body).toContain("Tap what you've eaten");
-    expect(msg.body).not.toContain("✓");
+    expect(msg.body).not.toContain("✅");
   });
 
   // #1807 pin: the nudge carries NO url button at all. The renderer no longer takes a
@@ -186,7 +193,7 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     );
     expect(proteinBtn?.label).toBe("💪 ＋25g protein (3)");
     // The tally line is empty (no real food group logged) — the reserved key is filtered.
-    expect(msg.body).not.toContain("✓ Today:");
+    expect(msg.body).not.toContain("✅ Today:");
     expect(msg.body).not.toContain("__protein__");
   });
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import {
   IconSparkles,
@@ -10,11 +11,13 @@ import {
   IconCircleCheck,
 } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import { readingDetailHref } from "@/lib/hrefs";
 import type {
   CoverageGap,
   CoverageGapCandidate,
   CoverageGapKind,
   CatalogRequest,
+  DeclinedCoverageItem,
 } from "@/lib/coverage-gaps";
 import {
   trackCoverageGap,
@@ -39,12 +42,14 @@ function KindBadge({ kind }: { kind: CoverageGapKind }) {
 export default function CoverageGaps({
   tracked,
   candidates,
+  declined,
   requests,
   aiConfigured,
   aiLabel,
 }: {
   tracked: CoverageGap[];
   candidates: CoverageGapCandidate[];
+  declined: DeclinedCoverageItem[];
   requests: Record<number, CatalogRequest>;
   aiConfigured: boolean;
   aiLabel: string;
@@ -112,7 +117,60 @@ export default function CoverageGaps({
           </ul>
         </section>
       )}
+
+      {/* #2319 — the analytes this repo has DECLARED it will not curate. They are on
+      the record and uncatalogued, exactly like the section above, and that is where
+      the resemblance stops: nothing here is outstanding, so there is no Track button
+      and no "request it be catalogued" link — that link would ask somebody to file a
+      duplicate of a decision already made. Stated rather than hidden, because a name
+      that just disappears from Coverage reads as data we lost. */}
+      {declined.length > 0 && (
+        <section data-testid="section-declined">
+          <h2 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Not catalogued, on purpose
+          </h2>
+          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+            These are on your record and stay visible on their documents, but
+            Allos deliberately doesn&apos;t catalogue them as trendable
+            analytes. Nothing is outstanding here.
+          </p>
+          <ul className="space-y-2">
+            {declined.map((d) => (
+              <DeclinedRow key={`${d.kind}:${d.itemKey}`} item={d} />
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
+  );
+}
+
+function DeclinedRow({ item }: { item: DeclinedCoverageItem }) {
+  return (
+    <li
+      data-testid="coverage-declined"
+      data-kind={item.kind}
+      className="rounded-lg border border-black/10 px-3 py-2 dark:border-white/10"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <KindBadge kind={item.kind} />
+        <span className="truncate text-sm text-slate-800 dark:text-slate-100">
+          {item.label}
+        </span>
+      </span>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {item.declaration.reason}
+      </p>
+      {item.declaration.kind === "covered-elsewhere" && (
+        <Link
+          href={readingDetailHref(item.declaration.instead)}
+          data-testid="coverage-declined-instead"
+          className="mt-0.5 inline-block text-xs text-brand-700 hover:underline dark:text-brand-400"
+        >
+          See {item.declaration.instead}
+        </Link>
+      )}
+    </li>
   );
 }
 

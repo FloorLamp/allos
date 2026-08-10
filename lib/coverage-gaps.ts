@@ -18,7 +18,11 @@
 // engines and stay CURATED. The AI system prompt below enforces the line, and the
 // stored text is always labeled "AI-generated, unverified — not curated."
 
-import { biomarkerFamily } from "./canonical-name";
+import {
+  biomarkerFamily,
+  uncuratedAnalyte,
+  type UncuratedAnalyte,
+} from "./canonical-name";
 import { getMedicationInfo } from "./medication-info";
 import { bestIcd10Suggestion, hasIcd10Code } from "./icd10";
 
@@ -51,6 +55,26 @@ export interface CoverageGapCandidate {
   kind: CoverageGapKind;
   itemKey: string;
   label: string;
+}
+
+// An uncatalogued analyte this repo has DECLARED it will not curate (#2313's
+// registry, #2319's second consumer). Same identity key as a candidate, so the two
+// lists are a partition of the same set — but it is NOT a candidate: nothing here is
+// outstanding, so it is never offered for tracking and never carries the "request it
+// be catalogued" affordance, which would ask somebody to file a duplicate of a
+// decision already made. It renders with its reason instead, because a name that
+// merely vanishes from the list reads as "we lost it".
+export interface DeclinedCoverageItem {
+  kind: "biomarker";
+  itemKey: string;
+  label: string;
+  declaration: UncuratedAnalyte;
+}
+
+// Both halves of biomarker candidacy for one profile's used names.
+export interface BiomarkerCoverageSplit {
+  candidates: CoverageGapCandidate[];
+  declined: DeclinedCoverageItem[];
 }
 
 // ---- Stable identity keys ---------------------------------------------------
@@ -124,24 +148,44 @@ export function curatedBiomarkerFamilyKeys(
 // ---- Detection --------------------------------------------------------------
 
 // Given a profile's stored biomarker names and the curated family-key set, the
-// uncovered ones as gap candidates (one per family, first spelling wins as the
-// label). De-duped by family key so two spellings of one uncovered analyte fold
-// to a single candidate.
+// uncovered ones SPLIT into the two shapes an uncovered name can have: a genuine gap
+// candidate, and a name the repo has declared it will not curate. One per family,
+// first spelling wins as the label, de-duped by family key so two spellings of one
+// uncovered analyte fold to a single row.
+//
+// The declared half consults `uncuratedAnalyte` (#2313) — the SAME declaration the
+// import debugger's "Unresolved analytes" card reads, unchanged. That registry
+// answers a question about the ANALYTE ("has this repo decided not to curate it?"),
+// not about either surface, which is exactly what lets a second consumer import it
+// as-is: Coverage compares `source='seed'` FAMILY keys where the debugger compares
+// `isSeededCanonical` on the exact name, and neither difference reaches the
+// declaration. There is no Coverage-local list and no Coverage-local opinion.
+//
+// Disjoint from the #2318 category rule: NON_IDENTITY_CATEGORIES withholds biomarker
+// identity from a whole CLASS of stored observation and is applied upstream, inside
+// getUsedCanonicalNames, so a name never reaches here at all. This is a per-NAME
+// decision about a row that does carry identity — a DEXA region really is a
+// measurement of the body, it just isn't an analyte anyone can catalogue. Do not
+// re-filter by category here; that guard already ran.
 export function detectBiomarkerGaps(
   usedNames: readonly string[],
   curatedFamilyKeys: ReadonlySet<string>
-): CoverageGapCandidate[] {
+): BiomarkerCoverageSplit {
   const seen = new Set<string>();
-  const out: CoverageGapCandidate[] = [];
+  const candidates: CoverageGapCandidate[] = [];
+  const declined: DeclinedCoverageItem[] = [];
   for (const name of usedNames) {
     const label = name.trim();
     if (!label) continue;
     const key = biomarkerCoverageKey(label);
     if (!key || curatedFamilyKeys.has(key) || seen.has(key)) continue;
     seen.add(key);
-    out.push({ kind: "biomarker", itemKey: key, label });
+    const declaration = uncuratedAnalyte(label);
+    if (declaration)
+      declined.push({ kind: "biomarker", itemKey: key, label, declaration });
+    else candidates.push({ kind: "biomarker", itemKey: key, label });
   }
-  return out;
+  return { candidates, declined };
 }
 
 // ---- The de-identified maintainer catalog-request (issue #550 decision B) ----

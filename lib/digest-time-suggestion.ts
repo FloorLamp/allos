@@ -50,6 +50,7 @@ import type {
 } from "./notifications/digest-schedule";
 import type { NotificationAction } from "./notifications/types";
 import { formatClockMinutes, type TimeFormat } from "./format-date";
+import { GLYPH } from "./notifications/glyphs";
 
 // The dedupeKey namespace, registered in RULE_FINDING_REGISTRY.
 export const DIGEST_TIME_PREFIX = "digest-time:";
@@ -364,7 +365,7 @@ export function digestTimeSuggestionFinding(s: DigestTimeSuggestion): Finding {
  * purpose of a feature whose whole job is to run without you (#1685).
  */
 export function digestTimeSuggestionLine(s: DigestTimeSuggestion): string {
-  return `🕘 ${digestTimeSuggestionCopy(s).line}`;
+  return `${GLYPH.schedule} ${digestTimeSuggestionCopy(s).line}`;
 }
 
 /** The digest section's heading. Declared here so the gather and the tests agree. */
@@ -424,19 +425,19 @@ export function digestTimeActions(
 ): NotificationAction[] {
   return [
     {
-      label: "⏳ As soon as it’s ready",
+      label: `${GLYPH.waiting} As soon as it’s ready`,
       data: digestTimeDynamicToken(profileId, date),
       row: "digest-time",
     },
     {
       // The WIRE format, not a display pref: a Telegram send has a profile but no
       // login in context, so it keeps its fixed 24-h channel format.
-      label: `🕘 Use ${formatNotifyTime(s.proposedMinute)}`,
+      label: `${GLYPH.schedule} Use ${formatNotifyTime(s.proposedMinute)}`,
       data: digestTimeUseToken(profileId, date),
       row: "digest-time",
     },
     {
-      label: "🔕 No thanks",
+      label: `${GLYPH.muted} No thanks`,
       data: digestTimeDismissToken(profileId, date),
       row: "digest-time-decline",
     },

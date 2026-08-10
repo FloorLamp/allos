@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { settledSelectSave } from "./helpers";
 // Issue #32: the Weekly-recap dashboard card and a milestone Timeline entry.
 // The e2e seed (e2e/seed-events.ts) pins a dashboard layout that makes the
 // weekly-recap widget visible for profile 1 and plants a "50 workouts logged"
@@ -52,5 +53,69 @@ test.describe("Weekly recap + milestones (#32)", () => {
     await expect(
       page.locator('[id^="timeline-entry-"]').getByText("Milestone").first() // first-ok: asserts a Milestone badge renders on a feed entry — order-agnostic presence
     ).toBeVisible();
+  });
+});
+
+// The recap CADENCE (#2178): one engine, three scales, and the setting that picks
+// which one this profile's single recap slot speaks at.
+//
+// The precedence rule itself — replace, never stack, including the quarter-end Sunday
+// where a week, a month and a quarter all close on one slot — is pinned in the pure
+// tier (lib/__tests__/recap-scale.test.ts), where the calendar can be chosen rather
+// than waited for. What only the browser can prove is that the control writes the
+// setting and that the rendered card FOLLOWS it.
+//
+// BLAST RADIUS: it changes the recap cadence, then resets it to Weekly so the shared
+// fixture is left as found.
+test.describe("recap cadence (#2178)", () => {
+  test("the cadence control re-labels the dashboard card", async ({ page }) => {
+    test.slow(); // local `next dev` compiles the route on first hit
+
+    // Weekly is the default and the card says so.
+    await page.goto("/");
+    await expect(
+      page.getByTestId("weekly-recap").getByRole("heading", {
+        name: "Weekly recap",
+      })
+    ).toBeVisible();
+
+    await page.goto("/settings/notifications");
+    const kindsCard = page.getByTestId("notification-kinds");
+    await expect(kindsCard).toBeVisible();
+
+    const cadence = page.getByTestId("kind-scale-weekly-recap");
+    // Three cadences, no fourth: the annual retrospective is a different artifact
+    // (#2179), deliberately not a tier of this control.
+    await expect(cadence.getByRole("option")).toHaveText([
+      "Weekly recap",
+      "Monthly recap",
+      "Quarterly recap",
+    ]);
+    await expect(cadence).toHaveValue("week");
+
+    await settledSelectSave(page, cadence, "month", kindsCard);
+    await page.reload();
+    await expect(page.getByTestId("kind-scale-weekly-recap")).toHaveValue(
+      "month"
+    );
+
+    // The card follows the setting — same engine, a longer period, a different name.
+    await page.goto("/");
+    const recap = page.getByTestId("weekly-recap");
+    await expect(
+      recap.getByRole("heading", { name: "Monthly recap" })
+    ).toBeVisible();
+    await expect(
+      recap.getByRole("heading", { name: "Weekly recap" })
+    ).toHaveCount(0);
+
+    // Leave the shared fixture as found.
+    await page.goto("/settings/notifications");
+    await settledSelectSave(
+      page,
+      page.getByTestId("kind-scale-weekly-recap"),
+      "week",
+      page.getByTestId("notification-kinds")
+    );
   });
 });

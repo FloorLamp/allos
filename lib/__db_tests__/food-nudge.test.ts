@@ -37,12 +37,12 @@ describe("buildFoodNudge", () => {
       a.data?.startsWith("food:")
     );
     // First button is the heavily-logged group, carrying its day count (4).
-    expect(logButtons[0].label).toBe("🥬 Leafy greens (4)");
+    expect(logButtons[0].label).toBe("🥬 Greens (4)");
     expect(logButtons[0].data).toBe(
       `food:${p.profileId}:Morning:${t}:leafy_greens`
     );
     // The tally line is the DAY total, labeled.
-    expect(plainBody(msg!.body)).toContain("✓ Today: 🥬 Leafy greens ×4");
+    expect(plainBody(msg!.body)).toContain("✅ Today: 🥬 Greens ×4");
     expect(plainBody(msg!.body)).toContain("Fatty fish ×1");
     expect(msg!.kind).toBe("food");
   });
@@ -55,9 +55,9 @@ describe("buildFoodNudge", () => {
     const leafy = (msg!.actions ?? []).find((a) =>
       a.data?.endsWith(":leafy_greens")
     );
-    // Labels lead with the group's catalog glyph since #1710.
-    expect(leafy?.label).toBe("🥬 Leafy greens (4)");
-    expect(plainBody(msg!.body)).toContain("✓ Today: 🥬 Leafy greens ×4");
+    // Labels lead with the catalog glyph (#1710) and the SHORT catalog name.
+    expect(leafy?.label).toBe("🥬 Greens (4)");
+    expect(plainBody(msg!.body)).toContain("✅ Today: 🥬 Greens ×4");
   });
 
   it("still leads with the group eaten NEAR this window (#2019 proximity ranking)", () => {

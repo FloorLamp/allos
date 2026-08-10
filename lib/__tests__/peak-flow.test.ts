@@ -205,8 +205,13 @@ describe("the spirometry half is ordinary observations", () => {
     // FEV1 and FVC in litres have no fixed band — "normal" is percent-predicted
     // against an equation this app does not ship, and borrowing an adult average
     // would mis-judge every child and every tall adult.
-    expect(canonicalBiomarkerForName("FEV1")?.ref_low).toBeNull();
-    expect(canonicalBiomarkerForName("FVC")?.ref_low).toBeNull();
+    expect(
+      canonicalBiomarkerForName("Forced Expiratory Volume in 1 Second (FEV1)")
+        ?.ref_low
+    ).toBeNull();
+    expect(
+      canonicalBiomarkerForName("Forced Vital Capacity (FVC)")?.ref_low
+    ).toBeNull();
     // The ratio is the one universal cutoff.
     expect(canonicalBiomarkerForName("FEV1/FVC Ratio")?.ref_low).toBe(70);
   });
@@ -227,10 +232,20 @@ describe("the spirometry half is ordinary observations", () => {
     expect(snapCanonicalName("Peak Flow", vocabulary)).toBe(
       PEAK_FLOW_CANONICAL
     );
+    // Since #2335 both long forms are AUTO-derived from the "Full Name (ABBR)"
+    // entries rather than hand-aliased, and so are the bare abbreviations.
     expect(
       snapCanonicalName("Forced Expiratory Volume in 1 Second", vocabulary)
-    ).toBe("FEV1");
-    expect(snapCanonicalName("Forced Vital Capacity", vocabulary)).toBe("FVC");
+    ).toBe("Forced Expiratory Volume in 1 Second (FEV1)");
+    expect(snapCanonicalName("FEV1", vocabulary)).toBe(
+      "Forced Expiratory Volume in 1 Second (FEV1)"
+    );
+    expect(snapCanonicalName("Forced Vital Capacity", vocabulary)).toBe(
+      "Forced Vital Capacity (FVC)"
+    );
+    expect(snapCanonicalName("FVC", vocabulary)).toBe(
+      "Forced Vital Capacity (FVC)"
+    );
     expect(snapCanonicalName("FEV1/FVC", vocabulary)).toBe("FEV1/FVC Ratio");
   });
 

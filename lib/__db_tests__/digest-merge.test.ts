@@ -186,7 +186,9 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     const before = buildDigest(gatherDigestInput(p, "MergeBus"));
     const todayBefore = before?.sections.find((s) => s.heading === "Today");
     expect(gatherDigestInput(p, "MergeBus").doseCount).toBe(1);
-    expect(todayBefore?.lines.some((l) => l.includes("scheduled"))).toBe(true);
+    expect(
+      todayBefore?.lines.map(plainBody).some((l) => l.includes("scheduled"))
+    ).toBe(true);
 
     // Dismiss the dose's Upcoming signal on the shared bus (the SAME dedupeKey the
     // Upcoming row carries). The OLD digest hand-computed its dose count and ignored
@@ -197,7 +199,8 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     expect(gatherDigestInput(p, "MergeBus").doseCount).toBe(0);
     const todayAfter = after?.sections.find((s) => s.heading === "Today");
     expect(
-      todayAfter?.lines.some((l) => l.includes("scheduled")) ?? false
+      todayAfter?.lines.map(plainBody).some((l) => l.includes("scheduled")) ??
+        false
     ).toBe(false);
   });
 
@@ -223,7 +226,9 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     );
     const model = buildDigest(gatherDigestInput(p, "Merge558"));
     const todaySection = model?.sections.find((s) => s.heading === "Today");
-    expect(todaySection?.lines.some((l) => l.includes("scheduled"))).toBe(true);
+    expect(
+      todaySection?.lines.map(plainBody).some((l) => l.includes("scheduled"))
+    ).toBe(true);
   });
 
   it("renders the four sections in order when all are present", () => {
@@ -266,7 +271,9 @@ describe("the Today section's band lines (#1819)", () => {
 
   function todayLines(profileId: number, name: string): string[] {
     const model = buildDigest(gatherDigestInput(profileId, name));
-    return model?.sections.find((s) => s.heading === "Today")?.lines ?? [];
+    return (
+      model?.sections.find((s) => s.heading === "Today")?.lines ?? []
+    ).map(plainBody);
   }
 
   it("states weekly PROGRESS for training targets, never a bare count", () => {

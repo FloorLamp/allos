@@ -24,7 +24,9 @@ import type { Locator } from "@playwright/test";
 // in scripts/seed.ts): four readings, the newest ~450 days old. So it is empty in a
 // 90-day window but has real history — exactly the shape the fallback exists for.
 // The seed does not star it, so this spec owns its save.
-const SPARSE_ANALYTE = "Free T4";
+// Named by its CANONICAL spelling (#2335 gave the thyroid fractions their long
+// form), because that is what the picker lists and what the tile renders.
+const SPARSE_ANALYTE = "Thyroxine, Free (Free T4)";
 const SPARSE_LATEST = "1.3 ng/dL"; // its newest reading, in its own unit
 
 // A range pill, located EXACTLY. Playwright matches an accessible name by

@@ -8,7 +8,7 @@
 //     already-skipped / stale-dose / inactive) instead of silently no-oping,
 //     refuses retired doses and paused items, and snapshots the dose amount
 //     onto the log. An already-resolved dose reports the status that ACTUALLY
-//     stands (#280), so a stale cross-action tap (⏭ on a taken dose, ✅ on a
+//     stands (#280), so a stale cross-action tap (⏭️ on a taken dose, ✅ on a
 //     skipped one) — and the Telegram answer text rendered from it — can never
 //     falsely confirm the other action.
 //   • getSupplementDoses (the "current schedule" read every page/reminder
@@ -257,7 +257,7 @@ describe("markDoseSkipped outcomes (#232)", () => {
       "already-skipped"
     );
 
-    // A stale ⏭ tap must NOT flip an already-TAKEN dose to skipped: taken first…
+    // A stale ⏭️ tap must NOT flip an already-TAKEN dose to skipped: taken first…
     const doseB = seedDose(itemId, "250 mg");
     expect(markDoseTaken(profileId, doseB, itemId, DATE)).toBe("logged");
     expect(onHand(itemId)).toBe(9);
@@ -272,21 +272,21 @@ describe("markDoseSkipped outcomes (#232)", () => {
 
   // The #280 regression pair: the DISPLAYED Telegram answer for a stale
   // cross-action tap must name the status that actually stands — asserting the
-  // outcome enum alone let "Skipped ⏭" render over a taken log (and vice versa).
-  it("a stale ⏭ tap on a TAKEN dose is never answered 'Skipped' (#280)", () => {
+  // outcome enum alone let "Skipped ⏭️" render over a taken log (and vice versa).
+  it("a stale ⏭️ tap on a TAKEN dose is never answered 'Skipped' (#280)", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "500 mg");
 
     // Dose marked taken out-of-band (web UI / another device)…
     expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe("logged");
-    // …then the stale Telegram ⏭ button is tapped.
+    // …then the stale Telegram ⏭️ button is tapped.
     const answer = tapSkipAnswerText(
       markDoseSkipped(profileId, doseId, itemId, DATE)
     );
     expect(answer).toMatch(/^Not skipped/);
     expect(answer).toMatch(/taken/i);
-    expect(answer).not.toContain("Skipped ⏭");
+    expect(answer).not.toContain("Skipped ⏭️");
     expect(logRow(doseId, DATE)?.status).toBe("taken");
   });
 

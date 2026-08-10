@@ -38,6 +38,12 @@ import { trainingPaceLine } from "../queries/upcoming/plans";
 import { collectRecentChanges } from "../queries/recent-changes";
 import { getLightExposureLine } from "../queries/light-exposure";
 import { getStepsDigestLines } from "../queries/steps-target";
+import { getNutritionDay } from "../queries/nutrition";
+import {
+  nutritionDigestLine,
+  nutritionShortfalls,
+  type NutrientPosition,
+} from "../nutrition-day";
 import { groupUpcoming } from "../upcoming";
 import { integrationToItem, isEscalatingIntegration } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
@@ -81,11 +87,13 @@ import { DIGEST_ATTEMPT_KEY, DIGEST_MARKER_KEY } from "./send-markers";
 import {
   activitiesSurviveDemotion,
   collapsedTuneAction,
+  nutritionSurvivesDemotion,
   recentChangeDemotions,
   sleepSurvivesDemotion,
   type DigestCategory,
 } from "./digest-tune";
 import type { RecentChangeCategory } from "../recent-changes";
+import type { MessageLine } from "./message-line";
 import type { NotificationAction } from "./types";
 import {
   buildDigest,
@@ -249,6 +257,36 @@ export function personalRecordsOn(profileId: number, date: string): number {
     recentPRs(getStrengthByExercise(profileId, true), date, 0).length +
     recentCardioPRs(getCardioByActivity(profileId, "km"), date, 0).length
   );
+}
+
+// Yesterday's nutrition position for the digest (#2379): the shortfalls against the
+// protein and fibre targets, plus the line that states them — or no line at all.
+//
+// ONE gather, TWO answers, on purpose. The tune keyboard has to know whether a Nutrition
+// line is in play (PRE-demotion, so the toggle stays reachable), while the message needs
+// the line the reader's preference actually leaves. Resolving both from one
+// `getNutritionDay` call is what keeps them from disagreeing — and from paying for the
+// day's food/dose/metric reads twice.
+//
+// The DECISION is not here: `nutritionShortfalls` and `nutritionDigestLine` are pure
+// (lib/nutrition-day.ts) over the SAME per-day adequacy verdicts the /nutrition day
+// picker renders, and `nutritionSurvivesDemotion` reads the floor classification the
+// copy already prints. This function only supplies the day and the preference.
+export function gatherDigestNutrition(
+  profileId: number,
+  // Yesterday, in the profile's own timezone — passed in rather than derived, so the
+  // digest keeps ONE notion of which day it is reporting on (#94 day attribution).
+  date: string,
+  demoted: readonly DigestCategory[] = []
+): { shortfalls: NutrientPosition[]; line: MessageLine | null } {
+  const position = getNutritionDay(profileId, date);
+  const shortfalls = nutritionShortfalls(position);
+  return {
+    shortfalls,
+    line: nutritionSurvivesDemotion(demoted, shortfalls)
+      ? nutritionDigestLine(position)
+      : null,
+  };
 }
 
 // Gather the digest facts for one profile. `since` bounds the "new since last
@@ -503,6 +541,11 @@ export function gatherDigestInput(
   // Steps against the declared daily target (#1723 part 2) — one gather, two lines.
   const stepsLines = getStepsDigestLines(profileId, td);
 
+  // Yesterday's protein + fibre against their targets (#2379). YESTERDAY, the same `yd`
+  // the activities and adherence above are scored on — the digest reports one completed
+  // day, and today's eating is the food nudge's question, not this one.
+  const nutrition = gatherDigestNutrition(profileId, yd, demoted);
+
   return {
     profileName,
     openEpisodeLine,
@@ -567,6 +610,11 @@ export function gatherDigestInput(
     // the Today target line when the trailing average makes it informative. Both null
     // for a profile that has declared no target — the resting state.
     stepsLine: stepsLines.yesterday,
+    // Yesterday's protein/fibre shortfall (#2379), in the message-line PARTS the ONE pure
+    // builder returns — the glyph and every separator belong to the renderer, not here.
+    // Null on a day that met its targets, a day with nothing logged, and a profile whose
+    // target does not resolve — three different facts, all of them silence.
+    nutritionLine: nutrition.line,
     newFlaggedBiomarkers,
     newDocuments,
     // What else changed in the last 24 hours (#1713), from the ONE shared collector the
@@ -598,7 +646,10 @@ export function gatherDigestInput(
           td,
           recent.presentCategories,
           sleep,
-          activities.length > 0
+          activities.length > 0,
+          // PRE-demotion: a reader who already turned Nutrition down must still find its
+          // toggle on the message, or the control is only reversible in Settings.
+          nutrition.shortfalls.length > 0
         ),
       };
     })(),
@@ -631,9 +682,10 @@ function tuneTailFor(
   date: string,
   present: readonly RecentChangeCategory[],
   sleep: DigestSleep | null,
-  hasActivities: boolean
+  hasActivities: boolean,
+  hasNutrition: boolean
 ): NotificationAction | null {
-  return tunableFrom(present, sleep, hasActivities).length
+  return tunableFrom(present, sleep, hasActivities, hasNutrition).length
     ? collapsedTuneAction(profileId, date)
     : null;
 }
@@ -646,12 +698,14 @@ function tuneTailFor(
 function tunableFrom(
   present: readonly RecentChangeCategory[],
   sleep: DigestSleep | null,
-  hasActivities: boolean
+  hasActivities: boolean,
+  hasNutrition: boolean
 ): DigestCategory[] {
   return [
     ...present,
     ...(sleep ? (["sleep"] as const) : []),
     ...(hasActivities ? (["activities"] as const) : []),
+    ...(hasNutrition ? (["nutrition"] as const) : []),
   ];
 }
 
@@ -669,10 +723,12 @@ export function digestTunableCategories(
     today: date,
     exclude: ["labs"],
   });
+  const yesterday = shiftDateStr(date, -1);
   return tunableFrom(
     recent.presentCategories,
     gatherDigestSleep(profileId),
-    getActivitiesByDate(profileId, shiftDateStr(date, -1)).length > 0
+    getActivitiesByDate(profileId, yesterday).length > 0,
+    gatherDigestNutrition(profileId, yesterday).shortfalls.length > 0
   );
 }
 

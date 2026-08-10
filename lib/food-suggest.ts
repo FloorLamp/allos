@@ -43,9 +43,9 @@ import {
   REDUCE_FOOD_ENTRIES,
 } from "./datasets/nutrient-food-map";
 import { allergenConflict, type SafetyMedication } from "./supplement-safety";
-import { conditionMatchesTerm } from "./condition-nutrient";
+import { conditionOrSituationMatches } from "./condition-nutrient";
 import type { ConditionInput } from "./condition-codes";
-import { matchFoodInteractions } from "./food-drug-interactions";
+import { stackFoodDrugHits } from "./food-drug-interactions";
 import { applyPreferenceFilter, isExcludedGroup } from "./dietary-preferences";
 
 const ENTRIES: NutrientFoodEntry[] = NUTRIENT_FOOD_ENTRIES;
@@ -162,43 +162,6 @@ export interface FoodSuggestion {
   safetyNotes: FoodSafetyNote[];
 }
 
-// Whether any active condition or situation satisfies the match term. Conditions
-// go through the SHARED per-term matcher (lib/condition-nutrient — stored code
-// first, name substring fallback, #1030); situations are plain labels and keep
-// the substring test.
-function conditionOrSituationHas(
-  term: string,
-  conditions: ConditionInput[],
-  situations: string[]
-): boolean {
-  const needle = term.trim().toLowerCase();
-  if (!needle) return false;
-  return (
-    conditions.some((c) => conditionMatchesTerm(needle, c)) ||
-    situations.some((s) => (s ?? "").toLowerCase().includes(needle))
-  );
-}
-
-// The set of food–drug interaction entry keys the active stack participates in, mapped
-// to the strongest hit (for its advice copy). Computed once per call — the INVERSE of
-// the per-item food-timing screen ("before recommending food Y, check the stack").
-function stackFoodDrugHits(
-  medications: SafetyMedication[]
-): Map<string, { advice: string; food: string }> {
-  const byKey = new Map<string, { advice: string; food: string }>();
-  for (const med of medications) {
-    for (const hit of matchFoodInteractions({
-      name: med.name,
-      rxcui: med.rxcui,
-      rxcuiIngredients: med.rxcuiIngredients,
-    })) {
-      if (!byKey.has(hit.key))
-        byKey.set(hit.key, { advice: hit.advice, food: hit.food });
-    }
-  }
-  return byKey;
-}
-
 // A food survives the allergy screen unless a recorded allergen (direct or cross-
 // reactive) strikes its display text. Returns the allergen label when struck.
 function allergyStrike(food: FoodSource, allergens: string[]): string | null {
@@ -225,7 +188,9 @@ function buildSuggestion(
   // 1. Condition/situation contraindications. A "drop" hit withholds the whole
   //    suggestion (increasing the nutrient is hazardous for the condition).
   for (const c of entry.contraindications) {
-    if (conditionOrSituationHas(c.match, input.conditions, input.situations)) {
+    if (
+      conditionOrSituationMatches(c.match, input.conditions, input.situations)
+    ) {
       if ((c.severity ?? "caution") === "drop") return null;
       notes.push({ kind: "condition", text: c.caution });
     }

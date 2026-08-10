@@ -39,6 +39,29 @@ export function normalizeCanonicalKey(name: string): string {
   return tokens.join(" ");
 }
 
+// WHAT A CANONICAL NAME MUST CARRY (#2335)
+//
+// The rule the dataset is held to, written down here because this is where the
+// naming discipline already lives — and enforced, so it can't regrow: the scan in
+// lib/__tests__/canonical-naming-rule.test.ts fails a bare name that has a qualified
+// sibling in canonical-biomarkers.json.
+//
+//   • A bare name is permitted ONLY where a single universal convention fixes its
+//     meaning. In practice that is the SERUM specimen: "Albumin", "Creatinine",
+//     "Magnesium" and "Folate" beside their ", Urine" / ", RBC" siblings are
+//     unambiguous to every clinician and stay bare.
+//   • Where two members of ONE family differ by measure (relative/absolute),
+//     specimen (blood/urine), fraction (free/total), or side (left/right), EVERY
+//     member states its qualifier — INCLUDING the one that feels like the default.
+//
+// The second half is what the CBC differential taught. It held both conventions at
+// once: bare "Neutrophils" was the percentage while bare "Monocytes" was the cell
+// count, so within one panel a bare name meant opposite things. Picking a convention
+// and fixing the outliers would not have held — a bare name keeps attracting
+// mis-mapped imports whatever we declare it to mean. Explicit names plus the
+// unit-aware arbitration in lib/canonical-unit-guard (which resolved exactly this
+// %-versus-count collision on a real import) is the combination that does.
+
 // Curated alias -> canonical-name routes for synonym/abbreviation drift.
 // normalizeCanonicalKey folds case, punctuation and word order (plus the
 // vitamin-D synonyms), but NOT abbreviation<->spelled-out or clinical synonyms —
@@ -51,8 +74,10 @@ export function normalizeCanonicalKey(name: string): string {
 // vocabulary). Discipline: alias ONLY spellings of the SAME analyte — never merge
 // genuinely distinct assays (plain CRP vs hs-CRP, Free vs Total hormone fractions,
 // a serum vs a urine/RBC specimen, a total vs an active metabolite). A dataset
-// entry written "Full Name (ABBREV)" needs BOTH the bare abbreviation AND the bare
-// full name aliased, since its combined-token key matches neither alone.
+// entry written "Full Name (ABBREV)" needs NEITHER its bare abbreviation nor its
+// bare full name listed — buildCanonicalIndex derives both (see FULL_ABBR_RE and the
+// NB at the end of this table). Only WORD synonyms, and parentheticals the
+// abbreviation heuristic rejects, need a curated route.
 const CANONICAL_ALIASES: [string, string][] = [
   // Glycated hemoglobin
   ["HbA1c", "Hemoglobin A1c"],
@@ -75,9 +100,12 @@ const CANONICAL_ALIASES: [string, string][] = [
   // Renal
   ["Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
   ["Blood Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
-  ["Estimated GFR", "eGFR"],
-  ["GFR, Estimated", "eGFR"],
-  ["Glomerular Filtration Rate, Estimated", "eGFR"],
+  // The bare "eGFR" abbreviation AND the bare "Estimated Glomerular Filtration Rate"
+  // long form are auto-derived from the "Full Name (ABBR)" entry (#2335), so neither
+  // is listed — nor is "Glomerular Filtration Rate, Estimated", whose token set is
+  // that long form's. Only the GFR-abbreviating spellings need a curated route.
+  ["Estimated GFR", "Estimated Glomerular Filtration Rate (eGFR)"],
+  ["GFR, Estimated", "Estimated Glomerular Filtration Rate (eGFR)"],
   // Thyroid
   ["Thyroid Stimulating Hormone", "Thyroid-Stimulating Hormone (TSH)"],
   // The model sometimes mirrors the "Full Name (ABBREV)" print form even though the
@@ -143,24 +171,21 @@ const CANONICAL_ALIASES: [string, string][] = [
   // Iron
   ["Total Iron Binding Capacity", "Total Iron-Binding Capacity (TIBC)"],
   // CBC differential — ABSOLUTE counts (cells/uL). The model prefixes "Absolute"
-  // where the vocabulary either suffixes ", Absolute" (neutrophils) or uses the bare
-  // name (the others — whose "%" form is the ", Relative" entry). Routing the wrong
-  // way would drop a cells/uL value onto a "%" series (#549/#482), so each targets
-  // the cells/uL entry, checked against its unit (#918). Strongest signal was
-  // "Absolute Neutrophil Count", which missed in three separate extractions.
+  // where the vocabulary suffixes ", Absolute". Routing the wrong way would drop a
+  // cells/uL value onto a "%" series (#549/#482), so each targets the cells/uL entry,
+  // checked against its unit (#918). Strongest signal was "Absolute Neutrophil
+  // Count", which missed in three separate extractions. The bare-plural spellings
+  // ("Absolute Monocytes") are NOT listed: their token set IS the ", Absolute"
+  // entry's, so the entry claims that key itself and a curated row would be inert
+  // (#2335 — the entries the differential rename gave an explicit ", Absolute").
   ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
-  ["Absolute Neutrophils", "Neutrophils, Absolute"],
   // Lymphocytes were the ONE cell line the curated "Absolute X Count" set skipped
   // (#1195) — the ", Absolute" entry exists but the prefixed print form orphaned.
   // Route it to the cells/uL entry like its neutrophil sibling above.
   ["Absolute Lymphocyte Count", "Lymphocytes, Absolute"],
-  ["Absolute Lymphocytes", "Lymphocytes, Absolute"],
-  ["Absolute Monocyte Count", "Monocytes"],
-  ["Absolute Monocytes", "Monocytes"],
-  ["Absolute Eosinophil Count", "Eosinophils"],
-  ["Absolute Eosinophils", "Eosinophils"],
-  ["Absolute Basophil Count", "Basophils"],
-  ["Absolute Basophils", "Basophils"],
+  ["Absolute Monocyte Count", "Monocytes, Absolute"],
+  ["Absolute Eosinophil Count", "Eosinophils, Absolute"],
+  ["Absolute Basophil Count", "Basophils, Absolute"],
   // Vitamins / cofactors
   ["B12", "Vitamin B12"],
   ["Vitamin B-12", "Vitamin B12"],
@@ -268,12 +293,25 @@ const CANONICAL_ALIASES: [string, string][] = [
   // reports call "Appearance".
   ["Epithelial Cells, Urine", "Squamous Epithelial Cells, Urine"],
   ["Urine Clarity", "Urine Appearance"],
+  // Urine-sediment CASTS (#2319). #2300 curated the three in the PLURAL,
+  // comma-inverted form ("Casts, Hyaline, Urine"); plenty of reports print the same
+  // microscopy line SINGULAR ("Hyaline Cast, Urine"). normalizeCanonicalKey folds
+  // case, punctuation and word order but NOT inflection, so {cast, hyaline, urine}
+  // and {casts, hyaline, urine} are different keys and the singular spelling orphans
+  // into its own band-less series right beside its own curated entry.
+  //
+  // Three explicit routes, deliberately NOT a trailing-`s` rule in the normalizer:
+  // inflection folding is exactly the kind of rule that eventually merges two
+  // genuinely distinct analytes, and it would fire on every name in the vocabulary
+  // to fix three. Do not widen this — a fourth cast type gets a fourth row.
+  ["Hyaline Cast, Urine", "Casts, Hyaline, Urine"],
+  ["Granular Cast, Urine", "Casts, Granular, Urine"],
+  ["RBC Cast, Urine", "Casts, RBC, Urine"],
   // Drift a FRESH re-extraction surfaced (#918): the model, given the same
-  // vocabulary, still coined off-list names. The neutrophil %-form is bare
-  // "Neutrophils" (no "Relative" suffix, unlike mono/eos/baso); the CBC counts often
-  // print as bare abbreviations; specific gravity is always a urine test.
-  ["Neutrophils, Relative", "Neutrophils"],
-  ["Neutrophils Relative", "Neutrophils"],
+  // vocabulary, still coined off-list names. The CBC counts often print as bare
+  // abbreviations; specific gravity is always a urine test. (The two neutrophil
+  // "Relative" routes that lived here are gone: since #2335 the %-form entry IS
+  // "Neutrophils, Relative", so both rows became identity routes onto it.)
   ["WBC", "White Blood Cell Count"],
   ["RBC", "Red Blood Cell Count"],
   ["Specific Gravity", "Urine Specific Gravity"],
@@ -313,12 +351,55 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["PEFR", "Peak Expiratory Flow"],
   ["Peak Flow", "Peak Expiratory Flow"],
   ["Peak Expiratory Flow Rate", "Peak Expiratory Flow"],
-  ["FEV-1", "FEV1"],
-  ["FEV 1", "FEV1"],
-  ["Forced Expiratory Volume in 1 Second", "FEV1"],
-  ["Forced Vital Capacity", "FVC"],
+  // "FEV1" and "FVC" — and their long forms — are auto-derived from the two
+  // "Full Name (ABBR)" entries (#2335), so the two rows that used to spell them out
+  // here ("Forced Expiratory Volume in 1 Second", "Forced Vital Capacity") are gone.
+  // These two survive because the token set of a SPACED or HYPHENATED "FEV 1"
+  // ({1, fev}) is not the token set of "FEV1" ({fev1}).
+  ["FEV-1", "Forced Expiratory Volume in 1 Second (FEV1)"],
+  ["FEV 1", "Forced Expiratory Volume in 1 Second (FEV1)"],
   ["FEV1/FVC", "FEV1/FVC Ratio"],
+  // The spellings #2335 RETIRED. Each was a canonical entry until the rename that
+  // made every member of its family state its qualifier; a document that still
+  // reports the old form has to land on the surviving entry, so each old spelling
+  // routes here. The differential's bare names are the reason the rule exists — and
+  // routing them is safe precisely because the unit is the arbiter after the snap: a
+  // bare "Monocytes" printed in "%" snaps to the ", Absolute" entry and
+  // unitAwareCanonical then re-resolves it to ", Relative" (its %-sibling), and the
+  // same in reverse for the neutrophil/lymphocyte pair.
+  ["Neutrophils", "Neutrophils, Relative"],
+  ["Lymphocytes", "Lymphocytes, Relative"],
+  ["Monocytes", "Monocytes, Absolute"],
+  ["Eosinophils", "Eosinophils, Absolute"],
+  ["Basophils", "Basophils, Absolute"],
+  ["Immature Granulocytes", "Immature Granulocytes, Relative"],
+  ["Nucleated Red Blood Cells", "Nucleated Red Blood Cells, Relative"],
+  ["Reticulocytes", "Reticulocytes, Relative"],
+  // The eye pair. A report that states no laterality is not a third measurement, so
+  // the surviving entry SAYS the eye is unstated rather than reading like "the" IOP —
+  // which is also exactly what LOINC 56844-4 ("of Eye (unspecified)") names.
+  ["Intraocular Pressure", "Intraocular Pressure, Unspecified Eye"],
+  ["Visual Acuity", "Visual Acuity, Unspecified Eye"],
+  // The thyroid fractions. Their parentheticals contain a SPACE, so
+  // looksLikeAbbreviation rejects them and the bare print form is NOT auto-derived —
+  // these four routes are load-bearing, unlike the FEV1/FVC/eGFR ones the same
+  // rename deleted. One route covers both word orders ("Free T4" and "T4, Free"
+  // share a token set).
+  ["Free T4", "Thyroxine, Free (Free T4)"],
+  ["Free T3", "Triiodothyronine, Free (Free T3)"],
+  ["Total T4", "Thyroxine, Total (Total T4)"],
+  ["Total T3", "Triiodothyronine, Total (Total T3)"],
+  // The ANA screen, for the same reason (its "(ANA IFA)" parenthetical is spaced).
+  [
+    "ANA Screen, IFA",
+    "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
+  ],
   // NOT aliased, on purpose:
+  //  • bare "ANA" — the screen is run by INDIRECT IMMUNOFLUORESCENCE here, and EIA /
+  //    multiplex ANA screens are a different method with different operating
+  //    characteristics. Routing an unqualified "ANA" onto the IFA entry would merge
+  //    two assays, which the discipline above forbids; an EIA screen should coin its
+  //    own entry rather than inherit IFA's identity.
   //  • bare "pH" — specimen-ambiguous (an arterial-blood-gas pH is not urine pH); the
   //    §2 trap. Needs a specimen qualifier to resolve.
   //  • ALL THREE race/ethnicity-branched eGFR variants — "eGFR, African American",
@@ -326,12 +407,12 @@ const CANONICAL_ALIASES: [string, string][] = [
   //    DIFFERENT number, so a report listing several would collapse distinct values
   //    onto one date. The NON-African-American branch belongs here with the other two
   //    and is the easy one to get wrong: it is the other side of a RACE-ADJUSTED
-  //    equation, not a race-free result, so routing it to the bare "eGFR" entry would
-  //    quietly file a race-adjusted number as the race-free one. Leaving all three
+  //    equation, not a race-free result, so routing it to the race-free eGFR entry
+  //    would quietly file a race-adjusted number as the race-free one. Leaving all three
   //    unresolved is also what lets the race-free CKD-EPI 2021 derivation
   //    (lib/derived-biomarkers.ts) fill that draw's eGFR instead, which it does.
-  //  • "Atypical Lymphocytes" / "Band Neutrophils" — NOT aliased onto "Lymphocytes" /
-  //    "Neutrophils" (#2300). A differential reports them ALONGSIDE the parent
+  //  • "Atypical Lymphocytes" / "Band Neutrophils" — NOT aliased onto
+  //    "Lymphocytes, Relative" / "Neutrophils, Relative" (#2300). A differential reports them ALONGSIDE the parent
   //    fraction, so an alias would land two distinct same-date percentages on one
   //    series and silently drop one. Each has its OWN canonical entry instead.
 
@@ -438,10 +519,35 @@ const FULL_ABBR_RE = /^(.+) \(([^()]+)\)$/;
 // value (leave to a curated alias): no internal space, and either ≥2 uppercase
 // letters or a digit — matches RDW / MCV / hs-CRP / CO2 / IGF-1, rejects
 // "Bicarbonate" / "Retinol" / "50 g".
-function looksLikeAbbreviation(s: string): boolean {
+//
+// Exported since #2365: the body-metric home derivation asks the same question of a
+// metric's short LABEL ("BMI", "RHR" are the analyte's name; "Body Temp", "Avg HR"
+// are chart chrome), and a second realization of "is this an acronym?" is exactly the
+// drift this module exists to prevent.
+export function looksLikeAbbreviation(s: string): boolean {
   if (/\s/.test(s)) return false;
   const uppers = (s.match(/[A-Z]/g) ?? []).length;
   return uppers >= 2 || /\d/.test(s);
+}
+
+/**
+ * The two OTHER spellings a name written "Full Name (ACRONYM)" is known by — the bare
+ * full name and the bare acronym — or `[]` when the name is not written that way.
+ *
+ * For an ARBITRARY name, not a vocabulary entry (#2365: is an imported
+ * "Body Mass Index (BMI)" the quantity the metric registry calls "Body Mass Index"?).
+ * Hence the one deliberate difference from `canonicalAliasRoutes`, which routes the
+ * bare full name for a WORD parenthetical too: that liberty is safe for a curated
+ * entry, which is the authority on its own spelling, and unsafe here, because a word
+ * parenthetical is usually a QUALIFIER that changes the quantity — dropping it would
+ * turn "Blood Pressure Systolic (Peak Exercise)" into resting blood pressure. The
+ * acronym gate is shared, so the two can never disagree about what an ACRONYM is.
+ */
+export function acronymNameForms(name: string): string[] {
+  const m = FULL_ABBR_RE.exec(name.trim());
+  if (!m) return [];
+  const [, full, abbr] = m;
+  return looksLikeAbbreviation(abbr) ? [full, abbr] : [];
 }
 
 // The curated alias routes, exposed for the vocabulary-integrity test (it pins
@@ -495,7 +601,11 @@ export type UncuratedAnalyte =
 // into "your kidney function is measured a better way".
 const EGFR_RACE_BRANCHED: UncuratedAnalyte = {
   kind: "covered-elsewhere",
-  instead: "eGFR",
+  // The CURATED name, not the bare spelling (#2335 renamed it). `instead` is the
+  // one field here that must resolve against the dataset — the completeness guard
+  // checks it, and the debugger LINKS to it — so it cannot ride the retired-spelling
+  // alias the way an incoming document may. A bare "eGFR" would have dangled.
+  instead: "Estimated Glomerular Filtration Rate (eGFR)",
   reason:
     "Race- and ethnicity-adjusted eGFR equations return different values for the same draw, so they cannot share one series. Allos derives the race-free CKD-EPI 2021 value from your creatinine instead — that is the eGFR you see.",
 };
@@ -506,12 +616,183 @@ const TOXICOLOGY_SCREEN: UncuratedAnalyte = {
     "Toxicology screens aren't biomarkers with reference bands. The result is imported and visible on the document, but it isn't curated as a trendable analyte.",
 };
 
+// A DEXA scan's own decomposition (#2319) — the largest single family of
+// uncatalogued items in a real profile, on the order of fifty distinct labels from
+// one machine. One scan prints a fat percentage, a bone mineral density and a
+// compartment mass for every region it segments the body into; those rows are the
+// SCAN's output, not fifty analytes anybody draws independently. There is no
+// population reference band for left-arm fat percentage and there never will be, so
+// "curating" them would mean inventing ranges — and until this declaration existed,
+// every one of them was presented as something the user might track or ask to have
+// catalogued, which is a standing invitation to request work that must never happen.
+//
+// `out-of-scope`, not `covered-elsewhere`: the whole-body totals ARE curated
+// ("Body Fat Percentage", "Bone Mineral Density T-Score"), but a region is not its
+// total, so pointing a reader at the total would claim their left arm is tracked
+// when it isn't. Nothing here is a to-do; the rows are imported and stay visible on
+// the scan's own document.
+const DEXA_DECOMPOSITION: UncuratedAnalyte = {
+  kind: "out-of-scope",
+  reason:
+    "A DEXA scan's per-region decomposition. These are outputs of one scan rather than independent analytes, and no population reference range exists for them.",
+};
+
+// The regions a DEXA report segments for FAT distribution. Android/Gynoid are the
+// abdominal and hip depots; Subtotal is whole-body-minus-head. "Total" is absent on
+// purpose — the whole-body number IS the curated "Body Fat Percentage".
+const DEXA_FAT_REGIONS = [
+  "Left Arm",
+  "Right Arm",
+  "Arms",
+  "Left Leg",
+  "Right Leg",
+  "Legs",
+  "Trunk",
+  "Head",
+  "Android",
+  "Gynoid",
+  "Subtotal",
+];
+
+// The skeletal sites a DEXA report prints a density and a mineral content for.
+// "Total" is absent for the same reason as above: whole-body bone density is what
+// the curated T-score expresses, and a site is not the skeleton.
+const DEXA_BONE_REGIONS = [
+  "Left Arm",
+  "Right Arm",
+  "Arms",
+  "Left Ribs",
+  "Right Ribs",
+  "Ribs",
+  "Thoracic Spine",
+  "Lumbar Spine",
+  "Spine",
+  "Left Pelvis",
+  "Right Pelvis",
+  "Pelvis",
+  "Left Leg",
+  "Right Leg",
+  "Legs",
+  "Trunk",
+  "Head",
+  "Subtotal",
+];
+
+// The compartment-mass grid: a region × a tissue compartment, in grams. Reports
+// print the unit inside the name as often as not, and normalizeCanonicalKey keeps
+// "(g)" as a token, so both spellings are declared rather than guessed at.
+const DEXA_MASS_REGIONS = ["Trunk", "Head", "Android", "Gynoid", "Subtotal"];
+const DEXA_MASS_COMPARTMENTS = ["Fat", "Lean", "Total"];
+
+// The scan-level rows that aren't per-region: whole-scan mass compartments and the
+// derived depot ratios. Same decision, same reason — each is arithmetic over one
+// scan's segments, and none has a population band of its own.
+//
+// "Fat Mass Index" and "Lean Mass Index" USED to be listed here and are not any more
+// (#2322). They failed this declaration's own test: they are not arithmetic over a
+// scan's SEGMENTS but over the whole body and the subject's HEIGHT, which is what
+// makes them comparable between people — and both have published population
+// references (Schutz 2002 / NHANES DXA, Kelly 2009), which "no population reference
+// range exists for them" flatly denied. The dataset was already carrying the proof:
+// "Appendicular Lean Mass Index" has been a curated kg/m2 entry all along. They are
+// curated entries now, so the completeness guard would fail if either name were left
+// declared here as well.
+const DEXA_SCAN_LEVEL = [
+  "Total Mass",
+  "Total Fat Mass",
+  "Total Lean Mass",
+  "Bone Mineral Content, Total",
+  "Bone Mineral Density Z-Score",
+  "Android/Gynoid Ratio",
+  "Trunk to Legs Fat Ratio",
+];
+
+// Expanded rather than hand-listed: the family is a cross product, and writing ~80
+// literal rows is how one region quietly goes missing. The expansion is still just
+// `[name, declaration]` pairs in UNCURATED_ANALYTES, so the completeness guard walks
+// every generated name exactly as it walks a hand-written one.
+function dexaDecompositionNames(): string[] {
+  const names: string[] = [];
+  for (const region of DEXA_FAT_REGIONS)
+    names.push(`Body Fat Percentage, ${region}`);
+  for (const region of DEXA_BONE_REGIONS) {
+    names.push(`Bone Mineral Density, ${region}`);
+    names.push(`Bone Mineral Content, ${region}`);
+  }
+  for (const region of DEXA_MASS_REGIONS)
+    for (const compartment of DEXA_MASS_COMPARTMENTS)
+      names.push(`${region} ${compartment} Mass`);
+  names.push(...DEXA_SCAN_LEVEL);
+  // The gram-suffixed print form of every mass row. A ratio, an index and a
+  // percentage are not masses, so they get no "(g)" twin.
+  const withUnits = [
+    ...names,
+    ...names.filter((n) => n.endsWith(" Mass")).map((n) => `${n} (g)`),
+  ];
+  // De-duped by the key the registry is keyed on, so an overlap between the cross
+  // product and the scan-level list can never mint two rows for one decision.
+  const byKey = new Map(
+    withUnits.map((n) => [normalizeCanonicalKey(n), n] as const)
+  );
+  return [...byKey.values()];
+}
+
+// The stress test's own vitals (#2322 Group 1). A treadmill report prints a blood
+// pressure and a heart rate twice — once at rest before the test, once at peak
+// effort — and both halves arrive with a "Stress Test" prefix in exactly the units
+// the curated vitals already use. Curating either half would FORK the blood-pressure
+// and heart-rate series, which is the trap `Neutrophils Relative` fell into, so
+// neither is curated. But the two halves are declined for OPPOSITE reasons, and
+// collapsing them into one declaration is what would make the promise false.
+//
+// The RESTING half genuinely IS the resting series: the prefix names the VISIT, not
+// a different measurement, so it points at the entry that carries it.
+const STRESS_TEST_RESTING_BP_REASON =
+  "A blood pressure taken at rest before a stress test is an ordinary resting blood pressure — the “stress test” label names the appointment, not a different measurement. Allos files it with the rest of your blood pressure readings, so it trends there rather than starting a second series.";
+
+const STRESS_TEST_RESTING_SYSTOLIC: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "Blood Pressure Systolic",
+  reason: STRESS_TEST_RESTING_BP_REASON,
+};
+
+const STRESS_TEST_RESTING_DIASTOLIC: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "Blood Pressure Diastolic",
+  reason: STRESS_TEST_RESTING_BP_REASON,
+};
+
+// The PEAK half is NOT the resting series, and pointing it at one would be a false
+// promise — the specific failure `instead` is guarded against. A peak-exercise blood
+// pressure belongs beside no resting reading, and the highest heart rate you reached
+// on a treadmill is the opposite of a resting heart rate. Whether peak-exercise
+// vitals deserve a series of their own is a design question about what the app
+// models, not a name the catalog can settle, so they are `out-of-scope` — the shape
+// that says "nothing to point at" instead of inventing a target.
+const STRESS_TEST_PEAK_VITALS: UncuratedAnalyte = {
+  kind: "out-of-scope",
+  reason:
+    "A peak-exercise reading — the highest value reached during the test — is a different measurement from the resting blood pressure and heart rate Allos trends, so it is deliberately not filed with them. Exercise-peak vitals aren't tracked as their own series today; the value is imported and stays visible on the stress-test report.",
+};
+
 const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
   ["eGFR, African American", EGFR_RACE_BRANCHED],
   ["eGFR, Non-African-American", EGFR_RACE_BRANCHED],
   ["eGFR, Thai", EGFR_RACE_BRANCHED],
   ["Beta Adrenergic Blocker Screen", TOXICOLOGY_SCREEN],
   ["Diuretic Screen, Urine", TOXICOLOGY_SCREEN],
+  ["Stress Test Resting Blood Pressure Systolic", STRESS_TEST_RESTING_SYSTOLIC],
+  [
+    "Stress Test Resting Blood Pressure Diastolic",
+    STRESS_TEST_RESTING_DIASTOLIC,
+  ],
+  ["Stress Test Maximum Blood Pressure Systolic", STRESS_TEST_PEAK_VITALS],
+  ["Stress Test Maximum Blood Pressure Diastolic", STRESS_TEST_PEAK_VITALS],
+  ["Stress Test Maximum Heart Rate", STRESS_TEST_PEAK_VITALS],
+  ...dexaDecompositionNames().map((name): [string, UncuratedAnalyte] => [
+    name,
+    DEXA_DECOMPOSITION,
+  ]),
 ];
 
 const UNCURATED_BY_KEY = new Map<string, UncuratedAnalyte>(

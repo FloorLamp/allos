@@ -193,17 +193,25 @@ describe("the home half — a blow through the measurements quick-add", () => {
 
 describe("the clinic half — a spirometry report through the document pipeline", () => {
   const DATE = "2026-02-10";
+  // The two absolute volumes' canonical entries (#2335 gave them their long form).
+  const FEV1 = "Forced Expiratory Volume in 1 Second (FEV1)";
+  const FVC = "Forced Vital Capacity (FVC)";
 
+  // The printed name is what a PFT report prints (the bare abbreviation); `canonical`
+  // is what the pipeline's snap has already made of it by the time a PersistInput
+  // exists — since #2335 the "Long Name (ABBR)" entry, which is also the entry the
+  // flag reconcile then judges the reading against.
   function spirometryInput(): PersistInput {
     const row = (
       name: string,
+      canonical: string,
       value: number,
       unit: string,
       externalId: string
     ) => ({
       category: "vitals" as const,
       name,
-      canonical: name,
+      canonical,
       value: String(value),
       value_num: value,
       unit,
@@ -219,12 +227,12 @@ describe("the clinic half — a spirometry report through the document pipeline"
     });
     return {
       records: [
-        row("FEV1", 2.9, "L", "pft:fev1"),
-        row("FVC", 4.4, "L", "pft:fvc"),
-        row("FEV1/FVC Ratio", 66, "%", "pft:ratio"),
+        row("FEV1", FEV1, 2.9, "L", "pft:fev1"),
+        row("FVC", FVC, 4.4, "L", "pft:fvc"),
+        row("FEV1/FVC Ratio", "FEV1/FVC Ratio", 66, "%", "pft:ratio"),
         // A PEF printed on the same report — a reading of the STREAM identity that
         // nonetheless carries a document.
-        row(PEAK_FLOW_CANONICAL, 505, "L/min", "pft:pef"),
+        row(PEAK_FLOW_CANONICAL, PEAK_FLOW_CANONICAL, 505, "L/min", "pft:pef"),
       ],
       immunizations: [],
       allergies: [],
@@ -273,7 +281,7 @@ describe("the clinic half — a spirometry report through the document pipeline"
     }[];
     const byName = new Map(rows.map((r) => [r.canonical_name, r]));
 
-    expect(byName.get("FEV1")).toMatchObject({
+    expect(byName.get(FEV1)).toMatchObject({
       category: "vitals",
       value_num: 2.9,
       unit: "L",
@@ -282,7 +290,7 @@ describe("the clinic half — a spirometry report through the document pipeline"
       // no flag — the honest answer, not an oversight.
       flag: null,
     });
-    expect(byName.get("FVC")?.flag).toBeNull();
+    expect(byName.get(FVC)?.flag).toBeNull();
     // The one universal cutoff: 66% is below the 70% obstruction criterion.
     expect(byName.get("FEV1/FVC Ratio")).toMatchObject({
       value_num: 66,

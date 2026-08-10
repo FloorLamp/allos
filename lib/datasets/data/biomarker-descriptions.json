@@ -89,7 +89,7 @@
       "description": "Insulin is the hormone that allows cells to take up glucose from the blood. Fasting insulin levels help assess insulin resistance; elevated levels can indicate the body is working harder to keep blood sugar controlled."
     },
     {
-      "name": "HOMA-IR",
+      "name": "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
       "abbreviation": "HOMA-IR",
       "full_name": "Homeostatic Model Assessment of Insulin Resistance",
       "description": "HOMA-IR is a calculated index that combines fasting glucose and fasting insulin to estimate insulin resistance. Higher values suggest the body's cells are responding less effectively to insulin."
@@ -202,7 +202,7 @@
       "description": "Creatinine is a waste product from normal muscle activity that the kidneys filter out of the blood. Blood levels are a key indicator of kidney function, with higher levels suggesting reduced filtering."
     },
     {
-      "name": "eGFR",
+      "name": "Estimated Glomerular Filtration Rate (eGFR)",
       "abbreviation": "eGFR",
       "full_name": "Estimated Glomerular Filtration Rate",
       "description": "eGFR is a calculated estimate of how much blood the kidneys filter each minute, based on creatinine along with age and sex. It is the main measure used to stage kidney function, with lower values indicating reduced function."
@@ -261,14 +261,14 @@
       "description": "RDW measures how much red blood cells vary in size. A higher RDW means greater size variation and can be an early clue to certain anemias or nutritional deficiencies."
     },
     {
-      "name": "Neutrophils",
-      "full_name": "Neutrophils",
-      "description": "Neutrophils are the most common type of white blood cell and the body's first responders to bacterial infection. Elevated levels often indicate infection or inflammation."
+      "name": "Neutrophils, Relative",
+      "full_name": "Neutrophil Percentage",
+      "description": "This is the percentage of white blood cells that are neutrophils, the body's first responders to bacterial infection. It is read alongside the absolute count; a raised percentage often accompanies infection or inflammation."
     },
     {
-      "name": "Lymphocytes",
-      "full_name": "Lymphocytes",
-      "description": "Lymphocytes are white blood cells, including T and B cells, that drive the immune system's targeted defenses. Changes in their numbers can reflect viral infections, immune conditions, or immune suppression."
+      "name": "Lymphocytes, Relative",
+      "full_name": "Lymphocyte Percentage",
+      "description": "This is the percentage of white blood cells that are lymphocytes, the T and B cells that drive targeted immune defenses. It is read alongside the absolute count and can shift with viral infections, immune conditions, or immune suppression."
     },
     {
       "name": "Ferritin",
@@ -298,12 +298,12 @@
       "description": "TSH is a pituitary hormone that signals the thyroid to make thyroid hormones. It is the primary screening test for thyroid function, with high levels suggesting an underactive thyroid and low levels an overactive one."
     },
     {
-      "name": "Free T4",
+      "name": "Thyroxine, Free (Free T4)",
       "full_name": "Free Thyroxine",
       "description": "Free T4 measures the unbound, active form of the thyroid hormone thyroxine available to tissues. It is used with TSH to assess thyroid function."
     },
     {
-      "name": "Free T3",
+      "name": "Triiodothyronine, Free (Free T3)",
       "full_name": "Free Triiodothyronine",
       "description": "Free T3 measures the unbound, active form of triiodothyronine, the more potent thyroid hormone. It helps evaluate thyroid function, particularly in overactive-thyroid conditions."
     },
@@ -688,19 +688,19 @@
       "description": "This ratio compares albumin to globulin proteins in the blood. An abnormal ratio can point to liver disease, kidney problems, immune conditions, or inflammation."
     },
     {
-      "name": "Basophils",
-      "full_name": "Basophils",
-      "description": "Basophils are the least common type of white blood cell and are involved in allergic and inflammatory responses. Elevated levels can occur with allergies or certain blood conditions."
+      "name": "Basophils, Absolute",
+      "full_name": "Absolute Basophil Count",
+      "description": "This is the actual number of basophils per volume of blood. Basophils are the least common white blood cell and take part in allergic and inflammatory responses; a raised count can occur with allergies or certain blood conditions."
     },
     {
-      "name": "Eosinophils",
-      "full_name": "Eosinophils",
-      "description": "Eosinophils are white blood cells that respond to parasites and allergic reactions. Elevated levels often accompany allergies, asthma, or parasitic infections."
+      "name": "Eosinophils, Absolute",
+      "full_name": "Absolute Eosinophil Count",
+      "description": "This is the actual number of eosinophils per volume of blood. Eosinophils respond to parasites and allergic reactions, so a raised count often accompanies allergies, asthma, or parasitic infections."
     },
     {
-      "name": "Monocytes",
-      "full_name": "Monocytes",
-      "description": "Monocytes are white blood cells that engulf pathogens and debris and help coordinate immune responses. Elevated levels can accompany infection, inflammation, or recovery from illness."
+      "name": "Monocytes, Absolute",
+      "full_name": "Absolute Monocyte Count",
+      "description": "This is the actual number of monocytes per volume of blood. Monocytes engulf pathogens and debris and help coordinate immune responses, and a raised count can accompany infection, inflammation, or recovery from illness."
     },
     {
       "name": "Mean Corpuscular Hemoglobin (MCH)",
@@ -932,12 +932,12 @@
       "description": "This is the percentage of white blood cells that are basophils. It is interpreted with the absolute count and can be elevated in allergic or certain blood conditions."
     },
     {
-      "name": "Total T4",
+      "name": "Thyroxine, Total (Total T4)",
       "full_name": "Total Thyroxine",
       "description": "Total T4 measures all thyroxine in the blood, both bound and free. It is one of the tests used to evaluate thyroid function."
     },
     {
-      "name": "Total T3",
+      "name": "Triiodothyronine, Total (Total T3)",
       "full_name": "Total Triiodothyronine",
       "description": "Total T3 measures all triiodothyronine in the blood. It is used, often with other thyroid tests, to evaluate thyroid function, particularly overactive-thyroid states."
     },
@@ -970,9 +970,9 @@
       "description": "The anion gap is a value calculated from electrolyte results that reflects the balance of charged particles in the blood. An abnormal gap can indicate acid-base disturbances."
     },
     {
-      "name": "Reticulocytes",
-      "full_name": "Reticulocytes",
-      "description": "Reticulocytes are newly made, immature red blood cells. Their level shows how actively the bone marrow is producing red cells, which helps evaluate anemia."
+      "name": "Reticulocytes, Relative",
+      "full_name": "Reticulocyte Percentage",
+      "description": "This is the percentage of red blood cells that are reticulocytes — newly made, immature red cells. It shows how actively the bone marrow is producing red cells, which helps evaluate anemia."
     },
     {
       "name": "Reticulocytes, Absolute",
@@ -1010,7 +1010,7 @@
       "description": "This ratio divides triglycerides by HDL cholesterol (both in mg/dL) and is used as a simple surrogate marker of insulin resistance and small, dense LDL particles. Lower ratios are generally considered more favorable; it is calculated from the lipid panel rather than measured directly."
     },
     {
-      "name": "Nucleated Red Blood Cells",
+      "name": "Nucleated Red Blood Cells, Relative",
       "abbreviation": "NRBC",
       "full_name": "Nucleated Red Blood Cell Percentage",
       "description": "This is the fraction of immature, still-nucleated red blood cells among white cells (reported per 100 white blood cells). They are normal in newborns but essentially absent in healthy children and adults, where they can signal marrow stress, severe anemia, or low oxygen."
@@ -1022,7 +1022,7 @@
       "description": "This is the actual number of nucleated (immature) red blood cells per volume of blood. Normally near zero beyond the newborn period, a rise can accompany marrow stress, hemolysis, or hypoxia."
     },
     {
-      "name": "Immature Granulocytes",
+      "name": "Immature Granulocytes, Relative",
       "abbreviation": "IG",
       "full_name": "Immature Granulocyte Percentage",
       "description": "This is the percentage of early, not-yet-mature granulocytes (such as metamyelocytes and myelocytes) among white blood cells. A rise, called a left shift, often reflects infection, inflammation, or increased marrow activity."
@@ -1205,10 +1205,10 @@
       "description": "The ratio of LDL to HDL cholesterol is a summary measure of cardiovascular risk, where a lower ratio is more favorable. It is a calculated value with no units."
     },
     {
-      "name": "Intraocular Pressure",
+      "name": "Intraocular Pressure, Unspecified Eye",
       "abbreviation": "IOP",
-      "full_name": "Intraocular Pressure",
-      "description": "The fluid pressure inside the eye, measured by tonometry in millimeters of mercury (mmHg). A normal reading is roughly 10-21 mmHg; a pressure above 21 is called ocular hypertension and is a risk factor for glaucoma, though it is not a diagnosis on its own. This entry is used when the report does not say which eye."
+      "full_name": "Intraocular Pressure, Eye Unspecified",
+      "description": "Fluid pressure inside the eye, measured by tonometry, on a report that does not say which eye it belongs to. Sustained elevation is the main modifiable risk factor for glaucoma; the per-eye entries are used when the laterality is stated."
     },
     {
       "name": "Intraocular Pressure, Right Eye",
@@ -1223,9 +1223,9 @@
       "description": "The fluid pressure inside the left eye (OS), measured by tonometry in mmHg. A normal reading is roughly 10-21 mmHg; higher pressures are a glaucoma risk factor. It is tracked separately from the right eye."
     },
     {
-      "name": "Visual Acuity",
-      "full_name": "Visual Acuity",
-      "description": "A measure of how clearly you can see, written as a Snellen fraction such as 20/20 (or 6/6 in metric). It is a qualitative value with no numeric reference range, so it is shown as a dated timeline rather than a chart. This entry is used when the report does not say which eye."
+      "name": "Visual Acuity, Unspecified Eye",
+      "full_name": "Visual Acuity, Eye Unspecified",
+      "description": "Sharpness of vision, recorded as a Snellen fraction such as 20/20, on a report that does not say which eye it belongs to. The per-eye entries are used when the laterality is stated."
     },
     {
       "name": "Visual Acuity, Right Eye",
@@ -1373,7 +1373,7 @@
       "description": "Blood sugar measured after not eating for several hours, used to screen for and monitor prediabetes and diabetes. Normal is roughly 70-99 mg/dL, 100-125 indicates prediabetes, and 126 or higher (confirmed) indicates diabetes. Informational, not a diagnosis."
     },
     {
-      "name": "RPR",
+      "name": "Rapid Plasma Reagin (RPR)",
       "abbreviation": "RPR",
       "full_name": "Rapid Plasma Reagin",
       "description": "A blood screen for syphilis. Reported qualitatively as reactive or non-reactive; a reactive result is followed by a confirmatory treponemal test."
@@ -1541,13 +1541,13 @@
       "description": "The fastest speed you can blow air out of your lungs, measured in litres per minute with a small handheld peak-flow meter. It reflects how open the large airways are, so it drops when they narrow. It is read against your own personal best rather than a population range, because a normal peak flow varies widely with height, age, and sex."
     },
     {
-      "name": "FEV1",
+      "name": "Forced Expiratory Volume in 1 Second (FEV1)",
       "abbreviation": "FEV1",
       "full_name": "Forced Expiratory Volume in One Second",
       "description": "The volume of air you can force out of your lungs in the first second of a full, hard breath out, measured by spirometry in litres. It is the single most-used measure of airflow, and it falls when the airways are narrowed or obstructed. Whether a given value is normal depends on a predicted value for your height, age, and sex."
     },
     {
-      "name": "FVC",
+      "name": "Forced Vital Capacity (FVC)",
       "abbreviation": "FVC",
       "full_name": "Forced Vital Capacity",
       "description": "The total volume of air you can force out after taking the deepest breath you can, measured by spirometry in litres. It reflects how much your lungs can hold and move, and it falls in conditions that restrict lung expansion. Like FEV1, it is interpreted against a value predicted for your height, age, and sex."
@@ -1674,10 +1674,117 @@
       "description": "The combined amount of omega-6 fatty acids in red blood cells or plasma, as a percentage of all fatty acids by weight. It includes omega-6 species that a panel does not list individually, so it is larger than the printed arachidonic and linoleic acid lines added together. It is mainly read next to the omega-3 total as a balance."
     },
     {
-      "name": "ANA Screen, IFA",
+      "name": "Antinuclear Antibody Screen, Indirect Immunofluorescence Assay (ANA IFA)",
       "abbreviation": "ANA",
-      "full_name": "Antinuclear Antibody Screen by Immunofluorescence",
+      "full_name": "Antinuclear Antibody Screen by Indirect Immunofluorescence",
       "description": "A screening test for antibodies against the body's own cell nuclei, read by immunofluorescence on cultured cells. It is the usual first step when an autoimmune connective-tissue disease such as lupus is suspected. A positive result is normally followed by a titer and pattern, and low-level positives are common in healthy people, so it is never a diagnosis on its own."
+    },
+    {
+      "name": "PR Interval",
+      "abbreviation": "PR",
+      "full_name": "PR Interval",
+      "description": "How long the electrical signal on an ECG takes to travel from the atria to the ventricles, measured in milliseconds. A normal adult value is 120–200 ms. A longer interval means the signal is being delayed at the AV node, and a shorter one can mean it is taking an accessory shortcut."
+    },
+    {
+      "name": "QRS Duration",
+      "abbreviation": "QRS",
+      "full_name": "QRS Complex Duration",
+      "description": "How many milliseconds the ventricles take to depolarize on an ECG, seen as the width of the QRS complex. Normal is roughly 70–100 ms, with 110 ms the usual upper limit. A wide QRS suggests the signal is spreading through the ventricles slowly, as in a bundle-branch block."
+    },
+    {
+      "name": "QT Interval",
+      "abbreviation": "QT",
+      "full_name": "QT Interval",
+      "description": "The time on an ECG from the start of ventricular contraction to the end of ventricular recovery, in milliseconds. It naturally gets shorter as the heart beats faster, so the raw number is not read against a fixed cutoff. The rate-corrected version, QTc, is the one clinicians interpret."
+    },
+    {
+      "name": "QTc Interval",
+      "abbreviation": "QTc",
+      "full_name": "Rate-Corrected QT Interval",
+      "description": "The QT interval adjusted for heart rate, which makes it comparable between recordings. A prolonged QTc — about 450 ms or more in men, 460 ms or more in women — means the heart's electrical recovery is slow, which raises the risk of a dangerous rhythm called torsades de pointes. Many medications are monitored with it, so it is the ECG number most likely to change a decision."
+    },
+    {
+      "name": "P Axis",
+      "full_name": "P Wave Axis",
+      "description": "The overall direction the atrial electrical impulse travels, in degrees, seen from the front of the body. A normal adult range is about 0° to +75°. It is an orientation rather than a quantity, and a value outside the usual arc mainly suggests the beat did not start in the normal place, or that the ECG leads were misplaced."
+    },
+    {
+      "name": "QRS Axis",
+      "full_name": "QRS Complex Axis",
+      "description": "The overall direction the ventricular electrical impulse travels, in degrees, seen from the front of the body. A normal adult range is about −30° to +90°. Shifts to the left or right are called axis deviation and are interpreted together with the rest of the tracing rather than on their own."
+    },
+    {
+      "name": "T Axis",
+      "full_name": "T Wave Axis",
+      "description": "The overall direction of ventricular electrical recovery, in degrees, seen from the front of the body. It is not read against a fixed arc; what matters is how far it sits from the QRS axis, since a wide angle between the two can point to a strain or ischemic pattern."
+    },
+    {
+      "name": "Ventricular Rate",
+      "full_name": "Ventricular Rate",
+      "description": "How many times the ventricles contracted per minute during an ECG recording, normally 60–100. It is reported separately from pulse or resting heart rate because in rhythms such as atrial fibrillation the atria fire far faster than the ventricles respond, so the two rates genuinely differ."
+    },
+    {
+      "name": "Electrocardiogram (ECG) Interpretation",
+      "abbreviation": "ECG",
+      "full_name": "Electrocardiogram Interpretation",
+      "description": "The reading clinician's summary of an ECG in words, such as \"normal sinus rhythm\" or \"sinus bradycardia\". It is a judgement about the whole tracing rather than a measured number, so it has no reference range and is kept as a dated record beside the intervals the same ECG measured."
+    },
+    {
+      "name": "Ankle-Brachial Index (ABI), Left",
+      "abbreviation": "ABI",
+      "full_name": "Ankle-Brachial Index, Left",
+      "description": "Blood pressure at the left ankle divided by blood pressure at the arm, used to check whether the leg arteries are narrowed. A ratio of 1.00–1.40 is normal and 0.90 or below indicates peripheral artery disease. A value above 1.40 usually means the arteries are too stiff to squeeze shut, which is its own finding rather than a good result."
+    },
+    {
+      "name": "Ankle-Brachial Index (ABI), Right",
+      "abbreviation": "ABI",
+      "full_name": "Ankle-Brachial Index, Right",
+      "description": "Blood pressure at the right ankle divided by blood pressure at the arm, used to check whether the leg arteries are narrowed. A ratio of 1.00–1.40 is normal and 0.90 or below indicates peripheral artery disease. A value above 1.40 usually means the arteries are too stiff to squeeze shut, which is its own finding rather than a good result."
+    },
+    {
+      "name": "Cardio-Ankle Vascular Index (CAVI), Left",
+      "abbreviation": "CAVI",
+      "full_name": "Cardio-Ankle Vascular Index, Left",
+      "description": "A measure of how stiff the arteries are between the heart and the left ankle, reported as a plain number. It is designed not to be affected by the blood pressure at the time of the test. Under 8.0 is considered normal, 8.0–9.0 borderline, and 9.0 or above suggests arterial stiffening; it rises gradually with age."
+    },
+    {
+      "name": "Cardio-Ankle Vascular Index (CAVI), Right",
+      "abbreviation": "CAVI",
+      "full_name": "Cardio-Ankle Vascular Index, Right",
+      "description": "A measure of how stiff the arteries are between the heart and the right ankle, reported as a plain number. It is designed not to be affected by the blood pressure at the time of the test. Under 8.0 is considered normal, 8.0–9.0 borderline, and 9.0 or above suggests arterial stiffening; it rises gradually with age."
+    },
+    {
+      "name": "Fat Mass Index",
+      "abbreviation": "FMI",
+      "full_name": "Fat Mass Index",
+      "description": "Total body fat in kilograms divided by height in metres squared — body fat expressed the way BMI is, so it can be compared between people of different heights. Roughly 3–6 kg/m² is the normal-fat range for men and 5–9 kg/m² for women. Unlike BMI it counts only fat, so it does not confuse muscle for excess weight."
+    },
+    {
+      "name": "Lean Mass Index",
+      "abbreviation": "LMI",
+      "full_name": "Lean Mass Index",
+      "description": "Total lean, fat-free mass in kilograms divided by height in metres squared, covering the whole body including the trunk. It is not the same as the appendicular lean mass index, which counts only the arms and legs and is the one sarcopenia cutoffs are written for. There is no single normal value, so it is read as a percentile for your age and sex."
+    },
+    {
+      "name": "Metabolic Equivalents (METs)",
+      "abbreviation": "METs",
+      "full_name": "Metabolic Equivalents of Task",
+      "description": "How hard you were able to work at peak effort on an exercise test, counted in multiples of the energy your body uses at rest. One MET is about the oxygen use of sitting quietly. Broadly, under 5 METs is poor exercise capacity and 10 or more is excellent — a strong predictor of long-term health that depends heavily on age and sex."
+    },
+    {
+      "name": "Exercise Stress Test Result",
+      "full_name": "Exercise Stress Test Result",
+      "description": "The clinician's overall conclusion from a treadmill or bike stress test, such as \"negative for ischemia\" or \"non-diagnostic\". It is a judgement about the whole test rather than a measured number, so it has no reference range and is kept as a dated record beside the exercise capacity the same test measured."
+    },
+    {
+      "name": "Color Vision",
+      "full_name": "Color Vision Screening Result",
+      "description": "The result of a colour-vision screen such as the Ishihara plates, recorded in words — for example \"normal\" or \"red-green deficiency\". It is a judgement rather than a measurement, so it has no numeric range. Most colour-vision deficiency is inherited and does not change over life."
+    },
+    {
+      "name": "Audiologic Diagnosis",
+      "full_name": "Audiologic Diagnosis",
+      "description": "The audiologist's conclusion from a hearing evaluation, written out — for example \"normal hearing bilaterally\" or \"mild high-frequency sensorineural hearing loss on the left\". It summarises the test rather than measuring anything, so it has no reference range; the per-ear, per-frequency thresholds behind it are tracked separately."
     }
   ]
 }

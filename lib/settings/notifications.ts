@@ -25,6 +25,7 @@ import {
   serializeFoodNudgePointer,
   type FoodNudgePointer,
 } from "../notifications/food-nudge-pointer";
+import { parseRecapScale, type RecapScale } from "../recap-scale";
 import {
   parseHouseholdRoundPointer,
   serializeHouseholdRoundPointer,
@@ -809,11 +810,20 @@ export interface NotifySchedule {
   // `notify_digest_hour` — that overload is what #2205 exists to stop. Absent reads
   // as Static, so a digest configured before modes existed is unchanged.
   digestMode: DigestMode;
-  // Weekly recap (issue #32): the weekday (0=Sun … 6=Sat, this profile's timezone)
-  // to send the seven-day summary, or null = off. Off by default. The recap fires
+  // Periodic recap (issues #32 / #2178): the weekday (0=Sun … 6=Sat, this profile's
+  // timezone) the recap slot fires on, or null = off. Off by default. The recap fires
   // at weeklyRecapMinute on that weekday.
+  //
+  // This is the ONE slot every recap scale arrives in — a monthly or quarterly recap
+  // does not get a send day of its own, which is what makes a longer cadence a contact
+  // REDUCTION and never an increase (#2178's replace-never-stack rule).
   weeklyRecapDay: number | null;
   weeklyRecapMinute: number | null; // minute of day; defaults to 09:00 when a day is set
+  // WHICH SCALE that slot speaks at (#2178): the shortest period the review may report
+  // on. `week` (the default) hears from every scale as its periods close; `quarter`
+  // hears only from the quarter. Profile-scoped CONTENT, beside the schedule — the
+  // delivery channels stay login-scoped, per the mixed-scope Notifications model.
+  recapScale: RecapScale;
   // Milestone alerts (issue #32): whether to notify when a milestone fires. On by
   // default — milestones are always recorded to the timeline regardless; this only
   // gates the (quiet) push/Telegram alert.
@@ -843,6 +853,25 @@ const SUPP_HOUR_KEYS = {
 
 // The default recap send time when a weekday is chosen (09:00).
 const DEFAULT_RECAP_MINUTE = 9 * 60;
+
+// Where the recap's SCALE lives (#2178) — its own key beside the weekday and the time,
+// never multiplexed onto either. The two questions ("when does the slot fire" and "what
+// length does it report on") are separate, and #2205's rule against overloading a
+// schedule value with a second meaning applies here as much as it did to the digest.
+export const RECAP_SCALE_KEY = "notify_recap_scale";
+
+/**
+ * The profile's chosen recap cadence. Absent/unreadable ⇒ `week`: the pre-#2178
+ * default, and the safe direction — an unparseable setting must never SILENCE a review
+ * the user turned on, only ever leave it where it was.
+ */
+export function getRecapScale(profileId: number): RecapScale {
+  return parseRecapScale(getProfileSetting(profileId, RECAP_SCALE_KEY));
+}
+
+export function setRecapScale(profileId: number, scale: RecapScale): void {
+  setProfileSetting(profileId, RECAP_SCALE_KEY, scale);
+}
 
 // Where the digest's MODE lives (#2211). Its own key beside `notify_digest_hour`,
 // which keeps carrying only "" (off) or "HH:MM" — the two questions ("when" and
@@ -915,6 +944,7 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
         getProfileSetting(profileId, "notify_recap_hour"),
         DEFAULT_RECAP_MINUTE
       ) ?? DEFAULT_RECAP_MINUTE,
+    recapScale: getRecapScale(profileId),
     // Milestone alerts on unless explicitly disabled.
     milestonesEnabled:
       (getProfileSetting(profileId, "notify_milestones") ?? "1") === "1",
@@ -989,6 +1019,10 @@ export function setNotifySchedule(
     "notify_recap_hour",
     formatNotifyTime(sched.weeklyRecapMinute ?? DEFAULT_RECAP_MINUTE)
   );
+  // Written unconditionally, including while the recap is off, so the stored triple is
+  // always total: a reader never has to decide whether an absent scale beside an off
+  // weekday means "week" or "unset".
+  setProfileSetting(profileId, RECAP_SCALE_KEY, sched.recapScale);
   setProfileSetting(
     profileId,
     "notify_milestones",

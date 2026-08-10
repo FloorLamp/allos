@@ -75,6 +75,7 @@ import { answerCallbackQuery } from "./telegram-api";
 import { rebuildMessage } from "./telegram";
 import type { TelegramCallbackQuery } from "./telegram-api";
 import type { NotificationAction, NotificationMessage } from "./types";
+import { GLYPH } from "./glyphs";
 
 // Everything a correction tap needs before it can do anything: who is acting, where the
 // message is, and the burst the token anchors on — re-derived from the LEDGER, never
@@ -280,7 +281,7 @@ function foodRestampText(
         ? " — moved to yesterday"
         : ` — ${movedDays} moved to yesterday`
       : "";
-  return `Eating time updated${when} for ${what}${moved} 🕐`;
+  return `Eating time updated${when} for ${what}${moved} ${GLYPH.eventTime}`;
 }
 
 // ---- Doses (#2020) ---------------------------------------------------------
@@ -456,7 +457,7 @@ function doseRestampText(outcome: DoseRestampOutcome, hhmm?: string): string {
   const day = outcome.crossedMidnight
     ? " — the day it counts for is unchanged"
     : "";
-  return `Intake time updated${when} for ${what}${day} 🕐`;
+  return `Intake time updated${when} for ${what}${day} ${GLYPH.eventTime}`;
 }
 
 export { FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES };

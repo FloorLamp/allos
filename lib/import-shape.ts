@@ -24,9 +24,11 @@ import {
   isRowDrop,
   keptRowCount,
   tallyUnresolvedNames,
+  type ImportDrop,
   type ImportReport,
   type ReconciliationSummary,
 } from "./import-report";
+import { normalizeDurationValue } from "./duration-value";
 import {
   summarizeExtractionConfidence,
   type ConfidenceItem,
@@ -626,7 +628,13 @@ export function extractionToPersistInput(
   const docDate = isRealIsoDate(result.meta.document_date)
     ? result.meta.document_date
     : null;
-  const allRecords: PersistRecord[] = result.results.map((r) => {
+  // The DURATION door on the AI path (#2322) — the third door, same pure decision as
+  // the CDA and FHIR parsers make. The model faithfully reports what the page printed,
+  // which for a stress test's `Exercise Duration` is "10:30" in `min:sec`; that is a
+  // string, and a string stored as a reading never plots, flags or trends. Normalize
+  // it to seconds, or DROP it with a reason — never store it.
+  const durationDrops: ImportDrop[] = [];
+  const allRecords: PersistRecord[] = result.results.flatMap((r) => {
     // A structured prescription object (#414) supplies the sig / strength /
     // prescriber / pharmacy / Rx / start-date straight off the label, so the med
     // projection no longer depends on parsePrescription reconstructing them from a
@@ -661,47 +669,72 @@ export function extractionToPersistInput(
     // narrative in `value` (the natural result field), so fold value+notes into one
     // body here — otherwise the report renders with an empty body.
     const isReport = r.category === "report";
+    // A `report` row is narrative, so it never carries a unit to declare a duration.
+    const duration = isReport
+      ? ({ kind: "not-a-duration" } as const)
+      : normalizeDurationValue(r.value, r.value_num, r.unit);
+    if (duration.kind === "unparsable") {
+      durationDrops.push({
+        kind: r.category === "vitals" ? "vitals" : "lab",
+        label: r.name,
+        reason: "unparsable_value",
+      });
+      return [];
+    }
+    const stored =
+      duration.kind === "normalized"
+        ? {
+            value: duration.value,
+            value_num: duration.value_num,
+            unit: duration.unit,
+          }
+        : {
+            value: isReport ? null : (rx?.strength ?? r.value),
+            value_num:
+              isReport || !Number.isFinite(r.value_num) ? null : r.value_num,
+            unit: isReport ? null : r.unit,
+          };
     const reportBody = isReport
       ? [r.value, r.notes]
           .map((s) => (s == null ? "" : String(s).trim()))
           .filter(Boolean)
           .join(" — ") || null
       : null;
-    return {
-      category: r.category,
-      name: r.name,
-      canonical: r.canonical_name || r.name,
-      value: isReport ? null : (rx?.strength ?? r.value),
-      value_num: isReport
-        ? null
-        : Number.isFinite(r.value_num)
-          ? r.value_num
-          : null,
-      unit: isReport ? null : r.unit,
-      date: isRealIsoDate(r.collected_date) ? r.collected_date! : fallbackDate,
-      reference_range: r.reference_range,
-      flag: r.flag,
-      panel: r.panel,
-      notes: isReport ? reportBody : rx ? sigNote : r.notes,
-      source: null,
-      external_id: null,
-      loinc: null,
-      provider: null,
-      // The lifecycle + collection attributes the model read off the page (#1404):
-      // a "CORRECTED REPORT" banner, a "Fasting: Yes" line, a printed specimen.
-      // Null whenever the document doesn't state one (the persist boundary
-      // normalizes an unrecognized word to null rather than guessing).
-      result_status: r.result_status ?? null,
-      fasting: r.fasting ?? null,
-      specimen: r.specimen ?? null,
-      // Structured medication period (a single open course from the printed start
-      // date) + attribution, when the label carried them (#414); else null and the
-      // persist layer's parsePrescription fallback fills what it can.
-      courses,
-      prescriber: rx?.prescriber ?? null,
-      pharmacy: rx?.pharmacy ?? null,
-      rxNumber: rx?.rx_number ?? null,
-    };
+    return [
+      {
+        category: r.category,
+        name: r.name,
+        canonical: r.canonical_name || r.name,
+        value: stored.value,
+        value_num: stored.value_num,
+        unit: stored.unit,
+        date: isRealIsoDate(r.collected_date)
+          ? r.collected_date!
+          : fallbackDate,
+        reference_range: r.reference_range,
+        flag: r.flag,
+        panel: r.panel,
+        notes: isReport ? reportBody : rx ? sigNote : r.notes,
+        source: null,
+        external_id: null,
+        loinc: null,
+        provider: null,
+        // The lifecycle + collection attributes the model read off the page (#1404):
+        // a "CORRECTED REPORT" banner, a "Fasting: Yes" line, a printed specimen.
+        // Null whenever the document doesn't state one (the persist boundary
+        // normalizes an unrecognized word to null rather than guessing).
+        result_status: r.result_status ?? null,
+        fasting: r.fasting ?? null,
+        specimen: r.specimen ?? null,
+        // Structured medication period (a single open course from the printed start
+        // date) + attribution, when the label carried them (#414); else null and the
+        // persist layer's parsePrescription fallback fills what it can.
+        courses,
+        prescriber: rx?.prescriber ?? null,
+        pharmacy: rx?.pharmacy ?? null,
+        rxNumber: rx?.rx_number ?? null,
+      },
+    ];
   });
   const bodyMetrics = bodyMetricsFromExtraction(
     result.results,
@@ -958,6 +991,9 @@ export function extractionToPersistInput(
   // Kept rows off the ONE shared registry (#1827) — the same one the CCD and FHIR
   // parsers count through. persistDocumentImport rebinds these to the post-persist
   // footprint tally, so this path's card agrees with its extracted count too.
+  // Every row-level drop this path reports: the model-shape rejections the
+  // normalizer collected, plus the duration door's refusals above (#2322).
+  const allDrops: ImportDrop[] = [...result.drops, ...durationDrops];
   const imported = keptRowCount({
     records,
     immunizations,
@@ -1005,10 +1041,10 @@ export function extractionToPersistInput(
       }
     : null;
   const report: ImportReport = {
-    drops: result.drops,
+    drops: allDrops,
     coverage: [],
     imported,
-    considered: imported + result.drops.filter(isRowDrop).length,
+    considered: imported + allDrops.filter(isRowDrop).length,
     unmappedLoincs: [],
     unresolvedNames,
     reconciliation,

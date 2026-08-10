@@ -409,7 +409,7 @@ export function markDoseTaken(
 }
 
 // Log a single dose as SKIPPED on `date` (#232) — the sibling of markDoseTaken for the
-// Telegram ⏭ button and the offline skip. A skip is a deliberate "chose not to take it"
+// Telegram ⏭️ button and the offline skip. A skip is a deliberate "chose not to take it"
 // decision, so it writes a status='skipped' row (amount NULL: nothing was consumed) and
 // NEVER decrements on-hand supply. Same staleness contract as markDoseTaken, and —
 // because a taken→skipped change must be an explicit UI toggle, never a stale-button
