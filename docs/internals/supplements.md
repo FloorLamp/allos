@@ -585,7 +585,10 @@ is always available.
   `DoseStatusControl` on the item's state and the row's DAY (a past day stays
   read-only, showing its recorded outcome), not on `due`, so a `may` item, an
   off-cadence row and a situation-inactive one are all one tap away from the
-  collapsed "More supplements" section; and `offeredItems` carries the item's FIRST
+  collapsed "More supplements" section. A situationally HELD row (#1296) is active
+  too, so it keeps the control: a hold suppresses dueness, and if the dose was taken
+  anyway that is precisely the fact a hold wants on the record. `offeredItems`
+  carries the item's FIRST
   ACTIVE dose so Upcoming's "Available when you want them" rows render the same
   `RowAction` "Mark taken" chip the due rows use. Still ONE row per item — collapse
   is presentation, not data loss — and a multi-dose item logs its first active dose's
