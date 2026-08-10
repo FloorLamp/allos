@@ -53,6 +53,12 @@ next-env.d.ts
 # local claude settings
 .claude/settings.local.json
 
+# Agent worktrees. A coding agent that checks out its branch here leaves a whole
+# second copy of the repo sitting untracked inside the first one — which reads as
+# "uncommitted work" to anything watching the tree, and is a `git add -A` away
+# from being committed into itself.
+/.claude/worktrees/
+
 # PHI-scan optional denylist of real names/orgs (see scripts/phi-scan.ts).
 # Must never be committed — it would itself introduce PHI.
 .phi-denylist
