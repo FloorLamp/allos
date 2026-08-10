@@ -114,6 +114,45 @@ export function intakeHref(kind: SupplementKind): AppRoute {
     : nutritionTabHref("supplements");
 }
 
+// The cross-item DOSE LEDGER (#2417) — every confirmed dose across items, filterable
+// by item, kind and date range. Same kind→surface rule as `intakeHref` one level down:
+// the supplements tab's ledger lives under /nutrition, the medications one under
+// /medications, and each opens pre-filtered to its own surface's kind (the kind filter
+// on the page is what widens it). One helper, so the Trends → Nutrition dose-history
+// chart and both intake surfaces name the same destination.
+//
+// `surface` picks the route; `params` carries the ledger's own filter state — the kind
+// filter (`kind=all` widens past the surface's own), the item filter, and the shared
+// from/to date window. A single-day window is what the Trends day panel's "what did I
+// take that day" means as a table.
+export const DOSE_LEDGER_ALL_KINDS = "all";
+
+export function doseLedgerHref(
+  surface: SupplementKind,
+  params: {
+    from?: string;
+    to?: string;
+    kind?: SupplementKind | typeof DOSE_LEDGER_ALL_KINDS;
+    item?: number;
+    // The explicit all-time sentinel. Needed for the same reason Trends needs it: an
+    // empty query string means this surface's DEFAULT window, so the "All time" pill
+    // has to be able to say itself.
+    allTime?: boolean;
+  } = {}
+): AppRoute {
+  const sp = new URLSearchParams();
+  if (params.allTime) sp.set("range", "all");
+  if (params.from) sp.set("from", params.from);
+  if (params.to) sp.set("to", params.to);
+  if (params.kind) sp.set("kind", params.kind);
+  if (params.item) sp.set("item", String(params.item));
+  const qs = sp.toString();
+  if (surface === "medication") {
+    return qs ? `/medications/dose-history?${qs}` : "/medications/dose-history";
+  }
+  return qs ? `/nutrition/dose-history?${qs}` : "/nutrition/dose-history";
+}
+
 // "Add this bottle for another person" (#1705) — the cabinet's second entry point into
 // the item forms. Same kind→surface rule as intakeHref, plus the `?supply=` param the
 // two surfaces parse to open their add form pre-seeded and pre-linked. One helper so the

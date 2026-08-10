@@ -118,6 +118,10 @@ import { KEEP_APART_PREFIX } from "@/lib/intake-pairs";
 function revalidateIntake() {
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");
+  // Both doors onto the cross-item dose ledger (#2417) — a backfill, amend or delete
+  // made FROM the ledger has to leave the ledger showing what it just wrote.
+  revalidateRoute("/nutrition/dose-history");
+  revalidateRoute("/medications/dose-history");
   revalidateRoute("/");
 }
 

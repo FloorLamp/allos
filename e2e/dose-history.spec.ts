@@ -1,4 +1,10 @@
 import { test, expect } from "./fixtures";
+import {
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledSelect,
+} from "./helpers";
 // A dosage/schedule edit must never destroy or rewrite adherence history.
 // Before the `retired` flag, removing a dose row on edit hard-deleted it and
 // ON DELETE CASCADE silently wiped every taken-log that referenced it; and with
@@ -188,4 +194,93 @@ test("a supplement's dose history offers the medication row actions, and an edit
 
   // The SCHEDULE is untouched by the correction — the row still reads 250 mg.
   await expect(row).toContainText("250 mg");
+});
+
+// #2417: dose history is no longer a per-item disclosure two menus deep. Both intake
+// surfaces carry a one-click door onto the CROSS-ITEM ledger — every confirmed dose,
+// filterable by item, kind and date window, with the same row actions and a top-level
+// "Log past dose". This drives that door for real: confirm a dose on the supplements
+// tab, walk to the ledger, narrow it to the item, and backfill from the table itself.
+test("the supplements tab reaches a cross-item dose ledger and logs a past dose from it", async ({
+  page,
+}, testInfo) => {
+  const name = `Ledger Guard ${testInfo.repeatEachIndex}-${testInfo.retry}`;
+  await page.goto("/nutrition?tab=supplements");
+
+  await page.getByTestId("supplement-add-toggle").click();
+  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+  await addDialog.getByLabel("Name").fill(name);
+  await addDialog.getByLabel("Amount").first().fill("125 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
+  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await addDialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(addDialog).toHaveCount(0);
+
+  const row = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
+    .locator("div.card")
+    .filter({ hasText: name });
+  await row.getByRole("button", { name: "Mark taken" }).click();
+  await expect(
+    row.getByRole("button", { name: "Mark not taken" })
+  ).toBeVisible();
+
+  // ── ONE click from the supplements tab to the whole ledger ─────────────────
+  await followLink(
+    page,
+    page.getByTestId("dose-ledger-link"),
+    /\/nutrition\/dose-history/
+  );
+  const ledger = page.getByTestId("dose-ledger");
+  const ownRow = ledger
+    .getByTestId("dose-ledger-row")
+    .filter({ hasText: name });
+  await expect(ownRow).toHaveCount(1);
+  await expect(ownRow).toContainText("125 mg");
+
+  // ── Narrowing to the item leaves that item's rows and nothing else ─────────
+  const itemFilter = page.getByTestId("dose-ledger-item-filter");
+  const itemValue = await itemFilter
+    .locator("option")
+    .filter({ hasText: name })
+    .getAttribute("value");
+  await settledSelect(page, itemFilter, itemValue ?? "", {
+    destination: /item=/,
+  });
+  await expect(ledger.getByTestId("dose-ledger-row")).toHaveCount(1);
+  await expect(ledger.getByTestId("dose-ledger-row")).toContainText(name);
+
+  // ── "Log past dose" without opening any item's menu ────────────────────────
+  await hydratedClick(page, page.getByTestId("dose-ledger-add"));
+  // The picker opens on the item the ledger is FILTERED to — a reader who narrowed
+  // the table and then tapped "Log past dose" means that item.
+  await expect(page.getByTestId("dose-ledger-item-picker")).toHaveValue(
+    itemValue ?? ""
+  );
+  const form = page.getByTestId("historical-dose-form");
+  const maxDate = await form
+    .locator('input[type="hidden"][name="date"]')
+    .inputValue();
+  const backfill = new Date(`${maxDate}T00:00:00Z`);
+  backfill.setUTCDate(backfill.getUTCDate() - 3);
+  const backfillDay = backfill.toISOString().slice(0, 10);
+  await form.getByTestId("historical-dose-date").fill(backfillDay);
+  await form.getByTestId("historical-dose-time").fill("06:45");
+  await form.getByLabel("Amount").fill("175 mg");
+  await settledClick(page, form.getByRole("button", { name: "Save dose" }));
+  await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();
+  await expect(ledger.getByTestId("dose-ledger-row")).toHaveCount(2);
+  await expect(
+    ledger.getByTestId("dose-ledger-row").filter({ hasText: "175 mg" })
+  ).toContainText(/(?:6:45am|06:45)/);
+
+  // ── The item-filtered ledger says exactly what the item's own panel says ───
+  await page.goto("/nutrition?tab=supplements");
+  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await page.getByRole("menuitem", { name: "Dose history" }).click();
+  const panel = row.getByTestId("supplement-dose-history-panel");
+  await expect(panel.getByTestId("dose-history-row")).toHaveCount(2);
+  await expect(
+    panel.getByTestId("dose-history-row").filter({ hasText: "175 mg" })
+  ).toHaveCount(1);
 });

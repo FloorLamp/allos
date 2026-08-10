@@ -44,6 +44,12 @@ export interface EntryHistoryColumn<T> {
 //     practice sessions and substance rows both return `{undoId}` since #2038).
 //
 // Per-surface test ids are parameters, so existing specs keep their hooks.
+//
+// The fourth clone — dose history — was still a bespoke `<ul>` when this comment
+// was written; #2417 migrated it, so BOTH dose-history scopes (the per-item panel
+// and the cross-item ledger) now render here. That migration is what added
+// `readOnly`: the dose panel is the first caller with a genuinely read-only
+// viewer.
 export default function EntryHistoryTable<T extends { id: number }>({
   items,
   columns,
@@ -51,6 +57,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
   actionsHeaderClassName = "w-16",
   collapsedCount = 5,
   expandToggle,
+  readOnly = false,
   menuLabel,
   rowTestId,
   editTestId,
@@ -73,6 +80,11 @@ export default function EntryHistoryTable<T extends { id: number }>({
     expandedLabel: string;
     testId?: string;
   };
+  // A viewer with no write reach on this record (#2417: a caregiver holding a
+  // read-only grant on the profile whose dose history this is). The whole Actions
+  // column goes away rather than rendering a menu whose every item would refuse —
+  // the rows themselves are still the record and stay readable.
+  readOnly?: boolean;
   menuLabel: string | ((item: T) => string);
   rowTestId?: (item: T) => string;
   editTestId?: (item: T) => string;
@@ -131,7 +143,7 @@ export default function EntryHistoryTable<T extends { id: number }>({
 
   const visible =
     expanded || !expandToggle ? items : items.slice(0, collapsedCount);
-  const colSpan = columns.length + 1;
+  const colSpan = columns.length + (readOnly ? 0 : 1);
 
   return (
     <>
@@ -146,9 +158,11 @@ export default function EntryHistoryTable<T extends { id: number }>({
                 {col.header}
               </th>
             ))}
-            <th className={`th text-right ${actionsHeaderClassName}`}>
-              Actions
-            </th>
+            {readOnly ? null : (
+              <th className={`th text-right ${actionsHeaderClassName}`}>
+                Actions
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -175,51 +189,53 @@ export default function EntryHistoryTable<T extends { id: number }>({
                       {col.cell(item)}
                     </Td>
                   ))}
-                  <Td slot="actions" className="px-2 py-2">
-                    <div className="flex justify-end">
-                      <OverflowMenu
-                        label={
-                          typeof menuLabel === "string"
-                            ? menuLabel
-                            : menuLabel(item)
-                        }
-                        open={menuOpenId === item.id}
-                        onOpenChange={(open) =>
-                          setMenuOpenId(open ? item.id : null)
-                        }
-                      >
-                        {({ close }) => (
-                          <>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              data-testid={editTestId?.(item)}
-                              onClick={() => {
-                                close();
-                                setEditingId(item.id);
-                              }}
-                              className={MENU_ITEM}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              data-testid={deleteTestId?.(item)}
-                              disabled={deletingId === item.id}
-                              onClick={() => {
-                                close();
-                                void remove(item);
-                              }}
-                              className={MENU_ITEM_DANGER}
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </OverflowMenu>
-                    </div>
-                  </Td>
+                  {readOnly ? null : (
+                    <Td slot="actions" className="px-2 py-2">
+                      <div className="flex justify-end">
+                        <OverflowMenu
+                          label={
+                            typeof menuLabel === "string"
+                              ? menuLabel
+                              : menuLabel(item)
+                          }
+                          open={menuOpenId === item.id}
+                          onOpenChange={(open) =>
+                            setMenuOpenId(open ? item.id : null)
+                          }
+                        >
+                          {({ close }) => (
+                            <>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                data-testid={editTestId?.(item)}
+                                onClick={() => {
+                                  close();
+                                  setEditingId(item.id);
+                                }}
+                                className={MENU_ITEM}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                data-testid={deleteTestId?.(item)}
+                                disabled={deletingId === item.id}
+                                onClick={() => {
+                                  close();
+                                  void remove(item);
+                                }}
+                                className={MENU_ITEM_DANGER}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </OverflowMenu>
+                      </div>
+                    </Td>
+                  )}
                 </>
               )}
             </tr>

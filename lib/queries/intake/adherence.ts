@@ -998,6 +998,23 @@ export function getAdministrationsForItemsOnDate(
   return out;
 }
 
+// The ONE ordering every dose-history reader sorts by (#2417). Three readers answer
+// the same question at three scopes — one item (getIntakeDoseHistory), a page's worth
+// of items (getIntakeDoseHistoryForItems), and the whole profile
+// (getIntakeDoseHistoryAll) — and they MUST sort identically: the cross-item ledger
+// narrowed to one item is asserted row-for-row against the item-scoped reader, so a
+// drifted ORDER BY in any one of them is a broken surface, not a cosmetic difference.
+// Sharing the string is what makes that physically impossible rather than merely true
+// today.
+//
+// The COALESCE is the recorded_at → taken_at RECORD CHAIN, hand-rolled here on purpose:
+// both links answer one question by the owner's #2205 ruling, and routing it through
+// `recordInstant` means selecting both columns and ordering in JS, which changes the
+// perf shape of the medication surface's hottest query — a read-path change with its
+// own PR. Extracting it does not retire it; it makes retiring it a ONE-line edit.
+const DOSE_HISTORY_ORDER =
+  "ORDER BY l.date DESC, COALESCE(l.recorded_at, l.taken_at) DESC, l.id DESC";
+
 // One taken ledger row as the dose-history surfaces render it. It carries the row's
 // declared temporal columns — `occurred_at` (the event instant, stated-only, migration
 // 165) alongside the `recorded_at` → `taken_at` record chain — so a caller can ask
@@ -1035,7 +1052,7 @@ export function getIntakeDoseHistory(
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
           AND l.date >= ?
-        ORDER BY l.date DESC, COALESCE(l.recorded_at, l.taken_at) DESC, l.id DESC`
+        ${DOSE_HISTORY_ORDER}`
     )
     .all(profileId, itemId, sinceDate) as IntakeDoseHistoryRow[];
 }
@@ -1061,7 +1078,7 @@ export function getIntakeDoseHistoryForItems(
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
           AND l.status = 'taken' AND l.date >= ?
-        ORDER BY l.date DESC, COALESCE(l.recorded_at, l.taken_at) DESC, l.id DESC`
+        ${DOSE_HISTORY_ORDER}`
     )
     .all(profileId, ...itemIds, sinceDate) as (IntakeDoseHistoryRow & {
     item_id: number;
@@ -1081,6 +1098,76 @@ export function getIntakeDoseHistoryForItems(
     out.set(r.item_id, arr);
   }
   return out;
+}
+
+// One row of the CROSS-ITEM dose ledger (#2417): the same taken-row shape the
+// item-scoped reads return, plus the identity of the item it was taken against.
+export type IntakeDoseLedgerRow = IntakeDoseHistoryRow & {
+  item_id: number;
+  item_name: string;
+  item_kind: SupplementKind;
+};
+
+// The cross-item dose ledger: every taken row this profile recorded in a window,
+// newest first, with the item's name and kind joined in (#2417).
+//
+// The third member of this family, and deliberately not a fork of it: the same
+// `status = 'taken'` semantics (a skip is adherence's business, not the record of
+// what was actually taken), the LITERALLY same ordering (`DOSE_HISTORY_ORDER`, shared
+// by all three readers), and the same profile scoping through the parent item. What it
+// adds is that the QUESTION is no longer item-scoped — "what did I actually take last
+// week, across items" used to cost one navigation per item.
+//
+// The JOIN is on the item's PROFILE ONLY — never on `active`. History outlives
+// retirement: a dose taken from a bottle that has since been paused, retired, or
+// swapped still happened, and dropping it here would silently rewrite the record.
+//
+// `itemId` is offered so the ledger's item filter narrows in SQL rather than by
+// post-filtering the window; narrowed to one item it returns exactly the rows
+// `getIntakeDoseHistory` returns for that item over the same window (asserted in
+// lib/__db_tests__/supplement-dose-history.test.ts), which is what lets the ledger
+// and the per-item panel be two views of one ledger instead of two answers.
+export function getIntakeDoseHistoryAll(
+  profileId: number,
+  sinceDate: string,
+  opts: {
+    kind?: SupplementKind;
+    itemId?: number;
+    // Inclusive last day of the window; omit for "up to the newest row".
+    untilDate?: string;
+  } = {}
+): IntakeDoseLedgerRow[] {
+  // The profile scope stays SPELLED OUT in the statement text — the optional filters
+  // are appended, never the scope predicate, so the profile-scoping guard can still
+  // read this query and so no future filter can accidentally replace the join
+  // condition that makes it this profile's ledger.
+  const filters: string[] = [];
+  const params: (string | number)[] = [profileId, sinceDate];
+  if (opts.untilDate) {
+    filters.push(" AND l.date <= ?");
+    params.push(opts.untilDate);
+  }
+  if (opts.kind) {
+    filters.push(" AND s.kind = ?");
+    params.push(opts.kind);
+  }
+  if (opts.itemId) {
+    filters.push(" AND l.item_id = ?");
+    params.push(opts.itemId);
+  }
+  return db
+    .prepare(
+      `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.recorded_at,
+              l.taken_at, l.amount, l.product,
+              s.name AS item_name, s.kind AS item_kind
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.join(
+          ""
+        )}
+        ${DOSE_HISTORY_ORDER}`
+    )
+    .all(...params) as IntakeDoseLedgerRow[];
 }
 
 // ---- Undoable medication administration delete (issue #851 item 11) ----

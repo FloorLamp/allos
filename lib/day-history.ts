@@ -29,6 +29,7 @@ import {
   weekSpan,
 } from "./day-grid";
 import { intensityLevel } from "./workout-heatmap";
+import { doseLedgerHref, DOSE_LEDGER_ALL_KINDS, type AppRoute } from "./hrefs";
 
 export type DayHistoryLevel = 0 | 1 | 2 | 3 | 4;
 
@@ -43,6 +44,15 @@ export interface DayHistoryDomainSpec {
   calendarLevel(total: number): DayHistoryLevel;
   // Per-group per-day value → matrix cell bucket.
   cellLevel(value: number): DayHistoryLevel;
+  // The domain's own answer to "show me that day's ROWS" — the tabular twin of a
+  // tapped calendar cell, beside the Timeline link every domain gets. Declared here
+  // rather than passed in as a prop because the day panel is client state and a
+  // function can never cross the server→client boundary. Omitted by a domain with no
+  // row-level surface of its own.
+  dayLink?: {
+    label: string;
+    href(day: string): AppRoute;
+  };
 }
 
 // The declared per-domain policies. Every matrix ladder is the shared 1/2/3/4+
@@ -72,6 +82,17 @@ export const DAY_HISTORY_DOMAINS: Record<
   dose: {
     unitOne: "dose",
     unitMany: "doses",
+    // #2417: "what did I take that day" IS the cross-item dose ledger filtered to
+    // that day — across both kinds, since this chart counts both.
+    dayLink: {
+      label: "Dose ledger",
+      href: (day) =>
+        doseLedgerHref("supplement", {
+          from: day,
+          to: day,
+          kind: DOSE_LEDGER_ALL_KINDS,
+        }),
+    },
     calendarLevel: (total) =>
       total <= 0 ? 0 : total <= 3 ? 1 : total <= 6 ? 2 : total <= 10 ? 3 : 4,
     cellLevel: intensityLevel,

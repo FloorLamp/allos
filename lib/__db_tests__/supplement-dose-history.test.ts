@@ -19,6 +19,7 @@ import {
   createSharedSupply,
   deleteAdministrationLog,
   getIntakeDoseHistory,
+  getIntakeDoseHistoryAll,
   getIntakeDoseHistoryForItems,
   getRedoseArmingState,
   linkItemToPool,
@@ -371,6 +372,199 @@ describe("supplement dose history — the ungated shared cores", () => {
     expect(map.get(b.itemId)).toHaveLength(1);
     expect(map.get(b.itemId)![0].date).toBe(inWindow);
     expect(getIntakeDoseHistoryForItems(p, [], since).size).toBe(0);
+  });
+});
+
+// The CROSS-ITEM ledger (#2417). The claim the surface rests on is that the ledger and
+// the per-item panel are two views of ONE record — so these cases assert the reader
+// agreement directly, at the row level, rather than trusting two similar-looking SQL
+// statements to stay similar.
+describe("the cross-item dose ledger reader", () => {
+  // A medication with one scheduled dose, so the kind filter has both kinds to sort.
+  function seedMedication(profileId: number): {
+    itemId: number;
+    doseId: number;
+  } {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, 'medication', 'daily', 'must')`
+        )
+        .run(profileId, `Statin ${++unique}`).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '10 mg', 'evening', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    return { itemId, doseId };
+  }
+
+  it("returns every item's taken rows in one pass, newest first, with the item joined in", () => {
+    const p = newProfile();
+    const supp = seedSupplement(p);
+    const med = seedMedication(p);
+    const older = shiftDateStr(today(p), -5);
+    const newer = shiftDateStr(today(p), -2);
+    logHistoricalDose(
+      p,
+      supp.itemId,
+      supp.doseId,
+      at(older, "08:00"),
+      null,
+      false
+    );
+    logHistoricalDose(
+      p,
+      med.itemId,
+      med.doseId,
+      at(newer, "20:00"),
+      null,
+      false
+    );
+
+    const rows = getIntakeDoseHistoryAll(p, "0001-01-01");
+    expect(rows.map((r) => r.date)).toEqual([newer, older]);
+    expect(rows[0].item_id).toBe(med.itemId);
+    expect(rows[0].item_kind).toBe("medication");
+    expect(rows[0].item_name).toContain("Statin");
+    expect(rows[1].item_kind).toBe("supplement");
+  });
+
+  it("narrowed to one item, returns EXACTLY what that item's own panel shows", () => {
+    const p = newProfile();
+    const a = seedSupplement(p);
+    const b = seedSupplement(p);
+    const day = shiftDateStr(today(p), -4);
+    logHistoricalDose(p, a.itemId, a.doseId, at(day, "07:00"), "111 mg", false);
+    logHistoricalDose(p, a.itemId, a.doseId, at(day, "19:00"), "222 mg", false);
+    logHistoricalDose(p, b.itemId, b.doseId, at(day, "08:00"), "333 mg", false);
+
+    const panel = getIntakeDoseHistory(p, a.itemId, "0001-01-01");
+    const ledger = getIntakeDoseHistoryAll(p, "0001-01-01", {
+      itemId: a.itemId,
+    });
+    expect(ledger).toHaveLength(panel.length);
+    // Same rows, same order, same values — the ledger row simply also names its item.
+    expect(
+      ledger.map(({ item_id, item_name, item_kind, ...row }) => {
+        expect(item_id).toBe(a.itemId);
+        expect(item_name).toBeTruthy();
+        expect(item_kind).toBe("supplement");
+        return row;
+      })
+    ).toEqual(panel);
+  });
+
+  it("filters by kind and by window, and counts only taken rows", () => {
+    const p = newProfile();
+    const supp = seedSupplement(p);
+    const med = seedMedication(p);
+    const inWindow = shiftDateStr(today(p), -3);
+    const tooOld = shiftDateStr(today(p), -40);
+    logHistoricalDose(
+      p,
+      supp.itemId,
+      supp.doseId,
+      at(inWindow, "08:00"),
+      null,
+      false
+    );
+    logHistoricalDose(
+      p,
+      med.itemId,
+      med.doseId,
+      at(inWindow, "20:00"),
+      null,
+      false
+    );
+    logHistoricalDose(
+      p,
+      supp.itemId,
+      supp.doseId,
+      at(tooOld, "08:00"),
+      null,
+      false
+    );
+    // A SKIP is adherence's business, not a record of what was taken.
+    db.prepare(
+      `INSERT INTO intake_item_logs (item_id, dose_id, date, taken_at, status)
+       VALUES (?, ?, ?, ?, 'skipped')`
+    ).run(supp.itemId, supp.doseId, inWindow, `${inWindow}T09:00:00Z`);
+
+    const since = shiftDateStr(today(p), -30);
+    expect(
+      getIntakeDoseHistoryAll(p, since, { kind: "medication" })
+    ).toHaveLength(1);
+    const supplementRows = getIntakeDoseHistoryAll(p, since, {
+      kind: "supplement",
+    });
+    expect(supplementRows).toHaveLength(1);
+    expect(supplementRows[0].date).toBe(inWindow);
+    // The upper bound excludes a row after it, inclusively at the bound itself.
+    expect(
+      getIntakeDoseHistoryAll(p, since, {
+        untilDate: shiftDateStr(inWindow, -1),
+      })
+    ).toHaveLength(0);
+    expect(
+      getIntakeDoseHistoryAll(p, since, { untilDate: inWindow })
+    ).toHaveLength(2);
+  });
+
+  it("keeps a RETIRED item's doses in the ledger — history outlives retirement", () => {
+    const p = newProfile();
+    const { itemId, doseId } = seedSupplement(p);
+    const day = shiftDateStr(today(p), -6);
+    logHistoricalDose(p, itemId, doseId, at(day, "08:00"), "400 mg", false);
+    // Retire the whole thing the way an edit does: the item goes inactive and its
+    // schedule row is retired, so nothing about it is "current" any more.
+    db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(itemId);
+    db.prepare("UPDATE intake_item_doses SET retired = 1 WHERE id = ?").run(
+      doseId
+    );
+
+    const rows = getIntakeDoseHistoryAll(p, "0001-01-01");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].item_id).toBe(itemId);
+    expect(rows[0].amount).toBe("400 mg");
+  });
+
+  it("never reaches another profile's ledger", () => {
+    const mine = newProfile();
+    const theirs = newProfile();
+    const ours = seedSupplement(mine);
+    const other = seedSupplement(theirs);
+    const day = shiftDateStr(today(mine), -1);
+    logHistoricalDose(
+      mine,
+      ours.itemId,
+      ours.doseId,
+      at(day, "08:00"),
+      null,
+      false
+    );
+    logHistoricalDose(
+      theirs,
+      other.itemId,
+      other.doseId,
+      at(day, "08:00"),
+      null,
+      false
+    );
+
+    const rows = getIntakeDoseHistoryAll(mine, "0001-01-01");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].item_id).toBe(ours.itemId);
+    // Naming the other profile's item id does not borrow its rows either.
+    expect(
+      getIntakeDoseHistoryAll(mine, "0001-01-01", { itemId: other.itemId })
+    ).toEqual([]);
   });
 });
 

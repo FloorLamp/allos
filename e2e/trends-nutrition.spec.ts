@@ -77,6 +77,45 @@ test("a day tap opens the day panel; the Timeline stays one link away (#1166)", 
   await expect(page).toHaveURL(/\/timeline\?from=/);
 });
 
+// #2417: the dose calendar's "what did I take that day" is the cross-item dose
+// ledger filtered to that day, so the dose section's day panel carries a link the
+// food section's does not — declared per DOMAIN, not per caller.
+test("a dose day panel links into the dose ledger for that day", async ({
+  page,
+}) => {
+  await page.goto("/trends?tab=nutrition");
+  const doses = page.getByTestId("dose-history");
+  await expect(doses).toBeVisible();
+
+  // The section's own header link reaches the ledger across both kinds.
+  await expect(doses.getByTestId("dose-history-ledger-link")).toHaveAttribute(
+    "href",
+    "/nutrition/dose-history?kind=all"
+  );
+
+  const day = doses.getByTestId("day-history-day").first(); // first-ok: read-only, any populated dose day proves the interaction
+  await day.click();
+  const panel = doses.getByTestId("day-history-daypanel");
+  await expect(panel).toBeVisible();
+  const link = panel.getByTestId("day-history-day-link");
+  await expect(link).toHaveAttribute(
+    "href",
+    /\/nutrition\/dose-history\?from=.*&to=.*&kind=all/
+  );
+  await followLink(page, link, /\/nutrition\/dose-history\?from=/);
+  const ledger = page.getByTestId("dose-ledger");
+  await expect(ledger).toBeVisible();
+  // The food section's panel has no such link — the declaration is per domain.
+  await page.goto("/trends?tab=nutrition");
+  const history = page.getByTestId("intake-history");
+  await history.getByTestId("day-history-day").first().click(); // first-ok: read-only, any populated food day proves the absence
+  await expect(
+    history
+      .getByTestId("day-history-daypanel")
+      .getByTestId("day-history-day-link")
+  ).toHaveCount(0);
+});
+
 test("a group filter chip removes that group's matrix row", async ({
   page,
 }) => {

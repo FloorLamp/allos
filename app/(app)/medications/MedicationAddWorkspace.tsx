@@ -4,6 +4,7 @@ import { useState } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
+import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
 import MedicationForm from "@/components/MedicationForm";
 import QuickAddMedication from "@/components/QuickAddMedication";
 import type { InteractionItem } from "@/lib/drug-interactions";
@@ -71,6 +72,7 @@ export default function MedicationAddWorkspace({
           // above the button on a phone and beside it from `sm` up. One content tree,
           // both viewports.
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+            <DoseLedgerLink kind="medication" />
             <SharedSuppliesLink count={cabinetCount} />
             <button
               type="button"
