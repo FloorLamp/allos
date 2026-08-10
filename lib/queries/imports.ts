@@ -383,6 +383,14 @@ export function getDocumentProduced(
       )
       .get(profileId, source)
   );
+  const waistCircSamples = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM metric_samples
+           WHERE profile_id = ? AND source = ? AND metric = 'waist_circumference_cm'`
+      )
+      .get(profileId, source)
+  );
   // Distinct providers referenced by this document's rows. Each SELECT names a
   // profile-owned table filtered by profile_id + the document link; the shared
   // providers row a provider_id points at is global (not scoped here, by design).
@@ -439,6 +447,7 @@ export function getDocumentProduced(
     bodyMetrics,
     heightSamples,
     headCircSamples,
+    waistCircSamples,
     providers,
   };
 }
@@ -719,7 +728,14 @@ export function getDocumentBodyRows(profileId: number, docId: number) {
         ORDER BY date DESC, id DESC`
     )
     .all(profileId, source) as { id: number; date: string; value: number }[];
-  return { bodyMetrics, heights, headCircs };
+  const waistCircs = db
+    .prepare(
+      `SELECT id, date, value FROM metric_samples
+        WHERE profile_id = ? AND source = ? AND metric = 'waist_circumference_cm'
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, source) as { id: number; date: string; value: number }[];
+  return { bodyMetrics, heights, headCircs, waistCircs };
 }
 
 // The distinct providers referenced by THIS document's rows (#1182): the listing
@@ -1102,6 +1118,14 @@ export function getReprocessSnapshot(
     .all(profileId, source) as { date: string; value: number }[];
   snap.headCircs = headCircs.map((h) => sampleRow("hc", h.date, h.value));
 
+  const waistCircs = db
+    .prepare(
+      `SELECT date, value FROM metric_samples
+        WHERE profile_id = ? AND source = ? AND metric = 'waist_circumference_cm'`
+    )
+    .all(profileId, source) as { date: string; value: number }[];
+  snap.waistCircs = waistCircs.map((w) => sampleRow("wc", w.date, w.value));
+
   return snap;
 }
 
@@ -1148,7 +1172,7 @@ export function foldConsolidatedMedsIntoSnapshot(
   );
 }
 
-// A projected body metric / height / head-circ that a reprocess would DEFER — because
+// A projected body metric / height / head-circ / waist-circ that a reprocess would DEFER — because
 // another source (a manual entry, a device integration, or ANOTHER document) already
 // covers that date's measure (the import-persist undeferredBodyMetrics + height/
 // head-circ "covered" probes) — is still proposed by the defer-blind
@@ -1204,4 +1228,10 @@ export function pruneDeferredMetricsFromSnapshot(
         !sampleCovered.get(profileId, "head_circumference_cm", h.date, source)
     )
     .map((h) => sampleRow("hc", h.date, h.head_circumference_cm));
+  next.waistCircs = (input.waistCircs ?? [])
+    .filter(
+      (w) =>
+        !sampleCovered.get(profileId, "waist_circumference_cm", w.date, source)
+    )
+    .map((w) => sampleRow("wc", w.date, w.waist_circumference_cm));
 }

@@ -22,5 +22,6 @@ export const EMPTY_PRODUCED_COUNTS: DocumentProducedCounts = {
   bodyMetrics: 0,
   heightSamples: 0,
   headCircSamples: 0,
+  waistCircSamples: 0,
   providers: 0,
 };

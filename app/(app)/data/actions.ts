@@ -610,7 +610,8 @@ export async function commitBiomarkers(
     canonicalNames: input.canonicalNamesToRegister,
     insertedRecordIds: outcome.insertedRecordIds,
   });
-  const sampleCount = outcome.heightCount + outcome.headCircCount;
+  const sampleCount =
+    outcome.heightCount + outcome.headCircCount + outcome.waistCircCount;
   revalidateRoute("/results");
   revalidateRoute("/data");
   revalidateRoute("/");
@@ -618,7 +619,8 @@ export async function commitBiomarkers(
   if (outcome.bodyMetricCount || sampleCount) {
     revalidateRoute("/trends");
     // Height / head-circumference samples land on the growth charts, which are a
-    // route of their own (the old standalone /body page is long gone).
+    // route of their own (the old standalone /body page is long gone). The waist
+    // sample lands on /trends, already revalidated above.
     revalidateRoute("/trends/growth");
   }
   if (outcome.medCount) revalidateRoute("/medications");

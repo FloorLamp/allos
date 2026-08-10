@@ -241,7 +241,10 @@ export function buildImportTabs(
   add(
     "body",
     "Body metrics",
-    counts.bodyMetrics + counts.heightSamples + counts.headCircSamples
+    counts.bodyMetrics +
+      counts.heightSamples +
+      counts.headCircSamples +
+      counts.waistCircSamples
   );
   // Providers last: a global-registry tab (#1182), never before the owned-row
   // tabs, so resolveImportTab's first-tab default never lands on it.
@@ -585,6 +588,7 @@ export function bodyItems(
     }[];
     heights: { id: number; date: string; value: number }[];
     headCircs: { id: number; date: string; value: number }[];
+    waistCircs: { id: number; date: string; value: number }[];
   },
   weightUnit: WeightUnit
 ): ProducedItem[] {
@@ -619,6 +623,15 @@ export function bodyItems(
       title: "Head circumference",
       detail: `${h.value} cm`,
       date: h.date,
+      href: "/trends#body",
+    });
+  }
+  for (const w of rows.waistCircs) {
+    items.push({
+      id: w.id,
+      title: "Waist circumference",
+      detail: `${w.value} cm`,
+      date: w.date,
       href: "/trends#body",
     });
   }

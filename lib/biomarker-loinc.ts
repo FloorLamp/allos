@@ -345,6 +345,14 @@ const VITAL_LOINCS = new Set([
   // percentile, not a measurement).
   "8287-5", // Head Occipital-frontal circumference by Tape measure
   "9843-4", // Head circumference (alias)
+  // Waist circumference is the third anthropometric length vital (#2322), projected
+  // into metric_samples ('waist_circumference_cm') by the waist recognizer — see
+  // lib/waist-circ-extract (WAIST_LOINCS). Keep these two lists in sync. The
+  // waist/hip RATIO code 60803-4 is intentionally NOT here (it is a unitless ratio,
+  // not a length measurement).
+  "8280-0", // Waist Circumference at umbilicus by Tape measure
+  "56086-2", // Waist Circumference
+  "56115-9", // Waist Circumference by NHANES
   // Body weight and BMI are anthropometric vitals, not lab analytes — but Epic
   // reports them inside the Results section, so without this they classify as
   // "unmapped labs" (the two highest-frequency such codes across real exports).

@@ -29,7 +29,8 @@ export type DiffEntity =
   | "medications"
   | "bodyMetrics"
   | "heights"
-  | "headCircs";
+  | "headCircs"
+  | "waistCircs";
 
 export const DIFF_ENTITY_ORDER: DiffEntity[] = [
   "records",
@@ -41,6 +42,7 @@ export const DIFF_ENTITY_ORDER: DiffEntity[] = [
   "bodyMetrics",
   "heights",
   "headCircs",
+  "waistCircs",
 ];
 
 export const DIFF_ENTITY_LABEL: Record<DiffEntity, string> = {
@@ -53,6 +55,7 @@ export const DIFF_ENTITY_LABEL: Record<DiffEntity, string> = {
   bodyMetrics: "Body metrics",
   heights: "Height",
   headCircs: "Head circumference",
+  waistCircs: "Waist circumference",
 };
 
 // One normalized row to diff. `key` is the entity's natural identity (dedup key);
@@ -82,6 +85,7 @@ export function emptySnapshot(): ImportSnapshot {
     bodyMetrics: [],
     heights: [],
     headCircs: [],
+    waistCircs: [],
   };
 }
 
@@ -442,6 +446,9 @@ export function snapshotFromPersistInput(input: PersistInput): ImportSnapshot {
     heights: input.heights.map((h) => sampleRow("h", h.date, h.height_cm)),
     headCircs: input.headCircs.map((h) =>
       sampleRow("hc", h.date, h.head_circumference_cm)
+    ),
+    waistCircs: (input.waistCircs ?? []).map((w) =>
+      sampleRow("wc", w.date, w.waist_circumference_cm)
     ),
   };
 }
