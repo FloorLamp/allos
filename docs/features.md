@@ -954,6 +954,19 @@ self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
 used by integrations.
 
+**Waist circumference** (#2322) is a body metric here, not a biomarker. It is
+self-measured with a tape, arrives at the metric cadence, and sits beside weight
+and body fat — the same argument peak expiratory flow used — so it is a
+registered slug with a census card, a sparkline tile, a ★ and a detail page at
+**`/trends/metric/waist-circ`**, logged in centimetres (or inches) through the
+same **Log measurements** form. An imported "Waist Circumference" reading is
+projected into the same store, so a clinic tape measure and a home one land on
+one chart rather than forking into a parallel biomarker series. It carries **no
+reference band**, deliberately: the published IDF/WHO central-obesity cut-offs
+are branched by sex _and by population_ (≥94 cm for European men against ≥90 cm
+for South Asian ones), and judging every profile against one population's
+threshold would be worse than showing the trend and saying nothing.
+
 The star is the **one arrangement gesture** across both halves of the surface —
 which is why they are one surface. Starring a body metric — on its own page, which
 every card opens — is the same save as starring a grid tile, and starred cards
@@ -1389,12 +1402,12 @@ but **"can a document-imported reading of this quantity reach that chart?"**
 A vital that answers yes is not catalogued here: blood pressure, SpO2,
 respiratory rate and body temperature (the chart plots those very rows), resting
 heart rate, body fat and peak expiratory flow (the chart folds the clinical
-reading in beside the device ones), weight, height and head circumference (the
-import writes the charted row itself), and BMI (computed from the weight and
-height that arrive with it). Everything else stays, including the **domain
-vitals with no chart anywhere** — audiogram thresholds, intraocular pressure,
-visual acuity, periodontal measures, spirometry volumes, the functional-fitness
-markers, waist circumference, ankle-brachial index, the stress-test vitals — and
+reading in beside the device ones), weight, height, head circumference and waist
+circumference (the import writes the charted row itself), and BMI (computed from
+the weight and height that arrive with it). Everything else stays, including the
+**domain vitals with no chart anywhere** — audiogram thresholds, intraocular
+pressure, visual acuity, periodontal measures, spirometry volumes, the
+functional-fitness markers, ankle-brachial index, the stress-test vitals — and
 also **HRV and BMR**, which _have_ charts fed exclusively by integration streams:
 a cardiology report's HRV or a calorimetry BMR can reach neither, so the catalog
 remains their home.

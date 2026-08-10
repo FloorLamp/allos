@@ -37,6 +37,10 @@ import {
   TRENDS_RANK_PLAIN_PROFILE,
   E2E_LOGIN_TRENDS_PIN,
   TRENDS_PIN_PROFILE,
+  E2E_LOGIN_WAIST,
+  WAIST_PROFILE,
+  WAIST_LATEST_CM,
+  WAIST_SEEDED_READINGS,
   E2E_LOGIN_DAY_ONE,
   DAY_ONE_PROFILE,
   E2E_LOGIN_METRIC_JUDGMENT,
@@ -910,6 +914,40 @@ export function seedLongRange(): void {
   seedMemberLogin(E2E_LOGIN_LONG_RANGE, pid, "read");
   console.log(
     `e2e: seeded long-range fixture — profile ${pid} (${LONG_RANGE_PROFILE}) (#1938)`
+  );
+}
+
+// ── Waist circumference: the metric #2322's ruling created ──────────────────
+export function seedWaistCircumference(): void {
+  // A short history of tape readings in the SAME store the import projection writes
+  // (`metric_samples`, metric 'waist_circumference_cm'), so the detail page has a
+  // chart, a latest value and a readings table. Relative dates → never stale;
+  // idempotent (it clears its own fixture rows first, including any row a previous
+  // run's WRITE half logged).
+  const pid = fixtureProfileId(WAIST_PROFILE);
+  const anchor = today(pid);
+  setUserBirthdate(pid, shiftDateStr(anchor, -365 * 41));
+
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'waist_circumference_cm'`
+  ).run(pid);
+
+  const insWaist = db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'manual', 'waist_circumference_cm', ?, ?, ?, ?)`
+  );
+  for (let i = WAIST_SEEDED_READINGS; i >= 1; i--) {
+    const date = shiftDateStr(anchor, -i * 30);
+    // A gentle decline ending on the distinctive latest value, so the trend has a
+    // shape and the newest row is addressable by its number.
+    const value =
+      i === 1 ? WAIST_LATEST_CM : Number((WAIST_LATEST_CM + i).toFixed(1));
+    insWaist.run(pid, date, `${date}T07:00:00`, `${date}T07:00:00`, value);
+  }
+
+  seedMemberLogin(E2E_LOGIN_WAIST, pid, "write");
+  console.log(
+    `e2e: seeded waist-circumference fixture — profile ${pid} (${WAIST_PROFILE}) (#2322)`
   );
 }
 

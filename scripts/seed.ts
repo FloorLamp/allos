@@ -1083,6 +1083,19 @@ db.prepare(
    ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
 ).run();
 
+// Waist circumference (#2322) — the other home-measured metric, on the cadence the
+// ruling describes: a tape reading roughly once a month, drifting slowly down beside
+// the weight trend. One point per date (a point measure averages, never sums), in
+// the same metric_samples store the import projection writes.
+const insWaist = db.prepare(
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (1, 'manual', 'waist_circumference_cm', ?, ?, ?, ?)`
+);
+for (let i = 0; i < 8; i++) {
+  const date = daysAgo(i * 30);
+  insWaist.run(date, `${date}T07:00:00`, `${date}T07:00:00`, 88 + i * 0.7);
+}
+
 // Non-biomarker records (no optimal range; kept for category variety).
 const med = db.prepare(
   `INSERT INTO medical_records (profile_id, date, category, name, value, unit, reference_range, notes) VALUES (1,?,?,?,?,?,?,?)`

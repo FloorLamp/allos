@@ -149,7 +149,11 @@ still be keyed by metric and still need this lookup.
 
 - `METRIC_KNOWLEDGE` — **every** `BodyMetricSlug` declares which knowledge system
   answers for it: a `canonical` entry, a `growth-percentile` (a percentile-for-age
-  is not a band; the growth card owns it), or `none` **with a reason**. The
+  is not a band; the growth card owns it), or `none` **with a reason** — where the
+  reason is load-bearing, not filler. `waist-circ` (#2322) is the sharpest example:
+  real published cut-offs exist, and they are branched by sex **and by population**,
+  while the vocabulary has a sex axis and no population axis — so the honest answer
+  is `none`, argued, rather than a European band silently applied to everyone. The
   completeness test over that registry is what turns "audit whether another metric
   has this shape" into a build failure — the sweep that would have caught body fat
   before #1996 was written.

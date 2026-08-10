@@ -258,13 +258,13 @@ vocabulary — the mark follows the data, and so does the gap. A surface passes
 keeps the Body card, the tile and the metric detail page from disagreeing about
 whether a missing steps day is a zero.
 
-| Policy      | Fill   | Bridges? | Series                                                                                                                                                                          |
-| ----------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bridge`    | `null` | yes      | LEVELS — weight, body fat, BMI, lean/bone mass, BMR, hydration, resting HR, HRV, skin-temp, daily HR, height, head circumference, the clinical vitals, the 1–5 check-in ratings |
-| `break`     | `null` | no       | per-night / per-day READINGS — sleep duration, sleep stages, sleep regularity, the Oura scores                                                                                  |
-| `slot-zero` | `0`    | —        | per-day TOTALS whose missing day is a real zero — training volume (a rest day)                                                                                                  |
-| `slot-null` | `null` | no       | per-day TOTALS that were NOT measured — steps, active calories, sun minutes, intake calories, macros/fiber                                                                      |
-| `exempt`    | —      | —        | every `bio:` series: lab draws are sparse by nature, and 365 mostly-null categories around three draws degrade the tile for no honesty gain                                     |
+| Policy      | Fill   | Bridges? | Series                                                                                                                                                                                    |
+| ----------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bridge`    | `null` | yes      | LEVELS — weight, body fat, BMI, lean/bone mass, BMR, hydration, resting HR, HRV, skin-temp, daily HR, height, head and waist circumference, the clinical vitals, the 1–5 check-in ratings |
+| `break`     | `null` | no       | per-night / per-day READINGS — sleep duration, sleep stages, sleep regularity, the Oura scores                                                                                            |
+| `slot-zero` | `0`    | —        | per-day TOTALS whose missing day is a real zero — training volume (a rest day)                                                                                                            |
+| `slot-null` | `null` | no       | per-day TOTALS that were NOT measured — steps, active calories, sun minutes, intake calories, macros/fiber                                                                                |
+| `exempt`    | —      | —        | every `bio:` series: lab draws are sparse by nature, and 365 mostly-null categories around three draws degrade the tile for no honesty gain                                               |
 
 A level bridges because the quantity exists on the days you didn't sample it;
 what densification buys it is honest calendar-PROPORTIONAL spacing (two weigh-ins
