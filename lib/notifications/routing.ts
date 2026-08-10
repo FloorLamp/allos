@@ -31,7 +31,7 @@
 // edge-set query itself (lib/notifications/managing-logins.ts). The one profile-scoped
 // read here (the Home Assistant webhook) goes through `getProfileHomeAssistant`.
 
-import { db } from "../db";
+import { db, hoistedStatement } from "../db";
 import { cache } from "../request-cache";
 import type { RoutingFacts } from "../household-setup";
 import {
@@ -49,7 +49,7 @@ import { isPushConfigured } from "./push";
 // `push_subscriptions` is LOGIN-owned (a browser endpoint belongs to a device, not to a
 // data subject), so this is keyed by login id alone — the same basis the fan-out reads it
 // on. LIMIT 1: presence is the whole question.
-const HAS_PUSH_STMT = db.prepare(
+const HAS_PUSH_STMT = hoistedStatement(
   "SELECT 1 FROM push_subscriptions WHERE login_id = ? LIMIT 1"
 );
 
@@ -83,7 +83,9 @@ export function loginHasAnyChannel(loginId: number): boolean {
 
 // Every profile on the instance. `profiles` is a GLOBAL table (not profile-owned data),
 // which is why this carries no `profile_id` filter — the ids are the value being read.
-const ALL_PROFILE_IDS_STMT = db.prepare("SELECT id FROM profiles ORDER BY id");
+const ALL_PROFILE_IDS_STMT = hoistedStatement(
+  "SELECT id FROM profiles ORDER BY id"
+);
 
 // IS ANY CHANNEL TECHNOLOGY CONFIGURED ANYWHERE ON THIS INSTANCE? One fact about the
 // SERVER, and the gate the owner ruling on PR #2362 put in front of `unroutable` — see

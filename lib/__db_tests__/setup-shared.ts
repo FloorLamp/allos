@@ -45,6 +45,19 @@ function discard(dir: string): void {
 // whatever ALLOS_DB_PATH says at that moment, which happens before any hook runs.
 let activeDir = seedDatabase();
 
+// Module-scope state that outlives a test file once the registry is shared, and
+// would otherwise answer the next file with the previous file's data. These live
+// here rather than in lib/db.ts: db.ts sits at the bottom of the import graph and
+// reaching up into the query layer from it would be a cycle. Each entry needs a
+// REASON, and a new module-level cache fed by DB reads belongs on this list.
+async function resetCarriedState(): Promise<void> {
+  // #2066 dose-schedule history, memoized per profile with a 5s TTL — every
+  // seeded file bootstraps the same low profile ids, so a hit from the previous
+  // file is indistinguishable from this file's own data.
+  const schedule = await import("../queries/intake/schedule");
+  schedule.invalidateDoseScheduleVersions();
+}
+
 beforeAll(async () => {
   const previousDir = activeDir;
   activeDir = seedDatabase();
@@ -52,5 +65,6 @@ beforeAll(async () => {
   // Closes the handle still held on previousDir, which is what makes the
   // directory removable on Windows (an open file cannot be unlinked there).
   reopenDatabaseForTests();
+  await resetCarriedState();
   if (previousDir !== activeDir) discard(previousDir);
 });

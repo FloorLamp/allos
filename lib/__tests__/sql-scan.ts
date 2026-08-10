@@ -112,8 +112,14 @@ export function firstStringArgs(src: string, opener: RegExp): SqlArg[] {
 }
 
 // The `.prepare(` and `.exec(` argument extractors (both parametrize firstStringArgs).
+//
+// `hoistedStatement(` counts as a prepare site: it IS a prepared statement, just one
+// whose compilation is deferred so it can survive a connection swap (lib/db.ts). It
+// carries no leading dot, so a `.prepare`-only pattern would silently drop every SQL
+// literal declared that way — and silently dropping statements is exactly how an
+// owned-table scan starts passing for the wrong reason.
 export const prepareArgs = (src: string) =>
-  firstStringArgs(src, /\.prepare\s*\(/g);
+  firstStringArgs(src, /(?:\.prepare|\bhoistedStatement)\s*\(/g);
 export const execArgs = (src: string) => firstStringArgs(src, /\.exec\s*\(/g);
 
 export const norm = (s: string) => s.replace(/\s+/g, " ").trim();

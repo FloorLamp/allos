@@ -2,7 +2,7 @@ import { cache } from "react";
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { db } from "./db";
+import { db, hoistedStatement } from "./db";
 import { recordAudit } from "./audit";
 import { AUDIT_ACTIONS } from "./audit-actions";
 import {
@@ -80,10 +80,10 @@ function hashToken(token: string): string {
 // Prepared statements hoisted to module scope — these run on effectively every
 // request (getCurrentSession → accessibleProfiles), so prepare them once. `db` is
 // created + migrated eagerly at import (lib/db.ts), so it's ready here.
-const PROFILES_ALL_STMT = db.prepare(
+const PROFILES_ALL_STMT = hoistedStatement(
   "SELECT id, name, photo_path, photo_version FROM profiles ORDER BY id"
 );
-const PROFILES_FOR_LOGIN_STMT = db.prepare(
+const PROFILES_FOR_LOGIN_STMT = hoistedStatement(
   `SELECT p.id, p.name, p.photo_path, p.photo_version FROM profiles p
      JOIN login_profiles ap ON ap.profile_id = p.id
     WHERE ap.login_id = ?
@@ -110,7 +110,7 @@ export function loginHasProfileAccess(loginId: number, role: Role): boolean {
   return accessibleProfiles(loginId, role).length > 0;
 }
 
-const GRANT_ACCESS_STMT = db.prepare(
+const GRANT_ACCESS_STMT = hoistedStatement(
   "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
 );
 
@@ -190,7 +190,7 @@ export async function destroySession(): Promise<void> {
 // interpolating it into the prepared SQL is safe and keeps the single-bound-param
 // call sites unchanged. A session past created_at + 90 days simply doesn't match,
 // so getCurrentSession() returns null and the user must re-authenticate.
-const SESSION_LOOKUP_STMT = db.prepare(
+const SESSION_LOOKUP_STMT = hoistedStatement(
   `SELECT s.login_id AS loginId, s.active_profile_id AS activeProfileId,
           a.username, a.role
      FROM sessions s JOIN logins a ON a.id = s.login_id
@@ -198,13 +198,13 @@ const SESSION_LOOKUP_STMT = db.prepare(
       AND s.expires_at > datetime('now')
       AND s.created_at > datetime('now', '${SESSION_ABSOLUTE_MAX_MODIFIER}')`
 );
-const SESSION_FIX_PROFILE_STMT = db.prepare(
+const SESSION_FIX_PROFILE_STMT = hoistedStatement(
   "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
 );
-const SESSION_DELETE_STMT = db.prepare(
+const SESSION_DELETE_STMT = hoistedStatement(
   "DELETE FROM sessions WHERE token_hash = ?"
 );
-const SESSION_TOUCH_STMT = db.prepare(
+const SESSION_TOUCH_STMT = hoistedStatement(
   `UPDATE sessions
       SET last_used_at = datetime('now'),
           expires_at = datetime('now', '+30 days')
@@ -403,7 +403,7 @@ export function accessibleProfilesForLogin(loginId: number): SessionProfile[] {
 // boundary (resolveScope), so a revoked grant drops the link to null on the next
 // read even if the stored value wasn't nulled.
 
-const LOGIN_OWN_PROFILE_STMT = db.prepare(
+const LOGIN_OWN_PROFILE_STMT = hoistedStatement(
   "SELECT own_profile_id AS ownProfileId FROM logins WHERE id = ?"
 );
 
@@ -596,10 +596,10 @@ export async function setActiveProfile(profileId: number): Promise<void> {
 // — writes still target the single active profile. These helpers own only the raw
 // stored value; the grant validation on read lives in lib/scope.ts.
 
-const SESSION_VIEW_STMT = db.prepare(
+const SESSION_VIEW_STMT = hoistedStatement(
   "SELECT view_profile_ids AS raw FROM sessions WHERE token_hash = ?"
 );
-const SESSION_SET_VIEW_STMT = db.prepare(
+const SESSION_SET_VIEW_STMT = hoistedStatement(
   "UPDATE sessions SET view_profile_ids = ? WHERE token_hash = ?"
 );
 

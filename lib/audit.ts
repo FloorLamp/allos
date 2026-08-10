@@ -13,7 +13,7 @@
 // Server-only: uses the sync SQLite handle. recordAudit() NEVER throws into the
 // caller — a logging failure must not break the request it's auditing.
 
-import { db } from "./db";
+import { db, hoistedStatement } from "./db";
 import { createLogger } from "./log";
 import {
   DEFAULT_AUDIT_RETENTION_DAYS,
@@ -48,7 +48,7 @@ function cap(s: string | null | undefined): string | null {
   return s.length > MAX_FIELD ? s.slice(0, MAX_FIELD) : s;
 }
 
-const INSERT_STMT = db.prepare(
+const INSERT_STMT = hoistedStatement(
   `INSERT INTO audit_events (login_id, active_profile_id, action, target, detail)
    VALUES (?, ?, ?, ?, ?)`
 );

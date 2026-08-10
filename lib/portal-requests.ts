@@ -1,4 +1,4 @@
-import { db, writeTx } from "./db";
+import { db, hoistedStatement, writeTx } from "./db";
 import { sqlNow } from "./clock";
 import { shiftDateStr } from "./date";
 import {
@@ -94,11 +94,11 @@ const REQUEST_FROM = `FROM portal_sync_requests r
   JOIN portal_accounts a ON a.id = r.account_id
   LEFT JOIN portal_run_reports rr ON rr.account_id = r.account_id`;
 
-const LIST_REQUESTS_STMT = db.prepare(
+const LIST_REQUESTS_STMT = hoistedStatement(
   `SELECT ${REQUEST_COLS} ${REQUEST_FROM} ORDER BY p.name COLLATE NOCASE, a.name COLLATE NOCASE`
 );
 
-const REQUEST_FOR_ACCOUNT_STMT = db.prepare(
+const REQUEST_FOR_ACCOUNT_STMT = hoistedStatement(
   `SELECT ${REQUEST_COLS} ${REQUEST_FROM} WHERE r.account_id = ?`
 );
 
@@ -183,11 +183,11 @@ export type SyncRequestOutcome =
   // live on and no household member to reach. First contact is the card's own job.
   | { ok: false; error: "no-mapped-patients" };
 
-const ACCOUNT_ROW_STMT = db.prepare(
+const ACCOUNT_ROW_STMT = hoistedStatement(
   "SELECT id, portal_id AS portalId FROM portal_accounts WHERE id = ?"
 );
 
-const MAPPED_COUNT_STMT = db.prepare(
+const MAPPED_COUNT_STMT = hoistedStatement(
   `SELECT COUNT(*) AS n FROM portal_identities
     WHERE account_id = ? AND ignored = 0 AND profile_id IS NOT NULL`
 );
@@ -226,14 +226,14 @@ export function mappedPatientCount(accountId: number): number {
 const EVER_RAN_COL = `(rr.account_id IS NOT NULL) AS everRan`;
 
 // Every portal login, with that fact. The post-visit creator's enumeration.
-const ALL_ACCOUNTS_STMT = db.prepare(
+const ALL_ACCOUNTS_STMT = hoistedStatement(
   `SELECT a.id AS accountId, ${EVER_RAN_COL}
      FROM portal_accounts a
      LEFT JOIN portal_run_reports rr ON rr.account_id = a.id
     ORDER BY a.id`
 );
 
-const MAPPED_PROFILES_STMT = db.prepare(
+const MAPPED_PROFILES_STMT = hoistedStatement(
   `SELECT DISTINCT profile_id AS profileId FROM portal_identities
     WHERE account_id = ? AND ignored = 0 AND profile_id IS NOT NULL
     ORDER BY profile_id`
@@ -294,7 +294,7 @@ export function requestSync(
 // move both (#1888's first constraint). `mapped` counts COLLECTABLE patients: an identity
 // the portal declines is not one, so it feeds the mappedPatients input the existing rule
 // already gates on rather than earning a new suppression path (#1889).
-const STALENESS_CANDIDATES_STMT = db.prepare(
+const STALENESS_CANDIDATES_STMT = hoistedStatement(
   `SELECT a.id AS accountId,
           (SELECT COUNT(*) FROM portal_identities i
             WHERE i.account_id = a.id AND i.ignored = 0 AND i.declined = 0
@@ -379,7 +379,7 @@ export function evaluateStalenessRequests(
 // the portal refuses simply is not one of the mappings a visit can reach. An identity the
 // portal still serves on the same login is unaffected, which is the whole reason the
 // state is per-identity rather than per-run.
-const POST_VISIT_ACCOUNTS_STMT = db.prepare(
+const POST_VISIT_ACCOUNTS_STMT = hoistedStatement(
   `SELECT DISTINCT i.account_id AS accountId
      FROM appointments ap
      JOIN portal_identities i ON i.profile_id = ap.profile_id
@@ -464,14 +464,14 @@ export interface SyncRequestReach {
   routing: SyncRequestRouting;
 }
 
-const REPORTER_LOGIN_STMT = db.prepare(
+const REPORTER_LOGIN_STMT = hoistedStatement(
   `SELECT r.reported_by_login_id AS loginId
      FROM portal_run_reports r
      JOIN logins l ON l.id = r.reported_by_login_id
     WHERE r.account_id = ?`
 );
 
-const WRITE_ACCESS_LOGINS_STMT = db.prepare(
+const WRITE_ACCESS_LOGINS_STMT = hoistedStatement(
   `SELECT DISTINCT lp.login_id AS loginId
      FROM login_profiles lp
      JOIN portal_identities i ON i.profile_id = lp.profile_id
@@ -497,7 +497,7 @@ export function syncRequestRecipients(accountId: number): SyncRequestReach {
   return { loginIds: rows.map((r) => r.loginId), routing: "write-access" };
 }
 
-const MANAGED_PROFILES_STMT = db.prepare(
+const MANAGED_PROFILES_STMT = hoistedStatement(
   `SELECT profile_id AS profileId FROM login_profiles WHERE login_id = ?
    UNION
    SELECT own_profile_id AS profileId FROM logins
