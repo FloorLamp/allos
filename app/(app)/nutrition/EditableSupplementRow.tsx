@@ -54,7 +54,6 @@ export default function EditableSupplementRow({
   pairs,
   isTaken,
   isSkipped,
-  due,
   strip,
   trainingRestricted,
   refillRate,
@@ -77,7 +76,6 @@ export default function EditableSupplementRow({
   pairs: SupplementPair[];
   isTaken: boolean;
   isSkipped: boolean;
-  due: boolean;
   strip: AdherenceDot[];
   trainingRestricted: boolean;
   refillRate: DoseRate | null;
@@ -206,7 +204,18 @@ export default function EditableSupplementRow({
           </div>
         </div>
         <div className="col-start-2 row-start-1 flex shrink-0 items-center gap-3 text-xs">
-          {!!s.active && due && (
+          {/* One tap away, for EVERY active item (#2419). The gate is the item's
+            state and the row's DAY — never its dueness: dueness gates NUDGING, and
+            logging is a statement about what happened. A `may` item, an off-cadence
+            row and a situation-inactive one all render this control, so taking one
+            today no longer means flipping a situation active just to make a button
+            exist. Visual prominence stays with the section split (due rows in Today,
+            the rest collapsed below). A PAST day's row stays read-only — it renders
+            its recorded outcome instead (historicalStatus) — and a paused item has
+            none, matching setDoseStatus's own refusals (retired dose / paused item,
+            never dueness). The logged day is TODAY: a tap says "I took this now", it
+            never claims the item was scheduled. */}
+          {!!s.active && !historicalStatus && (
             <DoseStatusControl
               doseId={dose.id}
               taken={isTaken}

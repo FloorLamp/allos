@@ -314,7 +314,13 @@ export default async function UpcomingPage(props: {
         </div>
       )}
 
-      {offered.length > 0 && <AvailableSection items={offered} />}
+      {offered.length > 0 && (
+        <AvailableSection
+          items={offered}
+          actingProfileId={actingProfileId}
+          subjectByProfile={subjectByProfile}
+        />
+      )}
 
       {suppressed.length > 0 && (
         <SuppressedSection
@@ -764,7 +770,25 @@ function SubjectChip({ subject }: { subject: SubjectInfo }) {
 // is the same "present but not pressing" idea.
 //
 // Deliberately NOT banded, NOT dated, and NOT part of the page total.
-function AvailableSection({ items }: { items: ProfiledOfferedItem[] }) {
+//
+// Each row now carries the same one-tap "Mark taken" chip the due rows render
+// (#2419) — the collapsed half of the model was look-but-don't-log, which made a
+// situation-bound item reachable only by first flipping its situation active just to
+// make a button exist. Dueness gates NUDGING, never LOGGING. The chip is the SHARED
+// RowAction descriptor over the SAME markTaken action, so a refusal (dose retired by
+// an edit, item since paused) still speaks in the write's own words, and the write
+// stays additive ledger truth: nothing here becomes due, owed, or pushed.
+function AvailableSection({
+  items,
+  actingProfileId,
+  subjectByProfile,
+}: {
+  items: ProfiledOfferedItem[];
+  actingProfileId: number;
+  // Row subjects when >1 profile is in view (#1096/#1327): a read-only-granted
+  // member's rows show no write affordance, exactly as on the banded rows.
+  subjectByProfile: Map<number, SubjectInfo>;
+}) {
   return (
     <details className="mt-8" data-testid="available-section">
       <summary className="cursor-pointer section-label">
@@ -774,28 +798,66 @@ function AvailableSection({ items }: { items: ProfiledOfferedItem[] }) {
         </span>
       </summary>
       <div className="card mt-2 space-y-1 p-2">
-        {items.map((item) => (
-          <Link
-            key={`${item.profileId}:${item.key}`}
-            href={item.href ?? "/medications"}
-            data-testid="available-row"
-            className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-ink-750"
-          >
-            <IconPill
-              className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
-              stroke={1.75}
-              aria-hidden="true"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-medium text-slate-600 dark:text-slate-300">
-                {item.title}
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                {item.dueText ?? "Available"}
-              </div>
+        {items.map((item) => {
+          const subject = subjectByProfile.get(item.profileId) ?? null;
+          const actionVisible = itemAffordanceVisible(item.writeTarget, {
+            isActing: item.profileId === actingProfileId,
+            subjectCanWrite: subject == null || subject.access === "write",
+          });
+          const actions: RowAction[] = [];
+          if (actionVisible && item.doseId != null) {
+            actions.push({
+              id: "mark-taken",
+              kind: "submit",
+              label: "Mark taken",
+              toast: "Marked taken",
+              testId: "available-mark-taken",
+              fields: { dose_id: item.doseId, profile_id: item.profileId },
+              // Answered from markDoseTaken's typed outcome, like the banded row's
+              // chip: an offered item is never scheduled today, so the honest
+              // success line here is the off-day one ("not scheduled today") — the
+              // log IS written, and saying which days it was meant for is the whole
+              // point of not answering with a bare ✓.
+              action: async (fd) => {
+                "use server";
+                const result = await markTaken(fd);
+                if (!result.ok)
+                  return { ok: false as const, error: result.error };
+                const msg = doseConfirmMessage(result.outcome);
+                return msg.tone === "error"
+                  ? { ok: false as const, error: msg.text }
+                  : { ok: true as const, message: msg.text };
+              },
+            });
+          }
+          return (
+            <div
+              key={`${item.profileId}:${item.key}`}
+              data-testid="available-row"
+              className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-ink-750"
+            >
+              <Link
+                href={item.href ?? "/medications"}
+                className="flex min-w-0 flex-1 items-center gap-3"
+              >
+                <IconPill
+                  className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+                  stroke={1.75}
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-slate-600 dark:text-slate-300">
+                    {item.title}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {item.dueText ?? "Available"}
+                  </div>
+                </div>
+              </Link>
+              <RowActionChips actions={actions} fold={false} />
             </div>
-          </Link>
-        ))}
+          );
+        })}
       </div>
     </details>
   );
