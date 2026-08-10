@@ -233,8 +233,8 @@ describe("the published index cannot fall behind the declaration", () => {
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 8,
-    why: "the adherence reader's SQL — one projection and six ORDER BY / MAX() expressions walking the recorded_at → taken_at RECORD CHAIN. Correct values (the owner's #2205 ruling settled that both links answer one question), spelled by hand in seven places. Routing them through recordInstant means selecting both columns and ordering in JS, which changes the perf shape of the medication surface's hottest query — a read-path change with its own PR. The eighth (#2417) is the cross-item dose ledger's ORDER BY, which is the SAME expression its two item-scoped siblings order by — the ledger narrowed to one item has to return that item's rows in exactly the panel's order, so this pairing is the sibling's, copied deliberately rather than invented.",
+    count: 6,
+    why: "the adherence reader's SQL walking the recorded_at → taken_at RECORD CHAIN: one projection, three ORDER BY / MAX() expressions, and — since #2417 — ONE shared `DOSE_HISTORY_ORDER` constant standing in for what used to be three separately-spelled dose-history ORDER BYs. Correct values (the owner's #2205 ruling settled that both links answer one question). The extraction is why this entry went DOWN when a third dose-history reader was added: the three readers must sort identically (the cross-item ledger narrowed to one item is asserted row-for-row against the item-scoped one), so sharing the string makes drift impossible rather than merely observed. Routing the chain through recordInstant still means selecting both columns and ordering in JS, which changes the perf shape of the medication surface's hottest query — a read-path change with its own PR — but it is now a one-line edit for the dose-history family.",
   },
   "lib/queries/nutrition.ts": {
     count: 3,
