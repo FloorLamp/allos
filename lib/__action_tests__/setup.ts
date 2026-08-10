@@ -20,14 +20,41 @@
 // registry before the file's own imports resolve, so every action-test file picks
 // up these mocks without repeating them.
 
-import { vi } from "vitest";
+import { beforeAll, vi } from "vitest";
+import * as cacheSpies from "./cache-spies";
+import { clearActingSession } from "./session-state";
 
-// No-op spy so tests can assert an action revalidated the right paths. revalidateTag
-// is stubbed too in case an action reaches for it.
-vi.mock("next/cache", () => ({
-  revalidatePath: vi.fn(),
-  revalidateTag: vi.fn(),
-}));
+// No-op spies so tests can assert an action revalidated the right paths.
+// revalidateTag is stubbed too in case an action reaches for it.
+//
+// The factory returns the SHARED instances from ./cache-spies rather than minting
+// vi.fn()s inline: it re-runs per test file, and under a shared module registry
+// (vitest.db.config.ts's db-shared project) fresh spies would leave the already
+// imported server actions calling the previous ones. See that file for the full
+// reasoning.
+vi.mock("next/cache", async () => {
+  const spies = await import("./cache-spies");
+  return {
+    revalidatePath: spies.revalidatePath,
+    revalidateTag: spies.revalidateTag,
+  };
+});
+
+// Per FILE, not per test. A fresh registry used to hand each file brand-new spies
+// whose calls then accumulated across that file's tests; clearing here reproduces
+// that exactly. Clearing per test would be a stricter rule than the suite was
+// written against — a spec that acts in beforeAll and asserts in several `it`s
+// would start failing for a reason that has nothing to do with its subject.
+beforeAll(() => {
+  cacheSpies.revalidatePath.mockClear();
+  cacheSpies.revalidateTag.mockClear();
+  // session-state is a module too, so a shared registry carries the previous
+  // file's acting session into this one. That would silently defeat the guard in
+  // getActingSession(): a spec that forgot to call actAs() is supposed to fail
+  // loudly, not quietly run as whoever the last file signed in as. Clearing here
+  // restores the fresh-registry starting point — null — for every file.
+  clearActingSession();
+});
 
 // Delegate the three guards to the mutable acting-session module. The factory
 // imports it lazily (async) so it reads the live binding on every call — a test's

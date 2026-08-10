@@ -13,26 +13,38 @@ import path from "node:path";
 const root = fileURLToPath(new URL(".", import.meta.url));
 const alias = { "@": root };
 
-// The db-tier specs that call vi.mock(). A shared registry cannot re-mock a module
+// Specs that call vi.mock() themselves. A shared registry cannot re-mock a module
 // an earlier file already evaluated, so these run isolated. Found by SCANNING, not
 // by a hand-kept list, so adding a vi.mock() to a spec moves it to the isolated
 // project automatically instead of making it fail mysteriously.
+//
+// The setup files' OWN vi.mock calls are fine shared: they are identical for every
+// file in the tier, and the spies they install are stable instances
+// (lib/__action_tests__/cache-spies.ts), so nothing varies per file.
 function mockUsingSpecs(): string[] {
-  const dir = path.join(root, "lib", "__db_tests__");
   const specs: string[] = [];
-  for (const entry of fs.readdirSync(dir, {
-    withFileTypes: true,
-    recursive: true,
-  })) {
-    if (!entry.isFile() || !entry.name.endsWith(".test.ts")) continue;
-    const full = path.join(entry.parentPath, entry.name);
-    if (!fs.readFileSync(full, "utf8").includes("vi.mock(")) continue;
-    specs.push(path.relative(root, full).split(path.sep).join("/"));
+  for (const name of ["__db_tests__", "__action_tests__"]) {
+    const dir = path.join(root, "lib", name);
+    for (const entry of fs.readdirSync(dir, {
+      withFileTypes: true,
+      recursive: true,
+    })) {
+      if (!entry.isFile() || !entry.name.endsWith(".test.ts")) continue;
+      const full = path.join(entry.parentPath, entry.name);
+      if (!fs.readFileSync(full, "utf8").includes("vi.mock(")) continue;
+      specs.push(path.relative(root, full).split(path.sep).join("/"));
+    }
   }
   return specs;
 }
 
-const MOCK_USERS = mockUsingSpecs();
+// Specs that call process.chdir(). Worker threads reject it outright, and under a
+// shared registry it would not be safe even on `forks`: the directory change would
+// outlive the file and follow every later spec in that worker. Same carve-out the
+// pure tier makes in vitest.config.ts.
+const CHDIR_SPECS = ["lib/__action_tests__/ai-log-clear.actions.test.ts"];
+
+const ISOLATED = [...mockUsingSpecs(), ...CHDIR_SPECS];
 
 // Both projects load the same setup pair the tier has always used: the db setup
 // points the singleton at a throwaway database, and the action setup adds the auth
@@ -49,18 +61,21 @@ export default defineConfig({
     //
     // Importing lib/db.ts boots a database and pulls every migration module as a
     // module side effect, and `isolate: true` pays that once per test file. The
-    // mock-free specs (the large majority) instead share one module registry per
-    // worker, with per-file isolation preserved by reseeding from a pre-migrated
-    // template and rebinding the singleton. Everything a shared registry cannot
-    // host — the vi.mock users, and every action spec, whose vi.fn() spies and
-    // global mock resets are inherently per-file — keeps the original behaviour.
+    // mock-free specs — the large majority of BOTH directories — instead share one
+    // module registry per worker, with per-file isolation preserved by reseeding
+    // from a pre-migrated template and rebinding the singleton. Only what a shared
+    // registry genuinely cannot host stays isolated: the handful of specs that call
+    // vi.mock() themselves, and the one that calls process.chdir().
     projects: [
       {
         resolve: { alias },
         test: {
           name: "db-shared",
-          include: ["lib/__db_tests__/**/*.test.ts"],
-          exclude: MOCK_USERS,
+          include: [
+            "lib/__db_tests__/**/*.test.ts",
+            "lib/__action_tests__/**/*.test.ts",
+          ],
+          exclude: ISOLATED,
           pool: "threads",
           isolate: false,
           globalSetup: ["lib/__db_tests__/global-setup.ts"],
@@ -71,7 +86,7 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: "db-isolated",
-          include: [...MOCK_USERS, "lib/__action_tests__/**/*.test.ts"],
+          include: ISOLATED,
           setupFiles: ["lib/__db_tests__/setup.ts", ACTION_SETUP],
         },
       },
