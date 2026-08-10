@@ -130,8 +130,40 @@ export function migrate(db: Database.Database): void {
   bootTasks(db);
 }
 
-export const db = globalForDb.__healthDb ?? createDb();
+// `let`, not `const`, so the DB-tier test harness can repoint the singleton
+// between test files — see reopenDatabaseForTests(). ESM exports are LIVE
+// BINDINGS, so every `import { db }` site observes the reassignment without a
+// single call site changing. Nothing in app code may reassign it.
+export let db = globalForDb.__healthDb ?? createDb();
 if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
+
+// TEST-ONLY seam for the shared-registry DB tier (vitest.db-shared.config.ts).
+// That tier runs with `isolate: false`, so a worker imports this module ONCE and
+// the per-file ALLOS_DB_PATH the isolated tier relies on no longer takes effect.
+// The harness instead points ALLOS_DB_PATH at a fresh per-file copy of the
+// pre-migrated template and calls this to rebind onto it.
+//
+// The previous handle is closed rather than dropped: one worker runs hundreds of
+// files in a single process, and leaking a SQLite handle per file would exhaust
+// the fd budget. Never call this from app code — the production singleton is
+// opened exactly once, at import.
+export function reopenDatabaseForTests(): void {
+  const previous = db;
+  db = createDb();
+  if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
+  // Module-level state derived from the OLD database outlives the swap in a
+  // shared registry. The timezone memo is keyed by profile id, and every seeded
+  // file bootstraps the same low ids, so a stale entry would silently answer for
+  // the new database. Any future module-scope cache fed by DB reads has to be
+  // reset here too.
+  invalidateTimezoneMemo();
+  try {
+    previous.close();
+  } catch {
+    // Best effort: a handle already closed (or never fully opened) is not a
+    // reason to fail the file that is trying to start cleanly.
+  }
+}
 
 // Register the DB-backed AI tier-config reader as the runtime provider (issue #875) so
 // lib/ai-resolve can resolve task → tier → client without importing the DB layer. Done
