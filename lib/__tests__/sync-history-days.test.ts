@@ -121,10 +121,16 @@ describe("grouping a high-frequency day", () => {
       routine("2026-08-04 23:00:00"),
       routine("2026-08-04 22:00:00"),
     ];
-    expect(groupSyncDays(events, "UTC").map((d) => d.day)).toEqual([
-      "2026-08-05",
-      "2026-08-04",
-    ]);
+    const days = groupSyncDays(events, "UTC");
+    expect(days.map((d) => d.day)).toEqual(["2026-08-05", "2026-08-04"]);
+    expect(days[0].entries[0]).toMatchObject({
+      kind: "run",
+      reason: "newest",
+    });
+    // "Latest" describes the whole ledger, not the first run of every day. The
+    // older day's two routine runs therefore collapse together as one range.
+    expect(days[1].entries).toHaveLength(1);
+    expect(days[1].entries[0]).toMatchObject({ kind: "range" });
   });
 
   it("degrades gracefully to one line for a once-a-day import", () => {
@@ -210,14 +216,14 @@ describe("the day and range lines", () => {
     ).toBe("24 refreshes · no change");
   });
 
-  it("says a range is routine, and what it still wrote", () => {
+  it("accounts for a routine range and what it still wrote", () => {
     const runs = [
       routine("2026-08-04 14:51:00", 100),
       routine("2026-08-04 14:31:00", 28),
     ];
-    expect(syncRangeLabel(runs, "push")).toBe("2 pushes · routine · 128 new");
+    expect(syncRangeLabel(runs, "push")).toBe("2 pushes · 128 new");
     expect(syncRangeLabel([routine("a"), routine("b")], "sync")).toBe(
-      "2 syncs · routine"
+      "2 syncs"
     );
   });
 });

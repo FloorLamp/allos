@@ -4,6 +4,7 @@ import {
   MONTHS_SHORT,
   WEEKDAYS_LONG,
   WEEKDAYS_SHORT,
+  zonedDateParts,
 } from "./date";
 
 // ---- Display-format preferences (login tier, issue #964) ----
@@ -297,27 +298,55 @@ function parseTimestamp(input: string | number | Date): Date | null {
 //
 // Always carries the year, for the same reason formatDateWithYear does — a
 // timestamp names a specific instant, so an undated one is a bug. Pure.
-export function formatTimestamp(
+interface TimestampFormatOptions {
+  zone?: "local" | "utc";
+  timeZone?: string;
+}
+
+export interface TimestampDisplay {
+  absolute: string;
+  clock: string;
+}
+
+// Resolve the absolute label and its clock from ONE wall-time projection. An
+// explicit IANA timezone takes precedence over local/UTC because profile-owned
+// ledgers must render in the same zone that assigned their calendar day.
+export function formatTimestampDisplay(
   input: string | number | Date,
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
-  opts: { zone?: "local" | "utc" } = {}
-): string {
+  opts: TimestampFormatOptions = {}
+): TimestampDisplay | null {
   const d = parseTimestamp(input);
-  if (!d) return typeof input === "string" ? input : "";
+  if (!d) return null;
+  const zoned = opts.timeZone ? zonedDateParts(opts.timeZone, d) : null;
   const utc = opts.zone === "utc";
+  const [zonedYear, zonedMonth, zonedDay] =
+    zoned?.date.split("-").map(Number) ?? [];
+  const [zonedHour, zonedMinute] = zoned?.hhmm.split(":").map(Number) ?? [];
   const date = formatDateShape(
     prefs.dateFormat,
-    utc ? d.getUTCFullYear() : d.getFullYear(),
-    (utc ? d.getUTCMonth() : d.getMonth()) + 1,
-    utc ? d.getUTCDate() : d.getDate(),
+    zoned ? zonedYear : utc ? d.getUTCFullYear() : d.getFullYear(),
+    zoned ? zonedMonth : (utc ? d.getUTCMonth() : d.getMonth()) + 1,
+    zoned ? zonedDay : utc ? d.getUTCDate() : d.getDate(),
     { monthStyle: "short", year: true }
   );
   const clock = formatClock(
     prefs.timeFormat,
-    utc ? d.getUTCHours() : d.getHours(),
-    utc ? d.getUTCMinutes() : d.getMinutes()
+    zoned ? zonedHour : utc ? d.getUTCHours() : d.getHours(),
+    zoned ? zonedMinute : utc ? d.getUTCMinutes() : d.getMinutes()
   );
-  return `${date}, ${clock}`;
+  return { absolute: `${date}, ${clock}`, clock };
+}
+
+export function formatTimestamp(
+  input: string | number | Date,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  opts: TimestampFormatOptions = {}
+): string {
+  return (
+    formatTimestampDisplay(input, prefs, opts)?.absolute ??
+    (typeof input === "string" ? input : "")
+  );
 }
 
 // A human "time since" label: Today / Yesterday / N days|weeks|months|years ago.

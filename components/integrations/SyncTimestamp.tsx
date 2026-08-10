@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { formatRelativeTime, formatTimestamp } from "@/lib/format-date";
+import { formatRelativeTime, formatTimestampDisplay } from "@/lib/format-date";
 
 // The ONE timestamp treatment for a sync (#1772): the absolute local time AND the
 // relative one, together. The surfaces disagreed three ways — the setup pages printed
@@ -20,12 +20,21 @@ export default function SyncTimestamp({
   value,
   className,
   relativeOnly = false,
+  clockOnly = false,
+  timeZone,
 }: {
   value: string;
   className?: string;
   // Dense rows (the grid card's one-line hint) take the relative half alone, with the
   // absolute time still on the tooltip — never the raw stored string.
   relativeOnly?: boolean;
+  // Day-grouped ledgers already establish the calendar date in their header. Their
+  // aligned TIME column uses only the reader's clock, with the full absolute stamp
+  // retained in the tooltip.
+  clockOnly?: boolean;
+  // A day-grouped profile ledger passes the same timezone that assigned its day.
+  // Other compact status surfaces retain their established reader-local display.
+  timeZone?: string;
 }) {
   const prefs = useFormatPrefs();
   const [relative, setRelative] = useState(() => formatRelativeTime(value));
@@ -37,7 +46,12 @@ export default function SyncTimestamp({
     return () => clearInterval(id);
   }, [value]);
 
-  const absolute = formatTimestamp(value, prefs);
+  const display = formatTimestampDisplay(
+    value,
+    prefs,
+    timeZone ? { timeZone } : undefined
+  );
+  const absolute = display?.absolute ?? value;
   // Parse the SQLite "YYYY-MM-DD HH:MM:SS" form explicitly as UTC for the machine
   // dateTime attribute; anything else is already zone-marked.
   const isUtc = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value);
@@ -45,15 +59,18 @@ export default function SyncTimestamp({
   const machine = Number.isNaN(parsed.getTime())
     ? undefined
     : parsed.toISOString();
+  const clock = display?.clock ?? value;
 
   return (
     <time
       dateTime={machine}
-      title={relativeOnly ? absolute : undefined}
+      title={relativeOnly || clockOnly ? absolute : undefined}
       className={className}
       suppressHydrationWarning
     >
-      {relativeOnly ? (
+      {clockOnly ? (
+        clock
+      ) : relativeOnly ? (
         relative
       ) : (
         <>

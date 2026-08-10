@@ -1,4 +1,5 @@
 import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
+import CardFootnote from "@/components/CardFootnote";
 import { FindingCard } from "@/components/FindingCard";
 import {
   interactionTitle,
@@ -248,12 +249,9 @@ export default function IntakeWarnings({
         ) : null}
 
         {scopeLine ? (
-          <p
-            className={`${total > 0 ? "mt-3 border-t border-black/5 pt-3 dark:border-white/5" : ""} text-xs text-slate-500 dark:text-slate-400`}
-            data-testid="safety-scope-line"
-          >
+          <CardFootnote divided={total > 0} data-testid="safety-scope-line">
             {scopeLine}
-          </p>
+          </CardFootnote>
         ) : null}
       </div>
     </details>

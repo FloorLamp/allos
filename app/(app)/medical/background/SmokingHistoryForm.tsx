@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { saveSmokingHistory } from "./actions";
+import CardFootnote from "@/components/CardFootnote";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import type { SmokingHistory, SmokingStatusValue } from "@/lib/smoking";
@@ -143,11 +144,11 @@ export default function SmokingHistoryForm({
         </div>
       )}
 
-      <p className="border-t border-black/5 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
+      <CardFootnote>
         Privacy: smoking history is sensitive. Like the rest of this
         profile&rsquo;s medical passport, anyone granted access to this profile
         (and any admin) can see it.
-      </p>
+      </CardFootnote>
     </div>
   );
 }

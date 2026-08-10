@@ -1,32 +1,15 @@
 import { IconHistory } from "@tabler/icons-react";
+import CardFootnote from "@/components/CardFootnote";
 import type { IntegrationState } from "@/lib/queries/integrations";
-import type { IntegrationSyncEvent } from "@/lib/types";
 import { getIntegration } from "@/lib/integrations/registry";
 import { silenceToleranceMinutes } from "@/lib/integrations/staleness";
 import {
   escalationPolicyLabel,
-  eventVerdict,
-  formatSyncChange,
   runWindowNorm,
   syncRunNounForKind,
 } from "@/lib/integrations/provider-state";
-import {
-  drilldownCoverage,
-  failureRunReason,
-  groupSyncDays,
-  syncDayAttention,
-  syncDayLabel,
-  syncRangeLabel,
-} from "@/lib/integrations/sync-history-days";
-import {
-  originChoiceLabel,
-  parseSyncEventDetails,
-} from "@/lib/integrations/sync-details";
-import SyncHistoryDays, {
-  type SyncDayEntryView,
-  type SyncDayView,
-  type SyncRunView,
-} from "./SyncHistoryDays";
+import { projectSyncHistoryDays } from "@/lib/integrations/sync-history-view";
+import SyncHistoryDays from "./SyncHistoryDays";
 
 // The provider's sync history, on the provider's own page (#1772), GROUPED BY DAY
 // (#1991).
@@ -71,65 +54,15 @@ export default function SyncHistoryTable({
     state.delivery
   );
 
-  const toRun = (ev: IntegrationSyncEvent): SyncRunView => {
-    const verdict = eventVerdict(ev, vocabulary);
-    const change = ev.ok ? formatSyncChange(ev, vocabulary) : null;
-    const written = ev.ok ? (ev.inserted ?? 0) + (ev.updated ?? 0) : 0;
-    const coverage = drilldownCoverage(
-      written,
-      state.provenanceCounts[ev.id] ?? 0
-    );
-    const details = parseSyncEventDetails(ev.details ?? null);
-    return {
-      id: ev.id,
-      at: ev.at,
-      ok: ev.ok !== 0,
-      verdict,
-      change: change?.primary ?? null,
-      changeMuted: change?.muted ?? false,
-      skipped: ev.skipped ?? 0,
-      error: ev.error ?? null,
-      notes: details
-        ? [...details.warnings, ...details.origins.map(originChoiceLabel)]
-        : [],
-      itemizable: coverage.offer ? coverage.itemizable : 0,
-      remainder: coverage.offer ? coverage.remainder : 0,
-      hasRaw: !!ev.raw_ref,
-    };
-  };
-
-  // A provider with no run NOUN records no runs (the outbound feed, #2301), so it has
-  // no history to group — and the day labels, which count runs, have nothing to name.
-  const days: SyncDayView[] = !noun
-    ? []
-    : groupSyncDays(history, state.timeZone).map((day) => ({
-        day: day.day,
-        label: syncDayLabel(day, noun, vocabulary),
-        attention: syncDayAttention(day),
-        newestAt: day.newestAt,
-        entries: day.entries.map((entry): SyncDayEntryView => {
-          if (entry.kind === "run") {
-            return { kind: "run", reason: entry.reason, run: toRun(entry.ev) };
-          }
-          if (entry.kind === "failure-run") {
-            return {
-              kind: "failure-run",
-              count: entry.runs.length,
-              newestAt: entry.runs[0].at,
-              oldestAt: entry.runs[entry.runs.length - 1].at,
-              reason: failureRunReason(entry.runs.length, entry.error),
-              runs: entry.runs.map(toRun),
-            };
-          }
-          return {
-            kind: "range",
-            label: syncRangeLabel(entry.runs, noun, vocabulary),
-            newestAt: entry.runs[0].at,
-            oldestAt: entry.runs[entry.runs.length - 1].at,
-            runs: entry.runs.map(toRun),
-          };
-        }),
-      }));
+  const days = projectSyncHistoryDays(history, {
+    kind: state.kind,
+    vocabulary,
+    timeZone: state.timeZone,
+    provenanceCounts: state.provenanceCounts,
+    // The history marker names the newest RECORDED run. Provider standing may use a
+    // synthetic expired-token event that deliberately does not belong in this log.
+    latestEventId: history[0]?.id ?? null,
+  });
 
   return (
     <div className="card" data-testid="sync-history">
@@ -157,16 +90,24 @@ export default function SyncHistoryTable({
           skipped, or errored.
         </p>
       ) : (
-        <SyncHistoryDays days={days} isAdmin={isAdmin} />
+        <SyncHistoryDays
+          key={`${state.latest?.id ?? "empty"}:${state.historyNextBefore ?? "end"}`}
+          days={days}
+          today={state.today}
+          providerId={state.id}
+          initialCursor={state.historyNextBefore}
+          timeZone={state.timeZone}
+          isAdmin={isAdmin}
+        />
       )}
 
       {policy && (
-        <p
-          className="mt-3 max-w-prose rounded-lg border border-dashed border-black/10 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
-          data-testid="escalation-policy"
-        >
+        <CardFootnote data-testid="escalation-policy">
+          <span className="font-semibold text-slate-600 dark:text-slate-300">
+            Status note:
+          </span>{" "}
           {policy}
-        </p>
+        </CardFootnote>
       )}
     </div>
   );

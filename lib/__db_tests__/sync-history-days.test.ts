@@ -14,7 +14,11 @@ import {
   recordSyncRows,
   upsertConnection,
 } from "@/lib/integrations/connections";
-import { getIntegrationState, SETUP_HISTORY_LIMIT } from "@/lib/queries";
+import {
+  getIntegrationState,
+  getIntegrationSyncEventPage,
+  SETUP_HISTORY_LIMIT,
+} from "@/lib/queries";
 import {
   drilldownCoverage,
   groupSyncDays,
@@ -122,10 +126,11 @@ describe("a day of ~70 pushes, as the source page receives it", () => {
     expect(days).toHaveLength(1);
     const [day] = days;
     expect(day.day).toBe("2026-07-08");
-    // The page renders SETUP_HISTORY_LIMIT runs deep, and every one of them is on
-    // this day — the point being that they are one line, not that many.
+    // The setup page reads the full retention-bounded ledger rather than cutting it
+    // at an arbitrary row count: all 70 pushes are present, so the aggregate cannot
+    // hide an earlier anomaly or describe a partial day as the whole one.
     expect(day.runs).toBe(state.history.length);
-    expect(day.runs).toBeGreaterThan(1);
+    expect(day.runs).toBe(PUSHES);
     expect(
       syncDayLabel(day, syncRunNounForKind(state.kind)!, state.vocabulary)
     ).toMatch(/^\d+ pushes · \d+ new · \d+ changed$/);
@@ -191,5 +196,62 @@ describe("the drill-in promises what it can list (the #1991 regression pin)", ()
         state.provenanceCounts[plain.id] ?? 0
       ).offer
     ).toBe(false);
+  });
+});
+
+describe("complete-day pagination", () => {
+  it("returns seven whole local days, then an exclusive older-day cursor", () => {
+    const pagedProfile = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('SYNC-PAGED')").run()
+        .lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'timezone', 'UTC')`
+    ).run(pagedProfile);
+
+    // Two events on each of nine days: neither the first nor second page may split
+    // one of those pairs just to satisfy a row count.
+    for (let day = 1; day <= 9; day++) {
+      for (const hour of [12, 18]) {
+        const id = recordSyncEvent(pagedProfile, PROVIDER, {
+          ok: true,
+          inserted: 1,
+          updated: 0,
+          unchanged: 2,
+          skipped: 0,
+        })!;
+        backdate(id, `2026-06-${String(day).padStart(2, "0")}T${hour}:00:00Z`);
+      }
+    }
+
+    const first = getIntegrationSyncEventPage(
+      pagedProfile,
+      PROVIDER,
+      "UTC",
+      null,
+      7
+    );
+    const firstDays = groupSyncDays(first.events, "UTC");
+    expect(firstDays).toHaveLength(7);
+    expect(firstDays.every((day) => day.runs === 2)).toBe(true);
+    expect(first.nextBefore).toBe("2026-06-03");
+
+    const second = getIntegrationSyncEventPage(
+      pagedProfile,
+      PROVIDER,
+      "UTC",
+      first.nextBefore,
+      7
+    );
+    const secondDays = groupSyncDays(second.events, "UTC", {
+      markLatest: false,
+    });
+    expect(secondDays.map((day) => day.day)).toEqual([
+      "2026-06-02",
+      "2026-06-01",
+    ]);
+    expect(secondDays.every((day) => day.runs === 2)).toBe(true);
+    expect(second.nextBefore).toBeNull();
   });
 });

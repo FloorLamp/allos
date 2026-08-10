@@ -21,6 +21,7 @@ import {
 } from "@/lib/bio-age";
 import { formatLongDate } from "@/lib/format-date";
 import { readingDetailHref } from "@/lib/hrefs";
+import CardFootnote from "@/components/CardFootnote";
 import PhoneFold from "@/components/PhoneFold";
 
 // Longevity §1 — the biological-age HERO (#209, #1042 phase 4, split by #2367).
@@ -55,16 +56,13 @@ const DELTA_CLASS: Record<BioAgeDirection, string> = {
 // more precise than it is, which is exactly why this sentence sits under it.
 function EstimateNote() {
   return (
-    <p
-      className="mt-4 border-t border-black/5 pt-3 text-xs leading-relaxed text-slate-500 dark:border-white/10 dark:text-slate-400"
-      data-testid="bio-age-estimate"
-    >
+    <CardFootnote data-testid="bio-age-estimate">
       An <strong>estimate</strong> from the Levine PhenoAge model (2018), an
       NHANES-validated index for adults (~20–84). It moves with the nine
       analytes below plus your chronological age, and is a population-level
       signal, not a precise verdict — discuss anything concerning with a
       clinician.
-    </p>
+    </CardFootnote>
   );
 }
 

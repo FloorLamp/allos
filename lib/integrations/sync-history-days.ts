@@ -19,8 +19,8 @@ import type {
 // So a day is ONE line, and expanding it itemizes only what earns it:
 //
 //   - anything that FAILED, was cut short, or SKIPPED rows — with its reason;
-//   - the NEWEST run of the day, because that is what you came to check;
-//   - everything else collapsed to a RANGE ("7 syncs · routine · 128 new"), openable.
+//   - the one NEWEST run in the whole ledger, because that is what you came to check;
+//   - everything else collapsed to a RANGE ("7 syncs · 128 new"), openable.
 //
 // This is #137's no-op collapsing generalized from *nothing happened* to *nothing
 // notable happened*, and it is frequency-agnostic: Health Connect collapses
@@ -38,7 +38,7 @@ export type SyncRunReason =
   | "partial"
   // It dropped rows it could not map.
   | "skipped"
-  // The newest run of its day.
+  // The newest run in the whole ledger.
   | "newest"
   // Nothing notable, and nothing adjacent to fold it into.
   | "routine";
@@ -54,7 +54,7 @@ export type SyncDayEntry<T extends SyncEventFacts> =
       error: string | null;
     }
   | {
-      // Consecutive unremarkable runs. Collapsed by default, openable ("Show each").
+      // Consecutive unremarkable runs. Collapsed by default, openable ("Show runs").
       kind: "range";
       runs: T[];
     };
@@ -99,12 +99,18 @@ function num(v: number | null | undefined): number {
 // summaries with their itemized entries.
 export function groupSyncDays<T extends SyncEventFacts>(
   eventsNewestFirst: readonly T[],
-  timeZone: string
+  timeZone: string,
+  options: { markLatest?: boolean } = {}
 ): SyncDaySummary<T>[] {
   const days: SyncDaySummary<T>[] = [];
   let current: { day: string; events: T[] } | null = null;
   const flush = () => {
-    if (current) days.push(summarizeDay(current.day, current.events));
+    if (current)
+      days.push(
+        summarizeDay(current.day, current.events, {
+          markNewest: options.markLatest !== false && days.length === 0,
+        })
+      );
     current = null;
   };
   for (const ev of eventsNewestFirst) {
@@ -121,7 +127,8 @@ export function groupSyncDays<T extends SyncEventFacts>(
 
 function summarizeDay<T extends SyncEventFacts>(
   day: string,
-  events: T[]
+  events: T[],
+  options: { markNewest: boolean }
 ): SyncDaySummary<T> {
   const entries: SyncDayEntry<T>[] = [];
   let i = 0;
@@ -144,8 +151,9 @@ function summarizeDay<T extends SyncEventFacts>(
       i = j;
       continue;
     }
-    // The newest run of the day is always itemized; so is any anomaly.
-    const reason = i === 0 ? "newest" : notableReason(ev);
+    // "Latest" is global history state, not something every day can claim. Only
+    // the first run in the newest day earns it; older routine runs fold normally.
+    const reason = options.markNewest && i === 0 ? "newest" : notableReason(ev);
     if (reason) {
       entries.push({ kind: "run", ev, reason });
       i++;
@@ -236,8 +244,9 @@ export function failureRunReason(
   return count === 2 ? `${error} — both runs` : `${error} — all ${count} runs`;
 }
 
-// A collapsed range's line: "7 syncs · routine · 128 new". The time span beside it is
-// rendered from the runs' own timestamps, in the reader's clock.
+// A collapsed range's accounting label: "7 syncs · 128 new". The ledger renders
+// "Routine" in its aligned result column, while the time span beside it comes from
+// the runs' own timestamps in the reader's clock.
 export function syncRangeLabel(
   runs: readonly SyncEventFacts[],
   noun: SyncRunNoun,
@@ -245,7 +254,7 @@ export function syncRangeLabel(
 ): string {
   const inserted = runs.reduce((n, e) => n + num(e.inserted), 0);
   const updated = runs.reduce((n, e) => n + num(e.updated), 0);
-  const head = `${runCount(runs.length, noun)} · routine`;
+  const head = runCount(runs.length, noun);
   if (vocabulary === "forecast") {
     const revised = inserted + updated;
     return revised === 0

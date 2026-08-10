@@ -340,13 +340,17 @@ describe("flap + escalation copy (#1880)", () => {
 
   it("states the escalation policy as the ONE silence tolerance, in the provider's noun", () => {
     const hourly = escalationPolicyLabel(12 * HOUR, "refresh")!;
-    expect(hourly).toContain("no refresh has succeeded in 12 hours");
-    expect(hourly).toContain("the same rule the Review badge");
+    expect(hourly).toContain(
+      "“Sync failing” appears after 12 hours without a successful refresh"
+    );
+    expect(hourly).toContain(
+      "The Review badge and morning digest use the same rule"
+    );
     // And it says plainly what no longer escalates — the promise the page makes.
-    expect(hourly).toContain("Individual failures");
+    expect(hourly).toContain("An isolated failure will not trigger it");
     expect(hourly).not.toContain("consecutive");
     expect(escalationPolicyLabel(3 * DAY)).toContain(
-      "no sync has succeeded in 3 days"
+      "after 3 days without a successful sync"
     );
     // An EXEMPT provider has no policy to promise, so the page states none rather
     // than inventing a sentence.
