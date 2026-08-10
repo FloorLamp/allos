@@ -12,7 +12,6 @@
     "test": "vitest run",
     "test:db": "vitest run --config vitest.db.config.ts",
     "test:db:coverage": "vitest run --config vitest.db.config.ts --coverage",
-    "test:db:shared": "vitest run --config vitest.db-shared.config.ts",
     "test:e2e": "playwright test",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
