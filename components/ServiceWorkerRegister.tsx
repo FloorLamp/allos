@@ -7,14 +7,12 @@ import {
   type VersionWatchMode,
 } from "./useDeployedVersion";
 import {
-  deployDetectorFor,
   reloadPlanFor,
   resolveUpdateState,
   shouldOfferUpdate,
   shouldReloadOnControllerChange,
   SW_RELOAD_FALLBACK_MS,
   SW_SKIP_WAITING,
-  UPDATE_CHECK_MS,
   UPDATE_PENDING_KEY,
   UPDATE_PENDING_MARKER,
   waitingWorkerPlan,
@@ -58,14 +56,17 @@ import {
 // and raised its OWN banner, with its own Refresh button that plainly reloaded —
 // leaving the worker still waiting, so this bar promptly re-offered the update the
 // user had just taken. One deploy trips both detectors, so the fix is not to pick a
-// detector but to give both ONE answer:
+// detector but to give both ONE answer: one `pending`, one bar, one reload path.
 //
-//   * where a worker exists it is the primary detector (it decides which build a
-//     reload lands on), and the sha read is demoted to naming what shipped;
-//   * where none exists — private mode, unsupported, a failed registration, or
-//     development, where the branch below unregisters on purpose — the sha poll IS
-//     the detector, feeding this same state;
-//   * either way there is one `pending`, one bar, and one reload path.
+// PICKING A DETECTOR WAS NEVER WHAT MADE IT ONE NOTICE (issue #2329). #1795 also
+// switched the sha poll OFF wherever a worker existed. That looked harmless — the
+// signals were already merged — and it was this component's whole defect for a week:
+// an OPEN tab has no worker-side detector at all, because public/sw.js reads its
+// version from its own URL, so a deploy changes none of its bytes and
+// `registration.update()` installs nothing, and only a fresh document ever calls
+// register() with the new sha. So `swWaiting` stayed false, the poll was off, and the
+// bar was unreachable in exactly the long-lived PWA tab it exists for. The poll now
+// runs wherever there is a baseline; the merge below is what keeps it one notice.
 //
 // A REFRESH CONSUMES THE UPDATE (issue #1905). The bar used to survive every manual
 // refresh: a refresh fetches the new build's HTML and assets but never activates a
@@ -86,7 +87,13 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
   // second deploy under this open page must not be judged against the answer read
   // for the first (#1905).
   const [updateGen, setUpdateGen] = useState(0);
-  const [swStatus, setSwStatus] = useState<ServiceWorkerStatus>("probing");
+  // Registration's own outcome. Nothing DOWNSTREAM branches on it any more (#2329):
+  // which detector answers "has a new build shipped?" is not a question this status
+  // can answer, and pretending it was is what broke the bar. It is kept because
+  // registration itself has three distinct states — not yet answered, active, and
+  // genuinely unavailable — and collapsing them would lose the one honest signal the
+  // registration path has about itself.
+  const [, setSwStatus] = useState<ServiceWorkerStatus>("probing");
   // The live registration. The tap re-reads `.waiting` off it rather than holding a
   // ServiceWorker object from offer time: the browser can replace or discard a
   // waiting worker in between, and a message to that stale object goes nowhere.
@@ -184,20 +191,13 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
       onControllerChange
     );
 
-    // Ask the browser to re-fetch the worker script on the shared cadence (#1795).
-    // The retired sha poll asked every minute; the browser's own update check fires
-    // on document navigation and roughly daily, which in a long-lived SPA tab can be
-    // never. This is the worker-side shape of the same question, so the primary
-    // detector is as timely as the fallback it took over from. Nothing to ask once a
-    // worker is already waiting, and nothing to ask in a hidden tab.
-    let checkTimer: ReturnType<typeof setInterval> | undefined;
-    const checkForUpdate = () => {
-      const registration = regRef.current;
-      if (disposed || !registration || registration.waiting) return;
-      if (document.visibilityState !== "visible") return;
-      registration.update().catch(() => {});
-    };
-
+    // NO `registration.update()` TICK (#2329). #1795 ran one every minute, per tab,
+    // forever. It refetches the URL THIS document registered — /sw.js?v=<the old
+    // sha> — and the worker's bytes are identical across deploys, so the browser
+    // installs nothing and the tick could never once have fired. Removing it loses
+    // no coverage: a worker installed by ANOTHER tab still arrives here through
+    // `updatefound` below, which is scope-wide and independent of any tick.
+    //
     // Register after load so the SW install never contends with first paint. We only
     // reach here in production (the non-prod branch above unregisters and returns),
     // and we deliberately do NOT pass a dev signal (?dev=1) — the worker's IS_DEV is
@@ -228,13 +228,11 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
               if (installing.state === "installed") offer(installing);
             });
           });
-          checkTimer = setInterval(checkForUpdate, UPDATE_CHECK_MS);
-          document.addEventListener("visibilitychange", checkForUpdate);
         })
         .catch(() => {
           // A failed registration (e.g. private mode, unsupported) is non-fatal: the
-          // app works fine online without the offline shell. It does mean this page
-          // has no worker to watch, so the sha poll takes over as the detector.
+          // app works fine online without the offline shell — and the sha poll, which
+          // is the detector either way, is unaffected.
           if (!disposed) setSwStatus("unavailable");
         });
     };
@@ -243,8 +241,6 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
 
     return () => {
       disposed = true;
-      if (checkTimer) clearInterval(checkTimer);
-      document.removeEventListener("visibilitychange", checkForUpdate);
       window.removeEventListener("load", register);
       navigator.serviceWorker.removeEventListener(
         "controllerchange",
@@ -253,14 +249,10 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
     };
   }, [sha]);
 
-  // The fallback detector, and the one read that names what shipped. Both go through
-  // the same hook because they are the same question asked of the same endpoint; only
-  // the reason for asking differs.
-  const mode: VersionWatchMode = swWaiting
-    ? "once"
-    : deployDetectorFor(swStatus) === "version-poll"
-      ? "poll"
-      : "off";
+  // THE detector, and the read that names what shipped — one question, asked of the
+  // server, wherever there is a baseline to compare its answer against (#2329). A
+  // service worker is not an input here: it resolves an update, it cannot notice one.
+  const mode: VersionWatchMode = sha ? "poll" : "off";
   const deployed = useDeployedVersion({
     baseline: sha,
     mode,

@@ -17,8 +17,18 @@ import { UPDATE_PENDING_KEY } from "@/lib/sw-update";
 // The e2e server runs `next start` (NODE_ENV=production), which is the only mode in
 // which the app registers a worker at all — see components/ServiceWorkerRegister.
 
-// The app's own registration lands as ?v=<sha|dev>; the spec registers a DIFFERENT
-// version against the same scope, which is exactly what a deploy does.
+// The app's own registration lands as ?v=<sha|dev>; the two #1700 specs below
+// register a DIFFERENT version against the same scope by hand.
+//
+// THAT IS NOT WHAT A DEPLOY DOES (issue #2329), and the sentence that used to claim
+// it was is the premise that hid a dead update bar for a week. Nothing in the app
+// calls register() twice: an open tab registered once, with the sha it was served
+// with, and public/sw.js reads its version from its own URL — so a deploy changes
+// none of its bytes and produces no waiting worker for a document that is already
+// open. What a hand-registered second version genuinely drives is the RESOLUTION
+// path — the wait-then-offer posture and the skip-waiting handshake, which are real
+// and are what these two tests are about. The DETECTION path, which is what an open
+// tab actually experiences, is driven by the #2329 tests at the bottom of this file.
 const NEXT_VERSION = "sw-update-spec";
 // Registration + install of a second worker generation is a browser-paced sequence
 // with no server round-trip to key off. Named ceiling per the e2e-hygiene census.
@@ -29,6 +39,12 @@ const SW_SETTLE_MS = 20_000;
 // /api/version to name a build this page is not on makes the simulated deploy read
 // as a real one. Without it, the update would (rightly) never be offered — a
 // waiting worker for the build the page already runs is consumed silently (#1905).
+//
+// The two #1700 tests install it only AFTER the page is loaded and controlled. The
+// sha read is the DETECTOR now (#2329), so intercepting before the load would raise
+// the bar off the poll before their hand-registered worker even exists — a different
+// path, tested below, and one that would leave these two asserting the resolution
+// mechanic against a bar the resolution mechanic did not raise.
 const DEPLOYED = { sha: "1700abc", commitMessage: "e2e worker deploy" };
 
 async function interceptVersion(page: Page) {
@@ -64,11 +80,11 @@ test("a new build waits instead of taking over the open page (#1700)", async ({
     sessionStorage.setItem("swSpecLoads", String(n + 1));
   });
 
-  await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
   const before = await controllerScript(page);
   expect(before).toContain("/sw.js?v=");
+  await interceptVersion(page);
 
   // Type into a form and leave it unsaved — the state a takeover used to destroy.
   await page
@@ -126,9 +142,9 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
       raised;
   }, UPDATE_PENDING_KEY);
 
-  await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
+  await interceptVersion(page);
 
   await page.evaluate(
     (v) => navigator.serviceWorker.register(`/sw.js?v=${v}`),
@@ -217,4 +233,124 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
   expect(await page.evaluate(() => sessionStorage.getItem("swSpecLoads"))).toBe(
     "2"
   );
+});
+
+// ── A DEPLOY UNDER AN OPEN TAB (issue #2329) ─────────────────────────────────
+//
+// The shape neither spec in this file nor e2e/update-notice.spec.ts covered, and the
+// one production actually has: a tab that is open, worker-registered and controlled,
+// while the SERVER moves to a new build. Nothing registers a second worker, because
+// nothing in the app ever does — only a fresh document calls register(), and this
+// document is not fresh. The two existing tests above hand-register one; the fallback
+// spec blocks service workers entirely. Between them they described every context
+// except the one the bar exists for, and the bar was dead in it from Aug 1 to this
+// issue.
+//
+// On main today both of these fail at the bar never appearing: with a worker active
+// the sha poll was switched off, the worker could not notice the deploy, and `pending`
+// was false forever.
+
+// The detector reads on mount and on the shared cadence, and additionally whenever
+// the tab regains focus — the third is the hook a test can pull, since the deploy
+// here happens AFTER the mount read has already been answered honestly. Dispatching
+// before the listener is attached does nothing, so re-dispatch until the bar lands;
+// the read settles on the first mismatch, so extra dispatches are no-ops.
+async function provokeVersionCheck(page: Page) {
+  await expect(async () => {
+    await page.evaluate(() =>
+      document.dispatchEvent(new Event("visibilitychange"))
+    );
+    await expect(page.getByTestId("update-ready-bar")).toBeVisible({
+      timeout: 1500,
+    });
+  }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] }); // topass-ok: re-dispatches the visibility check until the registrar's effect has attached its listener — there is no POST or navigation to settle on
+
+  return page.getByTestId("update-ready-bar");
+}
+
+async function waitingWorkerCount(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg?.waiting ? 1 : 0;
+  });
+}
+
+test("a deploy under a controlled tab raises the bar, with no second worker (#2329)", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/training");
+  await waitForController(page);
+  expect(await controllerScript(page)).toContain("/sw.js?v=");
+
+  // Nothing is pending yet: this tab is on the build the server is running.
+  await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
+
+  // The deploy, exactly as an open tab experiences it: the server now reports a
+  // commit this document was not served with. No new script, no register() call, no
+  // waiting worker — the document is already open, and only a fresh one ever
+  // discovers a worker.
+  await interceptVersion(page);
+  const bar = await provokeVersionCheck(page);
+
+  await expect(bar).toContainText("Update ready");
+  await expect(bar.getByTestId("update-ready-commit")).toHaveText(
+    DEPLOYED.commitMessage
+  );
+  // ONE notice, and it came from the sha read: there is no waiting worker anywhere
+  // in this registration, which is what makes this the detection path rather than
+  // the resolution path the two tests above drive.
+  await expect(page.getByTestId("update-ready-bar")).toHaveCount(1);
+  expect(await waitingWorkerCount(page)).toBe(0);
+  expect(await controllerScript(page)).toContain("/sw.js?v=");
+});
+
+test("that bar's Reload loads the document, and nothing re-offers (#2329)", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/training");
+  await waitForController(page);
+
+  await interceptVersion(page);
+  const bar = await provokeVersionCheck(page);
+
+  // A window sentinel proves a real document load, not just a router transition.
+  await page.evaluate(() => {
+    (window as unknown as Record<string, unknown>).__preRefresh = true;
+  });
+  // The deploy is over from here on: drop the interception so the reloaded page reads
+  // the sha it was actually served with, the way a tab that took a real update does.
+  await page.unroute("**/api/version");
+  await bar.getByTestId("update-ready-reload").click();
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => (window as unknown as Record<string, unknown>).__preRefresh
+        ),
+      { timeout: SW_SETTLE_MS }
+    )
+    .toBeUndefined();
+
+  // There was no waiting worker to hand over to, so `reloadPlanFor` took the plain
+  // reload — which is right: navigations are network-first (public/sw.js never caches
+  // HTML), so this lands on the new build's document and its fresh chunk URLs.
+  await waitForController(page);
+  expect(await controllerScript(page)).toContain("/sw.js?v=");
+
+  // …and the update the user just took is not offered again. The settle point is the
+  // detector's own read: once the reloaded page has asked the server for its commit
+  // and been told it is already on it, nothing is left that could raise a bar.
+  await expect(async () => {
+    const answered = page.waitForResponse(
+      (res) => res.url().includes("/api/version"),
+      { timeout: 2000 }
+    );
+    await page.evaluate(() =>
+      document.dispatchEvent(new Event("visibilitychange"))
+    );
+    await answered;
+  }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] }); // topass-ok: same re-dispatch as above — the listener is attached asynchronously after load, and the response being waited for IS the settle point rather than a timeout
+  await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
 });

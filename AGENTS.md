@@ -563,6 +563,16 @@ like a dead connection so quick-log taps queue and replay through the
 build-stable replay route, and the activity editor keeps its local draft (live
 mode included) and banners the reload instead of erroring in place.
 
+DETECTING a deploy and RESOLVING one are different jobs, and only one thing can
+do the first from an already-open tab: the `/api/version` sha read. `public/sw.js`
+takes its version from its own URL, so a deploy changes none of its bytes,
+`registration.update()` installs nothing, and only a fresh document ever calls
+`register()` with the new sha — a waiting worker governs which build a reload
+lands on, it cannot notice that a deploy happened. So the sha poll runs wherever
+there is a baseline (`sha ? "poll" : "off"`), its first read is on mount, and
+`resolveUpdateState` — not a choice of detector — is what keeps one deploy to one
+notice. Never gate that poll on service-worker state again (#2329).
+
 Every one of those decisions is pure and lives in `lib/sw-update.ts` (with the
 theme half in `lib/theme.ts`, which `app/global-error.tsx` needs because it
 replaces the root layout and its theme-boot script). Do not re-derive

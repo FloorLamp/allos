@@ -23,11 +23,19 @@
 // detectors: this one, and a separate `/api/version` COMMIT_SHA poll that rendered its
 // own inline banner with its own Refresh button — a plain `location.reload()` that
 // never messaged the waiting worker, so the bar re-offered the update the user had
-// just taken. Both detectors survive; the second surface does not. The waiting worker
-// is the PRIMARY signal wherever a worker exists, because it is the thing that decides
-// which build a reload lands on. The sha poll is the FALLBACK detector for contexts
-// with no worker at all (blocked in private mode, unsupported, failed registration,
-// development) — and it feeds the same state, which one component renders as one bar.
+// just taken. Both detectors survive; the second SURFACE does not. `resolveUpdateState`
+// merges the two signals into one `pending`, and one component renders one bar.
+//
+// DETECTION AND RESOLUTION ARE DIFFERENT JOBS (issue #2329). #1795 also made the two
+// detectors mutually exclusive — the worker "wins wherever it exists" — and that half
+// was wrong, because a waiting worker is the mechanism that RESOLVES an update, not a
+// detector that can NOTICE one. For an already-open tab it structurally cannot notice:
+// `public/sw.js` reads its version from its own URL, so a deploy changes not one byte
+// of the script; `registration.update()` refetches the URL this document registered
+// and installs nothing; and nothing re-registers an open tab. So the tab with a worker
+// had no working detector at all, which is the tab the bar exists for. The sha poll
+// now runs wherever there is a baseline to compare against — worker or not — and the
+// waiting worker keeps its real job: governing which build a reload lands on.
 //
 // The decisions below are pure so they can be tested without a browser; the wiring
 // is components/ServiceWorkerRegister.tsx, components/useDeployedVersion.ts and
@@ -100,40 +108,22 @@ export function shouldReloadOnControllerChange({
 }
 
 /**
- * How often a tab asks whether a new build exists.
+ * How often a tab asks the server whether a new build exists.
  *
- * ONE cadence for both detectors (#1795): where a worker exists the tick is
- * `registration.update()`, and where none does it is a `/api/version` read. The
- * interval is inherited from the sha poll this unification absorbed — a deploy is
- * never urgent, and a minute is fast enough that someone who alt-tabs back finds
- * the offer already up.
+ * ONE cadence, and since #2329 one asker: the `/api/version` sha read, in every
+ * context that has a baseline to compare against. The interval is inherited from the
+ * poll this constant was named for — a deploy is never urgent, and a minute is fast
+ * enough that someone who alt-tabs back finds the offer already up.
+ *
+ * There is deliberately no `registration.update()` tick beside it any more (#2329):
+ * it refetched a byte-identical script every minute per tab and could never install
+ * anything, and a worker installed by ANOTHER tab still arrives here through
+ * `updatefound`, which is scope-wide and independent of any tick.
  */
 export const UPDATE_CHECK_MS = 60_000;
 
 /** What the page knows about its service worker, once registration has answered. */
 export type ServiceWorkerStatus = "probing" | "active" | "unavailable";
-
-/** Which detector answers "has a new build shipped?" in this context. */
-export type DeployDetector = "service-worker" | "version-poll" | "none";
-
-/**
- * Pick the ONE detector for this context (#1795).
- *
- * The worker wins wherever it exists: its waiting state is not merely a signal that
- * a deploy happened, it is the mechanism that governs which build a reload lands on,
- * so a notice driven by it can always be resolved by the handshake. The sha poll is
- * for contexts where that mechanism is absent — private mode, an unsupported browser,
- * a registration that failed, or development (where the registrar deliberately
- * unregisters). Running both at once is what produced two notices for one deploy.
- *
- * `probing` runs neither: registration has not answered yet, and a poll started in
- * that window would race the worker for the same event.
- */
-export function deployDetectorFor(status: ServiceWorkerStatus): DeployDetector {
-  if (status === "active") return "service-worker";
-  if (status === "unavailable") return "version-poll";
-  return "none";
-}
 
 /** The single answer to "is an update pending, and what is it?" (#1795). */
 export type UpdateState = {
@@ -192,8 +182,9 @@ export function resolveUpdateState({
  * missed the commoner shape of the same loop: on the FIRST load after a deploy the
  * new worker is usually not waiting YET, because this page's own
  * `register("/sw.js?v=<new sha>")` call is what tells the browser a deploy happened
- * at all (the update tick refetches the OLD versioned URL, whose bytes a deploy
- * does not change). That worker installs seconds after load and lands through
+ * at all — a fresh DOCUMENT is the only thing that ever does, since the script's
+ * bytes are identical across deploys (#2329). That worker installs seconds after
+ * load and lands through
  * `updatefound` — a "mid-session" install in the platform's eyes, raised by a page
  * that already IS the new build. Offering it re-created the loop this decision
  * exists to close, one refresh later than before.
@@ -245,9 +236,13 @@ export function waitingWorkerPlan({
  * above. A plain reload here is the defect this issue is about: the page comes back on
  * the old build with the worker still waiting, and the offer returns immediately.
  *
- * `plain` — no worker is waiting (the fallback detector's context, or a worker that
- * has already been resolved), so there is nothing to hand over to and a reload is
- * simply a reload.
+ * `plain` — no worker is waiting, so there is nothing to hand over to and a reload is
+ * simply a reload. That is a context with no worker at all, a worker that has already
+ * been resolved, and — since #2329 — the COMMON deploy shape: an open tab that
+ * noticed the deploy through the sha poll has no waiting worker, because only a fresh
+ * document ever discovers one. A plain reload is right there: navigations are served
+ * network-first (public/sw.js never caches HTML), so it lands on the new build's HTML,
+ * which references chunk URLs the old cache does not hold and therefore fetches fresh.
  */
 export function reloadPlanFor({
   waitingWorker,
