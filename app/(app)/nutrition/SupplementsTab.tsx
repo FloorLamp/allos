@@ -620,7 +620,7 @@ export default async function SupplementsTab({
     active: !!s.active,
   }));
 
-  const renderRow = (it: Item, due: boolean, date = todayStr) => {
+  const renderRow = (it: Item, date = todayStr) => {
     const doseHistory = takenByDose.get(it.dose.id);
     const isTaken =
       date === todayStr
@@ -652,7 +652,6 @@ export default async function SupplementsTab({
         pairs={pairsFor(it.supplement.id)}
         isTaken={isTaken}
         isSkipped={isSkipped}
-        due={due && date === todayStr}
         strip={stripFor(it.supplement)}
         trainingRestricted={trainingRestricted}
         refillRate={refillRates.get(it.supplement.id) ?? null}
@@ -708,7 +707,7 @@ export default async function SupplementsTab({
             ))}
             {bucketItems.length > 0 && (
               <div className="space-y-3">
-                {bucketItems.map((item) => renderRow(item, true, date))}
+                {bucketItems.map((item) => renderRow(item, date))}
               </div>
             )}
           </section>
@@ -754,7 +753,7 @@ export default async function SupplementsTab({
                 <span className="badge mb-1 inline-block bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                   Held — {item.supplement.pause_situation} active
                 </span>
-                {renderRow(item, false)}
+                {renderRow(item)}
               </div>
             ))}
           </div>
@@ -768,7 +767,7 @@ export default async function SupplementsTab({
             <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
           </summary>
           <div className="mt-2 space-y-3">
-            {notScheduled.map((item) => renderRow(item, false))}
+            {notScheduled.map((item) => renderRow(item))}
           </div>
         </details>
       )}
@@ -779,7 +778,7 @@ export default async function SupplementsTab({
             Paused ({paused.length})
           </summary>
           <div className="mt-2 space-y-3">
-            {paused.map((item) => renderRow(item, false))}
+            {paused.map((item) => renderRow(item))}
           </div>
         </details>
       )}

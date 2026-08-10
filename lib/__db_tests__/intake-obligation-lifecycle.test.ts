@@ -11,6 +11,10 @@
 //           accept write's typed outcomes.
 //   Part 3  the digest carrying missed/resumed lines from a ledger fixture — and
 //           saying nothing on a quiet one.
+//   Part 4  (#2419) the LOGGING half of "always one tap away": the offer carries the
+//           item's first ACTIVE dose so the web row has something to tap, and a tap on
+//           a non-due day is ADDITIVE LEDGER TRUTH — adherence, dueness and situation
+//           state all come out the other side untouched.
 //
 // All fixture values synthetic — no real PHI. Dates are relative to each profile's
 // own today so the specs never depend on a wall-clock date.
@@ -19,7 +23,7 @@ import { describe, it, expect } from "vitest";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { bodyFor } from "@/lib/notifications/types";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { lastNDates, shiftDateStr } from "@/lib/date";
 import { collectUpcoming, offeredItems } from "@/lib/queries/upcoming";
 import {
   getSupplements,
@@ -27,10 +31,24 @@ import {
   getTakenDoseIds,
   getActivitiesByDate,
   getInteractionWarnings,
+  markDoseTaken,
+  setDoseStatusCore,
+  getIntakeDoseHistory,
+  getIntakeLogsInRange,
 } from "@/lib/queries";
-import { getActiveSituations } from "@/lib/settings";
+import {
+  getActiveSituations,
+  getSituationEvents,
+  getTimezone,
+} from "@/lib/settings";
 import { supplementAdherenceToday } from "@/lib/household";
 import { isDueOn } from "@/lib/supplement-schedule";
+import {
+  adherenceSummary,
+  indexTakenByDose,
+  supplementAdherenceStrip,
+  STRIP_DAYS,
+} from "@/lib/supplement-adherence";
 import {
   buildDemotionSuggestionFindings,
   demotionCandidateItemIds,
@@ -491,5 +509,194 @@ describe("#1505 — the digest's offer tail", () => {
     expect(plainBody(bodyFor(msg, "push"))).toContain(
       "1 more supplement you can log any time"
     );
+  });
+});
+
+// ---- Part 4: logging is not dueness (#2419) --------------------------------
+
+// The doctrine's other half. `may` (and every off-cadence or situation-inactive row)
+// is COLLAPSED, never filtered out, and stays "always one tap away" — so the tap has
+// to exist, and it has to be inert everywhere except the ledger. Dueness gates
+// NUDGING; logging is a statement about what happened.
+describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing else", () => {
+  const noWorkouts = new Set<string>();
+  const noSituations = () => new Set<string>();
+
+  // The item's adherence strip exactly as the Supplements tab builds it, re-read from
+  // the DB each call so a write between two calls is visible if it changes anything.
+  function stripFor(profileId: number, itemId: number) {
+    const day = today(profileId);
+    return supplementAdherenceStrip(
+      getSupplements(profileId).find((s) => s.id === itemId)!,
+      getSupplementDoses(profileId).filter((d) => d.item_id === itemId),
+      lastNDates(day, STRIP_DAYS),
+      noWorkouts,
+      noSituations,
+      indexTakenByDose(getIntakeLogsInRange(profileId, STRIP_DAYS)),
+      getTimezone(profileId)
+    );
+  }
+
+  it("an offered item carries its FIRST ACTIVE dose — one row per item, retired rows skipped", () => {
+    const p = createProfile("Offer Dose (test)");
+    const day = today(p);
+    const item = seedItem(p, "Magnesium (test)", { obligation: "may" });
+    // A second amount shape on the same item. The offer stays ONE row (collapse is
+    // presentation, not data loss) and supplies the first dose; the ledger then
+    // records the item and that amount.
+    const secondDose = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort, created_at)
+           VALUES (?, '2 units', 'morning', 'any', 1, ?)`
+        )
+        .run(item.itemId, `${shiftDateStr(day, -90)} 08:00:00`).lastInsertRowid
+    );
+    const offers = offeredItems(p, day).filter(
+      (i) => i.title === "Magnesium (test)"
+    );
+    expect(offers).toHaveLength(1);
+    expect(offers[0].doseId).toBe(item.doseId);
+    // Carrying a dose id does NOT make the row work: no band, no due date, and still
+    // nothing on the due list.
+    expect(offers[0].dueDate).toBeNull();
+    expect(offers[0].band).toBeUndefined();
+    expect(collectUpcoming(p, day).map((i) => i.key)).not.toContain(
+      `dose:${item.doseId}`
+    );
+
+    // Retiring the first row moves the offer onto the next LIVE one, rather than
+    // handing the surface a dose the write core would refuse as stale.
+    db.prepare("UPDATE intake_item_doses SET retired = 1 WHERE id = ?").run(
+      item.doseId
+    );
+    const afterRetire = offeredItems(p, day).filter(
+      (i) => i.title === "Magnesium (test)"
+    );
+    expect(afterRetire).toHaveLength(1);
+    expect(afterRetire[0].doseId).toBe(secondDose);
+  });
+
+  it("a tap on an OFF-CADENCE day is ledger truth only — the adherence strip and summary are byte-identical", () => {
+    const p = createProfile("Off Cadence Log (test)");
+    const day = today(p);
+    const { itemId, doseId } = seedItem(p, "Creatine (test)", {
+      obligation: "should",
+    });
+    // Every third day, anchored yesterday: today is deliberately OFF this item's
+    // calendar, and its own days carry a real history (including a miss).
+    db.prepare(
+      `UPDATE intake_items
+          SET cadence_kind = 'interval', cadence_interval_days = 3,
+              cadence_anchor_date = ?
+        WHERE id = ?`
+    ).run(shiftDateStr(day, -1), itemId);
+    for (const back of [1, 4, 10, 13]) {
+      logTaken(doseId, itemId, shiftDateStr(day, -back));
+    }
+    const item = getSupplements(p).find((s) => s.id === itemId)!;
+    const ctx = {
+      date: day,
+      isWorkoutDay: false,
+      activeSituations: new Set<string>(),
+    };
+    expect(isDueOn(item, ctx)).toBe(false);
+
+    const before = stripFor(p, itemId);
+    const beforeSummary = adherenceSummary(before);
+    // The miss on day -7 is real and must survive the write.
+    expect(beforeSummary.applicableDays).toBeGreaterThan(0);
+
+    // The web tri-state's own core — the write the Supplements row now offers on
+    // every active item. It refuses only a retired dose or a paused item, never
+    // dueness, and it ANSWERS with the off-day outcome rather than a bare ✓.
+    expect(setDoseStatusCore(p, doseId, day, "taken")).toBe("logged-off-day");
+
+    // Invariant 1: expectations come from dueness, so a taken row on a non-due day
+    // satisfies nothing and creates nothing. No miss disappeared, no rate moved.
+    expect(stripFor(p, itemId)).toEqual(before);
+    expect(adherenceSummary(stripFor(p, itemId))).toEqual(beforeSummary);
+    // Invariant 3: dueness is where it was — still not due, still not pushed.
+    expect(
+      isDueOn(
+        getSupplements(p).find((s) => s.id === itemId)!,
+        ctx
+      )
+    ).toBe(false);
+    expect(collectUpcoming(p, day).map((i) => i.key)).not.toContain(
+      `dose:${doseId}`
+    );
+    // …and the ledger DOES have it: the dose history (and the chart over it) is
+    // exactly what the tap was for.
+    expect(
+      getIntakeDoseHistory(p, itemId, shiftDateStr(day, -14)).some(
+        (r) => r.date === day
+      )
+    ).toBe(true);
+  });
+
+  it("logging a situation-bound item neither activates its situation nor implies it", () => {
+    const p = createProfile("Situation Untouched (test)");
+    const day = today(p);
+    const { itemId, doseId } = seedItem(p, "Electrolytes (test)", {
+      obligation: "may",
+    });
+    // Situational on a situation that is NOT active — the owner-reported case: taking
+    // it used to require flipping the situation on just to make a button exist.
+    const situationId = Number(
+      db
+        .prepare(
+          `INSERT INTO situations (profile_id, name, active, illness_type)
+           VALUES (?, 'Heat wave (test)', 0, 0)`
+        )
+        .run(p).lastInsertRowid
+    );
+    db.prepare(
+      `UPDATE intake_items SET condition = 'situational', situation_id = ?
+        WHERE id = ?`
+    ).run(situationId, itemId);
+
+    const situationsBefore = db
+      .prepare(
+        "SELECT id, name, active FROM situations WHERE profile_id = ? ORDER BY id"
+      )
+      .all(p);
+    const eventsBefore = getSituationEvents(p);
+    expect(getActiveSituations(p)).not.toContain("Heat wave (test)");
+
+    // The Upcoming chip's own write core. It answers "logged" rather than
+    // "logged-off-day": the off-day qualifier is a CALENDAR statement (#1602 — which
+    // days the row was meant for), and this item's calendar is every day. What makes
+    // it not due today is its condition, and that is not something a log claims.
+    expect(markDoseTaken(p, doseId, null, day)).toBe("logged");
+
+    // Invariant 2: this is not a lifecycle write. Not one situation row, and not one
+    // dated transition, moved.
+    expect(
+      db
+        .prepare(
+          "SELECT id, name, active FROM situations WHERE profile_id = ? ORDER BY id"
+        )
+        .all(p)
+    ).toEqual(situationsBefore);
+    expect(getSituationEvents(p)).toEqual(eventsBefore);
+    expect(getActiveSituations(p)).not.toContain("Heat wave (test)");
+    // The item is still exactly as un-due as it was, and still only an OFFER.
+    expect(
+      isDueOn(
+        getSupplements(p).find((s) => s.id === itemId)!,
+        {
+          date: day,
+          isWorkoutDay: false,
+          activeSituations: new Set(),
+        }
+      )
+    ).toBe(false);
+    expect(collectUpcoming(p, day).map((i) => i.key)).not.toContain(
+      `dose:${doseId}`
+    );
+    // …and the tap landed in the ledger.
+    expect(getIntakeDoseHistory(p, itemId, day)).toHaveLength(1);
   });
 });

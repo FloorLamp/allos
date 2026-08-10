@@ -330,9 +330,8 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
     if (!supp.active || !isOfferedOn(supp, ctx)) continue;
     // ONE row per ITEM, not per dose: a may item's doses are amount shapes, not
     // occurrences, so listing three of them would invent three things to do.
-    const hint = slotHintBucket(
-      dosesByItem.get(supp.id)?.[0]?.time_of_day ?? null
-    );
+    const firstDose = dosesByItem.get(supp.id)?.[0] ?? null;
+    const hint = slotHintBucket(firstDose?.time_of_day ?? null);
     items.push({
       key: offeredSignalKey(supp.id),
       domain: "available",
@@ -352,6 +351,18 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
       ]
         .filter(Boolean)
         .join(" · "),
+      // The item's FIRST active dose (#2419), so the row can carry the same one-tap
+      // "Mark taken" the due rows already render. Dueness gates NUDGING, never
+      // LOGGING: an offered item is by definition not due, and the doctrine still
+      // promises it is always one tap away — the web was the surface that hadn't
+      // caught up, so an offered row was look-but-don't-log and taking a
+      // situation-bound item meant flipping its situation on just to make a button
+      // exist. Still ONE row per item (collapse is presentation, not data loss): a
+      // multi-dose item supplies its first active dose and the ledger records the
+      // item and that amount. Carrying the id does NOT make the row due — it has no
+      // band and no dueDate, it is excluded from the page total, and nothing here
+      // reaches a send.
+      ...(firstDose ? { doseId: firstDose.id } : {}),
     });
   }
   return items.sort((a, b) => a.title.localeCompare(b.title));

@@ -519,6 +519,11 @@ Important invariants:
   engine detects and SUGGESTS; the user's tap is the write.
 - A `may` item is COLLAPSED on aggregates, never filtered out — removing it would
   make an accepted demotion indistinguishable from a deletion.
+- Dueness gates NUDGING, never LOGGING (#2419): every active, unpaused item carries
+  its one-tap log control on today's row — a `may` item, an off-cadence row, a
+  situation-inactive one — because a log states what happened. The tap creates no
+  expectation (adherence is computed from dueness, so no miss, streak or rate moves),
+  changes no situation state, and pushes nothing.
 
 Biomarker → supplement is **curated first, AI second** (#2378), exactly as
 biomarker → food has been since #577. `lib/supplement-suggest-curated.ts` is a pure
