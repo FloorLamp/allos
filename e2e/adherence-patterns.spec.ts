@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Issue #45 (domain 3): adherence-PATTERN detection on Supplements & Meds. The seed
@@ -16,7 +17,9 @@ test("Supplements & Meds shows an every-Friday adherence pattern (#45)", async (
   const badge = page.getByTestId("supplement-patterns-badge");
   await expect(badge).toHaveAttribute("aria-haspopup", "dialog");
   await expect(badge).not.toHaveAttribute("aria-expanded", /.*/);
-  await badge.click();
+  // Pure client launcher (InsightLauncher onClick -> setOpen), clicked straight
+  // after goto, so the click can be lost in the hydration window.
+  await hydratedClick(page, badge);
   const dialog = page.getByRole("dialog", { name: "Patterns" });
   const card = dialog.getByTestId("adherence-findings");
   await expect(card).toBeVisible();
@@ -58,14 +61,16 @@ test("an adherence-pattern finding can be dismissed (#45)", async ({
 }) => {
   await page.goto("/nutrition?tab=supplements");
   const main = page.getByRole("main");
-  await main.getByTestId("supplement-patterns-badge").click();
+  await hydratedClick(page, main.getByTestId("supplement-patterns-badge"));
   const finding = page
     .getByRole("dialog", { name: "Patterns" })
     .getByTestId("adherence-findings-item")
     .filter({ hasText: "Vitamin C" });
   await expect(finding).toBeVisible();
 
-  await finding.getByTestId("adherence-findings-dismiss").click();
+  // FindingRow renders a <form action={dismiss}> submit, so this posts a Server
+  // Action; the assertion below ran on the 5s default against that round trip.
+  await settledClick(page, finding.getByTestId("adherence-findings-dismiss"));
 
   await expect(
     main.getByTestId("adherence-findings-item").filter({ hasText: "Vitamin C" })

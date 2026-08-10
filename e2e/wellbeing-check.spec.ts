@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
-import { followLink } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledClickApplied,
+} from "./helpers";
 
 // The unified "How are you today?" daily check-in card (issue #992): the one-tap
 // mood log composed with the illness front door in ONE shell. Covered states:
@@ -15,13 +20,17 @@ import { followLink } from "./helpers";
 //   4. active-episode — the illness cockpit takes the hero, the card defers with
 //      a quiet note, and the mood tap STILL works (the two coexist).
 //
-// SETTLE DISCIPLINE: the dashboard carries steady background action-POST traffic
-// (watchers/pollers), so settledClick's any-POST wait can resolve on a bystander
-// request while the mood write is still in flight — and a follow-up reload would
-// abort it. Instead the card renders a SERVER-truth marker (`mood-server-logged`,
-// built from the server prop, not client state) that appears/updates only once
-// the write committed and the refresh round-tripped; every mood mutation here
-// settles on that marker (see the note in e2e/helpers.ts).
+// SETTLE DISCIPLINE: the card renders a SERVER-truth marker
+// (`mood-server-logged`, built from the server prop, not client state) that
+// appears/updates only once the write committed and the refresh round-tripped,
+// and every mood mutation here settles on that marker.
+//
+// That marker used to be the ONLY settle, because settledClick once armed on ANY
+// same-origin POST and the dashboard's steady background action traffic
+// (watchers/pollers) could resolve it on a bystander request while the mood write
+// was still in flight. #1952 replaced that with correlation — a POST that started
+// AFTER the click and targets this route — so the action-level wait is sound here
+// now and composes with the marker rather than being replaced by it.
 //
 // Fixture hygiene (#868): the shared seed makes profile 1 already sick (and
 // already mood-logged), so each test creates a FRESH profile via Settings →
@@ -112,14 +121,14 @@ test.describe("Daily wellbeing check (#992)", () => {
     const card = page.getByTestId("how-are-you-card");
     // Pick a valence (settled on the marker), then expand the Rate section detail.
     await tapMood(page, card, 3);
-    await card.getByTestId("checkin-section-rate-toggle").click();
+    await hydratedClick(page, card.getByTestId("checkin-section-rate-toggle"));
     await expect(card.getByTestId("mood-detail")).toBeVisible();
     // Energy is universal; Calm is relevance-gated (#1313) and absent for this fresh,
     // signal-free profile — its presence/gating is covered in checkin-card.spec.ts.
     await expect(card.getByTestId("mood-anxiety-4")).toHaveCount(0);
-    await card.getByTestId("mood-energy-2").click();
+    await hydratedClick(page, card.getByTestId("mood-energy-2"));
     await card.getByTestId("mood-note").fill("short night");
-    await card.getByTestId("mood-save").click();
+    await settledClick(page, card.getByTestId("mood-save"));
     // The save settles when the server marker reflects the expanded fields — a
     // declared 15s budget: the marker updates only after the write committed AND
     // the refresh round-tripped, which loses the default 5s window under load
@@ -140,7 +149,7 @@ test.describe("Daily wellbeing check (#992)", () => {
       "aria-pressed",
       "true"
     );
-    await card.getByTestId("checkin-section-rate-toggle").click();
+    await hydratedClick(page, card.getByTestId("checkin-section-rate-toggle"));
     await expect(card.getByTestId("mood-energy-2")).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -185,17 +194,18 @@ test.describe("Daily wellbeing check (#992)", () => {
     await page.goto("/");
 
     const card = page.getByTestId("how-are-you-card");
-    // Branch into the illness flow (door A, one tap). Per this spec's settle
-    // discipline settledClick is unreliable on the dashboard (bystander POSTs),
-    // and the cockpit itself IS the server-truth signal — it renders only after
-    // the activation wrote and the refresh round-tripped. So the settle is a
-    // DECLARED budget on that signal: 15s, measured after the default 5s window
-    // lost to the action+refresh round-trip on loaded CI shards (2/2 shard-4
-    // failures, 2026-07-26 — the #1556 family).
-    await page.getByTestId("feeling-sick-activate").click();
-    await expect(page.getByTestId("symptom-log-bar")).toBeVisible({
-      timeout: 15_000,
-    });
+    // Branch into the illness flow (door A, one tap). This used to be a bare click
+    // under a declared 15s budget, because settledClick once armed on ANY
+    // same-origin POST and the dashboard's bystander traffic made it unreliable.
+    // #1952 replaced that with correlation — an action POST that started AFTER the
+    // click and targets this route — so the objection no longer holds, and the
+    // cockpit marker is exactly the "revalidated render" case (#1858).
+    // illness-front-door.spec.ts drives this same control the same way.
+    await settledClickApplied(
+      page,
+      page.getByTestId("feeling-sick-activate"),
+      page.getByTestId("symptom-log-bar")
+    );
 
     // State 2 — the shell stays for the mood tap, the illness branch defers to
     // the hero with a quiet note, and the front-door affordance is gone.

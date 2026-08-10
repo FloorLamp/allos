@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
-import { settledClick, settledClickApplied } from "./helpers";
+import { settledClick, settledClickApplied, settledFill } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { medicationRow, prnTodayItem } from "./med-card-helpers";
 
@@ -42,13 +42,19 @@ test.afterEach(async ({ page }) => {
 // listbox option so the combobox's onPick fires (which runs the #846 resolver prefill).
 // Clicking the option is more robust than pressing Enter, which submits the form if the
 // dropdown hasn't opened yet.
+//
+// The typing goes through settledFill, not a raw fill: Combobox is one of the three
+// components whose onFocus writes React state, so a value typed before hydration is
+// reverted and the listbox never narrows (the #1188 fill-revert). The option is still
+// matched on CONTAINED text rather than settledPickOption's exact accessible name,
+// because a medication row's label carries more than the name typed here.
 async function pickMedication(
+  page: Page,
   scope: Page | Locator,
   value: string
 ): Promise<void> {
   const input = scope.getByRole("combobox", { name: "Medication" });
-  await input.click();
-  await input.fill(value);
+  await settledFill(page, input, value);
   const option = scope
     .getByRole("listbox")
     .getByRole("button")
@@ -178,11 +184,18 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("medication-add-toggle").click();
     const quickAdd = page.getByTestId("quick-add-medication");
     await expect(quickAdd).toBeVisible();
-    await pickMedication(page, "Ibuprofen");
+    await pickMedication(page, page, "Ibuprofen");
     // Picking prefills the dose amount from the OTC label defaults (#798/#846).
     await expect(page.getByTestId("quick-add-amount")).not.toHaveValue("");
-    await page.getByRole("button", { name: "Quick add" }).click();
-    await expect(medicationRow(page, "Ibuprofen")).toBeVisible();
+    // Quick add posts a Server Action and the row exists only in the tree its
+    // revalidate produces — the same two-event wait the activate below already uses
+    // (#1858). A bare click here bet the whole round trip against the 5s expect
+    // default, which is the #1947 shape.
+    await settledClickApplied(
+      page,
+      page.getByRole("button", { name: "Quick add" }),
+      medicationRow(page, "Ibuprofen")
+    );
 
     // Entry point 2 — inline on the dashboard symptom card. Open the door first.
     await page.goto("/");
@@ -196,12 +209,14 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("illness-add-medication").click();
     const inline = page.getByTestId("illness-medication-quick-add");
     await expect(inline).toBeVisible();
-    await pickMedication(inline, "Acetaminophen");
+    await pickMedication(page, inline, "Acetaminophen");
     // Wait for the resolver prefill to commit before submitting (see the sick-day-1
     // note): a raced submit posts a non-as-needed medication with no start date, which
     // addSupplement rejects, silently creating nothing.
     await expect(inline.getByTestId("quick-add-amount")).not.toHaveValue("");
-    await inline.getByRole("button", { name: "Quick add" }).click();
+    // Server Action, so the click is awaited rather than raced — the identical
+    // control twenty lines up already does this.
+    await settledClick(page, inline.getByRole("button", { name: "Quick add" }));
     // The inline panel collapses back to its prompt only on a successful create; wait for
     // it before navigating so the goto never aborts an in-flight write (the #1255 bug).
     await expect(inline).toBeHidden({ timeout: 15_000 });
@@ -267,7 +282,7 @@ test.describe("Illness front door (#843)", () => {
     // non-empty amount is the same commit signal door C waits on (line 169).
     await page.getByTestId("illness-add-medication").click();
     const inline = page.getByTestId("illness-medication-quick-add");
-    await pickMedication(inline, "Ibuprofen");
+    await pickMedication(page, inline, "Ibuprofen");
     await expect(inline.getByTestId("quick-add-amount")).not.toHaveValue("");
     await settledClick(page, inline.getByRole("button", { name: "Quick add" }));
     // The panel collapses back to its prompt ONLY on a successful create (onDone), so

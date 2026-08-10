@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
+import { settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -126,10 +127,12 @@ test.describe("app-icon badge", () => {
 
       // Dismiss until the hero has nothing left. Bounded so a regression that
       // stops actually dismissing fails on the assertion below rather than
-      // spinning to the test timeout. The menu closes itself on submit (so the
-      // menuitem detaches — settledClick can't be used here, same as
-      // needs-attention-menu.spec.ts); the retrying count assertion is what
-      // waits for the revalidated hero.
+      // spinning to the test timeout.
+      //
+      // The menuitem IS settleable, contrary to what this comment used to claim:
+      // OverflowMenu.runAction awaits the action before it closes and toasts, so
+      // the item does not detach before the POST — and needs-attention-menu.spec.ts
+      // drives the identical control with settledClick.
       for (let guard = 0; guard < 10; guard += 1) {
         const before = await triggers.count();
         if (before === 0) break;
@@ -138,10 +141,10 @@ test.describe("app-icon badge", () => {
         await triggers
           .first() // first-ok: spec-owned fixture — rows are dismissed one at a time until none remain, so "first" is just "the next one"
           .click();
-        await page
-          .getByRole("menu")
-          .getByRole("menuitem", { name: "Dismiss" })
-          .click();
+        await settledClick(
+          page,
+          page.getByRole("menu").getByRole("menuitem", { name: "Dismiss" })
+        );
         // The menu closing is the action having RUN; the row count dropping is
         // the server having revalidated. The generous window is for `next dev`
         // (the local default), where a revalidate under parallel workers can

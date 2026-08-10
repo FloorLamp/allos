@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // The dashboard "Needs attention" hero's per-item snooze/dismiss popover (issue
@@ -43,7 +43,7 @@ test("the attention item menu opens an opaque popover and light-dismisses", asyn
   // Open → the portaled panel renders with the snooze/dismiss options and a
   // fully opaque background ("too transparent" was half of #281: the old panel
   // inherited the frosted-glass .card translucency).
-  await trigger.click();
+  await hydratedClick(page, trigger);
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "1 day" })).toBeVisible();
@@ -59,7 +59,7 @@ test("the attention item menu opens an opaque popover and light-dismisses", asyn
   await expect(page.getByRole("menu")).toHaveCount(0);
 
   // Reopen, then an outside click lands on the click-away backdrop and closes it.
-  await trigger.click();
+  await hydratedClick(page, trigger);
   await expect(page.getByRole("menu")).toBeVisible();
   await page.mouse.click(5, 5);
   await expect(page.getByRole("menu")).toHaveCount(0);
@@ -84,7 +84,10 @@ test("snoozing from the menu runs the action, closes the menu, and hides the ite
   const signalKey = testId!.replace("attention-item-", "");
 
   try {
-    await item.getByRole("button", { name: "Snooze or dismiss" }).click();
+    await hydratedClick(
+      page,
+      item.getByRole("button", { name: "Snooze or dismiss" })
+    );
     // The menu item fires a Server Action, so this is a settledClick: the dashboard is
     // the heaviest page in the app and its route prefetching contends with the action's
     // POST, so the write regularly lands seconds after the click. A bare click left the
