@@ -147,7 +147,12 @@ describe("gatherDigestNutrition — the digest's use of it", () => {
     // The gather hands the digest the line's PARTS (#2391): one note per short nutrient,
     // under the section noun. Nothing here assembles text.
     expect(short.line?.head).toBe("Nutrition");
-    expect(short.line?.notes).toHaveLength(2);
+    expect(short.line?.notes?.slice(0, 2)).toEqual([
+      "protein 44 g+ of 95 g",
+      "fiber 8 g+ of 38 g",
+    ]);
+    // Any note after those is the #2383 curated food offer, which is pinned in
+    // lib/__db_tests__/nutrition-food-suggestion.test.ts. This test owns the figures.
 
     const met = newProfile("digest-nutrition-met");
     const metYesterday = shiftDateStr(today(met), -1);

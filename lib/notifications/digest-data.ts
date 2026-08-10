@@ -38,12 +38,16 @@ import { trainingPaceLine } from "../queries/upcoming/plans";
 import { collectRecentChanges } from "../queries/recent-changes";
 import { getLightExposureLine } from "../queries/light-exposure";
 import { getStepsDigestLines } from "../queries/steps-target";
-import { getNutritionDay } from "../queries/nutrition";
+import {
+  getNutritionDay,
+  getShortfallFoodSuggestion,
+} from "../queries/nutrition";
 import {
   nutritionDigestLine,
   nutritionShortfalls,
   type NutrientPosition,
 } from "../nutrition-day";
+import { shortfallFoodPhrase } from "../nutrition-food-suggestion";
 import { groupUpcoming } from "../upcoming";
 import { integrationToItem, isEscalatingIntegration } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
@@ -272,6 +276,11 @@ export function personalRecordsOn(profileId: number, date: string): number {
 // (lib/nutrition-day.ts) over the SAME per-day adequacy verdicts the /nutrition day
 // picker renders, and `nutritionSurvivesDemotion` reads the floor classification the
 // copy already prints. This function only supplies the day and the preference.
+//
+// THE CURATED FOOD OFFER (#2383) rides the same line and is gathered only when that line
+// survives: a suggestion attached to a message the reader will not receive is a safety
+// gather paid for nothing. It is null on most short days too — see
+// `shortfallFoodSuggestion` for every route to that.
 export function gatherDigestNutrition(
   profileId: number,
   // Yesterday, in the profile's own timezone — passed in rather than derived, so the
@@ -281,11 +290,12 @@ export function gatherDigestNutrition(
 ): { shortfalls: NutrientPosition[]; line: MessageLine | null } {
   const position = getNutritionDay(profileId, date);
   const shortfalls = nutritionShortfalls(position);
+  if (!nutritionSurvivesDemotion(demoted, shortfalls))
+    return { shortfalls, line: null };
+  const offer = getShortfallFoodSuggestion(profileId, shortfalls);
   return {
     shortfalls,
-    line: nutritionSurvivesDemotion(demoted, shortfalls)
-      ? nutritionDigestLine(position)
-      : null,
+    line: nutritionDigestLine(position, offer && shortfallFoodPhrase(offer)),
   };
 }
 

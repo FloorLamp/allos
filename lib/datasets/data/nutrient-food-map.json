@@ -2,7 +2,7 @@
   "$schema": "allos-dataset/v1",
   "id": "nutrient-food-map",
   "title": "Biomarker→nutrient→food recommendation map",
-  "description": "Baked biomarker→nutrient→food map for the DETERMINISTIC food-recommendation engine (issue #577): when a diet-responsive biomarker family reads low, the curated food sources that address it (`entries`); and when a core-panel/toxin biomarker reads high, the limit-tier foods to reduce (`meta.reduceEntries`, issue #775). Each carries an evidence note + source; low entries add contraindication tags + an allergy alternative. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:nutrient-food-map`. INFORMATIONAL food-first guidance, NOT medical advice — every suggestion is safety-screened before it renders and cites the flagged biomarker as its reason.",
+  "description": "Baked nutrient→food map for the DETERMINISTIC food-recommendation engine (issue #577): when a diet-responsive biomarker family reads low, the curated food sources that address it (`entries`); and when a core-panel/toxin biomarker reads high, the limit-tier foods to reduce (`meta.reduceEntries`, issue #775). An entry with NO biomarkers is reached by a declared target trigger instead — the protein and fibre shortfall route (issue #2383). Each carries an evidence note + source; low entries add contraindication tags + an allergy alternative. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:nutrient-food-map`. INFORMATIONAL food-first guidance, NOT medical advice — every suggestion is safety-screened before it renders and cites the flagged biomarker as its reason.",
   "citation": [
     {
       "source": "NIH Office of Dietary Supplements (ODS) nutrient fact sheets",
@@ -632,6 +632,88 @@
       "contraindications": [],
       "allergyAlternative": null,
       "caveat": "Molybdenum deficiency is essentially unknown in people eating a normal diet — a low reading rarely calls for a dietary change."
+    },
+    {
+      "key": "protein",
+      "label": "Protein",
+      "biomarkers": [],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Poultry, fish, and lean meat",
+          "foodGroup": "poultry",
+          "serving": "A palm-sized portion at a main meal — the densest everyday protein serving there is."
+        },
+        {
+          "food": "Greek yogurt, cottage cheese, and eggs",
+          "foodGroup": "eggs",
+          "serving": "Eggs and cultured dairy carry protein into breakfast and snacks, which is where most short days lose it."
+        },
+        {
+          "food": "Legumes, tofu, and tempeh",
+          "foodGroup": "legumes",
+          "serving": "A serving of beans, lentils, tofu, or tempeh is the densest plant protein."
+        }
+      ],
+      "evidence": "Protein intake tracks directly with what is eaten: animal foods (poultry, fish, eggs, dairy) carry the most per serving, and legumes, tofu, and tempeh are the densest plant sources.",
+      "source": "IOM/NASEM Dietary Reference Intakes for protein; Dietary Guidelines for Americans (protein foods)",
+      "contraindications": [
+        {
+          "match": "chronic kidney",
+          "caution": "With reduced kidney function, protein intake is set by your clinician and is usually RESTRICTED — do not raise it on an app's suggestion.",
+          "severity": "drop"
+        }
+      ],
+      "allergyAlternative": {
+        "food": "Whole grains, seeds, and quinoa",
+        "foodGroup": "whole_grains",
+        "serving": "Covers protein without fish, eggs, dairy, or legumes for the allergies that rule those out."
+      },
+      "caveat": "Spreading protein across the day's meals is easier than making it all up in one large serving at dinner."
+    },
+    {
+      "key": "fiber",
+      "label": "Fiber",
+      "biomarkers": [],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Legumes — beans, lentils, and chickpeas",
+          "foodGroup": "legumes",
+          "serving": "Half a cup of cooked beans or lentils is the single densest fiber serving in the food catalog.",
+          "foodDrugKeys": [
+            "dairy-levothyroxine"
+          ]
+        },
+        {
+          "food": "Berries and whole fruit",
+          "foodGroup": "berries",
+          "serving": "Berries carry more fiber per serving than most fruit — skins and seeds included."
+        },
+        {
+          "food": "Whole grains — oats, barley, brown rice, quinoa",
+          "foodGroup": "whole_grains",
+          "serving": "Swapping a refined grain for a whole one adds fiber without adding a serving."
+        }
+      ],
+      "evidence": "Dietary fiber comes only from plants; legumes are the densest common source, with berries, whole fruit, and whole grains close behind.",
+      "source": "IOM 2005 Dietary Reference Intakes (total fiber Adequate Intake); Dietary Guidelines for Americans (fiber as a nutrient of public health concern)",
+      "contraindications": [
+        {
+          "match": "inflammatory bowel",
+          "caution": "With inflammatory bowel disease, fiber is helpful in remission and restricted during a flare — follow your clinician's current advice rather than a general target."
+        },
+        {
+          "match": "irritable bowel",
+          "caution": "With IBS, some fibers help and others worsen symptoms — increase slowly, and prefer soluble sources (oats, psyllium) over bran."
+        },
+        {
+          "match": "gastroparesis",
+          "caution": "With delayed gastric emptying, high-fiber foods can make symptoms worse — check with your clinician before increasing them."
+        }
+      ],
+      "allergyAlternative": null,
+      "caveat": "Raise fiber gradually and drink more water alongside it — a sudden jump is what causes the bloating people blame on the fiber itself."
     }
   ]
 }
