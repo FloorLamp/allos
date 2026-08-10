@@ -355,6 +355,9 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `situations` | `created_at` | bookkeeping | instant | bare |  |
 | `skin_lesions` | `observed_date` | event | day | n/a |  |
 | `skin_lesions` | `created_at` | record | instant | bare |  |
+| `stream_frontiers` | `frontier_at` | event | instant | canonical | The newest EVENT instant the stream had reached when ingest last looked — a watermark copied from the stream table's own event column (hr_minutes.ts today), so it carries that column's semantic. NULL while the stream has never delivered a row. Migration 179 (#2341), born canonical. |
+| `stream_frontiers` | `advanced_at` | lifecycle | instant | canonical | When the frontier was last observed to MOVE. A transition in this watermark row's own life, not in the subject's: it is the instant the observation was made, never the instant the data carries. Migration 179 (#2341), born canonical. |
+| `stream_frontiers` | `observed_at` | record | instant | canonical | When ingest last looked at all, advancing or not — the stamp that makes `syncs_since_advance` auditable. Migration 179 (#2341), born canonical. |
 | `substance_log` | `date` | day | day | n/a |  |
 | `substance_log` | `logged_at` | record | instant | canonical |  |
 | `substance_log` | `created_at` | bookkeeping | instant | bare |  |

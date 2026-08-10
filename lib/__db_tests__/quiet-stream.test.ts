@@ -36,9 +36,10 @@ import {
   getQuietStreamAttention,
   getQuietStreamRows,
   getQuietStreams,
-  latestOkSyncInstant,
   latestStreamInstant,
+  readStreamFrontier,
 } from "@/lib/queries/continuous-streams";
+import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { quietStreamDedupeKey } from "@/lib/integrations/quiet-stream";
 
 const PROVIDER = "health-connect";
@@ -84,21 +85,32 @@ function stream(day: string, hhmm: string, minutes = 5): void {
   }
 }
 
-/** A recorded sync at a profile-local wall clock, stored as a canonical instant. */
+/**
+ * A recorded push at a profile-local wall clock, stored as a canonical instant — AND,
+ * when it succeeded, the frontier observation the real ingest path writes at the end of
+ * it (#2341).
+ *
+ * The two are one thing in production, and the fixture models it that way on purpose:
+ * this feature has already been burned once by a fixture that wrote a shape ingest does
+ * not write. A push that FAILED records no observation, because "a successful sync
+ * landed without advancing the frontier" is the claim the row stores.
+ */
 function sync(day: string, hhmm: string, ok = true): void {
+  const at = utcMinute(zonedWallTimeToUtc(TZ, day, hhmm)!);
   db.prepare(
     `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted, error)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     profileId,
     PROVIDER,
-    utcMinute(zonedWallTimeToUtc(TZ, day, hhmm)!),
+    at,
     ok ? 1 : 0,
     // The off-wrist signature: the push SUCCEEDS and writes nothing to this stream,
     // because what it carries is phone-sourced daily aggregates.
     0,
     ok ? null : "push rejected"
   );
+  if (ok) observeStreamFrontiers(profileId, PROVIDER, at);
 }
 
 /** The days behind today that make the stream "expected active" (the #2097 shape). */
@@ -125,6 +137,7 @@ beforeEach(() => {
   db.exec("DELETE FROM integration_sync_events");
   db.exec("DELETE FROM integration_connections");
   db.exec("DELETE FROM hr_minutes");
+  db.exec("DELETE FROM stream_frontiers");
   profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('QUIET-STREAM')").run()
       .lastInsertRowid
@@ -224,22 +237,58 @@ describe("quiet-stream detection (#2146)", () => {
     expect(getQuietStreams(profileId)).toEqual([]);
   });
 
-  it("stays silent on a CONNECTION outage — no ok syncs in the gap (constraint 1)", () => {
+  it("stays silent on a CONNECTION outage — nothing landed to observe (constraint 1)", () => {
     connect();
     seedPriorDays();
     stream(YESTERDAY, "21:05");
-    // The phone died with the watch. The only events since are failures, and the last
-    // ok sync predates the stream's own last row — this is #1685's case, and it must
-    // not be reported twice.
-    sync(YESTERDAY, "21:00");
+    // The phone died with the watch. The push that delivered the 21:05 minutes is the
+    // last successful one; everything after it failed, so nothing ever observed the
+    // frontier standing still. This is #1685's case and it must not be reported twice.
+    sync(YESTERDAY, "21:20");
     sync(YESTERDAY, "23:00", false);
     sync(DAY, "07:12", false);
     expect(getQuietStreams(profileId)).toEqual([]);
-    // The syncs-continued clause, isolated: the newest ok sync is BEFORE the stream's
-    // last row, so there is no evidence the pipeline outlived the device.
-    const lastStream = latestStreamInstant(profileId, "hr_minutes", PROVIDER)!;
-    const lastOk = latestOkSyncInstant(profileId, PROVIDER)!;
-    expect(Date.parse(lastOk)).toBeLessThan(Date.parse(lastStream));
+    // The discriminator, isolated: the one observation there is recorded an ADVANCE,
+    // and no successful push has landed since to say otherwise.
+    const frontier = readStreamFrontier(profileId, PROVIDER, "heart-rate")!;
+    expect(frontier.frontierAt).toBe(
+      latestStreamInstant(profileId, "hr_minutes", PROVIDER)
+    );
+    expect(frontier.syncsSinceAdvance).toBe(0);
+  });
+
+  it("stays silent while the frontier is still MOVING, at the same silence (#2341)", () => {
+    // THE case no threshold on elapsed silence can reach. The watch is ON — it is the
+    // PIPELINE that is an hour behind, which is this exporter's measured steady state
+    // (30–61 min; #2263's census puts the push gap at p99 67 min). Each push carries
+    // newer minutes than the last, so the frontier advances every time even though it
+    // is always far older than the 2.5 h tolerance would need it to be.
+    connect();
+    seedPriorDays();
+    // Rows through 03:00 local, pushed at 04:00 — and the reading is taken at 07:30,
+    // so the stream looks 4.5 hours silent while the watch never stopped.
+    stream(DAY, "01:30", 120);
+    sync(DAY, "02:30");
+    stream(DAY, "03:00", 90);
+    sync(DAY, "04:00");
+    expect(getQuietStreams(profileId)).toEqual([]);
+    const frontier = readStreamFrontier(profileId, PROVIDER, "heart-rate")!;
+    expect(frontier.syncsSinceAdvance).toBe(0);
+  });
+
+  it("needs TWO quiet pushes, not one — a single quiet push is jitter (#2341)", () => {
+    connect();
+    seedPriorDays();
+    stream(YESTERDAY, "21:05");
+    sync(YESTERDAY, "21:20");
+    sync(YESTERDAY, "21:48");
+    // One push has landed against this frontier. That is not yet evidence.
+    expect(
+      readStreamFrontier(profileId, PROVIDER, "heart-rate")!.syncsSinceAdvance
+    ).toBe(1);
+    expect(getQuietStreams(profileId)).toEqual([]);
+    sync(DAY, "07:12");
+    expect(getQuietStreams(profileId)).toHaveLength(1);
   });
 
   it("stays silent for a stream that was not delivering to begin with", () => {
@@ -300,25 +349,26 @@ describe("quiet-stream detection (#2146)", () => {
     expect(getQuietStreams(profileId)).toHaveLength(1);
   });
 
-  it("reads a LEGACY bare sync stamp as the UTC instant it is", () => {
-    connect();
-    seedPriorDays();
-    stream(YESTERDAY, "21:05");
-    // Pre-migration-163 rows still hold SQLite's bare shape. Compared as TEXT against
-    // the canonical column a bare stamp always sorts below a 'Z' one (' ' < 'T'), so
-    // this row would look older than it is and the syncs-continued clause would fail.
-    // The reader normalizes through the column's declared meaning instead.
-    const legacy = zonedWallTimeToUtc(TZ, DAY, "07:12")!
-      .toISOString()
-      .slice(0, 19)
-      .replace("T", " ");
-    db.prepare(
-      `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
-       VALUES (?, ?, ?, 1, 0)`
-    ).run(profileId, PROVIDER, legacy);
-    expect(latestOkSyncInstant(profileId, PROVIDER)).toBe(
-      "2026-07-15T11:12:00Z"
+  it("stores the frontier as the CANONICAL instant, not a wall clock (#2341)", () => {
+    // The convention this feature has already been burned by, now on a second column
+    // family. `hr_minutes.ts` is a canonical UTC instant since migration 164; the
+    // watermark copies it verbatim, so 21:05 in New York is stored as 01:05Z the next
+    // day — and the row the user reads still says 21:05. A writer that stored the wall
+    // clock, or a reader that took the instant for one, cannot satisfy both.
+    seedOffWristNight();
+    const frontier = readStreamFrontier(profileId, PROVIDER, "heart-rate")!;
+    expect(frontier.frontierAt).toBe("2026-07-15T01:05:00Z");
+    expect(frontier.advancedAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
     );
-    expect(getQuietStreams(profileId)).toHaveLength(1);
+    expect(frontier.observedAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
+    );
+    // The advance was observed by the push that carried the rows, and the last look
+    // was the morning push — two different questions, two different answers.
+    expect(Date.parse(frontier.observedAt)).toBeGreaterThan(
+      Date.parse(frontier.advancedAt)
+    );
+    expect(getQuietStreams(profileId)[0].sinceLocalHhmm).toBe("21:05");
   });
 });

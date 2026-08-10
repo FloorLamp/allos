@@ -10,10 +10,22 @@
 // ── The declared continuous stream ───────────────────────────────────────────
 //
 // The stream is no longer named here. #2146 moved the declaration into the provider
-// registry (`continuousStreams`, with `reminder: "bedtime-wear"` on the entry this
-// watches), so `streamsWithReminder` below IS the binding: which provider, which
-// table, and — through the shared reader — how its timestamps are read. A second
-// wearable becomes a registry entry rather than an edit here.
+// registry (`continuousStreams`, with a `reminder` facet on the entry this watches),
+// so `streamsWithReminder` below IS the binding: which provider, which table, and —
+// through the shared reader — how its timestamps are read. A second wearable becomes a
+// registry entry rather than an edit here.
+//
+// #2341 finished the job: the THRESHOLD moved there too (`reminder.frontierFloorMin`,
+// beside the quiet facet's `dipToleranceMin`, each carrying its evidence). It was the
+// last thing this feature decided for itself, and it is the thing it got wrong.
+//
+// ── What is read, since #2341 ────────────────────────────────────────────────
+//
+// Two reads, not two-and-a-bit: the stream's frontier (`MAX(ts)`, for its AGE) and the
+// stored frontier OBSERVATION the ingest path writes (`syncs_since_advance`, for
+// whether it is MOVING). The retired third read was "was there an ok sync after the
+// last row" — which is true of a late push and a dead watch alike, and is what let this
+// send fire on 2026-08-08 while the watch was recording.
 //
 // The sole other `hr_minutes` writer, the Fitbit Takeout archive import, declares no
 // continuous stream at all: it has no live cadence to be silent against, so it is
@@ -41,8 +53,8 @@ import { isSleepTracking } from "../sleep-summary";
 import { getSyncedSleepWakeDays } from "../queries/sleep";
 import { getIntegrationAttention } from "../queries/integrations";
 import {
-  latestOkSyncInstant,
   latestStreamInstant,
+  readStreamFrontier,
 } from "../queries/continuous-streams";
 import { reminderStream } from "../integrations/continuous-streams";
 import {
@@ -66,24 +78,6 @@ function watchedStream() {
 }
 
 /**
- * Did the provider record a SUCCESSFUL sync at or after `sinceUtc`?
- *
- * Asked through the SHARED reader and compared as epoch milliseconds, not as SQL text.
- * The hand-rolled `at >= ?` this replaced bound a bare `YYYY-MM-DD HH:MM:SS` against a
- * column migration 163 had put on the canonical `…Z` shape: ' ' sorts below 'T', so
- * the bound was always below every row and the predicate matched unconditionally. It
- * happened to be the permissive direction, which is why nothing noticed.
- */
-function syncedSince(
-  profileId: number,
-  provider: string,
-  sinceUtc: Date
-): boolean {
-  const latestOk = parseUtcSql(latestOkSyncInstant(profileId, provider));
-  return latestOk != null && latestOk.getTime() >= sinceUtc.getTime();
-}
-
-/**
  * Tonight's verdict plus the copy ingredient, for the builder and for tests that want
  * to assert WHY nothing was sent rather than only that nothing was.
  */
@@ -102,8 +96,12 @@ export function bedtimeWearReminderState(
         enabled: enabled && watched != null,
         expectedActive: false,
         providerHealthy: false,
-        minutesSinceStream: null,
-        syncedDuringGap: false,
+        frontierAgeMin: null,
+        syncsSinceAdvance: null,
+        // Never read: `enabled` is false here by construction, and it is checked
+        // first. There is no floor to state because there is no stream to state it
+        // for — the declaration lives on the stream, and this path has none.
+        floorMin: 0,
       }),
       lastSeenLocalHhmm: null,
     };
@@ -132,23 +130,30 @@ export function bedtimeWearReminderState(
     watched.provider
   );
   const latestUtc = latest ? parseUtcSql(latest) : null;
-  const minutesSinceStream =
+  const frontierAgeMin =
     latestUtc == null
       ? null
       : Math.floor((at.getTime() - latestUtc.getTime()) / 60_000);
+  // The stored observation the INGEST path writes (#2341): how many successful pushes
+  // have landed against this exact frontier. Null until the first push after the
+  // provider connected — no evidence, so no send, and the next push repairs it.
+  const frontier = readStreamFrontier(
+    profileId,
+    watched.provider,
+    watched.stream.id
+  );
 
   return {
     verdict: bedtimeWearVerdict({
       enabled,
       expectedActive,
       providerHealthy,
-      minutesSinceStream,
-      // Only asked once there is a gap to ask about; an absent stream short-circuits
-      // in the pure decision before this value is read.
-      syncedDuringGap:
-        latestUtc == null
-          ? false
-          : syncedSince(profileId, watched.provider, latestUtc),
+      frontierAgeMin,
+      syncsSinceAdvance: frontier?.syncsSinceAdvance ?? null,
+      // DECLARED on the stream, beside the quiet facet's own tolerance — the whole
+      // point of #2341 item 2. A stream carrying the `bedtime-wear` adapter carries
+      // its floor with it, so this cannot silently fall back to a module constant.
+      floorMin: watched.stream.reminder.frontierFloorMin,
     }),
     // The stored instant PROJECTED to the profile's own wall clock — "since 21:05"
     // must be the hour the user saw, not the UTC one.

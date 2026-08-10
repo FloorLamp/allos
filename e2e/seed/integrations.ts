@@ -9,6 +9,7 @@ import { db, today } from "../../lib/db";
 import { now as clockNow } from "../../lib/clock";
 import { writeRawPayload } from "../../lib/integrations/raw-log";
 import { upsertConnection } from "../../lib/integrations/connections";
+import { observeStreamFrontiers } from "../../lib/stream-frontier-db";
 import { truncatedSyncDetails } from "../../lib/integrations/sync-details";
 import { generateHealthConnectToken } from "../../lib/integrations/connections";
 import { utcMinute, shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
@@ -481,11 +482,20 @@ export function seedSyncHistoryDay(): void {
 // or live depending on when CI started. `hr_minutes.ts` and `integration_sync_events`
 // both take canonical UTC instants (migrations 164 / 163) — `utcMinute` mints the
 // former's bucket key exactly as ingest does.
+//
+// And since #2341 each push also records the FRONTIER OBSERVATION the ingest path
+// writes at the end of it, through the same function ingest calls. That is what makes
+// this a quiet stream rather than a late one: the pushes keep landing and the frontier
+// never moves. A fixture that seeded only the events would describe a pipeline in which
+// nobody ever looked, and the row would (correctly) not render.
 export function seedQuietStream(): void {
   const profileId = fixtureProfileId(QUIET_STREAM_PROFILE);
   seedMemberLogin(E2E_LOGIN_QUIET_STREAM, profileId, "read");
   db.prepare(`DELETE FROM hr_minutes WHERE profile_id = ?`).run(profileId);
   db.prepare(`DELETE FROM integration_sync_events WHERE profile_id = ?`).run(
+    profileId
+  );
+  db.prepare(`DELETE FROM stream_frontiers WHERE profile_id = ?`).run(
     profileId
   );
   upsertConnection(profileId, "health-connect", { status: "connected" });
@@ -521,11 +531,12 @@ export function seedQuietStream(): void {
        (profile_id, provider, at, ok, received, written, inserted, updated, unchanged)
      VALUES (?, 'health-connect', ?, 1, 12, 12, 0, 2, 10)`
   );
-  for (const minutesAgo of [12, 47, 95, 150, 220, 285]) {
-    push.run(
-      profileId,
-      utcMinute(new Date(clock.getTime() - minutesAgo * 60_000))
-    );
+  // Oldest first, so the fold sees the pushes in the order they landed: the first
+  // observation adopts the frontier, every one after it finds it exactly where it was.
+  for (const minutesAgo of [285, 220, 150, 95, 47, 12]) {
+    const at = utcMinute(new Date(clock.getTime() - minutesAgo * 60_000));
+    push.run(profileId, at);
+    observeStreamFrontiers(profileId, "health-connect", at);
   }
 
   console.log(
@@ -579,6 +590,9 @@ function resetStreamProfile(profileId: number): void {
     profileId
   );
   db.prepare(`DELETE FROM upcoming_dismissals WHERE profile_id = ?`).run(
+    profileId
+  );
+  db.prepare(`DELETE FROM stream_frontiers WHERE profile_id = ?`).run(
     profileId
   );
   upsertConnection(profileId, "health-connect", { status: "connected" });

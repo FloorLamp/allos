@@ -1231,18 +1231,46 @@ Notifications kinds matrix. Two properties are enforced, not merely intended:
   right-sizing family's shape, detection suggests and the tap writes — but no
   detector, tick, or gather may perform the write.
 
-**The predicate** is #2146's quiet-stream shape at a bedtime-sized tolerance:
-the declared continuous stream has been silent for ≥ `WEAR_QUIET_TOLERANCE_MIN`
-(40 min, declared — never learned from a wear pattern) **while the provider kept
-syncing ok in that window**. The second clause is load-bearing: continuing ok
-syncs with nothing on the stream is the off-wrist signature, whereas a window
-with no ok syncs is a CONNECTION outage that #1685 already owns and names — two
-rows for one fault is exactly what the one-row rule forbids. The declared stream
-is Health Connect's `hr_minutes`, the only continuous wear stream the app
-ingests (the Fitbit Takeout archive import has no live cadence to be silent
-against and is exempt by construction). #2146 moved that declaration into the
-provider registry beside `silenceToleranceMinutes` (`continuousStreams`, with
-`reminder: "bedtime-wear"` on the entry this watches), so which provider and which
+**The predicate** is #2146's quiet-stream shape at a bedtime-sized floor: the
+declared continuous stream's **frontier has not moved across the last two
+successful pushes**, and the frontier is at least `reminder.frontierFloorMin`
+(40 min) old.
+
+The first clause is the decision, and #2341 replaced the clause that used to be
+there ("while the provider kept syncing ok in that window") because it
+discriminated the CONNECTION, never the wrist — a push that is merely _late_ is
+still a successful push. What was being thresholded was
+`now − MAX(stream.ts)` = _(minutes off the wrist)_ + _(ingest lag)_, and on this
+exporter the lag term was measured at **60.8** and **30.7** minutes while #2263's
+1223-push census puts the push gap at median 16 / p90 34 / **p99 67**. On
+2026-08-08 the reminder therefore fired at exactly 40 minutes of "silence" while
+the watch was recording continuously, and the push carrying those minutes landed
+five minutes after the message. Raising the number is not available either: allow
+for a 60-minute lag and the motivating incident (charger at 21:05, slot at 22:00,
+~55 minutes) becomes undetectable, at both attempts of the slot. A watch on a
+wrist behind a slow pipeline ADVANCES the frontier on every push; a watch on a
+charger leaves it frozen while pushes keep landing — see
+`docs/internals/integrations-sync.md` for the watermark (`stream_frontiers`,
+migration 179) and `lib/stream-frontier.ts` for the fold.
+
+Disjointness from #1685 survives unchanged, restated: with the phone off no push
+lands, so nothing is ever observed frozen, and the connection outage stays the
+staleness detector's — two rows for one fault is what the one-row rule forbids.
+
+The **floor** is what remains of the old number: same 40 minutes, different
+quantity (the frontier's own age, which carries no lag term), and it exists so a
+watch put down minutes before a late bedtime is not announced on two quiet pushes.
+It is now **declared in the registry** beside the quiet facet's own 150-minute
+tolerance, with its evidence as data (`reminder.frontierFloorMin` /
+`reminder.because`) — being a bare constant in `lib/wear-reminder.ts` while its
+sibling lived in the registry is how it escaped the scrutiny that sibling got, and
+how one stream came to have two thresholds giving opposite answers on one night.
+
+The declared stream is Health Connect's `hr_minutes`, the only continuous wear
+stream the app ingests (the Fitbit Takeout archive import has no live cadence to
+be silent against and is exempt by construction). #2146 moved that declaration
+into the provider registry beside `silenceToleranceMinutes` (`continuousStreams`,
+with the `reminder` facet on the entry this watches), so which provider and which
 stream is a registry question; `reminderStream("bedtime-wear")` resolves it once,
 for this send and for #2162's offboarding prompt alike.
 
@@ -1265,13 +1293,13 @@ than `planNudgeCadence`: there is one profile-fixed key with no subject to
 strand, so there is no candidate set to freeze and no self-healing sweep to run.
 A skipped night leaves the marker UNSET, so it never spends the night's send.
 
-**Timestamps.** Both columns the gather joins are now canonical UTC instants —
-`hr_minutes.ts` since migration 164, `integration_sync_events.at` since migration
-163, with pre-163 rows still on SQLite's bare shape. Nothing here parses a stored
-stamp by hand: every read goes through the shared `latestStreamInstant` /
-`latestOkSyncInstant` (`lib/queries/continuous-streams.ts`), which resolve each
-column against its DECLARED meaning in `lib/time-columns.ts`, and every comparison
-is on epoch milliseconds. That indirection is not decoration — this module used to
+**Timestamps.** Every column the gather touches is a canonical UTC instant —
+`hr_minutes.ts` since migration 164, `stream_frontiers`' three since migration 179
+(born on the convention). Nothing here parses a stored stamp by hand: the reads go
+through the shared `latestStreamInstant` / `readStreamFrontier`
+(`lib/queries/continuous-streams.ts`), which resolve each column against its
+DECLARED meaning in `lib/time-columns.ts`, and every comparison is on epoch
+milliseconds. That indirection is not decoration — this module used to
 convert `hr_minutes.ts` with `zonedWallIsoToUtc`, which REFUSES a stamp carrying
 `Z`, so after migration 164 it resolved null for every real row and the reminder
 could not fire at all (#2309). Going through the declaration means the next

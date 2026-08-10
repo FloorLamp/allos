@@ -18,6 +18,7 @@
 import type {
   ContinuousStreamDef,
   ContinuousStreamId,
+  ContinuousStreamReminderFacet,
   ContinuousStreamReminderId,
   IntegrationDef,
   IntegrationId,
@@ -83,8 +84,18 @@ export function continuousStream(
  */
 export function streamsWithReminder(
   reminder: ContinuousStreamReminderId
-): ProviderStream[] {
-  return allContinuousStreams().filter((s) => s.stream.reminder === reminder);
+): ProviderStreamWithReminder[] {
+  // The narrowing is the point (#2341): what comes back CARRIES its reminder facet,
+  // so the send adapter reads its declared floor off the stream rather than falling
+  // back to a number of its own when the facet is optional-shaped.
+  return allContinuousStreams().filter(
+    (s): s is ProviderStreamWithReminder => s.stream.reminder?.id === reminder
+  );
+}
+
+/** A stream known to carry a reminder facet — see `streamsWithReminder`. */
+export interface ProviderStreamWithReminder extends ProviderStream {
+  stream: ContinuousStreamDef & { reminder: ContinuousStreamReminderFacet };
 }
 
 /**
@@ -100,7 +111,7 @@ export function streamsWithReminder(
  */
 export function reminderStream(
   reminder: ContinuousStreamReminderId
-): ProviderStream | null {
+): ProviderStreamWithReminder | null {
   return streamsWithReminder(reminder)[0] ?? null;
 }
 

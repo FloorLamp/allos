@@ -177,6 +177,7 @@ import { migration as m175 } from "./175-telemetry-stream-summary";
 import { migration as m176 } from "./176-unqualified-glucose-unflag";
 import { migration as m177 } from "./177-assessment-category";
 import { migration as m178 } from "./178-canonical-name-qualifiers";
+import { migration as m179 } from "./179-stream-frontiers";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -363,4 +364,5 @@ export const MIGRATIONS: Migration[] = [
   m176,
   m177,
   m178,
+  m179,
 ];
