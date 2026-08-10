@@ -618,9 +618,12 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     expect(stripFor(p, itemId)).toEqual(before);
     expect(adherenceSummary(stripFor(p, itemId))).toEqual(beforeSummary);
     // Invariant 3: dueness is where it was — still not due, still not pushed.
-    expect(isDueOn(getSupplements(p).find((s) => s.id === itemId)!, ctx)).toBe(
-      false
-    );
+    expect(
+      isDueOn(
+        getSupplements(p).find((s) => s.id === itemId)!,
+        ctx
+      )
+    ).toBe(false);
     expect(collectUpcoming(p, day).map((i) => i.key)).not.toContain(
       `dose:${doseId}`
     );
@@ -681,11 +684,14 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     expect(getActiveSituations(p)).not.toContain("Heat wave (test)");
     // The item is still exactly as un-due as it was, and still only an OFFER.
     expect(
-      isDueOn(getSupplements(p).find((s) => s.id === itemId)!, {
-        date: day,
-        isWorkoutDay: false,
-        activeSituations: new Set(),
-      })
+      isDueOn(
+        getSupplements(p).find((s) => s.id === itemId)!,
+        {
+          date: day,
+          isWorkoutDay: false,
+          activeSituations: new Set(),
+        }
+      )
     ).toBe(false);
     expect(collectUpcoming(p, day).map((i) => i.key)).not.toContain(
       `dose:${doseId}`
