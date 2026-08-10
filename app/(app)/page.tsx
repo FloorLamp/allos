@@ -133,6 +133,7 @@ import {
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
+import { householdFanoutProfiles } from "@/lib/household-fanout";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
@@ -275,10 +276,12 @@ export default async function Dashboard() {
           countPushSubscriptionsForLogin(login.id) > 0,
       }
     : null;
+  // Bounded (lib/household-fanout.ts): an admin reaches every profile on the
+  // instance, and attentionCountForProfile is the whole attention model per
+  // profile — unbounded, that is the dominant cost of this page.
   const householdEntries: HouseholdStripEntry[] =
     accessible.length > 1
-      ? accessible
-          .filter((p) => p.id !== profile.id)
+      ? householdFanoutProfiles(accessible, profile.id)
           .map((p) => ({
             profile: p,
             count: attentionCountForProfile(p.id, today(p.id)),
@@ -325,8 +328,9 @@ export default async function Dashboard() {
   // getAccessibleProfiles). Replaces the former sick-household widget (folded in, #858).
   const activeSick = hasActiveIllnessSituation(profile.id);
   const activeEpisode = activeSick ? openEpisodeForProfile(profile.id) : null;
-  const otherSick = accessible
-    .filter((p) => p.id !== profile.id)
+  // Bounded on the same set as the household strip above, and for the same
+  // reason: currentEpisodeForProfile assembles an episode per member.
+  const otherSick = householdFanoutProfiles(accessible, profile.id)
     .map((p) => ({ p, ep: currentEpisodeForProfile(p.id) }))
     .filter(
       (x): x is { p: (typeof accessible)[number]; ep: AssembledEpisode } =>
