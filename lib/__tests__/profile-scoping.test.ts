@@ -624,6 +624,11 @@ const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
 // profile-scoped and listed with a justification.
 const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
+    file: "lib/db.ts",
+    expr: "sql",
+    why: 'preparedFor(), the compile-and-cache helper behind hoistedStatement(): it compiles whatever SQL its CALLER declared, so there is no literal to read here. Nothing is exempted by this entry — every hoistedStatement("…") site is itself a scanned literal (prepareArgs matches it), so those statements are checked where they are written, exactly as a module-scope db.prepare literal was before.',
+  },
+  {
     file: "lib/queries/medical/flags.ts",
     expr: "sql",
     why: "reconcileFlags: `sql` starts from a base string that includes WHERE profile_id = ?",

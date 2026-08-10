@@ -38,7 +38,10 @@ export function sourceFiles(): string[] {
   walk(path.join(REPO, "lib"), all);
   walk(path.join(REPO, "app"), all);
   return all.filter((f) => {
-    const rel = path.relative(REPO, f);
+    // relPath, not path.relative: the checks below are written in posix form, and
+    // on Windows a raw relative path is `lib\…`, so `startsWith("lib/")` was false
+    // for EVERY file — the scans silently dropped all of lib/ rather than failing.
+    const rel = relPath(f);
     if (!f.endsWith(".ts") && !f.endsWith(".tsx")) return false;
     if (rel.includes("__tests__") || f.endsWith(".test.ts")) return false;
     if (rel.startsWith("lib/")) return true;
@@ -118,8 +121,11 @@ export function firstStringArgs(src: string, opener: RegExp): SqlArg[] {
 // carries no leading dot, so a `.prepare`-only pattern would silently drop every SQL
 // literal declared that way — and silently dropping statements is exactly how an
 // owned-table scan starts passing for the wrong reason.
+// The `function hoistedStatement(` DECLARATION in lib/db.ts is not a call site;
+// without the lookbehind the scan reads its parameter list as an unverifiable SQL
+// expression.
 export const prepareArgs = (src: string) =>
-  firstStringArgs(src, /(?:\.prepare|\bhoistedStatement)\s*\(/g);
+  firstStringArgs(src, /(?:\.prepare|(?<!function\s)\bhoistedStatement)\s*\(/g);
 export const execArgs = (src: string) => firstStringArgs(src, /\.exec\s*\(/g);
 
 export const norm = (s: string) => s.replace(/\s+/g, " ").trim();

@@ -55,7 +55,10 @@ function sortableConsumers(): { file: string; source: string }[] {
     for (const file of tsxFiles(path.join(root, r))) {
       const source = fs.readFileSync(file, "utf8");
       if (/\buseSortable\s*\(/.test(source)) {
-        found.push({ file: path.relative(root, file), source });
+        found.push({
+          file: path.relative(root, file).split(path.sep).join("/"),
+          source,
+        });
       }
     }
   }

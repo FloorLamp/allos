@@ -139,19 +139,19 @@ if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
 
 // A prepared statement declared at MODULE scope, resolved at call time.
 //
-// db.prepare() compiles against ONE connection, so a statement hoisted into a
-// module constant is welded to whichever database was open when that module was
-// first evaluated. That is invisible in production — one connection is opened at
-// import and lives for the whole process — but the shared-registry DB tier
-// (vitest.db-shared.config.ts) evaluates a module once per worker and then swaps
-// the database between test files, which left every hoisted statement pointing at
-// a closed connection.
+// A prepared statement compiles against ONE connection, so a statement hoisted
+// into a module constant is welded to whichever database was open when that
+// module was first evaluated. That is invisible in production — one connection is
+// opened at import and lives for the whole process — but the shared-registry DB
+// tier (vitest.db-shared.config.ts) evaluates a module once per worker and then
+// swaps the database between test files, which left every hoisted statement
+// pointing at a closed connection.
 //
-// Deferring the prepare and caching it per connection keeps the reason those
+// Deferring the compile and caching it per connection keeps the reason those
 // constants exist (compile each statement once, not per call) while making the
 // cache self-invalidating: a new handle is a new cache entry, and the old map is
-// collected with the handle it belonged to. Use this instead of a module-scope
-// `db.prepare(...)`; inline `db.prepare(...)` inside a function is unaffected.
+// collected with the handle it belonged to. Use this for a module-scope statement;
+// an inline prepare inside a function already sees the current connection.
 const statementCache = new WeakMap<
   Database.Database,
   Map<string, Database.Statement>

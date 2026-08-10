@@ -14,6 +14,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
+import path from "node:path";
 import { db, today } from "@/lib/db";
 import { getProfileSetting, setProfileSetting } from "@/lib/settings";
 import { runRefills } from "@/lib/notifications/refill";
@@ -180,7 +181,13 @@ describe("the log file stays where the operator can find it (#2209)", () => {
   it("writes to data/logs/notify.jsonl beside its two siblings", async () => {
     // On the bind mount, so it survives the container recreation that deletes the
     // sidecar's stdout — which is the whole reason a file was chosen over stdout.
-    expect(NOTIFY_LOG_PATH.endsWith("data/logs/notify.jsonl")).toBe(true);
+    // NOTIFY_LOG_PATH is built with path.join, so it carries the platform's
+    // separator; compare in posix form rather than asserting Linux's.
+    expect(
+      NOTIFY_LOG_PATH.split(path.sep)
+        .join("/")
+        .endsWith("data/logs/notify.jsonl")
+    ).toBe(true);
 
     const { createLogger } = await import("@/lib/log");
     beginNotifyRun();

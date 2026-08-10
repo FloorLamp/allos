@@ -133,7 +133,7 @@ describe("vendor daily scores are engine-inert (issue #1069)", () => {
     it(`no code outside the display/ingest allowlist references the ${vendor} score kinds`, () => {
       const offenders: string[] = [];
       for (const file of files) {
-        const rel = path.relative(REPO, file);
+        const rel = path.relative(REPO, file).split(path.sep).join("/");
         if (allowlist.has(rel)) continue;
         const text = fs.readFileSync(file, "utf8");
         if (needles.some((n) => text.includes(n))) offenders.push(rel);

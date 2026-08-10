@@ -51,7 +51,7 @@ function libSources(): { rel: string; text: string }[] {
       if (!entry.name.endsWith(".ts")) continue;
       if (entry.name.endsWith(".test.ts")) continue;
       out.push({
-        rel: path.relative(REPO, full),
+        rel: path.relative(REPO, full).split(path.sep).join("/"),
         text: fs.readFileSync(full, "utf8"),
       });
     }

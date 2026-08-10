@@ -77,7 +77,7 @@ describe("canonical-name rendering guard (#1501)", () => {
         // hold the clean string and could be printing the raw one instead.
         if (!src.includes("canonical_name") && !src.includes("canonicalName"))
           continue;
-        const rel = path.relative(REPO, file);
+        const rel = path.relative(REPO, file).split(path.sep).join("/");
         if (rel in ALLOWED) continue;
         src.split("\n").forEach((line, i) => {
           if (BARE_NAME.test(line))
