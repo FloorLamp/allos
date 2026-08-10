@@ -56,14 +56,25 @@ test.afterAll(() => resetAdherenceDismissals());
 
 // Dismissing an adherence-pattern finding hides it via the shared findings-bus
 // store (dismissAdherencePattern → dismissFinding), so it stops rendering.
+//
+// BOTH the locate and the disappearance assertion are scoped to the Patterns
+// DIALOG, and that is load-bearing rather than tidiness (#1543's vacuous-guard
+// rule). The findings render only inside that modal, and ModalShell portals to
+// document.body — OUTSIDE <main> — so a `getByRole("main")`-scoped disappearance
+// check matches zero nodes at every instant and passes even when the dismiss
+// button does nothing at all. Proven both ways: with dismissAdherencePattern
+// stubbed to a no-op the dialog-scoped assertion goes red (the row is still
+// there after the action), and green again once the real dismiss is restored.
 test("an adherence-pattern finding can be dismissed (#45)", async ({
   page,
 }) => {
   await page.goto("/nutrition?tab=supplements");
-  const main = page.getByRole("main");
-  await hydratedClick(page, main.getByTestId("supplement-patterns-badge"));
-  const finding = page
-    .getByRole("dialog", { name: "Patterns" })
+  await hydratedClick(
+    page,
+    page.getByRole("main").getByTestId("supplement-patterns-badge")
+  );
+  const dialog = page.getByRole("dialog", { name: "Patterns" });
+  const finding = dialog
     .getByTestId("adherence-findings-item")
     .filter({ hasText: "Vitamin C" });
   await expect(finding).toBeVisible();
@@ -72,7 +83,14 @@ test("an adherence-pattern finding can be dismissed (#45)", async ({
   // Action; the assertion below ran on the 5s default against that round trip.
   await settledClick(page, finding.getByTestId("adherence-findings-dismiss"));
 
+  // The dialog is a client-state panel that survives the action's revalidation,
+  // so it stays mounted while its content re-renders without the dismissed row.
+  // Asserting it is still open keeps the count below honest: a closed dialog
+  // would make the zero-count vacuous for the same reason <main> did.
+  await expect(dialog).toBeVisible();
   await expect(
-    main.getByTestId("adherence-findings-item").filter({ hasText: "Vitamin C" })
+    dialog
+      .getByTestId("adherence-findings-item")
+      .filter({ hasText: "Vitamin C" })
   ).toHaveCount(0);
 });
