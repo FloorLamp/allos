@@ -56,7 +56,7 @@ What that means in practice:
 | Actions rerun     | The rerun API 403s for this token, and so does `workflow_dispatch` — a session cannot dispatch `e2e-full.yml`, and does not need to: the PR's own sharded matrix already runs the whole suite at retries=0 on fresh runners. Retrigger CI with an empty commit.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Local e2e         | Each Playwright WORKER boots its own server on `E2E_PORT + <worker index>`, so assign each WORKTREE a port RANGE at dispatch (base + at least the worker count: 5400–5410, 5600–5610, …). AVOID 6000–6099: Next.js refuses X11-reserved ports (an agent lost a round discovering port 6000 won't boot). DB/uploads/log isolation is handled by the harness (`e2e/worker-env.ts`). The per-worker servers are `next start`, so build once — `npm run build` — then `ANTHROPIC_API_KEY= E2E_PORT=<base> npx playwright test <specs> --workers=<N> --repeat-each=3 --retries=0 --reporter=list` (global-setup rebuilds by itself when a build input is newer; `E2E_SKIP_BUILD=1` to forbid it). `--workers>1` is honest (no shared DB) and is the point of the range; leave `CI=1` off unless you want CI's one-worker shape. A leftover server from a `kill -9`'d run is swept by global-setup via `e2e/.data/worker-*/server.pid`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Raw Playwright    | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| REST merge        | `PUT /pulls/N/merge` can 403 through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| REST merge        | `PUT /pulls/N/merge` 403s through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash). The refusal is explicit: _"Merging into a protected base branch is not permitted for this session type."_ **The same asymmetry covers CI re-runs**: `POST /actions/runs/N/rerun-failed-jobs` 403s while `mcp__github__actions_run_trigger` with `method: "rerun_failed_jobs"` returns 201 (measured, #2390). So the rule is not "MCP is merge-only" — it is that **write operations against protected refs and Actions go through MCP; everything else uses REST** to spare the owner's rate limit.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | CI shape          | Per PR: `check` (~4 min), `e2e-changed` (the PR's changed specs at `--repeat-each=3 --retries=0`; skips when no spec changed — infra blast radius is the matrix's job), and a 4-way sharded `e2e` matrix (full suite, retries=0, fresh runner + fresh servers per shard). The retry safety-net was deliberately dropped (#1160) so a flaky spec cannot hide — that is what makes the flake-exoneration protocol meaningful. Every push costs a full round: batch fixes before pushing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | CI watchers       | A background check-runs watcher MUST require the full check count registered (≥8 on this repo) before concluding GREEN — a fresh push registers `gitleaks` first and alone for a window, and a watcher sampling then declares a false green. And a CONFLICT-DIRTY PR starts NO CI at all (the `pull_request` runs need the merge ref GitHub can't build) — a watcher stuck at "1–2 runs registered" for many polls means check `mergeable` on the PR, not wait longer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Issue auto-close  | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -157,6 +157,60 @@ full PR body back."_ Then write each finished agent's reasoning into a GitHub
 comment via MCP — if the container dies, the work is reconstructible from those
 comments plus the branches instead of only from the orchestrator's context.
 
+## Stalled agents — "alive" is not "progressing"
+
+The restart drill above assumes agents DIE. The other failure is that they live
+and stop moving, and the two look identical from outside. MEASURED, 2026-08-10:
+two agents ran **12.9 h** and **13.7 h** against a same-day median of **~55 min**
+(46/50/57/66). Neither had restarted. Both were writing to their transcripts
+minutes before I checked. Neither had a PR.
+
+**mtime proves nothing.** A blocked agent's transcript is appended to like a
+working one's. The two signals that actually separate them:
+
+- **The worktree is missing.** Every healthy agent creates `$SCRATCH/wt-<x>` in
+  its first minute. `ls -d $SCRATCH/wt-*` is one command and is the highest-value
+  check there is. One of the two above had NO worktree after thirteen hours —
+  visible from minute five, if anyone had looked.
+- **Transcript SIZE, not recency.** 38 KB after 13 h against 300 KB–1.1 MB for
+  finished agents is near-zero work. Compare bytes, not timestamps.
+
+**Two distinct stalls, both real, needing opposite fixes:**
+
+1. **Denied-and-idle.** A tool call refused by the permission system stops an
+   agent dead. A well-behaved one does NOT retry (correctly — the contract says
+   don't), and then just sits. `git worktree add` and `cp -al` were both refused
+   for one agent while its siblings' identical commands succeeded, so this is
+   transient and NOT reproducible by inspecting the brief. Cost: 13 h, four tool
+   calls, nothing to salvage. Fix is in the brief — see the two lines added to
+   the template.
+2. **Working-and-unbanked.** The opposite: real work, no commits. Fifty files,
+   lint + typecheck + full pure tier green, **zero commits, nothing pushed**, all
+   of it in a dirty worktree an ephemeral container could erase at any moment.
+   The template has said "COMMIT AND PUSH after every meaningful step" for
+   months; it was not enough, because an agent deep in a large change reads that
+   as advice about restarts rather than a hard gate on its own progress.
+
+**The check-in rule.** At every check-in, for every running agent older than ~2×
+the session's observed median: `ls -d $SCRATCH/wt-*` and compare transcript
+bytes. If a worktree is missing, or bytes have not grown since the last check-in,
+`SendMessage` a hard status request — what are you doing right now, what exists,
+what was refused, is anything worth preserving. Ask for the blocker verbatim;
+"say what was refused" gets a usable answer where "are you stuck?" does not.
+
+**Do not rationalise a long runner.** The instinct to explain 13 h as "gates are
+slow under contention" is wrong and was wrong here: `test:db` at 6× contention is
+~30 min, not thirteen hours. Anything past ~3× the median is a stall until proven
+otherwise, and the proof is a worktree with commits in it.
+
+**Under-scoping causes the second kind.** The 13.7 h agent was not thrashing —
+its brief said "add a slug to `BODY_METRIC_SLUGS`" and the honest implementation
+turned out to drag **fifteen files** of import plumbing behind it, because the
+slug had to earn its `METRIC_DOCUMENT_REACH` declaration with a real projector
+plus a migration moving rows already on disk. When a brief's true footprint is
+unknown, say so in the brief and require a checkpoint push before the work
+compounds — the agent cannot re-scope a task it was told was small.
+
 ## The pipeline (per unit of work)
 
 1. **Triage.** Sweep open issues. P0/P1 bugs first; lower ones rank with
@@ -219,8 +273,20 @@ writing a brief, and never paste them to an agent.
 - cp -al <canonical node_modules — usually /home/user/allos/node_modules>/. $SCRATCH/wt-<x>/node_modules
 - export PATH=<node-24 bin dir>:$PATH in EVERY shell (verify better-sqlite3 loads)
 - npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts
+- FIRST ACTION is the worktree + node_modules link, BEFORE reading any source. If it
+  fails you must know before spending context.
+- If a tool call is DENIED by the permission system, or fails for an environment
+  reason you cannot fix in ONE retry, STOP AND REPORT IMMEDIATELY — quote what was
+  refused, verbatim. Do not sit on it. (An agent refused its first `git worktree add`
+  idled 12.9h having changed nothing; reporting in minute one costs nothing.)
 - COMMIT AND PUSH after every meaningful step — container restarts are frequent, and
-  your worktree is NOT backed up
+  your worktree is NOT backed up. This is a HARD GATE, not restart advice: if you
+  have touched more than ~10 files, or worked more than ~45 minutes, since your last
+  commit, COMMIT NOW even mid-task and even if gates have not run. Push a checkpoint
+  branch. (An agent held 50 finished files with zero commits for 13.7h.)
+- If the work turns out materially bigger than this brief implies, SAY SO and push a
+  checkpoint before continuing — do not silently absorb a 15-file footprint that was
+  briefed as a one-line registry edit.
 - Foreground ALL gates; never run_in_background for builds/tests; every wait is one
   blocking Bash call, chunked under the 10-minute tool cap
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST
