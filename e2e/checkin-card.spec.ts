@@ -90,7 +90,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await expect(card.getByTestId("mood-status")).toContainText("Good");
 
     // Expand Rate → the detail edits, and the collapsed summary is a formatter over it.
-    await card.getByTestId("checkin-section-rate-toggle").click();
+    await hydratedClick(page, card.getByTestId("checkin-section-rate-toggle"));
     await expect(card.getByTestId("mood-detail")).toBeVisible();
     await expect(card.getByTestId("checkin-context-in-details")).toBeVisible();
     // A ScaleRow chip: onPick only calls setEnergy, and it TOGGLES (a second tap
@@ -110,7 +110,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     const card = page.getByTestId("how-are-you-card");
     // Log a mood first so the day-factor write has a valence to attach to.
     await tapMood(page, card, 3);
-    await card.getByTestId("checkin-section-rate-toggle").click();
+    await hydratedClick(page, card.getByTestId("checkin-section-rate-toggle"));
     await expect(card.getByTestId("checkin-context-in-details")).toBeVisible();
 
     // The day-factor (today-only) half writes to the mood log's factors. The chip fires
@@ -135,7 +135,10 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
 
     // Persisted: reload, re-expand Context, the day chip is still pressed.
     await page.reload();
-    await card.getByTestId("checkin-section-context-toggle").click();
+    await hydratedClick(
+      page,
+      card.getByTestId("checkin-section-context-toggle")
+    );
     await expect(card.getByTestId("checkin-day-factor-work")).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -150,7 +153,10 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
       timeout: 15_000,
     });
     await page.reload();
-    await card.getByTestId("checkin-section-context-toggle").click();
+    await hydratedClick(
+      page,
+      card.getByTestId("checkin-section-context-toggle")
+    );
     await expect(card.getByTestId("checkin-situation-Travel")).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -165,7 +171,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await page.goto("/");
 
     const card = page.getByTestId("how-are-you-card");
-    await card.getByTestId("checkin-section-rate-toggle").click();
+    await hydratedClick(page, card.getByTestId("checkin-section-rate-toggle"));
     await expect(card.getByTestId("mood-detail")).toBeVisible();
     // Energy is universal; a fresh profile has no anxiety signal, so Calm is absent —
     // and NO copy explains its absence (the #716 silent-gate law).
@@ -206,7 +212,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // Back on the dashboard the Calm scale now appears, relabeled so high = calm (the
     // good end), matching Energy's direction (#1313 axis fix).
     await page.goto("/");
-    await card.getByTestId("checkin-section-rate-toggle").click();
+    await hydratedClick(page, card.getByTestId("checkin-section-rate-toggle"));
     await expect(card.getByTestId("mood-anxiety-5")).toBeVisible();
     await expect(card.getByTestId("mood-detail")).toContainText("calm");
     await expect(card.getByTestId("mood-detail")).toContainText("anxious");
@@ -217,8 +223,8 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // The Rate detail is already open from the assertions above and stays open
     // across the tap's refresh (the expander is client state).
     await expect(card.getByTestId("mood-anxiety-5")).toBeVisible();
-    await card.getByTestId("mood-anxiety-5").click();
-    await card.getByTestId("mood-save").click();
+    await hydratedClick(page, card.getByTestId("mood-anxiety-5"));
+    await settledClick(page, card.getByTestId("mood-save"));
     await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
       "data-anxiety",
       "1",
