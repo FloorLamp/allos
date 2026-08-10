@@ -401,6 +401,7 @@ function everyDomainInput(): PersistInput {
     ],
     heights: [{ date: ALL_DATE, height_cm: 178 }],
     headCircs: [{ date: ALL_DATE, head_circumference_cm: 47 }],
+    waistCircs: [{ date: ALL_DATE, waist_circumference_cm: 84 }],
     demographics: null,
     meta: {
       docType: "ccd",
