@@ -374,6 +374,7 @@ const KEPT_ROW_LISTS = [
   "bodyMetrics",
   "heights",
   "headCircs",
+  "waistCircs",
 ] as const;
 
 // Structural, so both the parse-layer ImportResult and the persist-layer

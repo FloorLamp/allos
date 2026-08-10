@@ -913,7 +913,7 @@ export const DATASETS: ExportDataset[] = [
   }),
   tableDataset({
     // Integration-synced daily/scalar samples (steps, distance, calories, HRV,
-    // and the projected height / head-circumference points). Each carries id +
+    // and the projected height / head- and waist-circumference points). Each carries id +
     // profile_id, so it's fully deletable like the other logged datasets.
     key: "metric_samples",
     label: "Metric samples",

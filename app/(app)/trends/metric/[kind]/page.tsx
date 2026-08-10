@@ -128,6 +128,7 @@ const MEASUREMENT_ENTRY_METRIC: Partial<
   height: "height",
   "head-circ": "head-circ",
   "peak-flow": "peak-flow",
+  "waist-circ": "waist-circ",
 };
 
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a

@@ -24,6 +24,9 @@ export const AVERAGED_METRICS = new Set([
   // most misleading possible number on a surface whose whole job is "is this
   // dropping?". It is a point measure, so the day averages.
   "peak_flow_lmin",
+  // Waist circumference (#2322) is a point measure like height: a tape reading and a
+  // same-date imported one must AGREE (average), never SUM into a 168 cm waist.
+  "waist_circumference_cm",
 ]);
 
 // The per-day aggregation a metric uses: AVG for instantaneous point metrics,

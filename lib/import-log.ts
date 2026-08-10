@@ -180,6 +180,7 @@ export interface DocumentProducedCounts {
   bodyMetrics: number;
   heightSamples: number;
   headCircSamples: number;
+  waistCircSamples: number;
   // Distinct providers referenced by this document's rows (global registry).
   providers: number;
 }
@@ -209,7 +210,8 @@ export function producedTotal(counts: DocumentProducedCounts): number {
     counts.medications +
     counts.bodyMetrics +
     counts.heightSamples +
-    counts.headCircSamples
+    counts.headCircSamples +
+    counts.waistCircSamples
   );
 }
 

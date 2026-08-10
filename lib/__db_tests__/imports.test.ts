@@ -218,6 +218,9 @@ function makeInput(): PersistInput {
     ],
     heights: [{ date: DATE, height_cm: 178 }],
     headCircs: [{ date: DATE, head_circumference_cm: 47 }],
+    // Waist circumference (#2322) — the third projected length measure, in the
+    // footprint contract beside the other two.
+    waistCircs: [{ date: DATE, waist_circumference_cm: 84 }],
     demographics: null,
     meta: {
       docType: "ccd",
@@ -346,6 +349,7 @@ describe("getDocumentProduced", () => {
     expect(p.bodyMetrics).toBe(1);
     expect(p.heightSamples).toBe(1);
     expect(p.headCircSamples).toBe(1);
+    expect(p.waistCircSamples).toBe(1);
     // One distinct provider referenced by this document's rows.
     expect(p.providers).toBe(1);
   });
@@ -472,6 +476,7 @@ describe("getDocumentProduced", () => {
     expect(cross.bodyMetrics).toBe(0);
     expect(cross.heightSamples).toBe(0);
     expect(cross.headCircSamples).toBe(0);
+    expect(cross.waistCircSamples).toBe(0);
     expect(cross.providers).toBe(0);
   });
 
@@ -493,16 +498,16 @@ describe("extracted_count (toast + Review-feed tally)", () => {
     // 1 condition + 1 encounter + 1 procedure + 1 family-history + 1 care-plan
     // item + 1 care goal + 1 appointment + 1 structured medication (the
     // prescription projected into intake_items) + 1 body-metric + 1 height +
-    // 1 head-circ = 15.
+    // 1 head-circ + 1 waist-circ = 16.
     const row = db
       .prepare(
         "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
       )
       .get(docA, profileA) as { n: number };
-    expect(row.n).toBe(15);
+    expect(row.n).toBe(16);
     // And it equals the live footprint count the writer derives off
     // IMPORT_FOOTPRINT_TABLES, so the stored value can't silently drift.
-    expect(countImportedDocumentRows(profileA, docA)).toBe(15);
+    expect(countImportedDocumentRows(profileA, docA)).toBe(16);
   });
 
   it("counts an encounter-only import as 1 item (the reported repro)", () => {

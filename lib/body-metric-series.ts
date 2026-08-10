@@ -13,6 +13,7 @@ import {
 } from "./queries";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "./vitals-input";
 import { PEAK_FLOW_METRIC } from "./peak-flow";
+import { WAIST_CIRC_METRIC } from "./waist-circ-extract";
 import { bmiSeriesDatePaired } from "./growth-series";
 import { moodSeriesPoints } from "./mood";
 import { dispWeight, round } from "./units";
@@ -125,6 +126,12 @@ function streamMetricSeries(
         "head_circumference_cm",
         ALL_ROWS
       ).map((row) => ({ date: row.date, value: round(row.value, 1) }));
+    case "waist-circ":
+      // Averaged per day by the shared bucket rule (#2322) — a tape reading and a
+      // same-date imported one are repeat measurements of one quantity.
+      return getMetricDailyTotals(profileId, WAIST_CIRC_METRIC, ALL_ROWS).map(
+        (row) => ({ date: row.date, value: round(row.value, 1) })
+      );
     case "sun":
       return getDaylightOutdoorMinutesSeries(
         profileId,

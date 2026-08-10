@@ -42,6 +42,7 @@ const FOOTPRINT_TO_COUNT_FIELD: Record<string, keyof DocumentProducedCounts> = {
   immunizations: "immunizations",
   "metric_samples|metric = 'height_cm'": "heightSamples",
   "metric_samples|metric = 'head_circumference_cm'": "headCircSamples",
+  "metric_samples|metric = 'waist_circumference_cm'": "waistCircSamples",
 };
 
 describe("DocumentProducedCounts binds to IMPORT_FOOTPRINT_TABLES", () => {
@@ -85,6 +86,7 @@ describe("DocumentProducedCounts binds to IMPORT_FOOTPRINT_TABLES", () => {
       bodyMetrics: 0,
       heightSamples: 0,
       headCircSamples: 0,
+      waistCircSamples: 0,
       providers: 0,
     };
 

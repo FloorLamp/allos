@@ -156,12 +156,13 @@ describe("producedTotal", () => {
       bodyMetrics: 1,
       heightSamples: 1,
       headCircSamples: 1,
+      waistCircSamples: 1,
       providers: 4,
     };
     // 14 records + 3 imms + 12 clinical singles (incl. 1 appointment + 1 genomic
     // variant + 1 imaging study + 1 optical prescription + 1 dental procedure) + 2
-    // meds + 3 body samples.
-    expect(producedTotal(counts)).toBe(14 + 3 + 12 + 2 + 3);
+    // meds + 4 body samples (body_metrics + height + head-circ + waist-circ).
+    expect(producedTotal(counts)).toBe(14 + 3 + 12 + 2 + 4);
   });
 });
 

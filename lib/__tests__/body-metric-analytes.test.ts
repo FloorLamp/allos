@@ -16,6 +16,7 @@ import {
 import { bodyMetricKind } from "../body-metric-extract";
 import { isHeightReading } from "../height-extract";
 import { isHeadCircReading } from "../head-circ-extract";
+import { isWaistCircReading } from "../waist-circ-extract";
 import {
   BODY_METRIC_META,
   BODY_METRIC_SLUGS,
@@ -46,6 +47,7 @@ const PROJECTION_RECOGNIZERS: Partial<
   weight: (name) => bodyMetricKind(name, null) === "weight",
   height: (name) => isHeightReading(name, null),
   "head-circ": (name) => isHeadCircReading(name, null),
+  "waist-circ": (name) => isWaistCircReading(name, null),
 };
 
 describe("document reachability is DECLARED and CHECKED (#2365)", () => {
@@ -365,13 +367,36 @@ describe("what STAYS in the browser (#2365)", () => {
     expect(METRIC_DOCUMENT_REACH["lean-mass"].reaches).toBe(false);
   });
 
-  it("Waist Circumference — a body metric by ruling, not yet a slug (#2322)", () => {
-    // The owner has ruled it belongs in BODY_METRIC_SLUGS. Until that slug lands it has
-    // no home, so it stays browsable — and it leaves on its own the day #2322 adds it,
-    // with no edit here. That property IS the deliverable.
-    expect(bodyMetricHomeFor("Waist Circumference")).toBeNull();
-    // And it is not dragged out by the head-circumference title, the nearest neighbour.
+  it("Waist Circumference LEFT, because the slug and its projector landed (#2322)", () => {
+    // This assertion used to live on the STAYS side, pinned there with a comment
+    // saying it "leaves on its own the day the slug lands". It did — and this is the
+    // other end of that prediction, kept in the same suite so the property is visible
+    // rather than merely claimed.
+    //
+    // It left for the RIGHT reason, which is the whole discipline of this module: not
+    // "a chart now exists" but "an imported reading can reach it". The projector is
+    // what earns the removal, and the `import-projection` check above proves the
+    // recognizer accepts the very name being claimed.
+    expect(bodyMetricHomeFor("Waist Circumference")).toBe("waist-circ");
+    expect(METRIC_DOCUMENT_REACH["waist-circ"].reaches).toBe(
+      "import-projection"
+    );
+    expect(
+      listedInBiomarkerBrowser({
+        category: "vitals",
+        name: "Waist Circumference",
+        canonical_name: "Waist Circumference",
+      })
+    ).toBe(false);
+    // The NEIGHBOURS it must not drag out with it. "Head Circumference" is the near
+    // token-set miss the module's header calls out by name; the waist-to-hip RATIO and
+    // the abdominal circumference are different quantities that keep the catalog.
     expect(bodyMetricHomeFor("Head Circumference")).toBe("head-circ");
+    expect(bodyMetricHomeFor("Waist-Hip Ratio")).toBeNull();
+    expect(bodyMetricHomeFor("Abdominal Circumference")).toBeNull();
+    // Its LABEL claims nothing: "Waist" is not an acronym by the shared gate, so a
+    // bare-word match surface never opens.
+    expect(bodyMetricHomeFor("Waist")).toBeNull();
   });
 
   it("stress-test vitals — a qualified quantity is not the resting one", () => {

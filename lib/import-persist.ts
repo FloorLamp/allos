@@ -674,6 +674,7 @@ export interface DocumentlessOutcome {
   bodyMetricCount: number;
   heightCount: number;
   headCircCount: number;
+  waistCircCount: number;
   insertedRecordIds: number[];
 }
 
@@ -705,6 +706,7 @@ export function persistDocumentlessImport(
     bodyMetricCount: counts.bodyMetricCount,
     heightCount: counts.heightCount,
     headCircCount: counts.headCircCount,
+    waistCircCount: counts.waistCircCount,
     insertedRecordIds: counts.insertedRecordIds,
   };
 }
@@ -748,6 +750,7 @@ interface ImportInsertCounts {
   bodyMetricCount: number;
   heightCount: number;
   headCircCount: number;
+  waistCircCount: number;
   insertedRecordIds: number[];
 }
 
@@ -821,6 +824,20 @@ function insertImportRows(
   const headCircCovered = db.prepare(
     `SELECT 1 FROM metric_samples
        WHERE profile_id = ? AND metric = 'head_circumference_cm' AND date = ? LIMIT 1`
+  );
+  // Waist circumference lives in metric_samples (metric 'waist_circumference_cm'),
+  // exactly like the other two length measures (#2322). Same idempotency: INSERT OR
+  // IGNORE on the (profile_id, metric, start_time, end_time) natural key, a per-source
+  // delete on reprocess, and a defer probe so a manual tape reading for a date is
+  // never overwritten by a document.
+  const insWaistCirc = db.prepare(
+    `INSERT OR IGNORE INTO metric_samples
+       (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, ?, 'waist_circumference_cm', ?, ?, ?, ?)`
+  );
+  const waistCircCovered = db.prepare(
+    `SELECT 1 FROM metric_samples
+       WHERE profile_id = ? AND metric = 'waist_circumference_cm' AND date = ? LIMIT 1`
   );
   // Scope a parsed external_id to THIS document. The per-profile unique index on
   // external_id otherwise makes a dose/lab that appears in two separately
@@ -1017,6 +1034,7 @@ function insertImportRows(
   let bodyMetricCount = 0;
   let heightCount = 0;
   let headCircCount = 0;
+  let waistCircCount = 0;
 
   for (const im of input.immunizations) {
     const info = insImm.run(
@@ -1091,6 +1109,19 @@ function insertImportRows(
       h.head_circumference_cm
     );
     if (info.changes > 0) headCircCount++;
+  }
+  // Waist-circumference samples → metric_samples, same defer-then-insert rule.
+  for (const w of input.waistCircs ?? []) {
+    if (waistCircCovered.get(profileId, w.date)) continue;
+    const info = insWaistCirc.run(
+      profileId,
+      sampleSource,
+      w.date,
+      w.date,
+      w.date,
+      w.waist_circumference_cm
+    );
+    if (info.changes > 0) waistCircCount++;
   }
   for (const r of input.records) {
     // #1178: a prescription is the SINGLE medication entity (projected into
@@ -1456,6 +1487,7 @@ function insertImportRows(
     bodyMetricCount,
     heightCount,
     headCircCount,
+    waistCircCount,
     insertedRecordIds,
   };
 }

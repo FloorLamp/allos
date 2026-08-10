@@ -14,6 +14,7 @@ import {
 } from "@/lib/body-metric-input";
 import { validateVitalsInput } from "@/lib/vitals-input";
 import { validateGrowthInput } from "@/lib/growth-input";
+import { validateWaistInput } from "@/lib/waist-input";
 import {
   deepLinkFieldId,
   deepLinkGroup,
@@ -324,6 +325,10 @@ export default function MeasurementsQuickAdd({
       headCirc: s("head_circ"),
       headCircUnit: s("head_circ_unit"),
     };
+    const waist = {
+      waistCirc: s("waist_circ"),
+      waistCircUnit: s("waist_circ_unit"),
+    };
 
     const hasBody =
       body.weight != null || body.bodyFatPct != null || body.restingHr != null;
@@ -337,8 +342,9 @@ export default function MeasurementsQuickAdd({
       vitals.hrv != null ||
       vitals.peakFlow != null;
     const hasGrowth = growth.height != null || growth.headCirc != null;
+    const hasWaist = waist.waistCirc != null;
 
-    if (!hasBody && !hasVitals && !hasGrowth) {
+    if (!hasBody && !hasVitals && !hasGrowth && !hasWaist) {
       setError("Enter at least one measurement.");
       return;
     }
@@ -367,7 +373,8 @@ export default function MeasurementsQuickAdd({
           )
         : null) ??
       (hasVitals ? validateVitalsInput(vitals) : null) ??
-      (hasGrowth ? validateGrowthInput(growth) : null);
+      (hasGrowth ? validateGrowthInput(growth) : null) ??
+      (hasWaist ? validateWaistInput(waist) : null);
     if (firstError) {
       setError(firstError);
       return;
@@ -388,17 +395,18 @@ export default function MeasurementsQuickAdd({
     // where they left off whether or not the network was up. It was on the online
     // branch alone, so a day of offline entries silently taught the form nothing.
     // A REFUSED save records nothing — an inline validation error and the
-    // growth-only offline case never reach here.
+    // sample-only offline case never reach here.
     const rememberWritten = (): void => {
       if (written) rememberGroup(profileId, written);
     };
 
     // Offline: replay each half through its OWN queued intent — the queue's flow
     // kinds are the write cores, and this form is a composition of them, not a new
-    // kind. (Growth has no queue flow; a growth-only entry offline is reported as a
-    // failure rather than silently dropped.)
+    // kind. (Neither the growth pair nor the waist tape reading has a queue flow —
+    // both write metric_samples through their own cores — so an entry holding only
+    // those is reported as a failure rather than silently dropped.)
     const queueOffline = async (): Promise<boolean> => {
-      if (hasGrowth) return false;
+      if (hasGrowth || hasWaist) return false;
       if (hasBody) {
         await enqueue("body-metric", date, {
           weight: String(body.weight ?? ""),
@@ -543,6 +551,32 @@ export default function MeasurementsQuickAdd({
             step="0.1"
             min="0"
             name="head_circ"
+            className="input pr-16"
+          />
+        </UnitToggle>
+      </Field>
+    ),
+    // Waist circumference (#2322) — the tape reading the ruling rests on. Same cm/in
+    // toggle as its two length neighbours, and ungated: an adult profile renders no
+    // height field but every profile can measure a waist.
+    waistCirc: (
+      <Field
+        key="waist-circ"
+        label={BODY_METRIC_META["waist-circ"].title}
+        htmlFor="m-waist-circ"
+      >
+        <UnitToggle
+          name="waist_circ_unit"
+          label={`${BODY_METRIC_META["waist-circ"].title} unit`}
+          options={["cm", "in"]}
+        >
+          <input
+            id="m-waist-circ"
+            type="number"
+            step="0.1"
+            min="0"
+            name="waist_circ"
+            data-testid="measurements-waist-circ"
             className="input pr-16"
           />
         </UnitToggle>
@@ -746,6 +780,7 @@ export default function MeasurementsQuickAdd({
     height: [field.height],
     "head-circ": [field.headCirc],
     "peak-flow": [field.peakFlow],
+    "waist-circ": [field.waistCirc],
   };
 
   const groupFields: Record<MeasurementGroup, ReactNode[]> = {
@@ -762,6 +797,7 @@ export default function MeasurementsQuickAdd({
       ...(showBodyFat ? [field.bodyFat] : []),
       ...(showGrowth ? [field.height] : []),
       ...(showGrowth && showHeadCirc ? [field.headCirc] : []),
+      field.waistCirc,
     ],
     sleep: [field.sleep, ...(showHrv ? [field.hrv] : [])],
   };

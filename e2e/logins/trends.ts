@@ -255,3 +255,26 @@ export const PEAK_FLOW_LOG_PROFILE = "Peak Flow Log (e2e)";
 // the GREEN FLOOR, the band edge a reader would most easily get wrong.
 export const PEAK_FLOW_LOG_BLOW_LMIN = 480;
 export const PEAK_FLOW_LOG_BEST_LMIN = 600;
+
+// ── Waist circumference: the metric the ruling created (issue #2322) ─────────
+// A dedicated ADULT profile carrying a short history of tape readings, so the
+// `waist-circ` detail page has a chart, a latest value and a readings table to
+// assert against — and a WRITE half in the same profile: the reading its spec logs
+// is dated to a deep-past day nothing else touches, so the exact-value assertions
+// survive --repeat-each (the metric_samples natural key upserts on re-entry rather
+// than stacking a second point).
+//
+// Dedicated ON PURPOSE (#868): the assertions are exact values, and profile 1's
+// seeded waist series would make them ride a fixture other specs write to.
+export const E2E_LOGIN_WAIST = "e2e_waist";
+export const WAIST_PROFILE = "Waist (e2e)";
+// The seeded latest reading, in cm. Distinctive so the readings table row and the
+// hero value are addressable by their number.
+export const WAIST_LATEST_CM = 87.3;
+// How many seeded monthly readings precede it.
+export const WAIST_SEEDED_READINGS = 4;
+// The reading the spec LOGS. It lands on TODAY, which the seeded monthly series
+// deliberately leaves empty, so it becomes the page's latest value; the manual sample
+// writer upserts on its natural key, so a re-run corrects the day rather than
+// stacking a second point.
+export const WAIST_LOG_CM = 91.5;

@@ -53,6 +53,7 @@ describe("buildImportTabs", () => {
         bodyMetrics: 1,
         heightSamples: 1,
         headCircSamples: 1,
+        waistCircSamples: 1,
         providers: 4,
       })
     );
@@ -84,8 +85,8 @@ describe("buildImportTabs", () => {
       count: 1,
       kind: "visits",
     });
-    // The Body tab merges body-metric rows + height + head-circ samples.
-    expect(byKey["body"].count).toBe(3);
+    // The Body tab merges body-metric rows + height + head- and waist-circ samples.
+    expect(byKey["body"].count).toBe(4);
     // Providers are now a real tab (post-#275, #1182), carrying the count that
     // was the old chip; still mirrored on strip.providers.
     expect(byKey["providers"]).toMatchObject({
@@ -286,7 +287,7 @@ describe("row shapers", () => {
 });
 
 describe("bodyItems (merged Body tab)", () => {
-  it("merges body metrics + height + head-circ newest-first, weight in the display unit", () => {
+  it("merges body metrics + height + head/waist circ newest-first, weight in the display unit", () => {
     const items = bodyItems(
       {
         bodyMetrics: [
@@ -300,16 +301,19 @@ describe("bodyItems (merged Body tab)", () => {
         ],
         heights: [{ id: 9, date: "2026-01-03", value: 178 }],
         headCircs: [{ id: 9, date: "2026-01-01", value: 47 }],
+        waistCircs: [{ id: 4, date: "2026-01-04", value: 84 }],
       },
       "lb"
     );
     expect(items.map((i) => i.title)).toEqual([
+      "Waist circumference",
       "Height",
       "Body metrics",
       "Head circumference",
     ]);
-    expect(items[1].detail).toBe("Weight 180.8 lb · Body fat 18%");
-    expect(items[0].detail).toBe("178 cm");
+    expect(items[2].detail).toBe("Weight 180.8 lb · Body fat 18%");
+    expect(items[1].detail).toBe("178 cm");
+    expect(items[0].detail).toBe("84 cm");
     // Every merged row lands on the Body trends tab.
     expect(new Set(items.map((i) => i.href))).toEqual(
       new Set(["/trends#body"])

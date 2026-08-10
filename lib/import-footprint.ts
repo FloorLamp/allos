@@ -120,6 +120,12 @@ export const IMPORT_FOOTPRINT_TABLES: readonly ImportFootprintTable[] = [
     extra: "metric = 'head_circumference_cm'",
     noun: "head-circumference reading",
   },
+  {
+    table: "metric_samples",
+    key: "source",
+    extra: "metric = 'waist_circumference_cm'",
+    noun: "waist-circumference reading",
+  },
 ];
 
 // THE side-STATE an import writes ALONGSIDE its footprint rows — the non-row

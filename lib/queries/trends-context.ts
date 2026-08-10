@@ -29,6 +29,7 @@ import { isGoalLive } from "../goals";
 import { getHomeLocation, getUserAge } from "../settings";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "../vitals-input";
 import { PEAK_FLOW_METRIC } from "../peak-flow";
+import { WAIST_CIRC_METRIC } from "../waist-circ-extract";
 import {
   conditionMonitorTags,
   presenceLevel,
@@ -56,6 +57,7 @@ const METRIC_SAMPLE_CARDS: Readonly<Partial<Record<BodyCardId, string>>> = {
   "skin-temp": SKIN_TEMP_DELTA_METRIC,
   height: "height_cm",
   "head-circ": "head_circumference_cm",
+  "waist-circ": WAIST_CIRC_METRIC,
   "lean-mass": "lean_mass_kg",
   "bone-mass": "bone_mass_kg",
   bmr: "bmr_kcal",

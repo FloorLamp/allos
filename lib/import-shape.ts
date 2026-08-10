@@ -103,6 +103,12 @@ import {
   isHeadCircReading,
   type DocHeadCirc,
 } from "./head-circ-extract";
+import {
+  waistCircsFromExtraction,
+  waistCircsFromReadings,
+  isWaistCircReading,
+  type DocWaistCirc,
+} from "./waist-circ-extract";
 import { immunizationsFromExtraction } from "./immunization-extract";
 
 // The curated canonical vocabulary, by normalized key — so the AI path can tell a
@@ -464,6 +470,13 @@ export interface PersistInput {
   // Head-circumference samples (metric_samples, metric 'head_circumference_cm') —
   // a pediatric anthropometric vital projected exactly like height.
   headCircs: DocHeadCirc[];
+  // Waist-circumference samples (metric_samples, metric 'waist_circumference_cm') —
+  // the third length measure, projected exactly like the other two (#2322). The
+  // projection is what lets the `waist-circ` slug claim the analyte name at all; see
+  // METRIC_DOCUMENT_REACH in lib/body-metric-analytes.ts. OPTIONAL for the same
+  // reason genomicVariants / imagingStudies are: an existing PersistInput literal
+  // (the DB-tier fixtures) needs no change, and every reader takes it with `?? []`.
+  waistCircs?: DocWaistCirc[];
   demographics: AdoptMeta | null;
   meta: DocMeta;
   // Canonical names to register in the AI vocabulary. The AI path registers all
@@ -536,6 +549,23 @@ function withoutCapturedHeadCircs(
   const capturedDates = new Set(headCircs.map((h) => h.date));
   return records.filter((r) => {
     if (!isHeadCircReading(r.name, r.canonical, r.loinc)) return true;
+    return !capturedDates.has(r.date); // drop when a sample was stored for its date
+  });
+}
+
+// Waist circumference has a single home too — metric_samples (metric
+// 'waist_circumference_cm'), not medical_records. Drop from `records` a waist reading
+// only when a sample was actually projected for its date; a reading rejected by
+// waistCircToCm's guards produced no sample and stays a record. Mirrors
+// withoutCapturedHeadCircs exactly.
+function withoutCapturedWaistCircs(
+  records: PersistRecord[],
+  waistCircs: DocWaistCirc[]
+): PersistRecord[] {
+  if (waistCircs.length === 0) return records;
+  const capturedDates = new Set(waistCircs.map((w) => w.date));
+  return records.filter((r) => {
+    if (!isWaistCircReading(r.name, r.canonical, r.loinc)) return true;
     return !capturedDates.has(r.date); // drop when a sample was stored for its date
   });
 }
@@ -748,12 +778,19 @@ export function extractionToPersistInput(
     result.results,
     result.meta.document_date
   );
-  const records = withoutCapturedHeadCircs(
-    withoutCapturedHeights(
-      withoutCapturedBodyMetrics(allRecords, bodyMetrics),
-      heights
+  const waistCircs = waistCircsFromExtraction(
+    result.results,
+    result.meta.document_date
+  );
+  const records = withoutCapturedWaistCircs(
+    withoutCapturedHeadCircs(
+      withoutCapturedHeights(
+        withoutCapturedBodyMetrics(allRecords, bodyMetrics),
+        heights
+      ),
+      headCircs
     ),
-    headCircs
+    waistCircs
   );
 
   // Clinical-narrative domains (parity with the deterministic importer). The AI path
@@ -1011,6 +1048,7 @@ export function extractionToPersistInput(
     bodyMetrics,
     heights,
     headCircs,
+    waistCircs,
   });
   // Lab readings whose canonical NAME matched no curated entry import under that raw
   // name with no reference band and never flag — the AI path's silent analogue of an
@@ -1077,6 +1115,7 @@ export function extractionToPersistInput(
     bodyMetrics,
     heights,
     headCircs,
+    waistCircs,
     demographics: {
       patient_sex: result.meta.patient_sex,
       patient_birthdate: result.meta.patient_birthdate,
@@ -1194,12 +1233,30 @@ export function healthRecordToPersistInput(
     })),
     docDate
   );
-  const records = withoutCapturedHeadCircs(
-    withoutCapturedHeights(
-      withoutCapturedBodyMetrics(allRecords, bodyMetrics),
-      heights
+  // Project waist-circumference records into metric_samples (#2322). LOINC (8280-0 /
+  // 56086-2 / 56115-9) is threaded from the CCD mappers, so a waist reading routes
+  // correctly even under a generic display name; the waist/hip RATIO code 60803-4 is
+  // an explicit negative and is never projected as a length.
+  const waistCircs = waistCircsFromReadings(
+    parsed.records.map((r) => ({
+      name: r.name,
+      canonical: r.canonical,
+      value_num: r.value_num,
+      unit: r.unit,
+      date: r.date,
+      loinc: r.loinc ?? null,
+    })),
+    docDate
+  );
+  const records = withoutCapturedWaistCircs(
+    withoutCapturedHeadCircs(
+      withoutCapturedHeights(
+        withoutCapturedBodyMetrics(allRecords, bodyMetrics),
+        heights
+      ),
+      headCircs
     ),
-    headCircs
+    waistCircs
   );
   return {
     records,
@@ -1350,6 +1407,7 @@ export function healthRecordToPersistInput(
     bodyMetrics,
     heights,
     headCircs,
+    waistCircs,
     demographics: parsed.demographics
       ? {
           patient_sex: parsed.demographics.sex,

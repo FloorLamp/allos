@@ -42,6 +42,9 @@ describe("metric bucket membership", () => {
         // repeat measurements of one quantity; summing them would chart a value
         // nobody blew, on the surface whose whole job is "is this dropping?".
         "peak_flow_lmin",
+        // Waist circumference (#2322) — a point measure like height: a tape reading
+        // and a same-date imported one must AGREE, never sum.
+        "waist_circumference_cm",
       ].sort()
     );
   });

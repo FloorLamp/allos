@@ -76,6 +76,11 @@ export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
   // for a child.
   "weight",
   "body-fat",
+  // Waist circumference (#2322) — a composition measure a person takes with a tape
+  // on the same rhythm they weigh themselves, so it belongs in this run rather than
+  // in the clinical block. Present-gated like every other member: a profile with no
+  // waist readings never renders the card.
+  "waist-circ",
   "height",
   "head-circ",
   // The growth-percentile card's ADULT base position (where it is empty anyway);

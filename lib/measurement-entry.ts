@@ -8,7 +8,10 @@ export type MeasurementEntryMetric =
   | "hrv"
   | "height"
   | "head-circ"
-  | "peak-flow";
+  | "peak-flow"
+  // Waist circumference (#2322) — ungated: a tape measurement is the entry surface
+  // the whole ruling rests on, and it applies at every life stage.
+  | "waist-circ";
 
 export interface MeasurementEntryGates {
   showBodyFat: boolean;

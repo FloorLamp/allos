@@ -133,6 +133,7 @@ import {
   seedMetricFold,
   seedLongRange,
   seedPeakFlow,
+  seedWaistCircumference,
 } from "./seed/trends";
 
 seedPrelude();
@@ -198,6 +199,7 @@ seedBodyMobile();
 seedMetricJudgment();
 seedMetricFold();
 seedPeakFlow();
+seedWaistCircumference();
 seedRestCard();
 seedSuppressedCenter();
 seedMultiProfile();

@@ -22,6 +22,7 @@ import {
 } from "@/lib/reading-writes";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { PEAK_FLOW_METRIC } from "@/lib/peak-flow";
+import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import type { BodyMetricSlug } from "@/lib/trends-body-metrics";
 import type { BodyMetricColumn } from "@/lib/reading-identity-map";
 
@@ -130,6 +131,10 @@ export const METRIC_READING_STORE: Record<
   "peak-flow": { table: "metric_samples", metric: PEAK_FLOW_METRIC },
   height: { table: "metric_samples", metric: "height_cm" },
   "head-circ": { table: "metric_samples", metric: "head_circumference_cm" },
+  // Waist circumference (#2322) — the third length measure in the tall store, and the
+  // store the import projection and the manual tape entry BOTH write, so a document
+  // reading and a hand-typed one are the same rows on the same chart.
+  "waist-circ": { table: "metric_samples", metric: WAIST_CIRC_METRIC },
   steps: { table: "metric_samples", metric: "steps" },
   "active-calories": { table: "metric_samples", metric: "active_kcal" },
   "lean-mass": { table: "metric_samples", metric: "lean_mass_kg" },
