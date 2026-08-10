@@ -1,4 +1,4 @@
-import { db, writeTx } from "./db";
+import { db, hoistedStatement, writeTx } from "./db";
 import { sqlNow } from "./clock";
 import {
   isAccountSlug,
@@ -106,7 +106,7 @@ export interface PortalIdentity {
 
 const PORTAL_COLS = `id, slug, name, software, created_at AS createdAt`;
 
-const LIST_PORTALS_STMT = db.prepare(
+const LIST_PORTALS_STMT = hoistedStatement(
   `SELECT ${PORTAL_COLS} FROM portals ORDER BY name COLLATE NOCASE`
 );
 
@@ -114,7 +114,7 @@ export function listPortals(): Portal[] {
   return LIST_PORTALS_STMT.all() as Portal[];
 }
 
-const PORTAL_BY_SLUG_STMT = db.prepare(
+const PORTAL_BY_SLUG_STMT = hoistedStatement(
   `SELECT ${PORTAL_COLS} FROM portals WHERE slug = ? COLLATE NOCASE`
 );
 
@@ -122,7 +122,7 @@ export function portalBySlug(slug: string): Portal | null {
   return (PORTAL_BY_SLUG_STMT.get(slug) as Portal | undefined) ?? null;
 }
 
-const PORTAL_BY_ID_STMT = db.prepare(
+const PORTAL_BY_ID_STMT = hoistedStatement(
   `SELECT ${PORTAL_COLS} FROM portals WHERE id = ?`
 );
 
@@ -297,7 +297,7 @@ export function deletePortal(portalId: number): boolean {
 
 const ACCOUNT_COLS = `id, portal_id AS portalId, slug, name, implicit, created_at AS createdAt`;
 
-const LIST_ACCOUNTS_STMT = db.prepare(
+const LIST_ACCOUNTS_STMT = hoistedStatement(
   `SELECT ${ACCOUNT_COLS} FROM portal_accounts
     ORDER BY portal_id, name COLLATE NOCASE`
 );
@@ -317,7 +317,7 @@ export function listPortalAccounts(): PortalAccount[] {
   return (LIST_ACCOUNTS_STMT.all() as Record<string, unknown>[]).map(toAccount);
 }
 
-const ACCOUNTS_FOR_PORTAL_STMT = db.prepare(
+const ACCOUNTS_FOR_PORTAL_STMT = hoistedStatement(
   `SELECT ${ACCOUNT_COLS} FROM portal_accounts WHERE portal_id = ?
     ORDER BY name COLLATE NOCASE`
 );
@@ -495,7 +495,7 @@ const IDENTITY_FROM = `FROM portal_identities pi
      JOIN portals p ON p.id = pi.portal_id
      JOIN portal_accounts a ON a.id = pi.account_id`;
 
-const LIST_IDENTITIES_STMT = db.prepare(
+const LIST_IDENTITIES_STMT = hoistedStatement(
   `SELECT ${IDENTITY_COLS} ${IDENTITY_FROM}
     ORDER BY p.name COLLATE NOCASE, a.name COLLATE NOCASE,
              pi.patient_label COLLATE NOCASE`
@@ -795,7 +795,7 @@ export interface IdentityOutcomeTally {
 // names. A resolve-the-owner lookup, exactly like portalIdentityProfile: the caller is
 // asking "whose row is this, so I can check I may write it", and a `profile_id = ?` filter
 // would presuppose the answer.
-const IDENTITY_OWNER_STMT = db.prepare(
+const IDENTITY_OWNER_STMT = hoistedStatement(
   "SELECT id, profile_id AS profileId FROM portal_identities WHERE account_id = ? AND patient_label = ?"
 );
 
@@ -803,7 +803,7 @@ const IDENTITY_OWNER_STMT = db.prepare(
 // compare-and-swap shape unbindPortalIdentity uses. A concurrent re-point between the
 // resolve above and this write matches nothing rather than writing to a profile nobody
 // authorized.
-const SET_DECLINED_STMT = db.prepare(
+const SET_DECLINED_STMT = hoistedStatement(
   `UPDATE portal_identities
       SET declined = ?, updated_at = datetime('now')
     WHERE id = ? AND profile_id = ? AND declined = ?`
@@ -1114,7 +1114,7 @@ export function recordDiscoveredIdentities(
   return newly;
 }
 
-const LIST_PENDING_STMT = db.prepare(
+const LIST_PENDING_STMT = hoistedStatement(
   `SELECT pp.id AS id, pp.portal_id AS portalId, p.slug AS portalSlug,
           p.name AS portalName, pp.account_id AS accountId, a.slug AS accountSlug,
           a.name AS accountName, a.implicit AS accountImplicit,
@@ -1319,7 +1319,7 @@ export function recordPortalRunReport(
   );
 }
 
-const LIST_RUN_REPORTS_STMT = db.prepare(
+const LIST_RUN_REPORTS_STMT = hoistedStatement(
   `SELECT r.portal_id AS portalId, p.slug AS portalSlug, p.name AS portalName,
           r.account_id AS accountId, a.slug AS accountSlug, a.name AS accountName,
           a.implicit AS accountImplicit, r.at AS at, r.ok AS ok,

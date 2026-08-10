@@ -1,4 +1,4 @@
-import { db, writeTx } from "./db";
+import { db, hoistedStatement, writeTx } from "./db";
 import { hashPassword, verifyPassword } from "./password";
 import type { Role, SessionLogin } from "./auth";
 import {
@@ -79,14 +79,14 @@ const LIST_COLUMNS = `t.id AS id, t.login_id AS loginId, a.username AS username,
                       t.name AS name, t.scope AS scope,
                       t.created_at AS createdAt, t.last_used_at AS lastUsedAt`;
 
-const LIST_FOR_LOGIN_STMT = db.prepare(
+const LIST_FOR_LOGIN_STMT = hoistedStatement(
   `SELECT ${LIST_COLUMNS}
      FROM api_tokens t JOIN logins a ON a.id = t.login_id
     WHERE t.login_id = ? AND t.revoked_at IS NULL
     ORDER BY t.id DESC`
 );
 
-const LIST_ALL_STMT = db.prepare(
+const LIST_ALL_STMT = hoistedStatement(
   `SELECT ${LIST_COLUMNS}
      FROM api_tokens t JOIN logins a ON a.id = t.login_id
     WHERE t.revoked_at IS NULL
@@ -122,7 +122,7 @@ export function listAllApiTokens(): ApiTokenSummary[] {
   return (LIST_ALL_STMT.all() as TokenRow[]).map(toSummary);
 }
 
-const ANY_LIVE_WITH_SCOPE_STMT = db.prepare(
+const ANY_LIVE_WITH_SCOPE_STMT = hoistedStatement(
   "SELECT 1 AS one FROM api_tokens WHERE scope = ? AND revoked_at IS NULL LIMIT 1"
 );
 
@@ -151,7 +151,7 @@ export interface MintedApiToken {
 // each mint costs a scrypt hash.
 export const MAX_TOKENS_PER_LOGIN = 20;
 
-const COUNT_FOR_LOGIN_STMT = db.prepare(
+const COUNT_FOR_LOGIN_STMT = hoistedStatement(
   "SELECT COUNT(*) AS n FROM api_tokens WHERE login_id = ? AND revoked_at IS NULL"
 );
 
@@ -236,7 +236,7 @@ export type ApiTokenAuth =
     }
   | { ok: false; status: 401 | 403; error: string };
 
-const RESOLVE_STMT = db.prepare(
+const RESOLVE_STMT = hoistedStatement(
   `SELECT t.id AS id, t.secret_hash AS secretHash, t.scope AS scope,
           t.revoked_at AS revokedAt,
           a.id AS loginId, a.username AS username, a.role AS role
@@ -244,7 +244,7 @@ const RESOLVE_STMT = db.prepare(
     WHERE t.id = ?`
 );
 
-const TOUCH_STMT = db.prepare(
+const TOUCH_STMT = hoistedStatement(
   "UPDATE api_tokens SET last_used_at = datetime('now') WHERE id = ?"
 );
 

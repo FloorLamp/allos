@@ -73,7 +73,7 @@ function sourceFiles(): { rel: string; text: string }[] {
     const abs = path.join(REPO, d);
     if (!fs.existsSync(abs)) continue;
     for (const full of walk(abs)) {
-      const rel = path.relative(REPO, full);
+      const rel = path.relative(REPO, full).split(path.sep).join("/");
       if (isExcluded(rel)) continue;
       files.push({ rel, text: fs.readFileSync(full, "utf8") });
     }

@@ -23,7 +23,7 @@
 // an export is not a fault to repair.
 
 import { cache } from "../../request-cache";
-import { db } from "../../db";
+import { db, hoistedStatement } from "../../db";
 import type { UpcomingItem } from "../../upcoming";
 import type { ArchiveStreamSelector } from "../../types";
 import {
@@ -45,17 +45,17 @@ import { profileAgeMonths } from "../../settings";
 // discriminated union with a closed column set, so nothing here interpolates a value
 // that came from data — the declaration picks a statement, it never builds SQL.
 const BODY_METRIC_FRONTIER = {
-  weight_kg: db.prepare(
+  weight_kg: hoistedStatement(
     `SELECT MAX(date) AS d FROM body_metrics
       WHERE profile_id = ? AND source = ? AND weight_kg IS NOT NULL`
   ),
-  body_fat_pct: db.prepare(
+  body_fat_pct: hoistedStatement(
     `SELECT MAX(date) AS d FROM body_metrics
       WHERE profile_id = ? AND source = ? AND body_fat_pct IS NOT NULL`
   ),
 } as const;
 
-const METRIC_SAMPLE_FRONTIER = db.prepare(
+const METRIC_SAMPLE_FRONTIER = hoistedStatement(
   `SELECT MAX(date) AS d FROM metric_samples
     WHERE profile_id = ? AND source = ? AND metric = ?`
 );
@@ -110,7 +110,7 @@ export function archiveExclusiveFrontier(
 // Imaging, dental and instrument records are deliberately OUT: #2176 constraint 2 keeps
 // v1 to one profile-level ask on the lab/biomarker frontier, because those domains have
 // different clinical rhythms and a per-domain matrix is where this becomes nagging.
-const CLINICAL_FRONTIER_STMT = db.prepare(
+const CLINICAL_FRONTIER_STMT = hoistedStatement(
   `SELECT MAX(date) AS d FROM medical_records
     WHERE profile_id = ? AND category IN ('lab','biomarker')`
 );
@@ -124,7 +124,7 @@ export function clinicalFrontier(profileId: number): string | null {
 
 // ── The one-ask-per-problem exemption ────────────────────────────────────────
 
-const MAPPED_PORTAL_STMT = db.prepare(
+const MAPPED_PORTAL_STMT = hoistedStatement(
   `SELECT 1 FROM portal_identities
     WHERE profile_id = ? AND ignored = 0 LIMIT 1`
 );

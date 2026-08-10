@@ -128,7 +128,7 @@ describe("every (app) page renders the shared PageHeader", () => {
   it("has no page with a hand-rolled or missing heading", () => {
     const offenders: string[] = [];
     for (const page of PAGES) {
-      const rel = path.relative(APP_GROUP, page);
+      const rel = path.relative(APP_GROUP, page).split(path.sep).join("/");
       if (rel in EXEMPT) continue;
       const source = fs.readFileSync(page, "utf8");
       if (isRedirect(source)) continue;
@@ -137,7 +137,10 @@ describe("every (app) page renders the shared PageHeader", () => {
       offenders.push(rel);
     }
     expect(offenders).toEqual([]);
-  });
+    // Reads every (app) page plus each one's ancestor layouts from disk. That fits
+    // the default 5s budget on Linux CI but not on a Windows filesystem, where the
+    // per-file stat/read overhead is enough to overrun it.
+  }, 30_000);
 
   it("keeps the exemption list honest (every entry still exists)", () => {
     for (const rel of Object.keys(EXEMPT)) {
@@ -187,7 +190,7 @@ describe("only the page's own h1 uses the page-title heading scale (#1449)", () 
     const offenders = FILES.filter((f) =>
       H1_SCALE.test(fs.readFileSync(f, "utf8"))
     )
-      .map((f) => path.relative(REPO, f))
+      .map((f) => path.relative(REPO, f).split(path.sep).join("/"))
       .filter((rel) => !(rel in H1_SCALE_OK));
     expect(offenders).toEqual([]);
   });

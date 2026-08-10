@@ -20,7 +20,7 @@ import {
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { parseNotifyLine, type NotifyEvent } from "../notify-log-format";
 
@@ -272,7 +272,7 @@ describe("two processes on one DATA_DIR, third sink (#1883 extended to #2209)", 
     fs.writeFileSync(
       child,
       `
-import { appendJsonlLine } from ${JSON.stringify(path.join(REPO_ROOT, "lib", "jsonl-log-file.ts"))};
+import { appendJsonlLine } from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "lib", "jsonl-log-file.ts")).href)};
 const [file, tag, startAt, count] = process.argv.slice(2);
 while (Date.now() < Number(startAt)) {}
 for (let i = 0; i < Number(count); i++) {

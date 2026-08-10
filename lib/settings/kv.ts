@@ -1,4 +1,4 @@
-import { db, invalidateTimezoneMemo } from "../db";
+import { db, hoistedStatement, invalidateTimezoneMemo } from "../db";
 
 // Generic key/value access over the global settings table, for simple scalar
 // app-wide prefs.
@@ -92,7 +92,7 @@ export function getProfileSettingKeysWithPrefix(
 // module scope: getUnitPrefs (and others) read login settings on effectively
 // every request. NOT cache()-wrapped — a request may write via setLoginSetting
 // then re-read, so this must always hit the DB.
-const LOGIN_SETTING_GET_STMT = db.prepare(
+const LOGIN_SETTING_GET_STMT = hoistedStatement(
   "SELECT value FROM login_settings WHERE login_id = ? AND key = ?"
 );
 export function getLoginSetting(

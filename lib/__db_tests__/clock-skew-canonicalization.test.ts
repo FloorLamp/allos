@@ -18,7 +18,7 @@
 // All fixtures SYNTHETIC.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { db, hoistedStatement } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
 import { mapStravaActivity } from "@/lib/integrations/strava";
 import { upsertActivities } from "@/lib/integrations/normalize";
@@ -61,7 +61,7 @@ function activityRow(profileId: number, externalId: string) {
     | undefined;
 }
 
-const insAct = db.prepare(
+const insAct = hoistedStatement(
   `INSERT INTO activities
      (profile_id, date, type, title, source, external_id,
       start_time, end_time, duration_min, distance_km)

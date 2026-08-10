@@ -19,7 +19,7 @@
 // whose gap is not offset-shaped.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { db, hoistedStatement } from "@/lib/db";
 import {
   getActivityDuplicates,
   getActivityDuplicateClusters,
@@ -27,7 +27,7 @@ import {
 
 let profileId: number;
 
-const insAct = db.prepare(
+const insAct = hoistedStatement(
   `INSERT INTO activities
      (profile_id, date, type, title, source, external_id,
       start_time, end_time, duration_min, distance_km)

@@ -46,7 +46,7 @@ function resolveImport(fromFile: string, spec: string): string | null {
   ];
   for (const c of candidates) {
     if (fs.existsSync(c) && fs.statSync(c).isFile())
-      return path.relative(ROOT, c);
+      return path.relative(ROOT, c).split(path.sep).join("/");
   }
   return null;
 }
@@ -199,7 +199,7 @@ function walk(dir: string): string[] {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) out.push(...walk(full));
     else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))
-      out.push(path.relative(ROOT, full));
+      out.push(path.relative(ROOT, full).split(path.sep).join("/"));
   }
   return out;
 }

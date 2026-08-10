@@ -7,12 +7,12 @@
 // against a real (temp) SQLite handle via vitest.db.config.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { db, hoistedStatement } from "@/lib/db";
 import { getActivityDuplicates } from "@/lib/queries";
 
 let profileId: number;
 
-const insAct = db.prepare(
+const insAct = hoistedStatement(
   `INSERT INTO activities
      (profile_id, date, type, title, source, external_id,
       start_time, end_time, duration_min, distance_km)

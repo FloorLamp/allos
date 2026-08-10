@@ -35,7 +35,11 @@ vi.mock("next/cache", () => ({
 vi.mock("@/lib/auth", async () => {
   const { getActingSession, peekActingSession } =
     await import("./session-state");
-  const { db } = await import("@/lib/db");
+  // Held as a MODULE, not destructured: the shared-registry tier
+  // (vitest.db-shared.config.ts) rebinds lib/db.ts's `db` export between test
+  // files, and a destructured snapshot would keep querying the file before it.
+  // Reading dbMod.db per call follows the live binding in both tiers.
+  const dbMod = await import("@/lib/db");
   // Demo-mode guard (#181): the mock applies the SAME pure predicate the real
   // requireWriteAccess() uses, reading process.env.ALLOS_DEMO_MODE each call, so a
   // demo-mode write-refusal test exercises the guard faithfully (see demo.actions.test.ts).
@@ -47,11 +51,13 @@ vi.mock("@/lib/auth", async () => {
     const s = getActingSession();
     const rows =
       s.login.role === "admin"
-        ? (db.prepare("SELECT id, name FROM profiles ORDER BY id").all() as {
+        ? (dbMod.db
+            .prepare("SELECT id, name FROM profiles ORDER BY id")
+            .all() as {
             id: number;
             name: string;
           }[])
-        : (db
+        : (dbMod.db
             .prepare(
               `SELECT p.id, p.name FROM profiles p
                  JOIN login_profiles lp ON lp.profile_id = p.id
@@ -104,7 +110,7 @@ vi.mock("@/lib/auth", async () => {
         throw new Error("requireProfileWriteAccess: blocked in demo mode");
       }
       if (s.login.role !== "admin") {
-        const grant = db
+        const grant = dbMod.db
           .prepare(
             "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
           )
@@ -154,17 +160,19 @@ vi.mock("@/lib/auth", async () => {
     // login can write". Same rule as accessibleProfiles(): admins reach every profile,
     // members only their granted set.
     accessibleProfilesForLogin: (loginId: number) => {
-      const acct = db
+      const acct = dbMod.db
         .prepare("SELECT role FROM logins WHERE id = ?")
         .get(loginId) as { role: string } | undefined;
       if (!acct) return [];
       const rows =
         acct.role === "admin"
-          ? (db.prepare("SELECT id, name FROM profiles ORDER BY id").all() as {
+          ? (dbMod.db
+              .prepare("SELECT id, name FROM profiles ORDER BY id")
+              .all() as {
               id: number;
               name: string;
             }[])
-          : (db
+          : (dbMod.db
               .prepare(
                 `SELECT p.id, p.name FROM profiles p
                    JOIN login_profiles lp ON lp.profile_id = p.id
@@ -183,7 +191,7 @@ vi.mock("@/lib/auth", async () => {
     // explicit 'read' reading as 'write' (the permissive legacy default).
     accessForProfile: (loginId: number, role: string, profileId: number) => {
       if (role === "admin") return "write";
-      const row = db
+      const row = dbMod.db
         .prepare(
           "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
         )
@@ -198,7 +206,7 @@ vi.mock("@/lib/auth", async () => {
       profileId: number
     ) => {
       if (session.login.role === "admin") return true;
-      const row = db
+      const row = dbMod.db
         .prepare(
           "SELECT 1 FROM login_profiles WHERE login_id = ? AND profile_id = ?"
         )
@@ -210,7 +218,7 @@ vi.mock("@/lib/auth", async () => {
     // accessibility constraint (admins reach every profile, members only granted)
     // before writing, returning false (no-op) for an inaccessible target.
     ownProfileForLogin: (loginId: number) => {
-      const row = db
+      const row = dbMod.db
         .prepare("SELECT own_profile_id AS o FROM logins WHERE id = ?")
         .get(loginId) as { o: number | null } | undefined;
       return row?.o ?? null;
@@ -223,20 +231,19 @@ vi.mock("@/lib/auth", async () => {
       if (profileId !== null) {
         const reachable =
           role === "admin"
-            ? (db
+            ? (dbMod.db
                 .prepare("SELECT id FROM profiles WHERE id = ?")
                 .get(profileId) as { id: number } | undefined)
-            : (db
+            : (dbMod.db
                 .prepare(
                   "SELECT profile_id AS id FROM login_profiles WHERE login_id = ? AND profile_id = ?"
                 )
                 .get(loginId, profileId) as { id: number } | undefined);
         if (!reachable) return false;
       }
-      db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
-        profileId,
-        loginId
-      );
+      dbMod.db
+        .prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?")
+        .run(profileId, loginId);
       return true;
     },
   };

@@ -62,7 +62,7 @@ function walk(dir: string): string[] {
 }
 
 const FILES = SCAN_DIRS.flatMap((d) => walk(path.join(REPO, d)))
-  .map((f) => path.relative(REPO, f))
+  .map((f) => path.relative(REPO, f).split(path.sep).join("/"))
   .filter((f) => !isExcluded(f))
   .sort();
 

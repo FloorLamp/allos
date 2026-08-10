@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 
 // Removal guard for the AI lab-trend interpretation (#20), deleted with the Trends →
@@ -30,8 +30,21 @@ describe("lab-trend narrative removal (#1164/#203)", () => {
     const pattern = FORBIDDEN.join("|");
     let out = "";
     try {
-      out = execSync(
-        `git grep -n -E "${pattern}" -- 'app/**' 'lib/**' ':!lib/__tests__/labs-narrative-removed.test.ts'`,
+      // execFileSync, not execSync: passing the pathspecs through a shell means
+      // cmd.exe on Windows, which does not strip the single quotes, so git receives
+      // a literal `':!lib'` and fails. An argv array reaches git verbatim on both.
+      out = execFileSync(
+        "git",
+        [
+          "grep",
+          "-n",
+          "-E",
+          pattern,
+          "--",
+          "app/**",
+          "lib/**",
+          ":!lib/__tests__/labs-narrative-removed.test.ts",
+        ],
         { cwd: ROOT, encoding: "utf8" }
       );
     } catch (e: unknown) {

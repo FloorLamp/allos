@@ -130,8 +130,88 @@ export function migrate(db: Database.Database): void {
   bootTasks(db);
 }
 
-export const db = globalForDb.__healthDb ?? createDb();
+// `let`, not `const`, so the DB-tier test harness can repoint the singleton
+// between test files — see reopenDatabaseForTests(). ESM exports are LIVE
+// BINDINGS, so every `import { db }` site observes the reassignment without a
+// single call site changing. Nothing in app code may reassign it.
+export let db = globalForDb.__healthDb ?? createDb();
 if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
+
+// A prepared statement declared at MODULE scope, resolved at call time.
+//
+// A prepared statement compiles against ONE connection, so a statement hoisted
+// into a module constant is welded to whichever database was open when that
+// module was first evaluated. That is invisible in production — one connection is
+// opened at import and lives for the whole process — but the shared-registry DB
+// tier (vitest.db-shared.config.ts) evaluates a module once per worker and then
+// swaps the database between test files, which left every hoisted statement
+// pointing at a closed connection.
+//
+// Deferring the compile and caching it per connection keeps the reason those
+// constants exist (compile each statement once, not per call) while making the
+// cache self-invalidating: a new handle is a new cache entry, and the old map is
+// collected with the handle it belonged to. Use this for a module-scope statement;
+// an inline prepare inside a function already sees the current connection.
+const statementCache = new WeakMap<
+  Database.Database,
+  Map<string, Database.Statement>
+>();
+
+function preparedFor(sql: string): Database.Statement {
+  let forConnection = statementCache.get(db);
+  if (!forConnection) {
+    forConnection = new Map();
+    statementCache.set(db, forConnection);
+  }
+  let prepared = forConnection.get(sql);
+  if (!prepared) {
+    prepared = db.prepare(sql);
+    forConnection.set(sql, prepared);
+  }
+  return prepared;
+}
+
+export interface HoistedStatement {
+  get(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+  run(...params: unknown[]): Database.RunResult;
+}
+
+export function hoistedStatement(sql: string): HoistedStatement {
+  return {
+    get: (...params) => preparedFor(sql).get(...params),
+    all: (...params) => preparedFor(sql).all(...params),
+    run: (...params) => preparedFor(sql).run(...params),
+  };
+}
+
+// TEST-ONLY seam for the shared-registry DB tier (vitest.db-shared.config.ts).
+// That tier runs with `isolate: false`, so a worker imports this module ONCE and
+// the per-file ALLOS_DB_PATH the isolated tier relies on no longer takes effect.
+// The harness instead points ALLOS_DB_PATH at a fresh per-file copy of the
+// pre-migrated template and calls this to rebind onto it.
+//
+// The previous handle is closed rather than dropped: one worker runs hundreds of
+// files in a single process, and leaking a SQLite handle per file would exhaust
+// the fd budget. Never call this from app code — the production singleton is
+// opened exactly once, at import.
+export function reopenDatabaseForTests(): void {
+  const previous = db;
+  db = createDb();
+  if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
+  // Module-level state derived from the OLD database outlives the swap in a
+  // shared registry. The timezone memo is keyed by profile id, and every seeded
+  // file bootstraps the same low ids, so a stale entry would silently answer for
+  // the new database. Any future module-scope cache fed by DB reads has to be
+  // reset here too.
+  invalidateTimezoneMemo();
+  try {
+    previous.close();
+  } catch {
+    // Best effort: a handle already closed (or never fully opened) is not a
+    // reason to fail the file that is trying to start cleanly.
+  }
+}
 
 // Register the DB-backed AI tier-config reader as the runtime provider (issue #875) so
 // lib/ai-resolve can resolve task → tier → client without importing the DB layer. Done
