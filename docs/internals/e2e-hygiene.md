@@ -1232,10 +1232,11 @@ never builds, `E2E_FORCE_BUILD=1` always does; in CI the build step owns it and
 wide enough for its worker count.
 
 **Workers.** Locally the Playwright default (half the cores) applies; pass
-`--workers=N` or `PW_WORKERS=N`. **CI still runs one worker per shard**: the
-4-way shard matrix already spends a 2-core runner, and several `next start`
-processes on it would trade honest parallelism for swap. Raising it is now a
-measurement, not a redesign.
+`--workers=N` or `PW_WORKERS=N`. **CI runs two workers per shard**: the old
+one-worker pin assumed a 2-core runner, but `ubuntu-latest` gives public repos
+4 cores, and the measurement below says two is the optimum on exactly that
+hardware — the shard matrix parallelizes across runners while each runner
+parallelizes across two workers.
 
 **Measured (48-spec / 212-test slice, one 4-core container, back to back).** The
 shared-DB harness at `--workers=4` fails 20 tests; DB-per-worker at
