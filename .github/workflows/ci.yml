@@ -17,31 +17,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # STATIC ANALYSIS, and nothing that runs a test. Split out from the two test
+  # tiers (`test-unit`, `test-db` below) because this job used to run all five
+  # serially: 542s, of which the DB tier alone was 300s. A lint or type error then
+  # took nine minutes to surface even though it was known at three.
+  #
+  # The three jobs each re-pay checkout + node_modules restore (~30s), which is
+  # cheap next to what they no longer wait on, and they run concurrently — so the
+  # slowest of them, not their sum, is what a push waits for.
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      # Whole-node_modules cache: the single biggest step in both jobs is
-      # `npm ci` (~2 min, dominated by better-sqlite3's native compile). The key
-      # pins the exact lockfile AND .nvmrc (native modules are built per node
-      # ABI), so a hit is byte-identical to what npm ci would produce and the
-      # install is skipped entirely. No restore-keys on purpose: a stale
-      # node_modules under a changed lockfile must never be reused.
-      - name: Cache node_modules
-        id: modules
-        uses: actions/cache@v6
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
-
-      - run: npm ci
-        if: steps.modules.outputs.cache-hit != 'true'
+      - uses: ./.github/actions/node-setup
 
       # Two-part audit now that the moderate surface is cleared (#668):
       # 1. Full non-blocking audit for visibility — surfaces any moderate (or
@@ -108,25 +97,38 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Pure unit suite AND the coverage regression floor in one pass. This runs
-      # the same test set as `npm test` (vitest.config.ts include: lib/**), just
-      # under v8 coverage, so it doubles as the correctness gate — a separate
-      # `npm test` step would only re-run the identical suite. Fails the job if
-      # lib/** coverage drops below the thresholds in vitest.config.ts (a tripwire
-      # a few points under the current baseline). app/** and components/** are
-      # intentionally not gated.
+  # Pure unit suite AND the coverage regression floor in one pass. This runs
+  # the same test set as `npm test` (vitest.config.ts include: lib/**), just
+  # under v8 coverage, so it doubles as the correctness gate — a separate
+  # `npm test` step would only re-run the identical suite. Fails the job if
+  # lib/** coverage drops below the thresholds in vitest.config.ts (a tripwire
+  # a few points under the current baseline). app/** and components/** are
+  # intentionally not gated.
+  test-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/node-setup
       - name: Test + coverage
         run: npm run test:coverage
 
-      # DB integration + action tier, under its OWN coverage floor. This tier
-      # exercises the query/action write paths that need a live schema — the
-      # modules the pure gate above never imports (so they report ~0% there).
-      # Running it under v8 coverage (thresholds in vitest.db.config.ts, a
-      # tripwire a few points under the measured baseline) makes those modules'
-      # real coverage visible and catches a regression the pure gate can't see;
-      # it also still exercises migrate() on both a fresh and an existing
-      # ("upgrade") database, catching boot-crash-on-upgrade regressions. The
-      # instrumentation adds only ~15s over the plain run.
+  # DB integration + action tier, under its OWN coverage floor. This tier
+  # exercises the query/action write paths that need a live schema — the
+  # modules the pure gate never imports (so they report ~0% there). Running it
+  # under v8 coverage (thresholds in vitest.db.config.ts, a tripwire a few
+  # points under the measured baseline) makes those modules' real coverage
+  # visible and catches a regression the pure gate can't see; it also still
+  # exercises migrate() on both a fresh and an existing ("upgrade") database,
+  # catching boot-crash-on-upgrade regressions.
+  #
+  # The longest of the three non-browser jobs (~300s), which is why it gets its
+  # own runner: serialised behind lint and typecheck it was what made a static
+  # failure take nine minutes to report.
+  test-db:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/node-setup
       - name: Test (DB) + coverage
         run: npm run test:db:coverage
 
