@@ -88,7 +88,9 @@ and in-flight agent call. Everything here was learned by losing work to it.
   labelled **"stopped by user" is NOT evidence the owner stopped it** — the
   environment emits that label for its own reclaims, and the owner has stated
   they never stop agents directly. Same resume drill; absent an explicit owner
-  message, resume.
+  message, resume. **See the forbidden-signals table at the top of this file** —
+  this exact rule was in this bullet on 2026-08-10 and was still read literally,
+  which is why it now also exists as a table entry with a required action.
 - **A restore can time-warp your LOCAL view — GitHub's REST API is the only
   authoritative one.** The checkout, the `origin/main` ref (the container's git
   proxy serves a stale mirror) and the task list can all revert together, which
@@ -156,6 +158,45 @@ step, and end with _"commit properly, do not push, do not open a PR, report the
 full PR body back."_ Then write each finished agent's reasoning into a GitHub
 comment via MCP — if the container dies, the work is reconstructible from those
 comments plus the branches instead of only from the orchestrator's context.
+
+## STOP — the three agent signals you are forbidden to read literally
+
+**Read this before concluding ANYTHING about a running agent.** Every rule below
+already existed elsewhere in this file on 2026-08-10, in prose, and was walked
+past anyway — three times in one session, twice within ten minutes. Prose in a
+list did not work. This is the mechanical version, at the top, because the cost
+was ~27 agent-hours and two near-losses of finished work.
+
+| Signal                                     | What it looks like       | What it actually means                                                                                                    | REQUIRED action                                                                                                                                                                                               |
+| ------------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"stopped by the user"` on an agent result | The owner killed it      | **NOTHING.** The environment emits this label for its own reclaims. The owner has stated they NEVER stop agents directly. | Treat as a reclaim. Preserve the work (below), then resume or re-dispatch. Do NOT report it as cancelled. Only an explicit message from the owner in the conversation counts as the owner stopping something. |
+| Transcript **mtime** is recent             | The agent is working     | **NOTHING.** A blocked agent is appended to like a working one, AND a reclaim's own bookkeeping touches the file.         | Never cite mtime as liveness. Use the progress checks below.                                                                                                                                                  |
+| Commits exist in the worktree              | The agent is progressing | **NOTHING on its own.** Commits can all be from the first ten minutes.                                                    | Check `git log -1 --pretty=%cr`. Commits older than the last check-in = no progress since.                                                                                                                    |
+
+**Two or more agents dying at once, at a similar age, with no owner message, is a
+reclaim.** It is never two coincidental user stops. That pattern alone settles it.
+
+### The preserve-first drill (do this BEFORE diagnosing or reporting)
+
+An agent's commits are **not** safe. Only pushed refs are. When any agent stops,
+is reclaimed, or is suspected stalled:
+
+```
+cd $SCRATCH/wt-<x>
+git status --porcelain=v1                 # anything uncommitted?
+git add -A && git commit -m "WIP checkpoint: ... NOT gate-verified"
+git push -u origin HEAD:<its-branch>
+```
+
+Push first, ask questions after. A branch that fails CI is worth infinitely more
+than a worktree that vanishes. Label an orchestrator-made WIP commit as
+**unverified** in its message, and tell whoever resumes that you made it — they
+must not mistake it for the agent's own tested work.
+
+**In dispatch briefs the rule is PUSH, not commit.** "Commit as you go" was in
+the template for months and still produced 50 finished files in a dirty worktree
+and, separately, four commits stranded unpushed for three hours. Committing
+survives the agent; only pushing survives the container.
 
 ## Stalled agents — "alive" is not "progressing"
 
