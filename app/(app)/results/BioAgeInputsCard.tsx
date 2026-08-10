@@ -12,6 +12,7 @@ import {
   PHENOAGE_INPUT_NAMES,
 } from "@/lib/bio-age";
 import { pillarHref } from "@/lib/longevity-pillars";
+import CardFootnote from "@/components/CardFootnote";
 import { readingDetailHref } from "@/lib/hrefs";
 
 // The bio-age INPUT PANEL on Results › Biomarkers (#2367).
@@ -120,10 +121,10 @@ export default async function BioAgeInputsCard() {
         )}
       </div>
 
-      <p className="mt-4 border-t border-black/5 pt-3 text-xs leading-relaxed text-slate-500 dark:border-white/10 dark:text-slate-400">
+      <CardFootnote>
         The Levine PhenoAge model (2018) needs all nine of these analytes from
         one draw, plus your age.
-      </p>
+      </CardFootnote>
     </section>
   );
 }
