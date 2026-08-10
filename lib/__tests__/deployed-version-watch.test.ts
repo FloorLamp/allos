@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { UPDATE_CHECK_MS } from "@/lib/sw-update";
+import { UPDATE_CHECK_MS, waitingWorkerPlan } from "@/lib/sw-update";
 
 // THE SIGNAL, not the decision (issue #2329).
 //
@@ -270,6 +270,29 @@ describe("useDeployedVersion (#2329)", () => {
     reply = { status: 200, sha: DEPLOYED_SHA, commitMessage: "Ship the thing" };
     await vi.advanceTimersByTimeAsync(UPDATE_CHECK_MS);
     expect(watch.current().sha).toBe(DEPLOYED_SHA);
+  });
+
+  it("hands the matching read STRAIGHT to #1905's plan, rather than holding it at wait", async () => {
+    // The signal joined to the decision it unblocks — the join no test in either file
+    // made, and the one that catches the trap above by its CONSEQUENCE rather than by
+    // its flag. This is the commonest shape in production: a fresh load AFTER a
+    // deploy, already on the new build, whose own register() call discovers the new
+    // worker seconds later. The read matches, so if a still-polling hook reported
+    // itself unsettled the plan would be `wait` forever — the bar is suppressed
+    // (correctly, there is nothing to offer) but the waiting worker is never consumed
+    // either, and it sits behind a page that already IS the build it carries.
+    const watch = hooks.mount(() =>
+      useDeployedVersion({ baseline: PAGE_SHA, mode: "poll", generation: 0 })
+    );
+    await settleReads();
+
+    expect(
+      waitingWorkerPlan({
+        pageSha: PAGE_SHA,
+        deployedSha: watch.current().sha,
+        deployedSettled: watch.current().settled,
+      })
+    ).toBe("activate-silently");
   });
 
   it("asks nothing with no baseline to compare against", async () => {

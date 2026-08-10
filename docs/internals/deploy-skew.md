@@ -130,6 +130,21 @@ moment that read settles either way (`useDeployedVersion` reports `settled`
 separately from `sha`, because the endpoint is session-gated and an anonymous tab
 settles knowing nothing).
 
+**`settled` means "a read has come back", not "the hook has stopped asking."** Those
+were the same thing while the only reader of this flag was the one-shot `"once"`
+mode, and collapsing `"once"` into a poll (#2329) is exactly where conflating them
+bites: the normal, no-deploy answer is _the sha matched_, which is the answer a poll
+must keep re-asking. If that read reported itself unsettled, `waitingWorkerPlan()`
+would sit on `wait` **permanently** in the commonest case there is — a fresh load
+after a deploy, whose own worker installs seconds later — and #1905's silent consume
+would never run, leaving that worker waiting forever behind a page that already is
+the new build. So every completed read reports `settled`, whatever it said: a 5xx, an
+offline blip, an unparseable body. Answering in the dark is safe precisely because
+the poll corrects it on the next tick. Whether to keep asking is a separate, private
+question the hook keeps to itself (`finalRef`): asking stops only when the answer can
+no longer change — the server named a build we are not on, or the endpoint said 401
+and never will.
+
 The read is **re-armed per waiting worker**: `useDeployedVersion` takes a
 `generation` the registrar bumps for each newly-waiting worker, which un-settles a
 finished read. A second deploy under the same open page is therefore never judged
@@ -284,10 +299,13 @@ is why a permanently-false input went unnoticed for a week. It executes the real
 `useDeployedVersion` against a minimal hook runtime (the pure tier is node-only by
 design, so `react`'s three primitives are mocked with an order-indexed
 implementation): the mount read, the poll continuing after a read that found no
-mismatch, the session-gated settle, the per-generation re-arm. Its second half is a
-source scan of the registrar's call site, because whether the hook is switched on at
-all is a call-site fact — exactly the fact #1795 got wrong — that no test of the hook
-in isolation can see.
+mismatch, a failed read still reporting itself answered, the session-gated settle,
+the per-generation re-arm, and one test that JOINS the signal to the decision it
+unblocks — a matching read reaching `waitingWorkerPlan()` as `activate-silently`
+rather than `wait`, which is the settled-is-not-final trap caught by its consequence
+instead of by its flag. Its second half is a source scan of the registrar's call
+site, because whether the hook is switched on at all is a call-site fact — exactly
+the fact #1795 got wrong — that no test of the hook in isolation can see.
 
 Browser: `e2e/sw-update.spec.ts` drives the real deferred-activation posture and,
 since #2329, the **deploy shape production actually has**: a tab that is open,
