@@ -1,25 +1,59 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
+const alias = { "@": fileURLToPath(new URL(".", import.meta.url)) };
+
+// DB integration tests (migrations/upgrades) and the server-action write-path
+// tests are a separate, impure tier that opens real SQLite handles and mocks the
+// auth/next-cache boundary — keep the default `npm test` suite pure. They run via
+// `npm run test:db` (vitest.db.config.ts) and are gated in CI.
+const NOT_PURE = [
+  "lib/__db_tests__/**",
+  "lib/__action_tests__/**",
+  "node_modules/**",
+];
+
+// The two specs that call process.chdir(). Worker threads do not support it at
+// all, and under a shared registry it would not be safe even on `forks`: the
+// change of directory would outlive the file and follow every later spec in that
+// worker. They get their own isolated, forked project instead.
+const CHDIR_SPECS = [
+  "lib/__tests__/ai-log-redaction.test.ts",
+  "lib/__tests__/notify-log-sink.test.ts",
+];
+
 // Tests target pure logic only (no DB/network), so the default `node`
 // environment is enough. The `@/*` alias mirrors tsconfig.json `paths` so test
 // files can import app modules the same way the app does.
+//
+// TWO PROJECTS, ONE `npm test`. The bulk run with a SHARED module registry
+// (`isolate: false`): with no database and only one vi.mock in 833 files, nothing
+// here needs a private registry, and re-importing the same module graph for every
+// file was over half the run — importing it once per worker took the suite from
+// 31s to 13s. The chdir pair keeps the old per-file isolation.
 export default defineConfig({
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL(".", import.meta.url)),
-    },
-  },
+  resolve: { alias },
   test: {
-    include: ["lib/**/*.test.ts"],
-    // DB integration tests (migrations/upgrades) and the server-action write-path
-    // tests are a separate, impure tier that opens real SQLite handles and mocks the
-    // auth/next-cache boundary — keep the default `npm test` suite pure. They run via
-    // `npm run test:db` (vitest.db.config.ts) and are gated in CI.
-    exclude: [
-      "lib/__db_tests__/**",
-      "lib/__action_tests__/**",
-      "node_modules/**",
+    projects: [
+      {
+        resolve: { alias },
+        test: {
+          name: "pure",
+          include: ["lib/**/*.test.ts"],
+          exclude: [...NOT_PURE, ...CHDIR_SPECS],
+          pool: "threads",
+          isolate: false,
+        },
+      },
+      {
+        resolve: { alias },
+        test: {
+          name: "pure-chdir",
+          include: CHDIR_SPECS,
+          exclude: NOT_PURE,
+          pool: "forks",
+        },
+      },
     ],
     // Coverage here is only measured for `npm run test:coverage` (the pure
     // suite), never for the default `npm test`. This is the FIRST of two coverage
