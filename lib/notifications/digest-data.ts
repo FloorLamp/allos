@@ -1055,12 +1055,16 @@ export async function refreshDigestOfferTail(profileId: number): Promise<void> {
     // Day rollover: yesterday's keyboard must not stay tappable, because its tokens
     // carry yesterday's date and the expansion would refuse them anyway. Strip it and
     // forget the pointer so this runs once, not every tick forever.
-    await updateMessageKeyboard(pointer.chatId, pointer.messageId, []).catch(
-      (e) =>
-        log.info("digest tail: rollover strip failed (ignored)", {
-          profile: profileId,
-          err: e instanceof Error ? e.message : String(e),
-        })
+    await updateMessageKeyboard(
+      profileId,
+      pointer.chatId,
+      pointer.messageId,
+      []
+    ).catch((e) =>
+      log.info("digest tail: rollover strip failed (ignored)", {
+        profile: profileId,
+        err: e instanceof Error ? e.message : String(e),
+      })
     );
     clearDigestTailPointer(profileId);
     return;
@@ -1074,6 +1078,7 @@ export async function refreshDigestOfferTail(profileId: number): Promise<void> {
       : [];
   try {
     await updateMessageKeyboard(
+      profileId,
       pointer.chatId,
       pointer.messageId,
       messageKeyboard({ title: "", body: "", actions })

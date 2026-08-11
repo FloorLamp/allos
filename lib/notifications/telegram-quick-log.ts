@@ -155,6 +155,7 @@ export async function handlePracticeDoneTap(
   const remaining = removeButton(rows, cq.data as string);
   if (remaining.length === 0) {
     await closeMessage(
+      profileId,
       chatId,
       messageId,
       replacementWithTitle(
@@ -165,7 +166,7 @@ export async function handlePracticeDoneTap(
       )
     );
   } else {
-    await updateMessageKeyboard(chatId, messageId, remaining);
+    await updateMessageKeyboard(profileId, chatId, messageId, remaining);
   }
 }
 
@@ -295,6 +296,7 @@ export async function handleMoodTap(
   const label = moodLabel(token.valence);
   await answerCallbackQuery(cq.id, `Logged: ${label}`);
   await closeMessage(
+    profileId,
     chatId,
     messageId,
     `${moodFace(token.valence)} Logged — ${label}. Thanks for checking in.`
@@ -327,6 +329,7 @@ export async function handleMoodKeepTap(
   if (outcome === "kept") resetMoodCheckinIgnored(profileId);
   await answerCallbackQuery(cq.id, moodKeepAnswerText(outcome));
   await closeMessage(
+    profileId,
     chatId,
     messageId,
     replacementWithTitle(cq.message?.text, moodKeepCloseText(outcome))
@@ -365,6 +368,7 @@ export async function handleSymptomSeverity(
     `Logged: ${label} (${sevLabel.toLowerCase()})`
   );
   await closeMessage(
+    profileId,
     chatId,
     messageId,
     `${GLYPH.done} Logged ${label} — ${sevLabel}.`
@@ -1166,7 +1170,7 @@ export async function handleOfferTailTap(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
-  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+  const nowHhmm = zonedDateParts(getTimezone(profileId), clockNow()).hhmm;
   const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
 
   if (token.action === "collapse") {
@@ -1174,6 +1178,7 @@ export async function handleOfferTailTap(
     // control: the ⚙️ Tune button (#1714) shares the message and would otherwise be
     // destroyed by the first expand/collapse round-trip.
     await updateMessageKeyboard(
+      profileId,
       chatId,
       messageId,
       messageKeyboard({
@@ -1201,6 +1206,7 @@ export async function handleOfferTailTap(
     return;
   }
   await updateMessageKeyboard(
+    profileId,
     chatId,
     messageId,
     messageKeyboard({
@@ -1245,6 +1251,7 @@ export async function handleDemoteTap(
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (rows.length === 0) return;
   await updateMessageKeyboard(
+    profileId,
     chatId,
     messageId,
     removeButton(rows, cq.data as string)
@@ -1296,6 +1303,7 @@ export async function handleRightSizeLowerTap(
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (rows.length === 0) return;
   await updateMessageKeyboard(
+    profileId,
     chatId,
     messageId,
     removeButton(rows, cq.data as string)
@@ -1352,9 +1360,10 @@ export async function handleTuneTap(
   }
 
   if (token.action === "collapse") {
-    const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+    const nowHhmm = zonedDateParts(getTimezone(profileId), clockNow()).hhmm;
     const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
     await updateMessageKeyboard(
+      profileId,
       chatId,
       messageId,
       messageKeyboard({
@@ -1392,6 +1401,7 @@ export async function handleTuneTap(
     return;
   }
   await updateMessageKeyboard(
+    profileId,
     chatId,
     messageId,
     messageKeyboard({
@@ -1476,5 +1486,5 @@ export async function handleDigestTimeTap(
     digestTimeDynamicToken(profileId, token.date),
     digestTimeDismissToken(profileId, token.date),
   ].reduce(removeButton, rows);
-  await updateMessageKeyboard(chatId, messageId, consumed);
+  await updateMessageKeyboard(profileId, chatId, messageId, consumed);
 }

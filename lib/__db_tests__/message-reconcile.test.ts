@@ -81,6 +81,7 @@ import {
   RECONCILE_CLOSING,
 } from "@/lib/notifications/reconcile-core";
 import {
+  answerCallbackQuery,
   editMessageReplyMarkupRaw,
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
@@ -103,7 +104,29 @@ import {
   parseProseGatherRecord,
 } from "@/lib/notifications/reconcile-core";
 import { getProfileSetting, setProfileSetting } from "@/lib/settings";
+import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import { sqlNow } from "@/lib/clock";
 import { seedLoginTelegram } from "./fixtures";
+
+// A callback query shaped like the one Telegram delivers, carrying the keyboard the
+// handlers read their context back off.
+function tapCq(
+  chatId: string,
+  messageId: number,
+  data: string,
+  keyboard: unknown
+) {
+  return {
+    id: `cb-${data}`,
+    data,
+    message: {
+      message_id: messageId,
+      chat: { id: Number(chatId) },
+      text: "reminder",
+      reply_markup: { inline_keyboard: keyboard },
+    },
+  } as never;
+}
 
 const editKeyboard = vi.mocked(editMessageReplyMarkupRaw);
 const editText = vi.mocked(editMessageTextRaw);
@@ -1983,5 +2006,233 @@ describe("the three non-resolved tails are untouched (#2275)", () => {
     expect(String(editText.mock.calls.at(-1)![2])).toBe(
       "[Tess] 🍽️ Morning food log — this was yesterday's message."
     );
+  });
+});
+
+// ── The pointer tracks what a TAP put on screen ──────────────────────────────
+//
+// `recordMessagePointer` is a SEND-time record, and for a long time it was the only
+// writer: a tap rebuilt the message and left the pointer describing the SEND's keyboard.
+// The sweep reasons entirely from that blob, so it decided about buttons that were no
+// longer there. Every case below goes through a real send, a REAL tap, and then the real
+// sweep — the combination the rest of this file never made, which is why none of it
+// failed while two live surfaces were being corrupted every hour.
+describe("the pointer follows a callback edit, not just a send", () => {
+  it("does not close a confirmed dose session while its correction row is live", async () => {
+    // #2020's chips ride the reminder for an hour after a confirm. The sweep used to
+    // read the SEND's take/skip tokens, find the dose resolved, conclude every claim was
+    // dead and CLOSE — taking a live affordance with it, up to 59 minutes early, on the
+    // one tier where the instant it corrects arms the PRN redose window.
+    const pid = newProfile("Live Lena");
+    const { itemId, doseId } = seedDose(pid, "Live D3");
+    seedLoginTelegram(pid, "5552290");
+    const date = today(pid);
+    const built = buildIntakeReminderForSlots(pid, ["Morning"])!;
+    await dispatch(pid, built.message);
+    const ptr = liveMessagePointers(pid)[0];
+
+    await handleCallbackQuery(
+      tapCq(
+        "5552290",
+        ptr.messageId,
+        `take:${pid}:${doseId}:${itemId}:${date}`,
+        messageKeyboard(built.message)
+      )
+    );
+    // The pointer now says what the chat says: the session resolved, and the correction
+    // row is the whole keyboard.
+    const afterTap = liveTokens(pid);
+    expect(afterTap.some((t) => t.startsWith("take:"))).toBe(false);
+    expect(afterTap.some((t) => t.startsWith("dosetimeat:"))).toBe(true);
+
+    // Pin the audit stamp so the burst's hour is a fact rather than a race, then sweep
+    // well inside it.
+    db.prepare(
+      `UPDATE intake_item_logs SET taken_at = ?, recorded_at = ?
+        WHERE dose_id = ?`
+    ).run(sqlNow(), sqlNow(), doseId);
+    editText.mockClear();
+    const swept = await reconcileProfileMessages(pid);
+    expect(swept.closed).toBe(0);
+    expect(swept.edited).toBe(0);
+    expect(liveTokens(pid).some((t) => t.startsWith("dosetimeat:"))).toBe(true);
+  });
+
+  it("does not collapse a food nudge the user expanded", async () => {
+    // #1807: the expansion is the user's current view, and the sweep may only ever
+    // REDUCE what a chat claims — never change what it shows. It read the visible count
+    // off the SEND's compact keyboard, so the first sweep after any content change put
+    // "Show more" back in the box.
+    const pid = newProfile("Wide Wren");
+    seedLoginTelegram(pid, "5552291");
+    setProfileFoodTelegram(pid, true);
+    const date = today(pid);
+    const nudge = buildFoodNudge(pid, "Evening", date)!;
+    await dispatch(pid, nudge);
+    const ptr = liveMessagePointers(pid)[0];
+    const compact = countVisibleFoodButtons(ptr.keyboard);
+
+    await handleCallbackQuery(
+      tapCq(
+        "5552291",
+        ptr.messageId,
+        `foodmore:${pid}:Evening:${date}`,
+        messageKeyboard(nudge)
+      )
+    );
+    const expanded = countVisibleFoodButtons(liveKeyboard(pid));
+    expect(expanded).toBeGreaterThan(compact);
+
+    // A serving logged elsewhere moves the button labels, which is what used to make the
+    // sweep re-render — at the stale compact width.
+    logFoodServingCore(pid, canonicalFoodGroup("leafy_greens")!, date);
+    await reconcileProfileMessages(pid);
+    expect(countVisibleFoodButtons(liveKeyboard(pid))).toBe(expanded);
+  });
+
+  it("costs zero Telegram calls on the tick after a tap", async () => {
+    // The zero-call steady state this sweep exists to protect: a converged pointer means
+    // the first tick after a tap has nothing to say, rather than spending a call
+    // discovering that its own record was stale.
+    const pid = newProfile("Quiet Quinn");
+    const { itemId, doseId } = seedDose(pid, "Quiet Mg");
+    seedLoginTelegram(pid, "5552292");
+    const date = today(pid);
+    const built = buildIntakeReminderForSlots(pid, ["Morning"])!;
+    await dispatch(pid, built.message);
+    const ptr = liveMessagePointers(pid)[0];
+    await handleCallbackQuery(
+      tapCq(
+        "5552292",
+        ptr.messageId,
+        `skip:${pid}:${doseId}:${itemId}:${date}`,
+        messageKeyboard(built.message)
+      )
+    );
+    editText.mockClear();
+    editKeyboard.mockClear();
+    await reconcileProfileMessages(pid);
+    expect(editText.mock.calls.length + editKeyboard.mock.calls.length).toBe(0);
+  });
+
+  it("forgets the pointer when a tap CLOSES the message", async () => {
+    // Closing is forgetting — the sweep's own close arm says so, and a consumed message
+    // makes no claim for a later tick to reconcile.
+    const pid = newProfile("Gone Gus");
+    seedLoginTelegram(pid, "5552293");
+    const date = today(pid);
+    const item = seedDose(pid, "Gone Zinc");
+    const built = buildIntakeReminderForSlots(pid, ["Morning"])!;
+    await dispatch(pid, built.message);
+    const ptr = liveMessagePointers(pid)[0];
+    // Retire the item so the tap finds no session to rebuild and falls to the arm that
+    // drops the tapped button. The row carries take AND skip, so the first tap leaves
+    // one behind — and the pointer records exactly that, which is what the second tap
+    // then reads its context off.
+    db.prepare(`UPDATE intake_items SET active = 0 WHERE id = ?`).run(
+      item.itemId
+    );
+    await handleCallbackQuery(
+      tapCq(
+        "5552293",
+        ptr.messageId,
+        `take:${pid}:${item.doseId}:${item.itemId}:${date}`,
+        messageKeyboard(built.message)
+      )
+    );
+    expect(liveTokens(pid)).toEqual([
+      `skip:${pid}:${item.doseId}:${item.itemId}:${date}`,
+    ]);
+
+    await handleCallbackQuery(
+      tapCq(
+        "5552293",
+        ptr.messageId,
+        `skip:${pid}:${item.doseId}:${item.itemId}:${date}`,
+        liveKeyboard(pid)
+      )
+    );
+    expect(liveMessagePointers(pid)).toHaveLength(0);
+  });
+});
+
+// ── A refusal on the intake tier must be DISMISSED, not glanced at ───────────
+//
+// "Every refusal is spoken" has always been the contract, because a silent ack reads as
+// success and on the dose side success means the redose window has been told something
+// about a controlled medication. A plain callback answer under-delivers on it: a top
+// banner on a phone, but on Telegram Desktop a small tooltip that fades on its own. So
+// the refusals carry `show_alert` — and only the refusals, because a modal spent on
+// "Logged ✅" is how the one that matters stops being read.
+describe("intake refusals are answered as an alert, successes are not", () => {
+  const answerOpts = () =>
+    vi.mocked(answerCallbackQuery).mock.calls.at(-1)?.[2];
+
+  it("alerts a ✅ on a dose already marked skipped, but not an honest log", async () => {
+    const pid = newProfile("Alert Ada");
+    const { itemId, doseId } = seedDose(pid, "Alert D3");
+    seedLoginTelegram(pid, "5552294");
+    const date = today(pid);
+    const built = buildIntakeReminderForSlots(pid, ["Morning"])!;
+    await dispatch(pid, built.message);
+    const kb = messageKeyboard(built.message);
+    const take = `take:${pid}:${doseId}:${itemId}:${date}`;
+
+    vi.mocked(answerCallbackQuery).mockClear();
+    await handleCallbackQuery(tapCq("5552294", 1, take, kb));
+    // The button did what it said. No modal.
+    expect(answerOpts()?.alert).toBeFalsy();
+
+    // Now the #280 case: the dose stands as SKIPPED, so a ✅ writes nothing and the
+    // answer has to contradict its own label.
+    // The #280 state, written directly: the dose is already TAKEN from the tap above,
+    // so `markDoseSkipped` would refuse it (`already-taken`) and change nothing. The
+    // fixture is the standing skip that the next ✅ has to contradict.
+    db.prepare(
+      `UPDATE intake_item_logs SET status = 'skipped' WHERE dose_id = ?`
+    ).run(doseId);
+    vi.mocked(answerCallbackQuery).mockClear();
+    await handleCallbackQuery(tapCq("5552294", 1, take, kb));
+    expect(answerOpts()?.alert).toBe(true);
+  });
+
+  it("does not alert a CARE-tier refusal either — the line is the intake tier", async () => {
+    // A preventive tap whose rule is not in the catalog writes nothing, so it IS a
+    // refusal — and it still answers as a toast. The boundary is deliberate and worth
+    // pinning: it is not "refusals alert", it is "intake refusals alert", because the
+    // harm the modal buys is a reader believing a medication was logged when it was not.
+    const pid = newProfile("Toast Tam");
+    seedLoginTelegram(pid, "5552296");
+    vi.mocked(answerCallbackQuery).mockClear();
+    await handleCallbackQuery(
+      tapCq("5552296", 1, `pvdone:${pid}:not-a-real-rule-key`, [
+        [
+          {
+            text: "✅ Done",
+            callback_data: `pvdone:${pid}:not-a-real-rule-key`,
+          },
+        ],
+      ])
+    );
+    expect(answerOpts()?.alert).toBeFalsy();
+  });
+
+  it("does not alert a food quick-log", async () => {
+    // Coaching tier: a missed toast costs a serving's timestamp, and a modal here is
+    // what would teach people to dismiss the dose one unread.
+    const pid = newProfile("Calm Cato");
+    seedLoginTelegram(pid, "5552295");
+    setProfileFoodTelegram(pid, true);
+    const date = today(pid);
+    const nudge = buildFoodNudge(pid, "Evening", date)!;
+    await dispatch(pid, nudge);
+    const token = keyboardTokens(messageKeyboard(nudge)).find((t) =>
+      t.startsWith("food:")
+    )!;
+    vi.mocked(answerCallbackQuery).mockClear();
+    await handleCallbackQuery(
+      tapCq("5552295", 1, token, messageKeyboard(nudge))
+    );
+    expect(answerOpts()?.alert).toBeFalsy();
   });
 });

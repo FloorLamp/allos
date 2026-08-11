@@ -27,6 +27,7 @@ import {
   resolveTapProfile,
   takeMatchesProfile,
   tapAnswerText,
+  tapAnswerNeedsDismissal,
   tapLogged,
   tapResolved,
   tapSkipAnswerText,
@@ -624,5 +625,35 @@ describe("workoutFinishAnswerText / workoutDiscardAnswerText", () => {
     expect(
       workoutDiscardAnswerText({ kind: "already-finished", activityId: 1 })
     ).toContain("Already finished");
+  });
+});
+
+describe("which dose answers must be dismissed rather than glanced at", () => {
+  it("holds an answer that contradicts its own button", () => {
+    // A ✅ on a dose standing as skipped, and a ⏭️ on one standing as taken: the write
+    // did not happen and the answer has to say the opposite of the label (#280).
+    expect(tapAnswerNeedsDismissal("already-skipped", "take")).toBe(true);
+    expect(tapAnswerNeedsDismissal("already-taken", "skip")).toBe(true);
+    expect(tapAnswerNeedsDismissal("stale-dose", "take")).toBe(true);
+    expect(tapAnswerNeedsDismissal("inactive", "skip")).toBe(true);
+  });
+
+  it("lets an honest answer pass, including an idempotent repeat", () => {
+    // Nothing was written by the repeat, but the state the button asked for is the state
+    // that stands — so it is not a refusal, and a dismissal spent here is one the alerts
+    // that matter can no longer afford.
+    expect(tapAnswerNeedsDismissal("logged", "take")).toBe(false);
+    expect(tapAnswerNeedsDismissal("already-taken", "take")).toBe(false);
+    expect(tapAnswerNeedsDismissal("skipped", "skip")).toBe(false);
+    expect(tapAnswerNeedsDismissal("already-skipped", "skip")).toBe(false);
+  });
+
+  it("holds an OFF-DAY log, whose button was honest and whose note is the point", () => {
+    // #1602's own words: confirming an off-day dose silently is how a weekly drug gets
+    // taken twice in a week without anyone noticing — and an answer that fades on its
+    // own is silently. The write succeeded; the qualifier still cannot be missed.
+    expect(tapLogged("logged-off-day")).toBe(true);
+    expect(tapAnswerNeedsDismissal("logged-off-day", "take")).toBe(true);
+    expect(tapAnswerNeedsDismissal("logged-off-day", "skip")).toBe(true);
   });
 });

@@ -703,6 +703,48 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     );
   });
 
+  it("opens the picker on a session that has no dose buttons left to read the day off", async () => {
+    const pid = newProfile("Closed Cleo");
+    const { itemId, doseId } = seedDose(pid, "Closed Ibuprofen");
+    seedLoginTelegram(pid, "5552036");
+    markDoseTaken(pid, doseId, itemId, today(pid));
+    const anchor = doseLogs(pid)[0].id;
+    stampTap(anchor, "2026-08-05 19:20:00");
+
+    // The state the ORDINARY final confirm leaves behind: every dose resolved, so the
+    // session renders its bare "all taken" summary and the correction row IS the whole
+    // keyboard. Reached here through a chip so the burst sits at a stated instant rather
+    // than at the audit clock the freeze deliberately does not reach.
+    editText.mockClear();
+    await handleCallbackQuery(
+      cq("5552036", `dosetime:${pid}:${anchor}:60`, [])
+    );
+    const closedKb = lastEditedKeyboard();
+    const closed = keyboardTokens(closedKb as never);
+    expect(
+      closed.some((t) => t.startsWith("take:") || t.startsWith("all:"))
+    ).toBe(false);
+    const open = closed.find((t) => t.endsWith(":open")) as string;
+
+    // The 🕐 button writes nothing, so it has no restamp outcome to take an anchor from,
+    // and this keyboard has no session token to read the day off either. Without the
+    // ledger anchor the rebuild finds no day, edits nothing, and answers nothing — a
+    // visible button that silently does nothing, on the message every confirm produces.
+    editText.mockClear();
+    await handleCallbackQuery(cq("5552036", open, closedKb));
+    const pickerKb = lastEditedKeyboard();
+    const picker = keyboardTokens(pickerKb as never);
+    expect(picker.some((t) => /:\d\d:00$/.test(t))).toBe(true);
+    const back = picker.find((t) => t.endsWith(":back")) as string;
+
+    // And ↩︎ Back comes home to the correction row rather than to the same dead end.
+    editText.mockClear();
+    await handleCallbackQuery(cq("5552036", back, pickerKb));
+    const home = keyboardTokens(lastEditedKeyboard() as never);
+    expect(home.some((t) => t.endsWith(":open"))).toBe(true);
+    expect(home.some((t) => t.endsWith(":back"))).toBe(false);
+  });
+
   it("re-stamps recorded_at, leaves the adherence DAY where the schedule put it", async () => {
     const pid = newProfile("Bedtime Bec");
     const { itemId, doseId } = seedDose(pid, "Bedtime Melatonin");
