@@ -53,6 +53,7 @@ import {
   type InlineKeyboard,
 } from "./telegram-api";
 import { deliveredKeyboard } from "./delivered-keyboard";
+import { capTelegramKeyboard } from "./telegram-limits";
 import {
   planKindSupersede,
   planPointerRotation,
@@ -586,5 +587,13 @@ export async function updateMessageKeyboard(
   keyboard: InlineKeyboard
 ): Promise<void> {
   await editMessageReplyMarkupRaw(chatId, messageId, keyboard);
-  syncMessagePointerKeyboard(profileId, chatId, messageId, keyboard);
+  // The CAPPED keyboard, because that is what the wire carried — recording the builder's
+  // full one would put the pointer back in the business of describing buttons the chat
+  // does not have, which is the thing this sync exists to stop.
+  syncMessagePointerKeyboard(
+    profileId,
+    chatId,
+    messageId,
+    capTelegramKeyboard(keyboard).keyboard
+  );
 }

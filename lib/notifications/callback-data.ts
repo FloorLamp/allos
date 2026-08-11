@@ -169,19 +169,29 @@ export function tapSkipped(outcome: DoseTakenOutcome): boolean {
   return outcome === "skipped" || outcome === "already-skipped";
 }
 
-// Did this tap fail to do the thing its own button named? Not "did nothing change" —
-// an idempotent repeat changes nothing and is honest, because the state the button
-// asked for is the state that stands. What this catches is the tap whose ANSWER has to
-// contradict its label: a ✅ on a dose already marked skipped, a ⏭️ on one already
-// logged, a retired dose, a paused item.
+// Must the reader DISMISS this answer rather than be allowed to miss it? The predicate
+// the answer's DELIVERY keys on (`show_alert`), never its wording — `tapAnswerText` and
+// `tapSkipAnswerText` already say the honest thing, and this decides only whether a
+// glance can lose it.
 //
-// It is the predicate the answer's DELIVERY keys on (`show_alert`), never its wording —
-// `tapAnswerText` and `tapSkipAnswerText` already say the honest thing, and this decides
-// only whether the reader has to dismiss it or can miss it.
-export function tapContradictsButton(
+// TWO reasons, not one, and the second is the one worth spelling out.
+//
+// The obvious reason is an answer that CONTRADICTS its own button: a ✅ on a dose
+// already marked skipped, a ⏭️ on one already logged, a retired dose, a paused item.
+// Note this is NOT "nothing was written" — an idempotent repeat writes nothing and is
+// perfectly honest, because the state the button asked for is the state that stands.
+//
+// The second is `logged-off-day`, where the button did exactly what it said and the
+// answer still must not be missed. #1602 put it plainly: confirming an off-day dose
+// silently is how a weekly drug gets taken twice in a week without anyone noticing —
+// and a notice that fades on its own IS silently, which is the premise of showing these
+// as alerts at all. The qualifier is the safety-relevant half of that answer, so it is
+// held to the same bar as a refusal even though the write succeeded.
+export function tapAnswerNeedsDismissal(
   outcome: DoseTakenOutcome,
   kind: "take" | "skip"
 ): boolean {
+  if (outcome === "logged-off-day") return true;
   return kind === "take" ? !tapLogged(outcome) : !tapSkipped(outcome);
 }
 

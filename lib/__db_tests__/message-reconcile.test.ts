@@ -2185,7 +2185,9 @@ describe("intake refusals are answered as an alert, successes are not", () => {
 
     // Now the #280 case: the dose stands as SKIPPED, so a ✅ writes nothing and the
     // answer has to contradict its own label.
-    markDoseSkipped(pid, doseId, itemId, date);
+    // The #280 state, written directly: the dose is already TAKEN from the tap above,
+    // so `markDoseSkipped` would refuse it (`already-taken`) and change nothing. The
+    // fixture is the standing skip that the next ✅ has to contradict.
     db.prepare(
       `UPDATE intake_item_logs SET status = 'skipped' WHERE dose_id = ?`
     ).run(doseId);

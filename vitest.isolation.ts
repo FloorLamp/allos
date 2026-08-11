@@ -45,10 +45,17 @@ const CANNOT_SHARE = [/vi\s*\.\s*mock\(/, /process\s*\.\s*chdir\(/];
 // isolation. Spying on `console`, `fs`, `Date` or a db handle is untouched by this —
 // those are globals and objects, not registry entries, and they are why the marker is
 // the namespace import rather than `spyOn` on its own.
+//
+// Matched on ANY namespace import, not only `@/`-prefixed ones. Specs use the alias by
+// convention, but keying on it would make the detection depend on import STYLE — the
+// same species of mistake as keying on formatting, and this scan has now been caught by
+// that once. A namespace import of `node:fs` or `vitest` is not an app module, but
+// spying on one of those in a shared registry is a per-file mutation of shared state
+// too, so routing it to the isolated project is right for the same reason.
 function spiesOnAppModule(src: string): boolean {
   for (const m of src.matchAll(/vi\s*\.\s*spyOn\(\s*([A-Za-z_$][\w$]*)\s*,/g)) {
     const ns = m[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`import\\s*\\*\\s*as\\s+${ns}\\s+from\\s+["']@/`).test(src))
+    if (new RegExp(`import\\s*\\*\\s*as\\s+${ns}\\s+from\\s`).test(src))
       return true;
   }
   return false;

@@ -192,6 +192,16 @@ function ignoreNotModified(e: unknown): void {
 }
 
 // GUARDED — import only from the chokepoint (telegram.ts).
+//
+// The button cap applies here too, and this is the one edit that CANNOT say so: there
+// is no text to hang a "+N more" line on. Most callers shrink an already-capped keyboard
+// (`removeButton` / `removeRowContaining`) and can never reach the limit, but the digest's
+// offer tail and ⚙️ Tune BUILD a fresh keyboard from the profile's own items — the same
+// thirty-plus-dose regimen the cap exists for — so the limit is reachable from here.
+// Dropping the overflow silently is worse than a "+N more" line and better than the
+// alternative, which is Telegram rejecting the edit and the message keeping the keyboard
+// it had BEFORE the tap: a stale claim, which is the whole harm the sweep exists to end.
+// The kept rows are the leading ones, so what survives is what the builder ranked first.
 export async function editMessageReplyMarkupRaw(
   chatId: number | string,
   messageId: number,
@@ -200,7 +210,7 @@ export async function editMessageReplyMarkupRaw(
   await call("editMessageReplyMarkup", {
     chat_id: chatId,
     message_id: messageId,
-    reply_markup: { inline_keyboard: keyboard },
+    reply_markup: { inline_keyboard: capTelegramKeyboard(keyboard).keyboard },
   }).catch(ignoreNotModified);
 }
 
@@ -244,7 +254,13 @@ export async function editMessageTextRaw(
   let body = chunks[0];
   if (chunks.length > 1)
     notes.push(`${GLYPH.caution} Shortened — open the app for the full list.`);
-  for (const note of notes) body += `\n${esc(note)}`;
+  // ESCAPED ONLY WHEN THE MESSAGE IS HTML. `closeMessage` edits in PLAIN text (no
+  // parse_mode), where an escaped note would render its entities literally — `&amp;`
+  // on screen. Nothing reaches that combination today (a close carries no keyboard and
+  // no body long enough to cut), which is exactly why the coupling has to be written
+  // down rather than left to hold by luck.
+  for (const note of notes)
+    body += `\n${opts?.parseMode === "HTML" ? esc(note) : note}`;
 
   await call("editMessageText", {
     chat_id: chatId,

@@ -120,7 +120,7 @@ import {
   resolveEscalationTap,
   resolveTapProfile,
   tapAnswerText,
-  tapContradictsButton,
+  tapAnswerNeedsDismissal,
   tapResolved,
   tapSkipAnswerText,
 } from "./callback-data";
@@ -628,7 +628,7 @@ async function handleEscalationTap(
       esc.date
     );
     await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome), {
-      alert: tapContradictsButton(outcome, "skip"),
+      alert: tapAnswerNeedsDismissal(outcome, "skip"),
     });
     await replaceMessage(profileId, cq, escalationSkipCloseText(outcome));
     return;
@@ -650,7 +650,7 @@ async function handleEscalationTap(
     await answerCallbackQuery(
       cq.id,
       tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome)),
-      { alert: tapContradictsButton(outcome, "take") }
+      { alert: tapAnswerNeedsDismissal(outcome, "take") }
     );
     await replaceMessage(profileId, cq, escalationTakeCloseText(outcome));
     return;
@@ -664,7 +664,15 @@ async function handleEscalationTap(
   if (ack === "acknowledged") {
     setProfileSetting(profileId, escalationMarkerKey(esc.doseId), esc.date);
   }
-  await answerCallbackQuery(cq.id, escalationAckAnswerText(ack));
+  // Held to the same bar as the take/skip arms beside it, on the same line: the two
+  // arms that leave the episode OUTSTANDING while recording nothing — a retired dose, a
+  // paused item — must not let the caregiver who tapped 👍 walk away believing it is
+  // handled. `already-taken` / `already-skipped` are not that: the dose IS resolved and
+  // there was nothing to chase, which is reassurance, and spending a dismissal on
+  // reassurance is how the alerts that matter stop being read.
+  await answerCallbackQuery(cq.id, escalationAckAnswerText(ack), {
+    alert: ack === "stale-dose" || ack === "inactive",
+  });
   await replaceMessage(profileId, cq, escalationAckCloseText(ack));
 }
 
@@ -835,7 +843,7 @@ async function handleDoseTap(
     kind === "take"
       ? tapAnswerText(outcome, offDayCadence(profileId, tap.doseId, outcome))
       : tapSkipAnswerText(outcome),
-    { alert: tapContradictsButton(outcome, kind) }
+    { alert: tapAnswerNeedsDismissal(outcome, kind) }
   );
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];

@@ -444,13 +444,19 @@ banner on a phone, but on Telegram Desktop as a small tooltip near the message
 that fades on its own and is easy to miss entirely — so the refusal was spoken
 and not heard, leaving the reader in the exact state the rule exists to prevent.
 So an intake refusal answers with `show_alert`, a modal that has to be
-dismissed. WHICH answers, decided once by `tapContradictsButton`: not "nothing
-changed" — an idempotent repeat changes nothing and is honest, because the state
-the button asked for is the state that stands — but the tap whose answer has to
-CONTRADICT its own label (a ✅ on a dose already marked skipped, a ⏭️ on one
-already logged, a retired dose, a paused item), plus the flat refusals beside it
-(an unresolvable profile, a household access or stale-date gate, a correction
-whose hour has run out). Deliberately not everywhere: a modal costs a dismissal,
+dismissed. WHICH answers, decided once by `tapAnswerNeedsDismissal`, for TWO
+reasons. The first is the tap whose answer has to CONTRADICT its own label (a ✅
+on a dose already marked skipped, a ⏭️ on one already logged, a retired dose, a
+paused item) — note that is not "nothing changed", since an idempotent repeat
+changes nothing and is honest, the state the button asked for being the state
+that stands. The second is `logged-off-day`, where the button did exactly what it
+said and the answer still must not be missed: #1602's whole point is that
+confirming an off-day dose silently is how a weekly drug gets taken twice in a
+week without anyone noticing, and a notice that fades on its own IS silently. The
+flat refusals beside them alert too (an unresolvable profile, a household access
+or stale-date gate, a correction whose hour has run out, an escalation ack that
+left the episode outstanding — though not one that found the dose already
+resolved, which is reassurance rather than refusal). Deliberately not everywhere: a modal costs a dismissal,
 and spending one on "Logged ✅" or on a food quick-log is how the one that
 matters stops being read, so the coaching tier keeps its toasts. The predicate
 governs DELIVERY only — the wording was already honest. Pure
@@ -2605,7 +2611,10 @@ is covered" (#379), and that was true outbound only — an edit took a pre-built
 keyboard and text and passed both straight through. So the very regimen the
 button cap exists for (thirty-odd doses in one merged reminder) got a correctly
 capped send and then had every later tap rebuild the same oversized keyboard and
-be REJECTED, freezing the message on its pre-tap state. The length cap an edit
+be REJECTED, freezing the message on its pre-tap state. A keyboard-only edit
+(`editMessageReplyMarkup`) caps too and is the one that cannot SAY so — it has no
+text to hang a "+N more" line on — so its overflow goes silently, which beats a
+rejected edit leaving a stale claim standing. The length cap an edit
 cannot honour the send's way — a send SPLITS across messages, an edit has one
 message and no way to grow it — so the body is cut on the same line boundaries
 (never mid-tag) and the tail says it was shortened. The buttons always survive
