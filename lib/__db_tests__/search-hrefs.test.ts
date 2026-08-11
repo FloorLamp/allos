@@ -43,8 +43,8 @@ function hit(
 describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
   it("an activity hit lands on ITS day of the timeline, not the training hub", () => {
     const p = newProfile("palette-activity");
-    // Deliberately old: the journal renders one newest window (#451), so an
-    // anchor-into-the-journal href would strand exactly this row.
+    // Deliberately old: the training log renders one newest window (#451), so an
+    // anchor-into-the-training log href would strand exactly this row.
     const date = "2019-03-14";
     db.prepare(
       `INSERT INTO activities (profile_id, date, type, title, duration_min)

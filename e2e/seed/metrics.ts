@@ -510,16 +510,16 @@ export function seedSunOutdoor(): void {
   }
 
   // #1081 — N-way activity duplicate merge fixture. A dedicated adult member profile,
-  // isolated from profile 1 so the Review cluster + Journal multi-merge specs (which
+  // isolated from profile 1 so the Review cluster + Training Log multi-merge specs (which
   // CONSUME their rows) never race a neighbor. The spec re-seeds both groups in
   // beforeEach; here we create the profile + login and lay down an initial state. Dates
-  // are RELATIVE to the frozen clock so the Journal group lands on the feed's first page.
+  // are RELATIVE to the frozen clock so the Training Log group lands on the feed's first page.
   {
     const nwayId = fixtureProfileId(NWAY_PROFILE);
     const reviewDate = shiftDateStr(today(nwayId), -3);
-    const journalDate = shiftDateStr(today(nwayId), -2);
+    const trainingLogDate = shiftDateStr(today(nwayId), -2);
     const conflictDate = shiftDateStr(today(nwayId), -4);
-    seedNwayMergeFixture(db, nwayId, reviewDate, journalDate, conflictDate);
+    seedNwayMergeFixture(db, nwayId, reviewDate, trainingLogDate, conflictDate);
     seedMemberLogin(E2E_LOGIN_NWAY, nwayId, "write");
     console.log(
       `e2e: seeded N-way merge fixture — profile ${nwayId} (${NWAY_PROFILE}) (#1081)`

@@ -18,16 +18,16 @@ async function expectUtilityColor(locator: Locator, utility: string) {
   expect(colors.actual).toBe(colors.expected);
 }
 
-// #11: Journal (activity) cards show provenance — where the row came from — plus
+// #11: Training Log (activity) cards show provenance — where the row came from — plus
 // when it was added. The seed carries a Strava-imported ride alongside the
 // hand-logged workouts, so the two provenance states are both on the page: the
 // integration row identifies Strava plus its edit state, a manual row reads
 // "Manual", and
 // every card surfaces an "added <relative time>" stamp.
-test("journal cards show a source provenance chip and 'added' timestamp (#11)", async ({
+test("training log cards show a source provenance chip and 'added' timestamp (#11)", async ({
   page,
 }) => {
-  // /training defaults to the Log tab, which renders the journal feed.
+  // /training defaults to the Log tab, which renders the training log feed.
   await page.goto("/training");
 
   const stravaCard = page.locator(".card", {
@@ -127,7 +127,7 @@ test("journal cards show a source provenance chip and 'added' timestamp (#11)", 
   await expect(healthConnectCard.getByTestId("edit-lock-icon")).toHaveCount(0);
 });
 
-// #569: the seeded Strava ride carries a captured GPS route, so its journal card
+// #569: the seeded Strava ride carries a captured GPS route, so its training log card
 // renders a tile-free SVG route thumbnail (decoded from the encoded polyline, no
 // basemap, no external request). Manual rows carry no route → no thumbnail.
 test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)", async ({
@@ -156,7 +156,7 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   await expect(manualCard.getByTestId("route-map")).toHaveCount(0);
 });
 
-test("journal cards prioritize a summary and progressively disclose details", async ({
+test("training log cards prioritize a summary and progressively disclose details", async ({
   page,
 }) => {
   await page.goto("/training");
@@ -209,7 +209,7 @@ test("journal cards prioritize a summary and progressively disclose details", as
 
   // Cardio descriptions follow their names inline, matching strength rows,
   // rather than being pushed to the far edge of the card.
-  const cardioRow = ride.getByTestId("journal-cardio-row");
+  const cardioRow = ride.getByTestId("training-log-cardio-row");
   await expect(cardioRow).not.toHaveClass(/justify-between/);
   await expect(cardioRow).toHaveClass(/gap-x-2/);
 
@@ -276,7 +276,7 @@ test("journal cards prioritize a summary and progressively disclose details", as
   );
 
   // The visual column gains room only at the largest breakpoint, once the
-  // two-column journal cards are themselves wide enough to preserve detail rows.
+  // two-column training log cards are themselves wide enough to preserve detail rows.
   await page.setViewportSize({ width: 1536, height: 900 });
   const largestVisuals = await visuals.boundingBox();
   expect(largestVisuals).not.toBeNull();
@@ -324,7 +324,7 @@ test("strength target status is named and muscle filters are quiet text", async 
   // Exercise name, set summary, and context form one compact row rather than a
   // forced two-line name/metadata block with the summary pushed to the far edge.
   const benchRow = push
-    .getByTestId("journal-strength-row")
+    .getByTestId("training-log-strength-row")
     .filter({ hasText: "Barbell Bench Press" })
     .first(); // first-ok: filtered to the Barbell Bench Press strength row — one match
   const exerciseName = benchRow.getByRole("button", {
@@ -344,10 +344,10 @@ test("strength target status is named and muscle filters are quiet text", async 
 });
 
 // The imported Strava ride is stored with the athlete's free-text title ("Strava
-// morning ride") but a canonical "Cycling" component. The journal must icon it
+// morning ride") but a canonical "Cycling" component. The training log must icon it
 // off the structured sport (a bike), matching the activity form — not fall back
 // to the generic cardio (run) icon from the title alone.
-test("an imported cycling ride shows the bike icon in the journal", async ({
+test("an imported cycling ride shows the bike icon in the training log", async ({
   page,
 }) => {
   await page.goto("/training");
@@ -477,7 +477,7 @@ test("the Log feed pages older days in via 'Load more' (#451)", async ({
   await expect(days.first()).toBeVisible(); // first-ok: asserts a day section renders — order-agnostic presence
   const before = await days.count();
 
-  const loadMore = page.getByTestId("journal-load-more");
+  const loadMore = page.getByTestId("training-log-load-more");
   await expect(loadMore).toBeVisible();
   await loadMore.click();
 

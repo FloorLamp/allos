@@ -159,7 +159,7 @@ test("a half-entered workout survives a reload and comes back on request (#1699)
     ).toBeVisible({ timeout: DRAFT_SETTLE_MS });
 
     // Saved ⇒ no draft may survive. A stale one would offer to re-enter a workout
-    // that is already in the journal.
+    // that is already in the training log.
     await expect
       .poll(async () => activityDrafts(await draftRows(page)).length, {
         timeout: DRAFT_SETTLE_MS,

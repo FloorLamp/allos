@@ -24,7 +24,7 @@ import {
 //
 // ROW ACTIONS LIVE IN THE ⋯ MENU. This is the standardized pattern going forward:
 // row-level record actions go in the standard `OverflowMenu` + `MENU_ITEM`, never an
-// inline button row (precedent: the Journal's ActivityCardMenu; the counter-example
+// inline button row (precedent: the Training Log's ActivityCardMenu; the counter-example
 // being fixed is #1446's duplicated inline ⋯). Below `sm` the table renders through
 // the #1426 `ResponsiveTable` card pattern — ONE table in the DOM, re-laid as cards
 // by CSS, so there is no `hidden md:*` twin to drift.

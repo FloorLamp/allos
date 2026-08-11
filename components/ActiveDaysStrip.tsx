@@ -27,7 +27,7 @@ export default function ActiveDaysStrip({
 
   return (
     <div
-      data-testid="journal-active-days"
+      data-testid="training-log-active-days"
       className="lg:ml-auto lg:flex lg:shrink-0 lg:items-center lg:gap-3"
     >
       <div className="mb-1.5 flex items-baseline lg:mb-0">

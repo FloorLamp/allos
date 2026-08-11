@@ -549,8 +549,8 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
   });
 });
 
-// ── Multi-view Training Journal (issue #1330) ─────────────────────────────────
-// The Journal's Log feed becomes a MERGED, subject-stamped card feed across the
+// ── Multi-view Training Log (issue #1330) ─────────────────────────────────
+// The Log feed becomes a MERGED, subject-stamped card feed across the
 // view-set: non-acting cards carry a subject chip, cross-profile merge candidates
 // never pair (two people's activities are never duplicates), and "Log again" on
 // another member's card logs it as YOURS (writeTarget: acting). Spec-OWNED fixtures
@@ -560,7 +560,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
 
 // Delete the log-again artifact (a copy of the shared activity created on the owner
 // profile) so a re-run/retry starts clean, and return the two profile ids.
-function resetMultiJournal(): { ownerId: number; sharedId: number } {
+function resetMultiTrainingLog(): { ownerId: number; sharedId: number } {
   const { ownerId, sharedId } = multiProfileIds();
   const dbPath = workerDbPath();
   const db = new Database(dbPath);
@@ -597,12 +597,12 @@ function ownerCopiesOfSharedActivity(ownerId: number): number {
   }
 }
 
-test.describe("Multi-view Training Journal (issue #1330)", () => {
+test.describe("Multi-view Training Log (issue #1330)", () => {
   test("merged feed + subject chips + single-view unchanged + cross-profile merge never pairs", async ({
     browser,
   }) => {
     test.slow();
-    const { ownerId, sharedId } = resetMultiJournal();
+    const { ownerId, sharedId } = resetMultiTrainingLog();
     const page = await loginAs(browser, {
       username: E2E_LOGIN_MULTI,
       password: E2E_MEMBER_PASSWORD,
@@ -675,7 +675,7 @@ test.describe("Multi-view Training Journal (issue #1330)", () => {
     browser,
   }) => {
     test.slow();
-    const { ownerId, sharedId } = resetMultiJournal();
+    const { ownerId, sharedId } = resetMultiTrainingLog();
     expect(ownerCopiesOfSharedActivity(ownerId)).toBe(0);
 
     const page = await loginAs(browser, {
@@ -683,7 +683,7 @@ test.describe("Multi-view Training Journal (issue #1330)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    // Enter multi-view, then open the Journal.
+    // Enter multi-view, then open the Training Log.
     await page.goto("/training");
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));

@@ -199,7 +199,7 @@ export default async function HouseholdPage() {
         );
       })(),
       // Derived workout presence (#921), grants-scoped like the sick chip: a compact
-      // live-only "mid-workout · N min" glance. Unlinked (journalActivityHref anchors
+      // live-only "mid-workout · N min" glance. Unlinked (trainingLogActivityHref anchors
       // the viewer's OWN log, so a cross-profile link would land on a dead anchor,
       // #879) — a plain chip, not a button.
       presence: householdPresenceChip(getWorkoutPresence(pid)),

@@ -3,7 +3,7 @@
 import { createContext, useContext } from "react";
 
 // Distributes the server-resolved app timezone (settings key 'timezone') to client
-// components so their date defaults (e.g. a form's "today", the journal calendar's
+// components so their date defaults (e.g. a form's "today", the training log calendar's
 // circled day) match the app's notion of "today" rather than the browser's TZ. The
 // server reads getTimezone() once in the root layout and feeds it in here.
 const TimezoneContext = createContext<string>("UTC");

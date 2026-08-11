@@ -1,5 +1,5 @@
 // The impure (DB-touching) half of an activity merge, shared by the Data → Review
-// duplicate resolver (app/(app)/data/review-actions.ts) and the Journal's manual
+// duplicate resolver (app/(app)/data/review-actions.ts) and the Training Log's manual
 // pair-merge (app/(app)/training/activity-actions.ts). The pure fold math lives in
 // lib/import-review (foldActivityFields in detect.ts; the keeper columns a fold writes,
 // keeperFoldState, in conflicts.ts); this writes that result onto the keeper and — on
@@ -7,7 +7,7 @@
 //
 // Callers own the DELETE of the discarded row and the recorded pair-decision — the
 // two merges differ there: the review resolver deletes via FK cascade (no undo),
-// while the journal's manual merge routes the delete through captureDelete so a
+// while the training log's manual merge routes the delete through captureDelete so a
 // mis-merge can be undone from a toast (issue #64 / #30).
 
 import { db } from "./db";
@@ -24,7 +24,7 @@ import { deletePairDecision } from "./queries/integrations";
 import { parsePayload, type MergeUndoContext, type Row } from "./undo-delete";
 
 // What writeActivityFold actually moved for one dropped row, returned so an undoable
-// caller (the Journal merge) can build a per-drop MergeUndoContext that inverts EXACTLY
+// caller (the Training Log merge) can build a per-drop MergeUndoContext that inverts EXACTLY
 // what happened (#199/#200). `movedRouteId` is the drop's activity_routes id the fold
 // re-parented onto the keeper, or null when the keeper already had a route (so the
 // drop kept its own, captured as a child by the generic delete instead).
@@ -77,7 +77,7 @@ function moveOwnedActivityChildren(
 // RE-PARENTING (issue #199): before the caller deletes the discarded row, its
 // `exercise_sets` are moved onto the keeper so a merge can NEVER lose typed-in
 // training history to the FK cascade. Doing it HERE fixes both merge paths at once
-// (the undoable Journal merge and the plain-delete Review resolver) — neither caller
+// (the undoable Training Log merge and the plain-delete Review resolver) — neither caller
 // can forget it. It is strictly safe: PR detection + volume math already handle
 // multi-exercise activities, so the keeper simply carries both rows' sets.
 export function writeActivityFold(

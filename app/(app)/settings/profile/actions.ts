@@ -237,7 +237,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   if (wsRaw !== "" && isValidWeekStart(ws)) setWeekStart(profile.id, ws);
 
   // Weekly counting mode: calendar week vs rolling 7 days for the routine
-  // counters and the journal week summary. Ignore an unrecognized value.
+  // counters and the training log week summary. Ignore an unrecognized value.
   const wm = String(formData.get("week_mode") ?? "").trim();
   if (isValidWeekMode(wm)) setWeekMode(profile.id, wm);
 

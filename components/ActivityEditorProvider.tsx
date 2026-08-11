@@ -30,10 +30,10 @@ import {
 import { useTimezone } from "./TimezoneProvider";
 import type { PracticeType } from "@/lib/protocol-practice";
 
-// The training route hosts the inline docked editor (JournalView registers a dock
+// The training route hosts the inline docked editor (TrainingLogView registers a dock
 // column), so the app-wide bottom bar is suppressed there — the session is already
 // visible in the page column. Everywhere else the minimized bar carries it.
-const JOURNAL_ROUTE = "/training";
+const TRAINING_LOG_ROUTE = "/training";
 
 interface ActivityEditorApi {
   openCreate: (prefill?: { type?: PracticeType; date?: string }) => void;
@@ -51,7 +51,7 @@ interface ActivityEditorApi {
   // Whether live workout mode is available (false for age-restricted profiles).
   canStartWorkout: boolean;
   // The ONE start-vs-resume derivation every workout entry point renders (#1893/#221):
-  // the bolt, the palette's live action, the Journal aside, and the routine card all
+  // the bolt, the palette's live action, the Training Log aside, and the routine card all
   // take their LABEL from here, and the open* calls above enforce the same state. See
   // lib/workout-offer.ts.
   workoutOffer: WorkoutOffer;
@@ -184,9 +184,9 @@ export default function ActivityEditorProvider({
   // session, so a dock that registers mid-edit can't yank an open overlay
   // editor into it — which would re-parent the form to a new portal, remounting
   // it back to a blank state and dropping the user's unfinished input. This
-  // happens on the journal page's 0→1-activities transition: with no activities
+  // happens on the training log page's 0→1-activities transition: with no activities
   // the page shows an empty state (no dock), so "Log activity" opens the
-  // overlay; the first auto-save's server re-render mounts JournalView, which
+  // overlay; the first auto-save's server re-render mounts TrainingLogView, which
   // registers the dock. A ref mirrors it so open* can read the live dock
   // presence without taking dockEl as a dependency (which would churn the
   // memoized api on every dock registration).
@@ -196,7 +196,7 @@ export default function ActivityEditorProvider({
   const registerDock = useCallback((el: HTMLElement | null) => {
     dockElRef.current = el;
     setDockEl(el);
-    // The dock is going away (e.g. navigating off the journal). Close the editor
+    // The dock is going away (e.g. navigating off the training log). Close the editor
     // rather than letting it pop back as an overlay on the next page; the
     // docked ActivityForm flushes any pending auto-save on unmount.
     if (!el) setOpen(false);
@@ -204,7 +204,7 @@ export default function ActivityEditorProvider({
 
   // Resume the acting profile's active session in the live editor from the dock —
   // hydrated from the persisted #451 draft (getActivityEditData). Docks into the
-  // journal column when one is present, else the overlay. The elapsed baseline comes
+  // training log column when one is present, else the overlay. The elapsed baseline comes
   // from the SERVER's recorded start (`liveStartEpochMs`), never a fresh Date.now(),
   // so a reload mid-workout resumes the same clock.
   const resumeLive = useCallback(() => {
@@ -248,7 +248,7 @@ export default function ActivityEditorProvider({
 
   // Memoized so always-mounted consumers (e.g. MobileNav's quick-log button)
   // only re-render when open/editData actually change — not on every provider
-  // render (dock registration churns on journal mount/unmount). `offer` is a
+  // render (dock registration churns on training log mount/unmount). `offer` is a
   // dependency ON PURPOSE: the bolt's label must flip the moment a session goes live.
   const api: ActivityEditorApi = useMemo(
     () => ({
@@ -285,7 +285,7 @@ export default function ActivityEditorProvider({
         setLiveStartEpoch(Date.now());
         setMinimized(false);
         // Live mode is a focused, full-attention flow — never dock it into the
-        // journal's side column; use the overlay so it reads as its own screen.
+        // training log's side column; use the overlay so it reads as its own screen.
         setDocked(false);
         setOpen(true);
       },
@@ -377,11 +377,12 @@ export default function ActivityEditorProvider({
   // (see `docked`) and that dock is still mounted; otherwise it's the overlay.
   const showDock = docked && dockEl != null;
 
-  const onJournal = pathname === JOURNAL_ROUTE;
+  const onTrainingLog = pathname === TRAINING_LOG_ROUTE;
   // The bar shows for a client-minimized live session (mounted, hidden) anywhere,
-  // and for a fresh-load active session everywhere except the journal route (where
+  // and for a fresh-load active session everywhere except the training log route (where
   // the editor docks inline instead). A docked-open editor never shows the bar.
-  const showBar = (minimized && !showDock) || (hydrationActive && !onJournal);
+  const showBar =
+    (minimized && !showDock) || (hydrationActive && !onTrainingLog);
   // Elapsed baseline + copy for the bar: the mounted session's own start when
   // minimized, else the server-hydrated start.
   const barStartEpoch = minimized

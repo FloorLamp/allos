@@ -3,7 +3,7 @@
 //
 // The failure this pins is not "a value is missing" but "nothing FAILS when a value is
 // missing". Before #2272 there was no `Record<ActivityType, …>` anywhere in the repo:
-// `TYPE_FALLBACK` was keyed on `string` with a `?? "activity"`, the journal filter list
+// `TYPE_FALLBACK` was keyed on `string` with a `?? "activity"`, the training log filter list
 // was hand-maintained with a `.find(…) ?? null`, and the age gate's SQL list was three
 // literals. Each of those silently absorbed a new type — a generic glyph, an
 // unfilterable row, a session that vanished from three surfaces. The maps are now
@@ -18,7 +18,7 @@ import {
   isDurationActivityType,
   restrictedActivityTypeClause,
 } from "@/lib/age-gate";
-import { normalizeJournalFilters } from "@/lib/journal-filters";
+import { normalizeTrainingLogFilters } from "@/lib/training-log-filters";
 import { equipmentKindsForActivityType } from "@/lib/activity-equipment";
 import { metsForActivity } from "@/lib/calorie-estimate";
 import { effortClass } from "@/lib/effort-class";
@@ -95,14 +95,14 @@ describe("every per-type map answers for every type", () => {
   });
 });
 
-describe("the journal filter vocabulary is the declared tuple", () => {
+describe("the training log filter vocabulary is the declared tuple", () => {
   it("accepts every declared type, so no type is silently unfilterable", () => {
     for (const t of ACTIVITY_TYPES)
-      expect(normalizeJournalFilters({ type: t }).type).toBe(t);
+      expect(normalizeTrainingLogFilters({ type: t }).type).toBe(t);
   });
 
   it("still refuses a type that is not in the vocabulary", () => {
-    expect(normalizeJournalFilters({ type: "sleeping" }).type).toBeNull();
+    expect(normalizeTrainingLogFilters({ type: "sleeping" }).type).toBeNull();
   });
 });
 

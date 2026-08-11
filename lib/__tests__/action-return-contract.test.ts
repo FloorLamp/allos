@@ -24,7 +24,7 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // The migrated passport-CRUD action modules (issue #474). Adding a new action
 // module to this surface means adding it here — and inheriting the no-bare-return
-// contract. (journal/actions.ts already carries the SaveActivityOutcome contract via
+// contract. (training/activity-actions.ts already carries the SaveActivityOutcome contract via
 // #332; it is covered by its own tests.)
 // Paths are relative to the repo root. The record-domain action modules moved out
 // of their old dead-route directories in #1636 and now sit under the route that

@@ -161,10 +161,10 @@ revalidate".
 That property is now gone: the middleware slides the cookie on **every GET/HEAD
 navigation, and on nothing else until the slide mark expires**, precisely because
 the accidental every-action revalidation also fed a client fetch loop (the
-Journal's filtered feed re-fetched page one on every self-triggered refresh,
+Training Log's filtered feed re-fetched page one on every self-triggered refresh,
 clobbering its "Load more" pages — pinned by
 `lib/__tests__/middleware-sliding-cookie.test.ts` and the filtered-paging test
-in `e2e/journal-search-depth.spec.ts`). A read action that doesn't revalidate
+in `e2e/training-log-search-depth.spec.ts`). A read action that doesn't revalidate
 now behaves as documented: no page render in its response.
 
 The mark is the #2058 correction to that rule and does not weaken it. Slide the

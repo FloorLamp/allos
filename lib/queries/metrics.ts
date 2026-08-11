@@ -66,7 +66,7 @@ function choiceFor(
 
 // SQL mirror of sourceMatchesSelector: the condition matching a row's `source`
 // column to ONE selector. 'manual' covers NULL (quick-add rows) as well as the
-// journal's literal 'manual'; the 'documents' CLASS (#1640) covers every
+// training log's literal 'manual'; the 'documents' CLASS (#1640) covers every
 // 'document:<id>' provenance through a prefix LIKE. Callers splice `sql` into a
 // WHERE clause and spread `params` at that position.
 function sourceMatchSql(selector: string): { sql: string; params: string[] } {
@@ -159,7 +159,7 @@ export function documentLabel(d: {
 // Body-metrics rows with their provenance resolved for the history table: rows
 // imported from a medical document ('document:<id>') pick up the document's label
 // and id for linking; integration ids resolve to the registry's display name;
-// manual rows (source NULL, or the journal's 'manual') label as "Manual".
+// manual rows (source NULL, or the training log's 'manual') label as "Manual".
 export function getBodyMetricsWithSource(
   profileId: number,
   limit = 365

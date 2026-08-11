@@ -16,12 +16,12 @@ import { workerDbPath, frozenNow } from "./worker-env";
 // merges CONSUME their rows). Three independent same-day groups: a 3-row
 // cross-source cluster for Data → Review, a 3-row cross-source cluster with a
 // material DISTANCE conflict for the picker, and a 3-row same-day group for the
-// Journal multi-select merge.
+// Training Log multi-select merge.
 
 const DB_PATH = workerDbPath();
 
 // A date `days` before the frozen clock's real-start today (UTC is close enough — the
-// margin keeps the Journal group on the feed's first-page window regardless of a ≤1-day
+// margin keeps the Training Log group on the feed's first-page window regardless of a ≤1-day
 // timezone skew).
 function isoBack(days: number): string {
   const d = frozenNow();
@@ -30,7 +30,7 @@ function isoBack(days: number): string {
 }
 
 const REVIEW_DATE = isoBack(3);
-const JOURNAL_DATE = isoBack(2);
+const TRAINING_LOG_DATE = isoBack(2);
 const CONFLICT_DATE = isoBack(4);
 
 function nwayProfileId(db: Database.Database): number {
@@ -50,7 +50,7 @@ test.describe("N-way activity merge (#1081)", () => {
         db,
         nwayProfileId(db),
         REVIEW_DATE,
-        JOURNAL_DATE,
+        TRAINING_LOG_DATE,
         CONFLICT_DATE
       );
     } finally {
@@ -181,7 +181,7 @@ test.describe("N-way activity merge (#1081)", () => {
     }
   });
 
-  test("Journal: multi-select with a sibling keeper absorbs the originating card, and undo restores all", async ({
+  test("Training Log: multi-select with a sibling keeper absorbs the originating card, and undo restores all", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -189,7 +189,7 @@ test.describe("N-way activity merge (#1081)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/training"); // default "Log" tab renders the Journal feed
+      await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
       const cardEl = page
         .locator('[id^="activity-"]')

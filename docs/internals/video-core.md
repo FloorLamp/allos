@@ -114,9 +114,9 @@ their domain's actions:
 - `components/activity/ActivityVideoStrip.tsx` — the training tenant,
   active-profile scoped. It renders in **two placements**, split by `showAdd`
   (#1457):
-  - **Journal card** (`/training`, no `showAdd`) — a READ surface: playback,
-    caption edit, delete, privacy note, threaded through the journal feed
-    (`buildJournalFeedPage` → `JournalCardData.videos`). It renders **only when
+  - **Training Log card** (`/training`, no `showAdd`) — a READ surface: playback,
+    caption edit, delete, privacy note, threaded through the training log feed
+    (`buildTrainingLogFeedPage` → `TrainingLogCardData.videos`). It renders **only when
     clips exist**. Until #1457 it rendered for every writable activity
     regardless of type or content, so a Strava easy run, a walk, and an imported
     swim each carried a "Form check" heading, a "No clips…" line, and a button —

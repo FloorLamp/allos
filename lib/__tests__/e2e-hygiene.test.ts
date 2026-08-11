@@ -256,7 +256,7 @@ const NETWORKIDLE_ALLOW: Record<string, number> = {};
 
 // EMPTY — the only sanctioned waitForTimeout is the IRREDUCIBLE bounded absence-of-effect
 // proof, now carried by a same-line `waitfortimeout-ok: <why>` marker at each site (the
-// journal-provenance 700ms-autosave-must-not-fire probes and the profile-switch-toasts
+// training-log-provenance 700ms-autosave-must-not-fire probes and the profile-switch-toasts
 // 6s-idle-poll ghost-toast probes), so it's excluded from the count and the allowlist is
 // empty — uniform with FIRST_ALLOW/TOPASS_ALLOW. A NEW unmarked waitForTimeout fails CI.
 const WAITFORTIMEOUT_ALLOW: Record<string, number> = {};

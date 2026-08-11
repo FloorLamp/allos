@@ -12,16 +12,19 @@ import MuscleAnatomy from "@/components/MuscleAnatomy";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
 import { musclesWorked } from "@/lib/muscle-coverage";
-import { SET_STATUS_TITLES } from "@/lib/journal-format";
+import { SET_STATUS_TITLES } from "@/lib/training-log-format";
 import { activityComponentSportNames } from "@/lib/activity-icon";
 import { rideDetailHref as resolveRideDetailHref } from "@/lib/ride-detail";
 import { zonePresentation } from "@/lib/training-zones";
-// DisplayPart moved to lib/journal-card.ts (issue #334); re-exported here so the
-// existing `./JournalCard` import path keeps working.
-import type { DisplayPart } from "@/lib/journal-card";
+// DisplayPart moved to lib/training-log-card.ts (issue #334); re-exported here so the
+// existing `./TrainingLogCard` import path keeps working.
+import type { DisplayPart } from "@/lib/training-log-card";
 import ActivityVideoStrip from "@/components/activity/ActivityVideoStrip";
 import Avatar from "@/components/Avatar";
-import type { JournalCardVideo, JournalCardSubject } from "@/lib/journal-card";
+import type {
+  TrainingLogCardVideo,
+  TrainingLogCardSubject,
+} from "@/lib/training-log-card";
 import ActivityCardMenu, { type MergeSibling } from "./ActivityCardMenu";
 
 export type { DisplayPart };
@@ -40,7 +43,7 @@ interface SummaryItem {
   title?: string;
 }
 
-export default function JournalCard({
+export default function TrainingLogCard({
   activity,
   timeText,
   durationText,
@@ -106,7 +109,7 @@ export default function JournalCard({
   foldValues?: Record<string, unknown>;
   units: UnitPrefs;
   // Form-check video clips attached to this activity (#1224), empty when none.
-  videos?: JournalCardVideo[];
+  videos?: TrainingLogCardVideo[];
   // Whether the acting login can write to this activity's profile — gates the
   // clip upload/delete affordances (the server actions re-gate regardless).
   canWrite?: boolean;
@@ -114,7 +117,7 @@ export default function JournalCard({
   // view. A NON-acting subject's card renders a subject chip; a read-only-granted
   // subject's card renders view-only (no edit/merge/clip affordances — the server
   // re-gates regardless). Every write still targets the subject's own profile.
-  subject?: JournalCardSubject;
+  subject?: TrainingLogCardSubject;
   // The acting profile id (multi-view only), so the card knows whether it is the
   // acting profile's own row (chips show on non-acting rows; #1327 fix 1).
   actingProfileId?: number;
@@ -425,7 +428,7 @@ export default function JournalCard({
                           // then its compact description. Wrap only when space runs out.
                           <div
                             key={i}
-                            data-testid="journal-cardio-row"
+                            data-testid="training-log-cardio-row"
                             className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1"
                           >
                             {onSelect ? (
@@ -456,7 +459,7 @@ export default function JournalCard({
                         // cards; no field is deliberately pushed onto a second line.
                         <div
                           key={i}
-                          data-testid="journal-strength-row"
+                          data-testid="training-log-strength-row"
                           className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 py-0.5"
                         >
                           {onSelectExercise ? (

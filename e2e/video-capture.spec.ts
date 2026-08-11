@@ -18,7 +18,7 @@ import { workerDbPath } from "./worker-env";
 // the location-metadata privacy warning → delete round trip.
 //
 // It also pins the #1457 PRESENCE RULES, which split the surface in two: the
-// Journal card shows the strip ONLY when clips exist (read/playback + per-clip
+// Training Log card shows the strip ONLY when clips exist (read/playback + per-clip
 // edit/delete, no add), and the activity EDITOR's More-details block is where a
 // clip gets attached (always rendered, empty state included, wherever a SAVED
 // activity id exists — an upload needs one). So the walk is: no section → open

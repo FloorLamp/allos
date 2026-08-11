@@ -162,7 +162,7 @@ function localTodayStr(): string {
 // pure guard lib/__tests__/date-locale-guard.test.ts fails CI on a pref-less call
 // and on any implicit-locale toLocale* date render.
 
-// Consistent journal date formatting: "Weekday, Month Day", with the year
+// Consistent training log date formatting: "Weekday, Month Day", with the year
 // appended only when it isn't the current calendar year by default. A dense set
 // that can cross years may request `year: "always"` while retaining this same long
 // shape. Input is an ISO YYYY-MM-DD string (parsed as local midnight so the day

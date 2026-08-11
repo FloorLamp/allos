@@ -6,7 +6,7 @@ import {
   flagTone,
   groupTimelineDays,
   isTimelineUnfiltered,
-  journalActivityHref,
+  trainingLogActivityHref,
   clinicalObservationHref,
   normalizeTimelineRange,
   parseDetailItems,
@@ -108,8 +108,8 @@ describe("timeline formatting", () => {
     });
   });
 
-  it("builds journal deep links for activities", () => {
-    expect(journalActivityHref(42)).toBe("/training?tab=log#activity-42");
+  it("builds training log deep links for activities", () => {
+    expect(trainingLogActivityHref(42)).toBe("/training?tab=log#activity-42");
   });
 
   it("allows activity events to carry activity-icon metadata", () => {

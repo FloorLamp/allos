@@ -19,7 +19,7 @@ import { settledClick } from "./helpers";
 const PROBE_PREFIX = "Undo delete probe";
 let probeSeq = 0;
 
-// Journal card(s) whose title contains `text`, scoped to the main content.
+// Training Log card(s) whose title contains `text`, scoped to the main content.
 function cardsByTitle(page: Page, text: string | RegExp) {
   return page
     .getByRole("main")

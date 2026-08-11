@@ -9,7 +9,7 @@ import {
 import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
 import { timelineDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
-import { activityProvenanceLabel } from "@/lib/journal-format";
+import { activityProvenanceLabel } from "@/lib/training-log-format";
 import type { BedtimeSupplementSummary } from "@/lib/sleep-bedtime-supplements";
 import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
 

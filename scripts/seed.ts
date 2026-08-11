@@ -199,7 +199,7 @@ const insertMobility = db.prepare(
 function logMobility(ago: number, durationMin: number | null, moves: string[]) {
   const components = JSON.stringify(
     moves.map((slug) => ({
-      name: mobilityMoveName(slug), // DISPLAY name so the journal renders sanely
+      name: mobilityMoveName(slug), // DISPLAY name so the training log renders sanely
       type: "recovery",
       distance_km: null,
       duration_min: null,
@@ -265,7 +265,7 @@ logEffort(
 );
 
 // Session-level equipment (issue #342): a couple of pieces of gear + a linked
-// cardio session, so the Journal renders the gear chip and the Settings → Equipment
+// cardio session, so the Training Log renders the gear chip and the Settings → Equipment
 // page has cardio/recovery categories to show. Distinct from strength implements
 // (which live per-set on exercise_sets).
 const insertEquipment = db.prepare(
@@ -279,7 +279,7 @@ insertEquipment.run("Trail Shoes", null, "Shoes");
 // registry (the glasses/device pattern), so "which aids, since when" is tracked with
 // usage/history. kindOf() maps 'Hearing aid' → the "other" group.
 insertEquipment.run("Phonak Audéo hearing aids", null, "Hearing aid");
-// Link the Zone 2 ride to the road bike so a gear chip renders in the Journal.
+// Link the Zone 2 ride to the road bike so a gear chip renders in the Training Log.
 db.prepare(
   `UPDATE activities SET equipment_id = ?
      WHERE profile_id = 1 AND type = 'cardio' AND title = 'Zone 2 bike'`
@@ -287,7 +287,7 @@ db.prepare(
 
 // A synthetic Strava-imported ride (issue #11) carrying every Strava activity
 // field the schema supports. The values form one plausible, internally-consistent
-// outdoor cycling effort so Journal/Trends surfaces exercise the full payload:
+// outdoor cycling effort so Training Log and Trends surfaces exercise the full payload:
 // timing, HR, elevation, speed, effort, power, cadence, temperature, mechanical
 // work, workout type, measured active calories, route, provenance, and dedup key.
 const stravaRideDate = daysAgo(3);
@@ -348,7 +348,7 @@ db.prepare(
   648
 );
 
-// A captured GPS route (issue #569) for that ride, so the Journal card renders its
+// A captured GPS route (issue #569) for that ride, so the Training Log card renders its
 // tile-free SVG route thumbnail. The polyline is the canonical public Google
 // example vector (three points in remote California wilderness) — a SYNTHETIC,
 // non-residential shape per the no-real-PHI fixture rule, never a real home route.

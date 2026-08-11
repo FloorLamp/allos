@@ -120,7 +120,7 @@ export async function clearEditLock(formData: FormData): Promise<FormResult> {
 // these run only from an explicit button press.
 
 // Re-validate the surfaces a merge/dismiss changes: the Review inbox itself and the
-// rollups a folded/deleted row feeds — the Journal on /training, the /trends fitness
+// rollups a folded/deleted row feeds — the Training Log on /training, the /trends fitness
 // chart + workout heatmap (issue #333), and the dashboard.
 function revalidateActivitySurfaces() {
   revalidateRoute("/data");
@@ -141,7 +141,7 @@ function revalidateBodyMetricSurfaces() {
 // decision. Both ids are verified to belong to the acting profile before anything is
 // touched.
 //
-// The delete here is a plain cascade delete — NOT undoable. Unlike the journal's
+// The delete here is a plain cascade delete — NOT undoable. Unlike the training log's
 // manual merge (which routes its delete through captureDelete for an Undo toast),
 // this resolver's controls are plain server-action <form>s in a server component;
 // making it undoable would mean converting DuplicateReview to a client component

@@ -16,7 +16,7 @@ import "../scripts/load-env";
 
 import { seedPrelude } from "./seed/prelude";
 import {
-  seedJournalCard,
+  seedTrainingLogCard,
   seedTrainingZones,
   seedActivityFormPaths,
   seedEndurancePlans,
@@ -137,7 +137,7 @@ import {
 } from "./seed/trends";
 
 seedPrelude();
-seedJournalCard();
+seedTrainingLogCard();
 seedIntegrationSyncEvents();
 seedQuietStream();
 seedStreamLifecycle();

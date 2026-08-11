@@ -91,7 +91,7 @@ a guide, so a new catalog lift cannot ship guideless.
 The app ALREADY has the per-exercise surface:
 `components/ExerciseDetailPanel.tsx` renders e1RM trend, strength-standards
 standing, the coached next-set target, PRs, and linked goals, and is hosted by
-`JournalView`, the Training Analyze section, and `StrengthExplorer`. Guides
+`TrainingLogView`, the Training Analyze section, and `StrengthExplorer`. Guides
 become a new "How to" section of that ONE panel — a separate
 `ExerciseGuideSheet` would be a hand-mirrored second exercise surface, the exact
 disease the responsive-surfaces/one-computation rules exist to prevent.

@@ -151,7 +151,7 @@ export function setWeekStart(profileId: number, weekStart: WeekStart): void {
 }
 
 // ---- Weekly counting mode (per profile) ----
-// Whether the weekly-routine counters and the journal week summary count over the
+// Whether the weekly-routine counters and the training log week summary count over the
 // current calendar week (resetting on the week-start day) or a rolling 7-day
 // window. Defaults to the calendar week, so the week-start preference drives them
 // out of the box.

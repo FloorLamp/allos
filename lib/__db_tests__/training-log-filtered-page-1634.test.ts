@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — server-side FILTERED Journal paging (issue #1634).
+// DB INTEGRATION TIER — server-side FILTERED Training Log paging (issue #1634).
 //
 // #451 made the feed page by whole days server-side; its filters stayed in the
 // client, over the LOADED pages only. A search for a session older than the fetched
@@ -19,23 +19,23 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
-  getJournalPage,
-  resolveJournalFilterSpec,
+  getTrainingLogPage,
+  resolveTrainingLogFilterSpec,
   getActivityFaults,
-  getJournalSourceKeys,
-  getJournalTagExercises,
+  getTrainingLogSourceKeys,
+  getTrainingLogTagExercises,
 } from "@/lib/queries";
 import {
-  buildJournalFeedPage,
-  buildMultiViewJournalGroups,
-} from "@/lib/journal-feed";
+  buildTrainingLogFeedPage,
+  buildMultiViewTrainingLogGroups,
+} from "@/lib/training-log-feed";
 import {
-  EMPTY_JOURNAL_FILTERS,
-  filterJournalGroups,
-  journalCardMatches,
-  type JournalFilters,
-} from "@/lib/journal-filters";
-import { JOURNAL_PAGE_DAYS } from "@/lib/journal-feed";
+  EMPTY_TRAINING_LOG_FILTERS,
+  filterTrainingLogGroups,
+  trainingLogCardMatches,
+  type TrainingLogFilters,
+} from "@/lib/training-log-filters";
+import { TRAINING_LOG_PAGE_DAYS } from "@/lib/training-log-feed";
 import type { UnitPrefs } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
 import { db } from "@/lib/db";
@@ -46,8 +46,8 @@ const UNITS: UnitPrefs = {
   temperatureUnit: "F",
 };
 
-const filters = (over: Partial<JournalFilters>): JournalFilters => ({
-  ...EMPTY_JOURNAL_FILTERS,
+const filters = (over: Partial<TrainingLogFilters>): TrainingLogFilters => ({
+  ...EMPTY_TRAINING_LOG_FILTERS,
   ...over,
 });
 
@@ -108,7 +108,7 @@ function addSet(
 
 const TODAY = "2026-07-12";
 // Deep enough that the target sits well past the first TWO pages of the unfiltered
-// feed (JOURNAL_PAGE_DAYS = 14 per page).
+// feed (TRAINING_LOG_PAGE_DAYS = 14 per page).
 const DEEP_OFFSET = 40;
 const DEEP_DATE = shiftDateStr(TODAY, -DEEP_OFFSET);
 
@@ -117,8 +117,8 @@ let otherProfile: number;
 let deepActivityId: number;
 
 beforeAll(() => {
-  profileId = newProfile("journal-filter");
-  otherProfile = newProfile("journal-filter-other");
+  profileId = newProfile("training-log-filter");
+  otherProfile = newProfile("training-log-filter-other");
 
   // 60 consecutive days of ordinary sessions, so the newest window is nowhere near
   // the interesting rows below.
@@ -187,17 +187,26 @@ beforeAll(() => {
   });
 });
 
-describe("getJournalPage — filtered day selection (#1634)", () => {
+describe("getTrainingLogPage — filtered day selection (#1634)", () => {
   it("returns a match many windows deep on PAGE ONE, with no cursor walking", () => {
     // The unfiltered first page cannot reach it — that is the bug being fixed.
-    const unfiltered = getJournalPage(profileId, null, JOURNAL_PAGE_DAYS);
+    const unfiltered = getTrainingLogPage(
+      profileId,
+      null,
+      TRAINING_LOG_PAGE_DAYS
+    );
     expect(unfiltered.days).not.toContain(DEEP_DATE);
 
-    const spec = resolveJournalFilterSpec(
+    const spec = resolveTrainingLogFilterSpec(
       profileId,
       filters({ query: "kayak" })
     );
-    const page = getJournalPage(profileId, null, JOURNAL_PAGE_DAYS, spec);
+    const page = getTrainingLogPage(
+      profileId,
+      null,
+      TRAINING_LOG_PAGE_DAYS,
+      spec
+    );
     expect(page.days).toEqual([DEEP_DATE]);
     expect(page.activities.map((a) => a.id)).toContain(deepActivityId);
     // One matching day in the whole ledger, so nothing older to page to.
@@ -206,20 +215,20 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
 
   it("matches the free text against titles, set names, and component names", () => {
     // Component name only ("Kayaking" is not in the title's words as typed).
-    const byComponent = getJournalPage(
+    const byComponent = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ query: "kayaking" }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ query: "kayaking" }))
     );
     expect(byComponent.days).toEqual([DEEP_DATE]);
 
     // Exercise-set name only — "Back Squat" appears in no title.
-    const bySet = getJournalPage(
+    const bySet = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ query: "back squat" }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ query: "back squat" }))
     );
     expect(bySet.days).toEqual([
       shiftDateStr(TODAY, -35),
@@ -228,21 +237,21 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
   });
 
   it("treats LIKE wildcards in the query as literal characters", () => {
-    const page = getJournalPage(
+    const page = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ query: "%" }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ query: "%" }))
     );
     expect(page.days).toEqual([]);
   });
 
   it("never leaks another profile's matching rows", () => {
-    const page = getJournalPage(
+    const page = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ query: "kayak" }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ query: "kayak" }))
     );
     for (const a of page.activities) {
       expect((a as unknown as { profile_id: number }).profile_id).toBe(
@@ -254,14 +263,14 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
   it("pages the CURSOR over matching days, not over raw days", () => {
     // Every filler day matches "Filler", so a 2-day window has to walk them in
     // date order and stop exactly once the matching set is exhausted.
-    const spec = resolveJournalFilterSpec(
+    const spec = resolveTrainingLogFilterSpec(
       profileId,
       filters({ query: "Filler" })
     );
     const seen: string[] = [];
     let cursor: string | null = null;
     for (let guard = 0; guard < 100; guard++) {
-      const page: ReturnType<typeof getJournalPage> = getJournalPage(
+      const page: ReturnType<typeof getTrainingLogPage> = getTrainingLogPage(
         profileId,
         cursor,
         2,
@@ -281,11 +290,11 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
   });
 
   it("filters by activity type across the whole ledger", () => {
-    const page = getJournalPage(
+    const page = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ type: "sport" }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ type: "sport" }))
     );
     expect(page.days).toEqual([DEEP_DATE]);
   });
@@ -293,18 +302,18 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
   it("resolves the region tag as a finite IN-list preimage", () => {
     // The preimage is computed over the names this profile actually logged, not
     // over the catalog — regionForExercise cannot run in SQL.
-    const names = getJournalTagExercises(profileId, {
+    const names = getTrainingLogTagExercises(profileId, {
       kind: "region",
       value: "Legs",
     });
     expect(names).toContain("back squat");
     expect(names).not.toContain("walking");
 
-    const page = getJournalPage(
+    const page = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(
         profileId,
         filters({ tag: { kind: "region", value: "Legs" } })
       )
@@ -316,11 +325,11 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
   });
 
   it("returns nothing (not everything) when a preimage is empty", () => {
-    const page = getJournalPage(
+    const page = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(
         profileId,
         filters({ tag: { kind: "muscle", value: "Gills" } })
       )
@@ -331,11 +340,11 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
 
   it("filters by provenance, telling a manual row from an imported one on the SAME day", () => {
     const mixedDay = shiftDateStr(TODAY, -30);
-    const strava = getJournalPage(
+    const strava = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ source: "strava" }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ source: "strava" }))
     );
     expect(strava.days).toEqual([mixedDay]);
     // The DAY is the unit of selection, so both same-day rows come back; the pure
@@ -344,27 +353,27 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
     expect(titles).toContain("Tempo effort");
     expect(titles).toContain("Tempo cooldown");
 
-    const manual = getJournalPage(
+    const manual = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ source: "manual" }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ source: "manual" }))
     );
     // Manual rows are everywhere, but the imported day is reachable too.
     expect(manual.days).toContain(TODAY);
 
     // Every document-sourced row collapses into ONE option's selection.
-    const doc = getJournalPage(
+    const doc = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ source: "document" }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ source: "document" }))
     );
     expect(doc.days).toEqual([shiftDateStr(TODAY, -31)]);
   });
 
   it("offers exactly one source option per provider", () => {
-    expect(getJournalSourceKeys(profileId)).toEqual([
+    expect(getTrainingLogSourceKeys(profileId)).toEqual([
       "manual",
       "document",
       "strava",
@@ -374,21 +383,21 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
   it("filters to rows the editor can't re-save, from a preimage of ids", () => {
     const faults = getActivityFaults(profileId);
     expect(faults.count).toBe(1);
-    const page = getJournalPage(
+    const page = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, filters({ faultOnly: true }))
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, filters({ faultOnly: true }))
     );
     expect(page.days).toEqual([shiftDateStr(TODAY, -45)]);
   });
 
   it("ANDs filters — a type that excludes the text match yields nothing", () => {
-    const page = getJournalPage(
+    const page = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(
         profileId,
         filters({ query: "kayak", type: "strength" })
       )
@@ -397,12 +406,16 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
   });
 
   it("leaves the UNFILTERED page byte-identical to the pre-#1634 query", () => {
-    const withNoSpec = getJournalPage(profileId, null, JOURNAL_PAGE_DAYS);
-    const withEmptyFilters = getJournalPage(
+    const withNoSpec = getTrainingLogPage(
       profileId,
       null,
-      JOURNAL_PAGE_DAYS,
-      resolveJournalFilterSpec(profileId, EMPTY_JOURNAL_FILTERS)
+      TRAINING_LOG_PAGE_DAYS
+    );
+    const withEmptyFilters = getTrainingLogPage(
+      profileId,
+      null,
+      TRAINING_LOG_PAGE_DAYS,
+      resolveTrainingLogFilterSpec(profileId, EMPTY_TRAINING_LOG_FILTERS)
     );
     expect(withEmptyFilters.days).toEqual(withNoSpec.days);
     expect(withEmptyFilters.activities.map((a) => a.id)).toEqual(
@@ -412,29 +425,32 @@ describe("getJournalPage — filtered day selection (#1634)", () => {
   });
 });
 
-describe("buildJournalFeedPage — built cards under a filter (#1634)", () => {
+describe("buildTrainingLogFeedPage — built cards under a filter (#1634)", () => {
   it("builds the deep match's card on page one and the client predicate keeps it", () => {
-    const page = buildJournalFeedPage(
+    const page = buildTrainingLogFeedPage(
       profileId,
       null,
       UNITS,
       undefined,
-      JOURNAL_PAGE_DAYS,
+      TRAINING_LOG_PAGE_DAYS,
       filters({ query: "kayak" })
     );
-    const shown = filterJournalGroups(page.groups, filters({ query: "kayak" }));
+    const shown = filterTrainingLogGroups(
+      page.groups,
+      filters({ query: "kayak" })
+    );
     expect(shown.map((g) => g.date)).toEqual([DEEP_DATE]);
     expect(shown[0].cards.map((c) => c.activity.id)).toEqual([deepActivityId]);
   });
 
   it("ships a matching day's OTHER rows too, so the merge picker keeps them", () => {
     const f = filters({ source: "strava" });
-    const page = buildJournalFeedPage(
+    const page = buildTrainingLogFeedPage(
       profileId,
       null,
       UNITS,
       undefined,
-      JOURNAL_PAGE_DAYS,
+      TRAINING_LOG_PAGE_DAYS,
       f
     );
     // The raw page carries EVERY row of the matching day — the Strava effort, its
@@ -445,7 +461,7 @@ describe("buildJournalFeedPage — built cards under a filter (#1634)", () => {
       "Tempo effort",
     ]);
     // …and the pure predicate is what narrows the DISPLAY to the imported one.
-    const shown = filterJournalGroups(page.groups, f);
+    const shown = filterTrainingLogGroups(page.groups, f);
     expect(shown[0].cards.map((c) => c.activity.title)).toEqual([
       "Tempo effort",
     ]);
@@ -466,15 +482,15 @@ describe("buildJournalFeedPage — built cards under a filter (#1634)", () => {
       const filteredIds = new Set<number>();
       let cursor: string | null = null;
       for (let guard = 0; guard < 100; guard++) {
-        const page = buildJournalFeedPage(
+        const page = buildTrainingLogFeedPage(
           profileId,
           cursor,
           UNITS,
           undefined,
-          JOURNAL_PAGE_DAYS,
+          TRAINING_LOG_PAGE_DAYS,
           f
         );
-        for (const g of filterJournalGroups(page.groups, f))
+        for (const g of filterTrainingLogGroups(page.groups, f))
           for (const c of g.cards) filteredIds.add(c.activity.id);
         cursor = page.nextBefore;
         if (cursor == null) break;
@@ -483,10 +499,10 @@ describe("buildJournalFeedPage — built cards under a filter (#1634)", () => {
       const allIds = new Set<number>();
       let plain: string | null = null;
       for (let guard = 0; guard < 100; guard++) {
-        const page = buildJournalFeedPage(profileId, plain, UNITS);
+        const page = buildTrainingLogFeedPage(profileId, plain, UNITS);
         for (const g of page.groups)
           for (const c of g.cards)
-            if (journalCardMatches(c, f)) allIds.add(c.activity.id);
+            if (trainingLogCardMatches(c, f)) allIds.add(c.activity.id);
         plain = page.nextBefore;
         if (plain == null) break;
       }
@@ -498,7 +514,7 @@ describe("buildJournalFeedPage — built cards under a filter (#1634)", () => {
   });
 });
 
-describe("buildMultiViewJournalGroups — filters compose with per-member cursors (#1634)", () => {
+describe("buildMultiViewTrainingLogGroups — filters compose with per-member cursors (#1634)", () => {
   let memberA: number;
   let memberB: number;
 
@@ -529,14 +545,14 @@ describe("buildMultiViewJournalGroups — filters compose with per-member cursor
 
   it("surfaces EACH member's deep match, merged newest day first", () => {
     const f = filters({ query: "paddling" });
-    const groups = buildMultiViewJournalGroups(
+    const groups = buildMultiViewTrainingLogGroups(
       [memberA, memberB],
       memberA,
       UNITS,
       undefined,
       f
     );
-    const shown = filterJournalGroups(groups, f);
+    const shown = filterTrainingLogGroups(groups, f);
     expect(shown.map((g) => g.date)).toEqual([
       shiftDateStr(TODAY, -45),
       shiftDateStr(TODAY, -50),
@@ -547,7 +563,7 @@ describe("buildMultiViewJournalGroups — filters compose with per-member cursor
   });
 
   it("keeps the unfiltered merged window unchanged", () => {
-    const groups = buildMultiViewJournalGroups(
+    const groups = buildMultiViewTrainingLogGroups(
       [memberA, memberB],
       memberA,
       UNITS

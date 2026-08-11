@@ -54,7 +54,7 @@ describe("trainingTabStrip", () => {
     ]);
   });
 
-  it("leads with the default tab (Log is the Journal)", () => {
+  it("leads with the default tab (Log is the Training Log)", () => {
     expect(trainingTabStrip()[0]?.id).toBe(DEFAULT_TRAINING_TAB);
   });
 });

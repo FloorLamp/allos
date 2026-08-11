@@ -2169,7 +2169,7 @@ arrival's only value is **provenance**, and the lines it described were already 
 the same message. So a routine overnight sync is no longer narrated at all:
 
 - **Yesterday's activity lines carry the source** — `🏋️ Morning Ride — 18.85 km ·
-Strava` — through the same `activityProvenanceLabel` the Journal and the timeline
+Strava` — through the same `activityProvenanceLabel` the Training Log and the timeline
   render. A **manual** row carries no clause: "Manual" beside a session you logged
   yourself is not provenance.
 - **The Sleep section IS the Health Connect arrival.** It needs no `📥` restatement

@@ -45,9 +45,9 @@ import { reconcileFlags } from "../../lib/queries";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
 import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
 
-// ── Dense Journal-card + met-target fixtures ──
-export function seedJournalCard(): void {
-  // Dense Journal-card fixture: the base seed already carries the full synthetic
+// ── Dense Training Log card + met-target fixtures ──
+export function seedTrainingLogCard(): void {
+  // Dense Training Log card fixture: the base seed already carries the full synthetic
   // Strava payload; e2e adds only a deliberately long note and the hand-edit lock so
   // disclosure + lock affordances can be exercised without another activity row.
   db.prepare(

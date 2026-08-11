@@ -5,7 +5,7 @@ import { openCommandPalette } from "./nav";
 // Issue #340: live workout mode — the in-gym presentation of the SAME activity
 // editor (no second engine), driven end-to-end against the seeded DB.
 //
-//   1. "Start workout" (journal aside + command palette) opens a create form in
+//   1. "Start workout" (training log aside + command palette) opens a create form in
 //      the live layout: a control strip with the rest timer + Finish.
 //   2. The rest timer is a client-side countdown — a lift-appropriate default,
 //      preset chips, and a start/pause toggle.
@@ -27,9 +27,9 @@ async function pickActivity(page: Page, name: string) {
 test("'Start workout' opens live mode with a rest timer (#340)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
-  // The journal aside header carries a "Start workout" button (strength-centric,
+  // The training log aside header carries a "Start workout" button (strength-centric,
   // shown for non-restricted profiles). It opens the create editor in live mode.
   await page.getByRole("main").getByTestId("start-workout").click();
 

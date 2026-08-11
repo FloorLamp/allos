@@ -66,7 +66,7 @@ export interface AssessmentLike {
 
 // The latest natural-store reading for a test (#1129), gathered by the DB layer
 // (getAmbientFitnessReadings). `source` is the raw store source string ("oura", "withings",
-// "manual", null for a plain quick-add, "logged set" for a journal set, …) — the resolver
+// "manual", null for a plain quick-add, "logged set" for a training log set, …) — the resolver
 // classifies it into a provenance kind + human label.
 export interface AmbientReading {
   testKey: string;
@@ -91,7 +91,7 @@ export type ProvenanceKind = "check" | "synced" | "logged";
 export interface FitnessProvenance {
   kind: ProvenanceKind;
   label: string; // "from your check" / "from Oura" / "from a logged set"
-  sourceName: string | null; // "Oura" / "Withings" / "your journal" / null
+  sourceName: string | null; // "Oura" / "Withings" / "your training log" / null
   date: string;
   ageDays: number | null;
   freshness: FreshnessState;
@@ -208,7 +208,7 @@ const DOMAIN_ORDER: FitnessDomain[] = [
 
 // Known device/sync sources → a human name for the provenance label. Anything else that
 // isn't a manual/quick-add source is shown title-cased verbatim; a manual/null source (or a
-// journal set) is "logged", not "synced".
+// training log set) is "logged", not "synced".
 const SOURCE_NAMES: Record<string, string> = {
   oura: "Oura",
   withings: "Withings",
@@ -241,17 +241,17 @@ function classifyAmbient(
     const name = SOURCE_NAMES[raw] ?? titleCase(raw);
     return { kind: "synced", sourceName: name, label: `from ${name}` };
   }
-  // manual / null / journal — logged, not synced.
+  // manual / null / training log — logged, not synced.
   if (storeKind === "set") {
     return {
       kind: "logged",
-      sourceName: "your journal",
+      sourceName: "your training log",
       label: "from a logged set",
     };
   }
   return {
     kind: "logged",
-    sourceName: "your journal",
+    sourceName: "your training log",
     label: "from your data",
   };
 }

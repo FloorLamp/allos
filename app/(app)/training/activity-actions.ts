@@ -5,9 +5,9 @@ import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
-import { type JournalFeedPage } from "@/lib/journal-feed";
-import { normalizeJournalFilters } from "@/lib/journal-filters";
-import { resolveJournalFeed } from "./journal-feed-resolve";
+import { type TrainingLogFeedPage } from "@/lib/training-log-feed";
+import { normalizeTrainingLogFilters } from "@/lib/training-log-filters";
+import { resolveTrainingLogFeed } from "./training-log-feed-resolve";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   writeActivityFold,
@@ -33,7 +33,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 
 // Re-validate every surface that reads activity-derived data after a create/edit/
-// merge/delete: the Journal feed on /training, the /trends fitness-volume chart +
+// merge/delete: the Training Log feed on /training, the /trends fitness-volume chart +
 // workout heatmap (issue #333), the dashboard rollups, and every ride detail whose
 // summary/comparison/history may have changed. Kept in one place so the next
 // activity-reading surface is added once, not in each mutation.
@@ -122,7 +122,7 @@ export async function logBodyweight(
   revalidateActivitySurfaces();
 }
 
-// MANUAL pair-merge from the Journal (issue #64): the user picks two activities of
+// MANUAL pair-merge from the Training Log (issue #64): the user picks two activities of
 // the SAME day and explicitly merges them — the escape hatch for duplicates no
 // heuristic catches (e.g. rows with no clock windows). Reuses the SAME machinery as
 // the Data → Review resolver: fold the discarded row's gap-filling fields into the
@@ -163,7 +163,7 @@ export async function mergeActivities(
   // profile_id) falls back to the acting profile.
   const profileId = await gateItemProfile(formData);
   const profile = { id: profileId };
-  // Merge is an adult-analytics affordance (the Journal duplicate-review flow) and
+  // Merge is an adult-analytics affordance (the Training Log duplicate-review flow) and
   // is not offered on the restricted profile's lightweight activity log; keep it
   // fully gated for a restricted profile (#489) so the un-surfaced action can't be
   // reached out-of-band.
@@ -261,13 +261,13 @@ export async function mergeActivities(
   if (!ok) return { undoIds: [] };
 
   // Refresh every activity-reading surface the folded/deleted rows feed — the
-  // Journal feed on /training, the /trends fitness chart + heatmap, and the
+  // Training Log feed on /training, the /trends fitness chart + heatmap, and the
   // dashboard rollups (same surfaces deleteActivity refreshes).
   revalidateActivitySurfaces();
   return { undoIds };
 }
 
-// Parse the Journal merge's drop ids: the multi-select `drop_ids` JSON array, or a
+// Parse the Training Log merge's drop ids: the multi-select `drop_ids` JSON array, or a
 // single legacy `drop_id`. Positive integers only, deduped; the caller re-verifies
 // each `AND profile_id = ?`, so this is shape validation, not an auth check.
 function parseMergeDropIds(formData: FormData): number[] {
@@ -291,7 +291,7 @@ function parseMergeDropIds(formData: FormData): number[] {
   return [...seen];
 }
 
-// Load one window of the Journal feed (issues #451, #1634). The Training → Log
+// Load one window of the Training Log feed (issues #451, #1634). The Training → Log
 // surface renders only its newest UNFILTERED page server-side; this fetches the
 // next-older window on a "Load more" tap (or when a deep link targets a day/activity
 // below the loaded set) — and, since #1634, page one of a FILTERED feed whenever the
@@ -299,21 +299,21 @@ function parseMergeDropIds(formData: FormData): number[] {
 // of over whatever windows happen to be loaded.
 //
 // A READ, but scoped to the SESSION's active profile (or, in a household view, its
-// authorized view-set — resolveJournalFeed re-resolves the scope on every call).
+// authorized view-set — resolveTrainingLogFeed re-resolves the scope on every call).
 // `before` and `filters` are the only client inputs and neither selects a profile:
 // the cursor is used purely as a `date <` bound, and the filters are normalized
-// (normalizeJournalFilters) before anything reaches SQL — an unknown activity type,
+// (normalizeTrainingLogFilters) before anything reaches SQL — an unknown activity type,
 // an over-long query, or a malformed tag degrades to "no such filter" rather than
 // being trusted. A malformed cursor normalizes to null (start from the newest day).
-export async function loadJournalPage(
+export async function loadTrainingLogPage(
   before: string | null,
   filters?: unknown
-): Promise<JournalFeedPage> {
+): Promise<TrainingLogFeedPage> {
   await requireSession();
   const cursor =
     typeof before === "string" && isRealIsoDate(before) ? before : null;
-  const feed = await resolveJournalFeed(
-    normalizeJournalFilters(filters),
+  const feed = await resolveTrainingLogFeed(
+    normalizeTrainingLogFilters(filters),
     cursor
   );
   return { groups: feed.groups, nextBefore: feed.cursor };

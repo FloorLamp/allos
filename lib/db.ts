@@ -59,7 +59,7 @@ function createDb(): Database.Database {
   registerSqlFunctions(db);
   // busy_timeout MUST be the FIRST pragma set — before journal_mode = WAL (issue
   // #581). Parallel `next build` workers all open this same file on a cold boot and
-  // race to establish WAL; switching journal mode to WAL takes a database lock, and
+  // race to establish WAL; switching SQLite's write-ahead mode takes a database lock, and
   // a statement issued BEFORE busy_timeout is installed does NOT wait on a competing
   // worker's lock — it fails the caller with a raw SQLITE_BUSY ("database is
   // locked"). Setting busy_timeout first installs the busy handler so EVERY

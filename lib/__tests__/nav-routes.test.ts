@@ -138,7 +138,7 @@ function dueSignalPaths(file: string): string[] {
 // `revalidatePath` literal out of app/ sources, because "`revalidatePath` takes a
 // plain string, so `typedRoutes` cannot check it" — after the #1042/#1079 route
 // merges, several Server Actions kept revalidating URLs that no longer served
-// anything (`/encounters`, `/journal`, `/body`), so the refresh was a silent no-op
+// anything (`/encounters`, a retired training path, `/body`), so the refresh was a silent no-op
 // and the moved surface stayed stale.
 //
 // #2149 replaced that text sweep with a TYPE: every target now goes through

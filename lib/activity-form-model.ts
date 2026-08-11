@@ -64,7 +64,7 @@ export interface ActivityEditData {
   calorie_estimated?: boolean;
   route_polyline?: string | null;
   // The profile-relative zone for the displayed average HR. It is computed once
-  // while the Journal model is assembled, then shared by the card and editor.
+  // while the Training Log model is assembled, then shared by the card and editor.
   heart_rate_zone?: ZoneId | null;
   sets: {
     exercise: string;
@@ -488,7 +488,7 @@ export function initialPartsFromSeed(
 }
 
 // What makes a strength set "count" / what pauses auto-save as half-filled:
-// the rules live in lib/activity-validate (shared with the journal's
+// the rules live in lib/activity-validate (shared with the training log's
 // stored-row validator); these adapters feed it trimmed-string presence.
 export const sideComplete = (name: string, w: string, r: string, d: string) =>
   sideCompleteBy(name, !!w.trim(), !!r.trim(), !!d.trim());

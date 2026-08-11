@@ -14,7 +14,7 @@ import { shiftDateStr } from "./date";
 // The user-facing activity streak this module also used to serve (the rest-tolerant
 // `flexibleStreak`/`activityStreak` pair, #1398) is GONE — #1935/#1936/#1937/#1939
 // retired the whole run-shaped display family: the weekly-recap streak line, the
-// per-supplement 🔥 chip, the Training/Journal "N-day streak", and the `streak:` /
+// per-supplement 🔥 chip, the Training Log "N-day streak", and the `streak:` /
 // `adherence:` milestones. Each measured continuity of app-logged behavior rather
 // than health, each had a CLIFF where a rate degrades gracefully, and each fought
 // the machinery on the other side of the app recommending rest days, deload weeks,

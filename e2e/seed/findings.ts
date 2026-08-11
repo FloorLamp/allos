@@ -85,9 +85,9 @@ export function seedRuleDomains(): void {
 
   // #789 — a CUSTOM-ONLY strength session for the per-session muscle-figure spec's
   // negative case: one strength activity whose only lift is a made-up, non-catalog
-  // name, so `musclesWorked` resolves to the empty set and the Journal card's
+  // name, so `musclesWorked` resolves to the empty set and the Training Log card's
   // per-session anatomy figure degrades to nothing. Unique title so the spec targets
-  // it exactly; a recent date so it lands in the Journal's first (newest) page. The
+  // it exactly; a recent date so it lands in the Training Log's first (newest) page. The
   // custom lift has no catalog muscle tags, so it adds nothing to weekly coverage and
   // leaves the coverage/volume-band specs undisturbed. Idempotent.
   const MUSCLE_FIG_CUSTOM = "Custom-only lift day (e2e)";
@@ -346,7 +346,7 @@ export function seedSuppressedCenter(): void {
 
   // The stamped day's max temperature — comfortably over the #1726 heatwave ENTRY
   // bound (32 °C), so three consecutive such days genuinely make today notable AND give
-  // the journal card an unmistakable figure. Kept above the bound rather than at it, so
+  // the training log card an unmistakable figure. Kept above the bound rather than at it, so
   // the fixture doesn't sit on the hysteresis edge the predicate exists to smooth.
   const WEATHER_STAMP_TEMP_C = 34;
 
@@ -414,7 +414,7 @@ export function seedSuppressedCenter(): void {
     // ---- Conditions stamps + notable Timeline days (#1728) ----
     // An outdoor RIDE today (the outdoor catalog flag decides which sessions get a
     // stamp; the walk above is deliberately not an outdoor-flagged name, so only this
-    // one is stamped) plus a cached DAILY row for its day, so the journal card renders
+    // one is stamped) plus a cached DAILY row for its day, so the training log card renders
     // "31°C · clear". A three-day hot spell ending today additionally makes today a
     // NOTABLE day under the #1726 heatwave predicate, so the Timeline day header
     // carries its conditions summary — quiet by default, notable by exception.

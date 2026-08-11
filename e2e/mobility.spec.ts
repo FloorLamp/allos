@@ -38,7 +38,7 @@ test.describe("Mobility (#840)", () => {
     await page.close();
   });
 
-  test("tapping a move logs a recovery session that persists and shows on the journal", async ({
+  test("tapping a move logs a recovery session that persists and shows on the training log", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -80,7 +80,7 @@ test.describe("Mobility (#840)", () => {
       ).toHaveAttribute("aria-pressed", "true", { timeout: 3000 });
     }).toPass({ timeout: 45_000 }); // topass-ok: reload-until-persisted: confirm the async move-toggle write survives a reload; no single event marks 'persisted AND reflected'
 
-    // The recovery session rides the shared journal feed (Training → Log) like any activity.
+    // The recovery session rides the shared training log feed (Training → Log) like any activity.
     await page.goto("/training?tab=log");
     await expect(page.getByText("Mobility").first()).toBeVisible(); // first-ok: asserts the Mobility heading renders — order-agnostic presence
 

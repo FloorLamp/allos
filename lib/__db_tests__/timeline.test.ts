@@ -97,7 +97,7 @@ describe("getTimelineEvents", () => {
     expect(body?.subtitle).not.toContain("80.0 kg");
   });
 
-  it("links cycling events to ride detail while other activities keep their Journal record", () => {
+  it("links cycling events to ride detail while other activities keep their Training Log record", () => {
     const rideId = Number(
       db
         .prepare(

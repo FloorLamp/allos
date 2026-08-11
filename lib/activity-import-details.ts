@@ -211,7 +211,7 @@ export function activityDisclosureSummary({
 }
 
 // One formatter feeds every surface that presents provider measurements. The
-// editor uses the labeled rows; the Journal selects the same formatted values
+// editor uses the labeled rows; the Training Log selects the same formatted values
 // for its compact metric strip.
 export function importedActivityDetails(
   metrics: ImportedActivityMetrics,

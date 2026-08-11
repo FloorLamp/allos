@@ -42,7 +42,7 @@ describe("mobility log actions", () => {
     const rows = recoveryRows(profile.id);
     expect(rows.length).toBe(1);
     expect(rows[0].type).toBe("recovery");
-    // Components store the DISPLAY name (so the journal renders "Pigeon pose"); the slug
+    // Components store the DISPLAY name (so the training log renders "Pigeon pose"); the slug
     // identity is recovered on read (session.moves is the canonical slug).
     const comps = JSON.parse(rows[0].components ?? "[]");
     expect(comps).toEqual([

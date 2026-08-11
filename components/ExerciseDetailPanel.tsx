@@ -29,7 +29,7 @@ import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import LevelBadge from "@/components/LevelBadge";
 import { StatBox } from "@/components/StatBox";
-import { journalActivityHref } from "@/lib/timeline-format";
+import { trainingLogActivityHref } from "@/lib/timeline-format";
 import type { AppRoute } from "@/lib/hrefs";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 
@@ -64,7 +64,7 @@ export function bestSetText(
 }
 
 // Per-exercise detail: muscle/region badges, benchmark stat grid, training-volume
-// trend, and any matching goals. Shared by the Strength page and the journal's
+// trend, and any matching goals. Shared by the Strength page and the training log's
 // right-hand detail pane.
 export default function ExerciseDetailPanel({
   stat,
@@ -91,7 +91,7 @@ export default function ExerciseDetailPanel({
   // server/client boundary, unlike a Map).
   goalProgress?: Record<number, GoalProgress>;
   // Recent sessions of this exercise (newest first), already summarized.
-  // `href` links to the session's activity in the journal (an INTERNAL route, so
+  // `href` links to the session's activity in the training log (an INTERNAL route, so
   // `AppRoute` — issue #285 — matching the RecentSessionSummary rows the query
   // layer produces); `date` is preformatted.
   recent?: {
@@ -235,7 +235,7 @@ export default function ExerciseDetailPanel({
           label="Last trained"
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
-          href={journalActivityHref(stat.lastActivityId)}
+          href={trainingLogActivityHref(stat.lastActivityId)}
         />
         {matchedGoals.map((g) => {
           const pct = goalProgress?.[g.id]?.pct ?? 0;

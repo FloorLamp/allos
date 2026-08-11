@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // implements, cardio gear, and recovery devices, grouped by kind with an
 // active/retired split and a per-item usage badge. Each row links to
 // /equipment/[id] for the full usage payoff. Reached contextually (the activity
-// form's "manage equipment" link, journal gear chips, protocol gear refs), not
+// form's "manage equipment" link, training log gear chips, protocol gear refs), not
 // from top-level nav — it's an occasionally-visited registry.
 export default async function EquipmentPage() {
   const { login, profile } = await requireSession();

@@ -1,6 +1,6 @@
 // The ONE pure computation behind the food-group serving log (issue #579): the weekly
 // rollup — servings per group over a window. Deliberately the SINGLE place this is
-// computed so the journal/nutrition card, the trends view, and (later) the food-habit
+// computed so the daily nutrition card, the trends view, and (later) the food-habit
 // target progress (#580) are all formatters over the same result ("one question, one
 // computation"). Pure — no DB/clock; the caller windows the rows and passes them in.
 

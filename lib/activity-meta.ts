@@ -298,7 +298,7 @@ export interface CompositeComponent {
 //   rather than stored as a bogus rest. Elapsed − active = the in-leg rests +
 //   between-leg transitions that belong to no component.
 // Also reports whether any leg is a strength leg (the parent then gets a set-count).
-// Pure so the journal write path and the form's live rollup share it.
+// Pure so the training log write path and the form's live rollup share it.
 export function compositeRollup(
   components: CompositeComponent[],
   sessionDurationMin: number | null,

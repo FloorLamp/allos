@@ -13,7 +13,7 @@ import { test, expect } from "./fixtures";
 test("exercise detail shows the bodyweight-band strength standard line (#152)", async ({
   page,
 }) => {
-  // Training → Log: clicking a lift on a journal card opens the per-exercise
+  // Training → Log: clicking a lift on a training log card opens the per-exercise
   // detail panel, which carries the coaching STANDING line. (#1492 moved this
   // host: Trends → Fitness became the WINDOWED analytics lens — four sections of
   // trend charts — so the full-history explorer that used to carry the panel is

@@ -15,7 +15,7 @@ import { hydratedClick } from "./helpers";
 
 // Derived workout presence (issue #921), driven end-to-end:
 //   • the household presence chip (grants-scoped, active-only),
-//   • the app-wide minimized workout dock — hydration on load, reopen, journal
+//   • the app-wide minimized workout dock — hydration on load, reopen, training log
 //     suppression, minimize round-trip, and discard-removes.
 //
 // The seeded PRESENCE_PROFILE carries a LIVE session (a strength activity today

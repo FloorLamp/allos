@@ -35,8 +35,8 @@ import { monthNames } from "../date";
 import {
   activityProvenanceKey,
   activityProvenanceLabel,
-  JOURNAL_SOURCE_MANUAL,
-} from "../journal-format";
+  TRAINING_LOG_SOURCE_MANUAL,
+} from "../training-log-format";
 import { GLYPH } from "./glyphs";
 
 // Capitalize the first letter of a noun for use at the start of a line
@@ -426,7 +426,7 @@ function activityStat(a: DigestActivity): string | null {
 // The arrival line the digest used to carry — "📥 Strava: workouts" — was provenance
 // and nothing else, stated about a session the message already listed one section down.
 // Folding it here says the same thing in the place the reader is already looking, and
-// the label is the SAME `activityProvenanceLabel` the Journal and the timeline render,
+// the label is the SAME `activityProvenanceLabel` the Training Log and the timeline render,
 // never a second name for one source.
 //
 // A MANUAL row gets nothing. "Manual" beside a session you logged yourself is not
@@ -434,7 +434,7 @@ function activityStat(a: DigestActivity): string | null {
 // which only has an answer when something else put it there.
 function activitySource(a: DigestActivity): string | null {
   const source = a.source ?? null;
-  if (activityProvenanceKey(source) === JOURNAL_SOURCE_MANUAL) return null;
+  if (activityProvenanceKey(source) === TRAINING_LOG_SOURCE_MANUAL) return null;
   return activityProvenanceLabel(source);
 }
 

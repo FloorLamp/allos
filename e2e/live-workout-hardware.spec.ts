@@ -85,7 +85,7 @@ async function pickActivity(page: Page, name: string) {
     .click();
 }
 
-// Open the live editor from the journal aside and wait for the control strip.
+// Open the live editor from the training log aside and wait for the control strip.
 async function startLiveWorkout(page: Page) {
   await page.goto("/training");
   await page.getByRole("main").getByTestId("start-workout").click();

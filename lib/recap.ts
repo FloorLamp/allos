@@ -34,7 +34,7 @@
 // Week definition — the WEEKLY recap (7-day period) uses the profile's ONE
 // definition of "this week" (lib/week-window.ts, honoring `week_mode`), so the
 // recap card/notification count the same days as the routine counters and the
-// journal week summary (issue #223). A rolling-mode profile still gets a trailing
+// training log week summary (issue #223). A rolling-mode profile still gets a trailing
 // seven days ending on "today" (unchanged); a calendar-mode profile gets the
 // current calendar week through today, with the prior full week as the comparison
 // window. Months and quarters are ALWAYS calendar — `week_mode` defines only weeks,
@@ -99,7 +99,7 @@ export function recapWindow(today: string, days = 7): RecapWindow {
 
 // The window a recap covers. For the WEEKLY recap (days === 7) it honors the
 // profile's `week_mode` via the shared `weekWindow` computation, so the recap's
-// "this week" matches the routine counters and journal week summary (issue #223).
+// "this week" matches the routine counters and training log week summary (issue #223).
 // For any other period length (e.g. the monthly recap, #20) `week_mode` doesn't
 // apply, so it falls back to the trailing `recapWindow(today, days)`. `weekMode`
 // defaults to "rolling" — which makes the 7-day window byte-for-byte identical to
@@ -210,7 +210,7 @@ export interface RecapInput {
   // all. It is DECLARED, never inferred from a day count.
   scale?: RecapScale;
   // The profile's week definition, applied to the 7-day weekly recap so its
-  // window matches the routine counters / journal (issue #223). Omitted ⇒
+  // window matches the routine counters / training log (issue #223). Omitted ⇒
   // "rolling" (trailing seven days), preserving the pre-#223 behavior; ignored for
   // non-weekly periods (weekMode only defines a week).
   weekMode?: WeekMode;

@@ -24,9 +24,9 @@ export function StatBox({
   valueTitle?: string;
   sub?: ReactNode;
   subClass?: string;
-  // When set, the value links to it (e.g. the journal entry of the last session).
+  // When set, the value links to it (e.g. the training log entry of the last session).
   // An INTERNAL app route, so it is `AppRoute` (issue #285): a consolidated-away
-  // journal route becomes a build error here rather than a shipped dead link.
+  // training log route becomes a build error here rather than a shipped dead link.
   href?: AppRoute;
   // Optional chip shown next to the label (e.g. a "PR" marker).
   badge?: ReactNode;

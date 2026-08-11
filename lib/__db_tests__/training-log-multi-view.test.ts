@@ -1,6 +1,6 @@
-// DB INTEGRATION TIER — the multi-view Journal per-member gather (issue #1330).
+// DB INTEGRATION TIER — the multi-view Training Log per-member gather (issue #1330).
 //
-// buildMultiViewJournalGroups loop-composes the per-profile buildJournalFeedPage over
+// buildMultiViewTrainingLogGroups loop-composes the per-profile buildTrainingLogFeedPage over
 // the whole view-set and merges the day-grouped cards into ONE feed, stamping each
 // card with its subject profile (activity.subjectProfileId). This pins the properties
 // the merged card feed relies on:
@@ -13,7 +13,7 @@
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { buildMultiViewJournalGroups } from "@/lib/journal-feed";
+import { buildMultiViewTrainingLogGroups } from "@/lib/training-log-feed";
 import type { UnitPrefs } from "@/lib/settings";
 import { db } from "@/lib/db";
 
@@ -45,8 +45,8 @@ let owner: number;
 let shared: number;
 
 beforeAll(() => {
-  owner = newProfile("mv-journal-owner");
-  shared = newProfile("mv-journal-shared");
+  owner = newProfile("mv-training-log-owner");
+  shared = newProfile("mv-training-log-shared");
 
   // Owner: two days, one card each.
   addActivity(owner, "2026-06-10", "owner-older");
@@ -57,10 +57,10 @@ beforeAll(() => {
 });
 
 function titlesByDate(pid: number) {
-  return buildMultiViewJournalGroups([owner, shared], pid, UNITS);
+  return buildMultiViewTrainingLogGroups([owner, shared], pid, UNITS);
 }
 
-describe("buildMultiViewJournalGroups (#1330)", () => {
+describe("buildMultiViewTrainingLogGroups (#1330)", () => {
   it("merges both members' cards by date, newest first, each stamped by subject", () => {
     const groups = titlesByDate(owner);
     expect(groups.map((g) => g.date)).toEqual([

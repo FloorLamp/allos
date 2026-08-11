@@ -75,7 +75,7 @@ import { activityDisclosureSummary } from "@/lib/activity-import-details";
 export type { ActivityEditData };
 
 // The shared activity create/edit form, rendered inside ActivityOverlay or docked
-// in the journal's right column. Either way it auto-saves: changes persist a
+// in the training log's right column. Either way it auto-saves: changes persist a
 // moment after any valid edit (create-then-update), so every way of leaving the
 // form — close button, backdrop, Escape, navigation — is loss-free and there is
 // no Save/Cancel step.

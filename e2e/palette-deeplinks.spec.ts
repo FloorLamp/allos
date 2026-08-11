@@ -36,7 +36,7 @@ const PROTOCOL_NAME = `${ENTITY_MARKER} sauna block`;
 const PRACTICE_NAME = `${ENTITY_MARKER} plunge`;
 const EQUIPMENT_NAME = `${ENTITY_MARKER} trap bar`;
 // Deep past on purpose: a per-record ride detail must resolve independently of
-// the Journal's newest window (#451).
+// the Training Log's newest window (#451).
 const ACTIVITY_DATE = "2019-03-14";
 
 function withDb<T>(fn: (db: Database.Database) => T): T {

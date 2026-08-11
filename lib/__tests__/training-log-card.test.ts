@@ -1,18 +1,18 @@
-// PURE tier — pins the Journal feed's card construction (issue #334) that used to
+// PURE tier — pins the Training Log feed's card construction (issue #334) that used to
 // live inline in app/(app)/training/HistorySection.tsx. Covers set-grouping, the
 // components-vs-legacy branch, the single-pure-effort header fold, the cardio
 // distance/duration/speed detail string, the imported metrics, and day
-// grouping/labels. No DB — buildJournalCards takes already-loaded rows.
+// grouping/labels. No DB — buildTrainingLogCards takes already-loaded rows.
 
 import { describe, it, expect } from "vitest";
 import {
-  buildJournalCards,
+  buildTrainingLogCards,
   activityMetrics,
   activityHeartRateText,
   activityTimeText,
   appendDayGroups,
-  reconcileJournalPaging,
-} from "@/lib/journal-card";
+  reconcileTrainingLogPaging,
+} from "@/lib/training-log-card";
 import type { Activity, ExerciseSet } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import type { DatedWeight } from "@/lib/calorie-estimate";
@@ -96,7 +96,7 @@ const build = (
     zoneModel: ZoneModel | null;
   }> = {}
 ) =>
-  buildJournalCards({
+  buildTrainingLogCards({
     activities,
     sets,
     equipmentNames: opts.equipmentNames ?? new Map(),
@@ -109,7 +109,7 @@ const build = (
     zoneModel: opts.zoneModel,
   });
 
-describe("buildJournalCards — day grouping", () => {
+describe("buildTrainingLogCards — day grouping", () => {
   it("groups activities by date (newest-first order preserved) and labels Today/Yesterday", () => {
     const acts = [
       activity({ id: 3, date: "2026-06-11", title: "A" }),
@@ -173,7 +173,7 @@ describe("activityHeartRateText", () => {
   });
 });
 
-describe("buildJournalCards — strength parts", () => {
+describe("buildTrainingLogCards — strength parts", () => {
   it("groups sets by lowercased exercise and summarizes each as a strength part", () => {
     const a = activity({ id: 1, type: "strength", title: "Push day" });
     const sets = [
@@ -212,7 +212,7 @@ describe("buildJournalCards — strength parts", () => {
   });
 });
 
-describe("buildJournalCards — components vs legacy", () => {
+describe("buildTrainingLogCards — components vs legacy", () => {
   it("renders parts from the stored components list, in list order", () => {
     const a = activity({
       id: 1,
@@ -254,7 +254,7 @@ describe("buildJournalCards — components vs legacy", () => {
   });
 });
 
-describe("buildJournalCards — single-pure-effort header fold", () => {
+describe("buildTrainingLogCards — single-pure-effort header fold", () => {
   it("keeps a lone cardio effort clickable while moving its metrics to the header", () => {
     const a = activity({
       id: 1,
@@ -305,7 +305,7 @@ describe("buildJournalCards — single-pure-effort header fold", () => {
   });
 });
 
-describe("buildJournalCards — metrics + provenance", () => {
+describe("buildTrainingLogCards — metrics + provenance", () => {
   it("emits imported metrics and a source/edited provenance label", () => {
     const a = activity({
       id: 1,
@@ -452,24 +452,24 @@ describe("appendDayGroups — server-paged feed accumulation (#451)", () => {
   it("reconciles the load-more cursor when the server window shifts (#503)", () => {
     // Newest window: days …Day13 down to Day14; cursor seeded to the oldest loaded
     // day (Day14). No shift while the server cursor is unchanged.
-    expect(reconcileJournalPaging("2026-06-14", "2026-06-14")).toEqual({
+    expect(reconcileTrainingLogPaging("2026-06-14", "2026-06-14")).toEqual({
       changed: false,
       cursor: "2026-06-14",
     });
     // Logging a new day rolls Day14 out of the first page; the server's fresh cursor
     // is now Day13. The stale cursor must reset to it so "Load more" fetches
     // `date < Day13` and re-includes Day14 (which `date < Day14` never would).
-    expect(reconcileJournalPaging("2026-06-14", "2026-06-13")).toEqual({
+    expect(reconcileTrainingLogPaging("2026-06-14", "2026-06-13")).toEqual({
       changed: true,
       cursor: "2026-06-13",
     });
     // A first page that now covers the whole history (cursor → null) also resets.
-    expect(reconcileJournalPaging("2026-06-14", null)).toEqual({
+    expect(reconcileTrainingLogPaging("2026-06-14", null)).toEqual({
       changed: true,
       cursor: null,
     });
     // Null → same null is a no-op (already exhausted, nothing to page).
-    expect(reconcileJournalPaging(null, null)).toEqual({
+    expect(reconcileTrainingLogPaging(null, null)).toEqual({
       changed: false,
       cursor: null,
     });

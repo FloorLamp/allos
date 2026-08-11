@@ -268,7 +268,7 @@ export function getCardioIntensityMix(
     }));
 }
 
-// Per-sport stats for the Training page's Sport explorer + journal detail.
+// Per-sport stats for the Training page's Sport explorer + training log detail.
 // Sports are duration-only (no distance/speed); tolerates a null duration
 // (counts the session, sums/maxes the known durations).
 export interface SportStat {

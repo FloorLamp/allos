@@ -1,9 +1,9 @@
-// SERVER-ACTION TIER — the N-way cluster merge + keeper-selectable Journal merge
+// SERVER-ACTION TIER — the N-way cluster merge + keeper-selectable Training Log merge
 // (#1081). Proves:
 //   - mergeActivityCluster re-verifies EVERY id against the acting profile (a
 //     cross-profile drop is skipped, never folded/deleted), tombstones dropped
 //     integration rows, and records a merged decision per constituent pair;
-//   - the Journal mergeActivities, given a NON-card keeper, absorbs the originating
+//   - the Training Log mergeActivities, given a NON-card keeper, absorbs the originating
 //     card, and the batch undo restores ALL dropped rows + their sets + the keeper's
 //     pre-fold fields;
 //   - a PARTIAL batch undo (#1884) — one token's restore throws mid-batch, per #202's
@@ -261,7 +261,7 @@ describe("mergeActivityCluster — per-field member choice (#1431)", () => {
 describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
   it("absorbs the originating card when a sibling is keeper, and undo restores everything", async () => {
     const login = createLogin();
-    const profile = createProfile("journal", login.id);
+    const profile = createProfile("training log", login.id);
     actAs(login, profile);
 
     // Originating card + two siblings, same day.
@@ -330,7 +330,7 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
 
   it("a per-field member choice lands on the keeper, and undo restores the pre-merge value (#1431)", async () => {
     const login = createLogin();
-    const profile = createProfile("journal-pick", login.id);
+    const profile = createProfile("training-log-pick", login.id);
     actAs(login, profile);
 
     // The keeper carries its own distance (5); the chosen member (sibB) carries 12.

@@ -343,7 +343,7 @@ export function equipmentHitText(row: {
 
 // Escape LIKE wildcards so a literal % or _ (or \) in the query matches itself,
 // then wrap for a substring match. Paired with `ESCAPE '\'` in the SQL. Lives here
-// rather than inside the palette fan-out because the Journal's server-side feed
+// rather than inside the palette fan-out because the Training Log's server-side feed
 // filter (lib/queries/training/activities.ts) runs the SAME kind of substring scan —
 // two text searches over the user's own words must escape them one way.
 export function likePattern(query: string): string {

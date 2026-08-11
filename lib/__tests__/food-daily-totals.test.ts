@@ -8,7 +8,7 @@ import {
 import { FOOD_GROUPS } from "@/lib/food-groups";
 
 // Pure-tier tests for the weekly food-servings rollup (issue #579) — the ONE
-// computation the journal card, the trends view, and #580 habit progress all format.
+// computation the training log card, the trends view, and #580 habit progress all format.
 
 const e = (
   date: string,

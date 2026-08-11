@@ -28,7 +28,7 @@ import {
   judgeTargets,
   summarizeExercise,
   SET_STATUS_TITLES,
-} from "@/lib/journal-format";
+} from "@/lib/training-log-format";
 import {
   suggestNextSet,
   contextualNextSet,
@@ -454,7 +454,7 @@ export default function StrengthSets({
   // part with a weighted suggestion — per-side offers via its own Use button,
   // and a bodyweight suggestion has no weight ghost.
   const ghost = !p.perSide && partUntouched ? suggestion : null;
-  // Live version of the journal card's missed-target marker, judged by the
+  // Live version of the training log card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
   const showPerSide = isUnilateral(p.name);
@@ -801,7 +801,7 @@ export default function StrengthSets({
                       {rpeSummaryText(sess.sets)}
                     </span>
                   )}
-                  {/* Same missed-target marker as the journal card; the
+                  {/* Same missed-target marker as the training log card; the
                       session status is judged server-side. */}
                   {sess.status === "missed" && (
                     <span

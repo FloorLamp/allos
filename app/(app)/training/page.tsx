@@ -16,7 +16,7 @@ import { today } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-// Combined training hub: the Journal log, the doing-first overview, per-activity
+// Combined training hub: the Training Log, the doing-first overview, per-activity
 // analysis, the fitness check, routines, and goals behind tabs.
 export default async function TrainingPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

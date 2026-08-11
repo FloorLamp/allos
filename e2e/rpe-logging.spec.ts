@@ -18,7 +18,7 @@ import { settledClick, settledFill } from "./helpers";
 const PROBE_PREFIX = "RPE round-trip probe";
 let probeSeq = 0;
 
-// Journal card(s) whose title contains `text`, scoped to the main content.
+// Training Log card(s) whose title contains `text`, scoped to the main content.
 function cardsByTitle(page: Page, text: string | RegExp) {
   return page
     .getByRole("main")
@@ -73,11 +73,11 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   await sweepProbes(page);
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
-  // Open a fresh CREATE editor from the journal actions toolbar.
+  // Open a fresh CREATE editor from the training log actions toolbar.
   await page
-    .getByTestId("journal-actions")
+    .getByTestId("training-log-actions")
     .getByRole("button", { name: "New activity" })
     .click();
 

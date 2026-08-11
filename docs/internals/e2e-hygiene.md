@@ -122,7 +122,7 @@ A `waitForTimeout` is legitimate **only** to prove that within a KNOWN product
 time window NOTHING happened — the non-occurrence of a timer-driven effect,
 which has no positive event to await in its place. The two frozen cases:
 
-- **Debounce-window proof** (`journal-provenance.spec.ts`, ×2): opening an
+- **Debounce-window proof** (`training-log-provenance.spec.ts`, ×2): opening an
   activity row must NOT auto-fill calories, dirty the form, and trip the 700ms
   autosave. Waiting ~900ms lets a REGRESSED build's autosave fire before we
   assert not-`edited`; closing earlier lets a real bug pass green. Nothing to
