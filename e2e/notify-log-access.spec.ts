@@ -151,4 +151,21 @@ test.describe("Notify tick log (#2209)", () => {
       await member.context().close();
     }
   });
+
+  test("the confirm flow clears every run and renders the empty state", async ({
+    page,
+  }) => {
+    test.slow();
+
+    await page.goto("/settings/notify-log");
+    await expect(page.getByTestId("notify-log-run").first()).toBeVisible();
+
+    await page.getByTestId("notify-log-clear").click();
+    await expect(page.getByText("Clear all?", { exact: true })).toBeVisible();
+    await page.getByTestId("notify-log-clear-confirm").click();
+
+    await expect(page.getByTestId("notify-log-empty")).toBeVisible();
+    await expect(page.getByTestId("notify-log-run")).toHaveCount(0);
+    await expect(page.getByTestId("notify-log-clear")).toHaveCount(0);
+  });
 });
