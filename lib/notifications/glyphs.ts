@@ -162,6 +162,12 @@ const VOCABULARY = {
     means:
       "A sport session specifically — where a line names the discipline beside its siblings, and on a message about one such session (#2439).",
   },
+  mobility: {
+    glyph: "🤸",
+    role: "topic",
+    means:
+      "A MOBILITY session — the `recovery` activity type (#840): stretching and flexibility work, logged as tapped moves with no sets, weights or volume. Not the rest glyph (that is a statement about load, and this is a session that happened), not the practice glyph (that counts its own ledger), and emphatically not the training marker: announcing mobility work under a barbell tells a person it counted as training load, which is the one distinction #482 keeps everywhere else.",
+  },
   rest: {
     glyph: "🛌",
     role: "topic",

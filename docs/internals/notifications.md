@@ -1262,14 +1262,16 @@ sets could produce a recap line at all. #2272 opened the same message to every
 import, correctly, and the barbell came with it — a 33-minute, 1.42 km walk
 arrived announced as a workout. `finishNudgeTitle` is an exhaustive
 `Record<ActivityType, string>` over the declared tuple: strength keeps
-`🏋️ Workout complete`, cardio and sport take the per-discipline glyphs the
-vocabulary already declared (`🏃 Cardio complete`, `⚽ Sport complete`), and
-`recovery` plus `unclassified` take the GENERIC training marker with a
-discipline-free `Session complete` — a mobility session is not a workout (#840),
-and a source that did not say (#2272) must not be answered by the title of the
-message carrying the ask. A COMBINED message keeps the dose message's own title:
-"Post-workout" there is the name of the dose `condition`, not a claim about the
-session.
+`🏋️ Workout complete`; cardio and sport take the per-discipline glyphs the
+vocabulary already declared (`🏃 Cardio complete`, `⚽ Sport complete`);
+`recovery` takes the new `mobility` glyph (`🤸 Mobility complete`) rather than
+the training marker, because announcing mobility work under a barbell says it
+counted as training load, which is the #840/#482 distinction the app keeps
+everywhere else; and `unclassified` takes the GENERIC training marker with a
+discipline-free `Session complete`, since a source that did not say (#2272) must
+not be answered by the title of the message carrying the ask. A COMBINED message
+keeps the dose message's own title: "Post-workout" there is the name of the dose
+`condition`, not a claim about the session.
 
 **An IMPORTED finish gets a recap of its own, and is asked what it was (#2272).**
 The recap-line gate above ("real strength working sets") meant a SOURCED row —

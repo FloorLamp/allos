@@ -133,6 +133,15 @@ describe("finishNudgeTitle (#2439)", () => {
     expect(finishNudgeTitle("sport")).toBe("⚽ Sport complete");
   });
 
+  it("gives every named discipline its own face", () => {
+    // The leading glyph (everything before the first space, so a variation selector
+    // travels with its base) is distinct per named discipline — one shared face would
+    // put #2439 back on a different pair.
+    const named = ["strength", "cardio", "sport", "recovery"] as const;
+    const faces = named.map((t) => finishNudgeTitle(t).split(" ")[0]);
+    expect(new Set(faces).size).toBe(named.length);
+  });
+
   it("claims no discipline for the stated absence, or for an unreadable row", () => {
     // `unclassified` means the SOURCE did not say (#2272): the message is carrying the
     // ask that fixes it, so its own title must not answer the question first. The glyph
@@ -146,8 +155,11 @@ describe("finishNudgeTitle (#2439)", () => {
   });
 
   it("does not call a mobility session a workout (#840)", () => {
-    expect(finishNudgeTitle("recovery")).toBe("🏋️ Session complete");
+    // Its own face, not the training marker: announcing mobility work under a barbell
+    // tells a person it counted as training load (#482, trained ≠ mobilized).
+    expect(finishNudgeTitle("recovery")).toBe("🤸 Mobility complete");
     expect(finishNudgeTitle("recovery")).not.toMatch(/workout/i);
+    expect(finishNudgeTitle("recovery")).not.toContain("🏋️");
   });
 
   it("answers for every declared type", () => {
