@@ -41,6 +41,7 @@ function goal(over: Partial<OutcomeGoal> = {}): OutcomeGoal {
     target_date: "2026-06-01",
     status: "active",
     created_at: "2026-01-01 08:00:00",
+    achieved_at: null,
     exercise: null,
     metric: null,
     equipment_id: null,
