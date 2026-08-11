@@ -195,15 +195,16 @@ test.describe("Data → Review import inbox", () => {
       "2026-07-01 → 2026-07-08"
     );
 
-    // The four consecutive hourly no-op re-scans collapse to a single line (#137,
-    // generalized to "nothing NOTABLE happened" by #1991) rather than filling four
-    // slots with rows that say nothing.
-    // (How many land on which day depends on the run's pinned timezone, so assert
-    // the SHAPE of the collapsed line rather than a count that would drift.)
+    // The four consecutive hourly no-op re-scans collapse to one line per local day
+    // (#137, generalized to "nothing NOTABLE happened" by #1991) rather than filling
+    // four slots with rows that say nothing. The pinned UTC−7 profile splits these
+    // fixtures across midnight, so each day owns one routine range.
     const routine = history.getByTestId("sync-history-range");
-    await expect(routine).toHaveCount(1);
-    await expect(routine).toContainText("Routine");
-    await expect(routine).toContainText(/\d+ syncs/);
+    await expect(routine).toHaveCount(2);
+    for (const range of await routine.all()) {
+      await expect(range).toContainText("Routine");
+      await expect(range).toContainText(/\d+ syncs/);
+    }
 
     // The seeded truncated run reports what it DID land and is explicitly marked
     // partial, so a page cap / rate limit can't read as a fully green sync.
