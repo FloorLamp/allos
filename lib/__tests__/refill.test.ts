@@ -261,8 +261,8 @@ describe("selectLowSupplyItems", () => {
     expect(low.map((x) => x.name)).toEqual(["Vitamin D"]);
   });
 
-  it("agrees item-for-item with the /medicine row computation (parity, #301)", () => {
-    // The /medicine row (EditableSupplementRow) computes each badge as
+  it("agrees item-for-item with the intake surface row computation (parity, #301)", () => {
+    // The intake row (EditableSupplementRow) computes each badge as
     // daysOfSupplyForItem(qty, perDose, rate, scheduledDoseCount) + isLowSupply.
     // The dashboard widget must reach the identical verdict for every item, so
     // the two surfaces can never disagree on the same screen.

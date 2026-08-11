@@ -3,8 +3,8 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import {
-  getInsights,
-  getRecentNarratives,
+  getDailyInsights,
+  getRecentPeriodRecaps,
   getSituationImpacts,
   RECAP_KINDS,
 } from "@/lib/queries";
@@ -13,7 +13,7 @@ import CompareSection from "./CompareSection";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { periodLabel } from "@/lib/recap-narrative";
-import type { NarrativePeriod } from "@/lib/recap-narrative";
+import type { PeriodRecapKind } from "@/lib/recap-narrative";
 import { RECAP_SCALES, parseRecapScale } from "@/lib/recap-scale";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
@@ -24,7 +24,7 @@ import { generateForDate, generateRecap } from "./actions";
 // A recap-narrative title from its stored kind + window ("Weekly recap · Jul 3 –
 // Jul 9"). Falls back gracefully when a start date is absent.
 function recapTitle(
-  kind: NarrativePeriod,
+  kind: PeriodRecapKind,
   start: string | null,
   end: string,
   prefs: DisplayFormatPrefs
@@ -38,7 +38,7 @@ function recapTitle(
 }
 
 // The Trends hub's Insights tab: the hub's DERIVED VIEWS over your own data —
-// the AI daily insights (reusing getInsights), the AI period recap
+// the AI daily insights (reusing getDailyInsights), the AI period recap
 // narratives (issue #20) and their generate forms, the situation-impact analytics
 // (#1297), and — since #1489 — the **Compare** overlay, which used to be a tab of
 // its own.
@@ -69,12 +69,12 @@ export default async function InsightsSection({
   // doesn't run its queries either.
   const insights = restricted
     ? []
-    : filterSeriesByRange(getInsights(profile.id, ALL_ROWS), range);
+    : filterSeriesByRange(getDailyInsights(profile.id, ALL_ROWS), range);
   // Recap narratives are not date-windowed by the shared range — a weekly/monthly
   // recap is a standing summary, so show the most recent few regardless of window.
   const recaps = restricted
     ? []
-    : getRecentNarratives(profile.id, RECAP_KINDS, 6);
+    : getRecentPeriodRecaps(profile.id, RECAP_KINDS, 6);
 
   // Situation-window impact cards (#1297): pooled protocol-compare over the declared
   // transition log. Standing summaries like the recaps (not range-windowed) — the pooling

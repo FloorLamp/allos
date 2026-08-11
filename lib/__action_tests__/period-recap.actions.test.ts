@@ -1,7 +1,7 @@
-// SERVER-ACTION TIER — AI narrative generation (issue #20).
+// SERVER-ACTION TIER — AI period-recap generation (issue #20).
 //
 // generateRecap (Trends "Insights" tab) writes a weekly/monthly AI recap
-// narrative for the active profile; like the daily insight it's age-gated, so the
+// period recap for the active profile; like the daily insight it's age-gated, so the
 // action re-checks isTrainingRestricted() and bounces BEFORE any AI work. With no
 // ANTHROPIC_API_KEY it stores the deterministic OFFLINE composition (model
 // "offline-fallback"), so the tests run without network. (The lab-trend generator
@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { generateRecap } from "@/app/(app)/trends/actions";
-import { getRecentNarratives } from "@/lib/queries";
+import { getRecentPeriodRecaps } from "@/lib/queries";
 import { setMinTrainingAge } from "@/lib/age-gate";
 import { setStoredAge } from "@/lib/settings";
 import { seedActor, fd } from "./harness";
@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 describe("generateRecap age-gate guard", () => {
-  it("rejects an age-restricted profile without writing a narrative", async () => {
+  it("rejects an age-restricted profile without writing a period recap", async () => {
     const { profile } = seedActor();
     setMinTrainingAge(18);
     setStoredAge(profile.id, 10);
@@ -32,7 +32,7 @@ describe("generateRecap age-gate guard", () => {
       /NEXT_REDIRECT/
     );
 
-    expect(getRecentNarratives(profile.id, ["week"], 5)).toHaveLength(0);
+    expect(getRecentPeriodRecaps(profile.id, ["week"], 5)).toHaveLength(0);
     expect(revalidate).not.toHaveBeenCalled();
   });
 
@@ -42,18 +42,18 @@ describe("generateRecap age-gate guard", () => {
 
     await generateRecap(fd({ period: "week" }));
 
-    const [narrative] = getRecentNarratives(profile.id, ["week"], 5);
-    expect(narrative).toBeDefined();
-    expect(narrative.kind).toBe("week");
-    expect(narrative.model).toBe("offline-fallback");
-    expect(narrative.summary.length).toBeGreaterThan(0);
+    const [periodRecap] = getRecentPeriodRecaps(profile.id, ["week"], 5);
+    expect(periodRecap).toBeDefined();
+    expect(periodRecap.kind).toBe("week");
+    expect(periodRecap.model).toBe("offline-fallback");
+    expect(periodRecap.summary.length).toBeGreaterThan(0);
     expect(revalidate).toHaveBeenCalledWith("/trends");
   });
 
   it("defaults an unknown period to weekly", async () => {
     const { profile } = seedActor();
     await generateRecap(fd({ period: "quarterly" }));
-    expect(getRecentNarratives(profile.id, ["week"], 5)).toHaveLength(1);
-    expect(getRecentNarratives(profile.id, ["month"], 5)).toHaveLength(0);
+    expect(getRecentPeriodRecaps(profile.id, ["week"], 5)).toHaveLength(1);
+    expect(getRecentPeriodRecaps(profile.id, ["month"], 5)).toHaveLength(0);
   });
 });

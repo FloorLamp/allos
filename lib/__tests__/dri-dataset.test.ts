@@ -65,7 +65,7 @@ describe("dri.json dataset", () => {
   });
 
   // The RDA-adequacy view (issue #578) consumes the RDA column. Pin that the nutrients
-  // whose adequacy the /medicine view links to food sources (the #578↔#577 overlap)
+  // whose adequacy the intake surface view links to food sources (the #578↔#577 overlap)
   // carry a positive RDA in an adult band — so the adequacy read has something to
   // compare against, and the committed dataset can't silently drop the RDA half.
   it("the RDA-linked nutrients carry an adult RDA (the adequacy read has a target)", () => {

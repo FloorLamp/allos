@@ -87,7 +87,7 @@ import { listCyclePeriods } from "./cycle-store";
 import { decideWorkupPrompt } from "./ttc";
 import { getTtcStart } from "./settings/profile-attrs";
 import { getRiskAttributes } from "./settings";
-import { isPrn } from "./intake-schedule";
+import { isOnDemand } from "./intake-schedule";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import {
   fitnessRetestDue,
@@ -1369,7 +1369,7 @@ export function buildAdherencePatternFindings(
   for (const d of doses) {
     const supp = suppById.get(d.item_id);
     // Only active, scheduled (non-PRN) items produce due days to miss.
-    if (!supp || !supp.active || isPrn(supp)) continue;
+    if (!supp || !supp.active || isOnDemand(supp)) continue;
     const status = takenByDose.get(d.id);
     // Clamp the window to the dose's EXISTENCE, and to nothing else (#1973).
     //
@@ -1463,7 +1463,7 @@ export function buildDemotionSuggestionFindings(
     name: item.name,
     kind: item.kind,
     obligation: item.obligation,
-    asNeeded: Boolean(isPrn(item)),
+    asNeeded: Boolean(isOnDemand(item)),
     active: Boolean(item.active),
     strip,
     existedWholeWindow,

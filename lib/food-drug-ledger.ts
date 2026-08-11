@@ -258,7 +258,7 @@ export function isSwing(recent: number, prior: number): boolean {
 // ---- Copy (one formatter per shape, every surface reads it) ----
 
 // The mandatory tail every food–drug string in the app carries. Kept here so the two
-// finding shapes cannot drift from each other or from the /medicine row's posture.
+// finding shapes cannot drift from each other or from the intake surface row's posture.
 const INFORMATIONAL_TAIL = "Informational, not medical advice.";
 
 // "Alcohol logged today while taking Flagyl" / "…, 2 days after finishing Flagyl". The

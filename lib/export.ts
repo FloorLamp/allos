@@ -741,7 +741,7 @@ export const DATASETS: ExportDataset[] = [
     // "morning × 1 cap; evening × 2 tab (with food)"). Keeping the row at the
     // item level preserves the edit/delete model: deleting a row removes the
     // parent intake_items (its doses/logs cascade). The dose schedule is
-    // read-only here — dose editing lives on /medicine.
+    // read-only here — dose editing lives on the intake surfaces.
     key: "supplements",
     label: "Supplements & Medications",
     table: "intake_items",

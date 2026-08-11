@@ -7,7 +7,7 @@
 //
 // The DB gather lives in lib/queries/intake/warnings.ts (getPgxWarnings), which
 // reads the profile's variants + the ONE shared active-med gather
-// (getIntakeSafetyContext, #661) and calls the pure functions here, so the /medicine
+// (getIntakeSafetyContext, #661) and calls the pure functions here, so the intake surface
 // row notice, the create/edit inline notice, and the dismissible Upcoming finding
 // are all formatters over ONE computation (AGENTS.md "one question, one computation").
 //
@@ -75,7 +75,7 @@ const ALLELE_FN = new Map<string, AlleleFunction>(
   ALLELES.map((a) => [compositeKey([a.gene, a.allele]), a.function])
 );
 
-// Contraindicated first — drives the /medicine list order and the note emphasis.
+// Contraindicated first — drives the intake surface list order and the note emphasis.
 export const PGX_SEVERITY_RANK: Record<PgxSeverity, number> = {
   contraindicated: 0,
   high: 1,
@@ -317,7 +317,7 @@ export function crossCheckPgx(
 
 // The hits for a specific CANDIDATE medication (the create/edit inline notice's
 // computation) against the profile's stored variants. The candidate is given id 0;
-// reuses the one crossCheckPgx so the notice can never disagree with the /medicine
+// reuses the one crossCheckPgx so the notice can never disagree with the intake surface
 // list.
 export function pgxForCandidate(
   candidate: {

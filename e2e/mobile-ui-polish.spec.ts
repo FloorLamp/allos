@@ -269,7 +269,7 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
     await page.keyboard.press("Enter");
 
     const name = page
-      .getByTestId("medicine-name")
+      .getByTestId("intake-item-name")
       .filter({ hasText: "Hydrochlorothiazide" })
       .first(); // first-ok: filtered to the Hydrochlorothiazide med this spec added — one match
     await expect(name).toBeVisible();

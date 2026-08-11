@@ -35,7 +35,7 @@ import {
   getFoodBarOrder,
   getManualBodyMetricStatedAt,
   getMoodOnDate,
-  getProteinLoggedGrams,
+  getProteinDailyGrams,
   getProteinQuickAddPreset,
   getTrackedPractices,
   type TrackedPractice,
@@ -255,7 +255,7 @@ export async function loadQuickEntry(
       proteinRankBySlot: Object.fromEntries(
         FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].proteinRank])
       ) as Record<FoodSlot, number | null>,
-      proteinToday: getProteinLoggedGrams(profile.id, date),
+      proteinToday: getProteinDailyGrams(profile.id, date),
       proteinPreset: getProteinQuickAddPreset(profile.id),
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,

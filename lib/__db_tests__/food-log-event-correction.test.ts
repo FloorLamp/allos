@@ -29,7 +29,7 @@ import {
   logFoodServingCore,
   updateFoodLogEventCore,
 } from "@/lib/food-log-write";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import {
   getFoodBarOrder,

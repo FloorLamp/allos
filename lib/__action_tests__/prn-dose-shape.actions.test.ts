@@ -2,7 +2,7 @@
 // amount-only dose (#851 item 9). A scheduled item keeps its per-slot doses; a PRN
 // med has no schedule, so its multiple slotted dose rows collapse to ONE dose with a
 // NULL time_of_day (the amount + food-timing of the first row preserved). The collapse
-// is collapsePrnDoses, applied by addIntakeItem/updateIntakeItem before insert; these
+// is collapseOnDemandDoses, applied by addIntakeItem/updateIntakeItem before insert; these
 // drive the real actions and read back the stored dose rows.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";

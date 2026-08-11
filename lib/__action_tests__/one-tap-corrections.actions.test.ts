@@ -22,7 +22,7 @@ import {
   updateProgressPhoto,
 } from "@/app/(app)/progress/actions";
 import { logFoodServingCore } from "@/lib/food-log-write";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { getFoodMealDays } from "@/lib/queries";
 import { type FoodSlot } from "@/lib/food-slot";

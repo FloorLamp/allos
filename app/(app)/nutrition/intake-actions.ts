@@ -70,7 +70,7 @@ import {
   FOOD_TIMINGS,
   parseDosage,
   spreadDoseTimes,
-  collapsePrnDoses,
+  collapseOnDemandDoses,
 } from "@/lib/intake-schedule";
 import {
   CADENCE_KINDS,
@@ -143,8 +143,8 @@ function fields(formData: FormData) {
     formData.get("obligation") ??
       (kindEarly === "medication" ? "must" : "should")
   );
-  // A `may` item is PRN-shaped by construction (#1505 collapsed obligation into it), so
-  // the old separate as-needed checkbox is gone: choosing May IS choosing as-needed.
+  // A `may` item is on demand by construction (#1505 collapsed obligation into it), so
+  // the old separate as-needed checkbox is gone: choosing May declares no dueness.
   const obligation: IntakeObligation = OBLIGATIONS.includes(
     obligationRaw as IntakeObligation
   )
@@ -234,11 +234,13 @@ function fields(formData: FormData) {
         : prescriber || rxNumber
           ? 1
           : 0;
-  // PRN shape follows the obligation, not a second flag (#1505): `may` IS as-needed.
+  // On-demand shape follows the obligation, not a second flag (#1505): `may` has no
+  // dueness.
   // Unlike the old checkbox this is not medication-only — a `may` supplement
   // (magnesium, a preworkout) has exactly the same amount-only, take-when-you-want
   // shape, and pretending otherwise is what made "low priority" incoherent.
-  const isPrn = obligation === "may";
+  const isOnDemand = obligation === "may";
+  const isPrnMedication = isMed && isOnDemand;
   // PRN redose notice (issue #798). Only a PRN medication carries these; a non-PRN
   // item clears them so a kind/PRN flip can't leave a stale notice armed. The
   // interval/max are the user-CONFIRMED label numbers (pre-filled from
@@ -248,21 +250,23 @@ function fields(formData: FormData) {
   // fire, so it isn't stored as "on").
   const intervalRaw = Number(formData.get("min_interval_hours"));
   const minIntervalHours =
-    isPrn && Number.isFinite(intervalRaw) && intervalRaw > 0
+    isPrnMedication && Number.isFinite(intervalRaw) && intervalRaw > 0
       ? intervalRaw
       : null;
   const maxRaw = Number(formData.get("max_daily_count"));
   const maxDailyCount =
-    isPrn && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
+    isPrnMedication && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
   // Amount-aware daily maximum in mg (#1854), same confirm discipline: a PRN
   // item only, user-entered, blank/invalid stays NULL — the mg basis is then
   // simply unavailable and the counters fall back to counting doses. It does NOT
   // gate the redose opt-in (interval + count max remain that pair).
   const maxMgRaw = Number(formData.get("max_daily_amount_mg"));
   const maxDailyAmountMg =
-    isPrn && Number.isFinite(maxMgRaw) && maxMgRaw > 0 ? maxMgRaw : null;
+    isPrnMedication && Number.isFinite(maxMgRaw) && maxMgRaw > 0
+      ? maxMgRaw
+      : null;
   const redoseNotice =
-    isPrn &&
+    isPrnMedication &&
     minIntervalHours != null &&
     maxDailyCount != null &&
     (formData.get("redose_notice") === "1" ||
@@ -302,7 +306,7 @@ function fields(formData: FormData) {
     pharmacy,
     rxNumber,
     rx,
-    isPrn,
+    isOnDemand,
     minIntervalHours,
     maxDailyCount,
     maxDailyAmountMg,
@@ -515,17 +519,17 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   if (
     f.kind === "medication" &&
     hasStartedOn &&
-    ((!f.isPrn && !startedOnRaw) ||
+    ((!f.isOnDemand && !startedOnRaw) ||
       (!!startedOnRaw &&
         (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
   ) {
     return formError(
-      f.isPrn
+      f.isOnDemand
         ? "Enter a valid start date that isn't in the future."
         : "Enter a start date that isn't in the future."
     );
   }
-  const doses = collapsePrnDoses(parseDoses(formData), f.isPrn);
+  const doses = collapseOnDemandDoses(parseDoses(formData), f.isOnDemand);
   const pairs = parsePairs(formData);
   // Prescriber (#1051 semantics decision (a)): provider_id is the prescribing
   // INDIVIDUAL. The picker resolves-or-creates against the registry as an INDIVIDUAL
@@ -628,8 +632,8 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
       ensureMedicationCourse(
         profile.id,
         suppId,
-        hasStartedOn ? startedOnRaw || null : f.isPrn ? null : todayStr,
-        f.isPrn && (!hasStartedOn || !startedOnRaw)
+        hasStartedOn ? startedOnRaw || null : f.isOnDemand ? null : todayStr,
+        f.isOnDemand && (!hasStartedOn || !startedOnRaw)
       );
     }
   });
@@ -654,12 +658,12 @@ export async function updateIntakeItem(
   if (
     f.kind === "medication" &&
     hasStartedOn &&
-    ((!f.isPrn && !startedOnRaw) ||
+    ((!f.isOnDemand && !startedOnRaw) ||
       (!!startedOnRaw &&
         (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
   ) {
     return formError(
-      f.isPrn
+      f.isOnDemand
         ? "Enter a valid start date that isn't in the future."
         : "Enter a start date that isn't in the future."
     );
@@ -681,7 +685,7 @@ export async function updateIntakeItem(
   ) {
     return formError("Enter an end date that isn't in the future.");
   }
-  const doses = collapsePrnDoses(parseDoses(formData), f.isPrn);
+  const doses = collapseOnDemandDoses(parseDoses(formData), f.isOnDemand);
   const pairs = parsePairs(formData);
   // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
   // concurrently-decremented counter, so we compare-and-set against this instead of
@@ -969,7 +973,7 @@ export async function updateIntakeItem(
         profile.id,
         id,
         hasStartedOn ? startedOnRaw || null : null,
-        !!f.isPrn && hasStartedOn && !startedOnRaw
+        !!f.isOnDemand && hasStartedOn && !startedOnRaw
       );
       if (hasStartedOn && hasCourseId) {
         // Through the course core (#2132) inside THIS transaction (the Tx token) — the

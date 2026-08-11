@@ -1792,7 +1792,7 @@ export function escalationAckState(
 // carries its status ('taken' | 'skipped') so the strip can render a deliberate
 // skip (issue #232) distinctly from a taken dose or a real miss. `since` is
 // computed in the configured app timezone so it matches the strip's displayed
-// columns (app/medicine lastDates() uses the same today()-based window); a UTC
+// columns (the Medications loader's lastDates() uses the same today()-based window); a UTC
 // window could drop a dose on the oldest column. Kind-neutral (it was
 // getIntakeLogsInRange until #1933): supplements and medications share one ledger
 // and one strip.

@@ -3,7 +3,7 @@
 // ACTIVE supplement + medication stack (each item's name, cached RxCUI, active
 // flag), it returns the known interacting PAIRS, severity-ranked, each with a
 // one-line mechanism + citation. The DB gather lives in lib/queries/intake.ts
-// (getInteractionWarnings), which calls the pure functions here so the /medicine
+// (getInteractionWarnings), which calls the pure functions here so the intake surface
 // warning row, the create/edit inline notice, and the dismissible Upcoming finding
 // are all formatters over ONE computation (AGENTS.md "one question, one computation").
 //
@@ -45,7 +45,7 @@ const CONCEPTS: Concept[] = DRUG_CONCEPTS;
 const INTERACTIONS = DRUG_INTERACTIONS;
 const BY_KEY = new Map(CONCEPTS.map((c) => [c.key, c]));
 
-// Major first — drives the /medicine section order and the finding band.
+// Major first — drives the intake surface section order and the finding band.
 export const SEVERITY_RANK: Record<Severity, number> = {
   major: 0,
   moderate: 1,
@@ -181,7 +181,7 @@ export function conceptLabel(key: string): string | null {
 // over the two item ids (sorted so it's direction-independent). Keyed on IDS, never
 // names — ids never recycle, names/codes do (AGENTS.md #203), so a rename never
 // re-attaches a stale dismissal to a different pair. The SINGLE source of truth for
-// the key: the Upcoming item and the /medicine row both derive from it.
+// the key: the Upcoming item and the intake surface row both derive from it.
 export function interactionSignalKey(aId: number, bId: number): string {
   const [lo, hi] = aId <= bId ? [aId, bId] : [bId, aId];
   return `interaction:${lo}-${hi}`;
@@ -252,7 +252,7 @@ export function detectInteractions(items: InteractionItem[]): InteractionHit[] {
 // The hits that involve a specific CANDIDATE item — the create/edit inline notice's
 // computation. The candidate (id = 0, the not-yet-saved row) is detected against
 // the rest of the stack; only hits touching it are returned. Reuses the one
-// detectInteractions so the notice can never disagree with the /medicine section.
+// detectInteractions so the notice can never disagree with the intake surface section.
 export function interactionsForCandidate(
   candidate: {
     name: string;

@@ -21,7 +21,7 @@ import { shiftDateStr } from "@/lib/date";
 import { getFoodBarOrder, rankFoodGroups } from "@/lib/queries";
 import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
 import { logFoodServingCore } from "@/lib/food-log-write";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { setProfileSetting } from "@/lib/settings";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { foodGroupSlugs } from "@/lib/food-groups";

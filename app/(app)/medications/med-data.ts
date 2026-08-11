@@ -104,7 +104,7 @@ import {
   type DormantPrnInput,
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
-import { isPrn } from "@/lib/intake-schedule";
+import { isOnDemand } from "@/lib/intake-schedule";
 
 // The per-med derived context every card/row formats over. `prnRedoseLine` is the
 // marker-agnostic next-window chip; `prnDayLabel`/`prnTimes` are the administration
@@ -291,7 +291,7 @@ export function loadMedicationsData(
   // one query per PRN item inside the card-builder loop — an N+1 over the un-purged
   // intake_item_logs ledger. Per-item derivation stays in JS below.
   const prnMedIds = intakeItems
-    .filter((s) => s.kind === "medication" && isPrn(s))
+    .filter((s) => s.kind === "medication" && isOnDemand(s))
     .map((s) => s.id);
   const adminsByItem = getAdministrationsForItemsOnDate(
     profileId,
@@ -316,7 +316,7 @@ export function loadMedicationsData(
     redoseLine: string | null;
     redosePrimary: boolean;
   } => {
-    if (!isPrn(s))
+    if (!isOnDemand(s))
       return {
         label: null,
         administrations: [],
@@ -380,7 +380,8 @@ export function loadMedicationsData(
 
   // A med is "loggable today" (dose check-offs shown) when it's active and either
   // PRN or due under today's context.
-  const medDue = (s: IntakeItem) => !!s.active && (isPrn(s) || isDueOn(s, ctx));
+  const medDue = (s: IntakeItem) =>
+    !!s.active && (isOnDemand(s) || isDueOn(s, ctx));
 
   const buildCardData = (med: IntakeItem): MedCardData => {
     const medDoses = dosesByItem.get(med.id) ?? [];
@@ -546,7 +547,7 @@ export function loadMedicationsData(
     .map((s) => ({
       itemId: s.id,
       name: s.name,
-      asNeeded: isPrn(s),
+      asNeeded: isOnDemand(s),
       active: !!s.active,
       lastAdministration: lastAdminByItem.get(s.id) ?? null,
       createdOn: s.created_at.slice(0, 10),
@@ -601,7 +602,7 @@ export function medicationListFromCards(
       name: c.med.name,
       brand: c.med.brand,
       product: c.med.product,
-      asNeeded: isPrn(c.med),
+      asNeeded: isOnDemand(c.med),
       rx: c.med.rx === 1,
       prescriber: c.med.prescriber,
       doseAmounts: c.doses.map((d) => d.amount).filter((a): a is string => !!a),

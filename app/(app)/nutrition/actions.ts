@@ -26,7 +26,7 @@ import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
   addProteinGramsCore,
   undoProteinGramsCore,
-} from "@/lib/protein-log-write";
+} from "@/lib/protein-daily-totals-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Log/undo answer with the group's AUTHORITATIVE post-write daily total (issue #748

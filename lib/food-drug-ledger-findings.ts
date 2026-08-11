@@ -31,7 +31,7 @@
 
 import { cache } from "./request-cache";
 import { getIntakeItems, getIntakeDoses } from "./queries/intake";
-import { getFoodServingsInRange } from "./queries/nutrition";
+import { getFoodDailyServingTotalsInRange } from "./queries/nutrition";
 import { getProfileAge } from "./settings";
 import { matchFoodInteractions } from "./food-drug-interactions";
 import { parseRxcuiIngredients } from "./rxnorm";
@@ -121,7 +121,7 @@ function ledgerItems(profileId: number): LedgerItem[] {
 
 function ledgerServings(profileId: number, date: string): LedgerServing[] {
   const from = shiftDateStr(date, -(LEDGER_WINDOW_DAYS - 1));
-  return getFoodServingsInRange(profileId, from, date).map((row) => ({
+  return getFoodDailyServingTotalsInRange(profileId, from, date).map((row) => ({
     group: row.group_key,
     date: row.date,
     servings: row.servings,

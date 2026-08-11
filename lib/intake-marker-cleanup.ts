@@ -5,7 +5,7 @@
 // (`notify_last_esc_<doseId>`, #328). Ids never recycle, so a stranded marker is a
 // dead row rather than wrong suppression — but "one delete path sweeps, the other
 // doesn't" is the inconsistency #328 closed, so both `deleteIntakeItem`
-// (app/(app)/medicine/actions.ts) and the Data → Manage bulk delete
+// (app/(app)/nutrition/intake-actions.ts) and the Data → Manage bulk delete
 // (app/(app)/data/manage-actions.ts) route through here.
 //
 // The escalation markers are keyed by dose id, and a cascade delete removes the

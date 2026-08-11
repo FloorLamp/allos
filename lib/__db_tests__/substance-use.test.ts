@@ -34,9 +34,9 @@ import {
   undoSubstanceUnitCore,
 } from "@/lib/substance-log-write";
 import {
-  addSubstanceHistoryEntryCore,
-  updateSubstanceHistoryEntryCore,
-} from "@/lib/substance-history-write";
+  addSubstanceDailyTotalCore,
+  updateSubstanceDailyTotalCore,
+} from "@/lib/substance-daily-totals-write";
 import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
@@ -526,7 +526,7 @@ describe("no gamification for the new substances (#1078) — structural exemptio
 // lib/correction-time.ts) will read. The rule is drop the EARLIEST taps and keep
 // the latest, so the day's last-drink instant survives a correction.
 describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
-  // Give the day's taps distinct instants. addSubstanceHistoryEntryCore stamps a
+  // Give the day's taps distinct instants. addSubstanceDailyTotalCore stamps a
   // whole batch with one clock read, so a fixture that wants tap ORDER must say so.
   function stampTapHours(profileId: number, date: string, hours: number[]) {
     const ids = db
@@ -560,7 +560,7 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
   it("keeps the latest taps when an edit shrinks the day", () => {
     const p = newProfile("SU trim oldest");
     const date = "2026-03-14";
-    const added = addSubstanceHistoryEntryCore(p, "alcohol", {
+    const added = addSubstanceDailyTotalCore(p, "alcohol", {
       date,
       amount: 4,
     });
@@ -568,7 +568,7 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
     stampTapHours(p, date, [18, 19, 20, 21]);
 
     expect(
-      updateSubstanceHistoryEntryCore(p, "alcohol", added.id, {
+      updateSubstanceDailyTotalCore(p, "alcohol", added.id, {
         date,
         amount: 2,
       })
@@ -593,7 +593,7 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
     const p = newProfile("SU trim oldest moved");
     const from = "2026-03-14";
     const to = "2026-03-15";
-    const added = addSubstanceHistoryEntryCore(p, "alcohol", {
+    const added = addSubstanceDailyTotalCore(p, "alcohol", {
       date: from,
       amount: 3,
     });
@@ -601,7 +601,7 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
     stampTapHours(p, from, [17, 18, 19]);
 
     expect(
-      updateSubstanceHistoryEntryCore(p, "alcohol", added.id, {
+      updateSubstanceDailyTotalCore(p, "alcohol", added.id, {
         date: to,
         amount: 1,
       })
@@ -614,7 +614,7 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
   it("still APPENDS when a correction raises the day, leaving the existing taps alone", () => {
     const p = newProfile("SU trim grow");
     const date = "2026-03-14";
-    const added = addSubstanceHistoryEntryCore(p, "alcohol", {
+    const added = addSubstanceDailyTotalCore(p, "alcohol", {
       date,
       amount: 2,
     });
@@ -622,7 +622,7 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
     stampTapHours(p, date, [18, 19]);
 
     expect(
-      updateSubstanceHistoryEntryCore(p, "alcohol", added.id, {
+      updateSubstanceDailyTotalCore(p, "alcohol", added.id, {
         date,
         amount: 4,
       })

@@ -9,9 +9,9 @@ import {
   getProteinOnDate,
   getProteinToday,
   getProteinAdequacy,
-  getProteinLoggedGrams,
+  getProteinDailyGrams,
 } from "@/lib/queries";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { shiftDateStr } from "@/lib/date";
 
 function newProfile(name: string): number {
@@ -107,15 +107,13 @@ describe("getProteinToday (#974)", () => {
     addProtein(p, anchor, 42);
 
     const gauge = getProteinToday(p);
-    // The quick-add card renders getProteinLoggedGrams(today); the gauge's logged
+    // The quick-add card renders getProteinDailyGrams(today); the gauge's logged
     // component reads the same source — they can never drift.
     expect(gauge?.todayIntake?.loggedGrams).toBe(
-      getProteinLoggedGrams(p, anchor)
+      getProteinDailyGrams(p, anchor)
     );
     // With no food logged, the gauge today figure IS the quick-add total.
-    expect(Math.round(gauge!.todayGrams)).toBe(
-      getProteinLoggedGrams(p, anchor)
-    );
+    expect(Math.round(gauge!.todayGrams)).toBe(getProteinDailyGrams(p, anchor));
   });
 
   it("a tracked reading today overrides and labels the basis tracked", () => {

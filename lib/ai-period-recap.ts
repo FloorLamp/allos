@@ -18,26 +18,25 @@ import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, narrativeDailyLimit } from "./ai-usage";
 import { getUnitPrefs, type WeightUnit } from "./settings";
-import type { NarrativeKind } from "./types";
 import { getScaleRecap } from "./notifications/recap-data";
 import {
   buildRecapNarrativePrompt,
   composeRecapNarrativeOffline,
   RECAP_NARRATIVE_SYSTEM,
-  type NarrativePeriod,
+  type PeriodRecapKind,
 } from "./recap-narrative";
 
 // The saved shape a generator returns: the narrative text + its anchor, ready to
-// hand to saveNarrative(profileId, …).
-export interface NarrativeResult {
-  kind: NarrativeKind;
+// hand to savePeriodRecap(profileId, …).
+export interface GeneratedPeriodRecap {
+  kind: PeriodRecapKind;
   periodStart: string | null;
   periodEnd: string;
   summary: string;
   model: string;
 }
 
-// The one place the Claude call + guardrails live, shared by both narratives.
+// The one place the Claude call + guardrails live for every period-recap scale.
 // Consumes one "narrative" usage unit BEFORE dispatching (no refund on failure,
 // matching the insight path), logs every outcome, and always degrades to the
 // caller's offline composer rather than throwing.
@@ -149,12 +148,12 @@ async function narrate(opts: {
 // the SAME rule-based recap the dashboard shows (getPeriodRecap), narrates over
 // it, and returns the text + anchor for storage. weightUnit resolves from the
 // login's preference when a loginId is given, else canonical kg.
-export async function generateRecapNarrative(
+export async function generatePeriodRecap(
   profileId: number,
-  period: NarrativePeriod,
+  period: PeriodRecapKind,
   loginId?: number,
   weightUnit?: WeightUnit
-): Promise<NarrativeResult> {
+): Promise<GeneratedPeriodRecap> {
   const wu: WeightUnit =
     weightUnit ?? (loginId != null ? getUnitPrefs(loginId).weightUnit : "kg");
   const recap = getScaleRecap(profileId, period, wu);

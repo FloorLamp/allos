@@ -1244,7 +1244,7 @@ addSupp({ name: "Magnesium Glycinate", obligation: "should", notes: "Sleep" }, [
 ]);
 // A SECOND magnesium form so the stack TOTAL (400 + 200 = 600 mg elemental)
 // clearly exceeds the 350 mg supplemental UL — demoes the stack-total dietary-
-// limit warning (issue #148), which sums both products, on /medicine + Upcoming.
+// limit warning (issue #148), which sums both products, on the intake surfaces + Upcoming.
 addSupp(
   {
     name: "Magnesium Citrate",
@@ -1379,7 +1379,7 @@ courseIns.run(
 );
 
 // A KNOWN-INTERACTING pair (issue #144): Warfarin (anticoagulant) + Ibuprofen (an
-// NSAID) — a MAJOR bleeding-risk interaction that surfaces on /medicine, the
+// NSAID) — a MAJOR bleeding-risk interaction that surfaces on the intake surfaces, the
 // create/edit notice, and a dismissible Upcoming finding. Synthetic prescriber
 // ("Dr. Test Provider") — no real PHI. Warfarin carries its RxNorm ingredient CUI
 // (11289) to demo rxcui-KEYED matching; ibuprofen has none, demoing NAME-fallback
@@ -1452,7 +1452,7 @@ courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
 
 // A FOOD–DRUG demo (issue #154): Simvastatin (a CYP3A4 statin) — active, scheduled
 // in the evening, carrying its RxNorm ingredient CUI (36567). It needs no second
-// drug to flag: /medicine shows a "Grapefruit: Avoid grapefruit juice …" guidance
+// drug to flag: the intake surfaces show a "Grapefruit: Avoid grapefruit juice …" guidance
 // line, the add/edit form shows the same food notice, and the evening dose reminder
 // carries the food note. Synthetic prescriber ("Dr. Test Provider") — no real PHI.
 const simvastatinId = Number(

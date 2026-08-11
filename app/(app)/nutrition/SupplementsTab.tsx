@@ -152,8 +152,8 @@ interface Item {
   dose: IntakeDose;
 }
 
-// The Supplements tab of the Nutrition umbrella (#746): the former /medicine
-// supplement surface — context-aware scheduling, stack UL/RDA + cross-kind interaction/PGx
+// The Supplements tab of the Nutrition umbrella (#746): the former combined surface's
+// supplement half — context-aware scheduling, stack UL/RDA + cross-kind interaction/PGx
 // warnings, a slot-filterable schedule, compact coaching disclosures, and modal
 // add/edit flows. A self-contained async server component rendered by the tabbed
 // nutrition page.
@@ -587,7 +587,7 @@ export default async function SupplementsTab({
   // Known drug-/supplement-interactions among the ACTIVE stack (issue #148's drug
   // twin, issue #144). Severity-ranked; the create/edit inline check + the
   // dismissible Upcoming finding format over the SAME detectInteractions. Routed
-  // through the findings bus (#435) — the /medicine list used to render UNFILTERED,
+  // through the findings bus (#435) — the intake surface list used to render UNFILTERED,
   // so an Upcoming dismissal left its identical twin standing here; now they agree.
   const allInteractionWarnings = activeByKey(
     getInteractionWarnings(profile.id),

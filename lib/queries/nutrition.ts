@@ -68,7 +68,7 @@ import {
   type CorrectionMessageBinding,
 } from "../correction-time";
 import type { FoodTapRow } from "../food-log-write";
-import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
+import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-daily-totals-write";
 import { bodyweightAsOf } from "../bodyweight";
 import {
   proteinIntake,
@@ -109,9 +109,9 @@ import {
 import { demoteExcludedGroups } from "../dietary-preferences";
 import {
   rollupServings,
-  type FoodLogEntry,
+  type FoodDailyServingTotal,
   type GroupServingTotal,
-} from "../food-log";
+} from "../food-daily-totals";
 import {
   FOOD_GROUPS,
   foodGroupBySlug,
@@ -326,19 +326,19 @@ export function getFoodMealDays(
   return dates.map((date) => byDate.get(date)!);
 }
 
-// The profile's food-log rows on/after `since` (inclusive), as FoodLogEntry[] for the
+// The profile's food-log rows on/after `since` (inclusive), as FoodDailyServingTotal[] for the
 // pure rollup. Profile-scoped.
-export function getFoodLogEntries(
+export function getFoodDailyServingTotals(
   profileId: number,
   since: string
-): FoodLogEntry[] {
+): FoodDailyServingTotal[] {
   return db
     .prepare(
       `SELECT date, group_key, servings FROM food_log
         WHERE profile_id = ? AND date >= ? AND servings > 0
         ORDER BY date DESC`
     )
-    .all(profileId, since) as FoodLogEntry[];
+    .all(profileId, since) as FoodDailyServingTotal[];
 }
 
 // The weekly rollup — servings per group over the profile's "this week" window (the
@@ -346,7 +346,7 @@ export function getFoodLogEntries(
 // nutrition card, the trends view, and the #580 habit-target progress all format.
 export function getWeeklyFoodRollup(profileId: number): GroupServingTotal[] {
   return rollupServings(
-    getFoodLogEntries(profileId, weekWindowStart(profileId))
+    getFoodDailyServingTotals(profileId, weekWindowStart(profileId))
   );
 }
 
@@ -364,7 +364,7 @@ export function getFoodRollupInRange(
         WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0
         ORDER BY date DESC`
     )
-    .all(profileId, from, to) as FoodLogEntry[];
+    .all(profileId, from, to) as FoodDailyServingTotal[];
   return rollupServings(rows);
 }
 
@@ -372,18 +372,18 @@ export function getFoodRollupInRange(
 // ledger's input (#2021), which needs each day separately (a same-day co-occurrence, a
 // week-over-week swing) rather than the group totals `getFoodRollupInRange` folds them
 // into. Same table, same filter, one row per (date, group). Profile-scoped.
-export function getFoodServingsInRange(
+export function getFoodDailyServingTotalsInRange(
   profileId: number,
   from: string,
   to: string
-): FoodLogEntry[] {
+): FoodDailyServingTotal[] {
   return db
     .prepare(
       `SELECT date, group_key, servings FROM food_log
         WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0
         ORDER BY date, group_key`
     )
-    .all(profileId, from, to) as FoodLogEntry[];
+    .all(profileId, from, to) as FoodDailyServingTotal[];
 }
 
 // This week's servings for a single group — the #580 food-habit target progress read,
@@ -687,7 +687,7 @@ export function getFoodRegularity(profileId: number): FoodRegularity {
 // expectation (#2380, applying #998's language). Two memberships, both declared:
 //
 //   • a group whose food_log counter IS a substance ledger — alcohol, whose taps are
-//     the substance scope's own rows (lib/substance-history-write.ts). Excluded
+//     the substance scope's own rows (lib/substance-daily-totals-write.ts). Excluded
 //     unconditionally, target or no target: "you usually have alcohol in the evening"
 //     is a sentence this app does not say, and whether the user has declared a weekly
 //     cap does not change what saying it would do.
@@ -996,7 +996,7 @@ export function getFoodHabitTrends(
 
 // A day's manually-logged protein grams (the Food-tab quick-add running total), or 0
 // when the profile logged none that day. Profile-scoped.
-export function getProteinLoggedGrams(profileId: number, date: string): number {
+export function getProteinDailyGrams(profileId: number, date: string): number {
   const row = db
     .prepare(`SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`)
     .get(profileId, date) as { grams: number } | undefined;
@@ -1005,7 +1005,7 @@ export function getProteinLoggedGrams(profileId: number, date: string): number {
 
 // The profile's protein_log rows on/after `since` (inclusive) — for the per-day logged
 // average the adequacy gather sums into the floor. Profile-scoped.
-export function getProteinLogEntries(
+export function getProteinDailyTotals(
   profileId: number,
   since: string
 ): { date: string; grams: number }[] {
@@ -1034,7 +1034,7 @@ export function getProteinQuickAddPreset(profileId: number): number | null {
 // adequacy finding (buildProteinAdequacyFindings). It assembles the pure engine's typed
 // inputs from PROFILE-SCOPED reads and returns the pure verdict, so the card and the
 // finding are formatters over the same result ("one question, one computation"). Reads
-// through getFoodLogEntries / getProteinLogEntries / getMetricDailyTotals / getWeights /
+// through getFoodDailyServingTotals / getProteinDailyTotals / getMetricDailyTotals / getWeights /
 // getLatestMetricValue, all profile-scoped, so the profile-scoping guard is satisfied.
 // Returns null when there's no intake signal or no bodyweight to scale by.
 //
@@ -1047,7 +1047,7 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
   const weekStart = weekWindowStart(profileId);
 
   // Estimated floor: this week's food-group servings → protein grams / distinct logged days.
-  const entries = getFoodLogEntries(profileId, weekStart);
+  const entries = getFoodDailyServingTotals(profileId, weekStart);
   const rollup = rollupServings(entries);
   const loggedDays = new Set(entries.map((e) => e.date)).size;
   const estWeekGrams = estimatedProteinGrams(rollup);
@@ -1057,7 +1057,7 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
   // Averaged over the days that carry it (same per-basis-average design as estimated), so
   // a partial week isn't diluted by days with no manual entry. Summed with the estimate
   // in proteinIntake (a manual entry is a partial addition, never an eraser).
-  const proteinRows = getProteinLogEntries(profileId, weekStart);
+  const proteinRows = getProteinDailyTotals(profileId, weekStart);
   const proteinDays = new Set(proteinRows.map((r) => r.date)).size;
   const loggedWeekGrams = proteinRows.reduce((s, r) => s + r.grams, 0);
   const dailyLogged = proteinDays > 0 ? loggedWeekGrams / proteinDays : null;
@@ -1108,7 +1108,7 @@ function getProteinTrailing(
     string,
     { slug: string; servings: number }[]
   >();
-  for (const e of getFoodLogEntries(profileId, since)) {
+  for (const e of getFoodDailyServingTotals(profileId, since)) {
     const list = estimatedByDate.get(e.date);
     const serving = { slug: e.group_key, servings: e.servings };
     if (list) list.push(serving);
@@ -1116,7 +1116,7 @@ function getProteinTrailing(
   }
 
   const loggedByDate = new Map<string, number>();
-  for (const r of getProteinLogEntries(profileId, since)) {
+  for (const r of getProteinDailyTotals(profileId, since)) {
     loggedByDate.set(r.date, (loggedByDate.get(r.date) ?? 0) + r.grams);
   }
 
@@ -1197,7 +1197,7 @@ export function getProteinOnDate(
     servings: n,
   }));
   const dailyEstimated = estimatedProteinGrams(dayServings);
-  const loggedOnDate = getProteinLoggedGrams(profileId, date);
+  const loggedOnDate = getProteinDailyGrams(profileId, date);
   const trackedOnDate = getMetricDailyTotals(profileId, "protein_g").find(
     (r) => r.date === date
   );
@@ -1305,7 +1305,7 @@ export function getConfirmedIntakeDosesInRange(
 // finding (buildFiberAdequacyFindings). The #767 protein gather re-instantiated with a
 // fourth basis (supplemented). It assembles the pure engine's typed inputs from PROFILE-
 // SCOPED reads and returns the pure verdict, so the card and the finding are formatters
-// over the same result ("one question, one computation"). Reads through getFoodLogEntries
+// over the same result ("one question, one computation"). Reads through getFoodDailyServingTotals
 // / getConfirmedIntakeDosesInRange / getMetricDailyTotals, all profile-scoped, so the
 // scoping guard is satisfied. Returns null when there's no intake signal or no DRI target.
 //
@@ -1316,7 +1316,7 @@ export function getFiberAdequacy(profileId: number): FiberAdequacy | null {
   const weekStart = weekWindowStart(profileId);
 
   // Estimated floor: this week's food-group servings → fiber grams / distinct logged days.
-  const entries = getFoodLogEntries(profileId, weekStart);
+  const entries = getFoodDailyServingTotals(profileId, weekStart);
   const rollup = rollupServings(entries);
   const loggedDays = new Set(entries.map((e) => e.date)).size;
   const estWeekGrams = estimatedFiberGrams(rollup);

@@ -34,11 +34,11 @@ import { isMinor } from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
-  addSubstanceHistoryEntryCore,
-  updateSubstanceHistoryEntryCore,
-  deleteSubstanceHistoryEntryCore,
+  addSubstanceDailyTotalCore,
+  updateSubstanceDailyTotalCore,
+  deleteSubstanceDailyTotalCore,
   type SubstanceHistoryMutationOutcome,
-} from "@/lib/substance-history-write";
+} from "@/lib/substance-daily-totals-write";
 
 // #1174 gated the substance-use SURFACE (hidden nav + page redirect) to adults;
 // #1279 closes the gap under it — Server Actions are independently POST-callable, so
@@ -246,14 +246,14 @@ function historyInput(
 
 // Historical add/correction (#2009). The action contract never names the backing
 // store; the auth-blind core dispatches from the validated substance catalog.
-export async function addSubstanceHistoryEntryAction(
+export async function addSubstanceDailyTotalAction(
   formData: FormData
 ): Promise<SubstanceHistoryMutationOutcome> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
   const parsed = historyInput(formData, today(profile.id));
   if (!parsed.ok) return parsed.outcome;
-  const outcome = addSubstanceHistoryEntryCore(
+  const outcome = addSubstanceDailyTotalCore(
     profile.id,
     parsed.substance,
     parsed
@@ -262,7 +262,7 @@ export async function addSubstanceHistoryEntryAction(
   return outcome;
 }
 
-export async function updateSubstanceHistoryEntryAction(
+export async function updateSubstanceDailyTotalAction(
   formData: FormData
 ): Promise<SubstanceHistoryMutationOutcome> {
   const { profile } = await requireWriteAccess();
@@ -271,7 +271,7 @@ export async function updateSubstanceHistoryEntryAction(
   if (!parsed.ok) return parsed.outcome;
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return { kind: "not-found" };
-  const outcome = updateSubstanceHistoryEntryCore(
+  const outcome = updateSubstanceDailyTotalCore(
     profile.id,
     parsed.substance,
     id,
@@ -281,7 +281,7 @@ export async function updateSubstanceHistoryEntryAction(
   return outcome;
 }
 
-export async function deleteSubstanceHistoryEntryAction(
+export async function deleteSubstanceDailyTotalAction(
   formData: FormData
 ): Promise<SubstanceHistoryDeleteResult> {
   const { profile } = await requireWriteAccess();
@@ -301,7 +301,7 @@ export async function deleteSubstanceHistoryEntryAction(
       error: "Couldn't find that entry.",
     };
   }
-  const outcome = deleteSubstanceHistoryEntryCore(profile.id, substance, id);
+  const outcome = deleteSubstanceDailyTotalCore(profile.id, substance, id);
   if (outcome.kind !== "deleted") {
     return {
       kind: "not-found",

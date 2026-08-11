@@ -5,10 +5,10 @@ import { redirect } from "next/navigation";
 import { requireWriteAccess } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { generateInsight, saveInsight } from "@/lib/ai";
-import { generateRecapNarrative } from "@/lib/ai-narrative";
+import { generatePeriodRecap } from "@/lib/ai-period-recap";
 import { withAiLogContext } from "@/lib/ai-log";
-import { dismissFinding, saveNarrative } from "@/lib/queries";
-import type { NarrativePeriod } from "@/lib/recap-narrative";
+import { dismissFinding, savePeriodRecap } from "@/lib/queries";
+import type { PeriodRecapKind } from "@/lib/recap-narrative";
 import { parseRecapScale } from "@/lib/recap-scale";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -51,14 +51,14 @@ export async function generateRecap(formData: FormData) {
   // The narrative period IS the recap scale (#2178) — parsed through the registry's
   // own parser, so a fourth scale needs no change here and an unknown value falls back
   // to `week` rather than being refused.
-  const period: NarrativePeriod = parseRecapScale(
+  const period: PeriodRecapKind = parseRecapScale(
     String(formData.get("period") ?? "").trim()
   );
   const result = await withAiLogContext(
     { loginId: login.id, profileId: profile.id },
-    () => generateRecapNarrative(profile.id, period, login.id)
+    () => generatePeriodRecap(profile.id, period, login.id)
   );
-  saveNarrative(profile.id, {
+  savePeriodRecap(profile.id, {
     kind: result.kind,
     periodStart: result.periodStart,
     periodEnd: result.periodEnd,

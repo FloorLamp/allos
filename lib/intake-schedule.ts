@@ -98,8 +98,8 @@ export function availableConditions(
   );
 }
 
-// Whether a supplement applies given today's context. An as-needed (PRN)
-// medication is never scheduled-due — it's taken on demand, so it generates no
+// Whether an intake item applies given today's context. An on-demand (`may`) item is
+// never scheduled-due, so it generates no
 // reminders/escalation/adherence-due and can never be "missed".
 //
 // Workout-conditioned items key on WHEN the training happens, not only on whether
@@ -354,8 +354,8 @@ export function countSituationalDue(
 // state (the "Held — Pre-surgery active" badge, the digest "N items held" count, the
 // resume acknowledgment) all read ONE computation and can never disagree (#221). Only
 // ACTIVE items are considered — a manually-paused item (active 0) is already off every
-// surface, so surfacing it as "held" would be misleading. PRN items count: a PRN med a
-// surgeon says to stop IS meaningfully held even though it's never scheduled-due.
+// surface, so surfacing it as "held" would be misleading. On-demand items count: a PRN
+// medication a surgeon says to stop IS meaningfully held even though it is never due.
 export interface HeldItem<T> {
   item: T;
   situation: string;
@@ -475,7 +475,7 @@ export function isPostWorkoutReady(
   return nowMinutes >= Math.min(...ends);
 }
 
-// The /medicine header's workout/rest-day label (#747). Three distinct states,
+// The intake surfaces' workout/rest-day label (#747). Three distinct states,
 // keyed on the inferred-cadence prediction (`boolean | null`) and whether a
 // session was actually logged today:
 //   - a predicted training day             → "Workout day"
@@ -595,10 +595,10 @@ export function escalatesOnMiss(item: Pick<IntakeItem, "obligation">): boolean {
   return item.obligation === "must";
 }
 
-// PRN shape (#798/#851): the amount-only dose row, the redose interval/max notice and
-// the over-max finding all key off `may`, which absorbed `as_needed`. Named for what
-// callers mean so the collapse reads as one concept rather than a magic string.
-export function isPrn(item: Pick<IntakeItem, "obligation">): boolean {
+// On-demand shape: `may` carries no dueness for either kind. Medication-specific PRN
+// dose limits and redosing build on this predicate, but optional supplements are simply
+// on demand and are never described as PRN.
+export function isOnDemand(item: Pick<IntakeItem, "obligation">): boolean {
   return item.obligation === "may";
 }
 
@@ -770,14 +770,14 @@ export function spreadDoseTimes(
   return presets[n] ?? Array(n).fill(fallback ?? "Anytime");
 }
 
-// PRN ⇒ amount-only dose shape (issue #851 item 9). A PRN (as-needed) medication and
-// the scheduled time-slot / split-dose path are conceptually mutually exclusive: the
-// redose interval owns "when", so a PRN med carries exactly ONE amount-only dose row
-// (no time_of_day slot, no split). This enforces that invariant at the save boundary
-// regardless of surface — a legacy hybrid row (a PRN med with time slots) is collapsed
+// On demand ⇒ amount-only dose shape (issue #851 item 9). An on-demand item and the
+// scheduled time-slot / split-dose path are conceptually mutually exclusive, so it
+// carries exactly ONE amount-only dose row (no time_of_day slot, no split). This
+// enforces that invariant at the save boundary regardless of surface — a legacy hybrid
+// row with time slots is collapsed
 // to its first dose's amount on the next save, keeping that dose's id so its
 // administration history survives. `food_timing` is preserved (an NSAID stays "with
-// food"); only the schedule slot is dropped. A no-op for a non-PRN item. Pure.
+// food"); only the schedule slot is dropped. A no-op for a scheduled item. Pure.
 export interface CollapsibleDose extends DoseCadence {
   id?: number;
   amount: string | null;
@@ -785,11 +785,11 @@ export interface CollapsibleDose extends DoseCadence {
   food_timing: FoodTiming;
 }
 
-export function collapsePrnDoses<T extends CollapsibleDose>(
+export function collapseOnDemandDoses<T extends CollapsibleDose>(
   doses: T[],
-  asNeeded: boolean
+  onDemand: boolean
 ): CollapsibleDose[] {
-  if (!asNeeded) return doses;
+  if (!onDemand) return doses;
   const first = doses[0];
   return [
     {
@@ -798,9 +798,9 @@ export function collapsePrnDoses<T extends CollapsibleDose>(
       time_of_day: null,
       food_timing: first?.food_timing ?? "any",
       // The per-row calendar is dropped for the same reason the time slot is (#1602):
-      // a PRN item has no scheduled dueness for a weekday or a window to narrow, so
+      // an on-demand item has no scheduled dueness for a weekday or a window to narrow, so
       // keeping the fields would leave a rule that constrains nothing and would come
-      // back to life if the item ever stopped being PRN.
+      // back to life if the item ever became scheduled.
       weekdays: null,
       start_date: null,
       end_date: null,

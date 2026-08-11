@@ -1283,7 +1283,7 @@ that let editing a supplement reminder hour move which meal a historical serving
 belonged to.
 
 A **weekly rollup** — ONE pure
-computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
+computation (`lib/food-daily-totals.ts`) — feeds both the on-page "this week" card and
 the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from
 your flagged labs (#577) as "food before pills," each offering a one-tap **Track
@@ -2417,7 +2417,7 @@ or **May** — and everything else follows from it.
   never chased twice.
 - **May** — no expectation at all. It is never reminded and never counts as
   missed; it stays on your list and one tap away in its usual slot. This is where
-  as-needed items live — a PRN painkiller and a magnesium you take when you feel
+  as-needed items live — an on-demand painkiller and magnesium you take when you feel
   like it are the same shape, so they are the same setting.
 
 Marking something **May** does not hide it. It keeps its schedule as a _hint_ for

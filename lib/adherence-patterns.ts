@@ -59,7 +59,7 @@ export const WEEKEND_RATIO = 2;
 // ---- Signal keys (single source of truth) ---------------------------------
 //
 // Every adherence-pattern finding shares ONE dedupeKey namespace (`adherence:`) so
-// the /medicine dismiss action guards the whole domain with a single prefix check
+// the intake surface dismiss action guards the whole domain with a single prefix check
 // (mirroring the training-observation / trajectory actions, #39/#45). Keyed on the
 // DOSE id (AUTOINCREMENT, never recycles — AGENTS.md #203), so a rename/re-time of
 // the supplement never re-attaches a stale dismissal to a different slot.

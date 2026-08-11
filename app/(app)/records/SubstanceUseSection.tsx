@@ -15,7 +15,7 @@ import {
 import type { SubstanceInstrument } from "@/lib/substance-use";
 import {
   getAllSubstanceWeekStates,
-  getSubstanceHistory,
+  getSubstanceDailyTotals,
   getSubstanceWeeklyTrend,
 } from "@/lib/queries";
 import { getSmokingHistory } from "@/lib/settings";
@@ -127,7 +127,7 @@ export default function SubstanceUseSection({
             capAttention={
               week.status ? week.status.atCap || week.status.over : false
             }
-            history={getSubstanceHistory(profileId, week.substance)}
+            history={getSubstanceDailyTotals(profileId, week.substance)}
             trend={trends.get(week.substance) ?? []}
             defaultDate={td}
             formatPrefs={formatPrefs}

@@ -1,30 +1,33 @@
-// Read/write layer for stored AI narratives (issue #20): weekly/monthly period
-// recaps. Mirrors the daily-insights persistence (upsert on a natural key,
-// profile-scoped reads) so a narrative survives across requests and a regenerate
+// Read/write layer for stored AI period recaps (issue #20). Mirrors the daily-insights
+// persistence (upsert on a natural key, profile-scoped reads) so a recap survives
+// across requests and a regenerate
 // replaces the prior one for the same anchor. (The lab-trend interpretation kind was
 // retired with the Trends → Biomarkers tab — #1164.)
 
-import { db } from "../db";
-import type { Narrative, NarrativeKind } from "../types";
-import { RECAP_SCALES } from "../recap-scale";
+import { db } from "../../db";
+import type { PeriodRecap, PeriodRecapKind } from "../../types";
+import { RECAP_SCALES } from "../../recap-scale";
 
-// The recap kinds (period-scoped) the Insights tab lists. Now the whole narrative
-// vocabulary, since the lab-trend kind was removed (#1164).
-export const RECAP_KINDS: readonly NarrativeKind[] = RECAP_SCALES.map(
+// The recap kinds (period-scoped) the Insights tab lists. This is now the whole
+// period-recap vocabulary, since the lab-trend kind was removed (#1164).
+export const RECAP_KINDS: readonly PeriodRecapKind[] = RECAP_SCALES.map(
   (e) => e.scale
 );
 
-export interface SaveNarrativeInput {
-  kind: NarrativeKind;
+export interface SavePeriodRecapInput {
+  kind: PeriodRecapKind;
   periodStart: string | null;
   periodEnd: string;
   summary: string;
   model: string | null;
 }
 
-// Upsert a narrative for (profile, kind, period_end). Regenerating the same
+// Upsert a period recap for (profile, kind, period_end). Regenerating the same
 // anchor overwrites the summary/model in place rather than accumulating rows.
-export function saveNarrative(profileId: number, input: SaveNarrativeInput) {
+export function savePeriodRecap(
+  profileId: number,
+  input: SavePeriodRecapInput
+) {
   db.prepare(
     `INSERT INTO narratives
        (profile_id, kind, period_start, period_end, summary, model)
@@ -44,14 +47,14 @@ export function saveNarrative(profileId: number, input: SaveNarrativeInput) {
   );
 }
 
-// The most recent stored narratives for a profile, newest anchor first. When
+// The most recent stored period recaps for a profile, newest anchor first. When
 // `kinds` is given, only those kinds are returned (e.g. just the period recaps
 // for the Insights tab).
-export function getRecentNarratives(
+export function getRecentPeriodRecaps(
   profileId: number,
-  kinds?: readonly NarrativeKind[],
+  kinds?: readonly PeriodRecapKind[],
   limit = 10
-): Narrative[] {
+): PeriodRecap[] {
   if (kinds && kinds.length > 0) {
     const placeholders = kinds.map(() => "?").join(", ");
     return db
@@ -62,7 +65,7 @@ export function getRecentNarratives(
           ORDER BY period_end DESC, id DESC
           LIMIT ?`
       )
-      .all(profileId, ...kinds, limit) as Narrative[];
+      .all(profileId, ...kinds, limit) as PeriodRecap[];
   }
   return db
     .prepare(
@@ -72,5 +75,5 @@ export function getRecentNarratives(
         ORDER BY period_end DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, limit) as Narrative[];
+    .all(profileId, limit) as PeriodRecap[];
 }

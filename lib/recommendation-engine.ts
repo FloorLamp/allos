@@ -32,7 +32,7 @@ import {
   shouldSaveInsight,
   type RecommendationTrigger,
 } from "./recommendation-run";
-import { getInsight } from "./queries/intake/insights";
+import { getDailyInsight } from "./queries/coaching/daily-insights";
 import {
   autoSuggestFromBiomarkers,
   generateAndStoreSuggestions,
@@ -159,7 +159,7 @@ export async function runRecommendation(
       if (
         shouldSaveInsight({
           newModel: result.model,
-          hasExisting: getInsight(profileId, date) !== undefined,
+          hasExisting: getDailyInsight(profileId, date) !== undefined,
         })
       ) {
         saveInsight(profileId, date, result);

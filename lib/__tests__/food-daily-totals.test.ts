@@ -3,14 +3,18 @@ import {
   rollupServings,
   totalServings,
   servingsForGroup,
-  type FoodLogEntry,
-} from "@/lib/food-log";
+  type FoodDailyServingTotal,
+} from "@/lib/food-daily-totals";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 
 // Pure-tier tests for the weekly food-servings rollup (issue #579) — the ONE
 // computation the journal card, the trends view, and #580 habit progress all format.
 
-const e = (date: string, group: string, servings: number): FoodLogEntry => ({
+const e = (
+  date: string,
+  group: string,
+  servings: number
+): FoodDailyServingTotal => ({
   date,
   group_key: group,
   servings,

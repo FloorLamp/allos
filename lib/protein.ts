@@ -13,7 +13,7 @@
 //                   reused, never a second engine). A FLOOR by construction — incidental
 //                   protein from untracked foods is invisible.
 //   - `logged`    — direct protein grams from the Food-tab quick-add (#824,
-//                   lib/protein-log-write.ts) — protein powder's only home, since the
+//                   lib/protein-daily-totals-write.ts) — protein powder's only home, since the
 //                   whole-foods catalog has no shake group.
 // When there's no tracked reading, `estimated` and `logged` SUM — a manual grams entry is
 // a PARTIAL ADDITION, never an eraser of the food-group estimate (a common shape: log a
