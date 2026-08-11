@@ -3,7 +3,7 @@ import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 // ESLint 9 flat config. `next lint` is deprecated in Next 15 and removed in 16,
 // so `npm run lint` drives the ESLint CLI directly (see package.json). The lint
 // surface is `eslint-config-next`'s `next/core-web-vitals` rule set, applied to
-// the same source trees (app/ components/ lib/ e2e/ scripts/ — passed on the CLI).
+// every tracked JavaScript and TypeScript source file from the repository root.
 //
 // eslint-config-next 16 ships a NATIVE flat-config export (a `Linter.Config[]`),
 // so we consume it directly. This replaces the `@eslint/eslintrc` FlatCompat
@@ -14,7 +14,22 @@ const config = [
   // Global ignores — mirror the old ignorePatterns. Build output, deps, and the
   // runtime data dir are never linted.
   {
-    ignores: [".next/", ".next-demo/", "node_modules/", "data/"],
+    ignores: [
+      ".next/",
+      ".next-demo/",
+      "node_modules/",
+      "data/",
+      "coverage/",
+      "out/",
+      "build/",
+      "dist/",
+      "e2e/.data/",
+      "e2e/.auth/",
+      "test-results/",
+      "playwright-report/",
+      "blob-report/",
+      "playwright/.cache/",
+    ],
   },
   // ESLint 9 flat config defaults linterOptions.reportUnusedDisableDirectives to
   // "warn", but the old `.eslintrc.json` + `next lint` path left it off — keep it
@@ -33,7 +48,7 @@ const config = [
   // on flags ~37 pre-existing, working patterns across the app. To keep this
   // framework bump behavior-neutral (a tooling move, not a code refactor), they
   // are turned back off here — adopting them is deliberately a separate,
-  // product-reviewed follow-up (tracked with #125). exhaustive-deps and the rest
+  // product-reviewed follow-up (tracked with #1859). exhaustive-deps and the rest
   // of the prior surface stay enforced.
   {
     rules: {

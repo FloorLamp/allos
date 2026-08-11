@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "node --max-old-space-size=4096 node_modules/next/dist/bin/next build",
     "start": "next start",
-    "lint": "eslint app components lib e2e scripts",
+    "lint": "eslint .",
     "typecheck": "next typegen && node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit",
     "test": "vitest run",
     "test:db": "vitest run --config vitest.db.config.ts",
