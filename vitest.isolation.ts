@@ -9,11 +9,12 @@ import path from "node:path";
 // Two things genuinely cannot work that way, and both are mechanically visible in
 // the source:
 //
-//   vi.mock(       — a shared registry cannot re-mock a module an earlier file
+//   vi.mock( and its doMock/unmock/doUnmock variants
+//                  — a shared registry cannot change a module an earlier file
 //                    already evaluated. (The SETUP files' own vi.mock calls are
 //                    fine: they are identical for every file in the tier and the
 //                    spies they install are stable instances, so nothing varies
-//                    per file. It is a per-SPEC mock that breaks.)
+//                    per file. It is a per-SPEC registry change that breaks.)
 //   process.chdir( — worker threads reject it outright, and even on `forks` the
 //                    directory change would outlive the file and follow every
 //                    later spec in that worker.
@@ -29,7 +30,10 @@ import path from "node:path";
 // and the marker silently stopped matching, so the spec landed in the shared project and
 // produced exactly the unrecognisable failure described above. A marker that a
 // reformatting run can switch off is not mechanical.
-const CANNOT_SHARE = [/vi\s*\.\s*mock\(/, /process\s*\.\s*chdir\(/];
+const CANNOT_SHARE = [
+  /vi\s*\.\s*(?:doMock|doUnmock|mock|unmock)\s*\(/,
+  /process\s*\.\s*chdir\(/,
+];
 
 // The third thing that cannot share a registry, and the one that hid: a spec that
 // patches an APP MODULE'S EXPORT through a namespace import
