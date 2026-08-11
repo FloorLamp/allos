@@ -19,7 +19,7 @@ import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { migrate } from "@/lib/db";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
-import { FREQUENCY_SCOPE_KINDS } from "@/lib/goals";
+import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 import {
   ALLERGY_CRITICALITIES,
   ALLERGY_STATUSES,
@@ -29,8 +29,8 @@ import {
   APPOINTMENT_STATUSES,
   CONDITION_STATUSES,
   EQUIPMENT_CATEGORIES,
-  GOAL_DIRECTIONS,
-  GOAL_STATUSES,
+  OUTCOME_GOAL_DIRECTIONS,
+  OUTCOME_GOAL_STATUSES,
   PROVIDER_AFFILIATION_STATUSES,
   SUGGESTION_STATUSES,
 } from "@/lib/types";
@@ -69,14 +69,14 @@ const REGISTRY: {
   column: string;
   expected: readonly string[];
 }[] = [
-  { table: "goals", column: "status", expected: GOAL_STATUSES },
+  { table: "goals", column: "status", expected: OUTCOME_GOAL_STATUSES },
   // #1853, migration 147. NULLABLE — the CHECK reads
   // `target_direction IS NULL OR target_direction IN (...)`, so the extractor's
   // `<column> IN (...)` match lands on the IN list either way.
   {
     table: "goals",
     column: "target_direction",
-    expected: GOAL_DIRECTIONS,
+    expected: OUTCOME_GOAL_DIRECTIONS,
   },
   { table: "appointments", column: "status", expected: APPOINTMENT_STATUSES },
   { table: "allergies", column: "status", expected: ALLERGY_STATUSES },

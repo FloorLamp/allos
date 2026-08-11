@@ -6,7 +6,7 @@
 //      detail page/table already honor.
 //   2. The "latest reading" is chosen over the DE-DUPED id set (manual preferred),
 //      so a manual reading plus its higher-id imported twin surface the MANUAL
-//      representative's flag — the same one getBiomarkerSeries/getMedicalRecords
+//      representative's flag — the same one getBiomarkerSeries/getClinicalObservations
 //      show — not the imported twin's.
 //
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts. All values

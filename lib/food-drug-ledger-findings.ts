@@ -32,7 +32,7 @@
 import { cache } from "./request-cache";
 import { getSupplements, getSupplementDoses } from "./queries/intake";
 import { getFoodServingsInRange } from "./queries/nutrition";
-import { getUserAge } from "./settings";
+import { getProfileAge } from "./settings";
 import { matchFoodInteractions } from "./food-drug-interactions";
 import { parseRxcuiIngredients } from "./rxnorm";
 import { shiftDateStr } from "./date";
@@ -69,7 +69,7 @@ const LEDGER_WINDOW_DAYS = 2 * FOOD_DRUG_VARIANCE_WINDOW_DAYS;
 // ongoing prescription is; a course with no dated end simply has no tail to compute, and
 // the engine refuses rather than guessing when treatment stopped.
 function ledgerItems(profileId: number): LedgerItem[] {
-  const age = getUserAge(profileId);
+  const age = getProfileAge(profileId);
   // Per item: the earliest declared start, the latest declared end, and whether ANY
   // current dose is open-ended (which makes the whole course open-ended).
   interface CourseWindow {

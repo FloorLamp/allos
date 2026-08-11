@@ -5,6 +5,7 @@
 // Type-only import (erased at compile) from the lift catalog, which imports nothing
 // — no runtime cycle. Routine day `focus` is a MuscleRegion[].
 import type { MuscleRegion } from "../lifts";
+import type { FrequencyScopeKind } from "../frequency-targets";
 
 // `recovery` (issue #840, folding in #344) is the HABIT-tier mobility/flexibility
 // session — one activity row whose `components` are the tapped moves, no per-move
@@ -265,15 +266,15 @@ export interface BodyMetricWithSource extends BodyMetric {
   document_id: number | null;
 }
 
-// Achievement state. Archiving is a separate flag (Goal.archived) so an achieved
-// goal stays achieved when filed away. The runtime array is the single source of
-// truth for the union AND the goals.status CHECK (migration 016); the enum-parity
-// DB test (lib/__db_tests__/enum-parity.test.ts) fails if the two drift.
-export const GOAL_STATUSES = ["active", "achieved"] as const;
-export type GoalStatus = (typeof GOAL_STATUSES)[number];
+// Achievement state. Archiving is a separate flag (OutcomeGoal.archived) so an
+// achieved goal stays achieved when filed away. The runtime array is the single
+// source of truth for the union AND the goals.status CHECK (migration 016); the
+// enum-parity DB test (lib/__db_tests__/enum-parity.test.ts) fails if the two drift.
+export const OUTCOME_GOAL_STATUSES = ["active", "achieved"] as const;
+export type OutcomeGoalStatus = (typeof OUTCOME_GOAL_STATUSES)[number];
 
 // Exercise-linked goals measure one of these; progress is auto-derived from sets.
-export type GoalMetric = "weight" | "reps" | "sets" | "hold";
+export type OutcomeGoalMetric = "weight" | "reps" | "sets" | "hold";
 // Which body metric a body goal targets (and the metric-kind selector shared by
 // getLatestBodyMetric and the document-import classifier in body-metric-extract).
 export type BodyMetricKind = "weight" | "body_fat" | "resting_hr";
@@ -283,24 +284,38 @@ export type BodyMetricKind = "weight" | "body_fat" | "resting_hr";
 // are different goals with the same number, and a goal created before its first
 // reading has no baseline to infer a direction from. Single source of truth for the
 // `goals.target_direction` CHECK and the TS union (see the enum-parity test).
-export const GOAL_DIRECTIONS = ["below", "above"] as const;
-export type GoalDirection = (typeof GOAL_DIRECTIONS)[number];
+export const OUTCOME_GOAL_DIRECTIONS = ["below", "above"] as const;
+export type OutcomeGoalDirection = (typeof OUTCOME_GOAL_DIRECTIONS)[number];
 
-export interface Goal {
+export const OUTCOME_GOAL_KINDS = [
+  "exercise",
+  "body",
+  "biomarker",
+  "freeform",
+] as const;
+export type OutcomeGoalKind = (typeof OUTCOME_GOAL_KINDS)[number];
+
+// A personal outcome goal from the `goals` table. Distinct from weekly
+// FrequencyTarget cadence and imported clinical CareGoal rows (#2480).
+export interface OutcomeGoal {
   id: number;
   title: string;
   description: string | null;
-  category: string | null;
+  kind: OutcomeGoalKind;
+  // Optional user-authored grouping for freeform goals. Typed goals derive `kind`
+  // from their structural columns and never expose old machine discriminator values
+  // ("strength" / "body" / "biomarker") through this field.
+  categoryLabel: string | null;
   target_value: number | null;
   current_value: number | null;
   unit: string | null;
   target_date: string | null;
-  status: GoalStatus;
+  status: OutcomeGoalStatus;
   created_at: string;
   // Exercise-linked goal fields (all null for freeform goals). A goal is
   // exercise-linked when `exercise` and `metric` are both set.
   exercise: string | null;
-  metric: GoalMetric | null;
+  metric: OutcomeGoalMetric | null;
   // OPTIONAL load context (#1610, migration 120): the registry implement this goal's
   // progress is measured on. NULL is the goal's DEFAULT SCOPE — movement-wide, every
   // implement folded — NOT an "unassigned" lane; a goal that names no machine means
@@ -326,7 +341,7 @@ export interface Goal {
   // advanced by the eAG re-expression of the same draw (#482: family is how facts
   // REACH a row, not what a row IS).
   biomarker_name: string | null;
-  target_direction: GoalDirection | null;
+  target_direction: OutcomeGoalDirection | null;
   // Filed away (0/1). Independent of status, so achieved goals stay achieved.
   archived: number;
 }
@@ -344,15 +359,6 @@ export interface Goal {
 // red light, sauna, cold plunge, meditation, …) whose progress counts DISTINCT DAYS
 // a session was logged into practice_logs this week — normal FLOOR semantics, joining
 // getFrequencyTargetProgress like the training scopes.
-export type FrequencyScopeKind =
-  | "region"
-  | "group"
-  | "type"
-  | "food_group"
-  | "mobility_region"
-  | "substance"
-  | "practice";
-
 // A user-defined "hit X at least N times/week" target. per_week is the FLOOR; the
 // OPTIONAL per_week_max (#1259) is a ceiling that makes the target a RANGE ("3–5×/week"
 // → per_week 3, per_week_max 5). NULL = a single-floor target (every scope but practice

@@ -2,7 +2,7 @@
 
 import SubmitButton from "@/components/SubmitButton";
 import { followUpStateLabel } from "@/lib/followup";
-import { trackLabFollowUp, trackIopFollowUp } from "./actions";
+import { trackLabFollowUp, trackIopFollowUp } from "./biomarker-actions";
 import type { LabFollowUpSummary } from "@/lib/queries";
 
 // Per-biomarker follow-up affordance on the biomarker detail page (issue #700 labs

@@ -265,7 +265,7 @@ export function normalizeResults(
     // #1076: the canonical dataset owns the classification. When the resolved
     // canonical name is in the controlled vocabulary, its category WINS over the
     // model's guess — so an extracted PHQ-9 joins the instrument series (never
-    // /results/biomarkers), a Blood Type files as `reference`, a temperature as
+    // /results/readings), a Blood Type files as `reference`, a temperature as
     // `vitals`, etc. A name outside the vocabulary keeps the model's category.
     // Prescriptions are never a canonical biomarker, so the rx branch is unaffected.
     const canonicalEntry = canonicalName

@@ -37,8 +37,8 @@ test("the AI lab-trend interpretation card is gone everywhere (#1164/#20)", asyn
 }) => {
   // On the canonical biomarker browser (Results), where the Trends duplicate was
   // merged in — the trajectory watch moved here, but the AI lab-trend card did NOT.
-  await page.goto("/results/biomarkers");
-  await expect(page.getByTestId("results-biomarkers")).toBeVisible();
+  await page.goto("/results/readings");
+  await expect(page.getByTestId("results-readings")).toBeVisible();
   await expect(page.getByTestId("lab-trend-interpretation")).toHaveCount(0);
   await expect(page.getByText("Lab-trend interpretation")).toHaveCount(0);
 

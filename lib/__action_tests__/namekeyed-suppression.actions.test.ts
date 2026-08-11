@@ -14,10 +14,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
-  addRecord,
-  updateRecord,
-  deleteRecord,
-} from "@/app/(app)/medical/actions";
+  addResult,
+  updateResult,
+  deleteResult,
+} from "@/app/(app)/results/reading-actions";
 import {
   addImmunization,
   updateImmunization,
@@ -78,7 +78,7 @@ function immId(profileId: number, vaccine: string): number {
 describe("manifestation 1 — biomarker retest dismissal outlives the data", () => {
   it("clears the retest dismissal when the last reading is deleted, so a re-add re-nudges", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({
         date: "2020-01-01",
         category: "lab",
@@ -92,12 +92,12 @@ describe("manifestation 1 — biomarker retest dismissal outlives the data", () 
     expect(dismissalKeys(profile.id)).toContain("biomarker:glucose");
 
     // Deleting the only glucose reading must sweep the now-orphaned dismissal.
-    await deleteRecord(fd({ id: recordId(profile.id, "Glucose") }));
+    await deleteResult(fd({ id: recordId(profile.id, "Glucose") }));
     expect(dismissalKeys(profile.id)).not.toContain("biomarker:glucose");
 
     // Re-adding glucose later does not resurrect the stale dismissal — the new
     // nudge is free to fire.
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-06-01",
         category: "lab",
@@ -111,7 +111,7 @@ describe("manifestation 1 — biomarker retest dismissal outlives the data", () 
 
   it("keeps the dismissal while another reading of the same biomarker survives", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({
         date: "2020-01-01",
         category: "lab",
@@ -120,7 +120,7 @@ describe("manifestation 1 — biomarker retest dismissal outlives the data", () 
         canonical_name: "Glucose",
       })
     );
-    await addRecord(
+    await addResult(
       fd({
         date: "2021-01-01",
         category: "lab",
@@ -133,7 +133,7 @@ describe("manifestation 1 — biomarker retest dismissal outlives the data", () 
 
     // Delete just one of the two readings — the biomarker still has data, so the
     // dismissal stays put.
-    await deleteRecord(fd({ id: recordId(profile.id, "Glucose") }));
+    await deleteResult(fd({ id: recordId(profile.id, "Glucose") }));
     expect(dismissalKeys(profile.id)).toContain("biomarker:glucose");
   });
 });
@@ -249,7 +249,7 @@ describe("manifestation 2c — immunization dismissal outlives a Data → Manage
 describe("manifestation 3 & 4 — canonical rename migrates star + dismissal", () => {
   it("carries the pinned star and the retest snooze to the new canonical name", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-01",
         category: "lab",
@@ -266,7 +266,7 @@ describe("manifestation 3 & 4 — canonical rename migrates star + dismissal", (
 
     // Snap the canonical name to the fuller vocab entry — exactly what the app
     // encourages — via the single-record edit path.
-    await updateRecord(
+    await updateResult(
       fd({
         id: recordId(profile.id, "Vitamin D"),
         date: "2026-01-01",
@@ -288,7 +288,7 @@ describe("manifestation 3 & 4 — canonical rename migrates star + dismissal", (
 
   it("does not migrate on a plain value/date edit (no rename)", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-01",
         category: "lab",
@@ -300,7 +300,7 @@ describe("manifestation 3 & 4 — canonical rename migrates star + dismissal", (
     star(profile.id, "LDL Cholesterol");
     dismissFinding(profile.id, "biomarker:ldl cholesterol");
 
-    await updateRecord(
+    await updateResult(
       fd({
         id: recordId(profile.id, "LDL Cholesterol"),
         date: "2026-02-01",
@@ -317,7 +317,7 @@ describe("manifestation 3 & 4 — canonical rename migrates star + dismissal", (
 
   it("drops a leftover old star when the new name is already pinned (collision)", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-01",
         category: "lab",
@@ -330,7 +330,7 @@ describe("manifestation 3 & 4 — canonical rename migrates star + dismissal", (
     star(profile.id, "Vitamin D");
     star(profile.id, "Vitamin D, 25-Hydroxy");
 
-    await updateRecord(
+    await updateResult(
       fd({
         id: recordId(profile.id, "Vitamin D"),
         date: "2026-01-01",
@@ -358,7 +358,7 @@ describe("per-profile scoping", () => {
     dismissFinding(b.id, "biomarker:glucose");
 
     actAs(login, a);
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-01",
         category: "lab",
@@ -367,7 +367,7 @@ describe("per-profile scoping", () => {
         canonical_name: "Glucose",
       })
     );
-    await deleteRecord(fd({ id: recordId(a.id, "Glucose") }));
+    await deleteResult(fd({ id: recordId(a.id, "Glucose") }));
 
     // B's dismissal is untouched — the sweep is profile-scoped.
     expect(dismissalKeys(b.id)).toEqual(["biomarker:glucose"]);

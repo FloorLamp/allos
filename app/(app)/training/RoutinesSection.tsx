@@ -5,7 +5,7 @@ import {
 } from "@/lib/routines";
 import { getActivitySuggestions } from "@/lib/queries";
 import { ROUTINE_TEMPLATES } from "@/lib/routine-templates";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import RoutinesManager from "./RoutinesManager";
 
 // Routines tab (#739): read the profile's routines + the training-scope frequency

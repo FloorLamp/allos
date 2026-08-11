@@ -2,27 +2,30 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { MedicalRecord } from "@/lib/types";
-import { recordNameLink } from "@/lib/import-browser";
+import type { ClinicalObservation } from "@/lib/types";
+import { observationNameLink } from "@/lib/import-browser";
 import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { Tag, MedicalValue } from "./ui";
 import { ConfidenceRowNote } from "./ConfidenceBadge";
 import { TRIAGE_FOCUS_ROW } from "./TriageFocus";
 import NotesText from "./NotesText";
-import RecordForm from "./RecordForm";
+import ResultForm from "./ResultForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
 import { useUndoableDelete } from "./useUndoableDelete";
-import { updateRecord, deleteRecord } from "@/app/(app)/medical/actions";
+import {
+  updateResult,
+  deleteResult,
+} from "@/app/(app)/results/reading-actions";
 
-export default function EditableRecordRow({
-  record,
+export default function EditableResultRow({
+  observation,
   grouped,
   rowId,
   focused = false,
   flag,
 }: {
-  record: MedicalRecord;
+  observation: ClinicalObservation;
   // When the table is name-sorted it groups contiguous same-name rows (like the
   // biomarkers table): the name shows once on the group's start row, and the
   // group-closing border falls only on its end row. Omit for ungrouped tables,
@@ -40,12 +43,12 @@ export default function EditableRecordRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
-  const r = record;
+  const r = observation;
 
   // Category-correct name link (#271): series categories link to the biomarker
   // series view, prescriptions to /medications, scans/notes get NO link rather than
   // a wrong one. Pure decision in lib/import-browser.
-  const nameLink = recordNameLink(r.category, r.canonical_name);
+  const nameLink = observationNameLink(r.category, r.canonical_name);
 
   if (!editing) {
     const showName = grouped ? grouped.isGroupStart : true;
@@ -109,7 +112,7 @@ export default function EditableRecordRow({
         <td className="td">
           <div className="flex items-center justify-end">
             <OverflowMenu
-              label="Record actions"
+              label="Result actions"
               open={menuOpen}
               onOpenChange={setMenuOpen}
             >
@@ -135,7 +138,7 @@ export default function EditableRecordRow({
                     className={MENU_ITEM_DANGER}
                     onClick={async () => {
                       const ok = await confirm({
-                        title: "Delete record",
+                        title: "Delete result",
                         message: `Delete “${r.name}”? You can undo this.`,
                         confirmLabel: "Delete",
                         danger: true,
@@ -144,8 +147,8 @@ export default function EditableRecordRow({
                       close();
                       const fd = new FormData();
                       fd.set("id", String(r.id));
-                      await undoable(deleteRecord, fd, {
-                        deletedMessage: "Record deleted.",
+                      await undoable(deleteResult, fd, {
+                        deletedMessage: "Result deleted.",
                       });
                     }}
                   >
@@ -160,18 +163,18 @@ export default function EditableRecordRow({
     );
   }
 
-  // Edit mode: the shared RecordForm (same fields + write path the add slot uses)
-  // swaps in place of the row; updateRecord is profile-scoped and reconciles flags.
+  // Edit mode: the shared ResultForm (same fields + write path the add slot uses)
+  // swaps in place of the row; updateResult is profile-scoped and reconciles flags.
   return (
     <tr
       id={rowId}
       className="border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60"
     >
       <td colSpan={8} className="td py-3">
-        <RecordForm
+        <ResultForm
           mode="edit"
-          record={r}
-          action={updateRecord}
+          observation={r}
+          action={updateResult}
           onDone={() => setEditing(false)}
         />
       </td>

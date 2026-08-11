@@ -11,7 +11,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import type { AppRoute } from "@/lib/hrefs";
 import { productLabel } from "@/lib/supply-product";
 import type { AvatarProfile } from "@/components/Avatar";
-import { switchProfileAction } from "@/app/(app)/user-actions";
+import { switchProfileAction } from "@/app/(app)/profile-context-actions";
 import { updatePoolAction, deletePoolAction } from "./actions";
 
 export interface SharedSupplyCardData {

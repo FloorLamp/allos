@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { chartActivityRamp } from "@/lib/chart-colors";
+import { trainingLogDayHref } from "@/lib/hrefs";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
 // The same blessed activity ramp the full heatmap uses (issue #1445) — the strip
@@ -49,7 +50,7 @@ export default function ActiveDaysStrip({
           return day.count > 0 ? (
             <Link
               key={day.date}
-              href={`/training?tab=log#day-${day.date}`}
+              href={trainingLogDayHref(day.date)}
               data-testid="active-day"
               data-date={day.date}
               data-count={day.count}

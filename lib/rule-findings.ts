@@ -19,7 +19,7 @@ import {
   getWeights,
   getWeightsOneSourcePerDay,
   getBodyMetricDailySeries,
-  getGoals,
+  getOutcomeGoals,
   getSupplements,
   getSupplementDoses,
   getIntakeLogsInRange,
@@ -45,9 +45,9 @@ import {
   getActiveSituations,
   getSituationEvents,
   getHomeLocation,
-  getUserSex,
-  getUserAge,
-  getUserReproductiveStatus,
+  getProfileSex,
+  getProfileAge,
+  getProfileReproductiveStatus,
   getSmokingHistory,
   getRiskAttributesReviewed,
   getTimezone,
@@ -101,7 +101,8 @@ import {
   deriveRiskFactors,
   EMPTY_RISK_ATTRIBUTES,
 } from "./risk-stratification";
-import { isGoalLive, frequencyScopeLabel } from "./goals";
+import { isGoalLive } from "./outcome-goals";
+import { frequencyScopeLabel } from "./frequency-targets";
 import { getRoutineCycleStatus } from "./routines";
 import {
   foodHabitSignalKey,
@@ -362,12 +363,12 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     getSmokingHistory(profileId),
     hasImportedSmokingHistory(profileId)
   );
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
   const inputs: DataQualityInputs = {
-    age: getUserAge(profileId),
+    age: getProfileAge(profileId),
     sexKnown: sex !== null,
     sex,
-    reproductiveStatusKnown: getUserReproductiveStatus(profileId) !== null,
+    reproductiveStatusKnown: getProfileReproductiveStatus(profileId) !== null,
     heightKnown: getLatestMetricSample(profileId, "height_cm") !== null,
     smokingKnown: smoking.source !== null,
     medsMissingRxcui: getMedicationsMissingRxcuiCount(profileId),
@@ -754,11 +755,11 @@ export function buildTtcWorkupFindings(
   today: string
 ): Finding[] {
   // Adult-only content, the same `!isMinor` line the other adult-topic surfaces use.
-  if (isMinor(getUserAge(profileId))) return [];
+  if (isMinor(getProfileAge(profileId))) return [];
   const prompt = decideWorkupPrompt({
     ttcStart: getTtcStart(profileId),
     today,
-    age: getUserAge(profileId),
+    age: getProfileAge(profileId),
     pregnant: getRiskAttributes(profileId).pregnant,
   });
   if (!prompt) return [];
@@ -835,7 +836,7 @@ export function buildFoodHabitFindings(profileId: number): Finding[] {
 export function buildSubstanceUseFindings(profileId: number): Finding[] {
   // The substance-use surface is adult-gated (#1174/#1279); never emit a coaching
   // finding that deep-links a known minor to a now-redirected route.
-  if (isMinor(getUserAge(profileId))) return [];
+  if (isMinor(getProfileAge(profileId))) return [];
   const out: Finding[] = [];
   for (const state of getAllSubstanceWeekStates(profileId)) {
     if (!state.status || !state.status.over) continue;
@@ -1161,7 +1162,7 @@ export function buildGoalPacingFindings(
 
   // The profile's goals, read ONCE for both loops below (they used to re-query the
   // same list) — nothing here writes, so the two passes always saw one snapshot.
-  const goals = getGoals(profileId);
+  const goals = getOutcomeGoals(profileId);
 
   // Weight readings in canonical kg, ascending, as projection input. The SAME
   // primary-source-collapsed daily series (one row/day, #14) the Trends → Body
@@ -1613,8 +1614,8 @@ export function buildSunExposureFindings(
   const status = optimalStatus(
     latest.value_num,
     cb,
-    getUserSex(profileId),
-    getUserAge(profileId)
+    getProfileSex(profileId),
+    getProfileAge(profileId)
   );
 
   // Daylight-outdoor minutes over the window — the ONE computation (lib/queries/sun),
@@ -1643,7 +1644,7 @@ export function buildSunExposureFindings(
       // Calm FYI — a neutral observation, never an alarm.
       tone: "info",
       // The biomarker browser lives on Results (#1164 merged the Trends duplicate in).
-      actionHref: "/results/biomarkers",
+      actionHref: "/results/readings",
       actionLabel: "View biomarkers",
     },
   ];

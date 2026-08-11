@@ -1,4 +1,9 @@
-import { getSetting, setSetting, deleteSetting, getUserAge } from "./settings";
+import {
+  getSetting,
+  setSetting,
+  deleteSetting,
+  getProfileAge,
+} from "./settings";
 import type { ActivityType } from "./types";
 
 // Age gating for the fitness-oriented surfaces. When a profile's known age is
@@ -112,7 +117,7 @@ export function setMinTrainingAge(age: number | null): void {
 export function isTrainingRestricted(profileId: number): boolean {
   const min = minTrainingAge();
   if (min === null) return false;
-  const age = getUserAge(profileId);
+  const age = getProfileAge(profileId);
   if (age === null) return false;
   return age < min;
 }

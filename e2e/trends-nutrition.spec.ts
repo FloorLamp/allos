@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
 
 // Trends → Nutrition is the OVER-TIME nutrition view (issue #1166): the macros+fiber
 // daily chart (re-homed off Trends → Body and gaining fiber), a food-goal adherence
@@ -51,6 +51,46 @@ test("Trends → Nutrition shows the macros+fiber chart, the adherence trend, an
   await expect(page.getByTestId("nutrition-trends-rollup")).toHaveCount(0);
 });
 
+test("food and dose histories stay contained and stack details on a phone", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/trends?tab=nutrition");
+
+  const cases = [
+    {
+      section: page.getByTestId("intake-history"),
+      helper:
+        /Calendar: days you logged food\. Matrix: each day by food group\./,
+    },
+    {
+      section: page.getByTestId("dose-history"),
+      helper: /Calendar: days you confirmed doses\. Matrix: each day by item\./,
+    },
+  ];
+
+  for (const { section, helper } of cases) {
+    await expect(section).toContainText(helper);
+    const rowButton = section
+      .getByRole("button", { name: /View occurrences for/ })
+      .first(); // first-ok: every domain row shares the same responsive detail-panel contract
+    if ((await rowButton.getAttribute("aria-pressed")) !== "true") {
+      await rowButton.click();
+    }
+
+    const [calendarBox, rowBox] = await Promise.all([
+      section.getByTestId("day-history-calendar-panel").boundingBox(),
+      section.getByTestId("day-history-rowpanel").boundingBox(),
+    ]);
+    expect(rowBox).not.toBeNull();
+    expect(rowBox!.y).toBeGreaterThanOrEqual(
+      calendarBox!.y + calendarBox!.height
+    );
+  }
+
+  await expectNoClippedContent(page);
+});
+
 test("a day tap opens the day panel; the Timeline stays one link away (#1166)", async ({
   page,
 }) => {
@@ -61,7 +101,7 @@ test("a day tap opens the day panel; the Timeline stays one link away (#1166)", 
   // Tapping a populated day SELECTS it — no navigation — and the panel lists
   // what that day held.
   const day = history.getByTestId("day-history-day").first(); // first-ok: read-only, any populated day proves the interaction
-  await day.click();
+  await hydratedClick(page, day);
   await expect(page).toHaveURL(/\/trends\?tab=nutrition/);
   const panel = history.getByTestId("day-history-daypanel");
   await expect(panel).toBeVisible();
@@ -137,6 +177,101 @@ test("a group filter chip removes that group's matrix row", async ({
   await expect(
     history.locator(`[data-testid="day-history-row"][data-group="${group}"]`)
   ).toHaveCount(0);
+
+  // The selected count stays visible and All is the explicit recovery action.
+  await expect(
+    history.getByText(/Viewing \d+ of \d+ food groups/)
+  ).toBeVisible();
+  await history.getByRole("button", { name: "All", exact: true }).click();
+  await expect(chip).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    history.locator(`[data-testid="day-history-row"][data-group="${group}"]`)
+  ).toBeVisible();
+
+  await history.getByRole("button", { name: "None", exact: true }).click();
+  await expect(history.getByTestId("day-history-row")).toHaveCount(0);
+  await history.getByRole("button", { name: "All", exact: true }).click();
+  await expect(history.getByTestId("day-history-row")).not.toHaveCount(0);
+});
+
+test("a long group filter starts compact and can reveal the full vocabulary", async ({
+  page,
+}) => {
+  await page.goto("/trends?tab=nutrition");
+  const history = page.getByTestId("intake-history");
+  const filterToggle = history.getByTestId("day-history-filter-toggle");
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(filterToggle).toHaveText(/^\+\d+ more$/);
+  expect(await history.getByTestId("day-history-chip").count()).toBe(5);
+
+  const filterButtons = await history
+    .getByRole("group", { name: "Filter food groups" })
+    .getByRole("button")
+    .allTextContents();
+  expect(filterButtons.findIndex((text) => /^\+\d+ more$/.test(text))).toBe(
+    filterButtons.indexOf("All") - 1
+  );
+
+  await filterToggle.click();
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(filterToggle).toHaveText("Show less");
+  expect(await history.getByTestId("day-history-chip").count()).toBeGreaterThan(
+    5
+  );
+});
+
+test("filtering to one row selects it temporarily and keeps one keyboard entry point", async ({
+  page,
+}) => {
+  await page.goto("/trends?tab=nutrition");
+  const history = page.getByTestId("intake-history");
+  const grid = history.getByRole("grid", { name: /By food group/ });
+  expect(Number(await grid.getAttribute("aria-rowcount"))).toBeGreaterThan(1);
+
+  // Move the roving stop onto a row that will disappear, clear the matrix,
+  // then restore only one group. The new one-row grid must still be tabbable.
+  const lastCell = grid.locator('[role="gridcell"]').last();
+  await lastCell.focus();
+  await expect(lastCell).toBeFocused();
+  await history.getByRole("button", { name: "None", exact: true }).click();
+  await expect(grid).toHaveCount(0);
+  const onlyChip = history.getByTestId("day-history-chip").first(); // first-ok: any one remaining group produces the one-row shrink case
+  const onlyGroup = await onlyChip.getAttribute("data-group");
+  const onlyLabel = await onlyChip.getAttribute("aria-label");
+  expect(onlyGroup).toBeTruthy();
+  expect(onlyLabel).toBeTruthy();
+  await onlyChip.click();
+
+  const restored = history.getByRole("grid", { name: /By food group/ });
+  await expect(restored.locator('[role="gridcell"][tabindex="0"]')).toHaveCount(
+    1
+  );
+  const onlyRow = history.locator(
+    `[data-testid="day-history-row"][data-group="${onlyGroup}"]`
+  );
+  await expect(
+    onlyRow.getByRole("button", { name: /View occurrences for/ })
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    history.getByTestId("day-history-rowpanel").getByRole("heading")
+  ).toHaveText(onlyLabel!);
+
+  // The sole-row selection belongs to the filter state, not the user. Adding
+  // a second row removes it; filtering from two rows back to one restores it.
+  const secondChip = history.getByTestId("day-history-chip").nth(1);
+  await secondChip.click();
+  await expect(history.getByTestId("day-history-rowpanel")).toHaveCount(0);
+  await expect(
+    onlyRow.getByRole("button", { name: /View occurrences for/ })
+  ).toHaveAttribute("aria-pressed", "false");
+
+  await secondChip.click();
+  await expect(
+    onlyRow.getByRole("button", { name: /View occurrences for/ })
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    history.getByTestId("day-history-rowpanel").getByRole("heading")
+  ).toHaveText(onlyLabel!);
 });
 
 test("the macros chart is GONE from the body census (#1166)", async ({

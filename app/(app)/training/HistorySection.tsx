@@ -2,18 +2,18 @@ import {
   getStrengthByExercise,
   getCardioByActivity,
   getSportByActivity,
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getLatestBodyMetric,
   getJournalWeekSummary,
   getRecentByExercise,
   getActiveDaysStrip,
 } from "@/lib/queries";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import {
   getUnitPrefs,
-  getUserSex,
+  getProfileSex,
   getDisplayFormatPrefs,
 } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
@@ -21,7 +21,11 @@ import { EMPTY_JOURNAL_FILTERS } from "@/lib/journal-filters";
 import { resolveJournalFeedContext } from "./journal-feed-resolve";
 import JournalView from "./JournalView";
 
-export default async function HistorySection() {
+export default async function HistorySection({
+  initialCreateDate,
+}: {
+  initialCreateDate?: string;
+}) {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
@@ -50,10 +54,10 @@ export default async function HistorySection() {
   );
 
   const summary = getJournalWeekSummary(profile.id);
-  const goals = getGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id);
   // Map → plain object so it can cross the server/client boundary.
   const goalProgress = Object.fromEntries(
-    getGoalProgressMap(profile.id, goals)
+    getOutcomeGoalProgressMap(profile.id, goals)
   );
   const targets = getFrequencyTargetProgress(profile.id).map((t) => ({
     label: frequencyScopeLabel(t.target.scope_kind, t.target.scope_value),
@@ -65,6 +69,7 @@ export default async function HistorySection() {
 
   return (
     <JournalView
+      initialCreateDate={initialCreateDate}
       groups={feed.groups}
       initialCursor={feed.cursor}
       sourceOptions={feed.sourceOptions}
@@ -91,7 +96,7 @@ export default async function HistorySection() {
       }}
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}
-      sex={getUserSex(profile.id)}
+      sex={getProfileSex(profile.id)}
       canWriteVideos={feed.canWriteVideos}
       multiView={
         feed.multi ? { actingProfileId: feed.actingProfileId } : undefined

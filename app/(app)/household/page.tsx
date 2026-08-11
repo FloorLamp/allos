@@ -14,9 +14,9 @@ import {
   getActivities,
   getActivitiesByDate,
   getDashboardStats,
-  getGoals,
-  getGoalProgressMap,
-  getMedicalRecords,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
+  getClinicalObservations,
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
@@ -124,13 +124,13 @@ export default async function HouseholdPage() {
     );
 
     // Biomarkers whose current (latest) reading is out of the lab reference range.
-    const oorBiomarkers = getMedicalRecords(pid, {
+    const oorBiomarkers = getClinicalObservations(pid, {
       current: true,
       range: "oor",
     }).length;
 
-    const goals = getGoals(pid);
-    const goalProgress = getGoalProgressMap(pid, goals);
+    const goals = getOutcomeGoals(pid);
+    const goalProgress = getOutcomeGoalProgressMap(pid, goals);
 
     // The actionable rollup — today's attention items (due doses, low refills,
     // next visit) reusing the Upcoming aggregation's per-domain builders.

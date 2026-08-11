@@ -6,7 +6,7 @@ import type {
   GoalProgress,
   RecentByExercise,
 } from "@/lib/queries";
-import type { Goal, Sex } from "@/lib/types";
+import type { OutcomeGoal, Sex } from "@/lib/types";
 import { strengthStanding } from "@/lib/strength-standards";
 import { exerciseHistoryKey } from "@/lib/lifts";
 import { lastSessionPR } from "@/lib/coaching";
@@ -35,7 +35,7 @@ export default function StrengthExplorer({
   bodyweightKg: number | null;
   units: UnitPrefs;
   recentByExercise: RecentByExercise;
-  goals: Goal[];
+  goals: OutcomeGoal[];
   // Auto-derived progress keyed by goal id (plain object — crosses the
   // server/client boundary, unlike a Map).
   goalProgress: Record<number, GoalProgress>;

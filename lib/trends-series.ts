@@ -20,7 +20,7 @@ import {
 import { today } from "./db";
 import type { BiomarkerPickerGroup } from "./biomarker-rank";
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
-import { getUnitPrefs, getUserAge, getSituationEvents } from "./settings";
+import { getUnitPrefs, getProfileAge, getSituationEvents } from "./settings";
 import { showBodyFat } from "./growth-metrics";
 import {
   buildAnnotations,
@@ -184,7 +184,7 @@ export function buildMetricSeries(
   const weightUnitSuffix = ` ${wu}`;
   // Body fat % is not a datapoint we surface for children (kids growth trends) —
   // drop its tile for a minor, matching the Body tab's age-aware layout.
-  const hideBodyFat = !showBodyFat(getUserAge(profileId));
+  const hideBodyFat = !showBodyFat(getProfileAge(profileId));
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
@@ -413,7 +413,7 @@ export function listCompareOptions(
   profileId: number,
   restricted: boolean
 ): { metrics: TrendOption[]; biomarkers: TrendOption[] } {
-  const hideBodyFat = !showBodyFat(getUserAge(profileId));
+  const hideBodyFat = !showBodyFat(getProfileAge(profileId));
   const metrics = METRIC_DEFS.filter(
     (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
   ).map((d) => ({

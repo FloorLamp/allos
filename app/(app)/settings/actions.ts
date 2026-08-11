@@ -46,7 +46,7 @@ import {
   getProfileFoodTelegram,
   getFoodTelegramPrompted,
   setFoodTelegramPrompted,
-  getUserAge,
+  getProfileAge,
   type DistanceUnit,
   type WeightUnit,
   type TemperatureUnit,
@@ -355,7 +355,7 @@ export async function saveLoginTelegram(formData: FormData): Promise<{
     !wasReachable &&
     getProfileFoodTelegram(profile.id) === false &&
     !getFoodTelegramPrompted(profile.id) &&
-    isFoodLoggingRelevant(getUserAge(profile.id))
+    isFoodLoggingRelevant(getProfileAge(profile.id))
   ) {
     setFoodTelegramPrompted(profile.id);
     try {

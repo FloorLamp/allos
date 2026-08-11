@@ -639,7 +639,7 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
   function minorActor(slug: string) {
     const login = createLogin();
     const profile = createProfile(slug, login.id);
-    // Stored-age fallback = 15 → isMinor(getUserAge) true (no birthdate needed).
+    // Stored-age fallback = 15 → isMinor(getProfileAge) true (no birthdate needed).
     setProfileSetting(profile.id, "age", "15");
     actAs(login, profile);
     return profile;

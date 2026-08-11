@@ -14,7 +14,7 @@ import type {
   CanonicalBiomarker,
   MedicalDocument,
   MedicalFlag,
-  MedicalRecord,
+  ClinicalObservation,
 } from "../types";
 export { getCanonicalBiomarker } from "./medical/canonical";
 export {
@@ -33,9 +33,9 @@ export {
 } from "./medical/immunizations";
 export { previewReconcileFlags, reconcileFlags } from "./medical/flags";
 export {
-  getRecordRevisions,
-  getRevisionsByRecord,
-  insertRecordRevision,
+  getObservationRevisions,
+  getRevisionsByObservation,
+  insertObservationRevision,
   type RevisionSnapshot,
 } from "./medical/revisions";
 export {
@@ -46,7 +46,7 @@ export {
 } from "./medical/unit-mislabel";
 
 // ---- Medical ----
-export type MedicalSortColumn = "name" | "panel" | "date";
+export type ClinicalObservationSortColumn = "name" | "panel" | "date";
 export type SortDirection = "asc" | "desc";
 
 // Flag-based row filter: "oor" = out of the lab reference range (high/low/
@@ -62,7 +62,7 @@ export function rangeFilterClause(range?: RangeFilter): string | null {
   return null;
 }
 
-export interface MedicalRecordFilters {
+export interface ClinicalObservationFilters {
   category?: string;
   // Categories to hide entirely (e.g. drop 'prescription' from the biomarkers
   // browser — meds live on the document view + Supplements & Meds). Rendered as a
@@ -78,7 +78,7 @@ export interface MedicalRecordFilters {
   // Free-text search matched against name and panel.
   q?: string;
   // Optional user-chosen sort; falls back to each query's natural order.
-  sort?: MedicalSortColumn;
+  sort?: ClinicalObservationSortColumn;
   dir?: SortDirection;
   // When set, keep only the most recent reading per biomarker (its current
   // value), grouped by the canonical name shown in the table.
@@ -234,9 +234,9 @@ const LATEST_IN_GROUP = inRepresentativeCte("latest");
 
 // Build an ORDER BY clause for the given sort column, or `fallback` when none
 // is set. Columns and direction are whitelisted, so this is safe to inline.
-function medicalOrderBy(
+function observationOrderBy(
   fallback: string,
-  sort?: MedicalSortColumn,
+  sort?: ClinicalObservationSortColumn,
   dir: SortDirection = "asc"
 ): string {
   const d = dir === "desc" ? "DESC" : "ASC";
@@ -260,7 +260,7 @@ function medicalOrderBy(
 // Sorted via Object.fromEntries rather than a stringify replacer ARRAY — an array
 // replacer key-filters at EVERY depth, so a future nested-object filter value
 // would be silently stripped from the key (two different filters, one cache slot).
-function medicalFiltersKey(filters: MedicalRecordFilters): string {
+function observationFiltersKey(filters: ClinicalObservationFilters): string {
   return JSON.stringify(
     Object.fromEntries(
       Object.entries(filters).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -273,11 +273,11 @@ function medicalFiltersKey(filters: MedicalRecordFilters): string {
 // labs widget + healthspan pillars), each a full-table scan + sort partitioned by
 // a non-indexable name expression (#386). Keyed on (profileId, serialized
 // filters) so equivalent calls collapse to a single scan per request.
-const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
+const getObservationsCached = cache(function getObservationsCached(
   profileId: number,
   filtersKey: string
-): MedicalRecord[] {
-  const filters = JSON.parse(filtersKey) as MedicalRecordFilters;
+): ClinicalObservation[] {
+  const filters = JSON.parse(filtersKey) as ClinicalObservationFilters;
   // Cross-source de-dup: the list always shows ONE representative per
   // content-identity (see DEDUP_IDS_CTE), so a reading uploaded in two documents —
   // or a manual reading plus its imported twin — is never double-counted.
@@ -323,7 +323,7 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
     where.push(LATEST_IN_GROUP);
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const orderBy = medicalOrderBy(
+  const orderBy = observationOrderBy(
     "date DESC, id DESC",
     filters.sort,
     filters.dir
@@ -346,21 +346,21 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
                 AS ordering_provider_name,
               (${LATEST_IN_GROUP}) AS is_latest FROM medical_records ${clause} ORDER BY ${orderBy}`
     )
-    .all(profileId, profileId, ...args) as MedicalRecord[];
+    .all(profileId, profileId, ...args) as ClinicalObservation[];
 });
 
-export function getMedicalRecords(
+export function getClinicalObservations(
   profileId: number,
-  filters: MedicalRecordFilters = {}
-): MedicalRecord[] {
-  return getMedicalRecordsCached(profileId, medicalFiltersKey(filters));
+  filters: ClinicalObservationFilters = {}
+): ClinicalObservation[] {
+  return getObservationsCached(profileId, observationFiltersKey(filters));
 }
 
 // A narrative diagnostic report row (#708): the free-text body of a microbiology
 // culture / gram stain / cytopathology report, imported from a CCD/XDM Results-section
 // ED-valued observation. It carries its text in `notes` with no value/flag, so it never
 // trends — it's a dated document. Feeds Results → Reports only.
-export interface ReportRecord {
+export interface ClinicalReport {
   id: number;
   date: string;
   name: string;
@@ -373,7 +373,7 @@ export interface ReportRecord {
 
 // Every `report`-category record for a profile, newest collection first. Profile-
 // scoped; the provider (performing lab/pathologist) is resolved for display.
-export function getReportRecords(profileId: number): ReportRecord[] {
+export function getClinicalReports(profileId: number): ClinicalReport[] {
   return db
     .prepare(
       `SELECT id, date, name, notes, loinc, document_id, source,
@@ -383,7 +383,7 @@ export function getReportRecords(profileId: number): ReportRecord[] {
        WHERE profile_id = ? AND category = 'report'
        ORDER BY date DESC, id DESC`
     )
-    .all(profileId) as ReportRecord[];
+    .all(profileId) as ClinicalReport[];
 }
 
 // A currently-flagged biomarker reading — a biomarker family whose CURRENT
@@ -401,7 +401,7 @@ export interface CurrentFlaggedReading {
 // THE shared "which biomarkers are currently flagged" computation (issue #557).
 // Returns one row per biomarker family whose CURRENT reading is flagged, reusing
 // the SAME DEDUP+LATEST CTE machinery (LATEST_IDS_CTE / the #482/#394 family
-// identity layer) that getMedicalRecords(current:true) drives for the household
+// identity layer) that getClinicalObservations(current:true) drives for the household
 // (range:"oor") and passport (range:"nonoptimal") surfaces. So the three surfaces
 // can never disagree, and a SUPERSEDED historical out-of-range reading — a
 // 5-year-old low that a later normal reading has since replaced — can NEVER
@@ -574,24 +574,24 @@ export function getMedicalDocumentsByIds(
 // affordances (category filter, flag-range filter, free-text search, and a
 // sortable name/panel/date column set), so the shared UI controls thread the
 // same params through to this query.
-export interface DocumentRecordFilters {
+export interface DocumentObservationFilters {
   category?: string;
   // Flag-based filter: out-of-range only, or all non-optimal rows.
   range?: RangeFilter;
   // Free-text search matched against name and panel.
   q?: string;
-  sort?: MedicalSortColumn;
+  sort?: ClinicalObservationSortColumn;
   dir?: SortDirection;
 }
 
 // Records imported from one document, grouped sensibly for review (by panel,
 // then name) unless an explicit sort is chosen. Optionally narrowed by category,
 // flag range, and free-text search — matching the biomarkers table's filters.
-export function getRecordsForDocument(
+export function getObservationsForDocument(
   profileId: number,
   documentId: number,
-  filters: DocumentRecordFilters = {}
-): MedicalRecord[] {
+  filters: DocumentObservationFilters = {}
+): ClinicalObservation[] {
   const where = ["profile_id = ?", "document_id = ?"];
   const args: (string | number)[] = [profileId, documentId];
   if (filters.category) {
@@ -605,7 +605,7 @@ export function getRecordsForDocument(
     const like = likeContains(filters.q);
     args.push(like, like);
   }
-  const orderBy = medicalOrderBy(
+  const orderBy = observationOrderBy(
     "panel IS NULL, panel, name",
     filters.sort,
     filters.dir
@@ -619,7 +619,7 @@ export function getRecordsForDocument(
                 AS ordering_provider_name
          FROM medical_records WHERE ${where.join(" AND ")} ORDER BY ${orderBy}`
     )
-    .all(...args) as MedicalRecord[];
+    .all(...args) as ClinicalObservation[];
 }
 
 // ---- Biomarkers (canonical names, ranges, series, stars) ----
@@ -697,17 +697,17 @@ export function getCanonicalAutocomplete(profileId: number): string[] {
 // The single most recent record for a canonical name (newest date, id tie-break),
 // or undefined. Used by the profile passport to read the latest 'ABO Blood Group'
 // and 'Rh Type' records — a record read, not a biomarker chart.
-export function getLatestMedicalRecordByCanonical(
+export function getLatestClinicalObservationByCanonical(
   profileId: number,
   canonical: string
-): MedicalRecord | undefined {
+): ClinicalObservation | undefined {
   return db
     .prepare(
       `SELECT * FROM medical_records
        WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE
        ORDER BY date DESC, id DESC LIMIT 1`
     )
-    .get(profileId, canonical) as MedicalRecord | undefined;
+    .get(profileId, canonical) as ClinicalObservation | undefined;
 }
 
 // All readings for one canonical biomarker, oldest first (for the chart + table).
@@ -723,7 +723,7 @@ export function getLatestMedicalRecordByCanonical(
 export const getBiomarkerSeries = cache(function getBiomarkerSeries(
   profileId: number,
   canonical: string
-): MedicalRecord[] {
+): ClinicalObservation[] {
   // Match by the #482 FAMILY identity, not the exact canonical name: a request for
   // any family member (e.g. the total-25-OH spellings, or A1c ↔ eAG) returns the
   // WHOLE family's readings, so the chart/detail page and the starred tile show one
@@ -750,7 +750,7 @@ export const getBiomarkerSeries = cache(function getBiomarkerSeries(
       profileId,
       biomarkerFamily(canonical),
       ...NON_IDENTITY_CATEGORIES
-    ) as MedicalRecord[];
+    ) as ClinicalObservation[];
 });
 
 // getBiomarkerSeries for SEVERAL analytes in ONE pass (#1961), keyed by the exact
@@ -773,8 +773,8 @@ export const getBiomarkerSeries = cache(function getBiomarkerSeries(
 export function getBiomarkerSeriesFor(
   profileId: number,
   canonicals: readonly string[]
-): Map<string, MedicalRecord[]> {
-  const out = new Map<string, MedicalRecord[]>();
+): Map<string, ClinicalObservation[]> {
+  const out = new Map<string, ClinicalObservation[]>();
   const names = [...new Set(canonicals)];
   if (names.length === 0) return out;
 
@@ -801,11 +801,11 @@ export function getBiomarkerSeriesFor(
       profileId,
       ...families,
       ...NON_IDENTITY_CATEGORIES
-    ) as (MedicalRecord & {
+    ) as (ClinicalObservation & {
     series_family: string | null;
   })[];
 
-  const byFamily = new Map<string, MedicalRecord[]>();
+  const byFamily = new Map<string, ClinicalObservation[]>();
   for (const f of families) byFamily.set(f.toLowerCase(), []);
   for (const row of rows) {
     const { series_family, ...record } = row;
@@ -831,7 +831,7 @@ export function getBiomarkerSeriesFor(
 export function getLatestBiomarkerTrendPoints(
   profileId: number,
   canonical: string
-): MedicalRecord[] {
+): ClinicalObservation[] {
   const rows = db
     .prepare(
       `WITH ${DEDUP_IDS_CTE}
@@ -840,7 +840,11 @@ export function getLatestBiomarkerTrendPoints(
          AND ${IN_DEDUPED} AND value_num IS NOT NULL
        ORDER BY date DESC, id DESC LIMIT 2`
     )
-    .all(profileId, profileId, biomarkerFamily(canonical)) as MedicalRecord[];
+    .all(
+      profileId,
+      profileId,
+      biomarkerFamily(canonical)
+    ) as ClinicalObservation[];
   return rows.reverse();
 }
 
@@ -851,7 +855,9 @@ export function getLatestBiomarkerTrendPoints(
 // whole table each time, which is O(analytes × records) per request (#105);
 // grouping this one result by canonical name (lib/biomarker-group) yields the
 // same per-analyte series as N individual calls.
-export function getAllBiomarkerSeries(profileId: number): MedicalRecord[] {
+export function getAllBiomarkerSeries(
+  profileId: number
+): ClinicalObservation[] {
   return db
     .prepare(
       `WITH ${DEDUP_IDS_CTE}
@@ -860,13 +866,13 @@ export function getAllBiomarkerSeries(profileId: number): MedicalRecord[] {
          AND TRIM(canonical_name) != '' AND ${IN_DEDUPED}
        ORDER BY canonical_name COLLATE NOCASE, date ASC, id ASC`
     )
-    .all(profileId, profileId) as MedicalRecord[];
+    .all(profileId, profileId) as ClinicalObservation[];
 }
 
 // The content-identity of a reading — the tuple the read-layer de-dup groups on.
 // `nameKey` is the display/grouping name (canonical when present, else the raw
 // name), matching biomarkerNameKey().
-export interface RecordIdentity {
+export interface ObservationContentIdentity {
   nameKey: string;
   date: string;
   value: string | null;
@@ -883,10 +889,10 @@ export interface RecordIdentity {
 // existing same date+analyte reading is, by definition, NOT returned here, so the
 // two stay distinct). Manual-preferred, newest-first, mirroring the representative
 // rule. `IS ?` matches NULL value/value_num/unit correctly. Profile-scoped.
-export function findRecordsByContentIdentity(
+export function findObservationsByContentIdentity(
   profileId: number,
-  identity: RecordIdentity
-): MedicalRecord[] {
+  identity: ObservationContentIdentity
+): ClinicalObservation[] {
   return db
     .prepare(
       `SELECT * FROM medical_records
@@ -905,7 +911,7 @@ export function findRecordsByContentIdentity(
       identity.value,
       identity.value_num,
       identity.unit
-    ) as MedicalRecord[];
+    ) as ClinicalObservation[];
 }
 
 // Drop any saved biomarker whose FAMILY no longer has a backing record (its last
@@ -1012,7 +1018,7 @@ export interface SavedBiomarker {
   latest_category: string | null;
   // Latest reading's notes + reference text — carried so the tile's staleness check
   // can recognize an immune-positive durable-immunity titer (#516), exactly like the
-  // detail page and table (which read the full MedicalRecord).
+  // detail page and table (which read the full ClinicalObservation).
   latest_notes: string | null;
   latest_reference_range: string | null;
   // Reference entry (ranges/direction) joined in so the chip needs no extra query.
@@ -1040,7 +1046,7 @@ export function getSavedBiomarkers(profileId: number): SavedBiomarker[] {
   if (stars.length === 0) return [];
 
   // The latest reading, chosen over the DE-DUPED id set so it agrees with the
-  // detail page / table (which read via getBiomarkerSeries / getMedicalRecords):
+  // detail page / table (which read via getBiomarkerSeries / getClinicalObservations):
   // when a manual reading and its imported twin share content-identity, dedup's
   // representative rule (prefer the manual, unflagged row) wins here too, so the
   // tile's flag chip matches the representative the other surfaces show (#381).
@@ -1071,7 +1077,7 @@ export function getSavedBiomarkers(profileId: number): SavedBiomarker[] {
       profileId,
       profileId,
       biomarkerFamily(name)
-    ) as MedicalRecord | undefined;
+    ) as ClinicalObservation | undefined;
     const cb = cbByName.get(name.toLowerCase()) ?? null;
     return {
       canonical_name: name,

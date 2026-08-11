@@ -15,7 +15,7 @@ import {
   getProteinToday,
   getLoggedFoodWindows,
 } from "../queries";
-import { getTimezone, getUserAge } from "../settings";
+import { getTimezone, getProfileAge } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { now as clockNow } from "../clock";
 import { dateStrInTz, minuteOfDayInTz } from "../date";
@@ -73,7 +73,7 @@ export function buildFoodNudge(
   } = {}
 ): NotificationMessage | null {
   const now = opts.now ?? clockNow();
-  if (!isFoodLoggingRelevant(getUserAge(profileId))) return null;
+  if (!isFoodLoggingRelevant(getProfileAge(profileId))) return null;
   // Slot-aware ranking (#950/#1073): the nudge knows its window, so it passes it through —
   // the buttons lead with what this profile eats at THIS time of day (fish at lunch), and
   // the reserved __protein__ pseudo-group joins the ranked keys for a protein-logging

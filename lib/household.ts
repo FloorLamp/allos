@@ -6,8 +6,8 @@
 
 import { doseDueOn, type IntakeDayContext } from "./supplement-schedule";
 import type { DoseCadence, ItemCadence } from "./intake-cadence";
-import { goalBarClass, goalPct, isGoalLive } from "./goals";
-import type { Goal, Supplement } from "./types";
+import { goalBarClass, goalPct, isGoalLive } from "./outcome-goals";
+import type { OutcomeGoal, Supplement } from "./types";
 import type { GoalProgress } from "./goal-progress";
 
 // ---- Supplement adherence (today) ----
@@ -77,7 +77,7 @@ export function weightTrend(
   return { dir: deltaKg > 0 ? "up" : "down", deltaKg };
 }
 
-// ---- Goal highlights ----
+// ---- Outcome-goal highlights ----
 
 export interface GoalHighlight {
   id: number;
@@ -90,10 +90,10 @@ export interface GoalHighlight {
 }
 
 // The active, non-archived goals to surface on a profile's household card, in
-// the order getGoals already returns them (active first), capped at `limit`.
+// the order getOutcomeGoals already returns them (active first), capped at `limit`.
 // `today` (YYYY-MM-DD) is the pace clock for each goal's deadline window (#780).
 export function goalHighlights(
-  goals: Goal[],
+  goals: OutcomeGoal[],
   progress: Map<number, GoalProgress>,
   today: string,
   limit = 2

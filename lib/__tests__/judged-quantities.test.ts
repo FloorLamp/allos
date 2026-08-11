@@ -149,7 +149,7 @@ describe("VO₂ max — the acceptance case (#2086, owner ruling 2026-08-05)", (
     // asking it is asking the app, not restating the registry.
     expect(knowledge?.source).toBe("fitness-norms");
     expect(readingDetailHref("VO2 Max")).toBe(
-      "/biomarkers/view?name=VO2%20Max"
+      "/results/readings/view?name=VO2%20Max"
     );
   });
 

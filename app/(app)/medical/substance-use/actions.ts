@@ -31,7 +31,7 @@ import {
 import { getSubstanceWeekState } from "@/lib/queries";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import { isMinor } from "@/lib/life-stage";
-import { getUserAge } from "@/lib/settings";
+import { getProfileAge } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
   addSubstanceHistoryEntryCore,
@@ -44,7 +44,7 @@ import {
 // #1279 closes the gap under it — Server Actions are independently POST-callable, so
 // each write path re-checks life stage at the auth boundary (a UI-only gate is theater
 // if the write core underneath has no independent check). Mirrors the page's
-// isMinor(getUserAge(profile.id)); refuses a KNOWN minor (unknown/adult age passes,
+// isMinor(getProfileAge(profile.id)); refuses a KNOWN minor (unknown/adult age passes,
 // per the module's documented "hide only on a positive under-age match" policy). The
 // lib write cores stay auth-blind — the check belongs here, not below the action layer.
 const MINOR_REFUSAL = "This isn't available for this profile.";
@@ -87,7 +87,7 @@ export async function recordSubstanceInstrumentAction(
   formData: FormData
 ): Promise<SubstanceInstrumentActionResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id)))
+  if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
 
   const instrumentRaw = String(formData.get("instrument") ?? "");
@@ -167,7 +167,7 @@ export async function logSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id)))
+  if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance))
@@ -190,7 +190,7 @@ export async function undoSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id)))
+  if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance))
@@ -250,7 +250,7 @@ export async function addSubstanceHistoryEntryAction(
   formData: FormData
 ): Promise<SubstanceHistoryMutationOutcome> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return { kind: "not-found" };
+  if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
   const parsed = historyInput(formData, today(profile.id));
   if (!parsed.ok) return parsed.outcome;
   const outcome = addSubstanceHistoryEntryCore(
@@ -266,7 +266,7 @@ export async function updateSubstanceHistoryEntryAction(
   formData: FormData
 ): Promise<SubstanceHistoryMutationOutcome> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return { kind: "not-found" };
+  if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
   const parsed = historyInput(formData, today(profile.id));
   if (!parsed.ok) return parsed.outcome;
   const id = Number(formData.get("id"));
@@ -285,7 +285,7 @@ export async function deleteSubstanceHistoryEntryAction(
   formData: FormData
 ): Promise<SubstanceHistoryDeleteResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) {
+  if (isMinor(getProfileAge(profile.id))) {
     return {
       kind: "not-found",
       undoId: null,
@@ -322,7 +322,7 @@ export async function setSubstanceTargetAction(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
+  if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance)) return formError("Unknown substance.");
   const capRaw = Number(formData.get("cap"));
@@ -349,7 +349,7 @@ export async function clearSubstanceTargetAction(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
+  if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance)) return formError("Unknown substance.");
   const target = db
@@ -374,7 +374,7 @@ export async function updateSubstanceInstrumentAction(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
+  if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that score.");
   const instrument = getInstrumentScoreInstrument(profile.id, id);
@@ -404,7 +404,7 @@ export async function deleteSubstanceInstrumentAction(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return { undoId: null };
+  if (isMinor(getProfileAge(profile.id))) return { undoId: null };
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   const outcome = deleteInstrumentScore(profile.id, id);

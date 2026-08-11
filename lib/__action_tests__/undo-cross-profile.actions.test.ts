@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
-import { deleteRecord } from "@/app/(app)/medical/actions";
+import { deleteResult } from "@/app/(app)/results/reading-actions";
 import { undoDelete, undoDeletes } from "@/app/(app)/undo-actions";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -70,7 +70,7 @@ describe("cross-profile undo round trip (#2104)", () => {
     actAs(login, acting);
     const recId = seedRecord(other.id, "Ferritin X");
 
-    const { undoId } = await deleteRecord(
+    const { undoId } = await deleteResult(
       fd({ id: recId, profile_id: other.id })
     );
     expect(undoId).not.toBeNull();
@@ -92,7 +92,7 @@ describe("cross-profile undo round trip (#2104)", () => {
     const victim = createProfile("Undo Victim", victimLogin.id);
     const recId = seedRecord(victim.id, "Glucose X");
     actAs(victimLogin, victim);
-    const { undoId } = await deleteRecord(
+    const { undoId } = await deleteResult(
       fd({ id: recId, profile_id: victim.id })
     );
     expect(undoId).not.toBeNull();

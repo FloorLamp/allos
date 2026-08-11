@@ -2,8 +2,8 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getWorkoutActivityDays } from "@/lib/queries";
-import { getWeekStart } from "@/lib/settings";
-import { dayHistoryStart } from "@/lib/day-history";
+import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
+import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
 import { EmptyState } from "@/components/ui";
 import DayHistory from "@/components/DayHistory";
 
@@ -21,8 +21,9 @@ export default async function WorkoutHistorySection({
   weeks: number;
   end: string;
 }) {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const weekStart = getWeekStart(profile.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const since = dayHistoryStart(end, weeks, weekStart);
   const activityDays = getWorkoutActivityDays(profile.id, since, end);
 
@@ -64,8 +65,7 @@ export default async function WorkoutHistorySection({
         </Link>
       </div>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-        Every workout day in this window, then the same days split by activity.
-        Tap a day to see what it held.
+        {DAY_HISTORY_DOMAINS.workout.helperText}
       </p>
       {values.length === 0 ? (
         <EmptyState
@@ -75,12 +75,14 @@ export default async function WorkoutHistorySection({
       ) : (
         <DayHistory
           domain="workout"
+          addHref="/training?tab=log"
           values={values}
           groups={groups}
           end={end}
           weeks={weeks}
           weekStart={weekStart}
           today={today(profile.id)}
+          formatPrefs={formatPrefs}
           testId="workout-day-history"
         />
       )}

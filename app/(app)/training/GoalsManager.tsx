@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
-import type { Goal } from "@/lib/types";
+import type { OutcomeGoal } from "@/lib/types";
 import type { GoalProgress } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
 import {
@@ -13,12 +13,11 @@ import {
   goalBodyTargetText,
   fmtBodyMetric,
   isGoalLive,
-} from "@/lib/goals";
+} from "@/lib/outcome-goals";
 import {
   biomarkerGoalCheckInText,
   biomarkerGoalCurrentText,
   biomarkerGoalTargetText,
-  isBiomarkerGoal,
 } from "@/lib/biomarker-goal";
 import { fmtWeight } from "@/lib/units";
 import OverflowMenu, {
@@ -48,13 +47,13 @@ import GoalForm from "@/app/(app)/training/GoalForm";
 import type { GoalBiomarkerOption } from "@/app/(app)/training/goal-target-options";
 
 // A progress value, formatted for the goal's metric.
-function goalValueText(g: Goal, value: number, wu: WeightUnit): string {
+function goalValueText(g: OutcomeGoal, value: number, wu: WeightUnit): string {
   if (g.metric === "weight") return fmtWeight(value, wu);
   if (g.metric === "hold") return formatSeconds(value);
   return String(value);
 }
 
-// Goal list + create/edit modal. The "New goal" button and per-card "Edit"
+// Outcome-goal list + create/edit modal. The "New goal" button and per-card "Edit"
 // open one shared modal hosting GoalForm (create when no goal, edit otherwise).
 export default function GoalsManager({
   goals,
@@ -65,7 +64,7 @@ export default function GoalsManager({
   weightUnit,
   biomarkerOptions,
 }: {
-  goals: Goal[];
+  goals: OutcomeGoal[];
   goalProgress: Record<number, GoalProgress>;
   lifts: string[];
   // The profile's equipment registry (id + display name, retired included so a goal
@@ -83,7 +82,7 @@ export default function GoalsManager({
   // browser's, so "today" matches the rest of the app.
   const todayStr = dateStrInTz(useTimezone());
   // null = closed; { goal } = open (goal undefined → create, set → edit).
-  const [modal, setModal] = useState<{ goal?: Goal } | null>(null);
+  const [modal, setModal] = useState<{ goal?: OutcomeGoal } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   // Which goal's action menu is open (id), or null.
   const [openMenu, setOpenMenu] = useState<number | null>(null);
@@ -136,9 +135,9 @@ export default function GoalsManager({
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {visibleGoals.map((g) => {
-            const isExercise = g.metric != null && g.exercise != null;
-            const isBody = g.body_metric != null;
-            const isBio = isBiomarkerGoal(g);
+            const isExercise = g.kind === "exercise";
+            const isBody = g.kind === "body";
+            const isBio = g.kind === "biomarker";
             const auto = isExercise || isBody || isBio; // progress derived automatically
             const prog = auto ? goalProgress[g.id] : undefined;
             const pct = goalPct(g, prog);
@@ -190,9 +189,9 @@ export default function GoalsManager({
                         {biomarkerGoalTargetText(g)}
                       </span>
                     ) : (
-                      g.category && (
+                      g.categoryLabel && (
                         <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {g.category}
+                          {g.categoryLabel}
                         </span>
                       )
                     )}

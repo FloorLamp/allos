@@ -12,7 +12,7 @@
 //     yields a younger fitness age.
 //
 // DB-free and pure so it's unit-tested in lib/__tests__. Age/sex come from
-// profile_settings at the call site (getUserSex/getUserAgeOn in lib/settings). When
+// profile_settings at the call site (getProfileSex/getProfileAgeOn in lib/settings). When
 // sex or age is unset — or the subject is a child (adult-context norms) — every
 // entry point returns null so the surfaces HIDE the percentile line, exactly like
 // the other age/sex-gated biomarker surfaces.

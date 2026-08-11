@@ -11,6 +11,8 @@ import AnalyzeSection from "./AnalyzeSection";
 import GoalsSection from "./GoalsSection";
 import RoutinesSection from "./RoutinesSection";
 import RestrictedActivityView from "./RestrictedActivityView";
+import { isRealIsoDate } from "@/lib/date";
+import { today } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,11 @@ export default async function TrainingPage(props: {
   if (isTrainingRestricted(profile.id)) return <RestrictedActivityView />;
 
   const activeTab = parseTrainingTab(searchParams?.tab);
+  const requestedDate = one(searchParams?.date);
+  const initialCreateDate =
+    isRealIsoDate(requestedDate) && requestedDate <= today(profile.id)
+      ? requestedDate
+      : undefined;
 
   // #105 (the Trends pattern, #1496): build ONLY the active section server-side.
   // Handing every section to `Tabs` as a `content:` prop rendered — and ran the
@@ -60,7 +67,7 @@ export default async function TrainingPage(props: {
         return <GoalsSection />;
       case "log":
       default:
-        return <HistorySection />;
+        return <HistorySection initialCreateDate={initialCreateDate} />;
     }
   })();
 

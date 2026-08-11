@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { REPRESENTATIVE_SPECS, representativeIds } from "../representative-ids";
-import { getMedicalRecords } from "./medical";
+import { getClinicalObservations } from "./medical";
 import {
   isAllergenSpecificIgE,
   allergenFromIgEName,
@@ -450,20 +450,20 @@ export function getSkinLesionFollowUps(
 // ---- Flagged-labs follow-up chain (issue #700 labs adapter) -----------------
 
 // Every lab reading a labs follow-up could link — its narrow identity/value shape
-// (LabFollowUpRecord), the pool the builder loads to resolve both a follow-up's
+// (LabFollowUpObservation), the pool the builder loads to resolve both a follow-up's
 // SOURCE (by id) and its RESOLVING candidates (a later reading of the same #482
 // family). All medical_records rows are returned (family matching in the adapter
 // naturally restricts resolution to same-analyte readings, and a prescription/vital
 // row simply never matches a lab family); profile-scoped.
-export function getLabFollowUpRecords(
+export function getLabFollowUpObservations(
   profileId: number
-): import("../followup-labs").LabFollowUpRecord[] {
+): import("../followup-labs").LabFollowUpObservation[] {
   return db
     .prepare(
       `SELECT id, date, canonical_name, name, value, unit, value_num, flag
          FROM medical_records WHERE profile_id = ?`
     )
-    .all(profileId) as import("../followup-labs").LabFollowUpRecord[];
+    .all(profileId) as import("../followup-labs").LabFollowUpObservation[];
 }
 
 // The tracked labs follow-ups (issue #700), each joined to its SOURCE reading so the
@@ -505,9 +505,9 @@ export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
 // the canonical entries all contain "intraocular pressure", plus the bare "IOP"
 // abbreviation (never a loose "iop" substring, which would catch "biopsy"). Profile-
 // scoped. The adapter treats any of these as the same bilateral question.
-export function getIopFollowUpRecords(
+export function getIopFollowUpObservations(
   profileId: number
-): import("../followup-iop").IopFollowUpRecord[] {
+): import("../followup-iop").IopFollowUpObservation[] {
   return db
     .prepare(
       `SELECT id, date, canonical_name, name, value, unit, value_num, flag
@@ -518,7 +518,7 @@ export function getIopFollowUpRecords(
                     ('iop', 'iop od', 'iop os', 'iop right eye', 'iop left eye',
                      'iop, right eye', 'iop, left eye'))`
     )
-    .all(profileId) as import("../followup-iop").IopFollowUpRecord[];
+    .all(profileId) as import("../followup-iop").IopFollowUpObservation[];
 }
 
 // The tracked IOP follow-ups (#698 §6), the labs mirror for the glaucoma-workup chain.
@@ -605,7 +605,7 @@ export function getCareGoals(profileId: number): CareGoal[] {
 export function getAllergenSensitizations(
   profileId: number
 ): IgESensitizationInput[] {
-  const rows = getMedicalRecords(profileId, { current: true });
+  const rows = getClinicalObservations(profileId, { current: true });
   const out: IgESensitizationInput[] = [];
   for (const r of rows) {
     const canonicalName = r.canonical_name?.trim() || null;

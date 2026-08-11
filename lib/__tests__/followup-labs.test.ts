@@ -7,7 +7,7 @@ import {
   labsResolvingLabel,
   sameBiomarkerFamily,
   findResolvingLabResult,
-  type LabFollowUpRecord,
+  type LabFollowUpObservation,
 } from "@/lib/followup-labs";
 import type { FollowUpItemLike } from "@/lib/followup";
 
@@ -18,8 +18,8 @@ import type { FollowUpItemLike } from "@/lib/followup";
 // title, and the "most-recent later reading of the same family" resolution rule.
 
 function rec(
-  over: Partial<LabFollowUpRecord> & { id: number }
-): LabFollowUpRecord {
+  over: Partial<LabFollowUpObservation> & { id: number }
+): LabFollowUpObservation {
   return {
     id: over.id,
     date: over.date ?? "2026-05-12",

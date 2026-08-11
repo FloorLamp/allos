@@ -6,7 +6,7 @@
 import { suggestTitle, type MuscleRegion } from "../lifts";
 import { hasExerciseGuide } from "../exercise-guides";
 import { isNewLift } from "../exercise-familiarity";
-import { frequencyScopeLabel } from "../goals";
+import { frequencyScopeLabel } from "../frequency-targets";
 import {
   workoutAcknowledgmentLine,
   type BehindTargetPace,

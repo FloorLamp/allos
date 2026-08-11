@@ -22,7 +22,7 @@ import {
   getEncounters,
   getFamilyHistory,
   getImmunizations,
-  getMedicalRecords,
+  getClinicalObservations,
   getProcedures,
 } from "@/lib/queries";
 import { biomarkerFamilyKey } from "@/lib/queries/medical";
@@ -175,7 +175,7 @@ describe("representativeIds — the seven former sites still collapse to the man
        VALUES (?, '2023-01-10', 'lab', 'Glucose', '88', 88, 'mg/dL')`
     ).run(p);
 
-    const rows = getMedicalRecords(p);
+    const rows = getClinicalObservations(p);
     expect(rows).toHaveLength(2);
     // The 2024 twins collapsed to the manual row…
     expect(rows.map((r) => r.id)).toContain(manualId);

@@ -76,7 +76,7 @@ function parseStringList(raw: FormDataEntryValue | null): string[] {
 const EDIT_LOCK_REVALIDATE: Record<string, readonly RevalidateTarget[]> = {
   activities: ["/data", "/training", "/trends", "/"],
   body_metrics: ["/data", "/trends", "/"],
-  medical_records: ["/data", "/results", "/biomarkers/view", "/"],
+  medical_records: ["/data", "/results", "/results/readings/view", "/"],
 };
 
 // Read the per-row provenance for one sync event (issue #1333): the records that sync
@@ -378,7 +378,7 @@ export async function resolveActivityCluster(formData: FormData) {
 const MISLABEL_REVALIDATE: readonly RevalidateTarget[] = [
   "/data",
   "/results",
-  "/biomarkers/view",
+  "/results/readings/view",
   "/trends",
   "/",
 ];

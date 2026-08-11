@@ -32,7 +32,7 @@ import {
   type RecentChangeRender,
 } from "../recent-changes";
 import { lifeStage } from "../life-stage";
-import { getUserAge } from "../settings";
+import { getProfileAge } from "../settings";
 import {
   getCurrentFlaggedBiomarkers,
   getCurrentFlaggedVitals,
@@ -357,7 +357,7 @@ export function collectRecentChanges(
   // ── growth (#1463 base 3, minors only) ───────────────────────────────────────
   // Life-stage gated at the collector, not the formatter. Height is the growth
   // series every pediatric surface reads (`height_cm` metric samples).
-  const stage = lifeStage(getUserAge(profileId));
+  const stage = lifeStage(getProfileAge(profileId));
   const minor =
     stage === "infant" || stage === "child" || stage === "adolescent";
   if (on("growth") && minor) {

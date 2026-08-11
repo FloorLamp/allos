@@ -45,7 +45,7 @@ import {
   isCadenceScopeKind,
   type CadenceSource,
 } from "../cadence";
-import type { FrequencyPace } from "../goals";
+import type { FrequencyPace } from "../frequency-targets";
 import {
   protocolPracticeLabel,
   protocolPracticeNoun,

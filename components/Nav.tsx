@@ -113,9 +113,9 @@ const RECORDS: Group = {
     { href: "/records", label: "Health record", icon: IconReportMedical },
     // Results (#1042 phase 5, retabbed #1079): the Biomarkers / Imaging / Genomics
     // index pages merged into ONE surface, now route-per-tab under /results
-    // (/results/biomarkers|/imaging|/genomics) — one leaf replaces the three; bare
-    // /results lands on /results/biomarkers. The per-biomarker detail route
-    // (/biomarkers/view) survives at its own URL; like other unlinked detail pages it
+    // (/results/readings|/imaging|/genomics) — one leaf replaces the three; bare
+    // /results lands on /results/readings. The per-biomarker detail route
+    // (/results/readings/view) survives at its own URL; like other unlinked detail pages it
     // highlights no nav entry.
     { href: "/results", label: "Results", icon: IconChartLine },
     // Supplements left this group for the Nutrition → Supplements tab (#746);

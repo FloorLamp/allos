@@ -15,7 +15,7 @@ import {
   PANEL_GROUPS_OTHER_ANALYTE,
 } from "./fixture-logins";
 
-// Results › Biomarkers becomes an INDEX (issue #1499). Mobile project (390×844)
+// Results › Readings becomes an INDEX (issue #1499). Mobile project (390×844)
 // because the feature is a page-height fix measured at phone width: this was the
 // tallest page in the app (13.4k px, first reading card 4.8k px down), and the
 // collapse is what makes it browsable with a thumb. The grouping itself is NOT
@@ -29,7 +29,7 @@ import {
 // un-canonicalized reading in "Other". Read-only — only the client-side disclosure is
 // driven — so it is repeat-safe with no reset.
 
-const BIOMARKERS = "/results/biomarkers";
+const BIOMARKERS = "/results/readings";
 
 async function openBrowser(
   browser: Parameters<typeof loginAs>[0],
@@ -228,15 +228,13 @@ test("the add-a-reading CTA opens a modal, and deep links open it prefilled (#14
   const toggle = page.getByTestId("add-result-panel-toggle");
   await expect(panel).toHaveAttribute("data-open", "false");
   await expect(toggle).toHaveClass(/\bbtn\b/);
-  await expect(
-    page.getByRole("dialog", { name: "Add medical record" })
-  ).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Add result" })).toHaveCount(0);
 
   await hydratedClick(page, toggle);
   await expect(panel).toHaveAttribute("data-open", "true");
   await expect(
     page
-      .getByRole("dialog", { name: "Add medical record" })
+      .getByRole("dialog", { name: "Add result" })
       .getByLabel("Name", { exact: true })
   ).toBeVisible();
 
@@ -249,7 +247,7 @@ test("the add-a-reading CTA opens a modal, and deep links open it prefilled (#14
   );
   await expect(
     page
-      .getByRole("dialog", { name: "Add medical record" })
+      .getByRole("dialog", { name: "Add result" })
       .getByLabel("Name", { exact: true })
   ).toHaveValue("Ferritin");
 
@@ -278,9 +276,7 @@ async function openIndex(
 // `table-sort-select` is the shared card-mode control; scope it to this tab's own
 // section so the locator names one element rather than "whichever came first".
 function sortSelect(page: Page) {
-  return page
-    .getByTestId("results-biomarkers")
-    .getByTestId("table-sort-select");
+  return page.getByTestId("results-readings").getByTestId("table-sort-select");
 }
 
 // Below `sm` the facets and the sort select sit behind one **Filters** disclosure
@@ -453,7 +449,7 @@ test("the panel facet offers only panels this browser can return (#1581 section 
     .evaluateAll((els) => els.map((e) => (e.textContent ?? "").trim()));
 
   // Gone: their analytes carry a category this browser excludes, so choosing one
-  // could only ever say "No records match these filters".
+  // could only ever say "No readings match these filters".
   //   Mental health screens → `instrument`, and #1076's exclusion is a SENSITIVITY
   //   decision — offering the facet advertised data the browser refuses to show.
   //   Blood type → `reference`, which lives in the passport.
@@ -462,7 +458,7 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   //   Vital signs → emptied ANALYTE by analyte (#2365): all six of its members
   //   (blood pressure ×2, oxygen saturation, respiratory rate, resting heart rate,
   //   body temperature) are body metrics with a /trends/metric/<slug> chart, so the
-  //   browser lists none of them and the option could only say "No records match".
+  //   browser lists none of them and the option could only say "No readings match".
   expect(labels).not.toContain("Vital signs");
 
   // Kept: PhenoAge still renders here as a derived row, so the panel is reachable.

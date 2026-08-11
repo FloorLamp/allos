@@ -14,7 +14,7 @@ import {
   updateGoal,
 } from "@/app/(app)/training/goal-actions";
 import {
-  getGoals,
+  getOutcomeGoals,
   dismissFinding,
   getFindingSuppressions,
 } from "@/lib/queries";
@@ -72,7 +72,12 @@ describe("createGoal", () => {
     const row = goalRows(profile.id)[0];
     expect(row.exercise).toBe("Deadlift");
     expect(row.metric).toBe("weight");
+    expect(row.category).toBeNull();
     expect(row.target_weight_kg).toBeCloseTo(315 / LB_PER_KG, 6);
+    expect(getOutcomeGoals(profile.id)[0]).toMatchObject({
+      kind: "exercise",
+      categoryLabel: null,
+    });
   });
 
   it("rejects an exercise goal with a non-positive primary target", async () => {
@@ -86,6 +91,30 @@ describe("createGoal", () => {
       })
     );
     expect(goalRows(profile.id)).toHaveLength(0);
+  });
+});
+
+describe("getOutcomeGoals vocabulary (#2480)", () => {
+  it("derives kind structurally and reserves categoryLabel for freeform text", () => {
+    const { profile } = seedActor();
+    db.prepare(
+      `INSERT INTO goals
+         (profile_id, title, category, body_metric, target_value, status)
+       VALUES (?, 'Legacy body goal', 'body', 'weight', 80, 'active'),
+              (?, 'Sleep routine', 'Wellbeing', NULL, 8, 'active')`
+    ).run(profile.id, profile.id);
+
+    const byTitle = new Map(
+      getOutcomeGoals(profile.id).map((goal) => [goal.title, goal])
+    );
+    expect(byTitle.get("Legacy body goal")).toMatchObject({
+      kind: "body",
+      categoryLabel: null,
+    });
+    expect(byTitle.get("Sleep routine")).toMatchObject({
+      kind: "freeform",
+      categoryLabel: "Wellbeing",
+    });
   });
 });
 
@@ -242,8 +271,10 @@ describe("scoping", () => {
     actAs(login, profileA);
     await createGoal(fd({ kind: "freeform", title: "A-only goal" }));
 
-    expect(getGoals(profileB.id)).toHaveLength(0);
-    expect(getGoals(profileA.id).map((g) => g.title)).toContain("A-only goal");
+    expect(getOutcomeGoals(profileB.id)).toHaveLength(0);
+    expect(getOutcomeGoals(profileA.id).map((g) => g.title)).toContain(
+      "A-only goal"
+    );
   });
 });
 
@@ -346,7 +377,7 @@ describe("createGoal / updateGoal load context", () => {
         equipment_id: home,
       })
     );
-    const id = getGoals(profile.id)[0].id;
+    const id = getOutcomeGoals(profile.id)[0].id;
     await updateGoal(
       fd({
         id,

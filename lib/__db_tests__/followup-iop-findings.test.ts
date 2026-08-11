@@ -96,7 +96,7 @@ describe("followUpItems IOP builder (#698 §6)", () => {
     expect(reason?.code).toBe("followup-source");
     expect(reason?.text).toContain("flagged 28 mmHg, right eye");
     expect(declaredReasonCodesFor(it.key)).toContain("followup-source");
-    expect(it.href).toContain("/biomarkers/view");
+    expect(it.href).toContain("/results/readings/view");
     expect(it.carePersistent).toBeUndefined();
     expect(it.followUpResolve).toBeUndefined();
     expect(collectUpcoming(p, now).some((u) => u.key === it.key)).toBe(true);

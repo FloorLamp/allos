@@ -12,11 +12,11 @@ import {
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getBodyMetricDailySeries,
-  getMedicalRecords,
+  getClinicalObservations,
   getScheduledAppointments,
   gatherCoachingInput,
   getFindingSuppressions,
@@ -54,11 +54,11 @@ import { cyclePhaseOnDate, cycleDayOnDate } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
-import { getUserAge } from "@/lib/settings/profile-attrs";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
-import { isGoalLive } from "@/lib/goals";
+import { isGoalLive } from "@/lib/outcome-goals";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import {
   requireSession,
@@ -299,7 +299,7 @@ export default async function Dashboard() {
   // relevant (the SAME getNavRelevance().cycle bit as the Cycle nav entry, #1042) — so a
   // card can never disagree with its nav twin about applicability.
   const widgetGate = {
-    foodLogging: isFoodLoggingRelevant(getUserAge(profile.id)),
+    foodLogging: isFoodLoggingRelevant(getProfileAge(profile.id)),
     cycle: getNavRelevance(profile.id).cycle,
   };
   const list = resolveWidgetList(
@@ -516,7 +516,7 @@ export default async function Dashboard() {
   let labRows: RecentLabRow[] = [];
   if (has("recent-labs")) {
     labRows = recentLabHighlights(
-      getMedicalRecords(profile.id, { current: true }),
+      getClinicalObservations(profile.id, { current: true }),
       undefined,
       on
     );
@@ -567,12 +567,12 @@ export default async function Dashboard() {
 
   // goals-and-habits: one combined overview of outcomes + weekly behaviors.
   const goals = has("goals-habits")
-    ? getGoals(profile.id)
+    ? getOutcomeGoals(profile.id)
         .filter((g) => isGoalLive(g))
         .slice(0, 4)
     : [];
   const goalProgress = has("goals-habits")
-    ? getGoalProgressMap(profile.id, goals)
+    ? getOutcomeGoalProgressMap(profile.id, goals)
     : new Map();
 
   const freqTargets = has("goals-habits")

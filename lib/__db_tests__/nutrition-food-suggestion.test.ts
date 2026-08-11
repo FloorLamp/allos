@@ -15,7 +15,7 @@ import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import {
   setExcludedFoodGroups,
-  setUserSex,
+  setProfileSex,
 } from "@/lib/settings/profile-attrs";
 import { getNutritionDay, getShortfallFoodSuggestion } from "@/lib/queries";
 import { nutritionShortfalls } from "@/lib/nutrition-day";
@@ -28,7 +28,7 @@ function newProfile(name: string): number {
       .lastInsertRowid
   );
   setTimezone(id, "UTC");
-  setUserSex(id, "male"); // fibre DRI adequate intake 38 g/day
+  setProfileSex(id, "male"); // fibre DRI adequate intake 38 g/day
   return id;
 }
 

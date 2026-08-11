@@ -3,9 +3,9 @@ import {
   getRankedBiomarkerOptions,
 } from "@/lib/queries";
 import {
-  getUserSex,
-  getUserAgeOn,
-  getUserReproductiveStatus,
+  getProfileSex,
+  getProfileAgeOn,
+  getProfileReproductiveStatus,
 } from "@/lib/settings";
 import { referenceRange } from "@/lib/reference-range";
 import { isBiomarkerGoalTargetable } from "@/lib/biomarker-goal";
@@ -50,9 +50,9 @@ export function getGoalBiomarkerOptions(
   // question two answers and two storage shapes. The predicate is
   // `isBiomarkerGoalTargetable`, shared with the write action so the picker and the
   // form post agree about what a valid target is.
-  const sex = getUserSex(profileId);
-  const age = getUserAgeOn(profileId, today);
-  const status = getUserReproductiveStatus(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAgeOn(profileId, today);
+  const status = getProfileReproductiveStatus(profileId);
 
   const ranked = getRankedBiomarkerOptions(profileId, today).filter((option) =>
     isBiomarkerGoalTargetable(option.name)

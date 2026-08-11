@@ -8,7 +8,7 @@
 // classes OUT of it — `instrument` (screening scores), `derived` (bio-age
 // composites), `reference` (immutable facts). A panel whose analytes ALL carry a
 // re-homed category is therefore a dead option: choosing it can only ever produce
-// "No records match these filters".
+// "No readings match these filters".
 //
 // The mental-health case is not merely useless, it is a SENSITIVITY regression:
 // #1076's stated reason for excluding `instrument` is that "a depression/alcohol
@@ -54,7 +54,7 @@ const LISTED = new Set<string>(BIOMARKER_CATEGORIES as readonly string[]);
 //     because they have no other home. It is also why `vital-signs` no longer does:
 //     ALL SIX of its curated members (blood pressure ×2, oxygen saturation,
 //     respiratory rate, resting heart rate, body temperature) are body metrics with a
-//     chart of their own, so the facet option can only ever return "No records match".
+//     chart of their own, so the facet option can only ever return "No readings match".
 //     The panel itself is untouched — it still groups those readings on the surfaces
 //     that DO show them; what goes is a filter that answers nothing here.
 //  2. A read-time DERIVED index (#40). Those are virtual rows synthesized with

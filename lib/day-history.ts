@@ -34,21 +34,31 @@ import { doseLedgerHref, DOSE_LEDGER_ALL_KINDS, type AppRoute } from "./hrefs";
 export type DayHistoryLevel = 0 | 1 | 2 | 3 | 4;
 
 export type DayHistoryDomainKey = "food" | "workout" | "dose" | "practice";
+export type DayHistoryRampKey = "activity" | "observation";
+export type DayHistoryCalendarKind = "coverage" | "quantity";
 
 export interface DayHistoryDomainSpec {
   unitOne: string;
   unitMany: string;
+  groupOne: string;
+  groupMany: string;
+  ramp: DayHistoryRampKey;
+  calendarKind: DayHistoryCalendarKind;
+  calendarTitle: string;
+  matrixTitle: string;
+  helperText: string;
+  // Exact visible vocabulary for levels 0…4. The renderer shows this instead
+  // of an unexplained "Less / More" gradient.
+  levelLabels: readonly [string, string, string, string, string];
   // Suffix for the per-cell `detail` quantity in hover copy (workout minutes).
   detailSuffix?: string;
   // Day-TOTAL → calendar color bucket.
   calendarLevel(total: number): DayHistoryLevel;
   // Per-group per-day value → matrix cell bucket.
   cellLevel(value: number): DayHistoryLevel;
-  // The domain's own answer to "show me that day's ROWS" — the tabular twin of a
-  // tapped calendar cell, beside the Timeline link every domain gets. Declared here
-  // rather than passed in as a prop because the day panel is client state and a
-  // function can never cross the server→client boundary. Omitted by a domain with no
-  // row-level surface of its own.
+  // The domain's own answer to "show me that day's rows". This is declared
+  // here because the selected-day panel is client state and cannot receive a
+  // function prop across the server/client boundary.
   dayLink?: {
     label: string;
     href(day: string): AppRoute;
@@ -57,10 +67,9 @@ export interface DayHistoryDomainSpec {
 
 // The declared per-domain policies. Every matrix ladder is the shared 1/2/3/4+
 // `intensityLevel` — a single group/item rarely exceeds a handful per day. The
-// calendars differ per domain because DAY totals live on different scales: a
-// workout day holds 1–2 sessions so the session ladder reads fine, an active
-// food logger's day runs 3–10 servings, and a stacked supplement/med routine
-// confirms 5–15 doses — the wider ladders keep those from saturating at 4.
+// quantity ladders are 1/2/3/4+. Workout/practice calendars use that quantity;
+// food/dose calendars are binary COVERAGE because larger serving/dose totals
+// are observations, not success states. Their matrices retain quantity.
 export const DAY_HISTORY_DOMAINS: Record<
   DayHistoryDomainKey,
   DayHistoryDomainSpec
@@ -68,13 +77,34 @@ export const DAY_HISTORY_DOMAINS: Record<
   food: {
     unitOne: "serving",
     unitMany: "servings",
-    calendarLevel: (total) =>
-      total <= 0 ? 0 : total <= 2 ? 1 : total <= 4 ? 2 : total <= 7 ? 3 : 4,
+    groupOne: "food group",
+    groupMany: "food groups",
+    ramp: "observation",
+    calendarKind: "coverage",
+    calendarTitle: "Days logged",
+    matrixTitle: "By food group",
+    helperText:
+      "Calendar: days you logged food. Matrix: each day by food group. Filter food groups or select a day or row for details.",
+    levelLabels: ["0", "1", "2", "3", "4+"],
+    // The aggregate calendar answers COVERAGE for food. Total servings are not
+    // a quality score, so a twelve-serving day must not glow "better" than a
+    // three-serving day. Quantity remains visible in the selected-day panel and
+    // in the per-group matrix, where its subject is unambiguous.
+    calendarLevel: (total) => (total > 0 ? 1 : 0),
     cellLevel: intensityLevel,
   },
   workout: {
     unitOne: "session",
     unitMany: "sessions",
+    groupOne: "activity",
+    groupMany: "activities",
+    ramp: "activity",
+    calendarKind: "quantity",
+    calendarTitle: "Active days",
+    matrixTitle: "By activity",
+    helperText:
+      "Calendar: days you worked out. Matrix: each day by activity. Filter activities or select a day or row for details.",
+    levelLabels: ["0", "1", "2", "3", "4+"],
     detailSuffix: "min",
     calendarLevel: intensityLevel,
     cellLevel: intensityLevel,
@@ -82,8 +112,17 @@ export const DAY_HISTORY_DOMAINS: Record<
   dose: {
     unitOne: "dose",
     unitMany: "doses",
-    // #2417: "what did I take that day" IS the cross-item dose ledger filtered to
-    // that day — across both kinds, since this chart counts both.
+    groupOne: "item",
+    groupMany: "items",
+    ramp: "observation",
+    calendarKind: "coverage",
+    calendarTitle: "Days recorded",
+    matrixTitle: "By item",
+    helperText:
+      "Calendar: days you confirmed doses. Matrix: each day by item. Filter items or select a day or row for details. Shows what was taken, not what was due or missed.",
+    levelLabels: ["0", "1", "2", "3", "4+"],
+    // The chart combines both intake kinds, so its row-level destination does
+    // too even though the route lives under the supplement entry surface.
     dayLink: {
       label: "Dose ledger",
       href: (day) =>
@@ -93,8 +132,8 @@ export const DAY_HISTORY_DOMAINS: Record<
           kind: DOSE_LEDGER_ALL_KINDS,
         }),
     },
-    calendarLevel: (total) =>
-      total <= 0 ? 0 : total <= 3 ? 1 : total <= 6 ? 2 : total <= 10 ? 3 : 4,
+    // As with food, a larger day-total is descriptive rather than desirable.
+    calendarLevel: (total) => (total > 0 ? 1 : 0),
     cellLevel: intensityLevel,
   },
   // Wellness practices share the workout shape exactly (sessions + minutes,
@@ -102,6 +141,15 @@ export const DAY_HISTORY_DOMAINS: Record<
   practice: {
     unitOne: "session",
     unitMany: "sessions",
+    groupOne: "practice",
+    groupMany: "practices",
+    ramp: "activity",
+    calendarKind: "quantity",
+    calendarTitle: "Active days",
+    matrixTitle: "By practice",
+    helperText:
+      "Calendar: days you practiced. Matrix: each day by practice. Filter practices or select a day or row for details.",
+    levelLabels: ["0", "1", "2", "3", "4+"],
     detailSuffix: "min",
     calendarLevel: intensityLevel,
     cellLevel: intensityLevel,

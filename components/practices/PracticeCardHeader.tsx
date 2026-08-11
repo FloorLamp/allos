@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { FrequencyPace } from "@/lib/goals";
+import type { FrequencyPace } from "@/lib/frequency-targets";
 import PracticeWeeklyProgress from "./PracticeWeeklyProgress";
 
 export default function PracticeCardHeader({

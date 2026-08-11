@@ -1,6 +1,6 @@
 import {
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getActivitySuggestions,
   getLoggedEquipmentByExercise,
@@ -8,7 +8,7 @@ import {
 import { getEquipment } from "@/lib/equipment";
 import { getUnitPrefs, getWeekMode } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import FrequencyTargets from "@/app/(app)/training/FrequencyTargets";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import { today } from "@/lib/db";
@@ -21,10 +21,10 @@ export default async function GoalsSection() {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
-  const goals = getGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id);
   // Map → plain object so it can cross into the client GoalsManager.
   const goalProgress = Object.fromEntries(
-    getGoalProgressMap(profile.id, goals)
+    getOutcomeGoalProgressMap(profile.id, goals)
   );
   const targets = getFrequencyTargetProgress(profile.id);
   const weekMode = getWeekMode(profile.id);

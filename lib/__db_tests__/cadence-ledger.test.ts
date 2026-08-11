@@ -21,7 +21,7 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setWeekMode } from "@/lib/settings";
 import { CADENCE_SCOPES } from "@/lib/cadence";
-import { FREQUENCY_SCOPE_KINDS } from "@/lib/goals";
+import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 import { practiceIdentity } from "@/lib/practice";
 import { cadenceWindows, getCadenceLedger } from "@/lib/queries/cadence-ledger";
 import {

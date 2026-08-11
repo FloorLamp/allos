@@ -6,7 +6,11 @@
 // Upper Intake Level (UL) exceedances and known drug/supplement interactions.
 import { today } from "../../db";
 import { ageFromBirthdate } from "../../date";
-import { getUserSex, getUserBirthdate, getStoredAge } from "../../settings";
+import {
+  getProfileSex,
+  getProfileBirthdate,
+  getStoredAge,
+} from "../../settings";
 import {
   stackUlWarnings,
   stackRdaAdequacy,
@@ -62,7 +66,7 @@ import {
 import { biomarkerFamily } from "../../canonical-name";
 import { medicationStartDate } from "../../profile-summary";
 import { getMedicationCourses } from "./medications";
-import { getMedicalRecords } from "../medical";
+import { getClinicalObservations } from "../medical";
 import { isInvasiveDentalProcedure, dentalDisplayLabel } from "../../dental";
 import {
   getGenomicVariants,
@@ -138,7 +142,7 @@ function stackDriContext(
 ): {
   items: StackItem[];
   ageYears: number | null;
-  sex: ReturnType<typeof getUserSex>;
+  sex: ReturnType<typeof getProfileSex>;
 } {
   const supplements = getSupplements(profileId);
   const dosesBySupp = new Map<number, (string | null)[]>();
@@ -167,11 +171,11 @@ function stackDriContext(
       optional: isPrn(s),
     }));
 
-  const birthdate = getUserBirthdate(profileId);
+  const birthdate = getProfileBirthdate(profileId);
   const ageYears = birthdate
     ? ageFromBirthdate(birthdate, todayStr)
     : getStoredAge(profileId);
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
   return { items, ageYears, sex };
 }
 
@@ -465,7 +469,7 @@ const MONITORING_LAB_CATEGORIES = new Set(["lab", "biomarker"]);
 // 'medication', each carrying its intake_items id), so this can't drift from the
 // interaction/PGx/ototoxic consumers. Each med's start / recent-change dates are derived
 // from its medication_courses (medicationStartDate) + its dose re-time timestamps; the
-// newest date each monitoring lab was drawn comes from getMedicalRecords' current-per-
+// newest date each monitoring lab was drawn comes from getClinicalObservations' current-per-
 // group read, keyed FAMILY-AWARE (#482) so an eAG reading satisfies an HbA1c requirement.
 // The SAME pure buildMedMonitoring the medications-row note and the Upcoming retest items
 // format over ("one question, one computation"). Profile-scoped through the underlying
@@ -529,7 +533,7 @@ export function getMedMonitoringItems(
 
   // Newest date each monitoring lab (family-aware) was drawn, over current lab readings.
   const labDatesByFamily = new Map<string, string>();
-  for (const r of getMedicalRecords(profileId, { current: true })) {
+  for (const r of getClinicalObservations(profileId, { current: true })) {
     if (!MONITORING_LAB_CATEGORIES.has(r.category ?? "")) continue;
     // Same family key monitoringLabFamilyKey derives for a required lab's canonical
     // name, so an eAG reading lands under the HbA1c family (#482).

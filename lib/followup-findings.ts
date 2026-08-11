@@ -29,8 +29,8 @@
 import {
   getCarePlanItems,
   getImagingStudies,
-  getLabFollowUpRecords,
-  getIopFollowUpRecords,
+  getLabFollowUpObservations,
+  getIopFollowUpObservations,
   getDentalProcedures,
   getSkinLesions,
 } from "./queries/clinical";
@@ -48,12 +48,12 @@ import {
 import {
   labsFollowUpAdapter,
   LABS_FOLLOWUP_KIND,
-  type LabFollowUpRecord,
+  type LabFollowUpObservation,
 } from "./followup-labs";
 import {
   iopFollowUpAdapter,
   IOP_FOLLOWUP_KIND,
-  type IopFollowUpRecord,
+  type IopFollowUpObservation,
 } from "./followup-iop";
 import { dentalFollowUpAdapter, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
 import { skinFollowUpAdapter, SKIN_FOLLOWUP_KIND } from "./followup-skin";
@@ -95,10 +95,10 @@ const IMAGING_DOMAIN: FollowUpDomain<ImagingStudy> = {
 // Flagged labs: the follow-up's source flagged reading + its serial trend live on the
 // biomarker detail page, keyed by the reading's canonical name (#482); the readingDetailHref
 // rule gates on canonicalization and falls back to the biomarkers list otherwise.
-const LABS_DOMAIN: FollowUpDomain<LabFollowUpRecord> = {
+const LABS_DOMAIN: FollowUpDomain<LabFollowUpObservation> = {
   kind: LABS_FOLLOWUP_KIND,
   adapter: labsFollowUpAdapter,
-  loadRecords: getLabFollowUpRecords,
+  loadRecords: getLabFollowUpObservations,
   recordId: (r) => r.id,
   sourceIdOf: (c) => c.source_medical_record_id,
   hrefFor: (r) => readingDetailHref(r.canonical_name, r.name),
@@ -109,10 +109,10 @@ const LABS_DOMAIN: FollowUpDomain<LabFollowUpRecord> = {
 // biomarker), but its OWN adapter (glaucoma-workup copy, bilateral "one question")
 // and source_kind='iop'. The follow-up + its serial pressures live on the biomarker
 // detail page; the loadRecords pool is IOP-only, so any later reading is a repeat.
-const IOP_DOMAIN: FollowUpDomain<IopFollowUpRecord> = {
+const IOP_DOMAIN: FollowUpDomain<IopFollowUpObservation> = {
   kind: IOP_FOLLOWUP_KIND,
   adapter: iopFollowUpAdapter,
-  loadRecords: getIopFollowUpRecords,
+  loadRecords: getIopFollowUpObservations,
   recordId: (r) => r.id,
   sourceIdOf: (c) => c.source_medical_record_id,
   hrefFor: (r) => readingDetailHref(r.canonical_name, r.name),

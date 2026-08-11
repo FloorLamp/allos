@@ -4,7 +4,7 @@ import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
 import {
   getMedicalDocument,
   getDocumentProduced,
-  getRecordsForDocument,
+  getObservationsForDocument,
   getRankedBiomarkerOptions,
   getRankedPickerProviders,
   getDocumentVisits,
@@ -27,7 +27,7 @@ import {
   createVisitOffers,
 } from "@/lib/queries";
 import { today } from "@/lib/db";
-import { getUserFullName, getUnitPrefs } from "@/lib/settings";
+import { getProfileFullName, getUnitPrefs } from "@/lib/settings";
 import { portalById } from "@/lib/portals";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
@@ -37,7 +37,7 @@ import ImportDetailActions from "@/components/ImportDetailActions";
 import RawDataViewer from "@/components/RawDataViewer";
 import DocumentPreview from "@/components/DocumentPreview";
 import ReassignDocument from "@/components/ReassignDocument";
-import ExtractedRecords from "@/components/ExtractedRecords";
+import ExtractedObservations from "@/components/ExtractedObservations";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import ImportTabStrip from "@/components/ImportTabStrip";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
@@ -226,7 +226,7 @@ export default async function ImportDetailPage(props: {
   const reconciliationLine = detailReconciliationLine(producedReconciliation);
   const activeTab = resolveImportTab(strip.tabs, searchParams.tab);
   const mismatch = isProvenanceMismatch(doc.patient_name, [
-    getUserFullName(profile.id),
+    getProfileFullName(profile.id),
     profile.name,
   ]);
   // Acquired-by provenance (#1748): the portal registry row this document was pushed in
@@ -302,7 +302,7 @@ export default async function ImportDetailPage(props: {
   const dir = parseSortDir(searchParams.dir);
   const records =
     activeTab?.kind === "records"
-      ? getRecordsForDocument(profile.id, id, {
+      ? getObservationsForDocument(profile.id, id, {
           category: activeTab.category,
           range,
           q,
@@ -548,11 +548,11 @@ export default async function ImportDetailPage(props: {
 
             {activeTab &&
               (activeTab.kind === "records" ? (
-                <ExtractedRecords
+                <ExtractedObservations
                   title={activeTab.label}
                   analyte={usesAnalyteGrid(activeTab.category)}
                   processing={doc.extraction_status === "processing"}
-                  records={visibleRecords}
+                  observations={visibleRecords}
                   q={q}
                   range={range}
                   sort={sort}

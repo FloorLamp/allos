@@ -45,9 +45,9 @@ describe("wellness and frequency-target query boundaries (#1622/#1637)", () => {
       "export function getFrequencyTargets"
     );
 
-    const trainingGoals = read("lib/queries/training/goals.ts");
-    expect(trainingGoals).not.toContain("getFrequencyTargets");
-    expect(trainingGoals).not.toContain("getFrequencyTargetProgress");
+    const outcomeGoals = read("lib/queries/training/outcome-goals.ts");
+    expect(outcomeGoals).not.toContain("getFrequencyTargets");
+    expect(outcomeGoals).not.toContain("getFrequencyTargetProgress");
   });
 
   it("renders wellness cards from the already-grouped session payload", () => {

@@ -27,8 +27,8 @@ import {
   setProfileHomeAssistant,
   setProfileSetting,
   getProfileSetting,
-  setUserBirthdate,
-  setUserSex,
+  setProfileBirthdate,
+  setProfileSex,
   setWeekMode,
   setWeekStart,
 } from "@/lib/settings";
@@ -343,8 +343,8 @@ function preventiveProfile(name: string): number {
 // The same demographics with NO history at all — a brand-new profile (#1433).
 function bareProfile(name: string): number {
   const p = newProfile(name);
-  setUserBirthdate(p, "1980-01-01");
-  setUserSex(p, "male");
+  setProfileBirthdate(p, "1980-01-01");
+  setProfileSex(p, "male");
   return p;
 }
 

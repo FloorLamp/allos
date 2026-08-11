@@ -153,7 +153,9 @@ test.afterEach(() => {
 test("a band-less analyte shows the source's own range, attributed, and keeps its colour", async ({
   page,
 }) => {
-  await page.goto(`/biomarkers/view?name=${encodeURIComponent(REPORTED)}`);
+  await page.goto(
+    `/results/readings/view?name=${encodeURIComponent(REPORTED)}`
+  );
 
   const value = page.getByTestId("biomarker-latest-value");
   await expect(value).toBeVisible();
@@ -182,7 +184,7 @@ test("a band-less analyte shows the source's own range, attributed, and keeps it
 test("a reading with no band and no printed range is not coloured, and claims no severity", async ({
   page,
 }) => {
-  await page.goto(`/biomarkers/view?name=${encodeURIComponent(BARE)}`);
+  await page.goto(`/results/readings/view?name=${encodeURIComponent(BARE)}`);
 
   const value = page.getByTestId("biomarker-latest-value");
   await expect(value).toBeVisible();
@@ -237,7 +239,9 @@ test("a reading with no band and no printed range is not coloured, and claims no
 test("a reading the page CAN judge keeps its recheck offer with no note, because its basis is already on screen (#2347)", async ({
   page,
 }) => {
-  await page.goto(`/biomarkers/view?name=${encodeURIComponent(REPORTED)}`);
+  await page.goto(
+    `/results/readings/view?name=${encodeURIComponent(REPORTED)}`
+  );
 
   // Same flag, same offer — but the range that produced it is rendered right beside
   // the value, so there is nothing left for a note to add.
@@ -250,7 +254,9 @@ test("a reading the page CAN judge keeps its recheck offer with no note, because
 test("the page explains the analyte once, and says why it has no band beside the missing band", async ({
   page,
 }) => {
-  await page.goto(`/biomarkers/view?name=${encodeURIComponent(REPORTED)}`);
+  await page.goto(
+    `/results/readings/view?name=${encodeURIComponent(REPORTED)}`
+  );
 
   // The explainer card keeps the educational description.
   const explainer = page.getByTestId("biomarker-explainer");
@@ -275,7 +281,7 @@ test("an unqualified glucose shows its value unflagged and says why, while the f
   page,
 }) => {
   await page.goto(
-    `/biomarkers/view?name=${encodeURIComponent(UNQUALIFIED_GLUCOSE)}`
+    `/results/readings/view?name=${encodeURIComponent(UNQUALIFIED_GLUCOSE)}`
   );
 
   // The value is shown. Nothing judges it: the catalog publishes no band for a draw
@@ -300,7 +306,7 @@ test("an unqualified glucose shows its value unflagged and says why, while the f
   // spec's own row rather than the header, because the shared seed owns fasting
   // glucose draws of its own on this profile.
   await page.goto(
-    `/biomarkers/view?name=${encodeURIComponent(FASTING_GLUCOSE)}`
+    `/results/readings/view?name=${encodeURIComponent(FASTING_GLUCOSE)}`
   );
   await expect(page.getByText("70–99 mg/dL")).toBeVisible();
   await expect(page.getByTestId("biomarker-band-note")).toHaveCount(0);

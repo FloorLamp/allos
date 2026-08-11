@@ -10,7 +10,7 @@ import { db, today } from "@/lib/db";
 import { bandForItem } from "@/lib/upcoming";
 import { attentionCardItems } from "@/lib/attention";
 import { collectAttentionModel } from "@/lib/queries/attention";
-import { setUserBirthdate, setUserSex } from "@/lib/settings";
+import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
 import {
   collectUpcoming,
   getPreventiveSatisfactions,
@@ -28,8 +28,8 @@ function makeProfile(name: string): number {
   );
   // A ~46-year-old male: past the adult-physical entry age (22, no visit on
   // record) and several screening entry ages (colorectal 45+, BP 18+, lipids 35+).
-  setUserBirthdate(id, "1980-01-01");
-  setUserSex(id, "male");
+  setProfileBirthdate(id, "1980-01-01");
+  setProfileSex(id, "male");
   return id;
 }
 

@@ -16,7 +16,7 @@ import {
 // which labels come back, where the tap goes) plus one ordering comparison that
 // holds for any fixture with two distinct names.
 
-const BIOMARKERS = "/results/biomarkers";
+const BIOMARKERS = "/results/readings";
 
 // The master list is an index of collapsed panel groups since #1499 section A, so a
 // spec about the ROW's card shape has to open a group first. `?q=` narrows the list
@@ -84,10 +84,14 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     // The canonical-name link is the SAME `readingDetailHref` anchor the desktop
     // table renders — the card is a re-layout of that cell, not a second one.
     const link = table
-      .locator('td[data-card="title"] a[href*="/biomarkers/view"]')
+      .locator('td[data-card="title"] a[href*="/results/readings/view"]')
       .first(); // first-ok: any canonical row's link proves the card keeps the desktop destination
-    await followLink(page, link, /\/biomarkers\/view\?name=/);
-    await expect(page.locator("h1")).toBeVisible();
+    const destinationName = (await link.textContent())?.trim();
+    expect(destinationName).toBeTruthy();
+    await followLink(page, link, /\/results\/readings\/view\?name=/);
+    await expect(
+      page.getByRole("heading", { name: destinationName!, exact: true })
+    ).toBeVisible();
   });
 
   test("sorting still works in stacked-row mode, through the compact sort select", async ({

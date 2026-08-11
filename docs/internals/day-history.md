@@ -28,11 +28,10 @@ anything (windows neither align nor commonly overlap). Do not force-fit it.
 ## Domains are declared, not forked
 
 `DAY_HISTORY_DOMAINS` is the policy registry (the fitness-freshness pattern):
-a domain supplies only its unit words, optional hover-detail suffix (workout
-minutes), and its two level ladders. Every matrix cell ladder is the shared
-1/2/3/4+ `intensityLevel`; the CALENDAR ladders differ per domain because day
-totals live on different scales (a food day runs 3–10 servings, a dose day
-5–15 confirms — the wider ladders keep them from saturating). A fifth domain
+a domain supplies only its unit words, titles, ramp, calendar meaning, optional
+hover-detail suffix (workout minutes), and its level policy. Every matrix cell
+ladder is the shared 1/2/3/4+ `intensityLevel`; workout/practice calendars retain
+that quantity while food/dose calendars deliberately encode coverage. A fifth domain
 (symptoms is the obvious candidate) is a registry entry plus a gather, not a
 fork. Level policy lives in the model, not the component, because the filter
 chips are client state: the client re-runs the pure builders on every toggle,
@@ -54,8 +53,10 @@ server→client boundary.
   infix and "Session" suffix stripped, so "Push day" and "Afternoon Push Day"
   land together). A STRENGTH row never takes the component path — its
   components are exercises, not the activity.
-- **Doses** key on the intake item's name; the confirmed amount rides along as
-  a cell note for hover copy, never summed.
+- **Doses** key on `intake_items.id`, never the user-owned name. Distinct items
+  may legitimately share a name; their labels use product/brand/kind to
+  disambiguate while the confirmed amount rides along as a cell note, never
+  summed.
 - **Practices** key on `practiceIdentity` (the canonical key the wellness
   surfaces bind user-owned spellings through), labeled by the first-seen
   spelling.
@@ -72,33 +73,100 @@ a quiet recent stretch is the live signal.
 
 ## Renderer contracts
 
-- Cells use `chartActivityRamp` (the one blessed ramp; the class scan fails a
-  hand-rolled ladder). Today's cells carry a persistent sky ring, echoed in
-  the legend.
-- Month/weekday/day-of-month labels are OVERLAID pills, not gutter rows, so
-  cells get the full width; the matrix's day numbers slide UNDER its sticky
-  row labels (z per use). The matrix adds an extra gap at each week boundary.
+- Workout/practice cells use `chartActivityRamp`; observational food/dose cells
+  use the royal-blue `chartObservationRamp`, so a larger recorded quantity never
+  reads as a green health verdict. Food and dose CALENDARS are binary coverage;
+  their matrices retain quantity. Each ramp also declares its theme-aware label
+  foreground, validated at 4.5:1 against every step. Today prints its day-of-month
+  in the calendar cell; it adds no ring, matrix rail, fill, or second data color.
+- Calendar month/weekday labels remain compact overlays. The matrix has a REAL
+  reserved date header (`Jul 26`, `Aug 2`, …), including month names because it
+  scrolls independently, plus an extra gap at each week boundary. A hovered or
+  selected day prints its day-of-month inside the calendar cell and pins its
+  compact date above the exact matrix column; weekly labels in that marker's
+  collision zone yield until the hover/selection moves.
+- At desktop `xl` widths, an active day or row detail shares an equal-width
+  two-column band with the calendar; both stack at narrower widths and the
+  matrix remains full-width below. The detail is a companion pane, not a card;
+  stacked layouts use one dividing rule instead of boxed chrome. The calendar
+  observes its own container so opening or closing that detail remeasures its
+  cells without a window resize. Both panes share one text grammar: visible
+  14px semibold headings, 12px muted summaries, and 12px ledger rows with
+  tabular quantities.
 - Both scrollers bleed edge-to-edge on phones and open at the RECENT edge;
   calendar cells grow from 24px toward 34px when the window is short.
+- Sticky matrix row labels use padded, 70%-opaque surfaces that fade to
+  transparent at the cell edge; they remain readable over horizontal scroll
+  without ending in a hard rectangular slab. Hovering a row label drives the
+  same row emphasis and detail text as hovering that row's cells. The label is
+  a pointer-marked control: selecting it persists the row emphasis and opens a
+  reading-width, vertically bounded, newest-first ledger of occurrence dates
+  and per-date quantities. Hover and selection share one treatment (bold label,
+  row tint, and dimmed peers); labels never underline.
+- When the matrix has multiple rows, hovering or selecting a row also projects
+  its occurrence days onto the aggregate calendar. Matching days keep their
+  ordinary calendar color while non-matching days recede strongly; the row name
+  and aggregate quantity across active days replace the calendar heading and
+  summary during a live preview, and the per-day match is exposed to assistive
+  technology. Selecting a still-hovered row does not prematurely end that live
+  preview. Once the pointer leaves, the neighboring row panel owns the row
+  summary, so the calendar returns to its own heading and aggregate instead of
+  repeating it. A single-row matrix suppresses the projection because the row
+  adds no distinction.
 - Hover, focus, and TAP all push a cell summary into the shared caption —
-  `title` never fires on touch. Hover state is SHARED across the two charts,
+  `title` never fires on touch. The matrix is an ARIA grid with one roving tab
+  stop; arrows traverse group/day and Enter/Space select. Hover state is SHARED
+  across the two charts,
   keyed on the day: hovering a matrix cell draws a crosshair (cell ringed, row
   tinted, column full, everything else dimmed — suppressed at one row, where
   the row IS the matrix) and echoes onto its calendar day; hovering a calendar
-  day highlights that column in the matrix.
-- Tapping a populated calendar day SELECTS it (toggling) and opens the day
-  panel — what that day held under the current filter — with the Timeline one
-  link away inside the panel (`timelineDayHref`). Never a navigation.
-- All/None render as dashed action chips after a divider, each disabled when
-  it would be a no-op.
-- Matrix cells are `aria-hidden` behind a per-row composed `aria-label` (the
-  `PracticeHeatmap` precedent); per-cell keyboard navigation is a decided
-  non-goal for now.
+  day highlights that column in the matrix. Calendar and matrix hit targets own
+  the visual gaps to their right and below (including the matrix's wider week
+  separator), so the date/crosshair never drops while the pointer crosses
+  whitespace.
+- Every non-future calendar day is selectable, including a quiet day. Selection
+  opens the day panel, scrolls the matching matrix column into view and keeps
+  the domain ledger one link away: populated workout days and workout-row
+  occurrences use `trainingLogDayHref`, while empty workout days and the other
+  domains use `timelineDayHref`. Matrix selection opens the SAME panel. Its
+  persistent matrix cue is the exact date pinned over that column plus the
+  ordinary day-hover emphasis (selected column saturated, other columns dimmed)
+  whenever no live hover/focus preview is active—no fill, rail, or repeated
+  outline around the cells. A live preview temporarily takes priority; selection
+  returns when it leaves. The matrix header also states its currently visible
+  date span without decorating every calendar cell as though it were selected.
+- The day panel also closes the gap-to-action loop (#2420). Each surface passes
+  an AppRoute-checked `addHref`; `dayHistoryAddHref` appends the selected day
+  using the destination's declared parameter (`date`, `backfill`, or `log`).
+  The resulting “Log for this day →” opens the existing writer rather than a
+  chart-owned form: Food selects the day inside its seven-day picker (or states
+  that bound and falls back to today), Supplements opens a top-level item picker
+  over the shared historical-dose form (any past day, never future), Wellness
+  opens its shared detailed practice form after a practice picker (previous 30
+  days), and Training opens the activity editor with only its date seeded. A
+  date link never fabricates an item, practice, workout type, or title.
+- Long group vocabularies start at five chips. The counted “+N more” / “Show
+  less” action sits inline after those data chips and immediately before the
+  dashed All/None actions; “Viewing N of M groups” keeps filter state visible
+  without pretending any action is a data group. Any filter transition into
+  exactly one visible group temporarily selects that row and opens its companion
+  ledger. Expanding from one group to two (or All), or clearing it with None,
+  removes that automatic selection; an explicit row selection remains distinct.
+- The visible scale names every exact bucket (`0 1 2 3 4+ sessions/servings/...`)
+  rather than implying an unexplained “Less / More” and sits at the matrix
+  header's top right beside its visible date span. The aggregate summary lives
+  under the calendar heading instead of consuming a matrix footer. Hover,
+  focus, or tap detail temporarily replaces the visible “By …” label on the
+  left; the accessible section name, date span, scale, and surrounding layout
+  stay fixed. Dates in panels and cell names honor the login's display-format
+  preference.
 
 ## Tests
 
 `lib/__tests__/day-history.test.ts` (model: ladders, ranking, folding, trim,
 notes, grid padding), `lib/__db_tests__/workout-activity-days.test.ts` +
 `practice-days.test.ts` + `trends-fitness-window.test.ts` (identity + windowing
-over real SQL), and the Nutrition/Fitness/Wellness specs in `e2e/` (rendering,
-the Timeline link shape, chip filtering, the cross-practice rows).
+over real SQL), and the Nutrition/Fitness/Wellness plus
+`day-history-backfill.spec.ts` specs in `e2e/` (rendering, domain-ledger and
+dated-entry link shapes, destination prefills/bounds, chip filtering, and the
+cross-practice rows).

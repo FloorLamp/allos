@@ -314,7 +314,7 @@ test.describe("Entry vocabularies (#1676)", () => {
     await revealCarePlan(page);
     const row = page.locator("tr").filter({ hasText: CARE_ITEM });
     // The overflow trigger and its Edit item are onClick-only client state
-    // (OverflowMenu + EditableRecordRow) — the edit form is the signal.
+    // (OverflowMenu + EditableResultRow) — the edit form is the signal.
     await hydratedClick(page, row.getByLabel("Record actions"));
     await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const editForm = page.locator(

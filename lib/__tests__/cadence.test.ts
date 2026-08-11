@@ -12,7 +12,7 @@ import {
   verdictDirection,
   type CadenceVerdict,
 } from "../cadence";
-import { FREQUENCY_SCOPE_KINDS } from "../goals";
+import { FREQUENCY_SCOPE_KINDS } from "../frequency-targets";
 import { frequencyRangeState } from "../practice";
 import { substanceCapStatus } from "../substance-use";
 import { practiceWeekVerdict } from "../trends-practices";

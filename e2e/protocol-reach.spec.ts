@@ -92,7 +92,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     // The LDL detail chart now carries the annotation toggle bar (previously it had
     // none at all) with the targeting protocol's "Protocols" window pill.
     await page.goto(
-      `/biomarkers/view?name=${encodeURIComponent("LDL Cholesterol")}`
+      `/results/readings/view?name=${encodeURIComponent("LDL Cholesterol")}`
     );
     await expect(
       page.getByRole("main").getByRole("button", { name: "Protocols" })

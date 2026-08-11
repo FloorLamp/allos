@@ -1,15 +1,15 @@
-// Active goals with a target date (reuses getGoals). The deadline drives the
+// Active goals with a target date (reuses getOutcomeGoals). The deadline drives the
 // band, so an overdue deadline reads as Overdue and an approaching one as
 // Today/This week/Later. Goals live on the Training hub's Goals tab — the old
 // standalone /goals route has no page (issue #283 found the dead link).
 export function goalItems(profileId: number): UpcomingItem[] {
-  return getGoals(profileId)
+  return getOutcomeGoals(profileId)
     .filter((g) => isGoalLive(g) && g.target_date)
     .map((g) => ({
       key: `goal:${g.id}`,
       domain: "goal" as const,
       title: g.title,
-      detail: g.category ? `${g.category} goal` : "Goal deadline",
+      detail: g.categoryLabel ? `${g.categoryLabel} goal` : "Goal deadline",
       href: "/training?tab=goals",
       dueDate: g.target_date,
     }));
@@ -270,11 +270,11 @@ import {
 import { db, today, writeTx } from "../../db";
 import { casUpdate, readForUpdate } from "../../tx";
 import { getActiveEndurancePlans } from "../../endurance-plans";
+import { isGoalLive } from "../../outcome-goals";
 import {
   frequencyScopeLabel,
-  isGoalLive,
   weeklyTargetPaceLine,
-} from "../../goals";
+} from "../../frequency-targets";
 import { practiceSignalKey } from "../../practice";
 import { getRoutineCycleStatus } from "../../routines";
 import type { DistanceUnit } from "../../settings";
@@ -287,7 +287,7 @@ import {
   getFrequencyTargetProgress,
   type FrequencyTargetProgress,
 } from "../frequency-targets";
-import { getGoals } from "../training";
+import { getOutcomeGoals } from "../training";
 import { getStepsPaceObservation } from "../steps-target";
 import { stepsPaceKey } from "../../steps-target";
 import { trendsSectionHref } from "../../trends-sections";

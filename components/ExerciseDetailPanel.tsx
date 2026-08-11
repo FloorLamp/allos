@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseStat, GoalProgress } from "@/lib/queries";
-import type { Goal, Sex } from "@/lib/types";
+import type { OutcomeGoal, Sex } from "@/lib/types";
 import { dispWeight, fmtWeight } from "@/lib/units";
 import { liftInfo } from "@/lib/lifts";
 import {
@@ -13,7 +13,7 @@ import {
   strengthStandingPhrase,
   bodyweightMultiple,
 } from "@/lib/strength-standards";
-import { goalsForExercise, goalTargetText } from "@/lib/goals";
+import { goalsForExercise, goalTargetText } from "@/lib/outcome-goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -86,7 +86,7 @@ export default function ExerciseDetailPanel({
   units: UnitPrefs;
   // Profile sex, so strength standards/levels use the sex-appropriate chart.
   sex?: Sex | null;
-  goals?: Goal[];
+  goals?: OutcomeGoal[];
   // Auto-derived progress keyed by goal id (plain object — crosses the
   // server/client boundary, unlike a Map).
   goalProgress?: Record<number, GoalProgress>;

@@ -19,11 +19,11 @@ import type { FollowUpAdapter, FollowUpItemLike } from "./followup";
 // The labs source kind stored in care_plan_items.source_kind.
 export const LABS_FOLLOWUP_KIND = "labs";
 
-// The narrow lab-reading shape the adapter reasons over — a Pick of MedicalRecord's
+// The narrow lab-reading shape the adapter reasons over — a Pick of ClinicalObservation's
 // identity/value columns, so both the source finding and the resolving candidates are
 // the same shape (a later reading of the same family). date is always present
 // (medical_records.date is NOT NULL), which is what lets candidates order.
-export interface LabFollowUpRecord {
+export interface LabFollowUpObservation {
   id: number;
   date: string;
   canonical_name: string | null;
@@ -36,7 +36,7 @@ export interface LabFollowUpRecord {
 
 // The display/grouping name of a reading: its canonical name when present, else the
 // raw name — the same identity biomarkerNameKey() uses on the SQL side.
-export function labBiomarkerName(record: LabFollowUpRecord): string {
+export function labBiomarkerName(record: LabFollowUpObservation): string {
   const canonical = record.canonical_name?.trim();
   return canonical && canonical.length > 0 ? canonical : record.name;
 }
@@ -45,19 +45,19 @@ export function labBiomarkerName(record: LabFollowUpRecord): string {
 // registered family, else its own trimmed name). Lower-cased at the comparison
 // boundary — biomarkerFamily folds case for family members but returns a non-family
 // name unchanged, so two spellings of the same singleton analyte still compare equal.
-function familyOf(record: LabFollowUpRecord): string {
+function familyOf(record: LabFollowUpObservation): string {
   return biomarkerFamily(labBiomarkerName(record)).toLowerCase();
 }
 
 // YYYY-MM of a reading date (for the compact "(2026-05)" reason tail).
-function readingMonth(record: LabFollowUpRecord): string {
+function readingMonth(record: LabFollowUpObservation): string {
   return record.date ? record.date.slice(0, 7) : "";
 }
 
 // A compact value label ("8.2%", "142 mg/dL", "Positive"). Prefers the reading's
 // value string; falls back to its numeric value. A "%"-suffixed unit attaches with no
 // space (matching how labs print), every other unit with a space.
-export function labValueLabel(record: LabFollowUpRecord): string {
+export function labValueLabel(record: LabFollowUpObservation): string {
   const raw = record.value?.trim();
   const v =
     raw && raw.length > 0
@@ -74,7 +74,7 @@ export function labValueLabel(record: LabFollowUpRecord): string {
 // A short human label for the source flagged finding, for the "for the …" reason line
 // ("flagged 8.2% (2026-05)"). Names the FLAGGED value + the reading month, so a serial
 // view reads unambiguously and the follow-up says WHY it exists.
-export function labsSourceLabel(record: LabFollowUpRecord): string {
+export function labsSourceLabel(record: LabFollowUpObservation): string {
   const value = labValueLabel(record) || labBiomarkerName(record);
   const month = readingMonth(record);
   return month ? `flagged ${value} (${month})` : `flagged ${value}`;
@@ -82,7 +82,7 @@ export function labsSourceLabel(record: LabFollowUpRecord): string {
 
 // The default follow-up title for a flagged lab source ("Recheck Hemoglobin A1c",
 // "Recheck LDL Cholesterol"). The biomarker name is the noun; "Recheck" is the verb.
-export function labsFollowUpTitle(record: LabFollowUpRecord): string {
+export function labsFollowUpTitle(record: LabFollowUpObservation): string {
   return `Recheck ${labBiomarkerName(record)}`;
 }
 
@@ -92,8 +92,8 @@ export function labsFollowUpTitle(record: LabFollowUpRecord): string {
 // and never over-collapsing distinct assays/fractions (biomarkerFamily's exclusion
 // discipline).
 export function sameBiomarkerFamily(
-  a: LabFollowUpRecord,
-  b: LabFollowUpRecord
+  a: LabFollowUpObservation,
+  b: LabFollowUpObservation
 ): boolean {
   return familyOf(a) === familyOf(b);
 }
@@ -104,12 +104,12 @@ export function sameBiomarkerFamily(
 // qualifying reading wins (the actual repeat-draw result). Confirm-first: returning a
 // candidate only OFFERS the resolution; the user records resolved/stable/changed.
 export function findResolvingLabResult(
-  source: LabFollowUpRecord,
+  source: LabFollowUpObservation,
   _followUp: FollowUpItemLike,
-  candidates: readonly LabFollowUpRecord[]
-): LabFollowUpRecord | null {
+  candidates: readonly LabFollowUpObservation[]
+): LabFollowUpObservation | null {
   if (!source.date) return null; // an undated source can't order candidates
-  let best: LabFollowUpRecord | null = null;
+  let best: LabFollowUpObservation | null = null;
   for (const c of candidates) {
     if (c.id === source.id) continue;
     if (!c.date || c.date <= source.date) continue;
@@ -121,7 +121,7 @@ export function findResolvingLabResult(
 }
 
 // A compact label for a resolving candidate, for the offer copy ("5.4% · 2026-08").
-export function labsResolvingLabel(record: LabFollowUpRecord): string {
+export function labsResolvingLabel(record: LabFollowUpObservation): string {
   const value = labValueLabel(record) || labBiomarkerName(record);
   const month = readingMonth(record);
   return month ? `${value} · ${month}` : value;
@@ -130,8 +130,8 @@ export function labsResolvingLabel(record: LabFollowUpRecord): string {
 // The labs adapter instance the builder consumes. One object satisfying the generic
 // FollowUpAdapter<Source, Candidate> contract — the same seam the imaging adapter fills.
 export const labsFollowUpAdapter: FollowUpAdapter<
-  LabFollowUpRecord,
-  LabFollowUpRecord
+  LabFollowUpObservation,
+  LabFollowUpObservation
 > = {
   kind: LABS_FOLLOWUP_KIND,
   describeSource: labsSourceLabel,

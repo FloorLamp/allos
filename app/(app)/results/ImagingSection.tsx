@@ -5,7 +5,7 @@ import {
   createVisitOffers,
 } from "@/lib/queries";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
-import { getUserAge } from "@/lib/settings";
+import { getProfileAge } from "@/lib/settings";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import { today } from "@/lib/db";
@@ -46,7 +46,7 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
     studies.filter((s) => s.profileId === profileId),
     today(profileId)
   );
-  const age = getUserAge(profileId);
+  const age = getProfileAge(profileId);
   const pediatric = age !== null && age < 18;
   // "Create a visit from this record?" (#1099): a study dated D with no encounter that
   // day.

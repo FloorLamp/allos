@@ -30,7 +30,7 @@ import { settledClick, settledPickOption } from "./helpers";
 
 // A seeded biomarker WITH readings that the seed does not star.
 const ANALYTE = "HDL Cholesterol";
-const DETAIL_URL = `/biomarkers/view?name=${encodeURIComponent(ANALYTE)}`;
+const DETAIL_URL = `/results/readings/view?name=${encodeURIComponent(ANALYTE)}`;
 
 // A tile's controls live in its corner ⋯ menu since #1485 B, and the panel is
 // PORTALED to <body> — so it is located on the page, never inside the card.

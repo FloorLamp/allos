@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { goalBarClass } from "@/lib/goals";
+import { goalBarClass } from "@/lib/outcome-goals";
 import type { AppRoute } from "@/lib/hrefs";
 
 // A labelled stat box used in the Cardio/Sport/Exercise detail panels: an

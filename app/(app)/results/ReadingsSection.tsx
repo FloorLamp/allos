@@ -6,45 +6,45 @@ import { type ProfileScope } from "@/lib/scope";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
 import BioAgeInputsCard from "./BioAgeInputsCard";
 import TrajectoryFindings from "./TrajectoryFindings";
-import BiomarkersTable from "@/components/BiomarkersTable";
+import ReadingsTable from "@/components/ReadingsTable";
 import TableSortSelect from "@/components/TableSortSelect";
 import {
   BIOMARKER_SORT_CHOICES,
   DEFAULT_BIOMARKER_SORT,
 } from "@/lib/derived-table";
-import RecordForm from "@/components/RecordForm";
+import ResultForm from "@/components/ResultForm";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
-import { addRecord } from "@/app/(app)/medical/actions";
+import { addResult } from "@/app/(app)/results/reading-actions";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { reachablePanelIds } from "@/lib/biomarker-panel-reach";
 import { PHONE_STACK } from "@/lib/phone-fold";
-import { biomarkerAddHref, dataSectionHref } from "@/lib/hrefs";
+import { readingAddHref, dataSectionHref } from "@/lib/hrefs";
 import {
   boundPanelGroups,
   defaultOpenPanels,
 } from "@/lib/biomarker-panel-groups";
 import {
-  biomarkerIndexRows,
+  readingIndexRows,
   biomarkerPanelGroups,
   isMultiView,
-  parseBiomarkerFilters,
-  type BiomarkersSearchParams,
-} from "./biomarker-index";
+  parseReadingFilters,
+  type ReadingsSearchParams,
+} from "./reading-index";
 
-export type { BiomarkersSearchParams };
+export type { ReadingsSearchParams };
 
 // Does this visit want the entry panel OPEN on arrival? Only a deliberate
 // add-a-reading deep link — the command palette's "Add result" hit and the
 // medication-monitoring "log this lab" action both carry `new=1&name=<analyte>`.
 // An ordinary read of the hub gets the collapsed affordance.
-function entryPanelOpen(searchParams: BiomarkersSearchParams): boolean {
+function entryPanelOpen(searchParams: ReadingsSearchParams): boolean {
   return searchParams.new === "1" || !!searchParams.name?.trim();
 }
 
-// The Biomarkers browser (#1042 phase 5 → #1331 multi-view). It reads the scope's
-// stored + derived readings through the shared gather (./biomarker-index), groups
+// The Readings browser (#1042 phase 5 → #1331 multi-view). It reads the scope's
+// stored + derived readings through the shared gather (./reading-index), groups
 // them into the panel index HERE on the server, and hands the client table a BOUNDED
 // payload (#1651): whole-panel header facts for every group, but readings only for
 // the groups that arrive expanded, capped. Expanding a group asks for its readings
@@ -55,17 +55,17 @@ function entryPanelOpen(searchParams: BiomarkersSearchParams): boolean {
 // targeting, and gives each member in view its own starred card. The personal "you"
 // surfaces — the add form, the bio-age hero, the trajectory rules — stay acting-scoped
 // in both, because they write to / summarize the acting profile.
-export default function BiomarkersSection({
+export default function ReadingsSection({
   scope,
   searchParams,
 }: {
   scope: ProfileScope;
-  searchParams: BiomarkersSearchParams;
+  searchParams: ReadingsSearchParams;
 }) {
-  const filters = parseBiomarkerFilters(searchParams);
+  const filters = parseReadingFilters(searchParams);
   const { category: active, panel, range, q, current } = filters;
   const multi = isMultiView(scope);
-  const rows = biomarkerIndexRows(scope, filters);
+  const rows = readingIndexRows(scope, filters);
   const groups = biomarkerPanelGroups(rows, multi);
   // Which groups start expanded is a SERVER decision (search/facet/short list), and
   // it decides the payload: an expanded group ships readings, a collapsed one ships
@@ -171,14 +171,14 @@ export default function BiomarkersSection({
                   id="add-result"
                   testId="add-result-panel"
                   panelId="add-result-panel-body"
-                  label="Add medical record"
+                  label="Add result"
                   addLabel="Add result"
                   defaultOpen={openEntryPanel}
                   presentation="modal"
                 >
-                  <RecordForm
+                  <ResultForm
                     mode="add"
-                    action={addRecord}
+                    action={addResult}
                     categories={BIOMARKER_CATEGORIES}
                     defaultDate={now}
                     defaultCategory={active ?? "lab"}
@@ -192,7 +192,7 @@ export default function BiomarkersSection({
               <EmptyState
                 message={
                   active || panel || range || q || current
-                    ? "No records match these filters."
+                    ? "No readings match these filters."
                     : multi
                       ? "No results yet for these profiles. Add one manually or import a document."
                       : "No results yet. Add one manually or import a document."
@@ -201,16 +201,16 @@ export default function BiomarkersSection({
                   active || panel || range || q || current
                     ? undefined
                     : [
-                        { href: biomarkerAddHref(), label: "Add result" },
+                        { href: readingAddHref(), label: "Add result" },
                         {
                           href: dataSectionHref("import"),
-                          label: "Import records",
+                          label: "Import documents",
                         },
                       ]
                 }
               />
             ) : (
-              <BiomarkersTable
+              <ReadingsTable
                 panelGroups={panelGroups}
                 initialOpen={initialOpen}
                 now={now}

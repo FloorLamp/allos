@@ -8,7 +8,11 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
 import { createFixtureProfile } from "../fixture-profile";
-import { getTimezone, setUserBirthdate, setUserSex } from "../../lib/settings";
+import {
+  getTimezone,
+  setProfileBirthdate,
+  setProfileSex,
+} from "../../lib/settings";
 import { reconcileFlags } from "../../lib/queries";
 import {
   E2E_LOGIN_TRENDS_CURATE,
@@ -489,8 +493,8 @@ export function seedRankedCardOrder(): void {
     db.prepare(
       `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'height_cm'`
     ).run(id);
-    setUserSex(id, "female");
-    setUserBirthdate(id, shiftDateStr(anchor, -365 * 6 - 30));
+    setProfileSex(id, "female");
+    setProfileBirthdate(id, shiftDateStr(anchor, -365 * 6 - 30));
 
     const insHeight = db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
@@ -537,8 +541,8 @@ export function seedRankedCardOrder(): void {
       `DELETE FROM medical_records WHERE profile_id = ? AND source = 'e2e:trends-rank'`
     ).run(id);
     db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(id);
-    setUserSex(id, "male");
-    setUserBirthdate(id, shiftDateStr(anchor, -365 * 41));
+    setProfileSex(id, "male");
+    setProfileBirthdate(id, shiftDateStr(anchor, -365 * 41));
 
     const insBm = db.prepare(
       `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
@@ -650,8 +654,8 @@ export function seedPinnedCardOrder(): void {
   db.prepare(
     `DELETE FROM metric_samples WHERE profile_id = ? AND source = 'e2e-pin'`
   ).run(id);
-  setUserSex(id, "female");
-  setUserBirthdate(id, shiftDateStr(anchor, -365 * 38));
+  setProfileSex(id, "female");
+  setProfileBirthdate(id, shiftDateStr(anchor, -365 * 38));
 
   const insBm = db.prepare(
     `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
@@ -687,7 +691,7 @@ export function seedDayOneAverages(): void {
   // --repeat-each starts from the same nothing.
   const id = fixtureProfileId(DAY_ONE_PROFILE);
   const anchor = today(id);
-  setUserBirthdate(id, shiftDateStr(anchor, -365 * 34));
+  setProfileBirthdate(id, shiftDateStr(anchor, -365 * 34));
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
   db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(id);
   db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(id);
@@ -707,8 +711,8 @@ export function seedBiomarkerPickerRank(): void {
   // a plain A–Z picker led with) is the LEAST relevant of the three.
   const pid = fixtureProfileId(BIOMARKER_PICKER_PROFILE);
   seedMemberLogin(E2E_LOGIN_BIOMARKER_PICKER, pid, "write");
-  setUserBirthdate(pid, "1985-04-12");
-  setUserSex(pid, "female");
+  setProfileBirthdate(pid, "1985-04-12");
+  setProfileSex(pid, "female");
   const pickerToday = today(pid);
 
   db.prepare(
@@ -780,8 +784,8 @@ export function seedMetricJudgment(): void {
   const pid = fixtureProfileId(METRIC_JUDGMENT_PROFILE);
   const pToday = today(pid);
   // ~2 years old → the 1–3 band applies on every reading date below.
-  setUserBirthdate(pid, shiftDateStr(pToday, -800));
-  setUserSex(pid, "female");
+  setProfileBirthdate(pid, shiftDateStr(pToday, -800));
+  setProfileSex(pid, "female");
 
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(pid);
   db.prepare(
@@ -840,7 +844,7 @@ export function seedMetricFold(): void {
   // its own fixture rows first.
   const pid = fixtureProfileId(METRIC_FOLD_PROFILE);
   const pToday = today(pid);
-  setUserBirthdate(pid, shiftDateStr(pToday, -365 * 40));
+  setProfileBirthdate(pid, shiftDateStr(pToday, -365 * 40));
 
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(pid);
   db.prepare(
@@ -897,7 +901,7 @@ export function seedLongRange(): void {
   // dates → never stale; read-only in its spec; idempotent (own rows cleared).
   const pid = fixtureProfileId(LONG_RANGE_PROFILE);
   const anchor = today(pid);
-  setUserBirthdate(pid, shiftDateStr(anchor, -365 * 36));
+  setProfileBirthdate(pid, shiftDateStr(anchor, -365 * 36));
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(pid);
 
   const insBm = db.prepare(
@@ -926,7 +930,7 @@ export function seedWaistCircumference(): void {
   // run's WRITE half logged).
   const pid = fixtureProfileId(WAIST_PROFILE);
   const anchor = today(pid);
-  setUserBirthdate(pid, shiftDateStr(anchor, -365 * 41));
+  setProfileBirthdate(pid, shiftDateStr(anchor, -365 * 41));
 
   db.prepare(
     `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'waist_circumference_cm'`

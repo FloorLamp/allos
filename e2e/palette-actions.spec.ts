@@ -160,7 +160,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
     // past the pre-hydration window rather than a networkidle gate.
     await addResult.click();
     await expect(page).toHaveURL(
-      /\/results\/biomarkers\?.*name=LDL(\+|%20)Cholesterol/
+      /\/results\/readings\?.*name=LDL(\+|%20)Cholesterol/
     );
 
     // The add form's Name field is prefilled with the analyte the user searched.

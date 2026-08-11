@@ -12,7 +12,7 @@ import { workerDbPath } from "./worker-env";
 // The finding follow-up loop — FLAGGED LABS adapter (#700): a flagged biomarker →
 // a tracked, LEGIBLE "Recheck …" follow-up on Upcoming → a resolution OFFER when a
 // later same-family reading lands → close the loop. Drives the real UI end-to-end
-// across /biomarkers/view + /upcoming, the labs sibling of e2e/followup.spec.ts.
+// across /results/readings/view + /upcoming, the labs sibling of e2e/followup.spec.ts.
 //
 // Fixture discipline (#868): the dedicated FLAGGED_LAB_PROFILE (seed-events) owns ONE
 // flagged A1c; a raw-connection cleanup in beforeAll AND afterAll deletes the spec's
@@ -93,7 +93,7 @@ test.describe("Finding follow-up loop — flagged labs (#700)", () => {
     });
     try {
       // 1) The flagged biomarker's detail page offers to track a follow-up.
-      await page.goto(`/biomarkers/view?name=${encodeURIComponent(A1C)}`);
+      await page.goto(`/results/readings/view?name=${encodeURIComponent(A1C)}`);
       const trackForm = page.getByTestId("track-lab-followup");
       await expect(trackForm).toBeVisible({ timeout: WAIT });
 
@@ -140,7 +140,7 @@ test.describe("Finding follow-up loop — flagged labs (#700)", () => {
       ).toHaveCount(0, { timeout: WAIT });
 
       // 6) The biomarker detail page now shows the recorded resolution.
-      await page.goto(`/biomarkers/view?name=${encodeURIComponent(A1C)}`);
+      await page.goto(`/results/readings/view?name=${encodeURIComponent(A1C)}`);
       await expect(page.getByTestId("lab-followup-state")).toContainText(
         /Follow-up: resolved · stable/,
         { timeout: WAIT }

@@ -47,7 +47,7 @@ test.afterAll(() => resetEgfrTrajectoryDismissal());
 test("Results → Biomarkers shows a trajectory finding for the seeded eGFR decline (#41)", async ({
   page,
 }) => {
-  await page.goto("/results/biomarkers");
+  await page.goto("/results/readings");
 
   const card = page.getByTestId("trajectory-findings");
   await expect(card).toBeVisible();
@@ -81,7 +81,7 @@ test("Results → Biomarkers shows a trajectory finding for the seeded eGFR decl
 test("dismissing a trajectory finding silences the analyte's trajectory watch (#41/#564)", async ({
   page,
 }) => {
-  await page.goto("/results/biomarkers");
+  await page.goto("/results/readings");
 
   // Inside the #1499 rollup the dismiss is still ITEM-wise: the velocity row keeps
   // its own form, posting the same analyte acknowledgment it always did.

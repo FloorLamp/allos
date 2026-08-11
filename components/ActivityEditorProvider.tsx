@@ -36,7 +36,7 @@ import type { PracticeType } from "@/lib/protocol-practice";
 const JOURNAL_ROUTE = "/training";
 
 interface ActivityEditorApi {
-  openCreate: (prefill?: { type?: PracticeType }) => void;
+  openCreate: (prefill?: { type?: PracticeType; date?: string }) => void;
   // Start a LIVE workout (issue #340): opens a fresh create form (date=today,
   // start=now) in the in-gym layout — the rest timer + set check-off flow. A
   // no-op for an age-restricted profile (strength is gated, #489); gate the
@@ -176,6 +176,7 @@ export default function ActivityEditorProvider({
   // Repeat-last prefill: seeds a create form. Bumped `repeatNonce` forces a fresh
   // remount so tapping "Log again" twice on the same source re-seeds cleanly.
   const [prefill, setPrefill] = useState<ActivityEditData | null>(null);
+  const [createDate, setCreateDate] = useState<string | null>(null);
   const [repeatNonce, setRepeatNonce] = useState(0);
   const [dockEl, setDockEl] = useState<HTMLElement | null>(null);
   // Whether the currently-open editor should render into the dock. Captured
@@ -253,6 +254,7 @@ export default function ActivityEditorProvider({
     () => ({
       openCreate: (createPrefill) => {
         setEditData(null);
+        setCreateDate(createPrefill?.date ?? null);
         setPrefill(
           createPrefill?.type
             ? buildActivityTypePrefill(createPrefill.type, todayStr(tz))
@@ -261,7 +263,8 @@ export default function ActivityEditorProvider({
         setLive(false);
         setLiveStartEpoch(null);
         setMinimized(false);
-        if (createPrefill?.type) setRepeatNonce((n) => n + 1);
+        if (createPrefill?.type || createPrefill?.date)
+          setRepeatNonce((n) => n + 1);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
@@ -276,6 +279,7 @@ export default function ActivityEditorProvider({
           return;
         }
         setEditData(null);
+        setCreateDate(null);
         setPrefill(null);
         setLive(true);
         setLiveStartEpoch(Date.now());
@@ -298,6 +302,7 @@ export default function ActivityEditorProvider({
           return;
         }
         setEditData(null);
+        setCreateDate(null);
         setPrefill(prefillData);
         setLive(true);
         setLiveStartEpoch(Date.now());
@@ -309,6 +314,7 @@ export default function ActivityEditorProvider({
       },
       openEdit: (data) => {
         setEditData(data);
+        setCreateDate(null);
         setPrefill(null);
         setLive(false);
         setLiveStartEpoch(null);
@@ -318,6 +324,7 @@ export default function ActivityEditorProvider({
       },
       openRepeat: (data) => {
         setEditData(null);
+        setCreateDate(null);
         setPrefill(buildRepeatPrefill(data, todayStr(tz)));
         setLive(false);
         setLiveStartEpoch(null);
@@ -329,6 +336,7 @@ export default function ActivityEditorProvider({
       openRepeatLast: () => {
         if (!lastActivity) return;
         setEditData(null);
+        setCreateDate(null);
         setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
         setLive(false);
         setLiveStartEpoch(null);
@@ -402,7 +410,9 @@ export default function ActivityEditorProvider({
       ? `repeat-${repeatNonce}`
       : live
         ? "live"
-        : "create";
+        : createDate
+          ? `create-${repeatNonce}`
+          : "create";
 
   return (
     <Ctx.Provider value={api}>
@@ -420,6 +430,7 @@ export default function ActivityEditorProvider({
               bodyweightKg={bodyweightKg}
               editData={editData}
               prefill={prefill}
+              initialDate={createDate ?? undefined}
               live={live}
               deloadContext={deloadContext}
               recoveringContext={recoveringContext}
@@ -439,6 +450,7 @@ export default function ActivityEditorProvider({
             bodyweightKg={bodyweightKg}
             editData={editData}
             prefill={prefill}
+            initialDate={createDate ?? undefined}
             live={live}
             deloadContext={deloadContext}
             recoveringContext={recoveringContext}

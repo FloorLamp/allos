@@ -24,16 +24,16 @@ import {
   getActivities,
   getAllergies,
   getConditions,
-  getGoals,
-  getMedicalRecords,
+  getOutcomeGoals,
+  getClinicalObservations,
   getSupplements,
   getIngestibleSafetyContext,
 } from "./queries";
 import { biomarkerFamily } from "./canonical-name";
-import { isGoalLive } from "./goals";
+import { isGoalLive } from "./outcome-goals";
 import type {
   FoodTiming,
-  MedicalRecord,
+  ClinicalObservation,
   SupplementCondition,
   IntakeObligation,
 } from "./types";
@@ -48,7 +48,7 @@ import {
   screenSuggestionSafety,
   type SafetyContext,
 } from "./supplement-safety";
-import { getAiPrefs, getUserSex, getUserAge } from "./settings";
+import { getAiPrefs, getProfileSex, getProfileAge } from "./settings";
 import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
@@ -158,7 +158,7 @@ const TOOL: Anthropic.Tool = {
 // lab set (used by the auto-trigger to scope to just-changed biomarkers).
 function buildContext(
   profileId: number,
-  opts: { feedback?: string; records?: MedicalRecord[] }
+  opts: { feedback?: string; records?: ClinicalObservation[] }
 ): {
   text: string;
   lowLabNames: string[];
@@ -166,10 +166,10 @@ function buildContext(
 } {
   const oorLabs =
     opts.records ??
-    getMedicalRecords(profileId, { range: "nonoptimal" }).slice(0, 30);
-  const recentLabs = getMedicalRecords(profileId).slice(0, 12);
+    getClinicalObservations(profileId, { range: "nonoptimal" }).slice(0, 30);
+  const recentLabs = getClinicalObservations(profileId).slice(0, 12);
   const supplements = getSupplements(profileId).filter((s) => s.active);
-  const goals = getGoals(profileId).filter((g) => isGoalLive(g));
+  const goals = getOutcomeGoals(profileId).filter((g) => isGoalLive(g));
   const activities = getActivities(profileId, 10);
 
   // Safety context (issue #413): allergies, active conditions, sex/age, and the
@@ -189,8 +189,8 @@ function buildContext(
   const conditions = getConditions(profileId, { status: "active" });
   const meds = supplements.filter((s) => s.kind === "medication");
   const plainSupps = supplements.filter((s) => s.kind !== "medication");
-  const sex = getUserSex(profileId);
-  const age = getUserAge(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAge(profileId);
 
   // Out-of-range LOW labs anchor the "must" (deficiency) safeguard below.
   const lowLabNames = oorLabs
@@ -593,11 +593,11 @@ export async function autoSuggestFromBiomarkers(
     .prepare(
       `SELECT * FROM medical_records WHERE profile_id = ? AND id IN (${placeholders})`
     )
-    .all(profileId, ...recordIds) as MedicalRecord[];
+    .all(profileId, ...recordIds) as ClinicalObservation[];
 
   // "Flagged" here means clinically out-of-range OR merely non-optimal — a
   // relevant reading either way (broader than the shared isOutOfRange predicate).
-  const isFlagged = (r: MedicalRecord) =>
+  const isFlagged = (r: ClinicalObservation) =>
     isOutOfRange(r.flag) || isNonOptimal(r.flag);
 
   // "New" = this biomarker FAMILY has only one reading total (this one). Count by

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 // Bare `/results` → the first tab (#1079), forwarding any query so an old
-// `/results?q=…` deep link keeps its Biomarkers filter. Keeping a real page here
+// `/results?q=…` deep link keeps its Readings filter. Keeping a real page here
 // (rather than a next.config redirect) keeps `/results` a valid typedRoute so the
 // top-level nav href stays #285-checked.
 export default async function ResultsPage(props: {
@@ -16,5 +16,5 @@ export default async function ResultsPage(props: {
     else if (v != null) qs.set(k, v);
   }
   const q = qs.toString();
-  redirect(q ? `/results/biomarkers?${q}` : "/results/biomarkers");
+  redirect(q ? `/results/readings?${q}` : "/results/readings");
 }

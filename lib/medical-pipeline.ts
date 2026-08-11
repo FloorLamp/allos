@@ -3,8 +3,8 @@
 // ingest + dedup, AI/health-record extraction dispatch, the reprocess core, and
 // the read-only reprocess preview/cost. Split out of the medical actions file so
 // the pipeline is reachable from the DB test tier (the actions there are thin
-// auth-and-revalidate wrappers over these functions). Record CRUD (addRecord/
-// updateRecord/deleteRecord) stays in app/(app)/medical/actions.ts; the
+// auth-and-revalidate wrappers over these functions). Record CRUD (addResult/
+// updateResult/deleteResult) stays in app/(app)/medical/actions.ts; the
 // reassign/delete actions stay in document-actions.ts because they are already
 // thin and auth-shaped. (The extraction-status snapshot the toaster polls is no
 // longer an action at all — it is app/api/jobs/extractions, see #1878.)

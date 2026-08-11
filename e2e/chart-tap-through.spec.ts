@@ -240,7 +240,7 @@ test.describe("chart tap-through (#1488)", () => {
 
     // The routing half of the same change: a resting heart rate is a CONTINUOUS
     // reading now, so the reading detail page sends it to the surface that charts it.
-    await page.goto("/biomarkers/view?name=Resting+Heart+Rate");
+    await page.goto("/results/readings/view?name=Resting+Heart+Rate");
     await expect(page).toHaveURL(/\/trends\/metric\/resting-hr$/);
 
     const table = page.getByTestId("metric-readings-table");

@@ -12,7 +12,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { getTimelineEvents } from "@/lib/timeline";
-import { getMedicalRecords } from "@/lib/queries";
+import { getClinicalObservations } from "@/lib/queries";
 import {
   BIOMARKER_PANELS,
   OTHER_PANEL,
@@ -148,7 +148,9 @@ describe("Timeline medical events title by resolved panel", () => {
 
 describe("the biomarkers facet filters by resolved panel", () => {
   it("`?panel=lipids` returns the lipid analytes regardless of the vendor heading", () => {
-    const rows = getMedicalRecords(subject.profileId, { panel: "lipids" });
+    const rows = getClinicalObservations(subject.profileId, {
+      panel: "lipids",
+    });
     expect(rows.map((r) => r.canonical_name).sort()).toEqual([
       "HDL Cholesterol",
       "LDL Cholesterol",
@@ -157,7 +159,7 @@ describe("the biomarkers facet filters by resolved panel", () => {
   });
 
   it("`?panel=other` is the unclassified view, not a vendor bucket", () => {
-    const rows = getMedicalRecords(subject.profileId, { panel: "other" });
+    const rows = getClinicalObservations(subject.profileId, { panel: "other" });
     expect(rows.map((r) => r.name)).toContain("Zorblax Index");
     expect(rows.map((r) => r.name)).not.toContain("LDL Cholesterol");
   });
@@ -165,7 +167,7 @@ describe("the biomarkers facet filters by resolved panel", () => {
   it("the SQL preimage agrees with the JS resolver on the seeded rows", () => {
     for (const [name] of DRAW) {
       const panel = panelForCanonicalName(name);
-      const rows = getMedicalRecords(subject.profileId, { panel });
+      const rows = getClinicalObservations(subject.profileId, { panel });
       expect(
         rows.some((r) => r.canonical_name === name),
         `${name} missing from its own panel (${panel})`
@@ -174,7 +176,7 @@ describe("the biomarkers facet filters by resolved panel", () => {
   });
 
   it("sorting by panel orders by the curated clinical order, `other` last", () => {
-    const rows = getMedicalRecords(subject.profileId, {
+    const rows = getClinicalObservations(subject.profileId, {
       sort: "panel",
       dir: "asc",
     });
@@ -244,7 +246,7 @@ describe("a match-only family spelling files under its family's panel (#1629)", 
   });
 
   it("`?panel=glycemic` returns BOTH spellings of the family", () => {
-    const names = getMedicalRecords(drifter.profileId, {
+    const names = getClinicalObservations(drifter.profileId, {
       panel: "glycemic",
     }).map((r) => r.name);
     expect(names).toContain("Hemoglobin A1c");
@@ -252,7 +254,7 @@ describe("a match-only family spelling files under its family's panel (#1629)", 
   });
 
   it("`?panel=other` no longer strands it away from its siblings", () => {
-    const rows = getMedicalRecords(drifter.profileId, { panel: "other" });
+    const rows = getClinicalObservations(drifter.profileId, { panel: "other" });
     expect(rows.map((r) => r.name)).not.toContain(MATCH_ONLY);
   });
 

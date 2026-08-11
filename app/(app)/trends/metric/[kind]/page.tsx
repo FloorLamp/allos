@@ -5,8 +5,8 @@ import { today } from "@/lib/db";
 import {
   getDisplayFormatPrefs,
   getUnitPrefs,
-  getUserAge,
-  getUserBirthdate,
+  getProfileAge,
+  getProfileBirthdate,
   type WeightUnit,
 } from "@/lib/settings";
 import {
@@ -21,7 +21,7 @@ import {
   showBodyFat,
   showGrowthQuickAdd,
 } from "@/lib/growth-metrics";
-import { getGoals, getManualBodyMetricStatedAt } from "@/lib/queries";
+import { getOutcomeGoals, getManualBodyMetricStatedAt } from "@/lib/queries";
 import { dispWeight, round } from "@/lib/units";
 import { filterSeriesByRange } from "@/lib/trends";
 import { dayFillWindow } from "@/lib/day-fill";
@@ -31,7 +31,7 @@ import {
 } from "@/lib/trends-series";
 import { bodyMetricSeriesFold } from "@/lib/body-metric-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
-import { isGoalLive } from "@/lib/goals";
+import { isGoalLive } from "@/lib/outcome-goals";
 import {
   ALL_TIME_RANGE_PARAM,
   ALL_TIME_RANGE_VALUE,
@@ -73,7 +73,7 @@ import type { Reading } from "@/lib/reading-model";
 import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
 import { PediatricBpCard } from "@/components/PediatricBpCard";
 import { MetricJudgmentCard } from "@/components/MetricJudgmentCard";
-import type { BodyMetricKind, Goal } from "@/lib/types";
+import type { BodyMetricKind, OutcomeGoal } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
 import StarButton from "@/components/StarButton";
 import PageContainer from "@/components/PageContainer";
@@ -132,7 +132,7 @@ const MEASUREMENT_ENTRY_METRIC: Partial<
 };
 
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a
-// Trends → Body sparkline tile, mirroring the biomarker series view (/biomarkers/view)
+// Trends → Body sparkline tile, mirroring the biomarker series view (/results/readings/view)
 // that labs have always had but body metrics never did: a big chart with the shared
 // range control + med/situation annotations + a goal overlay, trailing 7/30/90-day
 // period stats, and (for a manually-enterable metric) that metric's single quick-add.
@@ -234,7 +234,7 @@ function goalOverlay(
   decimals: number,
   weightUnit: WeightUnit
 ): Pick<BodyChartSpec, "referenceValue" | "projectionNote"> {
-  const goal: Goal | undefined = getGoals(profileId).find(
+  const goal: OutcomeGoal | undefined = getOutcomeGoals(profileId).find(
     (g) =>
       g.body_metric === goalMetric && isGoalLive(g) && g.target_value != null
   );
@@ -363,11 +363,11 @@ export default async function BodyMetricDetailPage(props: {
     observations
   );
   const sourceComparisonKey = SOURCE_COMPARISON_KEY[kind];
-  const birthdate = getUserBirthdate(profile.id);
+  const birthdate = getProfileBirthdate(profile.id);
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
-  const age = getUserAge(profile.id);
+  const age = getProfileAge(profile.id);
   const entryGates = {
     showBodyFat: showBodyFat(age),
     showGrowth: showGrowthQuickAdd(age),

@@ -154,7 +154,7 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
     // independently of the browser gather, so a starred analyte still renders its tile
     // after leaving the catalog — and the tile links through `readingDetailHref`. Both
     // branches of that helper land on a page that carries a StarButton (the metric
-    // detail page for a continuous vital, `/biomarkers/view` otherwise), so the un-star
+    // detail page for a continuous vital, `/results/readings/view` otherwise), so the un-star
     // path can never be orphaned by this change. Pinned because the failure mode would
     // be a tile you cannot remove.
     for (const name of [
@@ -169,7 +169,7 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
       const href = readingDetailHref(name);
       expect(
         href.startsWith("/trends/metric/") ||
-          href.startsWith("/biomarkers/view"),
+          href.startsWith("/results/readings/view"),
         `${name} → ${href}`
       ).toBe(true);
     }

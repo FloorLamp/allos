@@ -24,7 +24,7 @@ import {
   getActiveSituations,
   getSituationEvents,
   getTimezone,
-  getUserAge,
+  getProfileAge,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
@@ -370,7 +370,7 @@ export function buildIntakeReminderForSlots(
   if (all.every((e) => e.taken || e.skipped)) return null;
   const message = withDoseCorrections(
     profileId,
-    renderMergedIntakeMessage(profileId, parts, date, getUserAge(profileId))
+    renderMergedIntakeMessage(profileId, parts, date, getProfileAge(profileId))
   );
   // RIDE-ALONG (#1505 Part 1, class 3). A reminder that is going out anyway for this
   // slot's must/should doses carries a More… row exposing the SAME slot's `may`

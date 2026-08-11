@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { recentLabHighlights, RECENT_LAB_STALE_DAYS } from "@/lib/recent-labs";
 import { shiftDateStr } from "@/lib/date";
-import type { MedicalRecord } from "@/lib/types";
+import type { ClinicalObservation } from "@/lib/types";
 
 // The dashboard's recent-labs highlight selection (issue #313): of the current
 // lab/biomarker readings, out-of-range floats to the top, then newest-first, then
@@ -9,7 +9,7 @@ import type { MedicalRecord } from "@/lib/types";
 
 type LabInput = Parameters<typeof recentLabHighlights>[0][number];
 
-function rec(over: Partial<MedicalRecord> = {}): LabInput {
+function rec(over: Partial<ClinicalObservation> = {}): LabInput {
   return {
     category: "lab",
     flag: "normal",
@@ -77,7 +77,7 @@ describe("recentLabHighlights", () => {
       rec({ name: "raw name", canonical_name: "  LDL Cholesterol  " }),
     ]);
     expect(row.name).toBe("LDL Cholesterol");
-    expect(row.href).toBe("/biomarkers/view?name=LDL%20Cholesterol");
+    expect(row.href).toBe("/results/readings/view?name=LDL%20Cholesterol");
   });
 
   it("links to the biomarkers index when there is no canonical name", () => {
@@ -85,7 +85,7 @@ describe("recentLabHighlights", () => {
       rec({ name: "Glucose", canonical_name: null }),
     ]);
     expect(row.name).toBe("Glucose");
-    expect(row.href).toBe("/results/biomarkers");
+    expect(row.href).toBe("/results/readings");
   });
 
   it("does not mutate the input array order", () => {

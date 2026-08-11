@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { FrequencyScopeKind } from "@/lib/types";
+import type { FrequencyScopeKind } from "@/lib/frequency-targets";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
 import { WeeklyTargets, type WeeklyTarget } from "@/components/WeeklyTargets";
 import SubmitButton from "@/components/SubmitButton";

@@ -19,7 +19,7 @@ import {
   getStrengthByExercise,
   getCardioByActivity,
   getWeights,
-  getGoals,
+  getOutcomeGoals,
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
@@ -262,7 +262,7 @@ export function gatherRecapInput(
     inWindow(w.date, win.prevStart, win.prevEnd)
   );
 
-  const goalsCompleted = getGoals(profileId)
+  const goalsCompleted = getOutcomeGoals(profileId)
     .filter(
       (g) =>
         g.status === "achieved" &&

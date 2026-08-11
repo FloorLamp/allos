@@ -73,7 +73,7 @@ import {
 import {
   getProfileFoodTelegram,
   getProfileSetting,
-  getUserAge,
+  getProfileAge,
   setProfileSetting,
 } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
@@ -448,7 +448,12 @@ const intakeDose: FamilyReconciler = {
     // zero-call steady state this sweep exists to hold would be gone.
     return withDoseCorrections(
       profileId,
-      renderMergedIntakeMessage(profileId, parts, date, getUserAge(profileId)),
+      renderMergedIntakeMessage(
+        profileId,
+        parts,
+        date,
+        getProfileAge(profileId)
+      ),
       {
         now: clockNow(),
         pickerAnchor: openPickerAnchor(tokens, DOSE_TIME_PREFIXES),

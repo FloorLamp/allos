@@ -1,5 +1,5 @@
 import { getImmunizations } from "@/lib/queries";
-import { getUserBirthdate, getUserFullName } from "@/lib/settings";
+import { getProfileBirthdate, getProfileFullName } from "@/lib/settings";
 import {
   buildImmunizationRecord,
   type ImmunizationRecordGroup,
@@ -25,8 +25,8 @@ export function getImmunizationRecord(
   return {
     // The full legal name when one is stored — an immunization form is matched
     // against the name on file, not a display nickname.
-    personName: getUserFullName(profileId) || fallbackName,
-    birthdate: getUserBirthdate(profileId),
+    personName: getProfileFullName(profileId) || fallbackName,
+    birthdate: getProfileBirthdate(profileId),
     groups: buildImmunizationRecord(getImmunizations(profileId)),
   };
 }

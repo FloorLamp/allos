@@ -5,7 +5,7 @@ import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
 // #1076: the import router honors the canonical dataset's category. When an
 // extracted reading resolves to a name in the controlled vocabulary, that entry's
 // category WINS over the model's guess — so a re-homed analyte reaches its own
-// surface, not /results/biomarkers. A name outside the vocabulary keeps the model's
+// surface, not /results/readings. A name outside the vocabulary keeps the model's
 // category. These are pure (no DB): normalizeResults over a synthetic tool payload.
 
 function one(result: Record<string, unknown>) {

@@ -103,6 +103,7 @@ export default function ActivityForm({
   bodyweightKg,
   editData,
   prefill = null,
+  initialDate,
   live = false,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
@@ -125,6 +126,9 @@ export default function ActivityForm({
   // treats it as a CREATE — saves insert a new activity, and the prefilled
   // content auto-saves on open. Ignored when editData is present.
   prefill?: ActivityEditData | null;
+  // Date-only create seed from a day-history link. Kept separate from a repeat
+  // prefill so choosing a day never fabricates an activity type or title.
+  initialDate?: string;
   // Live workout mode (issue #340): opens the create form in the in-gym layout —
   // a control strip with the rest timer + Finish above the normal form. Purely a
   // presentation flag over the same form state (no second engine); "Finish"
@@ -233,7 +237,9 @@ export default function ActivityForm({
 
   // Lazy initializers: the fallbacks format dates, no need to redo that work on
   // every render just to discard it.
-  const [date, setDate] = useState(() => seed?.date ?? todayStr(tz));
+  const [date, setDate] = useState(
+    () => seed?.date ?? initialDate ?? todayStr(tz)
+  );
   const [startTime, setStartTime] = useState(() =>
     editData ? (editData.start_time ?? "") : nowHHMM(tz)
   );

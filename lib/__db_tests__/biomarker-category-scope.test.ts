@@ -19,7 +19,10 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("@/lib/auth", async () => vi.importActual("@/lib/auth"));
 
 import { db, today } from "@/lib/db";
-import { getCurrentFlaggedBiomarkers, getMedicalRecords } from "@/lib/queries";
+import {
+  getCurrentFlaggedBiomarkers,
+  getClinicalObservations,
+} from "@/lib/queries";
 import {
   getNewlyFlaggedBiomarkers,
   digestSince,
@@ -33,9 +36,9 @@ import { METRIC_DOCUMENT_REACH } from "@/lib/body-metric-analytes";
 import { METRIC_READING_STORE } from "@/lib/metric-readings";
 import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
 import {
-  biomarkerIndexRows,
-  parseBiomarkerFilters,
-} from "@/app/(app)/results/biomarker-index";
+  readingIndexRows,
+  parseReadingFilters,
+} from "@/app/(app)/results/reading-index";
 
 function createProfile(name: string): number {
   return Number(
@@ -44,7 +47,7 @@ function createProfile(name: string): number {
   );
 }
 
-// A single-profile scope, hand-built: biomarkerIndexRows takes an ALREADY-resolved
+// A single-profile scope, hand-built: readingIndexRows takes an ALREADY-resolved
 // scope and reads only the acting profile + the view set, so no login/grant fixture
 // is needed to exercise the gather.
 function singleScope(profileId: number): ProfileScope {
@@ -231,7 +234,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
 
   it("the biomarker browser excludes the re-homed classes with a home (instruments/derived/reference)", () => {
     const pid = seedMixedProfile();
-    const rows = getMedicalRecords(pid, {
+    const rows = getClinicalObservations(pid, {
       excludeCategories: [...NON_BIOMARKER_CATEGORIES],
     }).map((r) => r.name);
     expect(rows).toContain("LDL Cholesterol");
@@ -254,10 +257,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     // duplicating what /trends/metric/<slug> already charts, and stays the home of the
     // domain vitals that have no chart at all.
     const pid = seedMixedProfile();
-    const names = biomarkerIndexRows(
-      singleScope(pid),
-      parseBiomarkerFilters({})
-    )
+    const names = readingIndexRows(singleScope(pid), parseReadingFilters({}))
       .map((r) => r.canonical_name ?? r.name)
       .filter((n): n is string => n !== null);
     // Gone: each is a BodyMetricSlug quantity with its own chart.
@@ -309,7 +309,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
 
   it("the lab-only TRAJECTORY exclusion (Trends → Biomarkers) drops vitals too", () => {
     const pid = seedMixedProfile();
-    const rows = getMedicalRecords(pid, {
+    const rows = getClinicalObservations(pid, {
       excludeCategories: [...NON_BIOMARKER_CATEGORIES, "vitals"],
     }).map((r) => r.name);
     expect(rows).toContain("LDL Cholesterol");
@@ -327,7 +327,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
   it("recent-labs highlights only the lab", () => {
     const pid = seedMixedProfile();
     const rows = recentLabHighlights(
-      getMedicalRecords(pid, { current: true })
+      getClinicalObservations(pid, { current: true })
     ).map((r) => r.name);
     expect(rows).toEqual(["LDL Cholesterol"]);
   });

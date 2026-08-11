@@ -17,7 +17,7 @@ import {
 import {
   getCanonicalAutocomplete,
   getCurrentFlaggedBiomarkers,
-  getMedicalRecords,
+  getClinicalObservations,
 } from "./medical";
 import { getDerivedCanonicalNames } from "./derived";
 import { getSavedItems } from "./saved";
@@ -50,7 +50,7 @@ export function getRankedBiomarkerOptions(
     PHENOAGE_INPUT_ACCEPTED_NAMES.map(biomarkerRankKey)
   );
 
-  const latest = getMedicalRecords(profileId, { current: true });
+  const latest = getClinicalObservations(profileId, { current: true });
   const measuredFamilies = new Set(
     latest.map((row) => familyKey(row.canonical_name?.trim() || row.name))
   );

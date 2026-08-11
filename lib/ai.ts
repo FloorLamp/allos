@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import {
   getActivitiesByDate,
-  getGoals,
+  getOutcomeGoals,
   getIntakeLogsForDate,
   getSupplements,
   getStrengthByExercise,
@@ -15,7 +15,7 @@ import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { recentPRs, recentCardioPRs } from "./coaching";
-import { isGoalLive } from "./goals";
+import { isGoalLive } from "./outcome-goals";
 import {
   prToFinding,
   cardioPrToFinding,
@@ -26,7 +26,7 @@ import {
 import { buildDigestSeries } from "./trends-series";
 import { summarizeTrends } from "./trends-digest";
 import { isTrainingRestricted } from "./age-gate";
-import { getUnitPrefs, getUserSex, getUserAge } from "./settings";
+import { getUnitPrefs, getProfileSex, getProfileAge } from "./settings";
 import { quickRanges } from "./timeline-format";
 import {
   composeOfflineNarrative,
@@ -107,7 +107,9 @@ function gatherInsightContext(
     date
   ).flatMap((g) => g.items);
 
-  const goalCount = getGoals(profileId).filter((g) => isGoalLive(g)).length;
+  const goalCount = getOutcomeGoals(profileId).filter((g) =>
+    isGoalLive(g)
+  ).length;
 
   // Clinical/demographic context (issue #415): active conditions, active intake
   // (kind-labelled so the model tells a medication from a supplement), and profile
@@ -131,8 +133,8 @@ function gatherInsightContext(
     upcoming,
     goalCount,
     profile: {
-      sex: getUserSex(profileId),
-      age: getUserAge(profileId),
+      sex: getProfileSex(profileId),
+      age: getProfileAge(profileId),
       conditions,
       intake,
     },

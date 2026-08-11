@@ -8,9 +8,9 @@ import { sriPresentation } from "@/lib/sleep-regularity";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
-  getUserSex,
-  getUserBirthdate,
-  getUserAge,
+  getProfileSex,
+  getProfileBirthdate,
+  getProfileAge,
   getHomeLocation,
   getTimezone,
 } from "@/lib/settings";
@@ -40,7 +40,7 @@ import {
   getHrDailySummary,
   getLatestHrDay,
   getHrMinutes,
-  getGoals,
+  getOutcomeGoals,
   getMoodLogs,
   buildTrendsSubjectContext,
   getBodyCardPins,
@@ -83,7 +83,7 @@ import {
 } from "@/lib/vitals-day";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { formatLongDate, formatClockMinutes } from "@/lib/format-date";
-import { isGoalLive } from "@/lib/goals";
+import { isGoalLive } from "@/lib/outcome-goals";
 import { isIntradayRange, type DateRange } from "@/lib/timeline-format";
 import {
   GROWTH_TRENDS_HREF,
@@ -92,7 +92,11 @@ import {
   timelineDayHref,
   type AppRoute,
 } from "@/lib/hrefs";
-import type { BodyMetricKind, Goal, MedicalRecord } from "@/lib/types";
+import type {
+  BodyMetricKind,
+  OutcomeGoal,
+  ClinicalObservation,
+} from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import ChartCard, { CHART_PLOT_FILL } from "@/components/ChartCard";
@@ -155,7 +159,7 @@ type Point = { date: string; value: number };
 
 // medical_records vitals (BP / SpO2 / respiratory rate / temperature) — one value
 // per reading, mapped to the {date,value} the chart takes.
-function vitalPoints(rows: MedicalRecord[], decimals = 0): Point[] {
+function vitalPoints(rows: ClinicalObservation[], decimals = 0): Point[] {
   return rows
     .filter((r) => r.value_num != null)
     .map((r) => ({
@@ -322,8 +326,8 @@ export default async function BodySection({
   // and ⋯-menu arrows write — and the ranker sequences everything unpinned. There is
   // no second arrangement store; #1490's writerless `trends_card_order` key retired
   // with this change.
-  const ageYears = getUserAge(profile.id);
-  const birthdate = getUserBirthdate(profile.id);
+  const ageYears = getProfileAge(profile.id);
+  const birthdate = getProfileBirthdate(profile.id);
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
@@ -380,9 +384,9 @@ export default async function BodySection({
   // the target line and extrapolate the windowed trend to it. Weight targets are
   // stored canonically (kg) → convert to the display unit so the line and the
   // projection math share the chart's unit. First active, non-archived goal per
-  // metric wins (getGoals returns active-first).
-  const goals = getGoals(profile.id);
-  const goalFor = (metric: BodyMetricKind): Goal | undefined =>
+  // metric wins (getOutcomeGoals returns active-first).
+  const goals = getOutcomeGoals(profile.id);
+  const goalFor = (metric: BodyMetricKind): OutcomeGoal | undefined =>
     goals.find(
       (g) => g.body_metric === metric && isGoalLive(g) && g.target_value != null
     );
@@ -869,8 +873,8 @@ export default async function BodySection({
   // (ALL_ROWS) — the default 180-row cap silently started the percentile track ~6
   // months ago on a daily-synced child (#399). weightSeries already uses ALL_ROWS.
   const growthPresentation = buildGrowthTrendPresentation({
-    sex: getUserSex(profile.id),
-    birthdate: getUserBirthdate(profile.id),
+    sex: getProfileSex(profile.id),
+    birthdate: getProfileBirthdate(profile.id),
     today: todayStr,
     heights: getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map(
       (r) => ({ date: r.date, value: r.value })

@@ -19,7 +19,7 @@ import { exerciseSessionCount } from "../exercise-familiarity";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
 import { gatherCoachingInput, getActivitiesByDate } from "../queries";
-import { frequencyScopeLabel } from "../goals";
+import { frequencyScopeLabel } from "../frequency-targets";
 import {
   effortClass,
   workoutDeferralDecision,

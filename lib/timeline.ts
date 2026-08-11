@@ -23,7 +23,7 @@ import {
   countTone,
   dateFromCreatedAt,
   medicalGroupLabel,
-  medicalRecordHref,
+  clinicalObservationHref,
   parseDetailItems,
   protocolTimelineEvents,
   sortTimelineEvents,
@@ -460,7 +460,7 @@ function collectEvents(
         title: `${medicalGroupLabel(m.panel_id, m.panel_fallback)} results`,
         subtitle: `${m.count} result${m.count === 1 ? "" : "s"}${abnormal ? `, ${abnormal} out of range` : nonoptimal ? `, ${nonoptimal} non-optimal` : ""}`,
         detail: compactList(names, 5),
-        href: medicalRecordHref(m.document_id, names, m.first_name),
+        href: clinicalObservationHref(m.document_id, names, m.first_name),
         tone: countTone(abnormal, nonoptimal),
         detailItems: parseDetailItems(m.result_details),
         meta: m.document_id

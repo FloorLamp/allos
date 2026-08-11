@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
-import { setUserSex } from "@/lib/settings/profile-attrs";
+import { setProfileSex } from "@/lib/settings/profile-attrs";
 import { getNutritionDay } from "@/lib/queries";
 import { nutritionShortfalls } from "@/lib/nutrition-day";
 import { gatherDigestNutrition } from "@/lib/notifications/digest-data";
@@ -22,7 +22,7 @@ function newProfile(name: string): number {
       .lastInsertRowid
   );
   setTimezone(id, "UTC");
-  setUserSex(id, "male"); // fibre DRI adequate intake 38 g/day
+  setProfileSex(id, "male"); // fibre DRI adequate intake 38 g/day
   return id;
 }
 

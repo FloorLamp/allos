@@ -4,8 +4,8 @@ import {
   getCyclingOverviewData,
   getExerciseComparison,
   getExerciseLoadContexts,
-  getGoalProgressMap,
-  getGoals,
+  getOutcomeGoalProgressMap,
+  getOutcomeGoals,
   getLatestBodyMetric,
   getRecentByExercise,
   getSportByActivity,
@@ -28,7 +28,7 @@ import { chartSeries } from "@/lib/chart-colors";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
-  getUserSex,
+  getProfileSex,
 } from "@/lib/settings";
 import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
@@ -107,11 +107,11 @@ export default async function AnalyzeSection({
   const sports = getSportByActivity(profile.id, formatPrefs);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const recentByExercise = getRecentByExercise(profile.id, wu, formatPrefs);
-  const goals = getGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id);
   const goalProgress = Object.fromEntries(
-    getGoalProgressMap(profile.id, goals)
+    getOutcomeGoalProgressMap(profile.id, goals)
   );
-  const sex = getUserSex(profile.id);
+  const sex = getProfileSex(profile.id);
 
   if (strength.length === 0 && cardio.length === 0 && sports.length === 0) {
     return (
@@ -621,7 +621,7 @@ function strengthView({
   units: ReturnType<typeof getUnitPrefs>;
   bodyweightKg: number | null;
   recentByExercise: ReturnType<typeof getRecentByExercise>;
-  goals: ReturnType<typeof getGoals>;
+  goals: ReturnType<typeof getOutcomeGoals>;
   goalProgress: Record<number, GoalProgress>;
   sex: Sex | null;
 }): AnalyzeView {

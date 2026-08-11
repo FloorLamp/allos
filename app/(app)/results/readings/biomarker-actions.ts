@@ -33,7 +33,7 @@ export async function trackLabFollowUp(
   );
   if (res.kind === "invalid") return formError("Couldn't find that reading.");
   revalidateRoute("/results");
-  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/results/readings/view", "page");
   revalidateRoute("/upcoming");
   revalidateRoute("/records");
   revalidateRoute("/");
@@ -64,7 +64,7 @@ export async function trackIopFollowUp(
   );
   if (res.kind === "invalid") return formError("Couldn't find that reading.");
   revalidateRoute("/results");
-  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/results/readings/view", "page");
   revalidateRoute("/upcoming");
   revalidateRoute("/records");
   revalidateRoute("/");

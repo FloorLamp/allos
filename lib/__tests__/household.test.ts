@@ -5,16 +5,17 @@ import {
   supplementAdherenceToday,
   weightTrend,
 } from "@/lib/household";
-import type { Goal, Supplement } from "@/lib/types";
+import type { OutcomeGoal, Supplement } from "@/lib/types";
 import type { UpcomingItem } from "@/lib/upcoming";
 
-// Minimal Goal factory (freeform by default), matching goals.test.ts.
-function makeGoal(overrides: Partial<Goal> = {}): Goal {
+// Minimal outcome-goal factory (freeform by default), matching goals.test.ts.
+function makeGoal(overrides: Partial<OutcomeGoal> = {}): OutcomeGoal {
   return {
     id: 1,
     title: "Goal",
     description: null,
-    category: null,
+    kind: "freeform",
+    categoryLabel: null,
     target_value: null,
     current_value: null,
     unit: null,

@@ -19,28 +19,28 @@ import {
   RESULT_STATUS_LABELS,
   SPECIMEN_SUGGESTIONS,
 } from "@/lib/lab-result-lifecycle";
-import type { FormResult, MedicalRecord } from "@/lib/types";
+import type { FormResult, ClinicalObservation } from "@/lib/types";
 
 // Only clinical flags are user-settable; "non-optimal" is derived from the
 // canonical optimal band, so it's not offered here.
 const FLAGS = ["normal", "high", "low", "abnormal"] as const;
 
-// The shared medical-record form, for both the add slot (Biomarkers page) and the
-// inline row editor (document view + Biomarkers rows). `mode` toggles which fields
+// The shared clinical-result form, for both the add slot (Readings page) and the
+// inline observation editor (document view + Readings rows). `mode` toggles which fields
 // show and the submit label: add mode carries the manual-entry field set (the
-// columns addRecord reads); edit mode additionally exposes panel / flag / provider
-// (the columns updateRecord writes). `action` is the server action to call —
-// addRecord or updateRecord — so the two callers stay on the same profile-scoped,
+// columns addResult reads); edit mode additionally exposes panel / flag / provider
+// (the columns updateResult writes). `action` is the server action to call —
+// addResult or updateResult — so the two callers stay on the same profile-scoped,
 // flag-reconciling write path.
 //
 // It renders a bare <form> (no card) so a table cell can host the edit variant;
 // the add caller wraps it in its own card. The canonical-name suggestions come from
 // the host page's CanonicalNamesProvider; the "Performed by" picker is the shared
 // ProviderCombobox (#1176/#1177) over the section's ProviderOptionsProvider rows.
-export default function RecordForm({
+export default function ResultForm({
   action,
   mode,
-  record,
+  observation,
   onDone,
   categories = MEDICAL_CATEGORIES,
   defaultDate,
@@ -51,15 +51,15 @@ export default function RecordForm({
   action: (formData: FormData) => Promise<FormResult>;
   mode: "add" | "edit";
   // The row being edited (edit mode). Its columns seed the field defaults.
-  record?: MedicalRecord;
+  observation?: ClinicalObservation;
   // Multi-view (#1331): the SUBJECT profile this edit targets. Posted as a hidden
-  // `profile_id` so updateRecord's gateItemProfile() writes the row's own member,
+  // `profile_id` so updateResult's gateItemProfile() writes the row's own member,
   // not the acting profile. Omitted in single view (the default) → no hidden field,
   // gateItemProfile falls back to the acting-profile gate — byte-identical.
   writeProfileId?: number;
   // Called after a successful submit — the row editor closes on it.
   onDone?: () => void;
-  // Category <select> options. Defaults to the full enum; the Biomarkers page
+  // Category <select> options. Defaults to the full enum; the Readings page
   // passes its prescription-less list so a med can't be added/relabelled there.
   categories?: readonly string[];
   // Add mode: the initial date (today in the profile's tz) and category.
@@ -74,7 +74,7 @@ export default function RecordForm({
   const closeEntryModal = useAddEntryModalClose();
   const formRef = useRef<HTMLFormElement>(null);
   const editing = mode === "edit";
-  const uid = record?.id ?? "new";
+  const uid = observation?.id ?? "new";
   const [error, setError] = useState<string | null>(null);
   // The canonical-name field is a controlled Combobox (#1177), so form.reset() can't
   // clear it — the add path resets this state explicitly on a successful save.
@@ -95,10 +95,10 @@ export default function RecordForm({
       ),
     [canonicalOptions]
   );
-  const [canonical, setCanonical] = useState(record?.canonical_name ?? "");
+  const [canonical, setCanonical] = useState(observation?.canonical_name ?? "");
   // Same controlled-Combobox treatment for the specimen picker (#1404): form.reset()
   // can't clear a controlled input, so the add path clears it explicitly on save.
-  const [specimen, setSpecimen] = useState(record?.specimen ?? "");
+  const [specimen, setSpecimen] = useState(observation?.specimen ?? "");
 
   // Local draft (#1699). Every field but the two controlled comboboxes is a named
   // input, so `extra` only carries those.
@@ -106,10 +106,12 @@ export default function RecordForm({
     () => ({ canonical, specimen }),
     [canonical, specimen]
   );
-  type RecordDraft = typeof draftExtra;
-  const draft = useFormDraft<RecordDraft>({
+  type ResultDraft = typeof draftExtra;
+  const draft = useFormDraft<ResultDraft>({
+    // Compatibility: this local-draft key predates the terminology change. Keeping
+    // it lets an in-progress form survive the upgrade without a storage migration.
     formKey: "medical-record",
-    recordId: record?.id ?? null,
+    recordId: observation?.id ?? null,
     formRef,
     extra: draftExtra,
     onRestore: (d) => {
@@ -118,8 +120,8 @@ export default function RecordForm({
     },
   });
 
-  // The add form focuses itself when reached from the palette's "Add biomarker
-  // record" (issue #29); the inline row editors (edit mode) opt out.
+  // The add form focuses itself when reached from the palette's "Add result"
+  // action (issue #29); the inline row editors (edit mode) opt out.
   useFocusFormOnParam(formRef, "new", undefined, mode === "add");
 
   async function handle(formData: FormData) {
@@ -128,7 +130,7 @@ export default function RecordForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this record. Try again.");
+      setError("Couldn't save this result. Try again.");
       return;
     }
     // A validation guard now answers with a typed error instead of a silent
@@ -147,7 +149,7 @@ export default function RecordForm({
       formRef.current?.reset();
       setCanonical("");
       setSpecimen("");
-      toast("Record saved");
+      toast("Result saved");
       closeEntryModal?.();
     }
   }
@@ -156,10 +158,10 @@ export default function RecordForm({
     <form ref={formRef} action={handle} className="grid gap-3 sm:grid-cols-4">
       <DraftRestoreBanner
         draft={draft}
-        noun="record"
+        noun="result"
         className="sm:col-span-4"
       />
-      {editing && <input type="hidden" name="id" value={record!.id} />}
+      {editing && <input type="hidden" name="id" value={observation!.id} />}
       {editing && writeProfileId != null && (
         <input type="hidden" name="profile_id" value={writeProfileId} />
       )}
@@ -170,7 +172,7 @@ export default function RecordForm({
         <DateField
           id={`rec-${uid}-date`}
           name="date"
-          defaultValue={record?.date ?? defaultDate ?? ""}
+          defaultValue={observation?.date ?? defaultDate ?? ""}
           required
         />
       </div>
@@ -182,7 +184,7 @@ export default function RecordForm({
           id={`rec-${uid}-category`}
           name="category"
           className="input capitalize"
-          defaultValue={record?.category ?? defaultCategory ?? "lab"}
+          defaultValue={observation?.category ?? defaultCategory ?? "lab"}
         >
           {categories.map((c) => (
             <option key={c} value={c} className="capitalize">
@@ -200,7 +202,7 @@ export default function RecordForm({
             <input
               id={`rec-${uid}-panel`}
               name="panel"
-              defaultValue={record?.panel ?? ""}
+              defaultValue={observation?.panel ?? ""}
               className="input"
             />
           </div>
@@ -212,7 +214,7 @@ export default function RecordForm({
               id={`rec-${uid}-flag`}
               name="flag"
               className="input"
-              defaultValue={record?.flag ?? ""}
+              defaultValue={observation?.flag ?? ""}
             >
               <option value="">—</option>
               {FLAGS.map((f) => (
@@ -231,7 +233,7 @@ export default function RecordForm({
         <input
           id={`rec-${uid}-name`}
           name="name"
-          defaultValue={record?.name ?? defaultName ?? ""}
+          defaultValue={observation?.name ?? defaultName ?? ""}
           className="input"
           placeholder="e.g. LDL cholesterol"
           required
@@ -260,7 +262,7 @@ export default function RecordForm({
         <input
           id={`rec-${uid}-value`}
           name="value"
-          defaultValue={record?.value ?? ""}
+          defaultValue={observation?.value ?? ""}
           className="input"
           placeholder="e.g. 95"
         />
@@ -272,7 +274,7 @@ export default function RecordForm({
         <input
           id={`rec-${uid}-unit`}
           name="unit"
-          defaultValue={record?.unit ?? ""}
+          defaultValue={observation?.unit ?? ""}
           className="input"
           placeholder="mg/dL"
         />
@@ -284,7 +286,7 @@ export default function RecordForm({
         <input
           id={`rec-${uid}-reference`}
           name="reference_range"
-          defaultValue={record?.reference_range ?? ""}
+          defaultValue={observation?.reference_range ?? ""}
           className="input"
           placeholder="< 100"
         />
@@ -303,7 +305,7 @@ export default function RecordForm({
           name="result_status"
           className="input capitalize"
           data-testid="record-result-status"
-          defaultValue={record?.result_status ?? ""}
+          defaultValue={observation?.result_status ?? ""}
         >
           <option value="">—</option>
           {RESULT_STATUSES.map((s) => (
@@ -322,7 +324,9 @@ export default function RecordForm({
           name="fasting"
           className="input"
           data-testid="record-fasting"
-          defaultValue={record?.fasting == null ? "" : String(record.fasting)}
+          defaultValue={
+            observation?.fasting == null ? "" : String(observation.fasting)
+          }
         >
           <option value="">—</option>
           <option value="1">Fasting</option>
@@ -354,7 +358,7 @@ export default function RecordForm({
         <input
           id={`rec-${uid}-notes`}
           name="notes"
-          defaultValue={record?.notes ?? ""}
+          defaultValue={observation?.notes ?? ""}
           className="input"
         />
       </div>
@@ -368,19 +372,19 @@ export default function RecordForm({
           <ProviderCombobox
             id={`rec-${uid}-provider`}
             name="provider"
-            defaultValue={record?.provider_name ?? ""}
+            defaultValue={observation?.provider_name ?? ""}
             placeholder="e.g. Quest Diagnostics"
           />
           {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
           <input
             type="hidden"
             name="provider_id"
-            value={record?.provider_id ?? ""}
+            value={observation?.provider_id ?? ""}
           />
           <input
             type="hidden"
             name="provider_loaded"
-            value={record?.provider_name ?? ""}
+            value={observation?.provider_name ?? ""}
           />
         </div>
       )}
@@ -395,18 +399,18 @@ export default function RecordForm({
           <ProviderCombobox
             id={`rec-${uid}-ordering-provider`}
             name="ordering_provider"
-            defaultValue={record?.ordering_provider_name ?? ""}
+            defaultValue={observation?.ordering_provider_name ?? ""}
             placeholder="e.g. Dr. Ada Lovelace"
           />
           <input
             type="hidden"
             name="ordering_provider_id"
-            value={record?.ordering_provider_id ?? ""}
+            value={observation?.ordering_provider_id ?? ""}
           />
           <input
             type="hidden"
             name="ordering_provider_loaded"
-            value={record?.ordering_provider_name ?? ""}
+            value={observation?.ordering_provider_name ?? ""}
           />
         </div>
       )}
@@ -420,7 +424,7 @@ export default function RecordForm({
       )}
       <div className="flex items-end gap-2 sm:col-span-4">
         <SubmitButton pendingLabel="Saving…">
-          {editing ? "Save" : "Save record"}
+          {editing ? "Save" : "Save result"}
         </SubmitButton>
         {editing && onDone && (
           <button type="button" onClick={onDone} className="btn-ghost">
@@ -430,9 +434,9 @@ export default function RecordForm({
       </div>
       {/* Edit-lock badge + resume affordance for a hand-edited imported reading
           (#659): only source-owned rows (external_id set) carry the lock. */}
-      {editing && !!record?.edited && !!record?.external_id && (
+      {editing && !!observation?.edited && !!observation?.external_id && (
         <div className="sm:col-span-4">
-          <EditLockNotice table="medical_records" id={record!.id} />
+          <EditLockNotice table="medical_records" id={observation!.id} />
         </div>
       )}
     </form>

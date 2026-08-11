@@ -27,7 +27,7 @@ function revalidateHearing() {
   // recent/needs-attention summaries, and the medication safety strips + Upcoming,
   // whose ototoxic note now cites this baseline.
   revalidateRoute("/results");
-  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/results/readings/view", "page");
   revalidateRoute("/medications");
   revalidateRoute("/upcoming");
   revalidateRoute("/");

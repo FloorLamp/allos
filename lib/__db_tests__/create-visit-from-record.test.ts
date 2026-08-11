@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
-import { setUserBirthdate, setUserSex } from "@/lib/settings";
+import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
 import {
   createVisitFromRecord,
   createVisitOfferForRecord,
@@ -21,8 +21,8 @@ function makeProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
-  setUserBirthdate(id, "1980-01-01");
-  setUserSex(id, "male");
+  setProfileBirthdate(id, "1980-01-01");
+  setProfileSex(id, "male");
   return id;
 }
 

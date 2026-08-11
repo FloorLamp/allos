@@ -5,17 +5,18 @@ import { fileURLToPath } from "node:url";
 
 // Static boundary guard for goal LIVENESS decisions (goal-liveness audit). A goal is
 // "live" iff it is being actively pursued: status must be "active" AND its independent
-// `archived` column must be falsy. This is DUAL-AXIS on purpose — GOAL_STATUSES is
+// `archived` column must be falsy. This is DUAL-AXIS on purpose — OUTCOME_GOAL_STATUSES is
 // ["active", "achieved"], so status alone doesn't imply live, and `archived` is a
 // separate 0/1 column, so a raw `g.status === "active"` check that forgets `archived`
 // silently treats a filed-away goal as live (the classic bug this audit found repeated
-// across 8 sites). The canonical predicate is isGoalLive(g) in lib/goals.ts; every
+// across 8 sites). The canonical predicate is isGoalLive(g) in
+// lib/outcome-goals.ts; every
 // surface that filters to live goals routes through it.
 //
 // This test reads the repo's own source as TEXT (no DB, no network, so it stays "pure"
 // in the vitest sense) and fails the build if any production module tests a GOAL
 // identifier's status against the string literal "active" — i.e. `g.status ===
-// "active"` / `goal.status !== "active"` — outside lib/goals.ts (the helper's home)
+// "active"` / `goal.status !== "active"` — outside lib/outcome-goals.ts (the helper's home)
 // and the allowlist below. The identifier is restricted to `g` / `goal` so we only
 // flag goal-liveness compares and skip the many other `.status === "active"` checks on
 // conditions (`c.status`/`condition.status`), allergies (`a.status`), etc., which are
@@ -28,11 +29,11 @@ const SCAN_DIRS = ["lib", "app", "components"];
 
 // Files permitted to test a goal's status against "active" directly, each with a
 // justification. PREFER routing a call site through isGoalLive over adding it here.
-//  - lib/goals.ts is the helper's home: isGoalLive itself IS the `g.status ===
+//  - lib/outcome-goals.ts is the helper's home: isGoalLive itself IS the `g.status ===
 //    "active" && !g.archived` compare everyone else routes through.
 const ALLOWLIST: { path: string; reason: string }[] = [
   {
-    path: "lib/goals.ts",
+    path: "lib/outcome-goals.ts",
     reason:
       'Defines the canonical isGoalLive predicate — the `g.status === "active" && ' +
       "!g.archived` compare is the source of truth this rule routes everyone toward.",
@@ -128,14 +129,17 @@ describe("goal liveness boundary (goal-liveness audit)", () => {
       offenders,
       `These modules test a goal's status against "active" directly. Goal liveness is ` +
         `DUAL-AXIS (status === "active" AND !archived) — route it through isGoalLive(g) ` +
-        `from @/lib/goals so the archived half can't be forgotten. If a comparison ` +
+        `from @/lib/outcome-goals so the archived half can't be forgotten. If a comparison ` +
         `genuinely isn't a liveness decision, add it to the allowlist with a ` +
         `justification:\n${offenders.join("\n")}`
     ).toEqual([]);
   });
 
-  it("the canonical isGoalLive predicate exists in lib/goals.ts", () => {
-    const src = fs.readFileSync(path.join(REPO, "lib/goals.ts"), "utf8");
+  it("the canonical isGoalLive predicate exists in lib/outcome-goals.ts", () => {
+    const src = fs.readFileSync(
+      path.join(REPO, "lib/outcome-goals.ts"),
+      "utf8"
+    );
     expect(/export function isGoalLive\b/.test(src)).toBe(true);
   });
 

@@ -4,7 +4,7 @@
 // told you it arrived with an HDL and a triglycerides, or offered a way across. The
 // normalized taxonomy makes that answerable — panelForCanonicalName places the
 // analyte, and the siblings are the profile's OWN current readings in the same panel
-// (the shared getMedicalRecords `current` facet, deduped and latest-per-#482-family
+// (the shared getClinicalObservations `current` facet, deduped and latest-per-#482-family
 // like every other biomarker surface), so it never advertises a marker never measured.
 //
 // Shared since #1932: the vital-signs panel's members now render on two different
@@ -15,7 +15,7 @@
 //
 // Auth-blind and profile-scoped: `profileId` first, no lib/auth import.
 
-import { getMedicalRecords } from "@/lib/queries/medical";
+import { getClinicalObservations } from "@/lib/queries/medical";
 import { biomarkerFamily } from "@/lib/canonical-name";
 import { OTHER_PANEL, panelForCanonicalName } from "@/lib/biomarker-panels";
 import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
@@ -51,7 +51,7 @@ export function getPanelSiblings(
     // Deduped case-insensitively, keeping the first spelling seen — two documents
     // that capitalize the same analyte differently are one sibling chip.
     ...new Map(
-      getMedicalRecords(profileId, {
+      getClinicalObservations(profileId, {
         panel: panelId,
         current: true,
         excludeCategories: NON_BIOMARKER_CATEGORIES,
