@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import Combobox from "@/components/Combobox";
 import ProviderCombobox from "@/components/ProviderCombobox";
@@ -9,6 +9,7 @@ import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { useResettableState } from "@/components/useResettableState";
 import RxNormAffordance from "@/components/intake/RxNormAffordance";
 import IntakeInteractionNotices from "@/components/intake/IntakeInteractionNotices";
 import DoseRowsEditor, {
@@ -159,11 +160,10 @@ export default function MedicationForm({
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const fid = s?.id ?? "new";
-  const [pediatricContext, setPediatricContext] = useState(pediatric);
-
-  useEffect(() => {
-    setPediatricContext(pediatric);
-  }, [pediatric]);
+  const [pediatricContext, setPediatricContext] = useResettableState(
+    pediatric,
+    pediatric
+  );
 
   // Seeded FROM the bottle (#1705): the pool is authoritative for the product, so its
   // name and strength prefill the fields this form owns the inputs for. Editable — the
@@ -202,7 +202,7 @@ export default function MedicationForm({
   // checkbox. A medication DEFAULTS to `must` — the tier that reminds AND escalates —
   // because that is the posture a prescription is prescribed under; a new med the
   // user never touches is protected rather than quietly unmonitored.
-  const [obligation, setObligation] = useState<IntakeObligation>(
+  const [obligation, setObligationState] = useState<IntakeObligation>(
     s?.obligation ?? "must"
   );
   // "As needed" is no longer its own flag: `may` IS the as-needed shape (amount-only
@@ -213,6 +213,13 @@ export default function MedicationForm({
     course?.started_on ?? (s?.obligation === "may" ? "" : (todayStr ?? ""))
   );
   const [startedOnTouched, setStartedOnTouched] = useState(false);
+  function setObligation(next: IntakeObligation) {
+    setObligationState(next);
+    // A new, untouched regimen follows the obligation at the same interaction
+    // that changed it. Stored meds and explicit dates are never rewritten.
+    if (!s && !startedOnTouched)
+      setStartedOn(next === "may" ? "" : (todayStr ?? ""));
+  }
   // End date (#1140 Part D): the current course's stopped_on. Editing an existing med only
   // — a date ends the med as of that day; clearing it reactivates. Routed server-side
   // through the shared stop/restart cores (never a raw stopped_on write).
@@ -262,15 +269,6 @@ export default function MedicationForm({
       s?.cadence_interval_days != null ? String(s.cadence_interval_days) : "",
     anchorDate: s?.cadence_anchor_date ?? "",
   }));
-
-  // A scheduled regimen starts today by default because its adherence window needs a
-  // beginning. PRN use is often intermittent and may predate this record, so do not
-  // invent a start date when the user switches a NEW medication to as-needed. Once the
-  // user edits the field, toggling the medication type preserves their explicit value.
-  useEffect(() => {
-    if (s || startedOnTouched) return;
-    setStartedOn(asNeeded ? "" : (todayStr ?? ""));
-  }, [asNeeded, s, startedOnTouched, todayStr]);
 
   // Selection-prefill bookkeeping (#846): `suggested` marks fields currently showing
   // the "from label defaults" badge; `touched` records fields the user edited so a

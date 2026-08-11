@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Combobox from "@/components/Combobox";
+import { useHydrated } from "@/components/useHydrated";
+import { useResettableState } from "@/components/useResettableState";
 import { formatTimezoneOffset } from "@/lib/timezone";
 
 type IntlWithTimezones = typeof Intl & {
@@ -23,18 +25,19 @@ export default function TimezoneSelect({
   onTimezoneChange?: (timezone: string) => void;
   className?: string;
 }) {
-  const [timezone, setTimezone] = useState(value);
-  const [tzList, setTzList] = useState<string[]>([]);
-  const [query, setQuery] = useState(() => timezoneLabel(value, new Date()));
-
-  useEffect(() => {
-    setTimezone(value);
-    setQuery(timezoneLabel(value, new Date()));
-  }, [value]);
-  useEffect(() => {
-    const zones = (Intl as IntlWithTimezones).supportedValuesOf?.("timeZone");
-    if (zones) setTzList(zones);
-  }, []);
+  const [selection, setSelection] = useResettableState(
+    { timezone: value, query: timezoneLabel(value, new Date()) },
+    value
+  );
+  const { timezone, query } = selection;
+  const hydrated = useHydrated();
+  const tzList = useMemo(
+    () =>
+      hydrated
+        ? ((Intl as IntlWithTimezones).supportedValuesOf?.("timeZone") ?? [])
+        : [],
+    [hydrated]
+  );
 
   const options = useMemo(() => {
     const zones = tzList.includes(timezone) ? tzList : [timezone, ...tzList];
@@ -50,8 +53,7 @@ export default function TimezoneSelect({
   );
 
   function choose(next: string) {
-    setTimezone(next);
-    setQuery(timezoneLabel(next, new Date()));
+    setSelection({ timezone: next, query: timezoneLabel(next, new Date()) });
     onTimezoneChange?.(next);
   }
 
@@ -77,13 +79,20 @@ export default function TimezoneSelect({
       <Combobox
         id={id}
         value={query}
-        onChange={setQuery}
+        onChange={(nextQuery) =>
+          setSelection((current) => ({ ...current, query: nextQuery }))
+        }
         options={labels}
         onPick={(label) => {
           const zone = zonesByLabel.get(label);
           if (zone) choose(zone);
         }}
-        onInputBlur={() => setQuery(timezoneLabel(timezone, new Date()))}
+        onInputBlur={() =>
+          setSelection((current) => ({
+            ...current,
+            query: timezoneLabel(current.timezone, new Date()),
+          }))
+        }
         selectOnFocus
         disabled={disabled}
         emptyLabel="No timezone found"

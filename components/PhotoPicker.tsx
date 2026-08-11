@@ -59,19 +59,32 @@ export default function PhotoPicker({
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropSource, setCropSource] = useState<{
+    file: File;
+    url: string;
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const busy = pending || disabled;
   // While the cropper is open, treat the picker as occupied so Remove can't race
   // a crop that's about to upload.
-  const locked = busy || cropFile != null;
+  const locked = busy || cropSource != null;
 
   useEffect(() => {
     onBusyChange?.(pending);
   }, [pending, onBusyChange]);
 
+  useEffect(() => {
+    if (!cropSource) return;
+    return () => URL.revokeObjectURL(cropSource.url);
+  }, [cropSource]);
+
   function resetInput() {
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function closeCropper() {
+    setCropSource(null);
+    resetInput();
   }
 
   function upload(file: File) {
@@ -102,7 +115,7 @@ export default function PhotoPicker({
             const f = e.target.files?.[0];
             if (f) {
               setError(null);
-              setCropFile(f);
+              setCropSource({ file: f, url: URL.createObjectURL(f) });
             }
           }}
           className={INPUT_CLASS[variant]}
@@ -121,16 +134,13 @@ export default function PhotoPicker({
       {error && (
         <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
       )}
-      {cropFile && (
+      {cropSource && (
         <ImageCropper
-          file={cropFile}
-          onCancel={() => {
-            setCropFile(null);
-            resetInput();
-          }}
+          file={cropSource.file}
+          src={cropSource.url}
+          onCancel={closeCropper}
           onCropped={(cropped) => {
-            setCropFile(null);
-            resetInput();
+            closeCropper();
             upload(cropped);
           }}
         />

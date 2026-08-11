@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Combobox from "@/components/Combobox";
 import type { AnalyzeOption } from "@/lib/analyze-view";
+import { useResettableState } from "@/components/useResettableState";
 
 export type { AnalyzeOption };
 
@@ -32,13 +33,11 @@ export default function AnalyzePicker({
   appearance?: "field" | "title";
 }) {
   const router = useRouter();
-  const [text, setText] = useState(value);
+  const [text, setText] = useResettableState(value, value);
   const byLabel = useMemo(
     () => new Map(options.map((o) => [o.label, o])),
     [options]
   );
-
-  useEffect(() => setText(value), [value]);
 
   const rankedOptions = useMemo(
     () =>
