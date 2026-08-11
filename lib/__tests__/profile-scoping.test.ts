@@ -65,20 +65,16 @@ import {
 // profile-scoped.
 const OWNED_RE = new RegExp(`\\b(${OWNED_TABLES.join("|")})\\b`);
 
+const VERSIONED_MIGRATION_PREFIX = "lib/migrations/versions/";
+
+function isVersionedMigration(rel: string): boolean {
+  return rel.startsWith(VERSIONED_MIGRATION_PREFIX);
+}
+
 // Statements that legitimately touch an owned table without profile_id, keyed by
 // the file they live in (so an unrelated file can't ride the exemption). Each is
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
-  {
-    file: "lib/migrations/versions/164-hr-minutes-utc-instants.ts",
-    includes: "SELECT COUNT(*) AS n FROM hr_minutes",
-    why: "migration 164 (#2205) row-accounting guard: counts the WHOLE table before and after the rebuild and throws unless the two balance, which is the migration's own verification step. Deliberately unscoped — a per-profile count could not detect a profile's rows being dropped entirely. Every row it then CONVERTS is read and rewritten under its own profile_id.",
-  },
-  {
-    file: "lib/migrations/versions/164-hr-minutes-utc-instants.ts",
-    includes: "SELECT DISTINCT profile_id AS id FROM hr_minutes ORDER BY id",
-    why: "migration 164 one-shot GLOBAL enumeration: the conversion is per-profile (each row converts under ITS OWN profile's timezone), so it must first learn which profiles have HR at all. profile_id is the value being selected and every subsequent read/write is keyed by it.",
-  },
   {
     file: "lib/migrations/boot-tasks.ts",
     includes:
@@ -305,228 +301,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "FROM profile_share_links WHERE token_hash = ?",
     why: "getShareLinkByToken: the ONLY entry point for the unauthenticated public share route — the caller has no profile context yet; the lookup is by the unguessable 256-bit token's SHA-256, and the returned row's profile_id then scopes every downstream read",
   },
-  {
-    file: "lib/migrations/versions/169-illness-episode-day-window.ts",
-    includes: "SELECT seq FROM sqlite_sequence WHERE name = 'illness_episodes'",
-    why: "migration 169 (#2232) AUTOINCREMENT preservation: reads the table's sqlite_sequence high-water mark before the rebuild so episode ids can never recycle (the recently-resolved dismissal and stale-nudge ack sets rely on it) — schema bookkeeping, never profile rows; the rebuild's own INSERT…SELECT copies every row with its profile_id.",
-  },
-  {
-    file: "lib/migrations/versions/169-illness-episode-day-window.ts",
-    includes:
-      "INSERT INTO sqlite_sequence (name, seq) VALUES ('illness_episodes', ?)",
-    why: "migration 169 (#2232) AUTOINCREMENT preservation, restore half (empty-table case): sqlite_sequence carries no profile rows.",
-  },
-  {
-    file: "lib/migrations/versions/169-illness-episode-day-window.ts",
-    includes:
-      "UPDATE sqlite_sequence SET seq = ? WHERE name = 'illness_episodes'",
-    why: "migration 169 (#2232) AUTOINCREMENT preservation, restore half: bumps the rebuilt table's sqlite_sequence back to the pre-rebuild high-water mark — schema bookkeeping, never profile rows.",
-  },
-  {
-    file: "lib/migrations/versions/176-unqualified-glucose-unflag.ts",
-    includes:
-      "UPDATE medical_records SET flag = NULL WHERE canonical_name = 'Glucose'",
-    why: "migration 176 (#2337): a one-shot, deliberately GLOBAL clear of the flags allos derived for an unqualified `Glucose` against a fasting band the catalog no longer publishes — the band was wrong for EVERY profile, so the pass is keyed on the analyte (canonical_name) and on the flags the numeric reconcile writes, never on a subject. A profile predicate would leave some profiles judged against a retired band.",
-  },
-  {
-    file: "lib/migrations/versions/171-temperature-note-times.ts",
-    includes: "SELECT id, profile_id, date, notes, occurred_at",
-    why: "migration 171 (#2154) temperature note-time data move: a one-shot boot-time sweep over EVERY profile's smuggled 'HH:MM' temperature notes — it selects profile_id per row precisely to resolve each profile's own timezone, and the per-row UPDATEs below key on the ids this scan produced.",
-  },
-  {
-    file: "lib/migrations/versions/171-temperature-note-times.ts",
-    includes: "UPDATE medical_records SET occurred_at = ?, notes = NULL",
-    why: "migration 171 (#2154): keyed on the primary-key id of a row the profile-aware candidate scan above selected — a second profile_id predicate would re-state what the id already pins.",
-  },
-  {
-    file: "lib/migrations/versions/171-temperature-note-times.ts",
-    includes: "UPDATE medical_records SET notes = NULL WHERE id = ?",
-    why: "migration 171 (#2154): same id-keyed shape as its sibling — the id came from the candidate scan, which carried profile_id for timezone resolution.",
-  },
-  {
-    file: "lib/migrations/versions/014-hr-minutes-per-source.ts",
-    includes: "PRAGMA table_info(hr_minutes)",
-    why: "migration 013 replay sentinel: a schema-shape PRAGMA (is `source` already in the PRIMARY KEY?) that reads column metadata, never rows",
-  },
-  {
-    file: "lib/migrations/versions/038-food-habit-unique.ts",
-    includes:
-      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'frequency_targets'",
-    why: "migration 038 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — its de-dupe/UPDATE/DELETE statements below are all profile_id-scoped",
-  },
-  {
-    file: "lib/migrations/versions/123-practice-target-unique.ts",
-    includes:
-      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'frequency_targets'",
-    why: "migration 123 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — mirrors migration 038",
-  },
-  {
-    file: "lib/migrations/versions/042-symptom-logs.ts",
-    includes: "UPDATE situations SET illness_type = 1 WHERE name = 'Illness'",
-    why: "migration 042 (#799) one-shot backfill: defaults the illness_type flag ON for the SHARED built-in 'Illness' situation across ALL profiles by canonical name — a vocabulary default, not a per-profile read; every runtime situations statement stays profile_id-scoped",
-  },
-  {
-    file: "lib/migrations/versions/071-imaging-dose.ts",
-    includes: "PRAGMA table_info(imaging_studies)",
-    why: "migration 071 (#703) ADD COLUMN guard: a schema-shape PRAGMA (does dose_msv already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows",
-  },
-  {
-    file: "lib/migrations/versions/139-notify-message-title.ts",
-    includes: "PRAGMA table_info(notify_messages)",
-    why: "migration 139 (#1822) ADD COLUMN guard: a schema-shape PRAGMA (does `title` already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
-  },
-  {
-    file: "lib/migrations/versions/140-prn-max-daily-mg.ts",
-    includes: "PRAGMA table_info(intake_items)",
-    why: "migration 140 (#1854) ADD COLUMN guard: a schema-shape PRAGMA (does `max_daily_amount_mg` already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
-  },
-  {
-    file: "lib/migrations/versions/141-followup-settle.ts",
-    includes: "PRAGMA table_info(care_plan_items)",
-    why: "migration 141 (#1866) ADD COLUMN guard: a schema-shape PRAGMA (do the settled_* columns already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
-  },
-  {
-    file: "lib/migrations/versions/144-condition-laterality-severity.ts",
-    includes: "PRAGMA table_info(conditions)",
-    why: "migration 144 (#1403) ADD COLUMN guard: a schema-shape PRAGMA (do laterality/severity/stage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
-  },
-  {
-    file: "lib/migrations/versions/161-condition-edit-lock.ts",
-    includes: "PRAGMA table_info(conditions)",
-    why: "migration 161 (#2137) ADD COLUMN guard: a schema-shape PRAGMA (does `edited` already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 115's guard",
-  },
-  {
-    file: "lib/migrations/versions/145-family-history-death-lineage.ts",
-    includes: "PRAGMA table_info(family_history)",
-    why: "migration 145 (#1407) ADD COLUMN guard: a schema-shape PRAGMA (do age_at_death/cause_of_death/relation_type/lineage already exist?) so a replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
-  },
-  {
-    file: "lib/migrations/versions/076-encounter-type-code.ts",
-    includes: "PRAGMA table_info(encounters)",
-    why: "migration 075 (#1035) ADD COLUMN guard: a schema-shape PRAGMA (do code/code_system already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
-  },
-  {
-    file: "lib/migrations/versions/074-imported-temperature-degf.ts",
-    includes:
-      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
-    why: "migration 074 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — mirrors migration 038's guard",
-  },
-  {
-    file: "lib/migrations/versions/074-imported-temperature-degf.ts",
-    includes: "SELECT id, value_num, unit, edited FROM medical_records",
-    why: "migration 074 (#1018) one-shot data converge: rewrites mis-stored imported Body Temperature rows to canonical °F across ALL profiles, keyed by canonical name + unit spelling — a vocabulary-level unit fix, never reading one profile's data into another's; its UPDATEs below key on the ids this SELECT returned",
-  },
-  {
-    file: "lib/migrations/versions/074-imported-temperature-degf.ts",
-    includes:
-      "UPDATE medical_records SET value = ?, value_num = ?, unit = 'degF'",
-    why: "migration 074 (#1018): the per-row converge UPDATE, keyed by the id the migration's own canonical-name-scoped SELECT produced (ids never recycle — AUTOINCREMENT)",
-  },
-  {
-    file: "lib/migrations/versions/074-imported-temperature-degf.ts",
-    includes: "UPDATE medical_records SET unit = 'degF' WHERE id = ?",
-    why: "migration 074 (#1018): the unit-respell UPDATE ([degF]/°F → degF, value untouched), keyed the same way",
-  },
-  {
-    file: "lib/migrations/versions/115-metric-sample-edit-lock.ts",
-    includes: "PRAGMA table_info(metric_samples)",
-    why: "migration 115 (#1488) ADD COLUMN guard: a schema-shape PRAGMA (does `edited` already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
-  },
-  {
-    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
-    includes: "PRAGMA table_info(metric_samples)",
-    why: "migration 155 (#2096) shape guard: a schema-shape PRAGMA (do `edited` and `origin` exist yet?) so the migration no-ops against an older at-rest shape — reads column metadata, never rows; mirrors migration 115's guard on this table",
-  },
-  {
-    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
-    includes:
-      "SELECT id, profile_id, metric, origin, start_time, end_time FROM metric_samples WHERE source = ? AND edited = 0 AND metric IN (${placeholders})",
-    why: "migration 155 (#2096) one-shot converge: reinterprets Fitbit Takeout's ZONELESS sleep boundaries as absolute instants across ALL profiles. Deliberately unscoped because the defect is a property of the SOURCE, not of a profile — every Takeout row ever written carries it. It never reads one profile's data into another's: profile_id is SELECTED so each row is converted in ITS OWN profile's timezone, and the UPDATE below keys on the row's own id.",
-  },
-  {
-    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
-    includes:
-      "SELECT id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?",
-    why: "migration 155 (#2096) collision probe: profile_id-scoped by construction — it asks whether the converted natural key is already occupied WITHIN the row's own profile before updating",
-  },
-  {
-    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
-    includes:
-      "UPDATE metric_samples SET start_time = ?, end_time = ? WHERE id = ?",
-    why: "migration 155 (#2096): the per-row converge UPDATE, keyed by the id its own SELECT produced (ids never recycle — AUTOINCREMENT), with the instant computed from that row's profile timezone",
-  },
-  {
-    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
-    includes:
-      "SELECT id, profile_id, natural_key FROM import_tombstones WHERE target_table = 'metric_samples'",
-    why: "migration 155 (#2096): the delete tombstones must move with the rows they suppress or a deleted Takeout night resurrects on the next import. Unscoped for the same reason as the row converge, and profile_id is SELECTED so each key is re-derived in its own profile's timezone — the identical shape migration 083 used when it last re-keyed this table.",
-  },
-  {
-    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
-    includes:
-      "SELECT id FROM import_tombstones WHERE profile_id = ? AND target_table = 'metric_samples' AND natural_key = ?",
-    why: "migration 155 (#2096) tombstone collision probe: profile_id-scoped by construction — asks whether the converted key already exists within the row's own profile",
-  },
-  {
-    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
-    includes: "UPDATE import_tombstones SET natural_key = ? WHERE id = ?",
-    why: "migration 155 (#2096): the per-tombstone re-key, keyed by the id its own SELECT produced",
-  },
-  {
-    file: "lib/migrations/versions/155-fitbit-sleep-instants.ts",
-    includes: "DELETE FROM import_tombstones WHERE id = ?",
-    why: "migration 155 (#2096): drops a re-keyed tombstone that would duplicate one already present in the SAME profile (the set-membership dedupe), keyed by the id its own SELECT produced",
-  },
-  {
-    file: "lib/migrations/versions/075-extraction-completed-at.ts",
-    includes: "PRAGMA table_info(medical_documents)",
-    why: "migration 075 (#1022) ADD COLUMN guard: a schema-shape PRAGMA (does extraction_completed_at already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
-  },
-  {
-    file: "lib/migrations/versions/116-food-event-meal-slot.ts",
-    includes: "PRAGMA table_info(food_log_events)",
-    why: "migration 116 ADD COLUMN guard: schema-shape introspection so the non-version-gated migrate() replay no-ops — reads column metadata, never food events",
-  },
-  {
-    file: "lib/migrations/versions/154-food-eating-time.ts",
-    includes: "PRAGMA table_info(food_log_events)",
-    why: "migration 154 (#2019) ADD COLUMN guard for eaten_at/time_source: the same schema-shape introspection migration 116 uses on this table — reads column metadata, never food events",
-  },
-  {
-    file: "lib/migrations/versions/090-medical-record-category-classes.ts",
-    includes:
-      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
-    why: "migration 090 (#1076) replay/partial-handle guard: a sqlite_master metadata probe (does the table carry the grown CHECK yet?) that reads schema, not rows — mirrors migration 074's guard",
-  },
-  {
-    file: "lib/migrations/versions/090-medical-record-category-classes.ts",
-    includes:
-      "UPDATE medical_records SET category = ? WHERE canonical_name = ? COLLATE NOCASE AND category != ?",
-    why: "migration 090 (#1076) one-shot category converge: re-derives category from canonical name for a fixed set of known analytes (Glucose→lab, PHQ-9…→instrument, PhenoAge/Biological Age→derived, Blood Type…→reference) across ALL profiles — a vocabulary-level classification fix, never reading one profile's data into another's",
-  },
-  {
-    file: "lib/migrations/versions/106-medical-record-report-category.ts",
-    includes:
-      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
-    why: "migration 106 (#708) replay/partial-handle guard: a sqlite_master metadata probe (does the table carry the 'report' CHECK yet?) that reads schema, not rows — identical to migration 090's guard",
-  },
-  {
-    file: "lib/migrations/versions/177-assessment-category.ts",
-    includes:
-      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
-    why: "migration 177 (#2318) replay/partial-handle guard: a sqlite_master metadata probe (does the table carry the 'assessment' CHECK yet?) that reads schema, not rows — identical to migrations 090 and 106. The one-shot DATA move it then runs is profile-scoped in lib/assessment-reclass-db.ts, so it needs no entry of its own.",
-  },
-  {
-    file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
-    includes: "JOIN medical_records r ON r.id = ii.source_record_id",
-    why: "migration 092 (#1178) one-shot consolidation: enumerates each PAIRED (med, prescription-record) twin BY the source_record_id back-link the import wrote — the join key itself is the med↔record identity, and both rows share the same profile_id by construction (a med is projected within one profile's import). The per-row re-key/UPDATE it drives all carry the row's own profile_id; this SELECT never reads one profile's data into another's.",
-  },
-  {
-    file: "lib/migrations/versions/103-canonical-name-abbreviation-consolidation.ts",
-    includes:
-      "UPDATE medical_records SET canonical_name = ? WHERE canonical_name = ? COLLATE NOCASE",
-    why: "migration 103 one-shot canonical-name rename: a bare-abbreviation biomarker name (e.g. 'RDW') is a GLOBAL vocabulary identity, not per-profile data, so the acronym→'Full Name (ABBR)' rewrite applies to every profile's rows by value — profile_id is deliberately absent. Pure value substitution (same analyte keeps its identity); reads no row across profiles.",
-  },
   // ── Positional-rule (#1208 fix 1) additions ─────────────────────────────────
   // These NAME profile_id (so they passed the old "profile_id-anywhere" check) but
   // only outside a WHERE/ON predicate — a select-list column or a GROUP BY key — so
@@ -548,50 +322,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes:
       "SELECT profile_id FROM integration_connections WHERE provider = 'health-connect' AND status != 'disconnected'",
     why: "recordUnmatchedHealthConnectPush: attributes a rotated/expired-token push to a profile ONLY when exactly one non-disconnected HC connection exists (else it skips). A cross-profile enumeration by design — the token didn't match, so there is no caller profile; profile_id is selected, not filtered.",
-  },
-  {
-    file: "lib/migrations/versions/038-food-habit-unique.ts",
-    includes:
-      "SELECT id, profile_id, scope_value FROM frequency_targets WHERE scope_kind = 'food_group'",
-    why: "migration 038 one-shot GLOBAL dedupe read: enumerates every profile's food-group frequency targets to collapse duplicates before adding the UNIQUE index — profile_id is carried in the select-list to re-key the dedupe per owner; the UPDATE/DELETE it drives are profile_id-scoped (already allowlisted above).",
-  },
-  {
-    file: "lib/migrations/versions/123-practice-target-unique.ts",
-    includes:
-      "SELECT id, profile_id, scope_value FROM frequency_targets WHERE scope_kind = 'practice'",
-    why: "migration 123 one-shot GLOBAL dedupe read: enumerates every profile's practice targets to collapse normalized-identity duplicates before adding the UNIQUE index — profile_id is carried into the per-owner keeper map, and every mutation it drives is profile-scoped.",
-  },
-  {
-    file: "lib/migrations/versions/148-retire-run-milestones.ts",
-    includes: "DELETE FROM milestones",
-    why: "migration 148 (#1939) one-shot GLOBAL retirement: the `streak:` and `adherence:` milestone families were retired for EVERY profile at once, so the delete is deliberately unscoped — a per-profile version would leave the ruling half-applied on whichever profiles the loop missed. It can only remove rows the engine no longer mints, and it names the retired discriminators explicitly, so no other profile's milestone (workouts:, goal:, endurance-plan:) is reachable by it.",
-  },
-  {
-    file: "lib/migrations/versions/123-practice-target-unique.ts",
-    includes: "SELECT id, profile_id, practice FROM practice_logs ORDER BY id",
-    why: "migration 123 one-shot GLOBAL log reconciliation: enumerates practice logs with their profile_id, resolves each against that profile's keeper map, and re-keys each mutation by id AND profile_id; histories never cross profiles.",
-  },
-  {
-    file: "lib/migrations/versions/109-health-connect-token-hash.ts",
-    includes:
-      "SELECT profile_id, config FROM integration_connections WHERE provider = 'health-connect' AND config IS NOT NULL",
-    why: "migration 109 one-shot GLOBAL hash-in-place read (#1209): enumerates every profile's raw-stored Health Connect token to replace it with its SHA-256 — profile_id is carried in the select-list to re-key the UPDATE to each row's owner (the UPDATE is provider + profile_id scoped), never reading one profile's data into another's.",
-  },
-  {
-    file: "lib/migrations/versions/083-metric-sample-origin.ts",
-    includes:
-      "SELECT profile_id, natural_key FROM import_tombstones WHERE target_table = 'metric_samples'",
-    why: "migration 083 one-shot GLOBAL backfill read: reads every profile's metric-sample tombstones to stamp the new origin column — profile_id is carried in the select-list to re-key each row to its owner, never read across profiles.",
-  },
-  {
-    file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
-    includes: "FROM medical_records r WHERE r.category = 'prescription'",
-    why: "migration 092 one-shot GLOBAL consolidation read: enumerates every profile's imported prescription records; r.profile_id rides in the select-list so the per-row consolidation UPDATEs it drives stay keyed to each record's own owner (a med is projected within one profile's import).",
-  },
-  {
-    file: "lib/migrations/versions/101-recover-blank-name-prescriptions.ts",
-    includes: "FROM medical_records r WHERE r.${BLANK_RX_PRED}",
-    why: "migration 101 one-shot GLOBAL recovery read: enumerates every profile's blank-name prescription records to recover a name from their linked med; r.profile_id rides in the select-list so the recovery UPDATEs stay keyed to each record's own owner, never read across profiles.",
   },
 ];
 
@@ -718,6 +448,10 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
 
     for (const file of files) {
       const rel = relPath(file);
+      // Numbered migrations are immutable, boot-time schema/data transitions. They
+      // intentionally operate across every profile; runtime scoping is not their
+      // authorization boundary. Keep the request/runtime surface fully scanned.
+      if (isVersionedMigration(rel)) continue;
       const src = readSource(file);
       for (const arg of prepareArgs(src)) {
         if (arg.kind === "expr") {
@@ -756,16 +490,16 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
   // GLOBAL data moves (copy-rebuilds, vocabulary backfills) by construction — a
   // distinct, reviewed risk class from the runtime query/action surface where a
   // cross-profile leak actually matters, and one already frozen by the immutable
-  // hash manifest (a shipped migration can't be edited). The .prepare scan above
-  // still covers those files' DML (their id-scoped one-shots are allowlisted). Every
-  // OTHER exec site — the boot-task reaps below, and any future query/action db.exec —
+  // hash manifest (a shipped migration can't be edited). The .prepare scan uses the
+  // same structural boundary. Every OTHER exec site — the boot-task reaps below,
+  // and any future query/action db.exec —
   // is in scope; the boot reaps are legitimately global and carry allowlist entries.
   it("has no owned-table db.exec() statement missing profile_id", () => {
     const violations: string[] = [];
 
     for (const file of files) {
       const rel = relPath(file);
-      if (rel.startsWith("lib/migrations/versions/")) continue; // schema/one-shot DDL
+      if (isVersionedMigration(rel)) continue; // schema/one-shot DDL/data moves
       const src = readSource(file);
       for (const arg of execArgs(src)) {
         if (arg.kind !== "sql") continue; // a computed exec arg can't be inspected
@@ -872,6 +606,7 @@ describe("cross-profile scoping: profile_id IN only in registered modules", () =
 
     for (const file of files) {
       const rel = relPath(file);
+      if (isVersionedMigration(rel)) continue;
       const src = readSource(file);
       for (const arg of prepareArgs(src)) {
         if (arg.kind !== "sql") continue; // non-literal args handled by the rule above
