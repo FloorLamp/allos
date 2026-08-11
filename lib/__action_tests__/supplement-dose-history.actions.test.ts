@@ -176,6 +176,26 @@ describe("logHistoricalDose action — supplements", () => {
     });
   });
 
+  it("names a scheduled dose that was already skipped on that date", async () => {
+    const { profile } = seedActor();
+    const { itemId, doseId } = seedSupplement(profile.id);
+    const date = shiftDateStr(today(profile.id), -2);
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status)
+       VALUES (?, ?, ?, 'skipped')`
+    ).run(doseId, itemId, date);
+
+    expect(
+      await logHistoricalDose(
+        fd({ id: itemId, dose_id: doseId, date, time: "08:00" })
+      )
+    ).toEqual({
+      ok: false,
+      error: "That scheduled dose is marked skipped for this date.",
+    });
+    expect(auditRows(profile.id)).toEqual([]);
+  });
+
   it("refuses a read-only acting session", async () => {
     const login = createLogin({});
     const profile = createProfile(`sdh-ro-${++unique}`, login.id);
