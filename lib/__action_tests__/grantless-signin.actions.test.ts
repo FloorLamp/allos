@@ -41,8 +41,7 @@ import { NO_PROFILE_ACCESS } from "@/lib/login-security";
 import { resolveSessionToken, createSession, SESSION_COOKIE } from "@/lib/auth";
 import { hashPasswordSync } from "@/lib/password";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
-
-const PASSWORD = "Zt7-mln-Qp9x!";
+import { ACTION_TEST_PASSWORD } from "./password-fixture";
 
 function mkLogin(role: "admin" | "member" = "member"): {
   id: number;
@@ -54,7 +53,8 @@ function mkLogin(role: "admin" | "member" = "member"): {
       .prepare(
         "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, ?)"
       )
-      .run(username, hashPasswordSync(PASSWORD), role).lastInsertRowid
+      .run(username, hashPasswordSync(ACTION_TEST_PASSWORD), role)
+      .lastInsertRowid
   );
   return { id, username };
 }
@@ -80,7 +80,7 @@ function sessionCount(loginId: number): number {
   ).c;
 }
 
-function signIn(username: string, password = PASSWORD) {
+function signIn(username: string, password = ACTION_TEST_PASSWORD) {
   const fd = new FormData();
   fd.set("username", username);
   fd.set("password", password);

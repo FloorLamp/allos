@@ -14,14 +14,12 @@ import {
 } from "@/app/(app)/settings/family/actions";
 import { setSmtpConfig, setPublicUrl } from "@/lib/settings";
 import { createLogin as seedLogin, createProfile, actAs, fd } from "./harness";
+import { ACTION_TEST_PASSWORD } from "./password-fixture";
 
 const captureFile = path.join(
   os.tmpdir(),
   `allos-mail-family-${process.pid}-${Date.now()}.jsonl`
 );
-
-// A strong password that passes checkPasswordStrength.
-const STRONG = "Zt7-mln-Qp9x!";
 
 function captured(): string {
   return fs.readFileSync(captureFile, "utf8");
@@ -57,7 +55,7 @@ describe("createLogin with email + invite (#985)", () => {
     const res = await createLogin(
       fd({
         username: "newbie",
-        password: STRONG,
+        password: ACTION_TEST_PASSWORD,
         role: "member",
         email: "newbie@example.com",
         invite: "1",
@@ -82,7 +80,11 @@ describe("createLogin with email + invite (#985)", () => {
 
   it("rejects an invalid email without creating the login", async () => {
     const res = await createLogin(
-      fd({ username: "bad", password: STRONG, email: "not-an-email" })
+      fd({
+        username: "bad",
+        password: ACTION_TEST_PASSWORD,
+        email: "not-an-email",
+      })
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/valid email/i);
@@ -94,10 +96,18 @@ describe("createLogin with email + invite (#985)", () => {
 
   it("rejects a duplicate email (unique-if-set NOCASE)", async () => {
     await createLogin(
-      fd({ username: "first", password: STRONG, email: "dup@example.com" })
+      fd({
+        username: "first",
+        password: ACTION_TEST_PASSWORD,
+        email: "dup@example.com",
+      })
     );
     const res = await createLogin(
-      fd({ username: "second", password: STRONG, email: "DUP@example.com" })
+      fd({
+        username: "second",
+        password: ACTION_TEST_PASSWORD,
+        email: "DUP@example.com",
+      })
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/already in use/i);
@@ -107,7 +117,11 @@ describe("createLogin with email + invite (#985)", () => {
 describe("sendInvite + setLoginEmail (#985)", () => {
   it("emails an invite to an existing login with an email", async () => {
     const created = await createLogin(
-      fd({ username: "later", password: STRONG, email: "later@example.com" })
+      fd({
+        username: "later",
+        password: ACTION_TEST_PASSWORD,
+        email: "later@example.com",
+      })
     );
     expect(created.ok).toBe(true);
     fs.writeFileSync(captureFile, ""); // clear — no invite sent on create
@@ -124,7 +138,9 @@ describe("sendInvite + setLoginEmail (#985)", () => {
   });
 
   it("refuses to invite a login with no email", async () => {
-    await createLogin(fd({ username: "noemail", password: STRONG }));
+    await createLogin(
+      fd({ username: "noemail", password: ACTION_TEST_PASSWORD })
+    );
     const id = (
       db.prepare("SELECT id FROM logins WHERE username = 'noemail'").get() as {
         id: number;
@@ -138,7 +154,11 @@ describe("sendInvite + setLoginEmail (#985)", () => {
   it("refuses to invite when the public URL is unset (honest copy)", async () => {
     setPublicUrl("");
     const created = await createLogin(
-      fd({ username: "nourl", password: STRONG, email: "nourl@example.com" })
+      fd({
+        username: "nourl",
+        password: ACTION_TEST_PASSWORD,
+        email: "nourl@example.com",
+      })
     );
     expect(created.ok).toBe(true);
     const id = (
@@ -152,7 +172,7 @@ describe("sendInvite + setLoginEmail (#985)", () => {
   });
 
   it("setLoginEmail sets and clears the address", async () => {
-    await createLogin(fd({ username: "edit", password: STRONG }));
+    await createLogin(fd({ username: "edit", password: ACTION_TEST_PASSWORD }));
     const id = (
       db.prepare("SELECT id FROM logins WHERE username = 'edit'").get() as {
         id: number;
