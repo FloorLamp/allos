@@ -86,8 +86,12 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     const link = table
       .locator('td[data-card="title"] a[href*="/results/readings/view"]')
       .first(); // first-ok: any canonical row's link proves the card keeps the desktop destination
-    await followLink(page, link, /\/biomarkers\/view\?name=/);
-    await expect(page.locator("h1")).toBeVisible();
+    const destinationName = (await link.textContent())?.trim();
+    expect(destinationName).toBeTruthy();
+    await followLink(page, link, /\/results\/readings\/view\?name=/);
+    await expect(
+      page.getByRole("heading", { name: destinationName!, exact: true })
+    ).toBeVisible();
   });
 
   test("sorting still works in stacked-row mode, through the compact sort select", async ({

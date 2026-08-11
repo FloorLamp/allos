@@ -127,7 +127,7 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
     // the rule ever collapses back into a category check, this redirects and fails.
     await page.goto("/results/readings/view?name=Grip%20Strength");
 
-    await expect(page).toHaveURL(/\/biomarkers\/view/);
+    await expect(page).toHaveURL(/\/results\/readings\/view/);
     await expect(
       page.getByRole("link", { name: "Back to readings" })
     ).toBeVisible();

@@ -142,7 +142,7 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
   await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // first-ok: asserts a Derived badge renders — order-agnostic presence
   // Non-HDL Cholesterol is derived from the seeded Total + HDL readings.
   const link = page.getByRole("link", { name: "Non-HDL Cholesterol" }).first(); // first-ok: the seeded Non-HDL Cholesterol result link — order-agnostic
-  await followLink(page, link, /\/biomarkers\/view/);
+  await followLink(page, link, /\/results\/readings\/view/);
 
   const note = page.getByTestId("derived-note");
   await expect(note).toBeVisible();
@@ -163,7 +163,7 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
   await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // first-ok: asserts a Derived badge renders — order-agnostic presence
 
   const link = page.getByRole("link", { name: "PhenoAge" }).first(); // first-ok: the seeded PhenoAge result link — order-agnostic
-  await followLink(page, link, /\/biomarkers\/view/);
+  await followLink(page, link, /\/results\/readings\/view/);
 
   const note = page.getByTestId("derived-note");
   // The biomarkers/view page derives PhenoAge (Levine 2018) from the nine-analyte panel

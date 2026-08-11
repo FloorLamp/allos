@@ -70,7 +70,7 @@ test("the Fitness check reaches the surface that judges a measured test (#2086)"
   await followLink(
     page,
     modal.getByTestId("fitness-history-vo2max"),
-    /\/biomarkers\/view/
+    /\/results\/readings\/view/
   );
 
   // The destination is the declared surface, with the age/sex percentile on it.

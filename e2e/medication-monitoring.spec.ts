@@ -41,7 +41,7 @@ test("the Medications row shows a 'requires monitoring' note for a monitored dru
   // rendered, leaving a click-retry locator on the old page with no live node.
   await page.goto(addResultHref!);
   await expect(page).toHaveURL(
-    /\/results\/biomarkers\?new=1&name=INR#add-result$/
+    /\/results\/readings\?new=1&name=INR#add-result$/
   );
   await expect(
     page

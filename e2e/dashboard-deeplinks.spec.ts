@@ -121,7 +121,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
       await followLink(
         page,
         ctaFor("Complete the PhenoAge panel"),
-        /\/results\/biomarkers\?new=1&name=Creatinine$/
+        /\/results\/readings\?new=1&name=Creatinine$/
       );
       await expect(
         page

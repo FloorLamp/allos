@@ -17,7 +17,7 @@ test("bare /results redirects to the Readings tab and renders it (#1079)", async
   page,
 }) => {
   await page.goto("/results");
-  await expect(page).toHaveURL(/\/results\/biomarkers$/);
+  await expect(page).toHaveURL(/\/results\/readings$/);
   await expect(
     page.getByRole("heading", { name: "Results", exact: true })
   ).toBeVisible();
@@ -62,7 +62,7 @@ test("the empty Readings action opens the add-result modal", async ({
     await followLink(
       page,
       page.getByRole("link", { name: /^Add result/ }),
-      /\/results\/biomarkers\?new=1(?:#add-result)?$/
+      /\/results\/readings\?new=1(?:#add-result)?$/
     );
 
     await expect(page.getByTestId("add-result-panel")).toHaveAttribute(

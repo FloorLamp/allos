@@ -24,7 +24,7 @@ test("titer link lands on the populated biomarker detail page, not the empty sta
   // Navigate past the pre-hydration swallow (#500/#830) with followLink — a raw
   // click here intermittently lands in the hydration window and never advances
   // the URL, which is the source of this spec's retries=0 flake (#889/#868).
-  await followLink(page, titerLink, /\/biomarkers\/view\?name=/);
+  await followLink(page, titerLink, /\/results\/readings\/view\?name=/);
   // Populated detail page — its heading names the marker; NOT the empty state.
   await expect(
     page.getByRole("heading", { name: "Hepatitis B Surface Antibody" })
