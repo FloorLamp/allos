@@ -33,8 +33,9 @@ switched off there. A newly created profile has no recipient until someone
 chooses one.
 
 Beyond reminders, two opt-in retention nudges ride the same channels: a **recap**
-— a quiet periodic summary (workouts, PRs, supplement adherence, a body-weight
-trend, aerobic base, and sleep regularity), whose week covers the same "this
+— a quiet periodic summary (workouts, PRs, supplement adherence, how varied and
+how covered your eating week was, a body-weight trend, aerobic base, your typical
+night's sleep and how regular it was, and the goals you reached), whose week covers the same "this
 week" your routine counters use per your **week mode** (a calendar week or a
 rolling seven days — **Settings → Health profile**), with the send day/time set
 under **Settings → Notifications**; and **milestone alerts** — a brief note when
@@ -57,6 +58,19 @@ A monthly or quarterly recap says **different things**, not the same things adde
 up: the _shape_ of your training rather than a session count, the weekday/weekend
 _pattern_ behind an adherence percentage, and where your weight is _heading_
 rather than what the scale said on one day. It never re-totals the weeks.
+
+**Food and sleep are reported the same way.** The food line states how many days of
+the week you logged anything at all and how many different food groups those days
+covered, plus how many of the days that could be measured met your protein and fibre
+targets — never a serving total, which would just be seven daily numbers added up. The
+sleep line states your **typical night** for the period (a median, so one late finish
+does not define the week) beside the regularity index, because a perfectly consistent
+five hours a night looks fine on regularity alone.
+
+**A goal is reported in the period you actually reached it** — early, late, or with no
+deadline at all — rather than in the period its deadline happened to fall in. A goal
+whose target date passes without being met is reported once, factually, in that period's
+recap and never again; a goal you have archived is not mentioned either way.
 
 **Which kinds reach which channel** is one table on **Settings → Notifications**
 — _Message kinds_, one row per kind and one column per channel. The box in a

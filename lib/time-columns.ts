@@ -544,6 +544,13 @@ export const TIME_COLUMNS = {
       grain: "instant",
       convention: "bare",
     },
+    {
+      column: "achieved_at",
+      semantic: "lifecycle",
+      grain: "instant",
+      convention: "canonical",
+      note: "Migration 182 (#2394) — BORN canonical: the instant `status` became 'achieved', written by setStatus through instantNow() and NULLed when a goal is set back to active. LIFECYCLE and not `event`: it is when the goal ROW was marked reached, not when the underlying performance happened — the app never observes that. NULL on every pre-182 achieved goal, deliberately: the recap announces a goal in the period its RECORDED achievement falls in, so an unrecorded one stays silent rather than being announced retroactively.",
+    },
   ],
   hr_minutes: [
     {

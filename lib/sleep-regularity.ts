@@ -311,6 +311,49 @@ export function mainSleepNights(
   return out.sort((a, b) => (a.wakeDay < b.wakeDay ? -1 : 1));
 }
 
+// Every session the per-wake-day main period did NOT claim. This is the inverse
+// of mainSleepPeriod, not a second nap heuristic: fragmented-night members remain
+// part of the night, provider-labeled nap-only days keep every labeled nap, and a
+// same-day afternoon session stays separate from the overnight period. Newest
+// first, which is the order both nap history surfaces present.
+export interface NapSession<T extends SleepSession = SleepSession> {
+  wakeDay: string;
+  start: string;
+  end: string;
+  durationMin: number;
+  session: T;
+}
+
+export function napSessions<T extends SleepSession>(
+  sessions: readonly T[],
+  tz: string
+): NapSession<T>[] {
+  const byDay = new Map<string, T[]>();
+  for (const session of sessions) {
+    if (!isValidWindow(session)) continue;
+    const wakeDay = zonedDateParts(tz, new Date(session.end)).date;
+    const group = byDay.get(wakeDay);
+    if (group) group.push(session);
+    else byDay.set(wakeDay, [session]);
+  }
+
+  const naps: NapSession<T>[] = [];
+  for (const [wakeDay, group] of byDay) {
+    const mainMembers = new Set(mainSleepPeriod(group)?.members ?? []);
+    for (const session of group) {
+      if (mainMembers.has(session)) continue;
+      naps.push({
+        wakeDay,
+        start: session.start,
+        end: session.end,
+        durationMin: sleepSessionDurationMinutes(session),
+        session,
+      });
+    }
+  }
+  return naps.sort((a, b) => b.end.localeCompare(a.end));
+}
+
 // Median of a numeric array (population median; even length averages the two
 // middle values). Callers pass a non-empty array.
 function median(values: number[]): number {

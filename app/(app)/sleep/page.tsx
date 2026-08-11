@@ -12,6 +12,7 @@ import {
   getSleepRegularityInsight,
   getSleepConsistency,
   getSleepStageComposition,
+  getNapHistory,
   getSleepMoodData,
   getOuraScores,
 } from "@/lib/queries";
@@ -29,6 +30,7 @@ import SleepLogAction from "./SleepLogAction";
 import { SLEEP_REGULARITY_SERIES_KEY } from "@/lib/trend-sparkline";
 import OuraScores from "./OuraScores";
 import SleepTrendsSection from "./SleepTrendsSection";
+import NapCard from "./NapCard";
 import SourceComparison from "../trends/SourceComparison";
 import PageContainer from "@/components/PageContainer";
 
@@ -89,6 +91,7 @@ export default async function SleepPage() {
     light: r.light / 60,
     awake: r.awake / 60,
   }));
+  const naps = getNapHistory(profile.id);
   const sleepMood = getSleepMoodData(profile.id);
   const sleepMoodMinDate = shiftDateStr(todayStr, -(sleepMood.windowDays - 1));
   const ouraScores = getOuraScores(profile.id);
@@ -182,6 +185,10 @@ export default async function SleepPage() {
             />
           </div>
         </div>
+      )}
+
+      {naps.today.length > 0 && (
+        <NapCard naps={naps} formatPrefs={formatPrefs} />
       )}
 
       <SleepTrendsSection
@@ -307,6 +314,7 @@ export default async function SleepPage() {
           <SleepMoodSection
             points={sleepMood.points}
             history={sleepMood.history}
+            naps={naps.history}
             windowDays={sleepMood.windowDays}
             formatPrefs={formatPrefs}
           />
