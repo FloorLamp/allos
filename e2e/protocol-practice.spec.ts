@@ -26,10 +26,10 @@ import { frozenNow } from "./worker-env";
 // Runs authenticated as admin acting as profile 1.
 test("protocol references recovery gear + tracks practice adherence (#344)", async ({
   page,
-}) => {
+}, testInfo) => {
   test.slow(); // next dev compiles these routes on first hit
 
-  const uniqueName = `E2E Sauna Protocol ${frozenNow().getTime()}`;
+  const uniqueName = `E2E Sauna Protocol ${frozenNow().getTime()}-${testInfo.repeatEachIndex}`;
   const start = new Date(frozenNow().getTime() - 14 * 86_400_000)
     .toISOString()
     .slice(0, 10);
@@ -127,15 +127,16 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
 // acting as profile 1.
 test("wellness practice: range target + one-tap logging (#1259)", async ({
   page,
-}) => {
+}, testInfo) => {
   test.slow(); // next dev compiles these routes on first hit
 
-  const uniqueName = `E2E Red Light ${frozenNow().getTime()}`;
+  const iteration = `${frozenNow().getTime()}-${testInfo.repeatEachIndex}`;
+  const uniqueName = `E2E Red Light ${iteration}`;
   // A UNIQUE custom practice name so this drives the CREATE-owned path deterministically
   // — the seed ships a "Red light therapy" practice target with logged sessions, and the
   // create-vs-reference rule (#344) would REFERENCE it (non-zero adherence); a fresh name
   // owns a fresh 0-count target.
-  const practiceName = `E2E Practice ${frozenNow().getTime()}`;
+  const practiceName = `E2E Practice ${iteration}`;
   // A year-long window exercises the compact card heatmap's mobile density story
   // (#1588) while the unique practice keeps adherence deterministic.
   //
@@ -291,8 +292,9 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
 
 test("activity and food protocols open their owning prefilled loggers (#1584)", async ({
   page,
-}) => {
+}, testInfo) => {
   test.slow();
+  const iteration = `${frozenNow().getTime()}-${testInfo.repeatEachIndex}`;
   const start = new Date(frozenNow().getTime() - 14 * 86_400_000)
     .toISOString()
     .slice(0, 10);
@@ -338,7 +340,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
     await page.waitForURL(/\/longevity(?:#|$)/);
   }
 
-  const activityName = `E2E Cardio Protocol ${frozenNow().getTime()}`;
+  const activityName = `E2E Cardio Protocol ${iteration}`;
   await createProtocol(activityName, "cardio");
   const activityCard = page.getByTestId("protocol-practice-card");
   // ProtocolLogButton posts nothing — it opens the owning logger through the
@@ -354,7 +356,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
     exact: true,
   });
   await expect(cardioChip).toHaveAttribute("aria-pressed", "true");
-  const customActivity = `Protocol cardio ${frozenNow().getTime()}`;
+  const customActivity = `Protocol cardio ${iteration}`;
   await activityForm.getByPlaceholder(/What did you do/).fill(customActivity);
   await activityForm
     .getByRole("button", { name: /Add .* as new activity/ })
@@ -383,7 +385,7 @@ test("activity and food protocols open their owning prefilled loggers (#1584)", 
   await expect(detailMain.getByTestId("protocol-usage")).toBeVisible();
   await deleteCurrentProtocol();
 
-  const foodName = `E2E Food Protocol ${frozenNow().getTime()}`;
+  const foodName = `E2E Food Protocol ${iteration}`;
   await createProtocol(foodName, "food_group:fatty_fish");
   const foodCard = page.getByTestId("protocol-practice-card");
   await hydratedClick(
