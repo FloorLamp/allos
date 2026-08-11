@@ -126,6 +126,30 @@ describe("temperature reply quick-log", () => {
     expect(handled).toBeUndefined(); // handleIncomingMessage returns void
   });
 
+  it("refuses a copied marker for a profile not linked to the replying chat", async () => {
+    const foreign = seedProfile("TG temp marker foreign");
+    sendMock.mockClear();
+
+    await handleIncomingMessage({
+      chat: { id: CHAT },
+      text: "38.2",
+      reply_to_message: {
+        text: `Reply with the temperature. ${tempReplyMarker(foreign.profileId)}`,
+      },
+    });
+
+    const rows = db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM medical_records
+          WHERE profile_id = ? AND canonical_name = 'Body Temperature'`
+      )
+      .get(foreign.profileId) as { c: number };
+    expect(rows.c).toBe(0);
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const reply = sendMock.mock.calls[0][1] as { body: string };
+    expect(reply.body).toMatch(/isn't linked to this chat/i);
+  });
+
   it("ignores a plain message with no temp-reply marker", async () => {
     sendMock.mockClear();
     const before = db
