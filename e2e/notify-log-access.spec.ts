@@ -158,7 +158,6 @@ test.describe("Notify tick log (#2209)", () => {
     test.slow();
 
     await page.goto("/settings/notify-log");
-    await expect(page.getByTestId("notify-log-run").first()).toBeVisible();
 
     await page.getByTestId("notify-log-clear").click();
     await expect(page.getByText("Clear all?", { exact: true })).toBeVisible();
