@@ -102,6 +102,10 @@ const CANONICAL_INSTANT_COLUMNS: Record<
     columns: ["frontier_at", "advanced_at", "observed_at"],
     why: "migration 179 (#2341) — BORN canonical: the continuous-stream watermark's three instants. The table is new, so the claim cannot be false, and the entry is what binds its first writer (lib/stream-frontier-db.ts) to instantNow()/the frontier read's own canonical value instead of letting the call site pick a shape. No column DEFAULT: SQLite's own datetime('now') would write the bare shape into a canonical column.",
   },
+  goals: {
+    columns: ["achieved_at"],
+    why: "migration 182 (#2394) — BORN canonical: the instant a goal was marked achieved, the column the recap's reached-line windows on. The table is old but the column is new and carries no DEFAULT, so the claim cannot be false, and the entry is what binds its only writer (setStatus in app/(app)/training/goal-actions.ts) to instantNow() rather than to SQLite's own bare-shaped clock — a bare value in a column the recap compares against a canonical one would answer wrong while the query still looked right. `created_at` beside it stays bare and is NOT claimed here.",
+  },
   notify_lifecycle: {
     columns: ["at"],
     why: "migration 167 (#2233) — the delivery-health marker's failure instant, normalized off `new Date().toISOString()`'s millisecond shape (a THIRD serialization rule C could not see: the module that built the string, lib/notifications/index.ts, writes no SQL of its own — the #2205 phase 3 census caught it). The writer now binds instantNow(); nothing compares this column in SQL.",

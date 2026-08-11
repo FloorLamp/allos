@@ -4,7 +4,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { casUpdate } from "@/lib/tx";
-import { sqlNow } from "@/lib/clock";
+import { instantNow, sqlNow } from "@/lib/clock";
 import {
   formError,
   formOk,
@@ -405,11 +405,33 @@ export async function setStatus(formData: FormData): Promise<FormResult> {
   const status = String(formData.get("status"));
   if (!id) return formError("Couldn't find that goal.");
   if (!isOutcomeGoalStatus(status)) return formError("Unknown goal status.");
+  // THE ACHIEVEMENT INSTANT IS WRITTEN HERE, AND ONLY HERE (#2394, migration 182).
+  // `status` said WHETHER a goal was reached and nothing said WHEN, so the recap had
+  // to window on `target_date` — the deadline — and could therefore announce a goal
+  // reached early a month after the fact, never announce one reached late, and never
+  // announce a goal with no deadline at all. `achieved_at` is the missing fact.
+  //
+  // COALESCE, so re-stating an existing `achieved` (the idempotent path this action
+  // deliberately keeps as success) does not re-stamp the goal into the current week and
+  // announce it a second time. Flipping back to `active` NULLs it: the goal has not been
+  // achieved, and reaching it again is a new event with a new instant.
+  //
+  // instantNow() (lib/clock.ts → lib/date.ts utcInstant), never SQL's own datetime('now')
+  // — the column is on the canonical `…Z` convention and comparison is lexical.
   const cas = writeTx((tx) =>
     casUpdate(
       tx,
-      db.prepare("UPDATE goals SET status = ? WHERE id = ? AND profile_id = ?"),
+      db.prepare(
+        `UPDATE goals
+            SET status = ?,
+                achieved_at = CASE WHEN ? = 'achieved'
+                                   THEN COALESCE(achieved_at, ?)
+                                   ELSE NULL END
+          WHERE id = ? AND profile_id = ?`
+      ),
       status,
+      status,
+      instantNow(),
       id,
       profile.id
     )
