@@ -4,6 +4,7 @@ import { IconHistory } from "@tabler/icons-react";
 import { Notice } from "./Notice";
 import { draftAgeLabel } from "@/lib/offline/drafts";
 import type { FormDraftApi } from "./useFormDraft";
+import { useState } from "react";
 
 // The resume affordance for a local form draft (issue #1699).
 //
@@ -28,8 +29,9 @@ export default function DraftRestoreBanner({
   noun: string;
   className?: string;
 }) {
+  const [mountedAt] = useState(Date.now);
   if (!draft.offer) return null;
-  const when = draftAgeLabel(draft.offer.savedAt, Date.now());
+  const when = draftAgeLabel(draft.offer.savedAt, mountedAt);
 
   return (
     <Notice
