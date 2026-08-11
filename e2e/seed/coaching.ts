@@ -8,6 +8,7 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr, zonedWallTimeToUtc } from "../../lib/date";
 import { getTimezone, setProfileSetting } from "../../lib/settings";
+import { setFixtureTimezone } from "../fixture-timezones";
 import {
   E2E_LOGIN_REST,
   REST_CARD_PROFILE,
@@ -41,8 +42,16 @@ export function seedRestEpisode(): void {
   ).run(
     PROFILE_ID,
     COACH_TODAY,
-    `${COACH_YESTERDAY}T23:00`,
-    `${COACH_TODAY}T04:00`
+    zonedWallTimeToUtc(
+      getTimezone(PROFILE_ID),
+      COACH_YESTERDAY,
+      "23:00"
+    )!.toISOString(),
+    zonedWallTimeToUtc(
+      getTimezone(PROFILE_ID),
+      COACH_TODAY,
+      "04:00"
+    )!.toISOString()
   );
 
   // The persisted episode marker (mirrors the refill nudge's dedup marker). Started
@@ -76,7 +85,7 @@ export function seedRestCard(): void {
     // Pin this dedicated profile to UTC so the spec's per-test reset (which rebuilds
     // the same signal state from frozenNow()'s UTC date) and this seed agree on the
     // calendar date regardless of the prelude-pinned zone or the run's start hour.
-    setProfileSetting(rcId, "timezone", "UTC");
+    setFixtureTimezone(db, rcId, "rest-card", "UTC");
     const rcToday = today(rcId);
     const rcPrevNight = shiftDateStr(rcToday, -1);
     db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(rcId);

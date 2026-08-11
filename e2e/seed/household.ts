@@ -11,6 +11,7 @@ import {
   createFixtureProfile,
   createFixtureProfileWithId,
 } from "../fixture-profile";
+import { setFixtureTimezone } from "../fixture-timezones";
 import {
   E2E_LOGIN_HH_ROUND,
   HH_ROUND_CAREGIVER_PROFILE,
@@ -537,12 +538,8 @@ export function seedMultiProfile(): void {
   {
     const eastId = fixtureProfileId(TL_EAST_PROFILE);
     const westId = fixtureProfileId(TL_WEST_PROFILE);
-    const setTz = db.prepare(
-      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', ?)
-       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
-    );
-    setTz.run(eastId, TL_EAST_TZ);
-    setTz.run(westId, TL_WEST_TZ);
+    setFixtureTimezone(db, eastId, "timeline-east", TL_EAST_TZ);
+    setFixtureTimezone(db, westId, "timeline-west", TL_WEST_TZ);
     // The frozen instant the app uses (ALLOS_TEST_NOW when set, else real now), so the
     // seeded activity date == the app's today(profileId) at request time.
     const seedNow = process.env.ALLOS_TEST_NOW

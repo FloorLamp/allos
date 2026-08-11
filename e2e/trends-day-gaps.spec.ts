@@ -7,6 +7,7 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
+import { setFixtureTimezone } from "./fixture-timezones";
 
 // DAY-GRAIN GAPS (issue #2258): a day with no reading must occupy space.
 //
@@ -66,11 +67,7 @@ function createGapFixture(testInfo: TestInfo, purpose: string): GapFixture {
           .run(loginId, profileId);
         // Pin the profile's timezone to the run's, so every seeded instant below
         // lands on the calendar day this spec names.
-        handle
-          .prepare(
-            `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', ?)`
-          )
-          .run(profileId, TZ);
+        setFixtureTimezone(handle, profileId, "trends-day-gaps", TZ);
       })
       .immediate();
     return { username, loginId, profileId };

@@ -11,6 +11,7 @@ import {
 } from "./fixture-logins";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { setFixtureTimezone } from "./fixture-timezones";
 
 // #1148 (multi-reason rest card) + #1150 ("Training anyway" acknowledgment + the
 // "Not today" → "Snooze" rename). Driven against the dedicated REST_CARD_PROFILE, which
@@ -33,10 +34,7 @@ function resetRestCardState(): void {
     if (row) {
       const rcToday = frozenNow().toISOString().slice(0, 10);
       const rcPrevNight = shiftDateStr(rcToday, -1);
-      db.prepare(
-        `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')
-         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
-      ).run(row.id);
+      setFixtureTimezone(db, row.id, "rest-card", "UTC");
       db.prepare(
         "DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min'"
       ).run(row.id);
