@@ -2196,6 +2196,27 @@ describe("intake refusals are answered as an alert, successes are not", () => {
     expect(answerOpts()?.alert).toBe(true);
   });
 
+  it("does not alert a CARE-tier refusal either — the line is the intake tier", async () => {
+    // A preventive tap whose rule is not in the catalog writes nothing, so it IS a
+    // refusal — and it still answers as a toast. The boundary is deliberate and worth
+    // pinning: it is not "refusals alert", it is "intake refusals alert", because the
+    // harm the modal buys is a reader believing a medication was logged when it was not.
+    const pid = newProfile("Toast Tam");
+    seedLoginTelegram(pid, "5552296");
+    vi.mocked(answerCallbackQuery).mockClear();
+    await handleCallbackQuery(
+      tapCq("5552296", 1, `pvdone:${pid}:not-a-real-rule-key`, [
+        [
+          {
+            text: "✅ Done",
+            callback_data: `pvdone:${pid}:not-a-real-rule-key`,
+          },
+        ],
+      ])
+    );
+    expect(answerOpts()?.alert).toBeFalsy();
+  });
+
   it("does not alert a food quick-log", async () => {
     // Coaching tier: a missed toast costs a serving's timestamp, and a modal here is
     // what would teach people to dismiss the dose one unread.
