@@ -1152,7 +1152,7 @@ than health, which fails the same test the coverage rule applies elsewhere.
 
 What was retired, and it was very nearly the whole family at once: the
 weekly-recap streak line (#1935), the per-supplement 🔥 chip and its Telegram
-note (#1936), the Training/Journal activity streak on four surfaces (#1937), and
+note (#1936), the Training Log activity streak on four surfaces (#1937), and
 the `streak:` / `adherence:` milestones — mint AND existing rows, via migration
 148 (#1939). #1966 then took the one sibling that sweep missed: the Trends
 Practices lens's "N-week streak", which the first pass read past because it

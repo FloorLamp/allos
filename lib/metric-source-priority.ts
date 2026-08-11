@@ -104,7 +104,7 @@ export function isValidSourceId(source: string): boolean {
 }
 
 // body_metrics stores manual rows with source NULL (or 'manual' from the
-// journal); map both onto the one 'manual' key so preference matching and
+// training log); map both onto the one 'manual' key so preference matching and
 // display grouping agree.
 export function sourceKey(source: string | null | undefined): string {
   return source == null || source === "" || source === "manual"

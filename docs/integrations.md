@@ -117,7 +117,7 @@ shows only "Medical appointment" even inside the shared feed.
 Connect once with OAuth and your runs, rides, and other activities sync
 automatically — with heart rate, elevation, pace, calories, and cycling
 power/cadence. A synced activity's **GPS route** (Strava's summary polyline,
-which respects your privacy zones) is captured too and drawn on its Journal card
+which respects your privacy zones) is captured too and drawn on its Training Log card
 as a small **tile-free SVG route thumbnail** — the route's shape, rendered from
 the stored polyline with no basemap and **no map tiles or external requests**
 (nothing about where you were leaves the box). On ride detail, Strava's aligned
@@ -126,7 +126,7 @@ chart; indoor rides and privacy-trimmed streams omit it.
 
 Synced rides use the same read-first ride destination from the Training Log and
 Analyze history, Timeline, global search, cardio history panels, and linked bike
-history. Runs and other activity types retain their Journal destination, so
+history. Runs and other activity types retain their Training Log destination, so
 importing Strava data does not create a separate navigation model. Training →
 Analyze gives each cycling subtype its own home: road/gravel/e-bike rides remain
 Cycling, MountainBikeRide becomes Mountain Biking, and virtual or trainer rides
@@ -134,7 +134,7 @@ become the indoor-only Stationary Bike activity. Each has its own totals, record
 range-selectable distance/speed/elevation/HR/power/cadence/effort progression,
 rolling 28-day form, ride-window HR zones, power bests and load, route/telemetry
 coverage, segment PRs, and linked ride history. Ride details link back to that
-state instead of dropping the reader at one Journal row.
+state instead of dropping the reader at one Training Log row.
 
 1. Create an API application in your
    [Strava API settings](https://www.strava.com/settings/api) to get a **Client

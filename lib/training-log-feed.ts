@@ -1,15 +1,15 @@
-// Assemble ONE page of the Journal feed's day-grouped cards (issue #451). The Journal
+// Assemble ONE page of the Training Log feed's day-grouped cards (issue #451). The Training Log
 // used to load the profile's ENTIRE activity history (getActivities, SELECT * incl.
 // the components TEXT) and page it client-side, so the whole history crossed the wire
 // and hydrated on every Training → Log visit. This is the server-side window: the
-// initial render (HistorySection) and the "Load more" server action (journal/actions)
+// initial render (HistorySection) and the "Load more" server action (activity-actions.ts)
 // both call THIS one assembler, so both build identical cards for a given window —
 // "one question, one computation". Only the built DayGroups (not raw history) cross to
 // the client. Not pure (reads DB + settings); takes the resolved profile + unit prefs.
 
 import {
-  getJournalPage,
-  resolveJournalFilterSpec,
+  getTrainingLogPage,
+  resolveTrainingLogFilterSpec,
   getSetsForActivities,
   getRoutePolylinesForActivities,
   getActiveCaloriesForActivities,
@@ -17,13 +17,13 @@ import {
 } from "./queries";
 import { getEquipment } from "./equipment";
 import { getActivityVideosForActivities } from "./activity-video-write";
-import { buildJournalCards, type DayGroup } from "./journal-card";
-import { mergeJournalDayGroups } from "./journal-multi-view";
+import { buildTrainingLogCards, type DayGroup } from "./training-log-card";
+import { mergeTrainingLogDayGroups } from "./training-log-multi-view";
 import {
-  EMPTY_JOURNAL_FILTERS,
-  journalFiltersActive,
-  type JournalFilters,
-} from "./journal-filters";
+  EMPTY_TRAINING_LOG_FILTERS,
+  trainingLogFiltersActive,
+  type TrainingLogFilters,
+} from "./training-log-filters";
 import type { DatedWeight } from "./calorie-estimate";
 import type { UnitPrefs } from "./settings";
 import {
@@ -37,9 +37,9 @@ import { getWeatherDaysForProfile } from "./queries/weather-situations";
 
 // Days per page. Matches the client's 14-day reveal increment so a "Load more" click
 // fetches roughly one screen of older history at a time.
-export const JOURNAL_PAGE_DAYS = 14;
+export const TRAINING_LOG_PAGE_DAYS = 14;
 
-export interface JournalFeedPage {
+export interface TrainingLogFeedPage {
   groups: DayGroup[];
   // Cursor for the next-older page (pass back as `before`), or null when exhausted.
   nextBefore: string | null;
@@ -47,28 +47,28 @@ export interface JournalFeedPage {
 
 // Build the day-grouped cards for the window ending just before `before` (null = the
 // newest day). `dayLimit` days of activities are loaded, their sets fetched, and the
-// pure buildJournalCards run over them — the same derivation HistorySection used to
+// pure buildTrainingLogCards run over them — the same derivation HistorySection used to
 // run inline over ALL activities.
 //
 // FILTERS (issue #1634). When `filters` is active the window is the next `dayLimit`
 // days that CONTAIN a match anywhere in the ledger — not the next `dayLimit` days —
 // so `nextBefore` pages over matches and a hit twenty windows deep lands on page
-// one. The store answers "which days", the pure journalCardMatches answers "which
+// one. The store answers "which days", the pure trainingLogCardMatches answers "which
 // cards" (the client applies it as it always has, now over a complete day set). An
 // INACTIVE filter set resolves to no spec at all, so the unfiltered feed keeps its
 // exact pre-#1634 query and cost.
-export function buildJournalFeedPage(
+export function buildTrainingLogFeedPage(
   profileId: number,
   before: string | null,
   units: UnitPrefs,
   formatPrefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
-  dayLimit: number = JOURNAL_PAGE_DAYS,
-  filters: JournalFilters = EMPTY_JOURNAL_FILTERS
-): JournalFeedPage {
-  const spec = journalFiltersActive(filters)
-    ? resolveJournalFilterSpec(profileId, filters)
+  dayLimit: number = TRAINING_LOG_PAGE_DAYS,
+  filters: TrainingLogFilters = EMPTY_TRAINING_LOG_FILTERS
+): TrainingLogFeedPage {
+  const spec = trainingLogFiltersActive(filters)
+    ? resolveTrainingLogFilterSpec(profileId, filters)
     : undefined;
-  const page = getJournalPage(profileId, before, dayLimit, spec);
+  const page = getTrainingLogPage(profileId, before, dayLimit, spec);
   if (page.activities.length === 0) {
     return { groups: [], nextBefore: page.nextBefore };
   }
@@ -123,7 +123,7 @@ export function buildJournalFeedPage(
     }
   }
 
-  const groups = buildJournalCards({
+  const groups = buildTrainingLogCards({
     activities: page.activities,
     sets,
     equipmentNames,
@@ -143,18 +143,18 @@ export function buildJournalFeedPage(
   return { groups, nextBefore: page.nextBefore };
 }
 
-// Assemble the MULTI-VIEW Journal feed (issue #1330): the newest window of each
+// Assemble the MULTI-VIEW Training Log feed (issue #1330): the newest window of each
 // in-view member's cards, merged into ONE day-grouped feed with every card stamped
 // with its subject profile (activity.subjectProfileId). Loop-composed — each member's
-// window is built by the per-profile buildJournalFeedPage (with THAT member's own
+// window is built by the per-profile buildTrainingLogFeedPage (with THAT member's own
 // today/yesterday labels, route/video/equipment gathers) — then merged and RE-LABELED
 // by the viewer's (acting) clock so a date reads one way in the merged feed (the
-// per-profile-context rule, mergeJournalDayGroups). Multi-view is a recent-window
+// per-profile-context rule, mergeTrainingLogDayGroups). Multi-view is a recent-window
 // overview: only the newest page per member is gathered (no cross-member "Load more"
 // cursor), so the page passes initialCursor=null and hides the pager. The server
 // component then stamps subject NAME/photo/access identity (lib/scope stampSubjects)
 // and each member's own restriction onto the cards. In single view the caller uses
-// buildJournalFeedPage directly, so nothing here touches the single-profile path.
+// buildTrainingLogFeedPage directly, so nothing here touches the single-profile path.
 //
 // FILTERS (issue #1634) compose with the per-member cursors rather than assuming a
 // single one: each member's OWN newest window of MATCHING days is built by the
@@ -163,27 +163,27 @@ export function buildJournalFeedPage(
 // cards do. The merged feed still has no cross-member pager — it is a recent-window
 // overview — so what a filter changes is which days each member contributes, not how
 // paging works.
-export function buildMultiViewJournalGroups(
+export function buildMultiViewTrainingLogGroups(
   viewIds: readonly number[],
   actingProfileId: number,
   units: UnitPrefs,
   formatPrefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
-  filters: JournalFilters = EMPTY_JOURNAL_FILTERS
+  filters: TrainingLogFilters = EMPTY_TRAINING_LOG_FILTERS
 ): DayGroup[] {
   const members = viewIds.map((profileId) => ({
     profileId,
-    groups: buildJournalFeedPage(
+    groups: buildTrainingLogFeedPage(
       profileId,
       null,
       units,
       formatPrefs,
-      JOURNAL_PAGE_DAYS,
+      TRAINING_LOG_PAGE_DAYS,
       filters
     ).groups,
   }));
   const today = todayFn(actingProfileId);
   const yesterday = yesterdayFn(actingProfileId);
-  return mergeJournalDayGroups(members, (date) =>
+  return mergeTrainingLogDayGroups(members, (date) =>
     date === today
       ? "Today"
       : date === yesterday

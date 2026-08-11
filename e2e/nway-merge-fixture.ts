@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-// Shared re-seeder for the #1081 N-way merge specs (Review cluster card + Journal
+// Shared re-seeder for the #1081 N-way merge specs (Review cluster card + Training Log
 // multi-select merge). Both surfaces CONSUME their rows (a merge deletes rows +, on
 // Review, writes durable decisions), so the spec re-seeds in beforeEach to stay
 // repeat-safe (#868). Synthetic data only.
@@ -15,7 +15,7 @@ import type Database from "better-sqlite3";
 //     picker (#1431). Durations agree, so distance is the only surfaced conflict;
 //     only the Strava row carries an avg_hr, making it the deterministic default
 //     keeper (sourced + richest).
-//   - JOURNAL: three same-day MANUAL rows (values within tolerance, so no conflict
+//   - TRAINING LOG: three same-day MANUAL rows (values within tolerance, so no conflict
 //     dialogs) → three cards, each offering the other two as merge siblings for the
 //     multi-select keeper-radio flow.
 
@@ -29,22 +29,22 @@ export const NW_CONFLICT_TITLES = [
   "NW conf strava",
   "NW conf hc",
 ];
-export const NW_JOURNAL_TITLES = ["NW card", "NW sib A", "NW sib B"];
+export const NW_TRAINING_LOG_TITLES = ["NW card", "NW sib A", "NW sib B"];
 
 // Reset the fixture groups on `profileId` to their UNMERGED state at the given dates
-// (the spec passes dates recent relative to the frozen clock so the Journal cards land
+// (the spec passes dates recent relative to the frozen clock so the Training Log cards land
 // on page 1). Idempotent — deletes are scoped to this fixture's titles.
 export function seedNwayMergeFixture(
   db: Database.Database,
   profileId: number,
   reviewDate: string,
-  journalDate: string,
+  trainingLogDate: string,
   conflictDate: string
 ): void {
   const allTitles = [
     ...NW_REVIEW_TITLES,
     ...NW_CONFLICT_TITLES,
-    ...NW_JOURNAL_TITLES,
+    ...NW_TRAINING_LOG_TITLES,
   ];
   const placeholders = allTitles.map(() => "?").join(", ");
   db.prepare(
@@ -139,11 +139,11 @@ export function seedNwayMergeFixture(
     "hc:nwc-1"
   );
 
-  // JOURNAL group: three same-day manual rows (values within tolerance, so no
+  // TRAINING LOG group: three same-day manual rows (values within tolerance, so no
   // conflict dialogs).
   ins.run(
     profileId,
-    journalDate,
+    trainingLogDate,
     "NW card",
     40,
     6,
@@ -155,7 +155,7 @@ export function seedNwayMergeFixture(
   );
   ins.run(
     profileId,
-    journalDate,
+    trainingLogDate,
     "NW sib A",
     41,
     6,
@@ -167,7 +167,7 @@ export function seedNwayMergeFixture(
   );
   ins.run(
     profileId,
-    journalDate,
+    trainingLogDate,
     "NW sib B",
     42,
     6,

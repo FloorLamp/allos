@@ -307,7 +307,7 @@ export function saveActivityCore(
              -- device energy; imported rows keep their existing value untouched.
              est_calories = CASE WHEN source IS NULL AND external_id IS NULL
                                  THEN ? ELSE est_calories END,
-             -- Stamp last-edited (UTC, same form as created_at) so the Journal can
+             -- Stamp last-edited (UTC, same form as created_at) so the Training Log can
              -- show "edited …" alongside "added …" (issue #11). Bound from the
              -- CLOCK SEAM (#2287), not SQL's own clock: this column is the LIVENESS
              -- signal computeWorkoutPresence reads (lastTouchMs), and it subtracts it

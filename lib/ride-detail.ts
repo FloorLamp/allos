@@ -8,23 +8,23 @@ import {
 } from "./cycling-activity";
 import { rideHref, type AppRoute } from "./hrefs";
 import { median } from "./robust-stats";
-import { journalActivityHref } from "./timeline-format";
+import { trainingLogActivityHref } from "./timeline-format";
 import { ZONES, type ActivityWindow } from "./training-zones";
 
 export { cyclingActivityName, isCyclingActivity } from "./cycling-activity";
 export type { CyclingActivityIdentity } from "./cycling-activity";
 
 // The best read-first destination for one activity. Cycling sessions have a
-// dedicated performance detail; every other activity keeps the Journal entry as
+// dedicated performance detail; every other activity keeps the Training Log entry as
 // its canonical record. Shared training, Timeline, and equipment surfaces call
 // this one resolver so the same ride never opens two different destinations.
 export function activityDetailHref(
   activity: CyclingActivityIdentity & { id: number }
 ): AppRoute {
-  return rideDetailHref(activity) ?? journalActivityHref(activity.id);
+  return rideDetailHref(activity) ?? trainingLogActivityHref(activity.id);
 }
 
-// Some surfaces have a better non-cycling fallback than the Journal (global
+// Some surfaces have a better non-cycling fallback than the Training Log (global
 // search uses the activity's Timeline day so an old row is guaranteed to be
 // present). Expose the ride-only decision without making those callers repeat
 // the cycling classifier.

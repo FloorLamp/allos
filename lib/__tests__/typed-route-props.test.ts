@@ -229,7 +229,7 @@ describe("typed internal-route props (issue #285)", () => {
     expect(isStringShaped("Route<`/import/${number}`>")).toBe(false);
     // A VALUE that merely follows a colon is not an annotation.
     expect(isStringShaped('"/training"')).toBe(false);
-    expect(isStringShaped("journalActivityHref(id)")).toBe(false);
+    expect(isStringShaped("trainingLogActivityHref(id)")).toBe(false);
   });
 
   it("finds href declarations under every name shape the app uses", () => {

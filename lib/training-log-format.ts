@@ -7,7 +7,7 @@ import { DOCUMENT_SOURCE_PREFIX } from "./body-metric-extract";
 
 // Provenance label for an activity's `source` (issue #11), mirroring the
 // body-metrics history convention (lib/queries/metrics.ts): a manual row (source
-// NULL or the journal's 'manual') reads "Manual"; an integration id resolves to
+// NULL or the training log's 'manual') reads "Manual"; an integration id resolves to
 // its registry display name ('strava' -> "Strava", 'health-connect' -> "Google
 // Health Connect"); a doc-extracted row ('document:<id>') reads "Document"; any
 // other value shows verbatim. When a source-owned (imported) row has been
@@ -25,12 +25,12 @@ export function activityProvenanceLabel(
 }
 
 // The PROVENANCE KEY an activity's raw `source` collapses to — the identity the
-// Journal's source filter (#1634) selects by, and the one value that stands for a
+// Training Log's source filter (#1634) selects by, and the one value that stands for a
 // whole provider in the option list. Raw sources are not a usable vocabulary on
 // their own: every document-extracted row carries its OWN 'document:<id>', so a
 // distinct-scan over the column would offer one "Document" option per uploaded
 // file. Collapsing to a key gives exactly one option per provider, and the SQL side
-// (journalSourceClause) expands the key back to the rows it covers.
+// (trainingLogSourceClause) expands the key back to the rows it covers.
 //
 // manual  <- NULL / 'manual'          (the label logic's own manual test)
 // document<- 'document:<id>'          (every doc-extracted row, one option)
@@ -38,12 +38,13 @@ export function activityProvenanceLabel(
 //
 // `edited` is deliberately NOT part of the key: "Strava · edited" is the same
 // PROVIDER as "Strava", so hand-editing an import must not split its option in two.
-export const JOURNAL_SOURCE_MANUAL = "manual";
-export const JOURNAL_SOURCE_DOCUMENT = "document";
+export const TRAINING_LOG_SOURCE_MANUAL = "manual";
+export const TRAINING_LOG_SOURCE_DOCUMENT = "document";
 
 export function activityProvenanceKey(source: string | null): string {
-  if (!source || source === "manual") return JOURNAL_SOURCE_MANUAL;
-  if (source.startsWith(DOCUMENT_SOURCE_PREFIX)) return JOURNAL_SOURCE_DOCUMENT;
+  if (!source || source === "manual") return TRAINING_LOG_SOURCE_MANUAL;
+  if (source.startsWith(DOCUMENT_SOURCE_PREFIX))
+    return TRAINING_LOG_SOURCE_DOCUMENT;
   return source;
 }
 
@@ -52,8 +53,8 @@ export function activityProvenanceKey(source: string | null): string {
 // (the issue's "one labeling computation" requirement). A representative raw source
 // is reconstructed from the key and handed to the SAME labeller the cards use.
 export function activityProvenanceKeyLabel(key: string): string {
-  if (key === JOURNAL_SOURCE_MANUAL) return activityProvenanceLabel(null);
-  if (key === JOURNAL_SOURCE_DOCUMENT)
+  if (key === TRAINING_LOG_SOURCE_MANUAL) return activityProvenanceLabel(null);
+  if (key === TRAINING_LOG_SOURCE_DOCUMENT)
     return activityProvenanceLabel(`${DOCUMENT_SOURCE_PREFIX}0`);
   return activityProvenanceLabel(key);
 }

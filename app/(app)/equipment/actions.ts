@@ -33,7 +33,7 @@ function clean(input: EquipmentFormInput): EquipmentFormInput {
 
 function refresh() {
   // Equipment now lives at /equipment (index + detail); it still affects the
-  // importer, the journal's per-set implement labels, and protocol gear refs.
+  // importer, the training log's per-set implement labels, and protocol gear refs.
   revalidateRoute("/equipment");
   revalidateRoute("/data");
   revalidateRoute("/training");

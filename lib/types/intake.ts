@@ -8,7 +8,7 @@ import type { CadenceKind, DoseScheduleVersion } from "../intake-cadence";
 export type { CadenceKind, DoseScheduleVersion };
 
 // How an intake item's day-context is decided: every day; only on
-// workout/rest days (from the journal); or only while a named situation
+// workout/rest days (from the training log); or only while a named situation
 // (e.g. "Illness") is active.
 export type IntakeCondition =
   "daily" | "pre_workout" | "post_workout" | "rest_day" | "situational";

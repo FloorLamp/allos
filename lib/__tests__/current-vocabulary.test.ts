@@ -14,6 +14,7 @@ function currentSources(): { file: string; source: string }[] {
     if (
       relative === "lib/release-notes.json" ||
       relative.startsWith("lib/migrations/") ||
+      relative.startsWith("docs/releases/") ||
       relative === "lib/__tests__/current-vocabulary.test.ts"
     ) {
       return;
@@ -85,6 +86,46 @@ describe("current namespace and log vocabulary (#2485)", () => {
         found.push("retired medicine test id");
       }
       return found.map((term) => `${file}: ${term}`);
+    });
+    expect(violations).toEqual([]);
+  });
+});
+
+describe("Training Log vocabulary (#2486)", () => {
+  it("uses Training Log names for the current activity surface", () => {
+    const currentFiles = [
+      "app/(app)/training/TrainingLogView.tsx",
+      "app/(app)/training/TrainingLogCard.tsx",
+      "app/(app)/training/training-log-feed-resolve.ts",
+      "components/TrainingLogCalendar.tsx",
+      "lib/training-log-card.ts",
+      "lib/training-log-feed.ts",
+      "lib/training-log-filters.ts",
+      "lib/training-log-format.ts",
+      "lib/training-log-multi-view.ts",
+    ];
+    const retiredFiles = [
+      "app/(app)/training/JournalView.tsx",
+      "app/(app)/training/JournalCard.tsx",
+      "app/(app)/training/journal-feed-resolve.ts",
+      "components/JournalCalendar.tsx",
+      "lib/journal-card.ts",
+      "lib/journal-feed.ts",
+      "lib/journal-filters.ts",
+      "lib/journal-format.ts",
+      "lib/journal-multi-view.ts",
+    ];
+
+    expect(
+      currentFiles.filter((file) => !fs.existsSync(path.join(repo, file)))
+    ).toEqual([]);
+    expect(
+      retiredFiles.filter((file) => fs.existsSync(path.join(repo, file)))
+    ).toEqual([]);
+
+    const violations = currentSources().flatMap(({ file, source }) => {
+      const matches = source.match(/\b(?:Journal|journal)\b|\bJOURNAL_/g) ?? [];
+      return matches.map((term) => `${file}: ${term}`);
     });
     expect(violations).toEqual([]);
   });

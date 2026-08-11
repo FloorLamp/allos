@@ -1,9 +1,9 @@
-// Pure multi-view merge + per-member gating for the Training Journal (issue #1330).
-// The Tier-2 adoption: the Journal's day-grouped card feed rendered across the whole
+// Pure multi-view merge + per-member gating for the Training Log (issue #1330).
+// The Tier-2 adoption: the Training Log's day-grouped card feed rendered across the whole
 // view-set, with each card re-keyed to the profile it came from. Everything here is
-// PURE (no DB, no JSX) — the DB gather (buildMultiViewJournalGroups in
-// lib/journal-feed.ts) loops the per-profile buildJournalFeedPage and hands the
-// per-member DayGroups to mergeJournalDayGroups; the server component then stamps
+// PURE (no DB, no JSX) — the DB gather (buildMultiViewTrainingLogGroups in
+// lib/training-log-feed.ts) loops the per-profile buildTrainingLogFeedPage and hands the
+// per-member DayGroups to mergeTrainingLogDayGroups; the server component then stamps
 // subject identity (name/photo/access) via lib/scope's stampSubjects.
 //
 // WHY loop-composed, not a set-based `profile_id IN` read: each member's feed is
@@ -13,11 +13,11 @@
 // reads one way in the merged feed — a member's week/day is never evaluated in
 // another member's context (the lib/attention.ts loop-composed precedent).
 
-import type { DayGroup, JournalCardData } from "./journal-card";
+import type { DayGroup, TrainingLogCardData } from "./training-log-card";
 
-// One member's already-built Journal feed groups (buildJournalFeedPage), tagged with
+// One member's already-built Training Log feed groups (buildTrainingLogFeedPage), tagged with
 // the profile they belong to. View order is preserved by the caller (scope.viewIds).
-export interface MemberJournalGroups {
+export interface MemberTrainingLogGroups {
   profileId: number;
   groups: DayGroup[];
 }
@@ -30,8 +30,8 @@ export interface MemberJournalGroups {
 // RE-DERIVED from `relabel(date)` (the viewer's today/yesterday clock), NOT inherited
 // from any one member's per-profile label, so two members whose "today" differ by
 // timezone can't make one date carry two labels. Pure: same inputs → same output.
-export function mergeJournalDayGroups(
-  members: readonly MemberJournalGroups[],
+export function mergeTrainingLogDayGroups(
+  members: readonly MemberTrainingLogGroups[],
   relabel: (date: string) => string
 ): DayGroup[] {
   // date -> (member view index -> that member's cards for the date), so we can emit
@@ -41,7 +41,7 @@ export function mergeJournalDayGroups(
   // date -> ordered list of { order, cards }
   const byDate = new Map<
     string,
-    { order: number; cards: JournalCardData[] }[]
+    { order: number; cards: TrainingLogCardData[] }[]
   >();
 
   members.forEach((member, order) => {
@@ -52,7 +52,7 @@ export function mergeJournalDayGroups(
       }
       // Stamp each card's subject so the write layer can target it; clone so the
       // per-member source group is never mutated.
-      const stamped = g.cards.map((c): JournalCardData => ({
+      const stamped = g.cards.map((c): TrainingLogCardData => ({
         ...c,
         activity: { ...c.activity, subjectProfileId: member.profileId },
       }));
@@ -85,7 +85,7 @@ export function mergeJournalDayGroups(
 // analytics loaded are the ACTING profile's (its own detail panel), so a non-acting
 // subject's names stay non-interactive. Pure — the view layer and any test agree on
 // the one rule.
-export function journalFitnessSurfacesVisible(ctx: {
+export function trainingLogFitnessSurfacesVisible(ctx: {
   isActing: boolean;
   subjectRestricted: boolean;
 }): boolean {

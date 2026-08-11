@@ -1,4 +1,4 @@
-// SERVER-ACTION TIER — multi-view Journal cross-profile write gates (issue #1330).
+// SERVER-ACTION TIER — multi-view Training Log cross-profile write gates (issue #1330).
 //
 // A merged card carries its subject's profile_id, so saveActivity/deleteActivity/
 // mergeActivities gate + target the SUBJECT's profile via the shared gateItemProfile()

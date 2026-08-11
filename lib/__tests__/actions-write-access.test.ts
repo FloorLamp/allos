@@ -78,8 +78,8 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/training/activity-actions.ts",
-    fn: "loadJournalPage",
-    why: "read-only: fetches an older window of the active profile's Journal feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
+    fn: "loadTrainingLogPage",
+    why: "read-only: fetches an older window of the active profile's Training Log feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
   },
   {
     file: "app/(app)/integrations/sync-actions.ts",
@@ -467,7 +467,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "deleteResult",
     why: "multi-view (#1331): deletes the ITEM's biomarker reading via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
-  // --- Multi-view Training Journal writes (issue #1330). A merged card carries its
+  // --- Multi-view Training Log writes (issue #1330). A merged card carries its
   // subject's profile_id, so the save/delete/merge target the SUBJECT's profile via
   // the shared gateItemProfile() → requireProfileWriteAccess(itemProfileId) (a
   // read-only-granted / ungranted member is bounced). No profile_id (a CREATE, or a

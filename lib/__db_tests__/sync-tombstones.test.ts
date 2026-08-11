@@ -85,7 +85,7 @@ function stravaNorm(externalId = "strava:1"): NormActivity {
   };
 }
 
-// Reproduce the journal manual-merge (keep the manual row, absorb the Strava row) using
+// Reproduce the training log manual-merge (keep the manual row, absorb the Strava row) using
 // the SAME primitives the action calls: fold, record decision, capture-delete with the
 // merge-undo context (which writes the re-import tombstone).
 function mergeAbsorbingStrava(

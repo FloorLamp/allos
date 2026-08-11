@@ -42,7 +42,7 @@ export const MULTI_OWNER_ALLERGY = "Multi Owner Latex (e2e)";
 export const MULTI_SHARED_ALLERGY = "Multi Shared Pollen (e2e)";
 export const MULTI_OWNER_GOAL = "Multi Owner BP target (e2e)";
 export const MULTI_SHARED_GOAL = "Multi Shared A1c target (e2e)";
-// Multi-view Training Journal fixtures (issue #1330): manual activities so the Log
+// Multi-view Training Log fixtures (issue #1330): manual activities so the Log
 // feed renders a MERGED card feed across the two profiles. The owner (acting) has TWO
 // same-day cardio activities (a same-PROFILE merge candidate for each other); the
 // shared member has ONE activity on the SAME day — a cross-profile row that renders a

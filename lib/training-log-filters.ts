@@ -1,6 +1,6 @@
-// The Journal feed's filter vocabulary and its ONE matching predicate (issue #1634).
+// The Training Log feed's filter vocabulary and its ONE matching predicate (issue #1634).
 //
-// WHY THIS MODULE EXISTS. The Journal ships one server-built window of day-groups
+// WHY THIS MODULE EXISTS. The Training Log ships one server-built window of day-groups
 // and pages older ones in on demand (#451). Its filters used to run purely in the
 // client over the LOADED pages, so a search for a session older than the fetched
 // window reported "no matches" while the row sat in `activities` — the component
@@ -8,7 +8,7 @@
 // into the store: the query layer picks the DAYS that contain a match across the
 // whole ledger (lib/queries/training/activities.ts), and this module's predicate
 // picks the CARDS within them. Both halves are the same question, so the predicate
-// lives here — pure, imported by the server assembler AND by JournalView, which
+// lives here — pure, imported by the server assembler AND by TrainingLogView, which
 // keeps applying it as instant refinement while a server round-trip is in flight.
 //
 // THE SUPERSET CONTRACT. The SQL day-selection is deliberately a SUPERSET of this
@@ -17,37 +17,37 @@
 // render as a part — that day then simply comes back with no matching cards and is
 // dropped. What SQL must never do is under-select, because that is exactly the bug.
 // Any change to the predicate below must be mirrored by a same-or-wider change to
-// resolveJournalFilterSpec / the day query.
+// resolveTrainingLogFilterSpec / the day query.
 
 import { regionForExercise } from "./lifts";
-import { activityProvenanceKey } from "./journal-format";
-import type { DayGroup, JournalCardData } from "./journal-card";
+import { activityProvenanceKey } from "./training-log-format";
+import type { DayGroup, TrainingLogCardData } from "./training-log-card";
 import { ACTIVITY_TYPES } from "./types";
 import type { ActivityType } from "./types";
 
 // A muscle/region badge filter, set by clicking a badge in the detail panel.
-export interface JournalTagFilter {
+export interface TrainingLogTagFilter {
   kind: "muscle" | "region";
   value: string;
 }
 
 // The feed's active filter set. Plain, serializable data: it crosses the Server
-// Action boundary (loadJournalPage) as-is, so every field is a primitive or a
+// Action boundary (loadTrainingLogPage) as-is, so every field is a primitive or a
 // primitive record.
-export interface JournalFilters {
+export interface TrainingLogFilters {
   // Free text, matched against the activity title and its rendered part names.
   query: string;
   // Activity type, or null for "All".
   type: ActivityType | null;
   // Muscle/region badge, or null.
-  tag: JournalTagFilter | null;
+  tag: TrainingLogTagFilter | null;
   // Only rows the editor can't re-save as-is (imports, legacy data).
   faultOnly: boolean;
   // A provenance KEY (activityProvenanceKey), or null for "Any source".
   source: string | null;
 }
 
-export const EMPTY_JOURNAL_FILTERS: JournalFilters = {
+export const EMPTY_TRAINING_LOG_FILTERS: TrainingLogFilters = {
   query: "",
   type: null,
   tag: null,
@@ -55,7 +55,7 @@ export const EMPTY_JOURNAL_FILTERS: JournalFilters = {
   source: null,
 };
 
-export function journalFiltersActive(f: JournalFilters): boolean {
+export function trainingLogFiltersActive(f: TrainingLogFilters): boolean {
   return (
     f.query.trim() !== "" ||
     f.type != null ||
@@ -68,7 +68,7 @@ export function journalFiltersActive(f: JournalFilters): boolean {
 // A stable identity for a filter set — the client uses it to tell whether an
 // in-flight server page still describes the filters the user is looking at (a
 // stale response must never overwrite a newer one).
-export function journalFiltersKey(f: JournalFilters): string {
+export function trainingLogFiltersKey(f: TrainingLogFilters): string {
   return JSON.stringify([
     f.query.trim().toLowerCase(),
     f.type ?? "",
@@ -95,8 +95,8 @@ function str(v: unknown, max: number): string | null {
 // a public entry point, so the action normalizes before anything reaches SQL: an
 // unknown activity type, an over-long query, or a malformed tag degrades to "no
 // such filter" rather than being trusted or throwing.
-export function normalizeJournalFilters(raw: unknown): JournalFilters {
-  if (raw == null || typeof raw !== "object") return EMPTY_JOURNAL_FILTERS;
+export function normalizeTrainingLogFilters(raw: unknown): TrainingLogFilters {
+  if (raw == null || typeof raw !== "object") return EMPTY_TRAINING_LOG_FILTERS;
   const o = raw as Record<string, unknown>;
   const query =
     typeof o.query === "string" ? o.query.slice(0, MAX_QUERY_LEN) : "";
@@ -105,7 +105,7 @@ export function normalizeJournalFilters(raw: unknown): JournalFilters {
   // the row exists, the chip does not, and nothing says why.
   const type: ActivityType | null =
     ACTIVITY_TYPES.find((t) => t === o.type) ?? null;
-  let tag: JournalTagFilter | null = null;
+  let tag: TrainingLogTagFilter | null = null;
   if (o.tag != null && typeof o.tag === "object") {
     const t = o.tag as Record<string, unknown>;
     const value = str(t.value, MAX_VALUE_LEN);
@@ -126,9 +126,9 @@ export function normalizeJournalFilters(raw: unknown): JournalFilters {
 // disagree once a round-trip settles. Matches exactly the fields the pre-#1634
 // client filter matched (title + rendered part names, type, muscle/region badge,
 // fault) plus the new source filter.
-export function journalCardMatches(
-  card: JournalCardData,
-  f: JournalFilters
+export function trainingLogCardMatches(
+  card: TrainingLogCardData,
+  f: TrainingLogFilters
 ): boolean {
   if (f.faultOnly && !card.fault) return false;
   if (f.type != null && card.activity.type !== f.type) return false;
@@ -157,15 +157,15 @@ export function journalCardMatches(
 // Apply the predicate across a day-grouped feed, dropping days left with no cards.
 // The days themselves are already the store's answer under a server-filtered page;
 // this narrows each day to its matching cards (a matching day may also hold rows
-// that don't match, and the merge picker needs those — see JournalView).
-export function filterJournalGroups(
+// that don't match, and the merge picker needs those — see TrainingLogView).
+export function filterTrainingLogGroups(
   groups: readonly DayGroup[],
-  f: JournalFilters
+  f: TrainingLogFilters
 ): DayGroup[] {
-  if (!journalFiltersActive(f)) return groups as DayGroup[];
+  if (!trainingLogFiltersActive(f)) return groups as DayGroup[];
   const out: DayGroup[] = [];
   for (const g of groups) {
-    const cards = g.cards.filter((c) => journalCardMatches(c, f));
+    const cards = g.cards.filter((c) => trainingLogCardMatches(c, f));
     if (cards.length > 0) out.push({ ...g, cards });
   }
   return out;

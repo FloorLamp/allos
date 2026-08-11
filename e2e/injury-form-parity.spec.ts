@@ -26,7 +26,7 @@ async function pickActivity(page: Page, name: string) {
 }
 
 async function openNewActivity(page: Page) {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
   await page
     .getByRole("main")
     .getByRole("button", { name: "New activity" })

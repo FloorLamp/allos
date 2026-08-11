@@ -472,7 +472,7 @@ export function cyclingOverviewHref(lens: CyclingLens): AppRoute {
 }
 
 // The all-ride Cycling home within Training → Analyze. Ride detail pages use
-// this canonical state instead of sending the reader back to a single Journal
+// this canonical state instead of sending the reader back to a single Training Log
 // row; `range=all` makes the first landing an actual overall history.
 export const CYCLING_OVERVIEW_HREF: AppRoute =
   "/training?tab=analyze&kind=cardio&item=Cycling&range=all";

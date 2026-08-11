@@ -2,7 +2,7 @@
 
 import ActivityIcon from "../ActivityIcon";
 import ActivityProvenance from "@/components/ActivityProvenance";
-import { activityProvenanceLabel } from "@/lib/journal-format";
+import { activityProvenanceLabel } from "@/lib/training-log-format";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { IconX } from "@tabler/icons-react";

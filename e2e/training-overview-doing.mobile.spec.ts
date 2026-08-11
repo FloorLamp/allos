@@ -258,7 +258,7 @@ test("a tab renders only its own section (#105)", async ({ page }) => {
   await expect(page.getByTestId("analyze-section")).toBeVisible();
   await expect(page.getByTestId("training-today")).toHaveCount(0);
 
-  // The default (paramless) tab is still the Journal log.
+  // The default (paramless) tab is still the Training Log.
   await page.goto("/training");
   await expect(page.getByTestId("training-today")).toHaveCount(0);
   await expect(page.getByTestId("analyze-section")).toHaveCount(0);

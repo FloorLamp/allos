@@ -302,7 +302,7 @@ export function seedNowStrip(): void {
   const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
   const dupReviewId = fixtureProfileId(DUP_REVIEW_PROFILE);
 
-  // One logged activity so the Training "Log" tab renders the Journal (with its "New
+  // One logged activity so the Training "Log" tab renders the Training Log (with its "New
   // activity" button) instead of the empty state — the spec opens that add form to
   // reach the equipment picker's empty-state door. An activity creates no equipment,
   // so the profile's inventory stays empty. Idempotent by external_id.
@@ -376,7 +376,7 @@ export function seedNowStrip(): void {
 
   // A dedicated ADULT profile with NOTHING logged (#809): the brand-new/post-onboarding
   // first-run state that every other fixture profile lacks. Kept activity-free so the
-  // training-first-run spec can assert the Journal's first-run empty variant renders the
+  // training-first-run spec can assert the Training Log's first-run empty variant renders the
   // action row (Start workout + New activity, no Repeat last). Idempotent: hard-clear any
   // activities (and their sets) on a reused server so the profile can never drift out of
   // its empty contract.

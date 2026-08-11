@@ -5,12 +5,12 @@
 // mutable cookie jar (x-middleware-set-cookie), and a cookie modified during an
 // action marks the whole action response "revalidated": the reply then carries a
 // full page re-render and invalidates the client router cache. Sliding the cookie
-// on POSTs therefore turned EVERY action — including pure reads like the Journal's
-// loadJournalPage — into an implicit page refresh, contradicting the documented
+// on POSTs therefore turned EVERY action — including pure reads like the Training Log's
+// loadTrainingLogPage — into an implicit page refresh, contradicting the documented
 // contract (docs/internals/server-action-refresh.md) and feeding a client fetch
-// loop: JournalView re-fetches the filtered feed whenever the server refreshes its
+// loop: TrainingLogView re-fetches the filtered feed whenever the server refreshes its
 // first page, so each fetch's cookie-stamped reply triggered the next fetch and
-// clobbered "Load more" pages (see the companion journal-search-depth browser
+// clobbered "Load more" pages (see the companion training-log-search-depth browser
 // spec).
 //
 // WHY NOT NAVIGATIONS *ONLY* (#2058). The DB-side expiry slide (SESSION_TOUCH in

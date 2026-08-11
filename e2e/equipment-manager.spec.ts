@@ -68,7 +68,7 @@ test.describe("Equipment manager (#391)", () => {
     }
 
     // The strength session that referenced the deleted bar still renders on the
-    // Journal — the set's equipment_id was detached, not cascade-dropped.
+    // Training Log — the set's equipment_id was detached, not cascade-dropped.
     await page.goto("/training");
     await expect(
       page

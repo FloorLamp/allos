@@ -282,7 +282,7 @@ export function primaryQuickLog(
 
 // The bar shows the activity-specific shortcut — since #1509 that is the
 // live-workout button ALONE (the ⟳ repeat-last twin left the bar; repeat-last
-// keeps exactly two homes, the command palette and the Journal card's ⋯ menu) —
+// keeps exactly two homes, the command palette and the Training Log card's ⋯ menu) —
 // ONLY where the primary action is itself the activity editor. On Nutrition or
 // Medications it would be noise competing for a 390px-wide bar.
 export function showsActivityShortcuts(primary: QuickLogItem): boolean {

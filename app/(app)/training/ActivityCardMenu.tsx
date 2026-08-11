@@ -20,7 +20,7 @@ import type { AppRoute } from "@/lib/hrefs";
 import { mergeActivities } from "./activity-actions";
 
 // A same-day sibling this card can absorb: id + label, plus its fold-field values
-// (from JournalView's unfiltered scope group) so the shared conflict picker
+// (from TrainingLogView's unfiltered scope group) so the shared conflict picker
 // (#100/#1431) can be computed for whatever member set + keeper the user assembles.
 export interface MergeSibling {
   id: number;
@@ -45,7 +45,7 @@ interface PendingConflictMerge {
   movedSetCount: number;
 }
 
-// The kebab (⋯) action menu on a Journal activity card. Its affordances:
+// The kebab (⋯) action menu on a Training Log activity card. Its affordances:
 //
 //  • "View ride details" — read-first navigation for cycling activities.
 //  • "Edit" — opens the existing activity editor without making the ride title

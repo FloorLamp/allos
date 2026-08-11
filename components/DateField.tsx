@@ -83,7 +83,7 @@ export default function DateField({
   const inputRef = useRef<HTMLInputElement>(null);
   // The calendar is portaled to <body> and positioned `fixed` from the field's
   // bounding rect so it's never clipped by an `overflow` ancestor (e.g. the
-  // journal editor's max-h scroll container). See OverflowMenu for the pattern.
+  // training log editor's max-h scroll container). See OverflowMenu for the pattern.
   const popRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 

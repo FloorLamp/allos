@@ -17,7 +17,7 @@ import type { ActivityVideoView } from "@/components/activity/ActivityVideoStrip
 // whole gate shape lives here (auth-blind cores below): requireWriteAccess →
 // parse/validate → ingestVideo (sniff + caps, never the client type) → poster
 // strip via the photo pipeline → domain write core → revalidate. Active-profile
-// scoped (the Journal is the acting profile's training surface, not a cross-
+// scoped (the Training Log is the acting profile's training surface, not a cross-
 // profile household page); the core also verifies the activity belongs to the
 // profile, so a forged activity id is rejected past the gate.
 
@@ -88,8 +88,8 @@ export async function deleteActivityVideoAction(
 }
 
 // Read the clips attached to one activity (#1457). The activity EDITOR is a client
-// component reached from several entry points (Journal card, repeat, live resume),
-// so it can't be handed clips from a server component the way the Journal feed
+// component reached from several entry points (Training Log card, repeat, live resume),
+// so it can't be handed clips from a server component the way the Training Log feed
 // hands them to the card — it asks for them when it opens, and again after an
 // upload/delete, since its own client state outlives the server re-render these
 // actions trigger.

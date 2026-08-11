@@ -106,7 +106,7 @@ describe("isCyclingActivity", () => {
 });
 
 describe("activityDetailHref", () => {
-  it("routes rides to their detail and other activities to the Journal record", () => {
+  it("routes rides to their detail and other activities to the Training Log record", () => {
     expect(
       activityDetailHref({
         id: 42,

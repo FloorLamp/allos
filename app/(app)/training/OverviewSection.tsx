@@ -6,7 +6,7 @@ import {
   getDayLoadInputs,
   getFrequencyTargetProgress,
   getIllnessCoachingContext,
-  getJournalWeekSummary,
+  getTrainingLogWeekSummary,
   getRecentDatedExercises,
   getReportedBurden,
   getRestAck,
@@ -112,7 +112,7 @@ export default async function OverviewSection() {
   const du = units.distanceUnit;
   const todayStr = today(profile.id);
 
-  const summary = getJournalWeekSummary(profile.id);
+  const summary = getTrainingLogWeekSummary(profile.id);
   const targets = getFrequencyTargetProgress(profile.id);
   const strength = getStrengthByExercise(profile.id);
   // PRs read the LOAD-CONTEXT grouping (#1610) so no record blends two machines;

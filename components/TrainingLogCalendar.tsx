@@ -18,7 +18,7 @@ const DOW = ["S", "M", "T", "W", "T", "F", "S"];
 // The sidebar is narrow, so the month dropdown uses short labels ("Jan" … "Dec").
 const MONTHS = monthNames("short");
 
-export default function JournalCalendar({
+export default function TrainingLogCalendar({
   activeDates,
 }: {
   activeDates: string[];

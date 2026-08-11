@@ -66,25 +66,25 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
 test("'Log again' pre-fills a create form that saves a new activity (#29)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
-  // The e2e seed plants a manual "Journal merge keeper" activity; repeat it.
+  // The e2e seed plants a manual "Training Log merge keeper" activity; repeat it.
   const titleCards = page
     .locator('[id^="activity-"]')
-    .filter({ hasText: "Journal merge keeper" });
-  await expect(titleCards.first()).toBeVisible(); // first-ok: the "Journal merge keeper" card THIS spec created (filtered) — one match
+    .filter({ hasText: "Training Log merge keeper" });
+  await expect(titleCards.first()).toBeVisible(); // first-ok: the "Training Log merge keeper" card THIS spec created (filtered) — one match
   const before = await titleCards.count();
 
   // Open the first matching card's overflow (⋯) menu → "Log again".
   await titleCards
-    .first() // first-ok: the "Journal merge keeper" card THIS spec created (filtered) — one match
+    .first() // first-ok: the "Training Log merge keeper" card THIS spec created (filtered) — one match
     .getByRole("button", { name: "Activity actions" })
     .click();
   await page.getByTestId("log-again").click();
 
   // The editor opens pre-filled — its heading carries the source title.
   await expect(
-    page.getByRole("heading", { name: "Journal merge keeper" })
+    page.getByRole("heading", { name: "Training Log merge keeper" })
   ).toBeVisible();
 
   // The prefilled, complete session auto-saves as a NEW row (dated today), so a
@@ -94,9 +94,9 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
   // Clean up the row this test just created: the editor is still open on it, so
   // delete it from there. The e2e DB is shared across specs (the harness seeds
   // once), and a lingering today-dated activity would (a) collide with the
-  // journal-merge fixture's "Journal merge keeper" title and (b) add a new "Today"
-  // day-group that shifts the journal's visible-day window, throwing off the
-  // absolute card counts in journal-merge / undo-delete. Restoring the seed state
+  // training-log-merge fixture's "Training Log merge keeper" title and (b) add a new "Today"
+  // day-group that shifts the training log's visible-day window, throwing off the
+  // absolute card counts in training-log-merge / undo-delete. Restoring the seed state
   // here keeps those specs order-independent.
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
@@ -106,11 +106,11 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
   await expect(titleCards).toHaveCount(before);
 });
 
-test("Journal actions share the search toolbar and stay outside the editor scroller", async ({
+test("Training Log actions share the search toolbar and stay outside the editor scroller", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1800, height: 900 });
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   // The shared app shell uses the available desktop width instead of stopping at
   // the old 6xl/7xl caps. The 3xl ultra-wide cap remains separate.
@@ -120,7 +120,7 @@ test("Journal actions share the search toolbar and stay outside the editor scrol
 
   // The compact cadence strip shares the routine row and represents exactly the
   // trailing 14 profile-local days using the Fitness heatmap's density scale.
-  const cadence = page.getByTestId("journal-active-days");
+  const cadence = page.getByTestId("training-log-active-days");
   await expect(cadence).toBeVisible();
   await expect(cadence.getByTestId("active-days-label-expanded")).toBeVisible();
   await expect(cadence.getByTestId("active-days-label-expanded")).toContainText(
@@ -134,7 +134,7 @@ test("Journal actions share the search toolbar and stay outside the editor scrol
     "href",
     /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
   );
-  const routineRow = page.getByTestId("journal-routine-row");
+  const routineRow = page.getByTestId("training-log-routine-row");
   const routineLabelBox = await routineRow
     .getByText("Weekly routine")
     .boundingBox();
@@ -169,7 +169,7 @@ test("Journal actions share the search toolbar and stay outside the editor scrol
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.getByTestId("activity-editor-scroll")).toBeVisible();
 
-  const actions = page.getByTestId("journal-actions");
+  const actions = page.getByTestId("training-log-actions");
   const button = page.getByTestId("repeat-last");
   await expect(actions).toContainText("Repeat last");
   await expect(actions).toContainText("Start workout");
@@ -179,7 +179,7 @@ test("Journal actions share the search toolbar and stay outside the editor scrol
   // These are page-level actions, aligned with search rather than living in the
   // independently scrolling activity panel.
   await expect(
-    button.locator('xpath=ancestor::*[@data-testid="journal-controls"][1]')
+    button.locator('xpath=ancestor::*[@data-testid="training-log-controls"][1]')
   ).toHaveCount(1);
   await expect(
     button.locator('xpath=ancestor::*[@data-testid="activity-editor-scroll"]')
@@ -245,7 +245,7 @@ test("Journal actions share the search toolbar and stay outside the editor scrol
 test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   // The seed plants recurring "Push day" strength sessions across several weeks,
   // each repeating the same lifts (Barbell Bench Press, …). Opening the NEWEST
@@ -265,7 +265,7 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   await expect(page.getByRole("heading", { name: "Push day" })).toBeVisible();
 
   // A strength part renders its Recent panel of prior sessions. Deliberately
-  // NOT scoped to <main>: the editor mounts either in the journal's dock
+  // NOT scoped to <main>: the editor mounts either in the training log's dock
   // (inside <main>) or in the body-level overlay portal — the dock registers
   // in a post-hydration effect, so a click landing before that legitimately
   // falls back to the overlay (a timing the spec must not depend on). The
@@ -350,9 +350,9 @@ test("editing cardio duration updates the parent session total", async ({
 test("logging a manual cardio activity auto-fills an editable estimated-calorie value (#151)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
-  // Open a fresh create form. The "New activity" button lives in the Journal
+  // Open a fresh create form. The "New activity" button lives in the Training Log
   // header inside <main>; the editor it opens mounts either in the docked pane
   // (inside <main>) or the body-level overlay portal, so the form's own fields are
   // addressed by their unique testids/roles rather than main-scoped (there is
@@ -448,8 +448,8 @@ test("the activity form keeps workout entry primary and context visible across b
 
   // This test targets the DOCKED editor variant, and docked-vs-overlay is
   // CAPTURED at open time and held for the session (the anti-yank design in
-  // ActivityEditorProvider). The journal dock REGISTERS one effect pass after
-  // its div attaches (JournalView's isDesktop starts false and settles first),
+  // ActivityEditorProvider). The training log dock REGISTERS one effect pass after
+  // its div attaches (TrainingLogView's isDesktop starts false and settles first),
   // so a click landing in that window opens the OVERLAY variant (sm:pt-6 =
   // 24px header padding) and stays there — the recurring padding flake (#979).
   // No DOM state distinguishes "attached" from "registered", so re-drive:
@@ -518,15 +518,17 @@ test("the activity form keeps workout entry primary and context visible across b
   );
   const headerBox = await header.boundingBox();
   const dockBox = await page.getByTestId("activity-editor-dock").boundingBox();
-  const firstJournalCardBox = await page
+  const firstTrainingLogCardBox = await page
     .getByRole("main")
     .locator('[id^="activity-"]')
     .first() // first-ok: any activity card, measured only for its header bounding box — order-agnostic
     .boundingBox();
   expect(headerBox).not.toBeNull();
   expect(dockBox).not.toBeNull();
-  expect(firstJournalCardBox).not.toBeNull();
-  expect(Math.abs(dockBox!.y - firstJournalCardBox!.y)).toBeLessThanOrEqual(1);
+  expect(firstTrainingLogCardBox).not.toBeNull();
+  expect(Math.abs(dockBox!.y - firstTrainingLogCardBox!.y)).toBeLessThanOrEqual(
+    1
+  );
   expect(headerBox!.x).toBe(partBox!.x);
   expect(headerBox!.x + headerBox!.width).toBe(partBox!.x + partBox!.width);
   expect(headerBox!.y).toBeLessThanOrEqual(dockBox!.y + 2);
@@ -641,7 +643,7 @@ test("the activity form keeps workout entry primary and context visible across b
 test("a fresh strength part OFFERS the coached suggestion; arriving in the field never writes it (#335/#1971)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form (fields addressed by testid/role — see the
   // est-calories spec's note on why the editor isn't main-scoped).
@@ -697,7 +699,7 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
 test("a cardio part derives avg speed AND pace from distance + duration (#336)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   await page
     .getByRole("main")
@@ -727,7 +729,7 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
 test("a lone sport logged with Start/End auto-fills its Duration and shows real minutes (#791)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form (fields addressed by testid/role — see the
   // est-calories spec's note on why the editor isn't main-scoped).
@@ -990,7 +992,7 @@ test("a set row has a warmup toggle that flips its pressed state (#338)", async 
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   // Force every saveActivity call to fail at the network layer. saveActivity runs
   // as a Server Action — a POST to the page carrying a `next-action` header; the

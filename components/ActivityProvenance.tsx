@@ -4,12 +4,12 @@ import EditLockNotice from "@/components/EditLockNotice";
 // Shared provenance footer for an activity (issue #11): a source label
 // ("Manual" / "Strava" / "Google Health Connect" / "Document", or "<Source> ·
 // edited" for a hand-edited import) plus "added <when>" and, when the row has
-// been edited since creation, "edited <when>". Rendered on the Journal card and
+// been edited since creation, "edited <when>". Rendered on the Training Log card and
 // the training activity views so provenance reads identically everywhere; the
-// label is computed by activityProvenanceLabel (lib/journal-format).
+// label is computed by activityProvenanceLabel (lib/training-log-format).
 //
 // When the row is an edit-LOCKED integration import (#133/#659), `editLockId` is its
-// id: the label gets a consequence tooltip and a short lock marker. Compact Journal
+// id: the label gets a consequence tooltip and a short lock marker. Compact Training Log
 // cards and activity editor headers use the quiet icon treatment; "Resume sync
 // updates" lives in the activity overflow menu rather than competing with metadata.
 export default function ActivityProvenance({
@@ -27,7 +27,7 @@ export default function ActivityProvenance({
   // The activity id when this is a hand-edited integration row (the clearable lock),
   // else undefined.
   editLockId?: number;
-  // Journal cards and editor headers use a quiet provenance line. Other record
+  // Training Log cards and editor headers use a quiet provenance line. Other record
   // surfaces can retain the badge treatment where provenance needs more weight.
   variant?: "badge" | "quiet";
   className?: string;

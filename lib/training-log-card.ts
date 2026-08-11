@@ -1,4 +1,4 @@
-// Pure construction of the Journal feed's per-day cards (issue #334). This is the
+// Pure construction of the Training Log feed's per-day cards (issue #334). This is the
 // ~150 lines of derivation that used to live inline in
 // app/(app)/training/HistorySection.tsx: set-grouping by lowercased exercise, the
 // components-vs-legacy branch, the single-pure-effort header fold, the cardio
@@ -21,8 +21,11 @@ import {
   type DisplayFormatPrefs,
   type TimeFormat,
 } from "./format-date";
-import type { SetStatus } from "./journal-format";
-import { summarizeExercise, activityProvenanceLabel } from "./journal-format";
+import type { SetStatus } from "./training-log-format";
+import {
+  summarizeExercise,
+  activityProvenanceLabel,
+} from "./training-log-format";
 import { DOCUMENT_SOURCE_PREFIX } from "./body-metric-extract";
 import { muscleFor } from "./lifts";
 import { activityClockHHMM } from "./activity-meta";
@@ -47,8 +50,8 @@ import type { ActivityVideoRow } from "./activity-video-write";
 
 // A form-check video clip attached to an activity (#1224), in the SERIALIZABLE
 // shape the card renders — booleans/numbers only, so it crosses the server/client
-// boundary into JournalCard. Built from the ActivityVideoRow the feed gathers.
-export interface JournalCardVideo {
+// boundary into TrainingLogCard. Built from the ActivityVideoRow the feed gathers.
+export interface TrainingLogCardVideo {
   id: number;
   exercise: string | null;
   caption: string | null;
@@ -59,7 +62,7 @@ export interface JournalCardVideo {
 
 // One rendered line under a card: a strength exercise (with its summary + status),
 // or a cardio/sport effort (with its distance/duration/speed detail string). The
-// JournalCard component is a thin renderer over these.
+// TrainingLogCard component is a thin renderer over these.
 export type DisplayPart =
   | {
       kind: "strength";
@@ -78,7 +81,7 @@ export type DisplayPart =
 // member's own training-restriction, stamped onto each card by HistorySection so the
 // client card renders the subject chip and gates its write affordances per member.
 // ABSENT in single view — the card renders byte-identical.
-export interface JournalCardSubject {
+export interface TrainingLogCardSubject {
   profileId: number;
   name: string;
   photoPath: string | null;
@@ -90,10 +93,10 @@ export interface JournalCardSubject {
   restricted: boolean;
 }
 
-export interface JournalCardData {
+export interface TrainingLogCardData {
   activity: ActivityEditData;
   // Subject identity for a merged multi-view card (issue #1330); absent in single view.
-  subject?: JournalCardSubject;
+  subject?: TrainingLogCardSubject;
   timeText: string | null;
   durationText: string | null;
   distanceText: string | null;
@@ -136,16 +139,16 @@ export interface JournalCardData {
   routePolyline: string | null;
   // Form-check video clips attached to this activity (#1224), newest first (empty
   // when none). Rendered as the card's "Form check" strip.
-  videos: JournalCardVideo[];
+  videos: TrainingLogCardVideo[];
 }
 
 export interface DayGroup {
   date: string;
   label: string;
-  cards: JournalCardData[];
+  cards: TrainingLogCardData[];
 }
 
-// Append a newer-first page of day groups onto the already-loaded ones as the Journal
+// Append a newer-first page of day groups onto the already-loaded ones as the Training Log
 // feed pages older windows in from the server (issue #451). The server pages by whole
 // day, so `incoming` dates are normally disjoint from and strictly older than
 // `existing` — a plain concat. This still merges by date (deduping cards by activity
@@ -173,7 +176,7 @@ export function appendDayGroups(
 }
 
 // Reconcile the client's "load more" cursor when the server re-renders the newest
-// page (issue #503). The Journal's first page and its `nextBefore` cursor are
+// page (issue #503). The Training Log's first page and its `nextBefore` cursor are
 // refreshed server-side on every auto-save (via revalidatePath). When that cursor
 // MOVES — e.g. logging an activity on a day outside the loaded window rolls the oldest
 // loaded day out of the first page, shifting the whole newest window — the locally
@@ -188,7 +191,7 @@ export function appendDayGroups(
 // resume cleanly from the refreshed first page (where the rolled-out day is reachable
 // again via `date < newBoundary`). Pure so the reset decision is unit-tested without
 // the React component.
-export function reconcileJournalPaging(
+export function reconcileTrainingLogPaging(
   seeded: string | null,
   next: string | null
 ): { changed: boolean; cursor: string | null } {
@@ -196,7 +199,7 @@ export function reconcileJournalPaging(
   return { changed: true, cursor: next };
 }
 
-export interface BuildJournalCardsInput {
+export interface BuildTrainingLogCardsInput {
   // Activities newest-first (as getActivities returns them); grouped by date here.
   activities: Activity[];
   // Every exercise_set across `activities` (getSetsForActivities), bucketed here.
@@ -279,7 +282,7 @@ export function activityHeartRateText(
   return `♥ ${avgHr}${maxHr != null ? `/${maxHr}` : ""} bpm`;
 }
 
-// Compact stored wall-clock range for the Journal summary. `activities.start_time` /
+// Compact stored wall-clock range for the Training Log summary. `activities.start_time` /
 // `end_time` are a profile-local HH:MM (lib/time-columns.ts), read through the one
 // activity-clock reading so this surface does not hand-roll its own parse; never
 // invent a start from an end alone.
@@ -302,10 +305,10 @@ export function activityTimeText(
 }
 
 // Bucket activities (already date-desc) into ordered day groups, building each
-// activity's JournalCardData: display parts, header texts, metrics, fault, and
+// activity's TrainingLogCardData: display parts, header texts, metrics, fault, and
 // provenance. Pure — every side input (sets, equipment names, weights, today) is
 // passed in, so the same fixture always yields the same cards.
-export function buildJournalCards({
+export function buildTrainingLogCards({
   activities,
   sets,
   equipmentNames,
@@ -319,7 +322,7 @@ export function buildJournalCards({
   zoneModel,
   activityVideos,
   weatherByDate,
-}: BuildJournalCardsInput): DayGroup[] {
+}: BuildTrainingLogCardsInput): DayGroup[] {
   const wu = units.weightUnit;
   const timeFormat: TimeFormat = formatPrefs.timeFormat;
 
@@ -490,7 +493,7 @@ export function buildJournalCards({
       weatherCode: weatherOnDay?.weatherCode ?? null,
     });
 
-    const card: JournalCardData = {
+    const card: TrainingLogCardData = {
       activity: editData,
       timeText: activityTimeText(a.start_time, a.end_time, timeFormat),
       durationText: a.duration_min == null ? null : `${a.duration_min} min`,

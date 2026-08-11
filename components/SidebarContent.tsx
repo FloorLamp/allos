@@ -11,7 +11,7 @@ import { clearQueue } from "@/lib/offline/queue-db";
 import { logoutAction } from "@/app/(app)/session-actions";
 import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
-import JournalCalendar from "@/components/JournalCalendar";
+import TrainingLogCalendar from "@/components/TrainingLogCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
 import WhatsNewLink from "@/components/WhatsNewLink";
 import type { SessionProfile } from "@/lib/auth";
@@ -178,7 +178,7 @@ export default function SidebarContent({
       offer the same jumps. Renders nothing until a page clears the "this is a
       habit" floor, so a fresh login sees no empty section. */}
       <FrequentPages onNavigate={onNavigate} />
-      <JournalCalendar activeDates={activityDates} />
+      <TrainingLogCalendar activeDates={activityDates} />
       <Nav
         restricted={restricted}
         isAdmin={isAdmin}

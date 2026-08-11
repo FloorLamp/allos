@@ -5,7 +5,7 @@ import {
   activityProvenanceKey,
   activityProvenanceKeyLabel,
   type SetRow,
-} from "@/lib/journal-format";
+} from "@/lib/training-log-format";
 
 // Tests use the "kg" unit so weight_kg renders verbatim (no conversion noise).
 const row = (over: Partial<SetRow> & { set_number: number }): SetRow => ({
@@ -285,7 +285,7 @@ describe("activityProvenanceLabel", () => {
   });
 });
 
-// The Journal source filter's vocabulary (issue #1634). The KEY is what SQL selects
+// The Training Log source filter's vocabulary (issue #1634). The KEY is what SQL selects
 // by and what the pure card predicate compares; the LABEL is produced by the SAME
 // activityProvenanceLabel the cards render, so a provider can never be named one way
 // on a chip and another in the filter.

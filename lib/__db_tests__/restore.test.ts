@@ -61,7 +61,7 @@ describe("restoreCore (restore drill)", () => {
     snapshotTo(snap);
 
     // 2. Seed the "live" DB from the snapshot, then MUTATE it (state S0 + marker)
-    //    in rollback (DELETE) journal mode so the write lands in the main file.
+    //    in SQLite rollback (DELETE) mode so the write lands in the main file.
     fs.copyFileSync(snap, live);
     const h = new Database(live);
     h.pragma("journal_mode = DELETE");

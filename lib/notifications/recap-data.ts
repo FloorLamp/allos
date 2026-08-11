@@ -190,7 +190,7 @@ export function gatherRecapInput(
 ): RecapInput {
   const td = asOf ?? today(profileId);
   // "This week" per the profile's week_mode for the 7-day recap (issue #223), so
-  // the recap window matches the routine counters / journal. Months and quarters are
+  // the recap window matches the routine counters / training log. Months and quarters are
   // always calendar — week_mode defines only weeks.
   const weekMode = getWeekMode(profileId);
   const weekStart = getWeekStart(profileId);

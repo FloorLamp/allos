@@ -19,7 +19,7 @@ import type { ActivityFoldField } from "@/lib/import-review/detect";
 // conflicting field as a radio across EVERY member's value — the keeper's value
 // pre-selected — and returns an explicit per-field member choice, so what renders
 // selected is exactly what the merge writes. THE one picker for all merge surfaces
-// (the Journal card menu's quick pick and multi-select, the Data → Review pair card,
+// (the Training Log card menu's quick pick and multi-select, the Data → Review pair card,
 // and the Review cluster card) so they can never drift.
 
 // One merge member as the picker sees it: its row id plus the label its value
@@ -149,7 +149,7 @@ export default function MergeConflictDialog({
   }
 
   // Portal to <body> (matching ModalShell/ConfirmDialog): rendered inline inside
-  // a journal card, an ancestor stacking context traps the overlay's z-index and
+  // a training log card, an ancestor stacking context traps the overlay's z-index and
   // later cards paint over the dialog — the confirm button was literally
   // unclickable behind a sibling card (caught by the #100 e2e).
   return createPortal(

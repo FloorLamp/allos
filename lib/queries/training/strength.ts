@@ -1,5 +1,5 @@
 import { bodyweightAsOf } from "../../bodyweight";
-import { journalActivityHref } from "../../timeline-format";
+import { trainingLogActivityHref } from "../../timeline-format";
 import type { AppRoute } from "../../hrefs";
 import {
   sessionBestSet,
@@ -13,8 +13,8 @@ import {
   formatLongDate,
   type DisplayFormatPrefs,
 } from "../../format-date";
-import type { SetStatus } from "../../journal-format";
-import { judgeTargets, summarizeExercise } from "../../journal-format";
+import type { SetStatus } from "../../training-log-format";
+import { judgeTargets, summarizeExercise } from "../../training-log-format";
 import {
   classifyBodyweightByExercise,
   equipmentLoadLane,
@@ -35,7 +35,7 @@ export interface RecentSession {
   // own logged name — the only place the specific variant spelling survives the
   // merge, so the editor can still recover the last-used variant/implement.
   exercise: string;
-  // The activity this session belongs to (for linking to it in the journal).
+  // The activity this session belongs to (for linking to it in the training log).
   activityId: number;
   // User-defined implement used in the session (first non-null), else null.
   equipment: string | null;
@@ -50,7 +50,7 @@ export interface RecentSession {
   // bodyweight lifts, 0 otherwise — the same base getStrengthByExercise folds.
   baseKg: number;
   // Hit/missed the declared rep targets (null when none were declared).
-  // Judged here so the journal card and editor needn't re-derive it.
+  // Judged here so the training log card and editor needn't re-derive it.
   status: SetStatus;
   sets: {
     set_number: number;
@@ -123,7 +123,7 @@ export const getExerciseBodyweightMap = cache(function getExerciseBodyweightMap(
 });
 
 // cache(): resolved on every app navigation (the layout's activity editor) and
-// again via getRecentByExercise on the journal/strength pages. cache() dedupes to
+// again via getRecentByExercise on the Training Log and Strength pages. cache() dedupes to
 // one scan per (profile, perExercise) per request. The scan is bounded to the
 // recent window — the editor only needs the last few sessions, so a session older
 // than 12 months is never shown. The bodyweight KIND, however, is resolved over
@@ -250,7 +250,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
 });
 
 // One summarized recent session of an exercise, for the exercise detail panel.
-// `href` links to the session's activity in the journal; `date`/`text` are
+// `href` links to the session's activity in the training log; `date`/`text` are
 // preformatted so the (client) panel needs no units or formatting.
 export interface RecentSessionSummary {
   date: string;
@@ -262,8 +262,8 @@ export interface RecentSessionSummary {
 // Recent sessions per exercise, keyed by lowercased exercise name (newest first).
 export type RecentByExercise = Record<string, RecentSessionSummary[]>;
 
-// The last `limit` sessions per exercise, summarized and linked to their journal
-// entry. Shared by the journal feed and the strength page so both surface the
+// The last `limit` sessions per exercise, summarized and linked to their training log
+// entry. Shared by the training log feed and the strength page so both surface the
 // same history. Links are absolute so they work from any page.
 export function getRecentByExercise(
   profileId: number,
@@ -277,7 +277,7 @@ export function getRecentByExercise(
   )) {
     out[key] = h.sessions.map((s) => ({
       date: formatLongDate(s.date, prefs),
-      href: journalActivityHref(s.activityId),
+      href: trainingLogActivityHref(s.activityId),
       equipment: s.equipment,
       text: summarizeExercise(s.sets, unit).text,
     }));
@@ -825,7 +825,7 @@ export interface ExerciseStat {
   // can judge the whole session's working sets rather than the single best set
   // (#330). Empty when the newest session had no usable set.
   lastSessionSets: SessionWorkSet[];
-  // Activity id of the most recent session, for linking to its journal entry.
+  // Activity id of the most recent session, for linking to its training log entry.
   lastActivityId: number;
   // Body itself is the load (pull ups, dips), so per-set numbers show "BW".
   // topWeightKg/e1rmKg/bestWeightKg still carry the real load (bodyweight + any

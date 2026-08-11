@@ -26,36 +26,39 @@ import MobileDetailPage from "@/components/MobileDetailPage";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import SportDetailPanel from "@/components/SportDetailPanel";
-import JournalCard from "./JournalCard";
+import TrainingLogCard from "./TrainingLogCard";
 import type { MergeSibling } from "./ActivityCardMenu";
-import { loadJournalPage } from "./activity-actions";
+import { loadTrainingLogPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import { useLatestRef } from "@/components/useLatestRef";
 import { useResettableState } from "@/components/useResettableState";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
-// JournalCardData / DayGroup moved to lib/journal-card.ts (issue #334), built by the
-// pure buildJournalCards. Re-exported so existing `../journal/JournalView` importers
+// TrainingLogCardData / DayGroup moved to lib/training-log-card.ts (issue #334), built by the
+// pure buildTrainingLogCards. Re-exported here for callers that need the shared card shape.
 // (HistorySection) keep their paths.
-import type { JournalCardData, DayGroup } from "@/lib/journal-card";
-import { appendDayGroups, reconcileJournalPaging } from "@/lib/journal-card";
-import { journalFitnessSurfacesVisible } from "@/lib/journal-multi-view";
+import type { TrainingLogCardData, DayGroup } from "@/lib/training-log-card";
 import {
-  EMPTY_JOURNAL_FILTERS,
-  filterJournalGroups,
-  journalFiltersActive,
-  journalFiltersKey,
-  type JournalFilters,
-} from "@/lib/journal-filters";
-import type { JournalSourceOption } from "./journal-feed-resolve";
-export type { JournalCardData, DayGroup };
+  appendDayGroups,
+  reconcileTrainingLogPaging,
+} from "@/lib/training-log-card";
+import { trainingLogFitnessSurfacesVisible } from "@/lib/training-log-multi-view";
+import {
+  EMPTY_TRAINING_LOG_FILTERS,
+  filterTrainingLogGroups,
+  trainingLogFiltersActive,
+  trainingLogFiltersKey,
+  type TrainingLogFilters,
+} from "@/lib/training-log-filters";
+import type { TrainingLogSourceOption } from "./training-log-feed-resolve";
+export type { TrainingLogCardData, DayGroup };
 
-// The Journal's per-list multi-view context (issue #1330). Present ONLY when more
+// The Training Log's per-list multi-view context (issue #1330). Present ONLY when more
 // than one profile is in view; undefined in single view, so the feed renders
 // byte-identical. Carries the acting profile id — the card layer re-keys each card's
 // affordances to its own subject (edit → subject profile; chip on non-acting rows;
 // fitness surfaces per the subject's own age gate).
-export interface JournalMultiView {
+export interface TrainingLogMultiView {
   actingProfileId: number;
 }
 
@@ -64,7 +67,7 @@ export interface TargetChip {
   count: number;
   perWeek: number;
   met: boolean;
-  // Paced status (#748/#760/#780) so the journal week-summary chips colour by pace
+  // Paced status (#748/#760/#780) so the training log week-summary chips colour by pace
   // like every other chip surface, not the legacy Monday-rose met/count fallback.
   pace?: FrequencyPace;
 }
@@ -97,14 +100,14 @@ const TYPE_FILTERS: { value: "all" | ActivityType; label: string }[] = [
   { value: "unclassified", label: "Unspecified" },
 ];
 
-const JOURNAL_DESKTOP_QUERY = "(min-width: 1280px)";
+const TRAINING_LOG_DESKTOP_QUERY = "(min-width: 1280px)";
 
 // How long a filter change settles before the store is asked for page one of the
 // filtered feed (issue #1634). One round-trip per typing pause rather than one per
 // keystroke; the pure client refinement covers the gap, so the feed never stalls.
 const FILTER_FETCH_DEBOUNCE_MS = 200;
 
-export default function JournalView({
+export default function TrainingLogView({
   groups: initialGroups,
   initialCursor = null,
   sourceOptions = [],
@@ -135,7 +138,7 @@ export default function JournalView({
   // The provenance keys actually present in the ledger, labelled server-side
   // (issue #1634). Fewer than two options means there is nothing to choose between,
   // and the control doesn't render.
-  sourceOptions?: JournalSourceOption[];
+  sourceOptions?: TrainingLogSourceOption[];
   // Rows the editor can't re-save as-is, counted over the WHOLE ledger server-side
   // (issue #1634) — not over the loaded pages, which both under-reported the badge
   // and hid the toggle when page one happened to be clean.
@@ -160,7 +163,7 @@ export default function JournalView({
   // Multi-view context (issue #1330): present only when >1 profile is in view. Each
   // card carries its own `subject` (stamped upstream) and the card layer re-keys its
   // affordances to that subject; undefined in single view (byte-identical).
-  multiView?: JournalMultiView;
+  multiView?: TrainingLogMultiView;
   // A validated, non-future date from the day-history close-the-loop link.
   initialCreateDate?: string;
 }) {
@@ -210,7 +213,7 @@ export default function JournalView({
   // too so the deep-link auto-load loop reads the reset state immediately.
   const seededCursorRef = useRef(initialCursor);
   useEffect(() => {
-    const { changed, cursor: nextCursor } = reconcileJournalPaging(
+    const { changed, cursor: nextCursor } = reconcileTrainingLogPaging(
       seededCursorRef.current,
       initialCursor
     );
@@ -230,7 +233,7 @@ export default function JournalView({
     if (before == null) return false;
     fetchingRef.current = true;
     try {
-      const res = await loadJournalPage(before);
+      const res = await loadTrainingLogPage(before);
       const nextOlder = appendDayGroups(olderGroupsRef.current, res.groups);
       olderGroupsRef.current = nextOlder;
       cursorRef.current = res.nextBefore;
@@ -257,12 +260,12 @@ export default function JournalView({
   // The dock is a desktop concept: it exists so the editor can live beside the
   // feed in the two-column layout. Below xl there is no second column — the
   // provider falls back to ActivityOverlay, so the editor looks and behaves the
-  // same as on every other page. The Journal needs xl width for two usable
+  // same as on every other page. The Training Log needs xl width for two usable
   // columns. (Crossing the breakpoint mid-edit closes the
   // editor; any pending auto-save is flushed on unmount.)
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
-    const mq = window.matchMedia(JOURNAL_DESKTOP_QUERY);
+    const mq = window.matchMedia(TRAINING_LOG_DESKTOP_QUERY);
     const update = () => setIsDesktop(mq.matches);
     update();
     mq.addEventListener("change", update);
@@ -297,25 +300,27 @@ export default function JournalView({
 
   // ---- Filters (issue #1634) ----
   // ONE filter object rather than four independent useStates: it is the unit that
-  // travels to the server (loadJournalPage), the unit the pure predicate consumes,
+  // travels to the server (loadTrainingLogPage), the unit the pure predicate consumes,
   // and the unit whose identity decides whether an in-flight response is still the
   // one the user is looking at.
-  const [filters, setFilters] = useState<JournalFilters>(EMPTY_JOURNAL_FILTERS);
+  const [filters, setFilters] = useState<TrainingLogFilters>(
+    EMPTY_TRAINING_LOG_FILTERS
+  );
   const [detail, setDetail] = useState<Detail>(null);
 
   // Derive rather than reset via an effect: when the last faulty row is fixed
   // the toggle vanishes (faultCount → 0), and the filter must stop applying in
   // the same render — an effect would leave one frame where the feed filters to
   // an empty list before the reset lands.
-  const activeFilters = useMemo<JournalFilters>(
+  const activeFilters = useMemo<TrainingLogFilters>(
     () =>
       filters.faultOnly && faultCount === 0
         ? { ...filters, faultOnly: false }
         : filters,
     [filters, faultCount]
   );
-  const filtersActive = journalFiltersActive(activeFilters);
-  const filtersKey = journalFiltersKey(activeFilters);
+  const filtersActive = trainingLogFiltersActive(activeFilters);
+  const filtersKey = trainingLogFiltersKey(activeFilters);
   const activeFiltersRef = useLatestRef(activeFilters);
   // Each active filter episode owns its own 14-day window. Clearing filters keeps
   // the current width (deep-link navigation deliberately widens it), while turning
@@ -366,7 +371,7 @@ export default function JournalView({
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const res = await loadJournalPage(null, activeFiltersRef.current);
+          const res = await loadTrainingLogPage(null, activeFiltersRef.current);
           if (cancelled) return;
           setFilteredFeed({
             key: filtersKey,
@@ -405,7 +410,7 @@ export default function JournalView({
   // A filtered page ships every row of a matching day (the merge picker needs them),
   // so this is what narrows a day to its matching cards.
   const filtered = useMemo(
-    () => filterJournalGroups(baseGroups, activeFilters),
+    () => filterTrainingLogGroups(baseGroups, activeFilters),
     [baseGroups, activeFilters]
   );
 
@@ -434,7 +439,7 @@ export default function JournalView({
     try {
       if (serverFiltered) {
         const key = serverFiltered.key;
-        const res = await loadJournalPage(
+        const res = await loadTrainingLogPage(
           activeCursor,
           activeFiltersRef.current
         );
@@ -460,7 +465,7 @@ export default function JournalView({
       type="button"
       onClick={handleLoadMore}
       disabled={loadingMore}
-      data-testid="journal-load-more"
+      data-testid="training-log-load-more"
       className="btn-ghost w-full"
     >
       {loadingMore ? "Loading…" : "Load more"}
@@ -472,7 +477,7 @@ export default function JournalView({
   // the visible list is still the instant client refinement.
   const searchPendingNote = filtersActive && serverFiltered == null && (
     <p
-      data-testid="journal-search-pending"
+      data-testid="training-log-search-pending"
       className="text-center text-xs text-slate-500 dark:text-slate-400"
     >
       Searching your full history…
@@ -486,7 +491,7 @@ export default function JournalView({
   // (byte-identical); by `date#subjectProfileId` in multi so a card only ever offers
   // its own profile's same-day siblings.
   const mergeGroupKey = useCallback(
-    (date: string, card: JournalCardData): string =>
+    (date: string, card: TrainingLogCardData): string =>
       multi && card.subject != null
         ? `${date}#${card.subject.profileId}`
         : date,
@@ -588,7 +593,7 @@ export default function JournalView({
       // or activity the filter excludes would leave the target filtered out and the
       // scroll would never land. Clearing also drops the server-filtered feed, so
       // the jump resolves against the unfiltered chain the loop above paged.
-      setFilters(EMPTY_JOURNAL_FILTERS);
+      setFilters(EMPTY_TRAINING_LOG_FILTERS);
       // +8 so a few days render past the target and it can scroll near the top
       // rather than sticking to the bottom as the last rendered day.
       setVisibleDays((v) => Math.max(v, idx + 9));
@@ -679,7 +684,7 @@ export default function JournalView({
     setDetail({ kind, name });
     if (
       typeof window !== "undefined" &&
-      !window.matchMedia(JOURNAL_DESKTOP_QUERY).matches
+      !window.matchMedia(TRAINING_LOG_DESKTOP_QUERY).matches
     )
       setDetailOpen(true);
   }
@@ -777,7 +782,7 @@ export default function JournalView({
     <div>
       {showHeader && (
         <PageHeader
-          title="Journal"
+          title="Training Log"
           // The week summary stands in for a static tagline — a compact strip.
           subtitle={
             <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -806,7 +811,7 @@ export default function JournalView({
           noise above the "log your first activity" prompt. */}
       {showWeeklyTargets && hasActivities && (
         <div
-          data-testid="journal-routine-row"
+          data-testid="training-log-routine-row"
           className="mb-5 space-y-3 xl:flex xl:items-center xl:gap-5 xl:space-y-0"
         >
           {weekSummary.targets.length > 0 && (
@@ -826,14 +831,14 @@ export default function JournalView({
           bare wrapper drops the grid placement the full controls need. */}
       {!hasActivities ? (
         <div
-          data-testid="journal-actions"
+          data-testid="training-log-actions"
           className="mb-4 hidden flex-wrap items-center gap-2 md:flex"
         >
           {actionButtons}
         </div>
       ) : (
         <div
-          data-testid="journal-controls"
+          data-testid="training-log-controls"
           className="mb-4 grid gap-2 lg:grid-cols-[minmax(12rem,1fr)_auto]"
         >
           <div className="relative min-w-48 lg:col-start-1 lg:row-start-1">
@@ -901,7 +906,7 @@ export default function JournalView({
             {sourceOptions.length > 1 && (
               <select
                 aria-label="Source"
-                data-testid="journal-source-filter"
+                data-testid="training-log-source-filter"
                 value={activeFilters.source ?? ""}
                 onChange={(e) =>
                   setFilters((f) => ({
@@ -930,7 +935,7 @@ export default function JournalView({
                   setFilters((f) => ({ ...f, faultOnly: !f.faultOnly }))
                 }
                 aria-pressed={activeFilters.faultOnly}
-                data-testid="journal-fault-filter"
+                data-testid="training-log-fault-filter"
                 title="Show only rows that can't be saved as-is"
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
                   activeFilters.faultOnly
@@ -959,7 +964,7 @@ export default function JournalView({
             {filtersActive && (
               <button
                 type="button"
-                onClick={() => setFilters(EMPTY_JOURNAL_FILTERS)}
+                onClick={() => setFilters(EMPTY_TRAINING_LOG_FILTERS)}
                 className="inline-flex items-center gap-1 px-1 py-1 text-sm font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
               >
                 <IconX className="h-3.5 w-3.5" />
@@ -968,7 +973,7 @@ export default function JournalView({
             )}
           </div>
           <div
-            data-testid="journal-actions"
+            data-testid="training-log-actions"
             className="hidden flex-wrap items-center gap-2 md:ml-auto md:flex lg:col-start-2 lg:row-start-1 lg:ml-0"
           >
             {actionButtons}
@@ -1026,12 +1031,12 @@ export default function JournalView({
                         c.subject == null ||
                         (multiView != null &&
                           c.subject.profileId === multiView.actingProfileId);
-                      const fitness = journalFitnessSurfacesVisible({
+                      const fitness = trainingLogFitnessSurfacesVisible({
                         isActing,
                         subjectRestricted: c.subject?.restricted ?? false,
                       });
                       return (
-                        <JournalCard
+                        <TrainingLogCard
                           key={c.activity.id}
                           activity={c.activity}
                           timeText={c.timeText}

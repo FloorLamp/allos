@@ -5,7 +5,7 @@
 // day they happened on, and that single result feeds:
 //
 //   • the tolerance ENVELOPE (#1724) — what conditions this person actually trains in;
-//   • the session STAMP (#1728) — "31°C · sunny" on a journal card;
+//   • the session STAMP (#1728) — "31°C · sunny" on a training log card;
 //   • the Timeline day context (#1728), via the notable-day predicates.
 //
 // DERIVED AT READ TIME, NEVER WRITTEN ONTO THE ACTIVITY ROW (#1728's explicit

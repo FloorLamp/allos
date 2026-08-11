@@ -214,7 +214,7 @@ function activityHits(
     // place to look for a workout — made the selection a same-route push, so the
     // palette closed and nothing moved, reading as a dead control.
     //
-    // NOT the journal anchor (`#activity-<id>` in JournalCard): HistorySection
+    // NOT the training log anchor (`#activity-<id>` in TrainingLogCard): HistorySection
     // renders one newest window with "Load more" (#451), so an older activity's
     // anchor isn't on the page you land on. timelineDayHref filters the feed BY
     // the date, so it resolves for an activity of any age.

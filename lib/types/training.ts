@@ -106,7 +106,7 @@ export interface ActivityComponent {
 }
 
 // Parse an activity's stored `components` JSON into a components array. Centralizes
-// the try/catch + array-guard that was open-coded at every read site (the journal
+// the try/catch + array-guard that was open-coded at every read site (the training log
 // feed, the editor seed, the validator, the icon resolver, the goal/effort queries).
 // Absent (null/empty), malformed, or non-array JSON all yield [] — a caller that
 // must distinguish "no components list at all" from "an empty list" checks the raw

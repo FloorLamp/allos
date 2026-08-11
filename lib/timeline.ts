@@ -16,7 +16,7 @@ import {
 } from "./queries/clinical";
 import { restrictedActivityTypeClause, isTrainingRestricted } from "./age-gate";
 import type { MedStopReason } from "./types";
-import { summarizeExercise, type SetRow } from "./journal-format";
+import { summarizeExercise, type SetRow } from "./training-log-format";
 import { getTimezone, type UnitPrefs } from "./settings";
 import {
   compactList,

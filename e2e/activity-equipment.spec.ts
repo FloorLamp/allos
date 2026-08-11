@@ -4,13 +4,13 @@ import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Issue #342: the ACTIVITY-level equipment link. The seed links its "Zone 2 bike"
-// ride to a "Road Bike" (category Bike), so the Journal renders a session-level gear
+// ride to a "Road Bike" (category Bike), so the Training Log renders a session-level gear
 // chip and opening the editor preloads the reusable activity-equipment picker with
 // that gear — proving the link renders and round-trips on the real page.
 test("a cardio session shows its gear chip and preloads the equipment picker (#342)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   const card = page
     .locator('[id^="activity-"]')
@@ -92,7 +92,7 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
   try {
     await page.goto("/training"); // default "Log" tab
 
-    // Open a fresh create form (the seeded activity makes the Journal — and its
+    // Open a fresh create form (the seeded activity makes the Training Log — and its
     // "New activity" button — render instead of the empty state).
     await page
       .getByRole("main")
@@ -144,9 +144,9 @@ test("the strength picker creates and selects a travel machine without losing th
   const title = `${GEAR_PREFIX} session ${stamp}`;
   const gearName = `${GEAR_PREFIX} ${stamp}`;
 
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
   await page
-    .getByTestId("journal-actions")
+    .getByTestId("training-log-actions")
     .getByRole("button", { name: "New activity" })
     .click();
 

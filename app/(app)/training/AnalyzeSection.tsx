@@ -79,7 +79,7 @@ import {
   CYCLING_METRICS,
   cyclingHistoryMetricOrder,
 } from "@/lib/cycling-metrics";
-import { journalActivityHref } from "@/lib/timeline-format";
+import { trainingLogActivityHref } from "@/lib/timeline-format";
 import { isCyclingActivityName } from "@/lib/cycling-activity";
 
 export default async function AnalyzeSection({
@@ -684,7 +684,7 @@ function strengthView({
     chartLabel: chartMetric.chartLabel,
     chartUnit: activeMetric === "reps" ? "" : ` ${units.weightUnit}`,
     color: chartSeries.violet,
-    latestHref: journalActivityHref(
+    latestHref: trainingLogActivityHref(
       newest[0]?.activityId ?? stat.lastActivityId
     ),
     chart: sessions.map((s) => ({
@@ -694,7 +694,7 @@ function strengthView({
     columns: ["Sets", "Best", "Est. 1RM", "Volume"],
     sessions: newest.map((s) => ({
       activityId: s.activityId,
-      href: journalActivityHref(s.activityId),
+      href: trainingLogActivityHref(s.activityId),
       date: s.date,
       cells: [
         String(s.setCount),

@@ -949,10 +949,10 @@ async function workflowsJourney(browser) {
       await page.waitForTimeout(1200);
       await shot(page, "workflow-log-activity-done");
       // Honest completion check: the new activity should be visible on the
-      // Training journal. A missing entry means the log did NOT save — say so.
+      // Training Log. A missing entry means the activity did NOT save — say so.
       await page.goto(`${BASE}/training`);
       await page.waitForTimeout(1200);
-      await shot(page, "workflow-log-activity-journal");
+      await shot(page, "workflow-log-activity-training-log");
       const visible = await page
         .getByText(/Walking/i)
         .first()
@@ -1134,9 +1134,9 @@ async function liveWorkoutJourney(browser) {
   await checkVisible(
     page,
     () => page.getByText("Back Squat"),
-    "live-workout: 'Back Squat' NOT on the journal after finish — session may not have saved"
+    "live-workout: 'Back Squat' NOT on the training log after finish — session may not have saved"
   );
-  await shot(page, "live-journal-after");
+  await shot(page, "live-training-log-after");
   await ctx.close();
 }
 

@@ -84,7 +84,7 @@ const setPartial = (name: string, s: StoredSet) =>
  * Why a stored activity can't be re-saved by the editor as-is — the first
  * fault found, in the same order as ActivityForm's saveBlocker — or null when
  * it's fine. Form-authored activities always pass; this exists to flag
- * imported or legacy rows in the journal. Once opened, the editor shows the
+ * imported or legacy rows in the training log. Once opened, the editor shows the
  * corresponding blocker in its own words (its messages lean on field
  * highlights; these name the exercise instead).
  *

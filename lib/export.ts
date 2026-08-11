@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { revalidateTarget, type RevalidateTarget } from "./revalidate";
-import { summarizeExercise, type SetRow } from "./journal-format";
+import { summarizeExercise, type SetRow } from "./training-log-format";
 import { baseLiftName } from "./lifts";
 import { toCsv } from "./csv";
 

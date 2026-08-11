@@ -537,7 +537,7 @@ than one profile is in view — a single view stays exactly as it was.
 
 ## Training
 
-The **Log** tab's journal feed loads the newest window of days and pages older
+The **Log** tab's training log feed loads the newest window of days and pages older
 ones in on demand, but its **search and filters query the whole ledger**: typing
 a name, picking an activity type, clicking a muscle/region badge, or switching on
 "Can't be saved" re-asks the store, and the feed pages over _matches_ — so a
@@ -586,7 +586,7 @@ point. Past about five days out it hedges rather than promising you next
 Wednesday's sunshine, and with no forecast cached it stays quiet. No new
 notification is created: the line rides the morning message you already get.
 
-**Conditions on the record.** An outdoor session's journal card shows what it
+**Conditions on the record.** An outdoor session's training log card shows what it
 was like outside ("31°C · clear"), and Timeline days carry a short conditions
 note when the weather was notable — a heatwave, cold snap, pressure swing, high
 pollen or poor air day. It's read from the cached weather at display time and
@@ -612,7 +612,7 @@ always shown as an estimate (`≈`) and kept separate from device-measured
 calories (imported activities keep their device value). It does **not** ride the
 weekly recap — comparing one week's estimate against another's compounds the
 error, so the recap reports what only week scale makes visible instead. For logging at the gym rather than after the fact, **Start workout**
-(the command palette, the Journal header, or the mobile top bar) opens the same
+(the command palette, the Training Log header, or the mobile top bar) opens the same
 editor in a **live** layout: today's date and start time are pre-stamped, each
 lift's coached next set is pre-seeded so you just confirm it, and a client-side
 **rest timer** (a lift-appropriate default — longer for heavy compounds, shorter
@@ -633,7 +633,7 @@ shows as a chip on the workout card that links to its detail page (strength
 keeps its separate per-set implement tags). Cycling entries share one
 **read-first ride detail** destination across the Training Log and Analyze
 history, Timeline, global search, cardio history panels, and a bike's equipment history;
-non-cycling sessions keep their Journal destination. The ride detail shows
+non-cycling sessions keep their Training Log destination. The ride detail shows
 active and elapsed time, distance and speed,
 route, bike, notes, provenance, and every provider measurement already stored
 for that ride (heart rate, power and W/kg when an as-of bodyweight exists,
@@ -797,7 +797,7 @@ sets and the current RPE; **repeat last session** remains available when coachin
 inputs are sparse. Plateau language stays a hint, not an automatic program
 rewrite. Completing a set starts
 the local rest timer, and finishing the workout presents one in-place session
-summary before returning to the journal.
+summary before returning to the training log.
 
 Form-check clips attach to the activity and may be tagged to an exercise. They
 use the shared video constraints—upload-only, 60 seconds, 100 MB, stored as-is,
@@ -1083,7 +1083,7 @@ with the parts video needs that photos don't. Two domains: **symptom / episode
 clips** (`symptom_videos`) attached to a symptom-day on the illness episode page
 (a tremor, tic, seizure, gait episode, or a cough/breathing audio note — the
 clip a clinician actually asks for), and **training form-check clips**
-(`activity_videos`) attached to an activity from its Journal card (optional
+(`activity_videos`) attached to an activity from its Training Log card (optional
 exercise tag for per-lift filtering). Phase 1 is **upload-only** (a native file
 picker with `capture`, so a phone opens the camera/mic; in-app MediaRecorder
 recording is phase 2). Deliberately **no `ffmpeg`-class dependency** — pure

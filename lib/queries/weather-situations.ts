@@ -242,7 +242,7 @@ export function getWeatherDay(
 }
 
 // The cached daily series for a profile's home location over an inclusive date range —
-// the #1728 display read (journal stamps, Timeline day context). Empty without a home
+// the #1728 display read (training log stamps, Timeline day context). Empty without a home
 // location, so those surfaces quietly render nothing.
 export function getWeatherDaysForProfile(
   profileId: number,

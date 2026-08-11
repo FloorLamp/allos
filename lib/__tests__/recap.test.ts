@@ -108,7 +108,7 @@ describe("recapWindow", () => {
 });
 
 // Issue #223: the weekly recap honors the profile's week_mode so its window lines
-// up with the routine counters / journal week summary (both derive from
+// up with the routine counters / training log week summary (both derive from
 // lib/week-window). resolveRecapWindow is the shared resolver; buildRecap's
 // {start, end} must follow it. TODAY is a Thursday.
 describe("recap honors week_mode (issue #223)", () => {

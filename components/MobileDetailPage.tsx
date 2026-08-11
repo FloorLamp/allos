@@ -7,7 +7,7 @@ import { useHistoryBackClose } from "./useHistoryBackClose";
 import { useLockBodyScroll } from "./useLockBodyScroll";
 
 // A mobile-only (`lg:hidden`) full-page detail surface for master/detail views.
-// On desktop the Explorer pages and the journal show the detail beside the
+// On desktop the Explorer pages and the training log show the detail beside the
 // list; on mobile the list can be long, so a tapped row's detail takes over the
 // screen as its own page (like the activity editor) instead of appearing far
 // below it. Callers open it only on mobile (openDetailOnMobile); it also closes
@@ -26,7 +26,7 @@ export default function MobileDetailPage({
   // to avoid repeating it.
   title?: React.ReactNode;
   children: React.ReactNode;
-  // Journal needs more room for its two-column editor/detail layout than the
+  // Training Log needs more room for its two-column editor/detail layout than the
   // other master-detail surfaces, so it promotes at xl instead of lg.
   desktopAt?: "lg" | "xl";
 }) {

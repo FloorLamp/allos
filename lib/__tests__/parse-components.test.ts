@@ -1,6 +1,6 @@
 // PURE tier — the shared parseComponents helper (issue #334) that centralizes the
 // try/catch + array-guard formerly open-coded at every activity `components` read
-// site (journal feed, editor seed, validator, icon resolver, goal/effort queries).
+// site (training log feed, editor seed, validator, icon resolver, goal/effort queries).
 
 import { describe, it, expect } from "vitest";
 import { parseComponents } from "@/lib/types";

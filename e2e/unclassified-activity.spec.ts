@@ -16,7 +16,7 @@ import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 //     new type took the generic glyph with nothing failing. It still takes the generic
 //     glyph here — but by DECLARATION, because a barbell or a medal would re-assert
 //     the very claim the type withholds.
-//   • the FILTER. The Journal's type chips were hand-listed, so a type with no chip is
+//   • the FILTER. The Training Log's type chips were hand-listed, so a type with no chip is
 //     an unfilterable row: it renders in the feed and the filter bar cannot name it.
 //
 // Plus the age gate (#489/#2272): `DURATION_ACTIVITY_TYPES` renders the SQL that
@@ -89,7 +89,7 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
   await expect(search).toBeVisible();
   await search.fill(OWN_TITLE);
 
-  // The Server-Action round-trip ceiling used across the journal specs.
+  // The Server-Action round-trip ceiling used across the training log specs.
   const card = page.locator(".card", { hasText: OWN_TITLE });
   await expect(card).toBeVisible({ timeout: 20_000 });
 

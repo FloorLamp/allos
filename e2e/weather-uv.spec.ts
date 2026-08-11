@@ -251,7 +251,7 @@ test.describe("Weather & UV integration (#1172)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      // The seeded RIDE is outdoor-flagged, so its journal card carries the conditions
+      // The seeded RIDE is outdoor-flagged, so its training log card carries the conditions
       // it happened in. The seeded walk is not outdoor-flagged and carries none —
       // the catalog flag decides, not the availability of data.
       await member.goto("/training");

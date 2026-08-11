@@ -77,7 +77,7 @@ export const CONDITIONS = Object.keys(CONDITION_LABELS) as IntakeCondition[];
 
 // Conditions whose meaning depends on fitness/training tracking (workout vs rest
 // day). They're hidden from the schedule dropdown when training is restricted for
-// the profile, mirroring how the Journal/Training surfaces vanish (see age-gate.ts).
+// the profile, mirroring how the Training surfaces vanish (see age-gate.ts).
 export const WORKOUT_CONDITIONS: IntakeCondition[] = [
   "pre_workout",
   "post_workout",

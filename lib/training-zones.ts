@@ -65,7 +65,7 @@ export interface ZonePresentation {
 
 // Shared presentation metadata for every surface that colors a heart-rate value.
 // Keeping the label and color beside the canonical zone definitions prevents the
-// Journal card and activity editor from inventing their own palettes or wording.
+// Training Log card and activity editor from inventing their own palettes or wording.
 export function zonePresentation(
   zone: ZoneId | null | undefined
 ): ZonePresentation | null {

@@ -1,7 +1,7 @@
 // Auth-blind write cores + gather for TRAINING form-check video clips (#1224
 // phase 1). profileId-first, never imports lib/auth — the Server Action owns the
 // gate + revalidation. A clip attaches to an ACTIVITY (a logged lift/movement),
-// with an optional `exercise` name for per-lift filtering; surfaced on the Journal
+// with an optional `exercise` name for per-lift filtering; surfaced on the Training Log
 // card. Its OWN table + files dir (data/uploads/activity-videos/<profileId>/), the
 // symptom-video / photo-core store posture. Every statement is profile-scoped.
 //
@@ -121,7 +121,7 @@ export function getActivityVideos(
     .all(profileId, activityId) as ActivityVideoRow[];
 }
 
-// Clips for a set of activities → Map<activityId, rows>, for the Journal feed
+// Clips for a set of activities → Map<activityId, rows>, for the Training Log feed
 // (one query per page, then bucketed). Profile-scoped. An empty id list returns an
 // empty map without touching the DB.
 export function getActivityVideosForActivities(

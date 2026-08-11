@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 
-// Journal search reaches the WHOLE ledger, not the loaded window (#1634).
+// Training Log search reaches the WHOLE ledger, not the loaded window (#1634).
 //
 // THE SCENARIO THAT FAILED BEFORE THIS FIX. Training → Log renders one newest
 // window of day-groups and pages older ones in on "Load more" (#451). All four
@@ -94,12 +94,12 @@ test("search finds an activity in an UNFETCHED window without Load more (#1634)"
   // Precondition: the planted rows are NOT in the first window — otherwise the test
   // would pass without the fix ever running.
   await expect(page.locator(".card", { hasText: MARKER })).toHaveCount(0);
-  const loadMore = page.getByTestId("journal-load-more");
+  const loadMore = page.getByTestId("training-log-load-more");
   await expect(loadMore).toBeVisible();
 
   await search.fill(MARKER);
 
-  // The store answers through a Server Action (loadJournalPage), whose response
+  // The store answers through a Server Action (loadTrainingLogPage), whose response
   // carries a rebuilt window of cards. Named 20 s ceiling for that Server-Action
   // round-trip on a loaded shard, per docs/internals/e2e-hygiene.md.
   await expect(page.locator(".card", { hasText: IMPORTED_TITLE })).toBeVisible({
@@ -116,7 +116,7 @@ test("search finds an activity in an UNFETCHED window without Load more (#1634)"
   ).toHaveCount(0);
 
   // Non-matching seed rows are filtered out, so the feed really is the match set.
-  await expect(page.getByTestId("journal-search-pending")).toHaveCount(0);
+  await expect(page.getByTestId("training-log-search-pending")).toHaveCount(0);
 });
 
 test("'Load more' pages DEEPER under an active filter, and the loaded window sticks", async ({
@@ -136,7 +136,7 @@ test("'Load more' pages DEEPER under an active filter, and the loaded window sti
     0
   );
 
-  const loadMore = page.getByTestId("journal-load-more");
+  const loadMore = page.getByTestId("training-log-load-more");
   await expect(loadMore).toBeVisible();
   await loadMore.click();
 
@@ -149,8 +149,8 @@ test("'Load more' pages DEEPER under an active filter, and the loaded window sti
 
   // THE REGRESSION SHAPE, second half: the loaded window must now STICK. The
   // middleware used to re-set the session cookie on Server Action POSTs, which
-  // marked every loadJournalPage response "revalidated" and re-rendered the page;
-  // JournalView's filtered-feed effect then re-fetched page ONE on each such
+  // marked every loadTrainingLogPage response "revalidated" and re-rendered the page;
+  // TrainingLogView's filtered-feed effect then re-fetched page ONE on each such
   // refresh — an endless self-sustaining POST loop (~3/s) that clobbered the
   // loaded older window moments after it rendered. The assertions above race that
   // first collapse (they pass on first match), so pin the invariant directly: the
@@ -187,7 +187,7 @@ test("the source filter narrows a matching day by provider (#1634)", async ({
 
   // The option list is born from the ledger's own distinct sources and labelled by
   // the same activityProvenanceLabel the cards' chips use.
-  const source = page.getByTestId("journal-source-filter");
+  const source = page.getByTestId("training-log-source-filter");
   await expect(source).toBeVisible();
   await source.selectOption("strava");
 
