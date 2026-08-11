@@ -30,6 +30,7 @@ function signals(over: Partial<NowSignals> = {}): NowSignals {
     wakeMinutes: MIN(7),
     freshSleepSummary: false,
     sleepWaiting: false,
+    napEndedMinAgo: null,
     workoutFinishedMinAgo: null,
     mealAnchors: [MIN(8), MIN(13), MIN(20)],
     eveningAnchor: MIN(20),
@@ -120,6 +121,18 @@ describe("rankNowCards", () => {
       })
     );
     expect(out).toContain("sleep-last-night");
+  });
+
+  it("promotes today's nap for the same just-woke window as main sleep", () => {
+    expect(rankNowCards(signals({ napEndedMinAgo: 15 }))).toContain(
+      "naps-today"
+    );
+    expect(
+      rankNowCards(signals({ napEndedMinAgo: WAKE_WINDOW_MIN + 1 }))
+    ).not.toContain("naps-today");
+    expect(rankNowCards(signals({ napEndedMinAgo: -1 }))).not.toContain(
+      "naps-today"
+    );
   });
 
   it("ranks a recently-finished workout ABOVE sleep — the recap window is the perishable one", () => {

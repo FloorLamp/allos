@@ -34,6 +34,7 @@ import type { ArrivalNight } from "../notifications/digest-schedule";
 import { metricAggregation } from "../metric-buckets";
 import { DOCUMENT_SOURCE_PREFIX } from "../body-metric-extract";
 import { getIntegration } from "../integrations/registry";
+import { mainSleepPeriod } from "../sleep-regularity";
 import type {
   BodyMetric,
   BodyMetricKind,
@@ -336,13 +337,16 @@ export function getLatestMetricValue(
   return getLatestMetricSample(profileId, metric)?.value ?? null;
 }
 
-// Per-night sleep stage totals (minutes), oldest→newest, pivoted from the four
-// sleep_*_min metrics. Each metric is summed per date (a night maps to one date —
-// its wake day — set by the parser). Stage minutes are additive, and two sources
-// can report the same night (Health Connect + Oura), so ONE source is kept per
-// night (issue #14) — keyed by the 'sleep_min' primary-source choice so the
-// nightly-duration chart and the stage breakdown always agree on whose night is
-// shown.
+// Per-night MAIN-sleep stage totals (minutes), oldest→newest, pivoted from the four
+// sleep_*_min metrics. Stage rows are stored as timestamped observations but carry
+// no session id, so attribution is by overlap with the SAME mainSleepPeriod that
+// owns the duration/bed/wake summary. A same-wake-day nap therefore stays out of
+// the overnight stage chart instead of making its stack out-sum the duration point.
+//
+// Source/origin selection follows the sleep_min session read first, then stage rows
+// must match that elected stream. This preserves issue #14's one-source-per-night
+// contract while avoiding an independent stage-only election that could choose a
+// different wearable from the session whose duration is shown.
 export function getSleepStageDailyTotals(
   profileId: number,
   limitDays = 180
@@ -359,56 +363,104 @@ export function getSleepStageDailyTotals(
   const cutoff = recentDates[recentDates.length - 1].date;
   const rows = db
     .prepare(
-      `SELECT date, source, origin,
-              SUM(CASE WHEN metric = 'sleep_deep_min'  THEN value ELSE 0 END) AS deep,
-              SUM(CASE WHEN metric = 'sleep_rem_min'   THEN value ELSE 0 END) AS rem,
-              SUM(CASE WHEN metric = 'sleep_light_min' THEN value ELSE 0 END) AS light,
-              SUM(CASE WHEN metric = 'sleep_awake_min' THEN value ELSE 0 END) AS awake
+      `SELECT date, metric, start_time AS start, end_time AS end,
+              source, origin, value
          FROM metric_samples
         WHERE profile_id = ? AND date >= ?
-          AND metric IN ('sleep_deep_min','sleep_rem_min','sleep_light_min','sleep_awake_min')
-        GROUP BY date, source, origin`
+          AND metric IN ('sleep_deep_min','sleep_rem_min','sleep_light_min','sleep_awake_min')`
     )
     .all(profileId, cutoff) as {
     date: string;
+    metric: string;
+    start: string;
+    end: string;
     source: string | null;
     origin: string | null;
+    value: number;
+  }[];
+
+  // Elect the sleep_min source/origin PER DAY exactly as the additive duration
+  // chart does. The SRI session read has a different, stream-wide fallback (the
+  // newest source), so routing this chart through it could make the duration point
+  // Health Connect while its stages came from Oura.
+  const rawSessions = db
+    .prepare(
+      `SELECT date, start_time AS start, end_time AS end, source, origin, value
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' AND date >= ?
+          AND julianday(end_time) > julianday(start_time)`
+    )
+    .all(profileId, cutoff) as SelectedSleepSessionRow[];
+  const sessions = pickRowsOneSourcePerDay(
+    pickRowsOneOriginPerSourceDay(
+      rawSessions,
+      (row) => row.date,
+      (row) => row.source,
+      (row) => row.origin,
+      (row) => row.value
+    ),
+    resolutionFor(profileId, "sleep_min"),
+    (row) => row.date,
+    (row) => row.source,
+    (row) => row.value
+  );
+  const sessionsByDay = new Map<string, SelectedSleepSessionRow[]>();
+  for (const session of sessions) {
+    const day = sessionsByDay.get(session.date);
+    if (day) day.push(session);
+    else sessionsByDay.set(session.date, [session]);
+  }
+
+  const out: {
+    date: string;
     deep: number;
     rem: number;
     light: number;
     awake: number;
-  }[];
-  const oneOrigin = pickRowsOneOriginPerSourceDay(
-    rows,
-    (r) => r.date,
-    (r) => r.source,
-    (r) => r.origin,
-    (r) => r.deep + r.rem + r.light + r.awake
-  );
-  return (
-    pickRowsOneSourcePerDay(
-      oneOrigin,
-      resolutionFor(profileId, "sleep_min"),
-      (r) => r.date,
-      (r) => r.source,
-      (r) => r.deep + r.rem + r.light + r.awake
-    )
-      // Round ONCE, here, on the summed day total. Health Connect stores one row per
-      // sleep stage at sub-minute precision (a night is dozens of rows, many of them
-      // 30-second micro-arousals), so whole minutes have to be taken after the SUM —
-      // rounding per stage at ingest made the breakdown out-sum its own session total
-      // by ~14 min a night (the Fitbit-exporter payload audit). Oura/Withings report whole minutes per stage
-      // already and are unaffected by rounding a value that is already integral.
-      .map(({ date, deep, rem, light, awake }) => ({
-        date,
-        deep: Math.round(deep),
-        rem: Math.round(rem),
-        light: Math.round(light),
-        awake: Math.round(awake),
-      }))
-      .sort((a, b) => (a.date < b.date ? -1 : 1))
-      .slice(-limitDays)
-  );
+  }[] = [];
+  for (const [date, daySessions] of sessionsByDay) {
+    const period = mainSleepPeriod(daySessions);
+    if (!period) continue;
+    const windows = period.members.map((member) => ({
+      start: new Date(member.start).getTime(),
+      end: new Date(member.end).getTime(),
+    }));
+    const totals = { deep: 0, rem: 0, light: 0, awake: 0 };
+    let found = false;
+    for (const row of rows) {
+      if (row.date !== date) continue;
+      if (row.source !== period.main.source) continue;
+      if (row.origin !== period.main.origin) continue;
+      // Fitbit Takeout aggregate-stage rows append `#deep` / `#rem` / ... to
+      // the session start as part of their natural storage key. The prefix is
+      // still the real session boundary used for overlap attribution.
+      const keySuffix = row.start.indexOf("#");
+      const stageStart =
+        keySuffix < 0 ? row.start : row.start.slice(0, keySuffix);
+      const start = new Date(stageStart).getTime();
+      const end = new Date(row.end).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start)
+        continue;
+      if (!windows.some((window) => end > window.start && start < window.end))
+        continue;
+      const key = row.metric.slice("sleep_".length, -"_min".length) as
+        "deep" | "rem" | "light" | "awake";
+      totals[key] += row.value;
+      found = true;
+    }
+    if (!found) continue;
+    // Round ONCE, after the chosen main session's rows have been summed. Health
+    // Connect stores sub-minute stage observations, so per-row rounding would
+    // accumulate error across a night full of 30-second micro-arousals.
+    out.push({
+      date,
+      deep: Math.round(totals.deep),
+      rem: Math.round(totals.rem),
+      light: Math.round(totals.light),
+      awake: Math.round(totals.awake),
+    });
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : 1)).slice(-limitDays);
 }
 
 // Raw per-night sleep sessions (metric 'sleep_min') as absolute time windows,
@@ -432,6 +484,10 @@ export interface SleepSessionRow {
   end: string;
   value: number;
   source: string | null;
+}
+
+interface SelectedSleepSessionRow extends SleepSessionRow {
+  origin: string | null;
 }
 
 function readSleepSessions(
@@ -583,6 +639,45 @@ export function getSleepSessionsSince(
   since: string
 ): SleepSessionRow[] {
   return readSleepSessions(profileId, { since });
+}
+
+// Valid sleep windows on or after a calendar cutoff, electing one source per
+// wake-day with the SAME resolution used by the additive sleep_min chart. This
+// is deliberately separate from getSleepSessionsSince: SRI needs one continuous
+// provider stream across its whole window, while date-keyed display history must
+// not lose older days when a profile changes wearables.
+export function getDailySleepSessionsSince(
+  profileId: number,
+  since: string
+): SleepSessionRow[] {
+  const rows = db
+    .prepare(
+      `SELECT date, start_time AS start, end_time AS end, source, origin, value
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' AND date >= ?
+          AND julianday(end_time) > julianday(start_time)
+        ORDER BY end_time DESC`
+    )
+    .all(profileId, since) as SelectedSleepSessionRow[];
+  return pickRowsOneSourcePerDay(
+    pickRowsOneOriginPerSourceDay(
+      rows,
+      (row) => row.date,
+      (row) => row.source,
+      (row) => row.origin,
+      (row) => row.value
+    ),
+    resolutionFor(profileId, "sleep_min"),
+    (row) => row.date,
+    (row) => row.source,
+    (row) => row.value
+  ).map(({ date, start, end, value, source }) => ({
+    date,
+    start,
+    end,
+    value,
+    source,
+  }));
 }
 
 // Every valid sleep session whose stored wake-day is inside the selected calendar

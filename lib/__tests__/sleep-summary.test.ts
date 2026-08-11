@@ -7,6 +7,7 @@ import {
   sleepRecordPresentation,
   baselineDeltaPhrase,
   formatHm,
+  formatSleepWindow,
   consistencyNights,
   consistencyPlot,
   markOffSchedule,
@@ -45,6 +46,17 @@ describe("formatHm", () => {
     expect(formatHm(45)).toBe("45m");
     expect(formatHm(0)).toBe("0m");
     expect(formatHm(-10)).toBe("0m"); // clamps negatives
+  });
+});
+
+describe("formatSleepWindow", () => {
+  it("uses one preference-aware window grammar across sleep surfaces", () => {
+    expect(formatSleepWindow("24h", 13 * 60, 13 * 60 + 45)).toBe(
+      "13:00 → 13:45"
+    );
+    expect(formatSleepWindow("12h", 13 * 60, 13 * 60 + 45)).toBe(
+      "1:00 PM → 1:45 PM"
+    );
   });
 });
 
@@ -137,7 +149,6 @@ describe("lastNightSummary", () => {
     // 05:30 = 330m.
     expect(s.bedMinutes).toBe(23 * 60 + 30);
     expect(s.wakeMinutes).toBe(5 * 60 + 30);
-    expect(s.napMin).toBe(0);
     expect(s.source).toBe("manual");
   });
 
@@ -155,19 +166,19 @@ describe("lastNightSummary", () => {
     ];
     const s = lastNightSummary(sessions, TZ)!;
     expect(s.durationMin).toBe(480); // the night, not 480+45
-    expect(s.napMin).toBe(45); // nap counted separately
   });
 
-  it("does not attach wake-day stage totals to the main hero when a nap exists", () => {
+  it("attaches the already-attributed main stages when a nap exists", () => {
+    const stages = { deep: 90, rem: 110, light: 250, awake: 30 };
     const s = lastNightSummary(
       [
         night("2026-03-18", "23:00", "2026-03-19", "07:00"),
         night("2026-03-19", "13:00", "2026-03-19", "13:45"),
       ],
       TZ,
-      new Map([["2026-03-19", { deep: 90, rem: 110, light: 250, awake: 30 }]])
+      new Map([["2026-03-19", stages]])
     )!;
-    expect(s.stages).toBeNull();
+    expect(s.stages).toEqual(stages);
   });
 
   it("computes the trailing baseline over prior nights and the signed delta", () => {
@@ -350,7 +361,6 @@ describe("baselineDeltaPhrase", () => {
     durationMin: 360,
     bedMinutes: 23 * 60,
     wakeMinutes: 5 * 60,
-    napMin: 0,
     baselineAvgMin: 480,
     baselineNights: 7,
     stages: null,

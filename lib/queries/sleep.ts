@@ -7,6 +7,7 @@
 // scoping guard is unaffected.
 
 import {
+  getDailySleepSessionsSince,
   getSleepSessions,
   getSleepSessionsInRange,
   getSleepSessionsSince,
@@ -54,6 +55,7 @@ import {
   sriTrend,
   regularityTravelInsight,
   mainSleepNights,
+  napSessions,
   typicalBedTime as computeTypicalBedTime,
   typicalWakeTime as computeTypicalWakeTime,
   type SleepRegularity,
@@ -270,14 +272,66 @@ export function getSleepConsistency(
   });
 }
 
-// The per-night stage composition over time (stacked-area input) — the SAME
-// getSleepStageDailyTotals read the Trends stage chart uses, re-exposed for the
-// Sleep page so both render identical stage series.
+// The per-night MAIN-sleep stage composition over time (stacked-area input) — the
+// SAME getSleepStageDailyTotals read the hero uses. Timestamp attribution keeps a
+// same-wake-day nap out, so each stage stack describes the overnight duration point.
 export function getSleepStageComposition(
   profileId: number,
   limitDays = 42
 ): { date: string; deep: number; rem: number; light: number; awake: number }[] {
   return getSleepStageDailyTotals(profileId).slice(-limitDays);
+}
+
+export const NAP_HISTORY_DAYS = 60;
+
+export interface NapHistoryRow {
+  date: string;
+  startMinutes: number;
+  endMinutes: number;
+  durationMin: number;
+  source: string | null;
+}
+
+export interface NapHistory {
+  today: NapHistoryRow[];
+  history: NapHistoryRow[];
+  windowDays: number;
+}
+
+// The dedicated nap read for both visible surfaces. Classification is the exact
+// inverse of the shared mainSleepPeriod decision: a fragmented night's members
+// remain main sleep and every other session on its wake-day is a nap. Clock values
+// cross the timezone boundary here so client formatters receive plain minute-of-day
+// facts rather than reinterpreting UTC in the browser's zone.
+export function getNapHistory(
+  profileId: number,
+  windowDays = NAP_HISTORY_DAYS
+): NapHistory {
+  const boundedDays = Math.max(1, Math.floor(windowDays));
+  const end = today(profileId);
+  const since = shiftDateStr(end, -(boundedDays - 1));
+  const timezone = getTimezone(profileId);
+  const history = napSessions(
+    getDailySleepSessionsSince(profileId, since),
+    timezone
+  )
+    .filter((nap) => nap.wakeDay >= since && nap.wakeDay <= end)
+    .map((nap) => ({
+      date: nap.wakeDay,
+      startMinutes: hhmmToMinutes(
+        zonedDateParts(timezone, new Date(nap.start)).hhmm
+      ),
+      endMinutes: hhmmToMinutes(
+        zonedDateParts(timezone, new Date(nap.end)).hhmm
+      ),
+      durationMin: nap.durationMin,
+      source: nap.session.source ?? null,
+    }));
+  return {
+    today: history.filter((nap) => nap.date === end),
+    history,
+    windowDays: boundedDays,
+  };
 }
 
 export const SLEEP_MOOD_HISTORY_DAYS = 60;
@@ -502,6 +556,28 @@ export function getSleepRegularity(
     // Resolve the profile's free-day set for the social-jetlag split (#1241) — an
     // explicit opts.freeDays (tests) wins; otherwise the stored setting (Sat/Sun
     // default) drives it. The pure core stays auth-blind: the setting is data.
+    { freeDays: getFreeDays(profileId), ...opts }
+  );
+}
+
+// The rolling SRI as it stood when the selected main sleep ENDED. The morning
+// digest uses this boundary so an afternoon nap can contribute to the live Sleep
+// page's SRI without silently rewriting the report delivered that morning. Past
+// naps remain in the computation; only sessions that happened after this morning's
+// wake are withheld. The pure SRI engine and all of its policy stay shared.
+export function getSleepRegularityThrough(
+  profileId: number,
+  throughInstant: string,
+  opts?: SleepRegularityOptions
+): SleepRegularity | null {
+  const through = new Date(throughInstant).getTime();
+  if (!Number.isFinite(through)) return null;
+  return computeSleepRegularity(
+    getSleepSessions(profileId).filter((session) => {
+      const end = new Date(session.end).getTime();
+      return Number.isFinite(end) && end <= through;
+    }),
+    getTimezone(profileId),
     { freeDays: getFreeDays(profileId), ...opts }
   );
 }

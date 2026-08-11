@@ -26,6 +26,7 @@ import {
   getLastNightSummary,
   getSleepWaitingState,
   getSleepRegularity,
+  getNapHistory,
   typicalWakeTime,
   getPrnMedicationsForQuickLog,
   getActiveProtocolSummaries,
@@ -152,6 +153,7 @@ import NextAppointmentWidget, {
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import SleepLastNightWidget from "@/components/dashboard/SleepLastNightWidget";
 import SleepWaitingWidget from "@/components/dashboard/SleepWaitingWidget";
+import NapsTodayWidget from "@/components/dashboard/NapsTodayWidget";
 import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
 import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
 import NutritionTodayWidget from "@/components/dashboard/NutritionTodayWidget";
@@ -509,6 +511,10 @@ export default async function Dashboard() {
     sleepSummary && sleepPresentation?.freshness === "recent"
       ? `${sleepPresentation.label} · ${formatHm(sleepSummary.durationMin)}`
       : null;
+  // naps-today: the detailed nap model the Sleep page also renders. A normal
+  // no-nap day self-hides this contextual widget; once a nap syncs, every window
+  // and the combined duration appear without changing the main-sleep card.
+  const todayNaps = has("naps-today") ? getNapHistory(profile.id, 1).today : [];
 
   // recent-labs (medical): the current reading per lab/biomarker marker, flagged
   // markers surfaced first so an out-of-range result is the headline. Selection
@@ -933,6 +939,13 @@ export default async function Dashboard() {
             presentation={sleepPresentation}
           />
         ) : null;
+      case "naps-today":
+        return todayNaps.length > 0 ? (
+          <NapsTodayWidget
+            naps={todayNaps}
+            timeFormat={formatPrefs.timeFormat}
+          />
+        ) : null;
       case "weight-trend":
         return (
           <WeightTrendWidget
@@ -1071,7 +1084,8 @@ export default async function Dashboard() {
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
       (def.id !== "data-quality" || dataQualityFindings.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
-      (def.id !== "active-protocols" || activeProtocols.length > 0),
+      (def.id !== "active-protocols" || activeProtocols.length > 0) &&
+      (def.id !== "naps-today" || todayNaps.length > 0),
     // symptom-log is the unified "How are you today?" card (#992): the mood tap is
     // always offered, so the slot stays available in both illness states. Its folded
     // "Take any meds?" branch (#1221) is composed inside the card (shown only on a well
@@ -1089,6 +1103,11 @@ export default async function Dashboard() {
   // timezone (#1186/#450), resolved once here rather than in the client.
   const nowMinutes = hhmmToMinutes(
     zonedDateParts(getTimezone(profile.id), clockNow()).hhmm
+  );
+  const latestNapEndMinutes = todayNaps.reduce<number | null>(
+    (latest, nap) =>
+      latest == null || nap.endMinutes > latest ? nap.endMinutes : latest,
+    null
   );
   // The existing mealtime-shaped anchors: the profile's intake reminder slots.
   // NOT the food log — `food_log_events.logged_at` is TAP time, documented as
@@ -1139,6 +1158,8 @@ export default async function Dashboard() {
       nowFreshSleep || nowSleepWaiting ? typicalWakeTime(profile.id) : null,
     freshSleepSummary: nowFreshSleep,
     sleepWaiting: nowSleepWaiting,
+    napEndedMinAgo:
+      latestNapEndMinutes == null ? null : nowMinutes - latestNapEndMinutes,
     workoutFinishedMinAgo: showRecapCard
       ? (finishedPresence?.sinceMin ?? null)
       : null,

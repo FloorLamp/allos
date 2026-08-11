@@ -360,6 +360,7 @@ describe("actionable-first default order (#1890)", () => {
       "next-appointment",
       "recent-labs",
       "sleep-last-night",
+      "naps-today",
       "weight-trend",
       "healthspan-pillars",
       // The calm rollup closes the list (#449), and the opt-in retrospective is last.
