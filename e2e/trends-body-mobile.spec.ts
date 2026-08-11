@@ -11,7 +11,7 @@ import {
   TRENDS_BODY_OLD_DAY,
 } from "./fixture-logins";
 
-// Trends → Body responsive layouts. On mobile the tab used to force scrolling past
+// Trends → Overview → body census responsive layouts. On mobile the tab used to force scrolling past
 // three quick-add forms and a fixed single-column chart stack before the metric you
 // wanted. The final responsive split:
 //   1. (retired by #1486 — the three quick-adds merged into one form; see
@@ -38,7 +38,7 @@ async function openBodyTab(
   await page.goto(q);
 }
 
-test.describe("Trends → Body responsive views (#1067)", () => {
+test.describe("Trends → Overview → body census responsive views (#1067)", () => {
   // The former "quick-adds collapse to a chip row" test retired with that chip row
   // itself (#1486): the three quick-adds merged into ONE "Log measurements" form,
   // hidden behind a desktop "+ Log" modal and absent from the phone entirely

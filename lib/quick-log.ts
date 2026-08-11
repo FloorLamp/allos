@@ -176,7 +176,7 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     // #1486 merged those into a single "Log measurements" form, so a second row
     // would just be a second door onto the same fields — the exact duplication the
     // shared-content rule exists to prevent. Same MeasurementsQuickAdd component
-    // the Body tab's desktop expander mounts; only the mount changes.
+    // the body census desktop expander mounts; only the mount changes.
     target: { kind: "overlay", form: "measurements" },
   },
   {

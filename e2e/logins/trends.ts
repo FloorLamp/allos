@@ -3,7 +3,7 @@
 // see that file's header for the rules these constants live under. Add a login or
 // fixture-profile name for THIS domain here, beside the fixtures that use it.
 
-// #1067 Phase 1 — Trends → Body mobile overhaul. A dedicated adult profile with a
+// #1067 Phase 1 — Trends → Overview → body census mobile overhaul. A dedicated adult profile with a
 // KNOWN, PARTIAL set of synced body metrics so the chart-jump chips + per-chart
 // anchors are deterministic: it has manual + synced weight/resting HR (the
 // body-composition block and source-control fixture), derived BMI, steps, a sleep
@@ -94,7 +94,7 @@ export const TRENDS_READINGS_RHR_CORRECTED = 71;
 
 // ── Ranked default chart-card order (issue #1490) ────────────────────────────
 // THREE dedicated profiles, one per scenario the ranker must answer, because the
-// whole claim is about what a NEVER-ARRANGED profile's Body tab leads with — an
+// whole claim is about what a NEVER-ARRANGED profile's body census leads with — an
 // assertion that a neighbour's write (or a shared-seed goal/condition) would flip.
 //
 //   • PEDS   — a ~6-year-old with heights + weigh-ins: the growth-percentile card

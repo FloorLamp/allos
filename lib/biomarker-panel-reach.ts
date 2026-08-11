@@ -36,7 +36,7 @@ import {
   type PanelId,
 } from "./biomarker-panels";
 import { BIOMARKER_CATEGORIES } from "./medical-categories";
-import { listedInBiomarkerBrowser } from "./body-metric-analytes";
+import { listedInBiomarkerBrowser } from "./trend-metric-analytes";
 import type { MedicalCategory } from "./types";
 
 // The medical categories the browser lists, as a lookup.

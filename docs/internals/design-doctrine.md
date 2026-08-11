@@ -65,7 +65,7 @@ Doctrine: a new metric or quantity ships with a declared knowledge source or an
 argued exclusion — absence is a build failure, not an audit finding. The
 identity functions themselves are indexed in
 `docs/internals/identity-registry.md`, whose census test keeps the doc honest.
-The known gap — completeness is currently guarded only over `BodyMetricSlug` —
+The known gap — completeness is currently guarded only over `TrendMetricSlug` —
 is #2086 (VO₂ max is its acceptance case, ruled to earn a surface).
 
 ## 3. One side-state grammar

@@ -16,7 +16,7 @@
 // for every one it rescued.
 //
 // THE RULE, per analyte instead of per category: a `vitals` analyte that maps to a
-// `BodyMetricSlug` is not listed in the flat browser; one that does not, stays. That
+// `TrendMetricSlug` is not listed in the flat browser; one that does not, stays. That
 // KEEPS #1076's rule rather than overriding it — nothing is stranded, because
 // membership is now decided by WHETHER A HOME EXISTS rather than by which category the
 // quantity happens to be filed under.
@@ -24,7 +24,7 @@
 // DERIVED, NEVER HAND-LISTED. The two registries that already answer it are the only
 // inputs:
 //
-//   • `BODY_METRIC_SLUGS` / `BODY_METRIC_META` (lib/trends-body-metrics.ts) — the ONE
+//   • `TREND_METRIC_SLUGS` / `TREND_METRIC_META` (lib/trend-metrics.ts) — the ONE
 //     declaration of which quantities get a tile, a chart and a
 //     `/trends/metric/<slug>` detail page, i.e. which quantities HAVE a home, and what
 //     each one is called.
@@ -61,7 +61,7 @@
 // is NOT resting blood pressure, and a stress-test vital keeps its place in the
 // catalog. "Waist Circumference" never touches "Head Circumference"; "Pure Tone
 // Average", "Color Vision", "Ankle-Brachial Index" and "Cardio-Ankle Vascular Index"
-// touch nothing at all. lib/__tests__/body-metric-analytes.test.ts asserts BOTH
+// touch nothing at all. lib/__tests__/trend-metric-analytes.test.ts asserts BOTH
 // directions over the real registries — the slugged analytes leave AND every listed
 // domain vital stays.
 //
@@ -79,7 +79,7 @@
 //
 // So reachability is DECLARED per slug, in `METRIC_DOCUMENT_REACH` below, and a slug
 // that does not answer it does not compile (the registry is total over
-// `BodyMetricSlug`, the `lib/fitness-freshness.ts` precedent). A slug added later has
+// `TrendMetricSlug`, the `lib/fitness-freshness.ts` precedent). A slug added later has
 // to answer the question rather than silently start swallowing document rows — which
 // is the same drift-proofing property the name derivation itself is built on.
 //
@@ -88,7 +88,7 @@
 // rather than reading the prose beside it:
 //
 //   • `observations`      — against the pure reading model (a canonical identity with
-//                           NO stream source), in lib/__tests__/body-metric-analytes;
+//                           NO stream source), in lib/__tests__/trend-metric-analytes;
 //                           the DB tier separately cross-checks that this agrees with
 //                           `METRIC_READING_STORE`, which lives in a module that opens
 //                           the database and so cannot be reached from the pure tier.
@@ -123,10 +123,10 @@ import {
 } from "./canonical-name";
 import { METRIC_KNOWLEDGE } from "./metric-judgment";
 import {
-  BODY_METRIC_META,
-  BODY_METRIC_SLUGS,
-  type BodyMetricSlug,
-} from "./trends-body-metrics";
+  TREND_METRIC_META,
+  TREND_METRIC_SLUGS,
+  type TrendMetricSlug,
+} from "./trend-metrics";
 
 // The category the per-analyte rule applies to. #1076's other re-homed classes are
 // excluded WHOLE (they have a home by class), and `lab` / `genomics` / `scan` stay
@@ -168,13 +168,13 @@ export type DocumentReadingReach =
   | { reaches: false; reason: string };
 
 /**
- * Per-slug reachability. TOTAL over `BodyMetricSlug` — a new metric must answer.
+ * Per-slug reachability. TOTAL over `TrendMetricSlug` — a new metric must answer.
  *
  * `reaches: false` is not a defect and needs no fixing: it means the flat catalog is
  * still the right home for that quantity's imported readings, exactly as #1076 left it.
  */
 export const METRIC_DOCUMENT_REACH: Record<
-  BodyMetricSlug,
+  TrendMetricSlug,
   DocumentReadingReach
 > = {
   // ── The vitals that STORE as observations: the row is the chart point ──────────
@@ -313,9 +313,9 @@ export const METRIC_DOCUMENT_REACH: Record<
  * NOTHING when an imported reading of it cannot reach its chart, because a slug that
  * cannot receive the reading has not earned the right to remove it from the catalog.
  */
-function registryNamesFor(slug: BodyMetricSlug): string[] {
+function registryNamesFor(slug: TrendMetricSlug): string[] {
   if (METRIC_DOCUMENT_REACH[slug].reaches === false) return [];
-  const meta = BODY_METRIC_META[slug];
+  const meta = TREND_METRIC_META[slug];
   const knowledge = METRIC_KNOWLEDGE[slug];
   const names = [meta.title];
   if ("canonical" in knowledge) names.push(knowledge.canonical);
@@ -326,9 +326,9 @@ function registryNamesFor(slug: BodyMetricSlug): string[] {
 // normalized name key -> the slug that is its home. Built once, first registration
 // wins; the pure test pins that no key is claimed by two different slugs, so "first
 // wins" is a guard against a future collision rather than a silent tie-break.
-const HOME_BY_KEY: ReadonlyMap<string, BodyMetricSlug> = (() => {
-  const map = new Map<string, BodyMetricSlug>();
-  for (const slug of BODY_METRIC_SLUGS) {
+const HOME_BY_KEY: ReadonlyMap<string, TrendMetricSlug> = (() => {
+  const map = new Map<string, TrendMetricSlug>();
+  for (const slug of TREND_METRIC_SLUGS) {
     for (const name of registryNamesFor(slug)) {
       const key = normalizeCanonicalKey(name);
       if (key && !map.has(key)) map.set(key, slug);
@@ -344,9 +344,9 @@ const HOME_BY_KEY: ReadonlyMap<string, BodyMetricSlug> = (() => {
  * spellings that derivation yields, so a document's "Body Mass Index (BMI)" and the
  * registry's "Body Mass Index" are one quantity.
  */
-export function bodyMetricHomeFor(
+export function trendMetricHomeFor(
   name: string | null | undefined
-): BodyMetricSlug | null {
+): TrendMetricSlug | null {
   const raw = (name ?? "").trim();
   if (!raw) return null;
   for (const form of [raw, ...acronymNameForms(raw)]) {
@@ -356,9 +356,9 @@ export function bodyMetricHomeFor(
   return null;
 }
 
-/** Whether some registered body metric already charts this quantity. */
-export function hasBodyMetricHome(name: string | null | undefined): boolean {
-  return bodyMetricHomeFor(name) !== null;
+/** Whether some registered trend metric already charts this quantity. */
+export function hasTrendMetricHome(name: string | null | undefined): boolean {
+  return trendMetricHomeFor(name) !== null;
 }
 
 /**
@@ -377,5 +377,5 @@ export function listedInBiomarkerBrowser(row: {
 }): boolean {
   if ((row.category ?? "") !== HOMED_ANALYTE_CATEGORY) return true;
   const identity = row.canonical_name?.trim() || row.name;
-  return !hasBodyMetricHome(identity);
+  return !hasTrendMetricHome(identity);
 }

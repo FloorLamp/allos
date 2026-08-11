@@ -35,7 +35,7 @@ test.describe("View-only access (issue #33)", () => {
     });
 
     // READ works: the profile menu shows the "read-only" badge, and the profile's
-    // data renders (the Trends → Body measurements form is reachable — since #1486
+    // data renders (the Trends → Overview → body census measurements form is reachable — since #1486
     // it is one combined form behind the desktop "+ Log" modal).
     await memberPage.goto("/trends");
     await expect(memberPage.getByTestId("read-only-badge")).toBeVisible();

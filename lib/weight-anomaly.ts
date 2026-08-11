@@ -5,7 +5,7 @@
 //
 // Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings.ts
 // (getWeights → these functions → Finding[]), surfaced as a dismissible finding on
-// the Trends → Body tab. The complementary guard — rejecting IMPOSSIBLE values at
+// the Trends → Overview → body census. The complementary guard — rejecting IMPOSSIBLE values at
 // ENTRY — lives in lib/body-metric-input.ts (validateBodyMetricInput). Every
 // threshold is a named constant with its rationale; boundaries are unit-tested in
 // lib/__tests__/weight-anomaly.test.ts.

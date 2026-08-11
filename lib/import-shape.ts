@@ -473,7 +473,7 @@ export interface PersistInput {
   // Waist-circumference samples (metric_samples, metric 'waist_circumference_cm') —
   // the third length measure, projected exactly like the other two (#2322). The
   // projection is what lets the `waist-circ` slug claim the analyte name at all; see
-  // METRIC_DOCUMENT_REACH in lib/body-metric-analytes.ts. OPTIONAL for the same
+  // METRIC_DOCUMENT_REACH in lib/trend-metric-analytes.ts. OPTIONAL for the same
   // reason genomicVariants / imagingStudies are: an existing PersistInput literal
   // (the DB-tier fixtures) needs no change, and every reader takes it with `?? []`.
   waistCircs?: DocWaistCirc[];

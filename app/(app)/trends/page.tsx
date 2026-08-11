@@ -71,7 +71,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 //   3. The wellness lens (#1632) — per-practice weeks-in-range, cadence against the
 //      declared min–max band, session length. Conditional on a tracked practice
 //      existing; an anchored part of this surface, not a fifth tab.
-//   4. The body census — exactly what the Body tab rendered, skeleton intact
+//   4. The body census — the complete ranked metric stack, skeleton intact
 //      (Today strip → cards starred-first-then-ranked → source comparison →
 //      history table), streamed below the head.
 //
@@ -142,7 +142,7 @@ export default async function TrendsPage(props: {
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
   const cmpNormalized = firstParam(searchParams.cmpn) === "1";
-  // #1067 Phase 2: the body census's layout mode (tiles vs the classic chart
+  // #1067 Phase 2: the body census layout mode (tiles vs the classic chart
   // stack). Only meaningful where the census renders — the Overview tab —
   // and carried through the range control + tab navigation so a chosen layout
   // survives a window change.

@@ -59,15 +59,15 @@ import {
 } from "@/lib/trend-sparkline";
 import { applyCardOrder, bodyCardOrder } from "@/lib/trends-card-rank";
 import {
-  BODY_METRIC_META,
-  bodyChartScale,
-  buildBodyMetricTile,
-  savedMetricIdForBodySlug,
+  TREND_METRIC_META,
+  trendMetricChartScale,
+  buildTrendMetricTile,
+  savedMetricIdForTrendSlug,
   stableEmptyLast,
-  type BodyMetricSlug,
-  type BodyMetricTile,
+  type TrendMetricSlug,
+  type TrendMetricTile,
   type CheckInMetricSlug,
-} from "@/lib/trends-body-metrics";
+} from "@/lib/trend-metrics";
 import { moodSeriesPoints } from "@/lib/mood";
 import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 import {
@@ -103,16 +103,16 @@ import ChartCard, { CHART_PLOT_FILL } from "@/components/ChartCard";
 import TrendMiniCard from "@/components/TrendMiniCard";
 import NotesText from "@/components/NotesText";
 import ScrollFade from "@/components/ScrollFade";
-import BodyTrendCharts, {
-  type BodyChartSpec,
-  type BodyStackItem,
-} from "@/components/BodyTrendCharts";
+import TrendMetricCharts, {
+  type TrendChartSpec,
+  type TrendStackItem,
+} from "@/components/TrendMetricCharts";
 import GrowthChartsCard from "@/components/GrowthChartsCard";
 import LogMeasurementsPanel from "./LogMeasurementsPanel";
 import VitalsTodayStrip from "./VitalsTodayStrip";
 import type { ChartChip } from "./ChartJumpChips";
 import ChartJumpMenu from "./ChartJumpMenu";
-import BodyMetricTiles from "./BodyMetricTiles";
+import TrendMetricTiles from "./TrendMetricTiles";
 import BodyViewToggle from "./BodyViewToggle";
 import {
   tilesContainerClass,
@@ -125,7 +125,7 @@ import BodyHygieneFindings from "./BodyHygieneFindings";
 
 // The Trends hub's **Body** census — the ONE physiology surface (issue #1486).
 //
-// Trends carried a Vitals tab and a Body tab that answered the same question about
+// Trends carried a Vitals tab and a body census that answered the same question about
 // the same person from the same rows: "what is my body doing". A blood pressure was
 // on one, a weight on the other, and resting heart rate was on BOTH (charted twice,
 // with a goal overlay on only one of them). #1486 retires the Vitals tab into this
@@ -341,7 +341,7 @@ export default async function BodySection({
   // WHERE THE ★ LIVES ON THIS TAB (#1643). Nowhere new — and that is the decision,
   // not an omission. Every card here already taps through to its metric detail page
   // (#1488's contract: the card's header IS one edge-to-edge target), and that page
-  // has carried the shipped ★ since #1456 for every registered Body slug. So the
+  // has carried the shipped ★ since #1456 for every registered trend slug. So the
   // pinning gesture is one tap from every card in the census, through the affordance
   // the card already promises.
   //
@@ -396,7 +396,7 @@ export default async function BodySection({
     data: Point[],
     unit: string,
     decimals: number
-  ): Pick<BodyChartSpec, "referenceValue" | "projectionNote"> => {
+  ): Pick<TrendChartSpec, "referenceValue" | "projectionNote"> => {
     const goal = goalFor(metric);
     if (!goal || goal.target_value == null) {
       return { referenceValue: null, projectionNote: null };
@@ -458,7 +458,7 @@ export default async function BodySection({
     [
       {
         key: "weight",
-        label: BODY_METRIC_META.weight.title,
+        label: TREND_METRIC_META.weight.title,
         unit: wu,
         rows: dailyRows(weightAll, soleTodayOccurredAt("weight_kg")),
         decimals: 1,
@@ -467,7 +467,7 @@ export default async function BodySection({
         ? [
             {
               key: "body-fat",
-              label: BODY_METRIC_META["body-fat"].title,
+              label: TREND_METRIC_META["body-fat"].title,
               unit: "%",
               rows: dailyRows(bodyFatAll, soleTodayOccurredAt("body_fat_pct")),
               decimals: 1,
@@ -476,7 +476,7 @@ export default async function BodySection({
         : []),
       {
         key: "steps",
-        label: BODY_METRIC_META.steps.title,
+        label: TREND_METRIC_META.steps.title,
         unit: "steps",
         rows: dailyRows(stepsAll),
         groupThousands: true,
@@ -484,28 +484,28 @@ export default async function BodySection({
       {
         key: "bp",
         label:
-          BODY_METRIC_META.systolic.summaryTitle ??
-          BODY_METRIC_META.systolic.title,
+          TREND_METRIC_META.systolic.summaryTitle ??
+          TREND_METRIC_META.systolic.title,
         unit: "mmHg",
         rows: systolicRows,
         pairRows: diastolicRows,
       },
       {
         key: "resting-hr",
-        label: BODY_METRIC_META["resting-hr"].title,
+        label: TREND_METRIC_META["resting-hr"].title,
         unit: "bpm",
         rows: dailyRows(restingHrAll, soleTodayOccurredAt("resting_hr")),
       },
       {
         key: "temperature",
-        label: BODY_METRIC_META.temperature.title,
+        label: TREND_METRIC_META.temperature.title,
         unit: "°F",
         rows: temperatureRows,
         decimals: 1,
       },
       {
         key: "hrv",
-        label: BODY_METRIC_META.hrv.title,
+        label: TREND_METRIC_META.hrv.title,
         unit: "ms",
         rows: dailyRows(hrvAll),
       },
@@ -553,13 +553,13 @@ export default async function BodySection({
   // ── 2. Vitals section ───────────────────────────────────────────────────────
   // Every card is present-gated on its own series, so a profile with only a weight
   // never sees an empty vitals frame.
-  const vitalsCharts: BodyChartSpec[] = [];
+  const vitalsCharts: TrendChartSpec[] = [];
   if (systolicAll.length > 0) {
     vitalsCharts.push({
       key: "systolic",
       testid: "vitals-systolic",
       detailHref: metricDetailHref("systolic"),
-      title: BODY_METRIC_META.systolic.title,
+      title: TREND_METRIC_META.systolic.title,
       data: systolicChart,
       unit: " mmHg",
       color: chartSeries.rose,
@@ -570,7 +570,7 @@ export default async function BodySection({
       key: "diastolic",
       testid: "vitals-diastolic",
       detailHref: metricDetailHref("diastolic"),
-      title: BODY_METRIC_META.diastolic.title,
+      title: TREND_METRIC_META.diastolic.title,
       data: diastolicChart,
       unit: " mmHg",
       color: chartSeries.violet,
@@ -581,7 +581,7 @@ export default async function BodySection({
       key: "spo2",
       testid: "vitals-spo2",
       detailHref: metricDetailHref("spo2"),
-      title: BODY_METRIC_META.spo2.title,
+      title: TREND_METRIC_META.spo2.title,
       data: spo2Chart,
       unit: "%",
       color: chartSeries.sky,
@@ -592,20 +592,20 @@ export default async function BodySection({
       key: "respiratory-rate",
       testid: "vitals-respiratory-rate",
       detailHref: metricDetailHref("respiratory-rate"),
-      title: BODY_METRIC_META["respiratory-rate"].title,
+      title: TREND_METRIC_META["respiratory-rate"].title,
       data: respiratoryChart,
       unit: " /min",
       color: chartSeries.violet,
     });
   }
   if (restingHrAll.length > 0) {
-    // Resting HR appears EXACTLY ONCE (#1486): the Body tab's old copy retired and
+    // Resting HR appears EXACTLY ONCE (#1486): the body census old copy retired and
     // its goal overlay + the shared event annotations came here with it.
     vitalsCharts.push({
       key: "resting_hr",
       testid: "vitals-resting-hr",
       detailHref: metricDetailHref("resting-hr"),
-      title: BODY_METRIC_META["resting-hr"].title,
+      title: TREND_METRIC_META["resting-hr"].title,
       data: restingHrChart,
       unit: " bpm",
       color: chartSeries.amber,
@@ -617,7 +617,7 @@ export default async function BodySection({
       key: "hrv",
       testid: "vitals-hrv",
       detailHref: metricDetailHref("hrv"),
-      title: BODY_METRIC_META.hrv.title,
+      title: TREND_METRIC_META.hrv.title,
       data: hrvChart,
       unit: " ms",
       color: chartSeries.amber,
@@ -628,10 +628,10 @@ export default async function BodySection({
       key: "skin_temp",
       testid: "vitals-skin-temp",
       detailHref: metricDetailHref("skin-temp"),
-      title: BODY_METRIC_META["skin-temp"].title,
+      title: TREND_METRIC_META["skin-temp"].title,
       data: skinTempChart,
-      unit: BODY_METRIC_META["skin-temp"].unit,
-      color: BODY_METRIC_META["skin-temp"].color,
+      unit: TREND_METRIC_META["skin-temp"].unit,
+      color: TREND_METRIC_META["skin-temp"].color,
       note: "Nightly deviation from your tracker's own baseline, not an absolute temperature — so only the change matters, and it is comparable to your other nights rather than to a reference range. A sustained rise often shows up alongside a drop in HRV.",
     });
   }
@@ -640,7 +640,7 @@ export default async function BodySection({
       key: "sun",
       testid: "vitals-sun-outdoor",
       detailHref: metricDetailHref("sun"),
-      title: BODY_METRIC_META.sun.title,
+      title: TREND_METRIC_META.sun.title,
       data: sun,
       unit: " min",
       color: chartSeries.amber,
@@ -654,7 +654,7 @@ export default async function BodySection({
       key: "temperature",
       testid: "vitals-temperature",
       detailHref: metricDetailHref("temperature"),
-      title: BODY_METRIC_META.temperature.title,
+      title: TREND_METRIC_META.temperature.title,
       data: filterSeriesByRange(temperatureAll, range),
       unit: " °F",
       color: chartSeries.rose,
@@ -685,7 +685,7 @@ export default async function BodySection({
             full depth (its own range control, annotations, and readings table). */}
         {intradayHr.length > 0 && (
           <ChartCard
-            title={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Today`}
+            title={`${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Today`}
             headingLevel="h3"
             detailHref={metricDetailHref("hr")}
             detailTitle="heart rate"
@@ -707,7 +707,7 @@ export default async function BodySection({
                 // gap-exempt: an intraday clock axis (HH:MM slots), not calendar
                 // days — lib/intraday.ts already slots and breaks its own gaps.
                 data={intradayHr}
-                label={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Today`}
+                label={`${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Today`}
                 unit=" bpm"
                 color={chartSeries.rose}
                 showDots={false}
@@ -721,7 +721,7 @@ export default async function BodySection({
         {hasIntradayBp && (
           <div className="grid gap-6 sm:grid-cols-2">
             <ChartCard
-              title={`${BODY_METRIC_META.systolic.title} Today`}
+              title={`${TREND_METRIC_META.systolic.title} Today`}
               headingLevel="h3"
               detailHref={metricDetailHref("systolic")}
               detailTitle="systolic blood pressure"
@@ -731,14 +731,14 @@ export default async function BodySection({
               <LineChartCard
                 // gap-exempt: intraday HH:MM slot grid, already null-slotted.
                 data={toIntradaySlotSeries(intradaySystolic)}
-                label={`${BODY_METRIC_META.systolic.title} Today`}
+                label={`${TREND_METRIC_META.systolic.title} Today`}
                 unit=" mmHg"
                 color={chartSeries.rose}
                 connectNulls={false}
               />
             </ChartCard>
             <ChartCard
-              title={`${BODY_METRIC_META.diastolic.title} Today`}
+              title={`${TREND_METRIC_META.diastolic.title} Today`}
               headingLevel="h3"
               detailHref={metricDetailHref("diastolic")}
               detailTitle="diastolic blood pressure"
@@ -748,7 +748,7 @@ export default async function BodySection({
               <LineChartCard
                 // gap-exempt: intraday HH:MM slot grid, already null-slotted.
                 data={toIntradaySlotSeries(intradayDiastolic)}
-                label={`${BODY_METRIC_META.diastolic.title} Today`}
+                label={`${TREND_METRIC_META.diastolic.title} Today`}
                 unit=" mmHg"
                 color={chartSeries.violet}
                 connectNulls={false}
@@ -759,7 +759,7 @@ export default async function BodySection({
 
         {intradaySpo2.length > 0 && (
           <ChartCard
-            title={`${BODY_METRIC_META.spo2.title} Today`}
+            title={`${TREND_METRIC_META.spo2.title} Today`}
             headingLevel="h3"
             detailHref={metricDetailHref("spo2")}
             detailTitle="oxygen saturation"
@@ -769,7 +769,7 @@ export default async function BodySection({
             <LineChartCard
               // gap-exempt: intraday HH:MM slot grid, already null-slotted.
               data={toIntradaySlotSeries(intradaySpo2)}
-              label={`${BODY_METRIC_META.spo2.title} Today`}
+              label={`${TREND_METRIC_META.spo2.title} Today`}
               unit="%"
               color={chartSeries.sky}
               connectNulls={false}
@@ -794,12 +794,12 @@ export default async function BodySection({
 
   // ── 3. Composition section ──────────────────────────────────────────────────
   // The age-aware plan minus resting HR, which the vitals section above now owns.
-  const chartByKey: Record<BodyChartKey, BodyChartSpec> = {
+  const chartByKey: Record<BodyChartKey, TrendChartSpec> = {
     height: {
       key: "height",
       testid: "body-chart-height",
       detailHref: metricDetailHref("height"),
-      title: BODY_METRIC_META.height.title,
+      title: TREND_METRIC_META.height.title,
       data: heightChart,
       unit: " cm",
       color: chartSeries.violet,
@@ -808,7 +808,7 @@ export default async function BodySection({
       key: "head_circumference",
       testid: "body-chart-head-circ",
       detailHref: metricDetailHref("head-circ"),
-      title: BODY_METRIC_META["head-circ"].title,
+      title: TREND_METRIC_META["head-circ"].title,
       data: headCircChart,
       unit: " cm",
       color: chartSeries.sky,
@@ -817,7 +817,7 @@ export default async function BodySection({
       key: "weight",
       testid: "body-chart-weight",
       detailHref: metricDetailHref("weight"),
-      title: BODY_METRIC_META.weight.title,
+      title: TREND_METRIC_META.weight.title,
       data: weightChart,
       unit: ` ${wu}`,
       color: chartSeries.brand,
@@ -841,7 +841,7 @@ export default async function BodySection({
       key: "bodyfat",
       testid: "body-chart-bodyfat",
       detailHref: metricDetailHref("body-fat"),
-      title: BODY_METRIC_META["body-fat"].title,
+      title: TREND_METRIC_META["body-fat"].title,
       data: bodyFatChart,
       unit: "%",
       color: chartSeries.violet,
@@ -852,7 +852,7 @@ export default async function BodySection({
     resting_hr: {
       key: "resting_hr",
       detailHref: metricDetailHref("resting-hr"),
-      title: BODY_METRIC_META["resting-hr"].title,
+      title: TREND_METRIC_META["resting-hr"].title,
       data: restingHrChart,
       unit: " bpm",
       color: chartSeries.amber,
@@ -863,7 +863,7 @@ export default async function BodySection({
   // growth-tracked profile the life-stage signal lifts height/head-circ above
   // weight there, which is the pediatric layout the plan used to encode
   // positionally.
-  const compositionCharts: BodyChartSpec[] = plan.keys
+  const compositionCharts: TrendChartSpec[] = plan.keys
     .filter((k) => k !== "resting_hr")
     .map((k) => chartByKey[k]);
 
@@ -965,7 +965,7 @@ export default async function BodySection({
   const caloriesChart = filterSeriesByRange(caloriesAll, range);
   // BMI over the weight series, pairing each weigh-in with the height in effect ON
   // OR BEFORE that date — the SAME date-paired derivation the growth card uses, so
-  // the two BMI charts on a child's Body tab can't disagree (issue #407).
+  // the two BMI charts on a child's body census can't disagree (issue #407).
   const bmiAll = bmiSeriesDatePaired(
     weightSeries.map((w) => ({ date: w.date, value: w.value })),
     getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map((r) => ({
@@ -1032,8 +1032,8 @@ export default async function BodySection({
   // series names itself, the shared range supplies the window, and the per-series
   // gap registry decides whether a missing day is a hole or a real zero. One
   // helper so a card and its tile can never be windowed differently.
-  const bodyGapFill = (slug: BodyMetricSlug): DayFillSpec => ({
-    seriesKey: metricSeriesKey(savedMetricIdForBodySlug(slug)),
+  const bodyGapFill = (slug: TrendMetricSlug): DayFillSpec => ({
+    seriesKey: metricSeriesKey(savedMetricIdForTrendSlug(slug)),
     ...dayFillWindow(range),
   });
   // Sleep duration is plotted here and on /sleep; it is a per-night READING, so it
@@ -1049,13 +1049,13 @@ export default async function BodySection({
   })[] = [
     {
       id: "steps",
-      label: BODY_METRIC_META.steps.title,
+      label: TREND_METRIC_META.steps.title,
       present: stepsAll.length > 0,
       node: (
         <ChartCard
           key="steps"
           anchorId="steps"
-          title={BODY_METRIC_META.steps.title}
+          title={TREND_METRIC_META.steps.title}
           detailHref={metricDetailHref("steps")}
           detailTitle="steps"
         >
@@ -1063,32 +1063,32 @@ export default async function BodySection({
               registry the detail page reads (#1541). */}
           <LineChartCard
             data={stepsChart}
-            label={BODY_METRIC_META.steps.title}
+            label={TREND_METRIC_META.steps.title}
             color={chartSeries.sky}
             gapFill={bodyGapFill("steps")}
-            {...bodyChartScale(BODY_METRIC_META.steps)}
+            {...trendMetricChartScale(TREND_METRIC_META.steps)}
           />
         </ChartCard>
       ),
     },
     {
       id: "active-calories",
-      label: BODY_METRIC_META["active-calories"].title,
+      label: TREND_METRIC_META["active-calories"].title,
       present: activeCaloriesAll.length > 0,
       node: (
         <ChartCard
           key="active-calories"
           anchorId="active-calories"
-          title={BODY_METRIC_META["active-calories"].title}
+          title={TREND_METRIC_META["active-calories"].title}
           detailHref={metricDetailHref("active-calories")}
         >
           <LineChartCard
             data={activeCaloriesChart}
-            label={BODY_METRIC_META["active-calories"].title}
+            label={TREND_METRIC_META["active-calories"].title}
             color={chartSeries.rose}
             gapFill={bodyGapFill("active-calories")}
             unit=" kcal"
-            {...bodyChartScale(BODY_METRIC_META["active-calories"])}
+            {...trendMetricChartScale(TREND_METRIC_META["active-calories"])}
           />
         </ChartCard>
       ),
@@ -1161,19 +1161,19 @@ export default async function BodySection({
     },
     {
       id: "hr",
-      label: BODY_METRIC_META.hr.title,
+      label: TREND_METRIC_META.hr.title,
       present: hrAll.length > 0,
       node: (
         <ChartCard
           key="hr"
           anchorId="hr"
-          title={BODY_METRIC_META.hr.title}
+          title={TREND_METRIC_META.hr.title}
           detailHref={metricDetailHref("hr")}
           detailTitle="heart rate"
         >
           <LineChartCard
             data={hrChart}
-            label={BODY_METRIC_META.hr.title}
+            label={TREND_METRIC_META.hr.title}
             color={chartSeries.rose}
             unit=" bpm"
             gapFill={bodyGapFill("hr")}
@@ -1183,7 +1183,7 @@ export default async function BodySection({
     },
     {
       id: "hr-day",
-      label: `${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} (Intraday)`,
+      label: `${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} (Intraday)`,
       // A single worn-HR sample cannot form an intraday trend. With dots hidden it
       // painted as a large blank chart, so keep the useful daily summary and omit
       // this zoom until there is an actual line to read.
@@ -1193,7 +1193,7 @@ export default async function BodySection({
           key="hr-day"
           anchorId="hr-day"
           className="lg:col-span-2"
-          title={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Over the Day${latestHrDay ? ` — ${latestHrDay}` : ""}`}
+          title={`${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Over the Day${latestHrDay ? ` — ${latestHrDay}` : ""}`}
           // The title carries a DATE, which reads badly in "Open … detail"; the
           // accessible name names the metric instead.
           detailTitle="heart rate"
@@ -1202,7 +1202,7 @@ export default async function BodySection({
           <LineChartCard
             // gap-exempt: the per-minute intraday zoom, an HH:MM axis.
             data={hrIntraday}
-            label={`${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Over the Day${
+            label={`${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Over the Day${
               latestHrDay ? ` — ${latestHrDay}` : ""
             }`}
             color={chartSeries.rose}
@@ -1214,18 +1214,18 @@ export default async function BodySection({
     },
     {
       id: "bmi",
-      label: BODY_METRIC_META.bmi.title,
+      label: TREND_METRIC_META.bmi.title,
       present: bmiAll.length > 0,
       node: (
         <ChartCard
           key="bmi"
           anchorId="bmi"
-          title={BODY_METRIC_META.bmi.title}
+          title={TREND_METRIC_META.bmi.title}
           detailHref={metricDetailHref("bmi")}
         >
           <LineChartCard
             data={bmiChart}
-            label={BODY_METRIC_META.bmi.title}
+            label={TREND_METRIC_META.bmi.title}
             color={chartSeries.sky}
             gapFill={bodyGapFill("bmi")}
           />
@@ -1234,18 +1234,18 @@ export default async function BodySection({
     },
     {
       id: "lean-mass",
-      label: BODY_METRIC_META["lean-mass"].title,
+      label: TREND_METRIC_META["lean-mass"].title,
       present: leanMassAll.length > 0,
       node: (
         <ChartCard
           key="lean-mass"
           anchorId="lean-mass"
-          title={BODY_METRIC_META["lean-mass"].title}
+          title={TREND_METRIC_META["lean-mass"].title}
           detailHref={metricDetailHref("lean-mass")}
         >
           <LineChartCard
             data={leanMassChart}
-            label={BODY_METRIC_META["lean-mass"].title}
+            label={TREND_METRIC_META["lean-mass"].title}
             color={chartSeries.sky}
             unit=" kg"
             gapFill={bodyGapFill("lean-mass")}
@@ -1255,18 +1255,18 @@ export default async function BodySection({
     },
     {
       id: "bone-mass",
-      label: BODY_METRIC_META["bone-mass"].title,
+      label: TREND_METRIC_META["bone-mass"].title,
       present: boneMassAll.length > 0,
       node: (
         <ChartCard
           key="bone-mass"
           anchorId="bone-mass"
-          title={BODY_METRIC_META["bone-mass"].title}
+          title={TREND_METRIC_META["bone-mass"].title}
           detailHref={metricDetailHref("bone-mass")}
         >
           <LineChartCard
             data={boneMassChart}
-            label={BODY_METRIC_META["bone-mass"].title}
+            label={TREND_METRIC_META["bone-mass"].title}
             color={chartSeries.violet}
             unit=" kg"
             gapFill={bodyGapFill("bone-mass")}
@@ -1276,18 +1276,18 @@ export default async function BodySection({
     },
     {
       id: "bmr",
-      label: BODY_METRIC_META.bmr.title,
+      label: TREND_METRIC_META.bmr.title,
       present: bmrAll.length > 0,
       node: (
         <ChartCard
           key="bmr"
           anchorId="bmr"
-          title={BODY_METRIC_META.bmr.title}
+          title={TREND_METRIC_META.bmr.title}
           detailHref={metricDetailHref("bmr")}
         >
           <LineChartCard
             data={bmrChart}
-            label={BODY_METRIC_META.bmr.title}
+            label={TREND_METRIC_META.bmr.title}
             color={chartSeries.rose}
             unit=" kcal"
             gapFill={bodyGapFill("bmr")}
@@ -1297,44 +1297,44 @@ export default async function BodySection({
     },
     {
       id: "hydration",
-      label: BODY_METRIC_META.hydration.title,
+      label: TREND_METRIC_META.hydration.title,
       present: hydrationAll.length > 0,
       node: (
         <ChartCard
           key="hydration"
           anchorId="hydration"
-          title={BODY_METRIC_META.hydration.title}
+          title={TREND_METRIC_META.hydration.title}
           detailHref={metricDetailHref("hydration")}
         >
           <LineChartCard
             data={hydrationChart}
-            label={BODY_METRIC_META.hydration.title}
+            label={TREND_METRIC_META.hydration.title}
             color={chartSeries.sky}
             unit=" L"
             gapFill={bodyGapFill("hydration")}
-            {...bodyChartScale(BODY_METRIC_META.hydration)}
+            {...trendMetricChartScale(TREND_METRIC_META.hydration)}
           />
         </ChartCard>
       ),
     },
     {
       id: "calories",
-      label: BODY_METRIC_META.calories.title,
+      label: TREND_METRIC_META.calories.title,
       present: caloriesAll.length > 0,
       node: (
         <ChartCard
           key="calories"
           anchorId="calories"
-          title={BODY_METRIC_META.calories.title}
+          title={TREND_METRIC_META.calories.title}
           detailHref={metricDetailHref("calories")}
         >
           <LineChartCard
             data={caloriesChart}
-            label={BODY_METRIC_META.calories.title}
+            label={TREND_METRIC_META.calories.title}
             color={chartSeries.amber}
             unit=" kcal"
             gapFill={bodyGapFill("calories")}
-            {...bodyChartScale(BODY_METRIC_META.calories)}
+            {...trendMetricChartScale(TREND_METRIC_META.calories)}
           />
         </ChartCard>
       ),
@@ -1387,7 +1387,7 @@ export default async function BodySection({
     <ChartCard
       anchorId={slug}
       testid={`${slug}-trend`}
-      title={BODY_METRIC_META[slug].title}
+      title={TREND_METRIC_META[slug].title}
       description="1–5 daily check-ins · selected date range"
       detailHref={metricDetailHref(slug)}
       footer={
@@ -1399,8 +1399,8 @@ export default async function BodySection({
     >
       <LineChartCard
         data={data}
-        label={BODY_METRIC_META[slug].title}
-        color={BODY_METRIC_META[slug].color}
+        label={TREND_METRIC_META[slug].title}
+        color={TREND_METRIC_META[slug].color}
         gapFill={bodyGapFill(slug)}
       />
     </ChartCard>
@@ -1409,7 +1409,7 @@ export default async function BodySection({
   // Every member, before ordering. Membership is unchanged — each entry is still
   // present-gated exactly where it was — and every chart carries its own anchor now
   // that no section box provides one.
-  type StackMember = BodyStackItem & { label: string; empty?: boolean };
+  type StackMember = TrendStackItem & { label: string; empty?: boolean };
   const stackMembers: StackMember[] = [
     // At 1D the vitals charts swap for the intraday block, which takes `hr-day`'s
     // rank: one placement rule for every block, so a one-day window re-shapes the
@@ -1419,7 +1419,7 @@ export default async function BodySection({
         ? [
             {
               id: "hr-day",
-              label: `${BODY_METRIC_META.hr.summaryTitle ?? BODY_METRIC_META.hr.title} Today`,
+              label: `${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Today`,
               node: intradayBlock,
               wide: true,
             },
@@ -1454,7 +1454,7 @@ export default async function BodySection({
       ? [
           {
             id: "mood",
-            label: BODY_METRIC_META.mood.title,
+            label: TREND_METRIC_META.mood.title,
             node: checkInCard("mood", moodChart),
           },
         ]
@@ -1463,7 +1463,7 @@ export default async function BodySection({
       ? [
           {
             id: "energy",
-            label: BODY_METRIC_META.energy.title,
+            label: TREND_METRIC_META.energy.title,
             node: checkInCard("energy", energyChart),
           },
         ]
@@ -1472,7 +1472,7 @@ export default async function BodySection({
       ? [
           {
             id: "calm",
-            label: BODY_METRIC_META.calm.title,
+            label: TREND_METRIC_META.calm.title,
             node: checkInCard("calm", calmChart),
           },
         ]
@@ -1512,7 +1512,7 @@ export default async function BodySection({
   // `view=tiles` and `view=all` are two renderings of one metric set — not two
   // different sets. Body fat is dropped for a growth-tracked profile (matching the
   // charts/history); every other metric self-gates on presence.
-  const tileSeries: Array<[BodyMetricSlug, Point[]]> = [
+  const tileSeries: Array<[TrendMetricSlug, Point[]]> = [
     ["systolic", systolicAll],
     ["diastolic", diastolicAll],
     ["spo2", spo2All],
@@ -1539,14 +1539,14 @@ export default async function BodySection({
     ["energy", energyAll],
     ["calm", calmAll],
   ];
-  const metricTiles: BodyMetricTile[] = tileSeries
+  const metricTiles: TrendMetricTile[] = tileSeries
     .filter(([slug]) => slug !== "body-fat" || bodyFatShown)
     // Calm follows the check-in card's own gate in BOTH view modes (#1313/#1408) —
     // `view=tiles` and `view=all` are two renderings of one metric set, so a tile
     // may not surface a scale the chart above is gating away.
     .filter(([slug]) => slug !== "calm" || hasCalm)
     .map(([slug, arr]) =>
-      buildBodyMetricTile(BODY_METRIC_META[slug], arr, wu, range)
+      buildTrendMetricTile(TREND_METRIC_META[slug], arr, wu, range)
     )
     .filter((t) => t.present);
 
@@ -1667,7 +1667,7 @@ export default async function BodySection({
           data-testid="body-intraday-view"
         >
           {bodyStack.length > 0 ? (
-            <BodyTrendCharts
+            <TrendMetricCharts
               items={bodyStack}
               annotations={annotations}
               windows={protocolWindows}
@@ -1685,7 +1685,7 @@ export default async function BodySection({
         className={`${tilesContainerClass(view)} -mt-4`}
         data-testid="body-tiles-view"
       >
-        <BodyMetricTiles
+        <TrendMetricTiles
           tiles={metricTiles}
           growth={growthGridTiles}
           sleep={sleepGridTile}
@@ -1729,7 +1729,7 @@ export default async function BodySection({
                 the synced daily charts are ordinary members placed by the same
                 order, and the annotation toggle bar above drives all of them. */}
             {bodyStack.length > 0 ? (
-              <BodyTrendCharts
+              <TrendMetricCharts
                 items={bodyStack}
                 annotations={annotations}
                 windows={protocolWindows}

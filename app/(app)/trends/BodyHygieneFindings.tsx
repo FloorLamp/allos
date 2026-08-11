@@ -8,7 +8,7 @@ import { buildBodyHygieneFindings } from "@/lib/rule-findings";
 import FindingsList from "@/components/FindingsList";
 import { dismissBodyHygiene } from "./actions";
 
-// Body-metric data-hygiene findings (issue #45, domain 5) for the Trends → Body tab:
+// Body-metric data-hygiene findings (issue #45, domain 5) for the Trends → Overview → body census:
 // a day-over-day weight reading that jumped too much to be real (a scale glitch or a
 // kg/lb entry mix-up) — caught before it skews every downstream trend, chart, and
 // goal projection. Each links to the Body metrics history to fix/delete and can be

@@ -13,10 +13,7 @@ import {
   parseReadingTarget,
   type MetricRowTarget,
 } from "@/lib/reading-placement";
-import {
-  isBodyMetricSlug,
-  type BodyMetricSlug,
-} from "@/lib/trends-body-metrics";
+import { isTrendMetricSlug, type TrendMetricSlug } from "@/lib/trend-metrics";
 
 // The metric detail page's per-READING write paths (issue #1488, absorbing #1397).
 //
@@ -46,9 +43,9 @@ export interface ReadingActionResult {
 // no-op — never a write against a guessed row, and never against a guessed store.
 function parseTarget(
   formData: FormData
-): { slug: BodyMetricSlug; target: MetricRowTarget } | null {
+): { slug: TrendMetricSlug; target: MetricRowTarget } | null {
   const raw = String(formData.get("kind") ?? "").trim();
-  if (!isBodyMetricSlug(raw)) return null;
+  if (!isTrendMetricSlug(raw)) return null;
   const target = parseReadingTarget(String(formData.get("target") ?? ""));
   return target ? { slug: raw, target } : null;
 }
@@ -114,7 +111,7 @@ export async function deleteMetricReading(
 // The chart sits directly above the table on the same page, so an edit or delete has
 // to redraw it — the pairing is the point (#1488). The hub and the dashboard read the
 // same series, so they refresh too.
-function revalidateReading(slug: BodyMetricSlug): void {
+function revalidateReading(slug: TrendMetricSlug): void {
   revalidateRoute(`/trends/metric/${slug}`);
   revalidateRoute("/trends");
   revalidateRoute("/");

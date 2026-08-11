@@ -3,7 +3,7 @@
 // no second engine (#221):
 //   - buildMacroFiberSeries: merges the tracked macro/fiber daily totals
 //     (getMetricDailyTotals for protein_g/carbs_g/fat_g/fiber_g) into one dated series
-//     for the stacked chart the tab inherits from Trends → Body (Part 1).
+//     for the stacked chart the tab inherits from Trends → Overview → body census (Part 1).
 //   - aggregateFoodAdherenceByWeek: rolls the per-habit #954 consistency cells
 //     (getFoodHabitTrends) up into an OVERALL weekly hit-rate — "am I consistently
 //     hitting my food-group goals," the trend the point-in-time AdherenceFindings on

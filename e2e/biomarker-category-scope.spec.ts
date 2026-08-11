@@ -37,7 +37,7 @@ test("the browser drops a vitals analyte with a metric home, keeps one without (
 }) => {
   const section = page.getByTestId("results-readings");
 
-  // Blood pressure is a BodyMetricSlug quantity charted at /trends/metric/systolic, so
+  // Blood pressure is a TrendMetricSlug quantity charted at /trends/metric/systolic, so
   // the flat catalog no longer duplicates it — the 131-of-145 population #1076's
   // per-category decision dragged along.
   await page.goto(

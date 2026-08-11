@@ -25,7 +25,7 @@ export function seedSleep(): void {
   // ── Sleep Regularity Index fixture (issue #160) ───────────────────────────────
   // 28 nightly sleep sessions (wake-days today-1 … today-28), each bed 23:00 → wake
   // 07:00 in UTC (the e2e default profile timezone), so the rolling 28-night window
-  // clears the minimum-nights gate and the Trends → Body "Sleep regularity" card
+  // clears the minimum-nights gate and the Trends → Overview → body census "Sleep regularity" card
   // (SRI) renders. Weekend nights (Sat/Sun wake) shift 90 min later so the companion
   // social-jetlag line is non-trivial. Relative dates → never stale; instants carry
   // a Z so they're timezone-unambiguous. Idempotent: clear this range first (the

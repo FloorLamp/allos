@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { trailingAverage } from "@/lib/trailing-average";
 import { summarizeStepsToday, STEPS_TRAILING_DAYS } from "@/lib/steps-today";
-import { bodyMetricPeriodStats } from "@/lib/trends-body-metrics";
+import { trendMetricPeriodStats } from "@/lib/trend-metrics";
 
 // Pure tier: the ONE trailing-average computation (#1909) and the two surfaces that
 // used to carry their own. Three groups:
@@ -293,7 +293,7 @@ describe("the day-one fallback fires on no history, never on a gap (#1909)", () 
 
   // ── What each consumer DOES with it ──────────────────────────────────────────
   it("the metric detail card shows the reading, marked as today's", () => {
-    const stats = bodyMetricPeriodStats(TODAY_ONLY, TODAY, 1);
+    const stats = trendMetricPeriodStats(TODAY_ONLY, TODAY, 1);
     // Every window holds the same one reading, so they collapse to one stat.
     expect(stats).toHaveLength(1);
     expect(stats[0]).toMatchObject({
@@ -322,7 +322,7 @@ describe("the day-one fallback fires on no history, never on a gap (#1909)", () 
       [TODAY, 8432],
     ]);
     expect(summarizeStepsToday(withYesterday, TODAY)!.average7).toBe(9000);
-    expect(bodyMetricPeriodStats(withYesterday, TODAY, 0)[0]).toMatchObject({
+    expect(trendMetricPeriodStats(withYesterday, TODAY, 0)[0]).toMatchObject({
       dayOne: false,
       avg: 9000,
     });
@@ -356,7 +356,7 @@ describe("both '7-day average' surfaces delegate to the one helper (#221/#1909)"
   });
 
   it("the detail card's average IS the calendar window, today excluded", () => {
-    const stats = bodyMetricPeriodStats(POINTS, TODAY, 0);
+    const stats = trendMetricPeriodStats(POINTS, TODAY, 0);
     const sevenDay = stats.find((s) => s.windows.includes(7))!;
     const helper = trailingAverage(POINTS, TODAY, {
       days: 7,
@@ -370,7 +370,7 @@ describe("both '7-day average' surfaces delegate to the one helper (#221/#1909)"
 
   it("the two surfaces still differ — by the DECLARED basis, not by accident", () => {
     const summary = summarizeStepsToday(POINTS, TODAY)!;
-    const sevenDay = bodyMetricPeriodStats(POINTS, TODAY, 0).find((s) =>
+    const sevenDay = trendMetricPeriodStats(POINTS, TODAY, 0).find((s) =>
       s.windows.includes(7)
     )!;
     // The card reaches back to the 14th for a seventh reading; the calendar window
@@ -390,8 +390,8 @@ describe("a half-finished today does not move the averages (#1909 defect 1)", ()
   const WITH_PARTIAL_TODAY = [...COMPLETE, { date: TODAY, value: 4000 }];
 
   it("the detail page's 7d average is identical with and without today's partial", () => {
-    const before = bodyMetricPeriodStats(COMPLETE, TODAY, 0);
-    const after = bodyMetricPeriodStats(WITH_PARTIAL_TODAY, TODAY, 0);
+    const before = trendMetricPeriodStats(COMPLETE, TODAY, 0);
+    const after = trendMetricPeriodStats(WITH_PARTIAL_TODAY, TODAY, 0);
     const avg = (stats: typeof before) =>
       stats.find((s) => s.windows.includes(7))!.avg;
     expect(avg(after)).toBe(10000);
@@ -399,7 +399,7 @@ describe("a half-finished today does not move the averages (#1909 defect 1)", ()
   });
 
   it("holds for the wider windows too, and for the range and change", () => {
-    const stats = bodyMetricPeriodStats(WITH_PARTIAL_TODAY, TODAY, 0);
+    const stats = trendMetricPeriodStats(WITH_PARTIAL_TODAY, TODAY, 0);
     // Twelve complete days: the 7d window holds seven of them, 30d and 90d all
     // twelve — so the collapse leaves two cards, and neither moves for today.
     expect(stats.map((s) => s.count)).toEqual([7, 12]);
@@ -414,7 +414,7 @@ describe("a half-finished today does not move the averages (#1909 defect 1)", ()
   });
 
   it("still shows today's reading as Latest — recency is today's job", () => {
-    const stats = bodyMetricPeriodStats(WITH_PARTIAL_TODAY, TODAY, 0);
+    const stats = trendMetricPeriodStats(WITH_PARTIAL_TODAY, TODAY, 0);
     expect(stats.map((s) => s.latest)).toEqual(stats.map(() => 4000));
   });
 
@@ -423,7 +423,7 @@ describe("a half-finished today does not move the averages (#1909 defect 1)", ()
     // average — but the card no longer reads "No readings" all day (#1909's
     // follow-up ruling): it shows the reading and `dayOne` tells the surface to
     // label it "Today's reading" rather than an average of finished days.
-    const stats = bodyMetricPeriodStats(
+    const stats = trendMetricPeriodStats(
       [{ date: TODAY, value: 4000 }],
       TODAY,
       0
@@ -441,7 +441,7 @@ describe("a half-finished today does not move the averages (#1909 defect 1)", ()
     // History exists but stopped three weeks ago; today carries a fresh reading.
     // The 7d window is honestly empty — the day-one fallback is for a first
     // reading, never for a gap — while 30d/90d still summarise the old run.
-    const stats = bodyMetricPeriodStats(
+    const stats = trendMetricPeriodStats(
       [
         { date: "2026-06-30", value: 9000 },
         { date: "2026-07-01", value: 11000 },

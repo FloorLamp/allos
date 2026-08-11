@@ -1,13 +1,14 @@
-// The Trends → Body per-metric registry (#1067 Phase 2). ONE source of truth for
-// the body metrics that get a sparkline TILE (the overview grid) AND a per-metric
-// DETAIL page (`/trends/metric/<slug>`, the biomarker-view pattern applied to body
-// metrics). Both surfaces key on this registry so a tile and its detail page can't
+// The Trends metric registry (#1067 Phase 2). ONE source of truth for every series
+// that gets a sparkline tile in the Overview body census AND a per-metric detail
+// page (`/trends/metric/<slug>`). It deliberately spans storage domains: mood,
+// steps, SpO2, derived daylight, and `body_metrics` rows are all trend metrics.
+// Both surfaces key on this registry so a tile and its detail page cannot
 // disagree about a metric's label, unit, color, or link (the #285 rule-carrying-link
 // + #482 one-identity-per-subject discipline).
 //
 // This module is PURE (metadata + windowing math, no DB/queries import) so it stays
 // unit-testable. The series themselves are gathered by the callers:
-//   - the Body tab builds each metric's series ONCE and feeds BOTH the classic chart
+//   - the body census builds each metric's series ONCE and feeds BOTH the classic chart
 //     stack AND the tile grid from it (the tile applies the shared range — one gather,
 //     no second computation, #221);
 //   - the detail page re-derives its single metric's series through the SAME queries
@@ -28,10 +29,10 @@ import type { BodyMetricKind } from "./types";
 // Stable per-metric slugs — the `/trends/metric/<slug>` route param, the tile's
 // in-page order key, and the detail-page title source. Append-only (a bookmarked
 // detail link must never dangle).
-export const BODY_METRIC_SLUGS = [
-  // The vitals (#1486) — they joined the Body tab's tile grid when the Vitals tab
+export const TREND_METRIC_SLUGS = [
+  // The vitals (#1486) — they joined the body census tile grid when the Vitals tab
   // merged in, so a vital is a tile in `view=tiles` and a full chart in `view=all`,
-  // exactly like every body metric. One view-mode semantic, no second grammar.
+  // exactly like every trend metric. One view-mode semantic, no second grammar.
   "systolic",
   "diastolic",
   "spo2",
@@ -85,16 +86,16 @@ export const BODY_METRIC_SLUGS = [
   "energy",
   "calm",
 ] as const;
-export type BodyMetricSlug = (typeof BODY_METRIC_SLUGS)[number];
+export type TrendMetricSlug = (typeof TREND_METRIC_SLUGS)[number];
 
 // Which quick-add form the detail page offers (null → an integration-synced metric
 // with no manual entry, e.g. steps/HR/BMI). Since #1486 there is exactly ONE manual
 // form — the combined "Log measurements" — so this is a boolean-shaped union kept as
 // a union only because a future second form would land here.
-export type BodyQuickAddForm = "measurements" | null;
+export type TrendQuickAddForm = "measurements" | null;
 
-export interface BodyMetricMeta {
-  slug: BodyMetricSlug;
+export interface TrendMetricMeta {
+  slug: TrendMetricSlug;
   // Short label for compact chips and menus.
   label: string;
   // Full chart name (tile + classic card + detail-page title and tooltip).
@@ -110,23 +111,23 @@ export interface BodyMetricMeta {
   weightUnit?: boolean;
   color: string;
   decimals: number;
-  // Whether the classic full-chart stack respects the Body tab's shared range.
+  // Whether the classic full-chart stack respects the body census shared range.
   // Tiles and metric-detail pages window every metric; synced full charts retain
   // their historical ~6-month behavior.
   windowed: boolean;
   // The Goal.body_metric this metric can carry a target/overlay for, if any.
   goalMetric: BodyMetricKind | null;
   // The detail-page quick-add form, if the metric is manually enterable.
-  quickAdd: BodyQuickAddForm;
+  quickAdd: TrendQuickAddForm;
   // A COUNT metric — steps, calories, hydration — whose chart is floored at zero
-  // and whose axis ticks are thousands-grouped. See bodyChartScale() for why the
+  // and whose axis ticks are thousands-grouped. See trendMetricChartScale() for why the
   // two travel together, and why a ratio/index metric must NOT take them.
   countMetric?: boolean;
 }
 
-// The registry. Colors mirror the Body tab's existing chart colors so a metric keeps
+// The registry. Colors mirror the body census chart colors so a metric keeps
 // its identity across the tile, the classic chart, and the detail page.
-export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
+export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
   systolic: {
     slug: "systolic",
     label: "BP Systolic",
@@ -456,8 +457,8 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
   },
 };
 
-export function isBodyMetricSlug(v: string): v is BodyMetricSlug {
-  return (BODY_METRIC_SLUGS as readonly string[]).includes(v);
+export function isTrendMetricSlug(v: string): v is TrendMetricSlug {
+  return (TREND_METRIC_SLUGS as readonly string[]).includes(v);
 }
 
 // The subset of the registry that comes off the daily check-in card (#1408), in the
@@ -469,57 +470,58 @@ export type CheckInMetricSlug = (typeof CHECK_IN_METRIC_SLUGS)[number];
 
 // The first saved metric ids predate the detail-page slug registry. Preserve those
 // stored keys while every newer metric uses its slug directly.
-const LEGACY_SAVED_METRIC_IDS: Partial<Record<BodyMetricSlug, string>> = {
-  "body-fat": "bodyfat",
-  "resting-hr": "resting_hr",
-};
+const LEGACY_SAVED_TREND_METRIC_IDS: Partial<Record<TrendMetricSlug, string>> =
+  {
+    "body-fat": "bodyfat",
+    "resting-hr": "resting_hr",
+  };
 
-export function savedMetricIdForBodySlug(slug: BodyMetricSlug): string {
-  return LEGACY_SAVED_METRIC_IDS[slug] ?? slug;
+export function savedMetricIdForTrendSlug(slug: TrendMetricSlug): string {
+  return LEGACY_SAVED_TREND_METRIC_IDS[slug] ?? slug;
 }
 
-export function bodyMetricSlugForSavedId(id: string): BodyMetricSlug | null {
-  const legacy = Object.entries(LEGACY_SAVED_METRIC_IDS).find(
+export function trendMetricSlugForSavedId(id: string): TrendMetricSlug | null {
+  const legacy = Object.entries(LEGACY_SAVED_TREND_METRIC_IDS).find(
     ([, savedId]) => savedId === id
   )?.[0];
-  if (legacy && isBodyMetricSlug(legacy)) return legacy;
-  return isBodyMetricSlug(id) ? id : null;
+  if (legacy && isTrendMetricSlug(legacy)) return legacy;
+  return isTrendMetricSlug(id) ? id : null;
 }
 
 // ── The ★ ↔ Body-card correspondence (#1643) ────────────────────────────────
 //
-// The Body tab's arrangement is driven by the SAVED store (`saved_items`), whose
-// vocabulary is the Trends SERIES KEY ("metric:weight", "bio:ApoB"); the tab's own
+// The body census arrangement is driven by the SAVED store (`saved_items`), whose
+// vocabulary is the Trends SERIES KEY ("metric:weight", "bio:ApoB"); the census's
 // vocabulary is `BodyCardId`. ONE mapping answers both directions — the #482
-// one-identity rule, which is why it lives beside `savedMetricIdForBodySlug` (the
+// one-identity rule, which is why it lives beside `savedMetricIdForTrendSlug` (the
 // legacy-id table it composes) rather than being restated per surface: the Body
 // composition read (which cards are pinned) and the star affordance (what key the
 // ★ writes) must never disagree about what a card is called.
 //
-// Only cards that ARE registered body metrics are pinnable. The three non-metric
+// Only cards that ARE registered trend metrics are pinnable. The three non-metric
 // cards — the WHO/CDC growth-percentile card, the Sleep summary tile and the
 // intraday "HR (day)" card — have no savable series, so they answer `null` and can
-// only ever occupy their ranked slot. A saved trend-metric that is not a body
-// metric (training volume) likewise maps to no card.
+// only ever occupy their ranked slot. A saved trend metric outside the body census
+// (training volume) likewise maps to no card.
 
 // A Trends series key → the Body card it pins, or null when it names no Body card.
 export function bodyCardIdForSeriesKey(seriesKey: string): BodyCardId | null {
   const ref = savedRefFromSeriesKey(seriesKey);
   if (!ref || ref.kind !== "trend-metric") return null;
-  return bodyMetricSlugForSavedId(ref.key);
+  return trendMetricSlugForSavedId(ref.key);
 }
 
 // The inverse: the series key a Body card's ★ writes, or null when it is unpinnable.
 export function seriesKeyForBodyCard(id: BodyCardId): string | null {
-  return isBodyMetricSlug(id)
-    ? metricSeriesKey(savedMetricIdForBodySlug(id))
+  return isTrendMetricSlug(id)
+    ? metricSeriesKey(savedMetricIdForTrendSlug(id))
     : null;
 }
 
 // Resolve a metric's display-unit suffix, appending the login's weight unit for a
 // weight-preference metric (weight); every other metric's suffix is static.
-export function resolveBodyMetricUnit(
-  meta: BodyMetricMeta,
+export function resolveTrendMetricUnit(
+  meta: TrendMetricMeta,
   weightUnit: string
 ): string {
   return meta.weightUnit ? ` ${weightUnit}` : meta.unit;
@@ -527,8 +529,8 @@ export function resolveBodyMetricUnit(
 
 // A sparkline tile for the overview grid: the metric's metadata + its selected-range
 // series (already in display units, oldest→newest) + presence for the has-data gate.
-export interface BodyMetricTile {
-  slug: BodyMetricSlug;
+export interface TrendMetricTile {
+  slug: TrendMetricSlug;
   title: string;
   label: string;
   href: AppRoute;
@@ -550,19 +552,19 @@ export interface BodyMetricTile {
 // the classic chart renders), windowed by the shared Trends range. Presence and
 // ordering still use the full series so a temporarily empty range does not make a
 // known metric disappear; the tile instead says there is no data in this range.
-export function buildBodyMetricTile(
-  meta: BodyMetricMeta,
+export function buildTrendMetricTile(
+  meta: TrendMetricMeta,
   fullPoints: readonly { date: string; value: number }[],
   weightUnit: string,
   range: DateRange
-): BodyMetricTile {
+): TrendMetricTile {
   const points = filterSeriesByRange([...fullPoints], range);
   return {
     slug: meta.slug,
     title: meta.title,
     label: meta.label,
     href: metricDetailHref(meta.slug),
-    unit: resolveBodyMetricUnit(meta, weightUnit),
+    unit: resolveTrendMetricUnit(meta, weightUnit),
     color: meta.color,
     decimals: meta.decimals,
     points,
@@ -572,7 +574,7 @@ export function buildBodyMetricTile(
     latestDate:
       fullPoints.length > 0 ? fullPoints[fullPoints.length - 1].date : null,
     gapFill: {
-      seriesKey: metricSeriesKey(savedMetricIdForBodySlug(meta.slug)),
+      seriesKey: metricSeriesKey(savedMetricIdForTrendSlug(meta.slug)),
       ...dayFillWindow(range),
     },
   };
@@ -614,7 +616,7 @@ export function stableEmptyLast<T>(
 // resequenced the grid on every device sync; presence is now a ranker signal (and
 // an empty series a ranker FLOOR), so the order changes when what a profile tracks
 // changes, not when a watch uploads.
-export function orderBodyMetricTiles<T extends OrderableTile>(
+export function orderTrendMetricTiles<T extends OrderableTile>(
   tiles: readonly T[],
   order: readonly BodyCardId[]
 ): T[] {
@@ -740,7 +742,7 @@ function emptyPeriodStat(days: number): PeriodStat {
   };
 }
 
-export function bodyMetricPeriodStats(
+export function trendMetricPeriodStats(
   points: readonly { date: string; value: number }[],
   todayStr: string,
   decimals = 1
@@ -817,7 +819,7 @@ export function seriesCoverageNote(
 // count runs to four and five digits, where an ungrouped `12000` tick is simply
 // harder to read than `12,000`. Ratio/index metrics (weight, BMI, resting HR) keep
 // the auto domain, where a zero baseline would flatten the signal instead.
-export function bodyChartScale(meta: BodyMetricMeta): {
+export function trendMetricChartScale(meta: TrendMetricMeta): {
   yDomain?: [number | "auto", number | "auto"];
   groupYTicks?: boolean;
 } {

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 
-// The Trends LANDING SURFACE (#1644): the Body tab merged into Overview.
+// The Trends LANDING SURFACE (#1644): the metric census moved into Overview.
 //
 // `/trends` is now one scroll — trending digest → cross-domain starred grid → the
 // body census — while Fitness, Nutrition and Insights stay tabs. What this spec

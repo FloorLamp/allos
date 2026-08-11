@@ -19,13 +19,13 @@ import {
 } from "@/lib/reading-cadence";
 import { readingDetailHref } from "@/lib/hrefs";
 import {
-  BODY_METRIC_SLUGS,
-  bodyMetricPeriodStats,
-} from "@/lib/trends-body-metrics";
+  TREND_METRIC_SLUGS,
+  trendMetricPeriodStats,
+} from "@/lib/trend-metrics";
 import { METRIC_READING_STORE, getMetricReadings } from "@/lib/metric-readings";
 import { placeReading } from "@/lib/reading-placement";
 import { metricObservationFoldIdentity } from "@/lib/metric-judgment";
-import { fullBodyMetricSeries } from "@/lib/body-metric-series";
+import { fullTrendMetricSeries } from "@/lib/trend-metric-series";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -62,7 +62,7 @@ describe("every continuous reading has a real metric-detail destination", () => 
     "%s renders through /trends/metric/%s",
     (canonical, slug) => {
       // A registered kind…
-      expect(BODY_METRIC_SLUGS).toContain(slug);
+      expect(TREND_METRIC_SLUGS).toContain(slug);
       // …whose readings store holds readings of THIS IDENTITY. Generalized in #2032
       // from "this canonical name in medical_records": with the write path routing by
       // row rather than by slug, a destination whose own store is the identity's
@@ -105,7 +105,7 @@ describe("a category='vitals' reading reaches the metric detail surface", () => 
   it("charts the stored rows as that page's series", () => {
     const slug = continuousReadingSlug("Oxygen Saturation");
     expect(slug).toBe("spo2");
-    const series = fullBodyMetricSeries("spo2", p.profileId, "kg", p.todayStr);
+    const series = fullTrendMetricSeries("spo2", p.profileId, "kg", p.todayStr);
     expect(series.map((s) => s.value)).toEqual([96, 101, 100, 99, 98, 97]);
     // Oldest first, so the page's "Latest" is the most recent daily reading, not
     // the eight-year-old import.
@@ -121,8 +121,8 @@ describe("a category='vitals' reading reaches the metric detail surface", () => 
   });
 
   it("summarizes the recent readings rather than the whole history", () => {
-    const series = fullBodyMetricSeries("spo2", p.profileId, "kg", p.todayStr);
-    const stats = bodyMetricPeriodStats(series, p.todayStr, 0);
+    const series = fullTrendMetricSeries("spo2", p.profileId, "kg", p.todayStr);
+    const stats = trendMetricPeriodStats(series, p.todayStr, 0);
     // The trailing windows all hold the same five daily readings here, so they
     // collapse into one card — over the five, not the eight-year span. This is the
     // cadence-appropriate read the lab page could not give the metric.

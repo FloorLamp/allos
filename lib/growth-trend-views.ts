@@ -11,7 +11,7 @@ import {
   type GrowthSex,
 } from "./growth";
 import type { WeightUnit } from "./settings";
-import { BODY_METRIC_META } from "./trends-body-metrics";
+import { TREND_METRIC_META } from "./trend-metrics";
 
 export interface GrowthTrendView {
   metric: GrowthMetric;
@@ -58,22 +58,22 @@ export function buildGrowthTrendPresentation(input: {
     { label: string; unit: string; valueRound: number }
   > = {
     height: {
-      label: BODY_METRIC_META.height.title,
+      label: TREND_METRIC_META.height.title,
       unit: " cm",
       valueRound: 1,
     },
     weight: {
-      label: BODY_METRIC_META.weight.title,
+      label: TREND_METRIC_META.weight.title,
       unit: ` ${input.weightUnit}`,
       valueRound: 1,
     },
     bmi: {
-      label: BODY_METRIC_META.bmi.title,
+      label: TREND_METRIC_META.bmi.title,
       unit: "",
       valueRound: 1,
     },
     head_circumference: {
-      label: BODY_METRIC_META["head-circ"].title,
+      label: TREND_METRIC_META["head-circ"].title,
       unit: " cm",
       valueRound: 1,
     },

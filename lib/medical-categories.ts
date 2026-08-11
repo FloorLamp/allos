@@ -35,8 +35,8 @@
 // So the "nothing stranded" rule is kept and applied a level finer: an analyte is
 // listed unless an imported reading of it is ANSWERED ELSEWHERE — which is a stricter
 // test than "a chart exists" (HRV and BMR have charts that no `medical_records` row
-// can ever reach, so they stay). `lib/body-metric-analytes.ts` decides, derived from
-// the metric registries (`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug
+// can ever reach, so they stay). `lib/trend-metric-analytes.ts` decides, derived from
+// the metric registries (`TREND_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug
 // reachability declaration rather than hand-listed, so a future slug removes its
 // analyte with no second edit here and the registries cannot drift apart. Category
 // membership in BIOMARKER_CATEGORIES therefore no longer settles the vitals question on

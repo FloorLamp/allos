@@ -32,9 +32,9 @@ import { recentLabHighlights } from "@/lib/recent-labs";
 import { isBiomarkerStale } from "@/lib/reference-range";
 import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import type { ProfileScope } from "@/lib/scope";
-import { METRIC_DOCUMENT_REACH } from "@/lib/body-metric-analytes";
+import { METRIC_DOCUMENT_REACH } from "@/lib/trend-metric-analytes";
 import { METRIC_READING_STORE } from "@/lib/metric-readings";
-import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 import {
   readingIndexRows,
   parseReadingFilters,
@@ -260,7 +260,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     const names = readingIndexRows(singleScope(pid), parseReadingFilters({}))
       .map((r) => r.canonical_name ?? r.name)
       .filter((n): n is string => n !== null);
-    // Gone: each is a BodyMetricSlug quantity with its own chart.
+    // Gone: each is a TrendMetricSlug quantity with its own chart.
     for (const homed of [
       "Blood Pressure Systolic",
       "Body Temperature",
@@ -298,7 +298,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     // may not. This is the other end of the same equality, asked of the hand-written
     // store registry itself — so a metric whose store is edited to or from
     // `medical_records` without revisiting its reachability fails here.
-    for (const slug of BODY_METRIC_SLUGS) {
+    for (const slug of TREND_METRIC_SLUGS) {
       const claimed = METRIC_DOCUMENT_REACH[slug].reaches === "observations";
       expect(
         METRIC_READING_STORE[slug]?.table === "medical_records",

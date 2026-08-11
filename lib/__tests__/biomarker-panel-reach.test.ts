@@ -14,7 +14,7 @@ import {
 import { CANONICAL_BIOMARKERS } from "../datasets/canonical-biomarkers";
 import { DERIVED_NAMES } from "../derived-biomarkers";
 import { BIOMARKER_CATEGORIES } from "../medical-categories";
-import { hasBodyMetricHome } from "../body-metric-analytes";
+import { hasTrendMetricHome } from "../trend-metric-analytes";
 
 // #1581 section D — the panel facet must not offer an option that can never return a
 // row. The derivation is over the controlled vocabulary, so these assertions are
@@ -96,7 +96,7 @@ describe("reachablePanelIds (#1581 section D)", () => {
     const expected = new Set<PanelId>([OTHER_PANEL]);
     for (const e of CANONICAL_BIOMARKERS) {
       if (!listed.has(e.category)) continue;
-      if (e.category === "vitals" && hasBodyMetricHome(e.name)) continue;
+      if (e.category === "vitals" && hasTrendMetricHome(e.name)) continue;
       expected.add(panelForCanonicalName(e.name));
     }
     for (const n of DERIVED_NAMES) expected.add(panelForCanonicalName(n));

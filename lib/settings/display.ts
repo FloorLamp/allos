@@ -223,7 +223,7 @@ export function setFreeDays(profileId: number, days: number[]): void {
 // Meanwhile Trends already HAD a user-arrangement substrate — `saved_items`, which
 // the Overview grid's ★, drag and ⋯-menu arrows all write (#1456/#1487/#1485-C).
 //
-// #1643 folded the Body tab onto that one store rather than completing a second:
+// #1643 folded the body census onto that one store rather than completing a second:
 // starred cards lead in their saved order, the ranker sequences the remainder
 // (lib/trends-card-rank.ts `bodyCardOrder`, fed by `getBodyCardPins` in
 // lib/queries/trends-context.ts). Retiring the key needed NO migration and no

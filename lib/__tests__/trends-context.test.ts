@@ -30,7 +30,7 @@ describe("activeRangeLabel", () => {
     expect(activeRangeLabel({}, TODAY)).toBe("All time");
   });
 
-  it("names a surface-injected extra range (the Body tab's 1D — #1466)", () => {
+  it("names a surface-injected extra range (the body census 1D — #1466)", () => {
     const oneDay = intradayQuickRange(TODAY);
     // Only when the surface offers it: without the extra, the same window has no
     // pill naming it and falls through to the custom summary.

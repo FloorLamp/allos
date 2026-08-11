@@ -19,7 +19,7 @@ import {
   type TrendsSubjectContext,
 } from "@/lib/trends-card-rank";
 import { RANK_SIGNAL_BUDGET } from "@/lib/rank-core";
-import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 
 const TODAY = "2026-07-26";
 
@@ -39,7 +39,7 @@ describe("BODY_CARD_LAYOUT", () => {
   it("covers every registered body-metric slug exactly once", () => {
     const seen = new Set(BODY_CARD_LAYOUT);
     expect(seen.size).toBe(BODY_CARD_LAYOUT.length);
-    for (const slug of BODY_METRIC_SLUGS) {
+    for (const slug of TREND_METRIC_SLUGS) {
       expect(BODY_CARD_LAYOUT).toContain(slug);
     }
   });
@@ -132,7 +132,7 @@ describe("conditionMonitorTags", () => {
   });
 
   it("stays silent for a condition this tab does not monitor (the exclusion discipline)", () => {
-    // Diabetes is monitored by A1c/glucose — biomarkers, not Body-tab series. Over-
+    // Diabetes is monitored by A1c/glucose — biomarkers, not body-census series. Over-
     // collapsing it into "boost weight" would invent a relevance nobody asked for.
     expect(
       conditionMonitorTags([

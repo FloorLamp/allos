@@ -85,7 +85,7 @@ describe("buildImportTabs", () => {
       count: 1,
       kind: "visits",
     });
-    // The Body tab merges body-metric rows + height + head- and waist-circ samples.
+    // The body census merges body-metric rows + height + head- and waist-circ samples.
     expect(byKey["body"].count).toBe(4);
     // Providers are now a real tab (post-#275, #1182), carrying the count that
     // was the old chip; still mirrored on strip.providers.
@@ -288,7 +288,7 @@ describe("row shapers", () => {
   });
 });
 
-describe("bodyItems (merged Body tab)", () => {
+describe("bodyItems (merged body census)", () => {
   it("merges body metrics + height + head/waist circ newest-first, weight in the display unit", () => {
     const items = bodyItems(
       {

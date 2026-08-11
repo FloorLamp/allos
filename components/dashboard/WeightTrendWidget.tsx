@@ -6,7 +6,7 @@ import WidgetHeader from "./WidgetHeader";
 import WeightQuickAdd from "./WeightQuickAdd";
 
 // Weight-trend card (thin wrapper around LineChartCard) with an inline weight
-// quick-add (#1042 phase 2) — the same write core as the Trends → Body quick-add
+// quick-add (#1042 phase 2) — the same write core as the Trends → Overview → body census quick-add
 // promoted to the dashboard (see WeightQuickAdd). The chart stays in Trends →
 // Body; the quick-add is promotion, not relocation.
 export default function WeightTrendWidget({

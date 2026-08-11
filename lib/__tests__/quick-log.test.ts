@@ -30,7 +30,7 @@ describe("primaryQuickLog", () => {
     expect(primaryQuickLog("/medications/print").id).toBe("log-dose");
   });
 
-  it("promotes measurements on Trends' BODY tab only — the tab is the rule, not the route", () => {
+  it("promotes measurements on the Trends body census — the surface is the rule, not the route", () => {
     // #1644: the body census moved to the DEFAULT tab, so a paramless /trends now
     // carries the measurements form…
     expect(primaryQuickLog("/trends").id).toBe("log-measurements");

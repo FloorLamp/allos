@@ -293,7 +293,7 @@ Context combines ongoing situations with today-only factors such as Work or
 Social while clearly labeling which kind persists. There is one check-in per
 day; another entry updates it.
 
-Mood, Energy, and Calm each chart under **Trends → Body** as their own metric —
+Mood, Energy, and Calm each chart under **Trends → Overview → body census** as their own metric —
 a card in the census, a sparkline tile, and a detail page at
 `/trends/metric/mood`, `/trends/metric/energy`, and `/trends/metric/calm` with
 the shared range control and an editable readings table. Each plots only the
@@ -1041,7 +1041,7 @@ on a shared noon-to-noon axis, weekends tinted), **stage composition** over
 recent nights, and — when both are logged — an inline **sleep ↔ mood** view
 (observational co-occurrence, never a diagnosis); every night links to its
 **Timeline** day view. A compact **last-night tile** ships on the dashboard
-(duration + regularity, linking here), and Trends → Body keeps a compact
+(duration + regularity, linking here), and Trends → Overview → body census keeps a compact
 **Sleep** summary tile pointing at this page rather than the full charts.
 
 ## Progress photos
@@ -1416,7 +1416,7 @@ This is #1076's "nothing stranded" rule at a finer grain — membership follows
 whether the reading is answered elsewhere — and it stopped the catalog listing
 ten measurements that already were for every one it rescued (measured on a real
 profile: 131 of 145 `vitals` rows). It is **derived** from the metric registries
-(`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug reachability
+(`TREND_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug reachability
 declaration, never hand-listed, so an analyte that gains a dedicated surface
 leaves the browser with no second edit and a newly registered metric must state
 whether an imported reading can reach it before it can remove anything.
@@ -2795,8 +2795,8 @@ on the card rather than implying it holds the legal instrument.
 Logging often happens exactly where the signal doesn't: a set at a gym with dead
 reception, a dose on a flight, a weigh-in during an outage. For a small set of
 **idempotent quick-logs** — confirming a **dose taken** or **skipped**
-(Supplements & Meds), a **body-metric** weigh-in (Trends → Body), a **vitals**
-entry (Trends → Body), a daily **mood check-in** (the Dashboard "How are you
+(Supplements & Meds), a **body-metric** weigh-in (Trends → Overview → body census), a **vitals**
+entry (Trends → Overview → body census), a daily **mood check-in** (the Dashboard "How are you
 today?" card — idempotent per day, so a replay updates the day's one entry), a
 **workout session** logged entirely offline (the Training editor: if the
 connection is gone for the whole session, closing the editor queues the
@@ -2863,7 +2863,7 @@ the visible subjects remain clear.
 
 The top bar includes Search and a contextual add action. The primary action
 matches the current page—food on Nutrition, a dose on Medications, weight on
-Trends → Body, and activity elsewhere. Its menu opens the existing forms as
+Trends → Overview → body census, and activity elsewhere. Its menu opens the existing forms as
 overlays for:
 
 - food;

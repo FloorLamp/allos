@@ -538,7 +538,7 @@ export function buildSleepMoodBridgeFindings(
   });
 
   // Mean nightly duration, recent 14 days vs the prior 14 — the same daily
-  // totals series the Body tab's sleep chart renders.
+  // totals series the body census sleep chart renders.
   const nights = getMetricDailyTotals(profileId, "sleep_min");
   const recentStart = shiftDateStr(today, -13);
   const priorEnd = shiftDateStr(today, -14);
@@ -1092,7 +1092,7 @@ export function buildMuscleVolumeFindings(
   }).map(volumeObservationToFinding);
 }
 
-// ---- Domain 5: body-metric data hygiene (Trends → Body) -------------------
+// ---- Domain 5: body-metric data hygiene (Trends → Overview → body census) -------------------
 
 function weightAnomalyToFinding(
   a: WeightAnomaly,
@@ -1165,7 +1165,7 @@ export function buildGoalPacingFindings(
   const goals = getOutcomeGoals(profileId);
 
   // Weight readings in canonical kg, ascending, as projection input. The SAME
-  // primary-source-collapsed daily series (one row/day, #14) the Trends → Body
+  // primary-source-collapsed daily series (one row/day, #14) the Trends → Overview → body census
   // chart caption charts — not the raw all-source getWeights rows — windowed to the
   // shared GOAL_PACE_WINDOW_DAYS so the finding and the caption run projectGoal over
   // identical points and can't disagree (#433). getBodyMetricDailySeries already

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 
 // The hand-edited (edit-locked) imported body-metric row (#133 user-edit lock, #659
-// badge) that Trends → Body renders the "Sync locked" badge + "Resume sync updates"
+// badge) that Trends → Overview → body census renders the "Sync locked" badge + "Resume sync updates"
 // affordance for. seed-events.ts plants it once (a synthetic Withings weigh-in of
 // 77.7 kg with edited=1, on a computed conflict-free day); its exact weight + source
 // is the row's stable signature.

@@ -6,7 +6,7 @@
 // context must never reorder an ARRANGED page (#1413's promote-don't-reorder,
 // #559's refusal of invented priority). What context legitimately decides is the
 // order a profile that has never arranged the tab sees on its FIRST visit — and the
-// Body tab already hand-rolled one case of exactly that (minors got a growth-led
+// body census already hand-rolled one case of exactly that (minors got a growth-led
 // layout, adults weight → body-fat → resting-HR). This generalizes that fork rather
 // than letting a per-tab copy of it accrete on every tab.
 //
@@ -35,21 +35,21 @@ import {
   type RankItem,
 } from "./rank-core";
 import { daysBetweenDateStr } from "./date";
-import type { BodyMetricSlug } from "./trends-body-metrics";
+import type { TrendMetricSlug } from "./trend-metrics";
 import type { BodyMetricKind } from "./types";
 
 // ---------------------------------------------------------------------------
 // The card id space
 // ---------------------------------------------------------------------------
 
-// A rankable card on the Body tab. The per-metric cards reuse `BodyMetricSlug`
-// (lib/trends-body-metrics) verbatim — the #482 one-identity rule: the tile, the
+// A rankable card on the body census. The per-metric cards reuse `TrendMetricSlug`
+// (lib/trend-metrics) verbatim — the #482 one-identity rule: the tile, the
 // chart, the detail route and now the rank key are ONE name per subject. Three
 // cards are not metrics: the WHO/CDC growth-percentile card, the Sleep summary tile
 // (its own /sleep surface), and the "HR (day)" intraday card.
-export type BodyCardId = BodyMetricSlug | "growth" | "sleep" | "hr-day";
+export type BodyCardId = TrendMetricSlug | "growth" | "sleep" | "hr-day";
 
-// THE BASE LAYOUT: the Body tab's ADULT reading order, flattened across its runs.
+// THE BASE LAYOUT: the body census ADULT reading order, flattened across its runs.
 // This array IS the stable tie-break — with no signal firing the ranker returns it
 // unchanged, which is the identity property the pure + browser tiers both pin.
 // Editing it changes the default layout for every never-arranged profile, so edit
@@ -171,7 +171,7 @@ export function presenceLevel(
 // Monitored conditions
 // ---------------------------------------------------------------------------
 
-// The Body-tab series an active condition puts under routine watch. Deliberately
+// The body-census series an active condition puts under routine watch. Deliberately
 // SMALL, with the #482 exclusion discipline: a condition earns a tag only when the
 // thing its care actually monitors IS one of this tab's own series. Diabetes is the
 // worked example of an exclusion — it is monitored by A1c/glucose (biomarkers, not
@@ -205,7 +205,7 @@ const CONDITION_MONITORS: readonly {
   { tag: "weight", codes: ["E66"], name: /obes|overweight/i },
 ];
 
-// The monitor tags an ACTIVE condition list puts on the Body tab. Pure — the caller
+// The monitor tags an ACTIVE condition list puts on the body census. Pure — the caller
 // (the DB builder) supplies the already-filtered active rows.
 export function conditionMonitorTags(
   conditions: readonly { name: string; code: string | null }[]
@@ -351,7 +351,7 @@ export const TRENDS_CARD_TABLE = defineRankTable<
 
 const BODY_ITEMS: RankItem<BodyCardId>[] = itemsFromLayout(BODY_CARD_LAYOUT);
 
-// The Body tab's ranked DEFAULT card order — every id in BODY_CARD_LAYOUT, ranked.
+// The body census ranked DEFAULT card order — every id in BODY_CARD_LAYOUT, ranked.
 // Callers filter it to what they actually render (a card with no data is usually
 // present-gated out of the page entirely; the floor only matters for the cards that
 // do render).
@@ -371,7 +371,7 @@ const STRUCTURAL_SIGNAL = "life-stage";
 // their saved order, then the ranked default for everything unpinned.
 //
 // There is ONE arrangement substrate on Trends — `saved_items`, the store the
-// Overview grid's star, drag and ⋯-menu arrows already write. The Body tab used to
+// Overview grid's star, drag and ⋯-menu arrows already write. The body census used to
 // have a second, order-only one (`trends_card_order` in profile settings) that no UI
 // ever wrote; #1643 retired it rather than completing a parallel language for one job
 // (#1485-C's convergence, at the data model instead of the interaction).

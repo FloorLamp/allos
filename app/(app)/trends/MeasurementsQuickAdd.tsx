@@ -30,7 +30,7 @@ import {
 } from "@/lib/measurement-entry";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
-import { BODY_METRIC_META } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import {
   addMeasurements,
   type MeasurementsSaveResult,
@@ -48,7 +48,7 @@ export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 // ── ONE component, three mounting contexts ───────────────────────────────────
 // This is the whole form, authored once (the responsive shared-content rule). It is
 // mounted by:
-//   • the Body tab's desktop "+ Log" modal (BodySection → LogMeasurementsPanel),
+//   • the body census desktop "+ Log" modal (BodySection → LogMeasurementsPanel),
 //   • the #1467/#1468 quick-entry overlay (the phone's ONLY on-page logging path),
 //   • the per-metric detail pages (/trends/metric/<slug>).
 // `onSaved` is the only behavioural difference between them — the overlay closes
@@ -78,7 +78,7 @@ export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 // ── Progressive disclosure: three groups, one open ───────────────────────────
 // Thirteen always-empty boxes to collect the one or two readings someone actually
 // took is what the copy already argues against. Exactly one group is open on mount,
-// chosen by where the person came from: the vitals card opens Vitals, Trends → Body
+// chosen by where the person came from: the vitals card opens Vitals, Trends → Overview → body census
 // opens Body, a `?focus=`/`?new=` deep link opens the group holding its field, and
 // the quick-log sheet opens whatever this profile last wrote to (seeded to Vitals).
 // The field→group table lives in lib/measurements-deeplink.ts beside the deep-link
@@ -138,7 +138,7 @@ export interface MeasurementsQuickAddProps {
   // Optional action for a standalone card mount.
   headerSlot?: ReactNode;
   // A metric detail page narrows this shared form to the observation currently
-  // being viewed. Omitted on the Body tab and quick-entry overlay, which keep the
+  // being viewed. Omitted on the body census and quick-entry overlay, which keep the
   // combined morning-measurements workflow. Single-metric mode has one field and no
   // disclosure at all — there is nothing to progressively reveal.
   metric?: { key: MeasurementEntryMetric; label: string };
@@ -478,7 +478,7 @@ export default function MeasurementsQuickAdd({
     weight: (
       <Field
         key="weight"
-        label={BODY_METRIC_META.weight.title}
+        label={TREND_METRIC_META.weight.title}
         htmlFor="m-weight"
       >
         <UnitSuffix suffix={weightUnit}>
@@ -496,10 +496,10 @@ export default function MeasurementsQuickAdd({
     bodyFat: (
       <Field
         key="body-fat"
-        label={BODY_METRIC_META["body-fat"].title}
+        label={TREND_METRIC_META["body-fat"].title}
         htmlFor="m-body-fat"
       >
-        <UnitSuffix suffix={BODY_METRIC_META["body-fat"].unit}>
+        <UnitSuffix suffix={TREND_METRIC_META["body-fat"].unit}>
           <input
             id="m-body-fat"
             type="number"
@@ -515,12 +515,12 @@ export default function MeasurementsQuickAdd({
     height: (
       <Field
         key="height"
-        label={BODY_METRIC_META.height.title}
+        label={TREND_METRIC_META.height.title}
         htmlFor="m-height"
       >
         <UnitToggle
           name="height_unit"
-          label={`${BODY_METRIC_META.height.title} unit`}
+          label={`${TREND_METRIC_META.height.title} unit`}
           options={["cm", "in"]}
         >
           <input
@@ -537,12 +537,12 @@ export default function MeasurementsQuickAdd({
     headCirc: (
       <Field
         key="head-circ"
-        label={BODY_METRIC_META["head-circ"].title}
+        label={TREND_METRIC_META["head-circ"].title}
         htmlFor="m-head-circ"
       >
         <UnitToggle
           name="head_circ_unit"
-          label={`${BODY_METRIC_META["head-circ"].title} unit`}
+          label={`${TREND_METRIC_META["head-circ"].title} unit`}
           options={["cm", "in"]}
         >
           <input
@@ -562,12 +562,12 @@ export default function MeasurementsQuickAdd({
     waistCirc: (
       <Field
         key="waist-circ"
-        label={BODY_METRIC_META["waist-circ"].title}
+        label={TREND_METRIC_META["waist-circ"].title}
         htmlFor="m-waist-circ"
       >
         <UnitToggle
           name="waist_circ_unit"
-          label={`${BODY_METRIC_META["waist-circ"].title} unit`}
+          label={`${TREND_METRIC_META["waist-circ"].title} unit`}
           options={["cm", "in"]}
         >
           <input
@@ -612,7 +612,7 @@ export default function MeasurementsQuickAdd({
             className="input min-w-0 flex-1"
           />
           <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {BODY_METRIC_META.systolic.unit.trim()}
+            {TREND_METRIC_META.systolic.unit.trim()}
           </span>
         </div>
       </Field>
@@ -636,8 +636,8 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     spo2: (
-      <Field key="spo2" label={BODY_METRIC_META.spo2.title} htmlFor="m-spo2">
-        <UnitSuffix suffix={BODY_METRIC_META.spo2.unit}>
+      <Field key="spo2" label={TREND_METRIC_META.spo2.title} htmlFor="m-spo2">
+        <UnitSuffix suffix={TREND_METRIC_META.spo2.unit}>
           <input
             id="m-spo2"
             type="number"
@@ -657,12 +657,12 @@ export default function MeasurementsQuickAdd({
     temperature: (
       <Field
         key="temperature"
-        label={BODY_METRIC_META.temperature.title}
+        label={TREND_METRIC_META.temperature.title}
         htmlFor="m-temperature"
       >
         <UnitToggle
           name="temp_unit"
-          label={`${BODY_METRIC_META.temperature.title} unit`}
+          label={`${TREND_METRIC_META.temperature.title} unit`}
           options={["F", "C"]}
           optionLabels={{ F: "°F", C: "°C" }}
           value={tempUnitDetection.unit}
@@ -702,8 +702,8 @@ export default function MeasurementsQuickAdd({
       </Field>
     ),
     hrv: (
-      <Field key="hrv" label={BODY_METRIC_META.hrv.title} htmlFor="m-hrv">
-        <UnitSuffix suffix={BODY_METRIC_META.hrv.unit.trim()}>
+      <Field key="hrv" label={TREND_METRIC_META.hrv.title} htmlFor="m-hrv">
+        <UnitSuffix suffix={TREND_METRIC_META.hrv.unit.trim()}>
           <input
             id="m-hrv"
             type="number"
@@ -718,10 +718,10 @@ export default function MeasurementsQuickAdd({
     peakFlow: (
       <Field
         key="peak-flow"
-        label={BODY_METRIC_META["peak-flow"].title}
+        label={TREND_METRIC_META["peak-flow"].title}
         htmlFor="m-peak-flow"
       >
-        <UnitSuffix suffix={BODY_METRIC_META["peak-flow"].unit.trim()}>
+        <UnitSuffix suffix={TREND_METRIC_META["peak-flow"].unit.trim()}>
           <input
             id="m-peak-flow"
             data-testid="measurements-peak-flow"
@@ -741,10 +741,10 @@ export default function MeasurementsQuickAdd({
     restingHr: (
       <Field
         key="resting-hr"
-        label={BODY_METRIC_META["resting-hr"].title}
+        label={TREND_METRIC_META["resting-hr"].title}
         htmlFor="m-resting-hr"
       >
-        <UnitSuffix suffix={BODY_METRIC_META["resting-hr"].unit.trim()}>
+        <UnitSuffix suffix={TREND_METRIC_META["resting-hr"].unit.trim()}>
           <input
             id="m-resting-hr"
             type="number"

@@ -3,7 +3,7 @@ import { IconArrowRight } from "@tabler/icons-react";
 import { timelineDayHref } from "@/lib/hrefs";
 import type { TodayVitalRow } from "@/lib/vitals-day";
 
-// The Trends → Body "Today" card (evolved from issue #1466 A).
+// The Trends → Overview → body census "Today" card (evolved from issue #1466 A).
 //
 // Trends answered "how has this trended" and had no answer for "what is my body
 // doing right now." This is that concise answer: today's source-prioritized body

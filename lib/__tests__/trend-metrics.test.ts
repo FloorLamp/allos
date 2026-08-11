@@ -1,72 +1,72 @@
 import { describe, it, expect } from "vitest";
 import {
-  BODY_METRIC_META,
-  BODY_METRIC_SLUGS,
+  TREND_METRIC_META,
+  TREND_METRIC_SLUGS,
   bodyCardIdForSeriesKey,
-  bodyMetricSlugForSavedId,
+  trendMetricSlugForSavedId,
   seriesKeyForBodyCard,
-  isBodyMetricSlug,
-  savedMetricIdForBodySlug,
-  resolveBodyMetricUnit,
-  buildBodyMetricTile,
-  orderBodyMetricTiles,
+  isTrendMetricSlug,
+  savedMetricIdForTrendSlug,
+  resolveTrendMetricUnit,
+  buildTrendMetricTile,
+  orderTrendMetricTiles,
   stableEmptyLast,
-  bodyMetricPeriodStats,
+  trendMetricPeriodStats,
   collapseCoincidentPeriods,
   seriesCoverageNote,
-  bodyChartScale,
+  trendMetricChartScale,
   type OrderableTile,
-} from "@/lib/trends-body-metrics";
+} from "@/lib/trend-metrics";
 
-// #1067 Phase 2 — the pure body-metric registry + tile/stat math backing the Trends
-// → Body sparkline grid and its per-metric detail pages.
+// #1067 Phase 2 — the pure trend-metric registry + tile/stat math backing the
+// Overview body census sparkline grid and its per-metric detail pages.
 
-describe("BODY_METRIC_META registry", () => {
+describe("TREND_METRIC_META registry", () => {
   it("has an entry per slug, keyed by its own slug, with a matching detail href", () => {
-    for (const slug of BODY_METRIC_SLUGS) {
-      const meta = BODY_METRIC_META[slug];
+    for (const slug of TREND_METRIC_SLUGS) {
+      const meta = TREND_METRIC_META[slug];
       expect(meta).toBeTruthy();
       expect(meta.slug).toBe(slug);
     }
     // Every registry key is a declared slug (no orphans).
-    for (const key of Object.keys(BODY_METRIC_META)) {
-      expect(isBodyMetricSlug(key)).toBe(true);
+    for (const key of Object.keys(TREND_METRIC_META)) {
+      expect(isTrendMetricSlug(key)).toBe(true);
     }
   });
 
   it("only weight carries the login weight-unit suffix; others are static", () => {
-    expect(resolveBodyMetricUnit(BODY_METRIC_META.weight, "lb")).toBe(" lb");
-    expect(resolveBodyMetricUnit(BODY_METRIC_META.weight, "kg")).toBe(" kg");
+    expect(resolveTrendMetricUnit(TREND_METRIC_META.weight, "lb")).toBe(" lb");
+    expect(resolveTrendMetricUnit(TREND_METRIC_META.weight, "kg")).toBe(" kg");
     // resting-hr's suffix ignores the weight unit.
-    expect(resolveBodyMetricUnit(BODY_METRIC_META["resting-hr"], "lb")).toBe(
+    expect(resolveTrendMetricUnit(TREND_METRIC_META["resting-hr"], "lb")).toBe(
       " bpm"
     );
-    expect(resolveBodyMetricUnit(BODY_METRIC_META.bmi, "lb")).toBe("");
+    expect(resolveTrendMetricUnit(TREND_METRIC_META.bmi, "lb")).toBe("");
   });
 
   it("marks body composition + growth as windowed, synced daily metrics as not", () => {
-    expect(BODY_METRIC_META.weight.windowed).toBe(true);
-    expect(BODY_METRIC_META.height.windowed).toBe(true);
-    expect(BODY_METRIC_META.steps.windowed).toBe(false);
-    expect(BODY_METRIC_META.hr.windowed).toBe(false);
+    expect(TREND_METRIC_META.weight.windowed).toBe(true);
+    expect(TREND_METRIC_META.height.windowed).toBe(true);
+    expect(TREND_METRIC_META.steps.windowed).toBe(false);
+    expect(TREND_METRIC_META.hr.windowed).toBe(false);
   });
 
   it("owns full chart names and concise/composite context names", () => {
-    expect(BODY_METRIC_META.steps.title).toBe("Daily Steps");
-    expect(BODY_METRIC_META.steps.label).toBe("Steps");
-    expect(BODY_METRIC_META["resting-hr"].title).toBe("Resting Heart Rate");
-    expect(BODY_METRIC_META["resting-hr"].label).toBe("RHR");
-    expect(BODY_METRIC_META["skin-temp"].title).toBe(
+    expect(TREND_METRIC_META.steps.title).toBe("Daily Steps");
+    expect(TREND_METRIC_META.steps.label).toBe("Steps");
+    expect(TREND_METRIC_META["resting-hr"].title).toBe("Resting Heart Rate");
+    expect(TREND_METRIC_META["resting-hr"].label).toBe("RHR");
+    expect(TREND_METRIC_META["skin-temp"].title).toBe(
       "Skin Temperature Variation"
     );
-    expect(BODY_METRIC_META["skin-temp"].label).toBe("Skin Temp");
-    expect(BODY_METRIC_META.systolic.summaryTitle).toBe("Blood Pressure");
-    expect(BODY_METRIC_META.diastolic.summaryTitle).toBe("Blood Pressure");
-    expect(BODY_METRIC_META.hr.summaryTitle).toBe("Heart Rate");
+    expect(TREND_METRIC_META["skin-temp"].label).toBe("Skin Temp");
+    expect(TREND_METRIC_META.systolic.summaryTitle).toBe("Blood Pressure");
+    expect(TREND_METRIC_META.diastolic.summaryTitle).toBe("Blood Pressure");
+    expect(TREND_METRIC_META.hr.summaryTitle).toBe("Heart Rate");
   });
 
   it("capitalizes every word in user-facing labels", () => {
-    for (const meta of Object.values(BODY_METRIC_META)) {
+    for (const meta of Object.values(TREND_METRIC_META)) {
       for (const value of [meta.label, meta.title, meta.summaryTitle]) {
         if (!value) continue;
         for (const word of value.split(/\s+/)) {
@@ -82,22 +82,22 @@ describe("BODY_METRIC_META registry", () => {
   });
 
   it("maps detail slugs to stable saved ids and back", () => {
-    expect(savedMetricIdForBodySlug("weight")).toBe("weight");
-    expect(savedMetricIdForBodySlug("body-fat")).toBe("bodyfat");
-    expect(savedMetricIdForBodySlug("resting-hr")).toBe("resting_hr");
-    expect(savedMetricIdForBodySlug("steps")).toBe("steps");
+    expect(savedMetricIdForTrendSlug("weight")).toBe("weight");
+    expect(savedMetricIdForTrendSlug("body-fat")).toBe("bodyfat");
+    expect(savedMetricIdForTrendSlug("resting-hr")).toBe("resting_hr");
+    expect(savedMetricIdForTrendSlug("steps")).toBe("steps");
 
-    expect(bodyMetricSlugForSavedId("weight")).toBe("weight");
-    expect(bodyMetricSlugForSavedId("bodyfat")).toBe("body-fat");
-    expect(bodyMetricSlugForSavedId("resting_hr")).toBe("resting-hr");
-    expect(bodyMetricSlugForSavedId("steps")).toBe("steps");
-    expect(bodyMetricSlugForSavedId("not-a-metric")).toBeNull();
+    expect(trendMetricSlugForSavedId("weight")).toBe("weight");
+    expect(trendMetricSlugForSavedId("bodyfat")).toBe("body-fat");
+    expect(trendMetricSlugForSavedId("resting_hr")).toBe("resting-hr");
+    expect(trendMetricSlugForSavedId("steps")).toBe("steps");
+    expect(trendMetricSlugForSavedId("not-a-metric")).toBeNull();
   });
 });
 
 describe("the ★ ↔ Body-card correspondence (#1643)", () => {
   it("round-trips every pinnable card between its id and its series key", () => {
-    for (const slug of BODY_METRIC_SLUGS) {
+    for (const slug of TREND_METRIC_SLUGS) {
       const key = seriesKeyForBodyCard(slug);
       expect(key, slug).not.toBeNull();
       expect(bodyCardIdForSeriesKey(key as string)).toBe(slug);
@@ -130,14 +130,14 @@ describe("the ★ ↔ Body-card correspondence (#1643)", () => {
   });
 });
 
-describe("buildBodyMetricTile", () => {
+describe("buildTrendMetricTile", () => {
   it("shapes a tile from the selected range, with presence over the full series", () => {
     const full = [
       { date: "2026-01-01", value: 80 },
       { date: "2026-07-10", value: 78 },
       { date: "2026-07-20", value: 77 },
     ];
-    const tile = buildBodyMetricTile(BODY_METRIC_META.weight, full, "kg", {
+    const tile = buildTrendMetricTile(TREND_METRIC_META.weight, full, "kg", {
       from: "2026-07-01",
       to: "2026-07-31",
     });
@@ -152,8 +152,8 @@ describe("buildBodyMetricTile", () => {
   });
 
   it("keeps a known metric present when the selected range is empty", () => {
-    const tile = buildBodyMetricTile(
-      BODY_METRIC_META.steps,
+    const tile = buildTrendMetricTile(
+      TREND_METRIC_META.steps,
       [{ date: "2026-01-01", value: 1000 }],
       "kg",
       { from: "2026-07-01", to: "2026-07-31" }
@@ -166,14 +166,14 @@ describe("buildBodyMetricTile", () => {
   });
 
   it("is absent (present=false) for an empty full series", () => {
-    const tile = buildBodyMetricTile(BODY_METRIC_META.steps, [], "kg", {});
+    const tile = buildTrendMetricTile(TREND_METRIC_META.steps, [], "kg", {});
     expect(tile.present).toBe(false);
     expect(tile.latestDate).toBeNull();
     expect(tile.points).toEqual([]);
   });
 });
 
-describe("orderBodyMetricTiles", () => {
+describe("orderTrendMetricTiles", () => {
   it("drops absent tiles and sequences the rest by the tab's ranked card order", () => {
     const tiles: OrderableTile[] = [
       { slug: "bmi", id: "bmi", label: "BMI", present: false },
@@ -183,7 +183,7 @@ describe("orderBodyMetricTiles", () => {
     ];
     // The order the tab's ranker produced — the tile grid is a formatter over it,
     // never a second sort (#1490 retired the per-surface recency sort).
-    const ordered = orderBodyMetricTiles(tiles, [
+    const ordered = orderTrendMetricTiles(tiles, [
       "sleep",
       "steps",
       "weight",
@@ -193,7 +193,7 @@ describe("orderBodyMetricTiles", () => {
   });
 
   it("keeps an unranked tile rather than dropping it", () => {
-    const ordered = orderBodyMetricTiles(
+    const ordered = orderTrendMetricTiles(
       [
         { slug: "sun", id: "sun", label: "Sun", present: true },
         { slug: "weight", id: "weight", label: "Weight", present: true },
@@ -204,7 +204,7 @@ describe("orderBodyMetricTiles", () => {
   });
 
   it("sinks selected-range empty tiles while preserving rank within each group", () => {
-    const ordered = orderBodyMetricTiles(
+    const ordered = orderTrendMetricTiles(
       [
         {
           slug: "weight",
@@ -263,7 +263,7 @@ describe("stableEmptyLast", () => {
   });
 });
 
-describe("bodyMetricPeriodStats", () => {
+describe("trendMetricPeriodStats", () => {
   // Every fixture reading below sits on a COMPLETE day (#1909): the windows end
   // yesterday, so an anchor one day past the newest reading is what makes these
   // #1541 collapse cases about the collapse rather than about today-exclusion.
@@ -274,7 +274,7 @@ describe("bodyMetricPeriodStats", () => {
   // readings produced identical cards, which is the common case for any
   // series younger than a week (every new install, every fresh integration).
   it("collapses windows that cover the same readings into one card", () => {
-    const stats = bodyMetricPeriodStats(
+    const stats = trendMetricPeriodStats(
       [
         { date: "2026-07-20", value: 8200 },
         { date: "2026-07-21", value: 9100 },
@@ -296,7 +296,7 @@ describe("bodyMetricPeriodStats", () => {
 
   it("collapses only the coincident RUN, keeping a window that really differs", () => {
     // 7d holds one reading; 30d, 90d and 365d all hold two → two cards, not four.
-    const stats = bodyMetricPeriodStats(
+    const stats = trendMetricPeriodStats(
       [
         { date: "2026-07-01", value: 78.4 },
         { date: "2026-07-21", value: 77.9 },
@@ -310,7 +310,7 @@ describe("bodyMetricPeriodStats", () => {
   });
 
   it("keeps four cards when all four windows genuinely differ", () => {
-    const stats = bodyMetricPeriodStats(
+    const stats = trendMetricPeriodStats(
       [
         // Inside 365d only (#1938 — the long-horizon column earns its card).
         { date: "2025-10-01", value: 110 },
@@ -328,7 +328,7 @@ describe("bodyMetricPeriodStats", () => {
 
   it("collapses four EMPTY windows too — one 'no readings' card, not four", () => {
     // The only reading is older than even the 365d window's reach.
-    const stats = bodyMetricPeriodStats(
+    const stats = trendMetricPeriodStats(
       [{ date: "2024-01-01", value: 5 }],
       today
     );
@@ -346,7 +346,7 @@ describe("bodyMetricPeriodStats", () => {
   // the presence-trio that #1541's collapse had to break to be fixable.
 
   it("returns ONE empty card for a metric with no readings at all", () => {
-    const stats = bodyMetricPeriodStats([], today);
+    const stats = trendMetricPeriodStats([], today);
     expect(stats).toHaveLength(1);
     expect(stats[0]).toMatchObject({
       label: "7–365d",
@@ -363,7 +363,7 @@ describe("bodyMetricPeriodStats", () => {
   });
 
   it("returns ONE card for a single reading, with a zero delta and no spread", () => {
-    const stats = bodyMetricPeriodStats(
+    const stats = trendMetricPeriodStats(
       [{ date: "2026-07-21", value: 81.25 }],
       today,
       1
@@ -449,19 +449,25 @@ describe("seriesCoverageNote (#1541 fix 4)", () => {
   });
 });
 
-describe("bodyChartScale (#1541 fix 5)", () => {
+describe("trendMetricChartScale (#1541 fix 5)", () => {
   it("floors a COUNT metric at zero and groups its ticks", () => {
-    expect(bodyChartScale(BODY_METRIC_META.steps)).toEqual({
+    expect(trendMetricChartScale(TREND_METRIC_META.steps)).toEqual({
       yDomain: [0, "auto"],
       groupYTicks: true,
     });
-    expect(bodyChartScale(BODY_METRIC_META.calories).groupYTicks).toBe(true);
-    expect(bodyChartScale(BODY_METRIC_META.hydration).groupYTicks).toBe(true);
+    expect(trendMetricChartScale(TREND_METRIC_META.calories).groupYTicks).toBe(
+      true
+    );
+    expect(trendMetricChartScale(TREND_METRIC_META.hydration).groupYTicks).toBe(
+      true
+    );
   });
 
   it("leaves a ratio/index metric on the auto domain, where zero would flatten it", () => {
     for (const slug of ["weight", "bmi", "resting-hr", "spo2"] as const) {
-      expect(bodyChartScale(BODY_METRIC_META[slug]).yDomain).toBeUndefined();
+      expect(
+        trendMetricChartScale(TREND_METRIC_META[slug]).yDomain
+      ).toBeUndefined();
     }
   });
 });

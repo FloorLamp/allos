@@ -14,20 +14,20 @@ import {
   type TrendWindow,
 } from "@/lib/trend-annotations";
 import {
-  isBodyMetricSlug,
-  savedMetricIdForBodySlug,
-} from "@/lib/trends-body-metrics";
+  isTrendMetricSlug,
+  savedMetricIdForTrendSlug,
+} from "@/lib/trend-metrics";
 import { metricSeriesKey } from "@/lib/saved-items";
 import type { DayFillWindow } from "@/lib/day-fill";
 import type { DayFillSpec } from "@/lib/trend-sparkline";
 
 // One body-composition trend chart's props (weight / body-fat / resting-HR),
 // pre-windowed + in display units by the server section.
-export interface BodyChartSpec {
+export interface TrendChartSpec {
   key: string;
   title: string;
   // Take the card's title (and its latest-value headline) out of the PAINTED header
-  // (#1541 fix 3). Both earn their keep on the Body tab, where several cards stack
+  // (#1541 fix 3). Both earn their keep on the body census, where several cards stack
   // and each needs naming; on a SINGLE-chart detail page whose <h1> is the same
   // string and whose subtitle is the same latest value they are pure echo — the
   // #1533 double-render shape, ~700px apart on a phone. The title stays in the
@@ -44,7 +44,7 @@ export interface BodyChartSpec {
   projectionNote?: string | null;
   // Stable in-page anchor for the jump chips (#1067). Defaults to no id.
   anchorId?: string;
-  // Per-card test hook (the merged Body tab's specs open a specific chart).
+  // Per-card test hook (the merged body census specs open a specific chart).
   testid?: string;
   // A short caption ABOVE the plot (the acute temperature card's "recent readings
   // only" honesty note, the sun chart's provenance line).
@@ -60,7 +60,7 @@ export interface BodyChartSpec {
   // it.
   footerAction?: ReactNode;
   // Axis treatment for a COUNT metric (#1541) — a zero-floored domain and grouped
-  // ticks. Composed by lib/trends-body-metrics' bodyChartScale() from the ONE
+  // ticks. Composed by lib/trend-metrics' trendMetricChartScale() from the ONE
   // registry, never re-decided per surface.
   yDomain?: [number | "auto", number | "auto"];
   groupYTicks?: boolean;
@@ -72,7 +72,7 @@ export interface BodyChartSpec {
   // Reference LINE colour/label already ride `referenceValue`.
 }
 
-// ONE member of the body census's flat ranked stack (#1674).
+// ONE member of the body census flat ranked stack (#1674).
 //
 // The census used to render TITLED SECTIONS ("Vitals", "Composition") ordered as
 // wholes by their best member, with the synced-daily block below them and outside
@@ -87,11 +87,11 @@ export interface BodyChartSpec {
 // trend chart this component draws (so one toggle bar can fan annotations into it)
 // or a server-rendered node that is placed by the same rank (the growth-percentile
 // card, the mood chart, the synced daily charts, the 1D intraday swap at `hr-day`).
-export interface BodyStackItem {
+export interface TrendStackItem {
   /** The card id the ranker orders by — also the in-page anchor. */
   id: string;
   /** A windowed trend chart, drawn here so the toggle bar reaches it. */
-  chart?: BodyChartSpec;
+  chart?: TrendChartSpec;
   /** A pre-rendered card, placed by the same rank as any chart. */
   node?: ReactNode;
   /** Span both desktop columns (the intraday swap, the growth card, `hr-day`). */
@@ -103,7 +103,7 @@ export interface BodyStackItem {
 // "what is it now?". Read off the SAME pre-windowed, already-rounded series the plot
 // draws (no second computation, #221); null when the window is empty, so the card
 // falls back to its title alone rather than printing a "—" that means nothing.
-function latestHeadline(chart: BodyChartSpec): string | null {
+function latestHeadline(chart: TrendChartSpec): string | null {
   for (let i = chart.data.length - 1; i >= 0; i--) {
     const v = chart.data[i].value;
     if (v != null) return `${roundChartValue(v)}${chart.unit}`;
@@ -116,7 +116,7 @@ function latestHeadline(chart: BodyChartSpec): string | null {
 // and the markers vanish from all three. Charts, goal target lines, and projection
 // notes are computed server-side; this component only owns the toggle state and
 // fans the enabled markers into each LineChartCard.
-export default function BodyTrendCharts({
+export default function TrendMetricCharts({
   charts = [],
   items,
   annotations,
@@ -124,7 +124,7 @@ export default function BodyTrendCharts({
   singleColumn = false,
   gapWindow,
 }: {
-  charts?: BodyChartSpec[];
+  charts?: TrendChartSpec[];
   // The selected date range, so every chart in the stack can densify its series to
   // the CALENDAR (#2258) instead of plotting only the days it has rows for. One
   // prop for the whole stack rather than one per spec: WHICH policy each chart
@@ -136,7 +136,7 @@ export default function BodyTrendCharts({
   // The census's FLAT ranked stack (#1674) — mutually exclusive with `charts` in
   // practice. One toggle bar sits above the whole stack, which is the #1486
   // one-bar rule in its simplest case rather than an exception to it.
-  items?: BodyStackItem[];
+  items?: TrendStackItem[];
   annotations: TrendAnnotation[];
   // Protocol intervention windows (issue #660), shaded across every chart via the
   // same toggle bar as the point annotations.
@@ -158,16 +158,16 @@ export default function BodyTrendCharts({
   // The chart's own gap declaration, resolved from its card id. A non-metric card
   // (growth percentiles, the sleep tile, the intraday `hr-day` swap) maps to no
   // series key and is left alone — its x is not a calendar day at this grain.
-  const gapFillFor = (chart: BodyChartSpec): DayFillSpec | undefined => {
-    if (!gapWindow || !isBodyMetricSlug(chart.key)) return undefined;
+  const gapFillFor = (chart: TrendChartSpec): DayFillSpec | undefined => {
+    if (!gapWindow || !isTrendMetricSlug(chart.key)) return undefined;
     return {
-      seriesKey: metricSeriesKey(savedMetricIdForBodySlug(chart.key)),
+      seriesKey: metricSeriesKey(savedMetricIdForTrendSlug(chart.key)),
       from: gapWindow.from,
       to: gapWindow.to,
     };
   };
 
-  const chartCard = (chart: BodyChartSpec) => (
+  const chartCard = (chart: TrendChartSpec) => (
     <ChartCard
       key={chart.key}
       title={chart.title}
@@ -212,7 +212,7 @@ export default function BodyTrendCharts({
     </ChartCard>
   );
 
-  const grid = (list: BodyChartSpec[]) => (
+  const grid = (list: TrendChartSpec[]) => (
     <div
       className={`grid gap-6 ${
         singleColumn || list.length === 1 ? "" : "lg:grid-cols-2"

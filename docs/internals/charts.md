@@ -356,7 +356,7 @@ at once:
   tooltip inspection. Anything that wraps a plot in an anchor has broken the
   chart.
 - **`detailHref`, required.** `null` is allowed only with a same-line
-  `detail-none: <why>` comment. The destination for a registered body metric is
+  `detail-none: <why>` comment. The destination for a registered trend metric is
   `metricDetailHref(slug)` → `/trends/metric/<slug>`; an aggregate/composite
   chart (training volume, macros, zone minutes) points at the existing
   full-depth surface its bars are summed from, named at the call site. A chart of

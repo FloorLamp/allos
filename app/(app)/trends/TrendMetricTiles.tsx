@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import TrendMiniCard from "@/components/TrendMiniCard";
 import {
-  orderBodyMetricTiles,
-  type BodyMetricTile,
+  orderTrendMetricTiles,
+  type TrendMetricTile,
   type OrderableTile,
-} from "@/lib/trends-body-metrics";
+} from "@/lib/trend-metrics";
 import type { BodyCardId } from "@/lib/trends-card-rank";
 
-// The Trends → Body sparkline-tile overview (#1067 Phase 2) — the default view on
+// The Trends → Overview → body census sparkline-tile overview (#1067 Phase 2) — the default view on
 // mobile. Each present metric renders as a compact selected-range sparkline + latest
 // value and delta tile (the pillars-widget grammar, via the shared TrendMiniCard) that opens
 // its per-metric detail page; absent metrics don't render. Sleep uses the same chart
@@ -24,13 +24,13 @@ export interface SpecialBodyTile {
   node: ReactNode;
 }
 
-export default function BodyMetricTiles({
+export default function TrendMetricTiles({
   tiles,
   growth,
   sleep,
   order,
 }: {
-  tiles: BodyMetricTile[];
+  tiles: TrendMetricTile[];
   // Composite growth-percentile chart; null outside pediatric chart eligibility.
   growth: SpecialBodyTile[];
   // The Sleep chart tile links to /sleep and is ordered with the metric tiles.
@@ -68,7 +68,7 @@ export default function BodyMetricTiles({
   // their clinical order inside it. Sleep has its own base position.
   growth.forEach(addSpecial);
   addSpecial(sleep);
-  const ordered = orderBodyMetricTiles(descriptors, order);
+  const ordered = orderTrendMetricTiles(descriptors, order);
 
   if (ordered.length === 0) {
     return (
@@ -93,7 +93,7 @@ export default function BodyMetricTiles({
   );
 }
 
-function renderMetricTile(t: BodyMetricTile): ReactNode {
+function renderMetricTile(t: TrendMetricTile): ReactNode {
   return (
     <TrendMiniCard
       title={t.title}

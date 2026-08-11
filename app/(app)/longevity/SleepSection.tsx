@@ -14,7 +14,7 @@ import PillarStat from "./PillarStat";
 
 // Longevity §3 — Sleep regularity (#1042 phase 4): the existing SRI pillar
 // computation (lib/sleep-regularity via the lib/queries/sleep seam — the same
-// numbers Trends → Body and the weekly recap render), expanded with the timing
+// numbers Trends → Overview → body census and the weekly recap render), expanded with the timing
 // spread, the travel insight, and the rolling trend. The headline stat is the
 // SAME Pillar object the dashboard widget renders.
 export default async function SleepSection({

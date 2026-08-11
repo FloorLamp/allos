@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 
 // The tap-through guard (issue #1488), in the repo's source-scan idiom
 // (`chart-scaffold-scan.test.ts`, `telegram-chokepoint.test.ts`, `e2e-hygiene.test.ts`):
@@ -25,18 +25,18 @@ import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
 // Rule 3 pins the registry side of the promise: `/trends/metric/[kind]` is the
 // destination every registered metric taps through to, so every declared slug must
 // actually resolve to a series there — a slug added to the registry without a case in
-// the shared `fullBodyMetricSeries` reader would render a detail page that silently
+// the shared `fullTrendMetricSeries` reader would render a detail page that silently
 // charts nothing.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const CHART_CARD = "components/ChartCard.tsx";
 const METRIC_PAGE = "app/(app)/trends/metric/[kind]/page.tsx";
-const METRIC_SERIES = "lib/body-metric-series.ts";
+const METRIC_SERIES = "lib/trend-metric-series.ts";
 
 /**
  * Where the tap-through rule is ENFORCED. The Trends hub is the surface #1488 is
- * about; `components/BodyTrendCharts.tsx` is in because it is the Body tab's chart
+ * about; `components/TrendMetricCharts.tsx` is in because it is the body census chart
  * grid living under components/.
  *
  * Deliberately NOT the whole app: a chart on /sleep, /training or /medical is a
@@ -45,7 +45,7 @@ const METRIC_SERIES = "lib/body-metric-series.ts";
  * has to satisfy. Those surfaces converge as they're touched (the ProfileScope /
  * ResponsiveTable adoption posture).
  */
-const SCAN_ROOTS = ["app/(app)/trends", "components/BodyTrendCharts.tsx"];
+const SCAN_ROOTS = ["app/(app)/trends", "components/TrendMetricCharts.tsx"];
 
 /** JSX elements that ARE a chart plot — the blessed cards from the #1445 scaffold. */
 const CHART_ELEMENTS = [
@@ -76,7 +76,7 @@ const NOT_A_CARD = new Map<string, string>([
   ],
   [
     "app/(app)/trends/metric/[kind]/page.tsx",
-    "the detail page itself — its chart is rendered through BodyTrendCharts with an explicit detail-none",
+    "the detail page itself — its chart is rendered through TrendMetricCharts with an explicit detail-none",
   ],
 ]);
 
@@ -209,19 +209,19 @@ describe("chart tap-through guard (issue #1488)", () => {
     const pageSrc = fs.readFileSync(path.join(REPO, METRIC_PAGE), "utf8");
     const seriesSrc = fs.readFileSync(path.join(REPO, METRIC_SERIES), "utf8");
     expect(
-      pageSrc.includes("bodyMetricSeriesFold("),
+      pageSrc.includes("trendMetricSeriesFold("),
       `${METRIC_PAGE} must read through ${METRIC_SERIES}, so Overview and metric ` +
         `details cannot drift into two implementations of the same series — and it ` +
         `must take the FOLD, whose second half is the observation set its readings ` +
         `table lists, so chart and table cannot disagree about a day (#2029).`
     ).toBe(true);
-    const missing = BODY_METRIC_SLUGS.filter(
+    const missing = TREND_METRIC_SLUGS.filter(
       (slug) => !seriesSrc.includes(`case "${slug}":`)
     );
     expect(
       missing,
       `/trends/metric/[kind] is the tap-through destination for every registered ` +
-        `metric, so a slug in BODY_METRIC_SLUGS with no case in the page's ` +
+        `metric, so a slug in TREND_METRIC_SLUGS with no case in the page's ` +
         `shared streamMetricSeries() renders a detail page that charts nothing. ` +
         `Add the series read for:\n${missing.join("\n")}`
     ).toEqual([]);

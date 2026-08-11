@@ -23,7 +23,7 @@ import {
 } from "@/lib/metric-judgment";
 import { readingIdentity } from "@/lib/reading-model";
 import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
-import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 
 const RHR = readingIdentity("Resting Heart Rate");
 
@@ -104,14 +104,14 @@ describe("metricJudgment resolves knowledge from the identity", () => {
 
 describe("the slug → knowledge registry", () => {
   it("has an entry for EVERY registered metric", () => {
-    for (const slug of BODY_METRIC_SLUGS) {
+    for (const slug of TREND_METRIC_SLUGS) {
       expect(
         METRIC_KNOWLEDGE[slug],
         `no knowledge entry for ${slug}`
       ).toBeDefined();
     }
     expect(Object.keys(METRIC_KNOWLEDGE).sort()).toEqual(
-      [...BODY_METRIC_SLUGS].sort()
+      [...TREND_METRIC_SLUGS].sort()
     );
   });
 
@@ -130,7 +130,7 @@ describe("the slug → knowledge registry", () => {
   });
 
   it("gives every unjudged metric an explicit reason", () => {
-    for (const slug of BODY_METRIC_SLUGS) {
+    for (const slug of TREND_METRIC_SLUGS) {
       const knowledge = METRIC_KNOWLEDGE[slug];
       if (knowledge.source === "none") {
         expect(

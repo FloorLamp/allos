@@ -22,7 +22,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "data to this app on a schedule. It's also the supported way to bring in " +
       "nutrition: food trackers like MyFitnessPal, Cronometer, Lose It!, and Yazio " +
       "write your logged macros to Health Connect, so calories and protein/carbs/fat " +
-      "flow through here and chart on Trends → Body → Macros.",
+      "flow through here and chart on Trends → Nutrition → Macros.",
     dataTypes: [
       "Weight",
       "Body fat",

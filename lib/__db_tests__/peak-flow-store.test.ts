@@ -39,7 +39,7 @@ import {
   PEAK_FLOW_SLUG,
 } from "@/lib/peak-flow";
 import { getMetricReadings } from "@/lib/metric-readings";
-import { bodyMetricSeriesFold } from "@/lib/body-metric-series";
+import { trendMetricSeriesFold } from "@/lib/trend-metric-series";
 import { getMetricJudgment } from "@/lib/queries/metric-judgment";
 import { readingDetailHref } from "@/lib/hrefs";
 
@@ -175,7 +175,7 @@ describe("the home half — a blow through the measurements quick-add", () => {
     expect(readings[0].value).toBe(450);
     for (const r of readings) expect(r.id).toBeGreaterThan(0);
 
-    const { points } = bodyMetricSeriesFold(
+    const { points } = trendMetricSeriesFold(
       PEAK_FLOW_SLUG,
       profileId,
       "kg",
@@ -326,7 +326,7 @@ describe("the clinic half — a spirometry report through the document pipeline"
     importSpirometry(profileId, docId, spirometryInput());
     insertVitals(profileId, "2026-02-12", { peakFlow: "590" });
 
-    const { points, observations } = bodyMetricSeriesFold(
+    const { points, observations } = trendMetricSeriesFold(
       PEAK_FLOW_SLUG,
       profileId,
       "kg",
@@ -384,7 +384,7 @@ describe("the verdict — computed from the declared personal best", () => {
     insertVitals(profileId, "2026-05-03", { peakFlow: "560" });
     insertVitals(profileId, "2026-05-04", { peakFlow: "610" });
 
-    const { points } = bodyMetricSeriesFold(
+    const { points } = trendMetricSeriesFold(
       PEAK_FLOW_SLUG,
       profileId,
       "kg",

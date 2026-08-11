@@ -83,7 +83,7 @@ describe("isAdultBpRegime — BP interpretation line (13)", () => {
   });
 });
 
-describe("isGrowthTracked — Body-tab growth line (< 20)", () => {
+describe("isGrowthTracked — body-census growth line (< 20)", () => {
   it("is true through 19, false at 20 and on unknown age (adult layout)", () => {
     expect(isGrowthTracked(0)).toBe(true);
     expect(isGrowthTracked(19)).toBe(true);

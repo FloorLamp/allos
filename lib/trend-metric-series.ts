@@ -1,6 +1,6 @@
-// The full display-unit series used when a saved Body metric is reconstructed on
+// The full display-unit series used when a saved trend metric is reconstructed on
 // Trends Overview. It follows the same registry/store mapping as the detail page,
-// including BMI, daylight and vitals.
+// including mood, steps, BMI, daylight, vitals, and `body_metrics` rows.
 
 import {
   getBiomarkerSeries,
@@ -19,7 +19,7 @@ import { moodSeriesPoints } from "./mood";
 import { dispWeight, round } from "./units";
 import { lastNDates } from "./date";
 import { ALL_ROWS } from "./trends";
-import { BODY_METRIC_META, type BodyMetricSlug } from "./trends-body-metrics";
+import { TREND_METRIC_META, type TrendMetricSlug } from "./trend-metrics";
 import {
   foldObservationPoints,
   foldObservations,
@@ -28,7 +28,7 @@ import {
 import type { WeightUnit } from "./settings";
 
 // Daylight is derived from activity dates rather than read from a row store. A
-// year matches the widest horizon the Body surfaces currently chart.
+// year matches the widest horizon these Trends surfaces currently chart.
 const SUN_SERIES_DAYS = 366;
 
 function biomarkerPoints(
@@ -51,7 +51,7 @@ function biomarkerPoints(
 // readings table beneath it cannot disagree: before this, the fold lived only in
 // the series and the detail page's table concatenated every observation back in,
 // so a clinic value equal to the wearable's plotted once and listed twice.
-export interface BodyMetricSeriesFold {
+export interface TrendMetricSeriesFold {
   /** The charted points — the metric's stream plus the surviving observations. */
   points: { date: string; value: number }[];
   /**
@@ -66,7 +66,7 @@ export interface BodyMetricSeriesFold {
 // The metric's own stream series, BEFORE the observation fold — the store-shaped
 // half, in display units.
 function streamMetricSeries(
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   profileId: number,
   weightUnit: WeightUnit,
   todayStr: string
@@ -99,7 +99,7 @@ function streamMetricSeries(
         ALL_ROWS
       ).map((row) => ({
         date: row.date,
-        value: round(row.value, BODY_METRIC_META["skin-temp"].decimals),
+        value: round(row.value, TREND_METRIC_META["skin-temp"].decimals),
       }));
     case "weight":
       return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(
@@ -197,22 +197,22 @@ function streamMetricSeries(
 // The metric's series together with the observations folded into it (#2029).
 //
 // It lives HERE, in the shared series, rather than on the detail page: the tile
-// grid, the Body tab chart and the detail page all read this, and a fold applied to
+// grid, the body census chart and the detail page all read this, and a fold applied to
 // only one of them would be the same reading answering one question two ways
 // (#221). Free for every metric with no fold identity, which is most of them —
 // `getMetricObservations` returns nothing for those, and for the rest the
 // observation read is the request-cached `getBiomarkerSeries`, so the detail page
 // asking for the surviving rows costs no second query.
-export function bodyMetricSeriesFold(
-  slug: BodyMetricSlug,
+export function trendMetricSeriesFold(
+  slug: TrendMetricSlug,
   profileId: number,
   weightUnit: WeightUnit,
   todayStr: string
-): BodyMetricSeriesFold {
+): TrendMetricSeriesFold {
   const stream = streamMetricSeries(slug, profileId, weightUnit, todayStr);
   const candidates = getMetricObservations(profileId, slug);
   if (candidates.length === 0) return { points: stream, observations: [] };
-  const decimals = BODY_METRIC_META[slug].decimals;
+  const decimals = TREND_METRIC_META[slug].decimals;
   const observations = foldObservations(
     stream,
     candidates.map((r) => ({ ...r, value: round(r.value, decimals) }))
@@ -228,11 +228,11 @@ export function bodyMetricSeriesFold(
 
 // The charted half on its own — every series caller that has no readings table to
 // keep in step with.
-export function fullBodyMetricSeries(
-  slug: BodyMetricSlug,
+export function fullTrendMetricSeries(
+  slug: TrendMetricSlug,
   profileId: number,
   weightUnit: WeightUnit,
   todayStr: string
 ): { date: string; value: number }[] {
-  return bodyMetricSeriesFold(slug, profileId, weightUnit, todayStr).points;
+  return trendMetricSeriesFold(slug, profileId, weightUnit, todayStr).points;
 }

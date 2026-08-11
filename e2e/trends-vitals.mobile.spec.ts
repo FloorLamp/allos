@@ -15,7 +15,7 @@ import {
 } from "./fixture-logins";
 
 // The Today strip, the 1D (intraday) window and the full-bleed mobile HR chart
-// (issue #1466) — RE-POINTED to the merged Body tab by #1486, which retired the
+// (issue #1466) — RE-POINTED to the merged body census by #1486, which retired the
 // Vitals tab into Body's first section. Same layer, same fixtures, one tab.
 //
 // Runs in the `mobile` project (390×844) by its file name alone; the desktop
