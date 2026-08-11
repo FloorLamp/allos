@@ -534,8 +534,9 @@ describe("what the cabinet shows a caller (#1522)", () => {
   // the pure isPoolVisibleTo over the raw membership); only the number of reads is.
   it("asks once for the whole cabinet, not once per bottle", () => {
     // Several bottles, so a per-supply loop could not accidentally pass.
-    expect(listVisiblePoolViews([alice.profileId, bruno.profileId]).length)
-      .toBeGreaterThan(1);
+    expect(
+      listVisiblePoolViews([alice.profileId, bruno.profileId]).length
+    ).toBeGreaterThan(1);
     const [perSupplyMembers, cabinetMembership] = countPrepareSet(
       /FROM intake_items i\s+LEFT JOIN intake_item_doses d/,
       /FROM shared_supplies s\s+LEFT JOIN intake_items i/

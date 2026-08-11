@@ -75,7 +75,10 @@ function addObservation(
 // series. Kept verbatim so the swap is pinned against the behaviour it replaced.
 function trendTheOldWay(profileId: number) {
   const full = getBodyMetricDailySeries(profileId, "weight");
-  return weightTrend(full[full.length - 1]?.value, full[full.length - 2]?.value);
+  return weightTrend(
+    full[full.length - 1]?.value,
+    full[full.length - 2]?.value
+  );
 }
 
 describe("the household weight arrow reads two points, not a year (#2116)", () => {
@@ -91,8 +94,9 @@ describe("the household weight arrow reads two points, not a year (#2116)", () =
 
     const tail = getLatestBodyMetricDailyPoints(p, "weight");
     expect(tail).toEqual(getBodyMetricDailySeries(p, "weight").slice(-2));
-    expect(weightTrend(tail[tail.length - 1]?.value, tail[tail.length - 2]?.value))
-      .toEqual(trendTheOldWay(p));
+    expect(
+      weightTrend(tail[tail.length - 1]?.value, tail[tail.length - 2]?.value)
+    ).toEqual(trendTheOldWay(p));
   });
 
   it("agrees on a single reading and on no readings at all", () => {
@@ -101,7 +105,10 @@ describe("the household weight arrow reads two points, not a year (#2116)", () =
     const oneTail = getLatestBodyMetricDailyPoints(one, "weight");
     expect(oneTail).toHaveLength(1);
     expect(
-      weightTrend(oneTail[oneTail.length - 1]?.value, oneTail[oneTail.length - 2]?.value)
+      weightTrend(
+        oneTail[oneTail.length - 1]?.value,
+        oneTail[oneTail.length - 2]?.value
+      )
     ).toEqual(trendTheOldWay(one));
 
     const none = makeProfile("HH Weight None");
@@ -161,7 +168,9 @@ describe("countClinicalObservations counts what the list would list (#2116)", ()
       "LDL Cholesterol",
       "Vitamin D",
     ]);
-    expect(countClinicalObservations(p, { current: true, range: "oor" })).toBe(3);
+    expect(countClinicalObservations(p, { current: true, range: "oor" })).toBe(
+      3
+    );
   });
 
   it("counts zero for a profile with no records, and one for exactly one", () => {
@@ -171,19 +180,23 @@ describe("countClinicalObservations counts what the list would list (#2116)", ()
     }
     const single = makeProfile("HH OOR Single");
     addObservation(single, "Vitamin D", "low");
-    expect(countClinicalObservations(single, { current: true, range: "oor" })).toBe(
-      1
-    );
     expect(
       countClinicalObservations(single, { current: true, range: "oor" })
-    ).toBe(getClinicalObservations(single, { current: true, range: "oor" }).length);
+    ).toBe(1);
+    expect(
+      countClinicalObservations(single, { current: true, range: "oor" })
+    ).toBe(
+      getClinicalObservations(single, { current: true, range: "oor" }).length
+    );
   });
 
   it("stays scoped to its own profile", () => {
     const mine = seedMixed("HH OOR Mine");
     const theirs = seedMixed("HH OOR Theirs");
     addObservation(theirs, "Magnesium", "low");
-    expect(countClinicalObservations(mine, { current: true, range: "oor" })).toBe(
+    expect(
+      countClinicalObservations(mine, { current: true, range: "oor" })
+    ).toBe(
       getClinicalObservations(mine, { current: true, range: "oor" }).length
     );
     expect(

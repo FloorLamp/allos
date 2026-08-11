@@ -169,7 +169,13 @@ export function getUvHoursForDays(
           AND substr(hour_ts, 1, 10) IN (${placeholders})
         ORDER BY hour_ts`
     )
-    .all(la, ln, `${wanted[0]}T`, `${wanted[wanted.length - 1]}U`, ...wanted) as {
+    .all(
+      la,
+      ln,
+      `${wanted[0]}T`,
+      `${wanted[wanted.length - 1]}U`,
+      ...wanted
+    ) as {
     hour_ts: string;
     uv_index: number | null;
     uv_index_clear_sky: number | null;

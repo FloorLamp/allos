@@ -35,10 +35,7 @@ import {
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import { medicationStartDate } from "@/lib/profile-summary";
 import { lastNDates, shiftDateStr } from "@/lib/date";
-import {
-  indexTakenByDose,
-  intakeAdherenceStrip,
-} from "@/lib/intake-adherence";
+import { indexTakenByDose, intakeAdherenceStrip } from "@/lib/intake-adherence";
 import { buildAdherenceCalendar } from "@/lib/adherence-calendar";
 
 // Statement counting (the #885 shape, as tick-scoped-gathers.test.ts uses it): the
@@ -133,7 +130,11 @@ function seedDetailFixture(name: string): {
   ).run(
     profileId,
     JSON.stringify([
-      { date: shiftDateStr(todayStr, -10), situation: "Travel", change: "start" },
+      {
+        date: shiftDateStr(todayStr, -10),
+        situation: "Travel",
+        change: "start",
+      },
       { date: shiftDateStr(todayStr, -6), situation: "Travel", change: "stop" },
     ])
   );
@@ -172,7 +173,10 @@ function calendarTheOldWay(
   const courses = getMedicationCourses(profileId).filter(
     (course) => course.item_id === itemId
   );
-  return buildAdherenceCalendar(strip, medicationStartDate(courses, med.created_at));
+  return buildAdherenceCalendar(
+    strip,
+    medicationStartDate(courses, med.created_at)
+  );
 }
 
 describe("getMedicationAdherenceCalendar reads the board gather (#2114)", () => {
@@ -184,8 +188,9 @@ describe("getMedicationAdherenceCalendar reads the board gather (#2114)", () => 
     expect(after).toEqual(calendarTheOldWay(profileId, itemId));
     // The fixture is real: a five-week grid whose window carries scored days.
     expect(after.weeks.length).toBeGreaterThan(0);
-    expect(after.weeks.flat().filter((d) => d && d.state === "taken").length)
-      .toBeGreaterThan(0);
+    expect(
+      after.weeks.flat().filter((d) => d && d.state === "taken").length
+    ).toBeGreaterThan(0);
   });
 
   it("honours a non-default window the same way", () => {
