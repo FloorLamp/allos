@@ -10,6 +10,8 @@ import {
 } from "react";
 import { IconCamera, IconRefresh, IconUpload } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
+import { useHydrated } from "@/components/useHydrated";
+import { useStandaloneDisplayMode } from "@/components/useStandaloneDisplayMode";
 import { compressImageBlob } from "@/lib/photo/client-compress";
 import {
   fitWithin,
@@ -23,7 +25,6 @@ import {
   cameraStartDecision,
   type CameraDialogVariant,
   type CameraKnowledge,
-  type CameraRecoveryPlatform,
 } from "@/lib/photo/camera-fallback";
 
 // The shared in-app capture surface of the photo core (#1119 phase 1) — every
@@ -112,8 +113,14 @@ export default function PhotoCapture({
   const cameraKnowledgeRef = useRef<CameraKnowledge>("unknown");
   const lastFailureRef = useRef<CameraDialogVariant>("unknown");
   const permissionStateRef = useRef<PermissionState | null>(null);
-  const [recoveryPlatform, setRecoveryPlatform] =
-    useState<CameraRecoveryPlatform>("generic");
+  const hydrated = useHydrated();
+  const standalone = useStandaloneDisplayMode();
+  const recoveryPlatform = hydrated
+    ? cameraRecoveryPlatform({
+        userAgent: navigator.userAgent,
+        standalone,
+      })
+    : "generic";
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -233,13 +240,6 @@ export default function PhotoCapture({
         lastFailureRef.current = failure;
       }
     } catch {}
-
-    setRecoveryPlatform(
-      cameraRecoveryPlatform({
-        userAgent: navigator.userAgent,
-        standalone: window.matchMedia("(display-mode: standalone)").matches,
-      })
-    );
 
     let disposed = false;
     let permission: PermissionStatus | null = null;

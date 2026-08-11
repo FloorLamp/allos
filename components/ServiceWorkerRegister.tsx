@@ -16,7 +16,6 @@ import {
   UPDATE_PENDING_KEY,
   UPDATE_PENDING_MARKER,
   waitingWorkerPlan,
-  type ServiceWorkerStatus,
 } from "@/lib/sw-update";
 import {
   hasUnsavedWork,
@@ -87,13 +86,6 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
   // second deploy under this open page must not be judged against the answer read
   // for the first (#1905).
   const [updateGen, setUpdateGen] = useState(0);
-  // Registration's own outcome. Nothing DOWNSTREAM branches on it any more (#2329):
-  // which detector answers "has a new build shipped?" is not a question this status
-  // can answer, and pretending it was is what broke the bar. It is kept because
-  // registration itself has three distinct states — not yet answered, active, and
-  // genuinely unavailable — and collapsing them would lose the one honest signal the
-  // registration path has about itself.
-  const [, setSwStatus] = useState<ServiceWorkerStatus>("probing");
   // The live registration. The tap re-reads `.waiting` off it rather than holding a
   // ServiceWorker object from offer time: the browser can replace or discard a
   // waiting worker in between, and a message to that stale object goes nowhere.
@@ -114,7 +106,6 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
-      setSwStatus("unavailable");
       return;
     }
 
@@ -142,7 +133,6 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
       // Development runs with no worker BY CHOICE, which is the same shape as a
       // context that cannot have one — so it gets the fallback detector, and a dev
       // server restart still surfaces the same one bar.
-      setSwStatus("unavailable");
       return;
     }
 
@@ -215,11 +205,9 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
         .then((registration: ServiceWorkerRegistration | undefined) => {
           if (disposed) return;
           if (!registration) {
-            setSwStatus("unavailable");
             return;
           }
           regRef.current = registration;
-          setSwStatus("active");
           offer(registration.waiting);
           registration.addEventListener("updatefound", () => {
             const installing = registration.installing;
@@ -233,7 +221,8 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
           // A failed registration (e.g. private mode, unsupported) is non-fatal: the
           // app works fine online without the offline shell — and the sha poll, which
           // is the detector either way, is unaffected.
-          if (!disposed) setSwStatus("unavailable");
+          // Registration failure is non-fatal; the sha poll remains the deploy
+          // detector and the app continues without an offline shell.
         });
     };
     if (document.readyState === "complete") register();

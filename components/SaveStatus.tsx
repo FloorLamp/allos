@@ -21,12 +21,12 @@ export default function SaveStatus({
   savedAt: number;
   error?: boolean;
 }) {
-  const [showSaved, setShowSaved] = useState(false);
+  const [expiredSavedAt, setExpiredSavedAt] = useState(0);
+  const showSaved = savedAt > expiredSavedAt;
 
   useEffect(() => {
     if (!savedAt) return;
-    setShowSaved(true);
-    const t = setTimeout(() => setShowSaved(false), SAVED_FADE_MS);
+    const t = setTimeout(() => setExpiredSavedAt(savedAt), SAVED_FADE_MS);
     return () => clearTimeout(t);
   }, [savedAt]);
 
