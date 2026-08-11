@@ -22,6 +22,18 @@ import ts from "typescript";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
+// Whole modules whose exports share one authorization tier by construction. This
+// is narrower than an action-by-action exemption: every otherwise-ungated export
+// in the module must call one of the declared gates, and the module entry is reaped
+// if the file disappears. Per-action exceptions remain in ALLOW below.
+const MODULE_ALLOW = [
+  {
+    file: "app/(app)/settings/actions.ts",
+    gates: ["requireSession", "requireLoginWriteAccess"],
+    why: "the module is login-scoped by construction; every export authenticates the caller through requireSession or its demo-safe write variant, while admin/global and profile-owned settings live in separate modules",
+  },
+] as const;
+
 // Allowlisted exported actions that legitimately do NOT call requireWriteAccess()
 // / requireAdmin(), keyed by the file they live in (so an unrelated file can't
 // ride the exemption) and the function name. Keep this list SHORT and justified.
@@ -79,17 +91,6 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "loadSyncHistoryRuns",
     why: "read-only: resolves bounded event ids from the active profile's provider-scoped sync ledger for an expanded range and writes nothing, so requireSession() is the right gate",
   },
-  // --- Login-scoped actions (operate on the LOGIN, not profile-owned data) ---
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveUnitPrefs",
-    why: "login-scoped: unit display prefs keyed by login.id, not profile data",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveDisplayFormatPrefs",
-    why: "login-scoped: date/time display prefs keyed by login.id, not profile data (#964)",
-  },
   {
     file: "app/(app)/upcoming/actions.ts",
     fn: "dismissMultiviewHintAction",
@@ -110,18 +111,22 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "markWhatsNewSeenAction",
     why: "login-scoped: records that the caller's OWN login has opened the bundled release notes (a date marker in login_settings, #1421), not profile-owned data — same shape as saveUnitPrefs/dismissMultiviewHintAction, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI marker)",
   },
-  {
+  // Login-scoped settings normally ride the structural MODULE_ALLOW gate. These
+  // mutations can disrupt every visitor sharing the public demo login, so their
+  // stronger demo-safe gate remains declared per action.
+  ...[
+    "changeOwnPassword",
+    "saveOwnProfile",
+    "revokeSessionAction",
+    "signOutOtherSessions",
+    "begin2fa",
+    "activate2fa",
+  ].map((fn) => ({
     file: "app/(app)/settings/actions.ts",
-    fn: "changeOwnPassword",
-    why: "login-scoped: changes the caller's own password (demo-gated, #278)",
+    fn,
+    why: "login-scoped security/auth mutation that must refuse the shared demo login",
     gate: "requireLoginWriteAccess",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveOwnProfile",
-    why: "login-scoped: sets the caller's OWN login's own-profile association (an association, not an access grant — #1013); demo-gated so the shared demo login can't relabel everyone's self",
-    gate: "requireLoginWriteAccess",
-  },
+  })),
   {
     file: "app/(app)/integrations/patient-portals/actions.ts",
     fn: "bindIdentityAction",
@@ -183,105 +188,6 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "revokeApiTokenAction",
     why: "login-scoped (#1734): revokes an API token — the caller's own, or any token when the caller is an admin (who can already delete the whole login). Same tier as revokeSessionAction, and demo-gated so one visitor can't revoke another's",
     gate: "requireLoginWriteAccess",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "revokeSessionAction",
-    why: "login-scoped: revokes one of the caller's own sessions (demo-gated, #278)",
-    gate: "requireLoginWriteAccess",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "signOutOtherSessions",
-    why: "login-scoped: signs out the caller's other sessions (demo-gated, #278)",
-    gate: "requireLoginWriteAccess",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "getPushPublicKey",
-    why: "login-scoped: ensures the instance VAPID keypair exists (idempotent global bootstrap, like the auto-generated Telegram webhook secret) and returns only the PUBLIC key — never profile-owned data",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "savePushSubscriptionAction",
-    why: "login-scoped: stores this browser's push subscription keyed by login.id (like a session), not profile-owned data",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "deletePushSubscriptionAction",
-    why: "login-scoped: removes this browser's push subscription, scoped to the caller's login.id",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "sendTestPush",
-    why: "login-scoped: sends a test push to the caller's own subscribed browsers",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "savePushNotifyKinds",
-    why: "login-scoped: persists the caller's OWN push per-kind matrix column (login_settings), not profile-owned data (#928)",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveLoginTelegram",
-    why: "login-scoped: the Telegram delivery channel belongs to the LOGIN (#1072) — chat id + enable in login_settings, not profile-owned data; a per-profile event fans out to managing logins",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveDigestDemotions",
-    why: "login-scoped: the caller's OWN per-category morning-digest demotion (#1714) — which lines a digest routinely carries is a display preference of the reader (login_settings), never profile-owned data",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveLoginTelegramNotifyKinds",
-    why: "login-scoped: persists the caller's OWN Telegram per-kind matrix column (login_settings), moved from profile to login by #1072",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveProfileNotifyMute",
-    why: "login-scoped: the caller's per-(login,profile) notification mute (#1072) — only affects THIS login's fan-out; validated against canAccessProfile so a forged id is refused, but the write is login-owned settings, not profile data",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "sendTestNotification",
-    why: "login-scoped: sends a test Telegram message to the caller's OWN chat (#1072), bypassing the profile fan-out — reads login_settings, writes nothing profile-owned",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveLoginEmailNotify",
-    why: "login-scoped: the email delivery channel belongs to the LOGIN (#1855) — enable + content mode in login_settings, addressed to the login's own logins.email; never profile-owned data",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "saveLoginEmailNotifyKinds",
-    why: "login-scoped: persists the caller's OWN email per-kind matrix column (login_settings), like the Telegram/push columns (#1855)",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "sendTestEmailNotification",
-    why: "login-scoped: sends a test mail to the caller's OWN address (#1855), bypassing the profile fan-out — reads logins.email + login_settings, writes nothing profile-owned",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "begin2fa",
-    why: "login-scoped: starts 2FA enrollment for the caller's OWN login (mints a pending TOTP secret), not profile-owned data (demo-gated, #278)",
-    gate: "requireLoginWriteAccess",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "activate2fa",
-    why: "login-scoped: verifies a code and enables 2FA on the caller's OWN login (like change-own-password) (demo-gated, #278)",
-    gate: "requireLoginWriteAccess",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "disable2fa",
-    why: "login-scoped: turns 2FA off on the caller's OWN login after re-auth (password + code)",
-  },
-  {
-    file: "app/(app)/settings/actions.ts",
-    fn: "regenerate2faRecoveryCodes",
-    why: "login-scoped: rotates the caller's OWN one-time recovery codes after a valid code",
   },
   {
     file: "app/(app)/integrations/calendar-feed/actions.ts",
@@ -1132,11 +1038,13 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
   it("every exported action calls requireWriteAccess()/requireAdmin() or is allowlisted", () => {
     const violations: string[] = [];
     const matchedAllow = new Set<string>();
+    const matchedModules = new Set<string>();
     let scanned = 0;
 
     for (const file of files) {
       const rel = path.relative(REPO, file).split(path.sep).join("/");
       const src = stripComments(fs.readFileSync(file, "utf8"));
+      const moduleAllow = MODULE_ALLOW.find((entry) => entry.file === rel);
       for (const { name, body } of exportedAsyncFunctions(src)) {
         scanned++;
         if (GATE_RE.test(body)) continue; // write-gated (or admin-gated)
@@ -1148,6 +1056,18 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
           if (allow.gate && !new RegExp(`\\b${allow.gate}\\s*\\(`).test(body)) {
             violations.push(
               `${rel}#${name}: allowlisted with gate "${allow.gate}" but the body never calls it — the demo-mode guard regressed`
+            );
+          }
+          continue;
+        }
+        if (moduleAllow) {
+          matchedModules.add(moduleAllow.file);
+          const gated = moduleAllow.gates.some((gate) =>
+            new RegExp(`\\b${gate}\\s*\\(`).test(body)
+          );
+          if (!gated) {
+            violations.push(
+              `${rel}#${name}: module-scoped exemption requires ${moduleAllow.gates.join(" or ")}`
             );
           }
           continue;
@@ -1169,6 +1089,14 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
       (a) => !matchedAllow.has(`${a.file}#${a.fn}`)
     ).map((a) => `${a.file}#${a.fn}`);
     expect(stale, `stale allowlist entries: ${stale.join(", ")}`).toEqual([]);
+
+    const staleModules = MODULE_ALLOW.filter(
+      (entry) => !matchedModules.has(entry.file)
+    ).map((entry) => entry.file);
+    expect(
+      staleModules,
+      `stale module allowlist entries: ${staleModules.join(", ")}`
+    ).toEqual([]);
   });
 });
 
