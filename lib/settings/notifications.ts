@@ -776,7 +776,7 @@ export function setTelegramBotConfig(cfg: {
   return getTelegramBotConfig();
 }
 
-// When each notification slot is sent. Supplement windows have a fixed minute of
+// When each notification slot is sent. IntakeItem windows have a fixed minute of
 // day (0-1439, interpreted in the profile's own timezone — see getTimezone, which
 // the scheduler resolves against, not the container's local time) or null = off;
 // the workout reminder's timing is derived from the user's history (see

@@ -18,8 +18,8 @@ import {
   BUILTIN_POSTOP_SITUATION,
   type SurgeryBridgeSuggestion,
 } from "../surgery-bridge";
-import { heldBySituation } from "../supplement-schedule";
-import { getSupplements } from "./intake/schedule";
+import { heldBySituation } from "../intake-schedule";
+import { getIntakeItems } from "./intake/schedule";
 
 // One surgery-bridge suggestion enriched for the surface: the pure decision plus the
 // COUNT of active intake items the target situation would hold (#1296 — "3 items will
@@ -39,7 +39,7 @@ export interface SurgeryBridgeCard {
 // held" / "N items resume" figure. Reads the same pause link the dueness engine reads.
 function presurgeryHeldCount(profileId: number): number {
   const presurgery = new Set([BUILTIN_PRESURGERY_SITUATION]);
-  return getSupplements(profileId).filter(
+  return getIntakeItems(profileId).filter(
     (s) => !!s.active && !!heldBySituation(s, presurgery)
   ).length;
 }

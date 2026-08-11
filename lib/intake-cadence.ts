@@ -1,6 +1,6 @@
 // The CALENDAR half of intake dueness (issue #1602) — pure date rules, no DB.
 //
-// `condition` (lib/supplement-schedule.ts) answers "is this the item's KIND of day?"
+// `condition` (lib/intake-schedule.ts) answers "is this the item's KIND of day?"
 // (workout / rest / situational / held). This module answers the orthogonal question
 // "is today one of this item's DAYS AT ALL?" — weekly, every-N-days, per-dose weekday
 // splits, and per-dose validity windows. The two are ANDed into the same gate rather

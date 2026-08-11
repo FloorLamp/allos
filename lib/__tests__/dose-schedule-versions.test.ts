@@ -25,8 +25,8 @@ import {
   doseBucketOn,
   doseDueOn,
   doseSlotChangedSince,
-} from "@/lib/supplement-schedule";
-import { doseWindowSince } from "@/lib/supplement-adherence";
+} from "@/lib/intake-schedule";
+import { doseWindowSince } from "@/lib/intake-adherence";
 import { lastNDates } from "@/lib/date";
 import { ADHERENCE_PATTERN_DAYS } from "@/lib/adherence-patterns";
 

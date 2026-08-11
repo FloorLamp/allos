@@ -274,7 +274,7 @@ async function tickProfile(
   const prefix = prefixForProfile(profile.id);
   let anyFailed = false;
 
-  // ── Supplement dose reminders: ONE merged send per tick (#1154) ────────────
+  // ── IntakeItem dose reminders: ONE merged send per tick (#1154) ────────────
   // Every slot due (and unsent) this tick — the four fixed windows plus the
   // workout-relative PreWorkout pseudo-slot — coalesces into ONE message, so two
   // windows configured at the same time (or the pseudo-slot colliding with a

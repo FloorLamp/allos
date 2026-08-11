@@ -19,7 +19,7 @@ export default function MedicationAddWorkspace({
   subtitle,
   cabinetCount,
   action,
-  allSupplements,
+  allIntakeItems,
   stackItems,
   pgxVariants,
   trainingRestricted,
@@ -35,7 +35,7 @@ export default function MedicationAddWorkspace({
   // number — the cabinet door beside "Add medication" replaced its nav row.
   cabinetCount: number;
   action: (formData: FormData) => Promise<FormResult>;
-  allSupplements: { id: number; name: string }[];
+  allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
   trainingRestricted: boolean;
@@ -159,7 +159,7 @@ export default function MedicationAddWorkspace({
                 </p>
                 <MedicationForm
                   action={action}
-                  allSupplements={allSupplements}
+                  allIntakeItems={allIntakeItems}
                   stackItems={stackItems}
                   pgxVariants={pgxVariants}
                   trainingRestricted={trainingRestricted}

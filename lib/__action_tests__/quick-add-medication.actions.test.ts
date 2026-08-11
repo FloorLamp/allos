@@ -1,6 +1,6 @@
 // SERVER-ACTION TIER — OTC medication quick-add row parity (#843, door C). The
 // quick-add is a thin wrapper: it posts its own minimal field set (built by the pure
-// lib/quick-add-medication mapping) to the SAME `addSupplement` action the full
+// lib/quick-add-medication mapping) to the SAME `addIntakeItem` action the full
 // MedicationForm uses. This test proves the ACCEPTANCE requirement — for the same
 // inputs, the quick-add creates an intake_items row IDENTICAL to the one the full form
 // would create — so there's no second write model. The pure mapping's field shape is
@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import { quickAddMedicationFormData } from "@/lib/quick-add-medication";
 import { seedActor, fd } from "./harness";
 
@@ -93,12 +93,12 @@ describe("OTC quick-add row parity (#843)", () => {
         { amount: "200 mg", food_timing: "any", time_of_day: "" },
       ])
     );
-    const fullRes = await addSupplement(fullForm);
+    const fullRes = await addIntakeItem(fullForm);
     expect(fullRes.ok).toBe(true);
     const fullRow = latestMedNamed(profile.id, "Ibuprofen");
 
     // The quick-add's field set, built by the shared pure mapping, for the SAME inputs.
-    const quickRes = await addSupplement(
+    const quickRes = await addIntakeItem(
       quickAddMedicationFormData({
         name: "Ibuprofen",
         brand: "Advil",
@@ -130,7 +130,7 @@ describe("OTC quick-add row parity (#843)", () => {
 
   it("uses today for a scheduled quick-add but leaves a PRN start unknown", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       quickAddMedicationFormData({
         name: "Scheduled quick med",
         asNeeded: false,
@@ -139,7 +139,7 @@ describe("OTC quick-add row parity (#843)", () => {
     const scheduled = latestMedNamed(profile.id, "Scheduled quick med");
     expect(courseStart(scheduled.id)).toBe(today(profile.id));
 
-    await addSupplement(
+    await addIntakeItem(
       quickAddMedicationFormData({ name: "PRN quick med", asNeeded: true })
     );
     const prn = latestMedNamed(profile.id, "PRN quick med");
@@ -148,7 +148,7 @@ describe("OTC quick-add row parity (#843)", () => {
 
   it("opts in to the redose notice only when both label numbers are confirmed", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       quickAddMedicationFormData({
         name: "Acetaminophen",
         amount: "500 mg",
@@ -166,7 +166,7 @@ describe("OTC quick-add row parity (#843)", () => {
 
   it("persists a selected pediatric formulation as the medication product", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       quickAddMedicationFormData({
         name: "Acetaminophen",
         product: "Children's oral suspension (160 mg / 5 mL)",

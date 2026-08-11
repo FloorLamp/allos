@@ -7,7 +7,7 @@ import {
   foodTimingSignalKey,
 } from "@/lib/food-drug-interactions";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import { dismissIntakeFinding } from "@/app/(app)/nutrition/supplement-actions";
+import { dismissIntakeFinding } from "@/app/(app)/nutrition/intake-actions";
 
 // Food–drug guidance line(s) for one intake item (issue #154). Rendered on the
 // intake surfaces' medication + supplement rows (#746): a per-item food note like "Grapefruit:

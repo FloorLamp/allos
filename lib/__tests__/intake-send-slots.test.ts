@@ -24,14 +24,14 @@ import {
   isPrn,
   isPushedIntake,
   type TimeBucket,
-} from "../supplement-schedule";
+} from "../intake-schedule";
 import { escalationWindowPhrase } from "../notifications/escalation";
-import type { AdherenceSummary } from "../supplement-adherence";
+import type { AdherenceSummary } from "../intake-adherence";
 import type {
-  Supplement,
-  SupplementCondition,
-  SupplementDose,
-  SupplementKind,
+  IntakeItem,
+  IntakeCondition,
+  IntakeDose,
+  IntakeItemKind,
   IntakeObligation,
 } from "../types";
 
@@ -39,9 +39,9 @@ function supp(
   id: number,
   name: string,
   obligation: IntakeObligation = "should",
-  kind: SupplementKind = "supplement",
-  condition: SupplementCondition = "daily"
-): Supplement {
+  kind: IntakeItemKind = "supplement",
+  condition: IntakeCondition = "daily"
+): IntakeItem {
   return {
     id,
     name,
@@ -91,7 +91,7 @@ function dose(
   id: number,
   supplementId: number,
   amount: string | null
-): SupplementDose {
+): IntakeDose {
   return {
     id,
     item_id: supplementId,
@@ -117,8 +117,8 @@ const NONE: AdherenceSummary = {
 };
 
 function entry(
-  s: Supplement,
-  d: SupplementDose,
+  s: IntakeItem,
+  d: IntakeDose,
   state: { taken?: boolean; skipped?: boolean } = {}
 ): WindowDose {
   return {
@@ -133,7 +133,7 @@ function entry(
 // ---- doseSendSlot (#1154 Fix A) --------------------------------------------
 
 describe("doseSendSlot", () => {
-  const cases: [SupplementCondition, TimeBucket, boolean, string][] = [
+  const cases: [IntakeCondition, TimeBucket, boolean, string][] = [
     // anytime + pre_workout OPTS INTO the workout-relative pseudo-slot…
     ["pre_workout", "Anytime", true, "PreWorkout"],
     // …but only when a cadence/hour is inferable — else today's Morning fold.

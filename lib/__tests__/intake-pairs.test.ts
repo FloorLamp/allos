@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { orderIntakePair, separatePairWarnings } from "@/lib/intake-pairs";
-import type { SupplementPair } from "@/lib/types";
+import type { IntakePair } from "@/lib/types";
 
 // The single write-path normalizer behind intake_item_pairs' canonical ordering
 // (issue #97): a "take together / keep apart" pair is direction-independent and is
@@ -24,7 +24,7 @@ describe("orderIntakePair", () => {
 // The "keep apart" bucket warning (issue #313): a `separate`-relation pair whose
 // BOTH members have a due dose in the same time bucket raises a preformatted line.
 describe("separatePairWarnings", () => {
-  function pair(over: Partial<SupplementPair> = {}): SupplementPair {
+  function pair(over: Partial<IntakePair> = {}): IntakePair {
     return {
       id: 1,
       a_id: 1,

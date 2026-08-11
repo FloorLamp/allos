@@ -181,7 +181,7 @@ describe("the four-profile household's setup rows (#2173)", () => {
     expect(profileUnroutableReason(adult, TODAY)).toBe("no-managing-login");
     expect(checkIds(adult)).toContain("unroutable");
     const row = householdSetupForProfile(adult, TODAY)!;
-    // Supplement-only content bands at `action`; the child's medications band above it.
+    // IntakeItem-only content bands at `action`; the child's medications band above it.
     expect(row.tone).toBe("action");
     // Constraint 3: no dismiss may ever be offered while unroutable is in the set.
     expect(row.dismissible).toBe(false);

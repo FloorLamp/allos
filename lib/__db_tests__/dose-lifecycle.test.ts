@@ -11,7 +11,7 @@
 //     stands (#280), so a stale cross-action tap (⏭️ on a taken dose, ✅ on a
 //     skipped one) — and the Telegram answer text rendered from it — can never
 //     falsely confirm the other action.
-//   • getSupplementDoses (the "current schedule" read every page/reminder
+//   • getIntakeDoses (the "current schedule" read every page/reminder
 //     consumer goes through) excludes retired doses.
 //   • The amount snapshot keeps history stable across a later dosage edit.
 //   • The offline queue's replay rides those SAME cores (#1427) — there is no
@@ -24,7 +24,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
-  getSupplementDoses,
+  getIntakeDoses,
   getIntakeLogsForDate,
   getTakenDoseIds,
   getSkippedDoseIds,
@@ -206,13 +206,13 @@ describe("markDoseTaken outcomes", () => {
 });
 
 describe("retired doses and the current-schedule read", () => {
-  it("getSupplementDoses excludes retired doses but keeps live ones", () => {
+  it("getIntakeDoses excludes retired doses but keeps live ones", () => {
     const profileId = seedProfileRow();
     const itemId = seedItem(profileId);
     const live = seedDose(itemId, "1000 mg");
     seedDose(itemId, "500 mg", 1);
 
-    const ids = getSupplementDoses(profileId).map((d) => d.id);
+    const ids = getIntakeDoses(profileId).map((d) => d.id);
     expect(ids).toEqual([live]);
   });
 

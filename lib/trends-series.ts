@@ -11,7 +11,7 @@ import {
   getVolumeByDate,
   getUsedCanonicalNamesWithDerived,
   getMedicationCourses,
-  getSupplements,
+  getIntakeItems,
   getAppointments,
   getProtocolWindows,
   getPracticeTrends,
@@ -459,7 +459,7 @@ export function resolveSeriesByKey(
 // Assemble the event-annotation markers for the Trends charts,
 // windowed to `range`: medication course start/stop, scheduled/completed
 // appointments, and active-situation changes. Every source read goes through an
-// already PROFILE-SCOPED query (getMedicationCourses / getSupplements /
+// already PROFILE-SCOPED query (getMedicationCourses / getIntakeItems /
 // getAppointments) or the per-profile situation-event log (getSituationEvents), so
 // no owned SQL is added here; the pure lib/trend-annotations does the shaping. None
 // of these sources is training-derived, so they're safe for restricted profiles.
@@ -469,7 +469,7 @@ export function buildTrendAnnotations(
 ): TrendAnnotation[] {
   // Medication courses carry only item_id; resolve names from the item list.
   const names = new Map<number, string>();
-  for (const s of getSupplements(profileId)) names.set(s.id, s.name);
+  for (const s of getIntakeItems(profileId)) names.set(s.id, s.name);
   const medications = getMedicationCourses(profileId).map((c) => ({
     name: names.get(c.item_id) ?? "Medication",
     startedOn: c.started_on,

@@ -28,7 +28,7 @@ test("a bottle made from an item inherits its name and strength", async ({
 
   const row = page.getByTestId("supplement-row").filter({ hasText: itemName });
   await expect(row).toHaveCount(1);
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await row.getByRole("button", { name: "IntakeItem actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
 
   const editDialog = page.getByRole("dialog", { name: `Edit ${itemName}` });
@@ -74,7 +74,7 @@ test("adding a bottle for another person prefills its facts and links on save", 
   await expect(addDialog).toHaveCount(0);
 
   const row = page.getByTestId("supplement-row").filter({ hasText: seedName });
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await row.getByRole("button", { name: "IntakeItem actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const editDialog = page.getByRole("dialog", { name: `Edit ${seedName}` });
   const picker = editDialog.getByTestId("shared-supply-picker");

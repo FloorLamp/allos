@@ -26,8 +26,8 @@ import {
   getLatestClinicalObservationByCanonical,
 } from "./queries/medical";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getMedicationCourses,
 } from "./queries/intake";
 import {
@@ -51,7 +51,7 @@ import {
 import type { MedicationCourse } from "./types";
 import { medicationDoseDetail } from "./medication-list";
 import type { ClinicalObservation } from "./types";
-import { isPrn } from "./supplement-schedule";
+import { isPrn } from "./intake-schedule";
 
 // Server-side gathering for the profile passport: it runs the
 // individual profile-scoped latest-value queries and hands the raw results to the
@@ -134,9 +134,9 @@ export function getProfileSummary(
   // normalization the structuring uses), so a structured "Lisinopril" hides its
   // raw "Lisinopril 10 mg" medical_records twin and no med double-lists. `active`
   // splits the two kinds.
-  const allSupps = getSupplements(profileId);
+  const allSupps = getIntakeItems(profileId);
   const medDoseAmounts = new Map<number, string[]>();
-  for (const d of getSupplementDoses(profileId)) {
+  for (const d of getIntakeDoses(profileId)) {
     if (!d.amount) continue;
     const arr = medDoseAmounts.get(d.item_id) ?? [];
     arr.push(d.amount);

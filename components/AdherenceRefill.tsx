@@ -4,7 +4,7 @@ import {
   adherenceSummary,
   adherenceSummaryVisibility,
   type AdherenceDot,
-} from "@/lib/supplement-adherence";
+} from "@/lib/intake-adherence";
 import {
   daysOfSupplyForItem,
   isLowSupply,

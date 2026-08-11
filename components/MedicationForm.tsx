@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import SupplementCombobox from "@/components/SupplementCombobox";
+import IntakeItemCombobox from "@/components/IntakeItemCombobox";
 import Combobox from "@/components/Combobox";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
@@ -59,25 +59,25 @@ import {
   OBLIGATION_HINTS,
   OBLIGATION_LABELS,
   pauseLinkNeedsConfirm,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 import { useConfirm } from "@/components/ConfirmDialog";
 import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
 import type {
   FormResult,
   IntakeObligation,
-  Supplement,
-  SupplementDose,
-  SupplementPair,
+  IntakeItem,
+  IntakeDose,
+  IntakePair,
   MedicationCourse,
 } from "@/lib/types";
 
 // A medication's condition is either scheduled (daily) or context-gated (situational);
 // the workout/rest-day scheduling is a SUPPLEMENT concept and lives only on the
 // supplement form. PRN is the separate `as_needed` toggle below.
-const MED_CONDITIONS: Supplement["condition"][] = ["daily", "situational"];
+const MED_CONDITIONS: IntakeItem["condition"][] = ["daily", "situational"];
 
-function savedFormulationSlug(s?: Supplement): string {
+function savedFormulationSlug(s?: IntakeItem): string {
   if (!s?.product) return "";
   const entry = prnDefaultsFor({ name: s.name, rxcui: s.rxcui });
   return formulationSlugForProduct(
@@ -106,13 +106,13 @@ function PrefillBadge() {
 // SELECTION PREFILL (picking a med fills every knowable field as an editable, marked
 // suggestion that never clobbers a touched field). Renders NONE of the supplement
 // concepts (no catalog/priority/stack, no workout scheduling); composes the shared
-// subcomponents. With no `supplement` it adds; with one it edits and calls `onDone`.
+// subcomponents. With no `medication` it adds; with one it edits and calls `onDone`.
 export default function MedicationForm({
   action,
-  supplement,
+  medication,
   doses: initialDoses,
   retiredDoses = [],
-  allSupplements = [],
+  allIntakeItems = [],
   stackItems = [],
   pgxVariants = [],
   pairs: initialPairs = [],
@@ -125,17 +125,17 @@ export default function MedicationForm({
   initialSupply = null,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
-  supplement?: Supplement;
-  doses?: SupplementDose[];
+  medication?: IntakeItem;
+  doses?: IntakeDose[];
   // Retired doses of the edited med (#2131), rendered with their Restore affordance.
-  retiredDoses?: SupplementDose[];
-  allSupplements?: { id: number; name: string }[];
+  retiredDoses?: IntakeDose[];
+  allIntakeItems?: { id: number; name: string }[];
   // The profile's recorded conditions, for the optional "For condition…" indication
   // picker (#1052). Absent → the picker doesn't render (surfaces that don't thread it).
   conditions?: { id: number; name: string }[];
   stackItems?: InteractionItem[];
   pgxVariants?: PgxVariantInput[];
-  pairs?: SupplementPair[];
+  pairs?: IntakePair[];
   onDone?: () => void;
   // Accepted for prop symmetry with the supplement form / existing med plumbing, but
   // unused: a medication has no workout/rest-day scheduling to gate (#846).
@@ -156,7 +156,7 @@ export default function MedicationForm({
   // product fields are seeded from it and it links on save.
   initialSupply?: SupplyOption | null;
 }) {
-  const s = supplement;
+  const s = medication;
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const fid = s?.id ?? "new";
@@ -289,7 +289,7 @@ export default function MedicationForm({
     });
   }
 
-  const others = allSupplements.filter((x) => x.id !== s?.id);
+  const others = allIntakeItems.filter((x) => x.id !== s?.id);
   const [pairRows, setPairRows] = useState<PairState[]>(
     initialPairs.map((p) => ({
       otherId: p.a_id === s?.id ? p.b_id : p.a_id,
@@ -691,7 +691,7 @@ export default function MedicationForm({
             <label className="label" htmlFor={`med-name-${fid}`}>
               Name
             </label>
-            <SupplementCombobox
+            <IntakeItemCombobox
               id={`med-name-${fid}`}
               name="name"
               ariaLabel="Name"
@@ -725,7 +725,7 @@ export default function MedicationForm({
             <label className="label" htmlFor={`med-brand-${fid}`}>
               Brand
             </label>
-            <SupplementCombobox
+            <IntakeItemCombobox
               id={`med-brand-${fid}`}
               name="brand"
               ariaLabel="Brand"
@@ -745,7 +745,7 @@ export default function MedicationForm({
               name="condition"
               value={condition}
               onChange={(e) =>
-                setCondition(e.target.value as Supplement["condition"])
+                setCondition(e.target.value as IntakeItem["condition"])
               }
               className="input"
             >
@@ -1177,14 +1177,14 @@ export default function MedicationForm({
 
       <CriticalEscalation
         fid={fid}
-        supplement={s}
+        item={s}
         critical={critical}
         setCritical={setCritical}
       />
 
       <RefillTracking
         fid={fid}
-        supplement={s}
+        item={s}
         initialSupply={initialSupply}
         onPickSupply={onPickSupply}
       />

@@ -20,7 +20,7 @@ import {
   deleteAdministration,
   logHistoricalDose,
   updateHistoricalDose,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import { actAs, createLogin, createProfile, fd, seedActor } from "./harness";
 
 let unique = 0;

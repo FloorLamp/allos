@@ -51,9 +51,9 @@ function morningRow(page: Page, name: string) {
     .filter({ hasText: name });
 }
 
-async function deleteSupplement(page: Page, name: string) {
+async function deleteIntakeItem(page: Page, name: string) {
   const row = morningRow(page, name);
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await row.getByRole("button", { name: "IntakeItem actions" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.locator("div.card").filter({ hasText: name })).toHaveCount(
@@ -103,7 +103,7 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 
-  await deleteSupplement(page, name);
+  await deleteIntakeItem(page, name);
 });
 
 test("a queued confirm that lands on an already-skipped dose is surfaced, not silently synced (#1427)", async ({
@@ -156,5 +156,5 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
     reloaded.getByRole("button", { name: "Mark taken" })
   ).toHaveAttribute("aria-pressed", "false");
 
-  await deleteSupplement(page, name);
+  await deleteIntakeItem(page, name);
 });

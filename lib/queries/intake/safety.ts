@@ -9,13 +9,13 @@
 // computation").
 //
 // Profile-scoped through the underlying reads (getAllergies/getConditions/
-// getSupplements are all profile_id-filtered); no new SQL, so the profile-scoping
+// getIntakeItems are all profile_id-filtered); no new SQL, so the profile-scoping
 // guard is unaffected.
 
 import type { SafetyContext, SafetyMedication } from "../../supplement-safety";
 import { getAllergies, getConditions } from "../clinical";
 import { isAllergyActionable } from "../../allergy-reactions";
-import { getSupplements } from "./schedule";
+import { getIntakeItems } from "./schedule";
 import { getActiveSituations } from "../../settings";
 import { parseRxcuiIngredients } from "../../rxnorm";
 
@@ -61,7 +61,7 @@ export function getIntakeSafetyContext(profileId: number): IntakeSafetyContext {
     substanceCodeSystem: a.substance_code_system,
     reaction: a.reaction,
   }));
-  const medications: SafetyMedication[] = getSupplements(profileId)
+  const medications: SafetyMedication[] = getIntakeItems(profileId)
     .filter((s) => s.active && s.kind === "medication")
     .map((s) => ({
       id: s.id,

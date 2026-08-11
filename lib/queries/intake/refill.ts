@@ -12,7 +12,7 @@ import {
   RATE_WINDOW_DAYS,
   type DoseRate,
 } from "../../refill";
-import { getSupplementDoses, getSupplements } from "./schedule";
+import { getIntakeDoses, getIntakeItems } from "./schedule";
 import { cadenceDensity } from "../../intake-cadence";
 
 // Effective consumption rate (doses/day) + its basis for every item that has
@@ -22,7 +22,7 @@ import { cadenceDensity } from "../../intake-cadence";
 // back to the count when history is thin (see lib/refill's consumptionRate). The
 // gather is profile-scoped: the history read JOINs intake_items and filters
 // s.profile_id (logs/doses are child tables reached through the parent), and the
-// schedule count reuses the profile-scoped getSupplementDoses. Callers (the
+// schedule count reuses the profile-scoped getIntakeDoses. Callers (the
 // supplements page, Upcoming, and the refill notifier) all read the shared rate
 // from here rather than re-approximating it.
 export function getRefillRates(
@@ -65,10 +65,10 @@ export function getRefillRates(
   // Only the SCHEDULE fallback needs it. The history-based rate is measured from the
   // taken log, which already contains the real cadence, so scaling it would double-count.
   const cadenceById = new Map(
-    getSupplements(profileId).map((s) => [s.id, cadenceDensity(s)])
+    getIntakeItems(profileId).map((s) => [s.id, cadenceDensity(s)])
   );
   const scheduleCount = new Map<number, number>();
-  for (const d of getSupplementDoses(profileId)) {
+  for (const d of getIntakeDoses(profileId)) {
     scheduleCount.set(d.item_id, (scheduleCount.get(d.item_id) ?? 0) + 1);
   }
 

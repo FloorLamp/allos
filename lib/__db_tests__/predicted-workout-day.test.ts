@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { inferWorkoutSchedule, isPredictedWorkoutDay } from "@/lib/queries";
-import { isDueOn } from "@/lib/supplement-schedule";
+import { isDueOn } from "@/lib/intake-schedule";
 import { shiftDateStr, weekdayOfDateStr } from "@/lib/date";
 
 function newProfile(name: string): number {

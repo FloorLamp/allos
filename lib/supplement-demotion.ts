@@ -29,9 +29,9 @@
 //     the moment adherence climbs back over the threshold the candidate — and its
 //     finding — simply stops being emitted. A stale suggestion cannot linger.
 
-import type { AdherenceDot } from "./supplement-adherence";
-import { isPushedIntake, OBLIGATION_LABELS } from "./supplement-schedule";
-import type { SupplementKind, IntakeObligation } from "./types";
+import type { AdherenceDot } from "./intake-adherence";
+import { isPushedIntake, OBLIGATION_LABELS } from "./intake-schedule";
+import type { IntakeItemKind, IntakeObligation } from "./types";
 
 // ---- Window + thresholds --------------------------------------------------
 
@@ -92,14 +92,14 @@ export function demotionItemIdFromKey(key: string): number | null {
 // ---- Types ----------------------------------------------------------------
 
 // One item's slice of the evidence: its identity and tags, plus the ITEM-LEVEL
-// adherence strip (oldest-first) that `supplementAdherenceStrip` produces — the
+// adherence strip (oldest-first) that `intakeAdherenceStrip` produces — the
 // same per-day aggregation the Supplements page renders, so the suggestion can
 // never disagree with the strip the user is looking at.
 export interface DemotionInput {
   itemId: number;
   name: string;
   // Clinical identity — read ONLY to refuse medications outright (see below).
-  kind: SupplementKind;
+  kind: IntakeItemKind;
   obligation: IntakeObligation;
   // Paused/stopped items are excluded.
   active: boolean;

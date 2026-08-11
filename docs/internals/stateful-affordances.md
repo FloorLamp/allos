@@ -163,7 +163,7 @@ guard that cannot fail is not a guard.
 
 #2039 added `intake_item_logs`, the dose ledger the supply counter one entry
 below it is driven by. It had a second core: a tri-state twin inside
-`app/(app)/nutrition/supplement-actions.ts` with its own DELETE/INSERT/UPDATE and
+`app/(app)/nutrition/intake-actions.ts` with its own DELETE/INSERT/UPDATE and
 its own supply crossings, which had already drifted — it never refused a paused
 item. One core in `lib/queries/intake/adherence.ts` now owns every transition of
 the table and the Server Action renders its typed outcome. No `offerState`: the

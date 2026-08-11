@@ -4,7 +4,7 @@
 // (`notify_last_refill_<id>`, #203) and each dose's missed-dose escalation marker
 // (`notify_last_esc_<doseId>`, #328). Ids never recycle, so a stranded marker is a
 // dead row rather than wrong suppression — but "one delete path sweeps, the other
-// doesn't" is the inconsistency #328 closed, so both `deleteSupplement`
+// doesn't" is the inconsistency #328 closed, so both `deleteIntakeItem`
 // (app/(app)/medicine/actions.ts) and the Data → Manage bulk delete
 // (app/(app)/data/manage-actions.ts) route through here.
 //

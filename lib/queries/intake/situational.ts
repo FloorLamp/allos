@@ -8,15 +8,12 @@
 // (countSituationalDue) shared; this is just the second surface's gather half.
 
 import { today } from "../../db";
-import { getSupplements } from "./schedule";
+import { getIntakeItems } from "./schedule";
 import {
   getActivitiesByDate,
   isPredictedWorkoutDay,
 } from "../training/activities";
-import {
-  countSituationalDue,
-  isPostWorkoutReady,
-} from "../../supplement-schedule";
+import { countSituationalDue, isPostWorkoutReady } from "../../intake-schedule";
 import { getTimezone } from "../../settings";
 import { getEffectiveActiveSituations } from "../derived-situations";
 import { zonedDateParts } from "../../date";
@@ -27,7 +24,7 @@ import { zonedDateParts } from "../../date";
 // postWorkoutReady) exactly so both read one truth.
 export function getSituationalDueCount(profileId: number): number {
   const on = today(profileId);
-  const supplements = getSupplements(profileId);
+  const supplements = getIntakeItems(profileId);
   // Derived context widens the active set (#1292/#1298): a Poor sleep / Period item
   // counts as due exactly while its derived context holds — the SAME set the bar uses.
   const activeSituations = getEffectiveActiveSituations(profileId, on);

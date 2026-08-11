@@ -3,7 +3,7 @@
 // Until #2039 two independent write cores resolved a dose against `intake_item_logs`:
 // `markDoseTaken`/`markDoseSkipped` in lib/queries/intake/adherence.ts (insert-only,
 // typed, the #232 contract) and a tri-state twin (`applyDoseStatus`) living inside
-// app/(app)/nutrition/supplement-actions.ts with its own DELETE/INSERT/UPDATE and its
+// app/(app)/nutrition/intake-actions.ts with its own DELETE/INSERT/UPDATE and its
 // own supply crossings. This file pins the unification:
 //
 //   1. THE ROWS AND OUTCOMES BOTH FORMER PATHS PRODUCED, produced by the one core:

@@ -7,7 +7,7 @@ import {
   heldSummaryLine,
   heldResumeAcknowledgment,
   pauseLinkNeedsConfirm,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 
 // Pure tests for the INVERSE situational condition (#1296): pause-during-situation.
 // The dueness matrix (situational-on × pause × PRN), pause-beats-due precedence, the

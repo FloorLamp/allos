@@ -22,10 +22,7 @@ import {
 } from "../integrations/oura";
 import { getMoodLogs } from "./mood";
 import { getActivityDates } from "./training/activities";
-import {
-  getSupplementDosesForHistory,
-  getSupplements,
-} from "./intake/schedule";
+import { getIntakeDosesForHistory, getIntakeItems } from "./intake/schedule";
 import { getIntakeLogsInRange } from "./intake/adherence";
 import { db, today } from "../db";
 import { now } from "../clock";
@@ -41,8 +38,8 @@ import {
   getSituationEvents,
   getFreeDays,
 } from "../settings";
-import { doseExistsSince, indexTakenByDose } from "../supplement-adherence";
-import { doseBucketOn, doseDueOn } from "../supplement-schedule";
+import { doseExistsSince, indexTakenByDose } from "../intake-adherence";
+import { doseBucketOn, doseDueOn } from "../intake-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
   bedtimeDoseDisposition,
@@ -316,12 +313,12 @@ function bedtimeSupplementsByWakeDay(
   );
   if (sleepDateByWakeDay.size === 0) return new Map();
 
-  const supplements = getSupplements(profileId).filter(
+  const supplements = getIntakeItems(profileId).filter(
     (item) => item.kind === "supplement" && item.obligation !== "may"
   );
   const supplementById = new Map(supplements.map((item) => [item.id, item]));
-  const supplementDoses = getSupplementDosesForHistory(profileId).filter(
-    (dose) => supplementById.has(dose.item_id)
+  const supplementDoses = getIntakeDosesForHistory(profileId).filter((dose) =>
+    supplementById.has(dose.item_id)
   );
   if (supplementDoses.length === 0) return new Map();
 

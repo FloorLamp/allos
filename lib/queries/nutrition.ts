@@ -11,7 +11,7 @@ import { getCurrentFlaggedBiomarkers } from "./medical";
 import {
   getIntakeSafetyContext,
   getIngestibleSafetyContext,
-  getSupplements,
+  getIntakeItems,
 } from "./intake";
 import {
   suggestCuratedSupplements,
@@ -178,7 +178,7 @@ export function getCuratedSupplementSuggestions(
     situations,
     // Supplements and medications share intake_items, and either can already supply the
     // substance — so the "already taking it" screen reads the whole active stack.
-    alreadyTaking: getSupplements(profileId)
+    alreadyTaking: getIntakeItems(profileId)
       .filter((s) => s.active)
       .map((s) => s.name),
   });

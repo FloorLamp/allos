@@ -14,7 +14,7 @@
 // the schedule machinery never marks due — no reminders/escalation) rather than
 // a fabricated daily reminder the document never actually prescribed.
 
-import { parseDosage, spreadDoseTimes } from "./supplement-schedule";
+import { parseDosage, spreadDoseTimes } from "./intake-schedule";
 
 // "as needed", "as required", "when needed", "prn" — a PRN med is taken on
 // demand, so it carries no schedule.

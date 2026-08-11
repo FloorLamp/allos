@@ -1,11 +1,11 @@
 // Month adherence calendar (issue #852 item 5) — a PURE formatter over the EXISTING
 // adherence data (an AdherenceDot[] over a month's dates, oldest-first and contiguous,
-// built by the same supplementAdherenceStrip the 14-day strip uses; no new model). It
+// built by the same intakeAdherenceStrip the 14-day strip uses; no new model). It
 // lays the daily taken/partial/skipped/missed/not-due states out on a Sun→Sat calendar
 // grid so the med's detail page can show the month-scale picture the strip can't.
 
 import { dayGrid } from "./day-grid";
-import type { AdherenceDot, AdherenceState } from "./supplement-adherence";
+import type { AdherenceDot, AdherenceState } from "./intake-adherence";
 
 export interface AdherenceCalendarCell {
   // null on a padding cell before the first / after the last day of the range.

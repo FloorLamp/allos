@@ -9,7 +9,7 @@ import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
 import {
   logHistoricalDose,
   updateHistoricalDose,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 
 export interface HistoricalDoseOption {
   id: number;

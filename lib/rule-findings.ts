@@ -20,8 +20,8 @@ import {
   getWeightsOneSourcePerDay,
   getBodyMetricDailySeries,
   getOutcomeGoals,
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getIntakeLogsInRange,
   getActivityDates,
   getRecentDatedExercises,
@@ -87,7 +87,7 @@ import { listCyclePeriods } from "./cycle-store";
 import { decideWorkupPrompt } from "./ttc";
 import { getTtcStart } from "./settings/profile-attrs";
 import { getRiskAttributes } from "./settings";
-import { isPrn } from "./supplement-schedule";
+import { isPrn } from "./intake-schedule";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import {
   fitnessRetestDue,
@@ -219,12 +219,8 @@ import {
   doseWindowSince,
   indexTakenByDose,
   stripWithoutTrailingPending,
-} from "./supplement-adherence";
-import {
-  doseDueOn,
-  doseSlotChangedSince,
-  timeBucket,
-} from "./supplement-schedule";
+} from "./intake-adherence";
+import { doseDueOn, doseSlotChangedSince, timeBucket } from "./intake-schedule";
 import { unrecordedScheduleChangeOn } from "./intake-cadence";
 
 // ---- #449: the unified coaching-findings collection -------------------------
@@ -1350,9 +1346,9 @@ export function buildAdherencePatternFindings(
   profileId: number,
   today: string
 ): Finding[] {
-  const supplements = getSupplements(profileId);
+  const supplements = getIntakeItems(profileId);
   const suppById = new Map(supplements.map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profileId);
+  const doses = getIntakeDoses(profileId);
   // The profile's timezone resolves the UTC creation stamps onto the same profile-local
   // calendar the `dates` window is built from (#1442).
   const tz = getTimezone(profileId);

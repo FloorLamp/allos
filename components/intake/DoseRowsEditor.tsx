@@ -8,7 +8,7 @@ import {
   TIME_BUCKETS,
   FOOD_TIMINGS,
   FOOD_TIMING_LABELS,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 import type { FoodTiming } from "@/lib/types";
 import { WeekdayChips } from "@/components/intake/CadenceEditor";
 import { doseCadenceLabel, normalizeWeekdays } from "@/lib/intake-cadence";

@@ -135,7 +135,7 @@ export async function runRecommendation(
     }
 
     const startedAt = Date.now();
-    // Supplement half: scope to the just-imported records on an upload (respects
+    // IntakeItem half: scope to the just-imported records on an upload (respects
     // the auto-suggest toggle), else a full-lab scan for a scheduled/other run.
     let suggested = 0;
     try {

@@ -35,7 +35,7 @@ import {
   getMedicationAdherenceCalendar,
 } from "../med-data";
 import MedicationCard from "../MedicationCard";
-import { isPrn } from "@/lib/supplement-schedule";
+import { isPrn } from "@/lib/intake-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -228,10 +228,10 @@ export default async function MedicationDetailPage(props: {
               </p>
             ) : null}
             <MedicationCard
-              supplement={m.med}
+              medication={m.med}
               doses={m.doses}
               retiredDoses={m.retiredDoses}
-              allSupplements={data.allSupplements}
+              allIntakeItems={data.allIntakeItems}
               stackItems={data.stackItems}
               pgxVariants={data.pgxVariants}
               pairs={m.pairs}

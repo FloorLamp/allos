@@ -71,7 +71,7 @@ import {
   parseDosage,
   spreadDoseTimes,
   collapsePrnDoses,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 import {
   CADENCE_KINDS,
   doseScheduleDiffers,
@@ -92,8 +92,8 @@ import { historicalDoseErrorMessage } from "@/lib/historical-dose-error";
 import type {
   FoodTiming,
   PairRelation,
-  SupplementCondition,
-  SupplementKind,
+  IntakeCondition,
+  IntakeItemKind,
   IntakeObligation,
 } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
@@ -112,7 +112,7 @@ import { KEEP_APART_PREFIX } from "@/lib/intake-pairs";
 
 // Both intake surfaces (#746): a shared dose/item write is kind-agnostic (it acts
 // by id), so it can affect the Nutrition → Supplements tab AND the Medications
-// page. Revalidate both plus the dashboard. Supplement-only writes (situations, AI
+// page. Revalidate both plus the dashboard. IntakeItem-only writes (situations, AI
 // suggestions, adherence dismissals) revalidate just "/nutrition" at their call
 // site.
 function revalidateIntake() {
@@ -125,19 +125,19 @@ function revalidateIntake() {
   revalidateRoute("/");
 }
 
-// Supplement-level fields (timing/amount/food live on doses).
+// IntakeItem-level fields (timing/amount/food live on doses).
 function fields(formData: FormData) {
   const str = (k: string) => strOrNull(formData.get(k));
   const conditionRaw = String(formData.get("condition") ?? "daily");
-  const condition: SupplementCondition = CONDITIONS.includes(
-    conditionRaw as SupplementCondition
+  const condition: IntakeCondition = CONDITIONS.includes(
+    conditionRaw as IntakeCondition
   )
-    ? (conditionRaw as SupplementCondition)
+    ? (conditionRaw as IntakeCondition)
     : "daily";
   // The item's KIND is read before its obligation because the med guardrail depends
   // on it (see below): kind is clinical identity, and a medication's default is the
   // one obligation that carries a safety net.
-  const kindEarly: SupplementKind =
+  const kindEarly: IntakeItemKind =
     formData.get("kind") === "medication" ? "medication" : "supplement";
   const obligationRaw = String(
     formData.get("obligation") ??
@@ -215,7 +215,7 @@ function fields(formData: FormData) {
   // prescriber/pharmacy/Rx fields; the medication-only columns are cleared for a
   // plain supplement so a kind flip can't leave stale data. Kind no longer decides
   // pushability — obligation does.
-  const kind: SupplementKind = kindEarly;
+  const kind: IntakeItemKind = kindEarly;
   const isMed = kind === "medication";
   const prescriber = isMed ? str("prescriber") : null;
   const pharmacy = isMed ? str("pharmacy") : null;
@@ -317,7 +317,7 @@ function fields(formData: FormData) {
 // condition (#1052); a medication only, else null. Untrusted form id → dropped.
 function resolveIndicationConditionId(
   profileId: number,
-  kind: SupplementKind,
+  kind: IntakeItemKind,
   raw: number | null
 ): number | null {
   if (kind !== "medication" || raw == null) return null;
@@ -489,7 +489,7 @@ function reconcilePairs(suppId: number, pairs: PairInput[], profileId: number) {
   }
 }
 
-export async function addSupplement(formData: FormData): Promise<FormResult> {
+export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
@@ -639,7 +639,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-export async function updateSupplement(
+export async function updateIntakeItem(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
@@ -1344,7 +1344,7 @@ export async function restoreDose(
   }
 }
 
-export async function deleteSupplement(
+export async function deleteIntakeItem(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
   const { profile } = await requireWriteAccess();
@@ -1610,7 +1610,7 @@ export async function dismissSuggestion(
 // Look up RxNorm candidates for a free-text name (issue #144) — the ONLY network
 // egress of the interaction feature, and it sends just the term (no PHI). Called
 // from the item form's standardized-ingredient affordance; the user CONFIRMS a candidate,
-// which fills the hidden `rxcui` field saved by add/updateSupplement. Degrades to []
+// which fills the hidden `rxcui` field saved by add/updateIntakeItem. Degrades to []
 // (name-only matching) on any timeout/error. requireWriteAccess gates it to a
 // session with write access; nothing is stored here.
 export async function lookupRxcui(
@@ -1626,7 +1626,7 @@ export async function lookupRxcui(
 // form when the user confirms a candidate: a combination product's product-level
 // code never appears in the ingredient-keyed interaction datasets, so the resolved
 // ingredient CUIs fill the hidden `rxcui_ingredients` field saved by add/
-// updateSupplement and both matchers try each of them. Degrades to [] (product-
+// updateIntakeItem and both matchers try each of them. Degrades to [] (product-
 // rxcui + name matching) on any timeout/error. Nothing is stored here.
 export async function lookupRxcuiIngredients(rxcui: string): Promise<string[]> {
   await requireWriteAccess();

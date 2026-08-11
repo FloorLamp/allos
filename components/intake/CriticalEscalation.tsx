@@ -1,6 +1,6 @@
 "use client";
 
-import type { Supplement } from "@/lib/types";
+import type { IntakeItem } from "@/lib/types";
 
 // The missed-dose escalation block shared by both intake forms (#846): mark an item
 // critical so an unconfirmed scheduled dose reminder escalates with a follow-up nudge
@@ -10,16 +10,16 @@ import type { Supplement } from "@/lib/types";
 // state resets cleanly on an add-form save (#627).
 export default function CriticalEscalation({
   fid,
-  supplement,
+  item,
   critical,
   setCritical,
 }: {
   fid: string | number;
-  supplement?: Supplement;
+  item?: IntakeItem;
   critical: boolean;
   setCritical: (v: boolean) => void;
 }) {
-  const s = supplement;
+  const s = item;
   return (
     <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
       <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">

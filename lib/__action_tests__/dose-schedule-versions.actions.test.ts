@@ -3,7 +3,7 @@
 // The two existing suites for this feature both stop short of the code that actually
 // runs when a person edits a dose: the pure tier drives `doseScheduleAsOf` /
 // `unrecordedScheduleChangeOn` over literals, and the DB tier crafts version rows with
-// raw INSERTs. Neither ever calls `updateSupplement`, so the half of the feature that
+// raw INSERTs. Neither ever calls `updateIntakeItem`, so the half of the feature that
 // decides WHETHER a version is written — `priorSchedules`, `doseScheduleDiffers`, the
 // lazy pre-edit backfill and the `ON CONFLICT(dose_id, effective_from)` upsert — was
 // reachable only through the form and asserted nowhere.
@@ -24,11 +24,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
-} from "@/app/(app)/nutrition/supplement-actions";
-import { getSupplementDoses, getSupplements } from "@/lib/queries";
-import { doseBucketOn, doseDueOn } from "@/lib/supplement-schedule";
+  addIntakeItem,
+  updateIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
+import { getIntakeDoses, getIntakeItems } from "@/lib/queries";
+import { doseBucketOn, doseDueOn } from "@/lib/intake-schedule";
 import { setTimezone } from "@/lib/settings";
 import { seedActor, fd } from "./harness";
 
@@ -110,13 +110,13 @@ function versionsOf(doseId: number): [string, string | null, string | null][] {
 // The dose row as every SURFACE sees it — schedule history attached, so the pure
 // resolvers answer about a past day exactly as a reminder or an adherence strip would.
 function readDose(doseId: number) {
-  const d = getSupplementDoses(profileId).find((r) => r.id === doseId);
+  const d = getIntakeDoses(profileId).find((r) => r.id === doseId);
   if (!d) throw new Error(`dose ${doseId} is not in the current schedule`);
   return d;
 }
 
 function dueOn(itemId: number, doseId: number, date: string): boolean {
-  const supp = getSupplements(profileId).find((s) => s.id === itemId)!;
+  const supp = getIntakeItems(profileId).find((s) => s.id === itemId)!;
   return doseDueOn(supp, readDose(doseId), {
     date,
     isWorkoutDay: false,
@@ -129,7 +129,7 @@ function dueOn(itemId: number, doseId: number, date: string): boolean {
 describe("#1973 — a dueness-relevant edit appends a version and closes the old one", () => {
   it("re-times a dose, and a pre-edit day still resolves to the pre-edit slot", async () => {
     setDay("2026-07-01");
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Magnesium",
         doses: JSON.stringify([dose({ time_of_day: "Morning" })]),
@@ -141,7 +141,7 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
     expect(versionsOf(doseId)).toEqual([["2026-07-01", "Morning", null]]);
 
     setDay("2026-07-20");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(itemId),
         name: "Magnesium",
@@ -168,14 +168,14 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
 
   it("narrowing to weekdays leaves the pre-edit days due, and the post-edit days not", async () => {
     setDay("2026-07-01");
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Alendronate", doses: JSON.stringify([dose()]) })
     );
     const itemId = lastItemId();
     const doseId = doseRows(itemId)[0].id;
 
     setDay("2026-07-20");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(itemId),
         name: "Alendronate",
@@ -198,14 +198,14 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
 
   it("two edits on separate days stack; two on one day collapse to that day's final state", async () => {
     setDay("2026-07-01");
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Stacker", doses: JSON.stringify([dose()]) })
     );
     const itemId = lastItemId();
     const doseId = doseRows(itemId)[0].id;
 
     setDay("2026-07-10");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(itemId),
         name: "Stacker",
@@ -216,7 +216,7 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
     );
     setDay("2026-07-20");
     for (const slot of ["Evening", "Before sleep"]) {
-      await updateSupplement(
+      await updateIntakeItem(
         fd({
           id: String(itemId),
           name: "Stacker",
@@ -243,7 +243,7 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
 describe("#1973 — a cosmetic edit records no version at all", () => {
   it("changing amount, food timing and order leaves the history untouched", async () => {
     setDay("2026-07-01");
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Creatine",
         doses: JSON.stringify([
@@ -257,7 +257,7 @@ describe("#1973 — a cosmetic edit records no version at all", () => {
     const before = [versionsOf(first.id), versionsOf(second.id)];
 
     setDay("2026-07-20");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(itemId),
         name: "Creatine",
@@ -298,7 +298,7 @@ describe("#1973 — a cosmetic edit records no version at all", () => {
 describe("#2066 — the memoized history reader never serves a stale edit", () => {
   it("shows the appended version on the very next current-schedule read", async () => {
     setDay("2026-07-01");
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Primed", doses: JSON.stringify([dose()]) })
     );
     const itemId = lastItemId();
@@ -308,7 +308,7 @@ describe("#2066 — the memoized history reader never serves a stale edit", () =
     expect(doseBucketOn(readDose(doseId), "2026-07-01")).toBe("Morning");
 
     setDay("2026-07-20");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(itemId),
         name: "Primed",
@@ -341,7 +341,7 @@ describe("#1973 — a dose with no recorded history gets its pre-edit rule backf
 
   it("writes the pre-edit rule from the dose's birth, then never backfills again", async () => {
     setDay("2026-07-01");
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Legacy Zinc", doses: JSON.stringify([dose()]) })
     );
     const itemId = lastItemId();
@@ -350,7 +350,7 @@ describe("#1973 — a dose with no recorded history gets its pre-edit rule backf
     expect(versionsOf(doseId)).toEqual([]);
 
     setDay("2026-07-20");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(itemId),
         name: "Legacy Zinc",
@@ -369,7 +369,7 @@ describe("#1973 — a dose with no recorded history gets its pre-edit rule backf
     expect(doseBucketOn(readDose(doseId), "2026-07-05")).toBe("Morning");
 
     setDay("2026-07-25");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(itemId),
         name: "Legacy Zinc",
@@ -389,7 +389,7 @@ describe("#1973 — a dose with no recorded history gets its pre-edit rule backf
 
   it("backfills only the dose that changed, even when the form renumbers the rows", async () => {
     setDay("2026-07-01");
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Renumber Rx",
         doses: JSON.stringify([
@@ -404,7 +404,7 @@ describe("#1973 — a dose with no recorded history gets its pre-edit rule backf
     stripHistory(evening.id);
 
     setDay("2026-07-20");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(itemId),
         name: "Renumber Rx",

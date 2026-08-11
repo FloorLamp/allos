@@ -375,7 +375,7 @@ const KIND_SPECS = {
     ],
   },
 
-  // Supplement OR medication (both live in intake_items). Captures the full
+  // IntakeItem OR medication (both live in intake_items). Captures the full
   // cascade: scheduled doses, "take together / apart" pairs, adherence logs (which
   // reference a dose), medication courses, and side effects (which reference a
   // course). Restore re-inserts them in this order so every FK target exists first.

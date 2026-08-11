@@ -49,7 +49,7 @@ import { continuousReadingSlug } from "./reading-cadence";
 import type { PanelId } from "./biomarker-panels";
 import type { GrowthMetric } from "./growth";
 import type { IntegrationId } from "./types/integrations";
-import type { SupplementKind } from "./types/intake";
+import type { IntakeItemKind } from "./types/intake";
 
 export type AppRoute = Route;
 
@@ -108,7 +108,7 @@ export const INSTRUMENTS_HREF: AppRoute = "/records/specialty/mental-health";
 // ONE place the intake-surface seam is encoded, so every deep-linker (Upcoming,
 // Timeline, search, refill/dose Telegram buttons, imports) agrees on where each
 // kind lives — a #285 "rule-carrying link" (the rule = kind → surface).
-export function intakeHref(kind: SupplementKind): AppRoute {
+export function intakeHref(kind: IntakeItemKind): AppRoute {
   return kind === "medication"
     ? MEDICATIONS_HREF
     : nutritionTabHref("supplements");
@@ -128,11 +128,11 @@ export function intakeHref(kind: SupplementKind): AppRoute {
 export const DOSE_LEDGER_ALL_KINDS = "all";
 
 export function doseLedgerHref(
-  surface: SupplementKind,
+  surface: IntakeItemKind,
   params: {
     from?: string;
     to?: string;
-    kind?: SupplementKind | typeof DOSE_LEDGER_ALL_KINDS;
+    kind?: IntakeItemKind | typeof DOSE_LEDGER_ALL_KINDS;
     item?: number;
     // The explicit all-time sentinel. Needed for the same reason Trends needs it: an
     // empty query string means this surface's DEFAULT window, so the "All time" pill
@@ -160,7 +160,7 @@ export function doseLedgerHref(
 export const SUPPLY_PREFILL_PARAM = "supply";
 
 export function addItemFromPoolHref(
-  kind: SupplementKind,
+  kind: IntakeItemKind,
   supplyId: number
 ): AppRoute {
   return kind === "medication"

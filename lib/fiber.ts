@@ -79,7 +79,7 @@ export function estimatedFiberGrams(servings: FiberServing[]): number {
 
 // ---- Fiber supplement recognition + dose-gram parsing ----------------------
 
-// Supplement/medication NAME → "is this a fiber supplement?" — the fiber twin of
+// IntakeItem/medication NAME → "is this a fiber supplement?" — the fiber twin of
 // lib/dri.ts NAME_MATCHERS, kept small and case-insensitive. Covers the common products
 // the supplement catalog ships (psyllium husk, generic "Fiber", methylcellulose, inulin,
 // flaxseed) plus the household brands (Metamucil, Benefiber, wheat dextrin). Deliberately

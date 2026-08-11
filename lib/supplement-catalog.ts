@@ -7,7 +7,7 @@
 // grouping below. These are informational defaults, NOT medical advice or
 // dosing guidance.
 
-import type { TimeBucket } from "./supplement-schedule";
+import type { TimeBucket } from "./intake-schedule";
 import type { FoodTiming } from "./types";
 
 export interface SupplementCatalogEntry {
@@ -15,7 +15,7 @@ export interface SupplementCatalogEntry {
   dosages: string[];
   defaultTimeOfDay?: TimeBucket;
   // Optional food-relationship default; when absent the form falls back to a
-  // fat-soluble heuristic (see defaultFoodTiming in supplement-schedule).
+  // fat-soluble heuristic (see defaultFoodTiming in intake-schedule).
   defaultFoodTiming?: FoodTiming;
 }
 

@@ -26,7 +26,7 @@ import {
   getConditions,
   getOutcomeGoals,
   getClinicalObservations,
-  getSupplements,
+  getIntakeItems,
   getIngestibleSafetyContext,
 } from "./queries";
 import { biomarkerFamily } from "./canonical-name";
@@ -34,7 +34,7 @@ import { isGoalLive } from "./outcome-goals";
 import type {
   FoodTiming,
   ClinicalObservation,
-  SupplementCondition,
+  IntakeCondition,
   IntakeObligation,
 } from "./types";
 import {
@@ -42,7 +42,7 @@ import {
   OBLIGATIONS,
   TIME_BUCKETS,
   FOOD_TIMINGS,
-} from "./supplement-schedule";
+} from "./intake-schedule";
 import { isNonOptimal, isOutOfRange } from "./reference-range";
 import {
   screenSuggestionSafety,
@@ -65,7 +65,7 @@ export interface SuggestionDraft {
   dosage: string | null;
   time_of_day: string | null;
   food_timing: FoodTiming;
-  condition: SupplementCondition;
+  condition: IntakeCondition;
   situation: string | null;
   obligation: IntakeObligation;
   brand: string | null;
@@ -168,7 +168,7 @@ function buildContext(
     opts.records ??
     getClinicalObservations(profileId, { range: "nonoptimal" }).slice(0, 30);
   const recentLabs = getClinicalObservations(profileId).slice(0, 12);
-  const supplements = getSupplements(profileId).filter((s) => s.active);
+  const supplements = getIntakeItems(profileId).filter((s) => s.active);
   const goals = getOutcomeGoals(profileId).filter((g) => isGoalLive(g));
   const activities = getActivities(profileId, 10);
 
@@ -331,7 +331,7 @@ function normalizeDrafts(
       continue;
     }
 
-    const condition: SupplementCondition = CONDITIONS.includes(s?.condition)
+    const condition: IntakeCondition = CONDITIONS.includes(s?.condition)
       ? s.condition
       : "daily";
     let obligation: IntakeObligation = OBLIGATIONS.includes(s?.obligation)
@@ -499,7 +499,7 @@ export async function suggestSupplements(
 // Lowercased names already represented (active supplements + pending
 // suggestions) so we never propose a duplicate.
 function existingNames(profileId: number): Set<string> {
-  const supp = getSupplements(profileId).map((s) => s.name.toLowerCase());
+  const supp = getIntakeItems(profileId).map((s) => s.name.toLowerCase());
   const pending = (
     db
       .prepare(

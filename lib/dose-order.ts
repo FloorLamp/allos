@@ -14,11 +14,7 @@
 // reproduce this exact order with a plain string compare (see compareSortHint).
 
 import type { IntakeObligation } from "./types";
-import {
-  timeBucket,
-  TIME_BUCKETS,
-  OBLIGATION_ORDER,
-} from "./supplement-schedule";
+import { timeBucket, TIME_BUCKETS, OBLIGATION_ORDER } from "./intake-schedule";
 
 // The minimal shape the ordering needs — satisfied by /medicine's { supplement,
 // dose } Item and by the Upcoming dose adapter alike.

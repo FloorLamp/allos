@@ -2,7 +2,7 @@
 //
 // End-to-end over the real schema (migration 108 pause_situation_id): a scheduled item
 // with an active pause situation is ABSENT from the merged due set (collectUpcoming) and
-// the digest dose count, PRESENT with held-badge data (getSupplements pause_situation +
+// the digest dose count, PRESENT with held-badge data (getIntakeItems pause_situation +
 // heldItemsBy), and RESTORED to dueness the same day the situation deactivates. Plus the
 // #1299 producer: a seeded surgical visit yields the suggestion inside the lead window,
 // not before, and the passed-date clear/Post-op suggestion after.
@@ -12,14 +12,14 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
-  getSupplements,
+  getIntakeItems,
   collectUpcoming,
   getSurgeryBridgeSuggestions,
 } from "@/lib/queries";
 import { setActiveSituations, resolveSituationId } from "@/lib/settings";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
-import { heldItemsBy } from "@/lib/supplement-schedule";
+import { heldItemsBy } from "@/lib/intake-schedule";
 import { shiftDateStr } from "@/lib/date";
 import { plainBody } from "@/lib/notifications/rich-text";
 
@@ -76,7 +76,7 @@ describe("pause-during-situation dueness (#1296)", () => {
     const inputHeld = gatherDigestInput(p, "Held");
     expect(inputHeld.doseCount).toBe(0);
     // …but visible: held-badge data on the row + the digest hold line.
-    const supps = getSupplements(p);
+    const supps = getIntakeItems(p);
     expect(
       heldItemsBy(supps, new Set(["Pre-surgery"])).map((h) => h.item.name)
     ).toEqual(["Fish Oil"]);

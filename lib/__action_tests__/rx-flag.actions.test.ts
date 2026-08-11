@@ -2,7 +2,7 @@
 //
 // A medication is either prescription (Rx=1) or over-the-counter (Rx=0); a plain
 // supplement is ALWAYS OTC. The form submits an explicit "rx" 0/1, but a lean caller
-// (quick-add) may omit it — in which case addSupplement/updateSupplement derive the
+// (quick-add) may omit it — in which case addIntakeItem/updateIntakeItem derive the
 // flag the same way the migration-045 backfill does (a recorded prescriber or Rx
 // number ⇒ Rx, else OTC). These drive the real Server Actions against the throwaway
 // temp DB and read back the stored `rx` bit.
@@ -11,9 +11,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
-} from "@/app/(app)/nutrition/supplement-actions";
+  addIntakeItem,
+  updateIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
 import { seedActor, fd } from "./harness";
 
 vi.mocked(revalidatePath);
@@ -40,9 +40,9 @@ beforeEach(() => {
   seedActor();
 });
 
-describe("Rx flag on addSupplement", () => {
+describe("Rx flag on addIntakeItem", () => {
   it("persists an explicit rx=0 (OTC) for a medication", async () => {
-    const r = await addSupplement(
+    const r = await addIntakeItem(
       fd({ name: "Ibuprofen", kind: "medication", rx: "0" })
     );
     expect(r.ok).toBe(true);
@@ -50,7 +50,7 @@ describe("Rx flag on addSupplement", () => {
   });
 
   it("persists an explicit rx=1 (prescription) for a medication", async () => {
-    const r = await addSupplement(
+    const r = await addIntakeItem(
       fd({ name: "Atorvastatin", kind: "medication", rx: "1" })
     );
     expect(r.ok).toBe(true);
@@ -59,43 +59,43 @@ describe("Rx flag on addSupplement", () => {
 
   it("derives rx=1 from a recorded prescriber when the rx field is absent", async () => {
     // A lean caller (quick-add) sends no `rx`; a prescriber ⇒ prescription.
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Lisinopril", kind: "medication", prescriber: "Dr. Ada Test" })
     );
     expect(rxOf(lastItemId())).toBe(1);
   });
 
   it("derives rx=1 from a recorded Rx number when the rx field is absent", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Metformin", kind: "medication", rx_number: "RX-000123" })
     );
     expect(rxOf(lastItemId())).toBe(1);
   });
 
   it("defaults to rx=0 (OTC) for a medication with neither prescriber/Rx-number nor rx field", async () => {
-    await addSupplement(fd({ name: "Acetaminophen", kind: "medication" }));
+    await addIntakeItem(fd({ name: "Acetaminophen", kind: "medication" }));
     expect(rxOf(lastItemId())).toBe(0);
   });
 
   it("forces rx=0 for a plain supplement even when an rx field is sent", async () => {
-    await addSupplement(fd({ name: "Vitamin D", kind: "supplement", rx: "1" }));
+    await addIntakeItem(fd({ name: "Vitamin D", kind: "supplement", rx: "1" }));
     expect(rxOf(lastItemId())).toBe(0);
   });
 });
 
-describe("Rx flag on updateSupplement", () => {
+describe("Rx flag on updateIntakeItem", () => {
   it("flips rx 0 → 1 and back 1 → 0", async () => {
-    await addSupplement(fd({ name: "Naproxen", kind: "medication", rx: "0" }));
+    await addIntakeItem(fd({ name: "Naproxen", kind: "medication", rx: "0" }));
     const id = lastItemId();
     expect(rxOf(id)).toBe(0);
 
-    const up1 = await updateSupplement(
+    const up1 = await updateIntakeItem(
       fd({ id, name: "Naproxen", kind: "medication", rx: "1" })
     );
     expect(up1.ok).toBe(true);
     expect(rxOf(id)).toBe(1);
 
-    const up2 = await updateSupplement(
+    const up2 = await updateIntakeItem(
       fd({ id, name: "Naproxen", kind: "medication", rx: "0" })
     );
     expect(up2.ok).toBe(true);

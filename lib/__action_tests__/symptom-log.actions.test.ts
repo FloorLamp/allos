@@ -19,7 +19,7 @@ import {
   deleteCustomSymptom,
   activateIllnessForSymptoms,
 } from "@/app/(app)/symptom-actions";
-import { toggleSituationIllnessType } from "@/app/(app)/nutrition/supplement-actions";
+import { toggleSituationIllnessType } from "@/app/(app)/nutrition/intake-actions";
 import {
   getSymptomsOnDate,
   getSymptomSeveritiesOnDate,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import SupplementCombobox from "@/components/SupplementCombobox";
+import IntakeItemCombobox from "@/components/IntakeItemCombobox";
 import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -30,7 +30,7 @@ import { useResettableState } from "@/components/useResettableState";
 // Picking a med prefills every knowable field from the #846 resolver over
 // the cited #798 OTC datasets (dose amount, redose interval/max, brand suggestions,
 // pediatric band context), each editable. Submitting builds the SAME intake-form fields
-// the full MedicationForm posts and calls the SAME `addSupplement` action, so the row is
+// the full MedicationForm posts and calls the SAME `addIntakeItem` action, so the row is
 // identical (proven in the action tier) — no new model, no migration. The full form
 // stays the long-tail path (Rx meds, schedules, prescriber). Renders on both the
 // Medications page and inline in the shared illness medication workspace.
@@ -185,7 +185,7 @@ export default function QuickAddMedication({
           <label className="label" htmlFor="quick-med-name">
             Medication
           </label>
-          <SupplementCombobox
+          <IntakeItemCombobox
             id="quick-med-name"
             ariaLabel="Medication"
             value={nameDisplay}

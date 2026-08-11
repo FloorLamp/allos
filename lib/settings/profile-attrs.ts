@@ -1059,7 +1059,7 @@ export function resolveSituationId(
 // Currently-active situation NAMES for a profile (e.g. "Illness", "Travel"), read
 // from the id-keyed situations table. Returned as names because that stays the
 // shared currency across the notifier / adherence / digest layers — and, since
-// getSupplements coalesces the same situations.name onto each item, a rename
+// getIntakeItems coalesces the same situations.name onto each item, a rename
 // re-keys both sides together (no detachment).
 export function getActiveSituations(profileId: number): string[] {
   return (

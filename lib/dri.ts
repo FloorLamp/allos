@@ -56,7 +56,7 @@ const BY_KEY = new Map(NUTRIENTS.map((n) => [n.key, n]));
 // never OVER-flagged against a stricter child band it may not belong to.
 export const DEFAULT_ADULT_AGE = 30;
 
-// Supplement/medication NAME → nutrient key. Ordered; the first matching pattern
+// IntakeItem/medication NAME → nutrient key. Ordered; the first matching pattern
 // wins. Patterns are matched case-insensitively against the item name. This is the
 // app's recognized vocabulary (the supplement catalog): a name that matches nothing
 // (a multivitamin, a herb, a protein) contributes to no nutrient total — a

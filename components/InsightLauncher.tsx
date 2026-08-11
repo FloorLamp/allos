@@ -19,7 +19,7 @@ const COUNT_CLASS: Record<Tone, string> = {
 };
 
 // One right-rail launcher for secondary coaching content. Food lab suggestions
-// and Supplement patterns/suggestions share this exact resting control so the
+// and IntakeItem patterns/suggestions share this exact resting control so the
 // tabs do not invent different button shapes for the same modal interaction.
 export default function InsightLauncher({
   label,

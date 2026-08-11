@@ -25,7 +25,7 @@ import {
 } from "@/lib/settings";
 import { seedLoginTelegram } from "./fixtures";
 import type { IntakeObligation } from "@/lib/types";
-import { escalatesOnMiss } from "@/lib/supplement-schedule";
+import { escalatesOnMiss } from "@/lib/intake-schedule";
 
 function createProfile(name: string): number {
   return Number(

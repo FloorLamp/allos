@@ -24,7 +24,7 @@ import {
   type PoolConsumer,
 } from "../../refill";
 import { getRefillRates } from "./refill";
-import { isPushedIntake } from "../../supplement-schedule";
+import { isPushedIntake } from "../../intake-schedule";
 import type { SupplyOption } from "../../supply-product";
 import type { IntakeObligation } from "../../types";
 

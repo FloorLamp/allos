@@ -5,7 +5,7 @@ import {
   supplementAdherenceToday,
   weightTrend,
 } from "@/lib/household";
-import type { OutcomeGoal, Supplement } from "@/lib/types";
+import type { OutcomeGoal, IntakeItem } from "@/lib/types";
 import type { UpcomingItem } from "@/lib/upcoming";
 
 // Minimal outcome-goal factory (freeform by default), matching goals.test.ts.
@@ -38,7 +38,7 @@ function makeGoal(overrides: Partial<OutcomeGoal> = {}): OutcomeGoal {
   };
 }
 
-function supp(overrides: Partial<Supplement> = {}): Supplement {
+function supp(overrides: Partial<IntakeItem> = {}): IntakeItem {
   return {
     id: 1,
     name: "S",

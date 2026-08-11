@@ -33,7 +33,7 @@ of the Food | Supplements umbrella), medications on the standalone
 `/medicine` route was removed outright (#1635) and now 404s — historical deep
 links to it are not kept alive. This is a UI/route split only: one `intake_items` table, and the write
 cores are shared — the kind-agnostic dose/item CRUD lives in
-`app/(app)/nutrition/supplement-actions.ts` (imported by both surfaces), the
+`app/(app)/nutrition/intake-actions.ts` (imported by both surfaces), the
 medication-lifecycle actions (stop/restart/side effects) in
 `app/(app)/medications/actions.ts`. **Medications-page shape (#817).** The page
 is built around what's unique to meds, not a supplement-shaped lifecycle card: a
@@ -214,7 +214,7 @@ guarded inverse — `unretireDose`, surfaced as the edit form's "Retired doses �
 Restore to schedule" affordance — reopens the SAME dose id (typed refusals:
 `not-found` / `not-retired` / `schedule-conflict` when a live dose covers the
 slot) with dueness resuming from the restore day, never retroactively.
-`getSupplementDoses` is the "current schedule" read and excludes retired doses;
+`getIntakeDoses` is the "current schedule" read and excludes retired doses;
 history reads join `intake_item_doses` directly. `markDoseTaken` returns a
 `DoseTakenOutcome`
 (`logged`/`already-taken`/`already-skipped`/`stale-dose`/`inactive`; an
@@ -338,7 +338,7 @@ on its date (#1442). The schedule resolver must never override it.
 
 **Attaching the history costs one join per profile per request/tick** (#2066).
 `withScheduleVersions` runs on every current-schedule read, and both the hourly tick and
-a single page render fan `getSupplementDoses` out across several consumers, so that read
+a single page render fan `getIntakeDoses` out across several consumers, so that read
 is memoized per profile with a short TTL (the `tzMemo` shape in `lib/db.ts`, for the same
 three-processes-one-file reason). A dose edit and an undo restore drop the entry
 in-process through `invalidateDoseScheduleVersions`; `getDoseScheduleVersions` itself is
@@ -416,7 +416,7 @@ and the scheduled time-slot/split-dose path are **mutually exclusive** — an
 no split; the redose interval owns "when"), a scheduled med keeps the slot/split
 editor and no interval/max. The invariant is enforced at BOTH surfaces: the form
 collapses to a single amount-only editor (`DoseRowsEditor singleAmountOnly`) and
-the save action runs `collapsePrnDoses` (pure, `lib/supplement-schedule.ts`) so
+the save action runs `collapsePrnDoses` (pure, `lib/intake-schedule.ts`) so
 a legacy hybrid row (a PRN med with slots) collapses to its first dose's amount
 on the next save — keeping that dose's id (and its administration history).
 Migration-free: existing hybrid rows still render; new saves are clean.
@@ -495,7 +495,7 @@ batched `getIntakeDoseHistoryForItems`.
 One panel renders it on both surfaces — `components/intake/DoseHistoryPanel.tsx`,
 inline in the medication card and behind the supplement row's ⋯ "Dose history"
 disclosure — over the Server Actions in
-`app/(app)/nutrition/supplement-actions.ts` (the kind-agnostic intake action
+`app/(app)/nutrition/intake-actions.ts` (the kind-agnostic intake action
 module), each rendering its core's typed outcome. Since #2417 that panel's ROWS
 are the shared `components/EntryHistoryTable.tsx` (the ⋯ menu, the in-place edit
 row, the confirm-then-undo delete), settling the debt that component's own header
@@ -589,7 +589,7 @@ tag it carried), then `mandatory → must`, `low → may`, everything else `shou
 | `should`   | a miss is a tracked shortfall | remind, never escalate          | counted                                              |
 | `may`      | there is no expectation       | never pushed                    | **no dueness, no misses, no fraction** — ledger only |
 
-Three predicates in `lib/supplement-schedule.ts` are the whole of the semantics —
+Three predicates in `lib/intake-schedule.ts` are the whole of the semantics —
 `isPushedIntake`, `accruesMisses`, `escalatesOnMiss` — plus `isPrn`, since `may`
 absorbed PRN wholesale (the amount-only dose shape #851, the redose notice #798,
 the over-max finding #1027 all key off it). They are deliberately separate
@@ -783,9 +783,9 @@ fasting day skips with-food doses; "hold this while on antibiotics"). It is
 INDEPENDENT of `condition`: a plain `daily` medication can be held during
 Pre-surgery, so the form's "Pause during…" picker is always available (beside
 "Only during…", over the same #1177 `situation-options` vocabulary), and
-`getSupplements`/`getMedication` COALESCE the linked row's name into
+`getIntakeItems`/`getMedication` COALESCE the linked row's name into
 `pause_situation` (a second `situations` join). **Held BEATS due** — one pure
-decision, `heldBySituation` in `lib/supplement-schedule.ts`, consulted at the
+decision, `heldBySituation` in `lib/intake-schedule.ts`, consulted at the
 TOP of `isDueOn` (before PRN/condition), so a held item is suppressed on EVERY
 surfacing path the same engine already feeds (Upcoming, dose strips, reminders,
 digest, escalation) without a second lookup: the active-situations set `isDueOn`
@@ -865,7 +865,7 @@ single flag: the one-way resolvers (`markDoseTaken` / `markDoseSkipped` — Tele
 offline replay, dashboard, household) short-circuit on ANY existing row and report
 its ACTUAL status, while the explicit web set (`setDoseStatusCore`) may flip or
 clear because the user is looking at the control. Until #2039 the tri-state was a
-second core living in `app/(app)/nutrition/supplement-actions.ts`, and it had
+second core living in `app/(app)/nutrition/intake-actions.ts`, and it had
 drifted: it never refused a PAUSED item, so the one contract `markDoseTaken` exists
 to state held on the Telegram path and not on the web one. The Server Action is now
 a thin authorization + validation boundary that renders the core's typed outcome
@@ -986,7 +986,7 @@ cabinet heading) reads.
   `listLinkableSupplies(ids)` — the SAME `isPoolVisibleTo` rule the cabinet lists
   by, so a picker can never offer a bottle the cabinet hides. Two entry points: the
   item forms' create-mode bottle selector (in the shared `SharedSupplyPicker`,
-  posting `supply_id` on the item's own save so `addSupplement` links it and forces
+  posting `supply_id` on the item's own save so `addIntakeItem` links it and forces
   the private count NULL), and the cabinet's **"Add for another person"** — a
   profile selector whose submit switches the active profile and lands on
   `addItemFromPoolHref(kind, poolId)` (`?supply=`), so the item is created under the

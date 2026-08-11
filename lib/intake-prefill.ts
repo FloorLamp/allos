@@ -21,7 +21,7 @@ import {
   type PediatricFormContext,
 } from "./prn-dosing";
 import type { FoodTiming } from "./types";
-import type { TimeBucket } from "./supplement-schedule";
+import type { TimeBucket } from "./intake-schedule";
 
 // The prefillable fields. Each maps to one form control the resolver may suggest.
 export type PrefillField =

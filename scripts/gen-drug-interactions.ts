@@ -1143,7 +1143,7 @@ const INTERACTIONS: RawInteraction[] = [
     source: "FDA lithium prescribing information (DailyMed)",
   },
 
-  // ---- Supplement ↔ contraceptive ----
+  // ---- IntakeItem ↔ contraceptive ----
   {
     a: "st_johns_wort",
     b: "oral_contraceptive",

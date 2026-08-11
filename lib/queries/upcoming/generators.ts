@@ -16,7 +16,7 @@ import {
   isItemHiddenBySuppression,
   type SuppressionRecord,
 } from "../../upcoming-suppress";
-import { isDueOn, timeBucket } from "../../supplement-schedule";
+import { isDueOn, timeBucket } from "../../intake-schedule";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
@@ -93,8 +93,8 @@ import { isFlaggedForRetest } from "../../biomarker-retest-copy";
 import type { ClinicalObservation } from "../../types";
 import { pickNextAppointment } from "../../household";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getRefillRates,
   getDietaryLimitWarnings,

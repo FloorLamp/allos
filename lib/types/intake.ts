@@ -7,10 +7,10 @@ import type { CadenceKind, DoseScheduleVersion } from "../intake-cadence";
 
 export type { CadenceKind, DoseScheduleVersion };
 
-// How a supplement's day-context is decided: every day; only on
+// How an intake item's day-context is decided: every day; only on
 // workout/rest days (from the journal); or only while a named situation
 // (e.g. "Illness") is active.
-export type SupplementCondition =
+export type IntakeCondition =
   "daily" | "pre_workout" | "post_workout" | "rest_day" | "situational";
 
 // THE user-owned obligation level (issue #1505). One field replacing what used to be
@@ -50,13 +50,13 @@ export type IntakeObligation = "must" | "should" | "may";
 export type FoodTiming =
   "any" | "with_food" | "with_fat" | "before_meal" | "empty_stomach";
 
-export interface Supplement {
+export interface IntakeItem {
   id: number;
   name: string;
   notes: string | null;
   active: number;
   created_at: string;
-  condition: SupplementCondition;
+  condition: IntakeCondition;
   obligation: IntakeObligation;
   brand: string | null; // manufacturer, e.g. "Thorne" (free text)
   product: string | null; // specific product/SKU (free text)
@@ -76,7 +76,7 @@ export interface Supplement {
   // (on-during A, paused-during B) — held beats due (see heldBySituation / isDueOn).
   pause_situation: string | null;
   pause_situation_id: number | null;
-  // Optional "stack" label grouping supplements taken together (e.g. "D3 + K2");
+  // Optional "stack" label grouping intake items taken together (e.g. "D3 + K2");
   // members render adjacently in their time bucket. Free text.
   stack: string | null;
   // Missed-dose escalation. critical=1 opts this
@@ -113,7 +113,7 @@ export interface Supplement {
   // explicit, consequence-stating confirmation at the write boundary.
   // prescriber/pharmacy/rx_number are medication-only free text. Dose strength
   // (mg/IU) reuses the existing dose `amount`.
-  kind: SupplementKind;
+  kind: IntakeItemKind;
   prescriber: string | null;
   pharmacy: string | null;
   rx_number: string | null;
@@ -190,15 +190,15 @@ export interface Supplement {
   cadence_anchor_date: string | null;
 }
 
-// Whether a row is an ordinary supplement or a prescription medication.
+// Whether an intake item is an ordinary supplement or a medication.
 // Same table, same dose/schedule/adherence machinery; the UI
 // groups by this and reveals the stricter medication fields.
-export type SupplementKind = "supplement" | "medication";
+export type IntakeItemKind = "supplement" | "medication";
 
-// One scheduled intake of a supplement. A supplement has one or more doses, so a
+// One scheduled intake of an item. An item has one or more doses, so a
 // split dose (e.g. 1200 mg omega-3 across two fat meals) is two dose rows, each
 // with its own amount, time, and food relationship.
-export interface SupplementDose {
+export interface IntakeDose {
   id: number;
   item_id: number;
   amount: string | null; // e.g. "600 mg", "1 cap"
@@ -207,7 +207,7 @@ export interface SupplementDose {
   sort: number;
   // Soft-retire flag: 1 when an edit removed the dose from the schedule but it
   // was kept because adherence logs reference it. Retired doses are excluded
-  // from every "current schedule" read (getSupplementDoses) and are never
+  // from every "current schedule" read (getIntakeDoses) and are never
   // loggable; history reads still join them.
   retired: 0 | 1;
   // Dose lifetime timestamps (#430, migration 021). created_at is when the dose
@@ -234,7 +234,7 @@ export interface SupplementDose {
   start_date: string | null;
   end_date: string | null;
   // EFFECTIVE-DATED schedule history (issue #1973, migration 151), attached by the
-  // schedule reads (getSupplementDoses / getSupplementDosesForHistory) — not a column on
+  // schedule reads (getIntakeDoses / getIntakeDosesForHistory) — not a column on
   // this row. `doseDueOn` resolves the version in force on the day it is asked about, so
   // a past day is judged by the rule that applied THEN rather than by today's row.
   // Optional: a dose with no recorded history reads as "this row, always", which is the
@@ -350,12 +350,12 @@ export type EscalationAckOutcome =
   | "stale-dose" // dose deleted/retired (or not this profile's): nothing recorded
   | "inactive"; // parent item is paused/stopped: nothing recorded
 
-// A relationship between two supplements: take them together (synergy) or keep
+// A relationship between two intake items: take them together (synergy) or keep
 // them apart (antagonism). `separate` pairs raise a warning when both land in
 // the same time bucket.
 export type PairRelation = "with" | "separate";
 
-export interface SupplementPair {
+export interface IntakePair {
   id: number;
   a_id: number;
   b_id: number;
@@ -439,7 +439,7 @@ export interface SupplementSuggestion {
   dosage: string | null;
   time_of_day: string | null;
   food_timing: FoodTiming;
-  condition: SupplementCondition;
+  condition: IntakeCondition;
   obligation: IntakeObligation;
   brand: string | null;
   product: string | null;

@@ -61,7 +61,7 @@ export default function HistoricalDoseLauncher({
       ) : (
         <>
           <label className="mt-3 block text-sm font-medium text-slate-700 dark:text-slate-200">
-            Supplement
+            IntakeItem
             <select
               className="input mt-1 w-full sm:max-w-sm"
               value={item?.id ?? 0}

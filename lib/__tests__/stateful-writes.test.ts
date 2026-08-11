@@ -54,14 +54,14 @@ const ALLOW_WRITE: { file: string; includes: string; why: string }[] = [
     why: "deleteProfile's erasure sweep (#2039): removing a whole profile is not a dose TRANSITION — there is no state to refuse into and no supply counter left to keep in lock-step, because the intake_items rows carrying it are erased by the same sweep. Routing it through the per-(dose,date) core would mean walking every log row of every item to delete each one individually. The sweep runs with foreign_keys OFF inside one writeTx and is profile-scoped through the parent item, which is the reason it is written as a set delete in the first place.",
   },
   {
-    file: "app/(app)/nutrition/supplement-actions.ts",
+    file: "app/(app)/nutrition/intake-actions.ts",
     includes: "INSERT INTO intake_items",
     why: "createSupplement/createMedication: the item's own CREATE form, where quantity_on_hand is the opt-in initial stock the user typed. There is no prior state to transition from — a born row is the additive case the audit criterion leaves plain — and the refill cores only ever adjust an EXISTING counter relative to its locked read.",
   },
   {
-    file: "app/(app)/nutrition/supplement-actions.ts",
+    file: "app/(app)/nutrition/intake-actions.ts",
     includes: "UPDATE intake_items SET name = ?",
-    why: "updateSupplement: the item EDIT form writes quantity_on_hand as an ABSOLUTE value alongside name/dose/cadence, because the user is stating what is in the bottle. It is not a blind clobber — it goes through the #467 compare-and-set (resolveOnHandWrite over the `quantity_on_hand_loaded` snapshot the form was rendered with), so a dose confirm that landed between page-load and save is preserved exactly as the refill core preserves it. Splitting one form save into two writes would be the second decrement path #1374 removed.",
+    why: "updateIntakeItem: the item EDIT form writes quantity_on_hand as an ABSOLUTE value alongside name/dose/cadence, because the user is stating what is in the bottle. It is not a blind clobber — it goes through the #467 compare-and-set (resolveOnHandWrite over the `quantity_on_hand_loaded` snapshot the form was rendered with), so a dose confirm that landed between page-load and save is preserved exactly as the refill core preserves it. Splitting one form save into two writes would be the second decrement path #1374 removed.",
   },
   {
     file: "lib/import-persist.ts",
@@ -69,9 +69,9 @@ const ALLOW_WRITE: { file: string; includes: string; why: string }[] = [
     why: "the importer's medication CREATE names `active` only as the born row's literal initial value (1) — there is no prior state to transition from, the additive case the audit criterion leaves plain (#2133). Every later flip of the flag, including the import path's own course-derived re-sync, goes through the registered cores.",
   },
   {
-    file: "app/(app)/nutrition/supplement-actions.ts",
+    file: "app/(app)/nutrition/intake-actions.ts",
     includes: "UPDATE intake_item_doses SET amount = ?",
-    why: "updateSupplement's dose EDIT: amount/time/window on a live dose are ordinary last-write-wins form writes; `retired` appears only as the guard PREDICATE (`AND retired = 0`) that keeps a forged/stale id from rewriting a retired dose's row — the column is never SET here (#2131). The retire/un-retire transitions themselves live in the registered dose-lifecycle core.",
+    why: "updateIntakeItem's dose EDIT: amount/time/window on a live dose are ordinary last-write-wins form writes; `retired` appears only as the guard PREDICATE (`AND retired = 0`) that keeps a forged/stale id from rewriting a retired dose's row — the column is never SET here (#2131). The retire/un-retire transitions themselves live in the registered dose-lifecycle core.",
   },
 ];
 

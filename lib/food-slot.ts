@@ -8,7 +8,7 @@
 //
 // Food space has exactly THREE windows (no bedtime cut): a post-bedtime dinner tap
 // counts as Evening, which runs from the midday/evening boundary to MIDNIGHT. This
-// deliberately does NOT borrow supplement-schedule's `currentTimeBucket` 21:00
+// deliberately does NOT borrow intake-schedule's `currentTimeBucket` 21:00
 // "Before sleep" split — the bedtime DOSE slot does not partition food.
 
 import { hhmmToMinutes } from "./date";

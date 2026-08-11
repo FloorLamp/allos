@@ -26,8 +26,8 @@ import { db, today } from "@/lib/db";
 import { lastNDates, shiftDateStr } from "@/lib/date";
 import { collectUpcoming, offeredItems } from "@/lib/queries/upcoming";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getActivitiesByDate,
   getInteractionWarnings,
@@ -42,13 +42,13 @@ import {
   getTimezone,
 } from "@/lib/settings";
 import { supplementAdherenceToday } from "@/lib/household";
-import { isDueOn } from "@/lib/supplement-schedule";
+import { isDueOn } from "@/lib/intake-schedule";
 import {
   adherenceSummary,
   indexTakenByDose,
-  supplementAdherenceStrip,
+  intakeAdherenceStrip,
   STRIP_DAYS,
-} from "@/lib/supplement-adherence";
+} from "@/lib/intake-adherence";
 import {
   buildDemotionSuggestionFindings,
   demotionCandidateItemIds,
@@ -150,10 +150,10 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
 
     // TRACKED: the item and its dose are untouched — nothing was deleted, and the
     // slot survives as an access hint.
-    const item = getSupplements(p).find((s) => s.id === low.itemId)!;
+    const item = getIntakeItems(p).find((s) => s.id === low.itemId)!;
     expect(item.active).toBeTruthy();
     expect(item.obligation).toBe("may");
-    expect(getSupplementDoses(p).some((d) => d.id === low.doseId)).toBe(true);
+    expect(getIntakeDoses(p).some((d) => d.id === low.doseId)).toBe(true);
     // …but it is NOT due: no dueness means no miss, which is the whole point.
     expect(
       isDueOn(item, {
@@ -176,9 +176,9 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
     // The adherence x/y counts ONLY the pushed tier now (#1505): a `may` item has no
     // occurrences, so it cannot drag an honest fraction down.
     const adherence = supplementAdherenceToday(
-      getSupplementDoses(p),
+      getIntakeDoses(p),
       new Map(
-        getSupplements(p)
+        getIntakeItems(p)
           .filter((s) => s.active)
           .map((s) => [s.id, s])
       ),
@@ -321,7 +321,7 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
     const { itemId, doseId } = seedAbandoned(p, "Ashwagandha (test)");
     const day = today(p);
     // Before: pushed. The suggestion has NOT changed anything on its own.
-    expect(getSupplements(p).find((s) => s.id === itemId)!.obligation).toBe(
+    expect(getIntakeItems(p).find((s) => s.id === itemId)!.obligation).toBe(
       "should"
     );
     expect(collectUpcoming(p, day).map((i) => i.key)).toContain(
@@ -329,7 +329,7 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
     );
 
     expect(demoteIntakeObligation(p, itemId)).toBe("demoted");
-    expect(getSupplements(p).find((s) => s.id === itemId)!.obligation).toBe(
+    expect(getIntakeItems(p).find((s) => s.id === itemId)!.obligation).toBe(
       "may"
     );
     // After: it has left the push tier and MOVED into the availability disclosure —
@@ -526,9 +526,9 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
   // the DB each call so a write between two calls is visible if it changes anything.
   function stripFor(profileId: number, itemId: number) {
     const day = today(profileId);
-    return supplementAdherenceStrip(
-      getSupplements(profileId).find((s) => s.id === itemId)!,
-      getSupplementDoses(profileId).filter((d) => d.item_id === itemId),
+    return intakeAdherenceStrip(
+      getIntakeItems(profileId).find((s) => s.id === itemId)!,
+      getIntakeDoses(profileId).filter((d) => d.item_id === itemId),
       lastNDates(day, STRIP_DAYS),
       noWorkouts,
       noSituations,
@@ -595,7 +595,7 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     for (const back of [1, 4, 10, 13]) {
       logTaken(doseId, itemId, shiftDateStr(day, -back));
     }
-    const item = getSupplements(p).find((s) => s.id === itemId)!;
+    const item = getIntakeItems(p).find((s) => s.id === itemId)!;
     const ctx = {
       date: day,
       isWorkoutDay: false,
@@ -620,7 +620,7 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     // Invariant 3: dueness is where it was — still not due, still not pushed.
     expect(
       isDueOn(
-        getSupplements(p).find((s) => s.id === itemId)!,
+        getIntakeItems(p).find((s) => s.id === itemId)!,
         ctx
       )
     ).toBe(false);
@@ -685,7 +685,7 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     // The item is still exactly as un-due as it was, and still only an OFFER.
     expect(
       isDueOn(
-        getSupplements(p).find((s) => s.id === itemId)!,
+        getIntakeItems(p).find((s) => s.id === itemId)!,
         {
           date: day,
           isWorkoutDay: false,

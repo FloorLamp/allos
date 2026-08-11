@@ -124,7 +124,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     const details = patternRow.getByTestId("supplement-row-details");
     const doseBrand = patternRow.getByTestId("supplement-dose-brand");
     const actions = patternRow.getByRole("button", {
-      name: "Supplement actions",
+      name: "IntakeItem actions",
     });
     await expect(doseBrand).toContainText("500 mg");
     await expect(details.getByTestId("adherence-summary")).toBeVisible();
@@ -146,14 +146,14 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 test.describe("nutrition food-log controls stay in the viewport on mobile", () => {
   test.use({ viewport: PHONE });
 
-  test("Food and Supplement controls scroll with their tab context", async ({
+  test("Food and IntakeItem controls scroll with their tab context", async ({
     page,
   }) => {
     for (const surface of [
       { href: "/nutrition", testId: "food-log-context" },
       {
         href: "/nutrition?tab=supplements",
-        testId: "supplement-schedule-context",
+        testId: "intake-schedule-context",
       },
     ]) {
       await page.goto(surface.href);
@@ -187,10 +187,10 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     await expect(page.getByTestId("supplements-status-mobile")).toHaveText(
       /^(?:\d+\/\d+ taken|0 scheduled)$/
     );
-    const addSupplement = page.getByTestId("supplement-add-toggle");
-    await expect(addSupplement.locator("svg")).toBeVisible();
-    await expect(addSupplement.getByText("Add supplement")).toBeHidden();
-    const addSupplementBox = await addSupplement.boundingBox();
+    const addIntakeItem = page.getByTestId("supplement-add-toggle");
+    await expect(addIntakeItem.locator("svg")).toBeVisible();
+    await expect(addIntakeItem.getByText("Add supplement")).toBeHidden();
+    const addSupplementBox = await addIntakeItem.boundingBox();
     expect(addSupplementBox).not.toBeNull();
     expect(addSupplementBox!.width).toBeGreaterThanOrEqual(40);
     expect(addSupplementBox!.height).toBeGreaterThanOrEqual(40);
@@ -282,7 +282,7 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
 
     // Clean up so the fixture is left as found.
     const row = page.locator("div.card").filter({ hasText: NAME });
-    await row.getByRole("button", { name: "Supplement actions" }).click();
+    await row.getByRole("button", { name: "IntakeItem actions" }).click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(

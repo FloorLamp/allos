@@ -19,7 +19,7 @@
 
 import { matchConceptKeys } from "./drug-interactions";
 
-// The minimal item shape the summarizer reads (the getSupplements projection).
+// The minimal item shape the summarizer reads (the getIntakeItems projection).
 export interface CoverageItem {
   name: string;
   rxcui: string | null;

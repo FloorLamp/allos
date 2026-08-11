@@ -22,7 +22,7 @@
 // re-labels the collapsed button at each slot boundary so what it promises stays true
 // even untapped. Hint-less items are offered in every slot — no hint means no opinion.
 
-import { TIME_BUCKET_LABELS, currentTimeBucket } from "../supplement-schedule";
+import { TIME_BUCKET_LABELS, currentTimeBucket } from "../intake-schedule";
 import type { NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
 

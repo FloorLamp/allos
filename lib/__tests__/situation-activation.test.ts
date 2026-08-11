@@ -4,7 +4,7 @@
 // disagree with the list it's acknowledging (a formatter, not a second count).
 
 import { describe, it, expect } from "vitest";
-import { countSituationalDue } from "@/lib/supplement-schedule";
+import { countSituationalDue } from "@/lib/intake-schedule";
 import { situationActivationLine } from "@/lib/situations";
 
 type Supp = Parameters<typeof countSituationalDue>[0][number];

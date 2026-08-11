@@ -4,7 +4,7 @@ import { useState } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
 import QuickAddMedication from "@/components/QuickAddMedication";
 import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
-import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import type { PrnMedForQuickLog } from "@/lib/queries";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -77,7 +77,7 @@ export default function IllnessMedicationLogger({
                 Add an over-the-counter medication and its usual dose.
               </p>
               <QuickAddMedication
-                action={addSupplement}
+                action={addIntakeItem}
                 pediatric={pediatric}
                 onDone={() => setAdding(false)}
               />

@@ -7,18 +7,18 @@ import SupplementForm from "@/components/SupplementForm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { SupplyOption } from "@/lib/supply-product";
-import { addSupplement } from "./supplement-actions";
+import { addIntakeItem } from "./intake-actions";
 
 // The add workflow is intentionally absent from the resting schedule. A compact
 // action opens the same kind-locked form in the shared accessible modal shell.
 export default function AddSupplementModal({
-  allSupplements,
+  allIntakeItems,
   stackItems,
   pgxVariants,
   trainingRestricted,
   initialSupply = null,
 }: {
-  allSupplements: { id: number; name: string }[];
+  allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
   trainingRestricted: boolean;
@@ -51,8 +51,8 @@ export default function AddSupplementModal({
             className="mt-4 min-h-0 overflow-y-auto px-1"
           >
             <SupplementForm
-              action={addSupplement}
-              allSupplements={allSupplements}
+              action={addIntakeItem}
+              allIntakeItems={allIntakeItems}
               stackItems={stackItems}
               pgxVariants={pgxVariants}
               trainingRestricted={trainingRestricted}

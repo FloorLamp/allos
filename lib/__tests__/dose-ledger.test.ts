@@ -8,7 +8,7 @@ import {
   resolveDoseLedgerKind,
   resolveDoseLedgerRange,
 } from "@/lib/dose-ledger";
-import { DOSE_HISTORY_DAYS } from "@/lib/supplement-adherence";
+import { DOSE_HISTORY_DAYS } from "@/lib/intake-adherence";
 import { doseLedgerHref } from "@/lib/hrefs";
 
 describe("the dose ledger's kind filter", () => {

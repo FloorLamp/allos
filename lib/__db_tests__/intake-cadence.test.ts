@@ -24,18 +24,18 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr, weekdayOfDateStr } from "@/lib/date";
 import { collectUpcoming } from "@/lib/queries/upcoming";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getRefillRates,
   markDoseTaken,
   getDoseCadenceLabel,
 } from "@/lib/queries";
 import { getTimezone } from "@/lib/settings";
 import {
-  supplementAdherenceStrip,
+  intakeAdherenceStrip,
   indexTakenByDose,
   adherenceSummary,
-} from "@/lib/supplement-adherence";
+} from "@/lib/intake-adherence";
 import { getIntakeLogsInRange } from "@/lib/queries";
 import { daysOfSupplyLeft } from "@/lib/refill";
 import { cadenceLabel } from "@/lib/intake-cadence";
@@ -127,14 +127,12 @@ function logTaken(doseId: number, itemId: number, date: string): void {
 
 // The strip inputs, gathered the way every real caller does.
 function stripFor(profileId: number, itemId: number, dates: string[]) {
-  const item = getSupplements(profileId).find((s) => s.id === itemId)!;
-  const doses = getSupplementDoses(profileId).filter(
-    (d) => d.item_id === itemId
-  );
+  const item = getIntakeItems(profileId).find((s) => s.id === itemId)!;
+  const doses = getIntakeDoses(profileId).filter((d) => d.item_id === itemId);
   const takenByDose = indexTakenByDose(
     getIntakeLogsInRange(profileId, dates.length + 2)
   );
-  return supplementAdherenceStrip(
+  return intakeAdherenceStrip(
     item,
     doses,
     dates,
@@ -169,7 +167,7 @@ describe("#1602 — a weekly medication stays `must` and is simply not due most 
 
     // Crucially, the OFF-day item was not silenced by demoting it: it is still `must`,
     // so its reminders and missed-dose escalation remain intact for its own day.
-    const off = getSupplements(p).find((s) => s.id === other.itemId)!;
+    const off = getIntakeItems(p).find((s) => s.id === other.itemId)!;
     expect(off.obligation).toBe("must");
     expect(off.active).toBeTruthy();
 
@@ -179,7 +177,7 @@ describe("#1602 — a weekly medication stays `must` and is simply not due most 
       (i) => i.key === `dose:${doseId}`
     )!;
     expect(row.dueText).toContain(
-      cadenceLabel(getSupplements(p).find((s) => s.id === itemId)!)
+      cadenceLabel(getIntakeItems(p).find((s) => s.id === itemId)!)
     );
   });
 });
@@ -327,7 +325,7 @@ describe("#1602 — a taper is windowed rows, and an expired window is not a ret
     expect(rows).toHaveLength(3);
     expect(rows.every((r) => r.retired === 0)).toBe(true);
     // And they are still returned by the current-schedule read.
-    const live = getSupplementDoses(p)
+    const live = getIntakeDoses(p)
       .filter((d) => d.item_id === itemId)
       .map((d) => d.id);
     expect(live).toEqual(expect.arrayContaining([highId, midId, nowId]));
@@ -447,7 +445,7 @@ describe("#1602 — existing daily rows are untouched by the migration", () => {
         .run(itemId).lastInsertRowid
     );
 
-    const item = getSupplements(p).find((s) => s.id === itemId)!;
+    const item = getIntakeItems(p).find((s) => s.id === itemId)!;
     expect(item.cadence_kind).toBe("daily");
     expect(cadenceLabel(item)).toBeNull();
     // Due today and every day, as before.

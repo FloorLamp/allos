@@ -1,4 +1,4 @@
-import type { AdherenceState } from "./supplement-adherence";
+import type { AdherenceState } from "./intake-adherence";
 
 export interface SupplementAdherenceDayInput {
   date: string;
