@@ -15,19 +15,28 @@ import {
 //
 // HONEST SCOPE (read before extending): this guard enforces the framework contract
 // for the datasets listed in lib/datasets/registry.ts, whose committed JSON is EITHER
-// (a) a file under lib/datasets/data/ (the common case — the 20 migrated in #860 Track
-// B waves 1–3) OR (b) an EXTERNAL source file registered in EXTERNAL_SOURCE_DATASETS
+// (a) a file under lib/datasets/data/ (the common case) OR (b) an EXTERNAL source
+// file registered in EXTERNAL_SOURCE_DATASETS
 // below (canonical-biomarkers, whose generator-owned + boot-seeded JSON stays at its
 // historical path; see lib/datasets/canonical-biomarkers.ts for why). It DELIBERATELY
-// does NOT scan the remaining not-yet-migrated curated datasets still under lib/*.json
-// (symptoms/exercise-guides are documented non-candidates): those keep their bespoke
-// shape until each is migrated in its own small PR. So: dropping a NEW dataset JSON
-// under lib/datasets/data/ without a citation/identity fails here; a registered dataset
-// with no data-dir file AND no external-source entry fails the lockstep; the legacy
-// files elsewhere are out of scope by design.
+// does NOT apply the envelope contract to root-level JSON assets. Instead, the small
+// root inventory is classified explicitly in docs/internals/datasets.md and checked
+// below, so a new curated dataset cannot evade citations by landing there. Thus:
+// dropping a NEW dataset JSON under lib/datasets/data/ without a citation/identity
+// fails here; a registered dataset with no data-dir file AND no external-source entry
+// fails the lockstep; and an unclassified root JSON file fails the doc guard.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const DATA_DIR = path.join(REPO, "lib/datasets/data");
+const DATASETS_DOC = path.join(REPO, "docs/internals/datasets.md");
+
+const ROOT_JSON_FILES = [
+  "canonical-biomarkers.json",
+  "exercise-guides.json",
+  "release-notes.json",
+  "symptoms.json",
+  "zip-centroids.json",
+] as const;
 
 // Registered datasets whose committed JSON does NOT live under lib/datasets/data/ but
 // at an external, generator-owned path. Each is wrapped into the framework envelope by
@@ -47,6 +56,20 @@ function dataFiles(): string[] {
   return fs
     .readdirSync(DATA_DIR)
     .filter((f) => f.endsWith(".json"))
+    .sort();
+}
+
+function documentedDatasetIds(): string[] {
+  const doc = fs.readFileSync(DATASETS_DOC, "utf8");
+  const section = doc.match(
+    /### Registry census \(guarded\)\n\n([\s\S]*?)\n### /
+  )?.[1];
+  expect(
+    section,
+    "datasets.md must retain its guarded registry census"
+  ).toBeDefined();
+  return [...section!.matchAll(/^- `([^`]+)`$/gm)]
+    .map((match) => match[1])
     .sort();
 }
 
@@ -131,5 +154,31 @@ describe("curated-dataset framework contract", () => {
     ].sort();
     const registryIds = DATASETS.map((d) => d.dataset.id).sort();
     expect(registryIds).toEqual(expectedIds);
+  });
+
+  it("keeps the documented dataset census in lockstep with the registry", () => {
+    const registryIds = DATASETS.map(({ dataset }) => dataset.id).sort();
+    const doc = fs.readFileSync(DATASETS_DOC, "utf8");
+    expect(documentedDatasetIds()).toEqual(registryIds);
+    expect(doc).toContain(`**${registryIds.length} registered datasets**`);
+    expect(doc).toContain(`**${dataFiles().length}** use envelope JSON`);
+  });
+
+  it("classifies every root-level JSON asset in the framework doc", () => {
+    const rootJsonFiles = fs
+      .readdirSync(path.join(REPO, "lib"))
+      .filter((file) => file.endsWith(".json"))
+      .sort();
+    expect(rootJsonFiles).toEqual([...ROOT_JSON_FILES].sort());
+
+    const doc = fs.readFileSync(DATASETS_DOC, "utf8");
+    for (const file of ROOT_JSON_FILES) {
+      expect(doc, `datasets.md must classify lib/${file}`).toContain(
+        `\`${file}\``
+      );
+    }
+    expect(doc).toMatch(
+      /`exercise-guides\.json` and `symptoms\.json` — documented framework\s+non-candidates/
+    );
   });
 });

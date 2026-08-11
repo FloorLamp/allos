@@ -6,10 +6,10 @@
 // and cross-checks it against the JSON files under lib/datasets/data/. Migrating a
 // dataset = add its loaded dataset + primary strategy here (a thin adoption).
 //
-// SCOPE: this registry lists ONLY framework datasets. The ~21 not-yet-migrated
-// datasets under lib/*.json keep their bespoke shape and are intentionally NOT here
-// (and NOT under lib/datasets/data/), so the linter doesn't retroactively fail them.
-// Each migrates in its own small PR.
+// SCOPE: this registry lists ONLY framework datasets. Root-level JSON assets that are
+// not framework candidates stay outside it and are explicitly classified in
+// docs/internals/datasets.md; the linter keeps that inventory and this registry in
+// lockstep with the document.
 
 import {
   allergenCrossReactivityDataset,
