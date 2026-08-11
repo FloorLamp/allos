@@ -91,8 +91,8 @@ function navHrefs(): string[] {
 // /medical route for months — nothing guarded item links the way nav links are).
 // These are the sources feeding the Upcoming page, the dashboard "Needs
 // attention" hero, and the preventive adapter. Static targets only: a template
-// literal contributes its static path prefix (e.g. `/biomarkers/view?name=${…}`
-// → /biomarkers/view).
+// literal contributes its static path prefix (e.g. `/results/readings/view?name=${…}`
+// → /results/readings/view).
 const DUE_SIGNAL_SOURCES = [
   ["lib", "attention.ts"],
   // The Upcoming item builders (their href literals) live in the generators

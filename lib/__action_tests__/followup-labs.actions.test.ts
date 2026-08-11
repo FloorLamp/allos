@@ -12,9 +12,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { trackLabFollowUp } from "@/app/(app)/biomarkers/actions";
+import { trackLabFollowUp } from "@/app/(app)/results/readings/biomarker-actions";
 import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
-import { deleteRecord } from "@/app/(app)/medical/actions";
+import { deleteResult } from "@/app/(app)/results/reading-actions";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -165,7 +165,7 @@ describe("resolveFollowUp action — labs", () => {
   });
 });
 
-describe("deleteRecord row-ops (#700 labs)", () => {
+describe("deleteResult row-ops (#700 labs)", () => {
   it("de-links a follow-up when its source reading is deleted (no FK-500)", async () => {
     const { profile } = seedActor();
     const now = today(profile.id);
@@ -177,7 +177,7 @@ describe("deleteRecord row-ops (#700 labs)", () => {
     await trackLabFollowUp(fd({ record_id: recId, interval_days: 91 }));
     const cpId = followUpIdFor(profile.id, recId);
 
-    await deleteRecord(fd({ id: recId }));
+    await deleteResult(fd({ id: recId }));
     // The follow-up survives (not cascade-dropped), degraded to a generic item.
     const cp = carePlanRow(cpId)!;
     expect(cp.source_kind).toBeNull();

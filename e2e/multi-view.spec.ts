@@ -1064,7 +1064,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
   });
 });
 
-// Multi-view Biomarkers (Results) table (issue #1331). The results table becomes a
+// Multi-view Readings (Results) table (issue #1331). The results table becomes a
 // MERGE of per-(profile, family) partitions when several profiles are in view:
 // is_latest/dedup are per member (a shared "Vitamin D" family never crosses), rows
 // are subject-stamped, and the read-only member's rows show no edit/delete. Spec-OWNED
@@ -1072,7 +1072,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
 // each with a shared + a unique analyte — see e2e/seed-events.ts). Read-only in this
 // spec (only reads + toggles the view-set), so it never races a neighbor and stays
 // repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
-test.describe("Multi-view Biomarkers table (issue #1331)", () => {
+test.describe("Multi-view Readings table (issue #1331)", () => {
   function mvBioIds(): { selfId: number; roId: number } {
     const dbPath = workerDbPath();
     const db = new Database(dbPath);
@@ -1108,8 +1108,8 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    await page.goto("/results/biomarkers");
-    await expect(page.getByTestId("results-biomarkers")).toBeVisible();
+    await page.goto("/results/readings");
+    await expect(page.getByTestId("results-readings")).toBeVisible();
     // The acting (self) member's unique analyte renders.
     await expect(
       page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
@@ -1139,7 +1139,7 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
 
     await toggleIntoView(page, roId);
     // The view-set persists on the session — re-navigate for a deterministic reload.
-    await page.goto("/results/biomarkers");
+    await page.goto("/results/readings");
     await expectInView(page, 2);
 
     // The leading Profile column appears in multi-view.
@@ -1161,7 +1161,7 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
 
     // Filter to the SHARED family: BOTH members' Vitamin D rows survive — the family
     // dedup never collapsed the two people into one series (per-member partitions).
-    await page.goto("/results/biomarkers?q=vitamin+d");
+    await page.goto("/results/readings?q=vitamin+d");
     await expectInView(page, 2);
     await expect(
       page.getByRole("link", { name: MVBIO_SHARED_ANALYTE, exact: true })
@@ -1181,7 +1181,7 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
   });
 });
 
-// Cross-profile Undo on the multi-view Biomarkers table (#2104). The delete stamps
+// Cross-profile Undo on the multi-view Readings table (#2104). The delete stamps
 // the ROW's profile onto the capture; the restore used to resolve the ACTING profile,
 // so this exact round trip — delete the non-acting member's reading, tap Undo — always
 // failed ("Couldn't undo") and the capture purged for good in the retention sweep.
@@ -1251,7 +1251,7 @@ test.describe("Cross-profile Undo round trip (#2104)", () => {
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
     await expectInView(page, 2);
-    await page.goto(`/results/biomarkers?q=${encodeURIComponent(probeName)}`);
+    await page.goto(`/results/readings?q=${encodeURIComponent(probeName)}`);
     await expectInView(page, 2);
 
     // The probe row renders as the SHARED member's (subject chip) with its write menu
@@ -1271,7 +1271,7 @@ test.describe("Cross-profile Undo round trip (#2104)", () => {
         .getByTestId("confirm-dialog")
         .getByRole("button", { name: "Delete", exact: true })
     );
-    await expect(page.getByText("Record deleted.")).toBeVisible();
+    await expect(page.getByText("Result deleted.")).toBeVisible();
     await expect(row).toHaveCount(0);
 
     // Undo actually restores it — the half that was structurally dead before #2104 —

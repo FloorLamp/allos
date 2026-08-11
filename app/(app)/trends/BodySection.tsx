@@ -92,7 +92,11 @@ import {
   timelineDayHref,
   type AppRoute,
 } from "@/lib/hrefs";
-import type { BodyMetricKind, OutcomeGoal, MedicalRecord } from "@/lib/types";
+import type {
+  BodyMetricKind,
+  OutcomeGoal,
+  ClinicalObservation,
+} from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import ChartCard, { CHART_PLOT_FILL } from "@/components/ChartCard";
@@ -155,7 +159,7 @@ type Point = { date: string; value: number };
 
 // medical_records vitals (BP / SpO2 / respiratory rate / temperature) — one value
 // per reading, mapped to the {date,value} the chart takes.
-function vitalPoints(rows: MedicalRecord[], decimals = 0): Point[] {
+function vitalPoints(rows: ClinicalObservation[], decimals = 0): Point[] {
   return rows
     .filter((r) => r.value_num != null)
     .map((r) => ({

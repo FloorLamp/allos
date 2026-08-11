@@ -5,7 +5,7 @@ import {
   normalizeResultStatus,
   supersedesReading,
 } from "@/lib/lab-result-lifecycle";
-import { insertRecordRevision } from "@/lib/queries/medical/revisions";
+import { insertObservationRevision } from "@/lib/queries/medical/revisions";
 import {
   hasBodyMetric,
   mergeBodyMetricPartialAware,
@@ -740,7 +740,7 @@ export function upsertVitals(
             { ...post, result_status: status }
           )
         ) {
-          insertRecordRevision(
+          insertObservationRevision(
             found.id,
             {
               date: found.date as string | null,

@@ -11,12 +11,12 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  getMedicalRecords,
+  getClinicalObservations,
   getBiomarkerSeries,
   getImmunizations,
   getEncounters,
   getEncounter,
-  findRecordsByContentIdentity,
+  findObservationsByContentIdentity,
   getConditions,
   getProcedures,
   getFamilyHistory,
@@ -156,7 +156,7 @@ function glucoseInput(overrides?: {
 }
 
 function glucoseRows(profileId: number) {
-  return getMedicalRecords(profileId, { category: "lab" }).filter(
+  return getClinicalObservations(profileId, { category: "lab" }).filter(
     (r) => r.name === "Glucose"
   );
 }
@@ -359,13 +359,13 @@ describe("cross-source read-layer de-duplication", () => {
     expect(getEncounter(other, enc.id)).toBeNull();
   });
 
-  it("findRecordsByContentIdentity returns all physical rows behind a content-identity, profile-scoped", () => {
+  it("findObservationsByContentIdentity returns all physical rows behind a content-identity, profile-scoped", () => {
     const docA = newDocument(profileId, "A.ccd");
     const docB = newDocument(profileId, "B.ccd");
     persistDocumentImport(profileId, docA, glucoseInput());
     persistDocumentImport(profileId, docB, glucoseInput());
 
-    const matches = findRecordsByContentIdentity(profileId, {
+    const matches = findObservationsByContentIdentity(profileId, {
       nameKey: "Glucose",
       date: DATE,
       value: "95",
@@ -377,7 +377,7 @@ describe("cross-source read-layer de-duplication", () => {
 
     // A differing value is NOT part of this identity.
     expect(
-      findRecordsByContentIdentity(profileId, {
+      findObservationsByContentIdentity(profileId, {
         nameKey: "Glucose",
         date: DATE,
         value: "99",
@@ -391,7 +391,7 @@ describe("cross-source read-layer de-duplication", () => {
     const otherDoc = newDocument(other, "O.ccd");
     persistDocumentImport(other, otherDoc, glucoseInput());
     expect(
-      findRecordsByContentIdentity(profileId, {
+      findObservationsByContentIdentity(profileId, {
         nameKey: "Glucose",
         date: DATE,
         value: "95",

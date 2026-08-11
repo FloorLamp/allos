@@ -107,7 +107,7 @@ function isoDate(value: string | null): string | null {
 
 function biomarkerHits(profileId: number, like: string): SearchHit[] {
   // One row per distinct canonical biomarker. Only canonical-named records are
-  // returned because the detail page (/biomarkers/view) resolves its series by
+  // returned because the detail page (/results/readings/view) resolves its series by
   // canonical_name alone — a raw, uncanonicalized name has no viewable
   // destination (the biomarkers list renders those as non-clickable text), so
   // surfacing it here would be a dead link. A query still matches on the raw

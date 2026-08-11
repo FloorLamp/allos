@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
-  getMedicalRecords,
+  getClinicalObservations,
   getBiomarkerSeries,
   getSavedBiomarkers,
   isBiomarkerSaved,
@@ -91,7 +91,7 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     // DEDUP + is_latest/current: THREE distinct current rows (one per fraction/total),
     // never collapsed onto one — a D3 (45) must not dedup against a total (50) on one
     // date, nor mark the whole group "current" off whichever is newest.
-    const currentVitD = getMedicalRecords(p.profileId, {
+    const currentVitD = getClinicalObservations(p.profileId, {
       current: true,
     }).filter((r) =>
       (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
@@ -172,7 +172,7 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     addReading("Vitamin D", old, 22);
 
     // Both total spellings collapse to one current row and one series.
-    const currentVitD = getMedicalRecords(p.profileId, {
+    const currentVitD = getClinicalObservations(p.profileId, {
       current: true,
     }).filter((r) =>
       (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
@@ -343,9 +343,9 @@ describe("the SQL family key honours a family's match matcher (#1401)", () => {
     const date = shiftDateStr(p.todayStr, -10);
     addReading("Hemoglobin A1c", date, 6.1, "%");
     addReading(FREEFORM, date, 6.1, "%");
-    expect(a1cRows(getMedicalRecords(p.profileId))).toHaveLength(1);
+    expect(a1cRows(getClinicalObservations(p.profileId))).toHaveLength(1);
     expect(
-      a1cRows(getMedicalRecords(p.profileId, { current: true }))
+      a1cRows(getClinicalObservations(p.profileId, { current: true }))
     ).toHaveLength(1);
   });
 
@@ -355,8 +355,10 @@ describe("the SQL family key honours a family's match matcher (#1401)", () => {
     const date = shiftDateStr(p.todayStr, -10);
     addReading("Hemoglobin A1c", date, 6.1, "%");
     addReading(FREEFORM, date, 6.4, "%");
-    expect(a1cRows(getMedicalRecords(p.profileId))).toHaveLength(2);
-    const current = a1cRows(getMedicalRecords(p.profileId, { current: true }));
+    expect(a1cRows(getClinicalObservations(p.profileId))).toHaveLength(2);
+    const current = a1cRows(
+      getClinicalObservations(p.profileId, { current: true })
+    );
     expect(current).toHaveLength(1);
   });
 
@@ -402,7 +404,9 @@ describe("the A1c retest clock and interval key on the same identity (#1394/#139
     addOneDraw(date);
     // Premise: the family's representative really is the eAG line, whose name the
     // curated dataset does not carry.
-    const current = getMedicalRecords(p.profileId, { current: true }).filter(
+    const current = getClinicalObservations(p.profileId, {
+      current: true,
+    }).filter(
       (r) =>
         biomarkerFamily(r.canonical_name ?? r.name) === "family:hemoglobin-a1c"
     );

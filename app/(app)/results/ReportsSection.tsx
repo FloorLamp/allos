@@ -1,4 +1,4 @@
-import { getReportRecords } from "@/lib/queries";
+import { getClinicalReports } from "@/lib/queries";
 import { EmptyState } from "@/components/ui";
 import NotesText from "@/components/NotesText";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
@@ -20,7 +20,7 @@ export default function ReportsSection({
   profileId: number;
   fmt: DisplayFormatPrefs;
 }) {
-  const reports = getReportRecords(profileId);
+  const reports = getClinicalReports(profileId);
 
   if (reports.length === 0) {
     return (

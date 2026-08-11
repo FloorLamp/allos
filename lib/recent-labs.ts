@@ -1,5 +1,9 @@
 import { isNonOptimal, isOutOfRange } from "./reference-range";
-import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
+import type {
+  MedicalCategory,
+  MedicalFlag,
+  ClinicalObservation,
+} from "./types";
 import { readingDetailHref, type AppRoute } from "./hrefs";
 import {
   freshnessAgeDays,
@@ -47,10 +51,10 @@ export interface RecentLabRow {
 // The policy it carried is unchanged: every non-normal flag gets a word, normal/null
 // gets none, through the one flagLabel/flagTone chokepoint (#306).
 
-// The subset of a medical record the highlight selection reads. `getMedicalRecords`
+// The subset of a clinical observation the highlight selection reads. `getClinicalObservations`
 // rows satisfy it; tests can build the minimal shape.
 type LabRecord = Pick<
-  MedicalRecord,
+  ClinicalObservation,
   "category" | "flag" | "date" | "canonical_name" | "name" | "value" | "unit"
 >;
 
@@ -59,7 +63,7 @@ type LabRecord = Pick<
 // surface: out-of-range markers float to the top, then newest-first, then take
 // the first `limit`. A flagged marker being the headline is the whole point, so
 // the flag precedence leads and the date tie-break is only among equally-flagged
-// rows. Pure over the `{ current: true }` medical-records read so a digest,
+// rows. Pure over the `{ current: true }` clinical-observations read so a digest,
 // weekly recap, or HA "recent labs" read shares the identical policy.
 export function recentLabHighlights(
   records: LabRecord[],

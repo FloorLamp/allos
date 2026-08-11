@@ -54,8 +54,8 @@ import { getMedMatchStates } from "./intake/medications";
 import { foldConsolidatedMeds } from "../medication-renewal";
 import { parsePrescription } from "../prescription-parse";
 import type { PersistInput, PersistRecord } from "../import-shape";
-import { getRecordsForDocument } from "./medical";
-import { recordCategoryRank, recordsTabKey } from "../import-browser";
+import { getObservationsForDocument } from "./medical";
+import { observationCategoryRank, observationsTabKey } from "../import-browser";
 import { encounterTypeDisplay } from "../encounter-kind";
 import { variantDisplayLabel } from "../genomic-variant";
 import { studyDisplayLabel } from "../imaging-study";
@@ -456,7 +456,7 @@ export function getDocumentProduced(
 //
 // The read-only rows one document produced in each non-medical_records table,
 // for the tabbed browser on /import/[id] (medical_records tabs reuse
-// getRecordsForDocument). Each read is profile-scoped AND traced to the document
+// getObservationsForDocument). Each read is profile-scoped AND traced to the document
 // via the exact provenance link the writer stamped — document_id, or
 // documentSource(id) for the source-keyed tables — mirroring getDocumentProduced
 // above, so a tab's rows are exactly the rows its count counted. The page maps
@@ -822,13 +822,16 @@ export function getDocumentTriageRows(
   // serves whichever of them were hedged on. Ordered by the tab strip's own
   // category order, so "the first match's tab" means the leftmost tab.
   if (want.has("lab") || want.has("vitals") || want.has("medication")) {
-    const records = getRecordsForDocument(profileId, docId)
-      .map((r) => ({ r, rank: recordCategoryRank(r.category) }))
+    const records = getObservationsForDocument(profileId, docId)
+      .map((r) => ({ r, rank: observationCategoryRank(r.category) }))
       .sort((a, b) => a.rank - b.rank || a.r.id - b.r.id);
     for (const { r } of records) {
       const kind = recordConfidenceKind(r.category);
       if (!want.has(kind)) continue;
-      push(kind, recordsTabKey(r.category), r.id, [r.name, r.canonical_name]);
+      push(kind, observationsTabKey(r.category), r.id, [
+        r.name,
+        r.canonical_name,
+      ]);
     }
   }
   if (want.has("encounter")) {

@@ -102,7 +102,7 @@ describe("followUpItems labs builder (#700)", () => {
     expect(reason?.text).toContain("flagged 8.2%");
     expect(declaredReasonCodesFor(it.key)).toContain("followup-source");
     // The item deep-links to the biomarker's detail page.
-    expect(it.href).toContain("/biomarkers/view");
+    expect(it.href).toContain("/results/readings/view");
     // Not overdue yet ⇒ ordinary suppressibility.
     expect(it.carePersistent).toBeUndefined();
     expect(it.followUpResolve).toBeUndefined();

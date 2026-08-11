@@ -32,7 +32,7 @@ import { unlinkVideoFiles } from "./video/store";
 import { thumbSiblingPath, unlinkPhotoFiles } from "./photo/store";
 import {
   unlinkFollowUpsForSkinLesion,
-  unlinkFollowUpsForMedicalRecord,
+  unlinkFollowUpsForClinicalObservation,
 } from "./followup-write";
 import { revertActivityMerge } from "./merge-activity";
 import { restoreAdministrationLog } from "./queries/intake/adherence";
@@ -282,7 +282,7 @@ export function captureDelete(
     // on undo (like the equipment_id / supply-decrement side effects) — the reading
     // returns, its follow-up linkage stays honestly gone.
     if (spec.ownedTable === "medical_records") {
-      unlinkFollowUpsForMedicalRecord(profileId, rootId);
+      unlinkFollowUpsForClinicalObservation(profileId, rootId);
       // A projected medication (#1051) may link this prescription record as its
       // source_record_id (a REFERENCES FK, no ON DELETE). NULL it first so the
       // medical_records DELETE below can't trip the FK; the med survives, its

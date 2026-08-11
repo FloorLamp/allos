@@ -23,7 +23,7 @@ import {
   type ReadingState,
   type ResultStatus,
 } from "../../lab-result-lifecycle";
-import type { MedicalFlag, MedicalRecordRevision } from "../../types";
+import type { MedicalFlag, ClinicalObservationRevision } from "../../types";
 
 // The prior state a revision preserves — the reading's own columns, as they stood
 // before the overwrite.
@@ -41,20 +41,20 @@ const insertStmt = () =>
   );
 
 // Preserve one reading's prior state. Auth-blind write core (AGENTS.md): it takes an
-// already-authorized record id and never consults lib/auth. MUST be called inside
+// already-authorized observation id and never consults lib/auth. MUST be called inside
 // the caller's transaction, immediately before the UPDATE that overwrites the row,
 // so the snapshot and the overwrite commit together or not at all.
 //
 // `supersededByStatus` is what the INCOMING result called itself; `source` is the
 // ingest that performed the overwrite. Returns the new revision id.
-export function insertRecordRevision(
-  recordId: number,
+export function insertObservationRevision(
+  observationId: number,
   prior: RevisionSnapshot,
   supersededByStatus: string | null,
   source: string | null
 ): number {
   const info = insertStmt().run(
-    recordId,
+    observationId,
     prior.date ?? null,
     prior.value ?? null,
     prior.value_num ?? null,
@@ -68,7 +68,9 @@ export function insertRecordRevision(
   return Number(info.lastInsertRowid);
 }
 
-function rowToRevision(r: Record<string, unknown>): MedicalRecordRevision {
+function rowToRevision(
+  r: Record<string, unknown>
+): ClinicalObservationRevision {
   return {
     id: Number(r.id),
     record_id: Number(r.record_id),
@@ -88,13 +90,13 @@ function rowToRevision(r: Record<string, unknown>): MedicalRecordRevision {
 }
 
 // Every preserved prior state of ONE reading, newest first. Profile-scoped through
-// the parent join, so a record id belonging to another profile reads as empty.
+// the parent join, so an observation id belonging to another profile reads as empty.
 // Returns plain serializable objects (never a better-sqlite3 row proxy), so a Server
 // Component can hand them straight to a client component.
-export function getRecordRevisions(
+export function getObservationRevisions(
   profileId: number,
-  recordId: number
-): MedicalRecordRevision[] {
+  observationId: number
+): ClinicalObservationRevision[] {
   const rows = db
     .prepare(
       `SELECT rev.* FROM medical_record_revisions rev
@@ -102,20 +104,20 @@ export function getRecordRevisions(
         WHERE rev.record_id = ? AND mr.profile_id = ?
         ORDER BY rev.superseded_at DESC, rev.id DESC`
     )
-    .all(recordId, profileId) as Record<string, unknown>[];
+    .all(observationId, profileId) as Record<string, unknown>[];
   return rows.map(rowToRevision);
 }
 
-// The revisions for a SET of readings, grouped by record id — the list-surface twin
+// The revisions for a SET of readings, grouped by observation id — the list-surface twin
 // of the single read above (a biomarker detail page renders many readings, and one
 // query beats N). Profile-scoped through the same parent join. An empty id list
 // returns an empty map without touching the database.
-export function getRevisionsByRecord(
+export function getRevisionsByObservation(
   profileId: number,
-  recordIds: number[]
-): Map<number, MedicalRecordRevision[]> {
-  const out = new Map<number, MedicalRecordRevision[]>();
-  const ids = recordIds.filter((id) => Number.isFinite(id) && id > 0);
+  observationIds: number[]
+): Map<number, ClinicalObservationRevision[]> {
+  const out = new Map<number, ClinicalObservationRevision[]>();
+  const ids = observationIds.filter((id) => Number.isFinite(id) && id > 0);
   if (ids.length === 0) return out;
   const rows = db
     .prepare(

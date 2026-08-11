@@ -16,7 +16,7 @@ import {
   getDashboardStats,
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
-  getMedicalRecords,
+  getClinicalObservations,
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
@@ -124,7 +124,7 @@ export default async function HouseholdPage() {
     );
 
     // Biomarkers whose current (latest) reading is out of the lab reference range.
-    const oorBiomarkers = getMedicalRecords(pid, {
+    const oorBiomarkers = getClinicalObservations(pid, {
       current: true,
       range: "oor",
     }).length;

@@ -7,7 +7,7 @@ import { test, expect } from "./fixtures";
 test("embedded-unit and titer-ratio values are recovered onto the chart (#542)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers/view?name=E2E%20Rubella%20IgG%20Titer");
+  await page.goto("/results/readings/view?name=E2E%20Rubella%20IgG%20Titer");
 
   await expect(
     page.getByRole("heading", { name: "E2E Rubella IgG Titer" })
@@ -29,7 +29,7 @@ test("embedded-unit and titer-ratio values are recovered onto the chart (#542)",
 test("a purely qualitative series renders a dated timeline, not a blank chart (#543)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers/view?name=E2E%20Mumps%20IgG%20Screen");
+  await page.goto("/results/readings/view?name=E2E%20Mumps%20IgG%20Screen");
 
   await expect(
     page.getByRole("heading", { name: "E2E Mumps IgG Screen" })
@@ -48,7 +48,9 @@ test("a purely qualitative series renders a dated timeline, not a blank chart (#
 test("visual acuity renders a dated timeline with no false abnormal flag (#698)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers/view?name=Visual%20Acuity%2C%20Right%20Eye");
+  await page.goto(
+    "/results/readings/view?name=Visual%20Acuity%2C%20Right%20Eye"
+  );
 
   await expect(
     page.getByRole("heading", { name: "Visual Acuity, Right Eye" })

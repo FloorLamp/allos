@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   readingDetailHref,
-  biomarkerAddHref,
+  readingAddHref,
   timelineDayHref,
   trainingLogDayHref,
   dayHistoryAddHref,
@@ -17,24 +17,24 @@ import {
   currentPathHref,
 } from "@/lib/hrefs";
 
-describe("biomarkerAddHref", () => {
+describe("readingAddHref", () => {
   it("links the biomarker add form prefilled with the analyte name (#662/#1083)", () => {
-    expect(biomarkerAddHref("LDL Cholesterol")).toBe(
-      "/results/biomarkers?new=1&name=LDL%20Cholesterol"
+    expect(readingAddHref("LDL Cholesterol")).toBe(
+      "/results/readings?new=1&name=LDL%20Cholesterol"
     );
   });
 
   it("falls back to the unprefilled add form without a name", () => {
-    expect(biomarkerAddHref(null)).toBe("/results/biomarkers?new=1");
-    expect(biomarkerAddHref(undefined)).toBe("/results/biomarkers?new=1");
-    expect(biomarkerAddHref("  ")).toBe("/results/biomarkers?new=1");
+    expect(readingAddHref(null)).toBe("/results/readings?new=1");
+    expect(readingAddHref(undefined)).toBe("/results/readings?new=1");
+    expect(readingAddHref("  ")).toBe("/results/readings?new=1");
   });
 
   it("uses the post-#1079 tabbed base, never the redirect-surviving hash form", () => {
     expect(
-      biomarkerAddHref(
-        "High-Sensitivity C-Reactive Protein (hs-CRP)"
-      ).startsWith("/results/biomarkers?")
+      readingAddHref("High-Sensitivity C-Reactive Protein (hs-CRP)").startsWith(
+        "/results/readings?"
+      )
     ).toBe(true);
   });
 });
@@ -77,10 +77,10 @@ describe("readingDetailHref", () => {
     // A domain vital is `category = 'vitals'` too, and belongs on the lab renderer:
     // it arrives a few times a year and is read against a band / a percentile.
     expect(readingDetailHref("Grip Strength")).toBe(
-      "/biomarkers/view?name=Grip%20Strength"
+      "/results/readings/view?name=Grip%20Strength"
     );
     expect(readingDetailHref("Intraocular Pressure")).toBe(
-      "/biomarkers/view?name=Intraocular%20Pressure"
+      "/results/readings/view?name=Intraocular%20Pressure"
     );
   });
 
@@ -88,7 +88,7 @@ describe("readingDetailHref", () => {
     // The #283 bug 5 fix: the view page resolves ?name= as the canonical name, so
     // a canonicalized reading links to its series under the canonical spelling.
     expect(readingDetailHref("LDL Cholesterol", "LDL-C")).toBe(
-      "/biomarkers/view?name=LDL%20Cholesterol"
+      "/results/readings/view?name=LDL%20Cholesterol"
     );
   });
 
@@ -99,22 +99,22 @@ describe("readingDetailHref", () => {
     const canonical = "Hemoglobin A1c";
     const raw = "HbA1c";
     expect(readingDetailHref(canonical, raw)).toBe(
-      "/biomarkers/view?name=Hemoglobin%20A1c"
+      "/results/readings/view?name=Hemoglobin%20A1c"
     );
   });
 
   it("falls back to the biomarkers list when there is no canonical name", () => {
     // An uncanonicalized reading has no ?name= the view can resolve.
     expect(readingDetailHref(null, "Some Raw Analyte")).toBe(
-      "/results/biomarkers"
+      "/results/readings"
     );
-    expect(readingDetailHref(undefined)).toBe("/results/biomarkers");
-    expect(readingDetailHref("   ")).toBe("/results/biomarkers");
+    expect(readingDetailHref(undefined)).toBe("/results/readings");
+    expect(readingDetailHref("   ")).toBe("/results/readings");
   });
 
   it("encodes query-unsafe characters in the canonical name", () => {
     expect(readingDetailHref("Vitamin D (25-OH)")).toBe(
-      "/biomarkers/view?name=Vitamin%20D%20(25-OH)"
+      "/results/readings/view?name=Vitamin%20D%20(25-OH)"
     );
   });
 });

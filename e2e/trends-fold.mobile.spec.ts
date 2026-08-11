@@ -134,7 +134,7 @@ test.describe("Overview leads with charts (B)", () => {
 
     // Its one remaining card surface still renders it — the store and the lens are
     // untouched, only this page's layout changed.
-    await page.goto("/results/biomarkers");
+    await page.goto("/results/readings");
     await expect(page.getByTestId("starred-biomarkers")).toBeVisible();
   });
 

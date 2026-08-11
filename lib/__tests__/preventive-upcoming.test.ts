@@ -57,16 +57,16 @@ describe("preventiveHref — per-class deep link from satisfiedBy (#1083)", () =
 
   it("lab → the biomarker add-form prefilled with the canonical (#662, NOT #biomarkers)", () => {
     expect(preventiveHref("screening", "lipid_screening")).toBe(
-      "/results/biomarkers?new=1&name=LDL%20Cholesterol"
+      "/results/readings?new=1&name=LDL%20Cholesterol"
     );
     expect(preventiveHref("screening", "diabetes_screening")).toBe(
-      "/results/biomarkers?new=1&name=Hemoglobin%20A1c"
+      "/results/readings?new=1&name=Hemoglobin%20A1c"
     );
   });
 
   it("lab with no tracked biomarker → the add form, unprefilled", () => {
     expect(preventiveHref("screening", "hepatitis_c")).toBe(
-      "/results/biomarkers?new=1"
+      "/results/readings?new=1"
     );
   });
 
@@ -252,7 +252,7 @@ describe("preventiveAssessmentToUpcomingItem", () => {
       // key, expected href, expected CTA
       [
         "lipid_screening",
-        "/results/biomarkers?new=1&name=LDL%20Cholesterol",
+        "/results/readings?new=1&name=LDL%20Cholesterol",
         "Record your LDL Cholesterol result",
       ],
       [

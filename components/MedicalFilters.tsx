@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { IconChevronDown } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
-import RecordSearch from "./RecordSearch";
+import ObservationSearch from "./ObservationSearch";
 import RangeFilterSelect from "./RangeFilterSelect";
 import CategoryFilterSelect from "./CategoryFilterSelect";
 import PanelFilterSelect from "./PanelFilterSelect";
@@ -12,7 +12,7 @@ import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { activeFacetCount, filterTriggerLabel } from "@/lib/record-facets";
 import type { PanelId } from "@/lib/biomarker-panels";
 
-// Filter bar for the medical records table: a category dropdown, the clinical
+// Filter bar for the clinical readings table: a category dropdown, the clinical
 // PANEL dropdown (#1502), and the All/Non-optimal/Out-of-range "show" filter.
 // Each control navigates via query params, preserving the others (including the
 // active sort, which lives in `sort`/`dir`).
@@ -86,9 +86,9 @@ export default function MedicalFilters({
       else sp.delete(k);
     }
     const s = sp.toString();
-    // The browser lives on the /results/biomarkers tab (#1079); a filter change
+    // The browser lives on the /results/readings tab (#1079); a filter change
     // rewrites its searchparams and lands back on the same tab.
-    return s ? `/results/biomarkers?${s}` : "/results/biomarkers";
+    return s ? `/results/readings?${s}` : "/results/readings";
   }
 
   return (
@@ -97,7 +97,7 @@ export default function MedicalFilters({
       data-testid="medical-filters"
     >
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:gap-4">
-        <RecordSearch q={q} />
+        <ObservationSearch q={q} />
 
         {/* Phone-only trigger: at `sm` and up the group is always open, so the
             control that opens it has nothing left to do. */}
@@ -128,7 +128,7 @@ export default function MedicalFilters({
           } sm:contents`}
         >
           {/* Biomarkers browser: never offer 'prescription' — meds aren't listed
-            here (see getMedicalRecords excludeCategories on the page). */}
+            here (see getClinicalObservations excludeCategories on the page). */}
           <CategoryFilterSelect
             value={category}
             categories={BIOMARKER_CATEGORIES}

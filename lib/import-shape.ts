@@ -695,7 +695,7 @@ export function extractionToPersistInput(
     // A `report` row is a narrative document (#708 — an ECG/stress-test/imaging
     // interpretation the model classified as `report`), not a valued analyte: its text
     // belongs in `notes` with a NULL value, matching the CDA report shape that
-    // Results → Reports reads (getReportRecords renders `notes`). The model puts the
+    // Results → Reports reads (getClinicalReports renders `notes`). The model puts the
     // narrative in `value` (the natural result field), so fold value+notes into one
     // body here — otherwise the report renders with an empty body.
     const isReport = r.category === "report";

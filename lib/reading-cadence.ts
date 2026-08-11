@@ -6,7 +6,7 @@
 //   • EPISODIC — a few readings a year, read against a reference band. A lab draw,
 //     an audiogram threshold, a periodontal probing depth, an intraocular pressure,
 //     a grip-strength test. The question is "where does this value sit in its
-//     range?", so the reading detail page (/biomarkers/view) is the right renderer:
+//     range?", so the reading detail page (/results/readings/view) is the right renderer:
 //     reference + optimal bands, lab provenance ("Reported as", the reporting lab's
 //     own range), a whole-history line that CONNECTS the draws because connecting
 //     them is the story.

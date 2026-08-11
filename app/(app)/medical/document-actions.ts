@@ -1,6 +1,6 @@
 "use server";
 // Medical document PIPELINE server actions (issue #318). Split out of the sibling
-// actions.ts (which keeps record CRUD — addRecord/updateRecord/deleteRecord) so the
+// actions.ts (which keeps record CRUD — addResult/updateResult/deleteResult) so the
 // document upload/extract/reprocess/reassign/delete surface no longer churns the
 // same file as the humble record form. These are thin auth-and-revalidate wrappers:
 // the pipeline engine (ingest, extraction, reprocess core, preview) lives in

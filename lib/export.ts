@@ -1449,7 +1449,7 @@ export const DELETE_POLICY = {
     // Also refresh the import document subpages, which list these readings.
     revalidate: [
       "/results",
-      "/biomarkers/view",
+      "/results/readings/view",
       revalidateTarget("/import/[id]"),
       "/",
     ],

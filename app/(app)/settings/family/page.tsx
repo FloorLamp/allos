@@ -24,7 +24,7 @@ interface LoginRow {
 export interface ProfileDataSummary {
   activities: number;
   bodyMetrics: number;
-  medicalRecords: number;
+  clinicalObservations: number;
   documents: number;
 }
 
@@ -85,7 +85,7 @@ export default async function FamilySettingsPage() {
     summaries[p.id] = {
       activities: count("activities", p.id),
       bodyMetrics: count("body_metrics", p.id),
-      medicalRecords: count("medical_records", p.id),
+      clinicalObservations: count("medical_records", p.id),
       documents: count("medical_documents", p.id),
     };
   }

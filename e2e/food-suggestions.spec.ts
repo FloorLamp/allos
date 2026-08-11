@@ -11,7 +11,7 @@ test("omega-3 detail page suggests fatty fish, swapped to the alternative for th
   page,
 }) => {
   await page.goto(
-    `/biomarkers/view?name=${encodeURIComponent("Omega-3 Total (OmegaCheck)")}`
+    `/results/readings/view?name=${encodeURIComponent("Omega-3 Total (OmegaCheck)")}`
   );
 
   const card = page.getByTestId("biomarker-food-suggestions");
@@ -32,7 +32,9 @@ test("omega-3 detail page suggests fatty fish, swapped to the alternative for th
 test("folate detail page suggests leafy greens with the warfarin vitamin-K note (#577)", async ({
   page,
 }) => {
-  await page.goto(`/biomarkers/view?name=${encodeURIComponent("Folate")}`);
+  await page.goto(
+    `/results/readings/view?name=${encodeURIComponent("Folate")}`
+  );
 
   const suggestion = page.getByTestId("food-suggestion-folate");
   await expect(suggestion).toBeVisible();
@@ -44,7 +46,9 @@ test("folate detail page suggests leafy greens with the warfarin vitamin-K note 
 test("selenium detail page suggests brazil nuts — expanded low-nutrient coverage (#774)", async ({
   page,
 }) => {
-  await page.goto(`/biomarkers/view?name=${encodeURIComponent("Selenium")}`);
+  await page.goto(
+    `/results/readings/view?name=${encodeURIComponent("Selenium")}`
+  );
 
   const suggestion = page.getByTestId("food-suggestion-selenium");
   await expect(suggestion).toBeVisible();
@@ -68,7 +72,7 @@ test("high LDL detail page shows a REDUCE suggestion (cut back on limit-tier foo
   page,
 }) => {
   await page.goto(
-    `/biomarkers/view?name=${encodeURIComponent("LDL Cholesterol")}`
+    `/results/readings/view?name=${encodeURIComponent("LDL Cholesterol")}`
   );
 
   const suggestion = page.getByTestId("food-suggestion-ldl-apob");

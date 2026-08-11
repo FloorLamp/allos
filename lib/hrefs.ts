@@ -172,14 +172,14 @@ export function addItemFromPoolHref(
 // Query-rule helpers
 // --------------------------------------------------------------------------
 
-// The biomarkers LIST route: where `readingDetailHref` falls back when there is
+// The clinical-readings LIST route: where `readingDetailHref` falls back when there is
 // no canonical name to chart, and (since #1447) where a PARAMLESS
-// /biomarkers/view redirects — that route can only render a degenerate empty
+// /results/readings/view redirects — that route can only render a degenerate empty
 // page, and this helper already owns "no name ⇒ the list". One constant so the
 // link rule and the redirect can never point at different places.
-export const BIOMARKERS_LIST_HREF: AppRoute = "/results/biomarkers";
+export const READINGS_LIST_HREF: AppRoute = "/results/readings";
 
-// PRIVATE destination builder: the EPISODIC reading's page (/biomarkers/view), or
+// PRIVATE destination builder: the EPISODIC reading's page (/results/readings/view), or
 // the list when there's nothing to chart. The RULE (was duplicated, wrong in one
 // place — #283 bug 5): the view page resolves `?name=` as the CANONICAL name, so
 // only a canonicalized reading has a series to link to. Gate on `canonicalName`;
@@ -191,7 +191,7 @@ export const BIOMARKERS_LIST_HREF: AppRoute = "/results/biomarkers";
 // rule. Everything outside this module asks `readingDetailHref` for "the detail
 // page for this reading" and gets whichever surface that reading belongs on —
 // exactly as `metricDetailHref` stays honest about being only the metric surface.
-function biomarkerViewHref(
+function episodicReadingHref(
   canonicalName: string | null | undefined,
   rawName?: string | null
 ): AppRoute {
@@ -202,8 +202,8 @@ function biomarkerViewHref(
   // present `canonical` always wins.
   const name = canonical || rawName?.trim();
   return canonical && name
-    ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-    : BIOMARKERS_LIST_HREF;
+    ? `/results/readings/view?name=${encodeURIComponent(name)}`
+    : READINGS_LIST_HREF;
 }
 
 // THE detail page for a clinical reading, wherever that reading's surface lives
@@ -215,7 +215,7 @@ function biomarkerViewHref(
 // The rule is CADENCE, and it lives in lib/reading-cadence.ts: a continuous reading
 // (SpO2, blood pressure, respiratory rate, body temperature) resolves to its metric
 // detail surface, which charts it as the trend it is; every episodic reading resolves
-// to the reference-range renderer at /biomarkers/view. Named for its SUBJECT rather
+// to the reference-range renderer at /results/readings/view. Named for its SUBJECT rather
 // than either destination, because a helper named after one destination invites a
 // caller to reason "this one is different, so I should use something else" — the
 // drift the centralization exists to prevent.
@@ -226,29 +226,29 @@ export function readingDetailHref(
   const slug = continuousReadingSlug(canonicalName);
   return slug
     ? metricDetailHref(slug)
-    : biomarkerViewHref(canonicalName, rawName);
+    : episodicReadingHref(canonicalName, rawName);
 }
 
 // The biomarkers list FILTERED to one normalized panel (#1502). A rule-carrying
 // helper because the `?panel=` facet now encodes a controlled SLUG (not the old
 // free-text heading) on the post-#1079 list route, and two lanes emit it — the
-// Panel cell in BiomarkersTable and the "see the whole panel" link on biomarker
+// Panel cell in ReadingsTable and the "see the whole panel" link on biomarker
 // detail. One encoding so they can't drift onto different routes or param shapes.
 export function panelFilterHref(panel: PanelId): AppRoute {
-  return `/results/biomarkers?panel=${encodeURIComponent(panel)}`;
+  return `/results/readings?panel=${encodeURIComponent(panel)}`;
 }
 
-// The biomarker ADD-FORM deep link: Results › Biomarkers with the add form
+// The reading ADD-FORM deep link: Results › Readings with the add form
 // focused (?new=1) and optionally name-prefilled (#662). This is the ONE encoding
 // of the lab-record deep-link shape (#1083) shared by the preventive screening
 // rows/nudges (lib/preventive-upcoming) and the data-quality PhenoAge gap
 // (#1146), so the two lanes can't diverge (#221). The base is the post-#1079
 // tabbed route — never `/results#biomarkers`, which only survives via redirect.
-export function biomarkerAddHref(name?: string | null): AppRoute {
+export function readingAddHref(name?: string | null): AppRoute {
   const n = name?.trim();
   return n
-    ? `/results/biomarkers?new=1&name=${encodeURIComponent(n)}`
-    : "/results/biomarkers?new=1";
+    ? `/results/readings?new=1&name=${encodeURIComponent(n)}`
+    : "/results/readings?new=1";
 }
 
 // The Medications list filtered to a maintenance slice (#1146). Source of truth

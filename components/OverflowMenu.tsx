@@ -13,7 +13,7 @@ import { IconDots } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 
 // Shared kebab (⋯) overflow menu used by the goals and supplement cards and the
-// extracted-records table. The caller owns the open state (so it can also lift
+// extracted-observations table. The caller owns the open state (so it can also lift
 // its card's z-index while the menu is open) and passes it in controlled — this
 // component renders the trigger, click-away backdrop, and panel.
 //

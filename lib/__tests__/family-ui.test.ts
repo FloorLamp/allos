@@ -48,10 +48,12 @@ describe("deletionErasesText", () => {
       deletionErasesText({
         activities: 1,
         bodyMetrics: 0,
-        medicalRecords: 3,
+        clinicalObservations: 3,
         documents: 1,
       })
-    ).toBe("1 activity, 0 body metrics, 3 medical records, and 1 document");
+    ).toBe(
+      "1 activity, 0 body metrics, 3 clinical observations, and 1 document"
+    );
   });
   it("falls back generically when the summary is absent", () => {
     expect(deletionErasesText(undefined)).toBe("all of this profile's data");

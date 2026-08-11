@@ -542,7 +542,7 @@ export function isReportNarrativeObs(obs: any): boolean {
   return edValue(obs) != null && loincFromCode(obs?.code) != null;
 }
 
-function mapReportRecord(
+function mapClinicalReport(
   obs: any,
   // Collapsed map resolves the single-line NAME; block map keeps the BODY's line breaks.
   names: Record<string, string>,
@@ -606,7 +606,7 @@ function reportRecordsFromEntries(
       (c: any) => c?.observation
     );
     for (const o of [...nested, ...asArray(entry?.observation)]) {
-      const rec = mapReportRecord(o, names, blocks, orgProvider);
+      const rec = mapClinicalReport(o, names, blocks, orgProvider);
       if (rec) out.push(rec);
     }
   }

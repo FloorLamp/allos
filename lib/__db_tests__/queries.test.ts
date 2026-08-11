@@ -24,8 +24,8 @@ import {
   getWeights,
   getLatestBodyMetric,
   getMetricDailyTotals,
-  getMedicalRecords,
-  getLatestMedicalRecordByCanonical,
+  getClinicalObservations,
+  getLatestClinicalObservationByCanonical,
   getSavedBiomarkers,
   getMedicalDocuments,
   reconcileFlags,
@@ -123,13 +123,16 @@ describe("metrics reads", () => {
 });
 
 describe("medical / biomarker reads", () => {
-  it("getMedicalRecords + latest-in-group return the seeded Glucose reading", () => {
-    const recs = getMedicalRecords(fx.profileId);
+  it("getClinicalObservations + latest-in-group return the seeded Glucose reading", () => {
+    const recs = getClinicalObservations(fx.profileId);
     expect(recs.length).toBe(1);
     expect(recs[0].name).toBe("Glucose");
     expect((recs[0] as { is_latest: number }).is_latest).toBe(1);
 
-    const latest = getLatestMedicalRecordByCanonical(fx.profileId, "glucose");
+    const latest = getLatestClinicalObservationByCanonical(
+      fx.profileId,
+      "glucose"
+    );
     expect(latest?.value_num).toBe(fx.glucoseValueNum);
 
     expect(getMedicalDocuments(fx.profileId).map((d) => d.filename)).toContain(
@@ -153,17 +156,20 @@ describe("medical / biomarker reads", () => {
        VALUES (?, '2026-01-15', 'lab', 'Glucose, Fasting', '130', 'mg/dL', 'Glucose, Fasting', 130)`
     ).run(fx.profileId);
     expect(
-      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose")?.flag ?? null
+      getLatestClinicalObservationByCanonical(fx.profileId, "Glucose")?.flag ??
+        null
     ).toBeNull();
 
     const changed = reconcileFlags(fx.profileId);
     expect(changed).toBeGreaterThanOrEqual(1);
 
     expect(
-      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose, Fasting")?.flag
+      getLatestClinicalObservationByCanonical(fx.profileId, "Glucose, Fasting")
+        ?.flag
     ).toBe("high");
     expect(
-      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose")?.flag ?? null
+      getLatestClinicalObservationByCanonical(fx.profileId, "Glucose")?.flag ??
+        null
     ).toBeNull();
   });
 });

@@ -12,7 +12,7 @@ import { workerDbPath } from "./worker-env";
 // The finding follow-up loop — IOP glaucoma adapter (#698 §6 / Part of #700): a flagged
 // intraocular pressure → a tracked, LEGIBLE "Recheck IOP / glaucoma workup" on Upcoming
 // → a resolution OFFER when a later pressure (either eye) lands → close the loop. Drives
-// the real UI end-to-end across /biomarkers/view + /upcoming, the eye-care sibling of
+// the real UI end-to-end across /results/readings/view + /upcoming, the eye-care sibling of
 // e2e/followup-labs.spec.ts.
 //
 // Fixture discipline (#868): the dedicated FLAGGED_IOP_PROFILE (seed-events) owns ONE
@@ -94,7 +94,9 @@ test.describe("Finding follow-up loop — flagged IOP (#698 §6)", () => {
     });
     try {
       // 1) The flagged IOP's detail page offers to track a glaucoma follow-up.
-      await page.goto(`/biomarkers/view?name=${encodeURIComponent(IOP_OD)}`);
+      await page.goto(
+        `/results/readings/view?name=${encodeURIComponent(IOP_OD)}`
+      );
       const trackForm = page.getByTestId("track-iop-followup");
       await expect(trackForm).toBeVisible({ timeout: WAIT });
 
@@ -144,7 +146,9 @@ test.describe("Finding follow-up loop — flagged IOP (#698 §6)", () => {
       //    the LEFT-eye page too — where the latest reading is now the normal 17 mmHg
       //    that resolved it (on the right-eye page the still-flagged 28 offers a fresh
       //    follow-up, the correct per-eye behavior).
-      await page.goto(`/biomarkers/view?name=${encodeURIComponent(IOP_OS)}`);
+      await page.goto(
+        `/results/readings/view?name=${encodeURIComponent(IOP_OS)}`
+      );
       await expect(page.getByTestId("iop-followup-state")).toContainText(
         /Follow-up: resolved · stable/,
         { timeout: WAIT }

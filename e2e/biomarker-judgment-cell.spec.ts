@@ -31,7 +31,7 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
 }) => {
   // A panel facet narrows the index AND expands every matching group (#1651), so
   // the readings are on the page without a disclosure tap.
-  await page.goto("/results/biomarkers?panel=lipids&current=1");
+  await page.goto("/results/readings?panel=lipids&current=1");
   const table = page.getByTestId("biomarkers-table");
   await expect(table).toBeVisible();
 
@@ -60,7 +60,7 @@ test("a flagged row's severity word is in the visible text, not only the accessi
   page,
 }) => {
   // Every row under this filter is out of range, so each one must carry a word.
-  await page.goto("/results/biomarkers?range=oor&current=1");
+  await page.goto("/results/readings?range=oor&current=1");
   const table = page.getByTestId("biomarkers-table");
   await expect(table).toBeVisible();
 

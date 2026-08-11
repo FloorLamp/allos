@@ -4,7 +4,7 @@
 //
 // MEDICAL_CATEGORIES is the full enum (mirrors lib/types.ts MedicalCategory and
 // the medical_records CHECK — migration 090 grew it to include the #1076 classes).
-// BIOMARKER_CATEGORIES is the set the Biomarkers BROWSER (/results/biomarkers, a flat
+// BIOMARKER_CATEGORIES is the set the Biomarkers BROWSER (/results/readings, a flat
 // catalog) can list/filter/add. It drops the #1076 re-homed classes that HAVE a
 // dedicated home:
 //   • 'prescription' — medications; live on the document view + Supplements & Meds.
@@ -41,7 +41,7 @@
 // analyte with no second edit here and the registries cannot drift apart. Category
 // membership in BIOMARKER_CATEGORIES therefore no longer settles the vitals question on
 // its own — ask that module, which both the row gather
-// (app/(app)/results/biomarker-index.ts) and the panel facet
+// (app/(app)/results/reading-index.ts) and the panel facet
 // (lib/biomarker-panel-reach.ts) go through.
 //
 // The TRAJECTORY tab (Trends → Biomarkers) separately scopes to lab-only — that is

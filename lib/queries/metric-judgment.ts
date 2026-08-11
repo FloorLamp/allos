@@ -75,7 +75,7 @@ export function getMetricJudgment(
  * fields the flag reconcile keys on — the resolved name, the collection date — so
  * a row cannot be judged here against context the flag was not judged against.
  */
-export interface JudgedRecord {
+export interface JudgedObservation {
   canonical_name?: string | null;
   name: string;
   date?: string | null;
@@ -105,7 +105,7 @@ export interface JudgedRecord {
  * multi-profile caller partitions its rows by owning profile and calls once per
  * profile — per-profile context is never shared across subjects.
  */
-export function judgeRecords<T extends JudgedRecord>(
+export function judgeObservations<T extends JudgedObservation>(
   profileId: number,
   rows: readonly T[]
 ): (MetricJudgment | null)[] {

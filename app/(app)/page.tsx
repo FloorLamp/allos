@@ -16,7 +16,7 @@ import {
   getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getBodyMetricDailySeries,
-  getMedicalRecords,
+  getClinicalObservations,
   getScheduledAppointments,
   gatherCoachingInput,
   getFindingSuppressions,
@@ -516,7 +516,7 @@ export default async function Dashboard() {
   let labRows: RecentLabRow[] = [];
   if (has("recent-labs")) {
     labRows = recentLabHighlights(
-      getMedicalRecords(profile.id, { current: true }),
+      getClinicalObservations(profile.id, { current: true }),
       undefined,
       on
     );

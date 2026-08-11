@@ -90,7 +90,7 @@ import {
   plainRiskReasons,
 } from "../../reasons";
 import { isFlaggedForRetest } from "../../biomarker-retest-copy";
-import type { MedicalRecord } from "../../types";
+import type { ClinicalObservation } from "../../types";
 import { pickNextAppointment } from "../../household";
 import {
   getSupplements,
@@ -132,7 +132,7 @@ import type { AppRoute } from "../../hrefs";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
 import {
-  getMedicalRecords,
+  getClinicalObservations,
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
@@ -321,7 +321,7 @@ function monthsApprox(days: number): number {
 }
 
 // Biomarkers whose latest reading is past their PER-ANALYTE retest window (reuses
-// getMedicalRecords' current-per-group read + isBiomarkerStale, now consulting the
+// getClinicalObservations' current-per-group read + isBiomarkerStale, now consulting the
 // curated retest_days). The retest-due date is the last reading + that analyte's
 // interval, so a quarterly HbA1c reads as overdue far sooner than an annual lipid
 // panel; uncurated analytes keep the flat 365-day fallback.
@@ -360,7 +360,7 @@ const biomarkerRetestSignals = cache(function biomarkerRetestSignals(
   profileId: number,
   today: string
 ): BiomarkerRetestSignal[] {
-  const latest = getMedicalRecords(profileId, { current: true });
+  const latest = getClinicalObservations(profileId, { current: true });
   // Newest reading date per family across ALL current readings — the input→derived
   // freshness lookup below reads an input analyte's family date from here.
   const latestDateByFamily = new Map<string, string>();
@@ -369,13 +369,13 @@ const biomarkerRetestSignals = cache(function biomarkerRetestSignals(
     const prev = latestDateByFamily.get(fam);
     if (!prev || r.date > prev) latestDateByFamily.set(fam, r.date);
   }
-  const byFamily = new Map<string, MedicalRecord>();
+  const byFamily = new Map<string, ClinicalObservation>();
   for (const r of latest) {
     if (!RETEST_CATEGORIES.has(r.category ?? "")) continue;
     const famKey = biomarkerRetestIdentity(r.canonical_name?.trim() || r.name);
     const prev = byFamily.get(famKey);
     // Newest wins; tie-break on higher id (later-entered), matching
-    // getMedicalRecords' "date DESC, id DESC" current-reading ranking.
+    // getClinicalObservations' "date DESC, id DESC" current-reading ranking.
     if (!prev || r.date > prev.date || (r.date === prev.date && r.id > prev.id))
       byFamily.set(famKey, r);
   }

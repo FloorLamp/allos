@@ -33,7 +33,7 @@ import { resolveSmoking } from "../../smoking";
 import { appointmentKindInferenceText } from "../../preventive-appointment";
 import { getAppointments } from "../appointments";
 import {
-  getMedicalRecords,
+  getClinicalObservations,
   getEncounters,
   getCurrentQualitativeResults,
 } from "../medical";
@@ -118,7 +118,7 @@ export function getInferredPreventiveSatisfactions(
 
   // Lab / vitals results → lab screenings, by canonical biomarker name (or the
   // raw result name as a fallback synonym match).
-  for (const r of getMedicalRecords(profileId)) {
+  for (const r of getClinicalObservations(profileId)) {
     if (!INFERENCE_RESULT_CATEGORIES.has(r.category)) continue;
     records.push({
       code: null,

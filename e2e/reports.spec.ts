@@ -24,7 +24,7 @@ const CULTURE_BODY = /Escherichia coli/;
 test("the Reports tab renders a narrative report body (#708)", async ({
   page,
 }) => {
-  await page.goto("/results/biomarkers");
+  await page.goto("/results/readings");
   const tabs = page.getByTestId("results-tabs");
   await followLink(
     page,
@@ -78,8 +78,8 @@ test("a narrative report never appears in the Biomarkers analyte catalog (#708)"
   // The `report` category is excluded from BIOMARKER_CATEGORIES, so the analyte
   // browser must never list a report body as a row. The culture body text is a
   // report-only marker — its absence here proves the exclusion.
-  await page.goto("/results/biomarkers");
-  const biomarkers = page.getByTestId("results-biomarkers");
+  await page.goto("/results/readings");
+  const biomarkers = page.getByTestId("results-readings");
   await expect(biomarkers).toBeVisible();
   await expect(biomarkers.getByText(CULTURE_BODY)).toHaveCount(0);
 });

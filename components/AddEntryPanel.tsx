@@ -57,7 +57,7 @@ export default function AddEntryPanel({
   children,
 }: {
   // The heading shown when the panel is OPEN, and the fallback for the collapsed
-  // button ("+ Add medical record").
+  // button (for example, "+ Add result").
   label: string;
   // Optional shorter collapsed-button text when the heading would be long on a
   // phone ("+ Add result").

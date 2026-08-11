@@ -182,7 +182,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
 
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Lab sensitizations come from{" "}
-            <Link href="/results/biomarkers" className="underline">
+            <Link href="/results/readings" className="underline">
               Biomarkers
             </Link>
             ; documented allergies are managed here.

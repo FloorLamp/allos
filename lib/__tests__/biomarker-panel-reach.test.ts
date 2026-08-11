@@ -46,7 +46,7 @@ describe("reachablePanelIds (#1581 section D)", () => {
     //                    respiratory rate, resting heart rate, body temperature) are
     //                    body metrics with a `/trends/metric/<slug>` chart, so the
     //                    browser lists none of them and the facet option can only
-    //                    return "No records match these filters".
+    //                    return "No readings match these filters".
     expect(unreachablePanelIds()).toEqual([
       "blood-type",
       "vital-signs",

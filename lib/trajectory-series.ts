@@ -24,7 +24,7 @@ import {
 } from "./settings";
 import { canonicalGroupKey, groupByCanonicalName } from "./biomarker-group";
 import { readingDetailHref } from "./hrefs";
-import type { MedicalRecord, ReproductiveStatus, Sex } from "./types";
+import type { ClinicalObservation, ReproductiveStatus, Sex } from "./types";
 import {
   referenceRange,
   optimalBand,
@@ -69,7 +69,7 @@ export function buildTrajectoryInput(
 function buildInputFromSeries(
   profileId: number,
   canonical: string,
-  series: MedicalRecord[],
+  series: ClinicalObservation[],
   today: string,
   sex: Sex | null,
   status: ReproductiveStatus | null

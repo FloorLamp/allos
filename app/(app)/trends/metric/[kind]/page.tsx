@@ -132,7 +132,7 @@ const MEASUREMENT_ENTRY_METRIC: Partial<
 };
 
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a
-// Trends → Body sparkline tile, mirroring the biomarker series view (/biomarkers/view)
+// Trends → Body sparkline tile, mirroring the biomarker series view (/results/readings/view)
 // that labs have always had but body metrics never did: a big chart with the shared
 // range control + med/situation annotations + a goal overlay, trailing 7/30/90-day
 // period stats, and (for a manually-enterable metric) that metric's single quick-add.

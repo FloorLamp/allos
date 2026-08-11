@@ -215,7 +215,7 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
         tile(page, TRENDS_CURATE_EMPTY_ANALYTE).getByTestId(
           "trend-mini-header-link"
         )
-      ).toHaveAttribute("href", /\/biomarkers\/view\?name=/);
+      ).toHaveAttribute("href", /\/results\/readings\/view\?name=/);
 
       await followLink(
         page,

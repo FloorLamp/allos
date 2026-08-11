@@ -34,7 +34,7 @@
 // clear from the form with zero factors toggled.)
 
 import {
-  biomarkerAddHref,
+  readingAddHref,
   dataSectionHref,
   medicationEditHref,
   medicationsFilterHref,
@@ -284,8 +284,8 @@ function phenoAgeGap(i: DataQualityInputs): DataQualityGap | null {
       `the remaining labs unlock your biological age.`,
     // The biomarker add form, prefilled with the first missing analyte (#1146) —
     // the SAME lab deep-link shape the preventive screening rows use (#1083), via
-    // the shared biomarkerAddHref, so the two lanes can't diverge (#221).
-    ctaHref: biomarkerAddHref(i.phenoAgeMissingPrimary),
+    // the shared readingAddHref, so the two lanes can't diverge (#221).
+    ctaHref: readingAddHref(i.phenoAgeMissingPrimary),
     leverage: 1,
   };
 }

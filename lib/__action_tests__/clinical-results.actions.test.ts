@@ -1,21 +1,21 @@
 // SERVER-ACTION TIER — medical-record write path.
 //
-// Covers addRecord (insert + in-transaction reconcileFlags flagging an out-of-range
-// value), updateRecord, and deleteRecord. Uses Glucose, whose canonical ref_high is
+// Covers addResult (insert + in-transaction reconcileFlags flagging an out-of-range
+// value), updateResult, and deleteResult. Uses Glucose, whose canonical ref_high is
 // 99, so a value of 130 must derive a 'high' flag (mirrors the query smoke test).
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
-  addRecord,
-  updateRecord,
-  deleteRecord,
-} from "@/app/(app)/medical/actions";
+  addResult,
+  updateResult,
+  deleteResult,
+} from "@/app/(app)/results/reading-actions";
 import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import {
-  getMedicalRecords,
-  getLatestMedicalRecordByCanonical,
+  getClinicalObservations,
+  getLatestClinicalObservationByCanonical,
 } from "@/lib/queries";
 import { seedActor, createProfile, actAs, fd } from "./harness";
 import { MAX_AI_BYTES, MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
@@ -52,14 +52,14 @@ function attributesOf(id: number) {
 
 beforeEach(() => revalidate.mockClear());
 
-describe("addRecord", () => {
+describe("addResult", () => {
   it("inserts a record and flags an out-of-range value in one transaction", async () => {
     const { profile } = seedActor();
     // The analyte is the FASTING glucose entry on purpose (#2337): unqualified
     // "Glucose" is deliberately band-less — a reading that does not say whether the
     // patient fasted has not given us enough to flag against — so it can no longer
     // stand in for "an out-of-range value" here.
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-15",
         category: "lab",
@@ -82,7 +82,7 @@ describe("addRecord", () => {
 
   it("rejects an impossible date (no row written)", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({ date: "2026-02-30", category: "lab", name: "Glucose", value: "90" })
     );
     expect(recordRows(profile.id)).toHaveLength(0);
@@ -90,16 +90,16 @@ describe("addRecord", () => {
 
   it("rejects a blank name", async () => {
     const { profile } = seedActor();
-    await addRecord(fd({ date: "2026-01-15", category: "lab", name: "  " }));
+    await addResult(fd({ date: "2026-01-15", category: "lab", name: "  " }));
     expect(recordRows(profile.id)).toHaveLength(0);
   });
 
   it("validates the category server-side instead of 500-ing on the CHECK (#385)", async () => {
     const { profile } = seedActor();
     // A crafted/stale category the CHECK forbids would otherwise raise a
-    // SqliteError; the action now falls back to 'lab' (as updateRecord does),
+    // SqliteError; the action now falls back to 'lab' (as updateResult does),
     // writing a valid row rather than throwing.
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-15",
         category: "bogus",
@@ -120,7 +120,7 @@ describe("addRecord", () => {
     const { profile } = seedActor();
     // The add form only offers BIOMARKER_CATEGORIES (no 'prescription'); a crafted
     // POST is coerced to 'lab' so meds can't sneak into the biomarkers browser.
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-15",
         category: "prescription",
@@ -138,10 +138,10 @@ describe("addRecord", () => {
   });
 });
 
-describe("updateRecord", () => {
+describe("updateResult", () => {
   it("edits the record and re-derives its flag", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-15",
         category: "lab",
@@ -153,7 +153,7 @@ describe("updateRecord", () => {
     const id = recordRows(profile.id)[0].id;
 
     // Bring it into range → flag clears.
-    await updateRecord(
+    await updateResult(
       fd({
         id,
         date: "2026-01-16",
@@ -168,7 +168,10 @@ describe("updateRecord", () => {
     expect(row.value).toBe("85");
     expect(row.value_num).toBe(85);
     expect(row.flag).toBeNull();
-    const latest = getLatestMedicalRecordByCanonical(profile.id, "glucose");
+    const latest = getLatestClinicalObservationByCanonical(
+      profile.id,
+      "glucose"
+    );
     expect(latest?.value_num).toBe(85);
   });
 });
@@ -176,7 +179,7 @@ describe("updateRecord", () => {
 describe("the result lifecycle + collection attributes round-trip (#1404)", () => {
   it("adds a FASTING glucose and keeps its fasting state, specimen and status", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-15",
         category: "lab",
@@ -200,7 +203,7 @@ describe("the result lifecycle + collection attributes round-trip (#1404)", () =
   it("leaves an unstated attribute NULL rather than guessing it", async () => {
     const { profile } = seedActor();
     // The form's "—" options post empty strings; an absent field posts nothing.
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-15",
         category: "lab",
@@ -222,7 +225,7 @@ describe("the result lifecycle + collection attributes round-trip (#1404)", () =
     const { profile } = seedActor();
     // A stale/crafted POST carrying a value the column's CHECK forbids must be
     // normalized to "unstated" server-side, never reach SQLite and 500.
-    const result = await addRecord(
+    const result = await addResult(
       fd({
         date: "2026-01-15",
         category: "lab",
@@ -242,7 +245,7 @@ describe("the result lifecycle + collection attributes round-trip (#1404)", () =
 
   it("edits them, and links the ORDERING clinician apart from the performing lab", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-15",
         category: "lab",
@@ -252,7 +255,7 @@ describe("the result lifecycle + collection attributes round-trip (#1404)", () =
     );
     const id = recordRows(profile.id)[0].id;
 
-    await updateRecord(
+    await updateResult(
       fd({
         id,
         date: "2026-01-15",
@@ -291,18 +294,18 @@ describe("the result lifecycle + collection attributes round-trip (#1404)", () =
   });
 });
 
-describe("deleteRecord", () => {
+describe("deleteResult", () => {
   it("removes the record and revalidates", async () => {
     const { profile } = seedActor();
-    await addRecord(
+    await addResult(
       fd({ date: "2026-01-15", category: "lab", name: "LDL", value: "120" })
     );
     const id = recordRows(profile.id)[0].id;
     revalidate.mockClear();
 
-    await deleteRecord(fd({ id }));
+    await deleteResult(fd({ id }));
 
-    expect(getMedicalRecords(profile.id)).toHaveLength(0);
+    expect(getClinicalObservations(profile.id)).toHaveLength(0);
     expect(revalidate).toHaveBeenCalledWith("/results");
   });
 });
@@ -314,7 +317,7 @@ describe("manual record (no document_id) round-trips edit + delete", () => {
 
     // Add a manual record as A (the Biomarkers add slot's path — no document_id).
     actAs(login, profileA);
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-03-01",
         category: "lab",
@@ -338,14 +341,14 @@ describe("manual record (no document_id) round-trips edit + delete", () => {
 
     // Another profile can't edit A's row (WHERE id = ? AND profile_id = ? no-ops).
     actAs(login, profileB);
-    await updateRecord(
+    await updateResult(
       fd({ id: row.id, date: "2026-03-02", category: "lab", name: "HACKED" })
     );
     expect(recordRows(profileA.id)[0].name).toBe("LDL");
 
     // A edits its own row — the correction lands.
     actAs(login, profileA);
-    await updateRecord(
+    await updateResult(
       fd({
         id: row.id,
         date: "2026-03-02",
@@ -359,12 +362,12 @@ describe("manual record (no document_id) round-trips edit + delete", () => {
 
     // Another profile can't delete it either.
     actAs(login, profileB);
-    await deleteRecord(fd({ id: row.id }));
+    await deleteResult(fd({ id: row.id }));
     expect(recordRows(profileA.id)).toHaveLength(1);
 
     // A deletes its own row — gone.
     actAs(login, profileA);
-    await deleteRecord(fd({ id: row.id }));
+    await deleteResult(fd({ id: row.id }));
     expect(recordRows(profileA.id)).toHaveLength(0);
   });
 });
@@ -535,13 +538,13 @@ describe("uploadMedicalDocument multi-file (issue #1008)", () => {
 });
 
 describe("scoping", () => {
-  it("addRecord writes only to the acting profile", async () => {
+  it("addResult writes only to the acting profile", async () => {
     const { login, profile: profileA } = seedActor();
     // A second profile under the same login; act as A and write.
     const profileB = createProfile("MedB", login.id);
 
     actAs(login, profileA);
-    await addRecord(
+    await addResult(
       fd({
         date: "2026-01-15",
         category: "lab",
@@ -550,7 +553,7 @@ describe("scoping", () => {
       })
     );
 
-    expect(getMedicalRecords(profileB.id)).toHaveLength(0);
-    expect(getMedicalRecords(profileA.id)).toHaveLength(1);
+    expect(getClinicalObservations(profileB.id)).toHaveLength(0);
+    expect(getClinicalObservations(profileA.id)).toHaveLength(1);
   });
 });

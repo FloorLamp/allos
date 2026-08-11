@@ -14,7 +14,7 @@ import {
   getStrengthByExercise,
   getOutcomeGoals,
   getBodyMetrics,
-  getMedicalRecords,
+  getClinicalObservations,
   getSupplements,
   getImmunizations,
   getImmunizationOverrides,
@@ -70,11 +70,11 @@ describe("reads are scoped to the querying profile", () => {
     expect(supps.some((s) => s.name.startsWith("BBB"))).toBe(false);
   });
 
-  it("getMedicalRecords never surfaces the other profile's readings", () => {
-    const recsA = getMedicalRecords(a.profileId);
+  it("getClinicalObservations never surfaces the other profile's readings", () => {
+    const recsA = getClinicalObservations(a.profileId);
     expect(recsA.length).toBe(1);
     expect(recsA[0].value_num).toBe(90); // A's glucose, not B's 200
-    const recsB = getMedicalRecords(b.profileId);
+    const recsB = getClinicalObservations(b.profileId);
     expect(recsB[0].value_num).toBe(200);
   });
 

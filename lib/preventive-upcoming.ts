@@ -16,7 +16,7 @@ import {
   PREVENTIVE_SETUP_SHORT,
   type PreventiveAssessment,
 } from "./preventive-status";
-import { biomarkerAddHref, type AppRoute } from "./hrefs";
+import { readingAddHref, type AppRoute } from "./hrefs";
 import type { UpcomingItem, UrgencyBand } from "./upcoming";
 import {
   appointmentKindForRule,
@@ -46,8 +46,8 @@ function screeningActionHref(sb: ScreeningSatisfiedBy): AppRoute {
       return `${sb.page}?screen=${encodeURIComponent(sb.instrument)}`;
     case "lab":
       // The #662 biomarker add-form prefill (shared shape, lib/hrefs
-      // biomarkerAddHref); unprefilled when no tracked biomarker.
-      return biomarkerAddHref(sb.primary);
+      // readingAddHref); unprefilled when no tracked biomarker.
+      return readingAddHref(sb.primary);
     case "vital":
       return VITALS_ENTRY_HREF;
     case "procedure":

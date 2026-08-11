@@ -39,7 +39,7 @@ test.describe("Import detail: type-appropriate produced panels (#1182)", () => {
       page.getByRole("columnheader", { name: "Actions", exact: true })
     ).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "Record actions" })
+      page.getByRole("button", { name: "Result actions" })
     ).toHaveCount(0);
   });
 
@@ -58,7 +58,7 @@ test.describe("Import detail: type-appropriate produced panels (#1182)", () => {
     await expect(page.getByRole("cell", { name: /E2E Sodium/ })).toBeVisible();
     // The analyte grid keeps its per-row editing affordance.
     await expect(
-      page.getByRole("button", { name: "Record actions" }).first() // first-ok: doc 909 is this spec's own fixture (a single lab row)
+      page.getByRole("button", { name: "Result actions" }).first() // first-ok: doc 909 is this spec's own fixture (a single lab row)
     ).toBeVisible();
   });
 
@@ -89,7 +89,7 @@ test.describe("Import detail: type-appropriate produced panels (#1182)", () => {
     const detail = page.getByTestId("provider-detail");
     await expect(detail.getByRole("link", { name: /^Sodium/ })).toHaveAttribute(
       "href",
-      "/biomarkers/view?name=Sodium"
+      "/results/readings/view?name=Sodium"
     );
   });
 });

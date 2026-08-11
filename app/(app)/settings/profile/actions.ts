@@ -175,7 +175,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   if (sexChanged || rsChanged || birthdateChanged || ageChanged) {
     reconcileFlags(profile.id);
     revalidateRoute("/results");
-    revalidateRoute("/biomarkers/view", "page");
+    revalidateRoute("/results/readings/view", "page");
   }
 
   // Full/legal name of the tracked person — distinct from the profile's display

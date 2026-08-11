@@ -167,7 +167,7 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
     const gap = buildDataQualityFindings(profileId).find(
       (f) => f.dedupeKey === dataQualityDedupeKey("phenoage-inputs")
     );
-    expect(gap?.actionHref).toBe("/results/biomarkers?new=1&name=Creatinine");
+    expect(gap?.actionHref).toBe("/results/readings?new=1&name=Creatinine");
   });
 
   it("risk/smoking CTAs land on the anchored Care › Overview forms (#1146)", () => {

@@ -149,7 +149,7 @@ test.describe("Provider registry closeout", () => {
       );
       await expect(
         detail.getByRole("link", { name: /Glucose/ })
-      ).toHaveAttribute("href", "/biomarkers/view?name=Glucose");
+      ).toHaveAttribute("href", "/results/readings/view?name=Glucose");
 
       await followLink(
         page,

@@ -61,7 +61,7 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   // closed panel taxonomy instead), so the cheap proof the table surfaced is a
   // panel group header, matching results-page.spec.ts.
   await page.goto("/results");
-  const biomarkers = page.getByTestId("results-biomarkers");
+  const biomarkers = page.getByTestId("results-readings");
   await expect(biomarkers.getByTestId("biomarkers-table")).toBeVisible();
   await expect(
     biomarkers.getByTestId("biomarker-panel-header").first() // first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
