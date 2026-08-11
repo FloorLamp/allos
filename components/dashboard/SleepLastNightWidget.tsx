@@ -3,10 +3,11 @@ import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import {
   baselineDeltaPhrase,
   formatHm,
+  formatSleepWindow,
   type LastNightSummary,
   type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
-import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
+import type { TimeFormat } from "@/lib/format-date";
 import { sriPresentation } from "@/lib/sleep-regularity";
 
 // Dashboard "last night" sleep tile (issue #1066): the morning-ritual promotion
@@ -52,14 +53,12 @@ export default function SleepLastNightWidget({
           </div>
           <div className="text-sm text-slate-600 dark:text-slate-300">
             {summary.bedMinutes != null && summary.wakeMinutes != null
-              ? `${formatClockMinutes(timeFormat, summary.bedMinutes)} → ${formatClockMinutes(timeFormat, summary.wakeMinutes)}`
+              ? formatSleepWindow(
+                  timeFormat,
+                  summary.bedMinutes,
+                  summary.wakeMinutes
+                )
               : "Duration-only entry"}
-            {summary.napMin > 0 && (
-              <span className="text-slate-500 dark:text-slate-400">
-                {" "}
-                · + {formatHm(summary.napMin)} nap
-              </span>
-            )}
           </div>
           {sri != null && (
             <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">

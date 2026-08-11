@@ -16,6 +16,7 @@ import { timelineDayHref } from "@/lib/hrefs";
 import { moodFace, moodLabel } from "@/lib/mood";
 import {
   formatHm,
+  formatSleepWindow,
   type SleepStageMinutes,
   type SleepMoodHistoryRow,
   type SleepMoodPoint,
@@ -23,6 +24,7 @@ import {
 import { describeCorrelation, pearson } from "@/lib/trends-compare";
 import SleepMoodEditDialog from "./SleepMoodEditDialog";
 import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
+import type { NapHistoryRow } from "@/lib/queries/sleep";
 
 // A two- or three-dot scatter plot exaggerates coincidence and produces an
 // unstable Pearson coefficient. Five paired nights is the minimum for the plot;
@@ -46,11 +48,13 @@ const STAGE_COLUMNS: {
 export default function SleepMoodSection({
   points,
   history,
+  naps,
   windowDays,
   formatPrefs,
 }: {
   points: SleepMoodPoint[];
   history: SleepMoodHistoryRow[];
+  naps: NapHistoryRow[];
   windowDays: number;
   formatPrefs: DisplayFormatPrefs;
 }) {
@@ -75,7 +79,29 @@ export default function SleepMoodSection({
       )
     : null;
   const correlation = describeCorrelation(r);
-  const newestFirst = [...history].reverse();
+  const napsByDate = new Map<string, NapHistoryRow[]>();
+  for (const nap of naps) {
+    const day = napsByDate.get(nap.date);
+    if (day) day.push(nap);
+    else napsByDate.set(nap.date, [nap]);
+  }
+  const historyByDate = new Map(history.map((row) => [row.date, row]));
+  for (const date of napsByDate.keys()) {
+    if (historyByDate.has(date)) continue;
+    historyByDate.set(date, {
+      date,
+      sleepHours: null,
+      valence: null,
+      moodDetails: null,
+      stages: null,
+      bedtimeSupplements: null,
+      sleepEditable: true,
+      sleepEditHours: null,
+    });
+  }
+  const newestFirst = [...historyByDate.values()].sort((a, b) =>
+    a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+  );
   const pageCount = Math.max(
     1,
     Math.ceil(newestFirst.length / HISTORY_PAGE_SIZE)
@@ -91,7 +117,7 @@ export default function SleepMoodSection({
       className="min-w-0 space-y-6"
       data-testid="sleep-mood-section"
       data-points={points.length}
-      data-history-count={history.length}
+      data-history-count={newestFirst.length}
     >
       {canPlot && (
         <section data-testid="sleep-mood">
@@ -139,7 +165,7 @@ export default function SleepMoodSection({
           </span>
         </div>
         <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-          All available sleep, stage, and mood entries
+          All available main sleep, nap, stage, and mood entries
           {hasSupplementContext ? ", with bedtime supplement context" : ""},
           newest first. A dash means that value was not logged or did not apply.
           {!canPlot && points.length > 0
@@ -149,8 +175,8 @@ export default function SleepMoodSection({
         <div className="card overflow-hidden p-0">
           <ScrollFade data-testid="sleep-history-scroll-fade">
             <table
-              className={`w-full min-w-88 text-left text-sm ${
-                hasSupplementContext ? "sm:min-w-240" : "sm:min-w-208"
+              className={`w-full min-w-120 text-left text-sm ${
+                hasSupplementContext ? "sm:min-w-272" : "sm:min-w-240"
               }`}
               data-testid="sleep-mood-history"
             >
@@ -161,6 +187,9 @@ export default function SleepMoodSection({
                   </th>
                   <th scope="col" className="th">
                     Sleep
+                  </th>
+                  <th scope="col" className="th">
+                    Naps
                   </th>
                   <th scope="col" className="th">
                     Mood
@@ -196,15 +225,15 @@ export default function SleepMoodSection({
                   <tr>
                     <td
                       colSpan={
-                        4 +
+                        5 +
                         STAGE_COLUMNS.length +
                         (hasSupplementContext ? 1 : 0)
                       }
                       className="td py-6 text-center text-slate-500 dark:text-slate-400"
                       data-testid="sleep-mood-history-empty"
                     >
-                      No sleep, stage, or mood entries in the past {windowDays}{" "}
-                      days.
+                      No sleep, nap, stage, or mood entries in the past{" "}
+                      {windowDays} days.
                     </td>
                   </tr>
                 ) : (
@@ -251,6 +280,25 @@ export default function SleepMoodSection({
                             />
                           </div>
                         )}
+                      </td>
+                      <td
+                        className="td whitespace-nowrap text-slate-700 dark:text-slate-200"
+                        data-testid="sleep-history-naps"
+                      >
+                        {(napsByDate.get(row.date) ?? []).length === 0
+                          ? "—"
+                          : (napsByDate.get(row.date) ?? []).map((nap) => (
+                              <div
+                                key={`${nap.startMinutes}:${nap.endMinutes}`}
+                              >
+                                {formatSleepWindow(
+                                  formatPrefs.timeFormat,
+                                  nap.startMinutes,
+                                  nap.endMinutes
+                                )}{" "}
+                                · {formatHm(nap.durationMin)}
+                              </div>
+                            ))}
                       </td>
                       <td className="td whitespace-nowrap text-slate-700 dark:text-slate-200">
                         {row.valence == null ? (

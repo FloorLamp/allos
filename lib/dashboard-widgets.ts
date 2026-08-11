@@ -524,6 +524,20 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     dataAware: true,
   },
   {
+    id: "naps-today",
+    label: "Today's naps",
+    description:
+      "Today's naps — each sleep window and the combined duration — linking to nap history on the Sleep page. Appears only after a nap is recorded today.",
+    // On by default beside the main-sleep glance, but contextual: no nap is a
+    // normal day, not an onboarding defect, so the dashboard self-hides the slot
+    // until today's nap data exists.
+    defaultOn: true,
+    fitness: false,
+    // Passive: the nap already happened.
+    actionable: false,
+    span: "half",
+  },
+  {
     id: "weight-trend",
     label: "Weight trend",
     description: "Your recent body-weight chart.",
