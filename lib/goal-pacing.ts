@@ -11,7 +11,7 @@
 //      gentle nudge that faster isn't better (lean-mass/adherence risk).
 //
 // Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings.ts
-// (getGoals + getWeights → these → Finding[]), surfaced on the Goals tab. Thresholds
+// (getOutcomeGoals + getWeights → these → Finding[]), surfaced on the Goals tab. Thresholds
 // are named constants with rationale; boundaries unit-tested in
 // lib/__tests__/goal-pacing.test.ts.
 

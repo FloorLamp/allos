@@ -12,8 +12,8 @@ import {
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getBodyMetricDailySeries,
   getMedicalRecords,
@@ -58,7 +58,7 @@ import { getUserAge } from "@/lib/settings/profile-attrs";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
-import { isGoalLive } from "@/lib/goals";
+import { isGoalLive } from "@/lib/outcome-goals";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import {
   requireSession,
@@ -567,12 +567,12 @@ export default async function Dashboard() {
 
   // goals-and-habits: one combined overview of outcomes + weekly behaviors.
   const goals = has("goals-habits")
-    ? getGoals(profile.id)
+    ? getOutcomeGoals(profile.id)
         .filter((g) => isGoalLive(g))
         .slice(0, 4)
     : [];
   const goalProgress = has("goals-habits")
-    ? getGoalProgressMap(profile.id, goals)
+    ? getOutcomeGoalProgressMap(profile.id, goals)
     : new Map();
 
   const freqTargets = has("goals-habits")

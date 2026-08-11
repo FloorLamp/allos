@@ -17,7 +17,7 @@
 import type { NotificationAction, NotificationMessage } from "./types";
 import { joinBody } from "./rich-text";
 import { formatRecapLine, type Recap } from "../session-recap";
-import { frequencyScopeLabel } from "../goals";
+import { frequencyScopeLabel } from "../frequency-targets";
 import { fmtDistance } from "../units";
 import { activityTypeAskCallback } from "./callback-data";
 import { formatMessageLine } from "./message-line";

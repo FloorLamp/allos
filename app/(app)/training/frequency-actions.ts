@@ -4,7 +4,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
-import type { FrequencyScopeKind } from "@/lib/types";
+import type { FrequencyScopeKind } from "@/lib/frequency-targets";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { normalizePracticeName, practiceIdentity } from "@/lib/practice";

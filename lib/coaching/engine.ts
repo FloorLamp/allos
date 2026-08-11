@@ -1,6 +1,6 @@
 // Rule-based coaching engine: the deterministic "one clear thing to do today"
 // recommender. Pure and client-safe — no DB/network.
-import { frequencyScopeLabel } from "../goals";
+import { frequencyScopeLabel } from "../frequency-targets";
 import { formatRelativeDate } from "../format-date";
 import { shiftDateStr } from "../date";
 import { currentStreak } from "../streak";

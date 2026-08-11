@@ -3,7 +3,7 @@
 // wires these to the stored sets / latest body-metric values.
 
 import { shiftDateStr } from "./date";
-import type { Goal } from "./types";
+import type { OutcomeGoal } from "./types";
 
 // Why a MEASURED goal has no progress to show, or null when it has (#1853).
 //   "no-readings"   — nothing numeric has been measured for it yet.
@@ -82,7 +82,7 @@ const BODY_TARGET_TOLERANCE = 1e-6;
 export const GOAL_RECENT_WINDOW_DAYS = 28;
 
 // Target value for the goal's metric (0 when the metric doesn't apply).
-function targetForGoal(goal: Goal): number {
+function targetForGoal(goal: OutcomeGoal): number {
   switch (goal.metric) {
     case "weight":
       return goal.target_weight_kg ?? 0;
@@ -100,7 +100,7 @@ function targetForGoal(goal: Goal): number {
 // Best achieved value for the goal's metric across `sets` (0 when none qualify).
 // Pure over whatever subset it's handed, so the same logic computes both the
 // lifetime best (all sets) and the recent best (windowed sets).
-function bestValueForGoal(goal: Goal, sets: GoalSetRow[]): number {
+function bestValueForGoal(goal: OutcomeGoal, sets: GoalSetRow[]): number {
   if (goal.metric === "weight") {
     let current = 0;
     for (const s of sets)
@@ -182,7 +182,7 @@ function bestValueForGoal(goal: Goal, sets: GoalSetRow[]): number {
  * to movement-wide (deleteEquipment) rather than leaving it measuring nothing.
  */
 export function goalContextSets<T extends { equipment_id?: number | null }>(
-  goal: Goal,
+  goal: OutcomeGoal,
   sets: T[]
 ): T[] {
   if (goal.equipment_id == null) return sets;
@@ -190,7 +190,7 @@ export function goalContextSets<T extends { equipment_id?: number | null }>(
 }
 
 export function computeGoalProgress(
-  goal: Goal,
+  goal: OutcomeGoal,
   allSets: GoalSetRow[],
   today?: string
 ): GoalProgress {
@@ -257,7 +257,7 @@ export function baselineTargetProgress(
 // Progress for a body-metric goal: the shared baseline→target computation over the
 // goal's latest body-metric value (canonical units — kg for weight).
 export function computeBodyGoalProgress(
-  goal: Goal,
+  goal: OutcomeGoal,
   current: number | null
 ): GoalProgress {
   return baselineTargetProgress(

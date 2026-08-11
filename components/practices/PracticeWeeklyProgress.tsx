@@ -1,9 +1,9 @@
 import { practiceCadenceText, PRACTICE_PLENTY_TEXT } from "@/lib/practice";
 import {
   frequencyPaceLabel,
-  PACE_BADGE_CLASS,
   type FrequencyPace,
-} from "@/lib/goals";
+} from "@/lib/frequency-targets";
+import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
 
 export default function PracticeWeeklyProgress({
   count,

@@ -2,32 +2,38 @@ import { describe, expect, it } from "vitest";
 import {
   BODY_METRIC_LABELS,
   fmtBodyMetric,
-  frequencyPace,
-  frequencyScopeLabel,
   goalBarClass,
   goalBodyTargetText,
   goalMatchesExercise,
   goalPaceTone,
   goalPct,
   goalsForExercise,
-  weeklyTargetPaceLine,
   goalTargetText,
-  isGoalStatus,
+  isOutcomeGoalStatus,
+  outcomeGoalKind,
+} from "@/lib/outcome-goals";
+import {
+  frequencyPace,
+  frequencyScopeLabel,
+  weeklyTargetPaceLine,
+} from "@/lib/frequency-targets";
+import {
   PACE_BORDER_CLASS,
   PACE_FILL_CLASS,
-  type PaceTone,
-} from "@/lib/goals";
-import { GOAL_STATUSES } from "@/lib/types";
-import type { Goal } from "@/lib/types";
+  type ProgressPaceTone,
+} from "@/lib/pace-presentation";
+import { OUTCOME_GOAL_STATUSES } from "@/lib/types";
+import type { OutcomeGoal } from "@/lib/types";
 import type { GoalProgress } from "@/lib/goal-progress";
 
-// Minimal Goal factory: freeform by default; override the linked fields per test.
-function makeGoal(overrides: Partial<Goal> = {}): Goal {
+// Minimal outcome-goal factory: freeform by default; override the linked fields per test.
+function makeGoal(overrides: Partial<OutcomeGoal> = {}): OutcomeGoal {
   return {
     id: 1,
     title: "Goal",
     description: null,
-    category: null,
+    kind: "freeform",
+    categoryLabel: null,
     target_value: null,
     current_value: null,
     unit: null,
@@ -49,6 +55,31 @@ function makeGoal(overrides: Partial<Goal> = {}): Goal {
     ...overrides,
   };
 }
+
+describe("outcomeGoalKind", () => {
+  it("derives typed goals from their structural fields", () => {
+    expect(
+      outcomeGoalKind(makeGoal({ exercise: "Squat", metric: "weight" }))
+    ).toBe("exercise");
+    expect(outcomeGoalKind(makeGoal({ body_metric: "weight" }))).toBe("body");
+    expect(
+      outcomeGoalKind(
+        makeGoal({
+          biomarker_name: "LDL Cholesterol",
+          target_direction: "below",
+        })
+      )
+    ).toBe("biomarker");
+  });
+
+  it("uses freeform when no typed-goal structure is complete", () => {
+    expect(outcomeGoalKind(makeGoal())).toBe("freeform");
+    expect(outcomeGoalKind(makeGoal({ exercise: "Squat" }))).toBe("freeform");
+    expect(
+      outcomeGoalKind(makeGoal({ biomarker_name: "LDL Cholesterol" }))
+    ).toBe("freeform");
+  });
+});
 
 describe("fmtBodyMetric", () => {
   it("renders weight in the user's unit", () => {
@@ -180,7 +211,7 @@ describe("goalBarClass", () => {
 // tone→class map so they can't drift into two colour languages. Every PaceTone maps
 // to a fill and a border, and the on-pace hue is `brand` on both (sky retired).
 describe("shared pace tone→class map", () => {
-  const tones: PaceTone[] = ["met", "on-pace", "behind", "failed"];
+  const tones: ProgressPaceTone[] = ["met", "on-pace", "behind", "failed"];
 
   it("defines a fill and border class for every tone", () => {
     for (const t of tones) {
@@ -391,7 +422,7 @@ describe("goalPct", () => {
   });
 
   // Issue #307: a `metric` WITHOUT an `exercise` is not a well-formed exercise
-  // goal (getGoalProgressMap builds no progress entry for it), so it is manual
+  // goal (getOutcomeGoalProgressMap builds no progress entry for it), so it is manual
   // freeform — it must read current/target, NOT a bogus derived 0%. This is the
   // branch the household/dashboard copies got wrong (they tested `metric ||
   // body_metric`).
@@ -415,7 +446,7 @@ describe("goalPct", () => {
 // fixture — replicating each surface's exact call expression, including the
 // GoalsManager quirk of only passing progress for `auto` (derived) goals.
 describe("goalPct cross-surface parity", () => {
-  const fixtures: { name: string; goal: Goal; prog?: GoalProgress }[] = [
+  const fixtures: { name: string; goal: OutcomeGoal; prog?: GoalProgress }[] = [
     {
       name: "exercise-linked (derived)",
       goal: makeGoal({ id: 1, exercise: "Bench", metric: "weight" }),
@@ -474,10 +505,11 @@ describe("goalPct cross-surface parity", () => {
   }
 });
 
-describe("isGoalStatus — single-sourced from GOAL_STATUSES (#328)", () => {
+describe("isOutcomeGoalStatus — single-sourced from OUTCOME_GOAL_STATUSES (#328)", () => {
   it("accepts exactly the goal lifecycle statuses", () => {
-    for (const s of GOAL_STATUSES) expect(isGoalStatus(s)).toBe(true);
-    expect(GOAL_STATUSES).toEqual(["active", "achieved"]);
+    for (const s of OUTCOME_GOAL_STATUSES)
+      expect(isOutcomeGoalStatus(s)).toBe(true);
+    expect(OUTCOME_GOAL_STATUSES).toEqual(["active", "achieved"]);
   });
 
   it("rejects the dropped 'archived' state and any non-status value", () => {
@@ -490,7 +522,7 @@ describe("isGoalStatus — single-sourced from GOAL_STATUSES (#328)", () => {
       undefined,
       1,
     ]) {
-      expect(isGoalStatus(bad)).toBe(false);
+      expect(isOutcomeGoalStatus(bad)).toBe(false);
     }
   });
 });

@@ -16,7 +16,7 @@
 import { db, writeTx } from "./db";
 import { deleteFrequencyTargetRow } from "./frequency-target-delete";
 import { untrackWellnessPractice } from "./practice-store";
-import type { FrequencyScopeKind } from "./types";
+import type { FrequencyScopeKind } from "./frequency-targets";
 import type { RightSizeOutcome } from "./target-rightsize";
 
 interface TargetRow {

@@ -61,13 +61,16 @@ import {
   getUserSex,
 } from "@/lib/settings";
 import { degFTo, tempUnitLabel } from "@/lib/units";
-import { getBiomarkerGoals, getGoalProgressMap } from "@/lib/queries";
+import {
+  getBiomarkerOutcomeGoals,
+  getOutcomeGoalProgressMap,
+} from "@/lib/queries";
 import {
   biomarkerGoalCheckInText,
   biomarkerGoalCurrentText,
   biomarkerGoalTargetText,
 } from "@/lib/biomarker-goal";
-import { goalPaceTone, goalPct } from "@/lib/goals";
+import { goalPaceTone, goalPct } from "@/lib/outcome-goals";
 import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
@@ -223,13 +226,13 @@ export default async function BiomarkerDetailPage(props: {
   const latest = series[series.length - 1];
 
   // The live GOAL on this analyte (#1853), rendered beside the series it describes —
-  // the join the issue is about. Progress comes from the SAME getGoalProgressMap the
+  // the join the issue is about. Progress comes from the SAME getOutcomeGoalProgressMap the
   // Training goal card reads, so the two surfaces cannot show different numbers for
   // one target; matching is by the #482 family, so a target set on any member shows
   // on the page that charts them.
   const todayStr = today(profile.id);
-  const biomarkerGoals = getBiomarkerGoals(profile.id, canonical);
-  const goalProgress = getGoalProgressMap(profile.id, biomarkerGoals);
+  const biomarkerGoals = getBiomarkerOutcomeGoals(profile.id, canonical);
+  const goalProgress = getOutcomeGoalProgressMap(profile.id, biomarkerGoals);
 
   // "The rest of this panel" (#1502) — the shared gather, so this page and the
   // metric detail surface list the same siblings for the same panel (#1932).

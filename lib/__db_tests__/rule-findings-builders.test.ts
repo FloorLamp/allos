@@ -59,7 +59,7 @@ import {
   getBodyMetricDailySeries,
   getWeights,
   getWeightsOneSourcePerDay,
-  getGoals,
+  getOutcomeGoals,
   getFindingSuppressions,
   dismissFinding,
   restoreFinding,
@@ -335,7 +335,7 @@ describe("buildGoalPacingFindings — deduped daily series parity (#433)", () =>
         .run(profileId, shiftDateStr(anchor, 60)).lastInsertRowid
     );
 
-    const goal = getGoals(profileId).find((g) => g.id === goalId)!;
+    const goal = getOutcomeGoals(profileId).find((g) => g.id === goalId)!;
     const windowStart = shiftDateStr(anchor, -(GOAL_PACE_WINDOW_DAYS - 1));
 
     // Chart-caption path: projectGoal over the deduped daily series windowed to the

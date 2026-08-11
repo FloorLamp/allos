@@ -14,8 +14,8 @@ import {
   getActivities,
   getActivitiesByDate,
   getDashboardStats,
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
   getMedicalRecords,
   getSupplements,
   getSupplementDoses,
@@ -129,8 +129,8 @@ export default async function HouseholdPage() {
       range: "oor",
     }).length;
 
-    const goals = getGoals(pid);
-    const goalProgress = getGoalProgressMap(pid, goals);
+    const goals = getOutcomeGoals(pid);
+    const goalProgress = getOutcomeGoalProgressMap(pid, goals);
 
     // The actionable rollup — today's attention items (due doses, low refills,
     // next visit) reusing the Upcoming aggregation's per-domain builders.

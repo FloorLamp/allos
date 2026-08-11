@@ -6,15 +6,11 @@ import {
   dashboardGoalsHabitsLayout,
   summarizeDashboardHabits,
 } from "@/lib/dashboard-widgets";
-import {
-  frequencyScopeLabel,
-  goalBarClass,
-  goalPaceTone,
-  goalPct,
-} from "@/lib/goals";
+import { goalBarClass, goalPaceTone, goalPct } from "@/lib/outcome-goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import type { GoalProgress } from "@/lib/goal-progress";
 import type { FrequencyTargetProgress } from "@/lib/queries";
-import type { Goal } from "@/lib/types";
+import type { OutcomeGoal } from "@/lib/types";
 import WidgetHeader from "./WidgetHeader";
 
 // One overview question, one card: outcome goals and the weekly behaviors that
@@ -26,7 +22,7 @@ export default function GoalsHabitsWidget({
   freqTargets,
   today,
 }: {
-  goals: Goal[];
+  goals: OutcomeGoal[];
   goalProgress: Map<number, GoalProgress>;
   freqTargets: FrequencyTargetProgress[];
   // The active profile's today (YYYY-MM-DD) — the pace clock for goal bars (#780).

@@ -8,7 +8,7 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
 import { getEquipment } from "@/lib/equipment";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import {
   hasOnboardingFirstValue,
   initialOnboardingState,

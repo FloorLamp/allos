@@ -19,7 +19,7 @@ import {
   getCardioByActivity,
   getJournalWeekSummary,
   getDashboardStats,
-  getGoals,
+  getOutcomeGoals,
   getBodyMetrics,
   getWeights,
   getLatestBodyMetric,
@@ -97,9 +97,13 @@ describe("training reads", () => {
     expect(dash.latestWeight?.value).toBe(fx.weightKg);
   });
 
-  it("getGoals returns the seeded active goal", () => {
-    const goals = getGoals(fx.profileId);
-    expect(goals.map((g) => g.title)).toContain(`${fx.tag} Squat 140`);
+  it("getOutcomeGoals returns the seeded active goal", () => {
+    const goals = getOutcomeGoals(fx.profileId);
+    const goal = goals.find((g) => g.title === `${fx.tag} Squat 140`);
+    expect(goal).toMatchObject({
+      kind: "freeform",
+      categoryLabel: "strength",
+    });
   });
 });
 

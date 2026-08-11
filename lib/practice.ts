@@ -7,7 +7,7 @@
 // keys on the SAME computation (the "one question, one computation" rule, #221).
 
 import { WEEKDAYS_SHORT } from "./date";
-import { frequencyPace, type FrequencyPace } from "./goals";
+import { frequencyPace, type FrequencyPace } from "./frequency-targets";
 import { inWakingWindow } from "./notifications/schedule";
 import type { PracticeLogOutcome } from "./types";
 import type { WeeklyRhythm } from "./weekly-rhythm";
