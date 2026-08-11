@@ -122,6 +122,8 @@ const FORMATTER_MIN_ARGS: Record<string, number> = {
 // header): these files render into a channel with a profile but NO login in
 // context, so the fixed default IS the correct shape, deliberately.
 const PREFLESS_ALLOWLIST: Record<string, number> = {
+  // Telegram redose notice timestamps — the notify tick has a profile but no login.
+  "lib/administration-format.ts": 1,
   // Telegram callback answers ("Snoozed until …") — fixed Telegram channel shape.
   "lib/notifications/callback-data.ts": 2,
 };
