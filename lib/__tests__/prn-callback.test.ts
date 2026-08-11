@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   parsePrnLogCallback,
+  parseRedoseLogCallback,
+  redoseLogCallback,
   resolveTapProfile,
 } from "@/lib/notifications/callback-data";
 
@@ -25,5 +27,23 @@ describe("parsePrnLogCallback (#797 /dose log button)", () => {
     const token = { profileId: 7 };
     expect(resolveTapProfile(token, [3, 7, 9])).toBe(7);
     expect(resolveTapProfile(token, [3, 9])).toBeNull();
+  });
+});
+
+describe("parseRedoseLogCallback", () => {
+  it("binds the notice to the administration that armed its window", () => {
+    const encoded = redoseLogCallback(7, 42, 99, "ab12cd34");
+    expect(parseRedoseLogCallback(encoded)).toEqual({
+      profileId: 7,
+      itemId: 42,
+      administrationId: 99,
+      token: "ab12cd34",
+    });
+  });
+
+  it("rejects missing or invalid window identity", () => {
+    expect(parseRedoseLogCallback("redose:7:42:0:tok")).toBeNull();
+    expect(parseRedoseLogCallback("redose:7:42:99:")).toBeNull();
+    expect(parseRedoseLogCallback("prn:7:42:tok")).toBeNull();
   });
 });

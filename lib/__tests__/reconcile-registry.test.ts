@@ -141,6 +141,7 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
       "tunet",
       "foodtime",
       "dosetimeat",
+      "redose",
     ]) {
       expect(minted.has(known), `scan missed the "${known}:" prefix`).toBe(
         true

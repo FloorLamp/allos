@@ -21,6 +21,7 @@ const base = {
   countToday: 1,
   now: hoursAfter(6),
   notifiedAdministrationId: null as number | null,
+  tickMinutes: 5,
 };
 
 describe("redoseNoticeDecision — one-shot window", () => {
@@ -75,13 +76,29 @@ describe("redoseNoticeDecision — one-shot window", () => {
   it("does NOT consider quiet hours — a 3am elapse still fires (no waking input)", () => {
     // The decision has no hour/waking-window field at all: proof the notice is
     // overnight-capable by construction.
-    const overnight = new Date("2026-07-16T03:00:00Z"); // 17h after a 10am dose
+    const overnight = new Date("2026-07-16T03:00:00Z");
     const d = redoseNoticeDecision({
       ...base,
-      latestGivenAt: new Date("2026-07-15T10:00:00Z"),
+      // The interval opens at 03:00 — the overnight case, inside the first band.
+      latestGivenAt: new Date("2026-07-15T21:00:00Z"),
       now: overnight,
     });
     expect(d.kind).toBe("fire");
+  });
+
+  it("does not catch up on a redose window that opened weeks ago", () => {
+    expect(
+      redoseNoticeDecision({ ...base, now: hoursAfter(6 + 554) }).kind
+    ).toBe("missed-window");
+  });
+
+  it("has one bounded retry band an hour after the window opens", () => {
+    expect(redoseNoticeDecision({ ...base, now: hoursAfter(7) }).kind).toBe(
+      "fire"
+    );
+    expect(redoseNoticeDecision({ ...base, now: hoursAfter(7.2) }).kind).toBe(
+      "missed-window"
+    );
   });
 });
 

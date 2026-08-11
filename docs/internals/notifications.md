@@ -373,14 +373,22 @@ notify-orchestrators harness. **The PRN redose notice
 **administration-armed one-shot**: for each opted-in PRN med with CONFIRMED
 `min_interval_hours`/`max_daily_count` (an unconfirmed/empty field ⇒ no notice,
 ever — the liability line), the pure `redoseNoticeDecision`
-(`lib/prn-redose.ts`) fires ONCE when the minimum interval elapses since the
-latest logged administration, keyed by that administration's id in the
+(`lib/prn-redose.ts`) fires only in two bounded, observed-tick-wide bands around
+the instant the minimum interval elapses since the latest logged administration:
+the first tick after opening and one retry an hour later. It never catches up on
+a window whose bands passed during an outage. Delivery is keyed by that
+administration's id in the
 `notify_last_redose_<itemId>` marker (the `notify_last_*` discipline). It
 **re-arms only on the next administration** (a newer id ≠ the marker) and is
-**suppressed at the confirmed daily max**. It carries a "Log dose" button that
-reuses the `/dose` `prn:` callback → `logAdministration` through the ONE
-chokepoint (NOT idempotent — a dedup nonce + `logAdministration`'s short-window
-guard), and sends via `dispatch()` so push mirrors the content-safe body (#692)
+**suppressed at the confirmed daily max**. Its `redose:` "Log dose" button is
+bound to that arming administration. A newer administration logged in Telegram
+or the app spends the old window; the callback's compare and write share one
+immediate transaction, and the reconciliation sweep closes every delivered copy.
+The reusable `/dose` command keeps its additive `prn:` buttons. The notice sends
+via `dispatch()` so push mirrors the content-safe body (#692)
+and the sweep retires pre-split redose messages whose legacy `prn:` token carries
+no arming administration id; a tap arriving before that sweep is refused and the
+message is closed, never interpreted as a reusable `/dose` action.
 and the delivery marker folds like any other send. **QUIET-HOURS EXCEPTION
 (deliberate):** unlike the episode nudges (refill/preventive/milestone), the
 tick calls `runRedoseNotices` UNCONDITIONALLY — it is NOT gated by
@@ -2597,13 +2605,14 @@ renderer (#221).
 
 **The substrate.** Migration 135's `notify_messages` records one pointer per
 DELIVERED keyboard-bearing message — `(profile_id, chat_id, message_id, kind,
-date, keyboard, title, sent_at)` — written in the Telegram chokepoint, the only
+date, keyboard, receipt_keyboard, title, sent_at)` — written in the Telegram
+chokepoint, the only
 place holding both the sent message id and the message it was rendered from. It is per
 DELIVERY, not per send: one send fans out to N deduped chats (#1072), so a dose
 confirmed from a family group's copy corrects the copies in every other
 subscriber's chat. The delivered (post-cap) keyboard is stored because Telegram
-has no "read my message" API — that blob is the only record of what a chat is
-showing.
+has no "read my message" API. `keyboard` follows what the chat currently shows;
+`receipt_keyboard` retains the original claims needed to describe the outcome.
 
 **An edit inherits the send's size guards too.** `sendMessageRaw` says it holds
 Telegram's 4096-char and ~100-button caps "in ONE place so every message builder
@@ -2635,7 +2644,7 @@ tier where the instant those chips correct is what arms the PRN redose window.
 And it COLLAPSED a food nudge the user had expanded, because the visible count
 is read off the pointer (#1807), so the first sweep after any label change put
 "Show more" back. So `rebuildMessage` and `updateMessageKeyboard` sync the
-pointer's keyboard and `closeMessage` forgets it, at the same chokepoint and for
+pointer's live keyboard and `closeMessage` forgets it, at the same chokepoint and for
 the same reason the send records one: that is the only moment anyone holds both
 the message id and the keyboard that actually reached the chat. This is NOT a
 claim — `claimMessagePointerKeyboard` is a compare-and-swap because two
@@ -2643,7 +2652,10 @@ overlapping TICKS race to compute one edit and only one may pay for it, whereas 
 callback is the authority on what it just did, runs after its own edit succeeded,
 and has no pre-edit version to swap against. The sweep still claims first and
 edits second; the sync afterwards rewrites the value the claim already wrote,
-which is why it is a no-op there rather than a conflict.
+which is why it is a no-op there rather than a conflict. The delivered keyboard
+also remains immutable in `receipt_keyboard`: a dose callback replaces its
+take/skip rows with short-lived correction controls, but the final close still
+needs those original claims to say which supplements were taken or skipped.
 
 Retention is a named cleanup class (#203): pointers past Telegram's
 ~48h edit horizon are pruned on every sweep. Two indexes serve it: 135's

@@ -28,6 +28,7 @@ import type { NotificationKind } from "./types";
 // the tap handler writes to — never a second dueness model (#221).
 export type ReconcileFamily =
   | "intake-dose"
+  | "redose-window"
   | "escalation"
   | "household-round"
   | "food"
@@ -68,6 +69,10 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // is not kept alive by them, because the family's `dead` set covers both prefixes.
   { prefix: "dosetime", family: "intake-dose" },
   { prefix: "dosetimeat", family: "intake-dose" },
+
+  // A redose notice belongs to the administration id in its token. Any newer
+  // family administration — including one logged in the app — spends that window.
+  { prefix: "redose", family: "redose-window" },
 
   // Missed-dose escalation (#233 phase 2) — safety tier. A confirmed-taken dose must
   // not keep a caregiver's chat claiming it was missed.
@@ -222,6 +227,10 @@ export const RECONCILE_DATE_GUARD: Record<
   "intake-dose": {
     guard: "dose-window",
     why: "handleDoseTap applies no date check of its own — it passes the token's date straight into markDoseTaken/markDoseSkipped, which gate on isDoseDateAccepted. A dose's token date is a fact the SYSTEM established (the schedule's day, assigned before the message was sent), so the tap does not report when something happened, it confirms that a scheduled thing did. There is no second candidate answer to reconcile, which is why a late tap is not a stale guess and why deleting the button at midnight was pure loss.",
+  },
+  "redose-window": {
+    guard: "none",
+    why: "redose:<profileId>:<itemId>:<armingAdministrationId>:<nonce> carries an administration clock, not a calendar day. The handler atomically compares that id with the medication family's latest administration; the reconciler asks the same state, so a newer app log closes the old window whenever it lands.",
   },
   escalation: {
     guard: "dose-window",

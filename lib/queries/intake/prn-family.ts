@@ -100,6 +100,56 @@ export function getActiveMedicationFamilies(
   );
 }
 
+export type RedoseWindowState =
+  "current" | "superseded" | "cancelled" | "unavailable";
+
+// Is one administration-armed Telegram redose window still the CURRENT window for
+// this item? Uncached on purpose: the callback write asks inside an IMMEDIATE
+// transaction, where a request cache could turn a concurrent app log into a second
+// dose. Family-aware for the same reason every redose clock is family-aware — an OTC
+// ibuprofen administration supersedes the Rx sibling's old window too.
+export function redoseWindowState(
+  profileId: number,
+  itemId: number,
+  armingAdministrationId: number
+): RedoseWindowState {
+  const family = getActiveMedicationFamilies(profileId).find((f) =>
+    f.members.some((m) => m.id === itemId)
+  );
+  if (!family) return "unavailable";
+  const ids = family.members.map((m) => m.id);
+  const placeholders = ids.map(() => "?").join(", ");
+  // Establish that the administration which opened THIS window still exists as a
+  // taken, timed fact in the item's current family. If the user undid it in the app,
+  // an older remaining administration must not be misreported as a newer dose.
+  const arming = db
+    .prepare(
+      `SELECT 1
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id IN (${placeholders}) AND l.id = ?
+          AND l.status = 'taken' AND l.recorded_at IS NOT NULL
+        LIMIT 1`
+    )
+    .get(profileId, ...ids, armingAdministrationId);
+  if (!arming) return "cancelled";
+  const latest = db
+    .prepare(
+      `SELECT l.id AS id
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
+          AND l.status = 'taken' AND l.recorded_at IS NOT NULL
+        ORDER BY l.recorded_at DESC, l.id DESC
+        LIMIT 1`
+    )
+    .get(profileId, ...ids) as { id: number } | undefined;
+  // `arming` is itself eligible for this query, so absence is only possible if the
+  // ledger changed between these two reads outside the callback's write transaction.
+  if (!latest) return "cancelled";
+  return latest.id === armingAdministrationId ? "current" : "superseded";
+}
+
 // Family safety state for every ACTIVE medication item, keyed by ITEM id (one
 // shared state object per family). `date` is the profile-local day the count
 // resets on. Two small queries per family (latest arming administration +

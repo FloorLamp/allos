@@ -139,6 +139,20 @@ describe("runRedoseNotices orchestrator", () => {
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
   });
 
+  it("does not catch up on a window that opened weeks before this tick", async () => {
+    const p = newProfile("RedoseStale");
+    const { itemId, doseId } = seedRedoseMed(p);
+    const now = new Date();
+    const date = today(p);
+    logAdmin(itemId, doseId, date, 560, now);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runRedoseNotices(p, "RedoseStale", date, now, 5);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
+  });
+
   it("SUPPRESSED at the confirmed daily max even with the window open", async () => {
     const p = newProfile("RedoseMax");
     const { itemId, doseId } = seedRedoseMed(p); // max 4/day
@@ -162,7 +176,7 @@ describe("runRedoseNotices orchestrator", () => {
     const { itemId, doseId } = seedRedoseMed(p);
     const now = new Date();
     const date = today(p);
-    const first = logAdmin(itemId, doseId, date, 8, now);
+    const first = logAdmin(itemId, doseId, date, 7, now);
     configureHA(p);
     const fetchMock = stubFetch();
 
@@ -183,7 +197,7 @@ describe("runRedoseNotices orchestrator", () => {
     const { itemId, doseId } = seedRedoseMed(p, { redoseNotice: 0 });
     const now = new Date();
     const date = today(p);
-    logAdmin(itemId, doseId, date, 8, now);
+    logAdmin(itemId, doseId, date, 7, now);
     configureHA(p);
     const fetchMock = stubFetch();
 
@@ -198,7 +212,7 @@ describe("runRedoseNotices orchestrator", () => {
     const { itemId, doseId } = seedRedoseMed(p, { minInterval: null });
     const now = new Date();
     const date = today(p);
-    logAdmin(itemId, doseId, date, 8, now);
+    logAdmin(itemId, doseId, date, 7, now);
     configureHA(p);
     const fetchMock = stubFetch();
 
@@ -217,7 +231,7 @@ describe("runRedoseNotices orchestrator", () => {
     const { itemId, doseId } = seedRedoseMed(p);
     const now = new Date();
     const date = today(p);
-    logAdmin(itemId, doseId, date, 8, now);
+    logAdmin(itemId, doseId, date, 7, now);
     configureHA(p);
     const fetchMock = stubFetch();
 
@@ -232,13 +246,25 @@ describe("runRedoseNotices orchestrator", () => {
     const { itemId, doseId } = seedRedoseMed(p);
     const now = new Date();
     const date = today(p);
-    logAdmin(itemId, doseId, date, 8, now);
+    const adminId = logAdmin(itemId, doseId, date, 6, now);
     const fetchMock = stubFetch();
 
     const r = await runRedoseNotices(p, "RedoseNoChannel", date, now);
     expect(r.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBeUndefined();
+
+    // The bounded retry band is one hour later. A channel that appears in between can
+    // recover this window, but no later tick can resurrect it indefinitely.
+    configureHA(p);
+    await runRedoseNotices(
+      p,
+      "RedoseNoChannel",
+      date,
+      new Date(now.getTime() + 3_600_000)
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getProfileSetting(p, redoseMarkerKey(itemId))).toBe(String(adminId));
   });
 });
 

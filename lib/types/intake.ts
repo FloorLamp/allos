@@ -313,6 +313,15 @@ export type AdministrationOutcome =
   | { kind: "stale-item" }
   | { kind: "inactive" };
 
+// The administration-armed Telegram redose button adds one refusal the reusable
+// quick-log surfaces cannot have: another dose already superseded that exact window.
+export type RedoseWindowAdministrationOutcome =
+  | AdministrationOutcome
+  | {
+      kind: "stale-window";
+      reason: "superseded" | "cancelled" | "unavailable";
+    };
+
 // Outcome of the explicit medication-history backfill. Unlike the quick-log path,
 // this accepts a user-picked date/time in the history-correction window and may log
 // against a stopped medication when that date falls inside one of its courses.

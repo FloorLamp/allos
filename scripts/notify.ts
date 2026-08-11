@@ -518,7 +518,13 @@ async function tickProfile(
   // overnight fever case; the notice can only fire from a dose the user logged). Its
   // own per-item/administration marker (notify_last_redose_<itemId>) dedups.
   try {
-    const rd = await runRedoseNotices(profile.id, profile.name, date, now);
+    const rd = await runRedoseNotices(
+      profile.id,
+      profile.name,
+      date,
+      now,
+      tickMinutes
+    );
     if (rd.failed) anyFailed = true;
   } catch (e) {
     log.error("redose notice check failed", {
