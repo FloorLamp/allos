@@ -381,6 +381,34 @@ describe("/weight on demand (#1895)", () => {
     expect(replyBody()).toContain("82.5 kg");
   });
 
+  it("refuses a copied marker for a profile not linked to the replying chat", async () => {
+    const foreign = seedProfile("Weight marker foreign");
+    const before = db
+      .prepare(
+        `SELECT id, date, weight_kg FROM body_metrics
+          WHERE profile_id = ? ORDER BY id`
+      )
+      .all(foreign.profileId);
+
+    await handleIncomingMessage({
+      message_id: 6,
+      chat: { id: CHAT },
+      text: "82.5",
+      reply_to_message: {
+        text: `Reply with weight (#weight:${foreign.profileId})`,
+      },
+    });
+
+    const after = db
+      .prepare(
+        `SELECT id, date, weight_kg FROM body_metrics
+          WHERE profile_id = ? ORDER BY id`
+      )
+      .all(foreign.profileId);
+    expect(after).toEqual(before);
+    expect(replyBody()).toMatch(/isn't linked to this chat/i);
+  });
+
   it("an explicit lb reply converts at the boundary", async () => {
     await handleIncomingMessage({
       message_id: 3,
