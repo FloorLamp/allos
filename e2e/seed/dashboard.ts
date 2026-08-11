@@ -18,8 +18,8 @@ import {
   setDashboardLayout,
   setWeekMode,
   getTimezone,
-  setTimezone,
 } from "../../lib/settings";
+import { setFixtureTimezone } from "../fixture-timezones";
 import {
   resetOnboardingProfileRows,
   writeWizardEntryState,
@@ -411,7 +411,7 @@ export function seedNowStrip(): void {
   // pin. Rebuild its tiny observation set on every seed; no browser test writes or
   // cleans this profile, so fully-parallel and --repeat-each runs cannot contend.
   const sleepPhaseId = fixtureProfileId(SLEEP_PHASE_PROFILE);
-  setTimezone(sleepPhaseId, "UTC");
+  setFixtureTimezone(db, sleepPhaseId, "sleep-phase", "UTC");
   db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(
     sleepPhaseId
   );
@@ -450,7 +450,7 @@ export function seedNowStrip(): void {
   // "today" so the hero + dashboard tile both render it. Rebuilt every seed; no browser
   // test writes or cleans this profile, so parallel / --repeat-each runs cannot contend.
   const sleepSegmentedId = fixtureProfileId(SLEEP_SEGMENTED_PROFILE);
-  setTimezone(sleepSegmentedId, "UTC");
+  setFixtureTimezone(db, sleepSegmentedId, "sleep-segmented", "UTC");
   db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(
     sleepSegmentedId
   );

@@ -7,6 +7,7 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
+import { setFixtureTimezone } from "./fixture-timezones";
 
 // THE LATEST-VITALS RECENCY FLOOR (issue #2303).
 //
@@ -70,11 +71,7 @@ function createVitalsFixture(testInfo: TestInfo): VitalsFixture {
           .run(loginId, profileId);
         // Pin the profile's timezone to the run's, so the seeded days are the days the
         // card ages against.
-        handle
-          .prepare(
-            `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', ?)`
-          )
-          .run(profileId, TZ);
+        setFixtureTimezone(handle, profileId, "vitals-recency", TZ);
 
         // One visit, three sequential cuff readings on ONE day. SYNTHETIC values.
         const bp = handle.prepare(

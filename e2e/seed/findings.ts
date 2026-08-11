@@ -9,6 +9,7 @@ import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
 import { now as clockNow } from "../../lib/clock";
 import { syncInstantBefore } from "../sync-instants";
+import { setFixtureTimezone } from "../fixture-timezones";
 import { upsertConnection } from "../../lib/integrations/connections";
 import {
   E2E_LOGIN_WEATHER,
@@ -369,7 +370,7 @@ export function seedSuppressedCenter(): void {
     );
     setPS.run(wxId, "home_lat", String(wxLat));
     setPS.run(wxId, "home_lng", String(wxLng));
-    setPS.run(wxId, "timezone", wxTz);
+    setFixtureTimezone(db, wxId, "weather", wxTz);
     setPS.run(wxId, "skin_type", "2");
     // Today in the profile's timezone (YYYY-MM-DD).
     const wxToday = new Intl.DateTimeFormat("en-CA", {

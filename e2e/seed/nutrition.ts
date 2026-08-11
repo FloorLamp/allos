@@ -40,7 +40,8 @@ import {
   FOOD_PIN_PROFILE,
   FOOD_PIN_GROUP,
 } from "../fixture-logins";
-import { getTimezone, setTimezone } from "../../lib/settings";
+import { getTimezone } from "../../lib/settings";
+import { setFixtureTimezone } from "../fixture-timezones";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
 // ── Nutrition trio (protein gauge / preferences / fiber) ──
@@ -385,7 +386,7 @@ export function seedFoodSlots(): void {
   // UTC slot boundaries this comment block describes, and the spec's
   // whatever-slot-now-is assertion is hour-robust by design — pinning would shift
   // the tap→slot mapping instead of stabilizing anything.
-  setTimezone(foodSlotId, "UTC");
+  setFixtureTimezone(db, foodSlotId, "food-slot", "UTC");
   const foodSlotAnchor = today(foodSlotId);
   db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(foodSlotId);
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(
@@ -451,7 +452,7 @@ export function seedFoodUsual(): void {
   // the default boundaries are 11:00/15:00, so 08:00Z is Morning and 19:00Z Evening.
   // Idempotent: the fixture's own food rows are cleared first.
   const usualId = fixtureProfileId(FOOD_USUAL_PROFILE);
-  setTimezone(usualId, "UTC");
+  setFixtureTimezone(db, usualId, "food-usual", "UTC");
   const usualAnchor = today(usualId);
   db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(usualId);
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(usualId);

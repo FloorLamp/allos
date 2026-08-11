@@ -16,6 +16,7 @@ import {
 } from "../../lib/date";
 import { practiceIdentity } from "../../lib/practice";
 import { EDIT_LOCK_SIGNATURE } from "../edit-lock-fixture";
+import { setFixtureTimezone } from "../fixture-timezones";
 import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_BADGE,
@@ -441,7 +442,7 @@ export function seedSunOutdoor(): void {
     );
     setSunPS.run(sunId, "home_lat", "40.7");
     setSunPS.run(sunId, "home_lng", "-74");
-    setSunPS.run(sunId, "timezone", sunTz);
+    setFixtureTimezone(db, sunId, "sun-outdoor", sunTz);
     const sunToday = new Intl.DateTimeFormat("en-CA", {
       timeZone: sunTz,
       year: "numeric",
@@ -485,7 +486,7 @@ export function seedSunOutdoor(): void {
     // deliberately — a negative night is the normal case, and it is the shape a
     // `min: 0` bound or an additive aggregation would visibly destroy.
     const skinId = fixtureProfileId(SKIN_TEMP_PROFILE);
-    setSunPS.run(skinId, "timezone", sunTz);
+    setFixtureTimezone(db, skinId, "skin-temperature", sunTz);
     const insSkinTemp = db.prepare(
       `INSERT INTO metric_samples
          (profile_id, source, metric, date, start_time, end_time, value)
