@@ -229,9 +229,9 @@ describe("setStatus", () => {
     const id = goalRows(profile.id)[0].id;
     const achievedAt = () =>
       (
-        db
-          .prepare("SELECT achieved_at FROM goals WHERE id = ?")
-          .get(id) as { achieved_at: string | null }
+        db.prepare("SELECT achieved_at FROM goals WHERE id = ?").get(id) as {
+          achieved_at: string | null;
+        }
       ).achieved_at;
 
     expect(achievedAt()).toBeNull();

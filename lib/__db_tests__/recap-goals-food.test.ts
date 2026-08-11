@@ -217,7 +217,9 @@ describe("recap food line (#2396)", () => {
     expect(line.value).toBe("6/7 days");
     expect(recapLineAnnotation(line)).toContain("3 food groups");
     // #2178's never-re-total rule: 34 servings were logged and the line says so nowhere.
-    expect(`${line.value} ${recapLineAnnotation(line)}`).not.toMatch(/34|serving/);
+    expect(`${line.value} ${recapLineAnnotation(line)}`).not.toMatch(
+      /34|serving/
+    );
   });
 
   it("a week whose only logging is food still produces a recap to send", () => {
@@ -225,7 +227,8 @@ describe("recap food line (#2396)", () => {
     // day, and its recap was both empty and unsent.
     const p = newProfile("recap-food-only");
     const td = today(p);
-    for (let i = 0; i < 7; i++) logFood(p, shiftDateStr(td, -i), "leafy_greens");
+    for (let i = 0; i < 7; i++)
+      logFood(p, shiftDateStr(td, -i), "leafy_greens");
 
     const recap = buildRecap(gatherRecapInput(p));
     expect(recap.isEmpty).toBe(false);

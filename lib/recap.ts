@@ -1080,9 +1080,7 @@ export function buildRecap(input: RecapInput): Recap {
       label: "Mood",
       value: `${avg}/5`,
       comparison: NO_COMPARISON,
-      notes: [
-        days === 1 ? "one check-in" : `averaged over ${days} check-ins`,
-      ],
+      notes: [days === 1 ? "one check-in" : `averaged over ${days} check-ins`],
     });
   }
 
@@ -1135,7 +1133,8 @@ export function buildRecap(input: RecapInput): Recap {
     push({
       key: "fitness-check",
       label: "Fitness check",
-      value: fitnessAge != null ? `fitness age ${fitnessAge}` : "battery refreshed",
+      value:
+        fitnessAge != null ? `fitness age ${fitnessAge}` : "battery refreshed",
       comparison: NO_COMPARISON,
       notes: [priorNote],
     });
