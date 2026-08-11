@@ -32,16 +32,17 @@ function clampPos(pos: number, scaledDim: number): number {
 
 export default function ImageCropper({
   file,
+  src,
   onCancel,
   onCropped,
 }: {
   file: File;
+  src: string;
   onCancel: () => void;
   onCropped: (cropped: File) => void;
 }) {
   useLockBodyScroll(true);
 
-  const [url, setUrl] = useState<string | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -57,13 +58,6 @@ export default function ImageCropper({
   // committed view without re-subscribing on every change).
   const naturalRef = useLatestRef(natural);
   const viewRef = useLatestRef(view);
-
-  // Object URL for the chosen file; revoked on unmount / file change.
-  useEffect(() => {
-    const u = URL.createObjectURL(file);
-    setUrl(u);
-    return () => URL.revokeObjectURL(u);
-  }, [file]);
 
   // Once the natural dimensions are known, start centered at zoom 1.
   const onImgLoad = useCallback((el: HTMLImageElement) => {
@@ -337,10 +331,10 @@ export default function ImageCropper({
             style={{ width: VIEWPORT, height: VIEWPORT }}
             className="relative touch-none select-none overflow-hidden rounded-lg bg-slate-100 dark:bg-ink-950"
           >
-            {url && (
+            {src && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={url}
+                src={src}
                 alt=""
                 draggable={false}
                 onLoad={(e) => onImgLoad(e.currentTarget)}

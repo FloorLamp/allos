@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
@@ -111,17 +112,31 @@ export default function DateField({
   const dowOrder = weekdayOrder(weekStart);
   const seed = validISO(val) ? val : todayStr;
   const [sy, sm] = seed.split("-").map(Number);
-  const [cursor, setCursor] = useState({ y: sy, m: sm - 1 });
+  type Cursor = { y: number; m: number };
+  const [cursorState, setCursorState] = useState<{
+    seenValue: string;
+    cursor: Cursor;
+  }>({ seenValue: val, cursor: { y: sy, m: sm - 1 } });
 
   // Follow the typed/selected value to the right month — but only once it's a
   // real date, so a well-formed-but-impossible entry ("2026-13-01") can't push
   // cursor.m outside 0-11 and desync the month <select>.
-  useEffect(() => {
-    if (validISO(val)) {
-      const [y, m] = val.split("-").map(Number);
-      setCursor({ y, m: m - 1 });
-    }
-  }, [val]);
+  if (cursorState.seenValue !== val) {
+    const nextCursor = validISO(val)
+      ? (() => {
+          const [y, m] = val.split("-").map(Number);
+          return { y, m: m - 1 };
+        })()
+      : cursorState.cursor;
+    setCursorState({ seenValue: val, cursor: nextCursor });
+  }
+  const cursor = cursorState.cursor;
+  function setCursor(next: SetStateAction<Cursor>) {
+    setCursorState((current) => ({
+      seenValue: val,
+      cursor: typeof next === "function" ? next(current.cursor) : next,
+    }));
+  }
 
   // Close on outside click. The panel is portaled outside `ref`, so a click
   // inside it must also count as "inside" or picking a day would close first.
@@ -155,10 +170,7 @@ export default function DateField({
   }, []);
 
   useLayoutEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
+    if (!open) return;
     reposition();
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);

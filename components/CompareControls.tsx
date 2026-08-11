@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Combobox from "@/components/Combobox";
 import { currentPathHref } from "@/lib/hrefs";
@@ -9,6 +9,7 @@ import {
   type SeriesPickerInput,
   type SeriesPickerOption,
 } from "@/lib/series-picker-options";
+import { useResettableState } from "@/components/useResettableState";
 
 // The Compare picker for the Trends hub: two series
 // pickers (A + B) plus a "normalize" toggle, writing their choices into the
@@ -43,13 +44,10 @@ function SeriesPicker({
   onSelect: (key: string | undefined) => void;
 }) {
   const selected = options.find((o) => o.key === selectedKey);
-  const [query, setQuery] = useState(selected?.label ?? "");
+  const selectedLabel = selected?.label ?? "";
+  const [query, setQuery] = useResettableState(selectedLabel, selectedLabel);
   // The URL is the source of truth: a back/forward step, or the sibling picker's
   // router.replace, re-renders this with a new `selectedKey` and the input must follow.
-  useEffect(() => {
-    setQuery(selected?.label ?? "");
-  }, [selected?.label]);
-
   const byLabel = useMemo(
     () => new Map(options.map((o) => [o.label, o])),
     [options]
@@ -74,7 +72,7 @@ function SeriesPicker({
         // A query typed but never picked is not a selection — restore the label of
         // whatever the URL still says, so the field never shows a series it isn't
         // plotting.
-        onInputBlur={() => setQuery(selected?.label ?? "")}
+        onInputBlur={() => setQuery(selectedLabel)}
         placeholder="Search metrics and biomarkers"
         emptyLabel="No matching series"
         selectOnFocus

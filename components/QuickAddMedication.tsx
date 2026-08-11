@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import SupplementCombobox from "@/components/SupplementCombobox";
 import { useIntakeOptions } from "@/components/IntakeOptionsContext";
 import SubmitButton from "@/components/SubmitButton";
@@ -22,6 +22,7 @@ import {
 import { resolveIntakePrefill } from "@/lib/intake-prefill";
 import { quickAddMedicationFormData } from "@/lib/quick-add-medication";
 import type { FormResult } from "@/lib/types";
+import { useResettableState } from "@/components/useResettableState";
 
 // The OTC medication quick-add (issue #843, door C). Collapses the common case — an
 // common OTC entry to name + amount + optional PRN details. It starts scheduled;
@@ -51,11 +52,10 @@ export default function QuickAddMedication({
   // call sites, so the quick-add's first eight rows can never disagree with the full
   // form's (#221).
   const catalogOptions = useIntakeOptions();
-  const [pediatricContext, setPediatricContext] = useState(pediatric);
-
-  useEffect(() => {
-    setPediatricContext(pediatric);
-  }, [pediatric]);
+  const [pediatricContext, setPediatricContext] = useResettableState(
+    pediatric,
+    pediatric
+  );
 
   const [name, setName] = useState("");
   const [nameDisplay, setNameDisplay] = useState("");

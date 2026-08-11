@@ -1,12 +1,7 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
 import {
   dateGroups,
@@ -77,12 +72,13 @@ export default function PhotoGallery({
   // Lightbox paging follows the visible (grid) order.
   const flat = useMemo(() => groups.flatMap((g) => g.photos), [groups]);
 
-  const [lightbox, setLightbox] = useState<number | null>(null);
-  useEffect(() => {
-    // A filter/domain change — or a photo count change (e.g. a delete refreshed
-    // the props) — invalidates the open index.
-    setLightbox(null);
-  }, [domainKey, series, flat.length]);
+  // A filter/domain change — or a photo count change (e.g. a delete refreshed
+  // the props) — invalidates the open index in the same render.
+  const lightboxKey = `${domainKey ?? ""}\0${series ?? ""}\0${flat.length}`;
+  const [lightbox, setLightbox] = useResettableState<number | null>(
+    null,
+    lightboxKey
+  );
 
   if (!domain) {
     return (
