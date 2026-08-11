@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconRefresh } from "@tabler/icons-react";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+import { useStandaloneDisplayMode } from "./useStandaloneDisplayMode";
 import {
   classifyPull,
   indicatorPresentation,
@@ -39,23 +40,13 @@ import {
 export default function PullToRefresh() {
   const router = useRouter();
   const reduceMotion = usePrefersReducedMotion();
-  const [enabled, setEnabled] = useState(false);
+  const enabled = useStandaloneDisplayMode();
   const [state, setState] = useState<PullState>({ kind: "idle" });
   const [refreshes, setRefreshes] = useState(0);
   const [pending, startTransition] = useTransition();
   // Gesture origin. A ref, not state: touchmove fires at frame rate and must not
   // re-render on every sample beyond the indicator's own state.
   const start = useRef<{ y: number; x: number; scrollY: number } | null>(null);
-
-  // Standalone only. Read after mount (SSR can't know), and subscribed: iOS can
-  // flip display-mode when a page is opened from the installed app.
-  useEffect(() => {
-    const mq = window.matchMedia("(display-mode: standalone)");
-    setEnabled(mq.matches);
-    const on = () => setEnabled(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
 
   useEffect(() => {
     if (!enabled) return;

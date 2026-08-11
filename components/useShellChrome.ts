@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useHydrated } from "./useHydrated";
 import {
   INITIAL_SHELL_CHROME,
   nextShellChrome,
@@ -31,7 +32,14 @@ export function revealShellChrome(): void {
 
 export function useShellChrome(): { hidden: boolean; ready: boolean } {
   const pathname = usePathname();
-  const [state, setState] = useState(INITIAL_SHELL_CHROME);
+  const [routeState, setRouteState] = useState({
+    pathname,
+    state: INITIAL_SHELL_CHROME,
+  });
+  if (routeState.pathname !== pathname) {
+    setRouteState({ pathname, state: resetShellChrome(window.scrollY) });
+  }
+  const state = routeState.state;
   // Flipped once the scroll listener is attached. The behavior is inherently
   // hydration-gated (a server-rendered bar has no listener, so a scroll before
   // hydration is simply not seen — the chrome stays revealed, which is the safe
@@ -39,36 +47,31 @@ export function useShellChrome(): { hidden: boolean; ready: boolean } {
   // real thing instead of racing it. Deliberately NOT a scroll-position sync on
   // attach: arriving at a restored mid-page offset should show the chrome, not
   // hide it.
-  const [ready, setReady] = useState(false);
-
-  // A route change lands at (or near) the top with the chrome revealed —
-  // carrying the previous page's hidden state across would open a new page with
-  // its heading covered.
-  useEffect(() => {
-    setState(resetShellChrome(window.scrollY));
-  }, [pathname]);
+  const ready = useHydrated();
 
   useEffect(() => {
     let frame = 0;
     const onReveal = () => {
-      setState(resetShellChrome(window.scrollY));
+      setRouteState({ pathname, state: resetShellChrome(window.scrollY) });
     };
     const onScroll = () => {
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        setState((prev) => nextShellChrome(prev, window.scrollY));
+        setRouteState((previous) => ({
+          pathname,
+          state: nextShellChrome(previous.state, window.scrollY),
+        }));
       });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener(REVEAL_SHELL_CHROME_EVENT, onReveal);
-    setReady(true);
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener(REVEAL_SHELL_CHROME_EVENT, onReveal);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [pathname]);
 
   return { hidden: state.hidden, ready };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 import { useFormStatus } from "react-dom";
 
 // Shared pending-aware submit button. Drop it inside any <form> (server-action
@@ -25,33 +25,33 @@ export default function SubmitButton({
 } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children">) {
   const { pending } = useFormStatus();
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const [selectionMissing, setSelectionMissing] = useState(
-    requireSelection != null
-  );
-
-  useEffect(() => {
-    if (!requireSelection) {
-      setSelectionMissing(false);
-      return;
-    }
+  const selectionSnapshot = useCallback(() => {
+    if (!requireSelection) return false;
     const form = buttonRef.current?.form;
-    if (!form) return;
-
-    function updateSelection() {
-      const selected = Array.from(form!.elements).some(
-        (field) =>
-          field instanceof HTMLInputElement &&
-          field.name === requireSelection &&
-          field.checked &&
-          !field.disabled
-      );
-      setSelectionMissing(!selected);
-    }
-
-    updateSelection();
-    form.addEventListener("change", updateSelection);
-    return () => form.removeEventListener("change", updateSelection);
+    if (!form) return true;
+    const selected = Array.from(form.elements).some(
+      (field) =>
+        field instanceof HTMLInputElement &&
+        field.name === requireSelection &&
+        field.checked &&
+        !field.disabled
+    );
+    return !selected;
   }, [requireSelection]);
+  const subscribeToSelection = useCallback(
+    (onChange: () => void) => {
+      const form = buttonRef.current?.form;
+      if (!form || !requireSelection) return () => {};
+      form.addEventListener("change", onChange);
+      return () => form.removeEventListener("change", onChange);
+    },
+    [requireSelection]
+  );
+  const selectionMissing = useSyncExternalStore(
+    subscribeToSelection,
+    selectionSnapshot,
+    () => requireSelection != null
+  );
 
   return (
     <button

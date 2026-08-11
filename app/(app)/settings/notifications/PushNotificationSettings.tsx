@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   getPushPublicKey,
   savePushSubscriptionAction,
   deletePushSubscriptionAction,
   sendTestPush,
 } from "../actions";
+import { useHydrated } from "@/components/useHydrated";
 
 // Web Push opt-in (issue #17), LOGIN-scoped: a subscription belongs to THIS
 // browser + login, so it lives on Preferences (which is login-scoped), not the
@@ -32,36 +33,37 @@ type Perm = "default" | "granted" | "denied";
 
 export default function PushNotificationSettings() {
   // null = still probing; false = this browser can't do push.
-  const [supported, setSupported] = useState<boolean | null>(null);
-  const [permission, setPermission] = useState<Perm>("default");
+  const hydrated = useHydrated();
+  const supported: boolean | null = !hydrated
+    ? null
+    : "serviceWorker" in navigator &&
+      "PushManager" in window &&
+      "Notification" in window;
+  const [permissionOverride, setPermission] = useState<Perm | null>(null);
+  const permission: Perm =
+    permissionOverride ??
+    (supported ? (Notification.permission as Perm) : "default");
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
 
-  const refreshSubscription = useCallback(async () => {
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      setSubscribed(!!sub);
-    } catch {
-      setSubscribed(false);
-    }
-  }, []);
-
   useEffect(() => {
-    const ok =
-      typeof navigator !== "undefined" &&
-      "serviceWorker" in navigator &&
-      typeof window !== "undefined" &&
-      "PushManager" in window &&
-      "Notification" in window;
-    setSupported(ok);
-    if (!ok) return;
-    setPermission(Notification.permission as Perm);
-    void refreshSubscription();
-  }, [refreshSubscription]);
+    if (!supported) return;
+    let live = true;
+    void navigator.serviceWorker.ready
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => {
+        if (live) setSubscribed(!!subscription);
+      })
+      .catch(() => {
+        if (live) setSubscribed(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [supported]);
 
   async function enable() {
     setBusy(true);
