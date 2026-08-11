@@ -1,6 +1,5 @@
 import { decodePolyline, routeBounds, type LatLng } from "./polyline";
 import type {
-  CyclingStreamKey,
   CyclingStreams,
   ProviderStream,
 } from "./integrations/cycling-telemetry";
@@ -652,11 +651,4 @@ export function routeFingerprint(polyline: string | null): string | null {
     })
     .join("");
   return `${cell(points[0])}|${cell(points[points.length - 1])}|${shape}`;
-}
-
-export function hasUsableStream(
-  streams: CyclingStreams,
-  key: CyclingStreamKey
-): boolean {
-  return (streams[key]?.data.length ?? 0) > 1;
 }
