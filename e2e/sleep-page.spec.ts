@@ -180,7 +180,7 @@ test.describe("Sleep page (#1066)", () => {
 
     const main = page.getByRole("main");
 
-    // Hero: duration + the SEPARATE nap line (never summed into the night, #1118).
+    // Hero: main sleep only (never nap-summed, #1118).
     const hero = main.getByTestId("sleep-hero");
     await expect(hero).toBeVisible();
     // The fixture's latest wake-day is TODAY, and a wake-day is the date the
@@ -192,11 +192,9 @@ test.describe("Sleep page (#1066)", () => {
     await expect(duration).toBeVisible();
     const durationText = (await duration.innerText()).trim();
     // The seeded last night is a 5h overnight (23:00 → 04:00) — NOT 5h45m, which
-    // is what a nap-summed total would read. The nap is its own line.
+    // is what a nap-summed total would read. Naps have their own card below.
     expect(durationText).toBe("5h");
-    const nap = hero.getByTestId("sleep-hero-nap");
-    await expect(nap).toBeVisible();
-    await expect(nap).toHaveText("+ 45m nap (counted separately)");
+    await expect(hero).not.toContainText("nap");
     const source = hero.getByTestId("sleep-hero-source");
     await expect(source).toHaveText("Logged manually");
     await expect(source).toHaveClass(/text-xs/);
@@ -212,6 +210,16 @@ test.describe("Sleep page (#1066)", () => {
 
     // The hero deep-links to the night's Timeline view ("see in day context").
     await expect(hero.getByTestId("sleep-hero-day-link")).toBeVisible();
+
+    // Naps are a first-class, separate today surface. Their history joins the
+    // canonical Sleep and mood log below rather than creating a nested table card.
+    const napCard = main.getByTestId("nap-section");
+    await expect(napCard).toBeVisible();
+    await expect(napCard.getByTestId("nap-today-summary")).toContainText("45m");
+    await expect(napCard).not.toContainText("1 nap");
+    await expect(napCard.getByTestId("nap-today-row")).toHaveText(
+      "13:00 → 13:45"
+    );
 
     // Regularity (SRI) card — the same computation the healthspan pillar reads.
     const sri = main.getByTestId("sri-value");
@@ -315,7 +323,7 @@ test.describe("Sleep page (#1066)", () => {
       name: "Sleep and mood log",
     });
     const logHelper = sleepMoodLog.getByText(
-      /^All available sleep, stage, and mood entries, with bedtime supplement context/
+      /^All available main sleep, nap, stage, and mood entries, with bedtime supplement context/
     );
     await expect(logHeading).toBeVisible();
     await expect(logHelper).toBeVisible();
@@ -328,6 +336,12 @@ test.describe("Sleep page (#1066)", () => {
     await expect(sleepMoodLog).toContainText("Past 60 days");
     const history = sleepMoodLog.getByTestId("sleep-mood-history");
     await expect(history).toBeVisible();
+    await expect(
+      history.getByRole("columnheader", { name: "Naps", exact: true })
+    ).toBeVisible();
+    await expect(
+      history.getByText("13:00 → 13:45 · 45m", { exact: true })
+    ).toBeVisible();
     await expect(history.locator("thead tr")).toHaveCount(1);
     for (const stage of ["Deep", "REM", "Light", "Awake"]) {
       await expect(
@@ -440,6 +454,18 @@ test.describe("Sleep page (#1066)", () => {
     );
     // Same wake-day-is-today fixture as the hero, so the tile agrees with it.
     await expect(tile).toContainText("Last night");
+    await expect(tile).not.toContainText("nap");
+
+    const napTile = page.getByTestId("naps-today-widget");
+    await expect(napTile).toBeVisible();
+    await expect(napTile.getByTestId("naps-today-duration")).toHaveText("45m");
+    await expect(napTile.getByTestId("naps-today-row")).toHaveText(
+      "13:00 → 13:45"
+    );
+    await expect(napTile.getByTestId("widget-header-nav")).toHaveAttribute(
+      "href",
+      "/sleep#naps"
+    );
   });
 
   test("the Add entry action opens the shared sleep and mood editor", async ({
@@ -803,8 +829,8 @@ test.describe("Sleep segmented merged-night (#1191/#1283)", () => {
       await expect(hero).toContainText("23:00");
       await expect(hero).toContainText("08:00");
 
-      // No same-day nap line — the second fragment is part of the night, not a nap.
-      await expect(hero.getByTestId("sleep-hero-nap")).toHaveCount(0);
+      // No nap card — the second fragment is part of the night, not a nap.
+      await expect(main.getByTestId("nap-card")).toHaveCount(0);
 
       // The dashboard "last night" tile reads the SAME model (one question, one
       // computation), so it must show the identical merged 8h, never a 4h block.
@@ -815,6 +841,7 @@ test.describe("Sleep segmented merged-night (#1191/#1283)", () => {
         "8h"
       );
       await expect(tile).not.toContainText("nap");
+      await expect(page.getByTestId("naps-today-widget")).toHaveCount(0);
     } finally {
       await page.context().close();
     }

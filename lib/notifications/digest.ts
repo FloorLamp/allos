@@ -94,13 +94,13 @@ export function dedupeFlaggedByAnalyte(
 // Last night's sleep facts for the calm "how'd I sleep" digest section (#1117),
 // all derived from the SAME main-overnight-session (#1118) and SRI (#160)
 // computations the rest trigger and Trends use — one computation (#221). Minutes
-// throughout. The nap is kept SEPARATE from the overnight figure (never folded in).
+// throughout. This is a MORNING snapshot of the overnight session; naps belong on
+// the live dashboard/Sleep page and never revise an already-delivered digest later.
 export interface DigestSleep {
   lastNightMin: number; // main overnight session, last recorded night
   baselineMin: number; // recent-nights baseline (mean)
   deepMin?: number | null; // deep-stage minutes when the source reports stages
   remMin?: number | null; // REM-stage minutes when reported
-  napMin?: number | null; // same-day nap total, shown on its own line when > 0
   sri?: number | null; // Sleep Regularity Index when the signal is meaningful
 }
 
@@ -704,9 +704,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 
   // Sleep: a calm "how'd I sleep" (issue #1117) — last night's MAIN overnight
-  // session vs baseline, stages when present, an SRI note, and any nap on its OWN
-  // line (never folded into the overnight figure). Non-judgmental by design (#992):
-  // it states the numbers, never "you slept badly".
+  // session vs baseline, stages when present, and an as-of-wake SRI note.
+  // Non-judgmental by design (#992): it states the numbers, never "you slept badly".
   if (input.sleep) {
     const s = input.sleep;
     const sleepLines: MessageBody[] = [];
@@ -736,15 +735,6 @@ export function buildDigest(input: DigestInput): DigestModel | null {
         notes: [verdict, stageNote],
       })
     );
-    // A same-day nap on its own line — kept apart from the overnight total.
-    if (s.napMin != null && s.napMin > 0) {
-      sleepLines.push(
-        formatEmphasizedLine({
-          glyph: GLYPH.sleep,
-          head: `+ ${fmtSleepDuration(s.napMin)} nap`,
-        })
-      );
-    }
     if (s.sri != null) {
       // "Sleep regularity 94 — very consistent" (#1819 item 7). The old line paired an
       // acronym with a naked number ("Sleep regularity · SRI 94") and left the reader
