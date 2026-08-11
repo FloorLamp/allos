@@ -1252,7 +1252,12 @@ async function reconcilePointer(
 
   try {
     if (plan.kind === "close") {
-      await closeMessage(pointer.chatId, pointer.messageId, plan.text);
+      await closeMessage(
+        profileId,
+        pointer.chatId,
+        pointer.messageId,
+        plan.text
+      );
       // The claim already removed the row — closing IS forgetting the pointer.
       result.closed++;
     } else if (plan.kind === "rebuild") {
@@ -1265,6 +1270,7 @@ async function reconcilePointer(
       result.edited++;
     } else {
       await updateMessageKeyboard(
+        profileId,
         pointer.chatId,
         pointer.messageId,
         plan.keyboard

@@ -437,7 +437,23 @@ SILENT (#1716):** an unresolvable/unauthorized profile used to `answerCallbackQu
 with no text — the spinner stops and the tap LOOKS successful, which on the
 safety tier means a caregiver believing a critical dose is confirmed when
 nothing was written. Every refusal path now answers `OUTDATED_MESSAGE_TEXT`, the
-callback-silence variant of the never-confirm-unconditionally rule (#232). Pure
+callback-silence variant of the never-confirm-unconditionally rule (#232).
+**And on the intake tier it is DISMISSED rather than glanced at.** Speaking a
+refusal into a plain callback answer only half-delivers it: that renders as a top
+banner on a phone, but on Telegram Desktop as a small tooltip near the message
+that fades on its own and is easy to miss entirely — so the refusal was spoken
+and not heard, leaving the reader in the exact state the rule exists to prevent.
+So an intake refusal answers with `show_alert`, a modal that has to be
+dismissed. WHICH answers, decided once by `tapContradictsButton`: not "nothing
+changed" — an idempotent repeat changes nothing and is honest, because the state
+the button asked for is the state that stands — but the tap whose answer has to
+CONTRADICT its own label (a ✅ on a dose already marked skipped, a ⏭️ on one
+already logged, a retired dose, a paused item), plus the flat refusals beside it
+(an unresolvable profile, a household access or stale-date gate, a correction
+whose hour has run out). Deliberately not everywhere: a modal costs a dismissal,
+and spending one on "Logged ✅" or on a food quick-log is how the one that
+matters stops being read, so the coaching tier keeps its toasts. The predicate
+governs DELIVERY only — the wording was already honest. Pure
 parse/decide lives in `lib/notifications/callback-data.ts` (unit-tested); the
 handler flows in `telegram-callbacks.ts`. **Channel chokepoint (#454):** every outbound Telegram
 write — the tick's channel send, escalation's explicit-chat send, and the
@@ -691,7 +707,21 @@ restart. `lib/correction-time.ts` holds the whole model, domain-blind, and
   button is the picker (a fourth button would shrink the row below legibility);
 - 🕐 drills down to **absolute hours** — the past twelve, starting one hour past the
   last chip, three per row, plus `↩︎ Back` — the `symp:`→`symsev:` shape, except the
-  quick-log buttons stay on screen so `↩︎ Back` can rebuild from the live keyboard.
+  domain's own buttons stay on screen underneath, so the drill-down still says which
+  message it belongs to.
+
+**`open` and `back` write nothing, so they need the ledger for their subject.** A chip
+and a picked hour take the burst's dose and day from their restamp outcome; the two
+navigation steps have no outcome to take one from, and must read the rebuild's subject
+off the live keyboard instead. On the food side that always works — a nudge renders its
+ranked quick-log buttons unconditionally, so `foodRebuild` can always recover its window
+and day. A DOSE session cannot: once every dose is resolved it renders a bare "all N
+taken" summary with no take/skip/All button at all, which is exactly what the ordinary
+final confirm produces, and the correction row is then the whole keyboard. So
+`doseAnchor` re-reads the anchor row's dose and day from the same ledger query the burst
+itself came from. Without it the rebuild had no day, `doseRebuild` returned null, and 🕐
+edited nothing while answering nothing — a visible button that silently did nothing, and
+the one refusal this module did not speak.
 
 **One vocabulary: every offer is an absolute local time (#2206).** A chip states the
 instant it will store, with its offset as context — `19:11 · −1h`, not `−1h`. The
@@ -2567,7 +2597,46 @@ DELIVERY, not per send: one send fans out to N deduped chats (#1072), so a dose
 confirmed from a family group's copy corrects the copies in every other
 subscriber's chat. The delivered (post-cap) keyboard is stored because Telegram
 has no "read my message" API — that blob is the only record of what a chat is
-showing. Retention is a named cleanup class (#203): pointers past Telegram's
+showing.
+
+**An edit inherits the send's size guards too.** `sendMessageRaw` says it holds
+Telegram's 4096-char and ~100-button caps "in ONE place so every message builder
+is covered" (#379), and that was true outbound only — an edit took a pre-built
+keyboard and text and passed both straight through. So the very regimen the
+button cap exists for (thirty-odd doses in one merged reminder) got a correctly
+capped send and then had every later tap rebuild the same oversized keyboard and
+be REJECTED, freezing the message on its pre-tap state. The length cap an edit
+cannot honour the send's way — a send SPLITS across messages, an edit has one
+message and no way to grow it — so the body is cut on the same line boundaries
+(never mid-tag) and the tail says it was shortened. The buttons always survive
+either way: they are what the message is FOR, and they carry the state claim this
+sweep reconciles. Failing instead would leave the pre-tap keyboard standing,
+which is this section's own harm pattern.
+
+**And an EDIT records what it put there, exactly as a send does.** The pointer
+was a send-time record for a long time, and `recordMessagePointer` was its only
+writer: every callback edit — a tap rebuild, a consumed row, a close — changed
+what the chat was showing and left the pointer describing the SEND's keyboard.
+Since the sweep reasons entirely from that blob, it was deciding about buttons
+that no longer existed, and it got two live surfaces wrong. It CLOSED a
+fully-confirmed dose session while the #2020 correction row the tap had just
+added was still live (it saw the send's `take`/`skip` tokens, found the dose
+resolved, and concluded every claim was dead) — up to 59 minutes early, on the
+tier where the instant those chips correct is what arms the PRN redose window.
+And it COLLAPSED a food nudge the user had expanded, because the visible count
+is read off the pointer (#1807), so the first sweep after any label change put
+"Show more" back. So `rebuildMessage` and `updateMessageKeyboard` sync the
+pointer's keyboard and `closeMessage` forgets it, at the same chokepoint and for
+the same reason the send records one: that is the only moment anyone holds both
+the message id and the keyboard that actually reached the chat. This is NOT a
+claim — `claimMessagePointerKeyboard` is a compare-and-swap because two
+overlapping TICKS race to compute one edit and only one may pay for it, whereas a
+callback is the authority on what it just did, runs after its own edit succeeded,
+and has no pre-edit version to swap against. The sweep still claims first and
+edits second; the sync afterwards rewrites the value the claim already wrote,
+which is why it is a no-op there rather than a conflict.
+
+Retention is a named cleanup class (#203): pointers past Telegram's
 ~48h edit horizon are pruned on every sweep. Two indexes serve it: 135's
 `(profile_id, sent_at)` for the sweep and the pruner, and 152's
 `(profile_id, chat_id, kind, sent_at)` for the supersede lookup (#2003), which runs

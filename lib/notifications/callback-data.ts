@@ -163,6 +163,28 @@ export function tapLogged(outcome: DoseTakenOutcome): boolean {
   );
 }
 
+// The ⏭️ twin of `tapLogged`: true when a tap actually left the dose SKIPPED (new or
+// idempotent repeat). An "already-taken" dose is resolved, but not as skipped (#280).
+export function tapSkipped(outcome: DoseTakenOutcome): boolean {
+  return outcome === "skipped" || outcome === "already-skipped";
+}
+
+// Did this tap fail to do the thing its own button named? Not "did nothing change" —
+// an idempotent repeat changes nothing and is honest, because the state the button
+// asked for is the state that stands. What this catches is the tap whose ANSWER has to
+// contradict its label: a ✅ on a dose already marked skipped, a ⏭️ on one already
+// logged, a retired dose, a paused item.
+//
+// It is the predicate the answer's DELIVERY keys on (`show_alert`), never its wording —
+// `tapAnswerText` and `tapSkipAnswerText` already say the honest thing, and this decides
+// only whether the reader has to dismiss it or can miss it.
+export function tapContradictsButton(
+  outcome: DoseTakenOutcome,
+  kind: "take" | "skip"
+): boolean {
+  return kind === "take" ? !tapLogged(outcome) : !tapSkipped(outcome);
+}
+
 // True when a tap left the dose RESOLVED (taken, skipped, or an already-standing
 // resolution of either kind) — used to pick honest closing text once a message
 // runs out of buttons, regardless of which resolution it was.

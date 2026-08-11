@@ -120,6 +120,7 @@ import {
   resolveEscalationTap,
   resolveTapProfile,
   tapAnswerText,
+  tapContradictsButton,
   tapResolved,
   tapSkipAnswerText,
 } from "./callback-data";
@@ -437,6 +438,7 @@ export async function handleCallbackQuery(
 // does that, since a PRN log is not idempotent); it keeps a redelivered identical
 // callback distinguishable and each rendered button unique.
 async function consumeRow(
+  profileId: number,
   cq: TelegramCallbackQuery,
   closingText: string
 ): Promise<void> {
@@ -449,18 +451,20 @@ async function consumeRow(
     // Retain the original title line so a shared-chat message stays attributable
     // once its buttons are gone (#377).
     await closeMessage(
+      profileId,
       chatId,
       messageId,
       replacementWithTitle(cq.message?.text, closingText)
     );
   } else {
-    await updateMessageKeyboard(chatId, messageId, remaining);
+    await updateMessageKeyboard(profileId, chatId, messageId, remaining);
   }
 }
 
 // Replace a single-action message (its buttons consumed) with a closing line.
 // Used by escalation, whose ✅/👍 pair resolves the whole message in one tap.
 async function replaceMessage(
+  profileId: number,
   cq: TelegramCallbackQuery,
   text: string
 ): Promise<void> {
@@ -471,6 +475,7 @@ async function replaceMessage(
   // Retain the original title line (which med / whose escalation) above the
   // closing so a shared-chat escalation stays attributable once consumed (#377).
   await closeMessage(
+    profileId,
     chatId,
     messageId,
     replacementWithTitle(cq.message?.text, text)
@@ -528,7 +533,7 @@ async function handlePreventiveTap(
   // The closing line states the resolved state in detail (done / not applicable /
   // snoozed-until-when) — toast and body come from the same outcome, so they
   // can't disagree.
-  await consumeRow(cq, preventiveCloseText(outcome));
+  await consumeRow(profileId, cq, preventiveCloseText(outcome));
 }
 
 // Apply a refill tap: verify the item is still the profile's (a forged id →
@@ -565,6 +570,7 @@ async function handleRefillTap(
   const outcome = applyRefillTap(profileId, rf);
   await answerCallbackQuery(cq.id, refillAnswerText(outcome));
   await consumeRow(
+    profileId,
     cq,
     outcome === "snoozed"
       ? `Refill reminder snoozed ${GLYPH.ordered}`
@@ -585,7 +591,9 @@ async function handleEscalationTap(
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
+      alert: true,
+    });
     return;
   }
   // The chats authorized to act on this escalation: every chat the escalation could
@@ -601,7 +609,9 @@ async function handleEscalationTap(
   ];
   const profileId = resolveEscalationTap(esc, String(chatId), authorizedChats);
   if (profileId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
+      alert: true,
+    });
     return;
   }
 
@@ -617,8 +627,10 @@ async function handleEscalationTap(
       esc.suppId,
       esc.date
     );
-    await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome));
-    await replaceMessage(cq, escalationSkipCloseText(outcome));
+    await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome), {
+      alert: tapContradictsButton(outcome, "skip"),
+    });
+    await replaceMessage(profileId, cq, escalationSkipCloseText(outcome));
     return;
   }
 
@@ -637,9 +649,10 @@ async function handleEscalationTap(
     const outcome = markDoseTaken(profileId, esc.doseId, esc.suppId, esc.date);
     await answerCallbackQuery(
       cq.id,
-      tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome))
+      tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome)),
+      { alert: tapContradictsButton(outcome, "take") }
     );
-    await replaceMessage(cq, escalationTakeCloseText(outcome));
+    await replaceMessage(profileId, cq, escalationTakeCloseText(outcome));
     return;
   }
 
@@ -652,7 +665,7 @@ async function handleEscalationTap(
     setProfileSetting(profileId, escalationMarkerKey(esc.doseId), esc.date);
   }
   await answerCallbackQuery(cq.id, escalationAckAnswerText(ack));
-  await replaceMessage(cq, escalationAckCloseText(ack));
+  await replaceMessage(profileId, cq, escalationAckCloseText(ack));
 }
 
 // Handle a stale-workout nudge "🏁 Finish workout" / "🗑️ Discard" tap (#1205). Resolve
@@ -687,6 +700,7 @@ async function handleWorkoutFinishTap(
     await answerCallbackQuery(cq.id, workoutDiscardAnswerText(outcome));
     if (chatId != null && messageId != null) {
       await closeMessage(
+        profileId,
         chatId,
         messageId,
         replacementWithTitle(
@@ -726,6 +740,7 @@ async function handleWorkoutFinishTap(
     await rebuildMessage(profileId, chatId, messageId, summary);
   } else {
     await closeMessage(
+      profileId,
       chatId,
       messageId,
       replacementWithTitle(cq.message?.text, `Workout finished ${GLYPH.done}`)
@@ -758,7 +773,7 @@ async function handleActivityTypeAskTap(
   }
   const outcome = classifyActivityType(profileId, token.activityId, token.type);
   await answerCallbackQuery(cq.id, activityTypeAskAnswerText(outcome));
-  await consumeRow(cq, activityTypeAskAnswerText(outcome));
+  await consumeRow(profileId, cq, activityTypeAskAnswerText(outcome));
 }
 
 // Apply a single ✅ take or ⏭️ skip tap: resolve the acting profile from the chat,
@@ -785,7 +800,9 @@ async function handleDoseTap(
     // means a caregiver believing a critical dose is confirmed when nothing was
     // logged. Every refusal answers the same honest text the seven sibling handlers
     // already used.
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
+      alert: true,
+    });
     return;
   }
 
@@ -817,7 +834,8 @@ async function handleDoseTap(
     cq.id,
     kind === "take"
       ? tapAnswerText(outcome, offDayCadence(profileId, tap.doseId, outcome))
-      : tapSkipAnswerText(outcome)
+      : tapSkipAnswerText(outcome),
+    { alert: tapContradictsButton(outcome, kind) }
   );
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -870,6 +888,7 @@ async function handleDoseTap(
   const remaining = removeButton(rows, cq.data as string);
   if (remaining.length === 0) {
     await closeMessage(
+      profileId,
       chatId,
       messageId,
       replacementWithTitle(
@@ -880,7 +899,7 @@ async function handleDoseTap(
       )
     );
   } else {
-    await updateMessageKeyboard(chatId, messageId, remaining);
+    await updateMessageKeyboard(profileId, chatId, messageId, remaining);
   }
 }
 
@@ -900,7 +919,9 @@ async function handleHouseholdDoseTap(
 ): Promise<void> {
   const chatId = cq.message?.chat?.id;
   if (chatId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
+      alert: true,
+    });
     return;
   }
   const access = resolveHouseholdTapAccess(String(chatId), tap);
@@ -908,7 +929,9 @@ async function handleHouseholdDoseTap(
     // Nothing was written. Say which of the three gates closed, and leave the
     // keyboard alone — the button may become valid again (a re-granted member), and
     // silently consuming it would strand the caregiver with no way to confirm.
-    await answerCallbackQuery(cq.id, householdTapRefusalText(access));
+    await answerCallbackQuery(cq.id, householdTapRefusalText(access), {
+      alert: true,
+    });
     return;
   }
 
@@ -922,7 +945,9 @@ async function handleHouseholdDoseTap(
   if (
     tapDateGuard(tap.date, today(tap.memberProfileId)).kind === "stale-date"
   ) {
-    await answerCallbackQuery(cq.id, householdStaleDateAnswerText(tap.date));
+    await answerCallbackQuery(cq.id, householdStaleDateAnswerText(tap.date), {
+      alert: true,
+    });
     return;
   }
 
@@ -959,8 +984,13 @@ async function handleHouseholdDoseTap(
   // the message with text that matches the truth: "All done" only if this tap actually
   // resolved its dose.
   const remaining = removeButton(rows, cq.data as string);
+  // The pointer's subject is the RECEIVER, not the member: this message was sent to the
+  // caregiver's own chat for their own profile, and the write that just ran under the
+  // member's id does not move who the message belongs to.
+  const owner = tap.receiverProfileId;
   if (remaining.length === 0) {
     await closeMessage(
+      owner,
       chatId,
       messageId,
       replacementWithTitle(
@@ -971,7 +1001,7 @@ async function handleHouseholdDoseTap(
       )
     );
   } else {
-    await updateMessageKeyboard(chatId, messageId, remaining);
+    await updateMessageKeyboard(owner, chatId, messageId, remaining);
   }
 }
 
@@ -990,7 +1020,9 @@ async function handleAllTaken(
       ? resolveTapProfile(all, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
+      alert: true,
+    });
     return;
   }
 
@@ -1039,7 +1071,10 @@ async function handleAllTaken(
         : // Everything due was already resolved (e.g. two caregivers race-tapping
           // ✅ All) — nothing was inserted, so don't claim "Logged ✅" (#280
           // outcome-honesty; #380).
-          `Already logged ${GLYPH.done}`
+          `Already logged ${GLYPH.done}`,
+    // An empty slot is the only arm that contradicts the button: "Already logged" is
+    // the state ✅ All asked for, reached by someone else.
+    { alert: entries.length === 0 }
   );
 
   const messageId = cq.message?.message_id;
@@ -1061,6 +1096,7 @@ async function handleAllTaken(
   );
   if (parts.length === 0) {
     await closeMessage(
+      profileId,
       chatId,
       messageId,
       replacementWithTitle(cq.message?.text, OUTDATED_MESSAGE_TEXT)
@@ -1293,5 +1329,5 @@ async function handleFoodOptIn(
   setProfileFoodTelegram(profileId, opt.enable);
   setFoodTelegramPrompted(profileId);
   await answerCallbackQuery(cq.id, foodOptInAnswerText(opt.enable));
-  await replaceMessage(cq, foodOptInCloseText(opt.enable));
+  await replaceMessage(profileId, cq, foodOptInCloseText(opt.enable));
 }

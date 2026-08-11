@@ -60,9 +60,11 @@ import {
 } from "./pointer-rotation";
 import {
   claimMessagePointerClose,
+  forgetMessagePointerAt,
   liveMessagePointersForKind,
   recordMessagePointer,
   restoreMessagePointer,
+  syncMessagePointerKeyboard,
   type MessagePointer,
 } from "./message-pointers";
 import { isReissuableKind, proseReconcilerFor } from "./reconcile-registry";
@@ -319,6 +321,7 @@ async function closeSuperseded(
     // send time, attribution prefix included — so in a shared chat it is clear WHOSE
     // keyboard was replaced, not just that one was.
     await closeMessage(
+      profileId,
       target.chatId,
       target.messageId,
       reconcileClosingText("superseded", target.title)
@@ -547,6 +550,15 @@ export async function rebuildMessage(
     keyboard: messageKeyboard(attributed),
     parseMode: "HTML",
   });
+  // The chat is now showing this keyboard, so the pointer says so — through the same
+  // `deliveredKeyboard` the send records, so a rebuilt pointer and a sent one are the
+  // same shape and the sweep cannot tell which wrote it.
+  syncMessagePointerKeyboard(
+    profileId,
+    chatId,
+    messageId,
+    deliveredKeyboard(attributed)
+  );
 }
 
 // Replace a consumed message's text with a closing line and drop all buttons. The
@@ -554,19 +566,25 @@ export async function rebuildMessage(
 // which retains the already-attributed original title line from cq.message.text) —
 // no re-render, so no prefix re-derivation is needed here.
 export async function closeMessage(
+  profileId: number,
   chatId: number | string,
   messageId: number,
   text: string
 ): Promise<void> {
   await editMessageTextRaw(chatId, messageId, text);
+  // Closing IS forgetting (the sweep's own close path says so): the buttons are gone,
+  // so there is nothing left for a later tick to reconcile.
+  forgetMessagePointerAt(profileId, chatId, messageId);
 }
 
 // Swap a message's inline keyboard in place (e.g. remove the tapped button's row
 // while other rows remain). Text is untouched.
 export async function updateMessageKeyboard(
+  profileId: number,
   chatId: number | string,
   messageId: number,
   keyboard: InlineKeyboard
 ): Promise<void> {
   await editMessageReplyMarkupRaw(chatId, messageId, keyboard);
+  syncMessagePointerKeyboard(profileId, chatId, messageId, keyboard);
 }

@@ -23,7 +23,36 @@ import path from "node:path";
 // exactly as the tier did before. A hand-kept list would instead let the spec
 // land in the shared project and fail with something unrecognisable — "not
 // supported in workers", or an assertion against a spy nothing called.
-const CANNOT_SHARE = ["vi.mock(", "process.chdir("];
+//
+// MATCHED AS PATTERNS, NOT AS LITERAL TEXT. These used to be plain substrings, which
+// made the detection depend on FORMATTING: Prettier wraps a long chain as `vi\n  .mock(`
+// and the marker silently stopped matching, so the spec landed in the shared project and
+// produced exactly the unrecognisable failure described above. A marker that a
+// reformatting run can switch off is not mechanical.
+const CANNOT_SHARE = [/vi\s*\.\s*mock\(/, /process\s*\.\s*chdir\(/];
+
+// The third thing that cannot share a registry, and the one that hid: a spec that
+// patches an APP MODULE'S EXPORT through a namespace import
+// (`import * as auth from "@/lib/auth"` + `vi.spyOn(auth, …)`).
+//
+// It is the same defect as a per-spec `vi.mock` and it fails the same way. The consumer
+// under test imported that export as its own binding when the worker's ONE module graph
+// was built — which, with `isolate: false`, may have happened while an earlier file was
+// running, long before this spec installs its spy. Whether the patch is observed then
+// depends on the order files were packed into workers, so the spec passes alone, passes
+// most of the time in the tier, and fails when the packing changes: the assertion sees
+// the REAL function's result and reports a plain wrong value, naming nothing about
+// isolation. Spying on `console`, `fs`, `Date` or a db handle is untouched by this —
+// those are globals and objects, not registry entries, and they are why the marker is
+// the namespace import rather than `spyOn` on its own.
+function spiesOnAppModule(src: string): boolean {
+  for (const m of src.matchAll(/vi\s*\.\s*spyOn\(\s*([A-Za-z_$][\w$]*)\s*,/g)) {
+    const ns = m[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`import\\s*\\*\\s*as\\s+${ns}\\s+from\\s+["']@/`).test(src))
+      return true;
+  }
+  return false;
+}
 
 export function specsNeedingIsolation(
   root: string,
@@ -40,7 +69,11 @@ export function specsNeedingIsolation(
       if (!entry.isFile() || !entry.name.endsWith(".test.ts")) continue;
       const file = path.join(entry.parentPath, entry.name);
       const src = fs.readFileSync(file, "utf8");
-      if (!CANNOT_SHARE.some((marker) => src.includes(marker))) continue;
+      if (
+        !CANNOT_SHARE.some((marker) => marker.test(src)) &&
+        !spiesOnAppModule(src)
+      )
+        continue;
       specs.push(path.relative(root, file).split(path.sep).join("/"));
     }
   }

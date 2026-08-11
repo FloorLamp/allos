@@ -110,7 +110,11 @@ const OUT_OF_RANGE_TEXT =
 async function resolve(
   cq: TelegramCallbackQuery,
   token: { profileId: number; fromId: number },
-  taps: (profileId: number, now: Date) => TapEvent[]
+  taps: (profileId: number, now: Date) => TapEvent[],
+  // Whether this domain's refusals must be DISMISSED rather than glanced at. True for
+  // doses (nothing was written to a medication ledger and the reader has to know) and
+  // false for food, where a missed toast costs a serving's timestamp.
+  alert = false
 ): Promise<Resolved | null> {
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
@@ -120,19 +124,19 @@ async function resolve(
       : null;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (profileId == null || chatId == null || messageId == null) {
-    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert });
     return null;
   }
   const now = clockNow();
   const burst = burstFrom(taps(profileId, now), token.fromId);
   if (!burst) {
-    await answerCallbackQuery(cq.id, NO_BURST_TEXT);
+    await answerCallbackQuery(cq.id, NO_BURST_TEXT, { alert });
     return null;
   }
   // The SAME freshness predicate the renderer applied, so a chat can never show a chip
   // the handler would refuse and can never refuse one it is still showing.
   if (!isBurstFresh(burst, now)) {
-    await answerCallbackQuery(cq.id, LAPSED_TEXT);
+    await answerCallbackQuery(cq.id, LAPSED_TEXT, { alert });
     return null;
   }
   return {
@@ -327,6 +331,25 @@ function doseRebuild(
   );
 }
 
+// The anchor row's own dose + day, read back from the ledger.
+//
+// The chip and the picked hour take this from their restamp outcome. `open` and `back`
+// WRITE NOTHING, so they have none — and a session whose doses are ALL confirmed renders
+// no take/skip/All button at all (`renderWindowMessage` returns a bare summary once
+// nothing is pending), so its keyboard carries the correction row and nothing else. With
+// no anchor the rebuild then has no day to gather from, `doseRebuild` returns null, and
+// the 🕐 button edits nothing while answering nothing — the one refusal this module does
+// not speak, on the message the ordinary final confirm leaves behind. Same anchor the
+// write paths pass, off the same ledger read the burst itself came from.
+function doseAnchor(
+  profileId: number,
+  fromId: number,
+  now: Date
+): { doseId: number; date: string } | null {
+  const row = getRecentDoseTaps(profileId, now).find((t) => t.id === fromId);
+  return row ? { doseId: row.doseId, date: row.date } : null;
+}
+
 async function rebuildDose(
   r: Resolved,
   anchor: { doseId: number; date: string } | null,
@@ -403,12 +426,14 @@ export async function handleDoseTimeChip(
   cq: TelegramCallbackQuery,
   token: CorrectionChipToken
 ): Promise<void> {
-  const r = await resolve(cq, token, getRecentDoseTaps);
+  const r = await resolve(cq, token, getRecentDoseTaps, true);
   if (!r) return;
   const outcome = restampDoseLogsCore(r.profileId, token.fromId, (row) =>
     chipTarget(row, token.minutesBack, r.now)
   );
-  await answerCallbackQuery(cq.id, doseRestampText(outcome));
+  await answerCallbackQuery(cq.id, doseRestampText(outcome), {
+    alert: doseRestampRefused(outcome),
+  });
   await rebuildDose(r, anchorOf(outcome));
 }
 
@@ -416,15 +441,15 @@ export async function handleDoseTimeAt(
   cq: TelegramCallbackQuery,
   token: CorrectionAtToken
 ): Promise<void> {
-  const r = await resolve(cq, token, getRecentDoseTaps);
+  const r = await resolve(cq, token, getRecentDoseTaps, true);
   if (!r) return;
   if (token.step.kind === "open") {
-    await rebuildDose(r, null, r.burst);
+    await rebuildDose(r, doseAnchor(r.profileId, token.fromId, r.now), r.burst);
     await answerCallbackQuery(cq.id);
     return;
   }
   if (token.step.kind === "back") {
-    await rebuildDose(r, null);
+    await rebuildDose(r, doseAnchor(r.profileId, token.fromId, r.now));
     await answerCallbackQuery(cq.id);
     return;
   }
@@ -433,16 +458,24 @@ export async function handleDoseTimeAt(
     ? statedHourInstant(hhmm, r.now, r.tz)
     : null;
   if (!instant) {
-    await answerCallbackQuery(cq.id, UNOFFERED_TEXT);
+    await answerCallbackQuery(cq.id, UNOFFERED_TEXT, { alert: true });
     return;
   }
   const outcome = restampDoseLogsCore(r.profileId, token.fromId, () => instant);
-  await answerCallbackQuery(cq.id, doseRestampText(outcome, hhmm));
+  await answerCallbackQuery(cq.id, doseRestampText(outcome, hhmm), {
+    alert: doseRestampRefused(outcome),
+  });
   await rebuildDose(r, anchorOf(outcome));
 }
 
 function anchorOf(outcome: DoseRestampOutcome) {
   return outcome.kind === "restamped" ? outcome.anchor : null;
+}
+
+// A restamp that wrote nothing. The ledger is a medication one, so its refusal is
+// dismissed rather than glanced at — same rule as the dose buttons themselves.
+function doseRestampRefused(outcome: DoseRestampOutcome): boolean {
+  return outcome.kind !== "restamped";
 }
 
 // The toast. It states the ADHERENCE DAY IS UNCHANGED whenever the correction crossed

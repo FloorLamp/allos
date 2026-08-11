@@ -453,6 +453,54 @@ export function dropMessagePointer(profileId: number, id: number): void {
   );
 }
 
+// ---- Keeping the pointer honest across an EDIT ------------------------------
+//
+// `recordMessagePointer` is a SEND-time record, and for a long time it was the only
+// writer: every callback edit — a tap rebuild, a consumed row, a close — changed what
+// the chat was showing and left the pointer describing the keyboard the SEND had put
+// there. The sweep reasons entirely from that blob, so it was deciding about buttons
+// that no longer existed. Two things it got wrong, both confirmed against the real
+// dispatcher: it closed a fully-confirmed dose session while the correction row the
+// tap had just added was still live (it saw the send's `take`/`skip` tokens, found the
+// dose resolved, and concluded every claim was dead), and it collapsed a food nudge the
+// user had expanded (the visible count is read off the pointer, #1807).
+//
+// So an edit records what it put on screen, exactly as a send does, at the same
+// chokepoint and for the same reason: that is the only moment anyone holds both the
+// message id and the keyboard that reached the chat.
+//
+// NOT A CLAIM. `claimMessagePointerKeyboard` is a compare-and-swap because two
+// overlapping TICKS race to compute the same edit and only one may pay for it. A
+// callback is not in that race — it is the authority on what it just did, it runs after
+// its own edit succeeded, and it has no pre-edit version to swap against. The sweep
+// still claims first and edits second; these run afterwards and write the value the
+// claim already wrote, which is why a redundant sync is a no-op rather than a conflict.
+export function syncMessagePointerKeyboard(
+  profileId: number,
+  chatId: string | number,
+  messageId: number,
+  keyboard: InlineKeyboard
+): void {
+  db.prepare(
+    `UPDATE notify_messages SET keyboard = ?
+      WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
+  ).run(JSON.stringify(keyboard), profileId, String(chatId), messageId);
+}
+
+// Forget the pointer for a message an edit just CLOSED. The twin of
+// `dropMessagePointer`, keyed the way an edit knows its target — closing is forgetting,
+// and a message with no buttons left makes no claim for the sweep to reconcile.
+export function forgetMessagePointerAt(
+  profileId: number,
+  chatId: string | number,
+  messageId: number
+): void {
+  db.prepare(
+    `DELETE FROM notify_messages
+      WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
+  ).run(profileId, String(chatId), messageId);
+}
+
 // The retention sweep. Runs on every reconcile pass, which is what keeps the table
 // bounded for a household that never opens Telegram.
 export function pruneMessagePointers(profileId: number): number {
