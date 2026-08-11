@@ -20,7 +20,7 @@ import {
   NUTRITION_HISTORY_WEEK_CAPS,
   type AdherenceWeek,
 } from "@/lib/nutrition-trends";
-import { dayHistoryStart } from "@/lib/day-history";
+import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
 import { FOOD_GROUPS, foodGroupShortName } from "@/lib/food-groups";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
@@ -96,14 +96,35 @@ export default async function NutritionSection({
   );
   const doseValues = doseRows.map((d) => ({
     date: d.date,
-    group: d.name,
+    // A displayed name is not an item identity: two separately managed
+    // Magnesium entries must remain two rows with two independent filters.
+    group: String(d.itemId),
     value: 1,
     // The confirmed amount rides along as hover copy ("2 doses · 1000 mg").
     note: d.amount ?? undefined,
   }));
-  const doseGroups = [...new Set(doseRows.map((d) => d.name))]
-    .sort((a, b) => a.localeCompare(b))
-    .map((name) => ({ key: name, label: name }));
+  const doseItems = new Map(doseRows.map((d) => [d.itemId, d]));
+  const doseNameCounts = new Map<string, number>();
+  for (const d of doseItems.values()) {
+    doseNameCounts.set(d.name, (doseNameCounts.get(d.name) ?? 0) + 1);
+  }
+  const labelCounts = new Map<string, number>();
+  const doseGroups = [...doseItems.values()]
+    .sort((a, b) => a.name.localeCompare(b.name) || a.itemId - b.itemId)
+    .map((item) => {
+      const duplicateName = (doseNameCounts.get(item.name) ?? 0) > 1;
+      const qualifier =
+        item.product?.trim() ||
+        item.brand?.trim() ||
+        (item.kind === "medication" ? "Medication" : "Supplement");
+      const base = duplicateName ? `${item.name} · ${qualifier}` : item.name;
+      const occurrence = (labelCounts.get(base) ?? 0) + 1;
+      labelCounts.set(base, occurrence);
+      return {
+        key: String(item.itemId),
+        label: occurrence > 1 ? `${base} ${occurrence}` : base,
+      };
+    });
 
   // Part 3 — macros + fiber daily series (tracked totals; fiber the uncharted signal).
   // WINDOWED like every sibling chart (#2258 §4): this was the one Trends chart that
@@ -143,20 +164,21 @@ export default async function NutritionSection({
           </Link>
         </div>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-          Food-group servings you actually logged, day by day. Filter by group;
-          tap a day to see what it held.
+          {DAY_HISTORY_DOMAINS.food.helperText}
         </p>
         {foodValues.length === 0 ? (
           <EmptyState message="No food logged in this range. Widen the date range or log on the Nutrition page." />
         ) : (
           <DayHistory
             domain="food"
+            addHref="/nutrition?tab=food"
             values={foodValues}
             groups={foodGroupsMeta}
             end={win.to}
             weeks={win.weeks}
             weekStart={weekStart}
             today={todayStr}
+            formatPrefs={formatPrefs}
             testId="intake-day-history"
           />
         )}
@@ -183,20 +205,21 @@ export default async function NutritionSection({
           </Link>
         </div>
         <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-          Confirmed supplement and medication doses, day by day — what was
-          taken, not an adherence verdict.
+          {DAY_HISTORY_DOMAINS.dose.helperText}
         </p>
         {doseValues.length === 0 ? (
           <EmptyState message="No confirmed doses in this range. Doses confirmed on Nutrition → Supplements or Medications will show up here." />
         ) : (
           <DayHistory
             domain="dose"
+            addHref="/nutrition?tab=supplements"
             values={doseValues}
             groups={doseGroups}
             end={win.to}
             weeks={win.weeks}
             weekStart={weekStart}
             today={todayStr}
+            formatPrefs={formatPrefs}
             testId="dose-day-history"
           />
         )}

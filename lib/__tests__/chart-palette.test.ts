@@ -4,6 +4,7 @@ import {
   chartAdherenceState,
   chartBand,
   chartNeutral,
+  chartObservationRamp,
   chartSeries,
 } from "@/lib/chart-colors";
 import {
@@ -180,29 +181,48 @@ describe("chart neutral + bands (issue #1445)", () => {
 });
 
 describe("sequential cell ramps (issue #1445, Part 3a)", () => {
-  it("declares the same number of class steps as hex steps in each theme", () => {
-    expect(chartActivityRamp.stepClasses.length).toBe(
-      chartActivityRamp.light.steps.length
-    );
-    expect(chartActivityRamp.stepClasses.length).toBe(
-      chartActivityRamp.dark.steps.length
-    );
-  });
+  const TEXT_CONTRAST_MIN = 4.5;
+  const ramps = {
+    activity: chartActivityRamp,
+    observation: chartObservationRamp,
+  };
 
-  for (const theme of THEMES) {
-    it(`activity ramp reads as a ramp on the ${theme} surface`, () => {
-      const { steps, empty } = chartActivityRamp[theme];
-      const report = validateCellRamp(steps, { theme, empty });
-      expect(
-        report.failures.map((f) => f.name),
-        formatReport(
-          `chartActivityRamp FAILED on the ${theme} surface. A density ramp is ` +
-            `one hue, monotone in lightness, with every neighbouring cell ` +
-            `(including the empty one) visibly apart:`,
-          report
-        )
-      ).toEqual([]);
+  for (const [name, ramp] of Object.entries(ramps)) {
+    it(`${name} declares the same number of class and hex steps`, () => {
+      expect(ramp.stepClasses.length).toBe(ramp.light.steps.length);
+      expect(ramp.stepClasses.length).toBe(ramp.dark.steps.length);
+      expect(ramp.labelClasses).toHaveLength(ramp.stepClasses.length + 1);
+      expect(ramp.light.labelText).toHaveLength(ramp.stepClasses.length + 1);
+      expect(ramp.dark.labelText).toHaveLength(ramp.stepClasses.length + 1);
     });
+
+    for (const theme of THEMES) {
+      it(`${name} ramp reads as a ramp on the ${theme} surface`, () => {
+        const { steps, empty } = ramp[theme];
+        const report = validateCellRamp(steps, { theme, empty });
+        expect(
+          report.failures.map((f) => f.name),
+          formatReport(
+            `${name} cell ramp FAILED on the ${theme} surface. A density ramp is ` +
+              `one hue, monotone in lightness, with every neighbouring cell ` +
+              `(including the empty one) visibly apart:`,
+            report
+          )
+        ).toEqual([]);
+      });
+
+      it(`${name} labels clear text contrast on every ${theme} ramp step`, () => {
+        const palette = ramp[theme];
+        const backgrounds = [palette.empty, ...palette.steps];
+        backgrounds.forEach((background, level) => {
+          const ratio = contrastRatio(palette.labelText[level], background);
+          expect(
+            ratio,
+            `${name} level ${level} label is only ${ratio.toFixed(2)}:1 on ${theme}`
+          ).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN);
+        });
+      });
+    }
   }
 
   // The class ladder and the hex ladder are two halves of one export; if a Tailwind
@@ -234,6 +254,24 @@ describe("sequential cell ramps (issue #1445, Part 3a)", () => {
       expect(BRAND[dark![1]], `step ${i + 1} dark class ${dark![0]}`).toBe(
         chartActivityRamp.dark.steps[i]
       );
+    });
+
+    const BLUE: Record<string, string> = {
+      "100": "#dbeafe",
+      "200": "#bfdbfe",
+      "300": "#93c5fd",
+      "400": "#60a5fa",
+      "500": "#3b82f6",
+      "600": "#2563eb",
+      "700": "#1d4ed8",
+    };
+    chartObservationRamp.stepClasses.forEach((cls, i) => {
+      const light = /(?:^|\s)bg-blue-(\d{3})(?:\s|$)/.exec(cls);
+      const dark = /dark:bg-blue-(\d{3})/.exec(cls);
+      expect(light).not.toBeNull();
+      expect(dark).not.toBeNull();
+      expect(BLUE[light![1]]).toBe(chartObservationRamp.light.steps[i]);
+      expect(BLUE[dark![1]]).toBe(chartObservationRamp.dark.steps[i]);
     });
   });
 });

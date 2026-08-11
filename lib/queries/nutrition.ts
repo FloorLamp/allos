@@ -1267,10 +1267,24 @@ export function getProteinToday(profileId: number): ProteinToday | null {
 export function getConfirmedIntakeDosesInRange(
   profileId: number,
   since: string
-): { date: string; name: string; amount: string | null }[] {
+): {
+  date: string;
+  itemId: number;
+  name: string;
+  kind: "supplement" | "medication";
+  brand: string | null;
+  product: string | null;
+  amount: string | null;
+}[] {
   return db
     .prepare(
-      `SELECT l.date AS date, s.name AS name, l.amount AS amount
+      `SELECT l.date AS date,
+              s.id AS itemId,
+              s.name AS name,
+              s.kind AS kind,
+              s.brand AS brand,
+              s.product AS product,
+              l.amount AS amount
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.date >= ? AND l.status = 'taken'
@@ -1278,7 +1292,11 @@ export function getConfirmedIntakeDosesInRange(
     )
     .all(profileId, since) as {
     date: string;
+    itemId: number;
     name: string;
+    kind: "supplement" | "medication";
+    brand: string | null;
+    product: string | null;
     amount: string | null;
   }[];
 }

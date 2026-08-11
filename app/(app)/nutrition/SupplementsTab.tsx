@@ -142,6 +142,8 @@ import {
 import { getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
 import { IconChevronDown } from "@tabler/icons-react";
+import HistoricalDoseLauncher from "@/components/intake/HistoricalDoseLauncher";
+import { isHistoricalDoseDateAccepted } from "@/lib/dose-log-window";
 
 export const dynamic = "force-dynamic";
 
@@ -157,9 +159,11 @@ interface Item {
 // nutrition page.
 export default async function SupplementsTab({
   supplyId = 0,
+  backfillDate,
 }: {
   // The cabinet's "Add for another person" deep link (#1705). 0 / unreachable = no seed.
   supplyId?: number;
+  backfillDate?: string;
 }) {
   const { login, profile } = await requireSession();
   // The medicine-cabinet door (#1522) counts over the caller's WHOLE accessible set,
@@ -172,6 +176,10 @@ export default async function SupplementsTab({
   // outside this caller's reach simply doesn't seed anything.
   const initialSupply = findLinkableSupply(scope.ids, supplyId);
   const todayStr = today(profile.id);
+  const acceptedBackfillDate =
+    backfillDate && isHistoricalDoseDateAccepted(todayStr, backfillDate)
+      ? backfillDate
+      : undefined;
   const formatPrefs = getDisplayFormatPrefs(login.id);
   // Dietary preferences (#975): the RDA-adequacy food-source lines filter/substitute
   // excluded groups the same way the #577 suggestions do.
@@ -895,6 +903,32 @@ export default async function SupplementsTab({
     <SituationOptionsProvider options={situationOptionNames}>
       <IntakeOptionsProvider options={getIntakeCatalogOptions(profile.id)}>
         <div>
+          {backfillDate ? (
+            <HistoricalDoseLauncher
+              items={supplements
+                .filter(
+                  (supplement) =>
+                    supplement.kind === "supplement" &&
+                    !!supplement.active &&
+                    (dosesBySupp.get(supplement.id)?.length ?? 0) > 0
+                )
+                .map((supplement) => ({
+                  id: supplement.id,
+                  name: supplement.name,
+                  product: supplement.product,
+                  asNeeded: supplement.obligation === "may",
+                  doses: (dosesBySupp.get(supplement.id) ?? []).map((dose) => ({
+                    id: dose.id,
+                    amount: dose.amount,
+                    timeOfDay: dose.time_of_day,
+                  })),
+                }))}
+              initialDate={acceptedBackfillDate}
+              maxDate={todayStr}
+              defaultTime={hhmm}
+              invalidRequestedDate={!acceptedBackfillDate}
+            />
+          ) : null}
           {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
           the profile's own data, NOT a manual toggle — rendered distinctly and NON-
           toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses

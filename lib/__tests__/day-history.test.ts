@@ -20,6 +20,14 @@ describe("DAY_HISTORY_DOMAINS", () => {
       const spec = DAY_HISTORY_DOMAINS[key];
       expect(spec.unitOne.length).toBeGreaterThan(0);
       expect(spec.unitMany.length).toBeGreaterThan(0);
+      expect(spec.groupOne.length).toBeGreaterThan(0);
+      expect(spec.groupMany.length).toBeGreaterThan(0);
+      expect(["activity", "observation"]).toContain(spec.ramp);
+      expect(["coverage", "quantity"]).toContain(spec.calendarKind);
+      expect(spec.calendarTitle.length).toBeGreaterThan(0);
+      expect(spec.matrixTitle.length).toBeGreaterThan(0);
+      expect(spec.helperText.length).toBeGreaterThan(0);
+      expect(spec.levelLabels).toHaveLength(5);
       expect(typeof spec.calendarLevel).toBe("function");
       expect(typeof spec.cellLevel).toBe("function");
     }
@@ -39,16 +47,21 @@ describe("DAY_HISTORY_DOMAINS", () => {
           expect(l).toBeLessThanOrEqual(4);
           prev = l;
         }
-        expect(level(12)).toBe(4);
       }
+      expect(spec.cellLevel(12)).toBe(4);
+      expect(spec.calendarLevel(12)).toBe(
+        spec.calendarKind === "coverage" ? 1 : 4
+      );
     }
   });
 
-  it("food's calendar ladder is wider than its cell ladder (day totals don't saturate)", () => {
-    const food = DAY_HISTORY_DOMAINS.food;
-    // 4 servings in one day: max as a single-group cell, mid-range as a day total.
-    expect(food.cellLevel(4)).toBe(4);
-    expect(food.calendarLevel(4)).toBeLessThan(4);
+  it("food and dose calendars encode coverage, not a more-is-better total", () => {
+    for (const key of ["food", "dose"] as const) {
+      const spec = DAY_HISTORY_DOMAINS[key];
+      expect(spec.calendarLevel(1)).toBe(1);
+      expect(spec.calendarLevel(20)).toBe(1);
+      expect(spec.cellLevel(4)).toBe(4);
+    }
   });
 });
 
@@ -327,7 +340,7 @@ describe("buildDayHistoryCalendar", () => {
     ]);
     const wed = last.find((c) => c.date === "2026-07-08")!;
     expect(wed.value).toBe(9);
-    expect(wed.level).toBe(4);
+    expect(wed.level).toBe(calendarLevel(9));
     expect(wed.today).toBe(true);
     const mon = last.find((c) => c.date === "2026-07-06")!;
     expect(mon.level).toBe(calendarLevel(3));

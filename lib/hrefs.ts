@@ -284,6 +284,30 @@ export function timelineDayHref(
     : `/timeline?from=${date}&to=${date}#timeline-day-${date}`;
 }
 
+// The Training Log's date anchor. Workout-day surfaces land in the domain
+// ledger rather than routing through Timeline; the log owns activity review
+// and editing, while Timeline remains the cross-domain destination.
+export function trainingLogDayHref(date: string): AppRoute {
+  return `/training?tab=log#day-${date}`;
+}
+
+// Turn a day-history panel's domain landing page into its dated CREATE entry
+// point (#2420). The base route remains AppRoute-checked at the server call site;
+// this helper owns the four parameter names so a chart cannot send a date to a
+// destination that does not read it.
+export type DayHistoryAddKind = "food" | "dose" | "practice" | "workout";
+
+export function dayHistoryAddHref(
+  base: AppRoute,
+  kind: DayHistoryAddKind,
+  date: string
+): AppRoute {
+  const param =
+    kind === "dose" ? "backfill" : kind === "practice" ? "log" : "date";
+  const separator = String(base).includes("?") ? "&" : "?";
+  return `${base}${separator}${param}=${encodeURIComponent(date)}` as AppRoute;
+}
+
 // The Data hub's deep-linkable sections. Source of truth for the union — the page
 // (`app/(app)/data/page.tsx`) imports it, so a section rename is one edit and
 // every caller of `dataSectionHref` is re-checked by the compiler (typedRoutes

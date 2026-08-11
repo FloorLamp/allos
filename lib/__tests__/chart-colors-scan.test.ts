@@ -176,7 +176,7 @@ const MIN_RAMP_STEPS = 3;
 const RAMP_ALLOWLIST = new Map<string, string>([
   [
     "lib/chart-colors.ts",
-    "the blessed ramp itself (chartActivityRamp) — this is where a cell ramp lives",
+    "the blessed ramps themselves (activity + observation) — this is where a cell ramp lives",
   ],
 ]);
 
@@ -256,11 +256,14 @@ describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
   it("the palette module still ships both halves of every ramp (classes AND hexes)", () => {
     const src = fs.readFileSync(path.join(REPO, "lib/chart-colors.ts"), "utf8");
     expect(/export const chartActivityRamp\b/.test(src)).toBe(true);
+    expect(/export const chartObservationRamp\b/.test(src)).toBe(true);
     expect(/export const chartAdherenceState\b/.test(src)).toBe(true);
     // The class ladder without its hexes would leave the validator checking a
     // fiction; the hexes without the ladder would leave the DOM unvalidated.
     expect(/stepClasses:/.test(src)).toBe(true);
-    expect(/light: \{ empty:/.test(src)).toBe(true);
+    expect(/light:\s*\{\s*empty:/s.test(src)).toBe(true);
+    expect(/labelClasses:/.test(src)).toBe(true);
+    expect(/labelText:/.test(src)).toBe(true);
   });
 
   it("every ramp-allowlist entry still declares a ladder (no stale entries)", () => {

@@ -21,7 +21,11 @@ import { EMPTY_JOURNAL_FILTERS } from "@/lib/journal-filters";
 import { resolveJournalFeedContext } from "./journal-feed-resolve";
 import JournalView from "./JournalView";
 
-export default async function HistorySection() {
+export default async function HistorySection({
+  initialCreateDate,
+}: {
+  initialCreateDate?: string;
+}) {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
@@ -65,6 +69,7 @@ export default async function HistorySection() {
 
   return (
     <JournalView
+      initialCreateDate={initialCreateDate}
       groups={feed.groups}
       initialCursor={feed.cursor}
       sourceOptions={feed.sourceOptions}
