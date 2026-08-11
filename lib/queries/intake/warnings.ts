@@ -80,7 +80,7 @@ import { getIntakeSafetyContext } from "./safety";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import { activeByKey } from "../../findings";
 import { getFindingSuppressions } from "../upcoming/suppressions";
-import { contributesToDailyLimit, isPrn } from "../../intake-schedule";
+import { contributesToDailyLimit, isOnDemand } from "../../intake-schedule";
 import { getIntakeItems, getIntakeDoses } from "./schedule";
 
 // ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
@@ -88,14 +88,14 @@ import { getIntakeItems, getIntakeDoses } from "./schedule";
 // A UL warning enriched with an optional condition caveat: when an active condition
 // makes the population UL unreliable for the nutrient (CKD × magnesium, #657), the
 // caveat is computed here — the ONE place with the conditions in hand — and both
-// surfaces (the /medicine row, the Upcoming finding) format it, so they can't disagree.
+// surfaces (the intake surface row, the Upcoming finding) format it, so they can't disagree.
 export type UlWarningWithCaveat = UlWarning & {
   conditionCaveat: string | null;
 };
 
 // The active stack's nutrients whose summed daily supplemental intake exceeds the
 // NIH Tolerable Upper Intake Level (UL) for the profile's age/sex. The SINGLE
-// gather behind both surfaces — the /medicine warning rows and the dismissible
+// gather behind both surfaces — the intake surface warning rows and the dismissible
 // Upcoming finding — so they can never disagree on which nutrients are over
 // (AGENTS.md "one question, one computation"). Reuses the profile-scoped
 // getIntakeItems + getIntakeDoses reads (no new SQL, so profile scoping is
@@ -168,7 +168,7 @@ function stackDriContext(
       name: s.name,
       active: !!s.active,
       doseAmounts: dosesBySupp.get(s.id) ?? [],
-      optional: isPrn(s),
+      optional: isOnDemand(s),
     }));
 
   const birthdate = getProfileBirthdate(profileId);
@@ -181,7 +181,7 @@ function stackDriContext(
 
 // Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).
 // Reuses the pure detectInteractions over each item's name + cached RxCUI(s) +
-// active flag — the SAME computation the /medicine warnings, the create/edit inline
+// active flag — the SAME computation the intake surface warnings, the create/edit inline
 // notice, and the dismissible Upcoming finding all format over. Cached ingredient
 // CUIs (issue #279) let a combination product match each ingredient's concept.
 // Profile-scoped (getIntakeItems filters profile_id); inactive/paused rows are
@@ -199,7 +199,7 @@ export function getInteractionWarnings(profileId: number): InteractionHit[] {
 
 // Pharmacogenomics cross-check (issue #710): the profile's stored PGx variants
 // (genomic_variants, result_type='pharmacogenomic') × its ACTIVE medications, matched
-// against the curated CPIC gene–drug table. The SAME pure crossCheckPgx the /medicine
+// against the curated CPIC gene–drug table. The SAME pure crossCheckPgx the intake surface
 // row notice, the create/edit inline notice, and the dismissible Upcoming finding all
 // format over ("one question, one computation"). The active meds come from the ONE
 // shared safety-context gather (getIntakeSafetyContext, #661) — active + kind

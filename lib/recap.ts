@@ -1023,7 +1023,7 @@ export function recapRangeLabel(
 }
 
 // The minimal shape of a stored recap narrative row this picker needs (a subset
-// of lib/types Narrative), kept local so this pure module stays dependency-light.
+// of lib/types PeriodRecap), kept local so this pure module stays dependency-light.
 export interface StoredRecapNarrative {
   period_start: string | null;
   period_end: string;

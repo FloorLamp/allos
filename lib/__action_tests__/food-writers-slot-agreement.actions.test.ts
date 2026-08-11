@@ -24,7 +24,7 @@ import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { logFoodServing } from "@/app/(app)/nutrition/actions";
 import { logFoodServingCore } from "@/lib/food-log-write";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { foodEventWindow } from "@/lib/food-slot-count";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import { getTimezone } from "@/lib/settings";

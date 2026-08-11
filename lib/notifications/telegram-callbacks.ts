@@ -36,7 +36,7 @@ import {
   getProfileAge,
 } from "../settings";
 import { logFoodServingCore } from "../food-log-write";
-import { addProteinGramsCore } from "../protein-log-write";
+import { addProteinGramsCore } from "../protein-daily-totals-write";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
 import { refillSignalKey } from "../refill-nudge";

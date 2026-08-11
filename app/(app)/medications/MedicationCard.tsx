@@ -77,7 +77,7 @@ import {
 } from "./actions";
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { isPrn } from "@/lib/intake-schedule";
+import { isOnDemand } from "@/lib/intake-schedule";
 import { symptomLabelOptions } from "@/lib/symptoms";
 
 // A side effect is described in the SAME human vocabulary a symptom is (#1676), so
@@ -296,7 +296,7 @@ export default function MedicationCard({
       amount: dose.amount,
       product: s.product,
       timeOfDay: dose.time_of_day,
-      asNeeded: isPrn(s),
+      asNeeded: isOnDemand(s),
       timeFormat: formatPrefs.timeFormat,
     })
   );
@@ -317,7 +317,7 @@ export default function MedicationCard({
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
               <RxOtcBadge rx={s.rx} />
-              {isPrn(s) && (
+              {isOnDemand(s) && (
                 <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                   As Needed
                 </span>
@@ -355,7 +355,7 @@ export default function MedicationCard({
             </div>
             <div className="mt-4">
               <div className="section-label">
-                {isPrn(s) ? "Dose" : "Dose schedule"}
+                {isOnDemand(s) ? "Dose" : "Dose schedule"}
               </div>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate-700 dark:text-slate-200">
                 {doseLines.length > 0 && doseLines.some(Boolean) ? (
@@ -504,7 +504,7 @@ export default function MedicationCard({
         </div>
 
         {/* A PRN (as-needed) med keeps logging and today's ledger together. */}
-        {current && isPrn(s) && (
+        {current && isOnDemand(s) && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="prn-administrations"
@@ -578,7 +578,7 @@ export default function MedicationCard({
 
         {/* Today's dose check-offs — a SCHEDULED med only (PRN uses the block above),
           when it's current and due. */}
-        {current && due && !isPrn(s) && doses.length > 0 && (
+        {current && due && !isOnDemand(s) && doses.length > 0 && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="scheduled-today"
@@ -830,7 +830,7 @@ export default function MedicationCard({
               amount: dose.amount,
               time_of_day: dose.time_of_day,
             }))}
-            asNeeded={isPrn(s)}
+            asNeeded={isOnDemand(s)}
             history={doseHistory}
             minDate={historyMinDate}
             maxDate={historyMaxDate}

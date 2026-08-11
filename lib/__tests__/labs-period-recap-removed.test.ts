@@ -43,7 +43,7 @@ describe("lab-trend narrative removal (#1164/#203)", () => {
           "--",
           "app/**",
           "lib/**",
-          ":!lib/__tests__/labs-narrative-removed.test.ts",
+          ":!lib/__tests__/labs-period-recap-removed.test.ts",
         ],
         { cwd: ROOT, encoding: "utf8" }
       );
@@ -62,12 +62,12 @@ describe("lab-trend narrative removal (#1164/#203)", () => {
     );
   });
 
-  it("the NarrativeKind union no longer carries the labs kind", () => {
+  it("the PeriodRecapKind union no longer carries the labs kind", () => {
     const src = readFileSync(
       path.join(ROOT, "lib", "types", "coaching.ts"),
       "utf8"
     );
-    const match = src.match(/export type NarrativeKind =([^;]+);/);
+    const match = src.match(/export type PeriodRecapKind =([^;]+);/);
     expect(match).not.toBeNull();
     expect(match![1]).not.toContain('"labs"');
   });

@@ -16,7 +16,7 @@ import {
   getProteinToday,
   getFiberAdequacy,
   getFiberOnDate,
-  getProteinLoggedGrams,
+  getProteinDailyGrams,
   getProteinQuickAddPreset,
   getHabitualFoodGroups,
 } from "@/lib/queries";
@@ -216,7 +216,7 @@ export default async function FoodTab({
   const fiberToday = getFiberOnDate(profile.id, date);
   // Direct protein-grams quick-add (#824): today's manual total + the last-used amount
   // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
-  const proteinLoggedGrams = getProteinLoggedGrams(profile.id, date);
+  const proteinLoggedGrams = getProteinDailyGrams(profile.id, date);
   const proteinPreset = getProteinQuickAddPreset(profile.id);
   // Current food slot (#950): the profile's wall-clock window (Morning/Midday/Evening)
   // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME

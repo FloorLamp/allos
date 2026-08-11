@@ -30,7 +30,7 @@ the same table. **Surfaces (#746):** the two kinds render on separate pages —
 supplements on **Nutrition → Supplements** (`/nutrition?tab=supplements`, a tab
 of the Food | Supplements umbrella), medications on the standalone
 **Medications** page (`/medications`, Medical nav group). The former combined
-`/medicine` route was removed outright (#1635) and now 404s — historical deep
+intake route was removed outright (#1635) and now 404s — historical deep
 links to it are not kept alive. This is a UI/route split only: one `intake_items` table, and the write
 cores are shared — the kind-agnostic dose/item CRUD lives in
 `app/(app)/nutrition/intake-actions.ts` (imported by both surfaces), the
@@ -416,7 +416,7 @@ and the scheduled time-slot/split-dose path are **mutually exclusive** — an
 no split; the redose interval owns "when"), a scheduled med keeps the slot/split
 editor and no interval/max. The invariant is enforced at BOTH surfaces: the form
 collapses to a single amount-only editor (`DoseRowsEditor singleAmountOnly`) and
-the save action runs `collapsePrnDoses` (pure, `lib/intake-schedule.ts`) so
+the save action runs `collapseOnDemandDoses` (pure, `lib/intake-schedule.ts`) so
 a legacy hybrid row (a PRN med with slots) collapses to its first dose's amount
 on the next save — keeping that dose's id (and its administration history).
 Migration-free: existing hybrid rows still render; new saves are clean.
@@ -580,7 +580,7 @@ window.
 
 **The obligation model (#1505).** One user-owned field, `obligation`, replaced
 BOTH `priority` (mandatory/high/low) and `as_needed`. Migration 124 rebuilds
-`intake_items`: `as_needed = 1 → may` (first, so a PRN item lands on may whatever
+`intake_items`: `as_needed = 1 → may` (first, so a formerly as-needed row lands on may whatever
 tag it carried), then `mandatory → must`, `low → may`, everything else `should`.
 
 | Obligation | Meaning                       | Push                            | Adherence                                            |
@@ -590,9 +590,10 @@ tag it carried), then `mandatory → must`, `low → may`, everything else `shou
 | `may`      | there is no expectation       | never pushed                    | **no dueness, no misses, no fraction** — ledger only |
 
 Three predicates in `lib/intake-schedule.ts` are the whole of the semantics —
-`isPushedIntake`, `accruesMisses`, `escalatesOnMiss` — plus `isPrn`, since `may`
-absorbed PRN wholesale (the amount-only dose shape #851, the redose notice #798,
-the over-max finding #1027 all key off it). They are deliberately separate
+`isPushedIntake`, `accruesMisses`, `escalatesOnMiss` — plus `isOnDemand`, the generic
+name for `may` across both kinds. PRN remains a medication-specific dose-limit and
+redosing policy (#798/#1027); an optional supplement is simply on demand. They are
+deliberately separate
 functions: `should` reminds but never escalates, which the old two-value model
 could not express.
 
@@ -1013,7 +1014,7 @@ members they explicitly ticked, each with an inline confirm. It changes NOTHING
 about this domain's rules and adds no second dueness engine: the round's
 per-member gather is the SAME `collectWindowDoses` + `isPushedIntake` floor that
 builds that member's own reminder (#221), evaluated in that member's own
-timezone/day, so a PRN item is absent (never scheduled-due), a taken or
+timezone/day, so an on-demand item is absent (never scheduled-due), a taken or
 deliberately skipped dose (#232) is not "due", and a held item stays held. The
 confirm writes through `markDoseTaken` ONLY — adherence history stays truthful,
 the amount snapshot and retired/paused refusals are unchanged, and the handler

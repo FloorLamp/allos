@@ -12,7 +12,7 @@ import {
   addProteinGrams,
   undoProteinGrams,
 } from "@/app/(app)/nutrition/actions";
-import { getProteinLoggedGrams, getProteinQuickAddPreset } from "@/lib/queries";
+import { getProteinDailyGrams, getProteinQuickAddPreset } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -44,7 +44,7 @@ describe("addProteinGrams", () => {
     const r = rows(profile.id);
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ date: DATE, grams: 55 });
-    expect(getProteinLoggedGrams(profile.id, DATE)).toBe(55);
+    expect(getProteinDailyGrams(profile.id, DATE)).toBe(55);
     expect(revalidate).toHaveBeenCalledWith("/nutrition");
   });
 
@@ -117,8 +117,8 @@ describe("scoping", () => {
     actAs(login, a);
     await addProteinGrams(fd({ grams: "40", date: DATE }));
 
-    expect(getProteinLoggedGrams(a.id, DATE)).toBe(40);
-    expect(getProteinLoggedGrams(b.id, DATE)).toBe(0);
+    expect(getProteinDailyGrams(a.id, DATE)).toBe(40);
+    expect(getProteinDailyGrams(b.id, DATE)).toBe(0);
     expect(rows(b.id)).toEqual([]);
   });
 });

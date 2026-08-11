@@ -4,7 +4,7 @@ import { today } from "@/lib/db";
 import {
   getMetricDailyTotals,
   getFoodHabitTrends,
-  getFoodLogEntries,
+  getFoodDailyServingTotals,
   getConfirmedIntakeDosesInRange,
 } from "@/lib/queries";
 import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
@@ -64,7 +64,7 @@ export default async function NutritionSection({
   const win = lensWindow(range, todayStr, NUTRITION_HISTORY_WEEK_CAPS);
   const weekStart = getWeekStart(profile.id);
   const gridFrom = dayHistoryStart(win.to, win.weeks, weekStart);
-  const foodEntries = getFoodLogEntries(profile.id, gridFrom).filter(
+  const foodEntries = getFoodDailyServingTotals(profile.id, gridFrom).filter(
     (e) => e.date <= win.to
   );
   const foodValues = foodEntries.map((e) => ({

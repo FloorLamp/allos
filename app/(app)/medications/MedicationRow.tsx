@@ -37,7 +37,7 @@ import { useToast } from "@/components/Toast";
 import { deleteIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import { restartMedication } from "@/app/(app)/medications/actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { isPrn } from "@/lib/intake-schedule";
+import { isOnDemand } from "@/lib/intake-schedule";
 
 // One medication as a SCANNABLE ROW on the /medications list (#817) — not the old
 // lifecycle card. Name/dose · adherence + refill (#747 parity) · course status ·
@@ -128,7 +128,7 @@ export default function MedicationRow({
       amount: dose.amount,
       product: med.product,
       timeOfDay: dose.time_of_day,
-      asNeeded: isPrn(med),
+      asNeeded: isOnDemand(med),
       timeFormat: formatPrefs.timeFormat,
     })
   );
@@ -161,7 +161,7 @@ export default function MedicationRow({
               </span>
             )}
             <RxOtcBadge rx={med.rx} />
-            {isPrn(med) && (
+            {isOnDemand(med) && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 As Needed
               </span>

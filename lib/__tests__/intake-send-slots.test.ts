@@ -21,7 +21,7 @@ import {
 import {
   accruesMisses,
   escalatesOnMiss,
-  isPrn,
+  isOnDemand,
   isPushedIntake,
   type TimeBucket,
 } from "../intake-schedule";
@@ -200,7 +200,9 @@ describe("the obligation semantics table (#1505)", () => {
       expect(accruesMisses({ obligation: r.obligation })).toBe(r.counts);
       expect(escalatesOnMiss({ obligation: r.obligation })).toBe(r.escalates);
       // `may` IS the PRN shape — the flag it absorbed.
-      expect(isPrn({ obligation: r.obligation })).toBe(r.obligation === "may");
+      expect(isOnDemand({ obligation: r.obligation })).toBe(
+        r.obligation === "may"
+      );
     }
   });
 });

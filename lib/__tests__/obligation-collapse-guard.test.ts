@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 // Two dead columns sitting in the schema are precisely how a collapsed model
 // un-collapses: the next person to need "is this PRN?" finds `as_needed` in
 // `PRAGMA table_info` and writes to it, and now there are two answers again. This
-// test makes that a build failure. Application code asks `isPrn(item)` and reads
+// test makes that a build failure. Application code asks `isOnDemand(item)` and reads
 // `item.obligation`; nothing else may name either retired column.
 //
 // The scan is TEXT over the repo's own sources (no DB, no network), the same shape as
@@ -102,7 +102,7 @@ describe("the obligation collapse stays collapsed (#1505)", () => {
       offenders,
       `#1505 collapsed as_needed into obligation. The column survives in the ` +
         `schema ONLY so replayed pre-124 migrations still prepare — it is dead ` +
-        `storage. Ask isPrn(item) / read item.obligation instead:\n` +
+        `storage. Ask isOnDemand(item) / read item.obligation instead:\n` +
         offenders.join("\n")
     ).toEqual([]);
   });

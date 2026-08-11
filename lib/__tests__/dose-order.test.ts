@@ -92,12 +92,12 @@ describe("doseSortKey / compareDoseDay", () => {
   });
 });
 
-// The #297 acceptance: /medicine's due-today section and the Upcoming/attention
+// The #297 acceptance: the intake surface's due-today section and the Upcoming/attention
 // surfaces must order the SAME dose day identically. Here we reproduce each
 // surface's own sorting path over one fixture and assert the flattened order
 // matches — the one-question-one-computation guarantee.
 describe("dose-day order is identical on both surfaces", () => {
-  // /medicine: group by bucket, sort each bucket with the shared comparator, then
+  // the intake surfaces: group by bucket, sort each bucket with the shared comparator, then
   // concatenate buckets in TIME_BUCKETS order (how the page renders its sections).
   function medicineOrder(entries: DoseDayEntry[]): string[] {
     const byBucket = new Map<string, DoseDayEntry[]>();

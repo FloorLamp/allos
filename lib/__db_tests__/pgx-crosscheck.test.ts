@@ -10,7 +10,7 @@
 // builders.
 //
 // It also pins "one question, one computation": the SAME fixture yields the SAME
-// finding on BOTH surfaces — the getPgxWarnings gather (the /medicine row notice) and
+// finding on BOTH surfaces — the getPgxWarnings gather (the intake surface row notice) and
 // the Upcoming finding (collectUpcoming) — so they can't drift.
 //
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts; obviously-fake
@@ -91,7 +91,7 @@ describe("getPgxWarnings — the CYP2C19 poor × clopidogrel fixture (#710)", ()
     });
     const medId = addMedication(profileId, "Clopidogrel", "32968");
 
-    // Surface 1: the /medicine gather.
+    // Surface 1: the intake surface gather.
     const warnings = getPgxWarnings(profileId);
     expect(warnings).toHaveLength(1);
     const hit = warnings[0];

@@ -17,17 +17,17 @@ import {
   undoSubstanceUnitAction,
   setSubstanceTargetAction,
   clearSubstanceTargetAction,
-  addSubstanceHistoryEntryAction,
-  updateSubstanceHistoryEntryAction,
-  deleteSubstanceHistoryEntryAction,
+  addSubstanceDailyTotalAction,
+  updateSubstanceDailyTotalAction,
+  deleteSubstanceDailyTotalAction,
 } from "@/app/(app)/medical/substance-use/actions";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
 import {
-  getAllSubstanceHistory,
-  getSubstanceHistory,
+  getAllSubstanceDailyTotals,
+  getSubstanceDailyTotals,
   getSubstanceWeekState,
 } from "@/lib/queries";
 
@@ -345,7 +345,7 @@ describe("substance consumption history actions (#2009)", () => {
     const td = today(profile.id);
     const past = shiftDateStr(td, -30);
 
-    const added = await addSubstanceHistoryEntryAction(
+    const added = await addSubstanceDailyTotalAction(
       fd({
         substance: "alcohol",
         date: past,
@@ -355,7 +355,7 @@ describe("substance consumption history actions (#2009)", () => {
     );
     expect(added.kind).toBe("added");
     if (added.kind !== "added") throw new Error("entry was not added");
-    expect(getSubstanceHistory(profile.id, "alcohol")).toEqual([
+    expect(getSubstanceDailyTotals(profile.id, "alcohol")).toEqual([
       {
         id: added.id,
         substance: "alcohol",
@@ -365,7 +365,7 @@ describe("substance consumption history actions (#2009)", () => {
       },
     ]);
 
-    const updated = await updateSubstanceHistoryEntryAction(
+    const updated = await updateSubstanceDailyTotalAction(
       fd({
         id: String(added.id),
         substance: "alcohol",
@@ -384,7 +384,7 @@ describe("substance consumption history actions (#2009)", () => {
       .get(profile.id, td) as { n: number };
     expect(eventCount.n).toBe(3);
 
-    const deleted = await deleteSubstanceHistoryEntryAction(
+    const deleted = await deleteSubstanceDailyTotalAction(
       fd({ id: String(added.id), substance: "alcohol" })
     );
     expect(deleted.kind).toBe("deleted");
@@ -392,7 +392,7 @@ describe("substance consumption history actions (#2009)", () => {
     if (deleted.kind !== "deleted") throw new Error("entry was not deleted");
     expect(await undoDelete(deleted.undoId)).toEqual({ ok: true });
     expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
-    expect(getSubstanceHistory(profile.id, "alcohol")[0]).toMatchObject({
+    expect(getSubstanceDailyTotals(profile.id, "alcohol")[0]).toMatchObject({
       date: td,
       amount: 3,
       notes: "Corrected amount",
@@ -406,10 +406,10 @@ describe("substance consumption history actions (#2009)", () => {
     const td = today(profile.id);
     const yesterday = shiftDateStr(td, -1);
 
-    await addSubstanceHistoryEntryAction(
+    await addSubstanceDailyTotalAction(
       fd({ substance: "alcohol", date: yesterday, amount: "2" })
     );
-    await addSubstanceHistoryEntryAction(
+    await addSubstanceDailyTotalAction(
       fd({
         substance: "nicotine",
         date: td,
@@ -418,7 +418,7 @@ describe("substance consumption history actions (#2009)", () => {
       })
     );
 
-    const history = getAllSubstanceHistory(profile.id);
+    const history = getAllSubstanceDailyTotals(profile.id);
     expect(history.map((entry) => entry.substance)).toEqual([
       "nicotine",
       "alcohol",
@@ -440,17 +440,17 @@ describe("substance consumption history actions (#2009)", () => {
     actAs(login, profile);
     const td = today(profile.id);
 
-    const first = await addSubstanceHistoryEntryAction(
+    const first = await addSubstanceDailyTotalAction(
       fd({ substance: "cannabis", date: td, amount: "1" })
     );
     expect(first.kind).toBe("added");
     expect(
-      await addSubstanceHistoryEntryAction(
+      await addSubstanceDailyTotalAction(
         fd({ substance: "cannabis", date: td, amount: "2" })
       )
     ).toEqual({ kind: "date-conflict" });
     expect(
-      await updateSubstanceHistoryEntryAction(
+      await updateSubstanceDailyTotalAction(
         fd({ id: "999999", substance: "cannabis", date: td, amount: "2" })
       )
     ).toEqual({ kind: "not-found" });
@@ -463,11 +463,11 @@ describe("substance consumption history actions (#2009)", () => {
     const future = shiftDateStr(today(profile.id), 1);
 
     expect(
-      await addSubstanceHistoryEntryAction(
+      await addSubstanceDailyTotalAction(
         fd({ substance: "nicotine", date: future, amount: "2" })
       )
     ).toEqual({ kind: "invalid-date" });
-    expect(getSubstanceHistory(profile.id, "nicotine")).toEqual([]);
+    expect(getSubstanceDailyTotals(profile.id, "nicotine")).toEqual([]);
     expect(getSubstanceWeekState(profile.id, "nicotine").count).toBe(0);
   });
 
@@ -478,7 +478,7 @@ describe("substance consumption history actions (#2009)", () => {
     const td = today(profile.id);
 
     for (const substance of ["alcohol", "nicotine"] as const) {
-      const added = await addSubstanceHistoryEntryAction(
+      const added = await addSubstanceDailyTotalAction(
         fd({
           substance,
           date: td,
@@ -487,7 +487,7 @@ describe("substance consumption history actions (#2009)", () => {
         })
       );
       if (added.kind !== "added") throw new Error("entry was not added");
-      const deleted = await deleteSubstanceHistoryEntryAction(
+      const deleted = await deleteSubstanceDailyTotalAction(
         fd({ id: String(added.id), substance })
       );
       if (deleted.kind !== "deleted") throw new Error("entry was not deleted");
@@ -496,7 +496,7 @@ describe("substance consumption history actions (#2009)", () => {
         ok: true,
       });
       expect(await undoDelete(deleted.undoId)).toEqual({ ok: true });
-      expect(getSubstanceHistory(profile.id, substance)).toEqual([
+      expect(getSubstanceDailyTotals(profile.id, substance)).toEqual([
         expect.objectContaining({
           substance,
           date: td,
@@ -529,7 +529,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     const ownerProfile = createProfile("su-history-owner-alcohol", owner.id);
     actAs(owner, ownerProfile);
     const td = today(ownerProfile.id);
-    const added = await addSubstanceHistoryEntryAction(
+    const added = await addSubstanceDailyTotalAction(
       fd({ substance: "alcohol", date: td, amount: "2", notes: "Owner note" })
     );
     if (added.kind !== "added") throw new Error("entry was not added");
@@ -542,7 +542,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     actAs(intruder, intruderProfile);
 
     expect(
-      await updateSubstanceHistoryEntryAction(
+      await updateSubstanceDailyTotalAction(
         fd({
           id: String(added.id),
           substance: "alcohol",
@@ -553,14 +553,14 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
       )
     ).toEqual({ kind: "not-found" });
     expect(
-      await deleteSubstanceHistoryEntryAction(
+      await deleteSubstanceDailyTotalAction(
         fd({ id: String(added.id), substance: "alcohol" })
       )
     ).toMatchObject({ kind: "not-found", undoId: null });
 
     // The owner's day is untouched: same amount, same notes, same per-tap events
     // (a reconcile that ran on the wrong profile would have rewritten them).
-    expect(getSubstanceHistory(ownerProfile.id, "alcohol")).toEqual([
+    expect(getSubstanceDailyTotals(ownerProfile.id, "alcohol")).toEqual([
       {
         id: added.id,
         substance: "alcohol",
@@ -577,7 +577,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
       .get(ownerProfile.id, td) as { n: number };
     expect(ownerEvents.n).toBe(2);
     // …and nothing was created under the acting profile as a consolation write.
-    expect(getSubstanceHistory(intruderProfile.id, "alcohol")).toEqual([]);
+    expect(getSubstanceDailyTotals(intruderProfile.id, "alcohol")).toEqual([]);
     expect(getSubstanceWeekState(intruderProfile.id, "alcohol").count).toBe(0);
   });
 
@@ -586,7 +586,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     const ownerProfile = createProfile("su-history-owner-nicotine", owner.id);
     actAs(owner, ownerProfile);
     const td = today(ownerProfile.id);
-    const added = await addSubstanceHistoryEntryAction(
+    const added = await addSubstanceDailyTotalAction(
       fd({ substance: "nicotine", date: td, amount: "3", notes: "Owner note" })
     );
     if (added.kind !== "added") throw new Error("entry was not added");
@@ -599,7 +599,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
     actAs(intruder, intruderProfile);
 
     expect(
-      await updateSubstanceHistoryEntryAction(
+      await updateSubstanceDailyTotalAction(
         fd({
           id: String(added.id),
           substance: "nicotine",
@@ -610,12 +610,12 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
       )
     ).toEqual({ kind: "not-found" });
     expect(
-      await deleteSubstanceHistoryEntryAction(
+      await deleteSubstanceDailyTotalAction(
         fd({ id: String(added.id), substance: "nicotine" })
       )
     ).toMatchObject({ kind: "not-found", undoId: null });
 
-    expect(getSubstanceHistory(ownerProfile.id, "nicotine")).toEqual([
+    expect(getSubstanceDailyTotals(ownerProfile.id, "nicotine")).toEqual([
       {
         id: added.id,
         substance: "nicotine",
@@ -624,7 +624,7 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
         notes: "Owner note",
       },
     ]);
-    expect(getSubstanceHistory(intruderProfile.id, "nicotine")).toEqual([]);
+    expect(getSubstanceDailyTotals(intruderProfile.id, "nicotine")).toEqual([]);
     expect(getSubstanceWeekState(intruderProfile.id, "nicotine").count).toBe(0);
   });
 });
@@ -700,12 +700,12 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
   it("historical add/edit/delete actions refuse", async () => {
     const profile = minorActor("su-minor-history");
     expect(
-      await addSubstanceHistoryEntryAction(
+      await addSubstanceDailyTotalAction(
         fd({ substance: "alcohol", date: "2026-07-01", amount: "2" })
       )
     ).toEqual({ kind: "not-found" });
     expect(
-      await updateSubstanceHistoryEntryAction(
+      await updateSubstanceDailyTotalAction(
         fd({
           id: "1",
           substance: "alcohol",
@@ -715,7 +715,7 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
       )
     ).toEqual({ kind: "not-found" });
     expect(
-      await deleteSubstanceHistoryEntryAction(
+      await deleteSubstanceDailyTotalAction(
         fd({ id: "1", substance: "alcohol" })
       )
     ).toMatchObject({ kind: "not-found", undoId: null });

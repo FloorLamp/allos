@@ -11,7 +11,7 @@ import {
 } from "./food-groups";
 
 // A logged row as the rollup consumes it (the query layer maps food_log rows to this).
-export interface FoodLogEntry {
+export interface FoodDailyServingTotal {
   date: string;
   group_key: string;
   servings: number;
@@ -29,7 +29,9 @@ export interface GroupServingTotal {
 // Sum servings per group over the given entries (the caller supplies the window's rows).
 // Groups with zero servings are omitted. Ordered by the catalog's curated order
 // (encourage-first), with any unknown/retired slug appended in first-seen order after.
-export function rollupServings(entries: FoodLogEntry[]): GroupServingTotal[] {
+export function rollupServings(
+  entries: FoodDailyServingTotal[]
+): GroupServingTotal[] {
   const totals = new Map<string, number>();
   for (const e of entries) {
     if (!(e.servings > 0)) continue;
@@ -52,7 +54,7 @@ export function rollupServings(entries: FoodLogEntry[]): GroupServingTotal[] {
 }
 
 // The total servings logged across all groups in the window — a small headline number.
-export function totalServings(entries: FoodLogEntry[]): number {
+export function totalServings(entries: FoodDailyServingTotal[]): number {
   return entries.reduce((sum, e) => sum + (e.servings > 0 ? e.servings : 0), 0);
 }
 
@@ -60,7 +62,7 @@ export function totalServings(entries: FoodLogEntry[]): number {
 // (#580) is this against a per-week target. Kept here so target progress and the rollup
 // card can never disagree on the count.
 export function servingsForGroup(
-  entries: FoodLogEntry[],
+  entries: FoodDailyServingTotal[],
   groupKey: string
 ): number {
   return entries.reduce(

@@ -90,7 +90,7 @@ function reconcileAlcoholEvents(
   }
 }
 
-export function addSubstanceHistoryEntryCore(
+export function addSubstanceDailyTotalCore(
   profileId: number,
   substance: string,
   input: { date: string; amount: number; notes?: string | null }
@@ -139,7 +139,7 @@ export function addSubstanceHistoryEntryCore(
   });
 }
 
-export function updateSubstanceHistoryEntryCore(
+export function updateSubstanceDailyTotalCore(
   profileId: number,
   substance: string,
   id: number,
@@ -198,7 +198,7 @@ export function updateSubstanceHistoryEntryCore(
   });
 }
 
-export function deleteSubstanceHistoryEntryCore(
+export function deleteSubstanceDailyTotalCore(
   profileId: number,
   substance: string,
   id: number

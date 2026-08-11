@@ -34,7 +34,7 @@ export function isFoodHabitBehind(p: FrequencyTargetProgress): boolean {
 // Food-group slug → food–drug interaction entry keys — DERIVED (issue #2021) from the
 // dataset's own `catalog.groups` declarations rather than re-listed here. Only groups
 // whose membership IS the interaction's food — unambiguous, well-established — carry a
-// mapping, so a habit target inherits the EXACT warning the medication's own /medicine
+// mapping, so a habit target inherits the EXACT warning the medication's own intake row
 // row already shows via matchFoodInteractions ("one question, one computation": the two
 // surfaces format the same hit). Grapefruit, tyramine and potassium entries declare an
 // EMPTY mapping with a written reason (no dedicated group; the catalog's closest is the
@@ -61,7 +61,7 @@ function buildFoodGroupInteractionKeys(): Record<string, string[]> {
 
 // One food–drug interaction a tracked food-group habit conflicts with, given the
 // profile's active medications. Carries the med that matched plus the SAME advice copy
-// the /medicine row shows.
+// the intake surface row shows.
 export interface FoodHabitInteraction {
   medication: string;
   key: string;
@@ -109,7 +109,7 @@ export function foodHabitInteractions(
 }
 
 // The informational habit-surface note: names the active medication + the shared
-// advice line. The SAME advice string the /medicine row renders, so the habits card,
+// advice line. The SAME advice string the intake surface row renders, so the habits card,
 // the "behind this week" coaching finding, and the medication row can't disagree
 // (#661). Informational, never blocking the habit.
 export function foodHabitInteractionNote(i: FoodHabitInteraction): string {

@@ -24,7 +24,7 @@ export function DismissFindingButton({
       <input type="hidden" name="dedupe_key" value={dedupeKey} />
       <button
         type="submit"
-        data-testid="medicine-finding-dismiss"
+        data-testid="intake-finding-dismiss"
         aria-label={label}
         title="Dismiss"
         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"

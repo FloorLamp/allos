@@ -1,4 +1,4 @@
-import type { GroupServingTotal } from "@/lib/food-log";
+import type { GroupServingTotal } from "@/lib/food-daily-totals";
 import { EmptyState } from "@/components/ui";
 import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,

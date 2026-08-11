@@ -46,7 +46,7 @@ const MODULES = [
   // Appointments merged into the Visits page (#288): their write actions live in
   // encounters/appointment-actions.ts now, not their own route's actions.ts.
   ["encounters", "appointment-actions.ts"],
-  // The former /medicine action module split by kind (#746): shared supplement/
+  // The former combined intake surface action module split by kind (#746): shared supplement/
   // dose CRUD under nutrition, medication-lifecycle under medications.
   ["nutrition", "intake-actions.ts"],
   ["medications", "actions.ts"],

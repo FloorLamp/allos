@@ -47,7 +47,7 @@ import {
 } from "./supplement-format";
 import { preWorkoutSlotMinute } from "./schedule";
 import type { NotificationMessage } from "./types";
-import { isPrn } from "../intake-schedule";
+import { isOnDemand } from "../intake-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
 import { collapsedOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
@@ -159,7 +159,7 @@ function preWorkoutTimed(profileId: number): boolean {
 // #2121 vocabulary without a private unit.
 export function getPreWorkoutSlotMinute(profileId: number): number | null {
   const preSupps = getIntakeItems(profileId).filter(
-    (s) => s.active && !isPrn(s) && s.condition === "pre_workout"
+    (s) => s.active && !isOnDemand(s) && s.condition === "pre_workout"
   );
   if (preSupps.length === 0) return null;
   const ids = new Set(preSupps.map((s) => s.id));

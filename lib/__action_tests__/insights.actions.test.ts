@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { generateForDate } from "@/app/(app)/trends/actions";
-import { getInsight } from "@/lib/queries";
+import { getDailyInsight } from "@/lib/queries";
 import { setMinTrainingAge } from "@/lib/age-gate";
 import { setStoredAge } from "@/lib/settings";
 import { seedActor, fd } from "./harness";
@@ -36,7 +36,7 @@ describe("generateForDate age-gate guard", () => {
       /NEXT_REDIRECT/
     );
 
-    expect(getInsight(profile.id, "2026-07-01")).toBeUndefined();
+    expect(getDailyInsight(profile.id, "2026-07-01")).toBeUndefined();
     expect(revalidate).not.toHaveBeenCalled();
   });
 
@@ -47,7 +47,7 @@ describe("generateForDate age-gate guard", () => {
 
     await generateForDate(fd({ date: "2026-07-01" }));
 
-    const insight = getInsight(profile.id, "2026-07-01");
+    const insight = getDailyInsight(profile.id, "2026-07-01");
     expect(insight).toBeDefined();
     expect(insight?.date).toBe("2026-07-01");
     expect(revalidate).toHaveBeenCalledWith("/trends");
@@ -82,7 +82,7 @@ describe("generateForDate offline-reason honesty (#411)", () => {
 
     await generateForDate(fd({ date: "2026-07-02" }));
 
-    const insight = getInsight(profile.id, "2026-07-02");
+    const insight = getDailyInsight(profile.id, "2026-07-02");
     expect(insight?.model).toBe("offline/no-key");
     expect(insight?.summary).toContain("set ANTHROPIC_API_KEY");
     // Honesty invariant: the "set a key" line only ever appears on the no-key tag.

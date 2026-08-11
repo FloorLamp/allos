@@ -17,7 +17,7 @@ import { getDisplayFormatPrefs, getTimezone } from "@/lib/settings";
 import { zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
-import { isPrn } from "@/lib/intake-schedule";
+import { isOnDemand } from "@/lib/intake-schedule";
 import {
   DOSE_LEDGER_KIND_FILTERS,
   DOSE_LEDGER_KIND_LABELS,
@@ -168,7 +168,7 @@ export default function DoseLedgerView({
     name: item.name,
     kind: item.kind,
     product: item.product,
-    asNeeded: isPrn(item),
+    asNeeded: isOnDemand(item),
     doses: dosesByItem.get(item.id) ?? [],
   }));
 

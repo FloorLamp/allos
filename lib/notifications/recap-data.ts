@@ -55,7 +55,7 @@ import {
   type RecapScale,
 } from "../recap-scale";
 import type { ActivityType } from "../types/training";
-import { getRecentNarratives } from "../queries";
+import { getRecentPeriodRecaps } from "../queries";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -436,7 +436,7 @@ export async function runRecap(
   // the recap's OWN window and the kinds are read at the SENT scale, so a weekly
   // narrative can never be pasted under a monthly heading.
   const narrative = pickRecapNarrative(
-    getRecentNarratives(profileId, [scale], 5),
+    getRecentPeriodRecaps(profileId, [scale], 5),
     recap
   );
   const msg = renderRecapMessage(recap, profileName, narrative, getPublicUrl());

@@ -282,7 +282,7 @@ function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
       .join(" · "),
     // Shared dose-day sort key (bucket → priority → stack → name) so morning
     // and bedtime doses no longer interleave alphabetically within the band —
-    // the SAME ordering /medicine's due-today section uses (#297).
+    // the SAME ordering the intake surface's due-today section uses (#297).
     sortHint: doseSortKey({
       timeOfDay: dose.time_of_day,
       obligation: supp.obligation,
@@ -446,7 +446,7 @@ export function poolRefillItems(
 
 // IntakeItem stack totals that exceed an NIH Tolerable Upper Intake Level (issue
 // #148). Reuses the shared getDietaryLimitWarnings gather (same computation as the
-// /medicine warning rows), so a nutrient over its UL surfaces as a dismissible
+// the intake surfaces warning rows), so a nutrient over its UL surfaces as a dismissible
 // finding keyed by `dietary-limit:<nutrient>` — it goes through getFindingSuppressions
 // like every other finding, so a dismiss/snooze on Upcoming silences it. Standing
 // informational findings (no due date): banded to Today, framed "discuss with your
@@ -496,7 +496,7 @@ export function prnMaxItems(profileId: number, today: string): UpcomingItem[] {
 
 // Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).
 // Reuses the shared getInteractionWarnings gather (same pure detectInteractions the
-// /medicine warning rows format over), so each interacting PAIR surfaces as a
+// the intake surfaces warning rows format over), so each interacting PAIR surfaces as a
 // dismissible finding keyed by `interaction:<lo>-<hi>` — it goes through
 // getFindingSuppressions like every other finding, so a dismiss/snooze on Upcoming
 // silences it ("dismiss once, silence everywhere"). Standing informational findings
@@ -627,7 +627,7 @@ export function weatherMedItems(
 
 // Pharmacogenomics cross-check (issue #710): a stored PGx result (a genomic_variants
 // row, result_type='pharmacogenomic') affecting a medication in the active stack.
-// Reuses the shared getPgxWarnings gather (same pure crossCheckPgx the /medicine row
+// Reuses the shared getPgxWarnings gather (same pure crossCheckPgx the intake surface row
 // notice + the create/edit notice format over), so each affected med surfaces as a
 // dismissible finding keyed by `pgx:<medId>:<gene>:<status>` — it goes through
 // getFindingSuppressions like every other finding, so a dismiss/snooze on Upcoming

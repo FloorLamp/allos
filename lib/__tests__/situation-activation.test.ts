@@ -33,7 +33,7 @@ const supps: Supp[] = [
 
 describe("countSituationalDue — the shared situational dueness count (#662)", () => {
   it("counts only active, non-PRN situational items whose situation is active", () => {
-    // Two active "Illness" situational items are due; the paused one, the PRN one,
+    // Two active "Illness" situational items are due; the paused one, the on-demand one,
     // the daily one, and the (inactive) Travel one are all excluded.
     expect(countSituationalDue(supps, ctx(["Illness"]))).toBe(2);
   });

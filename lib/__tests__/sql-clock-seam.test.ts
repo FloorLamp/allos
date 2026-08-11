@@ -181,7 +181,7 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "med-link decision created_at — an audit stamp.",
   },
-  "lib/queries/narratives.ts": {
+  "lib/queries/coaching/period-recaps.ts": {
     count: 1,
     why: "narratives.created_at — audit stamp; the anchor is the explicit period_start/period_end.",
   },

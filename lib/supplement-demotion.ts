@@ -19,7 +19,7 @@
 //     decides, not priority" rule the push predicate uses (isPushedIntake).
 //   • A `low` item is already where the suggestion would take it, so it is never a
 //     candidate (which is also what makes the accept action idempotent).
-//   • PRN (as_needed) items never count: a PRN item is never scheduled-due (#798), so
+//   • ON-DEMAND (`may`) items never count: they are never scheduled-due (#798), so
 //     it has no missed occurrences to measure.
 //   • PAUSED items are excluded — a deliberate pause is not a lapse.
 //   • An item whose schedule STARTED INSIDE the window is excluded: a fixed lookback
@@ -161,7 +161,7 @@ export function detectDemotionCandidate(
   // this engine, so a may item is never a candidate — which is also what makes accept
   // idempotent and what makes a recovered item's suggestion disappear.
   if (!isPushedIntake(input)) return null;
-  // A `may` item is PRN-shaped by construction, so the old separate PRN guard is
+  // A `may` item is on demand by construction, so the old separate as-needed guard is
   // subsumed by the line above: nothing schedule-less can reach here.
   if (!input.active) return null;
   if (!input.existedWholeWindow) return null;

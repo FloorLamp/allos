@@ -98,12 +98,12 @@ test("a `may` item is tracked on its page, off the due list, and inside the avai
     // present and reachable, just not claimed to be owed.
     await page.goto("/nutrition?tab=supplements");
     await expect(
-      page.getByTestId("medicine-name").filter({ hasText: HIGH_NAME })
+      page.getByTestId("intake-item-name").filter({ hasText: HIGH_NAME })
     ).toBeVisible();
     const notScheduled = page.getByTestId("not-scheduled-section");
     await notScheduled.locator("summary").click();
     await expect(
-      notScheduled.getByTestId("medicine-name").filter({ hasText: LOW_NAME })
+      notScheduled.getByTestId("intake-item-name").filter({ hasText: LOW_NAME })
     ).toBeVisible();
 
     // NEVER PUSHED: only the `should` twin has an Upcoming DUE row…
@@ -181,7 +181,7 @@ test("accepting a demotion suggestion moves the item into the available disclosu
     await notScheduled.locator("summary").click();
     await expect(
       notScheduled
-        .getByTestId("medicine-name")
+        .getByTestId("intake-item-name")
         .filter({ hasText: ABANDONED_NAME })
     ).toBeVisible();
 

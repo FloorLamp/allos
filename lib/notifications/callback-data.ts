@@ -12,7 +12,7 @@ import type {
 } from "../workout-finish";
 import type { ClassifyActivityTypeOutcome } from "../activity-type-write";
 import type { FoodLogOutcome } from "../food-log-write";
-import type { ProteinAddOutcome } from "../protein-log-write";
+import type { ProteinAddOutcome } from "../protein-daily-totals-write";
 import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";

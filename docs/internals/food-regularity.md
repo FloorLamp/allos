@@ -111,7 +111,7 @@ into the ledger it is derived from.
 ## Cap-direction groups are excluded, not merely neutral
 
 A group whose `food_log` counter **is** a substance ledger (alcohol,
-`lib/substance-history-write.ts`), or which carries an active **cap-direction**
+`lib/substance-daily-totals-write.ts`), or which carries an active **cap-direction**
 frequency target, may be _measured_ — the cadence ledger's own cap reporting is
 entitled to the data — and is never _presented back as an expectation_.
 

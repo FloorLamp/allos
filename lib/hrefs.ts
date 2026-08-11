@@ -58,7 +58,7 @@ export type AppRoute = Route;
 // --------------------------------------------------------------------------
 
 // The Nutrition umbrella's deep-linkable tabs (#746): Food is the default (no
-// query), Supplements is the former /medicine supplement surface folded in as a
+// query), Supplements is the former combined supplement surface folded in as a
 // tab. Source of truth for the union — the page parses `?tab=`, so a tab rename
 // is one edit and every caller of `nutritionTabHref` is re-checked by the
 // compiler (typedRoutes validates the `/nutrition` path but NOT the `?tab=`
@@ -71,7 +71,7 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 }
 
 // The standalone Medications page (#746) — medications left the old combined
-// /medicine surface for their own Medical-group page.
+// intake surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
 
 // The household medicine cabinet — the shared supply pools registry (#1374). ONE

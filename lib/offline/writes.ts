@@ -1,6 +1,6 @@
 // Server-side write cores for the offline-queueable quick-log flows (issue #28).
 // These are the SINGLE implementation of each write: both the online Server Actions
-// (app/(app)/trends/measurement-actions.ts + body-actions.ts, medicine/actions.ts,
+// (app/(app)/trends/measurement-actions.ts + body-actions.ts, nutrition/intake-actions.ts,
 // nutrition/actions.ts, training/activity-actions.ts — the latter two through their
 // shared lib cores) and the offline replay route (app/api/offline-replay) call them,
 // so a replayed write runs byte-for-byte the same validation + persistence the live
@@ -40,7 +40,7 @@ import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { judgeEatenAt } from "@/lib/food-eating-time";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
 import { recordReading, resolveStatedOccurredAt } from "@/lib/reading-writes";

@@ -38,7 +38,7 @@ import {
   setItemActive,
   deleteIntakeItem,
 } from "./intake-actions";
-import { isPrn } from "@/lib/intake-schedule";
+import { isOnDemand } from "@/lib/intake-schedule";
 
 // One scheduled dose of a supplement, as it appears in a time bucket. A
 // supplement with multiple doses renders one of these per dose. Editing opens
@@ -127,7 +127,7 @@ export default function EditableSupplementRow({
         <div className="col-start-1 row-start-1 min-w-0">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span
-              data-testid="medicine-name"
+              data-testid="intake-item-name"
               className="min-w-0 wrap-break-word font-medium text-slate-800 dark:text-slate-100"
             >
               {s.name}
@@ -191,7 +191,7 @@ export default function EditableSupplementRow({
                 Rx
               </span>
             )}
-            {isMed && isPrn(s) && (
+            {isMed && isOnDemand(s) && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 PRN
               </span>
@@ -372,7 +372,7 @@ export default function EditableSupplementRow({
                 amount: d.amount,
                 time_of_day: d.time_of_day,
               }))}
-              asNeeded={isPrn(s)}
+              asNeeded={isOnDemand(s)}
               courseBound={isMed}
               history={doseHistory}
               maxDate={historyMaxDate}
