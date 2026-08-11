@@ -36,6 +36,7 @@ import {
 import { convertToCanonical, sameUnit } from "./unit-conversions";
 import { biomarkerRetestStatus } from "./reference-range";
 import {
+  hasNoCurrentReading,
   tallyFreshness,
   type FreshnessState,
   type FreshnessTally,
@@ -233,7 +234,7 @@ export function optimalPillarDetail(rate: OptimalHitRate): string {
         : "";
   parts.push(`${rate.total} marker${rate.total === 1 ? "" : "s"}${note}`);
   if (freshness.due === 0) parts.push("all current");
-  else if (freshness.current === 0)
+  else if (hasNoCurrentReading(freshness))
     parts.push(
       rate.latestDate
         ? `all based on older results (latest ${rate.latestDate})`
@@ -427,7 +428,8 @@ function vo2Tone(p: number): PillarTone {
 // supplies no dates behaves exactly as before.
 export function optimalTone(rate: OptimalHitRate): PillarTone {
   if (rate.total === 0) return "neutral";
-  if (rate.freshness.current === 0 && rate.freshness.due > 0) return "neutral";
+  if (hasNoCurrentReading(rate.freshness) && rate.freshness.due > 0)
+    return "neutral";
   const frac = rate.optimal / rate.total;
   if (frac >= 0.8) return "good";
   if (frac >= 0.5) return "warn";

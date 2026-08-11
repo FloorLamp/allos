@@ -122,9 +122,6 @@ export function shouldReloadOnControllerChange({
  */
 export const UPDATE_CHECK_MS = 60_000;
 
-/** What the page knows about its service worker, once registration has answered. */
-export type ServiceWorkerStatus = "probing" | "active" | "unavailable";
-
 /** The single answer to "is an update pending, and what is it?" (#1795). */
 export type UpdateState = {
   pending: boolean;
