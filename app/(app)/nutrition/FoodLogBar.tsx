@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   IconAdjustmentsHorizontal,
   IconPlus,
@@ -339,22 +339,20 @@ export default function FoodLogBar({
   // Freeze each meal's initial order independently. A slot switch intentionally swaps
   // to that meal's learned order; a log+refresh within the same slot never makes the
   // row under the user's finger jump.
-  const frozenOrder = useRef<Record<FoodSlot, string[]> | null>(null);
-  if (frozenOrder.current === null) {
-    frozenOrder.current = Object.fromEntries(
-      FOOD_SLOTS.map((meal) => [
-        meal,
-        groupsBySlot[meal].map((group) => group.slug),
-      ])
-    ) as Record<FoodSlot, string[]>;
-  }
+  const [frozenOrder] = useState<Record<FoodSlot, string[]>>(
+    () =>
+      Object.fromEntries(
+        FOOD_SLOTS.map((meal) => [
+          meal,
+          groupsBySlot[meal].map((group) => group.slug),
+        ])
+      ) as Record<FoodSlot, string[]>
+  );
   const orderedGroupsBySlot = useMemo(
     () =>
       Object.fromEntries(
         FOOD_SLOTS.map((meal) => {
-          const idx = new Map(
-            frozenOrder.current![meal].map((slug, i) => [slug, i])
-          );
+          const idx = new Map(frozenOrder[meal].map((slug, i) => [slug, i]));
           const ordered = groupsBySlot[meal]
             .map((group, i) => ({ group, i }))
             .sort((a, b) => {
@@ -366,7 +364,7 @@ export default function FoodLogBar({
           return [meal, ordered];
         })
       ) as Record<FoodSlot, FoodGroup[]>,
-    [groupsBySlot]
+    [groupsBySlot, frozenOrder]
   );
   const orderedGroups = orderedGroupsBySlot[activeSlot];
 
@@ -386,19 +384,19 @@ export default function FoodLogBar({
   // derivation of that one question (#221).
   //
   // The complete remainder is always one disclosure away (#559).
-  const quickSlugs = useRef<Record<FoodSlot, Set<string>> | null>(null);
-  if (quickSlugs.current === null) {
-    quickSlugs.current = Object.fromEntries(
-      FOOD_SLOTS.map((meal) => [
-        meal,
-        new Set(
-          orderedGroupsBySlot[meal]
-            .slice(0, FOOD_QUICK_COUNT)
-            .map((group) => group.slug)
-        ),
-      ])
-    ) as Record<FoodSlot, Set<string>>;
-  }
+  const [quickSlugs] = useState<Record<FoodSlot, Set<string>>>(
+    () =>
+      Object.fromEntries(
+        FOOD_SLOTS.map((meal) => [
+          meal,
+          new Set(
+            orderedGroupsBySlot[meal]
+              .slice(0, FOOD_QUICK_COUNT)
+              .map((group) => group.slug)
+          ),
+        ])
+      ) as Record<FoodSlot, Set<string>>
+  );
   const initialGroup = initialFoodGroup
     ? orderedGroups.find((group) => group.slug === initialFoodGroup)
     : undefined;
@@ -407,27 +405,25 @@ export default function FoodLogBar({
     ...orderedGroups.filter(
       (group) =>
         group.slug !== initialGroup?.slug &&
-        quickSlugs.current![activeSlot].has(group.slug)
+        quickSlugs[activeSlot].has(group.slug)
     ),
   ];
   const moreGroups = orderedGroups.filter(
     (group) =>
       group.slug !== initialGroup?.slug &&
-      !quickSlugs.current![activeSlot].has(group.slug)
+      !quickSlugs[activeSlot].has(group.slug)
   );
 
   // Where the protein control sits among the quick rows (#1980). Frozen with the row
   // order and for the same reason: logging protein re-ranks it server-side, and the
   // control must not slide out from under the finger that just tapped it.
-  const frozenProteinRank = useRef<Record<FoodSlot, number | null> | null>(
-    null
+  const [frozenProteinRank] = useState<Record<FoodSlot, number | null>>(
+    () =>
+      Object.fromEntries(
+        FOOD_SLOTS.map((meal) => [meal, proteinRankBySlot?.[meal] ?? null])
+      ) as Record<FoodSlot, number | null>
   );
-  if (frozenProteinRank.current === null) {
-    frozenProteinRank.current = Object.fromEntries(
-      FOOD_SLOTS.map((meal) => [meal, proteinRankBySlot?.[meal] ?? null])
-    ) as Record<FoodSlot, number | null>;
-  }
-  const proteinRank = frozenProteinRank.current[activeSlot];
+  const proteinRank = frozenProteinRank[activeSlot];
   // Translate "N groups ranked ahead of protein" into a slice point in the QUICK set —
   // against the order the quick rows are ACTUALLY rendered in, not the ranked order they
   // are drawn from (#2061). A deep-linked group is pinned to the front of `quickGroups`

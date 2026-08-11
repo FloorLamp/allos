@@ -400,6 +400,7 @@ export default function ActivityCardMenu({
 
       {pendingConflict && (
         <MergeConflictDialog
+          key={pendingConflict.keepId}
           conflicts={pendingConflict.conflicts}
           members={pendingConflict.members}
           keeperId={pendingConflict.keepId}

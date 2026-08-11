@@ -136,6 +136,7 @@ export default function ActivityMergeControls({
 
       {dialogFor && (
         <MergeConflictDialog
+          key={dialogFor === "a" ? aId : bId}
           conflicts={conflicts}
           members={[
             { id: aId, label: aLabel },

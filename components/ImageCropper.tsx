@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLockBodyScroll } from "./useLockBodyScroll";
+import { useLatestRef } from "./useLatestRef";
 
 // A dependency-free circular image cropper used by the profile photo pickers
 // (Settings → Health profile and the People & access admin screen). The user drags to pan and
@@ -54,10 +55,8 @@ export default function ImageCropper({
   // Latest natural size + view, readable synchronously from the deps-free
   // applyZoom and the pointer handlers below (which start gestures from the
   // committed view without re-subscribing on every change).
-  const naturalRef = useRef(natural);
-  naturalRef.current = natural;
-  const viewRef = useRef(view);
-  viewRef.current = view;
+  const naturalRef = useLatestRef(natural);
+  const viewRef = useLatestRef(view);
 
   // Object URL for the chosen file; revoked on unmount / file change.
   useEffect(() => {
@@ -95,22 +94,25 @@ export default function ImageCropper({
   // absolute value for the slider); resolving it inside the functional update
   // keeps rapid successive calls accumulating. Stable identity (no deps) means
   // the wheel listener below subscribes once.
-  const applyZoom = useCallback((update: (currentZoom: number) => number) => {
-    setView((prev) => {
-      const nat = naturalRef.current;
-      if (!nat) return prev;
-      const base = Math.max(VIEWPORT / nat.w, VIEWPORT / nat.h);
-      const z = Math.min(MAX_ZOOM, Math.max(1, update(prev.zoom)));
-      const oldScale = base * prev.zoom;
-      const newScale = base * z;
-      // Image-space point currently under the viewport center.
-      const cx = (VIEWPORT / 2 - prev.x) / oldScale;
-      const cy = (VIEWPORT / 2 - prev.y) / oldScale;
-      const x = clampPos(VIEWPORT / 2 - cx * newScale, nat.w * newScale);
-      const y = clampPos(VIEWPORT / 2 - cy * newScale, nat.h * newScale);
-      return { zoom: z, x, y };
-    });
-  }, []);
+  const applyZoom = useCallback(
+    (update: (currentZoom: number) => number) => {
+      setView((prev) => {
+        const nat = naturalRef.current;
+        if (!nat) return prev;
+        const base = Math.max(VIEWPORT / nat.w, VIEWPORT / nat.h);
+        const z = Math.min(MAX_ZOOM, Math.max(1, update(prev.zoom)));
+        const oldScale = base * prev.zoom;
+        const newScale = base * z;
+        // Image-space point currently under the viewport center.
+        const cx = (VIEWPORT / 2 - prev.x) / oldScale;
+        const cy = (VIEWPORT / 2 - prev.y) / oldScale;
+        const x = clampPos(VIEWPORT / 2 - cx * newScale, nat.w * newScale);
+        const y = clampPos(VIEWPORT / 2 - cy * newScale, nat.h * newScale);
+        return { zoom: z, x, y };
+      });
+    },
+    [naturalRef]
+  );
 
   // Pointer gestures: one pointer pans, two pinch-zoom. Positions of every
   // active pointer live in `pointers`; `gesture` holds the frame of reference

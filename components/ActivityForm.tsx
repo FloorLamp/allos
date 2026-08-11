@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteActivity,
   logBodyweight,
@@ -27,6 +27,7 @@ import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
+import { useLatestRef } from "@/components/useLatestRef";
 import { useHaptics } from "@/components/useHaptics";
 import {
   type ActivityEditData,
@@ -633,7 +634,6 @@ export default function ActivityForm({
   // The offline-capture callback below runs on the CLOSE-path flush, after `draft`
   // (declared later — it needs autosave's createdId) exists; the ref bridges the
   // declaration order without reordering the two hooks.
-  const draftRef = useRef<{ clear: () => void } | null>(null);
   // The auto-save state machine (#1189, extracted per #1207): debounced persist,
   // created-row reuse, in-flight serialization, unmount + close-path flush. The
   // parent stays the single owner of form state; the hook drives persistence over
@@ -755,7 +755,7 @@ export default function ActivityForm({
         confirmLabel: "Resume",
       }),
   });
-  draftRef.current = draft;
+  const draftRef = useLatestRef(draft);
   const clearDraft = draft.clear;
   // Clear on successful save. `savedAt > 0 && !dirty` is precisely "the server has
   // everything on screen" — the only honest moment to drop the local copy.
@@ -889,7 +889,7 @@ export default function ActivityForm({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [plateTarget, setPlateTarget]);
+  }, [plateTarget, setPlateTarget, requestCloseRef]);
 
   async function remove() {
     const id = savableId();
@@ -962,7 +962,7 @@ export default function ActivityForm({
   // to a real row would silently drop them — confirm first. A blocked blank
   // create is exempt: discarding it is the natural "cancel". The durable
   // before-close flush lives in the auto-save hook (#1189).
-  async function requestClose() {
+  const requestClose = useCallback(async () => {
     if (hasRow && dirty && !canSave) {
       const ok = await confirm({
         title: "Discard unsaved changes?",
@@ -975,8 +975,10 @@ export default function ActivityForm({
     }
     await autosave.flushBeforeClose();
     onClose();
-  }
-  requestCloseRef.current = requestClose;
+  }, [hasRow, dirty, canSave, confirm, autosave, onClose]);
+  useEffect(() => {
+    requestCloseRef.current = requestClose;
+  }, [requestClose]);
 
   return (
     <form

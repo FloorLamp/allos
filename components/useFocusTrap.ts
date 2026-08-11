@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import { useLatestRef } from "./useLatestRef";
 
 // The modal a11y wiring — initial focus, Escape-to-close, and a Tab focus trap —
 // as ONE hook (issue #1416).
@@ -40,8 +41,7 @@ export function useFocusTrap({
   // mount without depending on its identity. Consumers routinely pass an inline
   // arrow that changes every render; an effect keyed on it would re-run on every
   // keystroke and yank focus back to the first field mid-typing.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const onCloseRef = useLatestRef(onClose);
 
   // Initial focus — once, on mount. Prefer the consumer's requested element,
   // then the first focusable (skipping past nothing — it's the Close button by
@@ -99,5 +99,5 @@ export function useFocusTrap({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [panelRef, active]);
+  }, [panelRef, active, onCloseRef]);
 }

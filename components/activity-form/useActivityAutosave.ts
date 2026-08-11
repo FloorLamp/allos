@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { isStaleActionError } from "@/lib/sw-update";
+import { useLatestRef } from "@/components/useLatestRef";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a
 // self-contained hook (#1207). It owns the whole save lifecycle: a 700ms debounced
@@ -78,16 +85,23 @@ export function useActivityAutosave({
   // it (the ref is read synchronously by saves; the state drives the UI).
   const [createdId, setCreatedId] = useState<number | null>(null);
   const createdIdRef = useRef<number | null>(null);
-  const savableId = () => editId ?? createdIdRef.current;
+  const savableId = useCallback(() => editId ?? createdIdRef.current, [editId]);
   const hasRow = editId != null || createdId != null;
 
   // The state we last persisted (or loaded). Starts equal to the initial state so
   // loading existing data — or opening a blank create form — saves nothing. A prefill
   // create is the exception (see isPrefillCreate).
-  const savedSigRef = useRef<string>(isPrefillCreate ? "" : formSig);
-  // Keep the latest persist available to the unmount flush without re-running it.
-  const persistRef = useRef<(opts?: { queueOnOffline?: boolean }) => unknown>(
-    () => {}
+  const initialSavedSig = isPrefillCreate ? "" : formSig;
+  const savedSigRef = useRef<string>(initialSavedSig);
+  const [savedSig, setSavedSig] = useState(initialSavedSig);
+  // Keep the latest persist implementation behind one stable callback for the
+  // debounce, trailing-save, and unmount paths.
+  const persistImplRef = useRef<
+    (opts?: { queueOnOffline?: boolean }) => unknown
+  >(() => {});
+  const persistLatest = useCallback(
+    (opts?: { queueOnOffline?: boolean }) => persistImplRef.current(opts),
+    []
   );
   // Serialize saves: only one in flight at a time, so concurrent debounces can't
   // both create a fresh row before the first returns its id (duplicate insert).
@@ -98,12 +112,10 @@ export function useActivityAutosave({
   const mountedRef = useRef(true);
   // buildFormData closes over live form state; keep the latest for the debounced /
   // unmount persist without re-arming the machine on every keystroke.
-  const buildFormDataRef = useRef(buildFormData);
-  buildFormDataRef.current = buildFormData;
+  const buildFormDataRef = useLatestRef(buildFormData);
   // Same for the offline-capture callback (#1596) — it closes over the parent's
   // queue context + draft handle.
-  const onQueueOfflineRef = useRef(onQueueOffline);
-  onQueueOfflineRef.current = onQueueOffline;
+  const onQueueOfflineRef = useLatestRef(onQueueOffline);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -118,95 +130,110 @@ export function useActivityAutosave({
   // being stranded in the local draft (#1596). Debounced mid-session persists
   // never pass it — nothing may queue while the form is still open (see
   // onQueueOffline's doc above).
-  async function persist(opts?: { queueOnOffline?: boolean }) {
-    if (!canSave) return;
-    if (formSig === savedSigRef.current) return; // nothing changed
-    if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
-    inFlightRef.current = true;
-    const sigAtSave = formSig;
-    let saved = false;
-    if (mountedRef.current) setStatus("saving");
-    try {
-      const res = await saveActivity(buildFormDataRef.current(savableId()));
-      // Nothing persisted (invalid title/date or an id the active profile doesn't
-      // own — e.g. after a profile switch). Do NOT advance savedSigRef: the form
-      // stays dirty so the edit survives, the auto-saver can retry, and closing it
-      // still prompts. Surface the failure instead of a false "Saved ✓" (#332).
-      if (!res.ok) {
-        if (mountedRef.current) setStatus("error");
-        else toast(saveOutcomeMessage(res.reason));
-        return;
-      }
-      if (res.id != null && savableId() == null) {
-        createdIdRef.current = res.id; // ref first, so a trailing save UPDATEs
-        if (mountedRef.current) setCreatedId(res.id);
-      }
-      savedSigRef.current = sigAtSave;
-      saved = true;
-      if (mountedRef.current) {
-        setStatus("saved");
-        setSavedAt(Date.now());
-        setStaleBuild(false);
-      }
-    } catch (err) {
-      // Close-path save on a dead connection, session never created server-side
-      // (#1596): capture the whole form into the offline queue. On success the
-      // signature advances — the close proceeds clean, and the queue (not the
-      // draft) is the durable owner of the entry.
-      if (
-        opts?.queueOnOffline &&
-        savableId() == null &&
-        onQueueOfflineRef.current &&
-        shouldQueueOffline(
-          typeof navigator === "undefined" ? true : navigator.onLine,
-          err
-        )
-      ) {
-        try {
-          const queued = await onQueueOfflineRef.current(
-            buildFormDataRef.current(null)
-          );
-          if (queued) {
-            savedSigRef.current = sigAtSave;
-            saved = true;
-            if (mountedRef.current) {
-              setStatus("saved");
-              setSavedAt(Date.now());
-            }
-            return;
-          }
-        } catch {
-          /* IndexedDB unavailable — fall through to the honest failure below */
+  const persist = useCallback(
+    async (opts?: { queueOnOffline?: boolean }) => {
+      if (!canSave) return;
+      if (formSig === savedSigRef.current) return; // nothing changed
+      if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
+      inFlightRef.current = true;
+      const sigAtSave = formSig;
+      let saved = false;
+      if (mountedRef.current) setStatus("saving");
+      try {
+        const res = await saveActivity(buildFormDataRef.current(savableId()));
+        // Nothing persisted (invalid title/date or an id the active profile doesn't
+        // own — e.g. after a profile switch). Do NOT advance savedSigRef: the form
+        // stays dirty so the edit survives, the auto-saver can retry, and closing it
+        // still prompts. Surface the failure instead of a false "Saved ✓" (#332).
+        if (!res.ok) {
+          if (mountedRef.current) setStatus("error");
+          else toast(saveOutcomeMessage(res.reason));
+          return;
         }
+        if (res.id != null && savableId() == null) {
+          createdIdRef.current = res.id; // ref first, so a trailing save UPDATEs
+          if (mountedRef.current) setCreatedId(res.id);
+        }
+        savedSigRef.current = sigAtSave;
+        if (mountedRef.current) setSavedSig(sigAtSave);
+        saved = true;
+        if (mountedRef.current) {
+          setStatus("saved");
+          setSavedAt(Date.now());
+          setStaleBuild(false);
+        }
+      } catch (err) {
+        // Close-path save on a dead connection, session never created server-side
+        // (#1596): capture the whole form into the offline queue. On success the
+        // signature advances — the close proceeds clean, and the queue (not the
+        // draft) is the durable owner of the entry.
+        if (
+          opts?.queueOnOffline &&
+          savableId() == null &&
+          onQueueOfflineRef.current &&
+          shouldQueueOffline(
+            typeof navigator === "undefined" ? true : navigator.onLine,
+            err
+          )
+        ) {
+          try {
+            const queued = await onQueueOfflineRef.current(
+              buildFormDataRef.current(null)
+            );
+            if (queued) {
+              savedSigRef.current = sigAtSave;
+              if (mountedRef.current) setSavedSig(sigAtSave);
+              saved = true;
+              if (mountedRef.current) {
+                setStatus("saved");
+                setSavedAt(Date.now());
+              }
+              return;
+            }
+          } catch {
+            /* IndexedDB unavailable — fall through to the honest failure below */
+          }
+        }
+        // Deployment skew's Server Action half: the deploy invalidated this build's
+        // action ids, so this failure — and every one after it — is a state, not an
+        // event. The form renders the reload banner off the flag; the local draft
+        // (#1699) is what makes "kept on this device" true.
+        const stale = isStaleActionError(err);
+        if (mountedRef.current) {
+          if (stale) setStaleBuild(true);
+          setStatus("error");
+        } else {
+          // Failed after the form closed (the unmount flush): the status icon is
+          // gone, so this toast is the only signal the change didn't stick. On a
+          // stale build, name the remedy that can actually work — reopening the
+          // editor in this same tab would fail identically.
+          toast(
+            stale
+              ? "Couldn’t save your last change — the app has updated. Reload the page; your entry is kept on this device."
+              : "Couldn’t save your last change — reopen the activity."
+          );
+        }
+      } finally {
+        inFlightRef.current = false;
+        // Persist edits that landed while this save was in flight — even after
+        // unmount, since the unmount flush skips while a save is running. Only
+        // after a success though: chaining after a failure would retry in a loop.
+        if (saved) void persistLatest();
       }
-      // Deployment skew's Server Action half: the deploy invalidated this build's
-      // action ids, so this failure — and every one after it — is a state, not an
-      // event. The form renders the reload banner off the flag; the local draft
-      // (#1699) is what makes "kept on this device" true.
-      const stale = isStaleActionError(err);
-      if (mountedRef.current) {
-        if (stale) setStaleBuild(true);
-        setStatus("error");
-      } else {
-        // Failed after the form closed (the unmount flush): the status icon is
-        // gone, so this toast is the only signal the change didn't stick. On a
-        // stale build, name the remedy that can actually work — reopening the
-        // editor in this same tab would fail identically.
-        toast(
-          stale
-            ? "Couldn’t save your last change — the app has updated. Reload the page; your entry is kept on this device."
-            : "Couldn’t save your last change — reopen the activity."
-        );
-      }
-    } finally {
-      inFlightRef.current = false;
-      // Persist edits that landed while this save was in flight — even after
-      // unmount, since the unmount flush skips while a save is running. Only
-      // after a success though: chaining after a failure would retry in a loop.
-      if (saved) void persistRef.current();
-    }
-  }
-  persistRef.current = persist;
+    },
+    [
+      buildFormDataRef,
+      canSave,
+      formSig,
+      onQueueOfflineRef,
+      persistLatest,
+      savableId,
+      toast,
+    ]
+  );
+  useLayoutEffect(() => {
+    persistImplRef.current = persist;
+  }, [persist]);
 
   // `savedAt` is in the deps on purpose: it bumps after every successful save, so
   // this effect RE-CHECKS dirtiness once a save completes. Without it, a rapid edit
@@ -221,17 +248,17 @@ export function useActivityAutosave({
   useEffect(() => {
     if (formSig === savedSigRef.current) return; // unchanged (incl. first mount)
     if (!canSave) return;
-    const h = setTimeout(() => void persistRef.current(), 700);
+    const h = setTimeout(() => void persistLatest(), 700);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formSig, canSave, savedAt]);
+  }, [formSig, canSave, savedAt, persistLatest]);
 
   // Flush any pending change when the form goes away (e.g. switching cards,
   // dismissing the modal, navigating off the page). A close path, so an offline
   // failure on a never-created session may capture to the queue (#1596).
   useEffect(() => {
-    return () => void persistRef.current({ queueOnOffline: true });
-  }, []);
+    return () => void persistLatest({ queueOnOffline: true });
+  }, [persistLatest]);
 
   // Durably commit the latest edit BEFORE the form closes. The 700ms debounced
   // auto-save and the unmount-time flush (both above) are fire-and-forget, so a
@@ -253,13 +280,14 @@ export function useActivityAutosave({
       // A close path (#1596): a dead-connection failure on a never-created
       // session captures to the offline queue, which advances the signature and
       // ends this loop like a successful save.
-      await persistRef.current({ queueOnOffline: true });
+      await persistLatest({ queueOnOffline: true });
     }
   }
 
   function markDeleted() {
     // Don't let the unmount flush re-create the row we just deleted.
     savedSigRef.current = formSig;
+    setSavedSig(formSig);
     createdIdRef.current = null;
   }
 
@@ -270,7 +298,7 @@ export function useActivityAutosave({
     createdId,
     savableId,
     hasRow,
-    dirty: formSig !== savedSigRef.current,
+    dirty: formSig !== savedSig,
     flushBeforeClose,
     markDeleted,
   };

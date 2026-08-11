@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useLatestRef } from "@/components/useLatestRef";
 import {
   GESTURE_THRESHOLDS,
   axisOf,
@@ -155,8 +156,7 @@ export function useDragGesture(options: DragGestureOptions): void {
   // Options change every render (fresh closures); the listeners must not. One
   // ref, read at event time, keeps the subscription stable for the life of the
   // surface.
-  const latest = useRef(options);
-  latest.current = options;
+  const latest = useLatestRef(options);
   const active = useRef<ActiveGesture | null>(null);
 
   const enabled = options.enabled ?? true;
@@ -288,5 +288,5 @@ export function useDragGesture(options: DragGestureOptions): void {
       document.removeEventListener("touchcancel", onCancel, opts);
       active.current = null;
     };
-  }, [enabled]);
+  }, [enabled, latest]);
 }

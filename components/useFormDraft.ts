@@ -20,6 +20,7 @@ import {
 } from "@/lib/offline/drafts";
 import { useActiveProfileId } from "./ActiveProfileProvider";
 import { markUnsavedWork } from "@/lib/offline/unsaved-work";
+import { useLatestRef } from "./useLatestRef";
 
 // The React binding for local form drafts (issue #1699): autosave on change,
 // restore only on an explicit tap, clear on successful save.
@@ -208,18 +209,16 @@ export function useFormDraft<E = undefined>({
   // input back.
   const lastWrittenSigRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const extraRef = useRef<E | undefined>(extra);
-  extraRef.current = extra;
+  const extraRef = useLatestRef<E | undefined>(extra);
   const keyRef = useRef<string | null>(key);
-  const onRestoreRef = useRef(onRestore);
-  onRestoreRef.current = onRestore;
+  const onRestoreRef = useLatestRef(onRestore);
 
   const snapshot = useCallback(
     (): { fields: DraftField[]; extra: unknown } => ({
       fields: collectFields(formRef?.current ?? null),
       extra: extraRef.current ?? null,
     }),
-    [formRef]
+    [formRef, extraRef]
   );
 
   const write = useCallback(() => {
@@ -390,7 +389,7 @@ export function useFormDraft<E = undefined>({
         );
       }
     })();
-  }, [snapshot, formRef, confirmReplace]);
+  }, [snapshot, formRef, confirmReplace, onRestoreRef]);
 
   return { offer, resume, discard, clear };
 }

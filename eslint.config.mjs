@@ -43,14 +43,13 @@ const config = [
   ...nextCoreWebVitals,
   // eslint-config-next 16 bundles eslint-plugin-react-hooks v6, whose
   // next/core-web-vitals preset newly enables the "React Compiler" rule family.
-  // Two families still flag pre-existing, working patterns across the app. Keep
-  // their remaining adoption product-reviewed and tracked with #1859. Immutability,
-  // preserve-manual-memoization, and purity have completed their burn-downs and
-  // stay enforced alongside exhaustive-deps and the rest of the prior surface.
+  // One family still flags pre-existing, working patterns across the app. Keep its
+  // remaining adoption product-reviewed and tracked with #1859. Immutability,
+  // preserve-manual-memoization, purity, and refs have completed their burn-downs
+  // and stay enforced alongside exhaustive-deps and the rest of the prior surface.
   {
     rules: {
       "react-hooks/set-state-in-effect": "off",
-      "react-hooks/refs": "off",
     },
   },
 ];
