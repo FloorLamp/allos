@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 // Write-access enforcement scanner (issue #33). The mirror of the profile-scoping
 // leak test: it reads the repo's own Server Actions as TEXT (no DB, no network,
@@ -632,6 +633,288 @@ function actionFiles(): string[] {
   });
 }
 
+// Route handlers are request boundaries too. The original #33 scan stopped at
+// `*actions.ts`, which left every `route.ts` outside the write-access ratchet even
+// when it called the same auth-blind cores. Keep the two inventories separate: an
+// action has the repo-wide default gate, while a route can authenticate through a
+// session, bearer token, webhook secret, or a deliberately composed profile gate.
+function routeFiles(): string[] {
+  const all: string[] = [];
+  walk(path.join(REPO, "app"), all);
+  return all.filter(
+    (f) => f.endsWith(`${path.sep}route.ts`) && !f.endsWith(".test.ts")
+  );
+}
+
+type RegisteredImports = Readonly<Record<string, readonly string[]>>;
+
+// Resolve the LOCAL names for registered named imports, including aliases. This
+// keeps the scans below tied to the module that owns a core: a local helper with the
+// same spelling cannot be mistaken for a write, and `foo as fooCore` cannot evade it.
+function registeredImportLocals(
+  src: string,
+  registered: RegisteredImports
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const sf = ts.createSourceFile(
+    "scan.ts",
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  for (const statement of sf.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const allowed = registered[statement.moduleSpecifier.text];
+    if (!allowed) continue;
+    const named = statement.importClause?.namedBindings;
+    if (!named || !ts.isNamedImports(named)) continue;
+    for (const element of named.elements) {
+      if (element.isTypeOnly) continue;
+      const imported = element.propertyName?.text ?? element.name.text;
+      if (allowed.includes(imported)) out.set(element.name.text, imported);
+    }
+  }
+  return out;
+}
+
+function callIndexes(
+  body: string,
+  names: Iterable<string>
+): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  for (const name of names) {
+    const hits: number[] = [];
+    const re = new RegExp(`\\b${name}\\s*\\(`, "g");
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(body))) hits.push(match.index);
+    out.set(name, hits);
+  }
+  return out;
+}
+
+// The route-facing auth-blind cores currently reachable from request handlers.
+// This is symbol-level, not module-level: several of these modules also export
+// reads, and treating every import from (say) lib/portals as a write would turn the
+// guard into an allowlist of harmless lookups. A new route call to one of these
+// cores is covered automatically; a new route-facing core is registered here as
+// part of introducing that boundary, like STATEFUL_WRITE_TABLES.
+const ROUTE_WRITE_CORES: RegisteredImports = {
+  "@/lib/audit": ["recordAudit"],
+  "@/lib/medical-pipeline": ["ingestMedicalUpload"],
+  "@/lib/portals": [
+    "applyIdentityOutcomes",
+    "clearIdentityDeclined",
+    "recordDiscoveredIdentities",
+    "recordPendingIdentity",
+    "recordPortalRunReport",
+  ],
+  "@/lib/integrations/connections": [
+    "recordSync",
+    "recordSyncEvent",
+    "recordSyncRows",
+    "recordUnmatchedHealthConnectPush",
+    "setStravaTokens",
+    "setWithingsTokens",
+    "takeStravaOAuthState",
+    "takeWithingsOAuthState",
+    "upsertConnection",
+  ],
+  "@/lib/offline/writes": ["applyIntent"],
+  "@/lib/notifications/telegram-callbacks": [
+    "handleCallbackQuery",
+    "handleIncomingMessage",
+  ],
+  "@/lib/integrations/fitbit-takeout-import": ["importTakeoutArchive"],
+  "@/lib/integrations/health-connect-ingest": ["ingestHealthConnectPayload"],
+  "@/lib/integrations/raw-log": ["writeRawPayload"],
+  "@/lib/notifications/temp-red-flag": ["queueTempRedFlagDispatch"],
+  "@/lib/queries": ["addCanonicalNames", "reconcileFlags"],
+  "@/lib/settings": ["setUserSex"],
+};
+
+type RouteGate = {
+  file: string;
+  fn: string;
+  gates: readonly string[];
+  why: string;
+};
+
+// The gate whose call must precede the FIRST registered write in each route
+// handler. These are deliberately route-specific: accepting authenticateApiToken
+// for sync-report would re-introduce #2105, because the missing check there was the
+// account write-set intersection (`canReportOnAccount`), not token presence.
+const ROUTE_GATES: readonly RouteGate[] = [
+  {
+    file: "app/share-target/route.ts",
+    fn: "POST",
+    gates: ["accessForProfile"],
+    why: "the browser share target composes the active-profile write gate explicitly so it can answer JSON/303 rather than throw a Server Action redirect",
+  },
+  {
+    file: "app/api/documents/route.ts",
+    fn: "POST",
+    gates: ["authenticateApiToken"],
+    why: "remote uploads require an upload-capable bearer before even an unmapped portal identity may be recorded; resolved uploads add the profile write-set intersection below",
+  },
+  {
+    file: "app/api/documents/sync-report/route.ts",
+    fn: "POST",
+    gates: ["canReportOnAccount"],
+    why: "#2105: the token must intersect the portal account's writable profiles before discovered identities, outcomes, or account run state are written",
+  },
+  {
+    file: "app/api/offline-replay/route.ts",
+    fn: "POST",
+    gates: ["accessForProfile"],
+    why: "each queued intent is intersected with the login's current write grant for its captured profile before applyIntent",
+  },
+  {
+    file: "app/api/integrations/fitbit-takeout/import/route.ts",
+    fn: "POST",
+    gates: ["requireWriteAccess"],
+    why: "the archive imports into the active profile under the ordinary Server Action write gate",
+  },
+  {
+    file: "app/api/integrations/health-connect/ingest/route.ts",
+    fn: "POST",
+    gates: ["resolveHealthConnectProfile"],
+    why: "the per-profile bearer is resolved before any attributable raw payload, sync event, or normalized record is written",
+  },
+  {
+    file: "app/api/integrations/strava/callback/route.ts",
+    fn: "GET",
+    gates: ["getCurrentSession"],
+    why: "OAuth state and tokens are profile-owned by the callback's live session",
+  },
+  {
+    file: "app/api/integrations/withings/callback/route.ts",
+    fn: "GET",
+    gates: ["getCurrentSession"],
+    why: "OAuth state and tokens are profile-owned by the callback's live session",
+  },
+  {
+    file: "app/api/telegram/webhook/route.ts",
+    fn: "POST",
+    gates: ["secretMatches"],
+    why: "the configured Telegram webhook secret authenticates the inbound callback before any command/tap handler runs",
+  },
+  {
+    file: "app/api/export/[dataset]/route.ts",
+    fn: "GET",
+    gates: ["getCurrentSession"],
+    why: "the audit row records an authenticated profile export",
+  },
+  {
+    file: "app/api/export/fhir/route.ts",
+    fn: "GET",
+    gates: ["getCurrentSession"],
+    why: "the audit row records an authenticated profile export",
+  },
+  {
+    file: "app/api/export/full/route.ts",
+    fn: "GET",
+    gates: ["getCurrentSession"],
+    why: "the audit row records an authenticated profile export",
+  },
+];
+
+// Media routes must resolve the row first to learn which profile to authorize, then
+// record the access audit. Their gates are deliberately bespoke combinations of
+// session + row ownership/reachability, so they are the named #1696-style exception
+// rather than pretending one generic call proves the whole sequence.
+const ROUTE_WRITE_ALLOW: readonly {
+  file: string;
+  fn: string;
+  core: string;
+  why: string;
+}[] = [
+  "app/(app)/medical/file/[id]/route.ts",
+  "app/api/activity-video/[id]/route.ts",
+  "app/api/lesion-photo/[id]/route.ts",
+  "app/api/progress-photo/[id]/route.ts",
+  "app/api/symptom-photo/[id]/route.ts",
+  "app/api/symptom-video/[id]/route.ts",
+].map((file) => ({
+  file,
+  fn: "GET",
+  core: "recordAudit",
+  why: "resolve-owner-then-gate media read (#1696): the row supplies profile_id, the handler checks the live session against that owner, and only then records the audit event",
+}));
+
+const TYPED_OUTCOME_CORES: RegisteredImports = {
+  "@/lib/appointment-status": ["setAppointmentStatus"],
+  "@/lib/cycle-write": ["startPeriodCore", "endPeriodCore", "reopenPeriodCore"],
+  "@/lib/illness-episode-write": [
+    "promoteEpisodeToConditionCore",
+    "endEpisodeCore",
+    "reopenEpisodeCore",
+    "endEpisodeAsOfCore",
+    "endEpisodeWithMedReconciliation",
+  ],
+  // The app boundary consumes these through the compatibility barrel; aliases
+  // such as `logHistoricalDose as logHistoricalDoseCore` are resolved above.
+  "@/lib/queries": [
+    "refillSupply",
+    "markDoseTaken",
+    "setDoseStatusCore",
+    "logAdministration",
+    "logHistoricalDose",
+    "updateHistoricalDose",
+    "deleteAdministrationLog",
+    "stopMedicationCourses",
+    "restartMedicationCourse",
+    "setMedicationEndDate",
+    "setMedicationSideEffectResolved",
+    "unretireDose",
+  ],
+  "@/lib/intake-active-write": ["setIntakeActive"],
+  "@/lib/intake-obligation-write": ["demoteIntakeObligation"],
+  "@/lib/equipment": ["setEquipmentRetired", "deleteEquipment"],
+};
+
+// The portal binding upsert literally carries `DO UPDATE SET profile_id`. Every
+// action that reaches it is therefore declared: either it takes two profile-write
+// gates for a possible re-point, or it proves why one side cannot exist and relies
+// on writeBinding's in-transaction refusal as the race backstop.
+const PROFILE_REPOINT_ACTIONS: readonly {
+  file: string;
+  fn: string;
+  core: "bindPortalIdentity" | "remapPortalIdentity";
+  minGates: number;
+  why: string;
+}[] = [
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "bindIdentityAction",
+    core: "bindPortalIdentity",
+    minGates: 1,
+    why: "the possible re-point branches to remapPortalIdentity above; the remaining bind/idempotent path gates its target and writeBinding refuses a raced live binding in-transaction",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "bindIdentityAction",
+    core: "remapPortalIdentity",
+    minGates: 2,
+    why: "the re-point branch routes records away from one profile and onto another",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "remapIdentityAction",
+    core: "remapPortalIdentity",
+    minGates: 2,
+    why: "Change profile is explicitly a two-sided access-control transition",
+  },
+  {
+    file: "app/(app)/integrations/patient-portals/actions.ts",
+    fn: "bindPendingIdentityAction",
+    core: "bindPortalIdentity",
+    minGates: 1,
+    why: "the source is an unmapped pending identity; writeBinding refuses a raced live binding inside the write transaction, so only the target exists to gate",
+  },
+];
+
 // Strip comments so a stray mention of the guard name in prose can't satisfy the
 // check — only a real call in code counts. Block comments first, then whole-line
 // `//` comments (the only place these files park explanatory text). Leaves string
@@ -696,6 +979,148 @@ function exportedAsyncFunctions(src: string): { name: string; body: string }[] {
 
 const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
 
+function routeWriteScan(
+  rel: string,
+  src: string
+): {
+  violations: string[];
+  matchedGates: Set<string>;
+  matchedAllow: Set<string>;
+  reachedCores: Set<string>;
+} {
+  const violations: string[] = [];
+  const matchedGates = new Set<string>();
+  const matchedAllow = new Set<string>();
+  const reachedCores = new Set<string>();
+  const imports = registeredImportLocals(src, ROUTE_WRITE_CORES);
+  const code = stripComments(src);
+
+  for (const { name, body } of exportedAsyncFunctions(code)) {
+    if (!/^(?:GET|POST|PUT|PATCH|DELETE)$/.test(name)) continue;
+    const writes: { local: string; core: string; index: number }[] = [];
+    const indexes = callIndexes(body, imports.keys());
+    for (const [local, core] of imports) {
+      for (const index of indexes.get(local) ?? []) {
+        writes.push({ local, core, index });
+        reachedCores.add(core);
+      }
+    }
+    if (writes.length === 0) continue;
+
+    const gate = ROUTE_GATES.find((g) => g.file === rel && g.fn === name);
+    const gateIndexes = gate
+      ? [...callIndexes(body, gate.gates).values()].flat()
+      : [];
+    const firstGate =
+      gateIndexes.length > 0
+        ? Math.min(...gateIndexes)
+        : Number.POSITIVE_INFINITY;
+
+    for (const write of writes) {
+      const allow = ROUTE_WRITE_ALLOW.find(
+        (a) => a.file === rel && a.fn === name && a.core === write.core
+      );
+      if (allow) {
+        matchedAllow.add(`${allow.file}#${allow.fn}#${allow.core}`);
+        continue;
+      }
+      if (!gate) {
+        violations.push(
+          `${rel}#${name}: reaches mutating core ${write.core}(…) without a registered route gate — declare the request boundary and require it before the first write`
+        );
+        continue;
+      }
+      if (firstGate >= write.index) {
+        violations.push(
+          `${rel}#${name}: ${write.core}(…) runs before its registered gate (${gate.gates.join(
+            " / "
+          )}) — authorize before the first write core call`
+        );
+        continue;
+      }
+      matchedGates.add(`${gate.file}#${gate.fn}`);
+    }
+  }
+  return { violations, matchedGates, matchedAllow, reachedCores };
+}
+
+function discardedOutcomeCalls(
+  body: string,
+  imports: ReadonlyMap<string, string>
+): string[] {
+  const bad: string[] = [];
+  for (const [local, core] of imports) {
+    const re = new RegExp(`\\b${local}\\s*\\(`, "g");
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(body))) {
+      let before = body.slice(0, match.index).replace(/\s+$/, "");
+      while (/\bawait$/.test(before)) {
+        before = before.slice(0, -"await".length).replace(/\s+$/, "");
+      }
+      const ch = before.at(-1) ?? "";
+      // A call reached through assignment, return, an argument, a condition, or an
+      // expression consumes the value. Statement position consumes nothing.
+      if (ch === "" || ch === ";" || ch === "{" || ch === "}" || ch === ")") {
+        bad.push(core);
+      }
+    }
+  }
+  return bad;
+}
+
+const PROFILE_REPOINT_CORES: RegisteredImports = {
+  "@/lib/portals": ["bindPortalIdentity", "remapPortalIdentity"],
+};
+
+const PROFILE_REPOINT_SQL_ALLOW = [
+  {
+    file: "lib/notifications/message-pointers.ts",
+    why: "delivery bookkeeping, not a profile-routing decision: the key is the Telegram (chat_id, message_id) pair being replaced by the newly-sent message's declared profile in the same outbound operation; no existing health row changes owner",
+  },
+] as const;
+
+function profileRepointScan(
+  rel: string,
+  src: string
+): {
+  violations: string[];
+  matched: Set<string>;
+} {
+  const violations: string[] = [];
+  const matched = new Set<string>();
+  const imports = registeredImportLocals(src, PROFILE_REPOINT_CORES);
+  const code = stripComments(src);
+  for (const { name, body } of exportedAsyncFunctions(code)) {
+    const indexes = callIndexes(body, imports.keys());
+    for (const [local, core] of imports) {
+      const coreCalls = indexes.get(local) ?? [];
+      if (coreCalls.length === 0) continue;
+      const declaration = PROFILE_REPOINT_ACTIONS.find(
+        (entry) =>
+          entry.file === rel && entry.fn === name && entry.core === core
+      );
+      if (!declaration) {
+        violations.push(
+          `${rel}#${name}: calls profile-repointing core ${core}(…) without declaring whether both profile sides are gated`
+        );
+        continue;
+      }
+      matched.add(`${declaration.file}#${declaration.fn}#${declaration.core}`);
+      for (const call of coreCalls) {
+        const gatesBeforeCall =
+          body.slice(0, call).match(/\brequireProfileWriteAccess\s*\(/g)
+            ?.length ?? 0;
+        if (gatesBeforeCall < declaration.minGates) {
+          violations.push(
+            `${rel}#${name}: ${core}(…) declares ${declaration.minGates} profile-write gate(s) before the transition but has ${gatesBeforeCall}`
+          );
+        }
+      }
+    }
+  }
+  return { violations, matched };
+}
+
 describe("write-access enforcement: every mutating Server Action is gated", () => {
   const files = actionFiles();
 
@@ -744,5 +1169,194 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
       (a) => !matchedAllow.has(`${a.file}#${a.fn}`)
     ).map((a) => `${a.file}#${a.fn}`);
     expect(stale, `stale allowlist entries: ${stale.join(", ")}`).toEqual([]);
+  });
+});
+
+describe("route write-access enforcement (#2109)", () => {
+  const files = routeFiles();
+
+  it("scans the route-handler surface", () => {
+    expect(files.length).toBeGreaterThan(25);
+  });
+
+  it("runs the registered route gate before the first mutating core", () => {
+    const violations: string[] = [];
+    const matchedGates = new Set<string>();
+    const matchedAllow = new Set<string>();
+    const reachedCores = new Set<string>();
+    for (const file of files) {
+      const rel = path.relative(REPO, file).split(path.sep).join("/");
+      const result = routeWriteScan(rel, fs.readFileSync(file, "utf8"));
+      violations.push(...result.violations);
+      result.matchedGates.forEach((entry) => matchedGates.add(entry));
+      result.matchedAllow.forEach((entry) => matchedAllow.add(entry));
+      result.reachedCores.forEach((entry) => reachedCores.add(entry));
+    }
+    expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
+
+    const staleGates = ROUTE_GATES.filter(
+      (entry) => !matchedGates.has(`${entry.file}#${entry.fn}`)
+    ).map((entry) => `${entry.file}#${entry.fn}`);
+    expect(staleGates, `stale route gates: ${staleGates.join(", ")}`).toEqual(
+      []
+    );
+
+    const staleAllow = ROUTE_WRITE_ALLOW.filter(
+      (entry) => !matchedAllow.has(`${entry.file}#${entry.fn}#${entry.core}`)
+    ).map((entry) => `${entry.file}#${entry.fn}#${entry.core}`);
+    expect(staleAllow, `stale route allows: ${staleAllow.join(", ")}`).toEqual(
+      []
+    );
+
+    // Every registered symbol is exercised by a real route today. If a route stops
+    // calling it, remove the entry; a stale mega-registry is not an enforcement tool.
+    const registeredCores = new Set(Object.values(ROUTE_WRITE_CORES).flat());
+    const staleCores = [...registeredCores].filter(
+      (core) => !reachedCores.has(core)
+    );
+    expect(
+      staleCores,
+      `stale route write cores: ${staleCores.join(", ")}`
+    ).toEqual([]);
+  });
+
+  it("FLAGS the #2105 write-before-gate shape", () => {
+    const planted = `
+      import { recordDiscoveredIdentities } from "@/lib/portals";
+      import { canReportOnAccount } from "@/lib/portal-visibility";
+      export async function POST() {
+        recordDiscoveredIdentities(account, labels);
+        if (!canReportOnAccount(ids, true, account.id)) return new Response(null, { status: 404 });
+        return Response.json({ ok: true });
+      }
+    `;
+    const result = routeWriteScan(
+      "app/api/documents/sync-report/route.ts",
+      planted
+    );
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0]).toContain("runs before its registered gate");
+  });
+});
+
+describe("profile re-points declare both authorization sides (#2103/#2109)", () => {
+  it("discovers every runtime module with a profile-repointing upsert", () => {
+    const files: string[] = [];
+    walk(path.join(REPO, "lib"), files);
+    const upserts = files
+      .filter(
+        (file) =>
+          file.endsWith(".ts") &&
+          !file.includes(`${path.sep}__tests__${path.sep}`) &&
+          !file.includes(`${path.sep}__db_tests__${path.sep}`) &&
+          !file.includes(`${path.sep}__action_tests__${path.sep}`) &&
+          !file.includes(`${path.sep}migrations${path.sep}`)
+      )
+      .filter((file) =>
+        /\bDO\s+UPDATE\s+SET\s+profile_id\s*=/i.test(
+          fs.readFileSync(file, "utf8")
+        )
+      )
+      .map((file) => path.relative(REPO, file).split(path.sep).join("/"));
+    const registeredModules = new Set(
+      Object.keys(PROFILE_REPOINT_CORES).map(
+        (module) => `${module.replace(/^@\//, "")}.ts`
+      )
+    );
+    const unregistered = upserts.filter(
+      (file) =>
+        !registeredModules.has(file) &&
+        !PROFILE_REPOINT_SQL_ALLOW.some((entry) => entry.file === file)
+    );
+    expect(
+      unregistered,
+      `profile-repointing upserts missing a caller/gate declaration: ${unregistered.join(", ")}`
+    ).toEqual([]);
+    expect(upserts.length).toBeGreaterThan(0);
+    const staleAllow = PROFILE_REPOINT_SQL_ALLOW.filter(
+      (entry) => !upserts.includes(entry.file)
+    ).map((entry) => entry.file);
+    expect(
+      staleAllow,
+      `stale profile-repoint SQL allows: ${staleAllow.join(", ")}`
+    ).toEqual([]);
+  });
+
+  it("every action reaching a re-point-capable core declares and takes its gates", () => {
+    const violations: string[] = [];
+    const matched = new Set<string>();
+    for (const file of actionFiles()) {
+      const rel = path.relative(REPO, file).split(path.sep).join("/");
+      const result = profileRepointScan(rel, fs.readFileSync(file, "utf8"));
+      violations.push(...result.violations);
+      result.matched.forEach((entry) => matched.add(entry));
+    }
+    expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
+
+    const stale = PROFILE_REPOINT_ACTIONS.filter(
+      (entry) => !matched.has(`${entry.file}#${entry.fn}#${entry.core}`)
+    ).map((entry) => `${entry.file}#${entry.fn}#${entry.core}`);
+    expect(
+      stale,
+      `stale profile re-point declarations: ${stale.join(", ")}`
+    ).toEqual([]);
+  });
+
+  it("FLAGS a one-sided action calling a re-point core", () => {
+    const planted = `
+      import { remapPortalIdentity } from "@/lib/portals";
+      export async function remapIdentityAction() {
+        await requireProfileWriteAccess(targetProfileId);
+        return remapPortalIdentity(id, ownerProfileId, targetProfileId);
+      }
+    `;
+    const result = profileRepointScan(
+      "app/(app)/integrations/patient-portals/actions.ts",
+      planted
+    );
+    expect(result.violations).toEqual([
+      expect.stringContaining(
+        "declares 2 profile-write gate(s) before the transition but has 1"
+      ),
+    ]);
+  });
+});
+
+describe("actions consume typed write-core outcomes (#2106/#2109)", () => {
+  it("no action discards a registered typed outcome in statement position", () => {
+    const violations: string[] = [];
+    const reached = new Set<string>();
+    for (const file of actionFiles()) {
+      const rel = path.relative(REPO, file).split(path.sep).join("/");
+      const src = fs.readFileSync(file, "utf8");
+      const imports = registeredImportLocals(src, TYPED_OUTCOME_CORES);
+      for (const core of imports.values()) reached.add(core);
+      for (const { name, body } of exportedAsyncFunctions(stripComments(src))) {
+        for (const core of discardedOutcomeCalls(body, imports)) {
+          violations.push(
+            `${rel}#${name}: ${core}(…) is called as a bare statement — consume its typed outcome and return/render the refusal instead of confirming unconditionally`
+          );
+        }
+      }
+    }
+    expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
+
+    const registered = new Set(Object.values(TYPED_OUTCOME_CORES).flat());
+    const stale = [...registered].filter((core) => !reached.has(core));
+    expect(
+      stale,
+      `typed outcome cores unused by actions: ${stale.join(", ")}`
+    ).toEqual([]);
+  });
+
+  it("FLAGS bare awaited calls and accepts captured or returned outcomes", () => {
+    const imports = new Map([["markTaken", "markDoseTaken"]]);
+    expect(discardedOutcomeCalls("await markTaken(1);", imports)).toEqual([
+      "markDoseTaken",
+    ]);
+    expect(
+      discardedOutcomeCalls("const outcome = await markTaken(1);", imports)
+    ).toEqual([]);
+    expect(discardedOutcomeCalls("return markTaken(1);", imports)).toEqual([]);
   });
 });
