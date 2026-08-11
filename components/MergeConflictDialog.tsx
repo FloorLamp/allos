@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { IconGitMerge } from "@tabler/icons-react";
 import type { UnitPrefs } from "@/lib/settings";
@@ -131,16 +131,11 @@ export default function MergeConflictDialog({
   onCancel: () => void;
 }) {
   // Per-field selection, seeded from the keeper (defaultOverrideChoices — the same
-  // computation the merge default follows). Reset in the render phase when the
-  // keeper changes, so a re-oriented preview pre-selects the NEW keeper's values.
+  // computation the merge default follows). Callers key the dialog by keeper id, so
+  // a re-oriented preview remounts with the NEW keeper's values pre-selected.
   const [choices, setChoices] = useState<OverrideChoices>(() =>
     defaultOverrideChoices(conflicts, keeperId)
   );
-  const seededFor = useRef(keeperId);
-  if (seededFor.current !== keeperId) {
-    seededFor.current = keeperId;
-    setChoices(defaultOverrideChoices(conflicts, keeperId));
-  }
 
   const labelById = new Map(members.map((m) => [m.id, m.label]));
 

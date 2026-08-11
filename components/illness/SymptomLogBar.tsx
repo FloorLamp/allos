@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   IconX,
   IconPlus,
@@ -354,15 +354,11 @@ export default function SymptomLogBar({
   // Freeze the picker order for the life of this mount: the server re-ranks on every
   // read, so the re-render each tap's action triggers must not reorder rows under the
   // finger (the FoodLogBar #591 discipline). The order only changes on remount (navigate away + back).
-  const frozenOrder = useRef<string[] | null>(null);
-  if (frozenOrder.current === null) {
-    frozenOrder.current = rankedKeys ?? [
-      ...symptoms.map((s) => s.slug),
-      ...customNames,
-    ];
-  }
+  const [frozenOrder] = useState<string[]>(
+    () => rankedKeys ?? [...symptoms.map((s) => s.slug), ...customNames]
+  );
   const orderedKeys = useMemo(() => {
-    const idx = new Map(frozenOrder.current!.map((k, i) => [k, i]));
+    const idx = new Map(frozenOrder.map((k, i) => [k, i]));
     return rows
       .map((r, i) => ({ k: r.key, i }))
       .sort((a, b) => {
@@ -371,7 +367,7 @@ export default function SymptomLogBar({
         return ai - bi || a.i - b.i;
       })
       .map((x) => x.k);
-  }, [rows]);
+  }, [rows, frozenOrder]);
 
   const loggedKeys = orderedKeys.filter((k) => (severities[k] ?? 0) > 0);
   const pickerKeys = orderedKeys.filter((k) => (severities[k] ?? 0) <= 0);

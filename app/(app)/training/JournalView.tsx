@@ -30,6 +30,7 @@ import JournalCard from "./JournalCard";
 import type { MergeSibling } from "./ActivityCardMenu";
 import { loadJournalPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
+import { useLatestRef } from "@/components/useLatestRef";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
 // JournalCardData / DayGroup moved to lib/journal-card.ts (issue #334), built by the
@@ -188,12 +189,9 @@ export default function JournalView({
 
   // Refs mirror the latest values so the deep-link auto-load loop reads fresh state
   // inside its async iterations (a render-time closure would go stale mid-load).
-  const groupsRef = useRef(groups);
-  groupsRef.current = groups;
-  const cursorRef = useRef(cursor);
-  cursorRef.current = cursor;
-  const olderGroupsRef = useRef(olderGroups);
-  olderGroupsRef.current = olderGroups;
+  const groupsRef = useLatestRef(groups);
+  const cursorRef = useLatestRef(cursor);
+  const olderGroupsRef = useLatestRef(olderGroups);
   const fetchingRef = useRef(false);
 
   // Re-sync pagination when the server's first-page cursor shifts (issue #503). The
@@ -217,7 +215,7 @@ export default function JournalView({
     cursorRef.current = nextCursor;
     setOlderGroups([]);
     setCursor(nextCursor);
-  }, [initialCursor]);
+  }, [initialCursor, cursorRef, olderGroupsRef]);
 
   // Fetch the next-older page from the server and append it. Returns false when there
   // is nothing more to fetch, or a fetch is already in flight — so a caller/loop stops.
@@ -237,7 +235,7 @@ export default function JournalView({
     } finally {
       fetchingRef.current = false;
     }
-  }, []);
+  }, [cursorRef, olderGroupsRef]);
 
   // The most recent logged activity (groups arrive newest-first, cards ordered
   // within a day) — the source for the header's one-tap "Repeat last" (issue
@@ -299,8 +297,7 @@ export default function JournalView({
   );
   const filtersActive = journalFiltersActive(activeFilters);
   const filtersKey = journalFiltersKey(activeFilters);
-  const activeFiltersRef = useRef(activeFilters);
-  activeFiltersRef.current = activeFilters;
+  const activeFiltersRef = useLatestRef(activeFilters);
 
   // ---- Server-side filtered paging (issue #1634) ----
   // Before this, all four filters ran client-side over the LOADED pages, so a match
@@ -347,7 +344,7 @@ export default function JournalView({
     };
     // initialGroups: the server refreshes the first page on every auto-save, and a
     // filtered feed must pick those edits up too rather than showing a stale window.
-  }, [filtersKey, filtersActive, initialGroups]);
+  }, [filtersKey, filtersActive, initialGroups, activeFiltersRef]);
 
   // A new ACTIVE filter set starts at the top of its own result list. Deliberately
   // not on the clearing transition: the deep-link handler clears every filter and
@@ -563,7 +560,7 @@ export default function JournalView({
     const onHashChange = () => void handleHash();
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, [groups, fetchNextPage]);
+  }, [groups, fetchNextPage, cursorRef, groupsRef]);
 
   useEffect(() => {
     if (!pendingScroll) return;

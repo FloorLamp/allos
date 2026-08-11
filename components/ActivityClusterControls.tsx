@@ -199,6 +199,7 @@ export default function ActivityClusterControls({
 
       {pickerOpen && (
         <MergeConflictDialog
+          key={keeperId}
           conflicts={conflicts}
           members={dialogMembers}
           keeperId={keeperId}

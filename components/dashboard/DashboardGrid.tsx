@@ -58,31 +58,29 @@ const CONTROL_CLASS =
 // subpath: `SyntheticListenerMap` only lives behind a `dist/` deep import, and the
 // bindings are exactly what the hook hands back anyway.
 type SortableBag = ReturnType<typeof useSortable>;
-interface GripBindings {
-  ref: SortableBag["setActivatorNodeRef"];
-  attributes: SortableBag["attributes"];
-  listeners: SortableBag["listeners"];
-}
-
 function WidgetControls({
   widget,
   hidden,
   onToggle,
-  grip,
+  activatorRef,
+  attributes,
+  listeners,
 }: {
   widget: GridWidget;
   hidden: boolean;
   // Null on the drag ghost, which is a picture of what you are carrying rather
   // than a second set of controls (see DragGhost).
   onToggle: ((id: string) => void) | null;
-  grip: GripBindings | null;
+  activatorRef?: SortableBag["setActivatorNodeRef"];
+  attributes?: SortableBag["attributes"];
+  listeners?: SortableBag["listeners"];
 }) {
   const eyeIcon = hidden ? (
     <IconEyeOff className="h-4 w-4" />
   ) : (
     <IconEye className="h-4 w-4" />
   );
-  if (!onToggle || !grip) {
+  if (!onToggle || !activatorRef) {
     return (
       <div className="flex items-center gap-1">
         <span className={CONTROL_CLASS}>
@@ -96,9 +94,9 @@ function WidgetControls({
     <div className="flex items-center gap-1">
       <button
         type="button"
-        ref={grip.ref}
-        {...grip.attributes}
-        {...grip.listeners}
+        ref={activatorRef}
+        {...attributes}
+        {...listeners}
         aria-label={`Drag ${widget.label}`}
         title="Drag to reorder"
         className={`cursor-grab touch-none active:cursor-grabbing ${CONTROL_CLASS}`}
@@ -237,12 +235,7 @@ function DragGhost({
         hidden={hidden}
         compact={compact}
         controls={
-          <WidgetControls
-            widget={widget}
-            hidden={hidden}
-            onToggle={null}
-            grip={null}
-          />
+          <WidgetControls widget={widget} hidden={hidden} onToggle={null} />
         }
       />
     </div>
@@ -299,7 +292,9 @@ function SortableWidget({
             widget={widget}
             hidden={hidden}
             onToggle={onToggle}
-            grip={{ ref: setActivatorNodeRef, attributes, listeners }}
+            activatorRef={setActivatorNodeRef}
+            attributes={attributes}
+            listeners={listeners}
           />
         }
       />

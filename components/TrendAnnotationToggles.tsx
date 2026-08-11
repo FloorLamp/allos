@@ -6,11 +6,11 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import AnnotationToggleBar from "./AnnotationToggleBar";
+import { useLatestRef } from "./useLatestRef";
 import type { AnnotationKind } from "@/lib/trend-annotations";
 import {
   TREND_ANNOTATION_VISIBILITY_KEY,
@@ -174,11 +174,10 @@ export function useAnnotationToggles(present: AnnotationKind[]): {
   // alphabetically) rather than the key's sort.
   const key = kindsKey(present);
   const register = ctx?.register;
-  const presentRef = useRef(present);
-  presentRef.current = present;
+  const presentRef = useLatestRef(present);
   useEffect(() => {
     register?.(presentRef.current);
-  }, [register, key]);
+  }, [register, key, presentRef]);
 
   if (ctx) {
     return { enabled: ctx.enabled, onToggle: ctx.toggle, hoisted: true };
