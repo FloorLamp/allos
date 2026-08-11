@@ -58,6 +58,8 @@ import { median, robustEndpoints } from "./robust-stats";
 import { fmtWeight, kgTo } from "./units";
 import { weekWindow } from "./week-window";
 import { sriPresentation } from "./sleep-regularity";
+import { formatHm } from "./sleep-summary";
+import { NUTRIENT_LABELS, type NutrientKey } from "./nutrition-day";
 import type { WeekMode, WeekStart, WeightUnit } from "./settings";
 import type { NotificationMessage } from "./notifications/types";
 import {
@@ -189,6 +191,27 @@ export interface RecapWeight {
   weightKg: number;
 }
 
+// How one nutrient's DAYS landed over the window (#2396). The denominator is the days
+// the nutrient could be POSITIONED at all — a day with no quantified intake, or a
+// profile with no resolvable target, produces no position (lib/nutrition-day.ts), and
+// counting such a day as a miss would assert something about eating that was never
+// observed. `onTarget` counts the positioned days that did NOT finish below target.
+export interface RecapNutrientDays {
+  nutrient: NutrientKey;
+  onTarget: number;
+  days: number;
+}
+
+// The window's food coverage and shape — never a serving total (#2396/#2178).
+export interface RecapFood {
+  /** Distinct days inside the window with any food logged. */
+  daysLogged: number;
+  /** Distinct food GROUPS logged inside the window — the week's variety. */
+  groups: number;
+  /** Protein and fibre days on target, in declared order. Empty when nothing positioned. */
+  nutrients: readonly RecapNutrientDays[];
+}
+
 // One day's dose ledger inside the window — the raw material of the month/quarter
 // adherence PATTERN line. `due` excludes nothing; `skipped` is the deliberate-skip
 // count (#232) the percentage denominator drops, exactly as at week scale.
@@ -252,8 +275,35 @@ export interface RecapInput {
   // "prior" idiom the workouts line uses and not a fourth invented statistic.
   // Optional: an absent/empty list simply yields no comparison.
   prevWeights?: RecapWeight[];
-  // Goals marked achieved with a target date inside the window (best-effort dating).
+  // Goals ACHIEVED inside the window (#2394), titles only. Keyed on the goal's recorded
+  // achievement instant — `goals.achieved_at`, migration 182 — never on `target_date`,
+  // which says when the goal was DUE: keying on the deadline announced a goal reached
+  // early a month after the fact, never announced one reached late, and could not
+  // announce a deadline-free goal at all. A goal with no recorded achievement instant
+  // (achieved before the column existed) is absent here rather than announced late.
   goalsCompleted: string[];
+  // Goals whose TARGET DATE passed inside the window without being achieved (#2394),
+  // titles only. Reported once, factually, in the period the deadline fell in — no
+  // streak, no cumulative miss count, no repetition later. Archived goals are excluded
+  // by the gather (filing a goal away is how a user retires the question). This is the
+  // one line where `target_date` is the right key: a miss is BY DEFINITION about a
+  // deadline. Omitted/empty ⇒ no line.
+  goalsMissed?: string[];
+  // The window's FOOD coverage and shape (#2396) — the profile's most-logged domain had
+  // no line at all. Deliberately NOT a re-total of daily servings: "you ate 53 servings"
+  // is the false-authority sum #2178 forbids. Days logged and group variety are WEEK
+  // facts that do not exist at day scale, and the nutrient rows report how many of the
+  // days that could be positioned landed on target. Null/absent (or zero days) ⇒ the
+  // line is omitted.
+  food?: RecapFood | null;
+  // Per-night MAIN sleep minutes inside the window and the previous one (#2396). The
+  // recap reported sleep CONSISTENCY (the SRI) and never how much was actually slept —
+  // and a perfectly regular five hours a night scores well. The line states the week's
+  // TYPICAL night (a median, never a total) and how it moved. Below
+  // RECAP_SLEEP_MIN_NIGHTS the line is omitted: one or two nights is a digest fact
+  // (#1117), not a week's pattern.
+  sleepMinutes?: readonly number[];
+  prevSleepMinutes?: readonly number[];
   // Distinct days within the window that fell inside a flagged-illness episode
   // (issue #837). When > 0 the recap names the episode context ("sick N days")
   // instead of reading like a failed training week — the same honesty the adherence
@@ -297,12 +347,15 @@ export type RecapLineKey =
   | "intake-deltas"
   | "adherence"
   | "adherence-pattern"
+  | "food"
   | "weight"
   | "weight-trajectory"
   | "zone2"
+  | "sleep-duration"
   | "sleepRegularity"
   | "mood"
   | "goals"
+  | "goals-missed"
   | "fitness-check";
 
 // HOW a line compares itself to something (#1935). The old untyped `delta` slot was
@@ -341,12 +394,20 @@ export const RECAP_COMPARISON_KINDS: Record<RecapLineKey, RecapComparisonKind> =
     "intake-deltas": "none", // the shared line is ITSELF the week-over-week change
     adherence: "none", // a rate; its note carries the dose counts
     "adherence-pattern": "none", // a SHAPE; its note carries the drift, not a score
+    // COVERAGE, and deliberately uncompared. Days-logged is the one figure on this line
+    // that a period-over-period delta would turn into the STREAK line #1935 cut: a count
+    // of how often the app was opened, with a cliff, on a surface whose contract is "a
+    // summary, never a score to beat". The variety and the nutrient days are notes for
+    // the same reason. What the week ate is reported; how it ranks is not.
+    food: "none",
     weight: "prior",
     "weight-trajectory": "prior", // the same net change, one period back
     zone2: "target", // measured against the weekly target, never against last week
+    "sleep-duration": "prior", // the same typical night, one period back
     sleepRegularity: "none", // its note carries the weekend shift, not a comparison
     mood: "none", // a summary, never a score to beat (#992/#716)
     goals: "none",
+    "goals-missed": "none", // a passed deadline is a fact; there is nothing to compare it to
     "fitness-check": "none",
   };
 
@@ -402,6 +463,10 @@ export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
     scales: ["month", "quarter"],
     why: "The weekday/weekend split and the first-half/second-half drift need several weeks of days before either is signal rather than coincidence. This is the #2178 inclusion test working in the constructive direction: not the weekly line at a longer length, a DIFFERENT fact the longer length is the first to show.",
   },
+  food: {
+    scales: ["week"],
+    why: "Days logged and group variety are WEEK facts that do not exist at day scale, and they were the profile's most consistent logging behaviour with no line at all (#2396). Week ONLY, for two reasons: a month's coverage rate says nothing a week's did not, and the nutrient half is a per-day gather — bounded at seven days it rides beside the adherence walk, over ninety it would be a scan on the dashboard's own render path.",
+  },
   weight: {
     scales: ["week"],
     why: "The latest weigh-in against last week's — a point reading with a short comparison, which is what a week can honestly say about a noisy daily quantity.",
@@ -414,6 +479,10 @@ export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
     scales: ["week"],
     why: "Measured against the WEEKLY aerobic-base target (#159). There is no monthly target to measure against, and multiplying the weekly one by four would invent a goal the user never set.",
   },
+  "sleep-duration": {
+    scales: ["week", "month", "quarter"],
+    why: "Regularity without duration is an odd half of the picture — a perfectly consistent five hours a night scores well (#2396). A MEDIAN night is a shape, not a sum, so it re-totals nothing and reports identically at every length; one night is a digest fact (#1117), which is what the minimum-nights gate keeps this line from restating.",
+  },
   sleepRegularity: {
     scales: ["week", "month", "quarter"],
     why: "The SRI is already a trailing 28-night index (#160) — it is a month-scale statistic that the weekly recap borrows. It is native at month and quarter scale and needs no re-derivation to speak there.",
@@ -424,7 +493,11 @@ export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
   },
   goals: {
     scales: ["week", "month", "quarter"],
-    why: "A goal reached is a dated event, so it belongs to whichever window contains it at any length — and quarter scale is the horizon goals are actually set on, which is why it is one of the few lines that leads a quarterly recap.",
+    why: "A goal reached is a dated event, so it belongs to whichever window contains it at any length — and quarter scale is the horizon goals are actually set on, which is why it is one of the few lines that leads a quarterly recap. Dated since #2394 by the goal's own `achieved_at`, so the window it belongs to is the one it actually happened in.",
+  },
+  "goals-missed": {
+    scales: ["week", "month", "quarter"],
+    why: "A deadline passing unmet is the same kind of dated event as a deadline being met, and reporting one without the other is the asymmetry #2394 closes — the app cheerfully announced the goals that landed and said nothing about the ones that did not. Once, in the period the date fell in, at whatever length that period is.",
   },
   "fitness-check": {
     scales: ["week", "month", "quarter"],
@@ -535,6 +608,11 @@ export function weightTrendKg(weights: RecapWeight[]): number | null {
 // sessions rendered as "strength 67%" is a percentage of noise, and a share that swings
 // 33 points on one session is worse than no line at all.
 export const RECAP_MIX_MIN_SESSIONS = 4;
+
+// The smallest number of nights a TYPICAL night is allowed to speak over (#2396). Below
+// it the "week's typical night" is one or two nights wearing a week's authority — and a
+// single night is a digest fact the daily message already owns (#1117).
+export const RECAP_SLEEP_MIN_NIGHTS = 3;
 
 // The smallest number of intended doses the adherence SHAPE is allowed to speak over.
 // Below it a "weekends 50%" is two doses, and a split is a coincidence, not a pattern.
@@ -670,14 +748,20 @@ export function buildRecap(input: RecapInput): Recap {
   const workoutCount = input.workouts.length;
   const prevCount = input.prevWorkouts.length;
   if (workoutCount > 0 || prevCount > 0) {
+    // THE VALUE IS THE QUANTITY, THE BREAKDOWN IS A NOTE (#2389 item 1). This line used
+    // to bake its composition into `value` — "7 (strength 4, cardio 3)" — so it arrived
+    // with a parenthetical already inside it and the grammar then appended the
+    // comparison after it, stacking two unrelated asides. The breakdown DECOMPOSES the
+    // head's own figure, which is exactly what a note is; declared as one, the line
+    // reads "Workouts: 7 — strength 4, cardio 3 · 5 last week" and the composition owns
+    // every separator on it.
     const breakdown = typeBreakdown(counts);
     push({
       key: "workouts",
       label: "Workouts",
-      value: breakdown
-        ? `${workoutCount} (${breakdown})`
-        : String(workoutCount),
+      value: String(workoutCount),
       comparison: { kind: "prior", text: `${prevCount} last ${noun}` },
+      notes: [breakdown || null],
     });
   }
 
@@ -760,13 +844,14 @@ export function buildRecap(input: RecapInput): Recap {
         ],
       });
     } else {
-      // Every due dose was skipped — no percentage to report, just the count.
+      // Every due dose was skipped — no percentage to report, just the count. The note
+      // that used to sit under it restated the value in longer words (#2389 item 1);
+      // the value carries the quantity and there is no second fact to qualify it with.
       push({
         key: "adherence",
         label: "Adherence",
-        value: `${skipped} skipped`,
+        value: `${skipped} dose${skipped === 1 ? "" : "s"} skipped`,
         comparison: NO_COMPARISON,
-        notes: [`${skipped} dose${skipped === 1 ? "" : "s"} skipped`],
       });
     }
   }
@@ -791,6 +876,41 @@ export function buildRecap(input: RecapInput): Recap {
         shape.drift === "steady"
           ? `steady across the ${noun}`
           : `${shape.drift} through the ${noun}`,
+      ],
+    });
+  }
+
+  // FOOD (#2396) — the domain a profile logs every day and the recap never mentioned.
+  //
+  // COVERAGE AND SHAPE, NEVER A TOTAL. "You ate 53 servings" is the false-authority sum
+  // #2178's never-re-total rule forbids: it is seven daily figures added up and handed
+  // back with an authority none of them had. What only a week can show is how OFTEN
+  // eating was logged at all, how VARIED it was, and how many of the days that could be
+  // positioned landed on their protein and fibre targets. None of those exist at day
+  // scale, which is exactly the inclusion test.
+  //
+  // NO COMPARISON, on purpose — see RECAP_COMPARISON_KINDS. A week-over-week
+  // days-logged delta is the streak line #1935 cut, wearing a nutrient's clothes.
+  const food = input.food ?? null;
+  if (food && food.daysLogged > 0) {
+    push({
+      key: "food",
+      label: "Food",
+      value: `${food.daysLogged}/${windowDays} days`,
+      comparison: NO_COMPARISON,
+      notes: [
+        food.groups > 0
+          ? `${food.groups} food group${food.groups === 1 ? "" : "s"}`
+          : null,
+        // One note per nutrient — the homogeneous tail the grammar's repeating group is
+        // for (#2391), so the `·` between protein and fibre is the formatter's and the
+        // per-nutrient denominators stay attached to their own figures.
+        ...food.nutrients.map(
+          (n) =>
+            `${NUTRIENT_LABELS[n.nutrient]} on target ${n.onTarget} of ${n.days} day${
+              n.days === 1 ? "" : "s"
+            }`
+        ),
       ],
     });
   }
@@ -892,13 +1012,45 @@ export function buildRecap(input: RecapInput): Recap {
     });
   }
 
+  // Sleep DURATION (#2396) — the week's typical night, beside the regularity line that
+  // used to speak for sleep alone. Regularity without duration is an odd half of the
+  // picture: a perfectly consistent five hours a night scores well on the SRI.
+  //
+  // A MEDIAN, never a mean and never a total: one 3am finish should not move what the
+  // week typically looked like, and a sum of nights is the re-total rule's own example.
+  // The comparison is the plain "prior" idiom — the same figure one period back — which
+  // is what "how it moved" means here.
+  const nights = input.sleepMinutes ?? [];
+  const prevNights = input.prevSleepMinutes ?? [];
+  if (nights.length >= RECAP_SLEEP_MIN_NIGHTS) {
+    const typical = median([...nights]);
+    const priorTypical =
+      prevNights.length >= RECAP_SLEEP_MIN_NIGHTS
+        ? median([...prevNights])
+        : null;
+    push({
+      key: "sleep-duration",
+      label: "Sleep",
+      value: formatHm(typical),
+      comparison:
+        priorTypical != null
+          ? { kind: "prior", text: `${formatHm(priorTypical)} last ${noun}` }
+          : NO_COMPARISON,
+      notes: [`typical night over ${nights.length} nights`],
+    });
+  }
+
   // Sleep regularity (#160): the SRI over the trailing 28-night window, with the
   // weekend-vs-weekday mid-sleep shift as context. Omitted when there isn't enough
   // sleep data (sri null under the minimum-nights gate).
   if (input.sri != null) {
+    // ONE DURATION CONVENTION IN ONE MESSAGE (#2389 item 4). This note used to print
+    // decimal hours ("1.3h weekend shift") while its new neighbour above states a
+    // typical night; two ways of spelling a duration in adjacent lines is a reader's
+    // tax for no gain, so both go through the shared formatter.
     const shiftH =
       input.socialJetlagMin != null && input.socialJetlagMin > 0
-        ? `${(input.socialJetlagMin / 60).toFixed(1)}h weekend shift`
+        ? `${formatHm(input.socialJetlagMin)} weekend shift`
         : undefined;
     push({
       key: "sleepRegularity",
@@ -916,21 +1068,27 @@ export function buildRecap(input: RecapInput): Recap {
   // one value is not an average, and dressing one low day as a weekly statistic is
   // exactly the over-claim #992 guards against. The averaging language appears only
   // once there is something to average.
+  //
+  // THE VALUE IS THE FIGURE, THE FRAMING IS A NOTE (#2389 item 1) — and the #1935
+  // decision above is carried by the note, not lost with the old value string: one
+  // check-in still says "one check-in" and never "averaged".
   if (input.mood != null && input.mood.daysLogged > 0) {
     const avg = Math.round(input.mood.avgValence * 10) / 10;
     const days = input.mood.daysLogged;
     push({
       key: "mood",
       label: "Mood",
-      value:
-        days === 1
-          ? `one check-in: ${avg}/5`
-          : `averaged ${avg}/5 over ${days} check-ins`,
+      value: `${avg}/5`,
       comparison: NO_COMPARISON,
+      notes: [days === 1 ? "one check-in" : `averaged over ${days} check-ins`],
     });
   }
 
-  // Goals completed this week.
+  // Goals REACHED in this period (#2394) — keyed on the goal's own recorded achievement
+  // instant by the gather, so a goal is announced in the period it was actually reached
+  // whether it landed early, late, or with no deadline at all. The line used to window
+  // on `target_date`, which announced the arrival of a DEADLINE that happened to be
+  // marked met, and could never fire for the deadline-free goals most profiles set.
   if (input.goalsCompleted.length > 0) {
     push({
       key: "goals",
@@ -941,31 +1099,58 @@ export function buildRecap(input: RecapInput): Recap {
     });
   }
 
+  // Goals whose DEADLINE passed unmet in this period (#2394). The user set an intention,
+  // the date arrived, and the app said nothing — while cheerfully reporting the ones that
+  // landed. That asymmetry is what this closes.
+  //
+  // FACTUALLY, ONCE. No streak, no cumulative miss count, no repetition in a later
+  // period: the line is keyed on the target date falling INSIDE this window, so the next
+  // period cannot re-report it. A goal the user has since archived is not mentioned (the
+  // gather drops it) — filing a goal away is how someone retires the question.
+  const goalsMissed = input.goalsMissed ?? [];
+  if (goalsMissed.length > 0) {
+    push({
+      key: "goals-missed",
+      label: "Goals not met",
+      value: `${goalsMissed.length}`,
+      comparison: NO_COMPARISON,
+      notes: [goalsMissed.slice(0, 3).join(", "), "target date reached"],
+    });
+  }
+
   // Fitness check completed this window (#1307) — factual, from the completed check's
   // fitness age. The prior age is shown only when it differs (an honest "was 36").
   if (input.fitnessCheck != null) {
     const { fitnessAge, priorFitnessAge } = input.fitnessCheck;
-    const value =
-      fitnessAge != null
-        ? `fitness age ${fitnessAge}${
-            priorFitnessAge != null && priorFitnessAge !== fitnessAge
-              ? `, was ${priorFitnessAge}`
-              : ""
-          }`
-        : "battery refreshed";
+    // The prior age is a QUALIFIER of the figure, so it is a note (#2389 item 1) rather
+    // than a second clause smuggled into the value behind a comma.
+    const priorNote =
+      fitnessAge != null &&
+      priorFitnessAge != null &&
+      priorFitnessAge !== fitnessAge
+        ? `was ${priorFitnessAge}`
+        : null;
     push({
       key: "fitness-check",
       label: "Fitness check",
-      value,
+      value:
+        fitnessAge != null ? `fitness age ${fitnessAge}` : "battery refreshed",
       comparison: NO_COMPARISON,
+      notes: [priorNote],
     });
   }
 
+  // WHAT COUNTS AS "NOTHING TO REPORT". Food joins the test (#2396): a profile that
+  // logs its eating every day and nothing else used the app all week, and calling that
+  // week empty — skipping its notification and showing the card's "log a workout or a
+  // weigh-in" nudge — was the same training-shaped assumption that left food off the
+  // line set in the first place.
   const isEmpty =
     illnessDays === 0 &&
     workoutCount === 0 &&
     (input.adherence == null || input.adherence.due === 0) &&
-    input.weights.length === 0;
+    input.weights.length === 0 &&
+    (food == null || food.daysLogged === 0);
 
   // Headline: the two facts most worth leading with, else a quiet fallback. It obeys
   // the same declaration the lines do — a scale that does not speak the workout COUNT
@@ -997,6 +1182,16 @@ export function buildRecap(input: RecapInput): Recap {
       headParts.push(`${p}% adherence`);
     }
   }
+  // A period whose logging was concentrated in food leads with food rather than with
+  // nothing (#2396) — the training-shaped headline had no fallback for the domain the
+  // person actually used. Coverage, never a serving total.
+  if (
+    headParts.length === 0 &&
+    lineSpeaksAt("food", scale) &&
+    food &&
+    food.daysLogged > 0
+  )
+    headParts.push(`food logged on ${food.daysLogged} of ${windowDays} days`);
   // A week with nothing else to lead with but a logged illness leads with recovery,
   // so the headline names the episode instead of reading as an empty/failed week.
   if (headParts.length === 0 && illnessDays > 0)

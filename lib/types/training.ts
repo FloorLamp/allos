@@ -312,6 +312,13 @@ export interface OutcomeGoal {
   target_date: string | null;
   status: OutcomeGoalStatus;
   created_at: string;
+  // WHEN the goal was marked achieved (#2394, migration 182) — a canonical UTC instant
+  // (`YYYY-MM-DDTHH:MM:SSZ`), NULL for every goal that is not achieved AND for every
+  // goal achieved before the column existed. `status` says WHETHER, this says WHEN, and
+  // the recap's reached line windows on it because `target_date` answers a different
+  // question (when the goal was DUE). Never inferred: an achieved goal with no recorded
+  // instant is announced nowhere rather than announced retroactively.
+  achieved_at: string | null;
   // Exercise-linked goal fields (all null for freeform goals). A goal is
   // exercise-linked when `exercise` and `metric` are both set.
   exercise: string | null;

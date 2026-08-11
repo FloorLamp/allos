@@ -2385,9 +2385,24 @@ scope for now: keying on every punctuation mark that could ever join two clauses
 how the scan stops being readable and the abstraction under it turns into a join
 helper. So it is a known edge, not a guarantee: the scan proves nobody re-implements
 `—`/`·`, and REVIEW is what keeps a qualifier out of a head under different
-punctuation. The recap's remaining breakdown parenthetical (`value: "7 (strength 4,
-cardio 3)"`) is exactly such a case and is #2389 item 1's to re-cut — a breakdown
-decomposing the head's own figure, left deliberately.
+punctuation. The recap's breakdown parenthetical (`value: "7 (strength 4, cardio 3)"`)
+was exactly such a case; #2389 item 1 re-cut it, and the rule it left behind is what
+review applies to the next line:
+
+> **A line's `value` carries the headline quantity and nothing else.** Every qualifier —
+> a breakdown, a prior figure, the count an average was taken over — is a declared
+> `note` (or a `comparison`), so `recapLineAnnotation` owns every aside on the line and
+> there is exactly one chain of them. A value that punctuates itself stacks a second
+> aside the composition cannot see coming, and a value carrying a label that legitimately
+> contains parentheses (`Romanian Deadlift (Rep Trap Bar)`) is how one ends up nested
+> inside another.
+
+That rule governs BOTH system-initiated messages, not only the one that broke it: the
+digest and the recap compose through the same `MessageLineParts`, so a surface that
+inherits the grammar inherits this with it rather than rediscovering it a third time.
+`lib/__tests__/recap.test.ts` walks every line the recap can emit and fails a `value`
+carrying a parenthetical (the declared exemption is a `bare` line — the shared #1505
+intake delta line is a finished line the recap passes through, parentheses and all).
 
 ## The glyph vocabulary (#2392)
 

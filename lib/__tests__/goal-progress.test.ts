@@ -20,6 +20,7 @@ function goal(overrides: Partial<OutcomeGoal>): OutcomeGoal {
     target_date: null,
     status: "active",
     created_at: "2026-01-01",
+    achieved_at: null,
     exercise: null,
     metric: null,
     equipment_id: null,

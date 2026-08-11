@@ -40,6 +40,43 @@ test.describe("Weekly recap + milestones (#32)", () => {
     await expect(recap.getByText(/active days?$/)).toHaveCount(0);
   });
 
+  // #2389 item 1, in the browser: the card renders the line's `value` and the ONE
+  // shared annotation beside it, so a value carrying its own parenthetical put two
+  // unrelated asides side by side on the row — "7 (strength 4, cardio 3) 5 last week".
+  // The breakdown is now a declared note, which is what the reader sees here.
+  test("the workouts row's value is the count alone, with the breakdown in its annotation", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const row = page
+      .getByTestId("weekly-recap")
+      .locator("dl > div")
+      .filter({ hasText: "Workouts" });
+    await expect(row).toHaveCount(1);
+
+    // The value is the headline quantity and nothing else.
+    await expect(row.locator("dd > span").first()).toHaveText(/^\d+$/); // first-ok: the row is narrowed to one above, and its dd's first span IS the value — the annotation is the second
+    // The breakdown rides in the annotation, punctuated by the shared grammar.
+    const cell = row.locator("dd");
+    await expect(cell).toContainText(/strength \d/);
+    await expect(cell).toContainText("last week");
+    // And nothing on the row is parenthesised any more.
+    await expect(cell).not.toContainText("(");
+  });
+
+  // A label may legitimately contain parentheses (an exercise variant names its
+  // implement), so the guarantee is about the COMPOSITION: it never wraps an
+  // annotation in a bracket of its own, at any line, whatever the content.
+  test("no recap row nests one parenthetical inside another", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const rows = page.getByTestId("weekly-recap").locator("dl > div");
+    for (const text of await rows.allInnerTexts()) {
+      expect(text, text).not.toMatch(/\(\(|\)\)|\)\s*\(/);
+    }
+  });
+
   test("timeline surfaces the milestone entry under the Milestone filter", async ({
     page,
   }) => {
