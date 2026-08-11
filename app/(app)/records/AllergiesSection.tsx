@@ -156,7 +156,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
               </summary>
               <p className="mb-3 mt-2 text-xs text-slate-500 dark:text-slate-400">
                 Informational reference only. A documented cross-reactivity does
-                not mean you will react.
+                not guarantee a reaction.
               </p>
               <ul className="space-y-3">
                 {crossReactivity.map((c) => (

@@ -265,7 +265,7 @@ export default async function UpcomingPage(props: {
       {multi && <ModeToggle mode={viewMode} />}
 
       {total === 0 && viewMode === "interleaved" ? (
-        <EmptyState message="Nothing due. You're all caught up." />
+        <EmptyState message="Nothing is due in this view." />
       ) : viewMode === "by-person" ? (
         <div className="space-y-8" data-testid="by-person-view">
           {model.memberSections.map((section) => (
@@ -339,7 +339,7 @@ export default async function UpcomingPage(props: {
           />
           <span>
             Preventive visit &amp; screening suggestions are based on general
-            guidelines and are informational only — your provider&apos;s
+            guidelines and are informational only — individual clinician
             guidance wins.
           </span>
         </p>
@@ -792,7 +792,7 @@ function AvailableSection({
   return (
     <details className="mt-8" data-testid="available-section">
       <summary className="cursor-pointer section-label">
-        Available when you want them{" "}
+        Available to log{" "}
         <span className="text-slate-500 dark:text-slate-400">
           ({items.length})
         </span>

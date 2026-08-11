@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 //   (3) Terminal period on the "Couldn't …" error family — a complete-sentence
 //       error string ends with terminal punctuation (rule 3); a "Couldn't adopt
 //       this template" toast without its period is the drift this catches.
+//   (4) Second-person voice on a cross-profile surface — "you" / "your" can only
+//       address the active profile, never an aggregate or another person's row.
 //
 // It is DELIBERATELY narrow (the issue's decision): it catches the drift patterns
 // we actually measured, not tone in general — review still owns tone. Comments,
@@ -34,6 +36,30 @@ const SCAN_DIRS = ["app", "components", path.join("lib", "notifications")];
 
 // app/api/** is the #478 JSON-error-body layer, not human copy (issue §1, §Non-goals).
 const EXCLUDE_SUBPATH = ["app/api/"];
+
+// Cross-profile voice has a narrower surface than the general copy rules. The
+// known Household / Family homes and shared subject chips are included explicitly;
+// structurally multi-profile components join automatically when they carry the
+// ProfileScope, SubjectInfo, or viewIds vocabulary. This makes a new consumer enter
+// the scan with its first cross-profile prop instead of relying on a reviewer to
+// remember a second registry.
+const CROSS_PROFILE_PREFIXES = [
+  "app/(app)/household/",
+  "app/(app)/settings/family/",
+  "components/household/",
+];
+const CROSS_PROFILE_FILES = new Set([
+  "components/dashboard/HouseholdHistoryPromoLink.tsx",
+  "components/dashboard/HouseholdStrip.tsx",
+  "components/HouseholdCard.tsx",
+  "components/ProfileSwitcherChip.tsx",
+  "components/SubjectChip.tsx",
+]);
+const CROSS_PROFILE_MARKERS = [
+  /\bProfileScope\b/,
+  /\bSubjectInfo\b/,
+  /\bviewIds\b/,
+];
 
 // Banned error-verb phrasings and the "please" ban. Case-insensitive: lowercase
 // "could not" mid-string is as banned as the capitalized form (rule 1).
@@ -77,6 +103,86 @@ const ALLOW: { file: string; substring: string; why: string }[] = [
   },
 ];
 
+// Cross-profile copy may address the LOGIN when it describes login-scoped access or
+// controls. Those survivors are explicit and frozen; health-data claims do not
+// belong here. Keyed by exact substring so ordinary line movement does not churn it.
+const FAMILY_LOGIN_COPY =
+  "Family settings administers the signed-in login's roster and grants; second " +
+  "person addresses that administrator, not any profile's health data.";
+const VIEW_CONTROL_COPY =
+  "The profile-view controls mutate the signed-in login's view set; second person " +
+  "describes that login-owned control state, not a profile's health data.";
+const ACTING_IMMUNIZATION_COPY =
+  "The schedule assessment is deliberately acting-profile-only even though the " +
+  "record list below is multi-view, so second person still names the active profile.";
+const CROSS_PROFILE_VOICE_ALLOW: {
+  file: string;
+  substring: string;
+  why: string;
+}[] = [
+  {
+    file: "app/(app)/records/ImmunizationsSection.tsx",
+    substring: "You're up to date on the tracked schedule.",
+    why: ACTING_IMMUNIZATION_COPY,
+  },
+  {
+    file: "app/(app)/records/ImmunizationsSection.tsx",
+    substring:
+      "Add your date of birth in Settings to see age-based recommendations.",
+    why: ACTING_IMMUNIZATION_COPY,
+  },
+  {
+    file: "app/(app)/settings/family/FamilyManager.tsx",
+    substring: "You already have a profile named",
+    why: FAMILY_LOGIN_COPY,
+  },
+  {
+    file: "app/(app)/settings/family/FamilyManager.tsx",
+    substring: "The people you track. Adding a family member",
+    why: FAMILY_LOGIN_COPY,
+  },
+  {
+    file: "app/(app)/settings/family/FamilyManager.tsx",
+    substring: "unless you want to give",
+    why: FAMILY_LOGIN_COPY,
+  },
+  {
+    file: "app/(app)/settings/family/FamilyManager.tsx",
+    substring: "only the profiles you grant them below.",
+    why: FAMILY_LOGIN_COPY,
+  },
+  {
+    file: "app/(app)/settings/family/FamilyManager.tsx",
+    substring: "you can grant access later under Access.",
+    why: FAMILY_LOGIN_COPY,
+  },
+  {
+    file: "app/(app)/settings/family/FamilyManager.tsx",
+    substring: "If this is your own",
+    why: FAMILY_LOGIN_COPY,
+  },
+  {
+    file: "app/(app)/settings/family/FamilyManager.tsx",
+    substring: "login, you’ll be signed out.",
+    why: FAMILY_LOGIN_COPY,
+  },
+  {
+    file: "app/(app)/upcoming/page.tsx",
+    substring: "You can view several profiles at once",
+    why: VIEW_CONTROL_COPY,
+  },
+  {
+    file: "components/ProfileSwitcherPanel.tsx",
+    substring: "Toggle the eye to show a profile in your",
+    why: VIEW_CONTROL_COPY,
+  },
+  {
+    file: "components/ProfileSwitcherPanel.tsx",
+    substring: "is always in your view",
+    why: VIEW_CONTROL_COPY,
+  },
+];
+
 function walk(dir: string): string[] {
   const out: string[] = [];
   if (!fs.existsSync(dir)) return out;
@@ -106,6 +212,16 @@ function sourceFiles(): { rel: string; text: string }[] {
   return files;
 }
 
+function crossProfileSourceFiles(): { rel: string; text: string }[] {
+  return sourceFiles().filter(
+    ({ rel, text }) =>
+      rel.endsWith(".tsx") &&
+      (CROSS_PROFILE_FILES.has(rel) ||
+        CROSS_PROFILE_PREFIXES.some((prefix) => rel.startsWith(prefix)) ||
+        CROSS_PROFILE_MARKERS.some((marker) => marker.test(text)))
+  );
+}
+
 // Strip block + line comments so prose mentioning a banned phrase (e.g. this file's
 // own doc comment, or app/not-found.tsx quoting Next's "could not be found") can't
 // trip the scan. The line-comment strip preserves a leading non-`:` char so URLs
@@ -131,6 +247,28 @@ function isInternalLine(line: string): boolean {
 
 function allowed(rel: string, snippet: string): boolean {
   return ALLOW.some((a) => a.file === rel && snippet.includes(a.substring));
+}
+
+const SECOND_PERSON = /\b(?:you|your)\b/i;
+
+function voiceAllowed(rel: string, snippet: string): boolean {
+  return CROSS_PROFILE_VOICE_ALLOW.some(
+    (a) => a.file === rel && snippet.includes(a.substring)
+  );
+}
+
+function crossProfileVoiceViolations(rel: string, text: string): string[] {
+  const violations: string[] = [];
+  const code = stripComments(text);
+  code.split("\n").forEach((line, i) => {
+    if (isInternalLine(line)) return;
+    if (SECOND_PERSON.test(line) && !voiceAllowed(rel, line)) {
+      violations.push(
+        `${rel}:${i + 1} — second-person copy in: ${line.trim()}`
+      );
+    }
+  });
+  return violations;
 }
 
 describe("copy-lint: user-facing tone standard (issue #945)", () => {
@@ -187,6 +325,45 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
     ).toEqual([]);
   });
 
+  it('cross-profile surfaces do not render "you" or "your" health-data copy', () => {
+    const violations = crossProfileSourceFiles().flatMap(({ rel, text }) =>
+      crossProfileVoiceViolations(rel, text)
+    );
+    expect(
+      violations,
+      `Cross-profile copy must name the profile or use neutral phrasing; "you" / ` +
+        `"your" means the active profile. Login-scoped control copy may enter the ` +
+        `frozen CROSS_PROFILE_VOICE_ALLOW list with an exact substring and reason:\n` +
+        violations.join("\n")
+    ).toEqual([]);
+  });
+
+  it("the cross-profile voice scan detects rendered copy and ignores internal text", () => {
+    const sample = [
+      "// your comment",
+      'console.warn("your diagnostic")',
+      'const title = "Your medications";',
+      "<p>When you log a dose, it appears here.</p>",
+      'const neutral = "This profile’s medications";',
+    ].join("\n");
+    expect(crossProfileVoiceViolations("synthetic.tsx", sample)).toEqual([
+      'synthetic.tsx:3 — second-person copy in: const title = "Your medications";',
+      "synthetic.tsx:4 — second-person copy in: <p>When you log a dose, it appears here.</p>",
+    ]);
+  });
+
+  it("the explicit cross-profile inventory stays honest", () => {
+    const knownFiles = new Set(sourceFiles().map((file) => file.rel));
+    const missing = [...CROSS_PROFILE_FILES].filter(
+      (file) => !knownFiles.has(file)
+    );
+    expect(
+      missing,
+      `Explicit cross-profile source files moved or disappeared; update the ` +
+        `inventory without weakening its coverage:\n${missing.join("\n")}`
+    ).toEqual([]);
+  });
+
   it("the ALLOW list stays honest — every entry still matches a real hit", () => {
     const files = sourceFiles();
     const stale: string[] = [];
@@ -195,6 +372,25 @@ describe("copy-lint: user-facing tone standard (issue #945)", () => {
       if (!f || !f.text.includes(a.substring)) {
         stale.push(
           `${a.file}: allowlisted substring no longer present — remove its ALLOW entry.`
+        );
+      }
+    }
+    expect(stale, stale.join("\n")).toEqual([]);
+  });
+
+  it("the cross-profile voice allowlist stays honest", () => {
+    const files = crossProfileSourceFiles();
+    const stale: string[] = [];
+    for (const a of CROSS_PROFILE_VOICE_ALLOW) {
+      const f = files.find((x) => x.rel === a.file);
+      if (
+        !f ||
+        !f.text.includes(a.substring) ||
+        !SECOND_PERSON.test(a.substring) ||
+        !a.why.trim()
+      ) {
+        stale.push(
+          `${a.file}: voice-allowlisted substring is absent or no longer second-person copy.`
         );
       }
     }

@@ -816,7 +816,7 @@ export default async function TimelinePage(props: {
         isTimelineUnfiltered(category, range) ? (
           <EmptyState
             testId="timeline-empty"
-            message="No timeline events yet. Your day-by-day history fills in from what you log and import."
+            message="No timeline events yet. Logged and imported entries build the day-by-day history."
             actions={TIMELINE_EMPTY_ACTIONS}
           />
         ) : (
