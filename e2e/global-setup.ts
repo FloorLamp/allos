@@ -30,6 +30,7 @@ import {
 
 const REPO_ROOT = process.cwd();
 const BUILD_ID = path.join(REPO_ROOT, ".next", "BUILD_ID");
+const BUILD_HEAP_MB = 4096;
 
 // Sources whose change invalidates the production build. e2e/** is deliberately
 // absent: specs are not compiled into the app, so editing a spec must not trigger
@@ -135,11 +136,20 @@ async function ensureBuild(): Promise<void> {
       ? "[e2e] production build is stale — rebuilding (set E2E_SKIP_BUILD=1 to skip)"
       : "[e2e] no production build found — building (set E2E_SKIP_BUILD=1 to skip)"
   );
-  await run(bin("next"), ["build"], {
-    cwd: REPO_ROOT,
-    env: process.env,
-    label: "next build",
-  });
+  // Next's compile plus TypeScript phase crosses V8's automatic ~2 GiB old-space
+  // limit on the full app. Keep this direct bootstrap path aligned with the
+  // repository's `npm run build` script: local Playwright runs deliberately build
+  // without going through npm, so raising only package.json would leave this path
+  // able to OOM before a single browser assertion runs.
+  await run(
+    process.execPath,
+    [`--max-old-space-size=${BUILD_HEAP_MB}`, bin("next"), "build"],
+    {
+      cwd: REPO_ROOT,
+      env: process.env,
+      label: "next build",
+    }
+  );
 }
 
 /**
