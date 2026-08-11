@@ -109,6 +109,13 @@ export function useDeployedVersion({
       if (intervalId) clearInterval(intervalId);
       answered();
     };
+    // A read whose result must no longer be acted on: this effect has been torn down, or
+    // another read already reached a final answer. EVERY branch that resumes after an
+    // `await` asks this, not only the sha comparison (#2447) — `finalRef` outlives one
+    // effect run, since it is reset only by a `generation` bump, so a stale 401 landing
+    // after teardown would latch it on and silently end the poll for the instance that
+    // reuses the ref.
+    const obsolete = () => cancelled || finalRef.current;
 
     async function check({ onMount }: { onMount: boolean }) {
       // Background tabs are not POLLED — but the mount read still happens in a hidden
@@ -119,6 +126,7 @@ export function useDeployedVersion({
       if (!onMount && document.visibilityState === "hidden") return;
       try {
         const res = await fetch("/api/version", { cache: "no-store" });
+        if (obsolete()) return;
         // The endpoint is session-gated (#390). An anonymous context — the login
         // page, or a session that expired under an open tab — can never learn the
         // deployed sha, so stop asking rather than 401 once a minute forever.
@@ -134,7 +142,8 @@ export function useDeployedVersion({
           sha: string | null;
           commitMessage: string | null;
         };
-        if (cancelled || finalRef.current) return;
+        // `res.json()` is a second suspension point, so the same question is asked again.
+        if (obsolete()) return;
         if (!body.sha) {
           answered();
           return;
@@ -152,7 +161,7 @@ export function useDeployedVersion({
         // Network blip, or a deploy caught mid-restart — ask again next tick, but
         // report the read as answered so the plan is not held open on a tab that may
         // be offline for hours.
-        if (!cancelled) answered();
+        if (!obsolete()) answered();
       }
     }
 
