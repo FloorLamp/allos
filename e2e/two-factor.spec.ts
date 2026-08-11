@@ -27,7 +27,7 @@ function e2eDbPath(): string {
 }
 
 function seedMemberOnProfile1(): { username: string; password: string } {
-  const username = `e2e_2fa_${Date.now()}_${++memberSeq}`;
+  const username = `e2e_2fa_${Date.now()}_${++memberSeq}`; // clock-ok: unique login-name suffix, never a stored timestamp
   const db = new Database(e2eDbPath());
   try {
     db.pragma("busy_timeout = 5000");
@@ -64,7 +64,7 @@ async function completeTotpLogin(page: Page, secret: string): Promise<void> {
   // The url guard keeps a slow-but-successful verify from being re-driven.
   await expect(async () => {
     if (new URL(page.url()).pathname.startsWith("/login")) {
-      const nextStepCode = totp(secret, { timeMs: Date.now() + 30_000 })!;
+      const nextStepCode = totp(secret, { timeMs: Date.now() + 30_000 })!; // clock-ok: TOTP must follow the verifier's real clock
       await page.getByTestId("totp-code").fill(nextStepCode);
       await page.getByRole("button", { name: "Verify" }).click();
     }

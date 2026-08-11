@@ -15,7 +15,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
   page,
   context,
 }) => {
-  const marker = `offline-e2e-${Date.now()}`;
+  const marker = `offline-e2e-${Date.now()}`; // clock-ok: unique notes marker, never a stored timestamp
 
   await page.goto("/trends");
   // #1486: the body quick-add is now the combined "Log measurements" form behind
@@ -72,7 +72,7 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
   page,
   context,
 }) => {
-  const marker = `offline-reject-${Date.now()}`;
+  const marker = `offline-reject-${Date.now()}`; // clock-ok: unique notes marker, never a stored timestamp
 
   await page.goto("/trends");
   // #1486: the body quick-add is now the combined "Log measurements" form behind

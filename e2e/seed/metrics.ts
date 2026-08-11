@@ -7,6 +7,7 @@ import "../../scripts/load-env";
 
 import path from "node:path";
 import { db, today } from "../../lib/db";
+import { now as clockNow } from "../../lib/clock";
 import {
   shiftDateStr,
   utcInstant,
@@ -448,7 +449,7 @@ export function seedSunOutdoor(): void {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
-    }).format(new Date());
+    }).format(clockNow());
     // Outdoor midday walks on four distinct recent days (avg_temp_c present = the
     // persisted outdoor signal), each safely inside the daylight window → four chart
     // points. Idempotent by external_id for a reused dev server.

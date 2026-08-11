@@ -7,6 +7,7 @@ import "../../scripts/load-env";
 
 import fs from "node:fs";
 import path from "node:path";
+import { now as clockNow } from "../../lib/clock";
 import { db, writeTx } from "../../lib/db";
 import { utcInstant, zonedDateParts, zonedWallTimeToUtc } from "../../lib/date";
 import { setDeliveryFailure } from "../../lib/notifications/delivery-marker";
@@ -119,9 +120,10 @@ export function seedPrelude(): void {
       "errors.jsonl"
     );
     fs.mkdirSync(path.dirname(errorLogPath), { recursive: true });
+    const seededErrorNow = clockNow();
     const event = {
-      id: `${Date.now()}-000000`,
-      time: new Date().toISOString(),
+      id: `${seededErrorNow.getTime()}-000000`,
+      time: utcInstant(seededErrorNow),
       level: "error",
       scope: "e2e-seed",
       message: "Seeded server error for the admin errors surface",

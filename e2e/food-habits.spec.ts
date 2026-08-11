@@ -52,7 +52,7 @@ test("untracking a habit a protocol measures confirms first (#748 item 6)", asyn
 }) => {
   test.slow(); // next dev compiles the protocols route on first hit
 
-  const protocolName = `E2E Habit Protocol ${Date.now()}`;
+  const protocolName = `E2E Habit Protocol ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
 
   // Create a protocol that adopts the "Shellfish" food habit as its practice — the
   // #580 protocol↔target link. This also creates the shellfish habit target.

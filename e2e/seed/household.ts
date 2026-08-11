@@ -542,9 +542,7 @@ export function seedMultiProfile(): void {
     setFixtureTimezone(db, westId, "timeline-west", TL_WEST_TZ);
     // The frozen instant the app uses (ALLOS_TEST_NOW when set, else real now), so the
     // seeded activity date == the app's today(profileId) at request time.
-    const seedNow = process.env.ALLOS_TEST_NOW
-      ? new Date(process.env.ALLOS_TEST_NOW)
-      : new Date();
+    const seedNow = clockNow();
     const todayIn = (tz: string): string =>
       new Intl.DateTimeFormat("en-CA", {
         timeZone: tz,

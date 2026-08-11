@@ -81,7 +81,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
     .getByRole("button", { name: "New activity" })
     .click();
 
-  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`;
+  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);
   // Pick the fully-qualified variant, NOT the bare base "Bench Press": a bare
   // variant base needs a per-set equipment pick before it can save (#342), and the

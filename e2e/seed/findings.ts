@@ -378,7 +378,7 @@ export function seedSuppressedCenter(): void {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
-    }).format(new Date());
+    }).format(clockNow());
     // The two seeded runs' instants, an hour and two hours before the frozen clock —
     // the SAME derivation weather-uv.spec.ts reads them back with.
     const wxNow = clockNow();

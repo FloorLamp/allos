@@ -60,7 +60,7 @@ async function sweepProbes(page: Page): Promise<void> {
 // without the per-set equipment pick a bare strength variant needs (#342). Returns
 // the unique title.
 async function createProbe(page: Page): Promise<string> {
-  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`;
+  const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
   await page.goto("/training");
   await page
     .getByRole("main")

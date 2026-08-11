@@ -191,33 +191,12 @@ const ADD_PROFILE_ALLOW: Record<string, number> = {};
 // recap failed exactly this way, deterministically, 29 minutes in).
 //
 // So a spec's "now" is `frozenNow()` (e2e/worker-env.ts), never the wall clock.
-// Existing reads are frozen at today's per-file count — the remainder are
-// UNIQUE-NAME suffixes (`E2E Sauna ${Date.now()}`) and a TOTP probe that genuinely
-// needs real time, neither of which is a stored timestamp — and a NEW one fails
-// unless it carries a same-line `clock-ok: <why>` marker.
+// Every surviving real-clock read is a unique-name suffix or a TOTP probe that
+// genuinely needs real time, never a stored timestamp, and carries a same-line
+// `clock-ok: <why>` marker. The allowlist is empty: a NEW unmarked read fails.
 const WALL_CLOCK_RE = /\bDate\.now\(\)|\bnew Date\(\)/g;
 const WALL_CLOCK_OK_MARKER = "clock-ok";
-const WALL_CLOCK_ALLOW: Record<string, number> = {
-  "episode-med-reconcile.spec.ts": 2,
-  "equipment-manager.spec.ts": 1,
-  "family-helpers.ts": 3,
-  "food-habits.spec.ts": 1,
-  "medication-cold-start-adherence.spec.ts": 1,
-  "offline-dose-confirm.spec.ts": 2,
-  "offline-queue.spec.ts": 2,
-  "prn-redose-interval-only.spec.ts": 1,
-  "prn-redose.spec.ts": 1,
-  "protocol-reach.spec.ts": 1,
-  "protocols.spec.ts": 1,
-  "rpe-logging.spec.ts": 1,
-  "seed/findings.ts": 1,
-  "seed/household.ts": 1,
-  "seed/metrics.ts": 1,
-  "seed/prelude.ts": 2,
-  "training-restriction.spec.ts": 1,
-  "two-factor.spec.ts": 2,
-  "undo-delete.spec.ts": 1,
-};
+const WALL_CLOCK_ALLOW: Record<string, number> = {};
 
 // ── (x) The document-level overflow check freeze (issue #1543) ──────────────
 // The app shell clips horizontal overflow (`<main className="… overflow-x-clip">`,

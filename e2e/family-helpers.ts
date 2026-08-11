@@ -33,8 +33,8 @@ import {
 // (lib/__tests__/e2e-hygiene.test.ts) freezes the inline create/grant sequences per
 // file so the duplication can't regrow, and a NEW inline one fails CI.
 
-// Per-worker monotonic counter so two create calls in the same millisecond can't
-// collide on Date.now() alone (profile names are NOT unique-constrained).
+// Per-worker monotonic counter so two create calls in the same wall-clock millisecond
+// cannot collide (profile names are NOT unique-constrained).
 let familySeq = 0;
 
 // A member password that clears the strength gate and embeds no username.
@@ -93,7 +93,7 @@ export async function createLoginViaFamily(
   opts: CreateLoginOpts = {}
 ): Promise<Credentials> {
   const role = opts.role ?? "member";
-  const username = opts.username ?? `${role}-${Date.now()}-${++familySeq}`;
+  const username = opts.username ?? `${role}-${Date.now()}-${++familySeq}`; // clock-ok: unique login-name suffix, never a stored timestamp
   const password = opts.passwordless ? "" : (opts.password ?? MEMBER_PASSWORD);
   const row = loginRowFor(page, username);
 
@@ -207,7 +207,7 @@ export async function createProfileViaFamily(
   page: Page,
   label: string
 ): Promise<string> {
-  const name = `${label}-${Date.now()}-${++familySeq}`;
+  const name = `${label}-${Date.now()}-${++familySeq}`; // clock-ok: unique profile-name suffix, never a stored timestamp
   // The Add button is an onClick Server Action (not a form submit) — no single awaitable
   // event exists; re-goto and re-check the durable profile row, clicking Add only when
   // it's absent so a landed-but-slow create never duplicates the un-unique name (#830).
