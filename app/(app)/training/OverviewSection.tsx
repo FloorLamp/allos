@@ -20,7 +20,7 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatMinutes } from "@/lib/duration";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import {
   coverageFromSets,

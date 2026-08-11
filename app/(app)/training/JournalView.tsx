@@ -9,8 +9,8 @@ import {
   IconRepeat,
   IconSearch,
 } from "@tabler/icons-react";
-import type { ActivityType, Goal, Sex } from "@/lib/types";
-import type { FrequencyPace } from "@/lib/goals";
+import type { ActivityType, OutcomeGoal, Sex } from "@/lib/types";
+import type { FrequencyPace } from "@/lib/frequency-targets";
 import type {
   CardioStat,
   ExerciseStat,
@@ -142,7 +142,7 @@ export default function JournalView({
   exerciseStats: ExerciseStat[];
   cardioStats: CardioStat[];
   sportStats: SportStat[];
-  goals: Goal[];
+  goals: OutcomeGoal[];
   goalProgress: Record<number, GoalProgress>;
   bodyweightKg: number | null;
   units: UnitPrefs;

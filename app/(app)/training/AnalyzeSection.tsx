@@ -4,8 +4,8 @@ import {
   getCyclingOverviewData,
   getExerciseComparison,
   getExerciseLoadContexts,
-  getGoalProgressMap,
-  getGoals,
+  getOutcomeGoalProgressMap,
+  getOutcomeGoals,
   getLatestBodyMetric,
   getRecentByExercise,
   getSportByActivity,
@@ -107,9 +107,9 @@ export default async function AnalyzeSection({
   const sports = getSportByActivity(profile.id, formatPrefs);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const recentByExercise = getRecentByExercise(profile.id, wu, formatPrefs);
-  const goals = getGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id);
   const goalProgress = Object.fromEntries(
-    getGoalProgressMap(profile.id, goals)
+    getOutcomeGoalProgressMap(profile.id, goals)
   );
   const sex = getUserSex(profile.id);
 
@@ -621,7 +621,7 @@ function strengthView({
   units: ReturnType<typeof getUnitPrefs>;
   bodyweightKg: number | null;
   recentByExercise: ReturnType<typeof getRecentByExercise>;
-  goals: ReturnType<typeof getGoals>;
+  goals: ReturnType<typeof getOutcomeGoals>;
   goalProgress: Record<number, GoalProgress>;
   sex: Sex | null;
 }): AnalyzeView {

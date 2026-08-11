@@ -3,8 +3,8 @@ import {
   getVolumeByDate,
   getLatestBodyMetric,
   getRecentByExercise,
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
 } from "@/lib/queries";
 import {
   getUnitPrefs,
@@ -53,10 +53,10 @@ export default async function StrengthSection() {
     wu,
     getDisplayFormatPrefs(login.id)
   );
-  const goals = getGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id);
   // Plain object (not a Map) so it can cross into the client component.
   const goalProgress = Object.fromEntries(
-    getGoalProgressMap(profile.id, goals)
+    getOutcomeGoalProgressMap(profile.id, goals)
   );
   const prs = recentPRs(prStats, today(profile.id), 30);
 

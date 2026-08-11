@@ -1,4 +1,4 @@
-import type { FrequencyPace } from "../goals";
+import type { FrequencyPace } from "../frequency-targets";
 import { frequencyRangeState } from "../practice";
 import type { FrequencyTarget } from "../types";
 import { getCadenceLedger } from "./cadence-ledger";
@@ -9,12 +9,13 @@ import { getCadenceLedger } from "./cadence-ledger";
 export { getFrequencyTargets } from "./cadence-ledger";
 
 // Weekly frequency targets — the scope-kind-GENERIC `frequency_targets` read
-// machinery. It lived under lib/queries/training/goals.ts until #1637, which was
+// machinery. It lived under the training query namespace until #1637, which was
 // misleading in both directions: training goals are only ONE of five consumers
 // (training goals, nutrition food groups, substance use, protocols, and wellness
 // practices), and non-training work kept importing domain-neutral machinery from
 // `training/`. Genuinely training-specific goal reads stayed behind in
-// training/goals.ts. Pure relocation: no SQL, semantics, or scoping changed.
+// the training outcome-goal module. Pure relocation: no SQL, semantics, or scoping
+// changed.
 //
 // Every read here is profile-scoped, and the module is reached through the
 // lib/queries.ts barrel, so existing `@/lib/queries` import sites are unaffected.

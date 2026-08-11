@@ -39,7 +39,7 @@
 //   • ONE met week is enough to break the chronic condition. "Chronic" means every
 //     completed week in the window, not most of them.
 
-import type { FrequencyScopeKind } from "./types";
+import type { FrequencyScopeKind } from "./frequency-targets";
 
 // ---- Window + thresholds --------------------------------------------------
 

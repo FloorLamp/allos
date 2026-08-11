@@ -19,7 +19,7 @@ import {
   getWeights,
   getWeightsOneSourcePerDay,
   getBodyMetricDailySeries,
-  getGoals,
+  getOutcomeGoals,
   getSupplements,
   getSupplementDoses,
   getIntakeLogsInRange,
@@ -101,7 +101,8 @@ import {
   deriveRiskFactors,
   EMPTY_RISK_ATTRIBUTES,
 } from "./risk-stratification";
-import { isGoalLive, frequencyScopeLabel } from "./goals";
+import { isGoalLive } from "./outcome-goals";
+import { frequencyScopeLabel } from "./frequency-targets";
 import { getRoutineCycleStatus } from "./routines";
 import {
   foodHabitSignalKey,
@@ -1161,7 +1162,7 @@ export function buildGoalPacingFindings(
 
   // The profile's goals, read ONCE for both loops below (they used to re-query the
   // same list) — nothing here writes, so the two passes always saw one snapshot.
-  const goals = getGoals(profileId);
+  const goals = getOutcomeGoals(profileId);
 
   // Weight readings in canonical kg, ascending, as projection input. The SAME
   // primary-source-collapsed daily series (one row/day, #14) the Trends → Body

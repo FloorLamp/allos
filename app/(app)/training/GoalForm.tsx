@@ -4,12 +4,12 @@ import { useState } from "react";
 import type {
   BodyMetricKind,
   FormResult,
-  Goal,
-  GoalDirection,
-  GoalMetric,
+  OutcomeGoal,
+  OutcomeGoalDirection,
+  OutcomeGoalKind,
+  OutcomeGoalMetric,
 } from "@/lib/types";
-import { GOAL_DIRECTIONS } from "@/lib/types";
-import { isBiomarkerGoal } from "@/lib/biomarker-goal";
+import { OUTCOME_GOAL_DIRECTIONS, OUTCOME_GOAL_KINDS } from "@/lib/types";
 import type { GoalBiomarkerOption } from "./goal-target-options";
 import type { WeightUnit } from "@/lib/settings";
 import {
@@ -20,7 +20,7 @@ import {
 } from "@/lib/lifts";
 import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
-import { BODY_METRIC_LABELS } from "@/lib/goals";
+import { BODY_METRIC_LABELS } from "@/lib/outcome-goals";
 import ActivityCombobox from "@/components/ActivityCombobox";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
@@ -28,7 +28,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { createGoal, updateGoal } from "./goal-actions";
 
-const METRICS: { value: GoalMetric; label: string }[] = [
+const METRICS: { value: OutcomeGoalMetric; label: string }[] = [
   { value: "weight", label: "Weight" },
   { value: "reps", label: "Reps" },
   { value: "sets", label: "Sets × reps" },
@@ -47,15 +47,12 @@ const BODY_TARGET_LABEL: Record<BodyMetricKind, string> = {
 
 // Which side of the number the goal wants to be on (#1853). Declared, never inferred:
 // "LDL under 100" and "Vitamin D over 100" are different goals with the same number.
-const DIRECTION_LABEL: Record<GoalDirection, string> = {
+const DIRECTION_LABEL: Record<OutcomeGoalDirection, string> = {
   below: "Under",
   above: "Over",
 };
 
-const GOAL_KINDS = ["exercise", "body", "biomarker", "freeform"] as const;
-type GoalKind = (typeof GOAL_KINDS)[number];
-
-const KIND_LABEL: Record<GoalKind, string> = {
+const KIND_LABEL: Record<OutcomeGoalKind, string> = {
   exercise: "Exercise goal",
   body: "Body metric",
   biomarker: "Lab or vital",
@@ -84,22 +81,13 @@ export default function GoalForm({
   // and label-disambiguated by the shared series-picker options. Defaults to empty so
   // a caller that predates the target keeps rendering the other three kinds.
   biomarkerOptions?: GoalBiomarkerOption[];
-  editGoal?: Goal;
+  editGoal?: OutcomeGoal;
   onDone?: () => void;
 }) {
-  const isExerciseGoal = !!(editGoal?.exercise && editGoal?.metric);
-  const initialKind: GoalKind = editGoal
-    ? isExerciseGoal
-      ? "exercise"
-      : editGoal.body_metric
-        ? "body"
-        : isBiomarkerGoal(editGoal)
-          ? "biomarker"
-          : "freeform"
-    : "exercise";
+  const initialKind: OutcomeGoalKind = editGoal?.kind ?? "exercise";
   const [kind, setKind] = useState(initialKind);
   const [exercise, setExercise] = useState(editGoal?.exercise ?? "");
-  const [metric, setMetric] = useState<GoalMetric>(() => {
+  const [metric, setMetric] = useState<OutcomeGoalMetric>(() => {
     const initialMetric = editGoal?.metric ?? "weight";
     return isTimed(exercise)
       ? "hold"
@@ -149,14 +137,14 @@ export default function GoalForm({
       : ""
   );
   const bioOption = optionByLabel.get(bioLabel) ?? null;
-  const [direction, setDirection] = useState<GoalDirection>(
+  const [direction, setDirection] = useState<OutcomeGoalDirection>(
     editGoal?.target_direction ?? "below"
   );
   // The stored target belongs to the analyte the goal was SAVED on; switching to a
   // different analyte clears it, so an mg/dL number can never be posted as a
   // mmol/L target (the biomarker analogue of the #631 body-metric fix).
   const [bioTarget, setBioTarget] = useState(() =>
-    editGoal?.target_value != null && isBiomarkerGoal(editGoal ?? ({} as Goal))
+    editGoal?.target_value != null && editGoal.kind === "biomarker"
       ? String(editGoal.target_value)
       : ""
   );
@@ -281,7 +269,7 @@ export default function GoalForm({
 
       {/* Kind toggle */}
       <div className="flex flex-wrap gap-1.5">
-        {GOAL_KINDS.map((k) => (
+        {OUTCOME_GOAL_KINDS.map((k) => (
           <button
             key={k}
             type="button"
@@ -654,7 +642,7 @@ export default function GoalForm({
             <label className="label">Target</label>
             <input type="hidden" name="target_direction" value={direction} />
             <div className="flex flex-wrap gap-1.5">
-              {GOAL_DIRECTIONS.map((d) => (
+              {OUTCOME_GOAL_DIRECTIONS.map((d) => (
                 <button
                   key={d}
                   type="button"
@@ -768,7 +756,7 @@ export default function GoalForm({
             <input
               id="goal-ff-category"
               name="category"
-              defaultValue={editGoal?.category ?? ""}
+              defaultValue={editGoal?.categoryLabel ?? ""}
               className="input"
               placeholder="weight / habit"
             />

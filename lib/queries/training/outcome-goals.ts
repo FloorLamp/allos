@@ -12,8 +12,12 @@ import {
 } from "../../biomarker-goal";
 import { retestDaysForBiomarker } from "../../biomarker-retest";
 import { biomarkerFamily } from "../../canonical-name";
-import { goalMatchesExercise, isGoalLive } from "../../goals";
-import type { BodyMetricKind, Goal } from "../../types";
+import {
+  goalMatchesExercise,
+  isGoalLive,
+  outcomeGoalKind,
+} from "../../outcome-goals";
+import type { BodyMetricKind, OutcomeGoal } from "../../types";
 import { biomarkerPlots } from "../biomarker-plot";
 import { getLatestBodyMetric } from "../metrics";
 
@@ -22,12 +26,16 @@ import { getLatestBodyMetric } from "../metrics";
 // training, and moved to lib/queries/frequency-targets.ts in #1637.
 
 // ---- Goals ----
-export function getGoals(profileId: number): Goal[] {
+type StoredOutcomeGoal = Omit<OutcomeGoal, "kind" | "categoryLabel"> & {
+  category: string | null;
+};
+
+export function getOutcomeGoals(profileId: number): OutcomeGoal[] {
   // Archived goals sink to the bottom; within each, active before achieved.
-  // status is exactly ('active' | 'achieved') (GoalStatus / migration 016 CHECK),
+  // status is exactly ('active' | 'achieved') (OutcomeGoalStatus / migration 016 CHECK),
   // so the CASE covers the whole set — 'active' first, everything else (achieved)
   // after; there is no dead third arm.
-  return db
+  const rows = db
     .prepare(
       `SELECT * FROM goals
        WHERE profile_id = ?
@@ -35,16 +43,24 @@ export function getGoals(profileId: number): Goal[] {
                 CASE status WHEN 'active' THEN 0 ELSE 1 END,
                 created_at DESC`
     )
-    .all(profileId) as Goal[];
+    .all(profileId) as StoredOutcomeGoal[];
+  return rows.map(({ category, ...goal }) => {
+    const kind = outcomeGoalKind(goal);
+    return {
+      ...goal,
+      kind,
+      categoryLabel: kind === "freeform" ? category : null,
+    };
+  });
 }
 
 export type { GoalProgress } from "../../goal-progress";
 
 // Auto-derived progress for exercise-linked and body-metric goals. Freeform
 // goals (manual) are omitted. One scan over the relevant sets.
-export function getGoalProgressMap(
+export function getOutcomeGoalProgressMap(
   profileId: number,
-  goals: Goal[]
+  goals: OutcomeGoal[]
 ): Map<number, GoalProgress> {
   const out = new Map<number, GoalProgress>();
 
@@ -183,13 +199,13 @@ export function getGoalProgressMap(
 // goal anchored on "Hemoglobin A1c" therefore also shows on the page for its eAG
 // re-expression — one series, one target, one answer.
 //
-// Reads through getGoals, which is already profile-scoped; no new owned SQL.
-export function getBiomarkerGoals(
+// Reads through getOutcomeGoals, which is already profile-scoped; no new owned SQL.
+export function getBiomarkerOutcomeGoals(
   profileId: number,
   canonical: string
-): Goal[] {
+): OutcomeGoal[] {
   const family = biomarkerFamily(canonical).toLowerCase();
-  return getGoals(profileId).filter(
+  return getOutcomeGoals(profileId).filter(
     (g) =>
       isGoalLive(g) &&
       isBiomarkerGoal(g) &&

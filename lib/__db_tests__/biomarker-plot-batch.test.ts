@@ -27,7 +27,10 @@ import {
   getBiomarkerSeriesFor,
 } from "@/lib/queries/medical";
 import { biomarkerPlot, biomarkerPlots } from "@/lib/queries/biomarker-plot";
-import { getGoalProgressMap, getGoals } from "@/lib/queries/training/goals";
+import {
+  getOutcomeGoalProgressMap,
+  getOutcomeGoals,
+} from "@/lib/queries/training/outcome-goals";
 import { buildGoalPacingFindings } from "@/lib/rule-findings";
 import { today } from "@/lib/db";
 
@@ -323,11 +326,11 @@ describe("batched biomarker plots", () => {
 
 describe("the two hot paths", () => {
   it("gives every goal the same progress it gets computed alone", () => {
-    const goals = getGoals(profileId);
-    const together = getGoalProgressMap(profileId, goals);
+    const goals = getOutcomeGoals(profileId);
+    const together = getOutcomeGoalProgressMap(profileId, goals);
     for (const g of goals) {
       // One goal at a time is one requested analyte, i.e. the unbatched read.
-      const alone = getGoalProgressMap(profileId, [g]);
+      const alone = getOutcomeGoalProgressMap(profileId, [g]);
       expect(together.get(g.id)).toEqual(alone.get(g.id));
     }
     // And the numbers themselves are the plotted ones, not a coincidence of two

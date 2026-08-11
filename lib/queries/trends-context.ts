@@ -25,7 +25,7 @@
 
 import { db } from "../db";
 import { isGrowthTracked } from "../life-stage";
-import { isGoalLive } from "../goals";
+import { isGoalLive } from "../outcome-goals";
 import { getHomeLocation, getUserAge } from "../settings";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "../vitals-input";
 import { PEAK_FLOW_METRIC } from "../peak-flow";
@@ -41,7 +41,7 @@ import { bodyCardIdForSeriesKey } from "../trends-body-metrics";
 import { seriesKeyOfSavedRef } from "../saved-items";
 import type { BodyMetricKind } from "../types";
 import { getConditions } from "./clinical";
-import { getGoals } from "./training";
+import { getOutcomeGoals } from "./training";
 import { getBiomarkerSeries } from "./medical";
 import { getLatestHrDay } from "./metrics";
 import { getMoodLogs } from "./mood";
@@ -115,7 +115,7 @@ export function buildTrendsSubjectContext(
   // a target value), so the card a goal decorates is the card a goal promotes.
   const goalMetrics: BodyMetricKind[] = [
     ...new Set(
-      getGoals(profileId)
+      getOutcomeGoals(profileId)
         .filter((g) => isGoalLive(g) && g.target_value != null)
         .map((g) => g.body_metric)
         .filter((m): m is BodyMetricKind => m != null)

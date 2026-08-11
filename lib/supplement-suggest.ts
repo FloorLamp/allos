@@ -24,13 +24,13 @@ import {
   getActivities,
   getAllergies,
   getConditions,
-  getGoals,
+  getOutcomeGoals,
   getMedicalRecords,
   getSupplements,
   getIngestibleSafetyContext,
 } from "./queries";
 import { biomarkerFamily } from "./canonical-name";
-import { isGoalLive } from "./goals";
+import { isGoalLive } from "./outcome-goals";
 import type {
   FoodTiming,
   MedicalRecord,
@@ -169,7 +169,7 @@ function buildContext(
     getMedicalRecords(profileId, { range: "nonoptimal" }).slice(0, 30);
   const recentLabs = getMedicalRecords(profileId).slice(0, 12);
   const supplements = getSupplements(profileId).filter((s) => s.active);
-  const goals = getGoals(profileId).filter((g) => isGoalLive(g));
+  const goals = getOutcomeGoals(profileId).filter((g) => isGoalLive(g));
   const activities = getActivities(profileId, 10);
 
   // Safety context (issue #413): allergies, active conditions, sex/age, and the

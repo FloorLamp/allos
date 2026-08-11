@@ -22,7 +22,7 @@ import {
   samePractice,
 } from "../practice";
 import type { FrequencyTarget, PracticeLog } from "../types";
-import type { FrequencyPace } from "../goals";
+import type { FrequencyPace } from "../frequency-targets";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargets,

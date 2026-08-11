@@ -2,15 +2,15 @@ import {
   getStrengthByExercise,
   getCardioByActivity,
   getSportByActivity,
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getLatestBodyMetric,
   getJournalWeekSummary,
   getRecentByExercise,
   getActiveDaysStrip,
 } from "@/lib/queries";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import {
   getUnitPrefs,
   getUserSex,
@@ -50,10 +50,10 @@ export default async function HistorySection() {
   );
 
   const summary = getJournalWeekSummary(profile.id);
-  const goals = getGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id);
   // Map → plain object so it can cross the server/client boundary.
   const goalProgress = Object.fromEntries(
-    getGoalProgressMap(profile.id, goals)
+    getOutcomeGoalProgressMap(profile.id, goals)
   );
   const targets = getFrequencyTargetProgress(profile.id).map((t) => ({
     label: frequencyScopeLabel(t.target.scope_kind, t.target.scope_value),

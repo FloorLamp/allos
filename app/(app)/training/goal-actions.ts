@@ -10,13 +10,17 @@ import {
   formOk,
   type FormResult,
   type BodyMetricKind,
-  type GoalDirection,
-  type GoalMetric,
+  type OutcomeGoalDirection,
+  type OutcomeGoalMetric,
 } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { resolveWeightKg, submittedWeightUnit } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
-import { BODY_METRIC_LABELS, isGoalDirection, isGoalStatus } from "@/lib/goals";
+import {
+  BODY_METRIC_LABELS,
+  isOutcomeGoalDirection,
+  isOutcomeGoalStatus,
+} from "@/lib/outcome-goals";
 import { isBiomarkerGoalTargetable } from "@/lib/biomarker-goal";
 import { getEquipmentById } from "@/lib/equipment";
 import {
@@ -55,10 +59,10 @@ export async function dismissGoalPacing(
 interface GoalCols {
   title: string;
   description: string | null;
-  category: string | null;
+  categoryLabel: string | null;
   target_date: string | null;
   exercise: string | null;
-  metric: GoalMetric | null;
+  metric: OutcomeGoalMetric | null;
   equipment_id: number | null;
   target_weight_kg: number | null;
   target_reps: number | null;
@@ -69,7 +73,7 @@ interface GoalCols {
   unit: string | null;
   body_metric: BodyMetricKind | null;
   biomarker_name: string | null;
-  target_direction: GoalDirection | null;
+  target_direction: OutcomeGoalDirection | null;
 }
 
 // The prior canonical (kg) weight values for the goal being edited, so an
@@ -111,8 +115,10 @@ function goalColsFromForm(
 
   if (kind === "exercise") {
     const exercise = String(formData.get("exercise") ?? "").trim();
-    const metric = String(formData.get("metric") ?? "").trim() as GoalMetric;
-    const ALLOWED: GoalMetric[] = ["weight", "reps", "sets", "hold"];
+    const metric = String(
+      formData.get("metric") ?? ""
+    ).trim() as OutcomeGoalMetric;
+    const ALLOWED: OutcomeGoalMetric[] = ["weight", "reps", "sets", "hold"];
     if (!exercise || !ALLOWED.includes(metric)) return null;
     const weightUser = num("target_weight");
     const targetWeightKg =
@@ -154,7 +160,7 @@ function goalColsFromForm(
     return {
       title: String(formData.get("title") ?? "").trim() || exercise,
       description: str("description"),
-      category: "strength",
+      categoryLabel: null,
       target_date: str("target_date"),
       exercise,
       metric,
@@ -191,7 +197,7 @@ function goalColsFromForm(
         String(formData.get("title") ?? "").trim() ||
         `${BODY_METRIC_LABELS[bm]} goal`,
       description: str("description"),
-      category: "body",
+      categoryLabel: null,
       target_date: str("target_date"),
       exercise: null,
       metric: null,
@@ -219,7 +225,7 @@ function goalColsFromForm(
   if (kind === "biomarker") {
     const name = String(formData.get("biomarker_name") ?? "").trim();
     const direction = String(formData.get("target_direction") ?? "").trim();
-    if (!name || !isGoalDirection(direction)) return null;
+    if (!name || !isOutcomeGoalDirection(direction)) return null;
     const canonical = resolveBiomarkerOptionName(profileId, name);
     // Same membership rule the picker applied, enforced again here: a rule the client
     // alone honours is a rule a hand-posted form ignores, and a "Weight" biomarker
@@ -232,7 +238,7 @@ function goalColsFromForm(
         String(formData.get("title") ?? "").trim() ||
         `${canonical} ${direction === "below" ? "under" : "over"} ${value}`,
       description: str("description"),
-      category: "biomarker",
+      categoryLabel: null,
       target_date: str("target_date"),
       exercise: null,
       metric: null,
@@ -256,7 +262,7 @@ function goalColsFromForm(
   return {
     title,
     description: str("description"),
-    category: str("category"),
+    categoryLabel: str("category"),
     target_date: str("target_date"),
     exercise: null,
     metric: null,
@@ -283,7 +289,7 @@ function goalValues(c: GoalCols) {
   return [
     c.title,
     c.description,
-    c.category,
+    c.categoryLabel,
     c.target_date,
     c.exercise,
     c.metric,
@@ -398,7 +404,7 @@ export async function setStatus(formData: FormData): Promise<FormResult> {
   const id = Number(formData.get("id"));
   const status = String(formData.get("status"));
   if (!id) return formError("Couldn't find that goal.");
-  if (!isGoalStatus(status)) return formError("Unknown goal status.");
+  if (!isOutcomeGoalStatus(status)) return formError("Unknown goal status.");
   const cas = writeTx((tx) =>
     casUpdate(
       tx,

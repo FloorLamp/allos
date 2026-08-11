@@ -31,7 +31,10 @@
 // `lib/__tests__/cadence.test.ts` pins that no cap verdict or label can carry
 // pace-toward-more language. Types enforce what keeping the code apart used to.
 
-import { FREQUENCY_SCOPE_KINDS, type FrequencyScopeKind } from "./goals";
+import {
+  FREQUENCY_SCOPE_KINDS,
+  type FrequencyScopeKind,
+} from "./frequency-targets";
 import { frequencyRangeState } from "./practice";
 import { substanceCapStatus } from "./substance-use";
 

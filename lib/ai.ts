@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import {
   getActivitiesByDate,
-  getGoals,
+  getOutcomeGoals,
   getIntakeLogsForDate,
   getSupplements,
   getStrengthByExercise,
@@ -15,7 +15,7 @@ import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { recentPRs, recentCardioPRs } from "./coaching";
-import { isGoalLive } from "./goals";
+import { isGoalLive } from "./outcome-goals";
 import {
   prToFinding,
   cardioPrToFinding,
@@ -107,7 +107,9 @@ function gatherInsightContext(
     date
   ).flatMap((g) => g.items);
 
-  const goalCount = getGoals(profileId).filter((g) => isGoalLive(g)).length;
+  const goalCount = getOutcomeGoals(profileId).filter((g) =>
+    isGoalLive(g)
+  ).length;
 
   // Clinical/demographic context (issue #415): active conditions, active intake
   // (kind-labelled so the model tells a medication from a supplement), and profile

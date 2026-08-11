@@ -10,8 +10,8 @@ import type { DisplayFormatPrefs } from "@/lib/format-date";
 import {
   frequencyScopeLabel,
   frequencyPaceLabel,
-  PACE_BADGE_CLASS,
-} from "@/lib/goals";
+} from "@/lib/frequency-targets";
+import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import {
   foodHabitInteractions,

@@ -8,7 +8,7 @@ import {
   type CadenceVerdict,
 } from "../cadence";
 import { daysBetweenDateStr, shiftDateStr } from "../date";
-import type { FrequencyScopeKind } from "../goals";
+import type { FrequencyScopeKind } from "../frequency-targets";
 import type { BodyGroup, MuscleRegion } from "../lifts";
 import { regionForExercise, regionsForGroup } from "../lifts";
 import {
