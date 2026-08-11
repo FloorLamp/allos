@@ -2,18 +2,20 @@ import { describe, it, expect } from "vitest";
 import {
   tableNameKey,
   filterDerivedForTable,
-  prepareTableRecords,
-  prepareMultiViewTableRecords,
+  prepareTableObservations,
+  prepareMultiViewTableObservations,
   multiViewGroupKey,
   parseBiomarkerSortColumn,
   BIOMARKER_SORT_COLUMNS,
   DEFAULT_BIOMARKER_SORT,
   type WithProfile,
 } from "../derived-table";
-import type { MedicalRecord } from "../types";
+import type { ClinicalObservation } from "../types";
 
-// Minimal MedicalRecord builder — only the fields these helpers read matter.
-function rec(p: Partial<MedicalRecord> & { id: number }): MedicalRecord {
+// Minimal ClinicalObservation builder — only the fields these helpers read matter.
+function rec(
+  p: Partial<ClinicalObservation> & { id: number }
+): ClinicalObservation {
   return {
     date: "2024-01-01",
     category: "lab",
@@ -40,7 +42,7 @@ const derived = (id: number, name: string, date: string, flag?: string) =>
     canonical_name: name,
     date,
     derived: true,
-    flag: (flag as MedicalRecord["flag"]) ?? null,
+    flag: (flag as ClinicalObservation["flag"]) ?? null,
   });
 
 describe("tableNameKey", () => {
@@ -132,13 +134,13 @@ describe("filterDerivedForTable", () => {
   });
 });
 
-describe("prepareTableRecords", () => {
+describe("prepareTableObservations", () => {
   it("marks is_latest per name over the combined set (newest date wins)", () => {
     const d = [
       derived(-1, "eGFR", "2024-01-01"),
       derived(-2, "eGFR", "2024-06-01"),
     ];
-    const out = prepareTableRecords([], d, { sort: "date", dir: "desc" });
+    const out = prepareTableObservations([], d, { sort: "date", dir: "desc" });
     const byDate = new Map(out.map((r) => [r.date, r.is_latest]));
     expect(byDate.get("2024-06-01")).toBe(1);
     expect(byDate.get("2024-01-01")).toBe(0);
@@ -149,7 +151,7 @@ describe("prepareTableRecords", () => {
       rec({ id: 5, name: "eGFR", canonical_name: "eGFR", date: "2024-06-01" }),
     ];
     const d = [derived(-2, "eGFR", "2024-06-01")];
-    const out = prepareTableRecords(stored, d, { current: true });
+    const out = prepareTableObservations(stored, d, { current: true });
     expect(out).toHaveLength(1);
     expect(out[0].id).toBe(5);
   });
@@ -160,7 +162,7 @@ describe("prepareTableRecords", () => {
       derived(-2, "eGFR", "2024-06-01"),
       derived(-3, "Non-HDL Cholesterol", "2024-03-01"),
     ];
-    const out = prepareTableRecords([], d, { current: true });
+    const out = prepareTableObservations([], d, { current: true });
     expect(out.map((r) => [r.name, r.date]).sort()).toEqual([
       ["Non-HDL Cholesterol", "2024-03-01"],
       ["eGFR", "2024-06-01"],
@@ -177,7 +179,10 @@ describe("prepareTableRecords", () => {
       }),
     ];
     const d = [derived(-1, "eGFR", "2024-01-01")];
-    const out = prepareTableRecords(stored, d, { sort: "name", dir: "asc" });
+    const out = prepareTableObservations(stored, d, {
+      sort: "name",
+      dir: "asc",
+    });
     expect(out.map((r) => tableNameKey(r))).toEqual([
       "Apolipoprotein B (ApoB)",
       "eGFR",
@@ -193,8 +198,8 @@ describe("prepareTableRecords", () => {
 // A profile-tagged stored reading (WithProfile) for the merge helper.
 function tagged(
   profileId: number,
-  p: Partial<MedicalRecord> & { id: number }
-): WithProfile<MedicalRecord> {
+  p: Partial<ClinicalObservation> & { id: number }
+): WithProfile<ClinicalObservation> {
   return { ...rec(p), profileId };
 }
 
@@ -228,7 +233,7 @@ describe("multiViewGroupKey", () => {
   });
 });
 
-describe("prepareMultiViewTableRecords", () => {
+describe("prepareMultiViewTableObservations", () => {
   it("computes is_latest per (profile, family) — one member's newest never marks another's", () => {
     // Both members have a shared "Vitamin D" family. Member 10's newest is 2024-06;
     // member 20's newest is 2024-03. Each member's own newest is is_latest, and NO
@@ -253,7 +258,7 @@ describe("prepareMultiViewTableRecords", () => {
         date: "2024-03-01",
       }),
     ];
-    const out = prepareMultiViewTableRecords(stored, [], {});
+    const out = prepareMultiViewTableObservations(stored, [], {});
     const latest = out.filter((r) => r.is_latest === 1);
     // Exactly one latest per member: member 10's June row (id 2), member 20's March row (id 3).
     expect(new Set(latest.map((r) => r.id))).toEqual(new Set([2, 3]));
@@ -285,7 +290,7 @@ describe("prepareMultiViewTableRecords", () => {
         value_num: 42,
       }),
     ];
-    const out = prepareMultiViewTableRecords(stored, [], {});
+    const out = prepareMultiViewTableObservations(stored, [], {});
     expect(out.length).toBe(2);
     expect(out.every((r) => r.is_latest === 1)).toBe(true);
   });
@@ -311,7 +316,9 @@ describe("prepareMultiViewTableRecords", () => {
         date: "2024-02-01",
       }),
     ];
-    const out = prepareMultiViewTableRecords(stored, [], { current: true });
+    const out = prepareMultiViewTableObservations(stored, [], {
+      current: true,
+    });
     expect(out.map((r) => r.id).sort()).toEqual([2, 3]);
   });
 
@@ -322,13 +329,13 @@ describe("prepareMultiViewTableRecords", () => {
       {
         ...derived(-1, "eGFR", "2024-04-01"),
         profileId: 10,
-      } as WithProfile<MedicalRecord>,
+      } as WithProfile<ClinicalObservation>,
       {
         ...derived(-1, "eGFR", "2024-04-01"),
         profileId: 20,
-      } as WithProfile<MedicalRecord>,
+      } as WithProfile<ClinicalObservation>,
     ];
-    const out = prepareMultiViewTableRecords([], derivedRows, {});
+    const out = prepareMultiViewTableObservations([], derivedRows, {});
     expect(out.length).toBe(2);
     // Each member's derived eGFR is its own current reading.
     expect(out.every((r) => r.is_latest === 1)).toBe(true);
@@ -351,11 +358,11 @@ describe("prepareMultiViewTableRecords", () => {
         date: "2024-06-01",
       }),
     ];
-    const a = prepareMultiViewTableRecords(stored, [], {
+    const a = prepareMultiViewTableObservations(stored, [], {
       sort: "name",
       dir: "asc",
     });
-    const b = prepareMultiViewTableRecords([...stored].reverse(), [], {
+    const b = prepareMultiViewTableObservations([...stored].reverse(), [], {
       sort: "name",
       dir: "asc",
     });
@@ -387,7 +394,7 @@ describe("prepareMultiViewTableRecords", () => {
         date: "2024-03-01",
       }),
     ];
-    const out = prepareMultiViewTableRecords(stored, [], {
+    const out = prepareMultiViewTableObservations(stored, [], {
       sort: "name",
       dir: "asc",
     });
@@ -413,11 +420,11 @@ describe("prepareMultiViewTableRecords", () => {
         date: "2024-06-01",
       }),
     ];
-    const mv = prepareMultiViewTableRecords(stored, [], {
+    const mv = prepareMultiViewTableObservations(stored, [], {
       sort: "name",
       dir: "asc",
     });
-    const single = prepareTableRecords(
+    const single = prepareTableObservations(
       stored.map((r) => ({ ...r })),
       [],
       { sort: "name", dir: "asc" }

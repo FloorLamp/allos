@@ -252,17 +252,17 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   // queries.ts statements whose profile_id lives inside an interpolated fragment
   // (`${clause}` / `${where.join(...)}` always start with `profile_id = ?`; the
-  // getMedicalRecords query also carries an explicit `WHERE profile_id = ?` in its
+  // getClinicalObservations query also carries an explicit `WHERE profile_id = ?` in its
   // latest-ids CTE).
   {
     file: "lib/queries/medical.ts",
     includes: "AS is_latest FROM medical_records",
-    why: "getMedicalRecords: the latest-ids CTE and ${clause} both filter profile_id = ?",
+    why: "getClinicalObservations: the latest-ids CTE and ${clause} both filter profile_id = ?",
   },
   {
     file: "lib/queries/medical.ts",
     includes: "FROM medical_records WHERE ${where.join(",
-    why: "getRecordsForDocument: where[] always begins with 'profile_id = ?'",
+    why: "getObservationsForDocument: where[] always begins with 'profile_id = ?'",
   },
   {
     file: "lib/queries/clinical.ts",

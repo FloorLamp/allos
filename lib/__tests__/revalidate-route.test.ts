@@ -54,7 +54,7 @@ import {
 // A rooted static path, with and without the scope argument.
 revalidateRoute("/data");
 revalidateRoute("/", "layout");
-revalidateRoute("/biomarkers/view", "page");
+revalidateRoute("/results/readings/view", "page");
 
 // An array fan-out. Every element is checked, and a list declared elsewhere keeps
 // its literals when it is annotated with the target type.

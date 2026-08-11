@@ -20,8 +20,8 @@ import { today } from "../db";
 import { getProfileSex, getProfileAge } from "../settings";
 import { retestDaysForBiomarker } from "../biomarker-retest";
 import {
-  getLatestMedicalRecordByCanonical,
-  getMedicalRecords,
+  getLatestClinicalObservationByCanonical,
+  getClinicalObservations,
   getCanonicalBiomarker,
 } from "./medical";
 import { getBioAgeReadings } from "./derived";
@@ -74,7 +74,7 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
   const inputs: PillarInputs = {};
 
   // VO2 Max percentile (#158) — from the latest VO2 Max reading + fitnessContext.
-  const vo2 = getLatestMedicalRecordByCanonical(profileId, VO2_MARKER);
+  const vo2 = getLatestClinicalObservationByCanonical(profileId, VO2_MARKER);
   const vo2ctx =
     vo2?.value_num != null
       ? fitnessContext(VO2_MARKER, vo2.value_num, sex, age)
@@ -155,7 +155,7 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
 // verdict from the existing `biomarkerRetestStatus` — Longevity adds no retest model of
 // its own (#2023 non-goal).
 function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
-  return getMedicalRecords(profileId, { current: true })
+  return getClinicalObservations(profileId, { current: true })
     .filter((r) => LAB_CATEGORIES.has(r.category) && r.canonical_name)
     .map((r) => ({
       name: r.name,

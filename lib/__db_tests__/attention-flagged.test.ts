@@ -152,7 +152,9 @@ describe("model flagged-biomarker window (issue #283)", () => {
     expect(flagged[0].key).toBe("biomarker-flag:ldl cholesterol");
     // The action verb + series deep-link (the #526 fix), not a bare analyte name.
     expect(flagged[0].title).toBe("Review LDL Cholesterol");
-    expect(flagged[0].href).toBe("/biomarkers/view?name=LDL%20Cholesterol");
+    expect(flagged[0].href).toBe(
+      "/results/readings/view?name=LDL%20Cholesterol"
+    );
     expect(flagged[0].suppressible).toBe(true);
   });
 

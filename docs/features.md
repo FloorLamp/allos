@@ -1333,10 +1333,10 @@ only.
 Vitals, labs, genomics — the **Biomarkers** browser, **imaging studies**, and
 **genomic variants** share one merged **Results** page (#1042 phase 5, retabbed
 to route-per-tab in #1079: `/results`, Medical → Results, as three tabs
-`/results/biomarkers` / `/results/imaging` / `/results/genomics` — bare
+`/results/readings` / `/results/imaging` / `/results/genomics` — bare
 `/results` lands on Biomarkers; the old `/biomarkers`, `/imaging`, and
 `/genomics` index routes were removed in #1635 and 404, and the per-biomarker
-detail page `/biomarkers/view` survives at its own route).
+detail page `/results/readings/view` survives at its own route).
 
 **One renderer per cadence (#1932).** A dated reading opens on the surface its
 arrival rate calls for, and `readingDetailHref(canonicalName, rawName)`
@@ -1347,12 +1347,12 @@ metric detail page `/trends/metric/<slug>`: a windowed chart, the rolling
 7/30/90/365-day summary, and the readings table with row actions. Every **episodic**
 reading — labs, and the `category = 'vitals'` DOMAIN vitals (functional-fitness
 markers, audiogram thresholds, intraocular pressure, visual acuity, periodontal
-measures) — opens on `/biomarkers/view`, which reads it against its reference and
+measures) — opens on `/results/readings/view`, which reads it against its reference and
 optimal bands. The classification lives in `lib/reading-cadence.ts`; the pure
 test audits it against every canonical `vitals` entry, so a newly added vital
 cannot ship unclassified, and the DB-tier test pins that each continuous
 reading's metric kind really stores that canonical name. A vitals URL under
-`/biomarkers/view` redirects to the metric page (current-IA plumbing for a stale
+`/results/readings/view` redirects to the metric page (current-IA plumbing for a stale
 bookmark, not a compatibility shim — both routes are live), and blood pressure's
 pediatric AAP percentile card (#150) and the panel cross-reference (#1502)
 travelled with the reading to that surface.
@@ -1385,7 +1385,7 @@ path, and Mental health's crisis line travels with its pane).
 
 ### Biomarkers browser
 
-The Biomarkers tab (`/results/biomarkers`) is a collapsed **panel index**, not a
+The Biomarkers tab (`/results/readings`) is a collapsed **panel index**, not a
 scroll: every reading is grouped under its normalized clinical panel ("Lipids ·
 7 analytes · 3 flagged"), and a group opens on tap to reveal its readings. A
 panel whose current readings include an out-of-range one says so on its header,

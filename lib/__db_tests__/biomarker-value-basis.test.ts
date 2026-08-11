@@ -33,7 +33,7 @@ import {
   reconcileFlags,
 } from "@/lib/queries";
 import { optimalBand, referenceRange } from "@/lib/reference-range";
-import type { CanonicalBiomarker, MedicalRecord } from "@/lib/types";
+import type { CanonicalBiomarker, ClinicalObservation } from "@/lib/types";
 import {
   biomarkerValueBasis,
   REPORTED_RANGE_LABEL,
@@ -100,12 +100,12 @@ function insertReading(r: {
   );
 }
 
-function seriesFor(canonicalName: string): MedicalRecord[] {
+function seriesFor(canonicalName: string): ClinicalObservation[] {
   return getBiomarkerSeriesWithDerived(profileId, canonicalName);
 }
 
 /** The page's own per-row decision, over a stored row. */
-function basisFor(row: MedicalRecord, canonicalName: string) {
+function basisFor(row: ClinicalObservation, canonicalName: string) {
   return biomarkerValueBasis({
     flag: row.flag,
     hasCuratedBand: curatedBandShown(getCanonicalBiomarker(canonicalName)),

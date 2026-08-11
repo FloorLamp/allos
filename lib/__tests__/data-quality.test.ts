@@ -316,7 +316,7 @@ describe("ctaHref precision — every gap deep-links the concrete form (#1146)",
       "phenoage-inputs"
     );
     expect(g.ctaHref).toBe(
-      "/results/biomarkers?new=1&name=High-Sensitivity%20C-Reactive%20Protein%20(hs-CRP)"
+      "/results/readings?new=1&name=High-Sensitivity%20C-Reactive%20Protein%20(hs-CRP)"
     );
   });
 
@@ -330,7 +330,7 @@ describe("ctaHref precision — every gap deep-links the concrete form (#1146)",
       },
       "phenoage-inputs"
     );
-    expect(g.ctaHref).toBe("/results/biomarkers?new=1");
+    expect(g.ctaHref).toBe("/results/readings?new=1");
   });
 
   it("risk-attributes targets the risk-factors form, not the records landing page", () => {
@@ -428,7 +428,7 @@ describe("ctaHref precision — every gap deep-links the concrete form (#1146)",
     // still typecheck, so pin the exact allowed bases here (the #1083 trap).
     const ALLOWED_BASES = [
       "/settings/health",
-      "/results/biomarkers",
+      "/results/readings",
       "/records/care/overview",
       "/medications",
       /^\/medications\/\d+$/,

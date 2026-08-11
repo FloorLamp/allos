@@ -56,7 +56,7 @@ export interface StreamReadingSource {
  *
  * `surface` is the #1932 CADENCE answer — a slug means "this arrives continuously and
  * is read as a trend, so the metric detail page is its renderer"; `null` means the
- * reading is episodic and belongs on the reading detail page (/biomarkers/view).
+ * reading is episodic and belongs on the reading detail page (/results/readings/view).
  * `stream` is the #1996 STORE answer — present when rows of this quantity land in a
  * stream store rather than (only) in `medical_records`.
  *

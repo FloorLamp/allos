@@ -9,7 +9,7 @@ import {
   iopResolvingLabel,
   findResolvingIopReading,
   IOP_FOLLOWUP_TITLE,
-  type IopFollowUpRecord,
+  type IopFollowUpObservation,
 } from "@/lib/followup-iop";
 import type { FollowUpItemLike } from "@/lib/followup";
 
@@ -22,8 +22,8 @@ import type { FollowUpItemLike } from "@/lib/followup";
 // rule.
 
 function rec(
-  over: Partial<IopFollowUpRecord> & { id: number }
-): IopFollowUpRecord {
+  over: Partial<IopFollowUpObservation> & { id: number }
+): IopFollowUpObservation {
   return {
     id: over.id,
     date: over.date ?? "2026-05-12",

@@ -161,7 +161,7 @@ test.describe("Import detail: deliberately uncurated analytes", () => {
     await expect(instead).toHaveCount(1);
     await expect(instead).toHaveAttribute(
       "href",
-      `/biomarkers/view?name=${encodeURIComponent(
+      `/results/readings/view?name=${encodeURIComponent(
         "Estimated Glomerular Filtration Rate (eGFR)"
       )}`
     );

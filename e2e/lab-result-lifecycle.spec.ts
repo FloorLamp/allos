@@ -23,7 +23,7 @@ const DB_PATH = workerDbPath();
 const DRAW_DATE = "2026-01-12";
 const CORRECTED = "E2E Lifecycle Potassium";
 const FASTING = "E2E Lifecycle Fasting Glucose";
-const BIOMARKERS = "/results/biomarkers";
+const BIOMARKERS = "/results/readings";
 
 function profileId(handle: Database.Database): number {
   return (
@@ -96,7 +96,9 @@ test.describe("lab result lifecycle (#1404)", () => {
     page,
   }) => {
     seedCorrectedReading();
-    await page.goto(`/biomarkers/view?name=${encodeURIComponent(CORRECTED)}`);
+    await page.goto(
+      `/results/readings/view?name=${encodeURIComponent(CORRECTED)}`
+    );
 
     // The CURRENT value is the corrected one, stated as corrected + how it was drawn.
     const attributes = page.getByTestId("reading-attributes");
@@ -122,7 +124,7 @@ test.describe("lab result lifecycle (#1404)", () => {
     await page.goto(
       `${BIOMARKERS}?new=1&name=${encodeURIComponent(FASTING)}#add-result`
     );
-    const form = page.getByRole("dialog", { name: "Add medical record" });
+    const form = page.getByRole("dialog", { name: "Add result" });
     await expect(form.getByLabel("Name", { exact: true })).toHaveValue(FASTING);
 
     // DateField DISPLAYS a friendly format ("Jan 12, 2026") while posting the ISO
@@ -147,12 +149,14 @@ test.describe("lab result lifecycle (#1404)", () => {
     await page.keyboard.press("Escape");
     await hydratedClick(
       page,
-      form.getByRole("button", { name: "Save record" })
+      form.getByRole("button", { name: "Save result" })
     );
 
     // What the user said about the draw survives the write and reads back on the
     // analyte's own page.
-    await page.goto(`/biomarkers/view?name=${encodeURIComponent(FASTING)}`);
+    await page.goto(
+      `/results/readings/view?name=${encodeURIComponent(FASTING)}`
+    );
     const attributes = page.getByTestId("reading-attributes");
     await expect(attributes).toContainText("Final");
     await expect(attributes).toContainText("Fasting");

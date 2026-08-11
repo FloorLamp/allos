@@ -102,7 +102,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
       // Partial panel (Albumin present) → first missing analyte is Creatinine.
       await expect(ctaFor("Complete the PhenoAge panel")).toHaveAttribute(
         "href",
-        "/results/biomarkers?new=1&name=Creatinine"
+        "/results/readings?new=1&name=Creatinine"
       );
 
       // Follow the smoking CTA: it lands ON the smoking-history form. The hash
@@ -125,7 +125,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
       );
       await expect(
         page
-          .getByRole("dialog", { name: "Add medical record" })
+          .getByRole("dialog", { name: "Add result" })
           .getByLabel("Name", { exact: true })
       ).toHaveValue("Creatinine");
     } finally {

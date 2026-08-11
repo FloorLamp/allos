@@ -18,7 +18,7 @@ test("titer link lands on the populated biomarker detail page, not the empty sta
   // The href carries the marker name (the fix), so the detail page can resolve it.
   await expect(titerLink).toHaveAttribute(
     "href",
-    "/biomarkers/view?name=Hepatitis%20B%20Surface%20Antibody"
+    "/results/readings/view?name=Hepatitis%20B%20Surface%20Antibody"
   );
 
   // Navigate past the pre-hydration swallow (#500/#830) with followLink — a raw

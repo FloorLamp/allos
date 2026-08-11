@@ -7,7 +7,7 @@ import { type Page } from "@playwright/test";
 //   • Blood pressure is judged by the AAP 2017 age/sex/height percentile (Elevated
 //     for age) instead of the adult cutoffs, which call the same reading fine.
 // Since #1932 the two live on different surfaces — a lab is episodic and stays on
-// /biomarkers/view; blood pressure is a CONTINUOUS vital and renders on its metric
+// /results/readings/view; blood pressure is a CONTINUOUS vital and renders on its metric
 // detail page, which its pediatric card travelled to. The BP tests below still open
 // the old URL on purpose: it proves the stale-bookmark redirect AND the card in one
 // navigation.
@@ -46,7 +46,7 @@ test.describe.serial("pediatric reference ranges", () => {
     page,
   }) => {
     await switchProfile(page, "Riley (child)");
-    await page.goto("/biomarkers/view?name=Alkaline%20Phosphatase");
+    await page.goto("/results/readings/view?name=Alkaline%20Phosphatase");
 
     // The reference range shown is the pediatric age band, labeled by age.
     await expect(page.getByText("age 1–10")).toBeVisible();
@@ -61,7 +61,7 @@ test.describe.serial("pediatric reference ranges", () => {
     page,
   }) => {
     await switchProfile(page, "Riley (child)");
-    await page.goto("/biomarkers/view?name=Blood%20Pressure%20Systolic");
+    await page.goto("/results/readings/view?name=Blood%20Pressure%20Systolic");
     await page.waitForURL(/\/trends\/metric\/systolic/);
 
     const bp = page.getByTestId("pediatric-bp-context");
@@ -77,7 +77,7 @@ test.describe.serial("pediatric reference ranges", () => {
     page,
   }) => {
     await switchProfile(page, "admin");
-    await page.goto("/biomarkers/view?name=Blood%20Pressure%20Systolic");
+    await page.goto("/results/readings/view?name=Blood%20Pressure%20Systolic");
     await page.waitForURL(/\/trends\/metric\/systolic/);
     // No pediatric BP interpretation for an adult, whatever readings exist.
     await expect(page.getByTestId("pediatric-bp-context")).toHaveCount(0);

@@ -2,24 +2,24 @@
 
 import { IconLoader2 } from "@tabler/icons-react";
 import Link from "next/link";
-import type { MedicalRecord } from "@/lib/types";
+import type { ClinicalObservation } from "@/lib/types";
 import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { groupContiguous } from "@/lib/table-sort";
-import { recordNameLink } from "@/lib/import-browser";
+import { observationNameLink } from "@/lib/import-browser";
 import { triageRowId } from "@/lib/confidence-triage";
 import { EmptyState, MedicalValue } from "./ui";
 import { ConfidenceRowNote } from "./ConfidenceBadge";
 import { TRIAGE_FOCUS_ROW } from "./TriageFocus";
 import NotesText from "./NotesText";
-import EditableRecordRow from "./EditableRecordRow";
+import EditableResultRow from "./EditableResultRow";
 import RangeFilterSelect from "./RangeFilterSelect";
 import SortableHeader from "./SortableHeader";
-import RecordSearch from "./RecordSearch";
+import ObservationSearch from "./ObservationSearch";
 
 // The grouping identity for a record: its canonical name when present, else the
 // raw name — the same key the biomarkers table groups on, so name-sorted rows
 // for the same analyte land adjacent under one heading.
-function nameKey(r: MedicalRecord): string {
+function nameKey(r: ClinicalObservation): string {
   return r.canonical_name?.trim() || r.name;
 }
 
@@ -28,19 +28,19 @@ function nameKey(r: MedicalRecord): string {
 // band and no "Panel", so they get a compact value/date table with no editable
 // affordance (the analyte columns don't apply). The name still links where the
 // category has a home (vitals → biomarker series; scan/instrument/derived/
-// reference get no link, per recordNameLink).
-function ReadonlyRecordRow({
-  record: r,
+// reference get no link, per observationNameLink).
+function ReadonlyObservationRow({
+  observation: r,
   rowId,
   focused,
   flag,
 }: {
-  record: MedicalRecord;
+  observation: ClinicalObservation;
   rowId: string;
   focused: boolean;
   flag?: ConfidenceFlag;
 }) {
-  const nameLink = recordNameLink(r.category, r.canonical_name);
+  const nameLink = observationNameLink(r.category, r.canonical_name);
   return (
     <tr
       id={rowId}
@@ -86,9 +86,9 @@ function ReadonlyRecordRow({
   );
 }
 
-// The records table for one medical_records category tab of the import-detail
-// records browser (#271): the old CategoryFilterSelect collapsed into the tab
-// strip, so the host passes the tab's label as `title` and scopes the records
+// The observations table for one medical_records category tab of the import-detail
+// results browser (#271): the old CategoryFilterSelect collapsed into the tab
+// strip, so the host passes the tab's label as `title` and scopes the observations
 // itself. Re-extraction is NOT triggered here anymore (#1071): the immediate
 // fire-and-replace icon this table used to carry was the unsafe twin of the
 // detail page's preview-first flow, so it was removed — the SOLE per-document
@@ -103,11 +103,11 @@ function ReadonlyRecordRow({
 // — because those legitimately carry a value/unit/reference band; every other
 // category (vitals/scan/instrument/derived/reference) gets the read-only compact
 // value/date table above, with no Panel/Reference columns and no edit affordance.
-export default function ExtractedRecords({
-  title = "Extracted records",
+export default function ExtractedObservations({
+  title = "Extracted results",
   analyte,
   processing,
-  records,
+  observations,
   q,
   range,
   sort,
@@ -126,7 +126,7 @@ export default function ExtractedRecords({
   // kicked off from the detail page's preview flow), so we show a spinner and a
   // "Processing…" overlay over the table until it settles.
   processing: boolean;
-  records: MedicalRecord[];
+  observations: ClinicalObservation[];
   q?: string;
   range?: "oor" | "nonoptimal";
   // Active sort column, so we know whether to render contiguous name groups
@@ -146,11 +146,11 @@ export default function ExtractedRecords({
   // grid (rows already arrive adjacent by name from the query); the read-only
   // non-analyte table renders flat (its rows are heterogeneous, not one analyte).
   const grouped =
-    analyte && sort === "name" ? groupContiguous(records, nameKey) : null;
+    analyte && sort === "name" ? groupContiguous(observations, nameKey) : null;
 
   // A row's triage identity (#2339): its anchor id on this tab, whether a
   // "Check these first" link focused it, and what the extractor hedged about it.
-  const triage = (r: MedicalRecord) => {
+  const triage = (r: ClinicalObservation) => {
     const rowId = triageRowId(tabKey, r.id);
     return {
       rowId,
@@ -162,16 +162,16 @@ export default function ExtractedRecords({
   return (
     <div
       className="card mb-6 overflow-hidden p-0"
-      data-testid="extracted-records"
+      data-testid="extracted-observations"
     >
       <div className="flex flex-wrap items-center gap-4 px-5 pt-5">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {title}{" "}
           <span className="font-normal text-slate-500 dark:text-slate-400">
-            ({records.length})
+            ({observations.length})
           </span>
         </h2>
-        <RecordSearch q={q} />
+        <ObservationSearch q={q} />
         {/* The out-of-range filter keys on a reference band — analyte-only. */}
         {analyte && <RangeFilterSelect value={range} />}
         {processing && (
@@ -183,7 +183,7 @@ export default function ExtractedRecords({
       </div>
 
       <div className="relative">
-        {records.length === 0 ? (
+        {observations.length === 0 ? (
           <div className="p-5">
             <EmptyState message={emptyMessage} />
           </div>
@@ -235,22 +235,26 @@ export default function ExtractedRecords({
               </thead>
               <tbody>
                 {!analyte
-                  ? records.map((r) => (
-                      <ReadonlyRecordRow key={r.id} record={r} {...triage(r)} />
+                  ? observations.map((r) => (
+                      <ReadonlyObservationRow
+                        key={r.id}
+                        observation={r}
+                        {...triage(r)}
+                      />
                     ))
                   : grouped
                     ? grouped.map(({ row: r, isGroupStart, isGroupEnd }) => (
-                        <EditableRecordRow
+                        <EditableResultRow
                           key={r.id}
-                          record={r}
+                          observation={r}
                           grouped={{ isGroupStart, isGroupEnd }}
                           {...triage(r)}
                         />
                       ))
-                    : records.map((r) => (
-                        <EditableRecordRow
+                    : observations.map((r) => (
+                        <EditableResultRow
                           key={r.id}
-                          record={r}
+                          observation={r}
                           {...triage(r)}
                         />
                       ))}

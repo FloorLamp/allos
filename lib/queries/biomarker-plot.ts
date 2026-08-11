@@ -26,11 +26,11 @@ import {
   parseLooseValue,
 } from "../reference-range";
 import { convertToCanonical, sameUnit } from "../unit-conversions";
-import type { MedicalRecord } from "../types";
+import type { ClinicalObservation } from "../types";
 
 export interface BiomarkerPlot {
   // The family's readings, oldest→newest (the detail page's table).
-  rows: MedicalRecord[];
+  rows: ClinicalObservation[];
   // The plottable numeric points, in `unit`.
   points: { date: string; value: number }[];
   // The unit `points` are expressed in, or null when the analyte has neither a
@@ -119,7 +119,7 @@ function once<T>(fn: () => T): () => T {
 // the identical body; the demographics arrive as thunks so a series-less analyte
 // costs nothing.
 function shapePlot(
-  series: MedicalRecord[],
+  series: ClinicalObservation[],
   canonical: string,
   demographics: {
     sex: () => ReturnType<typeof getProfileSex>;

@@ -12,7 +12,7 @@ import {
 
 // Guards against re-declaration drift (issue #305). The category enum and the
 // clinical-flag whitelist live in ONE place (lib/medical-categories.ts); the
-// medical write action and the AI extractor MUST import them, not re-declare
+// clinical-result write action and the AI extractor MUST import them, not re-declare
 // their own literals. The failure mode this pins is silent: a category or flag
 // accepted by one path but rejected by the other.
 
@@ -39,7 +39,7 @@ describe("medical-categories: single source of truth", () => {
   });
 
   it("BIOMARKER_CATEGORIES is the flat-catalog browsable set (#1076)", () => {
-    // The Biomarkers browser (/results/biomarkers, a flat catalog) lists `lab` + the
+    // The Biomarkers browser (/results/readings, a flat catalog) lists `lab` + the
     // out-of-scope `genomics`/`scan` stores, and KEEPS `vitals` (the domain vitals —
     // audiogram/IOP/acuity — have no dedicated chart home, so removing them would
     // strand them). The re-homed classes with a home — instruments, derived bio-age,
@@ -97,12 +97,12 @@ describe("medical-categories: single source of truth", () => {
 describe("medical-categories: importers do not re-declare the enums", () => {
   const read = (rel: string) => fs.readFileSync(path.join(REPO, rel), "utf8");
 
-  const ACTION = "app/(app)/medical/actions.ts";
+  const ACTION = "app/(app)/results/reading-actions.ts";
   // The AI extractor was barrel-split (#597); the shared-constant import now
   // lives in the extraction constants submodule rather than the barrel.
   const EXTRACT = "lib/medical-extract/constants.ts";
 
-  it("the medical write action imports the shared constants", () => {
+  it("the clinical-result write action imports the shared constants", () => {
     const src = read(ACTION);
     expect(src).toMatch(
       /import\s*\{[^}]*\bMEDICAL_CATEGORIES\b[^}]*\bMEDICAL_FLAGS\b[^}]*\}\s*from\s*["']@\/lib\/medical-categories["']/s

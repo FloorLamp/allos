@@ -43,7 +43,7 @@ export async function toggleSavedItem(formData: FormData): Promise<FormResult> {
   // drift as kinds are added.
   revalidateRoute("/trends");
   revalidateRoute("/results");
-  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/results/readings/view", "page");
   revalidateRoute("/trends/metric/[kind]", "page");
   revalidateRoute("/");
   return formOk();

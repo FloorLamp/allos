@@ -1,9 +1,9 @@
 "use server";
-// Medical RECORD CRUD server actions (issue #318). The document upload/extract/
+// Clinical-observation CRUD server actions (issue #318). The document upload/extract/
 // reprocess/reassign/delete PIPELINE lives in the sibling document-actions.ts (two
 // "use server" files coexist per route) — split apart so the pipeline's churn no
-// longer collides with the humble record form. This file holds only the manual
-// biomarker-record write path: addRecord / updateRecord / deleteRecord.
+// longer collides with the result form. This file holds only the manual
+// clinical-result write path: addResult / updateResult / deleteResult.
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 
@@ -29,14 +29,15 @@ import {
 } from "@/lib/lab-result-lifecycle";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
-// Revalidate the import document pages plus the biomarkers surfaces after a
-// record mutation, so edits made on /import/[id] also reflect on the records
-// browser (/biomarkers) and per-biomarker detail pages, and vice versa.
-function revalidateMedical() {
+// Revalidate the import document pages plus the reading surfaces after an
+// observation mutation, so edits made on /import/[id] also reflect in the
+// readings browser and detail pages, and vice versa.
+function revalidateResults() {
   revalidateRoute("/data");
   revalidateRoute("/import/[id]", "page");
   revalidateRoute("/results");
-  revalidateRoute("/biomarkers/view", "page");
+  revalidateRoute("/results/readings");
+  revalidateRoute("/results/readings/view", "page");
   revalidateRoute("/records");
   // The dashboard derives Recent labs and Needs attention from these records, so
   // a new/edited/deleted reading must refresh its summaries too.
@@ -51,10 +52,10 @@ function sanitizeCanonical(raw: string | null | undefined): string | null {
   return v || null;
 }
 
-export async function addRecord(formData: FormData): Promise<FormResult> {
+export async function addResult(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
-  // Validate the category server-side, exactly as updateRecord does — an absent
+  // Validate the category server-side, exactly as updateResult does — an absent
   // field (String(null) === "null") or a crafted/stale POST would otherwise flow
   // straight into the CHECK (category IN (...)) and 500 (#385, the #323 class:
   // a state writable in TS but forbidden by the CHECK). The add form only offers
@@ -77,12 +78,12 @@ export async function addRecord(formData: FormData): Promise<FormResult> {
     value !== null && value !== "" && Number.isFinite(Number(value))
       ? Number(value)
       : null;
-  // Default the canonical name to the record's own name (its own group until
+  // Default the canonical name to the observation's own name (its own group until
   // backfilled or edited). Manual entry never writes to canonical_biomarkers.
   const canonical =
     sanitizeCanonical(formData.get("canonical_name") as string) ?? name;
-  // Insert the record and reconcile its flag in one transaction, so a throw in
-  // reconcileFlags can't leave a half-written record (matches persistDocumentImport).
+  // Insert the observation and reconcile its flag in one transaction, so a throw in
+  // reconcileFlags can't leave a half-written result (matches persistDocumentImport).
   writeTx(() => {
     const info = db
       .prepare(
@@ -113,20 +114,20 @@ export async function addRecord(formData: FormData): Promise<FormResult> {
     // Auto-flag the new reading non-optimal if it falls outside the optimal band.
     reconcileFlags(profile.id, [Number(info.lastInsertRowid)]);
   });
-  revalidateMedical();
+  revalidateResults();
   return formOk();
 }
 
-// Edit a single extracted/manual record (used on the document subpage + the
-// Biomarkers table). Multi-view (#1331): gate + target the ROW's own profile via
-// gateItemProfile — the Biomarkers table posts each row's profile_id, so an edit on
+// Edit a single extracted/manual observation (used on the document subpage + the
+// Readings table). Multi-view (#1331): gate + target the ROW's own profile via
+// gateItemProfile — the Readings table posts each row's profile_id, so an edit on
 // a non-acting member's reading writes to that member (bouncing a read-only /
 // ungranted grant). With no profile_id (single view / the document subpage form) it
 // falls back to the acting-profile requireWriteAccess gate — byte-identical.
-export async function updateRecord(formData: FormData): Promise<FormResult> {
+export async function updateResult(formData: FormData): Promise<FormResult> {
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that record.");
+  if (!id) return formError("Couldn't find that result.");
   const date = String(formData.get("date") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   // Reject a non-ISO / impossible date so it can't land in a YYYY-MM-DD column.
@@ -154,8 +155,8 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
     value !== null && value !== "" && Number.isFinite(Number(value))
       ? Number(value)
       : null;
-  // Canonical name: sanitized, defaulting to the record's name when blank so a
-  // cleared field re-groups the record under itself (editable + reversible).
+  // Canonical name: sanitized, defaulting to the observation's name when blank so a
+  // cleared field re-groups the observation under itself (editable + reversible).
   const canonical = sanitizeCanonical(str("canonical_name")) ?? name;
   // Performing provider: keep the loaded link unless the field was actually changed
   // (#601), so editing an unrelated field can't relink an ambiguous name; a genuine
@@ -213,7 +214,7 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
     canonical,
     providerId,
     orderingProviderId,
-    // Same server-side normalization as addRecord: unknown values land as NULL
+    // Same server-side normalization as addResult: unknown values land as NULL
     // ("unstated"), never in a column the CHECK would reject.
     normalizeResultStatus(str("result_status")),
     parseFasting(formData.get("fasting")),
@@ -233,21 +234,23 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
     migrateRenamedBiomarker(profileId, oldCanonical, canonical);
     cleanupOrphanBiomarkerKeyedState(profileId);
   }
-  revalidateMedical();
+  revalidateResults();
   return formOk();
 }
 
-export async function deleteRecord(
+export async function deleteResult(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  // Multi-view (#1331): the Biomarkers table posts the row's profile_id, so a delete
+  // Multi-view (#1331): the Readings table posts the row's profile_id, so a delete
   // on a non-acting member's reading targets that member (gateItemProfile bounces a
   // read-only / ungranted grant); no profile_id falls back to the acting-profile gate.
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   // Capture into the undo holding table and delete in one transaction (issue #30)
-  // so the record can be restored from the toast.
+  // so the observation can be restored from the toast.
+  // Compatibility: `biomarker-record` is a persisted undo payload kind, not the
+  // public model name. Changing it would strand pending undo entries.
   const undoId = captureDelete("biomarker-record", profileId, id);
   // Deleting the last reading for a starred biomarker would leave the star
   // pointing at nothing (an empty pinned tile), and its `biomarker:<name>` retest
@@ -257,6 +260,6 @@ export async function deleteRecord(
   // NOTE (consciously scoped out of undo): a star/dismissal orphan-cleaned here is
   // NOT re-created on Undo — the reading returns but the pinned-tile star stays gone.
   cleanupOrphanBiomarkerKeyedState(profileId);
-  revalidateMedical();
+  revalidateResults();
   return { undoId };
 }

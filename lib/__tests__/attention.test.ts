@@ -93,7 +93,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
     // The verb up front — no more actionless "HDL Cholesterol · Flagged result 55".
     expect(item.title).toBe("Review HDL Cholesterol");
     expect(item.detail).toBe("Flagged low — 35");
-    expect(item.href).toBe("/biomarkers/view?name=HDL%20Cholesterol");
+    expect(item.href).toBe("/results/readings/view?name=HDL%20Cholesterol");
     expect(item.dueText).toBe("Low");
     expect(item.suppressible).toBe(true);
     // No risk reasons passed ⇒ plain flag line + a single flagged reason.
@@ -144,7 +144,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
         ],
       })
     );
-    expect(item.href).toBe("/results/biomarkers");
+    expect(item.href).toBe("/results/readings");
   });
 
   it("an out-of-range flag outranks a merely non-optimal one within its group (#517 priority)", () => {

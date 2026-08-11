@@ -38,7 +38,7 @@ const MODULES = [
   ["records", "care", "overview", "family-history-actions.ts"],
   ["records", "care", "overview", "care-goal-actions.ts"],
   ["records", "care", "overview", "care-plan-actions.ts"],
-  ["medical", "actions.ts"],
+  ["results", "reading-actions.ts"],
   ["training", "goal-actions.ts"],
   ["protocols", "actions.ts"],
   ["upcoming", "actions.ts"],

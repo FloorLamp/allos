@@ -51,7 +51,7 @@ export type ScreeningSatisfiedBy =
       entry: "in-app" | "total-only";
     }
   // A lab result. `primary` is the canonical biomarker the add-form deep link
-  // prefills (`/results/biomarkers?new=1&name=<primary>`, #662); absent when no
+  // prefills (`/results/readings?new=1&name=<primary>`, #662); absent when no
   // tracked biomarker exists (e.g. hepatitis C) → the add form opens unprefilled.
   | { kind: "lab"; primary?: string }
   // A self-recordable vital — a recorded reading IS the screening. Links to the

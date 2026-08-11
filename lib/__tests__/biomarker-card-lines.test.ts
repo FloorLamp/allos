@@ -18,12 +18,12 @@ import { activeFacetCount, filterTriggerLabel } from "@/lib/record-facets";
 //
 // Two halves are pinned here. The SLOT half is a source scan: which cells claim a
 // card line is declared in the JSX, at the cell, and a scan is what reads a
-// declaration (the pure suite is DOM-free — components/BiomarkersTable.tsx is a
+// declaration (the pure suite is DOM-free — components/ReadingsTable.tsx is a
 // client component wired to Server Actions and cannot be rendered here). The
 // COMPOSITION half is the pure lib/ modules the cells now render through.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const TABLE = path.join(REPO, "components/BiomarkersTable.tsx");
+const TABLE = path.join(REPO, "components/ReadingsTable.tsx");
 
 interface CellTag {
   label: string | null;

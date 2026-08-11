@@ -13,7 +13,7 @@ test("VO2 Max detail shows the age/sex percentile + fitness age (#158)", async (
   page,
 }) => {
   // The seed logs a VO2 Max series for the adult under the canonical name "VO2 Max".
-  await page.goto("/biomarkers/view?name=VO2%20Max");
+  await page.goto("/results/readings/view?name=VO2%20Max");
 
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { name: "VO2 Max" })).toBeVisible();
@@ -42,7 +42,7 @@ test("the functional fitness markers are manually enterable and percentile-conte
 
   // The reading surfaces on its canonical detail page WITH the percentile card
   // (profile 1 is an adult with a known sex + age).
-  await page.goto("/biomarkers/view?name=Grip%20Strength");
+  await page.goto("/results/readings/view?name=Grip%20Strength");
   const main = page.getByRole("main");
   await expect(
     main.getByRole("heading", { name: "Grip Strength" })

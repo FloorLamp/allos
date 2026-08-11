@@ -243,7 +243,7 @@ outside the optimal band.
 
 The cell is now a **judgment cell**, and nothing about it is a second derivation:
 
-- `judgeRecords(profileId, rows)` (`lib/queries/metric-judgment.ts`) resolves one
+- `judgeObservations(profileId, rows)` (`lib/queries/metric-judgment.ts`) resolves one
   `MetricJudgment` per row through `flagReconcileProfileContext` — the same
   canonical map, the same alias-aware name resolver and the same subject context
   (sex, birthdate/stored age, reproductive status, cycle log) `reconcileFlags`
@@ -273,16 +273,16 @@ with no band is a judgment with no visible basis. `MedicalValue` gains
 `showFlagLabel`, which renders `flagLabel` visibly **instead of** the `sr-only` span
 (never both — the severity is announced once), decided by
 `medicalValueFlagText`/`medicalValueCaret` in `lib/medical-value.ts`. The biomarkers
-table and `/biomarkers/view`'s readings table adopt it, and `RecentLabsWidget`
+table and `/results/readings/view`'s readings table adopt it, and `RecentLabsWidget`
 migrates onto it and drops the parallel label #1220 built beside the component. The
-other `MedicalValue` call sites — Timeline, Passport, ExtractedRecords,
+other `MedicalValue` call sites — Timeline, Passport, ExtractedObservations,
 BiomarkerScale, the Longevity section, the import preview — keep the `sr-only` label
 until each is considered against its own density; without the prop the behavior is
 byte-identical.
 
 ### And the DETAIL page must be able to point at what it coloured (#2340)
 
-#2315 fixed the list. The detail page (`/biomarkers/view`) had the mirror-image
+#2315 fixed the list. The detail page (`/results/readings/view`) had the mirror-image
 defect: it coloured its latest value from `latest.flag` while building its range
 display — `referenceEntries` / `optimalEntries` — **exclusively from the curated
 entry**. When the catalog carries no band those lists are empty and no range renders
@@ -384,7 +384,7 @@ offer that already renders is the attention doctrine's "enrich what it was alrea
 saying" case, and a note that appears only where the page has already declined to
 judge cannot widen anything.
 
-The **list** surfaces (`BiomarkersTable`, `StarredBiomarkers`) have no counterpart to
+The **list** surfaces (`ReadingsTable`, `StarredBiomarkers`) have no counterpart to
 this, for a reason worth writing down rather than re-deriving: `TrackLabFollowUpControl`
 renders on the detail page ONLY, so no list row carries a recheck offer, and their
 `isBiomarkerStale` calls are the retest clock in its ordinary form (the table passes no

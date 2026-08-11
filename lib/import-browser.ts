@@ -119,7 +119,7 @@ export interface ImportTabStrip {
 
 // Display label for a medical_records category (mirrors the category vocabulary
 // of the biomarkers filter; an unknown category falls back to its raw name).
-export function recordCategoryLabel(category: string): string {
+export function observationCategoryLabel(category: string): string {
   switch (category) {
     case "lab":
       return "Labs";
@@ -159,7 +159,7 @@ const CATEGORY_ORDER = [
 // to order rows the way the STRIP orders their tabs (the #2339 triage rows, whose
 // first match decides which tab an ambiguous label filters) reads the one order
 // instead of inventing a second.
-export function recordCategoryRank(category: string): number {
+export function observationCategoryRank(category: string): number {
   const i = CATEGORY_ORDER.indexOf(category);
   return i === -1 ? CATEGORY_ORDER.length : i;
 }
@@ -189,7 +189,7 @@ const DOMAIN_TAB_KEYS = new Set<string>([
 // The tab key a medical_records category gets. Exported because the triage links
 // (#2339) have to name the tab a given row is rendered on WITHOUT rebuilding the
 // strip, and a second copy of the collision rule would be a second answer.
-export function recordsTabKey(category: string): string {
+export function observationsTabKey(category: string): string {
   return DOMAIN_TAB_KEYS.has(category) ? `records:${category}` : category;
 }
 
@@ -205,13 +205,14 @@ export function buildImportTabs(
     .filter((r) => r.count > 0)
     .sort(
       (a, b) =>
-        recordCategoryRank(a.category) - recordCategoryRank(b.category) ||
+        observationCategoryRank(a.category) -
+          observationCategoryRank(b.category) ||
         a.category.localeCompare(b.category)
     );
   for (const r of cats) {
     tabs.push({
-      key: recordsTabKey(r.category),
-      label: recordCategoryLabel(r.category),
+      key: observationsTabKey(r.category),
+      label: observationCategoryLabel(r.category),
       count: r.count,
       kind: "records",
       category: r.category,
@@ -269,7 +270,7 @@ export function resolveImportTab(
 // for their canonical name; prescriptions go to the medications page (the
 // prescription→biomarker bug this fixes); scans/notes/unknown categories get NO
 // link rather than a wrong one.
-export function recordNameLink(
+export function observationNameLink(
   category: string,
   canonicalName: string | null | undefined
 ): { href: AppRoute; title: string } | null {

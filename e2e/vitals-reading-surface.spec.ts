@@ -53,7 +53,7 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
   }) => {
     const page = await vitalsDayPage(browser);
     await page.goto(
-      "/results/biomarkers?q=" + encodeURIComponent("Oxygen Saturation")
+      "/results/readings?q=" + encodeURIComponent("Oxygen Saturation")
     );
 
     // #1932 sent the catalog row's name to the metric page; #2365 removed the row.
@@ -61,7 +61,7 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
     // domain vitals with no home stay listed (pinned in biomarker-category-scope).
     await expect(
       page
-        .getByTestId("results-biomarkers")
+        .getByTestId("results-readings")
         .getByRole("link", { name: "Oxygen Saturation" })
     ).toHaveCount(0);
 
@@ -81,7 +81,7 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
   }) => {
     const page = await vitalsDayPage(browser);
     // What a bookmark or a shared link from before #1932 looks like.
-    await page.goto("/biomarkers/view?name=Oxygen%20Saturation");
+    await page.goto("/results/readings/view?name=Oxygen%20Saturation");
     await page.waitForURL(/\/trends\/metric\/spo2/);
 
     await expect(page.getByTestId("metric-detail-page")).toBeVisible();
@@ -95,7 +95,7 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
       page.getByRole("columnheader", { name: "Reported as" })
     ).toHaveCount(0);
     await expect(
-      page.getByRole("link", { name: "Back to biomarkers" })
+      page.getByRole("link", { name: "Back to readings" })
     ).toHaveCount(0);
   });
 
@@ -125,11 +125,11 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
     // Grip strength is `category = 'vitals'` too, and belongs on the lab renderer:
     // it is an annual physical test read by an age/sex percentile, not a stream. If
     // the rule ever collapses back into a category check, this redirects and fails.
-    await page.goto("/biomarkers/view?name=Grip%20Strength");
+    await page.goto("/results/readings/view?name=Grip%20Strength");
 
     await expect(page).toHaveURL(/\/biomarkers\/view/);
     await expect(
-      page.getByRole("link", { name: "Back to biomarkers" })
+      page.getByRole("link", { name: "Back to readings" })
     ).toBeVisible();
   });
 });

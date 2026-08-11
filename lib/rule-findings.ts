@@ -1644,7 +1644,7 @@ export function buildSunExposureFindings(
       // Calm FYI — a neutral observation, never an alarm.
       tone: "info",
       // The biomarker browser lives on Results (#1164 merged the Trends duplicate in).
-      actionHref: "/results/biomarkers",
+      actionHref: "/results/readings",
       actionLabel: "View biomarkers",
     },
   ];

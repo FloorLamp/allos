@@ -79,7 +79,7 @@ export function recordInstrumentScore(
   return writeTx(() => {
     // category 'instrument' (#1076): a screening-instrument total scores onto its
     // own class, NOT the general lab bucket — so it joins the instrument series and
-    // can never leak into /results/biomarkers or the flagged hero.
+    // can never leak into /results/readings or the flagged hero.
     const info = db
       .prepare(
         `INSERT INTO medical_records
@@ -405,7 +405,7 @@ export function getInstrumentStates(profileId: number): InstrumentState[] {
 // The stored per-item answers for one record (0-based index → answer), for the detail view.
 export function getInstrumentResponses(
   profileId: number,
-  medicalRecordId: number
+  observationId: number
 ): Record<number, number> {
   const rows = db
     .prepare(
@@ -413,7 +413,7 @@ export function getInstrumentResponses(
        WHERE profile_id = ? AND medical_record_id = ?
        ORDER BY item_index`
     )
-    .all(profileId, medicalRecordId) as { idx: number; answer: number }[];
+    .all(profileId, observationId) as { idx: number; answer: number }[];
   const out: Record<number, number> = {};
   for (const r of rows) out[r.idx] = r.answer;
   return out;

@@ -51,7 +51,7 @@ const WRAPPER_WINDOW = 800;
 //  - components/ResponsiveTable.tsx IS the card-stacking primitive — it emits the
 //    `<table className="table-cards">` the CSS re-lays as cards below `sm`, so it
 //    can't be asked to wrap itself in a scroller.
-// (components/BiomarkersTable.tsx used to live here as a column-hider — hiding
+// (components/ReadingsTable.tsx used to live here as a column-hider — hiding
 // Panel/Notes/Category below `md`. It now renders through <ResponsiveTable> (#1426),
 // so those columns come BACK on a phone as card meta lines instead of being dropped.)
 const ALLOWLIST = new Set<string>(["components/ResponsiveTable.tsx"]);

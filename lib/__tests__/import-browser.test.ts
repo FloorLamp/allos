@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   buildImportTabs,
   resolveImportTab,
-  recordCategoryLabel,
-  recordNameLink,
+  observationCategoryLabel,
+  observationNameLink,
   usesAnalyteGrid,
   providerItems,
   visitItem,
@@ -153,35 +153,37 @@ describe("resolveImportTab", () => {
   });
 });
 
-describe("recordCategoryLabel", () => {
+describe("observationCategoryLabel", () => {
   it("labels the known categories and passes unknowns through", () => {
-    expect(recordCategoryLabel("lab")).toBe("Labs");
-    expect(recordCategoryLabel("prescription")).toBe("Prescriptions");
-    expect(recordCategoryLabel("weird")).toBe("weird");
+    expect(observationCategoryLabel("lab")).toBe("Labs");
+    expect(observationCategoryLabel("prescription")).toBe("Prescriptions");
+    expect(observationCategoryLabel("weird")).toBe("weird");
   });
 });
 
-describe("recordNameLink (category-correct row links)", () => {
+describe("observationNameLink (category-correct row links)", () => {
   it("links series categories to the biomarker series view", () => {
     for (const cat of ["lab", "biomarker", "vitals", "genomics"]) {
-      const link = recordNameLink(cat, "LDL Cholesterol");
-      expect(link?.href).toBe("/biomarkers/view?name=LDL%20Cholesterol");
+      const link = observationNameLink(cat, "LDL Cholesterol");
+      expect(link?.href).toBe("/results/readings/view?name=LDL%20Cholesterol");
     }
   });
   it("gives a series category with no canonical name NO link", () => {
-    expect(recordNameLink("lab", null)).toBeNull();
-    expect(recordNameLink("lab", "  ")).toBeNull();
+    expect(observationNameLink("lab", null)).toBeNull();
+    expect(observationNameLink("lab", "  ")).toBeNull();
   });
   it("REGRESSION: a prescription row links to /medications, never a biomarker page", () => {
-    const link = recordNameLink("prescription", "Lisinopril 10 mg");
+    const link = observationNameLink("prescription", "Lisinopril 10 mg");
     expect(link?.href).toBe("/medications");
     expect(link?.href).not.toContain("/biomarkers");
     // Even with no canonical name, prescriptions still point at medications.
-    expect(recordNameLink("prescription", null)?.href).toBe("/medications");
+    expect(observationNameLink("prescription", null)?.href).toBe(
+      "/medications"
+    );
   });
   it("gives scans and unknown categories NO link rather than a wrong one", () => {
-    expect(recordNameLink("scan", "Chest X-ray")).toBeNull();
-    expect(recordNameLink("note", "Progress note")).toBeNull();
+    expect(observationNameLink("scan", "Chest X-ray")).toBeNull();
+    expect(observationNameLink("note", "Progress note")).toBeNull();
   });
 });
 

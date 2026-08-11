@@ -14,7 +14,7 @@ import { shiftDateStr } from "@/lib/date";
 import {
   reconcileFlags,
   getBiomarkerSeries,
-  getLatestMedicalRecordByCanonical,
+  getLatestClinicalObservationByCanonical,
 } from "@/lib/queries";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -63,7 +63,7 @@ describe("verbatim gm/dL ingest → flag + series, same as g/dL (#759)", () => {
     expect(flagOf(abnormalId)).toBe("high");
     expect(flagOf(normalId) ?? null).not.toBe("high");
     expect(
-      getLatestMedicalRecordByCanonical(p.profileId, "Hemoglobin")
+      getLatestClinicalObservationByCanonical(p.profileId, "Hemoglobin")
         ?.canonical_name
     ).toBe("Hemoglobin");
 

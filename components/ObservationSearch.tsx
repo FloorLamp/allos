@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { currentPathHref } from "@/lib/hrefs";
 
-// Debounced free-text search box that filters medical records by name or panel.
+// Debounced free-text search box that filters clinical observations by name or panel.
 // Writes the query into the `q` param on the current path (preserving the other
 // params), so server components can read it back. Path-agnostic, so it works on
 // both the medical history table and a per-document subpage.
-export default function RecordSearch({ q }: { q?: string }) {
+export default function ObservationSearch({ q }: { q?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

@@ -40,12 +40,12 @@ export function appointmentHitActions(id: number, status: string): HitAction[] {
 }
 
 // A biomarker hit offers "Add result": a NAVIGATE action to the Biomarkers add
-// form, name-prefilled with this analyte's canonical name (RecordForm reads the
+// form, name-prefilled with this analyte's canonical name (ResultForm reads the
 // `name` param in add mode) and carrying the palette focus param so the form opens
 // focused. No write happens from search — the user fills value/date/unit and the
-// existing addRecord action gates + writes it.
+// existing addResult action gates + writes it.
 export function biomarkerHitActions(canonicalName: string): HitAction[] {
-  const href: AppRoute = `/results/biomarkers?${FOCUS_PARAM}=1&name=${encodeURIComponent(
+  const href: AppRoute = `/results/readings?${FOCUS_PARAM}=1&name=${encodeURIComponent(
     canonicalName
   )}`;
   return [{ kind: "add-result", label: "Add result", entityId: 0, href }];

@@ -15,12 +15,12 @@ import {
   labsFollowUpTitle,
   labBiomarkerName,
   LABS_FOLLOWUP_KIND,
-  type LabFollowUpRecord,
+  type LabFollowUpObservation,
 } from "./followup-labs";
 import {
   IOP_FOLLOWUP_KIND,
   IOP_FOLLOWUP_TITLE,
-  type IopFollowUpRecord,
+  type IopFollowUpObservation,
 } from "./followup-iop";
 import { dentalFollowUpTitle, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
 import { skinFollowUpTitle, SKIN_FOLLOWUP_KIND } from "./followup-skin";
@@ -297,7 +297,7 @@ export function settleFollowUpCore(
 // practice — a reading always has a date).
 export function trackLabFollowUpCore(
   profileId: number,
-  medicalRecordId: number,
+  observationId: number,
   intervalDays: number,
   today: string
 ): TrackFollowUpOutcome {
@@ -307,7 +307,7 @@ export function trackLabFollowUpCore(
         `SELECT id, date, canonical_name, name, value, unit, value_num, flag
            FROM medical_records WHERE id = ? AND profile_id = ?`
       )
-      .get(medicalRecordId, profileId) as LabFollowUpRecord | undefined;
+      .get(observationId, profileId) as LabFollowUpObservation | undefined;
     if (!record) return { kind: "invalid" as const };
 
     // One open follow-up per source biomarker FAMILY (#482), not per exact reading:
@@ -357,7 +357,7 @@ export function trackLabFollowUpCore(
         title,
         plannedDate,
         LABS_FOLLOWUP_KIND,
-        medicalRecordId,
+        observationId,
         interval > 0 ? interval : null,
         profileId
       );
@@ -381,7 +381,7 @@ export function trackLabFollowUpCore(
 // practice — a reading always has a date).
 export function trackIopFollowUpCore(
   profileId: number,
-  medicalRecordId: number,
+  observationId: number,
   intervalDays: number,
   today: string
 ): TrackFollowUpOutcome {
@@ -391,7 +391,7 @@ export function trackIopFollowUpCore(
         `SELECT id, date, canonical_name, name, value, unit, value_num, flag
            FROM medical_records WHERE id = ? AND profile_id = ?`
       )
-      .get(medicalRecordId, profileId) as IopFollowUpRecord | undefined;
+      .get(observationId, profileId) as IopFollowUpObservation | undefined;
     if (!record) return { kind: "invalid" as const };
 
     // One open IOP follow-up per profile (the bilateral glaucoma question) — return
@@ -425,7 +425,7 @@ export function trackIopFollowUpCore(
         IOP_FOLLOWUP_TITLE,
         plannedDate,
         IOP_FOLLOWUP_KIND,
-        medicalRecordId,
+        observationId,
         interval > 0 ? interval : null,
         profileId
       );
@@ -442,7 +442,7 @@ export function trackIopFollowUpCore(
 // source FK cleared), and a resolution recorded against a now-deleted later reading
 // keeps its outcome text but drops the dead link. Called BEFORE the medical_records
 // DELETE so the REFERENCES FKs don't trip. Profile-scoped.
-export function unlinkFollowUpsForMedicalRecord(
+export function unlinkFollowUpsForClinicalObservation(
   profileId: number,
   recordId: number
 ): void {

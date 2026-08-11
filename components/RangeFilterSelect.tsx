@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { currentPathHref } from "@/lib/hrefs";
 
 // Session-storage key remembering the last-chosen range filter, so it carries
-// across the records browser and the per-document subpages within a session.
+// across the results browser and the per-document subpages within a session.
 const STORAGE_KEY = "medical:range";
 
 type RangeValue = "" | "nonoptimal" | "oor";
@@ -14,7 +14,7 @@ function normalize(v: string | undefined | null): RangeValue {
   return v === "oor" ? "oor" : v === "nonoptimal" ? "nonoptimal" : "";
 }
 
-// Three-way "show" filter for a medical records table: All / Non-optimal / Out
+// Three-way "show" filter for a clinical readings table: All / Non-optimal / Out
 // of range only. Writes the choice into the `range` query param on the current
 // path (preserving other params), so server components read it back. Path-
 // agnostic, and persists to sessionStorage like the old checkbox did.

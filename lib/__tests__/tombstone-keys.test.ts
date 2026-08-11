@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   activityTombstoneKey,
-  medicalRecordTombstoneKey,
+  clinicalObservationTombstoneKey,
   practiceLogTombstoneKey,
   bodyMetricTombstoneKey,
   metricSampleTombstoneKey,
@@ -17,7 +17,7 @@ import {
 describe("tombstone key composition", () => {
   it("uses external_id verbatim for activities / medical_records", () => {
     expect(activityTombstoneKey("strava:123")).toBe("strava:123");
-    expect(medicalRecordTombstoneKey("health-connect:Glucose:t")).toBe(
+    expect(clinicalObservationTombstoneKey("health-connect:Glucose:t")).toBe(
       "health-connect:Glucose:t"
     );
     expect(practiceLogTombstoneKey("fitbit-takeout:7")).toBe(

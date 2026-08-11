@@ -19,7 +19,10 @@ import {
   updateCareGoal,
   deleteCareGoal,
 } from "@/app/(app)/records/care/overview/care-goal-actions";
-import { updateRecord, deleteRecord } from "@/app/(app)/medical/actions";
+import {
+  updateResult,
+  deleteResult,
+} from "@/app/(app)/results/reading-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 function seedRecord(profileId: number, name: string): number {
@@ -153,14 +156,14 @@ describe("Tier-1 multi-view record writes gate the ITEM's profile (#1328)", () =
 });
 
 describe("Multi-view Biomarkers table writes gate the ITEM's profile (#1331)", () => {
-  it("updateRecord with posted profile_id edits the ITEM's reading, not the acting one", async () => {
+  it("updateResult with posted profile_id edits the ITEM's reading, not the acting one", async () => {
     const login = createLogin({ role: "admin" });
     const acting = createProfile("Acting", login.id);
     const other = createProfile("Other", login.id);
     actAs(login, acting);
     const recId = seedRecord(other.id, "Vitamin D");
 
-    const res = await updateRecord(
+    const res = await updateResult(
       fd({
         id: recId,
         date: "2024-05-01",
@@ -178,14 +181,14 @@ describe("Multi-view Biomarkers table writes gate the ITEM's profile (#1331)", (
     expect(actingRows.n).toBe(0);
   });
 
-  it("deleteRecord with posted profile_id deletes the ITEM's reading", async () => {
+  it("deleteResult with posted profile_id deletes the ITEM's reading", async () => {
     const login = createLogin({ role: "admin" });
     const acting = createProfile("Acting", login.id);
     const other = createProfile("Other", login.id);
     actAs(login, acting);
     const recId = seedRecord(other.id, "Ferritin");
 
-    const { undoId } = await deleteRecord(
+    const { undoId } = await deleteResult(
       fd({ id: recId, profile_id: other.id })
     );
     expect(undoId).not.toBeNull();
@@ -200,7 +203,7 @@ describe("Multi-view Biomarkers table writes gate the ITEM's profile (#1331)", (
     const recId = seedRecord(stranger.id, "Glucose");
 
     await expect(
-      updateRecord(
+      updateResult(
         fd({
           id: recId,
           date: "2024-05-01",
@@ -219,7 +222,7 @@ describe("Multi-view Biomarkers table writes gate the ITEM's profile (#1331)", (
     actAs(login, acting);
     const recId = seedRecord(acting.id, "HDL");
 
-    const res = await updateRecord(
+    const res = await updateResult(
       fd({
         id: recId,
         date: "2024-05-01",

@@ -22,7 +22,7 @@ import {
   type MobilitySuggestion,
 } from "../mobility-suggest";
 import type { MuscleRegion } from "../lifts";
-import { getLatestMedicalRecordByCanonical } from "./medical";
+import { getLatestClinicalObservationByCanonical } from "./medical";
 import { getFrequencyTargets } from "./frequency-targets";
 
 // The day's mobility session (its logged move slugs + optional duration), or an empty
@@ -80,11 +80,11 @@ export function getMobilitySuggestions(
 ): MobilitySuggestion[] {
   const sex = getProfileSex(profileId);
   const age = getProfileAge(profileId);
-  const sitReach = getLatestMedicalRecordByCanonical(
+  const sitReach = getLatestClinicalObservationByCanonical(
     profileId,
     "Sit-and-Reach"
   );
-  const balance = getLatestMedicalRecordByCanonical(
+  const balance = getLatestClinicalObservationByCanonical(
     profileId,
     "Single-Leg Balance"
   );

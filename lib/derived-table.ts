@@ -1,6 +1,6 @@
 // Pure helpers for merging read-time DERIVED records (issue #40) into the
 // Biomarkers table alongside the stored rows. The biomarkers page reads stored
-// rows via the SQL getMedicalRecords (which applies its filters + ORDER BY in the
+// rows via the SQL getClinicalObservations (which applies its filters + ORDER BY in the
 // database) and the derived virtual rows via getDerivedBiomarkerReadings; this
 // module folds the two into one list the table renders, re-deriving the
 // "current reading per biomarker" marker and the sort over the COMBINED set so a
@@ -18,13 +18,16 @@ import {
 } from "./biomarker-panels";
 import { latestByGroup } from "./latest-per-group";
 import { parseSortColumn } from "./table-sort";
-import type { MedicalRecord } from "./types";
-import type { MedicalSortColumn, SortDirection } from "./queries/medical";
+import type { ClinicalObservation } from "./types";
+import type {
+  ClinicalObservationSortColumn,
+  SortDirection,
+} from "./queries/medical";
 import type { RangeFilter } from "./queries/medical";
 
 // ---- The Biomarkers browser's sort vocabulary (#1581 section B) --------------
 
-// The sort columns the BROWSER offers. A strict subset of MedicalSortColumn: the
+// The sort columns the BROWSER offers. A strict subset of ClinicalObservationSortColumn: the
 // query layer still knows how to order by `panel` (the document view's extracted-
 // records table offers it, where rows are not panel-grouped), but the browser does
 // not, because it partitions its rows into panel groups emitted in curated clinical
@@ -95,16 +98,16 @@ function nocase(a: string, b: string): number {
 }
 
 // Which derived rows survive the table's active filters — the JS mirror of the SQL
-// WHERE getMedicalRecords applies to stored rows, so derived analytes honor the
+// WHERE getClinicalObservations applies to stored rows, so derived analytes honor the
 // same category/panel/range/free-text filters. (The `current` filter is applied
-// later, over the COMBINED set, by prepareTableRecords.) Derived rows are always
+// later, over the COMBINED set, by prepareTableObservations.) Derived rows are always
 // category 'lab', so a category!=lab filter excludes them by construction. Their
 // stored `panel` column is null, but since #1502 the panel is RESOLVED from the
 // canonical name — so a derived index now honors the facet like any stored row
 // (Non-HDL and TG/HDL are `lipids`, HOMA-IR `glycemic`, eGFR `kidney`), where the
 // old "derived rows carry no panel" rule dropped them from every panel view.
 export function filterDerivedForTable(
-  derived: MedicalRecord[],
+  derived: ClinicalObservation[],
   filters: {
     category?: string;
     excludeCategories?: string[];
@@ -112,7 +115,7 @@ export function filterDerivedForTable(
     range?: RangeFilter;
     q?: string;
   }
-): MedicalRecord[] {
+): ClinicalObservation[] {
   const q = filters.q?.trim().toLowerCase();
   return derived.filter((r) => {
     if (filters.category && r.category !== filters.category) return false;
@@ -125,7 +128,7 @@ export function filterDerivedForTable(
     }
     if (q) {
       // Include the canonical name (the row heading) alongside the raw name and
-      // panel, mirroring the SQL search in getMedicalRecords so a derived row is
+      // panel, mirroring the SQL search in getClinicalObservations so a derived row is
       // findable by the same identity it shows (#383).
       const hay =
         `${r.name} ${r.canonical_name ?? ""} ${r.panel ?? ""}`.toLowerCase();
@@ -139,11 +142,11 @@ export function filterDerivedForTable(
 // sort columns, so the merged list orders identically to the SQL-only list. Every
 // non-name sort tie-breaks on the name ascending then id, like the SQL.
 function comparator(
-  sort: MedicalSortColumn | undefined,
+  sort: ClinicalObservationSortColumn | undefined,
   dir: SortDirection
-): (a: MedicalRecord, b: MedicalRecord) => number {
+): (a: ClinicalObservation, b: ClinicalObservation) => number {
   const d = dir === "desc" ? -1 : 1;
-  const nameOf = (r: MedicalRecord) => tableNameKey(r);
+  const nameOf = (r: ClinicalObservation) => tableNameKey(r);
   if (sort === "name") {
     return (a, b) =>
       d * nocase(nameOf(a), nameOf(b)) ||
@@ -168,7 +171,7 @@ function comparator(
     return (a, b) =>
       d * nocase(a.date, b.date) || nocase(nameOf(a), nameOf(b)) || a.id - b.id;
   }
-  // Fallback (no explicit sort): date DESC, id DESC — matches getMedicalRecords.
+  // Fallback (no explicit sort): date DESC, id DESC — matches getClinicalObservations.
   return (a, b) => -nocase(a.date, b.date) || b.id - a.id;
 }
 
@@ -178,7 +181,7 @@ function comparator(
 // helper (#944); this only supplies the biomarker-FAMILY grouping identity (#482).
 // Derived ids are negative, so among same-date rows a stored (positive id) reading
 // is preferred as "latest" over a derived one — a property of the shared id tie-break.
-function latestIdByName(records: MedicalRecord[]): Map<string, number> {
+function latestIdByName(records: ClinicalObservation[]): Map<string, number> {
   const best = latestByGroup(records, familyGroupKey);
   return new Map([...best].map(([k, r]) => [k, r.id]));
 }
@@ -188,11 +191,15 @@ function latestIdByName(records: MedicalRecord[]): Map<string, number> {
 // current and stale-badged like a stored one); when `current` is set, keeps only
 // that current reading per name; then sorts by the active column to match the
 // SQL-only ordering. Pure.
-export function prepareTableRecords(
-  stored: MedicalRecord[],
-  derived: MedicalRecord[],
-  opts: { sort?: MedicalSortColumn; dir?: SortDirection; current?: boolean }
-): MedicalRecord[] {
+export function prepareTableObservations(
+  stored: ClinicalObservation[],
+  derived: ClinicalObservation[],
+  opts: {
+    sort?: ClinicalObservationSortColumn;
+    dir?: SortDirection;
+    current?: boolean;
+  }
+): ClinicalObservation[] {
   const combined = [...stored, ...derived];
   const latest = latestIdByName(combined);
   const withLatest = combined.map((r) => ({
@@ -212,7 +219,7 @@ export function prepareTableRecords(
 // filter / the family dedup are recomputed PER (profile, family), NEVER across
 // members — a family collapse must never merge two people's readings into one
 // series (the per-profile-context trap the issue calls out). Single view never
-// touches these functions: its path (getMedicalRecords → prepareTableRecords) is
+// touches these functions: its path (getClinicalObservations → prepareTableObservations) is
 // unchanged and byte-identical; the multi-view path is structurally additive.
 
 export type WithProfile<T> = T & { profileId: number };
@@ -232,7 +239,7 @@ function mvFamilyKey(
 // single-view table's canonical-or-raw nameKey grouping but scoped per member, so
 // two members' same-named rows land in DISTINCT contiguous groups (each keeps its
 // own name heading + subject chip) instead of collapsing into one heading. The
-// BiomarkersTable keys groupContiguous on this in multi-view.
+// ReadingsTable keys groupContiguous on this in multi-view.
 export function multiViewGroupKey(
   r: WithProfile<{ name: string; canonical_name: string | null }>
 ): string {
@@ -263,13 +270,18 @@ export function biomarkerRowKey(
 // reading between a member's two readings, splitting the group). Different analytes
 // still interleave across members by the primary key; the trailing id keeps it stable.
 function mvComparator(
-  sort: MedicalSortColumn | undefined,
+  sort: ClinicalObservationSortColumn | undefined,
   dir: SortDirection
-): (a: WithProfile<MedicalRecord>, b: WithProfile<MedicalRecord>) => number {
+): (
+  a: WithProfile<ClinicalObservation>,
+  b: WithProfile<ClinicalObservation>
+) => number {
   const d = dir === "desc" ? -1 : 1;
-  const name = (r: MedicalRecord) => tableNameKey(r);
-  const subj = (a: WithProfile<MedicalRecord>, b: WithProfile<MedicalRecord>) =>
-    a.profileId - b.profileId;
+  const name = (r: ClinicalObservation) => tableNameKey(r);
+  const subj = (
+    a: WithProfile<ClinicalObservation>,
+    b: WithProfile<ClinicalObservation>
+  ) => a.profileId - b.profileId;
   if (sort === "panel") {
     return (a, b) => {
       const oa = tablePanelId(a),
@@ -303,11 +315,15 @@ function mvComparator(
 // orders with the subject dimension woven into the sort key (mvComparator) for a
 // readable, deterministically ordered merge. Pure — no DB, no auth. Rows keep their
 // `profileId` tag so stampSubjects can attach subject identity for the chip.
-export function prepareMultiViewTableRecords(
-  stored: WithProfile<MedicalRecord>[],
-  derived: WithProfile<MedicalRecord>[],
-  opts: { sort?: MedicalSortColumn; dir?: SortDirection; current?: boolean }
-): WithProfile<MedicalRecord>[] {
+export function prepareMultiViewTableObservations(
+  stored: WithProfile<ClinicalObservation>[],
+  derived: WithProfile<ClinicalObservation>[],
+  opts: {
+    sort?: ClinicalObservationSortColumn;
+    dir?: SortDirection;
+    current?: boolean;
+  }
+): WithProfile<ClinicalObservation>[] {
   const combined = [...stored, ...derived];
   // latestByGroup keyed per (profile, family) — same ordering rule as single view
   // (newest date wins, id descending tie-break), isolated within each member.

@@ -4,7 +4,7 @@
 // Observation whose <value xsi:type="ED"> references the report body in the narrative
 // <table>. This drives the REAL persist path end to end (extractFromCcda →
 // healthRecordToPersistInput → persistDocumentImport) and asserts the report lands as a
-// `report` record with its body in `notes` (value NULL), reachable via getReportRecords,
+// `report` record with its body in `notes` (value NULL), reachable via getClinicalReports,
 // while an ordinary numeric lab in the same section stays a `lab` reading. All fixtures
 // SYNTHETIC — obviously-fictional report text, no real PHI.
 
@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import { extractFromCcda } from "@/lib/cda";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
 import { persistDocumentImport } from "@/lib/import-persist";
-import { getReportRecords } from "@/lib/queries";
+import { getClinicalReports } from "@/lib/queries";
 
 let profileId: number;
 let docId: number;
@@ -120,8 +120,8 @@ describe("CCD narrative report → `report` medical_records row", () => {
     expect(labs).toEqual([{ name: "Hemoglobin", value_num: 14.1 }]);
   });
 
-  it("surfaces the reports via getReportRecords, newest first", () => {
-    const reports = getReportRecords(profileId);
+  it("surfaces the reports via getClinicalReports, newest first", () => {
+    const reports = getClinicalReports(profileId);
     expect(reports.map((r) => r.name).sort()).toEqual([
       "Final Report",
       "Gram Stain Report",

@@ -53,7 +53,7 @@ import { cardCellAttrs, type CardSlot } from "@/lib/card-row";
 // next touched. Nothing renders differently at `sm` and up.
 //
 // No hooks and no "use client" — this is presentational, so both server components
-// (AnalyzeSection) and client components (BiomarkersTable) can render it.
+// (AnalyzeSection) and client components (ReadingsTable) can render it.
 export function ResponsiveTable({
   className = "",
   children,

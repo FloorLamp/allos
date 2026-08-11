@@ -41,7 +41,7 @@ const SEP = String.fromCharCode(0x1f);
 export function activityTombstoneKey(externalId: string): string {
   return externalId;
 }
-export function medicalRecordTombstoneKey(externalId: string): string {
+export function clinicalObservationTombstoneKey(externalId: string): string {
   return externalId;
 }
 export function practiceLogTombstoneKey(externalId: string): string {
@@ -93,7 +93,10 @@ export function importTombstoneForRow(
     case "medical_records": {
       const ext = row.external_id;
       return typeof ext === "string" && ext
-        ? { table: "medical_records", key: medicalRecordTombstoneKey(ext) }
+        ? {
+            table: "medical_records",
+            key: clinicalObservationTombstoneKey(ext),
+          }
         : null;
     }
     case "practice_logs": {

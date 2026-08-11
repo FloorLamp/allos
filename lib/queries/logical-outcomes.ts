@@ -5,7 +5,7 @@
 
 import { bodyMetricsFromReadings } from "../body-metric-extract";
 import { bodyMetricKindForBiomarker } from "../outcome-identity";
-import type { BodyMetricKind, MedicalRecord } from "../types";
+import type { BodyMetricKind, ClinicalObservation } from "../types";
 import { getBiomarkerSeries, getUsedCanonicalNames } from "./medical";
 import { getBodyMetricDailySeries } from "./metrics";
 
@@ -21,7 +21,7 @@ export function getLogicalBodyMetricDailySeries(
     authoritative.map((point) => [point.date, point.value])
   );
 
-  const legacyById = new Map<number, MedicalRecord>();
+  const legacyById = new Map<number, ClinicalObservation>();
   for (const canonical of getUsedCanonicalNames(profileId)) {
     if (bodyMetricKindForBiomarker(canonical) !== metric) continue;
     for (const row of getBiomarkerSeries(profileId, canonical)) {

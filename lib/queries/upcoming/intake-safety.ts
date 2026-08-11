@@ -105,7 +105,7 @@ import {
   plainRiskReasons,
 } from "../../reasons";
 import { isFlaggedForRetest } from "../../biomarker-retest-copy";
-import type { MedicalRecord } from "../../types";
+import type { ClinicalObservation } from "../../types";
 import { pickNextAppointment } from "../../household";
 import {
   getSupplements,
@@ -148,7 +148,7 @@ import type { AppRoute } from "../../hrefs";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
 import {
-  getMedicalRecords,
+  getClinicalObservations,
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,

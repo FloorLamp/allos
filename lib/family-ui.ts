@@ -33,7 +33,7 @@ export function deletionErasesText(
     | {
         activities: number;
         bodyMetrics: number;
-        medicalRecords: number;
+        clinicalObservations: number;
         documents: number;
       }
     | undefined
@@ -42,7 +42,7 @@ export function deletionErasesText(
   return (
     `${summary.activities} ${plural(summary.activities, "activity", "activities")}, ` +
     `${summary.bodyMetrics} ${plural(summary.bodyMetrics, "body metric", "body metrics")}, ` +
-    `${summary.medicalRecords} medical ${plural(summary.medicalRecords, "record", "records")}, ` +
+    `${summary.clinicalObservations} clinical ${plural(summary.clinicalObservations, "observation", "observations")}, ` +
     `and ${summary.documents} ${plural(summary.documents, "document", "documents")}`
   );
 }

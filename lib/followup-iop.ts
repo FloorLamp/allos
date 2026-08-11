@@ -26,7 +26,7 @@
 // clinically correct (a workup is not per-eye) — while the per-eye trends stay intact.
 
 import type { FollowUpAdapter, FollowUpItemLike } from "./followup";
-import type { LabFollowUpRecord } from "./followup-labs";
+import type { LabFollowUpObservation } from "./followup-labs";
 
 // The IOP source kind stored in care_plan_items.source_kind.
 export const IOP_FOLLOWUP_KIND = "iop";
@@ -37,7 +37,7 @@ export const IOP_FOLLOWUP_TITLE = "Recheck IOP / glaucoma workup";
 
 // An IOP reading IS a medical_records reading (same projection the labs adapter uses),
 // so the adapter reuses that shape for both the source finding and the candidates.
-export type IopFollowUpRecord = LabFollowUpRecord;
+export type IopFollowUpObservation = LabFollowUpObservation;
 
 // The canonical IOP entries (lib/curated-biomarkers). The finite SQL preimage the
 // query layer needs (#394 — SQL can't call the JS matcher), and the anchor for the JS
@@ -60,14 +60,14 @@ export function isIopBiomarker(name: string | null | undefined): boolean {
 }
 
 // The display name of a reading: its canonical name when present, else the raw name.
-export function iopReadingName(record: IopFollowUpRecord): string {
+export function iopReadingName(record: IopFollowUpObservation): string {
   const canonical = record.canonical_name?.trim();
   return canonical && canonical.length > 0 ? canonical : record.name;
 }
 
 // The eye a reading names ("right eye" / "left eye"), or "" when unspecified/generic —
 // recovered from the canonical/raw name (the only place laterality is encoded).
-export function iopLateralityLabel(record: IopFollowUpRecord): string {
+export function iopLateralityLabel(record: IopFollowUpObservation): string {
   const s = iopReadingName(record).toLowerCase();
   if (/\bright\b|\bod\b/.test(s)) return "right eye";
   if (/\bleft\b|\bos\b/.test(s)) return "left eye";
@@ -75,13 +75,13 @@ export function iopLateralityLabel(record: IopFollowUpRecord): string {
 }
 
 // YYYY-MM of a reading date (for the compact "(2026-05)" reason tail).
-function readingMonth(record: IopFollowUpRecord): string {
+function readingMonth(record: IopFollowUpObservation): string {
   return record.date ? record.date.slice(0, 7) : "";
 }
 
 // A compact value label ("28 mmHg"). Prefers the value string; falls back to value_num.
 // The mmHg unit attaches with a space (IOP prints spaced, unlike a "%").
-export function iopValueLabel(record: IopFollowUpRecord): string {
+export function iopValueLabel(record: IopFollowUpObservation): string {
   const raw = record.value?.trim();
   const v =
     raw && raw.length > 0
@@ -98,7 +98,7 @@ export function iopValueLabel(record: IopFollowUpRecord): string {
 // A short human label for the source flagged finding, for the "for the …" reason line
 // ("flagged 28 mmHg, right eye (2026-05)"). Names the flagged pressure, which eye, and
 // the reading month, so a serial view reads unambiguously and the follow-up says WHY.
-export function iopSourceLabel(record: IopFollowUpRecord): string {
+export function iopSourceLabel(record: IopFollowUpObservation): string {
   const value = iopValueLabel(record) || iopReadingName(record);
   const eye = iopLateralityLabel(record);
   const month = readingMonth(record);
@@ -107,7 +107,7 @@ export function iopSourceLabel(record: IopFollowUpRecord): string {
 }
 
 // The follow-up title — fixed (the glaucoma-workup question is bilateral).
-export function iopFollowUpTitle(_record: IopFollowUpRecord): string {
+export function iopFollowUpTitle(_record: IopFollowUpObservation): string {
   return IOP_FOLLOWUP_TITLE;
 }
 
@@ -119,12 +119,12 @@ export function iopFollowUpTitle(_record: IopFollowUpRecord): string {
 // passes is already IOP-only, so any later reading is a valid repeat pressure — the
 // isIopBiomarker guard is defensive.)
 export function findResolvingIopReading(
-  source: IopFollowUpRecord,
+  source: IopFollowUpObservation,
   _followUp: FollowUpItemLike,
-  candidates: readonly IopFollowUpRecord[]
-): IopFollowUpRecord | null {
+  candidates: readonly IopFollowUpObservation[]
+): IopFollowUpObservation | null {
   if (!source.date) return null; // an undated source can't order candidates
-  let best: IopFollowUpRecord | null = null;
+  let best: IopFollowUpObservation | null = null;
   for (const c of candidates) {
     if (c.id === source.id) continue;
     if (!c.date || c.date <= source.date) continue;
@@ -136,7 +136,7 @@ export function findResolvingIopReading(
 }
 
 // A compact label for a resolving candidate, for the offer copy ("16 mmHg, left eye · 2026-08").
-export function iopResolvingLabel(record: IopFollowUpRecord): string {
+export function iopResolvingLabel(record: IopFollowUpObservation): string {
   const value = iopValueLabel(record) || iopReadingName(record);
   const eye = iopLateralityLabel(record);
   const head = eye ? `${value}, ${eye}` : value;
@@ -147,8 +147,8 @@ export function iopResolvingLabel(record: IopFollowUpRecord): string {
 // The IOP adapter instance the builder consumes — one object satisfying the generic
 // FollowUpAdapter<Source, Candidate> contract, the same seam imaging and labs fill.
 export const iopFollowUpAdapter: FollowUpAdapter<
-  IopFollowUpRecord,
-  IopFollowUpRecord
+  IopFollowUpObservation,
+  IopFollowUpObservation
 > = {
   kind: IOP_FOLLOWUP_KIND,
   describeSource: iopSourceLabel,
