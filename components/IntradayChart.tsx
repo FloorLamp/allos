@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ActivityIcon from "@/components/ActivityIcon";
 import { chartDash } from "@/components/chart-scaffold";
+import { useResettableState } from "@/components/useResettableState";
 import {
   chartBand,
   chartNeutral,
@@ -146,10 +147,26 @@ export default function IntradayChart({
   const [view, setView] = useState<IntradayView | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
-  // The per-minute refinement for the current zoom. Null is not an error state —
-  // it simply means the 5-minute series is what is drawn, which is the whole
-  // degradation story: a failed or slow fetch never empties or blocks the chart.
-  const [fine, setFine] = useState<IntradayHrPoint[][] | null>(null);
+  const fineRequestKey = useMemo(
+    () =>
+      view && model.hr && wantsFineDetail(view)
+        ? {
+            date: model.date,
+            from: Math.floor(view.from),
+            to: Math.ceil(view.to),
+            profileId,
+            coarseSeries: model.hr,
+          }
+        : null,
+    [view, model.date, model.hr, profileId]
+  );
+  // The per-minute refinement belongs to exactly one zoom/model request. Null is
+  // not an error state — it simply means the 5-minute series is drawn. A request
+  // change resets that enhancement during render, without a clearing effect pass.
+  const [fine, setFine] = useResettableState<IntradayHrPoint[][] | null>(
+    null,
+    fineRequestKey
+  );
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const geo = intradayGeometry(model, variant, view ?? FULL_DAY_VIEW);
@@ -175,16 +192,13 @@ export default function IntradayChart({
 
   // ── The per-minute window (#1515 D) ──────────────────────────────────────
   useEffect(() => {
-    if (!view || !model.hr || !wantsFineDetail(view)) {
-      setFine(null);
-      return;
-    }
+    if (!fineRequestKey) return;
     const abort = new AbortController();
     const params = new URLSearchParams({
-      date: model.date,
-      from: String(Math.floor(view.from)),
-      to: String(Math.ceil(view.to)),
-      profile: String(profileId),
+      date: fineRequestKey.date,
+      from: String(fineRequestKey.from),
+      to: String(fineRequestKey.to),
+      profile: String(fineRequestKey.profileId),
     });
     fetch(`/api/intraday/hr?${params}`, { signal: abort.signal })
       .then((res) => (res.ok ? res.json() : null))
@@ -211,7 +225,7 @@ export default function IntradayChart({
       });
     // A rapid re-zoom aborts the in-flight request rather than racing it.
     return () => abort.abort();
-  }, [view, model.date, model.hr, profileId]);
+  }, [fineRequestKey, setFine]);
 
   // ── Gestures ─────────────────────────────────────────────────────────────
   const minuteAtClientX = (clientX: number): number | null => {
@@ -233,7 +247,6 @@ export default function IntradayChart({
 
   const resetZoom = useCallback(() => {
     setView(null);
-    setFine(null);
     setCursor(null);
   }, []);
 

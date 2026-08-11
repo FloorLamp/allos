@@ -67,6 +67,7 @@ import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { loadQuickEntry } from "@/app/(app)/quick-entry-actions";
 import type { WeightUnit } from "@/lib/settings";
 import type { AppRoute } from "@/lib/hrefs";
+import { useResettableState } from "@/components/useResettableState";
 
 // Global command palette (extended for create actions in #29).
 // Mounted once from the app layout; renders nothing until opened by Cmd/Ctrl-K or
@@ -161,8 +162,15 @@ export default function CommandPalette({
   const { open: openQuickEntry } = useQuickEntry();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [groups, setGroups] = useState<SearchGroup[]>([]);
-  const [loading, setLoading] = useState(false);
+  const q = query.trim();
+  // Search results belong to exactly one normalized query. A new query gets an
+  // immediate empty/loading snapshot during render; only its async response can
+  // settle it, so an older query never flashes while the debounce runs.
+  const [search, setSearch] = useResettableState<{
+    groups: SearchGroup[];
+    loading: boolean;
+  }>({ groups: [], loading: q !== "" }, q);
+  const { groups, loading } = search;
   const [committing, setCommitting] = useState(false);
   const [highlight, setHighlight] = useState(0);
   // The tracked practices this profile can quick-log by name (#1633). Gathered ON OPEN
@@ -178,14 +186,12 @@ export default function CommandPalette({
   // Grounded record Q&A (#878, Phase 2): the answer for the current question, or null
   // until the user asks. Pointer-only (never part of the arrow/Enter flat list), so the
   // existing keyboard navigation is untouched.
-  const [asking, setAsking] = useState(false);
-  const [ask, setAsk] = useState<Extract<
+  const [asking, setAsking] = useResettableState(false, q);
+  const [ask, setAsk] = useResettableState<Extract<
     AskRecordsResult,
     { ok: true }
-  > | null>(null);
-  const [askError, setAskError] = useState<string | null>(null);
-
-  const q = query.trim();
+  > | null>(null, q);
+  const [askError, setAskError] = useResettableState<string | null>(null, q);
 
   // Derived synchronously from the query: the quick-log preview (or null) and the
   // matching create actions. An empty query shows all actions as a resting menu.
@@ -216,6 +222,10 @@ export default function CommandPalette({
     for (const hit of hits) out.push({ kind: "hit", hit });
     return out;
   }, [quickLog, actions, hits]);
+  // Keep the stored cursor valid before rendering or handling Enter. React retries
+  // this component immediately, so no row observes an out-of-range highlight.
+  const lastItem = Math.max(items.length - 1, 0);
+  if (highlight > lastItem) setHighlight(lastItem);
 
   // Open on Cmd/Ctrl-K anywhere, and on the sidebar trigger's custom event.
   useEffect(() => {
@@ -264,61 +274,26 @@ export default function CommandPalette({
     };
   }, [open]);
 
-  // Reset state when the palette closes so it opens fresh next time.
-  useEffect(() => {
-    if (!open) {
-      setQuery("");
-      setGroups([]);
-      setHighlight(0);
-      setLoading(false);
-      setCommitting(false);
-      setAsk(null);
-      setAskError(null);
-      setAsking(false);
-      // Dropped on close so a practice added (or untracked) between opens is never
-      // matched from a stale list.
-      setPractices([]);
-    }
-  }, [open]);
-
-  // A stale answer must not linger over an edited question — clear it whenever the
-  // query changes, so the panel only ever shows the answer to the CURRENT text.
-  useEffect(() => {
-    setAsk(null);
-    setAskError(null);
-  }, [q]);
-
   // Debounced fetch. A per-request token drops stale responses so a slow earlier
   // query can't overwrite a newer one's results.
   useEffect(() => {
-    if (!open) return;
-    if (q === "") {
-      setGroups([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
+    if (!open || q === "") return;
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
         const res = await runGlobalSearch(q);
         if (!cancelled) {
-          setGroups(res);
+          setSearch({ groups: res, loading: false });
         }
-      } finally {
-        if (!cancelled) setLoading(false);
+      } catch {
+        if (!cancelled) setSearch({ groups: [], loading: false });
       }
     }, 180);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [q, open]);
-
-  // Keep the highlight in range as the item list changes (typing shrinks/grows it).
-  useEffect(() => {
-    setHighlight((h) => Math.min(h, Math.max(items.length - 1, 0)));
-  }, [items.length]);
+  }, [q, open, setSearch]);
 
   // Keep the highlighted row scrolled into view as the arrows walk the list.
   useEffect(() => {
@@ -328,7 +303,15 @@ export default function CommandPalette({
     el?.scrollIntoView({ block: "nearest" });
   }, [highlight]);
 
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => {
+    // Closing is the event that ends this palette session. Clear its drafts in the
+    // same batched interaction so the next open starts fresh without a reset effect.
+    setQuery("");
+    setHighlight(0);
+    setCommitting(false);
+    setPractices([]);
+    setOpen(false);
+  }, []);
 
   // Ask the grounded record Q&A about the current query (#878, Phase 2). Read-only:
   // it retrieves the active profile's own matching rows and narrates a linked answer
@@ -348,7 +331,7 @@ export default function CommandPalette({
     } finally {
       setAsking(false);
     }
-  }, [q, asking]);
+  }, [q, asking, setAsk, setAskError, setAsking]);
 
   const go = useCallback(
     (href: AppRoute) => {

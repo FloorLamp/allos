@@ -39,6 +39,7 @@ export default function RestTimer({
   const [remaining, setRemaining] = useState(target);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
+  const [seedExercise, setSeedExercise] = useState(exercise);
   const lastAutoRef = useRef(autoStartKey);
   // A single lazily-created AudioContext for the end-of-rest chime.
   const audioRef = useRef<AudioContext | null>(null);
@@ -46,15 +47,16 @@ export default function RestTimer({
   const haptic = useHaptics();
 
   // Re-default the target to the lift while idle (not mid-countdown): a fresh
-  // exercise gets its own rest, but an in-progress rest is left alone.
-  useEffect(() => {
+  // exercise gets its own rest, but an in-progress rest is left alone. This is a
+  // prop-keyed draft reset, so perform it during render and retry atomically.
+  if (seedExercise !== exercise) {
+    setSeedExercise(exercise);
     if (!running && !done) {
       const next = suggestedRestSec(exercise);
       setTarget(next);
       setRemaining(next);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exercise]);
+  }
 
   const beep = useCallback(() => {
     // Best-effort audible + haptic cue; both degrade silently where unsupported

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -29,6 +29,7 @@ import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { usePresence } from "@/components/usePresence";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { useResettableState } from "@/components/useResettableState";
 import {
   overlayMotionClass,
   useDragGesture,
@@ -161,9 +162,11 @@ export default function MobileNav({
   // shared SidebarContent so the drawer shows the same calm "What's new" dot.
   whatsNewUnseen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const pathname = usePathname();
+  // Navigation owns the lifetime of both overlays. A new pathname gets a fresh
+  // closed draft during render rather than closing them in a follow-up effect.
+  const [open, setOpen] = useResettableState(false, pathname);
+  const [sheetOpen, setSheetOpen] = useResettableState(false, pathname);
   const searchParams = useSearchParams();
   const router = useRouter();
   const { openCreate, openLive, workoutOffer } = useActivityEditor();
@@ -213,12 +216,6 @@ export default function MobileNav({
   const primary = primaryQuickLog(pathname, searchParams.get("tab"));
   const PrimaryIcon = PRIMARY_ICONS[primary.icon];
 
-  // Close the drawer (and any open sheet) whenever navigation happens.
-  useEffect(() => {
-    setOpen(false);
-    setSheetOpen(false);
-  }, [pathname]);
-
   // While mounted (including through the exit animation): lock body scroll, and
   // while open allow Escape to close.
   useLockBodyScroll(drawer.mounted);
@@ -229,7 +226,7 @@ export default function MobileNav({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, setOpen]);
 
   // The bar's contextual **+**. It shares the registry with the sheet, so it
   // inherits #1468's rule: the primary action opens IN PLACE too. Tapping "Log

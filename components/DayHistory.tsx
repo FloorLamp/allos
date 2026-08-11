@@ -174,17 +174,16 @@ export default function DayHistory({
   }, [days.length]);
 
   // A window change (range switch) can strand the selected day outside the new
-  // day list; a panel for an invisible day answers nothing — drop it.
-  useEffect(() => {
-    if (
-      selectedDay &&
-      (days.length === 0 ||
-        selectedDay < days[0] ||
-        selectedDay > days[days.length - 1])
-    ) {
-      setSelectedDay(null);
-    }
-  }, [days, selectedDay]);
+  // day list; reset during render so children never see a panel for an invisible
+  // day. React immediately retries this component with the valid selection.
+  if (
+    selectedDay &&
+    (days.length === 0 ||
+      selectedDay < days[0] ||
+      selectedDay > days[days.length - 1])
+  ) {
+    setSelectedDay(null);
+  }
 
   // Size calendar cells to fill the container when the window is short.
   useEffect(() => {

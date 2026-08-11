@@ -31,6 +31,7 @@ import type { MergeSibling } from "./ActivityCardMenu";
 import { loadJournalPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import { useLatestRef } from "@/components/useLatestRef";
+import { useResettableState } from "@/components/useResettableState";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
 // JournalCardData / DayGroup moved to lib/journal-card.ts (issue #334), built by the
@@ -281,7 +282,6 @@ export default function JournalView({
   // and the unit whose identity decides whether an in-flight response is still the
   // one the user is looking at.
   const [filters, setFilters] = useState<JournalFilters>(EMPTY_JOURNAL_FILTERS);
-  const [visibleDays, setVisibleDays] = useState(14);
   const [detail, setDetail] = useState<Detail>(null);
 
   // Derive rather than reset via an effect: when the last faulty row is fixed
@@ -298,6 +298,31 @@ export default function JournalView({
   const filtersActive = journalFiltersActive(activeFilters);
   const filtersKey = journalFiltersKey(activeFilters);
   const activeFiltersRef = useLatestRef(activeFilters);
+  // Each active filter episode owns its own 14-day window. Clearing filters keeps
+  // the current width (deep-link navigation deliberately widens it), while turning
+  // filtering back on starts fresh even when the same filter key is chosen again.
+  const [visibleWindow, setVisibleWindow] = useState({
+    filterKey: filtersActive ? filtersKey : null,
+    filtersActive,
+    days: 14,
+  });
+  if (
+    visibleWindow.filtersActive !== filtersActive ||
+    (filtersActive && visibleWindow.filterKey !== filtersKey)
+  ) {
+    setVisibleWindow({
+      filterKey: filtersActive ? filtersKey : visibleWindow.filterKey,
+      filtersActive,
+      days: filtersActive ? 14 : visibleWindow.days,
+    });
+  }
+  const visibleDays = visibleWindow.days;
+  const setVisibleDays = (next: number | ((days: number) => number)) => {
+    setVisibleWindow((current) => ({
+      ...current,
+      days: typeof next === "function" ? next(current.days) : next,
+    }));
+  };
 
   // ---- Server-side filtered paging (issue #1634) ----
   // Before this, all four filters ran client-side over the LOADED pages, so a match
@@ -308,17 +333,14 @@ export default function JournalView({
   // client predicate below still runs — over a complete day set it is exact — so
   // typing refines instantly while the round-trip is in flight, and the server's
   // answer is what settles.
-  const [filteredFeed, setFilteredFeed] = useState<{
+  const [filteredFeed, setFilteredFeed] = useResettableState<{
     key: string;
     groups: DayGroup[];
     cursor: string | null;
-  } | null>(null);
+  } | null>(null, filtersActive ? filtersKey : null);
 
   useEffect(() => {
-    if (!filtersActive) {
-      setFilteredFeed(null);
-      return;
-    }
+    if (!filtersActive) return;
     let cancelled = false;
     // Debounced so a typed query issues one round-trip per pause, not one per
     // keystroke; the client refinement covers the gap so the feed never feels stuck.
@@ -344,16 +366,13 @@ export default function JournalView({
     };
     // initialGroups: the server refreshes the first page on every auto-save, and a
     // filtered feed must pick those edits up too rather than showing a stale window.
-  }, [filtersKey, filtersActive, initialGroups, activeFiltersRef]);
-
-  // A new ACTIVE filter set starts at the top of its own result list. Deliberately
-  // not on the clearing transition: the deep-link handler clears every filter and
-  // then widens the window to reach its target, and a reset firing on that same key
-  // change would clobber the width it just asked for — the target would never render
-  // and the scroll would never land.
-  useEffect(() => {
-    if (filtersActive) setVisibleDays(14);
-  }, [filtersKey, filtersActive]);
+  }, [
+    filtersKey,
+    filtersActive,
+    initialGroups,
+    activeFiltersRef,
+    setFilteredFeed,
+  ]);
 
   // The server's answer for THE filters currently on screen, or null while none has
   // arrived yet (first fetch, or a newer filter set in flight). Only a key match
@@ -567,7 +586,15 @@ export default function JournalView({
     const el = document.getElementById(pendingScroll);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
-      setPendingScroll(null);
+      // Clear after the browser has accepted the scroll. The callback is the
+      // external event that completes this tiny state machine; doing it inline in
+      // the effect caused an avoidable cascading render.
+      const frame = requestAnimationFrame(() => {
+        setPendingScroll((current) =>
+          current === pendingScroll ? null : current
+        );
+      });
+      return () => cancelAnimationFrame(frame);
     }
   }, [pendingScroll, shown]);
 
