@@ -155,9 +155,9 @@ describe("fuzzyFilter with a usage signal", () => {
   it("does not reorder two used options against each other", () => {
     // Bucketed presence, not raw frequency (#1490): usage separates used from
     // unused, and textual score still separates the used ones.
-    expect(onlySquats(fuzzyFilter(activities, "sqa", { used: squats }))).toEqual(
-      onlySquats(fuzzyFilter(activities, "sqa"))
-    );
+    expect(
+      onlySquats(fuzzyFilter(activities, "sqa", { used: squats }))
+    ).toEqual(onlySquats(fuzzyFilter(activities, "sqa")));
   });
 
   it("reproduces today's order exactly when `used` is omitted", () => {
