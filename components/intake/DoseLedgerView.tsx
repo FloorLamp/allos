@@ -10,14 +10,14 @@ import DoseLedgerTable, {
 import { today } from "@/lib/db";
 import {
   getIntakeDoseHistoryAll,
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
 } from "@/lib/queries";
 import { getDisplayFormatPrefs, getTimezone } from "@/lib/settings";
 import { zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
-import { isPrn } from "@/lib/supplement-schedule";
+import { isPrn } from "@/lib/intake-schedule";
 import {
   DOSE_LEDGER_KIND_FILTERS,
   DOSE_LEDGER_KIND_LABELS,
@@ -36,7 +36,7 @@ import {
   type DateRange,
 } from "@/lib/timeline-format";
 import { doseLedgerHref, intakeHref } from "@/lib/hrefs";
-import type { SupplementKind } from "@/lib/types";
+import type { IntakeItemKind } from "@/lib/types";
 
 // The ISO floor an all-time window reads from — the ledger's reader takes a `since`
 // day, and "all time" is a window with no lower bound rather than a second query.
@@ -71,7 +71,7 @@ export default function DoseLedgerView({
   loginId: number;
   canWrite: boolean;
   // Which surface is rendering — the kind this ledger opens pre-filtered to.
-  surface: SupplementKind;
+  surface: IntakeItemKind;
   params: {
     from?: string | string[];
     to?: string | string[];
@@ -101,7 +101,7 @@ export default function DoseLedgerView({
   // Every item this profile owns, active or not: an item paused or retired since the
   // dose was taken still took that dose, and both the filter's options and the row's
   // item name have to keep saying so.
-  const allItems = getSupplements(profileId);
+  const allItems = getIntakeItems(profileId);
   const filterItems = allItems.filter(
     (item) => !queryKind || item.kind === queryKind
   );
@@ -154,7 +154,7 @@ export default function DoseLedgerView({
     number,
     { id: number; amount: string | null; time_of_day: string | null }[]
   >();
-  for (const dose of getSupplementDoses(profileId)) {
+  for (const dose of getIntakeDoses(profileId)) {
     const list = dosesByItem.get(dose.item_id) ?? [];
     list.push({
       id: dose.id,

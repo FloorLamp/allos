@@ -7,11 +7,7 @@
 // a unit test can pin its order against the Upcoming sortHint order over one fixture.
 
 import { compareSortHint, doseSortKey } from "./dose-order";
-import {
-  currentTimeBucket,
-  timeBucket,
-  TIME_BUCKETS,
-} from "./supplement-schedule";
+import { currentTimeBucket, timeBucket, TIME_BUCKETS } from "./intake-schedule";
 import type { IntakeObligation } from "./types";
 
 const ANYTIME_RANK = TIME_BUCKETS.indexOf("Anytime");

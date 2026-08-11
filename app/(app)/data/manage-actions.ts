@@ -160,7 +160,7 @@ export async function deleteDatasetRows(
     // Intake items (supplements/meds) leave notification dedup markers behind on
     // delete; capture each item's dose ids BEFORE its cascade delete removes them, so
     // we can sweep the per-dose escalation markers + the refill marker afterward —
-    // the SAME sweep deleteSupplement runs, so the two delete paths stay consistent
+    // the SAME sweep deleteIntakeItem runs, so the two delete paths stay consistent
     // (#328 parity; without this the bulk path stranded escalation markers).
     const isIntakeItem = kind === "intake-item";
     const undoIds: number[] = [];

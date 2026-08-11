@@ -798,7 +798,7 @@ export const DATASETS: ExportDataset[] = [
     // Adherence log: one row per confirmed dose on a date. A child of
     // intake_items (joined via item_id), so browse/export-only.
     key: "intake_log",
-    label: "Supplement & medication log",
+    label: "IntakeItem & medication log",
     table: "intake_item_logs",
     deletable: false,
     // status + skip_reason distinguish a SKIPPED dose from a taken one (a skipped

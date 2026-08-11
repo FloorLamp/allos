@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import SupplementCombobox from "@/components/SupplementCombobox";
+import IntakeItemCombobox from "@/components/IntakeItemCombobox";
 import Combobox from "@/components/Combobox";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
 import { useIntakeOptions } from "@/components/IntakeOptionsContext";
@@ -44,15 +44,15 @@ import {
   OBLIGATION_LABELS,
   defaultFoodTiming,
   pauseLinkNeedsConfirm,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 import { useConfirm } from "@/components/ConfirmDialog";
 import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
 import type {
   FormResult,
-  Supplement,
-  SupplementDose,
-  SupplementPair,
+  IntakeItem,
+  IntakeDose,
+  IntakePair,
 } from "@/lib/types";
 
 const CATALOG_BY_NAME = new Map(
@@ -72,7 +72,7 @@ export default function SupplementForm({
   supplement,
   doses: initialDoses,
   retiredDoses = [],
-  allSupplements = [],
+  allIntakeItems = [],
   stackItems = [],
   pgxVariants = [],
   pairs: initialPairs = [],
@@ -81,14 +81,14 @@ export default function SupplementForm({
   initialSupply = null,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
-  supplement?: Supplement;
-  doses?: SupplementDose[];
+  supplement?: IntakeItem;
+  doses?: IntakeDose[];
   // Retired doses of the edited item (#2131), rendered with their Restore affordance.
-  retiredDoses?: SupplementDose[];
-  allSupplements?: { id: number; name: string }[];
+  retiredDoses?: IntakeDose[];
+  allIntakeItems?: { id: number; name: string }[];
   stackItems?: InteractionItem[];
   pgxVariants?: PgxVariantInput[];
-  pairs?: SupplementPair[];
+  pairs?: IntakePair[];
   onDone?: () => void;
   trainingRestricted?: boolean;
   // Opened FROM a shared bottle (#1705) — the cabinet's "Add for another person". The
@@ -178,7 +178,7 @@ export default function SupplementForm({
     anchorDate: s?.cadence_anchor_date ?? "",
   }));
 
-  const others = allSupplements.filter((x) => x.id !== s?.id);
+  const others = allIntakeItems.filter((x) => x.id !== s?.id);
   const [pairRows, setPairRows] = useState<PairState[]>(
     initialPairs.map((p) => ({
       otherId: p.a_id === s?.id ? p.b_id : p.a_id,
@@ -269,7 +269,7 @@ export default function SupplementForm({
     formData.set("cadence_interval_days", cadence.intervalDays);
     formData.set("cadence_anchor_date", cadence.anchorDate);
     formData.set("pairs", JSON.stringify(pairRows));
-    const label = name.trim() || "Supplement";
+    const label = name.trim() || "IntakeItem";
     // Consent gate (#1296): a situational hold on a mandatory-priority item silences
     // its reminders while the situation is active — confirm before linking it.
     const pause = pauseSituation.trim();
@@ -365,7 +365,7 @@ export default function SupplementForm({
 
       <div>
         <label className="label">Brand</label>
-        <SupplementCombobox
+        <IntakeItemCombobox
           name="brand"
           ariaLabel="Brand"
           value={brand}
@@ -390,14 +390,14 @@ export default function SupplementForm({
 
       <CriticalEscalation
         fid={fid}
-        supplement={s}
+        item={s}
         critical={critical}
         setCritical={setCritical}
       />
 
       <RefillTracking
         fid={fid}
-        supplement={s}
+        item={s}
         initialSupply={initialSupply}
         onPickSupply={onPickSupply}
       />
@@ -431,7 +431,7 @@ export default function SupplementForm({
 
       <div>
         <label className="label">Name</label>
-        <SupplementCombobox
+        <IntakeItemCombobox
           name="name"
           ariaLabel="Name"
           value={name}
@@ -464,7 +464,7 @@ export default function SupplementForm({
           name="condition"
           value={condition}
           onChange={(e) =>
-            setCondition(e.target.value as Supplement["condition"])
+            setCondition(e.target.value as IntakeItem["condition"])
           }
           className="input"
         >

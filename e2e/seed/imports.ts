@@ -558,7 +558,7 @@ export function seedRecordsBrowser(): void {
   //
   // STAMPED FROM THE FROZEN CLOCK, not SQL's `datetime('now')` default. These rows
   // are dose LIFETIME anchors, and the dose-existence bound (`doseExistsSince`,
-  // lib/supplement-adherence) uses them to decide which nights/days a dose was even
+  // lib/intake-adherence) uses them to decide which nights/days a dose was even
   // alive for — so leaving them on real wall-clock silently coupled a fixture to
   // real-vs-frozen skew. Concretely: the Sleep hero's bedtime-supplement line
   // (lib/queries/sleep.ts) excludes a dose whose lifetime starts AFTER the night it

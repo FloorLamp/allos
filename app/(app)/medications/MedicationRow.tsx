@@ -5,10 +5,10 @@ import Link from "next/link";
 import type {
   MedicationCourse,
   MedicationSideEffect,
-  Supplement,
-  SupplementDose,
+  IntakeItem,
+  IntakeDose,
 } from "@/lib/types";
-import type { AdherenceDot } from "@/lib/supplement-adherence";
+import type { AdherenceDot } from "@/lib/intake-adherence";
 import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import {
   sortCourses,
@@ -34,10 +34,10 @@ import OverflowMenu, {
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useToast } from "@/components/Toast";
-import { deleteSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { deleteIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import { restartMedication } from "@/app/(app)/medications/actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { isPrn } from "@/lib/supplement-schedule";
+import { isPrn } from "@/lib/intake-schedule";
 
 // One medication as a SCANNABLE ROW on the /medications list (#817) — not the old
 // lifecycle card. Name/dose · adherence + refill (#747 parity) · course status ·
@@ -58,8 +58,8 @@ export default function MedicationRow({
   todayStr,
   canWrite = true,
 }: {
-  med: Supplement;
-  doses: SupplementDose[];
+  med: IntakeItem;
+  doses: IntakeDose[];
   courses: MedicationCourse[];
   sideEffects: MedicationSideEffect[];
   strip: AdherenceDot[];
@@ -314,7 +314,7 @@ export default function MedicationRow({
                       close();
                       const fd = new FormData();
                       fd.set("id", String(med.id));
-                      await undoable(deleteSupplement, fd, {
+                      await undoable(deleteIntakeItem, fd, {
                         deletedMessage: "Medication deleted.",
                       });
                     }}

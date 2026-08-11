@@ -20,8 +20,8 @@ import {
   getCardioByActivity,
   getWeights,
   getOutcomeGoals,
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getActivitiesByDate,
@@ -31,7 +31,7 @@ import {
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { loadContextLabel } from "../lifts";
-import { doseDueOn } from "../supplement-schedule";
+import { doseDueOn } from "../intake-schedule";
 import { getIntakeDeltaLine } from "../intake-history";
 import {
   buildRecap,
@@ -101,7 +101,7 @@ function asWorkout(a: { date: string; type: string }): RecapWorkout {
   return { date: a.date, type };
 }
 
-// Supplement adherence (taken / skipped / due) across the window, using the same
+// IntakeItem adherence (taken / skipped / due) across the window, using the same
 // due-dose derivation as the digest (isDueOn honoring workout-day + active
 // situations). Deliberate skips (#232) are tallied separately so the recap can
 // show them alongside taken and exclude them from the percentage denominator.
@@ -113,10 +113,10 @@ function windowAdherence(
   total: { taken: number; skipped: number; due: number };
   days: RecapAdherenceDay[];
 } | null {
-  const active = getSupplements(profileId).filter((s) => s.active);
+  const active = getIntakeItems(profileId).filter((s) => s.active);
   if (active.length === 0) return null;
   const suppById = new Map(active.map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profileId).filter((d) =>
+  const doses = getIntakeDoses(profileId).filter((d) =>
     suppById.has(d.item_id)
   );
   if (doses.length === 0) return null;

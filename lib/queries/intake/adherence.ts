@@ -51,12 +51,12 @@ import type {
   HistoricalDoseOutcome,
 } from "../../types";
 import type { IntakeObligation } from "../../types";
-import { isOfferedOn, slotHintCoversNow } from "../../supplement-schedule";
+import { isOfferedOn, slotHintCoversNow } from "../../intake-schedule";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import { getSituations } from "../../settings";
 import { getEffectiveActiveSituations } from "../derived-situations";
 import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
-import type { SupplementCondition, SupplementKind } from "../../types";
+import type { IntakeCondition, IntakeItemKind } from "../../types";
 
 // A Telegram dose token carries the day the reminder was sent so a late tap still
 // logs to the right calendar date — but the token is client-supplied, so an
@@ -178,7 +178,7 @@ export function getSkippedDoseIds(
 // Every transition of a SCHEDULED dose's daily log row happens here: taken, skipped,
 // and clear, with the on-hand supply coupling inside the same transaction. Until #2039
 // there were two of these — this one (insert-only, typed, the #232 contract) and a
-// tri-state twin living in app/(app)/nutrition/supplement-actions.ts with its own
+// tri-state twin living in app/(app)/nutrition/intake-actions.ts with its own
 // DELETE/INSERT/UPDATE and its own supply crossings — maintained separately, carrying
 // the same #468/#797 BEGIN-IMMEDIATE reasoning in near-identical prose. The repo had
 // already paid for that shape once (lib/offline/writes.ts records a parallel offline
@@ -1105,7 +1105,7 @@ export function getIntakeDoseHistoryForItems(
 export type IntakeDoseLedgerRow = IntakeDoseHistoryRow & {
   item_id: number;
   item_name: string;
-  item_kind: SupplementKind;
+  item_kind: IntakeItemKind;
 };
 
 // The cross-item dose ledger: every taken row this profile recorded in a window,
@@ -1131,7 +1131,7 @@ export function getIntakeDoseHistoryAll(
   profileId: number,
   sinceDate: string,
   opts: {
-    kind?: SupplementKind;
+    kind?: IntakeItemKind;
     itemId?: number;
     // Inclusive last day of the window; omit for "up to the newest row".
     untilDate?: string;
@@ -1654,7 +1654,7 @@ export function getIntakeItemObligation(
 // intake items, or null. Used to AUTHORIZE an escalation-button tap (issue #233):
 // a tap from this chat may confirm/ack on the profile's behalf. Profile-scoped, so
 // a forged supplement id can't leak another profile's escalation chat.
-export function getSupplementEscalateChatId(
+export function getIntakeEscalateChatId(
   profileId: number,
   supplementId: number
 ): string | null {
@@ -1806,9 +1806,9 @@ export function getOfferedIntakeForSlot(
     .all(date, profileId) as {
     id: number;
     name: string;
-    kind: SupplementKind;
+    kind: IntakeItemKind;
     product: string | null;
-    condition: SupplementCondition;
+    condition: IntakeCondition;
     situation: string | null;
     pauseSituationId: number | null;
     amount: string | null;

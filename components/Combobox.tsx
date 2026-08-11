@@ -8,7 +8,7 @@ import { fuzzyFilter, fuzzyFilterWithTerms } from "@/lib/fuzzy";
 //  - false (default): the value must be picked from `options`; an empty match
 //    shows `emptyLabel`. (Used by ActivityCombobox.)
 //  - true: the typed value is kept even when it isn't in `options`, and an
-//    "Use '<query>'" row is offered. (Used by SupplementCombobox.)
+//    "Use '<query>'" row is offered. (Used by IntakeItemCombobox.)
 // `onPick` fires only when the user actually chooses an entry (vs. typing), so
 // callers can auto-fill sibling fields.
 // `groupFor` (#1675) adds optional headers to the EMPTY-QUERY list, which is what

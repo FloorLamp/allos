@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
-import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/supplement-schedule";
+import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 
 type SlotSelection = "all" | TimeBucket;
 
@@ -65,9 +65,9 @@ export default function SupplementSchedule({
   ];
 
   return (
-    <div data-testid="supplement-schedule">
+    <div data-testid="intake-schedule">
       <div
-        data-testid="supplement-schedule-context"
+        data-testid="intake-schedule-context"
         className="-mx-2 mb-2 bg-white/95 px-2 py-1.5 md:sticky md:top-0 md:z-10 md:mb-3 md:py-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -157,7 +157,7 @@ export default function SupplementSchedule({
           data-testid="supplement-slot-selector"
           data-variant="large"
           role="group"
-          aria-label="Supplement time slot"
+          aria-label="IntakeItem time slot"
           className="grid grid-cols-4 gap-1.5 sm:gap-2"
         >
           {slotOptions.map((option) => (

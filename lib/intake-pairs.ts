@@ -1,4 +1,4 @@
-import type { SupplementPair } from "./types";
+import type { IntakePair } from "./types";
 
 // Canonical ordering for an intake-item "take together / keep apart" pair
 // (intake_item_pairs). The relation is direction-independent, so a pair is stored
@@ -42,7 +42,7 @@ export interface KeepApartWarning {
 // warning. Returns one keyed warning per offending pair, in the pairs' order (#435).
 export function separatePairWarnings(
   itemIdsInBucket: Iterable<number>,
-  pairs: SupplementPair[]
+  pairs: IntakePair[]
 ): KeepApartWarning[] {
   const ids = new Set(itemIdsInBucket);
   return pairs

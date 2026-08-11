@@ -5,8 +5,8 @@
 
 import type {
   FoodTiming,
-  Supplement,
-  SupplementCondition,
+  IntakeItem,
+  IntakeCondition,
   IntakeObligation,
 } from "./types";
 import {
@@ -65,7 +65,7 @@ export function currentTimeBucket(hhmm: string): TimeBucket {
   return "Before sleep";
 }
 
-export const CONDITION_LABELS: Record<SupplementCondition, string> = {
+export const CONDITION_LABELS: Record<IntakeCondition, string> = {
   daily: "Daily",
   pre_workout: "Pre-workout",
   post_workout: "Post-workout",
@@ -73,14 +73,12 @@ export const CONDITION_LABELS: Record<SupplementCondition, string> = {
   situational: "Situational",
 };
 
-export const CONDITIONS = Object.keys(
-  CONDITION_LABELS
-) as SupplementCondition[];
+export const CONDITIONS = Object.keys(CONDITION_LABELS) as IntakeCondition[];
 
 // Conditions whose meaning depends on fitness/training tracking (workout vs rest
 // day). They're hidden from the schedule dropdown when training is restricted for
 // the profile, mirroring how the Journal/Training surfaces vanish (see age-gate.ts).
-export const WORKOUT_CONDITIONS: SupplementCondition[] = [
+export const WORKOUT_CONDITIONS: IntakeCondition[] = [
   "pre_workout",
   "post_workout",
   "rest_day",
@@ -92,8 +90,8 @@ export const WORKOUT_CONDITIONS: SupplementCondition[] = [
 // value stays valid rather than silently blanking.
 export function availableConditions(
   trainingRestricted: boolean,
-  keep?: SupplementCondition | null
-): SupplementCondition[] {
+  keep?: IntakeCondition | null
+): IntakeCondition[] {
   if (!trainingRestricted) return CONDITIONS;
   return CONDITIONS.filter(
     (c) => !WORKOUT_CONDITIONS.includes(c) || c === keep
@@ -164,7 +162,7 @@ export interface IntakeDayContext {
 }
 
 export function conditionAppliesOn(
-  supp: Pick<Supplement, "condition" | "situation"> & {
+  supp: Pick<IntakeItem, "condition" | "situation"> & {
     pause_situation?: string | null;
   },
   ctx: IntakeDayContext
@@ -196,7 +194,7 @@ export function conditionAppliesOn(
 }
 
 export function isDueOn(
-  supp: Pick<Supplement, "condition" | "situation"> &
+  supp: Pick<IntakeItem, "condition" | "situation"> &
     ItemCadence & {
       obligation?: IntakeObligation;
       pause_situation?: string | null;
@@ -322,7 +320,7 @@ export function slotHintCoversNow(
 // via cadenceLabel, and they never remove it. The condition gate stays, because a hold
 // or a rest-day condition is a statement about TODAY rather than about a calendar.
 export function isOfferedOn(
-  supp: Pick<Supplement, "condition" | "situation"> & {
+  supp: Pick<IntakeItem, "condition" | "situation"> & {
     obligation?: IntakeObligation;
     pause_situation?: string | null;
   },
@@ -339,7 +337,7 @@ export function isOfferedOn(
 // formatter over the shared count, never a second count). Counts active, non-`may`
 // situational items; a paused item (active 0) is excluded.
 export function countSituationalDue(
-  supps: readonly (Pick<Supplement, "condition" | "situation"> & {
+  supps: readonly (Pick<IntakeItem, "condition" | "situation"> & {
     active?: number | boolean;
     obligation?: IntakeObligation;
   })[],
@@ -417,7 +415,7 @@ export function heldResumeAcknowledgment(
 // question — silencing a medication is worth asking about whatever its obligation —
 // which is exactly the job #1505 left kind holding.)
 export function pauseLinkNeedsConfirm(
-  item: Pick<Supplement, "kind" | "obligation">
+  item: Pick<IntakeItem, "kind" | "obligation">
 ): boolean {
   return item.kind === "medication" || item.obligation === "must";
 }
@@ -444,7 +442,7 @@ export function pauseLinkNeedsConfirm(
 // to distinguish committed intake from on-demand intake do so by LABELLING the
 // contribution, not by dropping it.
 export function contributesToDailyLimit(
-  item: Pick<Supplement, "condition">
+  item: Pick<IntakeItem, "condition">
 ): boolean {
   return item.condition === "daily";
 }
@@ -575,7 +573,7 @@ export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
 // its kind. The safety tier is unchanged and stays obligation-BLIND: missed-dose
 // escalation reads the unfiltered gather, and the interaction (#144) / PGx (#710) /
 // UL (#148) warnings fire identically for a `may` member.
-export function isPushedIntake(item: Pick<Supplement, "obligation">): boolean {
+export function isPushedIntake(item: Pick<IntakeItem, "obligation">): boolean {
   return item.obligation !== "may";
 }
 
@@ -584,7 +582,7 @@ export function isPushedIntake(item: Pick<Supplement, "obligation">): boolean {
 // misses, contributes to no fraction, and appears in the administrations ledger only.
 // Separate from isPushedIntake on purpose: they coincide today, and they are answers
 // to different questions ("do we contact?" vs "can this fail?").
-export function accruesMisses(item: Pick<Supplement, "obligation">): boolean {
+export function accruesMisses(item: Pick<IntakeItem, "obligation">): boolean {
   return item.obligation !== "may";
 }
 
@@ -593,14 +591,14 @@ export function accruesMisses(item: Pick<Supplement, "obligation">): boolean {
 // second message is the over-contact this model exists to stop. The per-item
 // `critical` opt-in still applies INSIDE must — this widens nothing, it narrows the
 // eligible set.
-export function escalatesOnMiss(item: Pick<Supplement, "obligation">): boolean {
+export function escalatesOnMiss(item: Pick<IntakeItem, "obligation">): boolean {
   return item.obligation === "must";
 }
 
 // PRN shape (#798/#851): the amount-only dose row, the redose interval/max notice and
 // the over-max finding all key off `may`, which absorbed `as_needed`. Named for what
 // callers mean so the collapse reads as one concept rather than a magic string.
-export function isPrn(item: Pick<Supplement, "obligation">): boolean {
+export function isPrn(item: Pick<IntakeItem, "obligation">): boolean {
   return item.obligation === "may";
 }
 

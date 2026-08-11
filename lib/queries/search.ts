@@ -18,7 +18,7 @@ import {
   MAX_CITATIONS,
   type RecordCitation,
 } from "../record-qa";
-import type { SupplementKind } from "../types";
+import type { IntakeItemKind } from "../types";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
 import {
   CONDITION_REPRESENTATIVE_IDS,
@@ -237,7 +237,7 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     id: number;
     name: string;
     active: number;
-    kind: SupplementKind;
+    kind: IntakeItemKind;
     quantity_on_hand: number | null;
   }[];
   return rows.map((r) => ({

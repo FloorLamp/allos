@@ -8,9 +8,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
-} from "@/app/(app)/nutrition/supplement-actions";
+  addIntakeItem,
+  updateIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
 import {
   acceptPrescriberLink,
   declinePrescriberLink,
@@ -54,7 +54,7 @@ function insertCondition(profileId: number, name: string): number {
 describe("#1051 med form picker resolves an INDIVIDUAL (not the org default)", () => {
   it("creates the prescriber provider as type='individual'", async () => {
     const { profile } = seedActor();
-    const res = await addSupplement(
+    const res = await addIntakeItem(
       fd({
         name: "Amoxicillin",
         kind: "medication",
@@ -82,7 +82,7 @@ describe("#1051 med form picker resolves an INDIVIDUAL (not the org default)", (
         .run().lastInsertRowid
     );
     // No explicit picker value — the free-text prescriber resolves the individual.
-    const res = await addSupplement(
+    const res = await addIntakeItem(
       fd({
         name: "Amoxicillin",
         kind: "medication",
@@ -100,7 +100,7 @@ describe("#1052 the 'For condition…' picker sets the indication", () => {
     const { profile } = seedActor();
     const condA = insertCondition(profile.id, "Otitis media");
     const condB = insertCondition(profile.id, "Hypertension");
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Amoxicillin",
         kind: "medication",
@@ -111,7 +111,7 @@ describe("#1052 the 'For condition…' picker sets the indication", () => {
     expect(medRow(medId).indication_condition_id).toBe(condA);
 
     // Edit → change to condB.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: medId,
         name: "Amoxicillin",
@@ -122,7 +122,7 @@ describe("#1052 the 'For condition…' picker sets the indication", () => {
     expect(medRow(medId).indication_condition_id).toBe(condB);
 
     // Edit → clear.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({ id: medId, name: "Amoxicillin", kind: "medication" })
     );
     expect(medRow(medId).indication_condition_id).toBeNull();
@@ -130,7 +130,7 @@ describe("#1052 the 'For condition…' picker sets the indication", () => {
 
   it("ignores a foreign/invalid condition id", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Amoxicillin",
         kind: "medication",
@@ -151,7 +151,7 @@ describe("#1051 prescriber suggest-and-accept persistence", () => {
         )
         .run().lastInsertRowid
     );
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Amoxicillin",
         kind: "medication",
@@ -186,7 +186,7 @@ describe("#1052 indication suggest-and-accept persistence", () => {
   it("accept links; decline is remembered", async () => {
     const { profile } = seedActor();
     const condId = insertCondition(profile.id, "Migraine");
-    await addSupplement(fd({ name: "Sumatriptan", kind: "medication" }));
+    await addIntakeItem(fd({ name: "Sumatriptan", kind: "medication" }));
     const medId = lastMedId(profile.id);
 
     const declined = await declineIndicationLink(

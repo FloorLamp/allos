@@ -4,13 +4,13 @@
 // the raw results to these helpers, so the cross-profile view is built without
 // any new cross-profile SQL and the logic stays unit-testable.
 
-import { doseDueOn, type IntakeDayContext } from "./supplement-schedule";
+import { doseDueOn, type IntakeDayContext } from "./intake-schedule";
 import type { DoseCadence, ItemCadence } from "./intake-cadence";
 import { goalBarClass, goalPct, isGoalLive } from "./outcome-goals";
-import type { OutcomeGoal, Supplement } from "./types";
+import type { OutcomeGoal, IntakeItem } from "./types";
 import type { GoalProgress } from "./goal-progress";
 
-// ---- Supplement adherence (today) ----
+// ---- IntakeItem adherence (today) ----
 
 export interface Adherence {
   taken: number;
@@ -31,7 +31,7 @@ export function supplementAdherenceToday(
   doses: (DoseCadence & { id: number; item_id: number })[],
   activeSuppById: Map<
     number,
-    Pick<Supplement, "condition" | "situation" | "obligation"> & ItemCadence
+    Pick<IntakeItem, "condition" | "situation" | "obligation"> & ItemCadence
   >,
   ctx: IntakeDayContext,
   takenDoseIds: Set<number>

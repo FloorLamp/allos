@@ -6,7 +6,7 @@ import { buildBiomarkerSupplementMap } from "@/scripts/gen-biomarker-supplement-
 import { curatedSupplementBiomarkers } from "@/lib/supplement-suggest-curated";
 import canonicalSeed from "@/lib/canonical-biomarkers.json";
 import { FOOD_DRUG_INTERACTIONS } from "@/lib/datasets/food-drug-interactions";
-import { FOOD_TIMINGS } from "@/lib/supplement-schedule";
+import { FOOD_TIMINGS } from "@/lib/intake-schedule";
 
 // Anti-drift pins for the baked biomarker→supplement map (issue #2378), mirroring the
 // #577 food-map pins: the committed JSON must be a FIXED POINT of the generator; every

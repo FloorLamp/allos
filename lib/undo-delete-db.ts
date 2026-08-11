@@ -253,7 +253,7 @@ export function captureDelete(
     // throw while a protocol still points at this supplement/medication. Null it in
     // the same transaction; the protocol survives, its intervention link is honestly
     // gone (not restored on undo, like the sibling equipment_id/supply-decrement
-    // side effects). Centralized here so both delete paths — deleteSupplement and the
+    // side effects). Centralized here so both delete paths — deleteIntakeItem and the
     // Data → Manage bulk delete — inherit it.
     if (spec.ownedTable === "intake_items") {
       db.prepare(

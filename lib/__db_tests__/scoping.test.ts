@@ -15,7 +15,7 @@ import {
   getOutcomeGoals,
   getBodyMetrics,
   getClinicalObservations,
-  getSupplements,
+  getIntakeItems,
   getImmunizations,
   getImmunizationOverrides,
 } from "@/lib/queries";
@@ -57,14 +57,14 @@ describe("reads are scoped to the querying profile", () => {
     expect(squatA?.totalSets).toBe(2);
   });
 
-  it("getBodyMetrics / getOutcomeGoals / getSupplements return only A's rows", () => {
+  it("getBodyMetrics / getOutcomeGoals / getIntakeItems return only A's rows", () => {
     expect(getBodyMetrics(a.profileId).every((m) => m.weight_kg === 70)).toBe(
       true
     );
     expect(
       getOutcomeGoals(a.profileId).every((g) => g.title.startsWith("AAA"))
     ).toBe(true);
-    const supps = getSupplements(a.profileId);
+    const supps = getIntakeItems(a.profileId);
     expect(supps.length).toBe(2);
     expect(supps.every((s) => s.name.startsWith("AAA"))).toBe(true);
     expect(supps.some((s) => s.name.startsWith("BBB"))).toBe(false);

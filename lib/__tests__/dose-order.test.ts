@@ -5,7 +5,7 @@ import {
   compareSortHint,
   type DoseDayEntry,
 } from "../dose-order";
-import { timeBucket, TIME_BUCKETS } from "../supplement-schedule";
+import { timeBucket, TIME_BUCKETS } from "../intake-schedule";
 
 // A dose-day fixture that mixes buckets, priorities, stacks and names so every
 // tier of the comparator is exercised. Deliberately shuffled so an alphabetical

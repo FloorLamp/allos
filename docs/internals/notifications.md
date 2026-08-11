@@ -3147,7 +3147,7 @@ slot's `notify_last_supp_<slot>` marker is stamped on delivery. Telegram
 rebuilds re-render the whole merged keyboard footprint.
 
 **Priority floor (#1156).** `doseReminderNotifies`
-(`lib/supplement-schedule.ts`): low-priority SUPPLEMENTS are excluded from every
+(`lib/intake-schedule.ts`): low-priority SUPPLEMENTS are excluded from every
 dose-reminder send (window/merged/post-workout/digest count/buttons) at the
 send-assembly layer (`notifiableWindowDoses`); medications are never gated, and
 the escalation gather deliberately reads the unfiltered `collectWindowDoses` —

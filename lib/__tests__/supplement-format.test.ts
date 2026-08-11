@@ -6,12 +6,12 @@ import {
   intakeItemNoun,
   type WindowDose,
 } from "../notifications/supplement-format";
-import type { SupplementKind } from "../types";
-import type { AdherenceSummary } from "../supplement-adherence";
+import type { IntakeItemKind } from "../types";
+import type { AdherenceSummary } from "../intake-adherence";
 import type {
   FoodTiming,
-  Supplement,
-  SupplementDose,
+  IntakeItem,
+  IntakeDose,
   IntakeObligation,
 } from "../types";
 
@@ -19,9 +19,9 @@ function supp(
   id: number,
   name: string,
   obligation: IntakeObligation = "should",
-  kind: SupplementKind = "supplement",
+  kind: IntakeItemKind = "supplement",
   product: string | null = null
-): Supplement {
+): IntakeItem {
   return {
     id,
     name,
@@ -72,7 +72,7 @@ function dose(
   supplementId: number,
   amount: string | null,
   foodTiming: FoodTiming = "any"
-): SupplementDose {
+): IntakeDose {
   return {
     id,
     item_id: supplementId,
@@ -107,7 +107,7 @@ function entry(opts: {
   skipped?: boolean;
   obligation?: IntakeObligation;
   food?: FoodTiming;
-  kind?: SupplementKind;
+  kind?: IntakeItemKind;
   product?: string | null;
   adherence?: Partial<AdherenceSummary>;
 }): WindowDose {

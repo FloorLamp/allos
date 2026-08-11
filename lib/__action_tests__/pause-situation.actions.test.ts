@@ -1,7 +1,7 @@
 // SERVER-ACTION TIER — the pause-during-situation write path (#1296) and the
 // surgery-bridge accept/dismiss actions (#1299).
 //
-// Covers: linking/unlinking a pause situation through addSupplement/updateSupplement
+// Covers: linking/unlinking a pause situation through addIntakeItem/updateIntakeItem
 // (the pause_situation_id resolves to the id-keyed row and re-keys on edit); the
 // surgery-bridge accept (idempotent ACTIVATE, not toggle) and clear; and the
 // per-procedure dismiss writing the suppression row that the gather then filters.
@@ -9,20 +9,20 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
+  addIntakeItem,
+  updateIntakeItem,
   activateSurgerySituation,
   clearSurgerySituation,
   dismissSurgeryBridge,
-} from "@/app/(app)/nutrition/supplement-actions";
-import { getSupplements, getSurgeryBridgeSuggestions } from "@/lib/queries";
+} from "@/app/(app)/nutrition/intake-actions";
+import { getIntakeItems, getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { getActiveSituations } from "@/lib/settings";
 import { surgeryBridgeDismissKey } from "@/lib/surgery-bridge";
 import { shiftDateStr } from "@/lib/date";
 import { seedActor, fd } from "./harness";
 
 function pauseLinkOf(profileId: number, name: string) {
-  const s = getSupplements(profileId).find((x) => x.name === name)!;
+  const s = getIntakeItems(profileId).find((x) => x.name === name)!;
   return {
     pause_situation: s.pause_situation,
     pause_situation_id: s.pause_situation_id,
@@ -35,8 +35,8 @@ describe("pause-situation link write path (#1296)", () => {
     profileId = seedActor().profile.id;
   });
 
-  it("addSupplement resolves the pause link to an id-keyed situation row", async () => {
-    const res = await addSupplement(
+  it("addIntakeItem resolves the pause link to an id-keyed situation row", async () => {
+    const res = await addIntakeItem(
       fd({
         name: "Fish Oil",
         condition: "daily",
@@ -50,16 +50,16 @@ describe("pause-situation link write path (#1296)", () => {
     expect(link.pause_situation_id).not.toBeNull();
   });
 
-  it("updateSupplement re-keys and clears the pause link", async () => {
-    await addSupplement(
+  it("updateIntakeItem re-keys and clears the pause link", async () => {
+    await addIntakeItem(
       fd({ name: "Vitamin E", condition: "daily", priority: "high" })
     );
-    const id = getSupplements(profileId).find(
+    const id = getIntakeItems(profileId).find(
       (s) => s.name === "Vitamin E"
     )!.id;
 
     // Link it.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id,
         name: "Vitamin E",
@@ -73,7 +73,7 @@ describe("pause-situation link write path (#1296)", () => {
     );
 
     // Clear it (blank field).
-    await updateSupplement(
+    await updateIntakeItem(
       fd({ id, name: "Vitamin E", condition: "daily", priority: "high" })
     );
     const cleared = pauseLinkOf(profileId, "Vitamin E");

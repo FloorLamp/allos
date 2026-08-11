@@ -9,7 +9,7 @@ import {
   normalizeWeekdays,
   parseWeekdays,
 } from "@/lib/intake-cadence";
-import { doseDueOn, isDueOn, isOfferedOn } from "@/lib/supplement-schedule";
+import { doseDueOn, isDueOn, isOfferedOn } from "@/lib/intake-schedule";
 
 // The calendar half of intake dueness (issue #1602). These are the rules that decide
 // whether a weekly methotrexate is due TODAY, so the cases below are deliberately

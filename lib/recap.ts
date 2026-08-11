@@ -227,7 +227,7 @@ export interface RecapInput {
   // Personal records (strength + cardio) dated within the current window; labels
   // are short display names ("Bench press", "Running") for the summary line.
   prLabels: string[];
-  // Supplement/medication adherence over the window, or null when nothing was
+  // IntakeItem/medication adherence over the window, or null when nothing was
   // due. `skipped` counts deliberate skips (#232), excluded from the percentage.
   adherence: { taken: number; skipped: number; due: number } | null;
   // One row per day of the window that had a due dose (#2178). The WEEK's line is a
@@ -741,7 +741,7 @@ export function buildRecap(input: RecapInput): Recap {
     });
   }
 
-  // Supplement adherence. Deliberate skips (#232) are excluded from the
+  // IntakeItem adherence. Deliberate skips (#232) are excluded from the
   // denominator (they weren't intended doses) but shown as a trailing note.
   if (input.adherence && input.adherence.due > 0) {
     const { taken, skipped, due } = input.adherence;

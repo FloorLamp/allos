@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import {
   lookupRxcui,
   lookupRxcuiIngredients,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import { parseRxcuiIngredients, dominantRxNormCandidate } from "@/lib/rxnorm";
 
 // Shared RxNorm confirm state for BOTH intake forms (#846, extracted from the former

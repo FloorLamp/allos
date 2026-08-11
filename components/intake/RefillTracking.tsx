@@ -1,29 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import type { Supplement } from "@/lib/types";
+import type { IntakeItem } from "@/lib/types";
 import type { SupplyOption } from "@/lib/supply-product";
 import SharedSupplyPicker from "./SharedSupplyPicker";
 
 // The optional refill-tracking block shared by both intake forms (#846): units on
 // hand + units per dose, driving "≈N days left" and the low-supply nudge. Applies to
 // both kinds (supplements and medications track supply the same way). The loaded
-// on-hand value round-trips as a hidden field so updateSupplement can compare-and-set
+// on-hand value round-trips as a hidden field so updateIntakeItem can compare-and-set
 // the concurrently-decremented counter instead of clobbering it (#467).
 export default function RefillTracking({
   fid,
-  supplement,
+  item,
   initialSupply = null,
   onPickSupply,
 }: {
   fid: string | number;
-  supplement?: Supplement;
+  item?: IntakeItem;
   // CREATE mode (#1705): the bottle this form was opened from, and the callback that
   // lets the item form prefill its product fields when one is chosen here.
   initialSupply?: SupplyOption | null;
   onPickSupply?: (supply: SupplyOption | null) => void;
 }) {
-  const s = supplement;
+  const s = item;
   const loadedQty =
     s?.quantity_on_hand != null ? Math.max(0, s.quantity_on_hand) : "";
   // A bottle chosen on a NEW item (#1705) makes it pooled the moment it saves, so the
@@ -104,7 +104,7 @@ export default function RefillTracking({
           />
         </>
       )}
-      {/* The value the form LOADED with, so updateSupplement can compare-and-set
+      {/* The value the form LOADED with, so updateIntakeItem can compare-and-set
           the concurrently-decremented on-hand counter (#467). */}
       <input type="hidden" name="quantity_on_hand_loaded" value={loadedQty} />
       <SharedSupplyPicker

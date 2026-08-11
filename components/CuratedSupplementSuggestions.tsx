@@ -4,7 +4,7 @@ import {
   IconInfoCircle,
 } from "@tabler/icons-react";
 import { NOTICE_TONE } from "@/components/Notice";
-import { FOOD_TIMING_HINTS } from "@/lib/supplement-schedule";
+import { FOOD_TIMING_HINTS } from "@/lib/intake-schedule";
 import type {
   CuratedSupplementSuggestion,
   SupplementSafetyNoteKind,

@@ -17,8 +17,8 @@ import {
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
   getClinicalObservations,
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getBodyMetricDailySeries,
   getWorkoutPresence,
@@ -91,12 +91,12 @@ export default async function HouseholdPage() {
 
     // Today's supplement adherence (x/y): due doses honored via isDueOn.
     const activeSuppById = new Map(
-      getSupplements(pid)
+      getIntakeItems(pid)
         .filter((s) => s.active)
         .map((s) => [s.id, s])
     );
     const adherence = supplementAdherenceToday(
-      getSupplementDoses(pid),
+      getIntakeDoses(pid),
       activeSuppById,
       {
         date: day,

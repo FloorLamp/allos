@@ -37,7 +37,7 @@ import {
   type NotifySchedule,
 } from "../settings";
 import { createLogger } from "../log";
-import { escalatesOnMiss } from "../supplement-schedule";
+import { escalatesOnMiss } from "../intake-schedule";
 
 const log = createLogger("notify");
 

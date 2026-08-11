@@ -12,7 +12,7 @@ import type {
   MedicationCourse,
   MedicationSideEffect,
   SideEffectSeverity,
-  Supplement,
+  IntakeItem,
 } from "./types";
 
 // Prescriber / pharmacy / Rx meta line (issue #313, deduped from the medicine
@@ -23,7 +23,7 @@ import type {
 // the identical line.
 export function medicationMetaLine(
   item: Pick<
-    Supplement,
+    IntakeItem,
     "prescriber" | "pharmacy" | "rx_number" | "provider_name"
   >
 ): string {
@@ -141,10 +141,10 @@ export function currentCourse(
 // `courses` is accepted so a caller with only the course rows (e.g. a test) can
 // fall back to open-course presence; when both agree — as the invariant
 // guarantees — the result is identical.
-export function isMedicationCurrent(med: Supplement): boolean;
+export function isMedicationCurrent(med: IntakeItem): boolean;
 export function isMedicationCurrent(courses: MedicationCourse[]): boolean;
 export function isMedicationCurrent(
-  arg: Supplement | MedicationCourse[]
+  arg: IntakeItem | MedicationCourse[]
 ): boolean {
   if (Array.isArray(arg)) return arg.some(isCourseOpen);
   return arg.active === 1;
@@ -165,7 +165,7 @@ export function courseDurationDays(
 // ---- current-vs-past partition ----
 
 export interface MedicationWithHistory {
-  med: Supplement;
+  med: IntakeItem;
   courses: MedicationCourse[];
   sideEffects: MedicationSideEffect[];
 }

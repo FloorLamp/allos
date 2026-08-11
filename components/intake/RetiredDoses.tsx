@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { SupplementDose } from "@/lib/types";
+import type { IntakeDose } from "@/lib/types";
 import { parseWeekdays, doseCadenceLabel } from "@/lib/intake-cadence";
-import { restoreDose } from "@/app/(app)/nutrition/supplement-actions";
+import { restoreDose } from "@/app/(app)/nutrition/intake-actions";
 import type { DoseState } from "./DoseRowsEditor";
 
 // The RETIRED doses of the item being edited, each with its Restore affordance
@@ -21,7 +21,7 @@ export default function RetiredDoses({
   doses: initialDoses,
   onRestored,
 }: {
-  doses: SupplementDose[];
+  doses: IntakeDose[];
   onRestored: (dose: DoseState & { id: number }) => void;
 }) {
   const [doses, setDoses] = useState(initialDoses);

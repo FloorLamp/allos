@@ -6,7 +6,7 @@
 // values synthetic — no real PHI.
 
 import { describe, it, expect } from "vitest";
-import type { AdherenceDot, AdherenceState } from "@/lib/supplement-adherence";
+import type { AdherenceDot, AdherenceState } from "@/lib/intake-adherence";
 import { INTAKE_DELTA_DAYS } from "@/lib/intake-deltas";
 import {
   DEMOTION_MAX_TAKEN_RATE,

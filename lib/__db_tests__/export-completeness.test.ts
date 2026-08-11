@@ -24,6 +24,17 @@ import { ownedChildTables } from "@/lib/profile-delete";
 import { FHIR_EXPORT_RESOURCE_TYPES } from "@/lib/fhir-export";
 import { FHIR_IMPORT_RESOURCE_TYPES } from "@/lib/fhir";
 
+describe("intake export compatibility (#2484)", () => {
+  it("keeps the versioned supplements key for the shared intake_items dataset", () => {
+    expect(
+      DATASETS.find((dataset) => dataset.key === "supplements")
+    ).toMatchObject({
+      label: "Supplements & Medications",
+      table: "intake_items",
+    });
+  });
+});
+
 // Owned tables whose rows reach the export through the FHIR passport input rather than
 // (or in addition to) a flat dataset. Kept explicit so a domain that ONLY exports via
 // FHIR still counts as covered.

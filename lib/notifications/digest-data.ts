@@ -7,8 +7,8 @@
 import { db, today } from "../db";
 import { shiftDateStr, zonedDateParts } from "../date";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getActivitiesByDate,
@@ -69,7 +69,7 @@ import {
   countSituationalDue,
   doseDueOn,
   heldItemsBy,
-} from "../supplement-schedule";
+} from "../intake-schedule";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -321,9 +321,9 @@ export function gatherDigestInput(
   // play today before the return object is assembled.
   const sleep = gatherDigestSleep(profileId, demoted);
 
-  const active = getSupplements(profileId).filter((s) => s.active);
+  const active = getIntakeItems(profileId).filter((s) => s.active);
   const suppById = new Map(active.map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profileId).filter((d) =>
+  const doses = getIntakeDoses(profileId).filter((d) =>
     suppById.has(d.item_id)
   );
   // Per-day situation resolver (#654): "today" sees the current set (no events after

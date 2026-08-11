@@ -5,7 +5,7 @@ import {
 } from "../quick-add-medication";
 
 // Pure mapping for the OTC medication quick-add (#843, door C). These pin the field
-// shape the client posts to `addSupplement`; the DB-level ROW PARITY with the full
+// shape the client posts to `addIntakeItem`; the DB-level ROW PARITY with the full
 // MedicationForm is proven in the action tier
 // (lib/__action_tests__/quick-add-medication.actions.test.ts).
 
@@ -14,7 +14,7 @@ function toMap(pairs: [string, string][]): Record<string, string> {
 }
 
 describe("quickAddMedicationFields (#843)", () => {
-  it("maps a PRN OTC med to the intake-form fields addSupplement reads", () => {
+  it("maps a PRN OTC med to the intake-form fields addIntakeItem reads", () => {
     const m = toMap(
       quickAddMedicationFields({
         name: "Ibuprofen",
@@ -41,7 +41,7 @@ describe("quickAddMedicationFields (#843)", () => {
     expect(m.redose_notice).toBeUndefined();
   });
 
-  it("omits blank/absent optional fields so addSupplement defaults apply", () => {
+  it("omits blank/absent optional fields so addIntakeItem defaults apply", () => {
     const m = toMap(
       quickAddMedicationFields({
         name: "  Acetaminophen  ",

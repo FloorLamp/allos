@@ -565,7 +565,7 @@ function collectEvents(
         title:
           l.kind === "medication"
             ? "Medication doses confirmed"
-            : "Supplement doses confirmed",
+            : "IntakeItem doses confirmed",
         subtitle: `${l.count} dose${l.count === 1 ? "" : "s"}`,
         detail: compactList((l.names ?? "").split(","), 5),
         href: intakeHref(l.kind),

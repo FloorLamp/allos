@@ -7,12 +7,12 @@
 // shared by several profiles (the chat-id ambiguity fix).
 
 import type { NotificationAction, NotificationMessage } from "./types";
-import type { ActivityType, SupplementKind } from "../types";
+import type { ActivityType, IntakeItemKind } from "../types";
 import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
-import { heldSummaryLine } from "../supplement-schedule";
+import { heldSummaryLine } from "../intake-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { offerTextTail } from "./offer-tail";
 import {
@@ -115,7 +115,7 @@ export interface DigestInput {
   // The distinct kinds among the profile's scheduled/adhered intake items,
   // choosing the reminder noun so a medications-only profile isn't told
   // "supplements" (#380). Optional/empty ⇒ "supplements" (back-compat default).
-  intakeKinds?: SupplementKind[];
+  intakeKinds?: IntakeItemKind[];
   // The merged "what's due" list (issue #1108): the ALREADY-BANDED collectUpcoming
   // output for today (groupUpcoming) — doses, refills, appointments, planned care,
   // preventive, retests, goals, training, … Replaces the digest's own goals/dose
@@ -161,7 +161,7 @@ export interface DigestInput {
   stepsTodayLine?: string | null;
   // Yesterday
   activities: DigestActivity[];
-  // Supplement adherence yesterday, or null when nothing was due. `skipped`
+  // IntakeItem adherence yesterday, or null when nothing was due. `skipped`
   // counts deliberate skips (#232), surfaced alongside taken.
   adherence: { taken: number; skipped: number; due: number } | null;
   // The state changes across the pushed tier (#1505 part 3), classified by the ONE

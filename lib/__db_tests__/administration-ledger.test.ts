@@ -21,10 +21,7 @@ import Database from "better-sqlite3";
 import { db, today } from "@/lib/db";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 import { lastNDates } from "@/lib/date";
-import {
-  indexTakenByDose,
-  supplementAdherenceStrip,
-} from "@/lib/supplement-adherence";
+import { indexTakenByDose, intakeAdherenceStrip } from "@/lib/intake-adherence";
 import {
   markDoseTaken,
   logAdministration,
@@ -32,7 +29,7 @@ import {
   getAdministrationsForItemsOnDate,
   getPrnMedicationsForQuickLog,
 } from "@/lib/queries";
-import type { Supplement } from "@/lib/types";
+import type { IntakeItem } from "@/lib/types";
 
 // A minimal daily supplement for the pure strip computation (isDueOn reads only
 // condition / situation / obligation).
@@ -40,7 +37,7 @@ const DAILY_SUPP = {
   condition: "daily",
   situation: null,
   obligation: "should",
-} as unknown as Supplement;
+} as unknown as IntakeItem;
 
 const ANCHOR = "2026-07-15"; // arbitrary strip anchor; the strip is pure over dates
 
@@ -124,7 +121,7 @@ function stripOf(
   rows: { dose_id: number; date: string; status: "taken" | "skipped" }[],
   doseIds: number[]
 ) {
-  return supplementAdherenceStrip(
+  return intakeAdherenceStrip(
     DAILY_SUPP,
     doseIds.map((id) => ({ id })),
     lastNDates(ANCHOR, 14),

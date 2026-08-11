@@ -32,7 +32,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 import type { FoodTiming } from "../lib/types";
-import type { TimeBucket } from "../lib/supplement-schedule";
+import type { TimeBucket } from "../lib/intake-schedule";
 import rawSource from "./medication-descriptions.source.json";
 
 const OUT = path.join(

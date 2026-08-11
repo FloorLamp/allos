@@ -42,7 +42,7 @@ export interface NarrativeInput {
   prs: Finding[];
   // "What's trending" digest findings (domain "digest"), already adapted.
   trends: Finding[];
-  // Supplement/med adherence for the day, or null when nothing is scheduled.
+  // IntakeItem/med adherence for the day, or null when nothing is scheduled.
   adherence: NarrativeAdherence | null;
   // Forward-looking Upcoming findings, pre-sorted soonest-first by the caller.
   upcoming: Finding[];
@@ -184,7 +184,7 @@ function adherenceSentence(
   if (taken === 0) {
     return `Supplements & meds: none of ${total} logged as taken yet — worth catching up.`;
   }
-  return `Supplement & med adherence slipped to ${taken}/${total} — try to close the gap tomorrow.`;
+  return `IntakeItem & med adherence slipped to ${taken}/${total} — try to close the gap tomorrow.`;
 }
 
 function upcomingSentence(upcoming: Finding[]): string | null {
@@ -282,7 +282,7 @@ export function buildInsightPrompt(ctx: InsightContext): string {
   lines.push(`\n## Trends (trailing 90 days)`);
   lines.push(...findingLines(ctx.trends, "No notable trends."));
 
-  lines.push(`\n## Supplement & med adherence`);
+  lines.push(`\n## IntakeItem & med adherence`);
   lines.push(
     ctx.adherence && ctx.adherence.total > 0
       ? `- ${ctx.adherence.taken}/${ctx.adherence.total} taken today.`

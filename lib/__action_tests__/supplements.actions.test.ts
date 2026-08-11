@@ -1,8 +1,8 @@
 // SERVER-ACTION TIER — supplement/intake write path.
 //
-// Covers addSupplement (manual source), the refill invariant on toggleTaken
+// Covers addIntakeItem (manual source), the refill invariant on toggleTaken
 // (decrement on confirm / re-increment on untoggle), setItemActive, a
-// kind='medication' create, and the updateSupplement dose reconcile —
+// kind='medication' create, and the updateIntakeItem dose reconcile —
 // specifically that a schedule edit can never destroy or rewrite adherence
 // history (removed-but-logged doses are retired, not cascaded; confirmed
 // amounts are snapshotted onto the log).
@@ -11,21 +11,21 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
+  addIntakeItem,
+  updateIntakeItem,
   toggleTaken,
   setDoseStatus,
   setItemActive,
   dismissIntakeFinding,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import {
   stopMedication,
   restartMedication,
 } from "@/app/(app)/medications/actions";
 import { deleteDatasetRows } from "@/app/(app)/data/manage-actions";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getMedicationCourses,
   getInteractionWarnings,
   getFindingSuppressions,
@@ -76,33 +76,33 @@ function logStatus(doseId: number, date: string): string | undefined {
 
 beforeEach(() => revalidate.mockClear());
 
-describe("addSupplement", () => {
+describe("addIntakeItem", () => {
   it("creates a manual-source supplement with a dose", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Creatine", condition: "daily", priority: "high" })
     );
 
-    const items = getSupplements(profile.id);
+    const items = getIntakeItems(profile.id);
     expect(items).toHaveLength(1);
     const row = itemRow(items[0].id);
     expect(row.name).toBe("Creatine");
     expect(row.kind).toBe("supplement");
     expect(row.source).toBe("manual");
     // parseDoses always yields at least one dose row.
-    expect(getSupplementDoses(profile.id)).toHaveLength(1);
+    expect(getIntakeDoses(profile.id)).toHaveLength(1);
     expect(revalidate).toHaveBeenCalledWith("/nutrition");
   });
 
   it("blank name is rejected (no row)", async () => {
     const { profile } = seedActor();
-    await addSupplement(fd({ name: "   " }));
-    expect(getSupplements(profile.id)).toHaveLength(0);
+    await addIntakeItem(fd({ name: "   " }));
+    expect(getIntakeItems(profile.id)).toHaveLength(0);
   });
 
   it("creates a kind='medication' row with prescriber", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Lisinopril",
         kind: "medication",
@@ -110,7 +110,7 @@ describe("addSupplement", () => {
         started_on: "2025-02-03",
       })
     );
-    const items = getSupplements(profile.id);
+    const items = getIntakeItems(profile.id);
     const row = itemRow(items[0].id);
     expect(row.kind).toBe("medication");
     expect(row.prescriber).toBe("Dr House");
@@ -119,17 +119,17 @@ describe("addSupplement", () => {
 
   it("edits the selected medication course start date", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Lisinopril",
         kind: "medication",
         started_on: "2025-01-01",
       })
     );
-    const med = getSupplements(profile.id)[0];
+    const med = getIntakeItems(profile.id)[0];
     const course = getMedicationCourses(profile.id)[0];
 
-    const result = await updateSupplement(
+    const result = await updateIntakeItem(
       fd({
         id: med.id,
         name: med.name,
@@ -145,7 +145,7 @@ describe("addSupplement", () => {
 
   it("keeps an as-needed start date optional and allows it to be cleared", async () => {
     const { profile } = seedActor();
-    const added = await addSupplement(
+    const added = await addIntakeItem(
       fd({
         name: "As-needed test medication",
         kind: "medication",
@@ -155,11 +155,11 @@ describe("addSupplement", () => {
     );
 
     expect(added.ok).toBe(true);
-    const med = getSupplements(profile.id)[0];
+    const med = getIntakeItems(profile.id)[0];
     let course = getMedicationCourses(profile.id)[0];
     expect(course.started_on).toBeNull();
 
-    const dated = await updateSupplement(
+    const dated = await updateIntakeItem(
       fd({
         id: med.id,
         name: med.name,
@@ -173,7 +173,7 @@ describe("addSupplement", () => {
     course = getMedicationCourses(profile.id)[0];
     expect(course.started_on).toBe("2025-02-03");
 
-    const cleared = await updateSupplement(
+    const cleared = await updateIntakeItem(
       fd({
         id: med.id,
         name: med.name,
@@ -189,7 +189,7 @@ describe("addSupplement", () => {
 
   it("still requires a start date for a scheduled medication", async () => {
     const { profile } = seedActor();
-    const result = await addSupplement(
+    const result = await addIntakeItem(
       fd({
         name: "Scheduled test medication",
         kind: "medication",
@@ -201,18 +201,18 @@ describe("addSupplement", () => {
       ok: false,
       error: "Enter a start date that isn't in the future.",
     });
-    expect(getSupplements(profile.id)).toHaveLength(0);
+    expect(getIntakeItems(profile.id)).toHaveLength(0);
   });
 });
 
 describe("toggleTaken refill invariant", () => {
   it("confirm decrements on-hand by qty_per_dose; untoggle re-increments", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Vitamin D", quantity_on_hand: 10, qty_per_dose: 2 })
     );
-    const suppId = getSupplements(profile.id)[0].id;
-    const doseId = getSupplementDoses(profile.id)[0].id;
+    const suppId = getIntakeItems(profile.id)[0].id;
+    const doseId = getIntakeDoses(profile.id)[0].id;
     const date = today(profile.id);
 
     // Confirm: log inserted AND supply drops 10 → 8.
@@ -228,15 +228,15 @@ describe("toggleTaken refill invariant", () => {
 
   // Issue #467: the edit form writes quantity_on_hand as an absolute value, but a
   // dose confirm (incl. the poll sidecar) decrements it concurrently. The form now
-  // submits the value it LOADED with, and updateSupplement compare-and-sets: an
+  // submits the value it LOADED with, and updateIntakeItem compare-and-sets: an
   // untouched on-hand field must NOT clobber a decrement logged while the form was open.
   it("stale-form save preserves a concurrent dose decrement (compare-and-set)", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Metformin", quantity_on_hand: 30, qty_per_dose: 1 })
     );
-    const suppId = getSupplements(profile.id)[0].id;
-    const doseId = getSupplementDoses(profile.id)[0].id;
+    const suppId = getIntakeItems(profile.id)[0].id;
+    const doseId = getIntakeDoses(profile.id)[0].id;
 
     // A dose is confirmed AFTER the caregiver's form loaded at 30 → supply 30 → 29.
     await toggleTaken(fd({ dose_id: doseId }));
@@ -244,7 +244,7 @@ describe("toggleTaken refill invariant", () => {
 
     // Caregiver saves an unrelated tweak (rename); the on-hand field is UNCHANGED
     // from the loaded 30, so the decrement to 29 must survive (not revert to 30).
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Metformin XR",
@@ -259,16 +259,16 @@ describe("toggleTaken refill invariant", () => {
 
   it("an intentional refill (changed field) is still written absolutely", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Metformin", quantity_on_hand: 4, qty_per_dose: 1 })
     );
-    const suppId = getSupplements(profile.id)[0].id;
-    const doseId = getSupplementDoses(profile.id)[0].id;
+    const suppId = getIntakeItems(profile.id)[0].id;
+    const doseId = getIntakeDoses(profile.id)[0].id;
     await toggleTaken(fd({ dose_id: doseId })); // 4 → 3 meanwhile
 
     // The user refills: form loaded at 4, they typed 90. The changed field wins
     // (the edit form IS the refill path) even over the concurrent decrement.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Metformin",
@@ -283,11 +283,11 @@ describe("toggleTaken refill invariant", () => {
   it("a dose belonging to another profile cannot be toggled", async () => {
     // Owner seeds a tracked supplement.
     const owner = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Zinc", quantity_on_hand: 5, qty_per_dose: 1 })
     );
-    const suppId = getSupplements(owner.profile.id)[0].id;
-    const foreignDoseId = getSupplementDoses(owner.profile.id)[0].id;
+    const suppId = getIntakeItems(owner.profile.id)[0].id;
+    const foreignDoseId = getIntakeDoses(owner.profile.id)[0].id;
 
     // A different actor tries to toggle the owner's dose id.
     const attacker = seedActor();
@@ -296,18 +296,18 @@ describe("toggleTaken refill invariant", () => {
     // No log created and the owner's supply is untouched.
     expect(logCount(foreignDoseId, today(owner.profile.id))).toBe(0);
     expect(itemRow(suppId).quantity_on_hand).toBe(5);
-    expect(getSupplements(attacker.profile.id)).toHaveLength(0);
+    expect(getIntakeItems(attacker.profile.id)).toHaveLength(0);
   });
 });
 
 describe("setDoseStatus tri-state + skip supply invariant (#232)", () => {
   async function seedTracked(qty = 10) {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Vitamin D", quantity_on_hand: qty, qty_per_dose: 2 })
     );
-    const suppId = getSupplements(profile.id)[0].id;
-    const doseId = getSupplementDoses(profile.id)[0].id;
+    const suppId = getIntakeItems(profile.id)[0].id;
+    const doseId = getIntakeDoses(profile.id)[0].id;
     return { profile, suppId, doseId, date: today(profile.id) };
   }
 
@@ -368,7 +368,7 @@ describe("setDoseStatus tri-state + skip supply invariant (#232)", () => {
   });
 });
 
-describe("updateSupplement dose reconcile", () => {
+describe("updateIntakeItem dose reconcile", () => {
   const dosesJson = (
     doses: {
       id?: number;
@@ -379,7 +379,7 @@ describe("updateSupplement dose reconcile", () => {
 
   async function seedSplitDose() {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Omega-3",
         doses: dosesJson([
@@ -388,8 +388,8 @@ describe("updateSupplement dose reconcile", () => {
         ]),
       })
     );
-    const suppId = getSupplements(profile.id)[0].id;
-    const [morning, evening] = getSupplementDoses(profile.id);
+    const suppId = getIntakeItems(profile.id)[0].id;
+    const [morning, evening] = getIntakeDoses(profile.id);
     return { profile, suppId, morning, evening };
   }
 
@@ -405,7 +405,7 @@ describe("updateSupplement dose reconcile", () => {
     await toggleTaken(fd({ dose_id: morning.id }));
 
     // Restructure 2×500 mg → 1×1000 mg: neither old dose is resubmitted.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Omega-3",
@@ -420,7 +420,7 @@ describe("updateSupplement dose reconcile", () => {
     // The never-logged dose is hard-deleted (nothing referenced it).
     expect(doseRow(evening.id)).toBeUndefined();
     // The current schedule shows only the new dose.
-    const current = getSupplementDoses(profile.id);
+    const current = getIntakeDoses(profile.id);
     expect(current).toHaveLength(1);
     expect(current[0].amount).toBe("1000 mg");
   });
@@ -429,18 +429,18 @@ describe("updateSupplement dose reconcile", () => {
     const { profile, suppId, morning } = await seedSplitDose();
     const date = today(profile.id);
     await toggleTaken(fd({ dose_id: morning.id }));
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Omega-3",
         doses: dosesJson([{ amount: "1000 mg", time_of_day: "08:00" }]),
       })
     );
-    const keptId = getSupplementDoses(profile.id)[0].id;
+    const keptId = getIntakeDoses(profile.id)[0].id;
 
     // Second edit resubmits only the live dose (as the form does) — the
     // retired row must not be swept up by the reconcile's delete.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Omega-3",
@@ -459,7 +459,7 @@ describe("updateSupplement dose reconcile", () => {
     await toggleTaken(fd({ dose_id: morning.id }));
 
     // Brand switch, same schedule shape: both doses resubmitted WITH ids.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Omega-3",
@@ -488,7 +488,7 @@ describe("updateSupplement dose reconcile", () => {
     const { profile, suppId, morning } = await seedSplitDose();
     const date = today(profile.id);
     await toggleTaken(fd({ dose_id: morning.id }));
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Omega-3",
@@ -506,8 +506,8 @@ describe("updateSupplement dose reconcile", () => {
 describe("setItemActive", () => {
   it("moves the active flag to the POSTED state for the acting profile's item", async () => {
     const { profile } = seedActor();
-    await addSupplement(fd({ name: "Magnesium" }));
-    const id = getSupplements(profile.id)[0].id;
+    await addIntakeItem(fd({ name: "Magnesium" }));
+    const id = getIntakeItems(profile.id)[0].id;
     expect(itemRow(id).active).toBe(1);
 
     const res = await setItemActive(fd({ id, to: "0" }));
@@ -517,8 +517,8 @@ describe("setItemActive", () => {
 
   it("REFUSES a stale tab's intent instead of inverting it (#2133)", async () => {
     const { profile } = seedActor();
-    await addSupplement(fd({ name: "Zinc" }));
-    const id = getSupplements(profile.id)[0].id;
+    await addIntakeItem(fd({ name: "Zinc" }));
+    const id = getIntakeItems(profile.id)[0].id;
     // Someone else already paused the item; a tab still rendering "Pause" posts to=0.
     await setItemActive(fd({ id, to: "0" }));
     const res = await setItemActive(fd({ id, to: "0" }));
@@ -530,8 +530,8 @@ describe("setItemActive", () => {
 
   it("medication pause/resume keeps course history in sync and refuses repeats", async () => {
     const { profile } = seedActor();
-    await addSupplement(fd({ name: "Lisinopril", kind: "medication" }));
-    const id = getSupplements(profile.id)[0].id;
+    await addIntakeItem(fd({ name: "Lisinopril", kind: "medication" }));
+    const id = getIntakeItems(profile.id)[0].id;
     const openCourses = () =>
       getMedicationCourses(profile.id).filter((c) => c.stopped_on == null);
     expect(openCourses()).toHaveLength(1);
@@ -560,10 +560,10 @@ describe("setItemActive", () => {
 describe("refill episode marker cleanup on state change (#325)", () => {
   async function seedTrackedWithMarker() {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Vitamin D", quantity_on_hand: 30, qty_per_dose: 1 })
     );
-    const id = getSupplements(profile.id)[0].id;
+    const id = getIntakeItems(profile.id)[0].id;
     // Simulate a prior low-supply nudge having fired.
     setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
@@ -572,11 +572,11 @@ describe("refill episode marker cleanup on state change (#325)", () => {
     return { profile, id };
   }
 
-  it("updateSupplement clears the marker when quantity tracking is turned off", async () => {
+  it("updateIntakeItem clears the marker when quantity tracking is turned off", async () => {
     const { profile, id } = await seedTrackedWithMarker();
     // Re-save with a blank quantity_on_hand → tracking off (null). The form loaded
     // at 30, so clearing the field is a real change (#467 compare-and-set writes it).
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id,
         name: "Vitamin D",
@@ -589,11 +589,11 @@ describe("refill episode marker cleanup on state change (#325)", () => {
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
   });
 
-  it("updateSupplement leaves the marker while the item stays tracked", async () => {
+  it("updateIntakeItem leaves the marker while the item stays tracked", async () => {
     const { profile, id } = await seedTrackedWithMarker();
     // Still tracked (a mere quantity edit) → marker must survive; the tick owns the
     // low→recovered clear, not the write seam.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({ id, name: "Vitamin D", quantity_on_hand: 25, qty_per_dose: 1 })
     );
     expect(itemRow(id).quantity_on_hand).toBe(25);
@@ -630,8 +630,8 @@ describe("refill episode marker cleanup on state change (#325)", () => {
 
   it("setItemActive on an UNtracked item leaves any unrelated marker untouched", async () => {
     const { profile } = seedActor();
-    await addSupplement(fd({ name: "Magnesium" })); // no quantity tracking
-    const id = getSupplements(profile.id)[0].id;
+    await addIntakeItem(fd({ name: "Magnesium" })); // no quantity tracking
+    const id = getIntakeItems(profile.id)[0].id;
     // A stray marker on this untracked item is not this seam's concern; pausing an
     // item that was never in the tracked set is not a "left the set" transition.
     setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
@@ -643,7 +643,7 @@ describe("refill episode marker cleanup on state change (#325)", () => {
 
   it("pausing a tracked MEDICATION also clears its marker", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Lisinopril",
         kind: "medication",
@@ -651,7 +651,7 @@ describe("refill episode marker cleanup on state change (#325)", () => {
         qty_per_dose: 1,
       })
     );
-    const id = getSupplements(profile.id)[0].id;
+    const id = getIntakeItems(profile.id)[0].id;
     setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
     await setItemActive(fd({ id, to: "0" }));
     expect(itemRow(id).active).toBe(0);
@@ -669,7 +669,7 @@ describe("refill episode marker cleanup on state change (#325)", () => {
 describe("refill marker cleanup on Stop/Restart (#603)", () => {
   async function seedTrackedMedWithMarker() {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Metformin",
         kind: "medication",
@@ -677,7 +677,7 @@ describe("refill marker cleanup on Stop/Restart (#603)", () => {
         qty_per_dose: 1,
       })
     );
-    const id = getSupplements(profile.id)[0].id;
+    const id = getIntakeItems(profile.id)[0].id;
     setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
     return { profile, id };
   }
@@ -710,7 +710,7 @@ describe("refill marker cleanup on Stop/Restart (#603)", () => {
 });
 
 // The Data → Manage bulk delete of supplements must sweep the SAME notification
-// markers deleteSupplement does (issue #603 / #328 parity): the item's low-supply
+// markers deleteIntakeItem does (issue #603 / #328 parity): the item's low-supply
 // refill marker AND each dose's missed-dose escalation marker. Before the shared
 // cleanup helper, the undoable bulk-delete branch stranded both — permanently, for
 // the id-keyed escalation markers.
@@ -720,7 +720,7 @@ describe("bulk delete sweeps intake markers (#603)", () => {
 
   it("deleteDatasetRows('supplements') clears the refill + escalation markers", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Atorvastatin",
         kind: "medication",
@@ -729,15 +729,15 @@ describe("bulk delete sweeps intake markers (#603)", () => {
         doses: dosesJson([{ amount: "20 mg", time_of_day: "20:00" }]),
       })
     );
-    const id = getSupplements(profile.id)[0].id;
-    const doseId = getSupplementDoses(profile.id)[0].id;
+    const id = getIntakeItems(profile.id)[0].id;
+    const doseId = getIntakeDoses(profile.id)[0].id;
     // Simulate a prior low-supply nudge + a prior missed-dose escalation.
     setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
     setProfileSetting(profile.id, escalationMarkerKey(doseId), "2026-07-01");
 
     const res = await deleteDatasetRows("supplements", [id]);
     expect(res.ok).toBe(true);
-    expect(getSupplements(profile.id)).toHaveLength(0);
+    expect(getIntakeItems(profile.id)).toHaveLength(0);
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
     expect(
       getProfileSetting(profile.id, escalationMarkerKey(doseId))
@@ -757,9 +757,9 @@ describe("rxcui_ingredients write path (issue #279)", () => {
       .get(id) as { rxcui: string | null; rxcui_ingredients: string | null };
   }
 
-  it("addSupplement persists the confirmed rxcui + its ingredient CUIs", async () => {
+  it("addIntakeItem persists the confirmed rxcui + its ingredient CUIs", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Combination tablet B",
         kind: "medication",
@@ -767,7 +767,7 @@ describe("rxcui_ingredients write path (issue #279)", () => {
         rxcui_ingredients: '["52175","5487"]',
       })
     );
-    const id = getSupplements(profile.id)[0].id;
+    const id = getIntakeItems(profile.id)[0].id;
     const row = rxcuiRow(id);
     expect(row.rxcui).toBe("999999");
     expect(JSON.parse(row.rxcui_ingredients!)).toEqual(["52175", "5487"]);
@@ -775,7 +775,7 @@ describe("rxcui_ingredients write path (issue #279)", () => {
     // The stored ingredients drive interaction detection: adding potassium
     // chloride now flags the ace_arb × potassium rule even though the product
     // rxcui matches no concept and the name matches no synonym.
-    await addSupplement(fd({ name: "Potassium chloride 10 mEq" }));
+    await addIntakeItem(fd({ name: "Potassium chloride 10 mEq" }));
     const hits = getInteractionWarnings(profile.id);
     expect(hits).toHaveLength(1);
     expect(hits[0].severity).toBe("moderate");
@@ -783,27 +783,27 @@ describe("rxcui_ingredients write path (issue #279)", () => {
 
   it("normalizes a forged/garbage ingredients payload to NULL", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Tablet D",
         rxcui: "11289",
         rxcui_ingredients: '["DROP TABLE intake_items", {"x":1}]',
       })
     );
-    const id = getSupplements(profile.id)[0].id;
+    const id = getIntakeItems(profile.id)[0].id;
     expect(rxcuiRow(id).rxcui_ingredients).toBeNull();
   });
 
   it("ingredients are coupled to the code: no rxcui ⇒ no cached ingredients", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Tablet E", rxcui_ingredients: '["52175"]' })
     );
-    const id = getSupplements(profile.id)[0].id;
+    const id = getIntakeItems(profile.id)[0].id;
     expect(rxcuiRow(id).rxcui_ingredients).toBeNull();
 
-    // updateSupplement clearing the code also clears the stale ingredient cache.
-    await updateSupplement(
+    // updateIntakeItem clearing the code also clears the stale ingredient cache.
+    await updateIntakeItem(
       fd({
         id,
         name: "Tablet E",
@@ -812,7 +812,7 @@ describe("rxcui_ingredients write path (issue #279)", () => {
       })
     );
     expect(rxcuiRow(id).rxcui_ingredients).toBe('["52175"]');
-    await updateSupplement(fd({ id, name: "Tablet E" }));
+    await updateIntakeItem(fd({ id, name: "Tablet E" }));
     expect(rxcuiRow(id)).toEqual({ rxcui: null, rxcui_ingredients: null });
   });
 });

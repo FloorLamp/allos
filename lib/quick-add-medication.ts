@@ -2,7 +2,7 @@
 // quick-add collapses the common case — an over-the-counter PRN med (ibuprofen,
 // acetaminophen) reached for the moment you feel sick — to name + amount + a PRN
 // preset. It creates the SAME intake_items row the full MedicationForm would: it posts
-// the identical field names to the SAME `addSupplement` action, so there's no second
+// the identical field names to the SAME `addIntakeItem` action, so there's no second
 // write model and no migration. This module owns the name→field mapping so BOTH the
 // client quick-add form and the row-parity action test share ONE computation (the
 // "one question, one computation" rule at the create seam).
@@ -38,7 +38,7 @@ export interface QuickAddMedicationInput {
   rxcuiIngredients?: string[] | null;
 }
 
-// The intake-form field entries the quick-add submits — the SAME names `addSupplement`
+// The intake-form field entries the quick-add submits — the SAME names `addIntakeItem`
 // reads (kind='medication', condition='daily', the PRN interval/max, one dose row). A
 // blank/absent field is OMITTED so the action's own defaults (priority 'high', etc.)
 // apply exactly as they do for the full form. Returned as [key, value] pairs so a
@@ -71,7 +71,7 @@ export function quickAddMedicationFields(
     if (interval != null) push("min_interval_hours", String(interval));
     if (max != null) push("max_daily_count", String(max));
     // The redose reminder is opt-in and only fires when BOTH numbers are confirmed
-    // (mirrors addSupplement's own gate) — an opt-in with nothing confirmed is dropped.
+    // (mirrors addIntakeItem's own gate) — an opt-in with nothing confirmed is dropped.
     if (input.redoseNotice && interval != null && max != null)
       out.push(["redose_notice", "1"]);
   }
@@ -95,7 +95,7 @@ export function quickAddMedicationFields(
   return out;
 }
 
-// Build the FormData the client quick-add posts to `addSupplement`.
+// Build the FormData the client quick-add posts to `addIntakeItem`.
 export function quickAddMedicationFormData(
   input: QuickAddMedicationInput
 ): FormData {

@@ -12,7 +12,7 @@ import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { getAdministrationsForItemOnDate } from "@/lib/queries";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
-import { deleteAdministration } from "@/app/(app)/nutrition/supplement-actions";
+import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { seedActor, fd, type TestProfile } from "./harness";
 

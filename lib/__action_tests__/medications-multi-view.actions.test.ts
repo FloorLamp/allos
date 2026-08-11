@@ -19,8 +19,8 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   setDoseStatus,
-  deleteSupplement,
-} from "@/app/(app)/nutrition/supplement-actions";
+  deleteIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
 import { stopMedication } from "@/app/(app)/medications/actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -153,10 +153,10 @@ describe("deep management stays acting-only on the boards (#1373 edit gate)", ()
     expect(isActive(itemId)).toBe(1);
   });
 
-  it("deleteSupplement is scoped to the ACTING profile — a kid's med id is a no-op", async () => {
+  it("deleteIntakeItem is scoped to the ACTING profile — a kid's med id is a no-op", async () => {
     const { kid } = seedCaregiver();
     const { itemId } = seedScheduledDose(kid.id);
-    await deleteSupplement(fd({ id: itemId }));
+    await deleteIntakeItem(fd({ id: itemId }));
     // Still present (the delete was scoped to the acting home profile).
     const row = db
       .prepare("SELECT id FROM intake_items WHERE id = ?")

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { matchFoodInteractions } from "@/lib/food-drug-interactions";
 import { meetsMinLifeStage, meetsMinAge } from "@/lib/life-stage";
 import { dominantRxNormCandidate } from "@/lib/rxnorm";
-import { collapsePrnDoses } from "@/lib/supplement-schedule";
+import { collapsePrnDoses } from "@/lib/intake-schedule";
 import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
 import { resolveIntakePrefill } from "@/lib/intake-prefill";
 import {

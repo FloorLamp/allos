@@ -51,8 +51,8 @@ import { db, today } from "../db";
 import { createLogger } from "../log";
 import {
   getIntakeItemNames,
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getFrequencyTargetProgress,
@@ -796,7 +796,7 @@ function refillSupplyState(profileId: number): {
   const rates = getRefillRates(profileId);
   const low = new Set<number>();
   const names = new Map<number, string>();
-  for (const s of getSupplements(profileId)) {
+  for (const s of getIntakeItems(profileId)) {
     names.set(s.id, s.name);
     if (!s.active || s.quantity_on_hand == null) continue;
     const daysLeft = daysOfSupplyLeft(

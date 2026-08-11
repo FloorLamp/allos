@@ -17,7 +17,7 @@
 
 import { getSleepSignal } from "./coaching";
 import { getFindingSuppressions } from "./upcoming/suppressions";
-import { getSupplements } from "./intake/schedule";
+import { getIntakeItems } from "./intake/schedule";
 import { getActiveSituations } from "../settings";
 import { getNavRelevance } from "./nav-relevance";
 import { listCyclePeriods } from "../cycle-store";
@@ -179,7 +179,7 @@ export function getDerivedSituationLines(
   date: string,
   temperatureUnit: TemperatureUnit = "C"
 ): DerivedSituationLines {
-  const supps = getSupplements(profileId);
+  const supps = getIntakeItems(profileId);
   const poorSleepItems = keyedItemCount(supps, BUILTIN_POOR_SLEEP_SITUATION);
   const periodItems = keyedItemCount(supps, BUILTIN_PERIOD_SITUATION);
   const anyWeatherKeyed = WEATHER_SITUATIONS.some(

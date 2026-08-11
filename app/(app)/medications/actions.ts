@@ -44,7 +44,7 @@ export type MedicationAdministrationResult =
 // module — every action here shares the ONE auth tier (requireWriteAccess), so the
 // #319 write-access scanner sees a uniform gate. The shared dose/item CRUD
 // (add/update/toggle/delete an intake_item, dose check-offs) stays kind-agnostic in
-// app/(app)/nutrition/supplement-actions.ts and is imported by the Medication card
+// app/(app)/nutrition/intake-actions.ts and is imported by the Medication card
 // too. These are thin session wrappers over the profile-scoped lib/queries helpers,
 // which own the transactions + ownership checks.
 

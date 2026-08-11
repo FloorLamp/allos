@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation";
 import type {
   MedicationCourse,
   MedicationSideEffect,
-  Supplement,
-  SupplementDose,
-  SupplementPair,
+  IntakeItem,
+  IntakeDose,
+  IntakePair,
 } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -24,7 +24,7 @@ import {
   unresolvedCount,
   medicationMetaLine,
 } from "@/lib/medication-history";
-import type { AdherenceDot } from "@/lib/supplement-adherence";
+import type { AdherenceDot } from "@/lib/intake-adherence";
 import type { AdherenceCalendarModel } from "@/lib/adherence-calendar";
 import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
@@ -63,10 +63,10 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useToast } from "@/components/Toast";
 import {
-  updateSupplement,
-  deleteSupplement,
+  updateIntakeItem,
+  deleteIntakeItem,
   deleteAdministration,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import {
   stopMedication,
   restartMedication,
@@ -77,7 +77,7 @@ import {
 } from "./actions";
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { isPrn } from "@/lib/supplement-schedule";
+import { isPrn } from "@/lib/intake-schedule";
 import { symptomLabelOptions } from "@/lib/symptoms";
 
 // A side effect is described in the SAME human vocabulary a symptom is (#1676), so
@@ -91,10 +91,10 @@ const SIDE_EFFECT_OPTIONS = symptomLabelOptions();
 // supplements (rendered one row per dose), a medication renders once so its
 // per-medication history has a single home.
 export default function MedicationCard({
-  supplement,
+  medication,
   doses,
   retiredDoses = [],
-  allSupplements,
+  allIntakeItems,
   stackItems,
   pgxVariants,
   pairs,
@@ -128,14 +128,14 @@ export default function MedicationCard({
   initialAction,
   conditions = [],
 }: {
-  supplement: Supplement;
-  doses: SupplementDose[];
+  medication: IntakeItem;
+  doses: IntakeDose[];
   // Retired doses of this med (#2131), for the edit form's Restore affordance.
-  retiredDoses?: SupplementDose[];
-  allSupplements: { id: number; name: string }[];
+  retiredDoses?: IntakeDose[];
+  allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
-  pairs: SupplementPair[];
+  pairs: IntakePair[];
   takenDoseIds: Set<number>;
   skippedDoseIds: Set<number>;
   due: boolean;
@@ -206,7 +206,7 @@ export default function MedicationCard({
   // The profile's conditions for the "For condition…" indication picker (#1052).
   conditions?: { id: number; name: string }[];
 }) {
-  const s = supplement;
+  const s = medication;
   const router = useRouter();
   const [editing, setEditing] = useState(canWrite && initialAction === "edit");
   const [stopping, setStopping] = useState(
@@ -241,11 +241,11 @@ export default function MedicationCard({
     return (
       <div className="card relative z-20 bg-slate-50/60 dark:bg-ink-900/60">
         <MedicationForm
-          action={updateSupplement}
-          supplement={s}
+          action={updateIntakeItem}
+          medication={s}
           doses={doses}
           retiredDoses={retiredDoses}
-          allSupplements={allSupplements}
+          allIntakeItems={allIntakeItems}
           stackItems={stackItems}
           pgxVariants={pgxVariants}
           pairs={pairs}
@@ -489,7 +489,7 @@ export default function MedicationCard({
                         close();
                         const fd = new FormData();
                         fd.set("id", String(s.id));
-                        await undoable(deleteSupplement, fd, {
+                        await undoable(deleteIntakeItem, fd, {
                           deletedMessage: "Medication deleted.",
                         });
                       }}

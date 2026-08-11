@@ -12,9 +12,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
-} from "@/app/(app)/nutrition/supplement-actions";
+  addIntakeItem,
+  updateIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
 import { seedActor, fd } from "./harness";
 
 vi.mocked(revalidatePath);
@@ -75,7 +75,7 @@ const dose = (extra: Record<string, unknown> = {}) => ({
 
 describe("#1602 — the item cadence round-trips through the form", () => {
   it("stores a weekly cadence and reads it back canonically", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Methotrexate",
         kind: "medication",
@@ -96,7 +96,7 @@ describe("#1602 — the item cadence round-trips through the form", () => {
   });
 
   it("stores an interval cadence with its anchor", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Patch",
         kind: "medication",
@@ -115,7 +115,7 @@ describe("#1602 — the item cadence round-trips through the form", () => {
   });
 
   it("defaults to daily when the form says nothing (every existing surface is unchanged)", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Vitamin D", doses: JSON.stringify([dose()]) })
     );
     expect(cadenceOf(lastItemId())).toMatchObject({
@@ -127,7 +127,7 @@ describe("#1602 — the item cadence round-trips through the form", () => {
   });
 
   it("rejects garbage at the boundary instead of storing it", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Nonsense",
         cadence_kind: "fortnightly", // not a member of the enum
@@ -148,7 +148,7 @@ describe("#1602 — the item cadence round-trips through the form", () => {
   });
 
   it("clears the other branch's fields when the kind changes", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Switcher",
         cadence_kind: "weekly",
@@ -161,7 +161,7 @@ describe("#1602 — the item cadence round-trips through the form", () => {
 
     // Switch to interval: the stale weekday list must not survive, or it would
     // silently re-narrow the schedule if the kind were ever switched back.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(id),
         name: "Switcher",
@@ -179,7 +179,7 @@ describe("#1602 — the item cadence round-trips through the form", () => {
     });
 
     // …and back to daily clears everything.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(id),
         name: "Switcher",
@@ -199,7 +199,7 @@ describe("#1602 — the item cadence round-trips through the form", () => {
 
 describe("#1602 — per-dose weekdays and windows round-trip", () => {
   it("stores an alternating pair as two rows of one item", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Warfarin",
         kind: "medication",
@@ -216,7 +216,7 @@ describe("#1602 — per-dose weekdays and windows round-trip", () => {
   });
 
   it("stores a taper as windowed rows and drops an unparseable date", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Prednisone",
         kind: "medication",
@@ -240,7 +240,7 @@ describe("#1602 — per-dose weekdays and windows round-trip", () => {
 
   // THE invariant. A schedule edit must never rewrite what already happened.
   it("narrowing an existing dose to certain days keeps its id and its adherence history", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Ibandronate", doses: JSON.stringify([dose()]) })
     );
     const id = lastItemId();
@@ -254,7 +254,7 @@ describe("#1602 — per-dose weekdays and windows round-trip", () => {
       ).run(before.id, id, date);
     }
 
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(id),
         name: "Ibandronate",
@@ -292,12 +292,12 @@ describe("#1602 — per-dose weekdays and windows round-trip", () => {
   });
 
   it("ending a dose's window is not a retire — the row stays live", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({ name: "Taper Row", doses: JSON.stringify([dose()]) })
     );
     const id = lastItemId();
     const rowId = dosesOf(id)[0].id;
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: String(id),
         name: "Taper Row",

@@ -35,7 +35,7 @@ describe("intake form split boundary (issue #846)", () => {
   });
 
   it("MedicationForm renders no supplement kind concepts", () => {
-    // Supplement catalog/brands, the stack grouping, the workout condition
+    // IntakeItem catalog/brands, the stack grouping, the workout condition
     // scheduler — none belong on a medication.
     //
     // NOT forbidden since #1505: the obligation selector. It used to be listed here

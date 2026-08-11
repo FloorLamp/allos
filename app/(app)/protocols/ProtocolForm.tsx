@@ -412,7 +412,7 @@ export default function ProtocolForm({
               {intakeItems.length > 0 && (
                 <div>
                   <label className="label" htmlFor={`pr-intake-${uid}`}>
-                    Supplement or medication{" "}
+                    IntakeItem or medication{" "}
                     <span className="text-slate-400">(optional)</span>
                   </label>
                   <select

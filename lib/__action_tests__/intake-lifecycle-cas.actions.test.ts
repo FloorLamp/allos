@@ -10,20 +10,20 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
+  addIntakeItem,
+  updateIntakeItem,
   acceptSuggestion,
   restoreDose,
   toggleTaken,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import {
   stopMedication,
   restartMedication,
 } from "@/app/(app)/medications/actions";
 import {
-  getSupplements,
-  getSupplementDoses,
-  getSupplementDosesForHistory,
+  getIntakeItems,
+  getIntakeDoses,
+  getIntakeDosesForHistory,
   getRetiredDoses,
   getMedicationCourses,
   unretireDose,
@@ -65,7 +65,7 @@ describe("acceptSuggestion pending-claim CAS (#2139)", () => {
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.error).toMatch(/no longer available/);
 
-    const items = getSupplements(profile.id).filter(
+    const items = getIntakeItems(profile.id).filter(
       (s) => s.name === "Vitamin K2"
     );
     expect(items).toHaveLength(1);
@@ -85,7 +85,7 @@ describe("acceptSuggestion pending-claim CAS (#2139)", () => {
     ).run(sid);
     const res = await acceptSuggestion(fd({ id: sid }));
     expect(res.ok).toBe(false);
-    expect(getSupplements(profile.id)).toHaveLength(0);
+    expect(getIntakeItems(profile.id)).toHaveLength(0);
   });
 });
 
@@ -94,8 +94,8 @@ describe("acceptSuggestion pending-claim CAS (#2139)", () => {
 describe("stop/restart render the course core's refusals (#2132)", () => {
   async function seedMed() {
     const { profile } = seedActor();
-    await addSupplement(fd({ name: "Lisinopril", kind: "medication" }));
-    const id = getSupplements(profile.id)[0].id;
+    await addIntakeItem(fd({ name: "Lisinopril", kind: "medication" }));
+    const id = getIntakeItems(profile.id)[0].id;
     return { profile, id };
   }
 
@@ -139,7 +139,7 @@ describe("stop/restart render the course core's refusals (#2132)", () => {
 describe("dose retire → restore lifecycle (#2131)", () => {
   async function seedRetiredMorning() {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Omega-3",
         doses: dosesJson([
@@ -148,11 +148,11 @@ describe("dose retire → restore lifecycle (#2131)", () => {
         ]),
       })
     );
-    const suppId = getSupplements(profile.id)[0].id;
-    const [morning, evening] = getSupplementDoses(profile.id);
+    const suppId = getIntakeItems(profile.id)[0].id;
+    const [morning, evening] = getIntakeDoses(profile.id);
     // Log the morning dose so removing it retires (rather than deletes) it.
     await toggleTaken(fd({ dose_id: morning.id }));
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Omega-3",
@@ -175,11 +175,11 @@ describe("dose retire → restore lifecycle (#2131)", () => {
     // Retired: off the schedule, listed for the Restore affordance, dueness closed
     // from the retire day (the appended closing version) while past days keep their
     // original rule.
-    expect(getSupplementDoses(profile.id).map((d) => d.id)).not.toContain(
+    expect(getIntakeDoses(profile.id).map((d) => d.id)).not.toContain(
       morning.id
     );
     expect(getRetiredDoses(profile.id).map((d) => d.id)).toContain(morning.id);
-    const retiredView = getSupplementDosesForHistory(profile.id).find(
+    const retiredView = getIntakeDosesForHistory(profile.id).find(
       (d) => d.id === morning.id
     )!;
     expect(doseOnDay(retiredView, todayStr)).toBe(false);
@@ -191,13 +191,11 @@ describe("dose retire → restore lifecycle (#2131)", () => {
 
     // Back on the schedule under its ORIGINAL id (the #2000 stability argument), and
     // due again from the restore day.
-    expect(getSupplementDoses(profile.id).map((d) => d.id)).toContain(
-      morning.id
-    );
+    expect(getIntakeDoses(profile.id).map((d) => d.id)).toContain(morning.id);
     expect(getRetiredDoses(profile.id).map((d) => d.id)).not.toContain(
       morning.id
     );
-    const restoredView = getSupplementDosesForHistory(profile.id).find(
+    const restoredView = getIntakeDosesForHistory(profile.id).find(
       (d) => d.id === morning.id
     )!;
     expect(doseOnDay(restoredView, todayStr)).toBe(true);
@@ -224,7 +222,7 @@ describe("dose retire → restore lifecycle (#2131)", () => {
   it("a live dose in the same slot blocks the restore with schedule-conflict", async () => {
     const { profile, suppId, morning, evening } = await seedRetiredMorning();
     // A NEW live dose now occupies the retired dose's 08:00 slot.
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: suppId,
         name: "Omega-3",

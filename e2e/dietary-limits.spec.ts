@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-// Supplement stack-total UL warning (issue #148). The seed gives profile 1 a
+// IntakeItem stack-total UL warning (issue #148). The seed gives profile 1 a
 // two-product magnesium stack — Magnesium Glycinate 400 mg + Magnesium Citrate
 // 200 mg = 600 mg elemental/day — which exceeds the 350 mg supplemental Tolerable
 // Upper Intake Level. The Supplements tab must surface an informational warning row that

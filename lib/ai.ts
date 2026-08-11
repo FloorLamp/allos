@@ -4,7 +4,7 @@ import {
   getActivitiesByDate,
   getOutcomeGoals,
   getIntakeLogsForDate,
-  getSupplements,
+  getIntakeItems,
   getStrengthByExercise,
   getCardioByActivity,
   getConditions,
@@ -92,8 +92,8 @@ function gatherInsightContext(
   const series = buildDigestSeries(profileId, loginId ?? 0, range, restricted);
   const trends = summarizeTrends(series, { limit: 5 }).map(trendItemToFinding);
 
-  // Supplement/med adherence for the day.
-  const activeIntake = getSupplements(profileId).filter((s) => s.active);
+  // IntakeItem/med adherence for the day.
+  const activeIntake = getIntakeItems(profileId).filter((s) => s.active);
   const takenToday = getIntakeLogsForDate(profileId, date);
   const adherence =
     activeIntake.length > 0
@@ -117,7 +117,7 @@ function gatherInsightContext(
   const conditions = getConditions(profileId, { status: "active" }).map(
     (c) => c.name
   );
-  const intake = getSupplements(profileId)
+  const intake = getIntakeItems(profileId)
     .filter((s) => s.active)
     .map((s) => ({ name: s.name, kind: s.kind }));
 

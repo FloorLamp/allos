@@ -14,7 +14,7 @@ import {
   TIME_BUCKET_LABELS,
   workoutDaySubtitleLabel,
   WORKOUT_CONDITIONS,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 
 describe("availableConditions", () => {
   it("returns every condition when training is not restricted", () => {
@@ -320,7 +320,7 @@ describe("contributesToDailyLimit (#635, obligation-blind since #1505)", () => {
     // total and lost a UL warning. Obligation must never shrink a risk number.
     //
     // Note these go through a VARIABLE, not a fresh literal: the narrowed
-    // Pick<Supplement, "condition"> signature makes an obligation-bearing literal an
+    // Pick<IntakeItem, "condition"> signature makes an obligation-bearing literal an
     // excess-property error, and that type boundary IS the guarantee — the predicate
     // cannot read obligation even by accident. The loop below asserts the observable
     // half: obligation never changes the answer.

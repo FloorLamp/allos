@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import { NOTICE_TONE, type NoticeTone } from "@/components/Notice";
-import { dismissIntakeFinding } from "@/app/(app)/nutrition/supplement-actions";
+import { dismissIntakeFinding } from "@/app/(app)/nutrition/intake-actions";
 
 // Inline dismiss control for the page's finding cards (#435): posts the finding's
 // dedupeKey to the namespace-guarded dismissIntakeFinding action, which hides it

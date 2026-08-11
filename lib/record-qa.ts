@@ -56,7 +56,7 @@ export const DOMAIN_LABEL: Record<SearchDomain, string> = {
   dental: "Dental record",
   skin: "Skin lesion",
   activity: "Activity",
-  supplement: "Supplement or medication",
+  supplement: "IntakeItem or medication",
   protocol: "Protocol",
   practice: "Wellness practice",
   equipment: "Equipment",
@@ -251,7 +251,7 @@ export function buildRetrievalSet(
 }
 
 // One citation rendered as a prompt line: "[1] Amoxicillin — Active (2026-03-04)
-// [Supplement or medication]". Only the row's OWN fields; nothing computed.
+// [IntakeItem or medication]". Only the row's OWN fields; nothing computed.
 function citationLine(c: RecordCitation): string {
   const bits = [c.subtitle, c.date].filter((b) => b && String(b).trim());
   const tail = bits.length ? ` — ${bits.join(" · ")}` : "";

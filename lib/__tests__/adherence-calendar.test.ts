@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildAdherenceCalendar } from "@/lib/adherence-calendar";
-import type { AdherenceDot } from "@/lib/supplement-adherence";
+import type { AdherenceDot } from "@/lib/intake-adherence";
 
 describe("buildAdherenceCalendar (#852 item 5)", () => {
   it("pads to whole Sun→Sat weeks and preserves each day's state", () => {

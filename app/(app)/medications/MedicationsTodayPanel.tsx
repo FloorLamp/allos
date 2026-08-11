@@ -8,7 +8,7 @@ import type { TimeFormat } from "@/lib/format-date";
 import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import { formatGivenAtClockWithRelativeAge } from "@/lib/administration-format";
 import type { MedCardData } from "./med-data";
-import { isPrn } from "@/lib/supplement-schedule";
+import { isPrn } from "@/lib/intake-schedule";
 
 // The Today panel that LEADS the Medications page (#817): the daily-use job first.
 // Scheduled meds due today get their dose check-offs (the shared tri-state

@@ -5,7 +5,7 @@ import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import { setDoseStatus } from "@/app/(app)/nutrition/supplement-actions";
+import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
 import { localDate, shouldQueueOffline } from "@/lib/offline/queue";
 import {
   DOSE_ACTION_AMBER,

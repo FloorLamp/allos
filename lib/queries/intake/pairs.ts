@@ -2,12 +2,12 @@
 // got). The profile-scoping guard walks all of lib/, so these split modules stay
 // covered; every read is profile-scoped directly or through the parent
 // intake_items JOIN.
-// Supplement pairings (take-together / keep-apart).
+// Intake-item pairings (take-together / keep-apart).
 import { db } from "../../db";
-import type { SupplementPair } from "../../types";
+import type { IntakePair } from "../../types";
 
-// "Take together" / "keep apart" pairs, with both supplement names joined in.
-export function getSupplementPairs(profileId: number): SupplementPair[] {
+// "Take together" / "keep apart" pairs, with both item names joined in.
+export function getIntakePairs(profileId: number): IntakePair[] {
   return db
     .prepare(
       `SELECT p.*, a.name AS a_name, b.name AS b_name
@@ -17,5 +17,5 @@ export function getSupplementPairs(profileId: number): SupplementPair[] {
        WHERE a.profile_id = ?
        ORDER BY p.id`
     )
-    .all(profileId) as SupplementPair[];
+    .all(profileId) as IntakePair[];
 }

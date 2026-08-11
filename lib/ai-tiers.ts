@@ -56,7 +56,7 @@ export type AiTaskClass =
   | "narrative"
   // The coverage-gap descriptive blurb (#550). Light.
   | "coverage"
-  // Supplement suggestions (incl. auto-suggest). Light.
+  // IntakeItem suggestions (incl. auto-suggest). Light.
   | "suggestions"
   // Free-text symptom mapping onto the vocabulary (#877). Light.
   | "symptom-map"

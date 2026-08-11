@@ -103,7 +103,7 @@ export function allergenConflict(
   return null;
 }
 
-// Supplement/ingredient tokens a food–drug interaction entry warns about, keyed by
+// IntakeItem/ingredient tokens a food–drug interaction entry warns about, keyed by
 // the entry id in food-drug-interactions.json. That dataset's `food` field is human
 // prose ("Vitamin K–rich foods (leafy greens)"), so for a DETERMINISTIC drop we map
 // the CONTRAINDICATION-flavored entries to the concrete supplement ingredient names

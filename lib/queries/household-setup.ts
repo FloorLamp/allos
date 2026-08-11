@@ -4,7 +4,7 @@
 // channel, adding a dose or starting onboarding clears its line BY CONSTRUCTION.
 //
 // NO NEW SQL LIVES HERE ON PURPOSE. Each fact is asked through the reader its own domain
-// already owns — `getSupplements` / `getSupplementDoses` for the roster,
+// already owns — `getIntakeItems` / `getIntakeDoses` for the roster,
 // `getOnboardingState` + `getOnboardingDataPresence` for onboarding,
 // `assessProfilePreventive` + `kindedScheduled` + `getFindingSuppressions` for the
 // preventive planner's own outstanding set, `getNotifySchedule` + `inferWorkoutSchedule`
@@ -28,12 +28,12 @@ import {
   type SetupPreventiveItem,
   type UnroutableReason,
 } from "../household-setup";
-import { isPushedIntake } from "../supplement-schedule";
-import type { Supplement } from "../types/intake";
+import { isPushedIntake } from "../intake-schedule";
+import type { IntakeItem } from "../types/intake";
 import { getOnboardingDataPresence } from "../onboarding-data";
 import { getOnboardingState, getNotifySchedule } from "../settings";
 import { profileRoutingFacts } from "../notifications/routing";
-import { getSupplements, getSupplementDoses } from "./intake/schedule";
+import { getIntakeItems, getIntakeDoses } from "./intake/schedule";
 import { inferWorkoutSchedule } from "./training/activities";
 import { kindedScheduled } from "./appointments";
 import { scheduledMatchForRule } from "../preventive-appointment";
@@ -47,11 +47,11 @@ import { assessProfilePreventive, getFindingSuppressions } from "./upcoming";
 // minute. Timezone-free: nothing here consults a clock, because the condition is
 // structural.
 //
-// The roster and the dosed-item set are PASSED IN, not re-read: `getSupplements` carries
+// The roster and the dosed-item set are PASSED IN, not re-read: `getIntakeItems` carries
 // seven correlated subselects, and the caller has already paid for it once per member.
 function gatherSendSources(
   profileId: number,
-  items: readonly Supplement[],
+  items: readonly IntakeItem[],
   dosedItemIds: ReadonlySet<number>,
   preventiveNudges: number
 ): SendSourceFacts {
@@ -131,10 +131,8 @@ function gatherHouseholdSetupFactsUncached(
   today: string
 ): HouseholdSetupFacts {
   const preventiveUnactioned = gatherPreventiveUnactioned(profileId, today);
-  const items = getSupplements(profileId);
-  const dosedItemIds = new Set(
-    getSupplementDoses(profileId).map((d) => d.item_id)
-  );
+  const items = getIntakeItems(profileId);
+  const dosedItemIds = new Set(getIntakeDoses(profileId).map((d) => d.item_id));
   const undosedItems: SetupIntakeItem[] = [];
   let active = 0;
   let inactive = 0;

@@ -12,7 +12,7 @@ import { db, today } from "@/lib/db";
 import {
   dismissDerivedPoorSleep,
   toggleSituation,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import { getActiveSituations } from "@/lib/settings";
 import { poorSleepOverrideKey } from "@/lib/derived-situations";
 import { seedActor, actAs, createLogin, createProfile, fd } from "./harness";

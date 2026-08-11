@@ -5,7 +5,7 @@ import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";
-import { deleteAdministration } from "@/app/(app)/nutrition/supplement-actions";
+import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatLongDate } from "@/lib/format-date";
 import {

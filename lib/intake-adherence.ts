@@ -11,8 +11,8 @@
 // is built to accommodate without judgment. The percentage already answers "am I
 // consistent?", and a missed day nudges it instead of zeroing it.
 
-import type { Supplement } from "./types";
-import { isDueOn } from "./supplement-schedule";
+import type { IntakeItem } from "./types";
+import { isDueOn } from "./intake-schedule";
 import { doseOnDay, type DoseCadence } from "./intake-cadence";
 import { dateStrInTz, parseUtcSql } from "./date";
 
@@ -48,7 +48,7 @@ export interface AdherenceSummary {
   // added moments ago, or is never due here — so there is nothing to have followed
   // through on and every surface must say so (or say nothing) rather than print a
   // number. A real 0 means slots DID elapse and none were taken; that honest zero
-  // is preserved. Feeding this a lifetime-clamped strip (supplementAdherenceStrip)
+  // is preserved. Feeding this a lifetime-clamped strip (intakeAdherenceStrip)
   // is what keeps the two apart — an unclamped fixed-lookback window manufactures
   // pre-existence "misses" and turns every cold start into 0%.
   pct: number | null;
@@ -224,7 +224,7 @@ export function doseWindowSince(
   return earliest;
 }
 
-// The doses `supplementAdherenceStrip` scores, carrying the lifetime timestamp the
+// The doses `intakeAdherenceStrip` scores, carrying the lifetime timestamp the
 // window is clamped to. `created_at` is optional so a fixture (or a caller with only
 // ids) still type-checks — an absent timestamp simply means "no known lower bound",
 // the pre-#1442 behavior.
@@ -253,8 +253,8 @@ export interface AdherenceStripDose extends DoseCadence {
 // percentage summarizing the strip reads "no history yet" (pct null) instead of the
 // maximally-wrong 0%. `tz` resolves the UTC creation timestamps onto the same
 // profile-local calendar the `dates` window is built from.
-export function supplementAdherenceStrip(
-  supp: Supplement,
+export function intakeAdherenceStrip(
+  supp: IntakeItem,
   doses: readonly AdherenceStripDose[],
   dates: string[],
   workoutDays: ReadonlySet<string>,

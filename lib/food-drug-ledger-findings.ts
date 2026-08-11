@@ -30,7 +30,7 @@
 // every surface.
 
 import { cache } from "./request-cache";
-import { getSupplements, getSupplementDoses } from "./queries/intake";
+import { getIntakeItems, getIntakeDoses } from "./queries/intake";
 import { getFoodServingsInRange } from "./queries/nutrition";
 import { getProfileAge } from "./settings";
 import { matchFoodInteractions } from "./food-drug-interactions";
@@ -78,7 +78,7 @@ function ledgerItems(profileId: number): LedgerItem[] {
     openEnded: boolean;
   }
   const dosesByItem = new Map<number, CourseWindow>();
-  for (const dose of getSupplementDoses(profileId)) {
+  for (const dose of getIntakeDoses(profileId)) {
     const acc: CourseWindow = dosesByItem.get(dose.item_id) ?? {
       start: null,
       end: null,
@@ -96,7 +96,7 @@ function ledgerItems(profileId: number): LedgerItem[] {
     dosesByItem.set(dose.item_id, acc);
   }
   const out: LedgerItem[] = [];
-  for (const item of getSupplements(profileId)) {
+  for (const item of getIntakeItems(profileId)) {
     const hits = matchFoodInteractions(
       {
         name: item.name,

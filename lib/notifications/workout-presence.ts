@@ -52,7 +52,7 @@ import {
   type ReminderWindow,
   type WindowDose,
 } from "./supplement-format";
-import { OBLIGATION_ORDER } from "../supplement-schedule";
+import { OBLIGATION_ORDER } from "../intake-schedule";
 import { dispatch } from "./index";
 import { prefixForProfile } from "./attribution";
 import { workoutFinishCallback } from "./callback-data";

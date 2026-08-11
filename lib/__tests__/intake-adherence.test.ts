@@ -7,11 +7,11 @@ import {
   doseStrip,
   doseWindowSince,
   indexTakenByDose,
-  supplementAdherenceStrip,
+  intakeAdherenceStrip,
   STRIP_DAYS,
   type AdherenceState,
-} from "@/lib/supplement-adherence";
-import type { Supplement, SupplementCondition } from "@/lib/types";
+} from "@/lib/intake-adherence";
+import type { IntakeItem, IntakeCondition } from "@/lib/types";
 
 // Build a strip (oldest-first) from a compact state string: each char maps to a
 // state, so "mttt" is [missed, taken, taken, taken] with the last as today.
@@ -299,14 +299,14 @@ describe("aggregateDoseDay", () => {
 
 // Per-supplement windowed adherence strip (issue #313): compose isDueOn (per-date
 // workout/situational context) with aggregateDoseDay over the supplement's doses.
-describe("supplementAdherenceStrip", () => {
-  function supp(over: Partial<Supplement> = {}): Supplement {
+describe("intakeAdherenceStrip", () => {
+  function supp(over: Partial<IntakeItem> = {}): IntakeItem {
     return {
-      condition: "daily" as SupplementCondition,
+      condition: "daily" as IntakeCondition,
       situation: null,
       obligation: "should",
       ...over,
-    } as Supplement;
+    } as IntakeItem;
   }
 
   // Doses with no stored created_at: no known lifetime bound, so the whole window
@@ -326,7 +326,7 @@ describe("supplementAdherenceStrip", () => {
       { dose_id: 1, date: "d1", status: "taken" }, // d1: one of two → partial
       // d2: neither → missed
     ]);
-    const strip = supplementAdherenceStrip(
+    const strip = intakeAdherenceStrip(
       supp(),
       doses(1, 2),
       dates,
@@ -343,8 +343,8 @@ describe("supplementAdherenceStrip", () => {
   });
 
   it("marks a date na when the supplement is not due (rest-day on a workout day)", () => {
-    const strip = supplementAdherenceStrip(
-      supp({ condition: "rest_day" as SupplementCondition }),
+    const strip = intakeAdherenceStrip(
+      supp({ condition: "rest_day" as IntakeCondition }),
       doses(1),
       ["d0", "d1"],
       new Set(["d0"]), // d0 was a workout day → rest_day supp not due
@@ -359,7 +359,7 @@ describe("supplementAdherenceStrip", () => {
   });
 
   it("marks a deliberately-skipped day skipped, not missed (#232)", () => {
-    const strip = supplementAdherenceStrip(
+    const strip = intakeAdherenceStrip(
       supp(),
       doses(1),
       ["d0"],
@@ -374,11 +374,11 @@ describe("supplementAdherenceStrip", () => {
   it("respects the per-day situation resolver for a situational supplement", () => {
     const dates = ["d0", "d1"];
     const s = supp({
-      condition: "situational" as SupplementCondition,
+      condition: "situational" as IntakeCondition,
       situation: "travel",
     });
     // An always-active resolver makes every date due.
-    const active = supplementAdherenceStrip(
+    const active = intakeAdherenceStrip(
       s,
       doses(1),
       dates,
@@ -389,7 +389,7 @@ describe("supplementAdherenceStrip", () => {
     );
     expect(active.map((d) => d.state)).toEqual(["taken", "missed"]);
 
-    const inactive = supplementAdherenceStrip(
+    const inactive = intakeAdherenceStrip(
       s,
       doses(1),
       dates,
@@ -404,14 +404,14 @@ describe("supplementAdherenceStrip", () => {
   it("scores each day against the situation set active THAT day (#654)", () => {
     const dates = ["d0", "d1", "d2"];
     const s = supp({
-      condition: "situational" as SupplementCondition,
+      condition: "situational" as IntakeCondition,
       situation: "travel",
     });
     // Travel turned on only on d2 — a per-day resolver keeps d0/d1 "na" even though
     // the situation is active "now", instead of retroactively marking them missed.
     const situationsOn = (date: string) =>
       date >= "d2" ? new Set(["travel"]) : new Set<string>();
-    const strip = supplementAdherenceStrip(
+    const strip = intakeAdherenceStrip(
       s,
       doses(1),
       dates,
@@ -425,7 +425,7 @@ describe("supplementAdherenceStrip", () => {
 
   it("feeds adherenceSummary end-to-end", () => {
     const dates = ["d0", "d1", "d2"];
-    const strip = supplementAdherenceStrip(
+    const strip = intakeAdherenceStrip(
       supp(),
       doses(1),
       dates,
@@ -457,23 +457,23 @@ describe("dose-lifetime clamp / the no-history boundary (#1442)", () => {
   // as still-pending, so a slot must have elapsed on an EARLIER day to count.
   const TODAY = DATES[DATES.length - 1];
 
-  function med(createdAt: string): Supplement {
+  function med(createdAt: string): IntakeItem {
     return {
       id: 1,
       name: "Ibuprofen (test)",
-      condition: "daily" as SupplementCondition,
+      condition: "daily" as IntakeCondition,
       situation: null,
       obligation: "should",
       created_at: createdAt,
-    } as Supplement;
+    } as IntakeItem;
   }
 
   const build = (
-    supp: Supplement,
+    supp: IntakeItem,
     doses: { id: number; created_at?: string | null }[],
     logs: { dose_id: number; date: string; status?: "taken" | "skipped" }[] = []
   ) =>
-    supplementAdherenceStrip(
+    intakeAdherenceStrip(
       supp,
       doses,
       DATES,
@@ -682,7 +682,7 @@ describe("dose-lifetime clamp / the no-history boundary (#1442)", () => {
       {
         ...med("2026-01-04 08:00:00"),
         created_at: null,
-      } as unknown as Supplement,
+      } as unknown as IntakeItem,
       [{ id: 1 }]
     );
     expect(s.map((d) => d.state)).toEqual([

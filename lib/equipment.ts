@@ -21,7 +21,7 @@ export interface EquipmentInput {
 //
 // By default RETIRED rows are excluded — the common caller is a picker or
 // recency-defaulting, which must not offer sold/broken gear (issue #341, mirroring
-// getSupplementDoses excluding retired doses). Callers that need every row —
+// getIntakeDoses excluding retired doses). Callers that need every row —
 // the settings manager (to Unretire) and history label maps (retired gear still
 // labels old sets) — pass { includeRetired: true }.
 export function getEquipment(

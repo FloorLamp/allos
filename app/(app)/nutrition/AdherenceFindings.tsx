@@ -1,7 +1,7 @@
 import { IconCalendarStats } from "@tabler/icons-react";
 import type { Finding } from "@/lib/findings";
 import FindingsList from "@/components/FindingsList";
-import { dismissAdherencePattern } from "./supplement-actions";
+import { dismissAdherencePattern } from "./intake-actions";
 
 // Adherence-pattern observations (issue #45, domain 3) for the Supplements & Meds
 // page: scheduled doses whose misses cluster on a specific weekday ("most Fridays")

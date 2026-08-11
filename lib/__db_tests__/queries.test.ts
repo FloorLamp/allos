@@ -31,8 +31,10 @@ import {
   reconcileFlags,
   getImmunizations,
   getImmunizationOverrides,
+  getIntakeItems,
   getSupplements,
-  getSupplementDoses,
+  getMedications,
+  getIntakeDoses,
   getTakenDoseIds,
   getTakenDoseTimes,
   resolveMedicationAcrossProfiles,
@@ -206,15 +208,24 @@ describe("immunization reads", () => {
 });
 
 describe("intake / supplement reads", () => {
-  it("getSupplements surfaces both a supplement and a medication row", () => {
-    const items = getSupplements(fx.profileId);
+  it("getIntakeItems surfaces both a supplement and a medication row", () => {
+    const items = getIntakeItems(fx.profileId);
     const kinds = items.map((i) => i.kind).sort();
     expect(kinds).toEqual(["medication", "supplement"]);
     expect(items.some((i) => i.name === `${fx.tag} Lisinopril`)).toBe(true);
   });
 
+  it("kind-named adapters return only their declared intake subset", () => {
+    expect(getSupplements(fx.profileId).map((item) => item.kind)).toEqual([
+      "supplement",
+    ]);
+    expect(getMedications(fx.profileId).map((item) => item.kind)).toEqual([
+      "medication",
+    ]);
+  });
+
   it("dose + taken-log reads reflect the seeded morning dose", () => {
-    const doses = getSupplementDoses(fx.profileId);
+    const doses = getIntakeDoses(fx.profileId);
     expect(doses.length).toBe(2); // one per intake item
     const taken = getTakenDoseIds(fx.profileId, fx.todayStr);
     expect(taken.has(fx.supplementDoseId)).toBe(true);
@@ -224,10 +235,10 @@ describe("intake / supplement reads", () => {
   });
 
   it("refill read: the tracked supplement reports low days-of-supply", () => {
-    const supp = getSupplements(fx.profileId).find(
+    const supp = getIntakeItems(fx.profileId).find(
       (s) => s.id === fx.supplementId
     )!;
-    const dosesPerDay = getSupplementDoses(fx.profileId).filter(
+    const dosesPerDay = getIntakeDoses(fx.profileId).filter(
       (d) => d.item_id === fx.supplementId
     ).length;
     const daysLeft = daysOfSupplyLeft(
