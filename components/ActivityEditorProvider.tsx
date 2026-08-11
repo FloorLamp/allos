@@ -161,6 +161,7 @@ export default function ActivityEditorProvider({
 }) {
   const tz = useTimezone();
   const pathname = usePathname();
+  const [mountedAt] = useState(Date.now);
   const [open, setOpen] = useState(false);
   // Minimized-but-MOUNTED: the live overlay collapses to the bottom bar without
   // unmounting ActivityForm, so the running rest timer + elapsed clock survive
@@ -376,8 +377,8 @@ export default function ActivityEditorProvider({
   // Elapsed baseline + copy for the bar: the mounted session's own start when
   // minimized, else the server-hydrated start.
   const barStartEpoch = minimized
-    ? (liveStartEpoch ?? liveStartEpochMs ?? Date.now())
-    : (liveStartEpochMs ?? Date.now());
+    ? (liveStartEpoch ?? liveStartEpochMs ?? mountedAt)
+    : (liveStartEpochMs ?? mountedAt);
   const barLabel =
     (minimized ? editData?.title : null) || presence?.title || "Resume";
 

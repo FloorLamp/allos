@@ -55,6 +55,7 @@ import { getFormDeloadContext } from "@/lib/routines";
 import { getFormRecoveringContext } from "@/lib/injuries";
 import { buildActivePlateauHints } from "@/lib/rule-findings";
 import { today } from "@/lib/db";
+import { requestNowMs } from "@/lib/request-now";
 
 // Authenticated app shell. requireSession() is the authoritative gate for the
 // entire (app) route group — it redirects to /login when there's no live
@@ -87,6 +88,7 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const nowMs = requestNowMs();
   const session = await requireSession();
   const { login, profile } = session;
   // The cross-profile scope (issue #1096): the persisted view-set (∩ accessible),
@@ -165,9 +167,7 @@ export default async function AppLayout({
       ? getActivityEditData(profile.id, presence.activityId)
       : null;
   const liveStartEpochMs =
-    presence?.state === "active"
-      ? Date.now() - presence.sinceMin * 60_000
-      : null;
+    presence?.state === "active" ? nowMs - presence.sinceMin * 60_000 : null;
   const version = getAppVersion();
   // Unopened bundled release notes for this LOGIN (issue #1421) — the ONE pure
   // comparison (hasUnseenNotes over the newest bundled note date vs the login's

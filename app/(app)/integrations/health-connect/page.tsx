@@ -19,6 +19,7 @@ import { requireSession } from "@/lib/auth";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import HealthConnectSetup from "./HealthConnectSetup";
+import { requestNowMs } from "@/lib/request-now";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ async function baseUrl(): Promise<string> {
 
 export default async function HealthConnectPage() {
   const { login, profile } = await requireSession();
+  const nowMs = requestNowMs();
   const def = getIntegration("health-connect")!;
   const conn = getConnection(profile.id, "health-connect");
   const tokenInfo = getHealthConnectTokenInfo(profile.id);
@@ -52,7 +54,7 @@ export default async function HealthConnectPage() {
       createdAt: tokenInfo.createdAt,
       expiresAt: tokenInfo.expiresAt,
     },
-    Date.now()
+    nowMs
   );
 
   // THE per-provider state (#1772): one computation behind this page, Review's

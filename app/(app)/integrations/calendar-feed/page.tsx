@@ -26,6 +26,7 @@ import CalendarFeedConfig from "./CalendarFeedConfig";
 import CalendarFeedPreview from "./CalendarFeedPreview";
 import ConsolidatedFeedConfig from "./ConsolidatedFeedConfig";
 import ConsolidatedFeedPreview from "./ConsolidatedFeedPreview";
+import { requestNowMs } from "@/lib/request-now";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ async function baseUrl(): Promise<string> {
 
 export default async function CalendarFeedPage() {
   const { profile, login } = await requireSession();
+  const nowMs = requestNowMs();
   const def = getIntegration("calendar-feed")!;
   const feed = getCalendarFeed(profile.id);
 
@@ -142,7 +144,7 @@ export default async function CalendarFeedPage() {
               createdAt: feed.createdAt,
               expiresAt: feed.expiresAt,
             },
-            Date.now()
+            nowMs
           )}
           createdAt={feed.createdAt}
           lastUsedAt={feed.lastUsedAt}
@@ -198,7 +200,7 @@ export default async function CalendarFeedPage() {
                   createdAt: familyFeed.createdAt,
                   expiresAt: familyFeed.expiresAt,
                 },
-                Date.now()
+                nowMs
               )}
               createdAt={familyFeed.createdAt}
               lastUsedAt={familyFeed.lastUsedAt}
