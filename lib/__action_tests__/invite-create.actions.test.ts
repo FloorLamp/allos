@@ -21,13 +21,12 @@ import { createLogin as createLoginAction } from "@/app/(app)/settings/family/ac
 import { verifyPassword } from "@/lib/password";
 import { setSmtpConfig, setPublicUrl } from "@/lib/settings";
 import { createLogin, createProfile, actAs } from "./harness";
+import { ACTION_TEST_PASSWORD } from "./password-fixture";
 
 const captureFile = path.join(
   os.tmpdir(),
   `allos-mail-invite-${process.pid}-${Date.now()}.jsonl`
 );
-const STRONG = "Zt7-mln-Qp9x!";
-
 let seq = 0;
 function form(fields: Record<string, string>, grants: number[] = []): FormData {
   const f = new FormData();
@@ -142,7 +141,10 @@ describe("createLogin — initial profile access (#1434)", () => {
     const p2 = createProfile("Access Two");
     const username = `granted_${++seq}`;
     const res = await createLoginAction(
-      form({ username, password: STRONG, role: "member" }, [p1.id, p2.id])
+      form({ username, password: ACTION_TEST_PASSWORD, role: "member" }, [
+        p1.id,
+        p2.id,
+      ])
     );
     expect(res.ok).toBe(true);
     const row = loginRow(username)!;
@@ -156,7 +158,10 @@ describe("createLogin — initial profile access (#1434)", () => {
     const p1 = createProfile("Access Real");
     const username = `forged_${++seq}`;
     const res = await createLoginAction(
-      form({ username, password: STRONG, role: "member" }, [p1.id, 999_999])
+      form({ username, password: ACTION_TEST_PASSWORD, role: "member" }, [
+        p1.id,
+        999_999,
+      ])
     );
     expect(res.ok).toBe(true);
     expect(grantsFor(loginRow(username)!.id)).toEqual([
@@ -172,7 +177,7 @@ describe("createLogin — initial profile access (#1434)", () => {
     const p1 = createProfile("Access Admin");
     const username = `adminsel_${++seq}`;
     const res = await createLoginAction(
-      form({ username, password: STRONG, role: "admin" }, [p1.id])
+      form({ username, password: ACTION_TEST_PASSWORD, role: "admin" }, [p1.id])
     );
     expect(res.ok).toBe(true);
     expect(grantsFor(loginRow(username)!.id)).toEqual([
@@ -184,7 +189,7 @@ describe("createLogin — initial profile access (#1434)", () => {
     // Opt-IN stays opt-in: nothing is chosen for them, on creation or ever.
     const username = `adminbare_${++seq}`;
     const res = await createLoginAction(
-      form({ username, password: STRONG, role: "admin" })
+      form({ username, password: ACTION_TEST_PASSWORD, role: "admin" })
     );
     expect(res.ok).toBe(true);
     expect(grantsFor(loginRow(username)!.id)).toEqual([]);
@@ -193,7 +198,7 @@ describe("createLogin — initial profile access (#1434)", () => {
   it("still allows a deliberately grantless member, and says so", async () => {
     const username = `nogrant_${++seq}`;
     const res = await createLoginAction(
-      form({ username, password: STRONG, role: "member" })
+      form({ username, password: ACTION_TEST_PASSWORD, role: "member" })
     );
     expect(res.ok).toBe(true);
     expect(grantsFor(loginRow(username)!.id)).toEqual([]);

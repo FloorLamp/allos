@@ -17,6 +17,7 @@ import { accessForProfile, accessibleProfilesForLogin } from "@/lib/auth";
 import { managingLoginIdsForProfile } from "@/lib/notifications/fan-out";
 import { grantSignature, type Access } from "@/lib/grants";
 import { createLogin, createProfile, actAs } from "./harness";
+import { ACTION_TEST_PASSWORD } from "./password-fixture";
 
 function grantsForm(
   loginId: number,
@@ -275,13 +276,6 @@ describe("setGrants performs an admin's notification opt-in (#2345)", () => {
 });
 
 describe("createLogin chooses a new login's profile rows (#1434 access, #2345 notifications)", () => {
-  // The password-strength gate needs a value that clears it. Reuse the action tier's
-  // EXISTING throwaway (invite-create / password-reset / family-email all declare the
-  // same `STRONG`) rather than inventing one: it adds no new string to the repo's
-  // history, and gitleaks' `generic-api-key` rule keys off the IDENTIFIER plus an
-  // entropy threshold, so a fresh literal behind a `…PASSWORD` name trips the scan
-  // however obviously fake it is (a comment is not something the scanner can read).
-  const STRONG = "Zt7-mln-Qp9x!";
   let p1: ReturnType<typeof createProfile>;
   let p2: ReturnType<typeof createProfile>;
 
@@ -300,7 +294,7 @@ describe("createLogin chooses a new login's profile rows (#1434 access, #2345 no
   ): FormData {
     const f = new FormData();
     f.set("username", username);
-    f.set("password", STRONG);
+    f.set("password", ACTION_TEST_PASSWORD);
     f.set("role", role);
     for (const id of profileIds) {
       f.append("profileId", String(id));

@@ -30,13 +30,12 @@ import { createAuthToken, peekAuthToken } from "@/lib/auth-tokens";
 import { verifyPassword } from "@/lib/password";
 import { RESET_REQUEST_MESSAGE } from "@/lib/auth-email";
 import { RESET_PER_EMAIL_LIMIT } from "@/lib/auth-email-ratelimit";
+import { ACTION_TEST_PASSWORD } from "./password-fixture";
 
 const captureFile = path.join(
   os.tmpdir(),
   `allos-mail-reset-${process.pid}-${Date.now()}.jsonl`
 );
-const STRONG = "Zt7-mln-Qp9x!";
-
 function captured(): string {
   return fs.readFileSync(captureFile, "utf8");
 }
@@ -123,7 +122,7 @@ describe("completeSetPassword — set password, evict sessions, keep 2FA (#985)"
 
     const res = await completeSetPassword(
       {},
-      mkForm({ token: raw, password: STRONG })
+      mkForm({ token: raw, password: ACTION_TEST_PASSWORD })
     );
     expect(res.ok).toBe(true);
 
@@ -136,7 +135,9 @@ describe("completeSetPassword — set password, evict sessions, keep 2FA (#985)"
       totp_enabled: number;
       totp_secret: string | null;
     };
-    expect(await verifyPassword(STRONG, row.password_hash)).toBe(true);
+    expect(await verifyPassword(ACTION_TEST_PASSWORD, row.password_hash)).toBe(
+      true
+    );
     // 2FA is untouched — a TOTP login still needs its code next sign-in.
     expect(row.totp_enabled).toBe(1);
     expect(row.totp_secret).toBe("SECRET");
@@ -154,7 +155,7 @@ describe("completeSetPassword — set password, evict sessions, keep 2FA (#985)"
   it("rejects an invalid token with a generic message", async () => {
     const res = await completeSetPassword(
       {},
-      mkForm({ token: "garbage", password: STRONG })
+      mkForm({ token: "garbage", password: ACTION_TEST_PASSWORD })
     );
     expect(res.ok).toBeUndefined();
     expect(res.error).toMatch(/invalid or has expired/i);
