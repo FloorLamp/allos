@@ -243,8 +243,8 @@ export default async function HouseholdPage() {
         <EmptyState
           message={
             login.role === "admin"
-              ? "No profiles to show. Create the people you track in Family settings."
-              : "No profiles to show. Ask an admin to grant you access to the profiles you care for."
+              ? "No profiles to show. Create profiles in Family settings."
+              : "No profiles to show. Ask an admin for access to the relevant profiles."
           }
           action={
             login.role === "admin"

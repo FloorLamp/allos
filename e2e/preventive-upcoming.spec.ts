@@ -204,7 +204,9 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await expect(visit).toContainText("Dental check-up & cleaning");
 
     // The informational disclaimer is present whenever preventive items show.
-    await expect(main.getByText("your provider's guidance wins")).toBeVisible();
+    await expect(
+      main.getByText("individual clinician guidance wins")
+    ).toBeVisible();
 
     // Mark it done → the satisfaction advances the next-due out of the window and
     // the row drops off the list on revalidate.

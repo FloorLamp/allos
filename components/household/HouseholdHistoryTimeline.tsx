@@ -92,7 +92,7 @@ export default function HouseholdHistoryTimeline({
         <EmptyState
           message={
             person === "all"
-              ? "No visits or illness episodes yet across the household. As you log visits and illnesses, they appear here."
+              ? "No visits or illness episodes yet across the household. Logged visits and illnesses appear here."
               : `No visits or illness episodes yet for ${nameFor(person)}.`
           }
         />

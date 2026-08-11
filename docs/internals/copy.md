@@ -161,6 +161,10 @@ the scope directories. It fails CI on:
    `please` (all case-insensitive, word-boundary) in a user-facing string.
 2. **Terminal period on the `"Couldn't …"` error family** — a complete-sentence
    error string missing its period.
+3. **Second-person voice on cross-profile surfaces** — `you` / `your` in the
+   Household and Family homes, shared profile/subject chips, and TSX components
+   carrying `ProfileScope`, `SubjectInfo`, or `viewIds`. Login-scoped control copy
+   requires an exact, justified entry in the shrinking allowlist.
 
 It structurally **excludes** non-user-facing contexts so they can't trip it:
 comments, `import`/`export … from` lines, `console.*` and `log.<level>(…)`
@@ -171,6 +175,7 @@ per #478). A genuinely-legitimate remaining hit goes on the test's frozen
 e2e-hygiene allowlist: **the list only ever shrinks.**
 
 The scan is intentionally narrow — it catches the measured drift patterns, not
-tone. Voice (rule 2), case (rule 5), empty-state formula (rule 4), and clinical
-register (rule 8) are review-and-convention gates that live in this document,
-not the linter.
+tone. Cross-profile voice (rule 2) is mechanical; active-profile voice remains a
+review gate. Case (rule 5), empty-state formula (rule 4), and clinical register
+(rule 8) remain review-and-convention gates that live in this document, not the
+linter.

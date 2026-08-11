@@ -116,7 +116,7 @@ export default async function EpisodesIndexPage(props: {
         <EmptyState
           message={
             kind === "illness"
-              ? "No illness episodes yet. When you flag an illness situation and log symptoms, it appears here."
+              ? "No illness episodes yet. Flag an illness situation and log symptoms to start one."
               : "No illness episodes or visits yet."
           }
         />

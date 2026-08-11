@@ -559,7 +559,7 @@ function BiomarkerRow({
                           // tableNameKey is the same canonical-preferred identity
                           // nameCell renders (#1501), so the confirm can't say
                           // "URIC ACID" about a row labelled "Uric Acid".
-                          message: `Delete “${tableNameKey(r)}”? You can undo this.`,
+                          message: `Delete “${tableNameKey(r)}”? This can be undone.`,
                           confirmLabel: "Delete",
                           danger: true,
                         });
