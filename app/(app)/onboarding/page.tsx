@@ -121,7 +121,7 @@ function OnboardingProgress({
                   href={`/onboarding?step=${itemStep}`}
                   aria-current={itemStep === step ? "step" : undefined}
                   aria-label={`${itemStep < unlockedStep ? "Completed" : "Available"} step ${itemStep}: ${label}`}
-                  className="flex h-full items-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50"
+                  className="flex h-full items-center rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400/50"
                 >
                   <span
                     aria-hidden="true"
@@ -573,7 +573,7 @@ export default async function OnboardingPage({
                 {ONBOARDING_NOTIFICATION_INTENT_DEFS.map((intent) => (
                   <label
                     key={intent.id}
-                    className="relative block cursor-pointer rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-[:checked]:border-brand-400 has-[:checked]:bg-brand-50/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400/50 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-[:checked]:border-brand-500/60 dark:has-[:checked]:bg-brand-500/10"
+                    className="relative block cursor-pointer rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-checked:border-brand-400 has-checked:bg-brand-50/60 has-focus-visible:ring-2 has-focus-visible:ring-brand-400/50 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-checked:border-brand-500/60 dark:has-checked:bg-brand-500/10"
                   >
                     <input
                       type="radio"
@@ -581,7 +581,7 @@ export default async function OnboardingPage({
                       value={intent.id}
                       defaultChecked={state.notificationIntent === intent.id}
                       disabled={readOnly}
-                      className="peer absolute top-3 right-3 h-5 w-5 cursor-pointer appearance-none rounded-full border border-slate-300 bg-white transition checked:border-brand-600 checked:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50 disabled:cursor-default dark:border-slate-600 dark:bg-ink-900 dark:checked:border-brand-500 dark:checked:bg-brand-500"
+                      className="peer absolute top-3 right-3 h-5 w-5 cursor-pointer appearance-none rounded-full border border-slate-300 bg-white transition checked:border-brand-600 checked:bg-brand-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400/50 disabled:cursor-default dark:border-slate-600 dark:bg-ink-900 dark:checked:border-brand-500 dark:checked:bg-brand-500"
                     />
                     <span className="pointer-events-none absolute top-3 right-3 flex h-5 w-5 items-center justify-center text-white opacity-0 transition peer-checked:opacity-100">
                       <IconCheck

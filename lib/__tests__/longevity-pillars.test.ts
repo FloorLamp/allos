@@ -141,7 +141,7 @@ describe("buildPillars value equals its source computation (#224)", () => {
     expect(pillar.tone).toBe("good"); // 31/38 ≥ 0.8
   });
 
-  it("sleep pillar value is the rounded SRI", () => {
+  it("sleep pillar value is the rounded-sm SRI", () => {
     const [pillar] = buildPillars({ sleep: { sri: 83.6 } });
     expect(pillar.value).toBe("SRI 84");
     expect(pillar.tone).toBe("good"); // ≥80

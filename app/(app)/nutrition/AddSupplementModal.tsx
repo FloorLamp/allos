@@ -44,7 +44,7 @@ export default function AddSupplementModal({
         <ModalShell
           title="Add supplement"
           onClose={() => setOpen(false)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <div
             data-testid="supplement-add-panel"

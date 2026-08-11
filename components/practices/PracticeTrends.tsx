@@ -45,7 +45,7 @@ function WeeksInRange({ practice }: { practice: PracticeTrend }) {
             data-testid="practice-week-cell"
             data-verdict={week.verdict}
             title={weekCellTitle(week, weekly)}
-            className={`h-4 w-4 rounded-sm ${VERDICT_CELL[week.verdict]}`}
+            className={`h-4 w-4 rounded-xs ${VERDICT_CELL[week.verdict]}`}
           >
             <span className="sr-only">{weekCellTitle(week, weekly)}</span>
           </li>
@@ -60,7 +60,7 @@ function WeeksInRange({ practice }: { practice: PracticeTrend }) {
             <span key={verdict} className="inline-flex items-center gap-1.5">
               <span
                 aria-hidden
-                className={`h-2.5 w-2.5 rounded-sm ${VERDICT_CELL[verdict]}`}
+                className={`h-2.5 w-2.5 rounded-xs ${VERDICT_CELL[verdict]}`}
               />
               {PRACTICE_VERDICT_LABEL[verdict]}
             </span>

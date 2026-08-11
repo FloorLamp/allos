@@ -33,7 +33,7 @@ export default function CreateVisitFromRecord({
 
   return (
     <section
-      className="rounded-xl border border-brand-200 bg-brand-50/60 p-3 shadow-sm dark:border-brand-900 dark:bg-brand-950/30"
+      className="rounded-xl border border-brand-200 bg-brand-50/60 p-3 shadow-xs dark:border-brand-900 dark:bg-brand-950/30"
       data-testid="create-visit-from-record"
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">

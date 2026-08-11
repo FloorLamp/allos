@@ -160,7 +160,7 @@ export default function ApiTokensSettings({
                 character means minting again. The shared CopyButton is the same
                 affordance every other token and feed URL already offers. */}
             <div className="flex min-w-0 items-start gap-2">
-              <code className="block min-w-0 flex-1 break-all rounded bg-black/5 p-2 font-mono text-sm dark:bg-white/5">
+              <code className="block min-w-0 flex-1 break-all rounded-sm bg-black/5 p-2 font-mono text-sm dark:bg-white/5">
                 {minted.token}
               </code>
               <CopyButton value={minted.token} testid="api-token-copy" />

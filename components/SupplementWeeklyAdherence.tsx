@@ -134,7 +134,7 @@ export default function SupplementWeeklyAdherence({
           <li key={state} className="flex items-center gap-1">
             <span
               aria-hidden="true"
-              className={`h-2.5 w-2.5 rounded-sm ${STATE_CLASS[state]}`}
+              className={`h-2.5 w-2.5 rounded-xs ${STATE_CLASS[state]}`}
             />
             {STATE_LABEL[state]}
           </li>

@@ -75,8 +75,19 @@ test("a disabled primary button uses the one accessible disabled treatment (#145
   // white-on-washed-green did not.
   const ratio = await createLogin.evaluate((el) => {
     const s = getComputedStyle(el);
-    const parse = (c: string) =>
-      (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    // Tailwind 4 authors palette colors in CSS Color 4 (lab/oklch), so let the
+    // browser rasterize either legacy rgb() or modern color syntax to sRGB
+    // before applying the WCAG luminance formula.
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const parse = (color: string) => {
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 1, 1);
+      return Array.from(ctx.getImageData(0, 0, 1, 1).data.slice(0, 3));
+    };
     const lum = (rgb: number[]) => {
       const [r, g, b] = rgb.map((v) => {
         const x = v / 255;

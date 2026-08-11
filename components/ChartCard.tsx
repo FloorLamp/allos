@@ -175,7 +175,7 @@ export default function ChartCard({
           <Link
             href={detailHref}
             data-testid="chart-card-header-link"
-            className={`group flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-tl-xl px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 sm:pt-4 dark:hover:bg-brand-950/40 ${
+            className={`group flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-tl-xl px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 sm:pt-4 dark:hover:bg-brand-950/40 ${
               headerAction ? "" : "sm:rounded-tr-xl"
             }`}
           >

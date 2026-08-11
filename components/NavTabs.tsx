@@ -29,7 +29,7 @@ function stripClassName({
   return `overflow-x-auto overflow-y-hidden border-b border-black/10 dark:border-white/10 ${
     prominentOnMobile
       ? mobileLayout === "scroll"
-        ? "flex gap-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-1"
+        ? "flex gap-0 pr-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-1 md:pr-0"
         : `grid ${MOBILE_GRID_COLUMNS[mobileColumns]} md:flex md:gap-1`
       : "flex gap-0.5 sm:gap-1"
   } ${className ?? (flush ? "mb-0" : "mb-4")}`;
@@ -130,8 +130,18 @@ export function NavTabsStrip({
     const strip = stripRef.current;
     const tab = activeRef.current;
     if (!strip || !tab) return;
-    strip.scrollLeft =
-      tab.offsetLeft - (strip.clientWidth - tab.clientWidth) / 2;
+    // `offsetLeft` is relative to the nearest positioned ancestor, which need
+    // not be the strip. Work in viewport coordinates so page/container padding
+    // cannot leave the selected tab clipped after Tailwind changes its sizing.
+    const reveal = () => {
+      const stripRect = strip.getBoundingClientRect();
+      const tabRect = tab.getBoundingClientRect();
+      strip.scrollLeft +=
+        tabRect.left - stripRect.left - (strip.clientWidth - tabRect.width) / 2;
+    };
+    reveal();
+    const frame = requestAnimationFrame(reveal);
+    return () => cancelAnimationFrame(frame);
   }, [active, mobileLayout, prominentOnMobile]);
 
   function hrefFor(id: string) {

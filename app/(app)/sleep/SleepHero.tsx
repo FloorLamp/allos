@@ -58,7 +58,7 @@ function StageBar({
           stages[s.key] > 0 ? (
             <span key={s.key} className="inline-flex items-center gap-1.5">
               <span
-                className="inline-block h-2.5 w-2.5 rounded-sm"
+                className="inline-block h-2.5 w-2.5 rounded-xs"
                 style={{ backgroundColor: s.color }}
                 aria-hidden
               />

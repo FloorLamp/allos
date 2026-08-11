@@ -754,7 +754,7 @@ export default function NotificationPrefs({
 
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
           <span>Kind</span>
-          <span className="grid w-[10rem] grid-cols-4 gap-1 text-center sm:w-52">
+          <span className="grid w-40 grid-cols-4 gap-1 text-center sm:w-52">
             {columns.map((c) => {
               const sweep = columnSweep(c.id);
               const state = columnBulkState(sweep, disabled[c.id]);
@@ -1002,7 +1002,7 @@ export default function NotificationPrefs({
                   )}
                 </div>
 
-                <div className="grid w-[10rem] shrink-0 grid-cols-4 gap-1 pt-1 text-center sm:w-52">
+                <div className="grid w-40 shrink-0 grid-cols-4 gap-1 pt-1 text-center sm:w-52">
                   {columns.map((c) => {
                     const available = cellAvailable(c.id, e.kind);
                     return available ? (

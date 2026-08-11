@@ -46,7 +46,7 @@ export default function ActivityFormHeader({
   return (
     <div
       data-testid="activity-form-header"
-      className={`relative flex items-start justify-between gap-3 border-b border-brand-100/80 bg-brand-50/95 pb-5 backdrop-blur before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:bg-brand-50/95 before:content-[''] dark:border-white/10 dark:bg-ink-800/95 dark:before:bg-ink-800/95 md:sticky md:top-0 md:z-20 ${
+      className={`relative flex items-start justify-between gap-3 border-b border-brand-100/80 bg-brand-50/95 pb-5 backdrop-blur-sm before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:bg-brand-50/95 before:content-[''] dark:border-white/10 dark:bg-ink-800/95 dark:before:bg-ink-800/95 md:sticky md:top-0 md:z-20 ${
         overlay
           ? "-mx-4 px-4 before:h-4 sm:-mx-6 sm:rounded-t-xl sm:px-6 sm:pt-6 sm:before:hidden"
           : "-mx-5 rounded-t-xl px-5 pt-5 before:hidden"
@@ -69,7 +69,7 @@ export default function ActivityFormHeader({
             value={title}
             onChange={(event) => onTitleChange(event.target.value)}
             placeholder={effectiveTitle}
-            className="-mx-1 h-8 min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-0 text-xl leading-8 font-bold text-slate-900 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500/40 dark:text-slate-100 dark:placeholder:text-slate-600"
+            className="-mx-1 h-8 min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-0 text-xl leading-8 font-bold text-slate-900 outline-hidden placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500/40 dark:text-slate-100 dark:placeholder:text-slate-600"
           />
         </div>
         {/* Date lives in a field below, but surfacing it in the header gives

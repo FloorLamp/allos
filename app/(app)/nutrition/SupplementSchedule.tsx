@@ -68,7 +68,7 @@ export default function SupplementSchedule({
     <div data-testid="supplement-schedule">
       <div
         data-testid="supplement-schedule-context"
-        className="-mx-2 mb-2 bg-white/95 px-2 py-1.5 md:sticky md:top-0 md:z-10 md:mb-3 md:py-2 md:backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
+        className="-mx-2 mb-2 bg-white/95 px-2 py-1.5 md:sticky md:top-0 md:z-10 md:mb-3 md:py-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">

@@ -191,7 +191,7 @@ export default function HistoricalDoseForm({
             type="checkbox"
             name="adjust_supply"
             value="1"
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+            className="mt-0.5 h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
           />
           <span>
             Adjust current supply

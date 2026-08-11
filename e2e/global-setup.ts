@@ -40,7 +40,6 @@ const BUILD_INPUT_FILES = [
   "middleware.ts",
   "package.json",
   "package-lock.json",
-  "tailwind.config.ts",
   "postcss.config.js",
   "tsconfig.json",
 ];

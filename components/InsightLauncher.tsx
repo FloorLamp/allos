@@ -46,7 +46,7 @@ export default function InsightLauncher({
       data-testid={testId}
       data-variant="insight-launcher"
       onClick={onClick}
-      className={`flex w-full cursor-pointer items-center gap-2 text-left text-sm font-medium outline-none transition focus-visible:ring-2 ${TONE_CLASS[tone]}`}
+      className={`flex w-full cursor-pointer items-center gap-2 text-left text-sm font-medium outline-hidden transition focus-visible:ring-2 ${TONE_CLASS[tone]}`}
     >
       <span className="shrink-0" aria-hidden="true">
         {icon}

@@ -73,7 +73,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     cellClassName: "text-slate-600 dark:text-slate-300",
     cell: (e) =>
       e.reason ? (
-        <span className="break-words">{e.reason}</span>
+        <span className="wrap-break-word">{e.reason}</span>
       ) : (
         <span className="text-slate-400">—</span>
       ),

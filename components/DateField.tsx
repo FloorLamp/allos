@@ -280,7 +280,7 @@ export default function DateField({
               left: pos?.left ?? 0,
               visibility: pos ? "visible" : "hidden",
             }}
-            className="z-[70] w-72 rounded-lg border border-black/10 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-ink-900"
+            className="z-70 w-72 rounded-lg border border-black/10 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-ink-900"
           >
             <div className="mb-2 flex items-center justify-between gap-1">
               <div className="flex items-center gap-1">
@@ -319,7 +319,7 @@ export default function DateField({
                   onClick={() => shift(-1)}
                   aria-label="Previous month"
                   title="Previous month"
-                  className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+                  className="flex h-8 w-8 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronLeft className="h-4 w-4" />
                 </button>
@@ -328,7 +328,7 @@ export default function DateField({
                   onClick={() => shift(1)}
                   aria-label="Next month"
                   title="Next month"
-                  className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+                  className="flex h-8 w-8 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronRight className="h-4 w-4" />
                 </button>

@@ -334,7 +334,7 @@ export default function IntradayChart({
         data-testid="intraday-svg"
         // pan-y, not none: a vertical swipe still scrolls the timeline; only the
         // horizontal drag this chart owns is captured.
-        className="w-full touch-pan-y focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+        className="w-full touch-pan-y focus:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-500"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -737,7 +737,7 @@ export default function IntradayChart({
             onClick={resetZoom}
             data-testid="intraday-zoom-reset"
             title="Show the whole day again"
-            className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-300"
+            className="rounded-sm border border-slate-300 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-300"
           >
             {`Full day · showing ${clock(geo.view.from)}–${clock(geo.view.to)}`}
           </button>

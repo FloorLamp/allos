@@ -215,7 +215,7 @@ export default async function SleepPage() {
               </p>
               {sleepRegInsight && (
                 <p
-                  className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  className="mt-2 rounded-sm bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
                   data-testid="sri-insight"
                 >
                   {sleepRegInsight}

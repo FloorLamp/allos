@@ -62,7 +62,7 @@ export default function FreeDaysForm({ freeDays }: { freeDays: number[] }) {
                 data-testid={`free-day-${day}`}
                 checked={set.has(day)}
                 onChange={() => toggle(day)}
-                className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+                className="h-4 w-4 rounded-sm border-black/20 dark:border-white/20"
               />
               {name}
             </label>

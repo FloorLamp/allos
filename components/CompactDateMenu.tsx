@@ -76,7 +76,7 @@ export default function CompactDateMenu({
           }
           moveFocus(event.key === "ArrowDown" ? 1 : -1);
         }}
-        className="-ml-1 inline-flex h-10 items-center gap-1 rounded-md px-1 font-semibold text-slate-800 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-100 dark:hover:bg-ink-800"
+        className="-ml-1 inline-flex h-10 items-center gap-1 rounded-md px-1 font-semibold text-slate-800 transition hover:bg-slate-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-100 dark:hover:bg-ink-800"
       >
         <span>{active?.label}</span>
         <IconChevronDown

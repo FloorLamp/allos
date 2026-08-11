@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 // All of those pass; a regrown muted hand-roll — the exact drift #794 removed — is
 // caught. A brand/rose/tone section label is written as `section-label
 // text-brand-600 dark:text-brand-400` (the utility color trails, and wins over the
-// component layer), so it also carries no inline `uppercase tracking-wide`.
+// shared utility), so it also carries no inline `uppercase tracking-wide`.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
@@ -79,9 +79,9 @@ describe("section-label primitive guard (issue #794 cluster 1)", () => {
 
   it("the .section-label primitive is defined in globals.css", () => {
     const css = fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8");
-    expect(css).toMatch(/\.section-label\s*\{/);
+    expect(css).toMatch(/@utility\s+section-label\s*\{/);
     expect(css).toMatch(
-      /\.section-label[\s\S]*?text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400/
+      /@utility\s+section-label[\s\S]*?text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400/
     );
   });
 });

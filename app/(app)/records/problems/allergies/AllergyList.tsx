@@ -100,7 +100,7 @@ function buildColumns(
       cell: (a) => (
         <span data-testid={`allergy-safety-${a.id}`}>
           {isHighCriticality(a) ? (
-            <span className="rounded bg-rose-100 px-1.5 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+            <span className="rounded-sm bg-rose-100 px-1.5 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-950 dark:text-rose-300">
               {allergyCriticalityLabel(a.criticality)}
             </span>
           ) : (

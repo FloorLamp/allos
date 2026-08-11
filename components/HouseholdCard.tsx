@@ -207,7 +207,7 @@ function Attention({ data }: { data: HouseholdCardData }) {
                     action={confirmDoseAction}
                     fields={{ profileId: profile.id, dose_id: item.doseId }}
                     testid="household-confirm-dose"
-                    className="inline-flex items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+                    className="inline-flex items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
                   >
                     <IconCheck
                       className="h-3.5 w-3.5"
@@ -296,7 +296,7 @@ function SetupCheckRow({
             <button
               type="submit"
               data-testid="household-setup-cta"
-              className="text-xs font-medium text-sky-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-sky-300"
+              className="text-xs font-medium text-sky-700 hover:underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-sky-300"
             >
               {check.cta.label} →
             </button>
@@ -338,7 +338,7 @@ function Setup({
               data-testid="household-setup-dismiss"
               aria-label={`Dismiss setup notes for ${profile.name}`}
               title="Dismiss"
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
             >
               <IconX className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
             </button>
@@ -387,7 +387,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
         <button
           type="submit"
           data-testid="household-open"
-          className="-m-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg p-2 text-left transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-ink-850"
+          className="-m-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg p-2 text-left transition hover:bg-slate-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-ink-850"
         >
           <Avatar profile={profile} size="md" />
           <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900 dark:text-slate-100">

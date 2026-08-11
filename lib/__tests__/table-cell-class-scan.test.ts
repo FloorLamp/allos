@@ -221,7 +221,7 @@ describe("shared table cell classes (.th/.td) — issue #1491 guard 12a", () => 
 
   it("the .th/.td primitives are defined in globals.css", () => {
     const css = fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8");
-    expect(css).toMatch(/\.th\s*\{/);
-    expect(css).toMatch(/\.td\s*\{/);
+    expect(css).toMatch(/@utility\s+th\s*\{/);
+    expect(css).toMatch(/@utility\s+td\s*\{/);
   });
 });

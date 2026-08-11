@@ -28,7 +28,7 @@ export default async function LoginPage(props: {
         <div className="mb-8 flex items-center justify-center gap-2">
           <Wordmark markClassName="h-8 w-14" />
         </div>
-        <div className="rounded-2xl border border-black/10 bg-white/70 p-6 shadow-sm backdrop-blur-xl dark:border-white/5 dark:bg-ink-950/70">
+        <div className="rounded-2xl border border-black/10 bg-white/70 p-6 shadow-xs backdrop-blur-xl dark:border-white/5 dark:bg-ink-950/70">
           <h1 className="mb-1 text-lg font-semibold text-slate-800 dark:text-slate-100">
             Sign in
           </h1>

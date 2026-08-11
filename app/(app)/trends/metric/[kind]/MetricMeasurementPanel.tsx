@@ -36,7 +36,7 @@ export default function MetricMeasurementPanel({
       <div className="flex min-w-0 items-start gap-2 sm:block">
         {leading}
         <PageHeader
-          className="!mb-0 min-w-0 flex-1 !gap-2 sm:mt-3 sm:!gap-4"
+          className="mb-0! min-w-0 flex-1 gap-2! sm:mt-3 sm:gap-4!"
           title={title}
           subtitle={subtitle}
           actionAlign="start"
@@ -64,7 +64,7 @@ export default function MetricMeasurementPanel({
         <ModalShell
           title={`Log ${label}`}
           onClose={() => setOpen(false)}
-          className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:max-h-[calc(100dvh-4rem)] sm:p-5 dark:bg-ink-900"
+          className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:max-h-[calc(100dvh-4rem)] sm:p-5 dark:bg-ink-900"
         >
           <div
             className="mt-4 min-h-0 overflow-y-auto px-1 pb-1"

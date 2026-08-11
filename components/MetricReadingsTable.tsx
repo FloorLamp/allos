@@ -84,7 +84,7 @@ export default function MetricReadingsTable({
 }) {
   if (readOnlyReason) {
     return (
-      <div className="card overflow-hidden !p-0" data-testid="metric-readings">
+      <div className="card overflow-hidden p-0!" data-testid="metric-readings">
         <ReadingsHeader />
         <div
           className="px-2 pb-2 sm:px-5 sm:pb-5"
@@ -97,7 +97,7 @@ export default function MetricReadingsTable({
   }
 
   return (
-    <div className="card overflow-hidden !p-0" data-testid="metric-readings">
+    <div className="card overflow-hidden p-0!" data-testid="metric-readings">
       <ReadingsHeader />
       <div
         className="px-2 pb-2 sm:px-5 sm:pb-5"

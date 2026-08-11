@@ -19,7 +19,7 @@ export default function ModalShell({
   title,
   onClose,
   children,
-  className = "w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900",
+  className = "w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900",
   initialFocusRef,
 }: {
   title: string;
@@ -39,7 +39,7 @@ export default function ModalShell({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:p-8 dark:bg-black/70"
+      className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:p-8 dark:bg-black/70"
       onClick={onClose}
     >
       <div

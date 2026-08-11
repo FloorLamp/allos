@@ -34,7 +34,7 @@ export default function VitalsTodayStrip({
 
   return (
     <section
-      className="card overflow-hidden !p-0 sm:grid sm:grid-cols-[12rem_minmax(0,1fr)]"
+      className="card overflow-hidden p-0! sm:grid sm:grid-cols-[12rem_minmax(0,1fr)]"
       data-testid="vitals-today-strip"
     >
       <div className="flex items-center justify-between gap-3 px-4 py-3.5 sm:flex-col sm:items-start sm:justify-center sm:border-r sm:border-black/10 sm:px-5 sm:py-4 dark:sm:border-white/10">

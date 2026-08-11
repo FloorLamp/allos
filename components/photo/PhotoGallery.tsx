@@ -168,7 +168,7 @@ export default function PhotoGallery({
                 <button
                   key={p.id}
                   type="button"
-                  className="group relative aspect-[3/4] overflow-hidden rounded-lg bg-black/5 dark:bg-white/5"
+                  className="group relative aspect-3/4 overflow-hidden rounded-lg bg-black/5 dark:bg-white/5"
                   onClick={() => setLightbox(flat.indexOf(p))}
                   data-testid={`photo-gallery-item-${p.id}`}
                 >
@@ -254,7 +254,9 @@ export default function PhotoGallery({
                 <span className="text-white/60"> · {open.meta}</span>
               ) : null}
               {open.caption ? (
-                <div className="break-words text-white/70">{open.caption}</div>
+                <div className="wrap-break-word text-white/70">
+                  {open.caption}
+                </div>
               ) : null}
             </div>
             {renderActions ? (

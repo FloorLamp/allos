@@ -109,7 +109,7 @@ export default function RecentlyResolvedReopen({
         <div
           key={item.episodeId}
           data-testid={`recently-resolved-${item.episodeId}`}
-          className="flex flex-wrap items-center gap-2 rounded-lg border border-black/5 bg-white/60 px-3 py-2 text-sm shadow-sm dark:border-white/10 dark:bg-black/10"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-black/5 bg-white/60 px-3 py-2 text-sm shadow-xs dark:border-white/10 dark:bg-black/10"
         >
           <Avatar profile={item.profile} size="sm" />
           <span className="min-w-0 flex-1 text-slate-600 dark:text-slate-300">
@@ -143,7 +143,7 @@ export default function RecentlyResolvedReopen({
             aria-label={`Dismiss recently resolved ${item.situation}`}
             title="Dismiss"
             data-testid="recently-resolved-dismiss"
-            className="shrink-0 rounded p-1 text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
+            className="shrink-0 rounded-sm p-1 text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
             onClick={() => dismiss(item.episodeId)}
           >
             <IconX className="h-3.5 w-3.5" stroke={1.75} />

@@ -48,7 +48,7 @@ describe("temperature display (canonical storage is °F, #857)", () => {
     expect(fmtTemp(101.3, "F")).toBe("101.3 °F");
   });
 
-  it("converts canonical °F to °C, rounded to a tenth", () => {
+  it("converts canonical °F to °C, rounded-sm to a tenth", () => {
     expect(degFTo(32, "C")).toBe(0);
     expect(degFTo(212, "C")).toBe(100);
     expect(degFTo(98.6, "C")).toBe(37);

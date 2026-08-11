@@ -202,7 +202,7 @@ export default function VideoClipGrid({
                       </>
                     )}
                     {dur && (
-                      <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-xs font-medium tabular-nums text-white">
+                      <span className="absolute bottom-1 right-1 rounded-sm bg-black/60 px-1 text-xs font-medium tabular-nums text-white">
                         {dur}
                       </span>
                     )}
@@ -224,7 +224,7 @@ export default function VideoClipGrid({
                             setEditingId(c.id);
                             setCaptionDraft(c.caption ?? "");
                           }}
-                          className="tap-target rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+                          className="tap-target rounded-sm p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                         >
                           <span aria-hidden>✎</span>
                         </button>
@@ -235,7 +235,7 @@ export default function VideoClipGrid({
                           data-testid={`video-clip-delete-${c.id}`}
                           disabled={pending}
                           onClick={() => remove(c.id)}
-                          className="tap-target rounded p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50 dark:hover:bg-rose-950/30"
+                          className="tap-target rounded-sm p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50 dark:hover:bg-rose-950/30"
                         >
                           <IconTrash className="h-3.5 w-3.5" stroke={1.75} />
                         </button>

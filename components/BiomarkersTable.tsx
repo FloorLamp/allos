@@ -631,7 +631,7 @@ function PanelGroupHeader({
   const flagged = group.flaggedCount > 0;
   return (
     <tr className="table-section-row" data-testid="biomarker-panel-header">
-      <Td slot="full" colSpan={colSpan} className="!px-0 !py-0">
+      <Td slot="full" colSpan={colSpan} className="px-0! py-0!">
         <button
           type="button"
           data-testid="biomarker-panel-toggle"

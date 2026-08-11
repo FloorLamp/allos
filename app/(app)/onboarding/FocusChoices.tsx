@@ -70,7 +70,7 @@ export default function FocusChoices({
           return (
             <label
               key={focus.id}
-              className="relative flex cursor-pointer items-start rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-[:checked]:border-brand-400 has-[:checked]:bg-brand-50/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400/50 has-[:disabled]:cursor-default has-[:disabled]:opacity-55 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-[:checked]:border-brand-500/60 dark:has-[:checked]:bg-brand-500/10"
+              className="relative flex cursor-pointer items-start rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-checked:border-brand-400 has-checked:bg-brand-50/60 has-focus-visible:ring-2 has-focus-visible:ring-brand-400/50 has-disabled:cursor-default has-disabled:opacity-55 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-checked:border-brand-500/60 dark:has-checked:bg-brand-500/10"
             >
               <input
                 type="checkbox"
@@ -81,7 +81,7 @@ export default function FocusChoices({
                 onChange={(event) =>
                   toggle(focus.id, event.currentTarget.checked)
                 }
-                className="peer absolute top-3 right-3 h-5 w-5 cursor-pointer appearance-none rounded-md border border-slate-300 bg-white transition checked:border-brand-600 checked:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50 disabled:cursor-default dark:border-slate-600 dark:bg-ink-900 dark:checked:border-brand-500 dark:checked:bg-brand-500"
+                className="peer absolute top-3 right-3 h-5 w-5 cursor-pointer appearance-none rounded-md border border-slate-300 bg-white transition checked:border-brand-600 checked:bg-brand-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-400/50 disabled:cursor-default dark:border-slate-600 dark:bg-ink-900 dark:checked:border-brand-500 dark:checked:bg-brand-500"
               />
               <span className="pointer-events-none absolute top-3 right-3 flex h-5 w-5 items-center justify-center text-white opacity-0 transition peer-checked:opacity-100">
                 <IconCheck

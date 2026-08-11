@@ -325,7 +325,7 @@ export default function QuickAddMedication({
             data-testid="quick-add-prn"
             checked={asNeeded}
             onChange={(e) => setAsNeeded(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+            className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
           />
           As needed
         </label>
@@ -376,7 +376,7 @@ export default function QuickAddMedication({
                 data-testid="quick-add-redose"
                 checked={redoseNotice}
                 onChange={(e) => setRedoseNotice(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+                className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
               />
               Remind me when the redose window opens
             </label>

@@ -257,7 +257,7 @@ export default function ScheduleGrid({
           the right edge with no scroll affordance. It now overflows and scrolls
           inside its own container — the wide-content rule — leaving the page body
           itself free of horizontal scroll. */}
-      <table className="w-full min-w-[46rem] border-collapse text-xs">
+      <table className="w-full min-w-184 border-collapse text-xs">
         <thead>
           <tr>
             <th className="sticky left-0 z-10 bg-white px-3 py-2 text-left font-semibold text-slate-600 dark:bg-ink-900 dark:text-slate-300">
@@ -361,11 +361,11 @@ export default function ScheduleGrid({
                             }
                           >
                             {isGot ? (
-                              <span className="inline-block rounded bg-emerald-500 px-1 text-xs font-bold text-white">
+                              <span className="inline-block rounded-sm bg-emerald-500 px-1 text-xs font-bold text-white">
                                 ✓
                               </span>
                             ) : isRec ? (
-                              <span className="inline-block h-3 w-full min-w-[1rem] rounded bg-brand-200 dark:bg-brand-800/70" />
+                              <span className="inline-block h-3 w-full min-w-4 rounded-sm bg-brand-200 dark:bg-brand-800/70" />
                             ) : null}
                           </td>
                         );
@@ -412,17 +412,17 @@ function Legend() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
       <span className="flex items-center gap-1.5">
-        <span className="inline-block h-3 w-4 rounded bg-brand-200 dark:bg-brand-800/70" />
+        <span className="inline-block h-3 w-4 rounded-sm bg-brand-200 dark:bg-brand-800/70" />
         Recommended
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="inline-block rounded bg-emerald-500 px-1 text-xs font-bold text-white">
+        <span className="inline-block rounded-sm bg-emerald-500 px-1 text-xs font-bold text-white">
           ✓
         </span>
         Recorded
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="inline-block h-3 w-4 rounded bg-brand-50 ring-1 ring-brand-300 dark:bg-brand-950" />
+        <span className="inline-block h-3 w-4 rounded-sm bg-brand-50 ring-1 ring-brand-300 dark:bg-brand-950" />
         Current age
       </span>
     </div>

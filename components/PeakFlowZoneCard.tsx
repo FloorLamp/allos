@@ -127,7 +127,7 @@ export default function PeakFlowZoneCard({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <label className="label !mb-0" htmlFor="peak-flow-personal-best">
+            <label className="label mb-0!" htmlFor="peak-flow-personal-best">
               Personal best
             </label>
             <SaveStatus pending={pending} savedAt={savedAt} error={saveError} />

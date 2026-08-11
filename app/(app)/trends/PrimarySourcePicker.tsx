@@ -52,7 +52,7 @@ export default function PrimarySourcePicker({
           value={source}
           disabled={isPending}
           data-testid={`primary-source-${metric}`}
-          className="min-w-0 w-full rounded border border-black/10 bg-white px-2 py-1 text-xs text-slate-700 sm:w-auto sm:max-w-full dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
+          className="min-w-0 w-full rounded-sm border border-black/10 bg-white px-2 py-1 text-xs text-slate-700 sm:w-auto sm:max-w-full dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
           onChange={(e) => {
             const next = e.currentTarget.value;
             // Automatic has no source to be strict about; drop the mode with it
@@ -80,7 +80,7 @@ export default function PrimarySourcePicker({
           checked={onlyThis}
           disabled={isPending || source === ""}
           data-testid={`primary-source-strict-${metric}`}
-          className="h-3.5 w-3.5 rounded border-black/20 dark:border-white/20"
+          className="h-3.5 w-3.5 rounded-sm border-black/20 dark:border-white/20"
           onChange={(e) => {
             const next = e.currentTarget.checked;
             setOnlyThis(next);

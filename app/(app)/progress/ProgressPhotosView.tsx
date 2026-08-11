@@ -287,7 +287,7 @@ export default function ProgressPhotosView({
         <ModalShell
           title="Edit photo details"
           onClose={closeEdit}
-          className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <div data-testid="progress-edit-modal" className="mt-4 space-y-3">
             <p className="text-xs text-slate-500 dark:text-slate-400">

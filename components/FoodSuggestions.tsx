@@ -85,7 +85,7 @@ export default function FoodSuggestions({
                     >
                       <span className="font-medium">{f.food}</span>
                       {f.isAlternative && (
-                        <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-xs font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                        <span className="ml-1 rounded-sm bg-emerald-100 px-1 py-0.5 text-xs font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
                           alternative
                         </span>
                       )}

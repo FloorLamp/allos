@@ -66,10 +66,10 @@ export const PHONE_STARRED_TILE_CAP = 3;
 // wrapper draws nothing.
 export const PHONE_STACK = {
   container: "flex min-w-0 flex-col",
-  warning: "order-1 min-w-0 sm:order-none",
-  index: "order-2 min-w-0 sm:order-none",
-  glance: "order-3 min-w-0 sm:order-none",
-  entry: "order-4 min-w-0 sm:order-none",
+  warning: "order-1 min-w-0 sm:order-0",
+  index: "order-2 min-w-0 sm:order-0",
+  glance: "order-3 min-w-0 sm:order-0",
+  entry: "order-4 min-w-0 sm:order-0",
 } as const;
 
 // Split a list at a cap into the part shown before a phone fold and the part behind

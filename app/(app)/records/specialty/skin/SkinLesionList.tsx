@@ -45,7 +45,7 @@ const STATUS_BADGE: Record<string, string> = {
 function StatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`rounded px-1.5 py-0.5 text-xs font-medium ${STATUS_BADGE[status] ?? STATUS_BADGE.active}`}
+      className={`rounded-sm px-1.5 py-0.5 text-xs font-medium ${STATUS_BADGE[status] ?? STATUS_BADGE.active}`}
     >
       {skinLesionStatusLabel(status).toLowerCase()}
     </span>
@@ -108,7 +108,7 @@ function LesionRecordRow({
         <StatusBadge status={record.status} />
         {letters && (
           <span
-            className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             title="Recorded ABCDE observations"
           >
             ABCDE {letters}

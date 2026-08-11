@@ -141,7 +141,7 @@ export default function MedicationRow({
       <div className="flex items-start justify-between gap-3">
         <Link
           href={medicationHref(med.id)}
-          className="group/med-link -mx-2 -my-1 min-w-0 flex-1 rounded-lg px-2 py-1 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:hover:bg-ink-850 dark:focus-visible:ring-offset-ink-950"
+          className="group/med-link -mx-2 -my-1 min-w-0 flex-1 rounded-lg px-2 py-1 transition hover:bg-slate-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:hover:bg-ink-850 dark:focus-visible:ring-offset-ink-950"
           data-testid="medication-row-link"
         >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

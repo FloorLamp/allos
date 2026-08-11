@@ -679,7 +679,7 @@ export default async function ImportDetailPage(props: {
                   name — nothing was lost — but their LOINC has no entry in the
                   canonical map, so they don’t trend with the matching biomarker
                   or pick up its reference band. Add the code to{" "}
-                  <code className="rounded bg-slate-100 px-1 dark:bg-ink-800">
+                  <code className="rounded-sm bg-slate-100 px-1 dark:bg-ink-800">
                     lib/biomarker-loinc.ts
                   </code>{" "}
                   to canonicalize them, or report it below.{" "}
@@ -694,7 +694,7 @@ export default async function ImportDetailPage(props: {
                       key={u.loinc}
                       className="flex flex-wrap items-baseline gap-x-2 border-b border-black/5 py-1 last:border-0 dark:border-white/10"
                     >
-                      <code className="rounded bg-slate-100 px-1 font-medium tabular-nums dark:bg-ink-800">
+                      <code className="rounded-sm bg-slate-100 px-1 font-medium tabular-nums dark:bg-ink-800">
                         {u.loinc}
                       </code>
                       <span>{u.name}</span>
@@ -737,7 +737,7 @@ export default async function ImportDetailPage(props: {
                   name — nothing was lost — but the name matched no canonical
                   biomarker, so they don’t trend with a known analyte or pick up
                   its reference band. Add an alias in{" "}
-                  <code className="rounded bg-slate-100 px-1 dark:bg-ink-800">
+                  <code className="rounded-sm bg-slate-100 px-1 dark:bg-ink-800">
                     lib/canonical-name.ts
                   </code>{" "}
                   if it’s a known analyte named differently, or curate a new
@@ -955,7 +955,7 @@ export default async function ImportDetailPage(props: {
                           {f.value}
                         </span>
                       )}
-                      <span className="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                      <span className="ml-auto rounded-sm bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                         {f.verdict === "value_mismatch"
                           ? "value not found in source"
                           : "name not found in source"}
@@ -989,7 +989,7 @@ export default async function ImportDetailPage(props: {
                 >
                   {dropGroups.map((g) => (
                     <div key={g.reason} data-testid="drop-group">
-                      <div className="sticky top-0 z-10 -mx-1 flex items-center gap-2 rounded bg-white/90 px-1 py-1 backdrop-blur-sm dark:bg-ink-900/90">
+                      <div className="sticky top-0 z-10 -mx-1 flex items-center gap-2 rounded-sm bg-white/90 px-1 py-1 backdrop-blur-xs dark:bg-ink-900/90">
                         <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                           {g.label}
                         </span>

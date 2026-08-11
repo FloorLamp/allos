@@ -65,7 +65,7 @@ export default async function SleepSection({
       </p>
       {insight && (
         <p
-          className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+          className="mt-2 rounded-sm bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
           data-testid="longevity-sri-insight"
         >
           {insight}

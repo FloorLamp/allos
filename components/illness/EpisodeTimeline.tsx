@@ -734,15 +734,15 @@ export default function EpisodeTimeline({
                                       "—"
                                     )}
                               </td>
-                              <td className="block min-w-0 pr-1 align-top font-medium break-words text-slate-700 sm:table-cell sm:py-2 sm:pr-2 dark:text-slate-200">
+                              <td className="block min-w-0 pr-1 align-top font-medium wrap-break-word text-slate-700 sm:table-cell sm:py-2 sm:pr-2 dark:text-slate-200">
                                 {eventLabel(event)}
                               </td>
                               <td
                                 className={
                                   event.kind === "temperature" &&
                                   event.flag === "high"
-                                    ? "col-start-2 row-start-2 block min-w-0 pr-1 align-top font-semibold break-words text-rose-600 sm:table-cell sm:py-2 sm:pr-2 dark:text-rose-400"
-                                    : "col-start-2 row-start-2 block min-w-0 pr-1 align-top break-words text-slate-600 sm:table-cell sm:py-2 sm:pr-2 dark:text-slate-300"
+                                    ? "col-start-2 row-start-2 block min-w-0 pr-1 align-top font-semibold wrap-break-word text-rose-600 sm:table-cell sm:py-2 sm:pr-2 dark:text-rose-400"
+                                    : "col-start-2 row-start-2 block min-w-0 pr-1 align-top wrap-break-word text-slate-600 sm:table-cell sm:py-2 sm:pr-2 dark:text-slate-300"
                                 }
                               >
                                 {eventDetail(event)}

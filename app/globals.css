@@ -3,10 +3,9 @@
  * LAYOUT (issue #1511 — this file used to be an append magnet, so every PR that
  * touched CSS conflicted on the same trailing lines):
  *
- *   1. FOUNDATION — the @tailwind directives, the :root design tokens, base
- *      element rules, and the @layer components block. Its ORDER IS LOAD-BEARING
- *      (later rules of equal specificity win, and the utilities are emitted at
- *      the @tailwind utilities line above everything below it). Do not reorder it.
+ *   1. FOUNDATION — the Tailwind import, theme/design tokens, base element
+ *      rules, and shared @utility definitions. Its ORDER IS LOAD-BEARING (later
+ *      rules of equal specificity win). Do not reorder it.
  *   2. FEATURE SECTIONS — each introduced by a "SECTION:" comment, each
  *      self-contained (its own keyframes, media queries, and its own
  *      prefers-reduced-motion override) and targeting selectors no other section
@@ -18,133 +17,58 @@
  * print block re-declaring :root) still belongs after it, which every feature
  * section already is. */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-:root {
-  color-scheme: light;
+@custom-variant dark {
+  @media not print {
+    .dark & {
+      @slot;
+    }
+  }
 }
 
-:root.dark {
-  color-scheme: dark;
+@theme {
+  --breakpoint-3xl: 1920px;
+
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-200: #bbf7d0;
+  --color-brand-300: #86efac;
+  --color-brand-400: #4ade80;
+  --color-brand-500: #22c55e;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-brand-800: #166534;
+  --color-brand-900: #14532d;
+  --color-brand-950: #052e16;
+
+  --color-ink-700: #283029;
+  --color-ink-750: #1a211d;
+  --color-ink-800: #141a17;
+  --color-ink-850: #0f1412;
+  --color-ink-900: #0c100e;
+  --color-ink-950: #070a09;
 }
 
-/* Checkbox rows are whole-label click targets throughout the app. Keep the native
-   control and every common associated-label shape honest about that interaction;
-   disabled controls use the non-interactive cursor instead. :where() keeps this
-   global convention low-specificity so an exceptional component can still override
-   it deliberately. */
-:where(
-  input[type="checkbox"]:not(:disabled),
-  label:has(input[type="checkbox"]:not(:disabled)),
-  input[type="checkbox"]:not(:disabled) + label,
-  label:has(+ input[type="checkbox"]:not(:disabled))
-) {
-  cursor: pointer;
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
 }
 
-:where(
-  input[type="checkbox"]:disabled,
-  label:has(input[type="checkbox"]:disabled),
-  input[type="checkbox"]:disabled + label,
-  label:has(+ input[type="checkbox"]:disabled)
-) {
-  cursor: not-allowed;
-}
-
-/* Tailwind's form reset gives disabled controls `cursor: default` with higher
-   specificity than the low-specificity convention above. Pin the checkbox itself
-   after that reset while leaving the associated-label rules easy to override. */
-input[type="checkbox"]:disabled {
-  cursor: not-allowed;
-}
-
-html {
-  /* Keep a horizontal overscroll INSIDE the page (issues #1425 / #1469).
-
-     The app has two horizontal touch gestures — the edge-swipe that opens the
-     nav drawer and the Timeline's adjacent-day swipe — and by default a
-     horizontal drag that the page cannot scroll CHAINS to the browser's own
-     in-page history navigation: the swipe goes "back" instead, and the gesture
-     appears to do nothing except lose your place. (That is not a theory; it is
-     what the browser tests caught, landing on the previous history entry.)
-
-     `contain` stops the chaining without stopping any scrolling: an inner
-     horizontal scroller — a wide table, the Timeline's filter-chip strip, a
-     chart — still scrolls exactly as before. It is the x-axis twin of the
-     `overscroll-behavior-y: contain` that pull-to-refresh (#1467) already sets
-     while it is active.
-
-     Caveat worth knowing: this governs the BROWSER's overscroll gesture, not the
-     platform's. An iOS Safari TAB keeps its system edge-swipe-back (no CSS can
-     reach it), so there the drawer's edge gesture competes with it; installed to
-     the home screen — the posture this app is built for — there is no system
-     edge-swipe and the drawer gets the edge to itself. */
-  overscroll-behavior-x: contain;
-}
-
-body {
-  @apply text-slate-800 antialiased dark:text-slate-200;
-  /* Suppress the gray flash mobile browsers paint on tap; interactive elements
-     already carry their own hover/active styles. */
-  -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-x: contain;
-  /* Vitals light page: airy off-white with a soft green glow up top + a faint
-     vertical gradient, so the canvas isn't flat. */
-  background:
-    radial-gradient(
-      1000px 480px at 82% -12%,
-      rgba(34, 197, 94, 0.14),
-      transparent 60%
-    ),
-    linear-gradient(180deg, #e4ece6 0%, #cdd9d1 100%);
-  background-attachment: fixed;
-  min-height: 100vh;
-}
-
-/* Vitals dark page: de-blued near-black with a soft green glow up top. */
-:root.dark body {
-  background:
-    radial-gradient(
-      1100px 520px at 80% -10%,
-      rgba(34, 197, 94, 0.06),
-      transparent 60%
-    ),
-    #090c0b;
-  background-attachment: fixed;
-  min-height: 100vh;
-}
-
-/* Dotted texture on the page background, BEHIND content. The frosted cards'
-   backdrop-blur smooths it out where they sit, so the dots read only on the
-   bare background — never on the cards. A spaced polka-dot grid (cheap tiled
-   radial-gradient; no SVG filter). */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image: radial-gradient(
-    circle,
-    rgba(20, 30, 24, 0.1) 1.5px,
-    transparent 1.6px
-  );
-  background-size: 22px 22px;
-  /* Fade the dots in from top (transparent) to bottom (full). */
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
-}
-:root.dark body::before {
-  background-image: radial-gradient(
-    circle,
-    rgba(255, 255, 255, 0.07) 1.5px,
-    transparent 1.6px
-  );
-}
-
-@layer components {
+@utility card {
   /* Border/fill color language (issue #794 clusters 9a + 10a). Two properties,
      two vocabularies — keep them apart:
        - grey STRUCTURAL BORDERS use the alpha pair: `border-black/10` (or /5 for
@@ -163,103 +87,105 @@ body::before {
      390px line on a p-5 card's two gutters, and the app stacks cards. p-4 below
      `sm`, the unchanged p-5 from `sm` up — ONE tokenized change here rather than
      a per-page sweep, so every card on every surface tightens together. */
-  .card {
-    --card-gutter: 1rem;
-    --card-radius: 0.75rem;
-    @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-4 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 sm:p-5 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
-  }
+  --card-gutter: 1rem;
+  --card-radius: 0.75rem;
+  @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-4 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 sm:p-5 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
   @media (min-width: 640px) {
-    .card {
-      --card-gutter: 1.25rem;
-    }
-  }
-  .card-footnote {
-    margin-inline: calc(var(--card-gutter, 0px) * -1);
-    margin-bottom: calc(var(--card-gutter, 0px) * -1);
-    padding-inline: var(--card-gutter, 0px);
-    padding-bottom: var(--card-gutter, 0px);
-    border-end-start-radius: calc(var(--card-radius, 0.75rem) - 1px);
-    border-end-end-radius: calc(var(--card-radius, 0.75rem) - 1px);
+    --card-gutter: 1.25rem;
   }
   /* backdrop-filter makes every .card its own stacking context. Elevate every
      card ancestor of an OPEN combobox so the listbox can clear later sibling
      cards; raising the listbox alone cannot escape its card's stacking context. */
-  .card:has([role="combobox"][aria-expanded="true"]) {
+  &:has([role="combobox"][aria-expanded="true"]) {
     @apply relative z-20;
   }
-  .input {
-    @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
-  }
+}
+
+@utility card-footnote {
+  margin-inline: calc(var(--card-gutter, 0px) * -1);
+  margin-bottom: calc(var(--card-gutter, 0px) * -1);
+  padding-inline: var(--card-gutter, 0px);
+  padding-bottom: var(--card-gutter, 0px);
+  border-end-start-radius: calc(var(--card-radius, 0.75rem) - 1px);
+  border-end-end-radius: calc(var(--card-radius, 0.75rem) - 1px);
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-hidden focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
   /* The field counterpart of the button family's disabled treatment (#1450 B).
      `.input` previously declared nothing for `:disabled`, so a disabled field
      was indistinguishable from an editable one except by trying to type in it. */
-  .input:disabled {
+  &:disabled {
     @apply cursor-not-allowed bg-slate-100 text-slate-600 dark:bg-ink-750 dark:text-slate-400;
-  }
-  .number-no-spinner {
-    appearance: textfield;
-  }
-  .number-no-spinner::-webkit-inner-spin-button,
-  .number-no-spinner::-webkit-outer-spin-button {
-    margin: 0;
-    appearance: none;
   }
   /* Native <select> draws its dropdown caret hard against the right edge. Swap
      it for a custom chevron with breathing room, and reserve right padding so
      the option text never slides under it. */
-  select.input {
+  &:is(select) {
     @apply appearance-none bg-no-repeat pr-9;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
     background-position: right 0.75rem center;
     background-size: 1rem;
   }
-  :root.dark select.input {
+  :root.dark &:is(select) {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   }
+}
+
+@utility number-no-spinner {
+  appearance: textfield;
+  &::-webkit-inner-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+  &::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+}
+
+@utility select-bare {
   /* Compact, borderless <select> for the calendar month/year pickers. Drops the
      native menulist chrome but keeps a small custom caret (appearance-none alone
      leaves no dropdown affordance), and pins the option colors in dark mode — a
      transparent-background select otherwise makes Chromium render the OPEN option
      list in a light theme, leaving light text on a white popup. */
-  select.select-bare {
-    @apply cursor-pointer appearance-none rounded bg-transparent bg-no-repeat pr-4 font-semibold text-slate-700 outline-none hover:bg-slate-100 focus:ring-1 focus:ring-brand-400 dark:text-slate-200 dark:hover:bg-ink-800;
+  &:is(select) {
+    @apply cursor-pointer appearance-none rounded-sm bg-transparent bg-no-repeat pr-4 font-semibold text-slate-700 outline-hidden hover:bg-slate-100 focus:ring-1 focus:ring-brand-400 dark:text-slate-200 dark:hover:bg-ink-800;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
     background-position: right 0.125rem center;
     background-size: 0.7rem;
   }
-  :root.dark select.select-bare {
+  :root.dark &:is(select) {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   }
-  :root.dark select.select-bare option {
+  :root.dark &:is(select) option {
     /* ink-900 to match the calendar surface; slate-200 text for legibility. */
     background-color: #0c100e;
     color: #e2e8f0;
   }
-  .label {
-    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
-  }
+}
+
+@utility label {
+  @apply mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
+}
+
+@utility section-label {
   /* Uppercase micro-heading / section label. Typography only (no margin or
      layout) so call sites keep their own element + spacing; a brand/rose/tone
      text color utility can override the default muted slate. Winner of the
      8-variant sweep (issue #794 cluster 1): text-xs font-semibold, matching
      .th. A source-scan guard (section-label.test.ts) blocks new hand-rolls. */
-  .section-label {
-    @apply text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400;
-  }
+  @apply text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400;
+}
+
+@utility btn {
   /* Button family. A shared focus-visible ring (brand-500 with a surface-colored
      offset) gives every keyboard-focused button the same affordance — the app
      otherwise relied on the browser default outline (issue #794 cluster 8c). The
      dark offset is ink-950, matching the near-black page surface the buttons sit
      against. */
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
-  }
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-black/10 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750 dark:focus-visible:ring-offset-ink-950;
-  }
-  .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
-  }
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-linear-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-xs transition hover:from-brand-600 hover:to-brand-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   /* ONE disabled treatment for the whole button family (issue #1450 cluster B).
      `disabled:opacity-50` used to fade the SATURATED fill instead of replacing
      it: a disabled "Create login" rendered as washed-out green with white text
@@ -273,30 +199,55 @@ body::before {
      the base classes and after their :hover, so it wins on a hovered disabled
      button too. Call sites should NOT re-declare `disabled:*` — that is exactly
      how the second treatment grew. */
-  .btn:disabled,
-  .btn-ghost:disabled,
-  .btn-danger:disabled,
-  .btn[aria-disabled="true"],
-  .btn-ghost[aria-disabled="true"],
-  .btn-danger[aria-disabled="true"] {
+  &:disabled {
     @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
   }
+  &[aria-disabled="true"] {
+    @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
+  }
+}
+
+@utility btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-black/10 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750 dark:focus-visible:ring-offset-ink-950;
+  &:disabled {
+    @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
+  }
+  &[aria-disabled="true"] {
+    @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
+  }
+}
+
+@utility btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-xs transition hover:bg-rose-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  &:disabled {
+    @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
+  }
+  &[aria-disabled="true"] {
+    @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
+  }
+}
+
+@utility btn-sm {
   /* Compact size modifier for the .btn family — tighter padding for dense
      contexts (table rows, card headers, inline controls). Defined AFTER the base
      classes so its padding/text-size win when composed as `btn btn-sm`. */
-  .btn-sm {
-    @apply px-3 py-1.5 text-sm;
-  }
-  .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
-  }
+  @apply px-3 py-1.5 text-sm;
+}
+
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+}
+
+@utility th {
   /* Slightly tighter cell padding on phones so wide tables fit more columns. */
-  .th {
-    @apply px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 sm:px-3 dark:text-slate-400;
-  }
-  .td {
-    @apply px-2 py-2 text-sm text-slate-700 sm:px-3 dark:text-slate-300;
-  }
+  @apply px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 sm:px-3 dark:text-slate-400;
+}
+
+@utility td {
+  @apply px-2 py-2 text-sm text-slate-700 sm:px-3 dark:text-slate-300;
+}
+
+@utility table-cards {
   /* ── Responsive tables (issue #1426) ────────────────────────────────────────
      Below `sm`, a `.table-cards` table stops being a table and becomes a stack of
      flat divider rows — over the SAME DOM. There is no second content tree and no
@@ -319,21 +270,19 @@ body::before {
      first two constant within every group, so they went back to being desktop-only
      detail. The mechanism is unchanged; what a cell should SPEND it on is the rule
      in components/ResponsiveTable.tsx.) */
-  .table-cards {
-    @apply max-sm:block;
-  }
+  @apply max-sm:block;
   /* Headers are gone in stacked-row mode (each cell carries its own label instead),
      so a sortable list pairs this with components/TableSortSelect.tsx. */
-  .table-cards thead {
+  & thead {
     @apply max-sm:hidden;
   }
-  .table-cards tbody {
+  & tbody {
     @apply max-sm:block;
   }
-  .table-cards tr {
+  & tr {
     @apply max-sm:mb-0 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-3 max-sm:gap-y-1 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:border-b max-sm:border-black/5 max-sm:bg-transparent max-sm:p-3 max-sm:dark:border-white/10;
   }
-  .table-cards tr:last-child {
+  & tr:last-child {
     @apply max-sm:border-b-0;
   }
   /* A SECTION HEADER row (issue #1499's panel groups) is not a record card — it is
@@ -342,7 +291,7 @@ body::before {
      both viewports from the one `<tr>` (no `hidden md:*` twin to drift). The extra
      class beats `.table-cards tr` on specificity, which a utility class on the row
      could not — the reason the header's colour lives on its button. */
-  .table-cards tr.table-section-row {
+  & tr.table-section-row {
     @apply max-sm:mb-2 max-sm:block max-sm:border-0 max-sm:bg-transparent max-sm:p-0;
   }
   /* A reading NESTED inside an open section group (issue #1581 section C) sits under
@@ -353,99 +302,145 @@ body::before {
      this keeps. Same mechanism as the section-header rule above — an element+class
      selector outranks `.table-cards tr`, which a utility class on the row could not —
      and a table that renders its rows UNGROUPED simply never sets the class. */
-  .table-cards tr.table-nested-row {
+  & tr.table-nested-row {
     @apply max-sm:py-1.5;
   }
-  .table-cards td {
+  & td {
     @apply max-sm:block max-sm:px-0 max-sm:py-0;
   }
-  .table-cards td:not([data-card]) {
+  & td:not([data-card]) {
     @apply max-sm:hidden;
   }
-  .table-cards td[data-card="title"] {
+  & td[data-card="title"] {
     @apply max-sm:order-1 max-sm:min-w-0 max-sm:flex-1 max-sm:text-[0.9375rem] max-sm:font-medium max-sm:text-slate-800 max-sm:dark:text-slate-100;
   }
-  .table-cards td[data-card="actions"] {
+  & td[data-card="actions"] {
     @apply max-sm:order-2 max-sm:ml-auto max-sm:shrink-0;
   }
-  .table-cards td[data-card="value"] {
+  & td[data-card="value"] {
     @apply max-sm:order-3 max-sm:w-full max-sm:basis-full max-sm:text-base;
   }
-  .table-cards td[data-card="meta"] {
+  & td[data-card="meta"] {
     @apply max-sm:order-4 max-sm:text-xs max-sm:text-slate-500 max-sm:dark:text-slate-400;
   }
-  .table-cards td[data-card="full"] {
+  & td[data-card="full"] {
     @apply max-sm:order-5 max-sm:w-full max-sm:basis-full;
   }
+}
+
+@utility table-section-row {
+  /* A SECTION HEADER row (issue #1499's panel groups) is not a record card — it is
+     the index entry above one. In card mode it drops the card frame entirely and
+     lets its own control own the surface, so the group header reads as a header at
+     both viewports from the one `<tr>` (no `hidden md:*` twin to drift). The extra
+     class beats `.table-cards tr` on specificity, which a utility class on the row
+     could not — the reason the header's colour lives on its button. */
+  .table-cards &:is(tr) {
+    @apply max-sm:mb-2 max-sm:block max-sm:border-0 max-sm:bg-transparent max-sm:p-0;
+  }
+}
+
+@utility table-nested-row {
+  /* A reading NESTED inside an open section group (issue #1581 section C) sits under
+     a container the group header already drew, so it does not also need the full card
+     padding — the #1539 double-framing pattern, one level in. Padding only: the frame
+     itself (the rounded border, the fill, the bottom margin) came off every stacked
+     row in #1616, leaving the divider that separates one reading from the next, which
+     this keeps. Same mechanism as the section-header rule above — an element+class
+     selector outranks `.table-cards tr`, which a utility class on the row could not —
+     and a table that renders its rows UNGROUPED simply never sets the class. */
+  .table-cards &:is(tr) {
+    @apply max-sm:py-1.5;
+  }
+}
+
+@utility metric-readings-list {
   /* A metric detail page already gives its readings one containing card. Flatten
      those phone rows into compact divider-separated records so they do not read
      as padded cards nested inside another card. Desktop keeps the table grid. */
-  .metric-readings-list tr {
-    @apply max-sm:mb-0 max-sm:items-center max-sm:gap-x-2 max-sm:gap-y-0.5 max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:bg-transparent max-sm:pr-0 max-sm:pl-2 max-sm:pt-0 max-sm:pb-2;
+  /* Tailwind 4 sorts custom utilities independently of source order. These
+     intentional overrides must beat the generic `table-cards` rules regardless
+     of that generated order. */
+  & tr {
+    @apply max-sm:mb-0 max-sm:items-center! max-sm:gap-x-2! max-sm:gap-y-0.5! max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0 max-sm:bg-transparent max-sm:pr-0! max-sm:pl-2! max-sm:pt-0! max-sm:pb-2!;
   }
-  .metric-readings-list tr:last-child {
+  & tr:last-child {
     @apply max-sm:border-b-0;
   }
-  .metric-readings-list td[data-card="value"] {
-    @apply max-sm:order-2 max-sm:ml-auto max-sm:w-auto max-sm:basis-auto max-sm:text-right max-sm:text-[0.9375rem] max-sm:font-medium;
+  & td[data-card="value"] {
+    @apply max-sm:order-2! max-sm:ml-auto! max-sm:w-auto! max-sm:basis-auto! max-sm:text-right max-sm:text-[0.9375rem] max-sm:font-medium;
   }
-  .metric-readings-list td[data-card="actions"] {
-    @apply max-sm:order-3 max-sm:ml-0;
-  }
-  /* Practice histories sit inside an existing card, so their responsive rows are
-     compact divider-separated records rather than padded cards. The one table DOM
-     still carries the session, optional notes, and its overflow action. */
-  .practice-session-list tr {
-    @apply max-sm:p-0 max-sm:py-2;
-  }
-  .practice-session-list td[data-card="meta"] {
-    @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm max-sm:text-slate-500 max-sm:dark:text-slate-400;
+  & td[data-card="actions"] {
+    @apply max-sm:order-3! max-sm:ml-0!;
   }
   /* Keep the readings row compact without shrinking the menu's effective touch
      target: the visible control occupies 32px in layout while its pseudo-element
      extends the clickable button box to 40px. */
-  .metric-readings-list
-    td[data-card="actions"]
-    [data-testid="overflow-menu-trigger"] {
+  & td[data-card="actions"] [data-testid="overflow-menu-trigger"] {
     @apply max-sm:relative max-sm:h-8 max-sm:w-8;
   }
   @media (max-width: 639.98px) {
-    .metric-readings-list
-      td[data-card="actions"]
-      [data-testid="overflow-menu-trigger"]::after {
+    & td[data-card="actions"] [data-testid="overflow-menu-trigger"]::after {
       content: "";
       position: absolute;
       inset: -4px;
     }
   }
-  .metric-readings-list td[data-card="meta"] {
-    @apply max-sm:flex max-sm:w-full max-sm:basis-full max-sm:justify-between max-sm:gap-3 max-sm:text-right;
+  & td[data-card="meta"] {
+    @apply max-sm:flex max-sm:w-full! max-sm:basis-full! max-sm:justify-between max-sm:gap-3 max-sm:text-right;
   }
-  .metric-readings-list td[data-card="meta"] .card-cell-label {
+  & td[data-card="meta"] .card-cell-label {
     @apply max-sm:mr-0 max-sm:shrink-0;
   }
-  .metric-readings-list td.metric-reading-source {
+  & td.metric-reading-source {
     @apply max-sm:justify-start max-sm:gap-1 max-sm:text-left;
+  }
+}
+
+@utility practice-session-list {
+  /* Practice histories sit inside an existing card, so their responsive rows are
+     compact divider-separated records rather than padded cards. The one table DOM
+     still carries the session, optional notes, and its overflow action. */
+  & tr {
+    @apply max-sm:px-0! max-sm:py-2!;
+  }
+  & td[data-card="meta"] {
+    @apply max-sm:mt-1 max-sm:w-full max-sm:basis-full max-sm:text-sm max-sm:text-slate-500 max-sm:dark:text-slate-400;
+  }
+}
+
+@utility card-cell-label {
+  .metric-readings-list td[data-card="meta"] & {
+    @apply max-sm:mr-0 max-sm:shrink-0;
   }
   /* The column's own label, shown only in card mode (the `<th>` is hidden there). */
   /* The passing muted pairing (#794): the label is set apart from its value by
      case and size, never by dropping below the contrast floor. */
-  .card-cell-label {
-    @apply mr-1 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
+  @apply mr-1 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
+}
+
+@utility metric-reading-source {
+  .metric-readings-list &:is(td) {
+    @apply max-sm:justify-start max-sm:gap-1 max-sm:text-left;
   }
+}
+
+@utility tap-target {
   /* Icon-only tap targets share the .btn family's keyboard focus ring (issue
      #794 cluster 8c). The touch-only clickable-area extension lives in the
      pointer:coarse block below; this rule is the always-on focus affordance. */
-  .tap-target {
-    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
-  }
+  @apply focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+}
+
+@utility press {
   /* Press feedback (issue #1416, section F). A touch target that dips slightly
      while held answers "did that register?" on a phone, where there is no hover
      state to answer it. Transform-only (no layout, no paint of anything else);
      the reduced-motion override lives in the media block below. */
-  .press {
-    @apply transition-transform duration-100 active:scale-[0.97];
-  }
+  @apply transition-transform duration-100 active:scale-[0.97];
+}
+
+@utility chart-card-plot {
   /* The plot box inside `components/ChartCard.tsx` (issue #1488). The CARD owns the
      plot height — square below `sm`, `plotHeightClass` (default h-64) above — and
      this rule is what makes that ownership real: whatever the caller renders into
@@ -454,9 +449,133 @@ body::before {
      A class selector plus an element selector outranks the utility's single class,
      so it wins over the chart's own height without `!important` — and a call site
      therefore cannot silently reintroduce a per-chart height vocabulary. */
-  .chart-card-plot > * {
+  & > * {
     height: 100%;
     width: 100%;
+  }
+}
+
+@layer utilities {
+  :root {
+    color-scheme: light;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+  }
+
+  /* Checkbox rows are whole-label click targets throughout the app. Keep the native
+   control and every common associated-label shape honest about that interaction;
+   disabled controls use the non-interactive cursor instead. :where() keeps this
+   global convention low-specificity so an exceptional component can still override
+   it deliberately. */
+  :where(
+    input[type="checkbox"]:not(:disabled),
+    label:has(input[type="checkbox"]:not(:disabled)),
+    input[type="checkbox"]:not(:disabled) + label,
+    label:has(+ input[type="checkbox"]:not(:disabled))
+  ) {
+    cursor: pointer;
+  }
+
+  :where(
+    input[type="checkbox"]:disabled,
+    label:has(input[type="checkbox"]:disabled),
+    input[type="checkbox"]:disabled + label,
+    label:has(+ input[type="checkbox"]:disabled)
+  ) {
+    cursor: not-allowed;
+  }
+
+  /* Tailwind's form reset gives disabled controls `cursor: default` with higher
+   specificity than the low-specificity convention above. Pin the checkbox itself
+   after that reset while leaving the associated-label rules easy to override. */
+  input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+  }
+
+  html {
+    /* Keep a horizontal overscroll INSIDE the page (issues #1425 / #1469).
+
+     The app has two horizontal touch gestures — the edge-swipe that opens the
+     nav drawer and the Timeline's adjacent-day swipe — and by default a
+     horizontal drag that the page cannot scroll CHAINS to the browser's own
+     in-page history navigation: the swipe goes "back" instead, and the gesture
+     appears to do nothing except lose your place. (That is not a theory; it is
+     what the browser tests caught, landing on the previous history entry.)
+
+     `contain` stops the chaining without stopping any scrolling: an inner
+     horizontal scroller — a wide table, the Timeline's filter-chip strip, a
+     chart — still scrolls exactly as before. It is the x-axis twin of the
+     `overscroll-behavior-y: contain` that pull-to-refresh (#1467) already sets
+     while it is active.
+
+     Caveat worth knowing: this governs the BROWSER's overscroll gesture, not the
+     platform's. An iOS Safari TAB keeps its system edge-swipe-back (no CSS can
+     reach it), so there the drawer's edge gesture competes with it; installed to
+     the home screen — the posture this app is built for — there is no system
+     edge-swipe and the drawer gets the edge to itself. */
+    overscroll-behavior-x: contain;
+  }
+
+  body {
+    @apply text-slate-800 antialiased dark:text-slate-200;
+    /* Suppress the gray flash mobile browsers paint on tap; interactive elements
+     already carry their own hover/active styles. */
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-x: contain;
+    /* Vitals light page: airy off-white with a soft green glow up top + a faint
+     vertical gradient, so the canvas isn't flat. */
+    background:
+      radial-gradient(
+        1000px 480px at 82% -12%,
+        rgba(34, 197, 94, 0.14),
+        transparent 60%
+      ),
+      linear-gradient(180deg, #e4ece6 0%, #cdd9d1 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  /* Vitals dark page: de-blued near-black with a soft green glow up top. */
+  :root.dark body {
+    background:
+      radial-gradient(
+        1100px 520px at 80% -10%,
+        rgba(34, 197, 94, 0.06),
+        transparent 60%
+      ),
+      #090c0b;
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  /* Dotted texture on the page background, BEHIND content. The frosted cards'
+   backdrop-blur smooths it out where they sit, so the dots read only on the
+   bare background — never on the cards. A spaced polka-dot grid (cheap tiled
+   radial-gradient; no SVG filter). */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: radial-gradient(
+      circle,
+      rgba(20, 30, 24, 0.1) 1.5px,
+      transparent 1.6px
+    );
+    background-size: 22px 22px;
+    /* Fade the dots in from top (transparent) to bottom (full). */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
+  }
+  :root.dark body::before {
+    background-image: radial-gradient(
+      circle,
+      rgba(255, 255, 255, 0.07) 1.5px,
+      transparent 1.6px
+    );
   }
 }
 
@@ -785,7 +904,7 @@ body::before {
    page under OS dark — for a page whose scripts may not have run, the OS
    preference is the only signal available, and honoring it is the point.
    Colour values restate the `:root.dark` body/card rules above and the ink
-   palette (tailwind.config.ts); they cannot be Tailwind `dark:` variants because
+   palette (`@theme` above); they cannot be Tailwind `dark:` variants because
    those key on the class this page may never receive. */
 @media (prefers-color-scheme: dark) {
   :root:not(.dark) [data-offline-shell] {
@@ -823,7 +942,7 @@ body::before {
    backgrounds/flag colors to actually render (browsers drop them by default).
 
    Dark-mode printing (issue #794 cluster 7c): the theme is class-based (`.dark`
-   on <html>), and `darkMode` is scoped to `@media not print` in tailwind.config,
+   on <html>), and the custom `dark` variant above is scoped to `@media not print`,
    so under print media EVERY `dark:` utility stops matching and the light
    utilities render instead — dark text on the forced-white page rather than
    near-white `dark:text-slate-100`. The `.dark` class stays on <html>; only the

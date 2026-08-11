@@ -298,7 +298,7 @@ function Tile({
       data-tone={tile.tone}
       data-basis={tile.basis}
       data-landing={landing ? "true" : undefined}
-      className={`relative flex aspect-square flex-col justify-between rounded-xl border p-3 text-left transition-[background-color,border-color,color,transform] duration-500 hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+      className={`relative flex aspect-square flex-col justify-between rounded-xl border p-3 text-left transition-[background-color,border-color,color,transform] duration-500 hover:brightness-105 focus:outline-hidden focus:ring-2 focus:ring-brand-500 ${
         TONE_TILE[tile.tone]
       } ${tile.stale ? "opacity-60 grayscale-[0.4]" : ""} ${
         landing ? "fitness-tile-land" : ""
@@ -319,7 +319,7 @@ function Tile({
         {/* Below sm the chip collapses to its glyph + a title, with the text kept
             for AT (sr-only) — the 2-col tiles are too narrow for glyph AND text. */}
         <span
-          className="inline-flex shrink-0 items-center gap-1 rounded bg-black/5 px-1 py-0.5 text-xs uppercase tracking-wide opacity-70 dark:bg-white/10"
+          className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-black/5 px-1 py-0.5 text-xs uppercase tracking-wide opacity-70 dark:bg-white/10"
           title={DOMAIN_LABEL[tile.domain] ?? tile.domain}
         >
           <FitnessDomainGlyph domain={tile.domain} className="h-3 w-3" />
@@ -358,7 +358,7 @@ function Tile({
             {tile.roughGuide && (
               <span
                 data-testid={`fitness-rough-${tile.key}`}
-                className="mt-1 inline-block rounded bg-black/10 px-1 py-0.5 text-xs dark:bg-white/15"
+                className="mt-1 inline-block rounded-sm bg-black/10 px-1 py-0.5 text-xs dark:bg-white/15"
               >
                 rough guide
               </span>
@@ -844,7 +844,7 @@ function OutcomePanel({
               </span>
             )}
             {outcome.roughGuide && (
-              <span className="rounded bg-black/10 px-1 py-0.5 text-xs dark:bg-white/15">
+              <span className="rounded-sm bg-black/10 px-1 py-0.5 text-xs dark:bg-white/15">
                 rough guide
               </span>
             )}

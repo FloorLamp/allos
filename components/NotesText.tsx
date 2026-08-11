@@ -3,7 +3,7 @@
 // plans, …) are multi-line and can contain long unbroken tokens (a pasted URL).
 // Rendering them bare flattened CCD/extraction notes — encounters especially — to
 // one run-on line, and let a URL overflow a min-w-0 flex/table cell. Every notes
-// surface renders through here so the `whitespace-pre-wrap break-words` treatment
+// surface renders through here so the `whitespace-pre-wrap wrap-break-word` treatment
 // can't be forgotten; a source-scan guard (lib/__tests__/notes-text.test.ts) fails
 // the build if a note is rendered as a bare JSX child instead of through this.
 //
@@ -22,7 +22,7 @@ export default function NotesText({
   "data-testid"?: string;
 }) {
   if (!notes) return null;
-  const base = "whitespace-pre-wrap break-words";
+  const base = "whitespace-pre-wrap wrap-break-word";
   return (
     <Tag
       className={className ? `${base} ${className}` : base}

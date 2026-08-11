@@ -58,13 +58,13 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
       <>
         {studyDisplayLabel(s)}
         {s.contrast ? (
-          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+          <span className="ml-2 rounded-sm bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-700 dark:bg-amber-950 dark:text-amber-300">
             contrast
           </span>
         ) : null}
         {s.dose_msv != null ? (
           <span
-            className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            className="ml-2 rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300"
             title="Effective dose recorded from the report"
           >
             {formatMsv(s.dose_msv)}

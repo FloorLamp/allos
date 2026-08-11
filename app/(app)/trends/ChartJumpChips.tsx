@@ -45,7 +45,7 @@ export default function ChartJumpChips({ chips }: { chips: ChartChip[] }) {
     <nav
       aria-label="Jump to chart"
       data-testid="chart-jump-chips"
-      className="sticky top-14 z-20 -mx-1 flex gap-2 overflow-x-auto bg-white/90 px-1 py-2 backdrop-blur md:top-0 dark:bg-ink-950/90"
+      className="sticky top-14 z-20 -mx-1 flex gap-2 overflow-x-auto bg-white/90 px-1 py-2 backdrop-blur-sm md:top-0 dark:bg-ink-950/90"
     >
       {chips.map((c) => (
         <a

@@ -82,7 +82,7 @@ export default function ExerciseGuideSection({
             mode="exercise"
             primary={muscles.primary}
             secondary={muscles.secondary}
-            className="mt-2 w-full max-w-[15rem]"
+            className="mt-2 w-full max-w-60"
           />
         </div>
       )}

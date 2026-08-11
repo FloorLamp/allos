@@ -128,7 +128,7 @@ export default function BackupSettings({
           type="checkbox"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
-          className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+          className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
         />
         Enable nightly backups
       </label>

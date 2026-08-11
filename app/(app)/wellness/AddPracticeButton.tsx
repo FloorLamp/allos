@@ -30,7 +30,7 @@ export default function AddPracticeButton({
           title="Add a practice"
           onClose={() => setOpen(false)}
           initialFocusRef={practiceInputRef}
-          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <PracticeEditor
             compact

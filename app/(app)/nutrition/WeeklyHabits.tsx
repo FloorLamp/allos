@@ -128,7 +128,7 @@ export default function WeeklyHabits({
                           key={c.start}
                           data-verdict={c.verdict}
                           title={c.label}
-                          className={`h-3 w-3 shrink-0 rounded-sm ${TREND_CELL_CLASS[c.verdict]}`}
+                          className={`h-3 w-3 shrink-0 rounded-xs ${TREND_CELL_CLASS[c.verdict]}`}
                         />
                       ))}
                     </div>

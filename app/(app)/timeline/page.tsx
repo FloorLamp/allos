@@ -274,7 +274,7 @@ function EventCard({
               {event.meta.map((m, index) => (
                 <span
                   key={`${event.id}:meta:${index}:${m}`}
-                  className="rounded bg-white/60 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-black/10 dark:text-slate-400"
+                  className="rounded-sm bg-white/60 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-black/10 dark:text-slate-400"
                 >
                   {m}
                 </span>
@@ -294,7 +294,7 @@ function EventCard({
                   <Link
                     key={`${event.id}:ref:${index}:${ref.label}`}
                     href={ref.href}
-                    className="rounded bg-white/60 px-1.5 py-0.5 text-xs text-brand-700 transition hover:underline dark:bg-black/10 dark:text-brand-300"
+                    className="rounded-sm bg-white/60 px-1.5 py-0.5 text-xs text-brand-700 transition hover:underline dark:bg-black/10 dark:text-brand-300"
                   >
                     {ref.label}
                   </Link>
@@ -307,7 +307,7 @@ function EventCard({
     </>
   );
 
-  const shellClass = `rounded-lg border px-4 py-3 shadow-sm transition duration-150 hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`;
+  const shellClass = `rounded-lg border px-4 py-3 shadow-xs transition duration-150 hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`;
 
   if (!canExpand) {
     return <div className={`group block ${shellClass}`}>{collapsed}</div>;
@@ -414,8 +414,8 @@ function TimelineEventRow({
 }) {
   return (
     <div className="relative" data-testid="timeline-event">
-      <span className="absolute left-0 top-[1.875rem] h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
-      <span className="absolute left-0 top-[1.5625rem] h-2.5 w-2.5 -translate-x-[1.3125rem] rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
+      <span className="absolute left-0 top-7.5 h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
+      <span className="absolute left-0 top-6.25 h-2.5 w-2.5 -translate-x-5.25 rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
       {subject && (
         <div className="mb-1.5">
           <SubjectChip subject={subject} />
@@ -893,7 +893,7 @@ export default async function TimelinePage(props: {
         </div>
       ) : multiFeed ? (
         <div id="timeline-feed" className="relative">
-          <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-[14.75rem] md:block dark:bg-white/10" />
+          <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-59 md:block dark:bg-white/10" />
           <div className="space-y-0">
             {mergedDays.map((day, index) => (
               <section
@@ -974,7 +974,7 @@ export default async function TimelinePage(props: {
         </div>
       ) : (
         <div id="timeline-feed" className="relative">
-          <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-[14.75rem] md:block dark:bg-white/10" />
+          <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-59 md:block dark:bg-white/10" />
           <div className="space-y-0">
             {days.map((day, index) => (
               <section
@@ -1045,8 +1045,8 @@ export default async function TimelinePage(props: {
                       id={timelineEntryAnchorId(event.id)}
                       className="relative scroll-mt-[calc(13rem+env(safe-area-inset-top))] md:scroll-mt-44"
                     >
-                      <span className="absolute left-0 top-[1.875rem] h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
-                      <span className="absolute left-0 top-[1.5625rem] h-2.5 w-2.5 -translate-x-[1.3125rem] rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
+                      <span className="absolute left-0 top-7.5 h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
+                      <span className="absolute left-0 top-6.25 h-2.5 w-2.5 -translate-x-5.25 rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
                       <EventCard
                         event={event}
                         defaultOpen={singleDaySelected}

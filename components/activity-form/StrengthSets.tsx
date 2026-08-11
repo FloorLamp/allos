@@ -529,7 +529,7 @@ export default function StrengthSets({
       onClick={() => onPlateTarget(si, field)}
       title="Plate builder"
       aria-label="Open plate builder"
-      className="flex h-9 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+      className="flex h-9 w-7 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
     >
       <IconBarbell className="h-4 w-4" />
     </button>
@@ -594,7 +594,7 @@ export default function StrengthSets({
             segmented
               ? // Divider on BOTH sides now that the reps stepper is symmetric
                 // (#1524: − input +), exactly like the weight stepper's input.
-                "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+                "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
               : `input bg-white dark:bg-ink-900 ${blocked ? blockedField : ""}`
           }
         />
@@ -797,7 +797,7 @@ export default function StrengthSets({
                   {summarizeExercise(sess.sets, units.weightUnit).text}
                   {/* Logged RPE for the session, shown when present (#743). */}
                   {rpeSummaryText(sess.sets) && (
-                    <span className="rounded bg-slate-100 px-1 text-xs font-medium text-slate-500 dark:bg-ink-800 dark:text-slate-400">
+                    <span className="rounded-sm bg-slate-100 px-1 text-xs font-medium text-slate-500 dark:bg-ink-800 dark:text-slate-400">
                       {rpeSummaryText(sess.sets)}
                     </span>
                   )}
@@ -821,12 +821,12 @@ export default function StrengthSets({
                       data-testid="recent-session-fill"
                       onClick={() => onFillFromSession(sess.sets)}
                       title="Fill the set editor with this session"
-                      className="-mx-1 flex w-full items-center justify-between gap-3 rounded px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
+                      className="-mx-1 flex w-full items-center justify-between gap-3 rounded-sm px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
                     >
                       {dateEl}
                       <span className="flex items-center gap-2">
                         {metrics}
-                        <span className="shrink-0 rounded border border-brand-300 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-800 dark:text-brand-400">
+                        <span className="shrink-0 rounded-sm border border-brand-300 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-800 dark:text-brand-400">
                           Fill
                         </span>
                       </span>
@@ -1019,7 +1019,7 @@ export default function StrengthSets({
           band of headings. */}
       <div
         data-testid="set-column-headings"
-        className="sticky top-[var(--set-schema-top)] z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
+        className="sticky top-(--set-schema-top) z-9 -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
       >
         <span className="hidden w-12 shrink-0 sm:block">Set</span>
         {!timed && !isBodyweight(p.name) ? (
@@ -1027,7 +1027,7 @@ export default function StrengthSets({
             {p.perSide && <span className="w-4 shrink-0" aria-hidden />}
             <span
               data-testid="weight-column-heading"
-              className="min-w-[7rem] flex-1 basis-0"
+              className="min-w-28 flex-1 basis-0"
             >
               Weight ({units.weightUnit})
             </span>
@@ -1037,7 +1037,7 @@ export default function StrengthSets({
             </span>
             <span
               data-testid="reps-column-heading"
-              className="min-w-[7rem] flex-1 basis-0"
+              className="min-w-28 flex-1 basis-0"
             >
               Reps
             </span>
@@ -1074,7 +1074,7 @@ export default function StrengthSets({
             {p.perSide ? (
               <div
                 data-testid={`set-values-${si + 1}`}
-                className="order-last basis-full flex-1 space-y-1.5 sm:order-none sm:basis-0"
+                className="order-last basis-full flex-1 space-y-1.5 sm:order-0 sm:basis-0"
               >
                 {(["", "Right"] as const).map((_, sideIdx) => {
                   const isRight = sideIdx === 1;
@@ -1090,7 +1090,7 @@ export default function StrengthSets({
                       {!timed && !isBodyweight(p.name) ? (
                         <div
                           data-testid="weight-stepper"
-                          className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                          className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                             flags.weight
                               ? blockedField
                               : "border-black/10 dark:border-white/10"
@@ -1130,7 +1130,7 @@ export default function StrengthSets({
                               )
                             }
                             placeholder={units.weightUnit}
-                            className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+                            className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
                           />
                           <button
                             type="button"
@@ -1177,7 +1177,7 @@ export default function StrengthSets({
                       {!timed ? (
                         <div
                           data-testid="reps-stepper"
-                          className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                          className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                             flags.effort
                               ? blockedField
                               : "border-black/10 dark:border-white/10"
@@ -1238,14 +1238,14 @@ export default function StrengthSets({
             ) : (
               <div
                 data-testid={`set-values-${si + 1}`}
-                className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-none sm:basis-0"
+                className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-0 sm:basis-0"
               >
                 {!timed && !isBodyweight(p.name) ? (
                   <div
                     data-testid={
                       si === 0 ? "set1-weight-stepper" : "weight-stepper"
                     }
-                    className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                    className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                       sideFlags(s.weight, s.reps, s.duration).weight
                         ? blockedField
                         : "border-black/10 dark:border-white/10"
@@ -1279,7 +1279,7 @@ export default function StrengthSets({
                             )
                           : units.weightUnit
                       }
-                      className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+                      className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                     <button
                       type="button"
@@ -1327,7 +1327,7 @@ export default function StrengthSets({
                     data-testid={
                       si === 0 ? "set1-reps-stepper" : "reps-stepper"
                     }
-                    className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                    className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                       sideFlags(s.weight, s.reps, s.duration).effort
                         ? blockedField
                         : "border-black/10 dark:border-white/10"
@@ -1427,7 +1427,7 @@ export default function StrengthSets({
                     type="button"
                     onClick={() => onRemoveSet(si)}
                     data-testid={`set-remove-${si + 1}`}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                     aria-label="Remove set"
                     title="Remove set"
                   >

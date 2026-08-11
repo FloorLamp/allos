@@ -31,7 +31,7 @@ export default function ConfidenceBadge({
   return (
     <span
       data-testid={testid}
-      className={`rounded px-1.5 py-0.5 text-xs ${CONFIDENCE_BADGE[confidence]} ${className ?? ""}`}
+      className={`rounded-sm px-1.5 py-0.5 text-xs ${CONFIDENCE_BADGE[confidence]} ${className ?? ""}`}
     >
       {confidenceLabel(confidence)}
     </span>

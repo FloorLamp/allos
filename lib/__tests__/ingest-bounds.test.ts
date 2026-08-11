@@ -193,7 +193,7 @@ describe("roundForMetric (issue #1109)", () => {
     }
   });
 
-  it("every rounded metric carries a plausibility bound (both opt-in maps agree)", () => {
+  it("every rounded-sm metric carries a plausibility bound (both opt-in maps agree)", () => {
     for (const metric of Object.keys(METRIC_ROUND_DP)) {
       expect(METRIC_BOUNDS[metric]).toBeDefined();
     }

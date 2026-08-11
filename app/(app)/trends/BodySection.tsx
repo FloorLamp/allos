@@ -1650,13 +1650,16 @@ export default async function BodySection({
         }
       />
 
+      {/* Tailwind 4's `space-y-6` puts its 24px margin on the PREVIOUS sibling,
+          so a positive margin on these children can no longer replace it. The
+          -16px offset preserves the intentionally compact 8px content seam. */}
       {/* #2152: Overview is spark tiles only on phones at EVERY range. Even 1D's
           clock-axis chart stays in the desktop stack; opening a tile remains the
           one-tap route to a full chart on a phone. `?view=all` never overrides the
           viewport rule. */}
       {intraday && (
         <div
-          className={`${stackContainerClass(view)} !mt-2`}
+          className={`${stackContainerClass(view)} -mt-4`}
           data-testid="body-intraday-view"
         >
           {bodyStack.length > 0 ? (
@@ -1675,7 +1678,7 @@ export default async function BodySection({
       {/* The same census component renders both presentations. CSS selects the
           viewport-safe one; there is no forked mobile census. */}
       <div
-        className={`${tilesContainerClass(view)} !mt-2`}
+        className={`${tilesContainerClass(view)} -mt-4`}
         data-testid="body-tiles-view"
       >
         <BodyMetricTiles
@@ -1713,7 +1716,7 @@ export default async function BodySection({
           {/* The classic full-chart stack — desktop only. Carries the per-chart
               `#id` anchors used by the chart dropdown (#1067 Phase 1). */}
           <div
-            className={`${stackContainerClass(view)} !mt-2 space-y-6`}
+            className={`${stackContainerClass(view)} -mt-4 space-y-6`}
             data-testid="body-charts-all"
           >
             {/* ONE flat ranked stack (#1674): the ★ run first in saved order, then

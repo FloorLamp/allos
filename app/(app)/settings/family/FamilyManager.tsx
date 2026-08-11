@@ -1130,7 +1130,7 @@ function GrantsRow({
               className="flex flex-wrap items-center gap-3"
               data-testid={`grant-cell-${login.username}-${pid}`}
             >
-              <label className="flex min-w-[8rem] items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <label className="flex min-w-32 items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input
                   type="checkbox"
                   data-testid={`grant-toggle-${login.username}-${pid}`}

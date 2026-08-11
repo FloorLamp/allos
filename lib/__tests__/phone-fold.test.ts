@@ -43,7 +43,7 @@ describe("splitAtPhoneCap (#1578)", () => {
 // not a computation — so what is worth holding is the two invariants that make them
 // safe: the order is a total, gap-free ranking (no two slots can tie into an
 // ambiguous stack, no rank is skipped), and EVERY slot resets at `sm` so desktop
-// keeps rendering in DOM order. A fifth slot added without `sm:order-none` would
+// keeps rendering in DOM order. A fifth slot added without `sm:order-0` would
 // silently re-order the desktop page, which is the one thing this change promises
 // not to do.
 describe("PHONE_STACK (#1647)", () => {
@@ -64,7 +64,7 @@ describe("PHONE_STACK (#1647)", () => {
   });
 
   it("resets every slot at `sm`, so desktop renders in DOM order", () => {
-    for (const s of slots) expect(PHONE_STACK[s]).toContain("sm:order-none");
+    for (const s of slots) expect(PHONE_STACK[s]).toContain("sm:order-0");
   });
 
   it("gives every slot `min-w-0` and the container no flex gap", () => {

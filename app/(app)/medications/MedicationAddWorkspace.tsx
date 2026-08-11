@@ -130,7 +130,7 @@ export default function MedicationAddWorkspace({
                   onClick={() => setMode(value)}
                   className={`rounded-md px-3 py-1.5 font-medium transition ${
                     active
-                      ? "bg-white text-slate-900 shadow-sm dark:bg-ink-900 dark:text-slate-100"
+                      ? "bg-white text-slate-900 shadow-xs dark:bg-ink-900 dark:text-slate-100"
                       : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                   }`}
                 >

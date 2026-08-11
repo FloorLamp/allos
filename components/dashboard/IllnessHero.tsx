@@ -129,7 +129,7 @@ export default function IllnessHero({
                 onClick={() =>
                   c.isActive ? toggleActive() : toggleOther(c.profileId)
                 }
-                className="group flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg p-1 text-left transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-ink-850 dark:disabled:hover:bg-transparent"
+                className="group flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg p-1 text-left transition hover:bg-slate-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-ink-850 dark:disabled:hover:bg-transparent"
               >
                 <IconVirus
                   className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400"
@@ -149,14 +149,14 @@ export default function IllnessHero({
                       (expanded ? (
                         <IconChevronDown
                           data-testid="illness-cockpit-chevron"
-                          className="h-4 w-4 shrink-0 text-slate-500 transition-[color,filter] group-hover:text-brand-500 group-hover:[filter:drop-shadow(0_0_3px_currentColor)] group-focus-visible:text-brand-500 group-focus-visible:[filter:drop-shadow(0_0_3px_currentColor)] dark:text-slate-400 dark:group-hover:text-brand-400 dark:group-focus-visible:text-brand-400"
+                          className="h-4 w-4 shrink-0 text-slate-500 transition-[color,filter] group-hover:text-brand-500 group-hover:filter-[drop-shadow(0_0_3px_currentColor)] group-focus-visible:text-brand-500 group-focus-visible:filter-[drop-shadow(0_0_3px_currentColor)] dark:text-slate-400 dark:group-hover:text-brand-400 dark:group-focus-visible:text-brand-400"
                           stroke={1.75}
                           aria-hidden="true"
                         />
                       ) : (
                         <IconChevronRight
                           data-testid="illness-cockpit-chevron"
-                          className="h-4 w-4 shrink-0 text-slate-500 transition-[color,filter] group-hover:text-brand-500 group-hover:[filter:drop-shadow(0_0_3px_currentColor)] group-focus-visible:text-brand-500 group-focus-visible:[filter:drop-shadow(0_0_3px_currentColor)] dark:text-slate-400 dark:group-hover:text-brand-400 dark:group-focus-visible:text-brand-400"
+                          className="h-4 w-4 shrink-0 text-slate-500 transition-[color,filter] group-hover:text-brand-500 group-hover:filter-[drop-shadow(0_0_3px_currentColor)] group-focus-visible:text-brand-500 group-focus-visible:filter-[drop-shadow(0_0_3px_currentColor)] dark:text-slate-400 dark:group-hover:text-brand-400 dark:group-focus-visible:text-brand-400"
                           stroke={1.75}
                           aria-hidden="true"
                         />
@@ -235,7 +235,7 @@ export default function IllnessHero({
                   href={c.episodeHref}
                   aria-label={`More details about ${c.displayName}'s illness episode`}
                   data-testid="illness-cockpit-full-episode"
-                  className="inline-flex min-h-10 shrink-0 items-center rounded-md px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-brand-400 dark:focus-visible:ring-offset-ink-900"
+                  className="inline-flex min-h-10 shrink-0 items-center rounded-md px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-brand-400 dark:focus-visible:ring-offset-ink-900"
                 >
                   More details
                 </Link>

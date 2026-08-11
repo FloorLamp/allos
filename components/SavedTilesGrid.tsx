@@ -82,7 +82,7 @@ function SortableTile({ item }: { item: SavedTileItem }) {
       // flick over the grid must still scroll the page.
       // Cards in a two/three-column row share a bottom edge. Empty cards retain
       // this same surface so the Overview never becomes a ragged split layout.
-      className={`h-full touch-manipulation [&>*]:h-full ${
+      className={`h-full touch-manipulation *:h-full ${
         isDragging ? "z-20 opacity-80" : item.empty ? "opacity-70" : ""
       }`}
       data-testid="saved-tile"

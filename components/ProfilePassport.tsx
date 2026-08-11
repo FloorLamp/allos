@@ -174,7 +174,7 @@ export default function ProfilePassport({
           gaps); single column otherwise, and always single-column in print so
           the printed passport keeps its stacked layout. break-inside-avoid on
           each card keeps a card whole across a column/page break. */}
-      <div className="columns-1 gap-4 xl:columns-2 print:columns-1 [&>*]:mb-4 [&>*]:break-inside-avoid">
+      <div className="columns-1 gap-4 xl:columns-2 print:columns-1 *:mb-4 *:break-inside-avoid">
         {/* Identity */}
         <section className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none">
           <div className="flex items-center gap-4">
@@ -338,7 +338,7 @@ export default function ProfilePassport({
                     {(a.origin !== "documented" || a.evidence) && (
                       <span className="flex shrink-0 items-baseline gap-1.5">
                         {a.origin !== "documented" && (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                          <span className="rounded-sm bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                             {a.origin === "both" ? "labs confirm" : "from labs"}
                           </span>
                         )}

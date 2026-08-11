@@ -890,7 +890,7 @@ export default function MeasurementsQuickAdd({
                     aria-expanded={open}
                     aria-controls={`measurements-group-${group}-fields`}
                     data-testid={`measurements-group-${group}-toggle`}
-                    className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-800 hover:bg-black/[0.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-100 dark:hover:bg-white/[0.04]"
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-800 hover:bg-black/3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 dark:text-slate-100 dark:hover:bg-white/4"
                   >
                     <span className="shrink-0">
                       {MEASUREMENT_GROUP_LABEL[group]}

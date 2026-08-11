@@ -134,7 +134,7 @@ describe("bioAgeDelta", () => {
     expect(d.deltaYears).toBe(3.4);
   });
 
-  it("even when the rounded gap is zero", () => {
+  it("even when the rounded-sm gap is zero", () => {
     const d = bioAgeDelta(50.03, 50);
     expect(d.direction).toBe("even");
     expect(d.magnitudeYears).toBe(0);

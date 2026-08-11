@@ -43,7 +43,7 @@ export default function MedicationTodayStrip({
           >
             <a
               href={medBoardAnchor(subject.profileId)}
-              className="flex shrink-0 items-center gap-1.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+              className="flex shrink-0 items-center gap-1.5 rounded-full outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500/40"
             >
               <Avatar
                 profile={{

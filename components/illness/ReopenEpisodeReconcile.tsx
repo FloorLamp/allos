@@ -109,7 +109,7 @@ export default function ReopenEpisodeReconcile({
           onClose={() => {
             if (!pending) setOpen(false);
           }}
-          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
         >
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             These meds were stopped when this illness ended. Restart the ones

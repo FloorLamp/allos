@@ -61,7 +61,7 @@ describe("fmtBodyMetric", () => {
     expect(fmtBodyMetric("body_fat", 18.25, "kg")).toBe("18.3%");
   });
 
-  it("renders resting HR as rounded bpm", () => {
+  it("renders resting HR as rounded-sm bpm", () => {
     expect(fmtBodyMetric("resting_hr", 58.6, "kg")).toBe("59 bpm");
   });
 

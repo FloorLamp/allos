@@ -52,7 +52,7 @@ export default function CareTrailBand({
       </div>
       {/* The page body never scrolls horizontally — the band scrolls inside itself. */}
       <div className="overflow-x-auto">
-        <div className="min-w-[36rem] space-y-3">
+        <div className="min-w-xl space-y-3">
           {swimlane.lanes.map((lane) => {
             const subject = subjectById.get(lane.profileId);
             return (
@@ -68,7 +68,7 @@ export default function CareTrailBand({
                 </div>
                 {/* The lane track. Episode bars are absolutely positioned by percent;
                 the baseline holds unlinked visit markers. Non-interactive overview. */}
-                <div className="relative h-8 flex-1 rounded bg-slate-100 dark:bg-ink-800">
+                <div className="relative h-8 flex-1 rounded-sm bg-slate-100 dark:bg-ink-800">
                   {/* baseline */}
                   <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-200 dark:bg-ink-700" />
                   {lane.episodes.map((bar) => (
@@ -77,7 +77,7 @@ export default function CareTrailBand({
                       data-testid="care-trail-bar"
                       data-episode-id={bar.episodeId}
                       title={`${bar.situation}${bar.ongoing ? " (ongoing)" : ""}`}
-                      className={`absolute top-1 flex h-3 items-center rounded-sm ${barTone(
+                      className={`absolute top-1 flex h-3 items-center rounded-xs ${barTone(
                         bar.maxTempF
                       )} ${bar.ongoing ? "ring-1 ring-inset ring-white/70" : ""}`}
                       style={{

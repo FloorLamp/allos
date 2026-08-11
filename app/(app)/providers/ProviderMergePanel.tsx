@@ -73,7 +73,7 @@ export default function ProviderMergePanel({
       className="group mt-8 border-t border-black/5 pt-4 dark:border-white/5"
       data-testid="provider-merge"
     >
-      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 outline-none transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:text-slate-300 dark:hover:bg-ink-800">
+      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 outline-hidden transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:text-slate-300 dark:hover:bg-ink-800">
         <IconGitMerge className="h-4 w-4 shrink-0" stroke={1.75} />
         <span className="min-w-0 flex-1">
           <span className="block font-medium">Merge a duplicate</span>

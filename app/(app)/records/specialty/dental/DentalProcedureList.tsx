@@ -51,7 +51,7 @@ const baseColumns = (
       <>
         {dentalDisplayLabel(d)}
         {d.status !== "completed" ? (
-          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+          <span className="ml-2 rounded-sm bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-700 dark:bg-amber-950 dark:text-amber-300">
             {dentalStatusLabel(d.status).toLowerCase()}
           </span>
         ) : null}

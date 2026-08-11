@@ -65,14 +65,14 @@ export default function FiberGauge({
       {/* Compact legend: the full phrasing remains in the gauge's aria-label. */}
       <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
         <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-sky-500/70" />
+          <span className="inline-block h-2.5 w-2.5 rounded-xs bg-sky-500/70" />
           <dt>{periodLabel}</dt>
           <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
             {compactWeekValue}
           </dd>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-200/80 dark:bg-emerald-800/60" />
+          <span className="inline-block h-2.5 w-2.5 rounded-xs bg-emerald-200/80 dark:bg-emerald-800/60" />
           <dt>Goal</dt>
           <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
             ~{g(target.grams)}g

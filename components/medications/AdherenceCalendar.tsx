@@ -45,7 +45,7 @@ function Cell({ cell }: { cell: AdherenceCalendarCell }) {
       data-testid="adherence-cal-day"
       data-state={cell.state}
       title={`${cell.date} · ${STATE_LABEL[cell.state]}`}
-      className={`flex aspect-square items-center justify-center rounded text-xs font-medium ${STATE_STYLE[cell.state]}`}
+      className={`flex aspect-square items-center justify-center rounded-sm text-xs font-medium ${STATE_STYLE[cell.state]}`}
     >
       {dayNumber(cell.date)}
     </div>

@@ -109,7 +109,7 @@ export default function TimelineDayNav({
       // Full-bleed on a phone so the sticky nav's background covers the content
       // gutters as the day's events scroll under it; from `sm` up it is an ordinary
       // block in the reading column, exactly as before.
-      className="sub-chrome sticky top-[var(--shell-chrome-h)] z-20 -mx-4 mb-5 flex items-center justify-between gap-2 border-b border-black/10 bg-white/85 px-4 py-2 backdrop-blur-xl sm:static sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none dark:border-white/10 dark:bg-ink-950/85 sm:dark:bg-transparent"
+      className="sub-chrome sticky top-(--shell-chrome-h) z-20 -mx-4 mb-5 flex items-center justify-between gap-2 border-b border-black/10 bg-white/85 px-4 py-2 backdrop-blur-xl sm:static sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none dark:border-white/10 dark:bg-ink-950/85 sm:dark:bg-transparent"
     >
       <Link
         href={prevHref}

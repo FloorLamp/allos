@@ -93,7 +93,7 @@ export default function LogMeasurementsPanel(
         <ModalShell
           title="Log measurements"
           onClose={() => setOpen(false)}
-          className="flex max-h-[calc(100dvh-4rem)] w-full max-w-5xl flex-col rounded-xl bg-white p-5 shadow-xl outline-none dark:bg-ink-900"
+          className="flex max-h-[calc(100dvh-4rem)] w-full max-w-5xl flex-col rounded-xl bg-white p-5 shadow-xl outline-hidden dark:bg-ink-900"
           initialFocusRef={deepLinkTarget ? modalInitialFocusRef : undefined}
         >
           <div

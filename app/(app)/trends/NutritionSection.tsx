@@ -262,7 +262,7 @@ export default async function NutritionSection({
                 }`}
               >
                 <span
-                  className={`h-8 w-6 rounded-sm ${adherenceCellClass(w)}`}
+                  className={`h-8 w-6 rounded-xs ${adherenceCellClass(w)}`}
                   role="img"
                   aria-label={`${w.label}: ${
                     w.rate == null

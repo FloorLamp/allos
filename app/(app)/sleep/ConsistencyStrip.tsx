@@ -60,7 +60,7 @@ export default function ConsistencyStrip({
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
         <span className="inline-flex items-center gap-1.5">
           <span
-            className="h-2.5 w-2.5 rounded-sm"
+            className="h-2.5 w-2.5 rounded-xs"
             style={{ backgroundColor: chartSeries.violet }}
             aria-hidden
           />
@@ -68,7 +68,7 @@ export default function ConsistencyStrip({
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span
-            className="h-2.5 w-2.5 rounded-sm"
+            className="h-2.5 w-2.5 rounded-xs"
             style={{ backgroundColor: chartSeries.amber }}
             aria-hidden
           />
@@ -76,7 +76,7 @@ export default function ConsistencyStrip({
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span
-            className="h-2.5 w-2.5 rounded-sm border border-rose-400 bg-rose-50 dark:bg-rose-950/40"
+            className="h-2.5 w-2.5 rounded-xs border border-rose-400 bg-rose-50 dark:bg-rose-950/40"
             aria-hidden
           />
           Off schedule
@@ -111,9 +111,9 @@ export default function ConsistencyStrip({
             >
               {formatMonthDay(n.date, formatPrefs)}
             </span>
-            <span className="relative h-4 flex-1 rounded bg-slate-100 dark:bg-ink-800">
+            <span className="relative h-4 flex-1 rounded-sm bg-slate-100 dark:bg-ink-800">
               <span
-                className="absolute top-0 h-full rounded"
+                className="absolute top-0 h-full rounded-sm"
                 style={{
                   left: `${n.leftPct}%`,
                   width: `${n.widthPct}%`,

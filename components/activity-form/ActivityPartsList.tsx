@@ -200,7 +200,7 @@ export default function ActivityPartsList({
               key={pi}
               data-testid="activity-part"
               className={`border-b border-black/5 py-3 first:pt-0 last:border-b-0 [--set-schema-top:2.75rem] dark:border-white/5 ${
-                hasActions ? "max-sm:[--set-schema-top:5.875rem]" : ""
+                hasActions ? "max-sm:[--set-schema-top:6rem]" : ""
               } ${stickyFooter ? "-mx-4 px-4 sm:-mx-6 sm:px-6" : "-mx-5 px-5"}`}
             >
               {/* Below `sm` this is a TWO-ROW sticky header (#1613): the exercise
@@ -212,7 +212,7 @@ export default function ActivityPartsList({
                   it has always been. */}
               <div
                 data-testid="part-header"
-                className="sticky top-0 z-10 -mx-1 flex flex-col gap-1 bg-white/95 px-1 py-1 backdrop-blur sm:flex-row sm:items-center sm:gap-2 md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
+                className="sticky top-0 z-10 -mx-1 flex flex-col gap-1 bg-white/95 px-1 py-1 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-2 md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
               >
                 <div className="min-w-0 sm:flex-1">
                   <ActivityCombobox
@@ -272,7 +272,7 @@ export default function ActivityPartsList({
                         type="button"
                         onClick={() => setGuideFor(pi)}
                         data-testid="exercise-guide-open"
-                        className="inline-flex h-11 shrink-0 items-center gap-1 rounded px-2 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-600 max-sm:mr-auto sm:h-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                        className="inline-flex h-11 shrink-0 items-center gap-1 rounded-sm px-2 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-600 max-sm:mr-auto sm:h-8 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
                       >
                         <IconInfoCircle className="h-4 w-4" />
                         How to
@@ -287,7 +287,7 @@ export default function ActivityPartsList({
                           type="button"
                           onClick={() => onMovePart(pi, -1)}
                           disabled={pi === 0}
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
                           aria-label="Move activity up"
                           title="Move activity up"
                         >
@@ -297,7 +297,7 @@ export default function ActivityPartsList({
                           type="button"
                           onClick={() => onMovePart(pi, 1)}
                           disabled={pi === parts.length - 1}
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
                           aria-label="Move activity down"
                           title="Move activity down"
                         >
@@ -306,7 +306,7 @@ export default function ActivityPartsList({
                         <button
                           type="button"
                           onClick={() => onRemovePart(pi)}
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                           aria-label="Remove activity"
                           title="Remove activity"
                         >

@@ -87,7 +87,7 @@ export default async function GrowthTrendsPage(props: {
           Back to Body
         </Link>
         <PageHeader
-          className="!mb-0 mt-3"
+          className="mb-0! mt-3"
           title="Growth Percentiles"
           subtitle="WHO and CDC reference trajectories across height, weight, body mass index, and head circumference."
         />

@@ -87,7 +87,7 @@ function OptionButton({
       aria-label={label}
       data-testid={testid}
       onClick={onSelect}
-      className={`min-w-[8rem] flex-1 rounded-lg border px-3 py-2 text-left transition ${
+      className={`min-w-32 flex-1 rounded-lg border px-3 py-2 text-left transition ${
         selected
           ? "border-brand-400 bg-brand-50 ring-1 ring-brand-300 dark:border-brand-600 dark:bg-brand-950/30 dark:ring-brand-700"
           : "border-black/10 hover:bg-slate-50 dark:border-white/10 dark:hover:bg-ink-800"
@@ -159,7 +159,7 @@ export default function MergeConflictDialog({
   // unclickable behind a sibling card (caught by the #100 e2e).
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      className="fixed inset-0 z-60 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Resolve merge conflicts"

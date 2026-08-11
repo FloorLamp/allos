@@ -48,7 +48,7 @@ export default function QuietStreams({ rows }: { rows: QuietStreamRow[] }) {
               {row.title}
             </p>
             {row.detail && (
-              <p className="mt-1 break-words text-sm text-slate-600 dark:text-slate-300">
+              <p className="mt-1 wrap-break-word text-sm text-slate-600 dark:text-slate-300">
                 {row.detail}
               </p>
             )}

@@ -59,7 +59,7 @@ function StatusFact({ state }: { state: IntegrationState }) {
     // run that failed carrying no error string read "import" directly under a badge
     // reading "Last upload failed": two dialects in one card about one event.
     return (
-      <p className="mt-2 break-words text-sm text-amber-700 dark:text-amber-300">
+      <p className="mt-2 wrap-break-word text-sm text-amber-700 dark:text-amber-300">
         {latest?.error ??
           standingHeadline(standing, syncRunNounForKind(state.kind))}
       </p>
@@ -90,7 +90,7 @@ function StatusFact({ state }: { state: IntegrationState }) {
         ? `No data since ${state.stale.since}`
         : (latest?.error ?? "Sync failing");
     return (
-      <p className="mt-2 break-words text-sm text-rose-700 dark:text-rose-300">
+      <p className="mt-2 wrap-break-word text-sm text-rose-700 dark:text-rose-300">
         {reason}
       </p>
     );

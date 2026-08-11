@@ -108,7 +108,7 @@ export default function ScatterChartCard({
               const point = payload[0].payload as ScatterPoint;
               return (
                 <div
-                  className="rounded-lg border p-2 text-xs shadow-sm"
+                  className="rounded-lg border p-2 text-xs shadow-xs"
                   style={chartTooltipSurfaceStyle(c)}
                 >
                   {point.date && (
