@@ -45,6 +45,7 @@ export default function ActivityOverlay({
   bodyweightKg,
   editData,
   prefill = null,
+  initialDate,
   live = false,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
@@ -61,6 +62,7 @@ export default function ActivityOverlay({
   bodyweightKg: number | null;
   editData: ActivityEditData | null;
   prefill?: ActivityEditData | null;
+  initialDate?: string;
   live?: boolean;
   deloadContext: FormDeloadContext;
   recoveringContext?: FormRecoveringContext;
@@ -168,6 +170,7 @@ export default function ActivityOverlay({
           bodyweightKg={bodyweightKg}
           editData={editData}
           prefill={prefill}
+          initialDate={initialDate}
           live={live}
           deloadContext={deloadContext}
           recoveringContext={recoveringContext}

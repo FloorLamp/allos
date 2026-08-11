@@ -124,6 +124,7 @@ export default function JournalView({
   sex,
   canWriteVideos = false,
   multiView,
+  initialCreateDate,
 }: {
   // The NEWEST page of day groups, refreshed by the server on every auto-save (issue
   // #451). Older windows are fetched on demand and held in local state below.
@@ -160,6 +161,8 @@ export default function JournalView({
   // card carries its own `subject` (stamped upstream) and the card layer re-keys its
   // affordances to that subject; undefined in single view (byte-identical).
   multiView?: JournalMultiView;
+  // A validated, non-future date from the day-history close-the-loop link.
+  initialCreateDate?: string;
 }) {
   const {
     open,
@@ -172,6 +175,7 @@ export default function JournalView({
     workoutOffer,
   } = useActivityEditor();
   const dockRef = useRef<HTMLDivElement | null>(null);
+  const initialCreateHandled = useRef(false);
 
   // ---- Server-paged feed (issue #451) ----
   // `initialGroups` is the newest page (refreshed by the server on every auto-save);
@@ -275,6 +279,21 @@ export default function JournalView({
     registerDock(dockRef.current);
     return () => registerDock(null);
   }, [registerDock, isDesktop]);
+
+  useEffect(() => {
+    if (!initialCreateDate || initialCreateHandled.current) return;
+    initialCreateHandled.current = true;
+    openCreate({ date: initialCreateDate });
+    // Consume the command-like query so an in-page refresh/autosave cannot open
+    // another blank editor. Keep the tab and every unrelated query intact.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("date");
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`
+    );
+  }, [initialCreateDate, openCreate]);
 
   // ---- Filters (issue #1634) ----
   // ONE filter object rather than four independent useStates: it is the unit that

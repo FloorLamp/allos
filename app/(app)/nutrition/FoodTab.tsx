@@ -155,7 +155,11 @@ function NutrientEstimateDetails({
   );
 }
 
-export default async function FoodTab() {
+export default async function FoodTab({
+  initialDate,
+}: {
+  initialDate?: string;
+}) {
   const { login, profile } = await requireSession();
   const formatPrefs = getDisplayFormatPrefs(login.id);
 
@@ -348,6 +352,7 @@ export default async function FoodTab() {
       <FoodSuggestionsLayout
         today={date}
         days={mealDays}
+        initialDate={initialDate}
         suggestionCount={suggestions.length}
         logger={
           // Act: the one-tap log bar. On mobile this grid cell leads (bar → Today →

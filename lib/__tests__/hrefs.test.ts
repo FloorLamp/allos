@@ -3,6 +3,8 @@ import {
   readingDetailHref,
   biomarkerAddHref,
   timelineDayHref,
+  trainingLogDayHref,
+  dayHistoryAddHref,
   dataSectionHref,
   DATA_SECTIONS,
   importHref,
@@ -122,6 +124,31 @@ describe("timelineDayHref", () => {
     expect(timelineDayHref("2026-07-12")).toBe(
       "/timeline?from=2026-07-12&to=2026-07-12#timeline-day-2026-07-12"
     );
+  });
+});
+
+describe("trainingLogDayHref", () => {
+  it("anchors the Training Log to the workout day", () => {
+    expect(trainingLogDayHref("2026-07-12")).toBe(
+      "/training?tab=log#day-2026-07-12"
+    );
+  });
+});
+
+describe("dayHistoryAddHref", () => {
+  it("uses each destination's declared date parameter (#2420)", () => {
+    expect(dayHistoryAddHref("/nutrition?tab=food", "food", "2026-07-12")).toBe(
+      "/nutrition?tab=food&date=2026-07-12"
+    );
+    expect(
+      dayHistoryAddHref("/nutrition?tab=supplements", "dose", "2026-07-12")
+    ).toBe("/nutrition?tab=supplements&backfill=2026-07-12");
+    expect(dayHistoryAddHref("/wellness", "practice", "2026-07-12")).toBe(
+      "/wellness?log=2026-07-12"
+    );
+    expect(
+      dayHistoryAddHref("/training?tab=log", "workout", "2026-07-12")
+    ).toBe("/training?tab=log&date=2026-07-12");
   });
 });
 

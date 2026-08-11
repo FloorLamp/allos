@@ -76,6 +76,19 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     await expect(history).toBeVisible();
     await expect(history.getByTestId("day-history-calendar")).toBeVisible();
     await expect(history.getByTestId("day-history-row")).not.toHaveCount(0);
+    const rowButton = history
+      .getByRole("button", { name: /View occurrences for/ })
+      .first(); // first-ok: every workout row shares the same phone stacking contract
+    await rowButton.click();
+    const [calendarBox, rowBox] = await Promise.all([
+      history.getByTestId("day-history-calendar-panel").boundingBox(),
+      history.getByTestId("day-history-rowpanel").boundingBox(),
+    ]);
+    expect(rowBox).not.toBeNull();
+    expect(rowBox!.y).toBeGreaterThanOrEqual(
+      calendarBox!.y + calendarBox!.height
+    );
+    await expectNoClippedContent(page);
 
     // The nested Strength|Cardio|Sport strip is GONE. The section navigation is
     // plain in-page anchors, never a third tab level — so no tab by those names
