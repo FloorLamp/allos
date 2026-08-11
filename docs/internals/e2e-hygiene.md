@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — DB-per-worker isolation (#1538),
+Status: **active guide** (infrastructure shipped — DB-per-worker isolation (#1538),
 helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and
 the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990,
 the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand +
@@ -1367,7 +1367,7 @@ assertions a real timeout rather than the 5s default.
 
 Full reasoning: `docs/internals/overlays.md`.
 
-## Follow-up (out of scope for the infra PR)
+## Remaining follow-up
 
 **The grandfathered burn-downs are done.** `NETWORKIDLE_ALLOW`,
 `WAITFORTIMEOUT_ALLOW`, `FIRST_ALLOW` and `TOPASS_ALLOW` are all EMPTY: the
@@ -1383,8 +1383,8 @@ unique-name suffixes and a TOTP probe, each carrying a same-line
 `clock-ok: <why>` marker. A new unmarked `Date.now()`/`new Date()` fails CI, so a
 stored timestamp cannot quietly reintroduce the 29-minutes-into-a-lane drift.
 
-After that: migrate the cross-ownership anatomy assertions (class 2) onto shared
-per-component driver helpers (the `e2e/symptom-helpers.ts` extraction pattern).
+The remaining backlog is to migrate cross-ownership anatomy assertions (class 2) onto shared per-component driver helpers (the `e2e/symptom-helpers.ts`
+extraction pattern).
 **Not on this list:** sweeping the ~357 existing `settledClick` call sites onto
 `settledClickApplied` — see that section; the helper exists for the sites that
 need the second guarantee, not as a migration target.

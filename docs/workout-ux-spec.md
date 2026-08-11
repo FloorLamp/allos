@@ -1,43 +1,17 @@
 # Spec: Workout UX — exercise guides, muscle anatomy, routines
 
-Status: **partial** (Pillar 1: content layer + accessor + gen + completeness
-test shipped, #733; "How to" section in `ExerciseDetailPanel` + entry points —
-set-editor ⓘ overlay, panel hosts, Telegram deep link — shipped, #734; Pillar 2:
-`MuscleId` vocabulary + `muscleRegion` rollup + catalog muscle tagging shipped,
-\#735, plus the `muscle-coverage` computation (`coverageFromSets`, 1.0 primary /
-0.5 secondary credit) + list-first weekly coverage on Training → Overview
-shipped, #736, and the hand-authored front/back `MuscleAnatomy` SVG figure over
-those same computations shipped, #737 — per-exercise (guide section) +
-weekly-coverage (Training → Overview, tinted by the #742 band verdict via the
-shared `bandPresentation` palette) hosts wired, and the per-session mode hosted
-on the Journal strength-session card (the union of that session's tagged sets,
-degrading to nothing for a custom/untagged-only session) shipped, #789; Pillar
-3: routines schema + write cores + template catalog + activation shipped, #738,
-the routine-aware "Today's session" recommendation —
-`resolveRoutineSession`/`sessionCreditsDay` in the ONE `workout-recommendation`
-core, position advance on credited sessions, the Training-overview session
-card + "Log this session" live hand-off, and routine-day Telegram copy —
-shipped, #740, and the routine builder UI — Routines tab on `/training` with the
-adopt-a-template picker, the custom builder, and activate/deactivate with the
-training-scope target-replacement confirm — shipped, #739, with the #719 Fitness
-onboarding branch adopting and activating beginner templates through those same
-cores; Pillar 4a: per-muscle weekly volume bands (`lib/muscle-volume-bands.ts` —
-sourced MEV/MAV bands + one `bandVerdict`/shared palette, Overview coverage-list
-verdict chips, a calm coaching-tier below-band observation with cold-start
-gating and a guarded deload hook) shipped, #742; Pillar 4b: mesocycle & deload
-awareness — pure `lib/mesocycle.ts` (calendar-derived `weekInCycle` +
-pause-re-anchoring `effectiveCycleStart` at `CYCLE_PAUSE_GAP_DAYS`), the ONE
-`getRoutineCycleStatus` gather feeding every surface, `deloadAdjust` (−10% load
-/ −1 set) in the recommendation core, deload copy on the session card + Telegram
-nudge, region/group behind-finding suppression, the now-active #742 volume-band
-hook, the plateau cross-reference, and the routine-editor `cycle_weeks` field +
-"Restart cycle" action — shipped, #741; Pillar 4c: optional per-set RPE
-(`exercise_sets.rpe`, migration 040) feeding the double-progression modifier —
-top-of-range at RPE ≤ 7 ⇒ a larger increment, below the rep floor at RPE ≥ 9.5 ⇒
-hold/deload, absent RPE ⇒ byte-for-byte the pre-RPE behavior — carried through
-`NextSetSeed`/`pickSeedSessions` so every next-set surface reflects it
-identically, plus the blank-by-default set-row selector and history-row badge,
-shipped, #743; the rest still draft) · Owner: TBD
+Status: **shipped** — all six phases landed: exercise guides (#733/#734), muscle
+identity, coverage, anatomy, and session rendering (#735–#737/#789), routines
+and their builder/recommendation path (#738–#740), volume bands (#742),
+mesocycle/deload awareness (#741), and per-set RPE progression (#743).
+
+Remaining optional follow-ups are deliberately outside the shipped spec:
+
+- custom-lift muscle tagging (#744);
+- per-profile volume-band overrides;
+- a routine-builder volume-band summary (the calculation hook is already
+  exported by `lib/muscle-volume-bands.ts`); and
+- deeper guide notes for equipment variants whose cues genuinely differ.
 
 ## Problem
 
@@ -214,8 +188,7 @@ Three rendering modes, each fed by one computation:
 
 ## Pillar 3 — Routines (templates + custom)
 
-Status: **partial (schema + write cores + templates + recommendation + builder
-UI)** — migration 039 (the three routine tables), the auth-blind write cores
+Status: **shipped** — migration 039 (the three routine tables), the auth-blind write cores
 (`lib/routines.ts`: adopt / activate / deactivate / edit / delete, with
 activation replacing training-scope frequency targets), the gated actions
 (`app/(app)/training/actions.ts`), and the template catalog
@@ -230,8 +203,8 @@ builder (name → days → slots of ordered candidates + sets/reps, per-day focu
 derived from the slots' candidate regions via `deriveFocusFromCandidates` and
 editable), and the activate flow whose confirm lists exactly the training-scope
 targets to be replaced and appears ONLY when such targets exist.
-Mesocycle/deload (#741, `cycle_weeks` + Restart cycle) is not built yet — the
-builder leaves layout room for it.
+Mesocycle/deload awareness, including `cycle_weeks` and Restart cycle, shipped
+in #741 and uses the same routine representation.
 
 ### Constraint
 
@@ -434,7 +407,7 @@ Builds directly on Pillar 2's coverage math.
   never a push notification, never the hero.
 - **Cold start (#719):** band observations require history before they may fire
   — no `below`/`untrained` finding until the profile has logged strength
-  sessions in at least `MIN_BAND_HISTORY_WEEKS` (proposed: 2) distinct weeks of
+  sessions in at least `MIN_BAND_HISTORY_WEEKS` (2) distinct weeks of
   the trailing window. A brand-new profile is "not enough data yet", never
   "everything is below target" — an unanswered question is not a negative
   answer. The coverage figure may always render (untrained muscles in a neutral
@@ -472,7 +445,7 @@ about them.
   into "deload week." Two mechanisms:
   - _Auto:_ week-in-cycle is computed by a pure
     `effectiveCycleStart(startedDate, creditedDates, today)` — a gap of
-    `CYCLE_PAUSE_GAP_DAYS` (proposed: 21) or more with no credited sessions
+    `CYCLE_PAUSE_GAP_DAYS` (21) or more with no credited sessions
     re-anchors the cycle to the first credited session after the gap (or to
     `today` while none exists yet), so a returner is always in week 1.
     Deterministic from logged data, no hidden write on a read path,
@@ -561,9 +534,6 @@ about them.
 
 - Guide depth for the long tail of equipment variants (start with
   `equipmentNotes` only where cues genuinely differ).
-- Volume-band default values and the secondary-credit factor (proposed 0.5) — to
-  be justified with sources in the `lib/muscle-volume-bands.ts` header before
-  Phase 4 merges.
 
 ## Resolved questions
 
@@ -572,3 +542,5 @@ about them.
   skipped/rest days — see Today's session.
 - **Deload week vs volume-band observation:** the deload week suppresses the
   `below` finding through the same week-in-cycle flag — see Pillar 4a.
+- **Volume-band evidence:** the default values and 0.5 secondary-credit factor
+  are justified with sources in the `lib/muscle-volume-bands.ts` header.

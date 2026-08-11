@@ -1,19 +1,64 @@
 # Curated-dataset framework
 
-Status: **partial** · framework + harness + linter shipped; **22 datasets
-migrated** onto the framework (#860 Track B, waves 1–3 + the deferred
-canonical-biomarkers): `allergen-cross-reactivity`, `biomarker-descriptions`,
-`biomarker-supplement-map`, `bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`,
-`drug-interactions`, `fitness-norms`, `food-drug-interactions`, `food-groups`,
-`growth-charts`, `icd10-common`, `illness-thresholds`,
-`medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`,
-`screenings`, `strength-standards`, `temperature-red-flags`.
-`canonical-biomarkers` is the one **external-source** dataset (below);
-`symptoms` and `exercise-guides` are documented non-candidates (no honest
-external provenance). Curated-dataset migration is effectively complete — issue
-\#860 Track B
+Status: **shipped** · framework, harness, linter, and **31 registered datasets**
+are in place (#860 Track B and subsequent adoptions). **30** use envelope JSON
+under `lib/datasets/data/`; `canonical-biomarkers` is the one
+**external-source** dataset (below). The registry census and the root-JSON
+inventory are checked against this document by
+`lib/__tests__/datasets-framework.test.ts`, so this count cannot silently drift.
 
-Allos bakes ~two dozen curated, human-reviewable reference datasets — MET
+### Registry census (guarded)
+
+- `allergen-cross-reactivity`
+- `biomarker-descriptions`
+- `biomarker-supplement-map`
+- `bp-percentiles`
+- `canonical-biomarkers`
+- `condition-training-considerations`
+- `contrast-safety`
+- `dental-safety`
+- `dri`
+- `drug-allergy`
+- `drug-interactions`
+- `fitness-hold-norms`
+- `fitness-norms`
+- `food-drug-interactions`
+- `food-groups`
+- `growth-charts`
+- `icd10-common`
+- `illness-thresholds`
+- `medication-descriptions`
+- `medication-monitoring`
+- `mets`
+- `mobility-moves`
+- `nutrient-food-map`
+- `ototoxic`
+- `pgx`
+- `prn-defaults`
+- `radiation-dose`
+- `screenings`
+- `strength-standards`
+- `temperature-red-flags`
+- `weather-med-safety`
+
+### Root JSON inventory (guarded)
+
+The framework directory is the default home for new curated reference data.
+Every JSON file directly under `lib/` is an explicit exception:
+
+- `canonical-biomarkers.json` — the registered external-source dataset described
+  below;
+- `exercise-guides.json` and `symptoms.json` — documented framework
+  non-candidates because they have no honest external provenance;
+- `release-notes.json` — product changelog data, not reference data; and
+- `zip-centroids.json` — a generated public-domain Census gazetteer whose source
+  and refresh procedure live in `scripts/gen-zip-centroids.ts`.
+
+The guard fails if a root JSON file is added or removed without updating this
+classification. In particular, a new curated dataset cannot land here to evade
+the framework's citation contract.
+
+Allos bakes about three dozen curated, human-reviewable reference datasets — MET
 values, DRIs, drug interactions, biomarker reference ranges, screening
 schedules, growth charts, and more. Historically each shipped its own
 hand-rolled JSON shape, loader, matcher, citation convention, and drift test.
