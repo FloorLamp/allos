@@ -617,7 +617,7 @@ describe("digest renders bounded-precision numbers (issue #1109)", () => {
 });
 
 describe("buildDigest — Sleep section (issue #1117)", () => {
-  it("renders last night vs baseline, stages, nap, and SRI", () => {
+  it("renders last night vs baseline, stages, and SRI", () => {
     const model = buildDigest({
       ...empty,
       sleep: {
@@ -625,7 +625,6 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
         baselineMin: 425, // ~7h 5m
         deepMin: 65,
         remMin: 95,
-        napMin: 45,
         sri: 82,
       },
     });
@@ -637,8 +636,6 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
     expect(plain(sleep?.lines)[0]).toBe(
       "😴 Last night: 7h 20m — about typical · deep 1h 5m, REM 1h 35m"
     );
-    // The nap is a SEPARATE line, never folded into the overnight figure.
-    expect(plain(sleep?.lines)).toContain("😴 + 45m nap");
     // The acronym and the naked number are gone: the banded qualifier says what the
     // index means, about the SCHEDULE and never about the sleeper (#992/#1819 item 7).
     expect(plain(sleep?.lines)).toContain(
@@ -646,7 +643,7 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
     );
   });
 
-  it("omits stages, nap, and SRI when absent (calm, minimal)", () => {
+  it("omits stages and SRI when absent (calm, minimal)", () => {
     const model = buildDigest({
       ...empty,
       sleep: { lastNightMin: 480, baselineMin: 470 },
@@ -702,15 +699,6 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
       sleep: { lastNightMin: 400, baselineMin: 400 },
     });
     expect(model?.sections.map((s) => s.heading)).toEqual(["Sleep"]);
-  });
-
-  it("does not show a zero-minute nap line", () => {
-    const model = buildDigest({
-      ...empty,
-      sleep: { lastNightMin: 400, baselineMin: 400, napMin: 0 },
-    });
-    const sleep = model?.sections.find((s) => s.heading === "Sleep");
-    expect(plain(sleep?.lines).some((l) => l.includes("nap"))).toBe(false);
   });
 });
 
