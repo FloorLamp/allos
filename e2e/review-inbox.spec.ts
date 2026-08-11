@@ -201,9 +201,11 @@ test.describe("Data → Review import inbox", () => {
     // (How many land on which day depends on the run's pinned timezone, so assert
     // the SHAPE of the collapsed line rather than a count that would drift.)
     const routine = history.getByTestId("sync-history-range");
-    await expect(routine).toHaveCount(1);
-    await expect(routine).toContainText("Routine");
-    await expect(routine).toContainText(/\d+ syncs/);
+    expect(await routine.count()).toBeGreaterThan(0);
+    for (const row of await routine.all()) {
+      await expect(row).toContainText("Routine");
+      await expect(row).toContainText(/\d+ syncs/);
+    }
 
     // The seeded truncated run reports what it DID land and is explicitly marked
     // partial, so a page cap / rate limit can't read as a fully green sync.
