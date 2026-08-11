@@ -155,7 +155,7 @@ export default async function MedicationDetailPage(props: {
   // never scheduled-due, so its grid would read entirely "not due".
   const calendar = isOnDemand(m.med)
     ? null
-    : getMedicationAdherenceCalendar(profileId, m.med.id);
+    : getMedicationAdherenceCalendar(profileId, data, m.med.id);
 
   // "Prescribed at: <visit>" (#1050) — the deterministic tier-1 link (a resolved
   // FHIR MedicationRequest.encounter) or a user-accepted suggestion, whichever set
