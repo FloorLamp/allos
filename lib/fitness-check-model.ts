@@ -44,7 +44,11 @@ import {
 } from "@/lib/fitness-favorability";
 import { holdBand, type HoldBand } from "@/lib/fitness-hold-norms";
 import { daysBetweenDateStr } from "@/lib/date";
-import { freshnessState, type FreshnessState } from "@/lib/freshness";
+import {
+  freshnessState,
+  tallyFreshness,
+  type FreshnessState,
+} from "@/lib/freshness";
 import { fitnessFreshnessDays } from "@/lib/fitness-freshness";
 import type { Sex } from "@/lib/types";
 import {
@@ -259,23 +263,20 @@ function classifyAmbient(
 // The fresh / stale / unmeasured split over a set of results (#2025) — the ONE counting
 // rule the whole check and every domain share, so a domain's numbers always sum to the
 // check's. A measured test the model could not date counts as measured but not fresh:
-// it has a value and no evidence that value is current.
+// it has a value and no evidence that value is current — which is precisely what
+// `tallyFreshness` already means by `notApplicable`, so the current/due discrimination is
+// the SHARED one (#2194) and not a second copy of it here. Only the measured/unmeasured
+// axis is this domain's own: an unmeasured test has no reading to be fresh about, so it
+// never enters the tally at all.
 function coverageOf(results: readonly FitnessTestResult[]): FitnessCoverage {
-  let measured = 0;
-  let fresh = 0;
-  let stale = 0;
-  for (const r of results) {
-    if (!r.measured) continue;
-    measured++;
-    if (r.freshness === "current") fresh++;
-    else if (r.freshness === "due") stale++;
-  }
+  const measured = results.filter((r) => r.measured);
+  const tally = tallyFreshness(measured.map((r) => r.freshness));
   return {
     total: results.length,
-    measured,
-    fresh,
-    stale,
-    unmeasured: results.length - measured,
+    measured: measured.length,
+    fresh: tally.current,
+    stale: tally.due,
+    unmeasured: results.length - measured.length,
   };
 }
 
