@@ -19,8 +19,8 @@ import {
   collectCoachingFindings,
 } from "@/lib/rule-findings";
 import {
-  setUserSex,
-  setUserBirthdate,
+  setProfileSex,
+  setProfileBirthdate,
   setSmokingHistory,
   setRiskAttributesReviewed,
 } from "@/lib/settings";
@@ -98,8 +98,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
   it("a pediatric profile with no height flags the pediatric-height gap", () => {
     const { profileId } = makeProfile("dq-child");
-    setUserSex(profileId, "female");
-    setUserBirthdate(profileId, "2020-01-01"); // ~a young child
+    setProfileSex(profileId, "female");
+    setProfileBirthdate(profileId, "2020-01-01"); // ~a young child
 
     const keys = new Set(keysOf(profileId));
     expect(keys.has(dataQualityDedupeKey("pediatric-height"))).toBe(true);
@@ -119,8 +119,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
   it("med-rxcui CTA deep-links the SOLE unconfirmed med's edit form, else the filtered list (#1146)", () => {
     const { profileId } = makeProfile("dq-rxcui-cta");
-    setUserSex(profileId, "male");
-    setUserBirthdate(profileId, "1985-01-01");
+    setProfileSex(profileId, "male");
+    setProfileBirthdate(profileId, "1985-01-01");
     const medId = Number(
       db
         .prepare(
@@ -148,8 +148,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
   it("phenoage CTA prefills the biomarker add form with the first MISSING analyte (#1146)", () => {
     const { profileId } = makeProfile("dq-phenoage-cta");
-    setUserSex(profileId, "female");
-    setUserBirthdate(profileId, "1980-01-01");
+    setProfileSex(profileId, "female");
+    setProfileBirthdate(profileId, "1980-01-01");
     setSmokingHistory(profileId, {
       status: "never",
       packYears: null,
@@ -172,8 +172,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
   it("risk/smoking CTAs land on the anchored Care › Overview forms (#1146)", () => {
     const { profileId } = makeProfile("dq-forms-cta");
-    setUserSex(profileId, "male");
-    setUserBirthdate(profileId, "1985-01-01");
+    setProfileSex(profileId, "male");
+    setProfileBirthdate(profileId, "1985-01-01");
     const byKey = new Map(
       buildDataQualityFindings(profileId).map((f) => [f.dedupeKey, f])
     );
@@ -191,8 +191,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
   // is part of why the form could go a year with no control that writes it.
   it("an EMPTY-but-reviewed adult clears the risk gap; the same profile unreviewed does not", () => {
     const { profileId } = makeProfile("dq-empty-review");
-    setUserSex(profileId, "male");
-    setUserBirthdate(profileId, "1985-01-01"); // adult → the risk gap is eligible
+    setProfileSex(profileId, "male");
+    setProfileBirthdate(profileId, "1985-01-01"); // adult → the risk gap is eligible
 
     // Fresh: no flags, no marker → the gap fires.
     expect(new Set(keysOf(profileId))).toContain(
@@ -217,8 +217,8 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
   it("BOUNDARY: a structurally-complete adult profile emits nothing", () => {
     const { profileId } = makeProfile("dq-complete");
-    setUserSex(profileId, "male");
-    setUserBirthdate(profileId, "1985-01-01"); // adult
+    setProfileSex(profileId, "male");
+    setProfileBirthdate(profileId, "1985-01-01"); // adult
     setSmokingHistory(profileId, {
       status: "never",
       packYears: null,

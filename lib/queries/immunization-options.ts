@@ -12,7 +12,7 @@ import { today } from "../db";
 import { ageMonthsFrom } from "../date";
 import { assessSchedule } from "../immunization-status";
 import { rankedVaccineOptions } from "../immunization-rank";
-import { getUserBirthdate, getUserSex, getStoredAge } from "../settings";
+import { getProfileBirthdate, getProfileSex, getStoredAge } from "../settings";
 import {
   getImmunizations,
   getImmunityTiters,
@@ -25,7 +25,7 @@ import {
 export function getRankedVaccineOptions(profileId: number): string[] {
   const now = today(profileId);
   const ageMonths = ageMonthsFrom(
-    getUserBirthdate(profileId),
+    getProfileBirthdate(profileId),
     getStoredAge(profileId),
     now
   );
@@ -35,7 +35,7 @@ export function getRankedVaccineOptions(profileId: number): string[] {
       date: r.date,
     })),
     ageMonths,
-    getUserSex(profileId),
+    getProfileSex(profileId),
     now,
     getImmunityTiters(profileId).map((t) => ({
       marker: t.marker,

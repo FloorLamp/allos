@@ -68,8 +68,8 @@ import {
 import { biomarkerDismissalKey } from "../../dismissal-keys";
 import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
 import {
-  getUserSex,
-  getUserAgeOn,
+  getProfileSex,
+  getProfileAgeOn,
   profileAgeMonths,
   getMentalHealthShareFull,
 } from "../../settings";
@@ -192,7 +192,7 @@ export { doseDayProgress } from "./intake-safety";
 const RETEST_CATEGORIES = new Set(["lab"]);
 
 function immunizationItems(profileId: number, today: string): UpcomingItem[] {
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
   const ageMonths = profileAgeMonths(profileId, today);
   const riskFactors = getRiskFactors(profileId);
 
@@ -419,7 +419,7 @@ const biomarkerRetestSignals = cache(function biomarkerRetestSignals(
     if (
       isAnchoredOneShotReading(
         name,
-        lifeStage(getUserAgeOn(profileId, effectiveDate))
+        lifeStage(getProfileAgeOn(profileId, effectiveDate))
       )
     )
       continue;

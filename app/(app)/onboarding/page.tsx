@@ -28,8 +28,8 @@ import {
   getStoredAge,
   getTimezone,
   getUnitPrefs,
-  getUserBirthdate,
-  getUserSex,
+  getProfileBirthdate,
+  getProfileSex,
 } from "@/lib/settings";
 import {
   completeOnboarding,
@@ -366,7 +366,7 @@ export default async function OnboardingPage({
               </div>
 
               <AgeInputs
-                birthdate={getUserBirthdate(profile.id)}
+                birthdate={getProfileBirthdate(profile.id)}
                 age={getStoredAge(profile.id)}
                 disabled={readOnly}
               />
@@ -378,7 +378,7 @@ export default async function OnboardingPage({
                 <select
                   id="onboarding-sex"
                   name="sex"
-                  defaultValue={getUserSex(profile.id) ?? ""}
+                  defaultValue={getProfileSex(profile.id) ?? ""}
                   disabled={readOnly}
                   className="input"
                 >

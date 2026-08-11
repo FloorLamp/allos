@@ -45,9 +45,9 @@ import {
   getActiveSituations,
   getSituationEvents,
   getHomeLocation,
-  getUserSex,
-  getUserAge,
-  getUserReproductiveStatus,
+  getProfileSex,
+  getProfileAge,
+  getProfileReproductiveStatus,
   getSmokingHistory,
   getRiskAttributesReviewed,
   getTimezone,
@@ -363,12 +363,12 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     getSmokingHistory(profileId),
     hasImportedSmokingHistory(profileId)
   );
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
   const inputs: DataQualityInputs = {
-    age: getUserAge(profileId),
+    age: getProfileAge(profileId),
     sexKnown: sex !== null,
     sex,
-    reproductiveStatusKnown: getUserReproductiveStatus(profileId) !== null,
+    reproductiveStatusKnown: getProfileReproductiveStatus(profileId) !== null,
     heightKnown: getLatestMetricSample(profileId, "height_cm") !== null,
     smokingKnown: smoking.source !== null,
     medsMissingRxcui: getMedicationsMissingRxcuiCount(profileId),
@@ -755,11 +755,11 @@ export function buildTtcWorkupFindings(
   today: string
 ): Finding[] {
   // Adult-only content, the same `!isMinor` line the other adult-topic surfaces use.
-  if (isMinor(getUserAge(profileId))) return [];
+  if (isMinor(getProfileAge(profileId))) return [];
   const prompt = decideWorkupPrompt({
     ttcStart: getTtcStart(profileId),
     today,
-    age: getUserAge(profileId),
+    age: getProfileAge(profileId),
     pregnant: getRiskAttributes(profileId).pregnant,
   });
   if (!prompt) return [];
@@ -836,7 +836,7 @@ export function buildFoodHabitFindings(profileId: number): Finding[] {
 export function buildSubstanceUseFindings(profileId: number): Finding[] {
   // The substance-use surface is adult-gated (#1174/#1279); never emit a coaching
   // finding that deep-links a known minor to a now-redirected route.
-  if (isMinor(getUserAge(profileId))) return [];
+  if (isMinor(getProfileAge(profileId))) return [];
   const out: Finding[] = [];
   for (const state of getAllSubstanceWeekStates(profileId)) {
     if (!state.status || !state.status.over) continue;
@@ -1614,8 +1614,8 @@ export function buildSunExposureFindings(
   const status = optimalStatus(
     latest.value_num,
     cb,
-    getUserSex(profileId),
-    getUserAge(profileId)
+    getProfileSex(profileId),
+    getProfileAge(profileId)
   );
 
   // Daylight-outdoor minutes over the window — the ONE computation (lib/queries/sun),

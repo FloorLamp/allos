@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { log } from "@/lib/log";
 import { getCurrentSession } from "@/lib/auth";
-import { getUserSex, setUserSex } from "@/lib/settings";
+import { getProfileSex, setProfileSex } from "@/lib/settings";
 import {
   getStravaConfig,
   takeStravaOAuthState,
@@ -141,7 +141,7 @@ export async function GET(req: Request) {
   // Best-effort: a failure here must not block the connection. The token
   // response's embedded athlete carries `sex` too, used as a fallback.
   try {
-    if (getUserSex(STRAVA_PROFILE_ID) === null) {
+    if (getProfileSex(STRAVA_PROFILE_ID) === null) {
       let sexRaw = tokenJson.athlete?.sex;
       try {
         const res = await fetch(ATHLETE_URL, {
@@ -155,7 +155,7 @@ export async function GET(req: Request) {
         /* fall back to the embedded athlete sex */
       }
       const sex = sexRaw === "M" ? "male" : sexRaw === "F" ? "female" : null;
-      if (sex) setUserSex(STRAVA_PROFILE_ID, sex);
+      if (sex) setProfileSex(STRAVA_PROFILE_ID, sex);
     }
   } catch (err) {
     log.warn("strava sex backfill skipped", { err: String(err) });

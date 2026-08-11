@@ -1049,7 +1049,7 @@ import {
   getProfileMoodCheckin,
   getProfilesByTelegramChatId,
   getTimezone,
-  getUserAge,
+  getProfileAge,
   resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";

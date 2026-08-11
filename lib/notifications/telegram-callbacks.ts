@@ -33,7 +33,7 @@ import {
   setProfileSetting,
   setProfileFoodTelegram,
   setFoodTelegramPrompted,
-  getUserAge,
+  getProfileAge,
 } from "../settings";
 import { logFoodServingCore } from "../food-log-write";
 import { addProteinGramsCore } from "../protein-log-write";
@@ -879,7 +879,7 @@ async function handleDoseTap(
           profileId,
           parts,
           tap.date,
-          getUserAge(profileId)
+          getProfileAge(profileId)
         ),
         { ref: { chatId, messageId } }
       )
@@ -1124,7 +1124,7 @@ async function handleAllTaken(
         profileId,
         parts,
         all.date,
-        getUserAge(profileId)
+        getProfileAge(profileId)
       ),
       { ref: { chatId, messageId } }
     )

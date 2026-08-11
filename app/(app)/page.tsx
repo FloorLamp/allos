@@ -54,7 +54,7 @@ import { cyclePhaseOnDate, cycleDayOnDate } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
-import { getUserAge } from "@/lib/settings/profile-attrs";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
@@ -299,7 +299,7 @@ export default async function Dashboard() {
   // relevant (the SAME getNavRelevance().cycle bit as the Cycle nav entry, #1042) — so a
   // card can never disagree with its nav twin about applicability.
   const widgetGate = {
-    foodLogging: isFoodLoggingRelevant(getUserAge(profile.id)),
+    foodLogging: isFoodLoggingRelevant(getProfileAge(profile.id)),
     cycle: getNavRelevance(profile.id).cycle,
   };
   const list = resolveWidgetList(

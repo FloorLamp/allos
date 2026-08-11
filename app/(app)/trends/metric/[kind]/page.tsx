@@ -5,8 +5,8 @@ import { today } from "@/lib/db";
 import {
   getDisplayFormatPrefs,
   getUnitPrefs,
-  getUserAge,
-  getUserBirthdate,
+  getProfileAge,
+  getProfileBirthdate,
   type WeightUnit,
 } from "@/lib/settings";
 import {
@@ -363,11 +363,11 @@ export default async function BodyMetricDetailPage(props: {
     observations
   );
   const sourceComparisonKey = SOURCE_COMPARISON_KEY[kind];
-  const birthdate = getUserBirthdate(profile.id);
+  const birthdate = getProfileBirthdate(profile.id);
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
-  const age = getUserAge(profile.id);
+  const age = getProfileAge(profile.id);
   const entryGates = {
     showBodyFat: showBodyFat(age),
     showGrowth: showGrowthQuickAdd(age),

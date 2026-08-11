@@ -60,7 +60,7 @@ export function dataQualityDedupeKey(key: DataQualityGapKey): string {
 // reproductive status is a real gap for a female profile: below it the age proxy is a
 // safe default, but from ~45 on a woman may be pre- OR post-menopausal, and only an
 // explicit status resolves the female-hormone reference ranges (the FSH false-flag
-// rationale documented on getUserReproductiveStatus / types/medical.ts). This is the
+// rationale documented on getProfileReproductiveStatus / types/medical.ts). This is the
 // "female + age-band" gate the issue names.
 export const REPRODUCTIVE_STATUS_BAND_MIN_AGE = 45;
 

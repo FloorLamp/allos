@@ -71,8 +71,8 @@ import { biomarkerRetestIdentity } from "../../canonical-name";
 import { biomarkerDismissalKey } from "../../dismissal-keys";
 import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
 import {
-  getUserSex,
-  getUserAgeOn,
+  getProfileSex,
+  getProfileAgeOn,
   profileAgeMonths,
   getMentalHealthShareFull,
 } from "../../settings";

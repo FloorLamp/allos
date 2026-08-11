@@ -8,7 +8,7 @@ import Wordmark from "@/components/Wordmark";
 import ProfileIdentityBar from "@/components/ProfileIdentityBar";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearQueue } from "@/lib/offline/queue-db";
-import { logoutAction } from "@/app/(app)/user-actions";
+import { logoutAction } from "@/app/(app)/session-actions";
 import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
 import JournalCalendar from "@/components/JournalCalendar";

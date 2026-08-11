@@ -31,7 +31,7 @@ import {
   EMPTY_RISK_ATTRIBUTES,
   setRiskAttributes,
   setTtcStart,
-  setUserBirthdate,
+  setProfileBirthdate,
 } from "@/lib/settings";
 import {
   buildTtcWorkupFindings,
@@ -300,7 +300,7 @@ describe("the workup prompt is coaching-tier and stays there (#448 fixture)", ()
     const anchor = today(p);
     // An adult profile (birthdate well before the age line) declared as trying 13 months
     // ago — past the 12-month threshold. Relative dates only.
-    setUserBirthdate(p, shiftDateStr(anchor, -365 * 31));
+    setProfileBirthdate(p, shiftDateStr(anchor, -365 * 31));
     setTtcStart(p, shiftDateStr(anchor, -400));
 
     const findings = buildTtcWorkupFindings(p, anchor);
@@ -318,7 +318,7 @@ describe("the workup prompt is coaching-tier and stays there (#448 fixture)", ()
   it("says nothing before the threshold, and nothing without a declaration", () => {
     const p = newProfile("ttc-workup-quiet");
     const anchor = today(p);
-    setUserBirthdate(p, shiftDateStr(anchor, -365 * 31));
+    setProfileBirthdate(p, shiftDateStr(anchor, -365 * 31));
     expect(buildTtcWorkupFindings(p, anchor)).toEqual([]);
 
     setTtcStart(p, shiftDateStr(anchor, -100)); // ~3 months
@@ -328,7 +328,7 @@ describe("the workup prompt is coaching-tier and stays there (#448 fixture)", ()
   it("says nothing for a minor profile, whatever is declared", () => {
     const p = newProfile("ttc-workup-minor");
     const anchor = today(p);
-    setUserBirthdate(p, shiftDateStr(anchor, -365 * 15));
+    setProfileBirthdate(p, shiftDateStr(anchor, -365 * 15));
     setTtcStart(p, shiftDateStr(anchor, -600));
     expect(buildTtcWorkupFindings(p, anchor)).toEqual([]);
   });

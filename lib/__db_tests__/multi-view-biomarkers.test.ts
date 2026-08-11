@@ -16,7 +16,7 @@ import {
   getDerivedBiomarkerReadings,
   reconcileFlags,
 } from "@/lib/queries";
-import { setUserSex } from "@/lib/settings";
+import { setProfileSex } from "@/lib/settings";
 import {
   filterDerivedForTable,
   prepareMultiViewTableRecords,
@@ -79,8 +79,8 @@ function mergedTable(
 beforeAll(() => {
   male = mkProfile("MV Bio Male (e2e)");
   female = mkProfile("MV Bio Female (e2e)");
-  setUserSex(male, "male");
-  setUserSex(female, "female");
+  setProfileSex(male, "male");
+  setProfileSex(female, "female");
 
   // Shared "Vitamin D" family, different values AND dates per member. Male's newest
   // is 2024-06; female's newest is 2024-03 — each member's own newest must win.

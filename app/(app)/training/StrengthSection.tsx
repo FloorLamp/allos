@@ -8,7 +8,7 @@ import {
 } from "@/lib/queries";
 import {
   getUnitPrefs,
-  getUserSex,
+  getProfileSex,
   getDisplayFormatPrefs,
 } from "@/lib/settings";
 import { chartSeries } from "@/lib/chart-colors";
@@ -117,7 +117,7 @@ export default async function StrengthSection() {
         recentByExercise={recentByExercise}
         goals={goals}
         goalProgress={goalProgress}
-        sex={getUserSex(profile.id)}
+        sex={getProfileSex(profile.id)}
       />
     </section>
   );

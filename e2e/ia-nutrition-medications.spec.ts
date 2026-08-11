@@ -409,7 +409,7 @@ function seedBaby(): void {
   try {
     db.pragma("busy_timeout = 5000");
     const pid = createFixtureProfile(db, BABY);
-    // ~6 months old → getUserAge() = 0 → life-stage "infant" → Food logging off.
+    // ~6 months old → getProfileAge() = 0 → life-stage "infant" → Food logging off.
     const bd = frozenNow();
     bd.setMonth(bd.getMonth() - 6);
     db.prepare(

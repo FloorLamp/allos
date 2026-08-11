@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { getBioAgeReadings, getDerivedBiomarkerReadings } from "@/lib/queries";
-import { setUserBirthdate } from "@/lib/settings";
+import { setProfileBirthdate } from "@/lib/settings";
 import { db } from "@/lib/db";
 
 // The canonical name since #2335 — aliased so the assertions stay readable.
@@ -63,7 +63,7 @@ describe("bio-age: a fasting-glucose draw with a censored hs-CRP", () => {
   beforeEach(() => {
     profileId = newProfile("Fasting Glucose Draw");
     // Adult on the draw date so PhenoAge is produced (age gate).
-    setUserBirthdate(profileId, "1980-01-01");
+    setProfileBirthdate(profileId, "1980-01-01");
     seedSevenInputs(profileId);
   });
 

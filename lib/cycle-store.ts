@@ -20,7 +20,7 @@ import type {
 } from "./cycle";
 import {
   getRiskAttributes,
-  getUserReproductiveStatus,
+  getProfileReproductiveStatus,
 } from "./settings/profile-attrs";
 
 export interface CycleRow extends CyclePeriod {
@@ -152,7 +152,7 @@ export function getForecastSuspension(
   profileId: number
 ): ForecastSuspension | null {
   if (getRiskAttributes(profileId).pregnant) return "pregnancy";
-  if (getUserReproductiveStatus(profileId) === "postmenopausal")
+  if (getProfileReproductiveStatus(profileId) === "postmenopausal")
     return "postmenopausal";
   return null;
 }

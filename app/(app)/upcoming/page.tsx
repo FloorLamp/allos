@@ -50,7 +50,7 @@ import {
 } from "@/lib/multi-view";
 import { SUPPRESSION_DOMAIN_ORDER } from "@/lib/suppression-display";
 import {
-  getUserBirthdate,
+  getProfileBirthdate,
   getStoredAge,
   getUnitPrefs,
   isMultiviewHintDismissed,
@@ -222,7 +222,7 @@ export default async function UpcomingPage(props: {
   // profile alone (which would silence an in-view member missing a birthdate and could
   // fire about nobody visible). One line per in-view member with no birthdate/age.
   const missingDemographics = viewIds.filter(
-    (pid) => getUserBirthdate(pid) == null && getStoredAge(pid) == null
+    (pid) => getProfileBirthdate(pid) == null && getStoredAge(pid) == null
   );
   const hasPreventive = model.groups.some((g) =>
     g.items.some((i) => i.domain === "visit" || i.domain === "screening")

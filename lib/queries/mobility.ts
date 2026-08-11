@@ -15,7 +15,7 @@ import {
   type MobilitySessionInput,
 } from "../mobility-coverage";
 import { fitnessPercentile } from "../fitness-norms";
-import { getUserSex, getUserAge } from "../settings";
+import { getProfileSex, getProfileAge } from "../settings";
 import { getInjuryConstraints } from "../injuries";
 import {
   mobilitySuggestions,
@@ -78,8 +78,8 @@ export function getMobilityCoverage(
 export function getMobilitySuggestions(
   profileId: number
 ): MobilitySuggestion[] {
-  const sex = getUserSex(profileId);
-  const age = getUserAge(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAge(profileId);
   const sitReach = getLatestMedicalRecordByCanonical(
     profileId,
     "Sit-and-Reach"

@@ -26,7 +26,7 @@ import {
 import { buildDigestSeries } from "./trends-series";
 import { summarizeTrends } from "./trends-digest";
 import { isTrainingRestricted } from "./age-gate";
-import { getUnitPrefs, getUserSex, getUserAge } from "./settings";
+import { getUnitPrefs, getProfileSex, getProfileAge } from "./settings";
 import { quickRanges } from "./timeline-format";
 import {
   composeOfflineNarrative,
@@ -133,8 +133,8 @@ function gatherInsightContext(
     upcoming,
     goalCount,
     profile: {
-      sex: getUserSex(profileId),
-      age: getUserAge(profileId),
+      sex: getProfileSex(profileId),
+      age: getProfileAge(profileId),
       conditions,
       intake,
     },

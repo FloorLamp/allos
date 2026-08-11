@@ -12,7 +12,7 @@
 //   • QUALITY — always "rough"; surfaces render the disclosure from this flag + citation.
 //
 // LONGER IS ALWAYS BETTER for both holds (no lowerIsBetter case here). DB-free and pure so
-// it's unit-tested in lib/__tests__. Sex comes from the call site (getUserSex). When sex
+// it's unit-tested in lib/__tests__. Sex comes from the call site (getProfileSex). When sex
 // is unset — or the test has no baked ladder — the lookup returns null so surfaces color
 // the tile by personal delta alone (the retained self-trend signal).
 

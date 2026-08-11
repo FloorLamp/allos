@@ -20,9 +20,9 @@ import { canonicalGroupKey, groupByCanonicalName } from "../biomarker-group";
 import { canonicalResolver } from "../canonical-resolve";
 import { cache } from "../request-cache";
 import {
-  getUserSex,
-  getUserAgeOn,
-  getUserReproductiveStatus,
+  getProfileSex,
+  getProfileAgeOn,
+  getProfileReproductiveStatus,
 } from "../settings";
 import { reconciledFlag, plottableReadingValue } from "../reference-range";
 import {
@@ -73,8 +73,8 @@ function componentNumeric(r: {
 // in the formula's unit yields no reference rather than a number in the wrong scale.
 function phenoAgeReferenceResolver(
   profileId: number,
-  sex: ReturnType<typeof getUserSex>,
-  status: ReturnType<typeof getUserReproductiveStatus>
+  sex: ReturnType<typeof getProfileSex>,
+  status: ReturnType<typeof getProfileReproductiveStatus>
 ): PhenoAgeReferenceResolver {
   const units = derivedInputUnitsFor("PhenoAge");
   const cbCache = new Map<string, ReturnType<typeof getCanonicalBiomarker>>();
@@ -84,7 +84,7 @@ function phenoAgeReferenceResolver(
     const ref = phenoAgeReferenceValue(
       cb,
       sex,
-      getUserAgeOn(profileId, date),
+      getProfileAgeOn(profileId, date),
       status
     );
     if (!ref) return null;
@@ -152,8 +152,8 @@ const getDerivedComputation = cache(function getDerivedComputation(
   readings: DerivedReading[];
   // The input canonical names the profile has ≥1 usable numeric reading of.
   presentInputs: Set<string>;
-  sex: ReturnType<typeof getUserSex>;
-  status: ReturnType<typeof getUserReproductiveStatus>;
+  sex: ReturnType<typeof getProfileSex>;
+  status: ReturnType<typeof getProfileReproductiveStatus>;
 } {
   const resolve = canonicalResolver();
   const grouped = groupByCanonicalName(
@@ -205,11 +205,11 @@ const getDerivedComputation = cache(function getDerivedComputation(
     if (dates.size) storedDatesByName[name] = dates;
   }
 
-  const sex = getUserSex(profileId);
-  const status = getUserReproductiveStatus(profileId);
+  const sex = getProfileSex(profileId);
+  const status = getProfileReproductiveStatus(profileId);
   const readings = computeDerivedReadings(
     seriesByCanonical,
-    { sex, ageOn: (date) => getUserAgeOn(profileId, date) },
+    { sex, ageOn: (date) => getProfileAgeOn(profileId, date) },
     {
       storedDatesByName,
       phenoAgeReference: phenoAgeReferenceResolver(profileId, sex, status),
@@ -232,7 +232,7 @@ export function getDerivedBiomarkerReadings(
 
   return readings.map((reading, i) => {
     const cb = cbFor(reading.name);
-    const age = getUserAgeOn(profileId, reading.date);
+    const age = getProfileAgeOn(profileId, reading.date);
     // reconciledFlag over a null "current" flag yields the flag the ranges imply
     // (high/low/non-optimal) or null/undefined when in-band — collapse both to null.
     const flag =
@@ -374,7 +374,7 @@ export function getBioAgeReadings(profileId: number): {
     .map((r) => ({
       date: r.date,
       bioAge: r.value,
-      chronoAge: getUserAgeOn(profileId, r.date),
+      chronoAge: getProfileAgeOn(profileId, r.date),
       inputs: r.inputs,
       ...(r.censored ? { censored: r.censored } : {}),
       effects: r.effects ?? [],

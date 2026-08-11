@@ -1,7 +1,7 @@
 import { IconArrowsExchange } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
-import { switchProfileAction } from "@/app/(app)/user-actions";
+import { switchProfileAction } from "@/app/(app)/profile-context-actions";
 
 // Identifies the data subject on a page that may be showing a non-active accessible
 // profile. Switching is explicit: viewing another household member never silently

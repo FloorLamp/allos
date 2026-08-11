@@ -25,7 +25,7 @@ import {
 import { inferScreeningResultSatisfactions } from "../../preventive-screening-result";
 import { inferOpticalRxSatisfactions } from "../../preventive-optical";
 import {
-  getUserSex,
+  getProfileSex,
   profileAgeMonths,
   getSmokingHistory,
 } from "../../settings";
@@ -343,7 +343,7 @@ function assessProfilePreventiveUncached(
 ): PreventiveSummary {
   return assessCatalog({
     ageMonths: profileAgeMonths(profileId, today),
-    sex: getUserSex(profileId),
+    sex: getProfileSex(profileId),
     // Manual "mark done" events PLUS inferred satisfactions from existing records
     // (issue #86), merged into one stream. Both are `(ruleKey, date)`; the assessor
     // takes the most recent per rule, so a manual event is never overwritten — a

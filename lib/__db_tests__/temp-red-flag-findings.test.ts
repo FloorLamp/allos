@@ -4,7 +4,7 @@ import { shiftDateStr } from "@/lib/date";
 import {
   resolveSituationId,
   setProfileSetting,
-  setUserBirthdate,
+  setProfileBirthdate,
 } from "@/lib/settings";
 import {
   serializeSituationEvents,
@@ -61,7 +61,7 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
   it("a young infant's fever reading yields the care-tier red-flag finding end-to-end", () => {
     const p = newProfile("infant-red-flag");
     makeSick(p, 1);
-    setUserBirthdate(p, shiftDateStr(today(p), -60)); // ~2 months old
+    setProfileBirthdate(p, shiftDateStr(today(p), -60)); // ~2 months old
     // A single low-grade fever reading — crosses the infant band (>= 100.4°F).
     logTemperatureCore(p, 100.6, "F", today(p), "09:00");
 
@@ -107,7 +107,7 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
   it("an ordinary low fever in an adult yields NO finding", () => {
     const p = newProfile("adult-low-fever");
     makeSick(p, 0);
-    setUserBirthdate(p, shiftDateStr(today(p), -30 * 365));
+    setProfileBirthdate(p, shiftDateStr(today(p), -30 * 365));
     logTemperatureCore(p, 100.8, "F", today(p), "10:00");
 
     expect(buildTempRedFlagFindings(p, today(p))).toHaveLength(0);

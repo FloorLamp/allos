@@ -68,7 +68,7 @@ import {
   getActiveSituations,
   getSituationEvents,
   getTimezone,
-  getUserAge,
+  getProfileAge,
   type WeightUnit,
 } from "@/lib/settings";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
@@ -564,7 +564,7 @@ export function loadMedicationsData(
     nowIso: nowInstant.toISOString(),
     nowHhmm: hhmm,
     trainingRestricted,
-    age: getUserAge(profileId),
+    age: getProfileAge(profileId),
     taken,
     skipped,
     allSupplements: supplements,

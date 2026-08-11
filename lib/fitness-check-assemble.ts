@@ -12,8 +12,8 @@
 
 import { today } from "./db";
 import {
-  getUserSex,
-  getUserAge,
+  getProfileSex,
+  getProfileAge,
   getFitnessRetestCadenceDays,
 } from "./settings";
 import { getLatestBodyMetric } from "./queries";
@@ -46,8 +46,8 @@ export function assembleFitnessCheckModel(
   profileId: number
 ): AssembledFitnessCheck {
   const dateISO = today(profileId);
-  const sex = getUserSex(profileId);
-  const age = getUserAge(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAge(profileId);
   const bodyweightKg = getLatestBodyMetric(profileId, "weight");
   const battery = batteryForAge(age);
   const sessions = getFitnessAssessments(profileId, 12);

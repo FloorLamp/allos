@@ -43,8 +43,8 @@ import {
   hasProteinGoalLevel,
   setProteinGoalLevel,
   getTimezone,
-  getUserBirthdate,
-  getUserSex,
+  getProfileBirthdate,
+  getProfileSex,
   isValidTimezone,
   setDashboardLayout,
   setOnboardingState,
@@ -53,8 +53,8 @@ import {
   setTimezone,
   getUnitPrefs,
   setUnitPrefs,
-  setUserBirthdate,
-  setUserSex,
+  setProfileBirthdate,
+  setProfileSex,
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
@@ -309,8 +309,8 @@ export async function saveOnboardingBasics(formData: FormData) {
     formData.get("distance_unit") === "mi" ? "mi" : "km";
   const previousTimezone = getTimezone(profile.id);
   const demographicsChanged =
-    sex !== getUserSex(profile.id) ||
-    birthdate !== getUserBirthdate(profile.id);
+    sex !== getProfileSex(profile.id) ||
+    birthdate !== getProfileBirthdate(profile.id);
   const nextState = onboardingWithBasics(state, utcInstant());
 
   writeTx(() => {
@@ -318,8 +318,8 @@ export async function saveOnboardingBasics(formData: FormData) {
       displayName,
       profile.id
     );
-    setUserSex(profile.id, sex);
-    setUserBirthdate(profile.id, birthdate);
+    setProfileSex(profile.id, sex);
+    setProfileBirthdate(profile.id, birthdate);
     setStoredAge(profile.id, birthdate ? null : age);
     setTimezone(profile.id, timezone);
     // Onboarding collects weight + distance; preserve the login's temperature unit

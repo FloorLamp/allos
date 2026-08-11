@@ -68,7 +68,7 @@ const CURRENT_AGE_FILES = new Map<string, string>([
   ],
   [
     "lib/settings/profile-attrs.ts",
-    "getUserAge/profileAgeMonths ARE the current-age wrappers other surfaces call",
+    "getProfileAge/profileAgeMonths ARE the current-age wrappers other surfaces call",
   ],
   [
     "lib/queries/immunization-options.ts",

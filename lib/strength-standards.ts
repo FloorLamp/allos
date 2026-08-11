@@ -12,7 +12,7 @@
 // age-band interpolation.
 //
 // DB-free and pure so it's unit-tested in lib/__tests__. Sex/bodyweight come from
-// the call site (getUserSex + the latest body_metrics weight). When sex or
+// the call site (getProfileSex + the latest body_metrics weight). When sex or
 // bodyweight is unset — or the lift has no baked table — every entry point returns
 // null so the surfaces HIDE the context line (the same absent-data gating as the
 // other sex-gated surfaces). This is the ONE computation behind both the exercise-
