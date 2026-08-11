@@ -293,7 +293,7 @@ describe("buildTrendsSubjectContext — data presence", () => {
 // rows the Overview grid's ★ writes and its drag re-sequences — resolved through the
 // one series-key ↔ card-id mapping. `makeProfile` inserts a bare profile row, so
 // nothing is starred until a test says so.
-describe("getBodyCardPins — the Body tab's ★ arrangement", () => {
+describe("getBodyCardPins — the body census ★ arrangement", () => {
   const star = (profileId: number, key: string): void => {
     saveItem(profileId, "trend-metric", key);
   };

@@ -8,7 +8,7 @@ import {
   E2E_LOGIN_TRENDS_RANK_PLAIN,
 } from "./fixture-logins";
 
-// Ranked DEFAULT chart-card order on Trends → Body (#1490), re-sequenced
+// Ranked DEFAULT chart-card order on Trends → Overview → body census (#1490), re-sequenced
 // everyday-first by #1659.
 //
 // A profile whose ★-pinned set does not decide a card's slot gets an order from
@@ -65,7 +65,7 @@ async function openBodyStack(page: Page): Promise<void> {
   // unscoped card queries below.
 }
 
-test.describe("Trends → Body ranked default card order (#1490)", () => {
+test.describe("Trends → Overview → body census ranked default card order (#1490)", () => {
   test("a pediatric profile leads with the growth-percentile card", async ({
     browser,
   }) => {

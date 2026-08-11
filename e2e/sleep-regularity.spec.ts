@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-// Issue #160 / #1066: Trends → Body charts nightly sleep duration and keeps the SRI
+// Issue #160 / #1066: Trends → Overview → body census charts nightly sleep duration and keeps the SRI
 // as supporting context once enough nights of sleep sessions exist; the detailed
 // regularity and stage analysis lives on the dedicated /sleep page (#1066).
 // e2e/seed-events.ts seeds 28 nightly sleep sessions for profile 1 (the default
@@ -9,7 +9,7 @@ import { test, expect } from "./fixtures";
 // Isolation: everything is scoped to getByRole("main") and reads only the seeded
 // SRI fixture; it mutates no rows, so it can't disturb other specs.
 
-test("Trends → Body renders the sleep chart with the SRI (#160/#1066)", async ({
+test("Trends → Overview → body census renders the sleep chart with the SRI (#160/#1066)", async ({
   page,
 }) => {
   await page.goto("/trends");

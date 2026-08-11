@@ -12,7 +12,7 @@
 // read/write.
 
 import { assignHashedColors } from "./trend-colors";
-import { BODY_METRIC_META } from "./trends-body-metrics";
+import { TREND_METRIC_META } from "./trend-metrics";
 import { documentSourceId } from "./document-source";
 
 export { documentSourceId };
@@ -242,7 +242,7 @@ export function sourceGroupKey(
   return sourceKey(source);
 }
 
-// The metrics the comparison UI (Trends → Body → "Compare sources") surfaces and
+// The metrics the comparison UI (Trends → Overview → body census → "Compare sources") surfaces and
 // the settings picker accepts. `kind` routes the read: 'sample' → metric_samples
 // by its metric string; 'body' → the body_metrics column of that kind;
 // 'hr-minutes' → the per-minute HR stream. This is a UI/write allowlist — storage
@@ -259,30 +259,30 @@ export const COMPARABLE_METRICS: readonly ComparableMetric[] = [
   {
     key: "weight",
     kind: "body",
-    title: BODY_METRIC_META.weight.title,
+    title: TREND_METRIC_META.weight.title,
     unit: " kg",
-    decimals: BODY_METRIC_META.weight.decimals,
+    decimals: TREND_METRIC_META.weight.decimals,
   },
   {
     key: "body_fat",
     kind: "body",
-    title: BODY_METRIC_META["body-fat"].title,
-    unit: BODY_METRIC_META["body-fat"].unit,
-    decimals: BODY_METRIC_META["body-fat"].decimals,
+    title: TREND_METRIC_META["body-fat"].title,
+    unit: TREND_METRIC_META["body-fat"].unit,
+    decimals: TREND_METRIC_META["body-fat"].decimals,
   },
   {
     key: "resting_hr",
     kind: "body",
-    title: BODY_METRIC_META["resting-hr"].title,
-    unit: BODY_METRIC_META["resting-hr"].unit,
-    decimals: BODY_METRIC_META["resting-hr"].decimals,
+    title: TREND_METRIC_META["resting-hr"].title,
+    unit: TREND_METRIC_META["resting-hr"].unit,
+    decimals: TREND_METRIC_META["resting-hr"].decimals,
   },
   {
     key: "steps",
     kind: "sample",
-    title: BODY_METRIC_META.steps.title,
-    unit: BODY_METRIC_META.steps.unit,
-    decimals: BODY_METRIC_META.steps.decimals,
+    title: TREND_METRIC_META.steps.title,
+    unit: TREND_METRIC_META.steps.unit,
+    decimals: TREND_METRIC_META.steps.decimals,
   },
   {
     key: "sleep_min",
@@ -294,23 +294,23 @@ export const COMPARABLE_METRICS: readonly ComparableMetric[] = [
   {
     key: "active_kcal",
     kind: "sample",
-    title: BODY_METRIC_META["active-calories"].title,
-    unit: BODY_METRIC_META["active-calories"].unit,
-    decimals: BODY_METRIC_META["active-calories"].decimals,
+    title: TREND_METRIC_META["active-calories"].title,
+    unit: TREND_METRIC_META["active-calories"].unit,
+    decimals: TREND_METRIC_META["active-calories"].decimals,
   },
   {
     key: "hrv_ms",
     kind: "sample",
-    title: BODY_METRIC_META.hrv.title,
-    unit: BODY_METRIC_META.hrv.unit,
-    decimals: BODY_METRIC_META.hrv.decimals,
+    title: TREND_METRIC_META.hrv.title,
+    unit: TREND_METRIC_META.hrv.unit,
+    decimals: TREND_METRIC_META.hrv.decimals,
   },
   {
     key: "heart_rate",
     kind: "hr-minutes",
-    title: BODY_METRIC_META.hr.title,
-    unit: BODY_METRIC_META.hr.unit,
-    decimals: BODY_METRIC_META.hr.decimals,
+    title: TREND_METRIC_META.hr.title,
+    unit: TREND_METRIC_META.hr.unit,
+    decimals: TREND_METRIC_META.hr.decimals,
   },
 ] as const;
 

@@ -198,7 +198,7 @@ export function mapWithingsMeasureGroup(
 
   // Point body-composition metrics (one reading per weigh-in) → metric_samples,
   // keyed on the group's instant so a re-fetch dedups in the shared upsert. lean/bone
-  // mass reuse the existing metric vocab (charted on Trends → Body); muscle mass and
+  // mass reuse the existing metric vocab (charted on Trends → Overview → body census); muscle mass and
   // total body water are captured under their own metric strings (issue #419).
   const samples: NormMetricSample[] = [];
   const pushSample = (metric: string, value: number | null) => {

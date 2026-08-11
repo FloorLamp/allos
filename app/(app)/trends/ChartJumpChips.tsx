@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-// Sticky chart-jump chips for the Trends → Body tab (#1067 Phase 1) — the #1042
-// jump-link pattern (ProfileAnchorNav) applied to the Body tab's chart stack.
+// Sticky chart-jump chips for the Trends → Overview → body census (#1067 Phase 1) — the #1042
+// jump-link pattern (ProfileAnchorNav) applied to the body census chart stack.
 //
 // One horizontal row of chips under the tab strip; tapping one scrolls to that
 // chart via a plain `#id` in-page anchor (works without JS). The row is its OWN

@@ -3,7 +3,7 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { getSavedItems } from "@/lib/queries/saved";
 import {
   buildMetricSeries,
-  buildSavedBodyMetricSeries,
+  buildSavedTrendMetricSeries,
   buildSavedBiomarkerTile,
   listCompareOptions,
   type TrendSeries,
@@ -88,7 +88,7 @@ export default async function StarredSection({ range }: { range: DateRange }) {
     if (ref.kind === "trend-metric") {
       const tile =
         metricByKey.get(metricSeriesKey(ref.key)) ??
-        buildSavedBodyMetricSeries(
+        buildSavedTrendMetricSeries(
           profile.id,
           login.id,
           ref.key,

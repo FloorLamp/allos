@@ -245,7 +245,7 @@ slow under contention" is wrong and was wrong here: `test:db` at 6× contention 
 otherwise, and the proof is a worktree with commits in it.
 
 **Under-scoping causes the second kind.** The 13.7 h agent was not thrashing —
-its brief said "add a slug to `BODY_METRIC_SLUGS`" and the honest implementation
+its brief said "add a slug to `TREND_METRIC_SLUGS`" and the honest implementation
 turned out to drag **fifteen files** of import plumbing behind it, because the
 slug had to earn its `METRIC_DOCUMENT_REACH` declaration with a real projector
 plus a migration moving rows already on disk. When a brief's true footprint is

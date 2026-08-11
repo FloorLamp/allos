@@ -129,7 +129,7 @@ export function getWeights(
 // (#634). getWeights returns every source's row interleaved, so two scales
 // reporting the same/adjacent day (body_metrics keys on (profile_id, date, source))
 // feed the detector a false cross-source "jump"; collapsing per day mirrors the
-// Trends → Body chart's getBodyMetricDailySeries so the finding and the chart it
+// Trends → Overview → body census chart's getBodyMetricDailySeries so the finding and the chart it
 // links to can't disagree. Unlike that series this keeps the id (the anomaly finding
 // links to the exact offending row) and doesn't average — it hands whole rows to the
 // pure detector.

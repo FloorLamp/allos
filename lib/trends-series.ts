@@ -36,12 +36,12 @@ import {
   outOfWindowLatest,
 } from "./trends";
 import {
-  BODY_METRIC_META,
-  bodyMetricSlugForSavedId,
-  resolveBodyMetricUnit,
-  savedMetricIdForBodySlug,
-} from "./trends-body-metrics";
-import { fullBodyMetricSeries } from "./body-metric-series";
+  TREND_METRIC_META,
+  trendMetricSlugForSavedId,
+  resolveTrendMetricUnit,
+  savedMetricIdForTrendSlug,
+} from "./trend-metrics";
+import { fullTrendMetricSeries } from "./trend-metric-series";
 // The analyte-plot leaf both this module and the biomarker-goal reader depend on
 // (#1853): one answer to "what does this analyte's series look like, in what unit".
 import { biomarkerPlot } from "./queries/biomarker-plot";
@@ -130,32 +130,32 @@ interface MetricDef {
 const METRIC_DEFS: MetricDef[] = [
   {
     id: "weight",
-    label: BODY_METRIC_META.weight.title,
-    shortLabel: BODY_METRIC_META.weight.label,
+    label: TREND_METRIC_META.weight.title,
+    shortLabel: TREND_METRIC_META.weight.label,
     unit: "",
-    color: BODY_METRIC_META.weight.color,
+    color: TREND_METRIC_META.weight.color,
     href: metricDetailHref("weight"),
-    decimals: BODY_METRIC_META.weight.decimals,
+    decimals: TREND_METRIC_META.weight.decimals,
     minPctChange: 0.02, // a 2% weight change is already meaningful
   },
   {
     id: "bodyfat",
-    label: BODY_METRIC_META["body-fat"].title,
-    shortLabel: BODY_METRIC_META["body-fat"].label,
-    unit: BODY_METRIC_META["body-fat"].unit,
-    color: BODY_METRIC_META["body-fat"].color,
+    label: TREND_METRIC_META["body-fat"].title,
+    shortLabel: TREND_METRIC_META["body-fat"].label,
+    unit: TREND_METRIC_META["body-fat"].unit,
+    color: TREND_METRIC_META["body-fat"].color,
     href: metricDetailHref("body-fat"),
-    decimals: BODY_METRIC_META["body-fat"].decimals,
+    decimals: TREND_METRIC_META["body-fat"].decimals,
     // default 0.05
   },
   {
     id: "resting_hr",
-    label: BODY_METRIC_META["resting-hr"].title,
-    shortLabel: BODY_METRIC_META["resting-hr"].label,
-    unit: BODY_METRIC_META["resting-hr"].unit,
-    color: BODY_METRIC_META["resting-hr"].color,
+    label: TREND_METRIC_META["resting-hr"].title,
+    shortLabel: TREND_METRIC_META["resting-hr"].label,
+    unit: TREND_METRIC_META["resting-hr"].unit,
+    color: TREND_METRIC_META["resting-hr"].color,
     href: metricDetailHref("resting-hr"),
-    decimals: BODY_METRIC_META["resting-hr"].decimals,
+    decimals: TREND_METRIC_META["resting-hr"].decimals,
     minPctChange: 0.05, // resting HR is fairly stable; 5% is a genuine shift
   },
   {
@@ -183,13 +183,13 @@ export function buildMetricSeries(
   const wu = getUnitPrefs(loginId).weightUnit;
   const weightUnitSuffix = ` ${wu}`;
   // Body fat % is not a datapoint we surface for children (kids growth trends) —
-  // drop its tile for a minor, matching the Body tab's age-aware layout.
+  // drop its tile for a minor, matching the body census age-aware layout.
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
       // Weight / body-fat / resting-HR all read through the logical series: the
-      // one-source-per-day body_metrics data the Body tab charts (#14/#395), plus
+      // one-source-per-day body_metrics data the body census charts (#14/#395), plus
       // legacy medical-record dates only when body_metrics has no value. A
       // two-device day therefore can't double back the line. Series is already
       // oldest→newest in canonical units.
@@ -238,31 +238,31 @@ export function buildMetricSeries(
   }));
 }
 
-// Rebuild a saved Body metric that is not one of the original standard Overview
-// series. Metric-detail pages can star every registered Body slug; this is the
+// Rebuild a saved trend metric that is not one of the original standard Overview
+// series. Metric-detail pages can star every registered trend slug; this is the
 // corresponding read path that makes that saved row a real Overview tile.
-export function buildSavedBodyMetricSeries(
+export function buildSavedTrendMetricSeries(
   profileId: number,
   loginId: number,
   savedId: string,
   range: DateRange,
   todayStr: string
 ): TrendSeries | null {
-  const slug = bodyMetricSlugForSavedId(savedId);
+  const slug = trendMetricSlugForSavedId(savedId);
   if (!slug) return null;
-  const meta = BODY_METRIC_META[slug];
+  const meta = TREND_METRIC_META[slug];
   const weightUnit = getUnitPrefs(loginId).weightUnit;
   return {
-    key: metricSeriesKey(savedMetricIdForBodySlug(slug)),
+    key: metricSeriesKey(savedMetricIdForTrendSlug(slug)),
     label: meta.title,
     shortLabel: meta.label,
-    unit: resolveBodyMetricUnit(meta, weightUnit),
+    unit: resolveTrendMetricUnit(meta, weightUnit),
     color: meta.color,
     href: metricDetailHref(slug),
     kind: "metric",
     decimals: meta.decimals,
     points: filterSeriesByRange(
-      fullBodyMetricSeries(slug, profileId, weightUnit, todayStr),
+      fullTrendMetricSeries(slug, profileId, weightUnit, todayStr),
       range
     ),
     range: null,

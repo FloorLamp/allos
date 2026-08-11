@@ -31,7 +31,7 @@ import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { metricReadingTarget } from "@/lib/metric-readings";
 import { readingTargetToken } from "@/lib/reading-placement";
 import { getReadingSeries } from "@/lib/queries/readings";
-import { isBodyMetricSlug } from "@/lib/trends-body-metrics";
+import { isTrendMetricSlug } from "@/lib/trend-metrics";
 import { seedActor, createProfile, fd } from "./harness";
 
 // The submission the readings table posts for a row (#2032): `kind` is the PAGE, and
@@ -41,7 +41,7 @@ import { seedActor, createProfile, fd } from "./harness";
 // addresses it. (A `kind` the registry doesn't know has no target either; the deliberate
 // junk below stands in for a hand-crafted submission.)
 function target(kind: string, id: number): string {
-  const t = isBodyMetricSlug(kind) ? metricReadingTarget(kind, id) : null;
+  const t = isTrendMetricSlug(kind) ? metricReadingTarget(kind, id) : null;
   return t ? readingTargetToken(t) : `metric_samples:${id}:not-a-metric`;
 }
 

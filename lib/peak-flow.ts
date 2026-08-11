@@ -76,7 +76,7 @@ export const PEAK_FLOW_METRIC = "peak_flow_lmin";
 /**
  * The metric-detail slug this quantity renders on. Declared here so the surface, the
  * revalidate target and the deep link all spell it once; it is checked against
- * `BODY_METRIC_SLUGS` by the registry's own guards.
+ * `TREND_METRIC_SLUGS` by the registry's own guards.
  */
 export const PEAK_FLOW_SLUG = "peak-flow";
 

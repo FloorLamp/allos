@@ -12,9 +12,9 @@ import { subjectActionLabel } from "@/lib/own-profile";
 
 // Inline weight quick-add for the dashboard weight-trend widget (#1042 phase 2).
 // Manual daily weighers had the app's highest-frequency action at its deepest
-// path (Trends → Body → quick-add); this is the SAME write, promoted — one
+// path (Trends → Overview → body census → quick-add); this is the SAME write, promoted — one
 // computation, two entry points (#221): it posts the SAME addBodyMetric server
-// action as the Trends → Body quick-add (requireWriteAccess → canonical-kg
+// action as the Trends → Overview → body census quick-add (requireWriteAccess → canonical-kg
 // conversion via the login's unit pref inside lib/offline/writes.ts::
 // insertBodyMetric), runs the SAME pure validateBodyMetricInput guard, and rides
 // the SAME "body-metric" offline quick-log queue (issue #28) when the network is
@@ -54,7 +54,7 @@ export default function WeightQuickAdd({
     }
     // Queue the raw fields (with the current weight unit) to replay on
     // reconnect — don't fail the log (issue #28; same payload shape as the
-    // Trends → Body quick-add so the one replay path serves both).
+    // Trends → Overview → body census quick-add so the one replay path serves both).
     const queueOffline = async () => {
       await enqueue("body-metric", today, {
         weight: String(formData.get("weight") ?? ""),

@@ -35,7 +35,7 @@ import {
 } from "@/lib/queries";
 import { weightTrend } from "@/lib/household";
 import { zone2Adherence } from "@/lib/training-zones";
-import { BODY_METRIC_META } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import { weekWindow } from "@/lib/week-window";
 import { shiftDateStr, startOfWeekStr } from "@/lib/date";
 import {
@@ -84,7 +84,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
     // One point per DAY (not one per raw row): the two-device DAY2 collapses to one.
     const dates = weight.points.map((p) => p.date);
     expect(dates).toEqual([DAY1, DAY2]);
-    // It equals the reconciled series the Body tab charts (kg == kg display default).
+    // It equals the reconciled series the body census charts (kg == kg display default).
     const daily = getBodyMetricDailySeries(profileId, "weight");
     expect(weight.points).toEqual(
       daily.map((p: { date: string; value: number }) => ({
@@ -168,7 +168,7 @@ describe("logical outcome identity", () => {
     const digest = buildDigestSeries(profileId, 1, {}, false);
     expect(
       digest.filter(
-        (series) => series.label === BODY_METRIC_META["resting-hr"].title
+        (series) => series.label === TREND_METRIC_META["resting-hr"].title
       )
     ).toHaveLength(1);
     expect(

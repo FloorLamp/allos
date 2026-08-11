@@ -13,7 +13,7 @@
 //     A default order that moved with this morning's weigh-in would be a feed, and
 //     chart cards are a place (#1413/#559).
 //
-//  2. CHEAP. It runs on every Body-tab render, so presence is measured with
+//  2. CHEAP. It runs on every body-census render, so presence is measured with
 //     aggregate counts (one grouped statement across `metric_samples`, one over
 //     `body_metrics`) and with reads the tab ALREADY makes —
 //     `getBiomarkerSeries` is `cache()`d per request, so the five vitals presences
@@ -37,7 +37,7 @@ import {
   type PresenceLevel,
   type TrendsSubjectContext,
 } from "../trends-card-rank";
-import { bodyCardIdForSeriesKey } from "../trends-body-metrics";
+import { bodyCardIdForSeriesKey } from "../trend-metrics";
 import { seriesKeyOfSavedRef } from "../saved-items";
 import type { BodyMetricKind } from "../types";
 import { getConditions } from "./clinical";
@@ -234,7 +234,7 @@ export function buildTrendsSubjectContext(
   return { growthTracked, goalMetrics, monitors, presence };
 }
 
-// The Body tab's ★-PINNED cards, in the profile's SAVED order (#1643).
+// The body census ★-PINNED cards, in the profile's SAVED order (#1643).
 //
 // The other half of the tab's order, and the reason it is a read rather than a
 // second store: `saved_items` is the ONE arrangement substrate on Trends, so the
@@ -245,7 +245,7 @@ export function buildTrendsSubjectContext(
 // dropped, with no ordering decided here.
 //
 // Saved refs that name no Body card (a biomarker, training volume) are simply
-// absent; the mapping is the ONE correspondence in lib/trends-body-metrics.ts.
+// absent; the mapping is the ONE correspondence in lib/trend-metrics.ts.
 // Membership is NOT applied here — a pinned card the tab does not render for this
 // profile stays absent at render time (the #1487 saved-ref-with-no-tile skip),
 // which keeps this read a pure ordering input.

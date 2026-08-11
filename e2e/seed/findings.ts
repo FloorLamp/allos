@@ -116,7 +116,7 @@ export function seedRuleDomains(): void {
 
   // Domain 5 — a probable-error weight JUMP: one outlier reading (92 kg) three days
   // after the prior weekly weigh-in (~80.5 kg), ~14% above it — a scale-glitch
-  // signature the body-hygiene rule flags on Trends → Body.
+  // signature the body-hygiene rule flags on Trends → Overview → body census.
   const jumpDate = shiftDateStr(today(PROFILE_ID), -12);
   db.prepare(
     `DELETE FROM body_metrics WHERE profile_id = ? AND notes = 'e2e:weight-jump'`

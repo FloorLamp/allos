@@ -1,5 +1,5 @@
 // Pure normalization for the manual height / head-circumference quick-add on the
-// Trends → Body tab (no DB, no React) — unit-tested in
+// Trends → Overview → body census (no DB, no React) — unit-tested in
 // lib/__tests__/growth-input.test.ts. Height and head circumference have a single
 // home in metric_samples (metrics 'height_cm' / 'head_circumference_cm'), the same
 // place the document-extraction writers land them, so a manually entered value is

@@ -73,7 +73,7 @@ function byDateAsc(a: DatedValue, b: DatedValue): number {
 // effect ON OR BEFORE that date, so historical BMI reflects the child's height at
 // the time — not a single "most recent height" applied backward, which inflates
 // early history for a growing child. The ONE derivation shared by the growth card
-// AND the Body tab's synced BMI chart, so the two can't disagree. A weigh-in with
+// AND the body census synced BMI chart, so the two can't disagree. A weigh-in with
 // no prior height is skipped (no BMI derivable). Adults degrade gracefully — height
 // rarely changes, so date-pairing ≈ latest height. Pure; sorts defensively.
 export function bmiSeriesDatePaired(
@@ -177,7 +177,7 @@ export function buildGrowthProfile(input: {
   const headCircs = [...(input.headCircs ?? [])].sort(byDateAsc);
 
   // BMI trajectory: for each weigh-in, pair it with the height in effect that day
-  // (the shared date-paired derivation the Body tab's BMI chart also uses).
+  // (the shared date-paired derivation the body census BMI chart also uses).
   const bmiRaw = bmiSeriesDatePaired(weights, heights);
 
   const metrics: GrowthMetricSeries[] = [

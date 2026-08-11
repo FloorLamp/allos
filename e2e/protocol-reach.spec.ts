@@ -49,7 +49,7 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
 });
 
 test.describe("protocol chart annotations (#660 ask 1)", () => {
-  test("the Trends Body tab shows a Protocols annotation toggle", async ({
+  test("the Trends body census shows a Protocols annotation toggle", async ({
     page,
   }) => {
     test.slow();

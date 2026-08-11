@@ -325,8 +325,8 @@ rolling averages, per-period rollups, streaks, adherence rates):
 - **Ship the degenerate inputs as pure cases**: all windows coincident, a single
   reading, and empty. Those are not exotic — they are the ordinary state of a
   new install, a fresh integration, a metric recorded once.
-  `bodyMetricPeriodStats` (`lib/trends-body-metrics.ts`) carries all three in
-  `lib/__tests__/trends-body-metrics.test.ts`, and each asserts the shape a
+  `trendMetricPeriodStats` (`lib/trend-metrics.ts`) carries all three in
+  `lib/__tests__/trend-metrics.test.ts`, and each asserts the shape a
   SURFACE can render: one card, keyed by the widest window it covers, carrying
   its reading count and covered span. **The window's boundary is one of those
   inputs.** #1909 moved these windows to complete days only (they end

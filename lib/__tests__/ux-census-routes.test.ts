@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DYNAMIC_ROUTES, routeSlug } from "../../scripts/ux-census-routes.mjs";
-import { BODY_METRIC_SLUGS } from "../trends-body-metrics";
+import { TREND_METRIC_SLUGS } from "../trend-metrics";
 import { vaccineByCode } from "../immunization-catalog";
 
 // Guard for the UX census's dynamic-route registry (#1544), in the repo's
@@ -90,8 +90,8 @@ describe("ux census dynamic-route registry", () => {
     const metric = byPattern.get("/trends/metric/[kind]");
     expect(metric?.slug).toBeTruthy();
     expect(
-      (BODY_METRIC_SLUGS as readonly string[]).includes(metric!.slug!),
-      `${metric!.slug} is no longer a BODY_METRIC_SLUGS member`
+      (TREND_METRIC_SLUGS as readonly string[]).includes(metric!.slug!),
+      `${metric!.slug} is no longer a TREND_METRIC_SLUGS member`
     ).toBe(true);
 
     const vaccine = byPattern.get("/immunizations/[vaccine]");

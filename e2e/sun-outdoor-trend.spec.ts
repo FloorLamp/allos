@@ -6,7 +6,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 
-// Daylight-outdoor-minutes trend chart in the Trends → Body tab's VITALS section
+// Daylight-outdoor-minutes trend chart in the Trends → Overview → body census's VITALS section
 // (issue #1171; re-pointed by #1486, which merged the Vitals tab into Body). The chart is
 // a formatter over the SAME getDaylightOutdoorMinutes computation the DaylightChip and
 // the coaching average read (#221). The E2E_LOGIN_SUN fixture profile has a home

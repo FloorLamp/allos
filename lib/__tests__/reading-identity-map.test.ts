@@ -24,7 +24,7 @@ import {
 import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
 import { readingIdentity } from "@/lib/reading-model";
 import { continuousReadingSlug } from "@/lib/reading-cadence";
-import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 
 describe("the reading identity map is one declaration", () => {
   it("declares each canonical name exactly once", () => {
@@ -54,7 +54,7 @@ describe("the reading identity map is one declaration", () => {
     for (const e of READING_IDENTITY_MAP) {
       if (!e.surface) continue;
       expect(
-        (BODY_METRIC_SLUGS as readonly string[]).includes(e.surface),
+        (TREND_METRIC_SLUGS as readonly string[]).includes(e.surface),
         `${e.canonical} routes to "${e.surface}", which is not a metric slug`
       ).toBe(true);
     }

@@ -10,7 +10,7 @@ import { dismissGoalPacing } from "@/app/(app)/training/goal-actions";
 // Goal-pacing findings (issue #45, domain 6) for the Training → Goals tab: a weight
 // goal that's off pace for its target date (trending away, or landing well past the
 // deadline at the current robust pace), plus a gentle safe-rate caution when weight
-// is dropping faster than ~1%/week. Reuses the SAME projection the Trends → Body
+// is dropping faster than ~1%/week. Reuses the SAME projection the Trends → Overview → body census
 // chart draws (projectGoal), so the finding and the chart caption can't disagree.
 // Each can be dismissed through the shared findings-bus suppression store; nothing
 // renders when none are firing.

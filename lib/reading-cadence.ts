@@ -53,7 +53,7 @@
 
 import { biomarkerFamily } from "./canonical-name";
 import type { MedicalCategory } from "./types";
-import type { BodyMetricSlug } from "./trends-body-metrics";
+import type { TrendMetricSlug } from "./trend-metrics";
 import { CONTINUOUS_READING_METRIC } from "./reading-identity-map";
 
 export type ReadingCadence = "continuous" | "episodic";
@@ -123,7 +123,7 @@ export const CATEGORY_CADENCE = {
 // land in — the half-added entry this pair made possible.
 export { CONTINUOUS_READING_METRIC };
 
-const SLUG_BY_FAMILY = new Map<string, BodyMetricSlug>(
+const SLUG_BY_FAMILY = new Map<string, TrendMetricSlug>(
   Object.entries(CONTINUOUS_READING_METRIC).map(([name, slug]) => [
     biomarkerFamily(name).toLowerCase(),
     slug,
@@ -137,7 +137,7 @@ const SLUG_BY_FAMILY = new Map<string, BodyMetricSlug>(
  */
 export function continuousReadingSlug(
   canonicalName: string | null | undefined
-): BodyMetricSlug | null {
+): TrendMetricSlug | null {
   const name = canonicalName?.trim();
   if (!name) return null;
   return SLUG_BY_FAMILY.get(biomarkerFamily(name).toLowerCase()) ?? null;

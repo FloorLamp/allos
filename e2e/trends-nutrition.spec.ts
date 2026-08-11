@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
 
 // Trends → Nutrition is the OVER-TIME nutrition view (issue #1166): the macros+fiber
-// daily chart (re-homed off Trends → Body and gaining fiber), a food-goal adherence
+// daily chart (re-homed off Trends → Overview → body census and gaining fiber), a food-goal adherence
 // trend, and the intake history — the generalized day-history calendar + group×day
 // matrix (lib/day-history.ts) whose days link INTO the Timeline. The duplicate
 // FoodWeeklyRollup left the tab (its home is /nutrition). Driven read-only against
@@ -277,7 +277,7 @@ test("filtering to one row selects it temporarily and keeps one keyboard entry p
 test("the macros chart is GONE from the body census (#1166)", async ({
   page,
 }) => {
-  // #1644: the Body tab merged into the Overview landing surface, so the census is
+  // #1644: the body census moved into the Overview landing surface, so the census is
   // reached at its anchor on the default view.
   await page.goto("/trends#body");
   await expect(page.getByTestId("trends-section-body")).toBeVisible();

@@ -54,7 +54,7 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
     timeout: 20_000,
   });
 
-  // …and it lands in the Body tab's History table (kg, so the value shows
+  // …and it lands in the body census History table (kg, so the value shows
   // as-is). Assert against the weight cell's stable testid — rows are date-desc,
   // so today's just-logged entry is the first one — rather than free text, which
   // also matches the (visually hidden) chart axis/point labels.

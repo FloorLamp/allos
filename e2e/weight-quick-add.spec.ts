@@ -9,7 +9,7 @@ import {
 import { workerDbPath } from "./worker-env";
 
 // Dashboard weight quick-add (#1042 phase 2): the weight-trend widget's inline
-// form posts the SAME addBodyMetric write core as the Trends → Body quick-add,
+// form posts the SAME addBodyMetric write core as the Trends → Overview → body census quick-add,
 // so a weigh-in logged from the dashboard persists (survives a reload) and joins
 // the same deduped daily series the widget charts.
 //
@@ -80,7 +80,7 @@ test("dashboard weight quick-add logs a weigh-in that persists into the trend (#
       page.getByRole("heading", { name: "Weight trend" })
     ).toBeVisible();
 
-    // And it appears in the same series on Trends → Body (the widget's link
+    // And it appears in the same series on Trends → Overview → body census (the widget's link
     // target) — the one-computation check across both surfaces.
     await page.goto("/trends");
     // Scope to the classic chart stack (the desktop-default layout): the #1067

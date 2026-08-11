@@ -108,7 +108,7 @@ export default function ChartCard({
   // A right-aligned affordance beside the phone expand icon (a cross-link to
   // another surface). Rendered OUTSIDE the header link so its own href still wins.
   headerAction?: ReactNode;
-  // Stable in-page anchor (the Body tab's jump chips).
+  // Stable in-page anchor (the body census jump chips).
   anchorId?: string;
   testid?: string;
   className?: string;
@@ -120,7 +120,7 @@ export default function ChartCard({
   // negative margins while retaining the normal desktop card cancellation.
   headerBleedClassName?: string;
   // The card's own SURFACE class, for the one card that isn't a plain `.card` — the
-  // Body tab's full-bleed intraday panel, which spends the phone's full viewport
+  // body census full-bleed intraday panel, which spends the phone's full viewport
   // width on the plot. Everything else keeps the default.
   surfaceClass?: string;
   // The DESKTOP plot height (`sm:` and up). Mobile is always the square.

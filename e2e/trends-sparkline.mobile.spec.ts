@@ -14,7 +14,7 @@ import { test, expect } from "./fixtures";
 // width is the whole point: at 1280px the old chrome fit, which is exactly why
 // the defect survived a desktop-only suite.
 //
-// Fixtures: the seeded Body-tab `weight` tile and the `weight` metric detail
+// Fixtures: the seeded body-census `weight` tile and the `weight` metric detail
 // page — both targeted by exact locators (a per-metric testid; the detail page
 // renders exactly one chart) rather than by position on a shared grid.
 test.describe("Trends mini-tile sparkline (#1445)", () => {

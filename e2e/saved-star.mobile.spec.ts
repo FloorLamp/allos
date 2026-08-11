@@ -173,7 +173,7 @@ test("starring a metric detail page adds that chart to Overview", async ({
   page,
 }) => {
   // Steps is deliberately outside the legacy standard saved-metric set. This
-  // proves detail-page stars work for the whole BODY_METRIC_META registry, not
+  // proves detail-page stars work for the whole TREND_METRIC_META registry, not
   // only Weight / Body Fat / Resting Heart Rate.
   await page.goto("/trends/metric/steps");
   const star = page.getByTestId("star-toggle");

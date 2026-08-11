@@ -26,7 +26,7 @@ import { parseSortDir } from "@/lib/table-sort";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
-import { listedInBiomarkerBrowser } from "@/lib/body-metric-analytes";
+import { listedInBiomarkerBrowser } from "@/lib/trend-metric-analytes";
 import { parsePanelId, type PanelId } from "@/lib/biomarker-panels";
 import {
   groupRowsByPanel,

@@ -14,7 +14,7 @@ import {
 //   2. one tap logs the day, persists, and a same-day re-tap UPDATES (idempotent
 //      per profile+date — one row, never a duplicate);
 //   3. expand — energy + note save and persist, and the mood series reaches the
-//      Trends → Body chart (the merged Context chip group and the relevance-gated
+//      Trends → Overview → body census chart (the merged Context chip group and the relevance-gated
 //      Calm scale (#1311/#1313/#1314) are covered in e2e/checkin-card.spec.ts —
 //      a fresh profile here has no anxiety signal, so Calm is intentionally absent);
 //   4. active-episode — the illness cockpit takes the hero, the card defers with
@@ -156,7 +156,7 @@ test.describe("Daily wellbeing check (#992)", () => {
     );
     await expect(card.getByTestId("mood-note")).toHaveValue("short night");
 
-    // The logged series surface on Trends → Body (never flag-checked — the card
+    // The logged series surface on Trends → Overview → body census (never flag-checked — the card
     // copy says so in plain words). Energy charts beside mood since #1408: it was
     // stored from the start and plotted nowhere, so a profile that just rated it
     // must be able to find it.

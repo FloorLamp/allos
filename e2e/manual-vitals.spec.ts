@@ -26,7 +26,7 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
 
   // A distinctive-but-synthetic set: BP pair + SpO2 + sleep. The date defaults to
   // today (the seeded fixture's clock), so a wide biomarkers window includes it.
-  // This entry point (Trends → Body) opens the BODY group, so Vitals and Sleep are
+  // This entry point (Trends → Overview → body census) opens the BODY group, so Vitals and Sleep are
   // opened explicitly — and a blood pressure is now ONE field with two inputs
   // (#2014), each named by the number it takes rather than by a title carrying two
   // parentheticals.
@@ -42,14 +42,14 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   // End-to-end confirmation the server action wrote without error.
   await expect(page.getByText("Measurements saved")).toBeVisible();
 
-  // The reading surfaces in the merged Body tab's VITALS section (#1076/#1486),
+  // The reading surfaces in the body census VITALS section (#1076/#1486),
   // widened so today's entry is in range regardless of the default window.
   await page.goto("/trends?view=all&from=2000-01-01&to=2100-01-01");
   const body = page.getByTestId("trends-body");
   await expect(body.getByTestId("vitals-systolic")).toBeVisible();
   await expect(body.getByTestId("vitals-spo2")).toBeVisible();
 
-  // The sleep sample surfaces in the Body tab's nightly-duration chart; detailed
+  // The sleep sample surfaces in the body census nightly-duration chart; detailed
   // regularity and stage analysis stays on the dedicated /sleep page (#1066).
   await page.goto("/trends?view=all");
   const sleep = page.getByTestId("sleep-summary-tile");
@@ -95,7 +95,7 @@ test("the measurements form logs a temperature with an optional reading time (#8
   await form.getByRole("button", { name: "Save measurements" }).click();
   await expect(page.getByText("Measurements saved")).toBeVisible();
 
-  // The reading joins the Body Temperature acute view in the Body tab's vitals
+  // The reading joins the Body Temperature acute view in the body census vitals
   // section (#1076/#1486): recent-readings grammar with a fever line, not a lab
   // trajectory.
   await page.goto("/trends?view=all&from=2000-01-01&to=2100-01-01");

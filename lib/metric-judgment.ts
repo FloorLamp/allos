@@ -2,7 +2,7 @@
 //
 // THE DEFECT. Age bands, optimal bands and direction live in the canonical
 // biomarker vocabulary, keyed by biomarker NAME. The metric detail surface is
-// keyed by `BodyMetricSlug`. Nothing mapped one to the other, so a streamed
+// keyed by `TrendMetricSlug`. Nothing mapped one to the other, so a streamed
 // reading was charted UNJUDGED — a three-year-old's 120 bpm daily resting-heart-
 // rate trend measured against nothing, while the very bands that judge it
 // (0–1 → 90–160, 1–3 → 80–150 …) sat in `canonical_biomarkers` waiting for an
@@ -15,12 +15,12 @@
 // says `none` WITH A REASON.
 //
 // THE COMPLETENESS GUARD is the point of the registry. `lib/__tests__/
-// metric-judgment.test.ts` asserts every `BodyMetricSlug` has an entry, so "audit
+// metric-judgment.test.ts` asserts every `TrendMetricSlug` has an entry, so "audit
 // whether another metric has this shape" is a build failure instead of a recurring
 // manual sweep — the sweep that would have caught body fat before #1996 was
 // written.
 //
-// AND ITS DOMAIN IS NO LONGER ONE ENUM (#2086). A guard total over `BodyMetricSlug`
+// AND ITS DOMAIN IS NO LONGER ONE ENUM (#2086). A guard total over `TrendMetricSlug`
 // leaves every judged quantity WITHOUT a slug outside the discipline — which is how
 // VO₂ max ended up with a canonical entry, curated fitness norms, and nothing in the
 // build able to notice whether either reached its readings. `QUANTITY_KNOWLEDGE` and
@@ -50,7 +50,7 @@ import {
 } from "./reference-range";
 import type { CanonicalRanges } from "./reference-range/parsing";
 import type { CyclePhase } from "./cycle";
-import { BODY_METRIC_SLUGS, type BodyMetricSlug } from "./trends-body-metrics";
+import { TREND_METRIC_SLUGS, type TrendMetricSlug } from "./trend-metrics";
 import type { BiomarkerDirection, ReproductiveStatus, Sex } from "./types";
 
 // Which knowledge system answers for a metric.
@@ -93,8 +93,8 @@ export type MetricKnowledge =
     }
   | { source: "none"; reason: string };
 
-// The registry. EVERY BodyMetricSlug appears — that is the completeness guard.
-export const METRIC_KNOWLEDGE: Record<BodyMetricSlug, MetricKnowledge> = {
+// The registry. EVERY TrendMetricSlug appears — that is the completeness guard.
+export const METRIC_KNOWLEDGE: Record<TrendMetricSlug, MetricKnowledge> = {
   // The vitals whose readings ARE observations: identity already reached them,
   // the lookup simply makes the band visible on the surface that charts them.
   systolic: { source: "canonical", canonical: "Blood Pressure Systolic" },
@@ -257,7 +257,7 @@ export const METRIC_KNOWLEDGE: Record<BodyMetricSlug, MetricKnowledge> = {
 
 // ── THE WIDENED COMPLETENESS DOMAIN (issue #2086) ───────────────────────────
 //
-// The registry above is total over `BodyMetricSlug` — ONE enum. A judged quantity
+// The registry above is total over `TrendMetricSlug` — ONE enum. A judged quantity
 // outside it escaped the discipline entirely, and the recorded escapee is the whole
 // argument: VO₂ max has a curated canonical entry AND age/sex fitness norms, but no
 // metric slug, so nothing in the build could notice whether anything judged it. That
@@ -282,7 +282,7 @@ export const METRIC_KNOWLEDGE: Record<BodyMetricSlug, MetricKnowledge> = {
 //
 // The enumeration source is the REGISTRIES, never a hand-list:
 // `lib/__tests__/judged-quantities.test.ts` derives the domain from
-// `BODY_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a marker
+// `TREND_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a marker
 // added to the norms dataset with no declaration here is a build failure.
 //
 // WIDENING THE GUARD MUST NOT WIDEN THE VOCABULARY (#482). Nothing below invents a
@@ -412,7 +412,7 @@ export const JUDGED_QUANTITY_IDENTITIES: readonly string[] = [
  * itself (the placement table pins where its readings land; the judgement test skips
  * it, because there is deliberately no band to name).
  */
-export const JUDGED_METRIC_SLUGS: BodyMetricSlug[] = BODY_METRIC_SLUGS.filter(
+export const JUDGED_METRIC_SLUGS: TrendMetricSlug[] = TREND_METRIC_SLUGS.filter(
   (slug) => metricIdentity(slug) != null
 );
 
@@ -420,7 +420,7 @@ export const JUDGED_METRIC_SLUGS: BodyMetricSlug[] = BODY_METRIC_SLUGS.filter(
  * The #482 identity a metric's readings carry, or null when the metric has no
  * canonical identity (which is most of the stream vocabulary — see the registry).
  */
-export function metricIdentity(slug: BodyMetricSlug): string | null {
+export function metricIdentity(slug: TrendMetricSlug): string | null {
   const knowledge = METRIC_KNOWLEDGE[slug];
   return knowledge.source === "canonical" ||
     knowledge.source === "personal-best"
@@ -442,7 +442,7 @@ export function metricIdentity(slug: BodyMetricSlug): string | null {
  * one, anywhere, is the disease this whole change exists to cure.
  */
 export function metricObservationFoldIdentity(
-  slug: BodyMetricSlug
+  slug: TrendMetricSlug
 ): string | null {
   const identity = metricIdentity(slug);
   if (!identity) return null;
@@ -614,7 +614,7 @@ export function metricJudgment(
  * one, so a surface keyed by slug asks exactly one question.
  */
 export function metricJudgmentForSlug(
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   subject: JudgmentSubject = {},
   entries?: readonly JudgmentEntry[]
 ): MetricJudgment | null {

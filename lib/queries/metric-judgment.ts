@@ -31,7 +31,7 @@ import {
   getProfileReproductiveStatus,
   getProfileSex,
 } from "../settings";
-import type { BodyMetricSlug } from "../trends-body-metrics";
+import type { TrendMetricSlug } from "../trend-metrics";
 
 /**
  * The clinical judgement for one metric surface, or null when no knowledge system
@@ -45,7 +45,7 @@ import type { BodyMetricSlug } from "../trends-body-metrics";
  */
 export function getMetricJudgment(
   profileId: number,
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   value: number | null,
   onDate: string | null
 ): MetricJudgment | null {

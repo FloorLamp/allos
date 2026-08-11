@@ -3,7 +3,7 @@ import { IconLayoutGrid, IconChartLine } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
 import type { BodyView } from "./body-view";
 
-// The Trends → Body overview toggle (#1067 Phase 2): sparkline TILES vs the classic
+// The Trends → Overview → body census overview toggle (#1067 Phase 2): sparkline TILES vs the classic
 // full-chart STACK. #2152 makes the phone answer unconditional: tiles only, even
 // for `?view=all` and 1D. This desktop-only control chooses the presentation above
 // the breakpoint. A GET-link segmented control keeps the choice in the URL.

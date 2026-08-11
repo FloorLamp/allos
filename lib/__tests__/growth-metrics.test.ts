@@ -8,7 +8,7 @@ import {
   planBodyCharts,
 } from "@/lib/growth-metrics";
 
-// The Body tab's growth-led presentation now keys on the WHO/CDC growth-chart data
+// The body census growth-led presentation now keys on the WHO/CDC growth-chart data
 // ceiling (< 20 y), converging the former fixed-18 layout line with the 240-month
 // chart ceiling so an 18–19-year-old keeps the growth-led view (#492).
 

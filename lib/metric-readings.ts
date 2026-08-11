@@ -23,7 +23,7 @@ import {
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { PEAK_FLOW_METRIC } from "@/lib/peak-flow";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
-import type { BodyMetricSlug } from "@/lib/trends-body-metrics";
+import type { TrendMetricSlug } from "@/lib/trend-metrics";
 import type { BodyMetricColumn } from "@/lib/reading-identity-map";
 
 export type { ReadingDeleteOutcome, ReadingWriteOutcome };
@@ -96,12 +96,12 @@ export type MetricReadingTable = MetricReadingStore["table"];
  * Which store holds a metric's individual readings, or `null` for a DERIVED series
  * whose points are computed rather than recorded (see the header).
  *
- * The keys are the ONE metric registry (`BodyMetricSlug`), so a new detail-page kind
+ * The keys are the ONE metric registry (`TrendMetricSlug`), so a new detail-page kind
  * declares its store here or is explicitly derived — it can't quietly render a table
  * of the wrong table's rows.
  */
 export const METRIC_READING_STORE: Record<
-  BodyMetricSlug,
+  TrendMetricSlug,
   MetricReadingStore | null
 > = {
   // Vitals that store as lab-shaped rows, keyed by canonical name (#482).
@@ -206,7 +206,7 @@ export const METRIC_READINGS_LIMIT = 200;
  */
 export function getMetricReadings(
   profileId: number,
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   limit = METRIC_READINGS_LIMIT
 ): MetricReading[] {
   const store = METRIC_READING_STORE[slug];
@@ -319,7 +319,7 @@ export function getMetricReadings(
  * Null for a DERIVED metric: there is no row.
  */
 export function metricReadingTarget(
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   id: number
 ): MetricRowTarget | null {
   const store = METRIC_READING_STORE[slug];
@@ -402,7 +402,7 @@ export function deleteMetricRow(
  */
 export function updateMetricReading(
   profileId: number,
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   id: number,
   value: number
 ): ReadingWriteOutcome {
@@ -414,7 +414,7 @@ export function updateMetricReading(
 /** Delete one reading addressed by metric slug — the same adapter over the contract. */
 export function deleteMetricReading(
   profileId: number,
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   id: number
 ): ReadingDeleteOutcome {
   const target = metricReadingTarget(slug, id);

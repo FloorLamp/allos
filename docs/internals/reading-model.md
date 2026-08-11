@@ -139,7 +139,7 @@ one stream row, with nothing to notice.
 
 Clinical knowledge (reference range, optimal band, direction, age bands) is filed
 in the canonical vocabulary by biomarker NAME. The metric detail surface is keyed
-by `BodyMetricSlug`. Nothing mapped one to the other, so a streamed reading was
+by `TrendMetricSlug`. Nothing mapped one to the other, so a streamed reading was
 charted **unjudged** — a toddler's steady 120 bpm resting heart rate measured
 against nothing, while the band that says it is normal (1–3 → 80–150) already
 existed. That is an identity problem, not a storage one: a merged table would
@@ -147,7 +147,7 @@ still be keyed by metric and still need this lookup.
 
 `lib/metric-judgment.ts` answers it:
 
-- `METRIC_KNOWLEDGE` — **every** `BodyMetricSlug` declares which knowledge system
+- `METRIC_KNOWLEDGE` — **every** `TrendMetricSlug` declares which knowledge system
   answers for it: a `canonical` entry, a `growth-percentile` (a percentile-for-age
   is not a band; the growth card owns it), or `none` **with a reason** — where the
   reason is load-bearing, not filler. `waist-circ` (#2322) is the sharpest example:
@@ -168,7 +168,7 @@ still be keyed by metric and still need this lookup.
 ### The domain is judged quantities, not one enum (#2086)
 
 `METRIC_KNOWLEDGE`'s totality is the strongest idea in the #1996 fix, and its
-weakness was its domain: `Record<BodyMetricSlug, …>` — one enum. A judged
+weakness was its domain: `Record<TrendMetricSlug, …>` — one enum. A judged
 quantity with no metric slug escaped the discipline entirely, and the recorded
 escapee proves it: **VO₂ max** has a curated canonical entry _and_ age/sex
 fitness norms (#158), with nothing in the build able to notice whether either
@@ -187,7 +187,7 @@ functional-fitness markers (readings by canonical name, knowledge in a separate
 norms dataset — #2086).
 
 **The teeth** (`lib/__tests__/judged-quantities.test.ts`): the domain is derived
-from `BODY_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a
+from `TREND_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a
 marker added to the norms dataset without a declaration fails the build; a
 declaration naming a marker or canonical entry that does not exist fails too, so
 widening the **guard** can never widen the **vocabulary**. VO₂ max is the
@@ -217,7 +217,7 @@ Two consequences on `/trends/metric/[kind]`:
 **The fold decides once (#2029).** `foldObservations` is that decision: the
 observation side is collapsed by `dedupeReadings`, then anything the stream's
 day/value coverage already answers for is dropped. `foldObservationPoints` is its
-chart projection, and `bodyMetricSeriesFold` returns both halves together — the
+chart projection, and `trendMetricSeriesFold` returns both halves together — the
 points to plot and the observations that survived — so `/trends/metric/[kind]`
 takes its chart and its readings table from ONE call. It used to read the raw
 observations for the table, which meant a clinic value equal to the wearable's

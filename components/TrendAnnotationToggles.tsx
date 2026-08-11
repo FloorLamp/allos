@@ -76,7 +76,7 @@ function publishVisibility(next: AnnotationVisibility): void {
 // WHAT WAS WRONG. Every chart host owned its own copy of the toggle state and
 // rendered its own "Events · Medications · Appointments · Situations · Protocols"
 // pill row directly above its charts. At 390px that row wraps to two lines and
-// costs ~60px of STANDING chrome — on the Body tab's chart stack and again inside
+// costs ~60px of STANDING chrome — on the body census chart stack and again inside
 // the compare block — for a control that is touched about once a session. It is
 // the same finding #1485 F made about the range pills, one level down: what has to
 // be visible is the chart's context, and these toggles are a control, not a label.

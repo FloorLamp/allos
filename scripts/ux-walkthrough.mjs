@@ -847,16 +847,13 @@ async function measureReachCosts(browser) {
       await page.keyboard.press("Escape");
     }
   }
-  // Second-level examples (the #1510-pinned pair): Trends → Body, Records → Visits.
+  // Second-level examples (the #1510-pinned pair): the Overview body census and Records → Visits.
   await page.goto(`${BASE}/trends`);
   await page.waitForTimeout(1000);
-  beginTaps("reach: Trends → Body (from Trends)");
-  const bodyTab = page.getByRole("link", { name: "Body", exact: true }).first();
-  if (await bodyTab.isVisible().catch(() => false)) {
-    await tapClick(bodyTab);
-    await page.waitForTimeout(800);
-    endTaps();
-  } else endTaps("Body tab not visible — unmeasured");
+  beginTaps("reach: Trends → Overview → body census (from Trends)");
+  const bodyCensus = page.locator("#body").first();
+  if (await bodyCensus.isVisible().catch(() => false)) endTaps();
+  else endTaps("body census not visible — unmeasured");
   await page.goto(`${BASE}/records/problems`);
   await page.waitForTimeout(1000);
   beginTaps("reach: Records → Visits (from Records)");
@@ -1013,14 +1010,14 @@ async function workflowsJourney(browser) {
     log("log-food: food-log-bar not found — check shots");
   }
 
-  // Workflow: log a weight (Trends → Body quick-add).
-  await page.goto(`${BASE}/trends?tab=body`);
+  // Workflow: log a weight (Trends → Overview → body census quick-add).
+  await page.goto(`${BASE}/trends#body`);
   await page.waitForTimeout(1500);
   const weight = page.locator("#bm-weight");
   if (await weight.count()) {
     await weight.scrollIntoViewIfNeeded();
     await shot(page, "workflow-weight-before");
-    beginTaps("log weight (on Trends → Body)");
+    beginTaps("log weight (on Trends → Overview → body census)");
     await tapFill(weight, "82");
     await tapClick(page.getByRole("button", { name: "Save entry" }));
     endTaps();

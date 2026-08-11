@@ -2569,7 +2569,7 @@ for (const [ago, symptom, severity, note] of seededSymptoms) {
 
 // ── Daily mood check-ins (issue #992) ────────────────────────────────────────
 // ~3 weeks of synthetic wellbeing check-ins so the dashboard "How are you today?"
-// card shows a logged state, the Trends → Body mood chart has a series, and the
+// card shows a logged state, the Trends → Overview → body census mood chart has a series, and the
 // weekly-recap mood line has data when opted in. Ordinary mixed values (mostly
 // 3–5) so the low-mood coaching observation does NOT fire on a fresh seed; the
 // current illness stretch dips (illness tanks mood — the #992 coexistence story)
@@ -2835,7 +2835,7 @@ db.prepare(
 // ---------------------------------------------------------------------------
 // A second, CHILD profile so the pediatric growth trends have a subject out of
 // the box (kids growth trends). ~18 months old with a known sex + birthdate, a
-// synthetic weight / height / head-circumference history — so the Trends → Body
+// synthetic weight / height / head-circumference history — so the Trends → Overview → body census
 // tab renders the WHO growth-percentile card, charts height + head circ, and the
 // age-aware layout hides body fat. All values are obviously-synthetic, plausible
 // WHO-range infant measurements. The admin login sees every profile (grants are
@@ -2962,7 +2962,7 @@ if (!existingChild) {
 
 // ── Sleep sessions → Sleep Regularity Index (#160) ────────────────────────────
 // 30 nightly sleep sessions for the adult profile (bed ~23:00 → wake ~07:00, with
-// weekend nights shifted ~90 min later) so the Trends → Body "Sleep regularity"
+// weekend nights shifted ~90 min later) so the Trends → Overview → body census "Sleep regularity"
 // card (SRI) and the weekly-recap line have data. Stored as absolute instants
 // (source 'manual'), keyed on the time window like the Health Connect ingest.
 //

@@ -25,10 +25,10 @@ import {
 import { chartSeries } from "@/lib/chart-colors";
 import { BODY_CARD_LAYOUT } from "@/lib/trends-card-rank";
 import {
-  BODY_METRIC_META,
+  TREND_METRIC_META,
   CHECK_IN_METRIC_SLUGS,
-  isBodyMetricSlug,
-} from "@/lib/trends-body-metrics";
+  isTrendMetricSlug,
+} from "@/lib/trend-metrics";
 import {
   detectLowMoodWindow,
   decideSleepMoodBridge,
@@ -208,18 +208,18 @@ describe("moodSeriesPoints (#1408)", () => {
 });
 
 describe("the check-in metric registry (#1408)", () => {
-  it("registers all three check-in ratings as body metrics", () => {
+  it("registers all three check-in ratings as trend metrics", () => {
     // Registry membership is what earns a series its tile, chart, detail page and
     // star — the treatment valence already had and the other two never did.
     for (const slug of CHECK_IN_METRIC_SLUGS) {
-      expect(isBodyMetricSlug(slug)).toBe(true);
-      expect(BODY_METRIC_META[slug].unit).toBe("");
+      expect(isTrendMetricSlug(slug)).toBe(true);
+      expect(TREND_METRIC_META[slug].unit).toBe("");
     }
     expect(CHECK_IN_METRIC_SLUGS).toEqual(["mood", "energy", "calm"]);
   });
 
   it("gives the three neighbouring 1–5 cards distinct blessed hues", () => {
-    const colors = CHECK_IN_METRIC_SLUGS.map((s) => BODY_METRIC_META[s].color);
+    const colors = CHECK_IN_METRIC_SLUGS.map((s) => TREND_METRIC_META[s].color);
     expect(new Set(colors).size).toBe(colors.length);
     for (const color of colors) {
       expect(Object.values(chartSeries)).toContain(color);

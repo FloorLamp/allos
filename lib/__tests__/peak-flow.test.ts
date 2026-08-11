@@ -36,7 +36,7 @@ import { METRIC_KNOWLEDGE, quantityKnowledge } from "@/lib/metric-judgment";
 import { placeReading } from "@/lib/reading-placement";
 import { readingCadence } from "@/lib/reading-cadence";
 import { metricAggregation } from "@/lib/metric-buckets";
-import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 import { measurementFieldGroup } from "@/lib/measurements-deeplink";
 
 describe("the zone decision — band edges", () => {
@@ -148,7 +148,7 @@ describe("the shared plausibility bounds", () => {
 
 describe("registration — the domain is an instance of the substrate", () => {
   it("is a registered metric slug rendering the stream", () => {
-    expect(BODY_METRIC_SLUGS as readonly string[]).toContain(PEAK_FLOW_SLUG);
+    expect(TREND_METRIC_SLUGS as readonly string[]).toContain(PEAK_FLOW_SLUG);
     expect(readingCadence(PEAK_FLOW_CANONICAL)).toBe("continuous");
     expect(placeReading({ name: PEAK_FLOW_CANONICAL }).placed).toEqual({
       table: "metric_samples",

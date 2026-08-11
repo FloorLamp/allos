@@ -193,7 +193,7 @@ const entries: Entry[] = [
   // Sleep (#1066): a data-gated READING surface between Trends and Upcoming — it
   // heads the reading cluster (a one-morning-glance page), and its adjacency to
   // Trends fails-soft the old muscle-memory path (sleep is being extracted FROM
-  // Trends → Body). Gate = any recorded sleep session (the `sleep` relevance bit);
+  // Trends → Overview → body census). Gate = any recorded sleep session (the `sleep` relevance bit);
   // like every relevance gate it's cosmetic — the page stays reachable by URL (the
   // pillar deep-link and dashboard tile both point here).
   {

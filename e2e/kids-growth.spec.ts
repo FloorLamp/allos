@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { hydratedClick } from "./helpers";
 
-// Kids growth trends. For a CHILD profile the Trends → Body tab prioritizes
+// Kids growth trends. For a CHILD profile the Trends → Overview → body census prioritizes
 // height (WHO/CDC growth percentiles + a height/head-circ chart), offers a manual
 // height + head-circumference quick-add, and hides body fat %. An ADULT profile is
 // unchanged: no growth quick-add, no head-circ affordance, body fat still charted.
@@ -92,7 +92,7 @@ test.describe.serial("kids growth trends", () => {
       page.getByRole("heading", { name: "Height", exact: true })
     ).toBeVisible();
 
-    // Body fat % is de-prioritized out of a child's Body tab entirely — the chart
+    // Body fat % is de-prioritized out of a child's body census entirely — the chart
     // heading AND (issue #493) the entry field are both gone, so "not tracked" is
     // consistent instead of hidden-from-charts-but-still-enterable.
     await expect(page.getByRole("heading", { name: "Body Fat" })).toHaveCount(

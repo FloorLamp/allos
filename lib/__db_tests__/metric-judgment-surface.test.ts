@@ -18,7 +18,7 @@ import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
 import { getMetricJudgment } from "@/lib/queries/metric-judgment";
 import { getMetricObservations } from "@/lib/queries/readings";
 import { foldObservationPoints } from "@/lib/reading-model";
-import { fullBodyMetricSeries } from "@/lib/body-metric-series";
+import { fullTrendMetricSeries } from "@/lib/trend-metric-series";
 import { getMetricReadings } from "@/lib/metric-readings";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -51,7 +51,7 @@ beforeAll(() => {
 describe("a child's streamed resting heart rate is judged", () => {
   it("resolves the age-appropriate band with NO imported observation", () => {
     // The stream is the only source of readings…
-    const series = fullBodyMetricSeries(
+    const series = fullTrendMetricSeries(
       "resting-hr",
       child.profileId,
       "kg",
@@ -112,7 +112,7 @@ describe("the metric surface's series folds in same-identity observations", () =
 
     // The SHARED series folds it in, so the tile, the Body chart and the detail
     // page all see it — five streamed days plus the clinic reading.
-    const series = fullBodyMetricSeries(
+    const series = fullTrendMetricSeries(
       "resting-hr",
       child.profileId,
       "kg",
@@ -141,7 +141,7 @@ describe("the metric surface's series folds in same-identity observations", () =
     ).run(adult.profileId, d(-1));
     expect(getMetricObservations(adult.profileId, "spo2")).toEqual([]);
     expect(
-      fullBodyMetricSeries("spo2", adult.profileId, "kg", adult.todayStr)
+      fullTrendMetricSeries("spo2", adult.profileId, "kg", adult.todayStr)
     ).toHaveLength(1);
   });
 });

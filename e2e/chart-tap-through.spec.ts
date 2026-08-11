@@ -43,7 +43,7 @@ test.describe("chart tap-through (#1488)", () => {
       username: E2E_LOGIN_TRENDS_BODY,
       password: E2E_MEMBER_PASSWORD,
     });
-    // The Body tab is intentionally tiles-only on a phone; the full chart stack
+    // The body census is intentionally tiles-only on a phone; the full chart stack
     // and its large header target are the desktop reading mode.
     await page.setViewportSize(DESKTOP);
     // view=all is the classic full-chart stack — the surface that was a dead end.

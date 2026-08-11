@@ -13,8 +13,8 @@ import {
   LONG_RANGE_DAYS,
 } from "./fixture-logins";
 
-// Trends → Body sparkline-tile overview + per-metric detail pages, Phase 2 of #1067.
-// The Body tab's default mobile view is now a sparkline TILE grid (value + trend +
+// Trends → Overview → body census sparkline-tile overview + per-metric detail pages, Phase 2 of #1067.
+// The body census default mobile view is now a sparkline TILE grid (value + trend +
 // sparkline per metric); each tile opens a per-metric detail page at
 // /trends/metric/<kind> (the biomarker-view pattern for body metrics), except the
 // Sleep tile which links to the dedicated /sleep page. Metric-specific source
@@ -28,7 +28,7 @@ import {
 
 const PHONE = { width: 360, height: 800 };
 
-test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
+test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)", () => {
   test("the desktop detail page uses a wide analysis layout without a half-width chart", async ({
     browser,
   }) => {
@@ -57,7 +57,7 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     // Chart + summary form one opening row, with the chart as the primary column.
     expect(Math.abs(chartBox!.y - summaryBox!.y)).toBeLessThan(4);
     expect(chartBox!.width).toBeGreaterThan(summaryBox!.width);
-    // BodyTrendCharts normally lays overview cards out two-up. The detail page's
+    // TrendMetricCharts normally lays overview cards out two-up. The detail page's
     // only chart must consume its column rather than leaving a blank sibling.
     expect(plotBox!.width).toBeGreaterThan(chartBox!.width * 0.85);
     await expect(page.getByTestId("measurements-quick-add")).toHaveCount(0);

@@ -71,9 +71,9 @@ import {
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
-// ── Trends -> Body mobile overhaul ──
+// ── Trends -> Overview -> body census mobile overhaul ──
 export function seedBodyMobile(): void {
-  // ── Trends → Body mobile overhaul fixture (#1067 Phase 1) ─────────────────────
+  // ── Trends → Overview → body census mobile overhaul fixture (#1067 Phase 1) ─────────────────────
   // A dedicated adult profile with a KNOWN, PARTIAL set of synced body metrics so
   // the chart-jump chips + per-chart anchors are deterministic in the browser:
   //   present → Weight/resting-HR/BMI (body-composition block), Steps, Sleep,
@@ -204,7 +204,7 @@ export function seedBodyMobile(): void {
 
     seedMemberLogin(E2E_LOGIN_TRENDS_BODY, tbId, "read");
     console.log(
-      `e2e: seeded Trends → Body mobile fixture — profile ${tbId} (${TRENDS_BODY_PROFILE}) (#1067)`
+      `e2e: seeded Trends → Overview → body census mobile fixture — profile ${tbId} (${TRENDS_BODY_PROFILE}) (#1067)`
     );
   }
 }

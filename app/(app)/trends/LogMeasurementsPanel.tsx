@@ -12,7 +12,7 @@ import MeasurementsQuickAdd, {
   type MeasurementsQuickAddProps,
 } from "./MeasurementsQuickAdd";
 
-// The Body tab's on-page logging affordance (issue #1486).
+// The body census on-page logging affordance (issue #1486).
 //
 // The tab is a READING surface. It used to open with up to three full entry forms
 // stacked above the first chart — the #1067 chip collapse softened that on a phone,
@@ -138,7 +138,7 @@ export default function LogMeasurementsPanel(
             className="mt-4 min-h-0 overflow-y-auto px-1 pb-1"
             data-testid="log-measurements-modal-body"
           >
-            {/* Trends → Body opens the BODY group (#2014): this affordance sits
+            {/* Trends → Overview → body census opens the BODY group (#2014): this affordance sits
                 under the body census, so the reading the person came to log is a
                 body one. A ?focus=/?new= deep link still wins over it. */}
             <MeasurementsQuickAdd
