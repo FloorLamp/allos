@@ -212,6 +212,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `genomic_variants` | `created_at` | record | instant | bare |  |
 | `goals` | `target_date` | planned | day | n/a |  |
 | `goals` | `created_at` | bookkeeping | instant | bare |  |
+| `goals` | `achieved_at` | lifecycle | instant | canonical | Migration 182 (#2394) — BORN canonical: the instant `status` became 'achieved', written by setStatus through instantNow() and NULLed when a goal is set back to active. LIFECYCLE and not `event`: it is when the goal ROW was marked reached, not when the underlying performance happened — the app never observes that. NULL on every pre-182 achieved goal, deliberately: the recap announces a goal in the period its RECORDED achievement falls in, so an unrecorded one stays silent rather than being announced retroactively. |
 | `hr_minutes` | `ts` | event | instant | canonical | Minute-truncated (lib/date.ts utcMinute) and the row's primary key. Migration 164 converted it from a profile-local wall clock; the local day is now derived at read time. |
 | `illness_episodes` | `start_date` | window-start | day | n/a | The inclusive first active day, NULL when the episode predates the log. Renamed from `started_at` by migration 169 (#2232). |
 | `illness_episodes` | `end_date` | window-end | day | n/a | The INCLUSIVE last active day, NULL while ongoing — the house day-window convention. Migration 169 (#2232) renamed it from `ended_at` AND rewrote the stored value (the old column held the exclusive first inactive day). |

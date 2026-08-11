@@ -880,7 +880,7 @@ describe("runRecap calendar-mode completed week (#1021)", () => {
     // The documented grammar, not a second parenthetical (#2391/#2389 item 2).
     // The recap emphasizes a head that carries qualifiers (#2392); pin that rather
     // than loosen the assertion, so the whole line is still checked.
-    expect(text).toContain("<b>Workouts: 1 (strength 1)</b> — 0 last week");
+    expect(text).toContain("<b>Workouts: 1</b> — strength 1 · 0 last week");
   });
 });
 

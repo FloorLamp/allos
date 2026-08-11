@@ -3,8 +3,8 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
-import { casUpdate } from "@/lib/tx";
-import { sqlNow } from "@/lib/clock";
+import { casUpdate, readForUpdate } from "@/lib/tx";
+import { instantNow, sqlNow } from "@/lib/clock";
 import {
   formError,
   formOk,
@@ -405,15 +405,43 @@ export async function setStatus(formData: FormData): Promise<FormResult> {
   const status = String(formData.get("status"));
   if (!id) return formError("Couldn't find that goal.");
   if (!isOutcomeGoalStatus(status)) return formError("Unknown goal status.");
-  const cas = writeTx((tx) =>
-    casUpdate(
+  // THE ACHIEVEMENT INSTANT IS WRITTEN HERE, AND ONLY HERE (#2394, migration 182).
+  // `status` said WHETHER a goal was reached and nothing said WHEN, so the recap had
+  // to window on `target_date` — the deadline — and could therefore announce a goal
+  // reached early a month after the fact, never announce one reached late, and never
+  // announce a goal with no deadline at all. `achieved_at` is the missing fact.
+  //
+  // COALESCE, so re-stating an existing `achieved` (the idempotent path this action
+  // deliberately keeps as success) does not re-stamp the goal into the current week and
+  // announce it a second time. Flipping back to `active` NULLs it: the goal has not been
+  // achieved, and reaching it again is a new event with a new instant.
+  //
+  // instantNow() (lib/clock.ts → lib/date.ts utcInstant), never SQL's own datetime('now')
+  // — the column is on the canonical `…Z` convention and comparison is lexical. The
+  // guard read shares the IMMEDIATE transaction with the swap (readForUpdate), so the
+  // "keep the instant already there" decision cannot race another writer.
+  const cas = writeTx((tx) => {
+    const prior = readForUpdate<{ achieved_at: string | null }>(
       tx,
-      db.prepare("UPDATE goals SET status = ? WHERE id = ? AND profile_id = ?"),
-      status,
+      db.prepare(
+        "SELECT achieved_at FROM goals WHERE id = ? AND profile_id = ?"
+      ),
       id,
       profile.id
-    )
-  );
+    );
+    const achievedAt =
+      status === "achieved" ? (prior?.achieved_at ?? instantNow()) : null;
+    return casUpdate(
+      tx,
+      db.prepare(
+        "UPDATE goals SET status = ?, achieved_at = ? WHERE id = ? AND profile_id = ?"
+      ),
+      status,
+      achievedAt,
+      id,
+      profile.id
+    );
+  });
   if (cas.kind === "stale") return formError("Couldn't find that goal.");
   revalidateRoute("/training");
   revalidateRoute("/");
