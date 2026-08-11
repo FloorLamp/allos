@@ -40,9 +40,8 @@ test("PRN med with ONLY a minimum interval still shows redose guidance (#1458)",
 }) => {
   await page.goto("/medications");
 
-  const name = `${ADDED_MED_PREFIX} ${Date.now()}-${Math.floor(
-    Math.random() * 1e6
-  )}`;
+  const nameStamp = Date.now(); // clock-ok: unique medication-name suffix, never a stored timestamp
+  const name = `${ADDED_MED_PREFIX} ${nameStamp}-${Math.floor(Math.random() * 1e6)}`;
 
   // --- Add the med: as-needed, 6h minimum interval, daily maximum LEFT BLANK ---
   await page.getByTestId("medication-add-toggle").click();

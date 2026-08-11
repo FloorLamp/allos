@@ -64,7 +64,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     page,
   }) => {
     test.slow();
-    const uniqueName = `E2E LDL protocol ${Date.now()}`;
+    const uniqueName = `E2E LDL protocol ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
     // A past start so the window overlaps the seeded LDL readings.
     const start = new Date(frozenNow().getTime() - 60 * 86_400_000)
       .toISOString()

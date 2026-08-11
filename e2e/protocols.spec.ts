@@ -17,7 +17,7 @@ test.describe("protocols create → compare (issue #161)", () => {
   }) => {
     test.slow(); // next dev compiles these routes on first hit
 
-    const uniqueName = `E2E Creatine ${Date.now()}`;
+    const uniqueName = `E2E Creatine ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
     // A relative past start so the baseline/intervention windows both have seeded
     // weekly body-metric readings (never a hardcoded date that ages out).
     const start = new Date(frozenNow().getTime() - 42 * 86_400_000)

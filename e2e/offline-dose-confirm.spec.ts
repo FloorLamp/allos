@@ -65,7 +65,7 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
   page,
   context,
 }) => {
-  const name = `Offline Dose Iron ${Date.now()}`;
+  const name = `Offline Dose Iron ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
   const row = await createMorningSupplement(page, name);
 
   // The dead-reception moment: the pills are in your hand, the network isn't there.
@@ -111,7 +111,7 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
   context,
   browser,
 }) => {
-  const name = `Offline Dose Zinc ${Date.now()}`;
+  const name = `Offline Dose Zinc ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
   const row = await createMorningSupplement(page, name);
   const origin = new URL(page.url()).origin;
 

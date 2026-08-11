@@ -23,7 +23,7 @@ test.describe("Equipment manager (#391)", () => {
 
     // Unique name so a CI retry against the same DB doesn't collide on the
     // per-profile name-uniqueness guard.
-    const name = `E2E Own Weight Bar ${Date.now()}`;
+    const name = `E2E Own Weight Bar ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
     await page.getByRole("button", { name: "Add equipment" }).click();
     await page.getByLabel("Name").fill(name);
     // The bar-weight label carries the login's unit — match it unit-agnostically.

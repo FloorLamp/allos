@@ -41,7 +41,7 @@ test.describe("Type-aware training restriction (#489)", () => {
       );
 
       // Log a sport session; it persists and shows in the recent-sessions list.
-      const title = `E2E Soccer ${Date.now()}`;
+      const title = `E2E Soccer ${Date.now()}`; // clock-ok: unique activity-title suffix, never a stored timestamp
       // The title is an ActivityCombobox over the profile's own frequency-ranked
       // sport/cardio names since #1676; free text still logs.
       await settledFill(member, form.getByLabel("Activity"), title);

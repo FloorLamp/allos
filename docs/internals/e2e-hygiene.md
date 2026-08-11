@@ -8,8 +8,8 @@ weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in
 `mobile` phone-viewport project #1420, the #1534 SQL clock seam + UTC-midnight
 CI backstop, the #1543 document-level-overflow freeze + the #1545
 degenerate-input convention, the #1858 `settledClickApplied` contract; the
-grandfathered `.first()`/`.toPass(` burn-downs are COMPLETE — both allowlists are
-empty and `WALL_CLOCK_ALLOW` is the one list with a remaining backlog)
+grandfathered `.first()`, `.toPass(`, and wall-clock burn-downs are COMPLETE —
+their allowlists are empty)
 
 Maintainer documentation for the Playwright suite's reliability discipline
 (issue \#868). The user-facing "how to run e2e" note lives in AGENTS.md's
@@ -1377,13 +1377,11 @@ same-line `waitfortimeout-ok:` / `first-ok:` / `topass-ok:` marker, which the sc
 excludes from the count. Every one of those freezes now stands at ZERO — a NEW
 unmarked occurrence fails CI, and there is nothing left to migrate.
 
-The one allowlist with a remaining backlog is **`WALL_CLOCK_ALLOW`** (#1538's
-one-clock rule): ~19 files still read `Date.now()`/`new Date()` directly. Most of
-the remainder are unique-name suffixes and a TOTP probe — legitimate, and the
-right migration is a `clock-ok: <why>` marker rather than a rewrite — but a stored
-timestamp among them is a real 29-minutes-into-a-lane failure waiting to happen,
-so that list is where the incremental one-spec-per-PR discipline (the #860 Track-B
-pattern) now applies.
+`WALL_CLOCK_ALLOW` is now empty too (#1538's one-clock rule). Stored fixture dates
+and instants derive from the frozen app clock; the surviving real-clock reads are
+unique-name suffixes and a TOTP probe, each carrying a same-line
+`clock-ok: <why>` marker. A new unmarked `Date.now()`/`new Date()` fails CI, so a
+stored timestamp cannot quietly reintroduce the 29-minutes-into-a-lane drift.
 
 After that: migrate the cross-ownership anatomy assertions (class 2) onto shared
 per-component driver helpers (the `e2e/symptom-helpers.ts` extraction pattern).
