@@ -24,11 +24,10 @@
 // anything. Do NOT reach for this module to mutate shared/profile-1 state from a
 // spec; fixture ownership is what makes direct DB writes legitimate here.
 //
-// load-env first: lib/onboarding's (type-only) settings import textually reaches
-// lib/db, so the standalone-script env-bootstrap guard requires the env loader
-// to be this file's first import. It's idempotent — the seed-events host has
-// already loaded it, and in a Playwright worker it just loads the same .env the
-// config layer uses.
+// load-env first: this module imports better-sqlite3 directly, so the standalone-
+// script env-bootstrap guard requires the loader before that database boundary
+// (#2416). It's idempotent — the seed-events host has already loaded it, and in a
+// Playwright worker it just loads the same .env the config layer uses.
 import "../scripts/load-env";
 import Database from "better-sqlite3";
 import path from "node:path";
@@ -127,11 +126,10 @@ export function resetOnboardingFixture(
 
 // Open the e2e DB at `dbPath` from the Playwright worker, run `fn`, close. The
 // CALLER (a spec — the Playwright runner loads env for it) resolves the path;
-// this module deliberately reads no environment variables so it stays exempt
-// from the standalone-script env-bootstrap guard
-// (lib/__tests__/script-env-bootstrap.test.ts) — it is a library for two hosts
-// (seed-events at boot, specs mid-suite), not an entrypoint. (That guard's scan
-// is textual, so even naming the env API here would re-flag the file.)
+// this module deliberately reads no environment variables and never invents a
+// default path. It still carries the standalone-script env bootstrap because its
+// direct better-sqlite3 runtime import is a database boundary (#2416), and one of
+// its two hosts (seed-events) is a standalone entrypoint.
 // fileMustExist fails loud if the suite isn't running against the
 // expected isolated DB — this must never silently create (or touch) a dev
 // data/allos.db.

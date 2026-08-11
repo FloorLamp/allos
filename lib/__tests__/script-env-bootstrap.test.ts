@@ -9,9 +9,10 @@
 // process.env / lib/db. Instead we scan scripts/ and e2e/ for the files that are
 // standalone tsx ENTRYPOINTS (run directly via tsx/node, not by the Playwright
 // runner which loads env itself) AND that reach the env-sensitive boot surface —
-// either by TRANSITIVELY importing lib/db (the #679 password-bootstrap bug class)
-// or by reading process.env directly (they need the same .env values loaded first).
-// Every such file must import the env loader before anything else.
+// either by TRANSITIVELY importing lib/db, directly importing better-sqlite3 (the
+// #679 password-bootstrap bug class), or by reading process.env directly (they
+// need the same .env values loaded first). Every such file must import the env
+// loader before anything else.
 //
 // "Transitively imports" means AT RUNTIME. Type-only edges are erased by the compiler
 // and are not followed — see runtimeImportSpecifiers.
@@ -21,6 +22,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const DB_MODULE = "lib/db.ts";
+const SQLITE_MODULE = "better-sqlite3";
 const ENV_LOADER = "scripts/load-env.ts";
 const SCAN_DIRS = ["scripts", "e2e"];
 
@@ -96,6 +98,18 @@ function importSpecifiers(rel: string): string[] {
 // costs a conversation, a false negative costs the bug this file exists to prevent.
 function runtimeImportSpecifiers(rel: string): string[] {
   return specifiersIn(read(rel), true);
+}
+
+function sourceDirectlyImportsSqlite(source: string): boolean {
+  return specifiersIn(source, true).includes(SQLITE_MODULE);
+}
+
+// A bare package specifier is intentionally outside resolveImport(): it cannot
+// lead the repo-local reachesDb traversal anywhere. A direct runtime SQLite import
+// nevertheless proves that this file owns direct database access, so entrypoint
+// discovery names that boundary separately (#2416).
+function directlyImportsSqlite(rel: string): boolean {
+  return sourceDirectlyImportsSqlite(read(rel));
 }
 
 const reachesDbMemo = new Map<string, boolean>();
@@ -190,6 +204,11 @@ function isPlaywrightFile(rel: string): boolean {
 }
 
 function usesProcessEnv(rel: string): boolean {
+  // Deliberately per-file, not transitive. Importing a helper that CONTAINS an env
+  // read does not prove that read executes: library reads commonly live inside a
+  // function the entrypoint may never call. Reaching lib/db or directly importing
+  // better-sqlite3 is a declared database-ownership boundary; a transitive
+  // process.env rule would need call/evaluation analysis, not reachability alone.
   return /\bprocess\.env\b/.test(read(rel));
 }
 
@@ -232,7 +251,10 @@ function discoverEntrypoints(): string[] {
       (rel) =>
         rel !== ENV_LOADER && !isPlaywrightFile(rel) && !ENV_FREE.has(rel)
     )
-    .filter((rel) => reachesDb(rel) || usesProcessEnv(rel))
+    .filter(
+      (rel) =>
+        reachesDb(rel) || directlyImportsSqlite(rel) || usesProcessEnv(rel)
+    )
     .sort();
 }
 
@@ -249,8 +271,57 @@ describe("standalone script environment bootstrap", () => {
     // A sanity floor so a broken scan (e.g. a regex regression) that finds nothing
     // can't make the per-file assertions vacuously pass.
     expect(ENTRYPOINTS).toEqual(
-      expect.arrayContaining(["scripts/seed.ts", "scripts/notify.ts"])
+      expect.arrayContaining([
+        "scripts/seed.ts",
+        "scripts/notify.ts",
+        "scripts/schema-dump.ts",
+        "e2e/onboarding-reset.ts",
+      ])
     );
+  });
+
+  describe("direct SQLite imports", () => {
+    it.each([
+      ['import Database from "better-sqlite3";', "a default import"],
+      ['import * as Database from "better-sqlite3";', "a namespace import"],
+      ['import "better-sqlite3";', "a side-effect import"],
+      [
+        'import { type Options, SqliteError } from "better-sqlite3";',
+        "a mixed import with a runtime binding",
+      ],
+    ])("counts %s (%s)", (source) => {
+      expect(sourceDirectlyImportsSqlite(source)).toBe(true);
+    });
+
+    it.each([
+      ['import type Database from "better-sqlite3";', "a default type import"],
+      [
+        'import type { Database } from "better-sqlite3";',
+        "a named type import",
+      ],
+      ['export type { Database } from "better-sqlite3";', "a type re-export"],
+    ])("ignores %s (%s)", (source) => {
+      expect(sourceDirectlyImportsSqlite(source)).toBe(false);
+    });
+
+    it("discovers the real direct-open entrypoints", () => {
+      expect(directlyImportsSqlite("scripts/schema-dump.ts")).toBe(true);
+      expect(directlyImportsSqlite("e2e/onboarding-reset.ts")).toBe(true);
+      expect(ENTRYPOINTS).toEqual(
+        expect.arrayContaining([
+          "scripts/schema-dump.ts",
+          "e2e/onboarding-reset.ts",
+        ])
+      );
+    });
+
+    it("does not retain the pure medication generator through the old erased edge", () => {
+      const generator = "scripts/gen-medication-descriptions.ts";
+      expect(directlyImportsSqlite(generator)).toBe(false);
+      expect(reachesDb(generator)).toBe(false);
+      expect(usesProcessEnv(generator)).toBe(false);
+      expect(ENTRYPOINTS).not.toContain(generator);
+    });
   });
 
   it.each(ENTRYPOINTS)(
