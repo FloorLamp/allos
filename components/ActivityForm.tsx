@@ -220,13 +220,16 @@ export default function ActivityForm({
   // Session-level equipment link (issue #342): the gear the WHOLE activity used —
   // a ride's bike, a run's shoes — distinct from the per-set strength implement.
   // Seeded from a stored/edited (or prefilled) row; on a fresh non-strength log it
-  // auto-defaults to the last-used gear for that type (the effect below), mirroring
-  // the strength picker's recency. `equipmentTouchedRef` records an explicit user
-  // choice so the auto-default never overrides it (incl. an intentional "None").
-  const [activityEquipmentId, setActivityEquipmentId] = useState<number | null>(
-    seed?.equipment_id ?? null
+  // auto-defaults to the last-used gear for that type, mirroring the strength
+  // picker's recency. `undefined` means the create draft has not chosen yet;
+  // `null` is the user's explicit "None", which the default must never override.
+  const [activityEquipmentId, setActivityEquipmentId] = useState<
+    number | null | undefined
+  >(
+    editData
+      ? (editData.equipment_id ?? null)
+      : (seed?.equipment_id ?? undefined)
   );
-  const equipmentTouchedRef = useRef(false);
 
   // Lazy initializers: the fallbacks format dates, no need to redo that work on
   // every render just to discard it.
@@ -334,7 +337,7 @@ export default function ActivityForm({
 
   const liveLeadExercise = leadExerciseName(parts.map((p) => p.name));
   function finishWorkout() {
-    if (!endTime) setEndTime(nowHHMM(tz));
+    if (!endTime) changeEndTime(nowHHMM(tz));
     setLiveMode(false);
     setShowRecap(false);
   }
@@ -375,34 +378,34 @@ export default function ActivityForm({
   // with the most-recent gear that's a valid candidate for THIS activity — narrowed
   // by equipmentForActivity, so a run picks up the last-used shoes and a ride the
   // last-used bike — but only while the user hasn't chosen (pickDefaultActivityEquipment).
-  useEffect(() => {
-    if (editData) return;
-    if (equipmentTouchedRef.current || sessionEquipmentType == null) return;
-    const candidates = equipmentForActivity(
-      equipmentList,
-      sessionEquipmentType,
-      sessionEquipmentName
-    );
-    const def = pickDefaultActivityEquipment(
-      candidates,
-      recentActivityEquipment
-    );
-    if (def != null) setActivityEquipmentId((cur) => cur ?? def);
-  }, [
-    editData,
-    sessionEquipmentType,
-    sessionEquipmentName,
-    equipmentList,
-    recentActivityEquipment,
-  ]);
+  const defaultActivityEquipmentId =
+    !editData && sessionEquipmentType != null
+      ? pickDefaultActivityEquipment(
+          equipmentForActivity(
+            equipmentList,
+            sessionEquipmentType,
+            sessionEquipmentName
+          ),
+          recentActivityEquipment
+        )
+      : null;
+  // State records a seed or an explicit choice. Until the user chooses, the current
+  // activity's recency default is derived directly, so changing Run → Ride cannot
+  // leave the previous activity's gear stranded in the draft.
+  const effectiveActivityEquipmentId =
+    activityEquipmentId === undefined
+      ? defaultActivityEquipmentId
+      : activityEquipmentId;
 
   const liveTitle = generateActivityTitle(startTime, namedParts, classifier);
-  // The name actually saved/shown: the user's title, else the generated one.
-  const effectiveTitle = title.trim() || liveTitle;
-  // Until the user edits the title, keep it following the generated one.
-  useEffect(() => {
-    if (!titleEdited) setTitle(liveTitle === "New activity" ? "" : liveTitle);
-  }, [liveTitle, titleEdited]);
+  // Until the user edits the title, the input and saved value follow the generated
+  // one directly. There is no second stored copy to synchronize after render.
+  const displayedTitle = titleEdited
+    ? title
+    : liveTitle === "New activity"
+      ? ""
+      : liveTitle;
+  const effectiveTitle = displayedTitle.trim() || liveTitle;
   const overallDuration =
     startTime && endTime && !timeError
       ? minutesBetween(startTime, endTime)
@@ -431,12 +434,21 @@ export default function ActivityForm({
     effectiveSessionDuration != null &&
     explicitComponentDuration > effectiveSessionDuration;
   const canSave = baseCanSave && !durationError;
-  // Preserve the most recent complete clock-derived duration as the standalone
-  // fallback if one of the clock fields is later removed.
-  useEffect(() => {
-    if (overallDuration != null)
-      setSessionDuration(String(Math.round(overallDuration)));
-  }, [overallDuration]);
+  // Preserve a complete clock-derived duration as the standalone fallback if one
+  // clock field is later removed. The clock interaction that completes the pair is
+  // the source of that update; an effect does not need to copy the derived value.
+  function rememberClockDuration(nextStart: string, nextEnd: string) {
+    const duration = minutesBetween(nextStart, nextEnd);
+    if (duration != null) setSessionDuration(String(Math.round(duration)));
+  }
+  function changeStartTime(nextStart: string) {
+    setStartTime(nextStart);
+    rememberClockDuration(nextStart, endTime);
+  }
+  function changeEndTime(nextEnd: string) {
+    setEndTime(nextEnd);
+    rememberClockDuration(startTime, nextEnd);
+  }
   // A lone cardio/sport part (no strength, no other leg) auto-SETS its Duration
   // from the clock span (#791) — mirroring the strength session-total precedent
   // above, so the value LANDS on the component (editable) instead of only teasing
@@ -539,21 +551,20 @@ export default function ActivityForm({
     effectiveSessionDuration,
     overallDuration,
   ]);
-  // Keep the field tracking the auto-estimate until the user types their own.
-  useEffect(() => {
-    // Auto-fill is create-only. On an existing row (manual or imported), changing
-    // this state merely because the editor opened would dirty the autosave
-    // signature and stamp an edit even though the user changed nothing. Existing
-    // manual rows display the live value through displayedEstCalories below;
-    // imported energy stays read-only in imported_metrics.
-    if (editData) return;
-    if (estEdited) return;
-    setEstCalories(autoEstimateKcal != null ? String(autoEstimateKcal) : "");
-  }, [autoEstimateKcal, editData, estEdited]);
-  const displayedEstCalories =
-    !estEdited && !estCalories.trim() && autoEstimateKcal != null
-      ? String(autoEstimateKcal)
+  // Auto-fill is create-only. Derive the value that is persisted until the user
+  // edits it; existing rows keep their stored field untouched merely by opening.
+  const persistedEstCalories =
+    !editData && !estEdited
+      ? autoEstimateKcal != null
+        ? String(autoEstimateKcal)
+        : ""
       : estCalories;
+  const displayedEstCalories =
+    !editData && !estEdited
+      ? persistedEstCalories
+      : !estEdited && !estCalories.trim() && autoEstimateKcal != null
+        ? String(autoEstimateKcal)
+        : estCalories;
   const displayedCalories = Number(displayedEstCalories);
 
   // Build the FormData saveActivity expects from the current state. Callers gate
@@ -593,13 +604,14 @@ export default function ActivityForm({
       fd.set("duration_min", String(effectiveSessionDuration));
     // Estimated calories (issue #151): submit whatever's in the field (auto or
     // overridden). A blank field is omitted, which clears any stored estimate.
-    if (estCalories.trim()) fd.set("est_calories", estCalories.trim());
+    if (persistedEstCalories.trim())
+      fd.set("est_calories", persistedEstCalories.trim());
     // Session-level equipment (issue #342): sent only for a non-strength session
     // where a piece of gear is linked. Omitting it clears the link server-side (the
     // UPDATE always writes the column) — so switching a session to None, or to pure
     // strength, drops the stored gear rather than stranding it.
-    if (sessionEquipmentType != null && activityEquipmentId != null)
-      fd.set("equipment_id", String(activityEquipmentId));
+    if (sessionEquipmentType != null && effectiveActivityEquipmentId != null)
+      fd.set("equipment_id", String(effectiveActivityEquipmentId));
     return fd;
   }
 
@@ -614,9 +626,9 @@ export default function ActivityForm({
         notes,
         parts,
         title: effectiveTitle,
-        estCalories,
+        estCalories: persistedEstCalories,
         sessionDuration,
-        activityEquipmentId,
+        activityEquipmentId: effectiveActivityEquipmentId,
       }),
     [
       date,
@@ -626,9 +638,9 @@ export default function ActivityForm({
       notes,
       parts,
       effectiveTitle,
-      estCalories,
+      persistedEstCalories,
       sessionDuration,
-      activityEquipmentId,
+      effectiveActivityEquipmentId,
     ]
   );
   // The offline-capture callback below runs on the CLOSE-path flush, after `draft`
@@ -702,11 +714,11 @@ export default function ActivityForm({
       sessionDuration,
       intensity,
       notes,
-      estCalories,
+      estCalories: persistedEstCalories,
       estEdited,
       title,
       titleEdited,
-      activityEquipmentId,
+      activityEquipmentId: effectiveActivityEquipmentId,
       parts,
     }),
     [
@@ -716,11 +728,11 @@ export default function ActivityForm({
       sessionDuration,
       intensity,
       notes,
-      estCalories,
+      persistedEstCalories,
       estEdited,
       title,
       titleEdited,
-      activityEquipmentId,
+      effectiveActivityEquipmentId,
       parts,
     ]
   );
@@ -852,7 +864,7 @@ export default function ActivityForm({
     date === todayStr(tz) &&
     canSave;
   function openFinishRecap() {
-    if (!endTime) setEndTime(nowHHMM(tz));
+    if (!endTime) changeEndTime(nowHHMM(tz));
     setShowRecap(true);
   }
 
@@ -1007,7 +1019,7 @@ export default function ActivityForm({
             headingType={headingType}
             headingTitle={firstValid?.name}
             effectiveTitle={effectiveTitle}
-            title={title}
+            title={displayedTitle}
             date={date}
             editData={editData}
             pending={status === "saving"}
@@ -1154,8 +1166,8 @@ export default function ActivityForm({
               durationError={durationError}
               derivableDurationMin={derivableDurationMin}
               onDate={setDate}
-              onStartTime={setStartTime}
-              onEndTime={setEndTime}
+              onStartTime={changeStartTime}
+              onEndTime={changeEndTime}
               onSessionDuration={setSessionDuration}
             />
             {showTimeBreakdown && (
@@ -1184,10 +1196,9 @@ export default function ActivityForm({
                   activityType={sessionEquipmentType}
                   activityName={sessionEquipmentName}
                   equipment={equipmentList}
-                  value={activityEquipmentId}
+                  value={effectiveActivityEquipmentId}
                   compact
                   onChange={(id) => {
-                    equipmentTouchedRef.current = true;
                     setActivityEquipmentId(id);
                   }}
                 />

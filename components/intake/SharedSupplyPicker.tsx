@@ -10,6 +10,7 @@ import {
 } from "@/app/(app)/supplies/actions";
 import { SUPPLIES_HREF } from "@/lib/hrefs";
 import { bottleLabel, type SupplyOption } from "@/lib/supply-product";
+import { useResettableState } from "@/components/useResettableState";
 
 // The "Shared supply" control (#1374), rendered inside the refill block of BOTH intake
 // forms (the one shared RefillTracking component, so supplements and medications get it
@@ -50,33 +51,30 @@ export default function SharedSupplyPicker({
     initialSupply ? [initialSupply] : []
   );
   const [loaded, setLoaded] = useState(false);
-  const [choice, setChoice] = useState<string>(
+  const initialChoice =
     supplyId != null
       ? String(supplyId)
       : initialSupply
         ? String(initialSupply.id)
-        : ""
+        : "";
+  // In edit mode the saved item/link tuple owns this local draft. Create mode uses
+  // one stable key so its seeded bottle remains entirely user-controlled.
+  const savedLinkKey = itemId
+    ? `${itemId}:${supplyId ?? ""}:${supplyName ?? ""}`
+    : "create";
+  const [choice, setChoice] = useResettableState(initialChoice, savedLinkKey);
+  const [savedChoice, setSavedChoice] = useResettableState(
+    supplyId != null ? String(supplyId) : "",
+    savedLinkKey
   );
-  const [savedChoice, setSavedChoice] = useState<string>(
-    supplyId != null ? String(supplyId) : ""
+  const [activeSupplyName, setActiveSupplyName] = useResettableState(
+    supplyName,
+    savedLinkKey
   );
-  const [activeSupplyName, setActiveSupplyName] = useState(supplyName);
   const [newName, setNewName] = useState(itemName);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, start] = useTransition();
-
-  useEffect(() => {
-    // EDIT mode only: this resyncs the control to the SAVED link when the form is
-    // re-pointed at another item. In create mode there is no saved link to resync to,
-    // and running it would silently discard the seeded bottle (#1705) — the chosen id
-    // is the whole payload there.
-    if (!itemId) return;
-    const nextChoice = supplyId != null ? String(supplyId) : "";
-    setChoice(nextChoice);
-    setSavedChoice(nextChoice);
-    setActiveSupplyName(supplyName);
-  }, [itemId, supplyId, supplyName]);
 
   useEffect(() => {
     if (loaded) return;

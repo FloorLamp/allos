@@ -1,6 +1,11 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 // Local draft state whose baseline belongs to a prop/URL selection. A new reset key
 // is reflected during that render, without copying props into state from an effect;
@@ -19,17 +24,20 @@ export function useResettableState<T, K = unknown>(
     setStored({ key: resetKey, value: initialValue });
   }
 
-  const setValue: Dispatch<SetStateAction<T>> = (next) => {
-    setStored((previous) => {
-      return {
-        key: resetKey,
-        value:
-          typeof next === "function"
-            ? (next as (value: T) => T)(previous.value)
-            : next,
-      };
-    });
-  };
+  const setValue: Dispatch<SetStateAction<T>> = useCallback(
+    (next) => {
+      setStored((previous) => {
+        return {
+          key: resetKey,
+          value:
+            typeof next === "function"
+              ? (next as (value: T) => T)(previous.value)
+              : next,
+        };
+      });
+    },
+    [resetKey]
+  );
 
   return [stored.value, setValue];
 }

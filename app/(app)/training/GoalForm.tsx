@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type {
   BodyMetricKind,
   FormResult,
@@ -99,9 +99,14 @@ export default function GoalForm({
     : "exercise";
   const [kind, setKind] = useState(initialKind);
   const [exercise, setExercise] = useState(editGoal?.exercise ?? "");
-  const [metric, setMetric] = useState<GoalMetric>(
-    editGoal?.metric ?? "weight"
-  );
+  const [metric, setMetric] = useState<GoalMetric>(() => {
+    const initialMetric = editGoal?.metric ?? "weight";
+    return isTimed(exercise)
+      ? "hold"
+      : initialMetric === "hold"
+        ? "weight"
+        : initialMetric;
+  });
   const [bodyMetric, setBodyMetric] = useState<BodyMetricKind>(
     editGoal?.body_metric ?? "weight"
   );
@@ -178,12 +183,19 @@ export default function GoalForm({
   })();
 
   const timed = isTimed(exercise);
-  // Timed lifts can only have a hold target; force it.
-  useEffect(() => {
-    if (timed) setMetric("hold");
-    else if (metric === "hold") setMetric("weight");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timed]);
+  // Timed lifts can only have a hold target. Apply that invariant in the same
+  // interaction that changes the exercise, so the form never renders a mismatched
+  // exercise/metric pair and needs no follow-up synchronization render.
+  const chooseExercise = (nextExercise: string) => {
+    setExercise(nextExercise);
+    setMetric((current) =>
+      isTimed(nextExercise)
+        ? "hold"
+        : timed && current === "hold"
+          ? "weight"
+          : current
+    );
+  };
 
   const variant = variantOf(exercise);
   const showEquipment = !!variant && variant.group.equipment.length > 0;
@@ -293,7 +305,7 @@ export default function GoalForm({
             <input type="hidden" name="exercise" value={exercise} />
             <ActivityCombobox
               value={exercise}
-              onChange={setExercise}
+              onChange={chooseExercise}
               options={lifts}
               placeholder="e.g. Bench Press, Squat, Plank"
             />
@@ -306,7 +318,7 @@ export default function GoalForm({
                       key={eq}
                       type="button"
                       onClick={() =>
-                        setExercise(composeVariant(variant!.group, eq))
+                        chooseExercise(composeVariant(variant!.group, eq))
                       }
                       className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                         active
