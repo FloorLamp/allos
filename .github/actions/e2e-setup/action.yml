@@ -31,9 +31,15 @@ runs:
       shell: bash
 
     # Chromium binary cache, keyed on the lockfile (which pins the
-    # @playwright/test version and with it the browser build). On a hit the
-    # ~25s download is skipped and only the OS dependencies are (re)applied —
-    # apt is a near-no-op when they're already present on the runner image.
+    # @playwright/test version and with it the browser build). A miss installs the
+    # browser AND its OS dependencies. A hit does neither: GitHub's hosted Ubuntu
+    # image already carries Chromium's shared libraries, and running install-deps
+    # here shells out to a full apt-get update over every configured third-party
+    # repository. #1986 was a 23-second red shard with no tests because an unrelated
+    # Microsoft apt repo returned 403 after the 269 MB browser cache had restored.
+    # The suite itself is the dependency check on a hit; a genuinely missing shared
+    # library fails at browser launch with that cause instead of depending on every
+    # external apt index on the common path.
     - name: Cache Playwright Chromium
       id: playwright
       uses: actions/cache@v6
@@ -44,11 +50,6 @@ runs:
     - name: Install Playwright Chromium
       if: steps.playwright.outputs.cache-hit != 'true'
       run: npx playwright install --with-deps chromium
-      shell: bash
-
-    - name: Install Playwright OS deps
-      if: steps.playwright.outputs.cache-hit == 'true'
-      run: npx playwright install-deps chromium
       shell: bash
 
     # Next's incremental compile cache, shared ACROSS RUNS (#61): keyed on the
