@@ -21,7 +21,7 @@ import {
 } from "@/lib/fitness-retest";
 import { DATA_QUALITY_PREFIX, dataQualityDedupeKey } from "@/lib/data-quality";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
-import { setUserBirthdate } from "@/lib/settings";
+import { setProfileBirthdate } from "@/lib/settings";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -114,7 +114,7 @@ describe("withFindingClosure — data-quality satisfier (#1305)", () => {
       [DATA_QUALITY_PREFIX],
       (pid, todayISO) =>
         closureFindingSnapshot(pid, [DATA_QUALITY_PREFIX], todayISO),
-      () => setUserBirthdate(profileId, "1990-01-01")
+      () => setProfileBirthdate(profileId, "1990-01-01")
     );
     const keys = cleared.map((f) => f.dedupeKey);
     expect(keys).toContain(dataQualityDedupeKey("birthdate"));

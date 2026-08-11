@@ -18,7 +18,7 @@ import { logSymptomCore } from "@/lib/symptom-log-write";
 import {
   resolveSituationId,
   setProfileSetting,
-  setUserBirthdate,
+  setProfileBirthdate,
 } from "@/lib/settings";
 import {
   serializeSituationEvents,
@@ -169,7 +169,7 @@ describe("illness-care builder — source-published infant band", () => {
     const p = newProfile("infant-fever");
     makeSick(p, 0);
     // ~2 months old: birthdate 60 days ago.
-    setUserBirthdate(p, shiftDateStr(today(p), -60));
+    setProfileBirthdate(p, shiftDateStr(today(p), -60));
     logConsecutive(p, "fever", [2]); // a single fever day
 
     const findings = buildIllnessCareFindings(p, today(p));

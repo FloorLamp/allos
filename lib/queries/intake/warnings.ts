@@ -6,7 +6,11 @@
 // Upper Intake Level (UL) exceedances and known drug/supplement interactions.
 import { today } from "../../db";
 import { ageFromBirthdate } from "../../date";
-import { getUserSex, getUserBirthdate, getStoredAge } from "../../settings";
+import {
+  getProfileSex,
+  getProfileBirthdate,
+  getStoredAge,
+} from "../../settings";
 import {
   stackUlWarnings,
   stackRdaAdequacy,
@@ -138,7 +142,7 @@ function stackDriContext(
 ): {
   items: StackItem[];
   ageYears: number | null;
-  sex: ReturnType<typeof getUserSex>;
+  sex: ReturnType<typeof getProfileSex>;
 } {
   const supplements = getSupplements(profileId);
   const dosesBySupp = new Map<number, (string | null)[]>();
@@ -167,11 +171,11 @@ function stackDriContext(
       optional: isPrn(s),
     }));
 
-  const birthdate = getUserBirthdate(profileId);
+  const birthdate = getProfileBirthdate(profileId);
   const ageYears = birthdate
     ? ageFromBirthdate(birthdate, todayStr)
     : getStoredAge(profileId);
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
   return { items, ageYears, sex };
 }
 

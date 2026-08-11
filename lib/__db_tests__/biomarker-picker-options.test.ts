@@ -15,7 +15,7 @@ import {
 } from "@/lib/queries";
 import { listCompareOptions } from "@/lib/trends-series";
 import { biomarkerRankKey } from "@/lib/biomarker-rank";
-import { setUserBirthdate } from "@/lib/settings";
+import { setProfileBirthdate } from "@/lib/settings";
 
 // The Combobox shows 8 rows and an empty query keeps source order, so the head is
 // what "leads the picker" actually means for a user.
@@ -163,7 +163,7 @@ describe("listCompareOptions after #1675", () => {
     // training-restricted read drops training volume. Ranking must not reintroduce
     // either — it reorders what membership already decided.
     const child = makeProfile("PICKER CHILD");
-    setUserBirthdate(child, shiftDateStr(todayStr, -3650));
+    setProfileBirthdate(child, shiftDateStr(todayStr, -3650));
     const gated = listCompareOptions(child, true);
     const keys = gated.metrics.map((o) => o.key);
     expect(keys).not.toContain("metric:bodyfat");

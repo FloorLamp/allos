@@ -54,8 +54,8 @@ import { shiftDateStr } from "@/lib/date";
 import {
   setTelegramBotConfig,
   setTimezone,
-  setUserBirthdate,
-  setUserSex,
+  setProfileBirthdate,
+  setProfileSex,
 } from "@/lib/settings";
 import { markDoseTaken, markDoseSkipped } from "@/lib/queries";
 import {
@@ -841,7 +841,7 @@ describe("class 2 — additive quick-log buttons", () => {
     const pid = newProfile("Food Fern");
     // An adult profile, so the food nudge is relevant at all. A DEEP-PAST birthdate,
     // never a fixed near-present one.
-    setUserBirthdate(pid, "1970-04-02");
+    setProfileBirthdate(pid, "1970-04-02");
     seedLoginTelegram(pid, "5551798");
     const td = today(pid);
 
@@ -881,7 +881,7 @@ describe("class 2 — additive quick-log buttons", () => {
   // re-expand one they collapsed.
   it("a rebuild preserves the expansion the user set, rather than resetting to the default", async () => {
     const pid = newProfile("Expand Esme");
-    setUserBirthdate(pid, "1970-04-02");
+    setProfileBirthdate(pid, "1970-04-02");
     seedLoginTelegram(pid, "5551807");
     const td = today(pid);
 
@@ -1742,8 +1742,8 @@ describe("preventive: the close states which action resolved (#2275)", () => {
   const RULE = "colorectal_cancer";
   function preventiveProfile(name: string): number {
     const pid = newProfile(name);
-    setUserBirthdate(pid, "1980-01-01");
-    setUserSex(pid, "male");
+    setProfileBirthdate(pid, "1980-01-01");
+    setProfileSex(pid, "male");
     return pid;
   }
   const pvKeyboard = (pid: number) => [

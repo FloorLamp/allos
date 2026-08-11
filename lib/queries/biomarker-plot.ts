@@ -16,9 +16,9 @@
 import { getBiomarkerSeriesWithDerivedFor } from "./derived";
 import { getCanonicalBiomarker } from "./medical";
 import {
-  getUserSex,
-  getUserReproductiveStatus,
-  userAgeResolver,
+  getProfileSex,
+  getProfileReproductiveStatus,
+  profileAgeResolver,
 } from "../settings";
 import {
   referenceRange,
@@ -83,9 +83,9 @@ export function biomarkerPlots(
 
   const seriesByName = getBiomarkerSeriesWithDerivedFor(profileId, names);
 
-  const sex = once(() => getUserSex(profileId));
-  const status = once(() => getUserReproductiveStatus(profileId));
-  const ageResolver = once(() => userAgeResolver(profileId));
+  const sex = once(() => getProfileSex(profileId));
+  const status = once(() => getProfileReproductiveStatus(profileId));
+  const ageResolver = once(() => profileAgeResolver(profileId));
 
   for (const canonical of names) {
     out.set(
@@ -122,8 +122,8 @@ function shapePlot(
   series: MedicalRecord[],
   canonical: string,
   demographics: {
-    sex: () => ReturnType<typeof getUserSex>;
-    status: () => ReturnType<typeof getUserReproductiveStatus>;
+    sex: () => ReturnType<typeof getProfileSex>;
+    status: () => ReturnType<typeof getProfileReproductiveStatus>;
     ageOn: (on: string | null) => number | null;
   }
 ): BiomarkerPlot | null {

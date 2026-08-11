@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — an age-gated food-drug note is threaded end-to-end into the
 // dose reminder (#851 item 4). The alcohol rules gate to "adult" (lib/life-stage), so
 // a CHILD's medication reminder must never carry a "limit alcohol" line, while an
-// ADULT's does. buildSupplementReminder reads the profile's age (getUserAge) and passes
+// ADULT's does. buildSupplementReminder reads the profile's age (getProfileAge) and passes
 // it through renderWindowMessage → matchFoodInteractions; this pins that whole thread
 // against the real DB rather than the pure renderer alone.
 

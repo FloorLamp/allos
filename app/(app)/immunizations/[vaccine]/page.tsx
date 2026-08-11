@@ -10,7 +10,7 @@ import {
   getRankedPickerProviders,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
-import { getUserSex, profileAgeMonths } from "@/lib/settings";
+import { getProfileSex, profileAgeMonths } from "@/lib/settings";
 import {
   assessSchedule,
   type VaccineAssessment,
@@ -59,7 +59,7 @@ export default async function VaccineDetailPage(props: {
   }
 
   const now = today(profile.id);
-  const sex = getUserSex(profile.id);
+  const sex = getProfileSex(profile.id);
   // Canonical age-in-months policy (issue #310): birthdate wins, else stored
   // whole-year age × 12 — shared so this page agrees with the schedule/Upcoming.
   const ageMonths = profileAgeMonths(profile.id, now);

@@ -11,7 +11,7 @@ import { getCycleForecast, getForecastSuspension } from "@/lib/cycle-store";
 import {
   EMPTY_RISK_ATTRIBUTES,
   setRiskAttributes,
-  setUserReproductiveStatus,
+  setProfileReproductiveStatus,
 } from "@/lib/settings";
 
 function newProfile(name: string): number {
@@ -115,12 +115,12 @@ describe("getForecastSuspension — pregnancy and menopause silence the projecti
   it("suspends for an explicit postmenopausal status", () => {
     const p = newProfile("forecast-postmeno");
     seedCycles(p, [28, 28, 28, 28, 28], 9);
-    setUserReproductiveStatus(p, "postmenopausal");
+    setProfileReproductiveStatus(p, "postmenopausal");
     expect(getForecastSuspension(p)).toBe("postmenopausal");
     expect(getCycleForecast(p, today(p)).kind).toBe("suspended");
 
     // A premenopausal status does NOT suspend.
-    setUserReproductiveStatus(p, "premenopausal");
+    setProfileReproductiveStatus(p, "premenopausal");
     expect(getForecastSuspension(p)).toBeNull();
     expect(getCycleForecast(p, today(p)).kind).toBe("forecast");
   });

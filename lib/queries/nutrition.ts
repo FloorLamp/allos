@@ -101,8 +101,8 @@ import {
   type ShortfallFoodSuggestion,
 } from "../nutrition-food-suggestion";
 import {
-  getUserSex,
-  getUserAge,
+  getProfileSex,
+  getProfileAge,
   getExcludedFoodGroups,
   getProteinGoalLevel,
 } from "../settings/profile-attrs";
@@ -1358,8 +1358,8 @@ export function getFiberAdequacy(profileId: number): FiberAdequacy | null {
     unknownSupplement,
   });
   const target = fiberTarget({
-    ageYears: getUserAge(profileId),
-    sex: getUserSex(profileId),
+    ageYears: getProfileAge(profileId),
+    sex: getProfileSex(profileId),
   });
   return assessFiberAdequacy(intake, target);
 }
@@ -1396,8 +1396,8 @@ export function getFiberOnDate(
     unknownSupplement,
   });
   const target = fiberTarget({
-    ageYears: getUserAge(profileId),
-    sex: getUserSex(profileId),
+    ageYears: getProfileAge(profileId),
+    sex: getProfileSex(profileId),
   });
   return assessFiberAdequacy(intake, target);
 }

@@ -201,17 +201,17 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   // --- Session / auth entry points (no profile-owned data mutation) ---
   {
-    file: "app/(app)/user-actions.ts",
+    file: "app/(app)/session-actions.ts",
     fn: "logoutAction",
     why: "session teardown; touches only the session, no profile-owned data",
   },
   {
-    file: "app/(app)/user-actions.ts",
+    file: "app/(app)/profile-context-actions.ts",
     fn: "switchProfileAction",
     why: "moves the session's active-profile pointer (setActiveProfile re-checks accessibility); not a write to profile-owned data, and read-only members must still be able to switch profiles",
   },
   {
-    file: "app/(app)/user-actions.ts",
+    file: "app/(app)/profile-context-actions.ts",
     fn: "setViewProfileAction",
     why: "toggles the session's multi-profile VIEW-SET (#1096), a READ overlay only (toggleViewProfile is grant-validated: an ungranted id is a no-op); mutates no profile-owned data, and read-only members must still be able to view profiles",
   },
@@ -637,7 +637,7 @@ const ROUTE_WRITE_CORES: RegisteredImports = {
   "@/lib/integrations/raw-log": ["writeRawPayload"],
   "@/lib/notifications/temp-red-flag": ["queueTempRedFlagDispatch"],
   "@/lib/queries": ["addCanonicalNames", "reconcileFlags"],
-  "@/lib/settings": ["setUserSex"],
+  "@/lib/settings": ["setProfileSex"],
 };
 
 type RouteGate = {

@@ -26,7 +26,7 @@
 import { db } from "../db";
 import { isGrowthTracked } from "../life-stage";
 import { isGoalLive } from "../outcome-goals";
-import { getHomeLocation, getUserAge } from "../settings";
+import { getHomeLocation, getProfileAge } from "../settings";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "../vitals-input";
 import { PEAK_FLOW_METRIC } from "../peak-flow";
 import { WAIST_CIRC_METRIC } from "../waist-circ-extract";
@@ -108,7 +108,7 @@ export function buildTrendsSubjectContext(
   // ── Life stage ────────────────────────────────────────────────────────────
   // The ONE shared line (lib/life-stage), the same predicate planBodyCharts and
   // the growth quick-add read — never a second age fork.
-  const growthTracked = isGrowthTracked(getUserAge(profileId));
+  const growthTracked = isGrowthTracked(getProfileAge(profileId));
 
   // ── Live goals ────────────────────────────────────────────────────────────
   // Same liveness definition the chart's own target overlay uses (isGoalLive +

@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setUserBirthdate, setUserSex } from "@/lib/settings";
+import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
 import { getMetricJudgment } from "@/lib/queries/metric-judgment";
 import { getMetricObservations } from "@/lib/queries/readings";
 import { foldObservationPoints } from "@/lib/reading-model";
@@ -40,9 +40,9 @@ beforeAll(() => {
   // A two-year-old: birthdate two years and a month back, so the age is 2 on
   // every reading date below.
   const todayStr = today(child.profileId);
-  setUserBirthdate(child.profileId, shiftDateStr(todayStr, -(365 * 2 + 30)));
-  setUserSex(child.profileId, "female");
-  setUserBirthdate(adult.profileId, shiftDateStr(todayStr, -(365 * 40)));
+  setProfileBirthdate(child.profileId, shiftDateStr(todayStr, -(365 * 2 + 30)));
+  setProfileSex(child.profileId, "female");
+  setProfileBirthdate(adult.profileId, shiftDateStr(todayStr, -(365 * 40)));
   // ONLY streamed readings — no imported "Resting Heart Rate" observation at all.
   for (let i = 5; i >= 1; i--) addStreamRhr(child.profileId, d(-i), 118 + i);
   for (let i = 5; i >= 1; i--) addStreamRhr(adult.profileId, d(-i), 55 + i);

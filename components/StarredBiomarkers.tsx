@@ -11,9 +11,9 @@ import {
 import { convertToCanonical } from "@/lib/unit-conversions";
 import {
   getStoredAge,
-  getUserBirthdate,
-  getUserReproductiveStatus,
-  getUserSex,
+  getProfileBirthdate,
+  getProfileReproductiveStatus,
+  getProfileSex,
 } from "@/lib/settings";
 import { ageFromBirthdate } from "@/lib/date";
 import { today } from "@/lib/db";
@@ -56,13 +56,13 @@ export default async function StarredBiomarkers({
   const pid = profileId ?? (await requireSession()).profile.id;
   const starred = getSavedBiomarkers(pid);
   if (starred.length === 0) return null;
-  const sex = getUserSex(pid);
+  const sex = getProfileSex(pid);
   // Reproductive status (female physiology only) overrides the age proxy for the
   // reproductive-hormone ranges; a profile-level attribute, read once.
-  const reproductiveStatus = getUserReproductiveStatus(pid);
+  const reproductiveStatus = getProfileReproductiveStatus(pid);
   // Age-banded ranges are judged against the subject's age on each reading's own
   // date (not today). Read the birthdate/stored-age once; derive per-tile age.
-  const birthdate = getUserBirthdate(pid);
+  const birthdate = getProfileBirthdate(pid);
   const storedAge = getStoredAge(pid);
   const ageOn = (date: string | null) =>
     (birthdate && date ? ageFromBirthdate(birthdate, date) : null) ??

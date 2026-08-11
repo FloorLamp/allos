@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setUserBirthdate, setUserSex } from "@/lib/settings";
+import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
 import { buildTrendsSubjectContext, getBodyCardPins } from "@/lib/queries";
 import { saveItem, setSavedOrder } from "@/lib/queries/saved";
 import { upsertMoodLog } from "@/lib/offline/writes";
@@ -115,7 +115,7 @@ describe("buildTrendsSubjectContext — no signals (the identity case)", () => {
     // tracked set. Presence is the same bucket everywhere, so no signal separates
     // the cards and the static layout survives.
     const { profileId, anchor } = makeProfile("rank-identity-adult");
-    setUserBirthdate(profileId, "1985-04-02");
+    setProfileBirthdate(profileId, "1985-04-02");
     seedWeights(profileId, anchor, 10);
     seedSamples(profileId, "steps", anchor, 10);
     seedVital(profileId, anchor, "Blood Pressure Systolic", 10);
@@ -133,8 +133,8 @@ describe("buildTrendsSubjectContext — no signals (the identity case)", () => {
 describe("buildTrendsSubjectContext — pediatric", () => {
   it("leads with growth for a child, height ahead of weight", () => {
     const { profileId, anchor } = makeProfile("rank-peds");
-    setUserSex(profileId, "female");
-    setUserBirthdate(profileId, shiftDateStr(anchor, -365 * 6)); // ~6 years old
+    setProfileSex(profileId, "female");
+    setProfileBirthdate(profileId, shiftDateStr(anchor, -365 * 6)); // ~6 years old
     seedSamples(profileId, "height_cm", anchor, 6);
     seedWeights(profileId, anchor, 6);
 
@@ -150,7 +150,7 @@ describe("buildTrendsSubjectContext — pediatric", () => {
 
   it("does not treat an adult as growth-tracked", () => {
     const { profileId, anchor } = makeProfile("rank-adult-age");
-    setUserBirthdate(profileId, shiftDateStr(anchor, -365 * 42));
+    setProfileBirthdate(profileId, shiftDateStr(anchor, -365 * 42));
     const ctx = buildTrendsSubjectContext(profileId, anchor);
     expect(ctx.growthTracked).toBe(false);
     expect(rankBodyCards(ctx)[0]).not.toBe("growth");
@@ -160,7 +160,7 @@ describe("buildTrendsSubjectContext — pediatric", () => {
 describe("buildTrendsSubjectContext — live goals", () => {
   it("leads with weight for an adult carrying a live weight goal", () => {
     const { profileId, anchor } = makeProfile("rank-weight-goal");
-    setUserBirthdate(profileId, "1990-01-01");
+    setProfileBirthdate(profileId, "1990-01-01");
     seedWeights(profileId, anchor, 8);
     db.prepare(
       `INSERT INTO goals (profile_id, title, status, body_metric, target_value, archived)
@@ -364,8 +364,8 @@ describe("getBodyCardPins — the Body tab's ★ arrangement", () => {
     // MEMBERSHIP beats ★ (#1643): the pediatric lead is the membership-tier fork
     // #1490 moved into the signal table, so starring weight does not displace it.
     const { profileId, anchor } = makeProfile("pins-peds");
-    setUserSex(profileId, "male");
-    setUserBirthdate(profileId, shiftDateStr(anchor, -365 * 7));
+    setProfileSex(profileId, "male");
+    setProfileBirthdate(profileId, shiftDateStr(anchor, -365 * 7));
     seedSamples(profileId, "height_cm", anchor, 6);
     star(profileId, "weight");
 

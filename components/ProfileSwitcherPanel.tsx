@@ -6,7 +6,7 @@ import Avatar from "@/components/Avatar";
 import {
   switchProfileAction,
   setViewProfileAction,
-} from "@/app/(app)/user-actions";
+} from "@/app/(app)/profile-context-actions";
 
 // THE switcher panel's content (issue #1801) — one component, both viewports.
 //

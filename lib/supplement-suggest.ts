@@ -48,7 +48,7 @@ import {
   screenSuggestionSafety,
   type SafetyContext,
 } from "./supplement-safety";
-import { getAiPrefs, getUserSex, getUserAge } from "./settings";
+import { getAiPrefs, getProfileSex, getProfileAge } from "./settings";
 import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
@@ -189,8 +189,8 @@ function buildContext(
   const conditions = getConditions(profileId, { status: "active" });
   const meds = supplements.filter((s) => s.kind === "medication");
   const plainSupps = supplements.filter((s) => s.kind !== "medication");
-  const sex = getUserSex(profileId);
-  const age = getUserAge(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAge(profileId);
 
   // Out-of-range LOW labs anchor the "must" (deficiency) safeguard below.
   const lowLabNames = oorLabs

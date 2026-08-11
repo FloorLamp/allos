@@ -27,7 +27,7 @@ import {
   createVisitOffers,
 } from "@/lib/queries";
 import { today } from "@/lib/db";
-import { getUserFullName, getUnitPrefs } from "@/lib/settings";
+import { getProfileFullName, getUnitPrefs } from "@/lib/settings";
 import { portalById } from "@/lib/portals";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
@@ -226,7 +226,7 @@ export default async function ImportDetailPage(props: {
   const reconciliationLine = detailReconciliationLine(producedReconciliation);
   const activeTab = resolveImportTab(strip.tabs, searchParams.tab);
   const mismatch = isProvenanceMismatch(doc.patient_name, [
-    getUserFullName(profile.id),
+    getProfileFullName(profile.id),
     profile.name,
   ]);
   // Acquired-by provenance (#1748): the portal registry row this document was pushed in

@@ -3,7 +3,11 @@ import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getBodyMetricDailySeries, getMetricDailyTotals } from "@/lib/queries";
-import { getUnitPrefs, getUserBirthdate, getUserSex } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getProfileBirthdate,
+  getProfileSex,
+} from "@/lib/settings";
 import { ALL_ROWS } from "@/lib/trends";
 import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
 import {
@@ -54,8 +58,8 @@ export default async function GrowthTrendsPage(props: {
     return (query ? `/trends/growth?${query}` : "/trends/growth") as AppRoute;
   };
   const presentation = buildGrowthTrendPresentation({
-    sex: getUserSex(profile.id),
-    birthdate: getUserBirthdate(profile.id),
+    sex: getProfileSex(profile.id),
+    birthdate: getProfileBirthdate(profile.id),
     today: todayStr,
     heights: getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map(
       (row) => ({ date: row.date, value: row.value })

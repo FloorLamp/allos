@@ -9,7 +9,11 @@ import {
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
-import { getUserBirthdate, getUserSex, getStoredAge } from "@/lib/settings";
+import {
+  getProfileBirthdate,
+  getProfileSex,
+  getStoredAge,
+} from "@/lib/settings";
 import { getRiskFactors } from "@/lib/queries/upcoming/risk";
 import { immunizationPriorityFor } from "@/lib/risk-stratification";
 import { ageMonthsFrom } from "@/lib/date";
@@ -108,8 +112,8 @@ export default function ImmunizationsSection({
   const profileId = scope.actingProfileId;
   const multi = scope.viewIds.length > 1;
   const now = today(profileId);
-  const birthdate = getUserBirthdate(profileId);
-  const sex = getUserSex(profileId);
+  const birthdate = getProfileBirthdate(profileId);
+  const sex = getProfileSex(profileId);
   // Age drives the schedule: prefer the birthdate, but fall back to the stored
   // whole-year age (a profile can set an age without a DOB) so adult
   // recommendations still work — only per-band dose placement on the grid

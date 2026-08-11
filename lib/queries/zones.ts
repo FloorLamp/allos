@@ -10,7 +10,7 @@ import { weekWindow } from "../week-window";
 import { getHrMinutesInRange, getLatestBodyMetric } from "./metrics";
 import {
   getMaxHrOverride,
-  getUserAge,
+  getProfileAge,
   getWeekMode,
   getWeekStart,
   getZone2WeeklyTargetMin,
@@ -68,7 +68,7 @@ function hrBuckets(
 // override). Resting HR (latest body_metrics reading) enables Karvonen.
 export function getProfileZoneModel(profileId: number): ZoneModel | null {
   return buildZoneModel({
-    age: getUserAge(profileId),
+    age: getProfileAge(profileId),
     restingHr: getLatestBodyMetric(profileId, "resting_hr"),
     maxHrOverride: getMaxHrOverride(profileId),
   });

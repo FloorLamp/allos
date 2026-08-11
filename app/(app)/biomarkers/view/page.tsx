@@ -56,9 +56,9 @@ import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
   getUnitPrefs,
-  getUserAgeOn,
-  getUserReproductiveStatus,
-  getUserSex,
+  getProfileAgeOn,
+  getProfileReproductiveStatus,
+  getProfileSex,
 } from "@/lib/settings";
 import { degFTo, tempUnitLabel } from "@/lib/units";
 import {
@@ -190,12 +190,12 @@ export default async function BiomarkerDetailPage(props: {
   // range shown reflects the subject's age on the LATEST reading's date (the
   // "age on the collection date, not today" rule); a series that crosses age bands
   // is labeled by that latest band.
-  const sex = getUserSex(profile.id);
+  const sex = getProfileSex(profile.id);
   const latestDate = series[series.length - 1]?.date ?? null;
-  const age = getUserAgeOn(profile.id, latestDate);
+  const age = getProfileAgeOn(profile.id, latestDate);
   // For female physiology, an explicit reproductive status overrides the age proxy
   // when selecting the reproductive-hormone ranges.
-  const reproductiveStatus = getUserReproductiveStatus(profile.id);
+  const reproductiveStatus = getProfileReproductiveStatus(profile.id);
   const ref = referenceRange(cb, sex, age, reproductiveStatus);
   const opt = optimalBand(cb, sex, age);
   const bandLabel = ageBandLabel(ref.band);

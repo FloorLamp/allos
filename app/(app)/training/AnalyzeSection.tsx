@@ -28,7 +28,7 @@ import { chartSeries } from "@/lib/chart-colors";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
-  getUserSex,
+  getProfileSex,
 } from "@/lib/settings";
 import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
@@ -111,7 +111,7 @@ export default async function AnalyzeSection({
   const goalProgress = Object.fromEntries(
     getOutcomeGoalProgressMap(profile.id, goals)
   );
-  const sex = getUserSex(profile.id);
+  const sex = getProfileSex(profile.id);
 
   if (strength.length === 0 && cardio.length === 0 && sports.length === 0) {
     return (

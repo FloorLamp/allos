@@ -13,7 +13,7 @@ import {
 import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import {
   getUnitPrefs,
-  getUserSex,
+  getProfileSex,
   getDisplayFormatPrefs,
 } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
@@ -96,7 +96,7 @@ export default async function HistorySection({
       }}
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}
-      sex={getUserSex(profile.id)}
+      sex={getProfileSex(profile.id)}
       canWriteVideos={feed.canWriteVideos}
       multiView={
         feed.multi ? { actingProfileId: feed.actingProfileId } : undefined

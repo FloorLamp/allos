@@ -9,7 +9,7 @@
 import { plainBody } from "@/lib/notifications/rich-text";
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { setProfileSetting, setUserBirthdate } from "@/lib/settings";
+import { setProfileSetting, setProfileBirthdate } from "@/lib/settings";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { buildFoodNudge } from "@/lib/notifications/food";
 import { seedProfile, type SeededProfile } from "./fixtures";
@@ -73,7 +73,7 @@ describe("buildFoodNudge", () => {
     const infant = seedProfile("food-nudge-infant");
     // < 1 y old → food-group logging is hidden everywhere, nudge included.
     const bd = new Date(t);
-    setUserBirthdate(
+    setProfileBirthdate(
       infant.profileId,
       `${bd.getUTCFullYear()}-${String(bd.getUTCMonth() + 1).padStart(2, "0")}-01`
     );

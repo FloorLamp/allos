@@ -17,7 +17,7 @@
 // `.prepare` lives here and the scoping guard is unaffected.
 
 import { today } from "../db";
-import { getUserSex, getUserAge } from "../settings";
+import { getProfileSex, getProfileAge } from "../settings";
 import { retestDaysForBiomarker } from "../biomarker-retest";
 import {
   getLatestMedicalRecordByCanonical,
@@ -68,8 +68,8 @@ function sriTrendArrow(profileId: number): PillarTrend | null {
 // with no data (age/sex unset, no readings, child-gated bio-age) simply doesn't
 // appear — pillars hide when their data is absent, no composite score.
 export function getHealthspanPillars(profileId: number): Pillar[] {
-  const sex = getUserSex(profileId);
-  const age = getUserAge(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAge(profileId);
 
   const inputs: PillarInputs = {};
 
@@ -173,8 +173,8 @@ function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
 // expanded #biomarkers section (non-optimal first — the judged set and verdicts
 // are optimalShareRows over the SAME gather as the pillar count).
 export function getOptimalShareRows(profileId: number): OptimalShareRow[] {
-  const sex = getUserSex(profileId);
-  const age = getUserAge(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAge(profileId);
   return optimalShareRows(
     gatherOptimalReadings(profileId),
     sex,
@@ -189,8 +189,8 @@ export function getOptimalShareRows(profileId: number): OptimalShareRow[] {
 export function getOptimalHitRate(profileId: number): OptimalHitRate {
   return optimalRangeHitRate(
     gatherOptimalReadings(profileId),
-    getUserSex(profileId),
-    getUserAge(profileId),
+    getProfileSex(profileId),
+    getProfileAge(profileId),
     today(profileId)
   );
 }

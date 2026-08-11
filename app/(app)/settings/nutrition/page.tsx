@@ -1,5 +1,5 @@
 import {
-  getUserAge,
+  getProfileAge,
   getExcludedFoodGroups,
   getProteinGoalLevel,
 } from "@/lib/settings";
@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 // uses — but the route explains itself rather than 404-ing (see the Training page).
 export default async function NutritionSettingsPage() {
   const { login, profile } = await requireSession();
-  const relevant = isFoodLoggingRelevant(getUserAge(profile.id));
+  const relevant = isFoodLoggingRelevant(getProfileAge(profile.id));
   return (
     <SettingsGroupLayout group="nutrition" login={login} profile={profile}>
       <PageContainer width="form" className="space-y-6">

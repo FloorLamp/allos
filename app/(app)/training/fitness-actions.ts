@@ -20,7 +20,7 @@ import { heartRateRecovery, sittingRisingResult } from "@/lib/vo2-field-tests";
 import { estimate1RM } from "@/lib/strength";
 import { liftInfo } from "@/lib/lifts";
 import { toKg, kgTo } from "@/lib/units";
-import { getUserSex, getUserAgeOn, getUnitPrefs } from "@/lib/settings";
+import { getProfileSex, getProfileAgeOn, getUnitPrefs } from "@/lib/settings";
 import { setFitnessRetestCadenceDays } from "@/lib/settings";
 import { getLatestBodyMetric } from "@/lib/queries";
 import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
@@ -76,8 +76,8 @@ export async function saveFitnessTest(
   const date = isRealIsoDate(dateRaw) ? dateRaw : today(profile.id);
   const note = fd.get("note") ? String(fd.get("note")) : null;
 
-  const sex = getUserSex(profile.id);
-  const age = getUserAgeOn(profile.id, date);
+  const sex = getProfileSex(profile.id);
+  const age = getProfileAgeOn(profile.id, date);
   const weightUnit = getUnitPrefs(login.id).weightUnit;
 
   let value: number | null = null;

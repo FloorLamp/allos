@@ -26,7 +26,7 @@ import { today } from "../db";
 import {
   getProfilesByTelegramChatId,
   getTimezone,
-  getUserAge,
+  getProfileAge,
 } from "../settings";
 import { now as clockNow } from "../clock";
 import {
@@ -327,7 +327,7 @@ function doseRebuild(
     profileId,
     parts,
     date,
-    getUserAge(profileId)
+    getProfileAge(profileId)
   );
 }
 

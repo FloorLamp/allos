@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { setUserBirthdate, setUserSex } from "@/lib/settings";
+import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
 import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
@@ -24,8 +24,8 @@ function femaleProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
-  setUserBirthdate(id, "1986-01-01");
-  setUserSex(id, "female");
+  setProfileBirthdate(id, "1986-01-01");
+  setProfileSex(id, "female");
   return id;
 }
 

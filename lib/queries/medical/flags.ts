@@ -32,10 +32,10 @@ export function flagReconcileProfileContext(profileId: number) {
     cbByName,
     resolve,
     ctx: {
-      sex: getUserSex(profileId),
-      birthdate: getUserBirthdate(profileId),
+      sex: getProfileSex(profileId),
+      birthdate: getProfileBirthdate(profileId),
       age: getStoredAge(profileId),
-      reproductiveStatus: getUserReproductiveStatus(profileId),
+      reproductiveStatus: getProfileReproductiveStatus(profileId),
       periods: listCyclePeriods(profileId),
     },
   };
@@ -206,8 +206,8 @@ import {
 import type { PersistInput } from "../../import-shape";
 import {
   getStoredAge,
-  getUserBirthdate,
-  getUserReproductiveStatus,
-  getUserSex,
+  getProfileBirthdate,
+  getProfileReproductiveStatus,
+  getProfileSex,
 } from "../../settings";
 import type { CanonicalBiomarker } from "../../types";

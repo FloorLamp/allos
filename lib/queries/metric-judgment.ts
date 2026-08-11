@@ -26,10 +26,10 @@ import {
 } from "../metric-judgment";
 import { readingIdentity } from "../reading-model";
 import {
-  getUserAge,
-  getUserAgeOn,
-  getUserReproductiveStatus,
-  getUserSex,
+  getProfileAge,
+  getProfileAgeOn,
+  getProfileReproductiveStatus,
+  getProfileSex,
 } from "../settings";
 import type { BodyMetricSlug } from "../trends-body-metrics";
 
@@ -59,9 +59,11 @@ export function getMetricJudgment(
     {
       // The subject's age ON the reading's date; today's age only when the
       // reading has no date to be judged as of.
-      age: onDate ? getUserAgeOn(profileId, onDate) : getUserAge(profileId),
-      sex: getUserSex(profileId),
-      status: getUserReproductiveStatus(profileId),
+      age: onDate
+        ? getProfileAgeOn(profileId, onDate)
+        : getProfileAge(profileId),
+      sex: getProfileSex(profileId),
+      status: getProfileReproductiveStatus(profileId),
       value,
     },
     [entry]

@@ -1,5 +1,5 @@
 import {
-  getUserAge,
+  getProfileAge,
   getMaxHrOverride,
   getStepsDailyTarget,
   getZone2WeeklyTargetMin,
@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 // never dead-end.
 export default async function TrainingSettingsPage() {
   const { login, profile } = await requireSession();
-  const age = getUserAge(profile.id);
+  const age = getProfileAge(profile.id);
   const restricted = isTrainingRestricted(profile.id);
   return (
     <SettingsGroupLayout group="training" login={login} profile={profile}>

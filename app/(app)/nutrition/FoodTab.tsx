@@ -22,7 +22,7 @@ import {
 } from "@/lib/queries";
 import { formatWeekdayDate } from "@/lib/format-date";
 import {
-  getUserAge,
+  getProfileAge,
   getExcludedFoodGroups,
 } from "@/lib/settings/profile-attrs";
 import { preferenceSuggestionNote } from "@/lib/dietary-preferences";
@@ -167,7 +167,7 @@ export default async function FoodTab({
   // the serving logger is meaningless for them (issue #591). Show a calm note instead
   // of the logger; the nav entry is hidden by the same predicate, and this server-side
   // gate covers a direct URL. Eligible on unknown age (hide only on a positive match).
-  if (!isFoodLoggingRelevant(getUserAge(profile.id))) {
+  if (!isFoodLoggingRelevant(getProfileAge(profile.id))) {
     return (
       <div>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">

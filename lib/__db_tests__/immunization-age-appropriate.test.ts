@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER — age-appropriate immunization status (issue #552), through
 // the SAME age resolution the page + Upcoming generator use (getImmunizations +
-// profileAgeMonths + getUserSex → assessSchedule). The pure engine is covered in
+// profileAgeMonths + getProfileSex → assessSchedule). The pure engine is covered in
 // lib/__tests__/immunization-status.test.ts; this pins the end-to-end wiring on a
 // seeded profile per the #448 convention: an adult with no rotavirus record reads
 // `not_recommended` (age-inappropriate), NOT `unknown`; a child missing MMR still
@@ -10,10 +10,10 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { getImmunizations, getImmunityTiters } from "@/lib/queries";
 import {
-  setUserBirthdate,
-  setUserSex,
+  setProfileBirthdate,
+  setProfileSex,
   profileAgeMonths,
-  getUserSex,
+  getProfileSex,
 } from "@/lib/settings";
 import { assessSchedule } from "@/lib/immunization-status";
 import { shiftDateStr } from "@/lib/date";
@@ -23,8 +23,8 @@ function makeProfile(name: string, birthdate: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
-  setUserBirthdate(id, birthdate);
-  setUserSex(id, "female");
+  setProfileBirthdate(id, birthdate);
+  setProfileSex(id, "female");
   return id;
 }
 
@@ -37,7 +37,7 @@ function statusFor(profileId: number, code: string, now: string): string {
       date: r.date,
     })),
     profileAgeMonths(profileId, now),
-    getUserSex(profileId),
+    getProfileSex(profileId),
     now,
     getImmunityTiters(profileId).map((t) => ({
       marker: t.marker,

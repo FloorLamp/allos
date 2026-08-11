@@ -36,7 +36,11 @@ import {
   LAB_GOAL_IN_RANGE,
   LAB_GOAL_TARGET,
 } from "../fixture-logins";
-import { getTimezone, setUserBirthdate, setUserSex } from "../../lib/settings";
+import {
+  getTimezone,
+  setProfileBirthdate,
+  setProfileSex,
+} from "../../lib/settings";
 import { reconcileFlags } from "../../lib/queries";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
 import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
@@ -729,8 +733,8 @@ export function seedLabValueGoal(): void {
   // in e2e/logins/training.ts for why it is a dedicated, write-granted profile.
   const pid = fixtureProfileId(LAB_GOAL_PROFILE);
   seedMemberLogin(E2E_LOGIN_LAB_GOAL, pid, "write");
-  setUserBirthdate(pid, "1984-02-19");
-  setUserSex(pid, "male");
+  setProfileBirthdate(pid, "1984-02-19");
+  setProfileSex(pid, "male");
   const anchor = today(pid);
 
   db.prepare(

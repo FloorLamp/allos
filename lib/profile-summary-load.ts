@@ -1,10 +1,10 @@
 import { db, today } from "./db";
 import {
   getAdvanceDirectives,
-  getUserAge,
-  getUserSex,
-  getUserBirthdate,
-  getUserFullName,
+  getProfileAge,
+  getProfileSex,
+  getProfileBirthdate,
+  getProfileFullName,
   getBloodType,
 } from "./settings";
 import { ageInMonthsFromBirthdate } from "./date";
@@ -87,10 +87,10 @@ export function getProfileSummary(
 ): ProfileSummary {
   // Age (months) + sex drive both the pediatric growth badges and the
   // immunization schedule assessment; resolve them up front.
-  const birthdate = getUserBirthdate(profileId);
+  const birthdate = getProfileBirthdate(profileId);
   const now = today(profileId);
   const ageMonths = birthdate ? ageInMonthsFromBirthdate(birthdate, now) : null;
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
 
   const abo = getLatestMedicalRecordByCanonical(profileId, ABO_CANONICAL);
   const rh = getLatestMedicalRecordByCanonical(profileId, RH_CANONICAL);
@@ -280,8 +280,8 @@ export function getProfileSummary(
   const restingHr = getLatestBodyMetricDated(profileId, "resting_hr");
 
   return buildProfileSummary({
-    name: getUserFullName(profileId) ?? fallbackName,
-    age: getUserAge(profileId),
+    name: getProfileFullName(profileId) ?? fallbackName,
+    age: getProfileAge(profileId),
     ageMonths,
     sex,
     hasBirthdate: birthdate != null,

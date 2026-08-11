@@ -9,7 +9,7 @@ import {
 } from "@/lib/settings-groups";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
-import { getUserAge } from "@/lib/settings";
+import { getProfileAge } from "@/lib/settings";
 import type { SessionLogin, SessionProfile } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import SettingsGroupNav from "./SettingsGroupNav";
@@ -26,7 +26,7 @@ export function settingsGroupContext(
   return {
     isAdmin: login.role === "admin",
     trainingRelevant: !isTrainingRestricted(profile.id),
-    nutritionRelevant: isFoodLoggingRelevant(getUserAge(profile.id)),
+    nutritionRelevant: isFoodLoggingRelevant(getProfileAge(profile.id)),
   };
 }
 

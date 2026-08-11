@@ -3,7 +3,7 @@ import { IconArrowRight } from "@tabler/icons-react";
 import {
   getTrashRetentionDays,
   getUnitPrefs,
-  getUserFullName,
+  getProfileFullName,
 } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
@@ -133,7 +133,7 @@ export default async function DataPage(
         // (#1777) — rendered so the standing block is findable and reversible.
         blockedDocuments={listDocumentTombstones(profile.id)}
         // The profile's own name(s), for the document provenance-mismatch flag.
-        knownNames={[getUserFullName(profile.id), profile.name]}
+        knownNames={[getProfileFullName(profile.id), profile.name]}
         activityClusters={activityClusters}
         bodyMetricPairs={bodyMetricPairs}
         unitMislabels={unitMislabels}

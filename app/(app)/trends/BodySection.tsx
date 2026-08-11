@@ -8,9 +8,9 @@ import { sriPresentation } from "@/lib/sleep-regularity";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
-  getUserSex,
-  getUserBirthdate,
-  getUserAge,
+  getProfileSex,
+  getProfileBirthdate,
+  getProfileAge,
   getHomeLocation,
   getTimezone,
 } from "@/lib/settings";
@@ -322,8 +322,8 @@ export default async function BodySection({
   // and ⋯-menu arrows write — and the ranker sequences everything unpinned. There is
   // no second arrangement store; #1490's writerless `trends_card_order` key retired
   // with this change.
-  const ageYears = getUserAge(profile.id);
-  const birthdate = getUserBirthdate(profile.id);
+  const ageYears = getProfileAge(profile.id);
+  const birthdate = getProfileBirthdate(profile.id);
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
@@ -869,8 +869,8 @@ export default async function BodySection({
   // (ALL_ROWS) — the default 180-row cap silently started the percentile track ~6
   // months ago on a daily-synced child (#399). weightSeries already uses ALL_ROWS.
   const growthPresentation = buildGrowthTrendPresentation({
-    sex: getUserSex(profile.id),
-    birthdate: getUserBirthdate(profile.id),
+    sex: getProfileSex(profile.id),
+    birthdate: getProfileBirthdate(profile.id),
     today: todayStr,
     heights: getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map(
       (r) => ({ date: r.date, value: r.value })

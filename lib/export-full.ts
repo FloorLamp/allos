@@ -9,9 +9,9 @@ import { SYMPTOM_PHOTO_DIR } from "./symptom-photo-write";
 import { DATASETS, RESTRICTED_DATASETS } from "./export";
 import { isTrainingRestricted } from "./age-gate";
 import {
-  getUserSex,
-  getUserBirthdate,
-  getUserFullName,
+  getProfileSex,
+  getProfileBirthdate,
+  getProfileFullName,
   getBloodType,
   getEmergencyContact,
   getSmokingHistory,
@@ -474,9 +474,9 @@ export function collectFhirExportInput(
 
   const smoking = getSmokingHistory(profileId);
   const profile = {
-    name: getUserFullName(profileId) ?? displayName,
-    sex: getUserSex(profileId),
-    birthdate: getUserBirthdate(profileId),
+    name: getProfileFullName(profileId) ?? displayName,
+    sex: getProfileSex(profileId),
+    birthdate: getProfileBirthdate(profileId),
     bloodType: getBloodType(profileId),
     emergencyContact: getEmergencyContact(profileId),
     smoking: {
