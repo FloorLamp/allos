@@ -214,17 +214,14 @@ export default function IntradayChart({
   }, [view, model.date, model.hr, profileId]);
 
   // ── Gestures ─────────────────────────────────────────────────────────────
-  const minuteAtClientX = useCallback(
-    (clientX: number): number | null => {
-      const svg = svgRef.current;
-      if (!svg) return null;
-      const rect = svg.getBoundingClientRect();
-      if (rect.width === 0) return null;
-      const userX = ((clientX - rect.left) / rect.width) * geo.viewBoxWidth;
-      return minuteAtX(geo, userX);
-    },
-    [geo]
-  );
+  const minuteAtClientX = (clientX: number): number | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0) return null;
+    const userX = ((clientX - rect.left) / rect.width) * geo.viewBoxWidth;
+    return minuteAtX(geo, userX);
+  };
 
   const applyZoom = useCallback((from: number, to: number) => {
     const lo = Math.min(from, to);

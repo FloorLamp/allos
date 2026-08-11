@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import LineChartCard from "@/components/LineChartCard";
 import StackedBarCard from "@/components/StackedBarCard";
 import SegmentedControl from "@/components/SegmentedControl";
@@ -66,13 +66,11 @@ export default function SleepTrendsSection({
     seriesKey: SLEEP_STAGES_SERIES_KEY,
     ...fillWindow,
   };
-  const average = useMemo(() => {
-    if (durationData.length === 0) return null;
-    return (
-      durationData.reduce((sum, point) => sum + point.value, 0) /
-      durationData.length
-    );
-  }, [durationData]);
+  const average =
+    durationData.length === 0
+      ? null
+      : durationData.reduce((sum, point) => sum + point.value, 0) /
+        durationData.length;
   if (!hasAvailableData && !regularityCard && !consistencyCard) return null;
 
   const cards: TrendCard[] = [];
