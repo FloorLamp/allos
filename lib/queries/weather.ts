@@ -11,7 +11,10 @@ import { getHomeLocation, getTimezone } from "@/lib/settings";
 import { getSkinType } from "@/lib/settings";
 import { solarDay, solarElevation, tzOffsetHours } from "@/lib/sun";
 import { daylightWindow, hhmmToMin } from "@/lib/daylight";
-import { getUvHoursForDay } from "@/lib/integrations/weather-cache";
+import {
+  getUvHoursForDays,
+  type CachedUvHour,
+} from "@/lib/integrations/weather-cache";
 import {
   computeUvDose,
   elevationUvCeiling,
@@ -27,72 +30,81 @@ function hourOf(hourTs: string): number | null {
   return h >= 0 && h <= 23 ? h : null;
 }
 
-// The daylight-clipped OUTDOOR windows for a profile on a date (local minutes past
-// midnight), the same "outdoor" signal (avg_temp_c present OR a captured route) and the
-// same daylight intersection lib/queries/sun uses — so the dose crosses exactly the
-// #571 daylight-outdoor time. Profile-scoped (activities.profile_id).
-function outdoorWindowsForDay(
+interface UvWindow {
+  startMin: number;
+  endMin: number;
+}
+
+// The daylight-clipped OUTDOOR windows for a profile across a SET of dates (local
+// minutes past midnight), the same "outdoor" signal (avg_temp_c present OR a captured
+// route) and the same daylight intersection lib/queries/sun uses — so the dose crosses
+// exactly the #571 daylight-outdoor time. Profile-scoped (activities.profile_id).
+//
+// ONE widened read over the whole set (#2113), the shape
+// getDaylightOutdoorMinutesByDay already uses one module over: the solar window is the
+// only per-date input, and it is pure geometry.
+function outdoorWindowsForDays(
   profileId: number,
-  date: string,
+  dates: readonly string[],
   lat: number,
   lng: number,
   timezone: string
-): { windows: { startMin: number; endMin: number }[] } {
-  const day = solarDay(lat, lng, date, timezone);
-  const win = daylightWindow(day);
-  if (!win) return { windows: [] };
+): Map<string, UvWindow[]> {
+  const out = new Map<string, UvWindow[]>();
+  const wanted = [...new Set(dates)];
+  if (wanted.length === 0) return out;
 
+  const placeholders = wanted.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT a.start_time, a.end_time
+      `SELECT a.date, a.start_time, a.end_time
          FROM activities a
         WHERE a.profile_id = ?
-          AND a.date = ?
+          AND a.date IN (${placeholders})
           AND a.start_time IS NOT NULL AND a.end_time IS NOT NULL
           AND (a.avg_temp_c IS NOT NULL
                OR EXISTS (SELECT 1 FROM activity_routes r WHERE r.activity_id = a.id))`
     )
-    .all(profileId, date) as {
+    .all(profileId, ...wanted) as {
+    date: string;
     start_time: string | null;
     end_time: string | null;
   }[];
 
-  const windows: { startMin: number; endMin: number }[] = [];
+  const winByDate = new Map<string, { start: number; end: number } | null>();
   for (const r of rows) {
+    let win = winByDate.get(r.date);
+    if (win === undefined) {
+      win = daylightWindow(solarDay(lat, lng, r.date, timezone));
+      winByDate.set(r.date, win);
+    }
+    if (!win) continue;
     const start = hhmmToMin(r.start_time);
     const end = hhmmToMin(r.end_time);
     if (start == null || end == null || end <= start) continue;
     const clipStart = Math.max(start, win.start);
     const clipEnd = Math.min(end, win.end);
-    if (clipEnd > clipStart)
-      windows.push({ startMin: clipStart, endMin: clipEnd });
+    if (clipEnd <= clipStart) continue;
+    const list = out.get(r.date) ?? [];
+    list.push({ startMin: clipStart, endMin: clipEnd });
+    out.set(r.date, list);
   }
-  return { windows };
+  return out;
 }
 
-// The UV-dose result for a profile on a date, or null when the feature is OFF (no home
-// location — sun features quietly absent, the #570 degrade-gracefully pattern). When a
-// home location is set, the degradation ladder always yields at least a clear-sky
-// estimate from sun.ts geometry, so the dose is defined even fully offline.
-export function getUvDoseForDay(
-  profileId: number,
-  date: string
-): UvDoseResult | null {
-  const home = getHomeLocation(profileId);
-  if (!home) return null;
-  const timezone = getTimezone(profileId);
-  const { windows } = outdoorWindowsForDay(
-    profileId,
-    date,
-    home.lat,
-    home.lng,
-    timezone
-  );
-  const skinType = getSkinType(profileId);
-
+// The dose for ONE date, over inputs the caller already gathered. Pure assembly — no
+// DB reads — so the single-date and the whole-feed entry points below run byte-identical
+// math (#221: one question, one computation).
+function uvDoseFromInputs(
+  date: string,
+  windows: UvWindow[],
+  cached: CachedUvHour[],
+  home: { lat: number; lng: number },
+  timezone: string,
+  skinType: ReturnType<typeof getSkinType>
+): UvDoseResult {
   // No outdoor daylight time → a zero-minute dose (still resolve the source so callers
   // can render "0 min outdoors" consistently).
-  const cached = getUvHoursForDay(home.lat, home.lng, date);
   const liveByHour = new Map<number, number>();
   const clearSkyByHour = new Map<number, number>();
   for (const c of cached) {
@@ -153,4 +165,60 @@ export function getUvDoseForDay(
   const uvSource: UvSource = anyLive ? "live" : "clear-sky";
 
   return computeUvDose({ windows, hourlyUv, uvSource, skinType });
+}
+
+// The UV-dose result for a profile on a date, or null when the feature is OFF (no home
+// location — sun features quietly absent, the #570 degrade-gracefully pattern). When a
+// home location is set, the degradation ladder always yields at least a clear-sky
+// estimate from sun.ts geometry, so the dose is defined even fully offline.
+export function getUvDoseForDay(
+  profileId: number,
+  date: string
+): UvDoseResult | null {
+  return getUvDoseForDays(profileId, [date]).get(date) ?? null;
+}
+
+// The same answer for every date in a SET, in a FIXED number of statements (#2113):
+// home location, timezone and skin type are profile facts that do not vary by date, and
+// the activities + cached-UV reads are each widened over the whole set. The Timeline
+// renders a UV chip per day, and asking the single-date accessor inside that loop cost
+// ~4 statements per rendered day on the second-most-visited page.
+//
+// An empty Map when the profile has no home location — every date is absent, which the
+// single-date reader above turns back into its `null`. Otherwise EVERY requested date
+// carries an entry, including days with no outdoor time (a zero-minute dose), exactly
+// as the per-day read did.
+export function getUvDoseForDays(
+  profileId: number,
+  dates: readonly string[]
+): Map<string, UvDoseResult> {
+  const out = new Map<string, UvDoseResult>();
+  const wanted = [...new Set(dates)];
+  if (wanted.length === 0) return out;
+  const home = getHomeLocation(profileId);
+  if (!home) return out;
+  const timezone = getTimezone(profileId);
+  const skinType = getSkinType(profileId);
+  const windowsByDate = outdoorWindowsForDays(
+    profileId,
+    wanted,
+    home.lat,
+    home.lng,
+    timezone
+  );
+  const cachedByDate = getUvHoursForDays(home.lat, home.lng, wanted);
+  for (const date of wanted) {
+    out.set(
+      date,
+      uvDoseFromInputs(
+        date,
+        windowsByDate.get(date) ?? [],
+        cachedByDate.get(date) ?? [],
+        home,
+        timezone,
+        skinType
+      )
+    );
+  }
+  return out;
 }

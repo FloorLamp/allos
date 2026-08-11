@@ -65,7 +65,7 @@ import {
   parseViewMode,
   type ViewMode,
 } from "@/lib/multi-view";
-import { getUvDoseForDay } from "@/lib/queries/weather";
+import { getUvDoseForDays } from "@/lib/queries/weather";
 import {
   getDaylightOutdoorMinutesByDay,
   getSymptomSeveritiesOnDate,
@@ -589,10 +589,16 @@ export default async function TimelinePage(props: {
     { uvMinutes: number | null; peakUvIndex: number | null }
   >();
   if (!multiFeed && home) {
-    for (const [date, mins] of daylightOutdoor) {
-      if (mins <= 0) continue;
-      const dose = getUvDoseForDay(daySubjectId, date);
-      if (dose && dose.uvSource === "live") {
+    // ONE widened read for the whole feed (#2113), the same lesson notableByDay
+    // records 20 lines above: the per-day accessor re-read home location, timezone,
+    // skin type and a day's activities on every iteration — none of which vary — so a
+    // 300-event page issued hundreds of statements for a chip. Only days with daylight
+    // outdoor minutes are asked about, exactly as the per-day loop did.
+    const uvDates = [...daylightOutdoor]
+      .filter(([, mins]) => mins > 0)
+      .map(([date]) => date);
+    for (const [date, dose] of getUvDoseForDays(daySubjectId, uvDates)) {
+      if (dose.uvSource === "live") {
         uvByDay.set(date, {
           uvMinutes: dose.uvMinutes,
           peakUvIndex: dose.peakUvIndex,

@@ -135,17 +135,41 @@ export function getUvHoursForDay(
   lng: number,
   date: string
 ): CachedUvHour[] {
+  return getUvHoursForDays(lat, lng, [date]).get(date) ?? [];
+}
+
+// The same series for a SET of local dates in ONE read (#2113) — a Map date→hours,
+// carrying an entry only for the dates that have cached rows (the single-date reader
+// above turns a missing entry back into its empty array). The Timeline's UV chip asks
+// about every rendered day at once; asking day-by-day cost one statement per day.
+//
+// Bounded by hour_ts BETWEEN the set's first and last day so the UNIQUE(lat, lng,
+// hour_ts) index still range-scans, then pruned by the date set itself — a feed
+// spanning a year must not drag in every cached hour between its two ends. The upper
+// bound is `<{last}U` because 'U' is the codepoint after 'T': it admits the whole
+// `{last}T23:00` day and nothing of the next date.
+export function getUvHoursForDays(
+  lat: number,
+  lng: number,
+  dates: readonly string[]
+): Map<string, CachedUvHour[]> {
+  const out = new Map<string, CachedUvHour[]>();
+  const wanted = [...new Set(dates)].sort();
+  if (wanted.length === 0) return out;
   const la = roundCoord(lat);
   const ln = roundCoord(lng);
+  const placeholders = wanted.map(() => "?").join(",");
   const rows = db
     .prepare(
       `SELECT hour_ts, uv_index, uv_index_clear_sky, shortwave_radiation,
               direct_radiation, diffuse_radiation, precipitation_mm
          FROM weather_uv_hours
-        WHERE lat = ? AND lng = ? AND hour_ts LIKE ?
+        WHERE lat = ? AND lng = ?
+          AND hour_ts >= ? AND hour_ts < ?
+          AND substr(hour_ts, 1, 10) IN (${placeholders})
         ORDER BY hour_ts`
     )
-    .all(la, ln, `${date}T%`) as {
+    .all(la, ln, `${wanted[0]}T`, `${wanted[wanted.length - 1]}U`, ...wanted) as {
     hour_ts: string;
     uv_index: number | null;
     uv_index_clear_sky: number | null;
@@ -154,15 +178,21 @@ export function getUvHoursForDay(
     diffuse_radiation: number | null;
     precipitation_mm: number | null;
   }[];
-  return rows.map((r) => ({
-    hourTs: r.hour_ts,
-    uvIndex: num(r.uv_index),
-    uvIndexClearSky: num(r.uv_index_clear_sky),
-    shortwaveRadiation: num(r.shortwave_radiation),
-    directRadiation: num(r.direct_radiation),
-    diffuseRadiation: num(r.diffuse_radiation),
-    precipitationMm: num(r.precipitation_mm),
-  }));
+  for (const r of rows) {
+    const date = r.hour_ts.slice(0, 10);
+    const list = out.get(date) ?? [];
+    list.push({
+      hourTs: r.hour_ts,
+      uvIndex: num(r.uv_index),
+      uvIndexClearSky: num(r.uv_index_clear_sky),
+      shortwaveRadiation: num(r.shortwave_radiation),
+      directRadiation: num(r.direct_radiation),
+      diffuseRadiation: num(r.diffuse_radiation),
+      precipitationMm: num(r.precipitation_mm),
+    });
+    out.set(date, list);
+  }
+  return out;
 }
 
 // ---- The DAILY cache (issue #1726) ------------------------------------------------
