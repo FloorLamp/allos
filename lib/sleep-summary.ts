@@ -11,18 +11,18 @@
 
 import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "./date";
 import { isStreamActive } from "./stream-activity";
-import { formatLongDate, type DisplayFormatPrefs } from "./format-date";
 import {
-  mainSleepPeriod,
-  sleepSessionDurationMinutes,
-  type SleepSession,
-} from "./sleep-regularity";
+  formatClockMinutes,
+  formatLongDate,
+  type DisplayFormatPrefs,
+  type TimeFormat,
+} from "./format-date";
+import { mainSleepPeriod, type SleepSession } from "./sleep-regularity";
 import type { BedtimeSupplementSummary } from "./sleep-bedtime-supplements";
 
-// A night's stage breakdown (minutes), as stored per wake-day in metric_samples
-// (getSleepStageDailyTotals). These are the DAY totals (they sum a same-day nap's
-// stages if any) — the hero renders them as an at-a-glance composition, not a
-// per-session split, which the stored samples don't carry.
+// A night's MAIN-sleep stage breakdown (minutes), attributed from timestamped
+// metric_samples by getSleepStageDailyTotals. Nap stages stay out so the stage
+// stack and the main-sleep duration describe the same session.
 export interface SleepStageMinutes {
   deep: number;
   rem: number;
@@ -30,10 +30,21 @@ export interface SleepStageMinutes {
   awake: number;
 }
 
+// One clock-window formatter for every sleep surface. The Last night hero/tile,
+// today's nap card/widget, and nap history all use the same arrow and the same
+// login-scoped 12/24-hour preference.
+export function formatSleepWindow(
+  timeFormat: TimeFormat,
+  startMinutes: number,
+  endMinutes: number
+): string {
+  return `${formatClockMinutes(timeFormat, startMinutes)} → ${formatClockMinutes(timeFormat, endMinutes)}`;
+}
+
 // The "last night" model: the MAIN overnight session (#1118) reduced to the facts
 // the hero and the dashboard tile render — never a score (the pillars-not-a-
-// composite stance). A same-day nap is a SEPARATE figure (`napMin`), never folded
-// into `durationMin`.
+// composite stance). Naps are deliberately absent: the detailed nap model owns
+// them, and `durationMin` remains main sleep only.
 export interface LastNightSummary {
   // Local calendar date of the main session's END (the wake-up day).
   wakeDay: string;
@@ -44,8 +55,6 @@ export interface LastNightSummary {
   // login's 12h/24h pref (formatClockMinutes) — issue #1163.
   bedMinutes: number | null;
   wakeMinutes: number | null;
-  // Sum of any OTHER (nap) sessions that wake-day, minutes; 0 when there were none.
-  napMin: number;
   // Trailing-baseline mean of MAIN-session durations over the prior `baselineDays`
   // nights (this night excluded), or null when there aren't enough prior nights.
   baselineAvgMin: number | null;
@@ -97,14 +106,9 @@ export function lastNightSummary(
   const period = mainSleepPeriod(group);
   if (!period) return null; // every session that day was a labeled nap
 
-  // A merged segmented night (#1191) is ONE main sleep spanning its fragments: its
-  // duration is the summed asleep minutes, and only sessions OUTSIDE the merged
-  // members count as a same-day nap (a deliberate second sleep is no longer a nap).
+  // A merged segmented night (#1191) is ONE main sleep spanning its fragments and
+  // its duration is the summed asleep minutes.
   const durationMin = period.durationMin;
-  const members = new Set<SleepSession>(period.members);
-  const napMin = group
-    .filter((s) => !members.has(s))
-    .reduce((t, s) => t + sleepSessionDurationMinutes(s), 0);
 
   // Baseline: the mean MAIN-session duration over the prior wake-days that fall in
   // [latest − baselineDays, latest − 1]. Uses the SAME main-vs-nap classification
@@ -130,14 +134,10 @@ export function lastNightSummary(
     // last (#1191). For a single overnight these are its own bed/wake, unchanged.
     bedMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(period.start)).hhmm),
     wakeMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(period.end)).hhmm),
-    napMin,
     baselineAvgMin,
     deltaMin,
     baselineNights,
-    // Daily stage totals can include a same-wake-day nap. Do not attach those to
-    // a hero explicitly describing the MAIN overnight session; the full stage
-    // chart below remains an honest wake-day total.
-    stages: napMin > 0 ? null : (stagesByDay.get(latest) ?? null),
+    stages: stagesByDay.get(latest) ?? null,
     source: period.main.source ?? null,
   };
 }
@@ -168,7 +168,6 @@ export function latestDailySleepSummary(
     durationMin,
     bedMinutes: null,
     wakeMinutes: null,
-    napMin: 0,
     baselineAvgMin,
     deltaMin: baselineAvgMin == null ? null : durationMin - baselineAvgMin,
     baselineNights: prior.length,

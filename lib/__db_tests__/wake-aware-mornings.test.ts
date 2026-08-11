@@ -83,7 +83,8 @@ beforeAll(() => {
   setTimezone(wakeProfile, "UTC");
   const td = today(wakeProfile); // profile-local (UTC) date, for the freshness gate
   upsertMetricSamples(wakeProfile, nights(td, 16, "07:00"), "health-connect");
-  // A 45-min afternoon nap the latest wake-day + a stage breakdown for it.
+  // A 45-min afternoon nap on the latest wake-day, plus main-night stages. The
+  // digest must keep the stages and ignore the later nap.
   upsertMetricSamples(
     wakeProfile,
     [
@@ -196,7 +197,7 @@ describe("gatherDigestSleep — default-on + freshness (#1117/#1378)", () => {
     expect(gatherDigestSleep(wakeProfile)).toBeNull();
   });
 
-  it("returns the main-session figures, nap, stages, and SRI when opted in", () => {
+  it("returns the as-of-wake main-session figures, stages, and SRI when opted in", () => {
     setProfileSleepDigest(wakeProfile, true);
     const s = gatherDigestSleep(wakeProfile);
     expect(s).not.toBeNull();
@@ -204,11 +205,62 @@ describe("gatherDigestSleep — default-on + freshness (#1117/#1378)", () => {
     // summaries use that reported value while timing still uses 23:00→07:00.
     expect(s!.lastNightMin).toBe(420);
     expect(s!.baselineMin).toBe(420);
-    expect(s!.napMin).toBe(45); // the afternoon nap, on its own
     expect(s!.deepMin).toBe(65);
     expect(s!.remMin).toBe(95);
     expect(typeof s!.sri).toBe("number"); // 16 consecutive nights → SRI present
     setProfileSleepDigest(wakeProfile, false);
+  });
+
+  it("an afternoon nap cannot change the morning digest Sleep model", () => {
+    const id = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('DigestNapFreeze')").run()
+        .lastInsertRowid
+    );
+    setTimezone(id, "UTC");
+    const td = today(id);
+    upsertMetricSamples(
+      id,
+      [
+        ...nights(td, 16, "07:00"),
+        session(
+          "sleep_deep_min",
+          td,
+          65,
+          `${shiftDateStr(td, -1)}T23:00:00Z`,
+          `${td}T07:00:00Z`
+        ),
+        session(
+          "sleep_rem_min",
+          td,
+          95,
+          `${shiftDateStr(td, -1)}T23:00:00Z`,
+          `${td}T07:00:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+    setProfileSleepDigest(id, true);
+    const morning = gatherDigestSleep(id);
+    expect(morning).not.toBeNull();
+
+    upsertMetricSamples(
+      id,
+      [
+        session("sleep_min", td, 45, `${td}T13:00:00Z`, `${td}T13:45:00Z`),
+        session(
+          "sleep_light_min",
+          td,
+          45,
+          `${td}T13:00:00Z`,
+          `${td}T13:45:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+
+    // Prose reconciliation may notice the ledger write, but rebuilding yields the
+    // identical body model, so Telegram performs no edit.
+    expect(gatherDigestSleep(id)).toEqual(morning);
   });
 
   it("returns null when the newest night is stale (not last night)", () => {

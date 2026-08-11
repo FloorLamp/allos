@@ -39,13 +39,14 @@
 
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
 
-// The cards the strip can promote. Three are dashboard widget ids (the strip
+// The cards the strip can promote. Four are dashboard widget ids (the strip
 // renders the grid's own node for them); `session-recap` is the post-workout card
 // the page already renders standalone above the grid (#924), named here so the
 // ranker can decide its position too rather than leaving one promotion path out.
 export const NOW_CARD_IDS = [
   "session-recap",
   "sleep-last-night",
+  "naps-today",
   "nutrition-today",
   "symptom-log",
 ] as const;
@@ -86,6 +87,7 @@ export const DEFAULT_WAKE_MINUTES = DEFAULT_INTAKE_REMINDER_MINUTES.Morning;
 //                    forever. It outranks sleep on purpose (an early-morning
 //                    workout puts both in range; the recap is the perishable one).
 //   - sleep          The morning ritual, and the reason the wake signal exists.
+//   - naps           The same just-woke glance, anchored to today's actual nap end.
 //   - symptom-log    The evening check-in, but only while it is still UNDONE —
 //                    a completed check-in scores nothing at all.
 //   - nutrition      The most frequent signal (three anchors a day), so it sits
@@ -93,6 +95,7 @@ export const DEFAULT_WAKE_MINUTES = DEFAULT_INTAKE_REMINDER_MINUTES.Morning;
 const TIER: Record<NowCardId, number> = {
   "session-recap": 400,
   "sleep-last-night": 300,
+  "naps-today": 300,
   "symptom-log": 200,
   "nutrition-today": 100,
 };
@@ -115,6 +118,10 @@ export interface NowSignals {
   // window below still decides WHEN, which keeps the pre-wake in-progress state
   // off the strip by construction.
   sleepWaiting: boolean;
+  // Minutes since today's latest nap ended, or null when no nap was recorded.
+  // The nap model owns classification; the ranker only applies the same just-woke
+  // window used for the main-sleep card.
+  napEndedMinAgo: number | null;
   // Minutes since a just-finished workout that has something to recap, or null.
   // Sourced from `getWorkoutPresence().sinceMin` while state is "finished" and
   // the recap carries working sets — the SAME gate the standalone card uses.
@@ -179,6 +186,12 @@ function scoreCard(id: NowCardId, s: NowSignals): number | null {
       // Earlier in the window ranks higher: the sleep card matters most the
       // moment you pick up the phone, and fades as the day starts.
       return TIER["sleep-last-night"] - since / 2;
+    }
+    case "naps-today": {
+      if (s.napEndedMinAgo === null) return null;
+      if (s.napEndedMinAgo < 0 || s.napEndedMinAgo > WAKE_WINDOW_MIN)
+        return null;
+      return TIER["naps-today"] - s.napEndedMinAgo / 2;
     }
     case "symptom-log": {
       // Evening, and only while today's check-in is still undone. A completed
