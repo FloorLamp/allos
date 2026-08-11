@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import AnnotationToggleBar from "./AnnotationToggleBar";
@@ -19,6 +20,55 @@ import {
   serializeAnnotationVisibility,
   type AnnotationVisibility,
 } from "@/lib/trend-annotation-visibility";
+
+const ANNOTATION_VISIBILITY_CHANGED = "allos:annotation-visibility-changed";
+const DEFAULT_VISIBILITY_SNAPSHOT = serializeAnnotationVisibility(
+  defaultAnnotationVisibility()
+);
+let visibilitySnapshot: string | undefined;
+
+function readVisibilitySnapshot(): string {
+  if (visibilitySnapshot !== undefined) return visibilitySnapshot;
+  try {
+    visibilitySnapshot =
+      window.localStorage.getItem(TREND_ANNOTATION_VISIBILITY_KEY) ??
+      DEFAULT_VISIBILITY_SNAPSHOT;
+  } catch {
+    visibilitySnapshot = DEFAULT_VISIBILITY_SNAPSHOT;
+  }
+  return visibilitySnapshot;
+}
+
+function serverVisibilitySnapshot(): string {
+  return DEFAULT_VISIBILITY_SNAPSHOT;
+}
+
+function subscribeVisibility(onChange: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== TREND_ANNOTATION_VISIBILITY_KEY) return;
+    visibilitySnapshot = event.newValue ?? DEFAULT_VISIBILITY_SNAPSHOT;
+    onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(ANNOTATION_VISIBILITY_CHANGED, onChange);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(ANNOTATION_VISIBILITY_CHANGED, onChange);
+  };
+}
+
+const subscribeInactive = () => () => {};
+
+function publishVisibility(next: AnnotationVisibility): void {
+  const raw = serializeAnnotationVisibility(next);
+  visibilitySnapshot = raw;
+  try {
+    window.localStorage.setItem(TREND_ANNOTATION_VISIBILITY_KEY, raw);
+  } catch {
+    // Keep the current page interactive even when persistence is unavailable.
+  }
+  window.dispatchEvent(new Event(ANNOTATION_VISIBILITY_CHANGED));
+}
 
 // The Trends hub's event-annotation / protocol-window toggles, HOISTED (issue
 // #1493 A).
@@ -62,44 +112,17 @@ const Ctx = createContext<AnnotationToggleContext | null>(null);
 function usePersistedVisibility(
   active = true
 ): [AnnotationVisibility, (kind: AnnotationKind) => void] {
-  const [enabled, setEnabled] = useState<AnnotationVisibility>(
-    defaultAnnotationVisibility
+  const raw = useSyncExternalStore(
+    active ? subscribeVisibility : subscribeInactive,
+    active ? readVisibilitySnapshot : serverVisibilitySnapshot,
+    serverVisibilitySnapshot
   );
-
-  useEffect(() => {
-    if (!active) return;
-    try {
-      setEnabled(
-        parseAnnotationVisibility(
-          window.localStorage.getItem(TREND_ANNOTATION_VISIBILITY_KEY)
-        )
-      );
-    } catch {
-      // localStorage may be unavailable in hardened/private browser contexts.
-      // The in-memory default remains fully usable for the current page.
-    }
-
-    const syncFromAnotherTab = (event: StorageEvent) => {
-      if (event.key !== TREND_ANNOTATION_VISIBILITY_KEY) return;
-      setEnabled(parseAnnotationVisibility(event.newValue));
-    };
-    window.addEventListener("storage", syncFromAnotherTab);
-    return () => window.removeEventListener("storage", syncFromAnotherTab);
-  }, [active]);
-
+  const enabled = useMemo(() => parseAnnotationVisibility(raw), [raw]);
   const toggle = useCallback((kind: AnnotationKind) => {
-    setEnabled((current) => {
-      const next = { ...current, [kind]: !current[kind] };
-      try {
-        window.localStorage.setItem(
-          TREND_ANNOTATION_VISIBILITY_KEY,
-          serializeAnnotationVisibility(next)
-        );
-      } catch {
-        // Keep the current page interactive even when persistence is unavailable.
-      }
-      return next;
-    });
+    // Read the store at the interaction boundary so two rapid toggles compose even
+    // before React has rendered the first external-store notification.
+    const current = parseAnnotationVisibility(readVisibilitySnapshot());
+    publishVisibility({ ...current, [kind]: !current[kind] });
   }, []);
 
   return [enabled, toggle];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconHistory } from "@tabler/icons-react";
@@ -11,6 +11,42 @@ import {
   recordPageVisit,
   type TrackedPage,
 } from "@/lib/recent-pages";
+
+const PAGE_VISITS_CHANGED = "allos:page-visits-changed";
+let visitsSnapshot: string | null | undefined;
+
+function readVisitsSnapshot(): string | null {
+  if (visitsSnapshot !== undefined) return visitsSnapshot;
+  try {
+    visitsSnapshot = window.localStorage.getItem(PAGE_VISITS_KEY);
+  } catch {
+    visitsSnapshot = null;
+  }
+  return visitsSnapshot;
+}
+
+function serverVisitsSnapshot(): null {
+  return null;
+}
+
+function subscribeVisits(onChange: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== PAGE_VISITS_KEY) return;
+    visitsSnapshot = event.newValue;
+    onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(PAGE_VISITS_CHANGED, onChange);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(PAGE_VISITS_CHANGED, onChange);
+  };
+}
+
+function publishVisits(raw: string): void {
+  visitsSnapshot = raw;
+  window.dispatchEvent(new Event(PAGE_VISITS_CHANGED));
+}
 
 // "Frequent" shortcuts at the top of the shared sidebar content (issue #1416,
 // section E3) — the browser half over the pure tally in lib/recent-pages.ts.
@@ -31,7 +67,14 @@ export default function FrequentPages({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const [pages, setPages] = useState<TrackedPage[]>([]);
+  const storedSnapshot = useSyncExternalStore(
+    subscribeVisits,
+    readVisitsSnapshot,
+    serverVisitsSnapshot
+  );
+  const pages: TrackedPage[] = frequentPages(parsePageVisits(storedSnapshot), {
+    currentPath: pathname,
+  });
 
   useEffect(() => {
     let stored;
@@ -43,15 +86,15 @@ export default function FrequentPages({
     }
     const next = recordPageVisit(stored, pathname, Date.now());
     if (next !== stored) {
+      const raw = JSON.stringify(next);
       try {
-        window.localStorage.setItem(PAGE_VISITS_KEY, JSON.stringify(next));
+        window.localStorage.setItem(PAGE_VISITS_KEY, raw);
       } catch {
-        // Quota or a locked store — the shortcuts just stop learning.
+        // Quota or a locked store — keep learning for this page lifetime even
+        // though the tally cannot survive a reload.
       }
+      publishVisits(raw);
     }
-    // Rank from the POST-visit tally so the current page's own visit counts, but
-    // exclude the page you're standing on (a shortcut to here is a wasted row).
-    setPages(frequentPages(next, { currentPath: pathname }));
   }, [pathname]);
 
   if (pages.length === 0) return null;
