@@ -122,7 +122,11 @@ export default function GrowthChart({
   // band so the curves are legible without a separate legend. Returns a named
   // render fn (recharts calls it per-dot) so the label sits at the curve's end.
   function endLabel(percentile: number) {
-    const render = (props: { cx?: number; cy?: number; index?: number }) => {
+    return function BandEndLabel(props: {
+      cx?: number;
+      cy?: number;
+      index?: number;
+    }) {
       const { cx, cy, index } = props;
       const key = `lbl-${percentile}`;
       if (cx == null || cy == null || index !== bandLastIndex.get(percentile))
@@ -141,8 +145,6 @@ export default function GrowthChart({
         </text>
       );
     };
-    render.displayName = `BandEndLabel${percentile}`;
-    return render;
   }
 
   return (

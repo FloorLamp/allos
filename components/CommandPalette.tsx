@@ -749,16 +749,19 @@ function SearchResults({
   committing: boolean;
   rowClass: (active: boolean) => string;
 }) {
-  let flatIndex = base - 1;
   return (
     <>
-      {groups.map((group) => (
+      {groups.map((group, groupIndex) => (
         <div key={group.domain} className="mb-2">
           <div className="px-2 pb-1 pt-2 section-label">{group.label}</div>
           <ul>
-            {group.hits.map((hit) => {
-              flatIndex += 1;
-              const itemIdx = flatIndex;
+            {group.hits.map((hit, hitIndex) => {
+              const itemIdx =
+                base +
+                groups
+                  .slice(0, groupIndex)
+                  .reduce((count, prior) => count + prior.hits.length, 0) +
+                hitIndex;
               const active = itemIdx === highlight;
               const Icon = DOMAIN_ICONS[hit.domain];
               const actions = hit.actions ?? [];

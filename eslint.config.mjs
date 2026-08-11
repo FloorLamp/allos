@@ -42,21 +42,17 @@ const config = [
   },
   ...nextCoreWebVitals,
   // eslint-config-next 16 bundles eslint-plugin-react-hooks v6, whose
-  // next/core-web-vitals preset newly enables the "React Compiler" rule family
-  // (set-state-in-effect, refs, preserve-manual-memoization, purity,
-  // immutability). None of these were in the 15.x lint surface, and turning them
-  // on flags ~37 pre-existing, working patterns across the app. To keep this
-  // framework bump behavior-neutral (a tooling move, not a code refactor), they
-  // are turned back off here — adopting them is deliberately a separate,
-  // product-reviewed follow-up (tracked with #1859). exhaustive-deps and the rest
-  // of the prior surface stay enforced.
+  // next/core-web-vitals preset newly enables the "React Compiler" rule family.
+  // Four families still flag pre-existing, working patterns across the app. Keep
+  // their remaining adoption product-reviewed and tracked with #1859;
+  // immutability has completed its burn-down and stays enforced alongside
+  // exhaustive-deps and the rest of the prior surface.
   {
     rules: {
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/refs": "off",
       "react-hooks/preserve-manual-memoization": "off",
       "react-hooks/purity": "off",
-      "react-hooks/immutability": "off",
     },
   },
 ];

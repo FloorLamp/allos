@@ -14,6 +14,17 @@ import { chartSeries } from "@/lib/chart-colors";
 import { StatBox } from "@/components/StatBox";
 import Link from "next/link";
 
+function cumulativeDistanceChart(
+  trend: CardioStat["trend"],
+  unit: UnitPrefs["distanceUnit"]
+) {
+  let totalKm = 0;
+  return trend.map((point) => {
+    totalKm += point.distanceKm;
+    return { date: point.date, value: round(kmTo(totalKm, unit), 2) };
+  });
+}
+
 // Per-cardio-activity detail: records grid, a distance- (or duration-) over-time
 // trend, and the last few sessions linked to their best activity destination.
 export default function CardioDetailPanel({
@@ -46,11 +57,7 @@ export default function CardioDetailPanel({
     value: t.speedKmh != null ? round(kmTo(t.speedKmh, du), 1) : null,
   }));
   // Running total distance over time.
-  let cumKm = 0;
-  const cumChart = stat.trend.map((t) => {
-    cumKm += t.distanceKm;
-    return { date: t.date, value: round(kmTo(cumKm, du), 2) };
-  });
+  const cumChart = cumulativeDistanceChart(stat.trend, du);
 
   return (
     <div>
