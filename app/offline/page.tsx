@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { IconEmergencyBed, IconArrowLeft } from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
 import EmergencyCardView from "@/components/EmergencyCardView";
@@ -10,6 +10,8 @@ import {
   parseEmergencyPayload,
   type EmergencyCard,
 } from "@/lib/emergency-card";
+
+const subscribeToEmergencyCard = () => () => {};
 
 // Offline fallback shown by the service worker (public/sw.js) when a page
 // navigation fails with no network. It's a static, session-free page — added to
@@ -22,13 +24,16 @@ import {
 // it instead of dead-ending. localStorage is cleared on logout / profile switch,
 // so a stale card never lingers.
 export default function OfflinePage() {
-  const [card, setCard] = useState<EmergencyCard | null>(null);
+  const emergencyRaw = useSyncExternalStore(
+    subscribeToEmergencyCard,
+    readEmergencyPayloadRaw,
+    () => null
+  );
+  const card = useMemo<EmergencyCard | null>(
+    () => parseEmergencyPayload(emergencyRaw)?.card ?? null,
+    [emergencyRaw]
+  );
   const [showCard, setShowCard] = useState(false);
-
-  useEffect(() => {
-    const parsed = parseEmergencyPayload(readEmergencyPayloadRaw());
-    setCard(parsed?.card ?? null);
-  }, []);
 
   // `data-offline-shell` + `offline-card` hook the CSS-only prefers-color-scheme
   // base in globals.css (#2183): this page must render sensibly under OS dark

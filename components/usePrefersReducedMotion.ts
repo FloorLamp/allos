@@ -1,6 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+function reducedMotionSnapshot(): boolean {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+function subscribeToReducedMotion(onChange: () => void): () => void {
+  const query = window.matchMedia(REDUCED_MOTION_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
 
 // Whether the viewer asked for reduced motion (#1307) — the ONE implementation, shared
 // by every surface that owes the preference an answer. Extracted from FitnessCheckView
@@ -8,17 +20,14 @@ import { useEffect, useState } from "react";
 // same preference gates it, and two copies of a media-query subscription is exactly the
 // hand-mirrored-second-engine shape the one-computation rule exists to stop.
 //
-// Read AFTER mount, defaulting false, so SSR and the first client render agree (no
-// hydration mismatch); the effect corrects it immediately. Playwright's `reducedMotion`
-// context option flips the underlying query, so specs can drive both branches.
+// The server snapshot is false, so SSR and the first hydration pass agree. React then
+// reads the media-query snapshot and subscribes to later OS changes without a
+// setState-in-effect handoff. Playwright's `reducedMotion` context option flips the
+// underlying query, so specs can drive both branches.
 export function usePrefersReducedMotion(): boolean {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduce(mq.matches);
-    const on = () => setReduce(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return reduce;
+  return useSyncExternalStore(
+    subscribeToReducedMotion,
+    reducedMotionSnapshot,
+    () => false
+  );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+import { useHydrated } from "./useHydrated";
 
 /** Count-up duration. The one "delight" animation the chart layer keeps
  *  (issue #1445, Part 3c) — long enough to read as a tick-up, short enough that
@@ -49,8 +50,7 @@ export default function CountUpNumber({
   // false so SSR and the first client render agree), so the count-up waits one
   // tick for the real answer rather than starting a 400ms tick-up under someone
   // who asked for no motion and cancelling it a frame later.
-  const [resolved, setResolved] = useState(false);
-  useEffect(() => setResolved(true), []);
+  const resolved = useHydrated();
 
   useEffect(() => {
     if (!resolved || played.current || reduced || value == null || value <= 0)

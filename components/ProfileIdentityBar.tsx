@@ -9,6 +9,7 @@ import ProfileSwitcherPanel from "@/components/ProfileSwitcherPanel";
 import { usePresence } from "@/components/usePresence";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { useHydrated } from "@/components/useHydrated";
 import { useFocusTrap } from "@/components/useFocusTrap";
 import {
   OverlayDragHandle,
@@ -98,7 +99,7 @@ export default function ProfileIdentityBar({
   // swallowed by the not-yet-hydrated tree, so the panel never opens (#830).
   // Server renders mounted=false → disabled; the client's first render matches;
   // the effect then enables it. Same idiom as ThemeToggle's mount gate.
-  const [mounted, setMounted] = useState(false);
+  const mounted = useHydrated();
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
@@ -108,8 +109,6 @@ export default function ProfileIdentityBar({
     isMobile && open,
     motionMs("switcher", reduceMotion)
   );
-
-  useEffect(() => setMounted(true), []);
 
   // Light-dismiss for the DESKTOP expando: an outside pointer-down or Escape.
   // The mobile drawer gets its own scrim/focus trap below.

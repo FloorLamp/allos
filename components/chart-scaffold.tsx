@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { LabelProps } from "recharts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+import { useHydrated } from "./useHydrated";
 import type { ChartColors } from "./useChartColors";
 
 /** recharts' own label-anchor union, re-exported so a caller doesn't reach into
@@ -315,21 +316,18 @@ export interface ChartMotion {
  */
 export function useChartMotion(): ChartMotion {
   const reduced = usePrefersReducedMotion();
-  const [phase, setPhase] = useState<"init" | "run" | "done">("init");
+  const hydrated = useHydrated();
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
-    setPhase("run");
-  }, []);
-
-  useEffect(() => {
-    if (phase !== "run") return;
-    const t = setTimeout(() => setPhase("done"), CHART_MOUNT_MS + 100);
+    if (!hydrated) return;
+    const t = setTimeout(() => setDone(true), CHART_MOUNT_MS + 100);
     return () => clearTimeout(t);
-  }, [phase]);
+  }, [hydrated]);
 
   return {
     reduced,
-    isAnimationActive: !reduced && phase === "run",
+    isAnimationActive: hydrated && !reduced && !done,
     animationDuration: CHART_MOUNT_MS,
     animationEasing: "ease-out",
     hoverDuration: reduced ? 0 : CHART_HOVER_MS,

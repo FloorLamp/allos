@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   IconAlertTriangle,
@@ -9,6 +9,7 @@ import {
   IconChevronUp,
 } from "@tabler/icons-react";
 import Collapse from "@/components/Collapse";
+import { useHydrated } from "@/components/useHydrated";
 import { CARD_BAND_LABELS, type CardBand } from "@/lib/attention";
 
 // The collapsible shell around the "Needs attention" hero (issue #1413, section B).
@@ -64,8 +65,7 @@ export default function AttentionHeroCard({
   // the real behavior instead of racing it (the #1416 `data-ready` precedent) —
   // the server-rendered card is fully readable before this flips, it just isn't
   // yet collapsible.
-  const [ready, setReady] = useState(false);
-  useEffect(() => setReady(true), []);
+  const ready = useHydrated();
 
   // How many preference writes have SETTLED, in the `savedAt`-counter shape the
   // app's other autosaving surfaces already use (SaveStatus / useSaveStatus).
