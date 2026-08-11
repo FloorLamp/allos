@@ -47,12 +47,8 @@ export default function GlobalError({
   // client render, so the card never paints light-then-dark. Server-rendered output
   // (no window) falls back to light and is corrected at hydration, which is what the
   // suppressHydrationWarning below covers — the same trade the root layout makes.
-  const [dark, setDark] = useState(() => detectDark());
+  const [dark] = useState(() => detectDark());
   const [recovering, setRecovering] = useState(false);
-
-  useEffect(() => {
-    setDark(detectDark());
-  }, []);
 
   useEffect(() => {
     let pendingRaw: string | null = null;
@@ -88,8 +84,13 @@ export default function GlobalError({
     } catch {
       return;
     }
-    setRecovering(true);
-    hardReload();
+    // Navigation is the external-system response. Queue its short-lived UI state
+    // with the navigation itself rather than cascading another render directly
+    // from the effect body.
+    queueMicrotask(() => {
+      setRecovering(true);
+      hardReload();
+    });
   }, [error]);
 
   const palette = errorCardPalette(dark);

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Combobox from "./Combobox";
+import { useHydrated } from "./useHydrated";
 import {
   seriesPickerOptions,
   SERIES_PICKER_GROUP_ORDER,
@@ -30,9 +31,8 @@ export default function SaveTrendKeyPicker({
     () => new Map(options.map((o) => [o.label, o])),
     [options]
   );
-  const [enhanced, setEnhanced] = useState(false);
+  const enhanced = useHydrated();
   const [label, setLabel] = useState("");
-  useEffect(() => setEnhanced(true), []);
 
   const picked = byLabel.get(label.trim());
   const star = (

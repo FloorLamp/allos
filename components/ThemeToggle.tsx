@@ -1,22 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   isDarkTheme,
   normalizeThemeChoice,
   THEME_STORAGE_KEY,
   type ThemeChoice,
 } from "@/lib/theme";
+import { useHydrated } from "./useHydrated";
 
 type Theme = ThemeChoice;
 
 const ORDER: Theme[] = ["system", "light", "dark"];
+const THEME_CHANGE_EVENT = "allos:theme-change";
 
 const LABELS: Record<Theme, string> = {
   system: "System",
   light: "Light",
   dark: "Dark",
 };
+
+function themeSnapshot(): Theme {
+  return normalizeThemeChoice(localStorage.getItem(THEME_STORAGE_KEY));
+}
+
+function serverThemeSnapshot(): Theme {
+  return "system";
+}
+
+function subscribeToTheme(onChange: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY) onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(THEME_CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(THEME_CHANGE_EVENT, onChange);
+  };
+}
 
 // Apply the effective theme by toggling the `dark` class on <html>, so a toggle
 // takes effect without a reload. The RULE is lib/theme.ts's — shared with the boot
@@ -75,12 +97,14 @@ function Icon({ theme }: { theme: Theme }) {
 // `bare` drops btn-ghost's own border/background for placement inside an
 // already-bordered container (e.g. the sidebar footer box).
 export default function ThemeToggle({ bare = false }: { bare?: boolean }) {
-  const [theme, setTheme] = useState<Theme>("system");
-  const [mounted, setMounted] = useState(false);
+  const theme = useSyncExternalStore(
+    subscribeToTheme,
+    themeSnapshot,
+    serverThemeSnapshot
+  );
+  const mounted = useHydrated();
 
   useEffect(() => {
-    setTheme(normalizeThemeChoice(localStorage.getItem(THEME_STORAGE_KEY)));
-    setMounted(true);
     // Keep "system" in sync if the OS preference changes while the app is open.
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
@@ -97,8 +121,8 @@ export default function ThemeToggle({ bare = false }: { bare?: boolean }) {
 
   function cycle() {
     const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length];
-    setTheme(next);
     localStorage.setItem(THEME_STORAGE_KEY, next);
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
     apply(next);
   }
 
