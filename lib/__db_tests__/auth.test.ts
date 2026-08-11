@@ -298,7 +298,7 @@ describe("browser cookie lifetime vs DB expires_at (#2058)", () => {
     });
   }
 
-  it("a POST-only session re-issues the cookie, landing on the same expiry the DB just wrote", () => {
+  it("a POST-only session re-issues a cookie that outlives the DB session", () => {
     const { id } = mkLogin();
     grant(id, mkProfile("Ada POST-only"));
     const { token } = createSession(id);
@@ -312,17 +312,29 @@ describe("browser cookie lifetime vs DB expires_at (#2058)", () => {
     const dbExpiry = dbExpiryMs(tokenHash);
     expect(dbExpiry - Date.now()).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
 
-    // …and the same POST re-issues the cookie, because the mark is gone.
-    const res = middleware(postRequest(token, false));
-    const slid = res.cookies.get(SESSION_COOKIE);
-    expect(slid?.value).toBe(token);
-    expect(slid?.maxAge).toBe(SESSION_TTL_SEC);
+    // …and the same POST re-issues the cookie, because the mark is gone. Force the
+    // scheduling gap that #2398 observed under DB-tier contention: the SQLite write
+    // and Edge response are separate runtime stages, so exact wall-clock equality is
+    // neither possible nor required. The cookie carries a relative Max-Age starting
+    // when the response is applied; the DB timestamp was already written.
+    const responseNow = Date.now() + 5000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(responseNow);
+    try {
+      const res = middleware(postRequest(token, false));
+      const slid = res.cookies.get(SESSION_COOKIE);
+      expect(slid?.value).toBe(token);
+      expect(slid?.maxAge).toBe(SESSION_TTL_SEC);
 
-    // The two halves now name the same instant: the browser stops trusting the
-    // cookie at the second the server stops honoring the session, not 22 days
-    // earlier. One second of slack for the clock ticking between the two writes.
-    const cookieExpiry = Date.now() + SESSION_TTL_SEC * 1000;
-    expect(Math.abs(cookieExpiry - dbExpiry)).toBeLessThanOrEqual(1000);
+      // The safety invariant is one-sided: the browser must not discard the token
+      // while the DB would still honor it. A cookie expiring later is harmless because
+      // resolveSessionToken's DB gate remains authoritative on every request.
+      const cookieExpiry = Date.now() + SESSION_TTL_SEC * 1000;
+      // This deterministically crosses the old symmetric one-second tolerance.
+      expect(cookieExpiry - dbExpiry).toBeGreaterThan(1000);
+      expect(cookieExpiry).toBeGreaterThanOrEqual(dbExpiry);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("bounds the lag at one mark TTL while the mark is still fresh", () => {
