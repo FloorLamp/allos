@@ -67,7 +67,10 @@ export default function OverflowMenu({
   // stale position.
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
-  const close = () => onOpenChange(false);
+  const close = () => {
+    setPos(null);
+    onOpenChange(false);
+  };
   const runAction: MenuHelpers["runAction"] = async (action, fd, message) => {
     let result: MenuActionResult;
     try {
@@ -109,14 +112,20 @@ export default function OverflowMenu({
     setPos({ top, left });
   }, []);
 
-  // Measure once the panel is in the DOM (before paint), then track scroll (in
-  // any ancestor, hence capture) and resize while open.
+  // The portal node entering the DOM is the event that makes measurement possible.
+  // Measure from that ref callback before the panel becomes visible; subsequent
+  // scroll/resize callbacks keep it aligned.
+  const attachMenu = useCallback(
+    (node: HTMLDivElement | null) => {
+      menuRef.current = node;
+      if (node) reposition();
+    },
+    [reposition]
+  );
+
+  // Track scroll (in any ancestor, hence capture) and resize while open.
   useLayoutEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
-    reposition();
+    if (!open) return;
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
     return () => {
@@ -141,7 +150,15 @@ export default function OverflowMenu({
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => onOpenChange(!open)}
+        onClick={() => {
+          if (open) close();
+          else {
+            // A new open episode must measure before painting; never reuse the
+            // previous episode position while the portal ref is attaching.
+            setPos(null);
+            onOpenChange(true);
+          }
+        }}
         aria-label={label}
         title={label}
         aria-haspopup="menu"
@@ -159,7 +176,7 @@ export default function OverflowMenu({
             {/* click-away backdrop */}
             <div className="fixed inset-0 z-40" onClick={close} />
             <div
-              ref={menuRef}
+              ref={attachMenu}
               role="menu"
               style={{
                 position: "fixed",

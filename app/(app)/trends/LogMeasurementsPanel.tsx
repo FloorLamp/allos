@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { IconPlus } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { deepLinkFieldId } from "@/lib/measurements-deeplink";
+import { useHydrated } from "@/components/useHydrated";
 import MeasurementsQuickAdd, {
   type MeasurementsQuickAddProps,
 } from "./MeasurementsQuickAdd";
@@ -36,6 +37,22 @@ import MeasurementsQuickAdd, {
 // breakpoint string matches Tailwind's `md`.
 const DESKTOP_QUERY = "(min-width: 768px)";
 
+function subscribeDesktop(onChange: () => void): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const query = window.matchMedia(DESKTOP_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function desktopSnapshot(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.(DESKTOP_QUERY).matches
+  );
+}
+
+const serverDesktopSnapshot = () => false;
+
 export default function LogMeasurementsPanel(
   props: Omit<MeasurementsQuickAddProps, "onSaved" | "headerSlot"> & {
     leftControl: ReactNode;
@@ -50,19 +67,34 @@ export default function LogMeasurementsPanel(
   );
   const deepLinked = deepLinkTarget != null;
   const modalInitialFocusRef = useRef<HTMLElement | null>(null);
-  const [open, setOpen] = useState(false);
+  // null means the user has not overridden the deep-link default for this mount.
+  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
   const { open: openQuickEntry } = useQuickEntry();
+  const hydrated = useHydrated();
+  const desktop = useSyncExternalStore(
+    subscribeDesktop,
+    desktopSnapshot,
+    serverDesktopSnapshot
+  );
+  // Freeze the responsive destination at the first hydrated snapshot. Rotating a
+  // phone after its quick-entry overlay opens must not also produce the desktop
+  // modal for the same deep link.
+  const [deepLinkDestination, setDeepLinkDestination] = useState<
+    "pending" | "desktop" | "mobile"
+  >("pending");
+  if (deepLinked && hydrated && deepLinkDestination === "pending") {
+    setDeepLinkDestination(desktop ? "desktop" : "mobile");
+  }
+  const open = openOverride ?? deepLinkDestination === "desktop";
+  const handledDeepLinkRef = useRef(false);
 
   useEffect(() => {
-    if (!deepLinked) return;
-    const desktop =
-      typeof window !== "undefined" && typeof window.matchMedia === "function"
-        ? window.matchMedia(DESKTOP_QUERY).matches
-        : true;
-    if (desktop) setOpen(true);
-    else openQuickEntry("measurements");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (deepLinkDestination !== "mobile" || handledDeepLinkRef.current) return;
+    handledDeepLinkRef.current = true;
+    // Desktop opening is derived above. Mobile delegates to the one global entry
+    // surface as the external synchronization this effect actually owns.
+    openQuickEntry("measurements");
+  }, [deepLinkDestination, openQuickEntry]);
 
   return (
     // Desktop-only container: on a phone this renders nothing at all, so the tab
@@ -78,7 +110,7 @@ export default function LogMeasurementsPanel(
         {centerControl}
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => setOpenOverride(true)}
           aria-haspopup="dialog"
           aria-expanded={open}
           data-testid="log-measurements-toggle"
@@ -92,7 +124,7 @@ export default function LogMeasurementsPanel(
       {open && (
         <ModalShell
           title="Log measurements"
-          onClose={() => setOpen(false)}
+          onClose={() => setOpenOverride(false)}
           className="flex max-h-[calc(100dvh-4rem)] w-full max-w-5xl flex-col rounded-xl bg-white p-5 shadow-xl outline-hidden dark:bg-ink-900"
           initialFocusRef={deepLinkTarget ? modalInitialFocusRef : undefined}
         >
@@ -113,7 +145,7 @@ export default function LogMeasurementsPanel(
               {...measurementProps}
               presentation="modal"
               defaultGroup="body"
-              onSaved={() => setOpen(false)}
+              onSaved={() => setOpenOverride(false)}
             />
           </div>
         </ModalShell>
