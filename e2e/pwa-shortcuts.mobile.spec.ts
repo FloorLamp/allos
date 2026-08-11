@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { QUICK_PARAM } from "@/lib/pwa-shortcuts";
 // PWA home-screen shortcuts (issue #1424, section A).
 //
 // Two halves, both asserted here because neither is observable any other way:
@@ -20,14 +21,25 @@ import { type Page } from "@playwright/test";
 // Fixture hygiene (#868): every test is READ-ONLY over the shared seed — opening
 // an overlay writes nothing — and asserts presence, never a count of seeded rows.
 // The one mutation-shaped assertion (the param disappearing) is a client-side
-// router.replace, not a server write.
+// history.replaceState, not a server write.
 
-// The handler strips `?quick=` via router.replace once it has read it — an async
-// client navigation, so a single synchronous page.url() read races it. Polled.
-async function expectQuickParamCleared(page: Page): Promise<void> {
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get("quick"))
-    .toBeNull();
+// The handler strips `?quick=` synchronously with history.replaceState once its
+// effect runs. Wait for the handler's own effect marker to name the exact value it
+// consumed, then read the browser's live location. page.url() is a Playwright-side
+// cache whose same-document update notification can lag under shard load (#1992).
+async function expectQuickParamCleared(
+  page: Page,
+  expected: string
+): Promise<void> {
+  await expect(page.getByTestId("quick-shortcut-handler")).toHaveAttribute(
+    "data-consumed",
+    expected
+  );
+  const quick = await page.evaluate(
+    (param) => new URL(window.location.href).searchParams.get(param),
+    QUICK_PARAM
+  );
+  expect(quick).toBeNull();
 }
 
 const SHORTCUT_URLS = [
@@ -107,9 +119,8 @@ test.describe("?quick= deep links", () => {
     await expect(page.getByTestId("activity-form")).toBeVisible();
 
     // The param is replaced away as soon as it is read, so a reload or a
-    // back-navigation doesn't re-pop the editor over work in progress. Polled,
-    // not read once: router.replace lands after the effect, asynchronously.
-    await expectQuickParamCleared(page);
+    // back-navigation doesn't re-pop the editor over work in progress.
+    await expectQuickParamCleared(page, "log-activity");
   });
 
   test("log-dose opens the shared quick-entry overlay on the dose form", async ({
@@ -124,7 +135,7 @@ test.describe("?quick= deep links", () => {
       "data-form",
       "dose"
     );
-    await expectQuickParamCleared(page);
+    await expectQuickParamCleared(page, "log-dose");
   });
 
   test("search opens the command palette", async ({ page }) => {
@@ -135,7 +146,7 @@ test.describe("?quick= deep links", () => {
     await expect(
       page.getByRole("combobox", { name: "Search or run a command" })
     ).toBeVisible();
-    await expectQuickParamCleared(page);
+    await expectQuickParamCleared(page, "search");
   });
 
   test("a shortcut works from a page other than the dashboard", async ({
@@ -148,7 +159,7 @@ test.describe("?quick= deep links", () => {
 
     await expect(page.getByTestId("quick-entry-sheet")).toBeVisible();
     // Stripping the param must preserve the path.
-    await expectQuickParamCleared(page);
+    await expectQuickParamCleared(page, "log-dose");
     expect(new URL(page.url()).pathname).toBe("/trends");
   });
 
@@ -161,7 +172,7 @@ test.describe("?quick= deep links", () => {
     await page.goto("/?quick=not-a-real-shortcut");
 
     await expect(page.getByTestId("needs-attention")).toBeVisible();
-    await expectQuickParamCleared(page);
+    await expectQuickParamCleared(page, "not-a-real-shortcut");
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     await expect(page.getByTestId("activity-form")).toHaveCount(0);
     await expect(
