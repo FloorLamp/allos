@@ -186,6 +186,13 @@ export default function ActivityForm({
     return { allOptions: all, typeByName: m };
   }, [suggestions]);
 
+  // The evidence the picker's matcher is allowed to weigh (#2384). Built once here
+  // beside allOptions and handed down as data; lib/fuzzy owns what it is worth.
+  const usedActivityNames = useMemo(
+    () => new Set(suggestions.logged),
+    [suggestions]
+  );
+
   // All name→type classification (partType, distance-field, custom flags) is
   // pure logic keyed off the picker vocabulary — built once here and destructured
   // so the inline call sites below stay unchanged (see lib/activity-form-validate).
@@ -1104,6 +1111,7 @@ export default function ActivityForm({
             onBwInput={setBwInput}
             onSaveBodyweight={saveBodyweight}
             equipmentRankedOptions={equipmentRankedOptions}
+            usedActivityNames={usedActivityNames}
             enteredLiftBases={enteredLiftBases}
             liftCompanions={suggestions.liftCompanions}
             isKnown={isKnown}

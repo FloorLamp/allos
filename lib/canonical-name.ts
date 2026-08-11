@@ -556,6 +556,61 @@ export function canonicalAliases(): readonly [string, string][] {
   return CANONICAL_ALIASES;
 }
 
+// --- What a biomarker picker SEARCHES on (#2382) ----------------------------
+//
+// The app-wide combobox matcher is a greedy leftmost SUBSEQUENCE walk that never
+// backtracks, so for "Prostate-Specific Antigen (PSA)" the query `psa` is consumed
+// scattered inside "Prostate-Specific" and the walk never reaches the literal
+// "(PSA)" at the end — typing an analyte's own abbreviation did not offer it at
+// all. #2335's `Long Name (ABBR)` convention puts the abbreviation exactly where
+// that matcher is structurally incapable of seeing it, so searching the
+// abbreviation as its OWN key is not a nicety: it is the only way the abbreviation
+// becomes reachable.
+//
+// One source, consumed by every biomarker picker (#1675, #221): the acronym forms
+// the name states about itself, plus the curated CANONICAL_ALIASES that route onto
+// it — which is why `A1c` → `Hemoglobin A1c` has been in the vocabulary all along
+// yet contributed nothing to search.
+//
+// The reverse index is built once and the per-name answer memoized on top of it: a
+// picker asks this per option per keystroke over ~300 analytes, and re-scanning the
+// alias table each time would be ~100k key normalizations a keystroke. Both caches
+// are pure functions of module constants, so neither can go stale.
+let aliasesByCanonicalKey: Map<string, string[]> | null = null;
+
+function canonicalAliasIndex(): Map<string, string[]> {
+  if (aliasesByCanonicalKey) return aliasesByCanonicalKey;
+  const index = new Map<string, string[]>();
+  for (const [alias, canonical] of CANONICAL_ALIASES) {
+    const key = normalizeCanonicalKey(canonical);
+    const list = index.get(key);
+    if (list) list.push(alias);
+    else index.set(key, [alias]);
+  }
+  aliasesByCanonicalKey = index;
+  return index;
+}
+
+const searchTermsCache = new Map<string, readonly string[]>();
+
+/**
+ * The hidden spellings a biomarker picker should match a query against, for the
+ * analyte a row is LABELLED with. Never includes the visible name itself — the
+ * matcher always scores that — and answers `[]` for a label that names no analyte
+ * (a metric row, a "— none —" row), so a mixed picker can pass it unconditionally.
+ */
+export function biomarkerSearchTerms(name: string): readonly string[] {
+  const cached = searchTermsCache.get(name);
+  if (cached) return cached;
+  const terms = new Set(acronymNameForms(name));
+  const aliases = canonicalAliasIndex().get(normalizeCanonicalKey(name)) ?? [];
+  for (const alias of aliases) terms.add(alias);
+  terms.delete(name);
+  const result: readonly string[] = [...terms];
+  searchTermsCache.set(name, result);
+  return result;
+}
+
 // --- Deliberately uncurated analytes (#2313) --------------------------------
 //
 // CANONICAL_ALIASES declares the names we DO route. This declares the other half:
