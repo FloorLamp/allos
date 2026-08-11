@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { useQuickEntry } from "@/components/QuickEntryProvider";
@@ -8,7 +8,9 @@ import { openGlobalSearch } from "@/components/CommandPalette";
 import { QUICK_PARAM, shortcutAction } from "@/lib/pwa-shortcuts";
 
 // The landing half of the PWA manifest shortcuts (issue #1424, section A).
-// Renders nothing; it exists to interpret `?quick=<id>` on arrival.
+// Renders no UI; it exists to interpret `?quick=<id>` on arrival. Its hidden
+// state marker records the exact value its effect consumed so browser tests can
+// wait for consumption itself instead of polling Playwright's cached URL (#1992).
 //
 // **No new entry paths.** The dispatch below is the SAME switch
 // `components/QuickLogSheet.tsx` runs over the same `QuickLogTarget` union from
@@ -42,6 +44,7 @@ export default function QuickShortcutHandler({
   const { openCreate } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
   const handled = useRef<string | null>(null);
+  const [consumed, setConsumed] = useState<string | null>(null);
 
   const raw = params.get(QUICK_PARAM);
 
@@ -65,6 +68,7 @@ export default function QuickShortcutHandler({
     const url = new URL(window.location.href);
     url.searchParams.delete(QUICK_PARAM);
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    setConsumed(raw);
 
     const action = shortcutAction(raw, restricted, cycleRelevant);
     if (!action) return;
@@ -82,5 +86,11 @@ export default function QuickShortcutHandler({
     else router.push(target.href);
   }, [raw, router, restricted, cycleRelevant, openCreate, openQuickEntry]);
 
-  return null;
+  return (
+    <span
+      hidden
+      data-testid="quick-shortcut-handler"
+      data-consumed={consumed ?? ""}
+    />
+  );
 }
