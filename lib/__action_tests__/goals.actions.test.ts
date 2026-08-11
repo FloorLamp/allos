@@ -221,6 +221,40 @@ describe("setStatus", () => {
     expect(goalRows(profile.id)[0].status).toBe("achieved");
   });
 
+  // #2394: `status` says WHETHER, `achieved_at` says WHEN — and without the second
+  // one the recap had nothing to window on but the deadline. This is the only writer.
+  it("stamps the achievement instant, keeps it on a re-state, and clears it on undo", async () => {
+    const { profile } = seedActor();
+    await createGoal(fd({ kind: "freeform", title: "Hold a 2 minute plank" }));
+    const id = goalRows(profile.id)[0].id;
+    const achievedAt = () =>
+      (
+        db
+          .prepare("SELECT achieved_at FROM goals WHERE id = ?")
+          .get(id) as { achieved_at: string | null }
+      ).achieved_at;
+
+    expect(achievedAt()).toBeNull();
+
+    await setStatus(fd({ id, status: "achieved" }));
+    const first = achievedAt();
+    // The canonical UTC+Z convention (lib/date.ts utcInstant), not SQLite's bare shape:
+    // the recap compares this column lexically against canonical bounds.
+    expect(first).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+
+    // Re-stating the current status stays idempotent success AND keeps the original
+    // instant — a second flip must not re-date the goal into a later recap.
+    expect((await setStatus(fd({ id, status: "achieved" }))).ok).toBe(true);
+    expect(achievedAt()).toBe(first);
+
+    // Un-achieving clears it: the goal has not been achieved, and reaching it again is
+    // a new event that earns a new instant.
+    await setStatus(fd({ id, status: "active" }));
+    expect(achievedAt()).toBeNull();
+    await setStatus(fd({ id, status: "achieved" }));
+    expect(achievedAt()).not.toBeNull();
+  });
+
   // Changes-checked (#2140): the UPDATE's WHERE (id + profile) is the CAS
   // expectation, so a forged id — or another profile's — refuses instead of the
   // menu toasting "Goal achieved" over a write that matched nothing.

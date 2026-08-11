@@ -3,7 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
-import { casUpdate } from "@/lib/tx";
+import { casUpdate, readForUpdate } from "@/lib/tx";
 import { instantNow, sqlNow } from "@/lib/clock";
 import {
   formError,
@@ -417,25 +417,31 @@ export async function setStatus(formData: FormData): Promise<FormResult> {
   // achieved, and reaching it again is a new event with a new instant.
   //
   // instantNow() (lib/clock.ts → lib/date.ts utcInstant), never SQL's own datetime('now')
-  // — the column is on the canonical `…Z` convention and comparison is lexical.
-  const cas = writeTx((tx) =>
-    casUpdate(
+  // — the column is on the canonical `…Z` convention and comparison is lexical. The
+  // guard read shares the IMMEDIATE transaction with the swap (readForUpdate), so the
+  // "keep the instant already there" decision cannot race another writer.
+  const cas = writeTx((tx) => {
+    const prior = readForUpdate<{ achieved_at: string | null }>(
       tx,
       db.prepare(
-        `UPDATE goals
-            SET status = ?,
-                achieved_at = CASE WHEN ? = 'achieved'
-                                   THEN COALESCE(achieved_at, ?)
-                                   ELSE NULL END
-          WHERE id = ? AND profile_id = ?`
+        "SELECT achieved_at FROM goals WHERE id = ? AND profile_id = ?"
       ),
-      status,
-      status,
-      instantNow(),
       id,
       profile.id
-    )
-  );
+    );
+    const achievedAt =
+      status === "achieved" ? (prior?.achieved_at ?? instantNow()) : null;
+    return casUpdate(
+      tx,
+      db.prepare(
+        "UPDATE goals SET status = ?, achieved_at = ? WHERE id = ? AND profile_id = ?"
+      ),
+      status,
+      achievedAt,
+      id,
+      profile.id
+    );
+  });
   if (cas.kind === "stale") return formError("Couldn't find that goal.");
   revalidateRoute("/training");
   revalidateRoute("/");
