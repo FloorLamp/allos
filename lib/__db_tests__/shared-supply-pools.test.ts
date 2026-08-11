@@ -4,7 +4,7 @@
 // projection, the pool-level #467 compare-and-set, and the delete's side-state restore.
 // None of it is visible to the pure tier, which only sees pre-gathered arrays.
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   createSharedSupply,
@@ -32,6 +32,27 @@ import { seedProfile, type SeededProfile } from "./fixtures";
 
 let alice: SeededProfile;
 let bruno: SeededProfile;
+
+// Statement counting (the #885 shape, as tick-scoped-gathers.test.ts uses it): the query
+// layer prepares its SQL inline on every call, so counting prepares of a signature counts
+// evaluations of the read that owns it. One spy for every signature — vi.spyOn returns
+// the SAME spy for an already-spied method, so two independent spies would leave the
+// second calling through to itself.
+function countPrepareSet(...signatures: RegExp[]): { calls: () => number }[] {
+  const counts = signatures.map(() => 0);
+  const real = db.prepare.bind(db);
+  vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+    signatures.forEach((s, i) => {
+      if (s.test(sql)) counts[i]++;
+    });
+    return real(sql);
+  }) as typeof db.prepare);
+  return signatures.map((_, i) => ({ calls: () => counts[i] }));
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function poolQty(supplyId: number): number | null {
   return getSharedSupply(supplyId)?.quantity_on_hand ?? null;
@@ -506,6 +527,44 @@ describe("what the cabinet shows a caller (#1522)", () => {
     ]) {
       expect(countVisiblePools(ids)).toBe(listVisiblePoolViews(ids).length);
     }
+  });
+
+  // #2116: the door used to run one poolMembers query per shared bottle, and it renders
+  // on /household, /medications and the supplements tab. The rule is unchanged (still
+  // the pure isPoolVisibleTo over the raw membership); only the number of reads is.
+  it("asks once for the whole cabinet, not once per bottle", () => {
+    // Several bottles, so a per-supply loop could not accidentally pass.
+    expect(listVisiblePoolViews([alice.profileId, bruno.profileId]).length)
+      .toBeGreaterThan(1);
+    const [perSupplyMembers, cabinetMembership] = countPrepareSet(
+      /FROM intake_items i\s+LEFT JOIN intake_item_doses d/,
+      /FROM shared_supplies s\s+LEFT JOIN intake_items i/
+    );
+    countVisiblePools([alice.profileId, bruno.profileId]);
+    expect(perSupplyMembers.calls()).toBe(0);
+    expect(cabinetMembership.calls()).toBe(1);
+  });
+
+  // #2116: poolIdsForProfiles looped a SELECT DISTINCT per profile where one bound
+  // `profile_id IN (…)` answers — the repo's own cross-profile convention, registered
+  // in CROSS_PROFILE_SQL_MODULES in the same change.
+  it("resolves the pools of a whole accessible set in one read", () => {
+    const both = [alice.profileId, bruno.profileId];
+    const union = [
+      ...new Set([
+        ...poolIdsForProfiles([alice.profileId]),
+        ...poolIdsForProfiles([bruno.profileId]),
+      ]),
+    ].sort((a, b) => a - b);
+    expect(poolIdsForProfiles(both)).toEqual(union);
+    expect(union.length).toBeGreaterThan(1);
+    // An empty accessible set still short-circuits to nothing, with no read at all.
+    const [distinctSupply] = countPrepareSet(
+      /SELECT DISTINCT supply_id FROM intake_items/
+    );
+    expect(poolIdsForProfiles([])).toEqual([]);
+    poolIdsForProfiles(both);
+    expect(distinctSupply.calls()).toBe(1);
   });
 });
 

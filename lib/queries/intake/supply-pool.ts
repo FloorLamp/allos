@@ -14,6 +14,7 @@
 // Server Actions in app/(app)/supplies/actions.ts own the whole gate.
 
 import { db, writeTx } from "../../db";
+import { profileIdsIn } from "../../cross-profile";
 import {
   daysOfSupplyForPool,
   isPoolVisibleTo,
@@ -292,11 +293,33 @@ export function listVisiblePoolViews(
 // Medications / Supplements / Household show. Same rule as listVisiblePoolViews,
 // but it never builds a PoolView: a door needs the COUNT, not each pool's pooled
 // days-left, and that projection costs a getRefillRates pass per member profile.
+//
+// ONE membership read for the whole cabinet (#2116), then the SAME pure
+// `isPoolVisibleTo` rule evaluated in JS. The per-supply `poolMembers` loop it replaces
+// issued one query per shared bottle — on /household, on every page load. The rule
+// stays where it is: re-expressing "visible" as SQL would be a second copy of it, and
+// the door's count and the cabinet's list must never disagree about what "in the
+// cabinet" means.
 export function countVisiblePools(profileIds: readonly number[]): number {
   const accessible = new Set(profileIds);
+  // LEFT JOIN, so an ORPHANED bottle (nothing links it) still yields one row — with a
+  // NULL profile_id, which is exactly the "names nobody, so nothing is disclosed"
+  // case isPoolVisibleTo admits on an empty membership.
+  const rows = db
+    .prepare(
+      `SELECT s.id AS supply_id, i.profile_id AS profile_id
+         FROM shared_supplies s
+         LEFT JOIN intake_items i ON i.supply_id = s.id`
+    )
+    .all() as { supply_id: number; profile_id: number | null }[];
+  const membersBySupply = new Map<number, number[]>();
+  for (const r of rows) {
+    const list = membersBySupply.get(r.supply_id) ?? [];
+    if (r.profile_id != null) list.push(r.profile_id);
+    membersBySupply.set(r.supply_id, list);
+  }
   let count = 0;
-  for (const supply of listSharedSupplies()) {
-    const memberProfileIds = poolMembers(supply.id).map((m) => m.profileId);
+  for (const memberProfileIds of membersBySupply.values()) {
     if (isPoolVisibleTo(memberProfileIds, accessible)) count++;
   }
   return count;
@@ -322,19 +345,21 @@ function buildPoolView(supply: SharedSupply): PoolView {
 // The pools any of `profileIds` draws from, for a scoped surface (the chip on a member's
 // card, the cabinet list a member sees). Takes the already-resolved accessible ids as
 // its first argument and never imports lib/auth — the cross-profile reader convention.
+//
+// ONE set-based read (#2116) rather than a SELECT DISTINCT per profile: this is a FLAT
+// id list with no per-profile context in it (no today(), no timezone, no dueness
+// window), which is exactly what the #1095 §3 convention reserves the `profile_id IN`
+// shape for. The ids arrive already ∩ the caller's accessible set, and this module is
+// registered in CROSS_PROFILE_SQL_MODULES.
 export function poolIdsForProfiles(profileIds: readonly number[]): number[] {
   if (profileIds.length === 0) return [];
-  const out = new Set<number>();
-  for (const profileId of profileIds) {
-    const rows = db
-      .prepare(
-        `SELECT DISTINCT supply_id FROM intake_items
-          WHERE profile_id = ? AND supply_id IS NOT NULL`
-      )
-      .all(profileId) as { supply_id: number }[];
-    for (const r of rows) out.add(r.supply_id);
-  }
-  return [...out].sort((a, b) => a - b);
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT supply_id FROM intake_items
+        WHERE profile_id IN ${profileIdsIn(profileIds)} AND supply_id IS NOT NULL`
+    )
+    .all(...profileIds) as { supply_id: number }[];
+  return rows.map((r) => r.supply_id).sort((a, b) => a - b);
 }
 
 // The shared-bottle CHIP a linked item's row/card renders in place of the per-item
