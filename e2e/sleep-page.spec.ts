@@ -340,8 +340,8 @@ test.describe("Sleep page (#1066)", () => {
       history.getByRole("columnheader", { name: "Naps", exact: true })
     ).toBeVisible();
     await expect(
-      history.getByTestId("sleep-history-naps").first()
-    ).toContainText("13:00 → 13:45 · 45m");
+      history.getByText("13:00 → 13:45 · 45m", { exact: true })
+    ).toBeVisible();
     await expect(history.locator("thead tr")).toHaveCount(1);
     for (const stage of ["Deep", "REM", "Light", "Awake"]) {
       await expect(
