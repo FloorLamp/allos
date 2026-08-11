@@ -172,7 +172,7 @@ export const KIND_CADENCE: readonly KindCadenceEntry[] = [
   {
     kind: "redose",
     cadence: "item-clock",
-    why: "One notice per PRN redose window, armed by the administration that opened it and closed by the item's own interval (#798). The marker stores the administration id, so a newer dose re-arms it and an older one can never match — an id clock, not a cadence decision anyone makes.",
+    why: "One notice per PRN redose window, armed by an administration and released by its minimum interval (#798). Two observed-tick attempt bands surround that opening (immediate + one retry an hour later), and the marker stores the administration id; a newer dose spends the old button and arms a new item clock, while an outage can never turn an old open condition into a catch-up send.",
   },
 
   // ── Exempt: one send per subject; the subject cannot recur ─────────────────

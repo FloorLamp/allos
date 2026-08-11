@@ -50,14 +50,19 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
 });
 
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, utcSqlString } from "@/lib/date";
 import {
   setTelegramBotConfig,
   setTimezone,
   setProfileBirthdate,
   setProfileSex,
 } from "@/lib/settings";
-import { markDoseTaken, markDoseSkipped } from "@/lib/queries";
+import {
+  logAdministration,
+  markDoseTaken,
+  markDoseSkipped,
+  redoseWindowState,
+} from "@/lib/queries";
 import {
   recordPreventiveDone,
   setPreventiveOverride,
@@ -177,6 +182,32 @@ function seedDose(
   return { itemId, doseId };
 }
 
+function seedPrnMedication(
+  profileId: number,
+  name: string
+): { itemId: number; doseId: number } {
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, active, kind, condition, obligation,
+            min_interval_hours, max_daily_count, redose_notice)
+         VALUES (?, ?, 1, 'medication', 'daily', 'may', 6, 4, 1)`
+      )
+      .run(profileId, name).lastInsertRowid
+  );
+  const doseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses
+           (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '200 mg', 'anytime', 'any', 0)`
+      )
+      .run(itemId).lastInsertRowid
+  );
+  return { itemId, doseId };
+}
+
 // Send this profile's real morning reminder through the real chokepoint.
 async function sendMorningReminder(profileId: number): Promise<void> {
   const built = buildIntakeReminderForSlots(profileId, ["Morning"]);
@@ -286,6 +317,128 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
     );
     expect(tokens.some((t) => t.startsWith(`take:${pid}:${b.doseId}:`))).toBe(
       true
+    );
+  });
+});
+
+describe("a PRN administration spends its redose window", () => {
+  it("closes the old redose button when a newer dose is logged in the app", async () => {
+    const pid = newProfile("Redose Rina");
+    const { itemId, doseId } = seedPrnMedication(pid, "Rina Ibuprofen");
+    seedLoginTelegram(pid, "5551789");
+    const armingId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_logs
+             (dose_id, item_id, date, amount, recorded_at, status)
+           VALUES (?, ?, ?, '200 mg', ?, 'taken')`
+        )
+        .run(
+          doseId,
+          itemId,
+          today(pid),
+          utcSqlString(new Date(Date.now() - 7 * 3_600_000))
+        ).lastInsertRowid
+    );
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5551789",
+      messageId: 1789,
+      kind: "redose",
+      date: today(pid),
+      title: "💊 Redose window open: Rina Ibuprofen",
+      keyboard: [
+        [
+          {
+            text: "💊 Log dose",
+            callback_data: `redose:${pid}:${itemId}:${armingId}:nonce`,
+          },
+        ],
+      ],
+    });
+
+    expect(logAdministration(pid, itemId).kind).toBe("logged");
+    expect(redoseWindowState(pid, itemId, armingId)).toBe("superseded");
+    editText.mockClear();
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(String(editText.mock.calls.at(-1)![2])).toContain("dose logged.");
+    expect(liveMessagePointers(pid)).toHaveLength(0);
+  });
+
+  it("closes an undone opening dose as cancelled even when an older dose remains", async () => {
+    const pid = newProfile("Redose Undo");
+    const { itemId, doseId } = seedPrnMedication(pid, "Undo Ibuprofen");
+    seedLoginTelegram(pid, "5551791");
+    const insert = db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, amount, recorded_at, status)
+       VALUES (?, ?, ?, '200 mg', ?, 'taken')`
+    );
+    insert.run(
+      doseId,
+      itemId,
+      today(pid),
+      utcSqlString(new Date(Date.now() - 8 * 3_600_000))
+    );
+    const armingId = Number(
+      insert.run(
+        doseId,
+        itemId,
+        today(pid),
+        utcSqlString(new Date(Date.now() - 7 * 3_600_000))
+      ).lastInsertRowid
+    );
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5551791",
+      messageId: 1791,
+      kind: "redose",
+      date: today(pid),
+      title: "💊 Redose window open: Undo Ibuprofen",
+      keyboard: [
+        [
+          {
+            text: "💊 Log dose",
+            callback_data: `redose:${pid}:${itemId}:${armingId}:nonce`,
+          },
+        ],
+      ],
+    });
+
+    db.prepare("DELETE FROM intake_item_logs WHERE id = ?").run(armingId);
+    expect(redoseWindowState(pid, itemId, armingId)).toBe("cancelled");
+    editText.mockClear();
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(String(editText.mock.calls.at(-1)![2])).toContain(
+      "opening dose no longer logged."
+    );
+  });
+
+  it("retires already-delivered legacy redose buttons that have no window id", async () => {
+    const pid = newProfile("Legacy Redose");
+    const { itemId } = seedPrnMedication(pid, "Legacy Ibuprofen");
+    seedLoginTelegram(pid, "5551790");
+    recordMessagePointer({
+      profileId: pid,
+      chatId: "5551790",
+      messageId: 1790,
+      kind: "redose",
+      date: today(pid),
+      title: "💊 Redose window open: Legacy Ibuprofen",
+      keyboard: [
+        [
+          {
+            text: "💊 Log dose",
+            callback_data: `prn:${pid}:${itemId}:legacy`,
+          },
+        ],
+      ],
+    });
+
+    editText.mockClear();
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(String(editText.mock.calls.at(-1)![2])).toContain(
+      "old action expired; use /dose to log."
     );
   });
 });
@@ -2056,6 +2209,47 @@ describe("the pointer follows a callback edit, not just a send", () => {
     expect(swept.closed).toBe(0);
     expect(swept.edited).toBe(0);
     expect(liveTokens(pid).some((t) => t.startsWith("dosetimeat:"))).toBe(true);
+  });
+
+  it("keeps the taken supplement in the receipt after its correction row expires", async () => {
+    const pid = newProfile("Receipt Rhea");
+    const { itemId, doseId } = seedDose(pid, "Receipt D3");
+    seedLoginTelegram(pid, "5552294");
+    const date = today(pid);
+    const built = buildIntakeReminderForSlots(pid, ["Morning"])!;
+    await dispatch(pid, built.message);
+    const ptr = liveMessagePointers(pid)[0];
+
+    await handleCallbackQuery(
+      tapCq(
+        "5552294",
+        ptr.messageId,
+        `take:${pid}:${doseId}:${itemId}:${date}`,
+        messageKeyboard(built.message)
+      )
+    );
+    const afterTap = liveMessagePointers(pid)[0];
+    expect(
+      keyboardTokens(afterTap.keyboard).some((t) => t.startsWith("take:"))
+    ).toBe(false);
+    expect(
+      keyboardTokens(afterTap.receiptKeyboard).some((t) =>
+        t.startsWith("take:")
+      )
+    ).toBe(true);
+
+    // Age the temporary correction affordance out. The ledger still says the dose was
+    // taken, and the close must state that fact instead of falling back to the legacy
+    // "handled in the app" sentence.
+    db.prepare(
+      `UPDATE intake_item_logs SET taken_at = ?, recorded_at = ?
+        WHERE dose_id = ?`
+    ).run("2000-01-01T00:00:00Z", "2000-01-01T00:00:00Z", doseId);
+    editText.mockClear();
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    const closingText = String(editText.mock.calls.at(-1)![2]);
+    expect(closingText).toContain("Receipt D3 taken.");
+    expect(closingText).not.toContain("handled in the app");
   });
 
   it("does not collapse a food nudge the user expanded", async () => {

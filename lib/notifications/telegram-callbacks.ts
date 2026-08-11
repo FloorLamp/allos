@@ -81,6 +81,7 @@ import {
   parseFoodProteinCallback,
   parsePreventiveCallback,
   parsePrnLogCallback,
+  parseRedoseLogCallback,
   parseOfferTailCallback,
   parseTuneCallback,
   parseDigestTimeCallback,
@@ -168,6 +169,7 @@ import {
   handlePracticeDoneTap,
   handleRightSizeLowerTap,
   handlePrnLogTap,
+  handleRedoseLogTap,
   handleOfferTailTap,
   handleTuneTap,
   handleDigestTimeTap,
@@ -361,6 +363,14 @@ export async function handleCallbackQuery(
   const digestTime = parseDigestTimeCallback(cq.data);
   if (digestTime) {
     await handleDigestTimeTap(cq, digestTime);
+    return;
+  }
+
+  // One administration-armed redose window. Parsed before the reusable `/dose` token:
+  // this button is consumed and refuses after an app log supersedes its window.
+  const redose = parseRedoseLogCallback(cq.data);
+  if (redose) {
+    await handleRedoseLogTap(cq, redose);
     return;
   }
 

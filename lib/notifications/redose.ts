@@ -2,7 +2,8 @@
 // CONFIRMED interval/max fields, decide (via the pure redoseNoticeDecision) whether the
 // one-shot redose window has just opened, and if so send a notice carrying a "Log
 // dose" button, then stamp the per-item one-shot marker with the arming administration
-// id. Called once per hour from the notify tick.
+// id. Called on every notify tick; the pure decision admits only the first observed-tick
+// band after opening and one bounded retry band an hour later.
 //
 // SAFETY-TIER, NEVER BUS-GATED (issue #798, matching #435's dose-reminder policy). A
 // redose notice is a medication-safety signal armed by an actual administration and
@@ -22,7 +23,7 @@
 // content-safe body (the "Log dose" button is Telegram-only; push drops actions but
 // the body carries the real content, so redose is push-deliverable, #692). The
 // per-item one-shot marker is stamped only when at least one channel DELIVERED, so a
-// total delivery failure re-fires next tick.
+// total delivery failure remains eligible for the one bounded retry band.
 
 import crypto from "node:crypto";
 import { dispatch } from "./index";
@@ -33,13 +34,14 @@ import {
 } from "../queries";
 import { redoseNoticeDecision } from "../prn-redose";
 import { redoseNoticeMessage } from "../redose-format";
-import { formatGivenAtClock } from "../administration-format";
+import { formatGivenAtNoticeTime } from "../administration-format";
 import { getProfileSetting, setProfileSetting, getTimezone } from "../settings";
 import { parseUtcSql } from "../date";
 import { now as clockNow } from "../clock";
 import { createLogger } from "../log";
 import type { NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
+import { redoseLogCallback } from "./callback-data";
 
 const log = createLogger("notify");
 
@@ -51,9 +53,9 @@ export function redoseMarkerKey(itemId: number): string {
   return `notify_last_redose_${itemId}`;
 }
 
-// A per-render nonce for the "Log dose" callback token — mirrors the /dose command's
-// dedup token (the real double-log guard is logAdministration's short-window dedup).
-function prnLogToken(): string {
+// A per-render nonce for the "Log dose" callback token. Window identity comes from the
+// administration id beside it; this only distinguishes redelivered callback payloads.
+function redoseLogToken(): string {
   return crypto.randomBytes(4).toString("hex");
 }
 
@@ -65,7 +67,8 @@ export async function runRedoseNotices(
   profileId: number,
   profileName: string,
   date: string,
-  now: Date = clockNow()
+  now: Date = clockNow(),
+  tickMinutes = 60
 ): Promise<{ failed: boolean }> {
   const items = getRedoseNoticeItems(profileId);
   if (items.length === 0) return { failed: false };
@@ -108,6 +111,7 @@ export async function runRedoseNotices(
       countToday: arming.countToday,
       now,
       notifiedAdministrationId,
+      tickMinutes,
       // The amount-aware ceiling (#1854): with a confirmed mg/day max and
       // parseable snapshotted amounts, 3 × 800 mg suppresses at 2400 mg even
       // though "3 of 6 doses" reads calm — same verdict every other surface uses.
@@ -124,7 +128,7 @@ export async function runRedoseNotices(
       amount: item.amount,
       product: item.product,
       sinceHours: decision.sinceHours,
-      lastClock: formatGivenAtClock(tz, arming.latestGivenAt),
+      lastClock: formatGivenAtNoticeTime(tz, arming.latestGivenAt, date),
       countToday: decision.countToday,
       maxDailyCount: decision.maxDailyCount,
       // The same basis the ceiling was judged on (#1854): the body reads
@@ -137,14 +141,18 @@ export async function runRedoseNotices(
           ? arming.latestItemName
           : null,
     });
-    // The "Log dose" button reuses the /dose PRN callback (prn:<profileId>:<itemId>:
-    // <nonce>) → handlePrnLogTap → logAdministration through the ONE chokepoint. NOT
-    // idempotent (multiple/day is the point); the handler answers from the typed
-    // AdministrationOutcome and the nonce is the dedup token.
+    // This notice's button is bound to the administration that armed THIS window.
+    // Unlike the reusable `/dose` PRN callback, a newer app/Telegram administration
+    // supersedes it and the handler refuses rather than recording a second dose.
     const actions: NotificationAction[] = [
       {
         label: `${GLYPH.dose} Log dose`,
-        data: `prn:${profileId}:${item.id}:${prnLogToken()}`,
+        data: redoseLogCallback(
+          profileId,
+          item.id,
+          decision.administrationId,
+          redoseLogToken()
+        ),
       },
     ];
 
@@ -155,14 +163,13 @@ export async function runRedoseNotices(
       kind: "redose",
     });
     if (results.length === 0) {
-      // No channel configured for this profile — leave the marker unset so it retries.
+      // No channel configured — leave the marker unset for the bounded retry band.
       continue;
     }
     const delivered = results.some((r) => r.ok);
     if (results.some((r) => !r.ok)) failed = true;
-    // Stamp the one-shot marker only on a delivered notice (so a total failure re-
-    // fires next tick). Keyed by the arming administration id: a NEWER administration
-    // re-arms; the same administration never re-fires.
+    // Stamp only on delivery. A total failure can use the bounded retry band; outside
+    // those bands it cannot turn into a late catch-up. A NEWER administration re-arms.
     if (delivered) {
       setProfileSetting(
         profileId,

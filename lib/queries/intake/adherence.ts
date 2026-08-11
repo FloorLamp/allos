@@ -39,7 +39,7 @@ import {
 } from "../../correction-time";
 import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
-import { getMedicationFamilyStates } from "./prn-family";
+import { getMedicationFamilyStates, redoseWindowState } from "./prn-family";
 import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
 import type {
   AdministrationOutcome,
@@ -49,6 +49,7 @@ import type {
   DoseTakenOutcome,
   EscalationAckOutcome,
   HistoricalDoseOutcome,
+  RedoseWindowAdministrationOutcome,
 } from "../../types";
 import type { IntakeObligation } from "../../types";
 import { isOfferedOn, slotHintCoversNow } from "../../supplement-schedule";
@@ -454,6 +455,89 @@ export function setDoseStatusCore(
 // two taps within ~2 min collapse to one.
 export const ADMIN_DEDUP_WINDOW_SEC = 120;
 
+function logAdministrationTx(
+  profileId: number,
+  itemId: number,
+  date: string,
+  recordedAtStr: string,
+  expectedRedoseAdministrationId: null
+): AdministrationOutcome;
+function logAdministrationTx(
+  profileId: number,
+  itemId: number,
+  date: string,
+  recordedAtStr: string,
+  expectedRedoseAdministrationId: number
+): RedoseWindowAdministrationOutcome;
+function logAdministrationTx(
+  profileId: number,
+  itemId: number,
+  date: string,
+  recordedAtStr: string,
+  expectedRedoseAdministrationId: number | null
+): RedoseWindowAdministrationOutcome {
+  // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
+  // the profile through the parent item. A PRN med always has at least one dose row
+  // (the item form guarantees it); its amount rides onto the log so history survives
+  // a later dosage edit.
+  const dose = db
+    .prepare(
+      `SELECT d.id AS dose_id, d.amount AS amount, s.active AS active
+         FROM intake_item_doses d
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.id = ? AND s.profile_id = ? AND d.retired = 0
+        ORDER BY d.sort, d.id
+        LIMIT 1`
+    )
+    .get(itemId, profileId) as
+    { dose_id: number; amount: string | null; active: number } | undefined;
+  if (!dose) return { kind: "stale-item" };
+  if (!dose.active) return { kind: "inactive" };
+
+  if (expectedRedoseAdministrationId != null) {
+    const state = redoseWindowState(
+      profileId,
+      itemId,
+      expectedRedoseAdministrationId
+    );
+    if (state !== "current") {
+      return { kind: "stale-window", reason: state };
+    }
+  }
+
+  // Double-tap guard: an existing taken administration of this dose within the dedup
+  // window is the same intent — no new row, no supply move.
+  const dup = db
+    .prepare(
+      `SELECT id FROM intake_item_logs
+        WHERE dose_id = ? AND status = 'taken' AND recorded_at IS NOT NULL
+          AND ABS(strftime('%s', recorded_at) - strftime('%s', ?)) <= ?
+        LIMIT 1`
+    )
+    .get(dose.dose_id, recordedAtStr, ADMIN_DEDUP_WINDOW_SEC) as
+    { id: number } | undefined;
+  if (!dup) {
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at)
+       VALUES (?,?,?,?,?)`
+    ).run(dose.dose_id, itemId, date, dose.amount, recordedAtStr);
+    decrementSupply(profileId, itemId);
+  }
+  const summary = db
+    .prepare(
+      `SELECT COUNT(*) AS count, MAX(recorded_at) AS last
+         FROM intake_item_logs
+        WHERE item_id = ? AND date = ? AND status = 'taken'`
+    )
+    .get(itemId, date) as { count: number; last: string | null };
+  return {
+    kind: dup ? "duplicate" : "logged",
+    count: summary.count,
+    lastGivenAt: summary.last ?? recordedAtStr,
+    date,
+  };
+}
+
 // Log one PRN administration of an intake item — auth-blind, profileId-first (the
 // lib-write-core convention, mirroring logFoodServingCore): both the
 // logMedicationAdministration Server Action (dashboard quick-log) and the Telegram
@@ -478,60 +562,32 @@ export function logAdministration(
   }
   const date = dateStrInTz(tz, when);
   const recordedAtStr = utcSqlString(when);
-  return writeTx((): AdministrationOutcome => {
-    // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
-    // the profile through the parent item. A PRN med always has at least one dose row
-    // (the item form guarantees it); its amount rides onto the log so history
-    // survives a later dosage edit. Never trust the caller's itemId beyond this scope
-    // check — the write uses the resolved dose's own ids.
-    const dose = db
-      .prepare(
-        `SELECT d.id AS dose_id, d.amount AS amount, s.active AS active
-           FROM intake_item_doses d
-           JOIN intake_items s ON s.id = d.item_id
-          WHERE s.id = ? AND s.profile_id = ? AND d.retired = 0
-          ORDER BY d.sort, d.id
-          LIMIT 1`
-      )
-      .get(itemId, profileId) as
-      { dose_id: number; amount: string | null; active: number } | undefined;
-    if (!dose) return { kind: "stale-item" };
-    if (!dose.active) return { kind: "inactive" };
+  return writeTx(() =>
+    logAdministrationTx(profileId, itemId, date, recordedAtStr, null)
+  );
+}
 
-    // Double-tap guard: an existing taken administration of this dose within the
-    // dedup window of the new given time is the same intent — no new row, no supply
-    // move. strftime('%s') compares the stored UTC datetimes numerically.
-    const dup = db
-      .prepare(
-        `SELECT id FROM intake_item_logs
-          WHERE dose_id = ? AND status = 'taken' AND recorded_at IS NOT NULL
-            AND ABS(strftime('%s', recorded_at) - strftime('%s', ?)) <= ?
-          LIMIT 1`
-      )
-      .get(dose.dose_id, recordedAtStr, ADMIN_DEDUP_WINDOW_SEC) as
-      { id: number } | undefined;
-    if (!dup) {
-      db.prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at)
-         VALUES (?,?,?,?,?)`
-      ).run(dose.dose_id, itemId, date, dose.amount, recordedAtStr);
-      decrementSupply(profileId, itemId);
-    }
-    // The item's running total + latest intake time for the day it landed on.
-    const summary = db
-      .prepare(
-        `SELECT COUNT(*) AS count, MAX(recorded_at) AS last
-           FROM intake_item_logs
-          WHERE item_id = ? AND date = ? AND status = 'taken'`
-      )
-      .get(itemId, date) as { count: number; last: string | null };
-    return {
-      kind: dup ? "duplicate" : "logged",
-      count: summary.count,
-      lastGivenAt: summary.last ?? recordedAtStr,
+// Consume one specific administration-armed redose window. The current-window check
+// and the new administration happen in the SAME IMMEDIATE transaction, so an app log
+// racing this Telegram tap can win or lose, but can never leave two doses recorded.
+export function logRedoseWindowAdministration(
+  profileId: number,
+  itemId: number,
+  armingAdministrationId: number
+): RedoseWindowAdministrationOutcome {
+  const tz = getTimezone(profileId);
+  const when = clockNow();
+  const date = dateStrInTz(tz, when);
+  const recordedAtStr = utcSqlString(when);
+  return writeTx(() =>
+    logAdministrationTx(
+      profileId,
+      itemId,
       date,
-    };
-  });
+      recordedAtStr,
+      armingAdministrationId
+    )
+  );
 }
 
 // Whether this item keeps a medication-course timeline at all (#1933). A medication

@@ -584,6 +584,39 @@ export function parsePrnLogCallback(data: unknown): PrnLogCallback | null {
   return { profileId, itemId, token };
 }
 
+// A redose NOTICE is one administration-armed window, unlike the reusable `/dose`
+// list above. Its token carries the administration id that opened this exact window,
+// so a dose logged in the app can supersede it and both the tap handler and the
+// reconciliation sweep can retire the old button.
+export interface RedoseLogCallback {
+  profileId: number;
+  itemId: number;
+  administrationId: number;
+  token: string;
+}
+
+export function redoseLogCallback(
+  profileId: number,
+  itemId: number,
+  administrationId: number,
+  token: string
+): string {
+  return `redose:${profileId}:${itemId}:${administrationId}:${token}`;
+}
+
+// `redose:<profileId>:<itemId>:<armingAdministrationId>:<nonce>`.
+export function parseRedoseLogCallback(
+  data: unknown
+): RedoseLogCallback | null {
+  if (typeof data !== "string" || !data.startsWith("redose:")) return null;
+  const [, profStr, itemStr, administrationStr, token] = data.split(":");
+  const profileId = Number(profStr);
+  const itemId = Number(itemStr);
+  const administrationId = Number(administrationStr);
+  if (!profileId || !itemId || !administrationId || !token) return null;
+  return { profileId, itemId, administrationId, token };
+}
+
 // ---- Wellness-practice "Done ✅" logging over Telegram (#1259 phase 2) ----
 // A "pdone:<profileId>:<targetId>:<token>" button logs one practice session NOW for the
 // target's practice. Like a dose/PRN tap the profile id is a cross-check (the handler

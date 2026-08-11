@@ -5,12 +5,11 @@
 // Auth-blind and profileId-first, like every other lib/ write core. Every statement
 // filters on `profile_id`, so the new owned table needs no scoping exemption.
 //
-// WHY THE KEYBOARD IS STORED. Telegram has no "read my message" API. A reconciler that
-// wants to remove exactly the resolved buttons therefore has to know what the message
-// is showing, and the only moment anyone knows that is the moment it was sent. The blob
-// is the POST-CAP keyboard — what actually went on the wire — so a message whose
-// keyboard was truncated by the 100-button guard reconciles against what the user can
-// really see, not against what the builder wished for.
+// WHY THE KEYBOARDS ARE STORED. Telegram has no "read my message" API. A reconciler
+// that wants to remove exactly the resolved buttons therefore has to know what the
+// message is showing. `keyboard` follows each successful edit; `receipt_keyboard`
+// retains the POST-CAP keyboard delivered at send time, so a final dose receipt still
+// knows every item the message claimed after those buttons have been replaced.
 //
 // RETENTION (#203 cleanup class). This table grows with SENDS, so it owns a rule rather
 // than relying on profile deletion: Telegram refuses edits on messages older than
@@ -45,7 +44,12 @@ export interface MessagePointer {
   kind: string;
   // The SUBJECT's local calendar date at send time — the rollover comparison.
   date: string;
+  // The keyboard currently visible in Telegram, updated after every successful edit.
   keyboard: InlineKeyboard;
+  // The keyboard AS DELIVERED. Unlike `keyboard`, callback edits never replace this:
+  // dose reconciliation needs its original take/skip claims to compose the final
+  // taken/skipped receipt after the live keyboard contains only correction controls.
+  receiptKeyboard: InlineKeyboard;
   // The message's TITLE LINE as delivered — attribution prefix included (#1822 item 7).
   // The sweep edits by pointer and never holds the text it is replacing, so this is what
   // lets a close name its own subject. Null for a pointer recorded before migration 139,
@@ -66,6 +70,9 @@ export interface MessagePointer {
   // string makes the CAS correct by construction rather than by the two serializers
   // agreeing forever.
   version: string;
+  // The stored receipt blob verbatim, for restoring a pointer after a transient close
+  // failure without changing its immutable delivered context.
+  receiptVersion: string;
 }
 
 // Parse a stored keyboard blob. Robust to a corrupt or partial value: a bad row
@@ -125,13 +132,15 @@ export function recordMessagePointer(p: {
   try {
     db.prepare(
       `INSERT INTO notify_messages
-         (profile_id, chat_id, message_id, kind, date, keyboard, title, body_hash, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (profile_id, chat_id, message_id, kind, date, keyboard, receipt_keyboard,
+          title, body_hash, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(chat_id, message_id) DO UPDATE SET
          profile_id = excluded.profile_id,
          kind       = excluded.kind,
          date       = excluded.date,
          keyboard   = excluded.keyboard,
+         receipt_keyboard = excluded.receipt_keyboard,
          title      = excluded.title,
          body_hash  = excluded.body_hash,
          sent_at    = excluded.sent_at`
@@ -141,6 +150,7 @@ export function recordMessagePointer(p: {
       p.messageId,
       p.kind,
       p.date,
+      JSON.stringify(p.keyboard),
       JSON.stringify(p.keyboard),
       p.title?.trim() || null,
       p.bodyHash ?? null,
@@ -162,9 +172,32 @@ interface PointerRow {
   kind: string;
   date: string;
   keyboard: string;
+  receipt_keyboard: string | null;
   title: string | null;
   body_hash: string | null;
   sent_at: string;
+}
+
+function pointerFromRow(r: PointerRow): MessagePointer | null {
+  const keyboard = parseStoredKeyboard(r.keyboard);
+  if (!keyboard) return null;
+  const storedReceipt = r.receipt_keyboard ?? r.keyboard;
+  const parsedReceipt = parseStoredKeyboard(storedReceipt);
+  return {
+    id: r.id,
+    profileId: r.profile_id,
+    chatId: r.chat_id,
+    messageId: r.message_id,
+    kind: r.kind,
+    date: r.date,
+    keyboard,
+    receiptKeyboard: parsedReceipt ?? keyboard,
+    title: r.title,
+    bodyHash: r.body_hash,
+    sentAt: r.sent_at,
+    version: r.keyboard,
+    receiptVersion: parsedReceipt ? storedReceipt : r.keyboard,
+  };
 }
 
 // Every live pointer for one profile, oldest first. A row whose keyboard blob no longer
@@ -173,8 +206,8 @@ interface PointerRow {
 export function liveMessagePointers(profileId: number): MessagePointer[] {
   const rows = db
     .prepare(
-      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title,
-              body_hash, sent_at
+      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
+              receipt_keyboard, title, body_hash, sent_at
          FROM notify_messages
         WHERE profile_id = ?
         ORDER BY sent_at, id`
@@ -182,21 +215,8 @@ export function liveMessagePointers(profileId: number): MessagePointer[] {
     .all(profileId) as PointerRow[];
   const out: MessagePointer[] = [];
   for (const r of rows) {
-    const keyboard = parseStoredKeyboard(r.keyboard);
-    if (!keyboard) continue;
-    out.push({
-      id: r.id,
-      profileId: r.profile_id,
-      chatId: r.chat_id,
-      messageId: r.message_id,
-      kind: r.kind,
-      date: r.date,
-      keyboard,
-      title: r.title,
-      bodyHash: r.body_hash,
-      sentAt: r.sent_at,
-      version: r.keyboard,
-    });
+    const pointer = pointerFromRow(r);
+    if (pointer) out.push(pointer);
   }
   return out;
 }
@@ -225,8 +245,8 @@ export function liveMessagePointersForKind(
 ): MessagePointer[] {
   const rows = db
     .prepare(
-      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard, title,
-              body_hash, sent_at
+      `SELECT id, profile_id, chat_id, message_id, kind, date, keyboard,
+              receipt_keyboard, title, body_hash, sent_at
          FROM notify_messages
         WHERE profile_id = ? AND chat_id = ? AND kind = ?
         ORDER BY sent_at, id`
@@ -234,21 +254,8 @@ export function liveMessagePointersForKind(
     .all(profileId, String(chatId), kind) as PointerRow[];
   const out: MessagePointer[] = [];
   for (const r of rows) {
-    const keyboard = parseStoredKeyboard(r.keyboard);
-    if (!keyboard) continue;
-    out.push({
-      id: r.id,
-      profileId: r.profile_id,
-      chatId: r.chat_id,
-      messageId: r.message_id,
-      kind: r.kind,
-      date: r.date,
-      keyboard,
-      title: r.title,
-      bodyHash: r.body_hash,
-      sentAt: r.sent_at,
-      version: r.keyboard,
-    });
+    const pointer = pointerFromRow(r);
+    if (pointer) out.push(pointer);
   }
   return out;
 }
@@ -279,6 +286,24 @@ export function messagePointerIdAt(
     )
     .get(profileId, String(chatId), messageId) as { id: number } | undefined;
   return row?.id ?? null;
+}
+
+// The delivered message kind at one callback location. Used only for legacy token
+// disambiguation: old redose notices reused the otherwise-additive `prn:` prefix, so
+// the pointer is the durable fact that this particular button belonged to a spent
+// redose window rather than an on-demand `/dose` list.
+export function messagePointerKindAt(
+  profileId: number,
+  chatId: string | number,
+  messageId: number
+): string | null {
+  const row = db
+    .prepare(
+      `SELECT kind FROM notify_messages
+        WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
+    )
+    .get(profileId, String(chatId), messageId) as { kind: string } | undefined;
+  return row?.kind ?? null;
 }
 
 // Resolve the #2264 binding for one rendering site: WHICH pointer row the message is
@@ -420,9 +445,9 @@ export function restoreMessagePointer(p: MessagePointer): boolean {
     const res = db
       .prepare(
         `INSERT INTO notify_messages
-           (id, profile_id, chat_id, message_id, kind, date, keyboard, title,
-            body_hash, sent_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (id, profile_id, chat_id, message_id, kind, date, keyboard,
+            receipt_keyboard, title, body_hash, sent_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT DO NOTHING`
       )
       .run(
@@ -435,6 +460,7 @@ export function restoreMessagePointer(p: MessagePointer): boolean {
         // The blob VERBATIM, so the restored row is byte-identical to the witness the
         // next pass will read and claim against.
         p.version,
+        p.receiptVersion,
         p.title,
         p.bodyHash,
         p.sentAt

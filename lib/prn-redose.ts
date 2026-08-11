@@ -29,6 +29,10 @@
 // care-tier finding (Upcoming + the dashboard attention hero). Registered on the
 // intake-surface dismiss guard so a dismiss silences it like any other finding.
 import { parseUtcSql } from "./date";
+import {
+  clampTickMinutes,
+  SLOT_RETRY_DELAY_MIN,
+} from "./notifications/schedule";
 
 export const PRN_MAX_PREFIX = "prn-max:";
 
@@ -155,6 +159,9 @@ export interface RedoseWindowInput {
   // or null when never notified. Equal to latestAdministrationId ⇒ already fired for
   // THIS administration ⇒ one-shot done.
   notifiedAdministrationId: number | null;
+  // The scheduler's observed cadence. It sizes two bounded attempt bands around the
+  // instant the interval opens, so a restart cannot "catch up" on a weeks-old dose.
+  tickMinutes: number;
   // The day's amount-aware exposure (#1854), when the caller computed one. When
   // present its ceiling REPLACES the count comparison: 3 × 800 mg is suppressed at
   // a 2400 mg/day max even though "3 of 6 doses" reads calm. Absent/null keeps the
@@ -177,11 +184,33 @@ export type RedoseDecision =
   | { kind: "not-armed" } // no administration to arm the timer
   | { kind: "already-notified" } // one-shot already fired for the latest administration
   | { kind: "not-yet"; opensInHours: number } // interval hasn't elapsed
+  | { kind: "missed-window" } // the opening + bounded retry bands are both past
   | { kind: "suppressed-max" }; // day's count has reached the confirmed max
 
 // Hours elapsed between two instants (may be fractional).
 function hoursBetween(from: Date, to: Date): number {
   return (to.getTime() - from.getTime()) / 3_600_000;
+}
+
+// The redose notice is an EDGE, not a standing condition. Attempt on the first tick
+// after the minimum interval opens, then once more an hour later if delivery did not
+// earn the administration marker. The bands are one OBSERVED tick wide, matching the
+// scheduled-notification retry budget without turning an outage into a catch-up send.
+export function redoseAttempt(
+  elapsedHours: number,
+  minIntervalHours: number,
+  observedTickMinutes: number
+): 0 | 1 | null {
+  const offsetMinutes = (elapsedHours - minIntervalHours) * 60;
+  if (!Number.isFinite(offsetMinutes) || offsetMinutes < 0) return null;
+  const tick = clampTickMinutes(observedTickMinutes);
+  if (offsetMinutes < tick) return 0;
+  if (
+    offsetMinutes >= SLOT_RETRY_DELAY_MIN &&
+    offsetMinutes < SLOT_RETRY_DELAY_MIN + tick
+  )
+    return 1;
+  return null;
 }
 
 export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
@@ -206,6 +235,11 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
   const exposure = input.exposure ?? null;
   if (exposure ? exposure.atMax : input.countToday >= input.maxDailyCount) {
     return { kind: "suppressed-max" };
+  }
+  if (
+    redoseAttempt(elapsed, input.minIntervalHours, input.tickMinutes) == null
+  ) {
+    return { kind: "missed-window" };
   }
   return {
     kind: "fire",

@@ -106,6 +106,26 @@ export async function handlePrnLogTap(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
+  const messageId = cq.message?.message_id;
+  const legacyRedose =
+    (messageId != null &&
+      chatId != null &&
+      messagePointerKindAt(profileId, chatId, messageId) === "redose") ||
+    cq.message?.text?.split("\n")[0]?.includes("Redose window open:");
+  if (legacyRedose) {
+    const text =
+      "This old redose action expired — use /dose to log another dose.";
+    await answerCallbackQuery(cq.id, text, { alert: true });
+    if (chatId != null && messageId != null) {
+      await closeMessage(
+        profileId,
+        chatId,
+        messageId,
+        replacementWithTitle(cq.message?.text, text)
+      );
+    }
+    return;
+  }
   const outcome = logAdministration(profileId, token.itemId);
   const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
   // The answer states the verdict that now stands (#1717), read back from POST-write
@@ -126,6 +146,80 @@ export async function handlePrnLogTap(
       med?.familyMemberCount ?? 1
     )
   );
+}
+
+// A redose notice is one specific administration-armed window. Unlike `/dose`, a
+// successful tap consumes the message, and an app log that won the race makes this tap
+// refuse rather than recording a second dose.
+export async function handleRedoseLogTap(
+  cq: TelegramCallbackQuery,
+  token: RedoseLogCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
+    return;
+  }
+
+  const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
+  const outcome = logRedoseWindowAdministration(
+    profileId,
+    token.itemId,
+    token.administrationId
+  );
+  if (outcome.kind === "stale-window") {
+    const text =
+      outcome.reason === "superseded"
+        ? "Not logged — a newer dose already closed this redose window."
+        : outcome.reason === "cancelled"
+          ? "Not logged — the dose that opened this redose window is no longer logged."
+          : `Not logged — ${name} is no longer available.`;
+    await answerCallbackQuery(cq.id, text, { alert: true });
+    if (chatId != null && messageId != null) {
+      await closeMessage(
+        profileId,
+        chatId,
+        messageId,
+        replacementWithTitle(
+          cq.message?.text,
+          outcome.reason === "superseded"
+            ? `${name} dose already logged.`
+            : outcome.reason === "cancelled"
+              ? "Opening dose no longer logged."
+              : `${name} is no longer available.`
+        )
+      );
+    }
+    return;
+  }
+
+  const logged = administrationLogged(outcome);
+  const med = logged
+    ? getPrnMedicationsForQuickLog(profileId).find((m) => m.id === token.itemId)
+    : undefined;
+  const text = prnLogAnswerText(
+    administrationOutcomeText(outcome, name),
+    logged,
+    med ? prnQuickLogRedoseStatus(med, clockNow()) : null,
+    med?.familyMemberCount ?? 1
+  );
+  await answerCallbackQuery(cq.id, text, { alert: !logged });
+  if (chatId != null && messageId != null) {
+    await closeMessage(
+      profileId,
+      chatId,
+      messageId,
+      replacementWithTitle(
+        cq.message?.text,
+        administrationOutcomeText(outcome, name)
+      )
+    );
+  }
 }
 
 // A practice "Done ✅" tap (#1259): log one session NOW for the tapped target's practice,
@@ -1020,6 +1114,7 @@ import { RIGHTSIZE_OUTCOME_TEXT } from "../target-rightsize";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { messageKeyboard } from "./telegram-render";
 import { zonedDateParts } from "../date";
+import { messagePointerKindAt } from "./message-pointers";
 
 import {
   getCustomSymptomNames,
@@ -1028,6 +1123,7 @@ import {
   getPrnMedicationsForQuickLog,
   getSymptomLogOrder,
   logAdministration,
+  logRedoseWindowAdministration,
   logPracticeByTargetId,
 } from "../queries";
 import { practiceLogOutcomeText } from "../practice";
@@ -1119,6 +1215,7 @@ import {
   type PracticeDoneCallback,
   type RightSizeLowerCallback,
   type PrnLogCallback,
+  type RedoseLogCallback,
   type SymptomPickCallback,
   type SymptomSeverityCallback,
 } from "./callback-data";

@@ -210,15 +210,19 @@ function logAdminAt(
   profileId: number,
   med: { itemId: number; doseId: number },
   hoursAgo: number
-): void {
+): number {
   const at = new Date(Date.now() - hoursAgo * 3_600_000)
     .toISOString()
     .replace("T", " ")
     .slice(0, 19);
-  db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
-     VALUES (?, ?, ?, ?, 'taken')`
-  ).run(med.doseId, med.itemId, today(profileId), at);
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
+         VALUES (?, ?, ?, ?, 'taken')`
+      )
+      .run(med.doseId, med.itemId, today(profileId), at).lastInsertRowid
+  );
 }
 
 // The labels of the buttons the last /dose send carried.
@@ -312,5 +316,115 @@ describe("/dose renders its safety verdicts (#1717)", () => {
       )
       .get(med.itemId) as { c: number };
     expect(c).toBe(5);
+  });
+
+  it("a redose-window tap consumes that window and a repeat cannot double-log", async () => {
+    const s = seedProfile("RedoseTap");
+    seedLoginTelegram(s.profileId, "5550782");
+    const med = seedPrnMed(s.profileId, "Redose Ibuprofen");
+    const armingId = logAdminAt(s.profileId, med, 7);
+    const data = `redose:${s.profileId}:${med.itemId}:${armingId}:abcd1234`;
+    const callback = {
+      id: "cbq-redose",
+      data,
+      message: {
+        message_id: 10,
+        chat: { id: "5550782" },
+        text: "💊 Redose window open: Redose Ibuprofen\nWindow open.",
+        reply_markup: {
+          inline_keyboard: [[{ text: "💊 Log dose", callback_data: data }]],
+        },
+      },
+    };
+
+    answerMock.mockClear();
+    editMock.mockClear();
+    await handleCallbackQuery(callback);
+    expect(String(answerMock.mock.calls.at(-1)?.[1])).toContain("Logged");
+    expect(editMock).toHaveBeenCalledTimes(1);
+
+    await handleCallbackQuery({ ...callback, id: "cbq-redose-repeat" });
+    expect(String(answerMock.mock.calls.at(-1)?.[1])).toContain(
+      "newer dose already closed"
+    );
+    expect(answerMock.mock.calls.at(-1)?.[2]).toEqual({ alert: true });
+    const { c } = db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM intake_item_logs
+          WHERE item_id = ? AND status = 'taken'`
+      )
+      .get(med.itemId) as { c: number };
+    expect(c).toBe(2);
+  });
+
+  it("reports a cancelled window when its opening dose was undone", async () => {
+    const s = seedProfile("RedoseUndoTap");
+    seedLoginTelegram(s.profileId, "5550784");
+    const med = seedPrnMed(s.profileId, "Undo Ibuprofen");
+    const armingId = logAdminAt(s.profileId, med, 7);
+    const data = `redose:${s.profileId}:${med.itemId}:${armingId}:undo1234`;
+    db.prepare("DELETE FROM intake_item_logs WHERE id = ?").run(armingId);
+
+    answerMock.mockClear();
+    editMock.mockClear();
+    await handleCallbackQuery({
+      id: "cbq-redose-undone",
+      data,
+      message: {
+        message_id: 12,
+        chat: { id: "5550784" },
+        text: "💊 Redose window open: Undo Ibuprofen\nWindow open.",
+        reply_markup: {
+          inline_keyboard: [[{ text: "💊 Log dose", callback_data: data }]],
+        },
+      },
+    });
+
+    expect(String(answerMock.mock.calls.at(-1)?.[1])).toContain(
+      "dose that opened this redose window is no longer logged"
+    );
+    expect(answerMock.mock.calls.at(-1)?.[2]).toEqual({ alert: true });
+    expect(String(editMock.mock.calls.at(-1)?.[2])).toContain(
+      "Opening dose no longer logged."
+    );
+    const { c } = db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM intake_item_logs
+          WHERE item_id = ? AND status = 'taken'`
+      )
+      .get(med.itemId) as { c: number };
+    expect(c).toBe(0);
+  });
+
+  it("refuses a legacy redose notice instead of treating it as reusable /dose", async () => {
+    const s = seedProfile("LegacyRedoseTap");
+    seedLoginTelegram(s.profileId, "5550783");
+    const med = seedPrnMed(s.profileId, "Legacy Ibuprofen");
+    const data = `prn:${s.profileId}:${med.itemId}:legacy`;
+    answerMock.mockClear();
+    editMock.mockClear();
+
+    await handleCallbackQuery({
+      id: "cbq-legacy-redose",
+      data,
+      message: {
+        message_id: 11,
+        chat: { id: "5550783" },
+        text: "💊 Redose window open: Legacy Ibuprofen\nWindow open.",
+        reply_markup: {
+          inline_keyboard: [[{ text: "💊 Log dose", callback_data: data }]],
+        },
+      },
+    });
+
+    expect(String(answerMock.mock.calls.at(-1)?.[1])).toContain(
+      "old redose action expired"
+    );
+    expect(answerMock.mock.calls.at(-1)?.[2]).toEqual({ alert: true });
+    expect(editMock).toHaveBeenCalledTimes(1);
+    const { c } = db
+      .prepare("SELECT COUNT(*) AS c FROM intake_item_logs WHERE item_id = ?")
+      .get(med.itemId) as { c: number };
+    expect(c).toBe(0);
   });
 });
