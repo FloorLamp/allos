@@ -429,12 +429,20 @@ export async function followLink(
   // page 2 was observed at page 11 — and reported it as a bare URL-match timeout,
   // which reads as latency and is why #2437's diagnosis came out as "the
   // transition did not commit in time" when the clicks had in fact all landed.
-  const source = page.url();
+  //
+  // Captured lazily, at the first click rather than here, because a page can
+  // move its OWN url at hydration — `RangeFilterSelect` restores a remembered
+  // `range` param from sessionStorage in a mount effect — and a baseline taken
+  // before that lands would read as a departure the helper never caused, and
+  // refuse to click at all. The guard is about "did MY click move the page", so
+  // it may only arm once a click has actually been issued.
+  let source = page.url();
+  let clicked = false;
   let departedTo: string | undefined;
   try {
     await expect(async () => {
       if (!destination.test(page.url())) {
-        if (page.url() !== source) {
+        if (clicked && page.url() !== source) {
           // Left the source for a third URL: stop clicking, keep waiting. A
           // redirect chain or a slow multi-hop transition still converges on its
           // own; anything else fails at the ceiling with both URLs named below.
@@ -443,7 +451,11 @@ export async function followLink(
           // Back on the source URL (or never left it) — the click is live again,
           // so a departure recorded by an earlier iteration is stale.
           departedTo = undefined;
+          // Re-baseline until the first click: everything up to here is the
+          // page moving itself, which this guard has no opinion about.
+          if (!clicked) source = page.url();
           try {
+            clicked = true;
             await link.click({ timeout: 2000 });
           } catch (err) {
             lastClickError =
