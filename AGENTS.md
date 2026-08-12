@@ -124,6 +124,26 @@ Server Components normally read through the query layer and pass data to client
 components. SQL remains inline through `db.prepare(...)`; there is no
 repository or ORM layer.
 
+`db.prepare(...)` COMPILES the statement on every call, and compilation is the
+half of the cost nobody counts. A render issues thousands of statements against a
+couple of hundred distinct SQL texts, so it pays to compile the same query
+hundreds of times: `/household` spent 720ms compiling against 237ms executing, in
+a 1288ms render, and `getProfileSetting` alone recompiled its one-line SELECT
+10,600 times. A read on a HOT PATH therefore declares its SQL through
+`hoistedStatement()` (`lib/db.ts`), which compiles once per connection and reuses
+it. Hot means: reached once per profile on a cross-profile surface, reached per
+row/day/item inside a loop, or reached through a helper many unrelated callers
+share — an age gate, a timezone, a settings key.
+
+Hoisting caches the COMPILED STATEMENT, never the value, so a read-after-write in
+the same request still sees the write. That is what makes it safe where `cache()`
+is not, and why it is the DEFAULT answer to a repeated read. Request-scoped
+`cache()` is the second, narrower tool: reach for it only when the same read
+repeats with the SAME arguments and no writer can intervene, and give the reason
+beside it (`getUnitPrefs`, `getTimezone`, `getProfileBirthdate` each carry theirs).
+A read the surface genuinely needs once per profile is not a duplicate at all —
+it is fan-out, and hoisting is its whole fix.
+
 Modules are named after the surface they serve. The Longevity page (`/longevity`)
 reads through `lib/queries/longevity.ts` over the pure `lib/longevity-pillars.ts`;
 "healthspan" remains the domain term for that model and stays in the persisted
@@ -641,8 +661,13 @@ set it:
 - A module-scope prepared statement must use `hoistedStatement()` from
   `lib/db.ts`, never a bare `db.prepare(...)`. The shared tier swaps the database
   between files, and a statement compiled against the closed connection throws.
-  Inline `db.prepare(...)` inside a function is unaffected. The owned-table scans
-  read both forms, so scoping stays enforced either way.
+  Inline `db.prepare(...)` inside a function is unaffected BY THIS HAZARD — but
+  that is a statement about test isolation only, and reading it as a blessing is
+  what left the app's most-executed read compiling itself 10,600 times a render.
+  Whether an inline prepare is a defect is the COST question in Architecture
+  above, decided separately. The owned-table scans read both forms, so scoping
+  stays enforced either way — note they are TEXT scans, so `db.prepare()` written
+  in a comment fails `profile-scoping.test.ts` as an unverifiable non-literal.
 
 Every rendered UI feature must add or extend a browser test. The E2E harness
 seeds a template once, gives each worker its own database and `next start`
