@@ -7,7 +7,7 @@ const DB_PATH = workerDbPath();
 
 // Edit-lock badge + "Resume sync updates" affordance (#659). seed-events plants a
 // hand-edited (edit-locked) Withings body-metric row on the default profile, so the
-// Trends → Body history table renders the badge that states the consequence and the
+// Trends → Overview → body census history table renders the badge that states the consequence and the
 // button that clears the lock. This drives the badge, opens the confirm, resumes
 // sync, and asserts the success toast — proving the clearEditLock action round-trips
 // from the UI.

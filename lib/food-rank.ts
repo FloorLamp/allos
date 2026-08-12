@@ -207,7 +207,7 @@ export function slotProximityWeight(
 // window's anchor. Zero-weight taps are dropped so the blend's decay never has to carry
 // rows that contribute nothing.
 //
-// `minuteOfDay` is the EATING minute where one was captured (`eaten_at`) and the tap
+// `minuteOfDay` is the EATING minute where one was captured (`occurred_at`) and the tap
 // minute otherwise, which is the whole point of #2019 — a dinner tapped at 23:40 and
 // corrected to 19:00 now ranks as a dinner instead of teaching the morning nudge.
 export function slotProximityOccurrences(

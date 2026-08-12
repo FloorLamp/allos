@@ -4,7 +4,7 @@ import { getUnitPrefs } from "@/lib/settings";
 import {
   getActivities,
   getActivitySuggestions,
-  getJournalWeekSummary,
+  getTrainingLogWeekSummary,
 } from "@/lib/queries";
 import { isDurationActivityType } from "@/lib/age-gate";
 import { today } from "@/lib/db";
@@ -26,7 +26,7 @@ export default async function RestrictedActivityView() {
   const activities = getActivities(profile.id, 60).filter((a) =>
     isDurationActivityType(a.type)
   );
-  const week = getJournalWeekSummary(profile.id);
+  const week = getTrainingLogWeekSummary(profile.id);
   // The frequency-ranked activity names the full editor's picker already uses — the
   // restricted panel reads the SAME source rather than offering nothing (#1676).
   const suggestions = getActivitySuggestions(profile.id);

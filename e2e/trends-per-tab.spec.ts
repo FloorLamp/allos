@@ -9,7 +9,7 @@ import { followLink, hydratedClick } from "./helpers";
 // server-side gating), and (b) clicking a tab switches which section is
 // rendered.
 //
-// #1644 folded the Body tab into Overview and left FOUR tabs — Overview ·
+// #1644 folded the body census into Overview and left FOUR tabs — Overview ·
 // Fitness · Nutrition · Insights, permanent by owner ruling. The #105 contract is
 // unchanged and is what keeps that merge honest: the landing surface must not drag
 // the other domains' queries along with it. e2e/trends-landing.spec.ts owns the

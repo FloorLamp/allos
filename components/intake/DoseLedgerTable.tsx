@@ -6,13 +6,13 @@ import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";
-import { deleteAdministration } from "@/app/(app)/nutrition/supplement-actions";
+import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatLongDate } from "@/lib/format-date";
 import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import { medicationHref, intakeHref } from "@/lib/hrefs";
 import type { DoseHistoryDose } from "@/components/intake/DoseHistoryPanel";
-import type { SupplementKind } from "@/lib/types";
+import type { IntakeItemKind } from "@/lib/types";
 
 // One taken dose as the cross-item ledger renders it: the per-item panel's entry plus
 // the identity of the item it was taken against. `time` is the already-formatted
@@ -23,7 +23,7 @@ export interface DoseLedgerEntry {
   id: number;
   itemId: number;
   itemName: string;
-  kind: SupplementKind;
+  kind: IntakeItemKind;
   doseId: number;
   date: string;
   time: string;
@@ -38,7 +38,7 @@ export interface DoseLedgerEntry {
 export interface DoseLedgerItem {
   id: number;
   name: string;
-  kind: SupplementKind;
+  kind: IntakeItemKind;
   product: string | null;
   asNeeded: boolean;
   doses: DoseHistoryDose[];

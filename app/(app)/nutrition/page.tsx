@@ -1,6 +1,7 @@
 import TabFirstPage from "@/components/TabFirstPage";
 import { NUTRITION_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { NUTRITION_TABS, type NutritionTab } from "@/lib/hrefs";
+import { isRealIsoDate } from "@/lib/date";
 import FoodTab from "./FoodTab";
 import SupplementsTab from "./SupplementsTab";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 // Trends/Data/Settings precedent — one panel resolved server-side per request, not
 // every panel mounted). The strip and active panel stay at page level; each Food or
 // Supplements section owns its own card hierarchy. Medications remain on their own
-// Medical-group page; the old /medicine route was removed (#1635).
+// Medical-group page; the retired combined intake route was removed (#1635).
 //
 // The infant gate (issue #591/#746) lives on the FOOD tab only — infant supplements
 // (vitamin D drops) are real, so the Supplements tab is always reachable and the nav
@@ -34,11 +35,16 @@ export default async function NutritionPage(props: {
   const rawSupply = Array.isArray(searchParams.supply)
     ? searchParams.supply[0]
     : searchParams.supply;
+  const rawDate = one(searchParams.date);
+  const rawBackfill = one(searchParams.backfill);
   const activePanel =
     tab === "supplements" ? (
-      <SupplementsTab supplyId={Number(rawSupply ?? 0)} />
+      <SupplementsTab
+        supplyId={Number(rawSupply ?? 0)}
+        backfillDate={isRealIsoDate(rawBackfill) ? rawBackfill : undefined}
+      />
     ) : (
-      <FoodTab />
+      <FoodTab initialDate={isRealIsoDate(rawDate) ? rawDate : undefined} />
     );
 
   return (
@@ -50,4 +56,8 @@ export default async function NutritionPage(props: {
       {activePanel}
     </TabFirstPage>
   );
+}
+
+function one(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }

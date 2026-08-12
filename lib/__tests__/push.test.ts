@@ -94,8 +94,8 @@ describe("push-core: buildPushPayload", () => {
   });
 
   it("uses an explicit url when given", () => {
-    const json = buildPushPayload({ title: "T", body: "B" }, "/medicine");
-    expect(JSON.parse(json).url).toBe("/medicine");
+    const json = buildPushPayload({ title: "T", body: "B" }, "/medications");
+    expect(JSON.parse(json).url).toBe("/medications");
   });
 
   it("truncates an over-long body (with an ellipsis) to stay under the payload cap", () => {

@@ -5,8 +5,8 @@ import { today } from "@/lib/db";
 import {
   getDisplayFormatPrefs,
   getUnitPrefs,
-  getUserAge,
-  getUserBirthdate,
+  getProfileAge,
+  getProfileBirthdate,
   type WeightUnit,
 } from "@/lib/settings";
 import {
@@ -21,7 +21,7 @@ import {
   showBodyFat,
   showGrowthQuickAdd,
 } from "@/lib/growth-metrics";
-import { getGoals, getManualBodyMetricStatedAt } from "@/lib/queries";
+import { getOutcomeGoals, getManualBodyMetricStatedAt } from "@/lib/queries";
 import { dispWeight, round } from "@/lib/units";
 import { filterSeriesByRange } from "@/lib/trends";
 import { dayFillWindow } from "@/lib/day-fill";
@@ -29,9 +29,9 @@ import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
 } from "@/lib/trends-series";
-import { bodyMetricSeriesFold } from "@/lib/body-metric-series";
+import { trendMetricSeriesFold } from "@/lib/trend-metric-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
-import { isGoalLive } from "@/lib/goals";
+import { isGoalLive } from "@/lib/outcome-goals";
 import {
   ALL_TIME_RANGE_PARAM,
   ALL_TIME_RANGE_VALUE,
@@ -44,16 +44,16 @@ import {
 } from "@/lib/timeline-format";
 import { rangeSummaryLabel } from "@/lib/trends";
 import {
-  BODY_METRIC_META,
-  isBodyMetricSlug,
-  resolveBodyMetricUnit,
-  bodyChartScale,
-  bodyMetricPeriodStats,
-  savedMetricIdForBodySlug,
+  TREND_METRIC_META,
+  isTrendMetricSlug,
+  resolveTrendMetricUnit,
+  trendMetricChartScale,
+  trendMetricPeriodStats,
+  savedMetricIdForTrendSlug,
   seriesCoverageNote,
-  type BodyMetricSlug,
+  type TrendMetricSlug,
   type PeriodStat,
-} from "@/lib/trends-body-metrics";
+} from "@/lib/trend-metrics";
 import { anxietyDisplaySlot } from "@/lib/mood";
 import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 import { metricSeriesKey } from "@/lib/saved-items";
@@ -73,7 +73,7 @@ import type { Reading } from "@/lib/reading-model";
 import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
 import { PediatricBpCard } from "@/components/PediatricBpCard";
 import { MetricJudgmentCard } from "@/components/MetricJudgmentCard";
-import type { BodyMetricKind, Goal } from "@/lib/types";
+import type { BodyMetricKind, OutcomeGoal } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
 import StarButton from "@/components/StarButton";
 import PageContainer from "@/components/PageContainer";
@@ -82,9 +82,9 @@ import {
   TrendAnnotationControls,
   TrendAnnotationProvider,
 } from "@/components/TrendAnnotationToggles";
-import BodyTrendCharts, {
-  type BodyChartSpec,
-} from "@/components/BodyTrendCharts";
+import TrendMetricCharts, {
+  type TrendChartSpec,
+} from "@/components/TrendMetricCharts";
 import MetricReadingsTable, {
   type MetricReadingRow,
 } from "@/components/MetricReadingsTable";
@@ -104,7 +104,7 @@ export const dynamic = "force-dynamic";
 // The detailed-page home for the source controls that used to live below the
 // entire desktop Body chart stack. Only metrics backed by the source-priority
 // system map here; single-source metrics render no comparison at all.
-const SOURCE_COMPARISON_KEY: Partial<Record<BodyMetricSlug, string>> = {
+const SOURCE_COMPARISON_KEY: Partial<Record<TrendMetricSlug, string>> = {
   weight: "weight",
   "body-fat": "body_fat",
   "resting-hr": "resting_hr",
@@ -115,7 +115,7 @@ const SOURCE_COMPARISON_KEY: Partial<Record<BodyMetricSlug, string>> = {
 };
 
 const MEASUREMENT_ENTRY_METRIC: Partial<
-  Record<BodyMetricSlug, MeasurementEntryMetric>
+  Record<TrendMetricSlug, MeasurementEntryMetric>
 > = {
   systolic: "blood-pressure",
   diastolic: "blood-pressure",
@@ -132,20 +132,21 @@ const MEASUREMENT_ENTRY_METRIC: Partial<
 };
 
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a
-// Trends → Body sparkline tile, mirroring the biomarker series view (/biomarkers/view)
+// Trends → Overview → body census sparkline tile, mirroring the clinical-observation
+// series view (/results/readings/view)
 // that labs have always had but body metrics never did: a big chart with the shared
 // range control + med/situation annotations + a goal overlay, trailing 7/30/90-day
 // period stats, and (for a manually-enterable metric) that metric's single quick-add.
 //
-// The series is re-derived through the SAME queries the Body tab's chart stack uses
+// The series is re-derived through the SAME queries the body census chart stack uses
 // (the biomarker-view precedent — a separate surface re-deriving via the shared query
 // layer), then windowed here; the metadata (label/unit/color/goal/quick-add) comes
-// from the ONE registry (BODY_METRIC_META) so this page and the tile can't disagree.
+// from the ONE registry (TREND_METRIC_META) so this page and the tile can't disagree.
 
 // Why a DERIVED metric shows no readings table: there is no row to edit. Said out
 // loud on the page, because an empty table would read as "your data is missing"
 // rather than "this number is computed from other numbers you CAN fix".
-const DERIVED_READING_REASON: Partial<Record<BodyMetricSlug, string>> = {
+const DERIVED_READING_REASON: Partial<Record<TrendMetricSlug, string>> = {
   bmi: "BMI is computed from your weight and height — correct a reading on either of those to change it.",
   hr: "Daily average heart rate is computed from your recorded per-minute heart rate, so there is no single reading to edit here.",
   sun: "Outdoor daylight is computed from your logged outdoor sessions and the solar day at your home location — edit the session to change it.",
@@ -156,7 +157,7 @@ const DERIVED_READING_REASON: Partial<Record<BodyMetricSlug, string>> = {
 // (weight in the login's preference); every other metric is stored in the unit it is
 // charted in, so its value passes through rounded to the metric's decimals.
 function readingRowsFor(
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   profileId: number,
   decimals: number,
   weightUnit: WeightUnit,
@@ -225,7 +226,7 @@ function readingRowsFor(
 }
 
 // The goal overlay (target line + projection caption) for a metric that can carry a
-// body-metric goal — the SAME shape the Body tab draws (projectGoal + describeEta).
+// body-metric goal — the SAME shape the body census draws (projectGoal + describeEta).
 function goalOverlay(
   profileId: number,
   goalMetric: BodyMetricKind,
@@ -233,8 +234,8 @@ function goalOverlay(
   unit: string,
   decimals: number,
   weightUnit: WeightUnit
-): Pick<BodyChartSpec, "referenceValue" | "projectionNote"> {
-  const goal: Goal | undefined = getGoals(profileId).find(
+): Pick<TrendChartSpec, "referenceValue" | "projectionNote"> {
+  const goal: OutcomeGoal | undefined = getOutcomeGoals(profileId).find(
     (g) =>
       g.body_metric === goalMetric && isGoalLive(g) && g.target_value != null
   );
@@ -269,7 +270,7 @@ function goalOverlay(
   };
 }
 
-export default async function BodyMetricDetailPage(props: {
+export default async function TrendMetricDetailPage(props: {
   params: Promise<{ kind: string }>;
   searchParams: Promise<{
     from?: string | string[];
@@ -281,7 +282,7 @@ export default async function BodyMetricDetailPage(props: {
   const { kind } = await props.params;
   const searchParams = await props.searchParams;
 
-  if (!isBodyMetricSlug(kind)) {
+  if (!isTrendMetricSlug(kind)) {
     return (
       <PageContainer width="reading" className="space-y-4">
         <BackLink />
@@ -308,12 +309,12 @@ export default async function BodyMetricDetailPage(props: {
     );
   }
 
-  const meta = BODY_METRIC_META[kind];
+  const meta = TREND_METRIC_META[kind];
   const weightUnit = getUnitPrefs(login.id).weightUnit;
   const formatPrefs = getDisplayFormatPrefs(login.id);
-  const unit = resolveBodyMetricUnit(meta, weightUnit);
+  const unit = resolveTrendMetricUnit(meta, weightUnit);
   const todayStr = today(profile.id);
-  const savedMetricId = savedMetricIdForBodySlug(kind);
+  const savedMetricId = savedMetricIdForTrendSlug(kind);
   const starred = isItemSaved(profile.id, "trend-metric", savedMetricId);
   const starAction = (
     <StarButton
@@ -341,20 +342,20 @@ export default async function BodyMetricDetailPage(props: {
   // the ones of its IDENTITY, not the ones in its table: a clinic-measured resting
   // HR sits in `medical_records` and never reached the daily chart, because the
   // chart read `body_metrics`. The SERIES folds them in upstream
-  // (lib/body-metric-series.ts, so the tile and this page cannot disagree) — and it
+  // (lib/trend-metric-series.ts, so the tile and this page cannot disagree) — and it
   // hands back WHICH observations it plotted, so the readings table below lists
   // exactly those. Reading the raw observations here instead is what let the chart
   // drop a same-day equal-value clinic reading while the table still listed it.
   // Empty for a metric whose readings already ARE observations, which would
   // otherwise list each one twice.
-  const { points: fullSeries, observations } = bodyMetricSeriesFold(
+  const { points: fullSeries, observations } = trendMetricSeriesFold(
     kind,
     profile.id,
     weightUnit,
     todayStr
   );
   const windowed = filterSeriesByRange(fullSeries, range);
-  const stats = bodyMetricPeriodStats(fullSeries, todayStr, meta.decimals);
+  const stats = trendMetricPeriodStats(fullSeries, todayStr, meta.decimals);
   const readings = readingRowsFor(
     kind,
     profile.id,
@@ -363,11 +364,11 @@ export default async function BodyMetricDetailPage(props: {
     observations
   );
   const sourceComparisonKey = SOURCE_COMPARISON_KEY[kind];
-  const birthdate = getUserBirthdate(profile.id);
+  const birthdate = getProfileBirthdate(profile.id);
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
-  const age = getUserAge(profile.id);
+  const age = getProfileAge(profile.id);
   const entryGates = {
     showBodyFat: showBodyFat(age),
     showGrowth: showGrowthQuickAdd(age),
@@ -384,7 +385,7 @@ export default async function BodyMetricDetailPage(props: {
       : undefined;
 
   // Goal overlay + event annotations, both windowed to the shared range — the same
-  // machinery the Body tab draws (buildTrendAnnotations / buildProtocolTrendWindows).
+  // machinery the body census draws (buildTrendAnnotations / buildProtocolTrendWindows).
   const overlay = meta.goalMetric
     ? goalOverlay(
         profile.id,
@@ -398,7 +399,7 @@ export default async function BodyMetricDetailPage(props: {
   const annotations = buildTrendAnnotations(profile.id, range);
   const protocolWindows = buildProtocolTrendWindows(profile.id, range);
 
-  const chartSpec: BodyChartSpec = {
+  const chartSpec: TrendChartSpec = {
     key: meta.slug,
     detailHref: null, // detail-none: this page IS the detail — a card here would link to itself
     title: meta.title,
@@ -412,7 +413,7 @@ export default async function BodyMetricDetailPage(props: {
     // What the plot ACTUALLY covers, whenever the selected window is wider than the
     // series — the reconciliation between a lit "90D" pill and a week-wide axis.
     note: seriesCoverageNote(windowed, range),
-    ...bodyChartScale(meta),
+    ...trendMetricChartScale(meta),
   };
 
   const latest =
@@ -588,7 +589,7 @@ export default async function BodyMetricDetailPage(props: {
         )}
 
         {/* The SAME shared range + event-control composition as the Trends hub.
-            BodyTrendCharts registers the annotation kinds it actually draws; the
+            TrendMetricCharts registers the annotation kinds it actually draws; the
             provider hoists their controls into DateRangeControl's companion slot
             instead of rendering a second row above the chart. */}
         <DateRangeControl
@@ -610,7 +611,7 @@ export default async function BodyMetricDetailPage(props: {
         />
 
         <div className="grid items-start gap-4 md:gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)]">
-          {/* The chart owns the primary desktop column. BodyTrendCharts normally
+          {/* The chart owns the primary desktop column. TrendMetricCharts normally
             lays overview cards out two-up; this detail page explicitly keeps its
             one chart full-width so there is never an empty sibling column. */}
           {/* The plotted point count, exposed so the readings table below can be
@@ -621,7 +622,7 @@ export default async function BodyMetricDetailPage(props: {
                 <EmptyState message="No readings in this range." />
               </div>
             ) : (
-              <BodyTrendCharts
+              <TrendMetricCharts
                 charts={[chartSpec]}
                 annotations={annotations}
                 windows={protocolWindows}

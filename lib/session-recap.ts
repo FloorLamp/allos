@@ -29,7 +29,7 @@ import {
   summarizeExercise,
   type SetRow,
   type SetStatus,
-} from "./journal-format";
+} from "./training-log-format";
 import { exerciseHistoryKey, isBodyweight } from "./lifts";
 import { pickSeedSessions } from "./exercise-window";
 import type { WeightUnit } from "./settings";
@@ -160,7 +160,7 @@ function hasContent(s: RecapSet): boolean {
   );
 }
 
-// Map a RecapSet onto the journal SetRow shape so volume + verdict reuse the ONE
+// Map a RecapSet onto the training log SetRow shape so volume + verdict reuse the ONE
 // shared summarizeExercise/judgeTargets computation (never a second rule).
 function toSetRow(s: RecapSet, i: number): SetRow {
   return {

@@ -86,7 +86,7 @@ function deleteActivitiesTitled(...titles: string[]) {
   }
 }
 
-function deleteSupplement(name: string) {
+function deleteIntakeItem(name: string) {
   const h = new Database(DB_PATH);
   try {
     const rows = h
@@ -159,7 +159,7 @@ test("a half-entered workout survives a reload and comes back on request (#1699)
     ).toBeVisible({ timeout: DRAFT_SETTLE_MS });
 
     // Saved ⇒ no draft may survive. A stale one would offer to re-enter a workout
-    // that is already in the journal.
+    // that is already in the training log.
     await expect
       .poll(async () => activityDrafts(await draftRows(page)).length, {
         timeout: DRAFT_SETTLE_MS,
@@ -269,7 +269,7 @@ test("a long record form restores its state-only rows, then clears on submit (#1
         .getByTestId("draft-restore-banner")
     ).toHaveCount(0);
   } finally {
-    deleteSupplement(SUPPLEMENT_NAME);
+    deleteIntakeItem(SUPPLEMENT_NAME);
   }
 });
 

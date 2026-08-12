@@ -7,8 +7,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import {
-  setUserBirthdate,
-  setUserSex,
+  setProfileBirthdate,
+  setProfileSex,
   setRiskAttributes,
   setSmokingHistory,
   EMPTY_RISK_ATTRIBUTES,
@@ -21,8 +21,8 @@ function makeProfile(name: string, birthdate: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
-  setUserBirthdate(id, birthdate);
-  setUserSex(id, "male");
+  setProfileBirthdate(id, birthdate);
+  setProfileSex(id, "male");
   return id;
 }
 
@@ -103,7 +103,7 @@ describe("issue #517 — cadence modulation & one-shots via collectUpcoming", ()
 
   it("pregnancy brings glucose (GDM) + ferritin (anemia) retests due sooner, ranked + explained (#521)", () => {
     const pid = makeProfile("Pregnant", "1994-01-01");
-    setUserSex(pid, "female");
+    setProfileSex(pid, "female");
     // Glucose base cadence is 180d → a 150-day-old reading is not yet due; the
     // pregnancy GDM rule tightens it to ~90d, bringing it due.
     insertLab(pid, "Glucose", shiftDateStr(now, -150));
@@ -361,7 +361,7 @@ function insertVariant(
 
 function femaleProfile(name: string, ageYears: number): number {
   const pid = makeProfile(name, shiftDateStr(now, -ageYears * 365));
-  setUserSex(pid, "female");
+  setProfileSex(pid, "female");
   return pid;
 }
 

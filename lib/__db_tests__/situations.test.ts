@@ -5,7 +5,7 @@
 //   • resolveSituationId is NOCASE get-or-create (one vocabulary, no casing/
 //     whitespace fragility);
 //   • a situational supplement links via intake_items.situation_id, and
-//     getSupplements COALESCEs the row's name so a rename re-keys it (and stays in
+//     getIntakeItems COALESCEs the row's name so a rename re-keys it (and stays in
 //     lockstep with the active set);
 //   • migration 029 backfills legacy free-text situations + the active_situations
 //     JSON into rows.
@@ -22,7 +22,7 @@ import {
   resolveSituationId,
   getSituations,
 } from "@/lib/settings";
-import { getSupplements, getSituationalDueCount } from "@/lib/queries";
+import { getIntakeItems, getSituationalDueCount } from "@/lib/queries";
 
 function newProfile(name: string): number {
   return Number(
@@ -58,7 +58,7 @@ describe("situations vocabulary (#560)", () => {
     expect(getSituations(p).length).toBe(1);
   });
 
-  it("getSupplements COALESCEs the linked situation row name (rename-safe)", () => {
+  it("getIntakeItems COALESCEs the linked situation row name (rename-safe)", () => {
     const p = newProfile("linked");
     const sid = resolveSituationId(p, "Illness")!;
     const itemId = Number(
@@ -70,7 +70,7 @@ describe("situations vocabulary (#560)", () => {
         )
         .run(p, sid).lastInsertRowid
     );
-    expect(getSupplements(p).find((s) => s.id === itemId)?.situation).toBe(
+    expect(getIntakeItems(p).find((s) => s.id === itemId)?.situation).toBe(
       "Illness"
     );
 
@@ -78,7 +78,7 @@ describe("situations vocabulary (#560)", () => {
     // AND the active set follows it, so they never disagree (#560 rename-safety).
     setActiveSituations(p, ["Illness"]);
     db.prepare("UPDATE situations SET name = 'Sickness' WHERE id = ?").run(sid);
-    expect(getSupplements(p).find((s) => s.id === itemId)?.situation).toBe(
+    expect(getIntakeItems(p).find((s) => s.id === itemId)?.situation).toBe(
       "Sickness"
     );
     expect(getActiveSituations(p)).toEqual(["Sickness"]);
@@ -97,7 +97,7 @@ describe("situations vocabulary (#560)", () => {
         )
         .run(p).lastInsertRowid
     );
-    expect(getSupplements(p).find((s) => s.id === itemId)?.situation).toBe(
+    expect(getIntakeItems(p).find((s) => s.id === itemId)?.situation).toBe(
       "Illness"
     );
   });

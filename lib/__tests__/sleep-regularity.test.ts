@@ -5,6 +5,7 @@ import {
   regularityTravelInsight,
   mainSleepSession,
   mainSleepPeriod,
+  napSessions,
   mainSleepNights,
   sriPresentation,
   type SleepSession,
@@ -623,6 +624,54 @@ describe("computeSleepRegularity — circular timing companions (#1190)", () => 
     // Five each of 390/420/450 → population SD = sqrt(600) ≈ 24.49 → rounds to 24.
     expect(r.waketimeSdMin).toBe(24);
     expect(r.bedtimeSdMin).toBe(0); // constant bedtime
+  });
+});
+
+describe("napSessions — exact inverse of the main period", () => {
+  it("returns every same-day nap and keeps fragmented-night members out", () => {
+    const first: SleepSession = {
+      start: "2026-01-01T22:00:00Z",
+      end: "2026-01-02T02:00:00Z",
+    };
+    const second: SleepSession = {
+      start: "2026-01-02T02:30:00Z",
+      end: "2026-01-02T06:30:00Z",
+    };
+    const earlyNap: SleepSession = {
+      start: "2026-01-02T12:30:00Z",
+      end: "2026-01-02T13:00:00Z",
+    };
+    const lateNap: SleepSession = {
+      start: "2026-01-02T16:00:00Z",
+      end: "2026-01-02T17:00:00Z",
+      value: 50,
+    };
+
+    expect(napSessions([first, earlyNap, second, lateNap], "UTC")).toEqual([
+      {
+        wakeDay: "2026-01-02",
+        start: lateNap.start,
+        end: lateNap.end,
+        durationMin: 50,
+        session: lateNap,
+      },
+      {
+        wakeDay: "2026-01-02",
+        start: earlyNap.start,
+        end: earlyNap.end,
+        durationMin: 30,
+        session: earlyNap,
+      },
+    ]);
+  });
+
+  it("keeps a provider-labeled nap even when it is the only session that day", () => {
+    const nap: SleepSession = {
+      start: "2026-01-02T14:00:00Z",
+      end: "2026-01-02T14:45:00Z",
+      type: "late_nap",
+    };
+    expect(napSessions([nap], "UTC")).toHaveLength(1);
   });
 });
 

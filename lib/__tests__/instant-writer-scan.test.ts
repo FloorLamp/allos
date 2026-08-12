@@ -98,9 +98,17 @@ const CANONICAL_INSTANT_COLUMNS: Record<
     columns: ["created_at"],
     why: "migration 163 — the per-row provenance stamp (#1333), converted with its parent so the arrival-lag join reads one convention on both sides.",
   },
+  food_log_events: {
+    columns: ["recorded_at", "occurred_at"],
+    why: "migration 183 (#2370) — the food event ledger's tap and eating instants. lib/time-columns.ts had DECLARED both canonical since the #2205 phase 3 census while this registry did not claim them, so nothing bound the writers and one drifted: the offline replay's `resolveCapturedInstant` (lib/offline/queue.ts) returned `new Date().toISOString()`, and the column ended up holding two serializations at once. The same failure as notify_lifecycle below, invisible for the same reason — the module that built the string writes no SQL of its own, so rule C saw no literal to object to. Migration 183 truncated the millisecond values in the same rebuild that renamed the columns from `logged_at`/`eaten_at` (#2205 phase 2), and the writers now bind instantNow()/utcInstant(). The DEFAULT on `recorded_at` is migration 056's `strftime('%Y-%m-%dT%H:%M:%SZ','now')`, which already writes the canonical shape rather than SQLite's bare one. `created_at` beside them stays bare and is NOT claimed here; neither is the vestigial `eaten_at` shell, which never holds a value.",
+  },
   stream_frontiers: {
     columns: ["frontier_at", "advanced_at", "observed_at"],
     why: "migration 179 (#2341) — BORN canonical: the continuous-stream watermark's three instants. The table is new, so the claim cannot be false, and the entry is what binds its first writer (lib/stream-frontier-db.ts) to instantNow()/the frontier read's own canonical value instead of letting the call site pick a shape. No column DEFAULT: SQLite's own datetime('now') would write the bare shape into a canonical column.",
+  },
+  goals: {
+    columns: ["achieved_at"],
+    why: "migration 182 (#2394) — BORN canonical: the instant a goal was marked achieved, the column the recap's reached-line windows on. The table is old but the column is new and carries no DEFAULT, so the claim cannot be false, and the entry is what binds its only writer (setStatus in app/(app)/training/goal-actions.ts) to instantNow() rather than to SQLite's own bare-shaped clock — a bare value in a column the recap compares against a canonical one would answer wrong while the query still looked right. `created_at` beside it stays bare and is NOT claimed here.",
   },
   notify_lifecycle: {
     columns: ["at"],

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { IconChevronRight } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
-import { switchProfileAction } from "@/app/(app)/user-actions";
+import { switchProfileAction } from "@/app/(app)/profile-context-actions";
 import type { AppRoute } from "@/lib/hrefs";
 
 // A profile-aware destination chip. The acting profile gets a normal link; another

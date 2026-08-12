@@ -3,22 +3,23 @@ import { IconMoon, IconArrowRight } from "@tabler/icons-react";
 import {
   baselineDeltaPhrase,
   formatHm,
+  formatSleepWindow,
   type LastNightSummary,
   type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
-import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
+import type { TimeFormat } from "@/lib/format-date";
 import { timelineDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
-import { activityProvenanceLabel } from "@/lib/journal-format";
+import { activityProvenanceLabel } from "@/lib/training-log-format";
 import type { BedtimeSupplementSummary } from "@/lib/sleep-bedtime-supplements";
 import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
 
 // The Sleep page hero (issue #1066): last night reduced to facts — duration, a
 // stage stacked bar, bed/wake, and the delta vs the trailing-30-night baseline —
-// ALL of the MAIN overnight session (#1118). A same-day nap is a SEPARATE small
-// line, never folded into the total. Deliberately factual, never scored (no
-// invented sleep score — the pillars-not-a-composite stance). Formatter only over
-// the shared lastNightSummary model the dashboard tile also reads.
+// ALL of the MAIN overnight session (#1118). Naps have their own detailed card
+// below, so this hero stays exclusively about the night. Deliberately factual,
+// never scored (no invented sleep score — the pillars-not-a-composite stance).
+// Formatter only over the shared lastNightSummary model the dashboard tile reads.
 
 const STAGE_META: {
   key: keyof NonNullable<LastNightSummary["stages"]>;
@@ -126,10 +127,11 @@ export default function SleepHero({
           <p className="section-label mb-1">Sleep window</p>
           <p className="text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">
             {summary.bedMinutes != null && summary.wakeMinutes != null ? (
-              <>
-                {formatClockMinutes(timeFormat, summary.bedMinutes)} →{" "}
-                {formatClockMinutes(timeFormat, summary.wakeMinutes)}
-              </>
+              formatSleepWindow(
+                timeFormat,
+                summary.bedMinutes,
+                summary.wakeMinutes
+              )
             ) : (
               <span className="text-base font-normal text-slate-500 dark:text-slate-400">
                 Not recorded
@@ -156,15 +158,6 @@ export default function SleepHero({
           )}
         </div>
       </div>
-
-      {summary.napMin > 0 && (
-        <p
-          className="mt-1 text-sm text-slate-500 dark:text-slate-400"
-          data-testid="sleep-hero-nap"
-        >
-          + {formatHm(summary.napMin)} nap (counted separately)
-        </p>
-      )}
 
       {bedtimeSupplements && (
         <div className="mt-3" data-testid="sleep-hero-bedtime-supplements">

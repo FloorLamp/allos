@@ -46,7 +46,7 @@ export interface SleepWaitingState {
   // Minute-of-day the night usually lands by, or null when the arrival sample is
   // too thin to quote a median (see MIN_ARRIVAL_SAMPLES).
   etaMinutes: number | null;
-  // The provider's last sync attempt, for the "hasn't synced" line. Null when the
+  // The source's last sync attempt, for the "hasn't synced" line. Null when the
   // profile has no sync event to name.
   lastCheckedAt: string | null;
 }
@@ -115,11 +115,11 @@ export interface SleepWaitingSignals {
   tracking: boolean;
   // The measured median arrival lag in minutes, or null under MIN_ARRIVAL_SAMPLES.
   arrivalLagMin: number | null;
-  // No provider is in the failing/stale attention state. A broken connection has
+  // No source is in the failing/stale attention state. A broken connection has
   // its own reconnect path and a different message; saying "waiting" over the top
   // of it would be a message that cannot resolve.
-  providerHealthy: boolean;
-  // The most recent sync attempt for the sleep provider, for the "hasn't synced"
+  sourceHealthy: boolean;
+  // The most recent sync attempt for the sleep source, for the "hasn't synced"
   // detail line. Null when there is none to name.
   lastCheckedAt: string | null;
 }
@@ -133,7 +133,7 @@ export function sleepWaitingState(
   // through to what already exists (the dated label, then the four-night stale
   // CTA), which is a reduction in what the system says and needs no new state.
   if (!s.tracking) return null;
-  if (!s.providerHealthy) return null;
+  if (!s.sourceHealthy) return null;
 
   const wake = s.wakeMinutes ?? DEFAULT_WAKE_MINUTES;
   const eta =

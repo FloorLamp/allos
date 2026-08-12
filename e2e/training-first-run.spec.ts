@@ -8,11 +8,11 @@ import {
 
 // Training → Log first-run empty state (issue #809). A brand-new / post-onboarding
 // profile has NO activities. HistorySection used to early-return a bare EmptyState
-// ("No activities logged yet. Use 'Log activity' to start.") BEFORE JournalView —
+// ("No activities logged yet. Use 'Log activity' to start.") BEFORE TrainingLogView —
 // which owns the Log-activity action row (New activity / Start workout) and the
 // activity-editor wiring — ever mounted, so the very users who need "New activity"
 // had no way to reach it. Every seeded fixture profile has activities (No Gear even
-// seeds one on purpose so its Log tab renders the Journal), which is exactly why this
+// seeds one on purpose so its Log tab renders the Training Log), which is exactly why this
 // shipped uncaught. These drive a dedicated ACTIVITY-FREE adult profile (its own
 // member login, isolated context) and assert the first-run variant.
 test.describe("Training Log first-run empty state (#809)", () => {
@@ -41,7 +41,7 @@ test.describe("Training Log first-run empty state (#809)", () => {
     // The action row is present and prominent (viewport width 1280 ≥ md, so the
     // `md:flex` desktop row shows): New activity + Start workout, but NOT Repeat
     // last — nothing has been logged, so there is nothing to repeat.
-    const actions = page.getByTestId("journal-actions");
+    const actions = page.getByTestId("training-log-actions");
     await expect(actions).toBeVisible();
     await expect(
       actions.getByRole("button", { name: "New activity" })
@@ -53,11 +53,11 @@ test.describe("Training Log first-run empty state (#809)", () => {
 
     // Search / filter controls are meaningless over an empty history and are hidden,
     // as is the routine/cadence row.
-    await expect(page.getByTestId("journal-controls")).toHaveCount(0);
+    await expect(page.getByTestId("training-log-controls")).toHaveCount(0);
     await expect(
       page.getByPlaceholder("Search activities or exercises…")
     ).toHaveCount(0);
-    await expect(page.getByTestId("journal-routine-row")).toHaveCount(0);
+    await expect(page.getByTestId("training-log-routine-row")).toHaveCount(0);
 
     // Tapping New activity opens the editor (its activity-name combobox appears) —
     // the affordance the early return used to strand.
@@ -87,7 +87,7 @@ test.describe("Training Log first-run empty state (#809)", () => {
     // rule — the first-run empty state must not strand mobile users either). Both
     // the "Log activity" (+) and "Start workout" (bolt) controls are present, and
     // "Log activity" opens the editor overlay.
-    await expect(page.getByTestId("journal-actions")).toBeHidden();
+    await expect(page.getByTestId("training-log-actions")).toBeHidden();
     await expect(page.getByTestId("start-workout-mobile")).toBeVisible();
     const mobileLog = page.getByRole("button", { name: "Log activity" });
     await expect(mobileLog).toBeVisible();

@@ -57,8 +57,8 @@ export function exposureFragment(
 
 // The one-shot redose NOTICE message (title + body) for the fire case. The title
 // names the profile (#1721 — refill.ts's convention, applied to the two dispatch-path
-// builders that never had it). `lastClock` is
-// the profile-local clock time of the arming administration ("4:02pm"); empty when
+// builders that never had it). `lastClock` is the profile-local time of the arming
+// administration ("4:02pm" today, "Jul 14, 2026 at 4:02pm" on another day); empty when
 // unknown. Example: "6h since Ibuprofen (4:02pm) — your minimum interval has passed ·
 // 2 of 4 today." `sinceName` (#1027) names the med the ARMING administration belongs
 // to when a same-ingredient SIBLING's dose armed the clock — the body then reads

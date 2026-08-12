@@ -19,7 +19,7 @@ export const DUP_DATE = "2026-01-02";
 // Reset the dup-review fixture to its UNMERGED state on `profileId`: clear the pair's
 // activities + any recorded pair decision, then re-insert the manual + Strava rows.
 // Idempotent — the deletes are scoped to THIS fixture's titles + external_id (a blanket
-// source='strava' delete would eat the journal-provenance "Strava morning ride" when
+// source='strava' delete would eat the training-log-provenance "Strava morning ride" when
 // the frozen clock rolls a relative daysAgo onto DUP_DATE).
 export function seedDupReviewPair(
   db: Database.Database,

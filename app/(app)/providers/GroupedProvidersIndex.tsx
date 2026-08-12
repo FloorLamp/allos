@@ -12,6 +12,7 @@ import {
 } from "@tabler/icons-react";
 import type { DirectoryProvider, GroupedDirectory } from "@/lib/queries";
 import { providersEmptyMessage } from "@/lib/providers";
+import { EmptyState } from "@/components/ui";
 
 // The grouped, activity-aware provider directory (issue #1055): organizations as
 // cards with their affiliated individuals nested, unaffiliated individuals in their
@@ -190,12 +191,10 @@ function FlatList({
 }) {
   if (providers.length === 0) {
     return (
-      <p
-        data-testid="provider-empty"
-        className="rounded-xl border border-dashed border-black/10 p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
-      >
-        {providersEmptyMessage(hasQuery)}
-      </p>
+      <EmptyState
+        testId="provider-empty"
+        message={providersEmptyMessage(hasQuery)}
+      />
     );
   }
   return (

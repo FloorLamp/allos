@@ -18,7 +18,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setUserBirthdate } from "@/lib/settings";
+import { setProfileBirthdate } from "@/lib/settings";
 import {
   buildFoodDrugEventFindings,
   buildFoodDrugVarianceFindings,
@@ -42,7 +42,7 @@ function newProfile(name: string): number {
   );
   // The alcohol rules are adult-gated (#851 item 4); give the profile an adult age so
   // the matcher does not drop them.
-  setUserBirthdate(id, "1986-04-02");
+  setProfileBirthdate(id, "1986-04-02");
   return id;
 }
 

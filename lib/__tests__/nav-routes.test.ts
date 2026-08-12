@@ -91,8 +91,8 @@ function navHrefs(): string[] {
 // /medical route for months — nothing guarded item links the way nav links are).
 // These are the sources feeding the Upcoming page, the dashboard "Needs
 // attention" hero, and the preventive adapter. Static targets only: a template
-// literal contributes its static path prefix (e.g. `/biomarkers/view?name=${…}`
-// → /biomarkers/view).
+// literal contributes its static path prefix (e.g. `/results/readings/view?name=${…}`
+// → /results/readings/view).
 const DUE_SIGNAL_SOURCES = [
   ["lib", "attention.ts"],
   // The Upcoming item builders (their href literals) live in the generators
@@ -138,7 +138,7 @@ function dueSignalPaths(file: string): string[] {
 // `revalidatePath` literal out of app/ sources, because "`revalidatePath` takes a
 // plain string, so `typedRoutes` cannot check it" — after the #1042/#1079 route
 // merges, several Server Actions kept revalidating URLs that no longer served
-// anything (`/encounters`, `/journal`, `/body`), so the refresh was a silent no-op
+// anything (`/encounters`, a retired training path, `/body`), so the refresh was a silent no-op
 // and the moved surface stayed stale.
 //
 // #2149 replaced that text sweep with a TYPE: every target now goes through

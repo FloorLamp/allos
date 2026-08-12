@@ -26,12 +26,12 @@ import {
 } from "../metric-judgment";
 import { readingIdentity } from "../reading-model";
 import {
-  getUserAge,
-  getUserAgeOn,
-  getUserReproductiveStatus,
-  getUserSex,
+  getProfileAge,
+  getProfileAgeOn,
+  getProfileReproductiveStatus,
+  getProfileSex,
 } from "../settings";
-import type { BodyMetricSlug } from "../trends-body-metrics";
+import type { TrendMetricSlug } from "../trend-metrics";
 
 /**
  * The clinical judgement for one metric surface, or null when no knowledge system
@@ -45,7 +45,7 @@ import type { BodyMetricSlug } from "../trends-body-metrics";
  */
 export function getMetricJudgment(
   profileId: number,
-  slug: BodyMetricSlug,
+  slug: TrendMetricSlug,
   value: number | null,
   onDate: string | null
 ): MetricJudgment | null {
@@ -59,9 +59,11 @@ export function getMetricJudgment(
     {
       // The subject's age ON the reading's date; today's age only when the
       // reading has no date to be judged as of.
-      age: onDate ? getUserAgeOn(profileId, onDate) : getUserAge(profileId),
-      sex: getUserSex(profileId),
-      status: getUserReproductiveStatus(profileId),
+      age: onDate
+        ? getProfileAgeOn(profileId, onDate)
+        : getProfileAge(profileId),
+      sex: getProfileSex(profileId),
+      status: getProfileReproductiveStatus(profileId),
       value,
     },
     [entry]
@@ -73,7 +75,7 @@ export function getMetricJudgment(
  * fields the flag reconcile keys on — the resolved name, the collection date — so
  * a row cannot be judged here against context the flag was not judged against.
  */
-export interface JudgedRecord {
+export interface JudgedObservation {
   canonical_name?: string | null;
   name: string;
   date?: string | null;
@@ -103,7 +105,7 @@ export interface JudgedRecord {
  * multi-profile caller partitions its rows by owning profile and calls once per
  * profile — per-profile context is never shared across subjects.
  */
-export function judgeRecords<T extends JudgedRecord>(
+export function judgeObservations<T extends JudgedObservation>(
   profileId: number,
   rows: readonly T[]
 ): (MetricJudgment | null)[] {

@@ -10,7 +10,7 @@ import { activateIllnessForSymptoms } from "@/app/(app)/symptom-actions";
 import {
   toggleSituation,
   dismissDerivedPoorSleep,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import { logMood, resumeMoodCheckins } from "@/app/(app)/mood-actions";
 import {
   MOOD_CHECKIN_PAUSED_LABEL,

@@ -19,7 +19,7 @@
 import { db, readTx } from "../db";
 import { getBiomarkerSeries } from "./medical";
 import { metricObservationFoldIdentity } from "../metric-judgment";
-import type { BodyMetricSlug } from "../trends-body-metrics";
+import type { TrendMetricSlug } from "../trend-metrics";
 import {
   dedupeReadings,
   readingFromBodyMetric,
@@ -124,7 +124,7 @@ export function getObservationReadings(
  */
 export function getMetricObservations(
   profileId: number,
-  slug: BodyMetricSlug
+  slug: TrendMetricSlug
 ): Reading[] {
   const identity = metricObservationFoldIdentity(slug);
   return identity ? getObservationReadings(profileId, identity) : [];

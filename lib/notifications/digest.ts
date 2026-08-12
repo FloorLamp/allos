@@ -7,12 +7,12 @@
 // shared by several profiles (the chat-id ambiguity fix).
 
 import type { NotificationAction, NotificationMessage } from "./types";
-import type { ActivityType, SupplementKind } from "../types";
+import type { ActivityType, IntakeItemKind } from "../types";
 import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
-import { heldSummaryLine } from "../supplement-schedule";
+import { heldSummaryLine } from "../intake-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { offerTextTail } from "./offer-tail";
 import {
@@ -35,8 +35,8 @@ import { monthNames } from "../date";
 import {
   activityProvenanceKey,
   activityProvenanceLabel,
-  JOURNAL_SOURCE_MANUAL,
-} from "../journal-format";
+  TRAINING_LOG_SOURCE_MANUAL,
+} from "../training-log-format";
 import { GLYPH } from "./glyphs";
 
 // Capitalize the first letter of a noun for use at the start of a line
@@ -94,13 +94,13 @@ export function dedupeFlaggedByAnalyte(
 // Last night's sleep facts for the calm "how'd I sleep" digest section (#1117),
 // all derived from the SAME main-overnight-session (#1118) and SRI (#160)
 // computations the rest trigger and Trends use — one computation (#221). Minutes
-// throughout. The nap is kept SEPARATE from the overnight figure (never folded in).
+// throughout. This is a MORNING snapshot of the overnight session; naps belong on
+// the live dashboard/Sleep page and never revise an already-delivered digest later.
 export interface DigestSleep {
   lastNightMin: number; // main overnight session, last recorded night
   baselineMin: number; // recent-nights baseline (mean)
   deepMin?: number | null; // deep-stage minutes when the source reports stages
   remMin?: number | null; // REM-stage minutes when reported
-  napMin?: number | null; // same-day nap total, shown on its own line when > 0
   sri?: number | null; // Sleep Regularity Index when the signal is meaningful
 }
 
@@ -115,7 +115,7 @@ export interface DigestInput {
   // The distinct kinds among the profile's scheduled/adhered intake items,
   // choosing the reminder noun so a medications-only profile isn't told
   // "supplements" (#380). Optional/empty ⇒ "supplements" (back-compat default).
-  intakeKinds?: SupplementKind[];
+  intakeKinds?: IntakeItemKind[];
   // The merged "what's due" list (issue #1108): the ALREADY-BANDED collectUpcoming
   // output for today (groupUpcoming) — doses, refills, appointments, planned care,
   // preventive, retests, goals, training, … Replaces the digest's own goals/dose
@@ -161,7 +161,7 @@ export interface DigestInput {
   stepsTodayLine?: string | null;
   // Yesterday
   activities: DigestActivity[];
-  // Supplement adherence yesterday, or null when nothing was due. `skipped`
+  // IntakeItem adherence yesterday, or null when nothing was due. `skipped`
   // counts deliberate skips (#232), surfaced alongside taken.
   adherence: { taken: number; skipped: number; due: number } | null;
   // The state changes across the pushed tier (#1505 part 3), classified by the ONE
@@ -211,6 +211,21 @@ export interface DigestInput {
   // Adequacy is an OBSERVATION, never an obligation: no streak, no failure language, no
   // escalation. The line states the number against the target and stops.
   nutritionLine?: MessageLine | null;
+  // Yesterday's log × the profile's live CURATED food limits (#2377) — the head clause
+  // of one line, which the Yesterday section stamps its own glyph onto. Null is silence:
+  // no live limit, nothing of it logged, or every candidate dismissed on the shared bus.
+  //
+  // A RIDE-ALONG, NOT A REASON TO SEND. It is appended only to a Yesterday section that
+  // ALREADY has content, so it can neither cause a digest nor be one — the same posture
+  // the digest time suggestion takes (#2217), for the same contact-consent reason: the
+  // system may reduce contact unilaterally, never increase it, and nobody declared
+  // "message me when I eat fried food."
+  //
+  // AND IT NAMES NO BIOMARKER, EVER. This is the pattern-shaped surface of #2377, and
+  // #2397/#2572's rule is that the app may not place a person's own pattern beside their
+  // own result and let the reader draw the causal conclusion. The producer's type has no
+  // field to carry one — see lib/food-limit-note.ts.
+  foodLimitHead?: string | null;
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
   // The documents that finished extracting since the send cursor (#1913 item 3), each
@@ -426,7 +441,7 @@ function activityStat(a: DigestActivity): string | null {
 // The arrival line the digest used to carry — "📥 Strava: workouts" — was provenance
 // and nothing else, stated about a session the message already listed one section down.
 // Folding it here says the same thing in the place the reader is already looking, and
-// the label is the SAME `activityProvenanceLabel` the Journal and the timeline render,
+// the label is the SAME `activityProvenanceLabel` the Training Log and the timeline render,
 // never a second name for one source.
 //
 // A MANUAL row gets nothing. "Manual" beside a session you logged yourself is not
@@ -434,7 +449,7 @@ function activityStat(a: DigestActivity): string | null {
 // which only has an answer when something else put it there.
 function activitySource(a: DigestActivity): string | null {
   const source = a.source ?? null;
-  if (activityProvenanceKey(source) === JOURNAL_SOURCE_MANUAL) return null;
+  if (activityProvenanceKey(source) === TRAINING_LOG_SOURCE_MANUAL) return null;
   return activityProvenanceLabel(source);
 }
 
@@ -701,12 +716,20 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     yLines.push(
       formatEmphasizedLine({ glyph: GLYPH.food, ...input.nutritionLine })
     );
+  // The curated food-limit intersection (#2377), LAST in the section and — the whole of
+  // its contact-consent argument — only when the section already has something in it.
+  // `yLines.length > 0` at this point means the digest was already going to carry a
+  // Yesterday report, so this line can never be the thing that makes a message exist.
+  // See DigestInput.foodLimitHead for why it names no biomarker.
+  if (input.foodLimitHead && yLines.length > 0)
+    yLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.food, head: input.foodLimitHead })
+    );
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 
   // Sleep: a calm "how'd I sleep" (issue #1117) — last night's MAIN overnight
-  // session vs baseline, stages when present, an SRI note, and any nap on its OWN
-  // line (never folded into the overnight figure). Non-judgmental by design (#992):
-  // it states the numbers, never "you slept badly".
+  // session vs baseline, stages when present, and an as-of-wake SRI note.
+  // Non-judgmental by design (#992): it states the numbers, never "you slept badly".
   if (input.sleep) {
     const s = input.sleep;
     const sleepLines: MessageBody[] = [];
@@ -736,15 +759,6 @@ export function buildDigest(input: DigestInput): DigestModel | null {
         notes: [verdict, stageNote],
       })
     );
-    // A same-day nap on its own line — kept apart from the overnight total.
-    if (s.napMin != null && s.napMin > 0) {
-      sleepLines.push(
-        formatEmphasizedLine({
-          glyph: GLYPH.sleep,
-          head: `+ ${fmtSleepDuration(s.napMin)} nap`,
-        })
-      );
-    }
     if (s.sri != null) {
       // "Sleep regularity 94 — very consistent" (#1819 item 7). The old line paired an
       // acronym with a naked number ("Sleep regularity · SRI 94") and left the reader

@@ -128,18 +128,18 @@ function maxFoodEventId(): number {
 
 function newestBerriesEventAfter(
   afterId: number
-): { eaten_at: string | null; time_source: string | null } | undefined {
+): { occurred_at: string | null; time_source: string | null } | undefined {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
     return db
       .prepare(
-        `SELECT eaten_at, time_source FROM food_log_events
+        `SELECT occurred_at, time_source FROM food_log_events
           WHERE id > ? AND group_key = 'berries'
           ORDER BY id DESC LIMIT 1`
       )
       .get(afterId) as
-      { eaten_at: string | null; time_source: string | null } | undefined;
+      { occurred_at: string | null; time_source: string | null } | undefined;
   } finally {
     db.close();
   }
@@ -201,9 +201,9 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
   const row = newestBerriesEventAfter(baselineEventId);
   expect(row).not.toBeUndefined();
   expect(row!.time_source).toBe("stated");
-  expect(row!.eaten_at).not.toBeNull();
+  expect(row!.occurred_at).not.toBeNull();
   expect(
-    Math.abs(new Date(row!.eaten_at!).getTime() - frozenNow().getTime())
+    Math.abs(new Date(row!.occurred_at!).getTime() - frozenNow().getTime())
   ).toBeLessThan(60 * 60_000);
 });
 
@@ -282,6 +282,6 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
 
   const row = newestBerriesEventAfter(baselineEventId);
   expect(row).not.toBeUndefined();
-  expect(row!.eaten_at).toBeNull();
+  expect(row!.occurred_at).toBeNull();
   expect(row!.time_source).toBeNull();
 });

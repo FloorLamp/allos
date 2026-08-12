@@ -23,7 +23,7 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // revalidatePath; the write core (upsertMoodLog, lib/offline/writes.ts) is the
 // SAME one the offline-queue replay and the Telegram check-in button run, so a
 // replayed or re-tapped check-in upserts the day's single row identically
-// everywhere. Mood surfaces on the dashboard card and the Trends → Body chart, so
+// everywhere. Mood surfaces on the dashboard card and the Trends → Overview → body census chart, so
 // both are revalidated.
 
 export async function logMood(formData: FormData): Promise<FormResult> {

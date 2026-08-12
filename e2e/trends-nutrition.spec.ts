@@ -1,8 +1,14 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+  settledBoxes,
+} from "./helpers";
+import { frozenNow } from "./worker-env";
 
 // Trends → Nutrition is the OVER-TIME nutrition view (issue #1166): the macros+fiber
-// daily chart (re-homed off Trends → Body and gaining fiber), a food-goal adherence
+// daily chart (re-homed off Trends → Overview → body census and gaining fiber), a food-goal adherence
 // trend, and the intake history — the generalized day-history calendar + group×day
 // matrix (lib/day-history.ts) whose days link INTO the Timeline. The duplicate
 // FoodWeeklyRollup left the tab (its home is /nutrition). Driven read-only against
@@ -51,6 +57,48 @@ test("Trends → Nutrition shows the macros+fiber chart, the adherence trend, an
   await expect(page.getByTestId("nutrition-trends-rollup")).toHaveCount(0);
 });
 
+test("food and dose histories stay contained and stack details on a phone", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/trends?tab=nutrition");
+
+  const cases = [
+    {
+      section: page.getByTestId("intake-history"),
+      helper:
+        /Calendar: days you logged food\. Matrix: each day by food group\./,
+    },
+    {
+      section: page.getByTestId("dose-history"),
+      helper: /Calendar: days you confirmed doses\. Matrix: each day by item\./,
+    },
+  ];
+
+  for (const { section, helper } of cases) {
+    await expect(section).toContainText(helper);
+    const rowButton = section
+      .getByRole("button", { name: /View occurrences for/ })
+      .first(); // first-ok: every domain row shares the same responsive detail-panel contract
+    if ((await rowButton.getAttribute("aria-pressed")) !== "true") {
+      // First interaction after the goto, on a client toggle: a bare click here
+      // can be swallowed pre-hydration, and the ONLY thing waiting for its
+      // effect below is `boundingBox()`, which does not retry — so a lost click
+      // burnt the whole 30 s test timeout instead of failing at five (shard 7 of
+      // #2559's run).
+      await hydratedClick(page, rowButton);
+    }
+
+    const [calendarBox, rowBox] = await settledBoxes([
+      section.getByTestId("day-history-calendar-panel"),
+      section.getByTestId("day-history-rowpanel"),
+    ]);
+    expect(rowBox.y).toBeGreaterThanOrEqual(calendarBox.y + calendarBox.height);
+  }
+
+  await expectNoClippedContent(page);
+});
+
 test("a day tap opens the day panel; the Timeline stays one link away (#1166)", async ({
   page,
 }) => {
@@ -61,7 +109,7 @@ test("a day tap opens the day panel; the Timeline stays one link away (#1166)", 
   // Tapping a populated day SELECTS it — no navigation — and the panel lists
   // what that day held.
   const day = history.getByTestId("day-history-day").first(); // first-ok: read-only, any populated day proves the interaction
-  await day.click();
+  await hydratedClick(page, day);
   await expect(page).toHaveURL(/\/trends\?tab=nutrition/);
   const panel = history.getByTestId("day-history-daypanel");
   await expect(panel).toBeVisible();
@@ -94,7 +142,7 @@ test("a dose day panel links into the dose ledger for that day", async ({
   );
 
   const day = doses.getByTestId("day-history-day").first(); // first-ok: read-only, any populated dose day proves the interaction
-  await day.click();
+  await hydratedClick(page, day);
   const panel = doses.getByTestId("day-history-daypanel");
   await expect(panel).toBeVisible();
   const link = panel.getByTestId("day-history-day-link");
@@ -108,7 +156,7 @@ test("a dose day panel links into the dose ledger for that day", async ({
   // The food section's panel has no such link — the declaration is per domain.
   await page.goto("/trends?tab=nutrition");
   const history = page.getByTestId("intake-history");
-  await history.getByTestId("day-history-day").first().click(); // first-ok: read-only, any populated food day proves the absence
+  await hydratedClick(page, history.getByTestId("day-history-day").first()); // first-ok: read-only, any populated food day proves the absence
   await expect(
     history
       .getByTestId("day-history-daypanel")
@@ -137,17 +185,181 @@ test("a group filter chip removes that group's matrix row", async ({
   await expect(
     history.locator(`[data-testid="day-history-row"][data-group="${group}"]`)
   ).toHaveCount(0);
+
+  // The selected count stays visible and All is the explicit recovery action.
+  await expect(
+    history.getByText(/Viewing \d+ of \d+ food groups/)
+  ).toBeVisible();
+  await history.getByRole("button", { name: "All", exact: true }).click();
+  await expect(chip).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    history.locator(`[data-testid="day-history-row"][data-group="${group}"]`)
+  ).toBeVisible();
+
+  await history.getByRole("button", { name: "None", exact: true }).click();
+  await expect(history.getByTestId("day-history-row")).toHaveCount(0);
+  await history.getByRole("button", { name: "All", exact: true }).click();
+  await expect(history.getByTestId("day-history-row")).not.toHaveCount(0);
 });
 
-test("the macros chart is GONE from the body census (#1166)", async ({
+test("a long group filter starts compact and can reveal the full vocabulary", async ({
   page,
 }) => {
-  // #1644: the Body tab merged into the Overview landing surface, so the census is
-  // reached at its anchor on the default view.
-  await page.goto("/trends#body");
-  await expect(page.getByTestId("trends-section-body")).toBeVisible();
-  // The census is body-metrics/vitals; macros moved to Nutrition. Neither the
-  // classic Macros chart heading nor a macros anchor/jump-chip remains here.
-  await expect(page.getByText("Macros (protein / carbs / fat)")).toHaveCount(0);
-  await expect(page.locator("#macros")).toHaveCount(0);
+  await page.goto("/trends?tab=nutrition");
+  const history = page.getByTestId("intake-history");
+  const filterToggle = history.getByTestId("day-history-filter-toggle");
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(filterToggle).toHaveText(/^\+\d+ more$/);
+  expect(await history.getByTestId("day-history-chip").count()).toBe(5);
+
+  const filterButtons = await history
+    .getByRole("group", { name: "Filter food groups" })
+    .getByRole("button")
+    .allTextContents();
+  expect(filterButtons.findIndex((text) => /^\+\d+ more$/.test(text))).toBe(
+    filterButtons.indexOf("All") - 1
+  );
+
+  await filterToggle.click();
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(filterToggle).toHaveText("Show less");
+  expect(await history.getByTestId("day-history-chip").count()).toBeGreaterThan(
+    5
+  );
+});
+
+test("filtering to one row selects it temporarily and keeps one keyboard entry point", async ({
+  page,
+}) => {
+  await page.goto("/trends?tab=nutrition");
+  const history = page.getByTestId("intake-history");
+  const grid = history.getByRole("grid", { name: /By food group/ });
+  expect(Number(await grid.getAttribute("aria-rowcount"))).toBeGreaterThan(1);
+
+  // Move the roving stop onto a row that will disappear, clear the matrix,
+  // then restore only one group. The new one-row grid must still be tabbable.
+  const lastCell = grid.locator('[role="gridcell"]').last();
+  await lastCell.focus();
+  await expect(lastCell).toBeFocused();
+  await history.getByRole("button", { name: "None", exact: true }).click();
+  await expect(grid).toHaveCount(0);
+  const onlyChip = history.getByTestId("day-history-chip").first(); // first-ok: any one remaining group produces the one-row shrink case
+  const onlyGroup = await onlyChip.getAttribute("data-group");
+  const onlyLabel = await onlyChip.getAttribute("aria-label");
+  expect(onlyGroup).toBeTruthy();
+  expect(onlyLabel).toBeTruthy();
+  await onlyChip.click();
+
+  const restored = history.getByRole("grid", { name: /By food group/ });
+  await expect(restored.locator('[role="gridcell"][tabindex="0"]')).toHaveCount(
+    1
+  );
+  const onlyRow = history.locator(
+    `[data-testid="day-history-row"][data-group="${onlyGroup}"]`
+  );
+  await expect(
+    onlyRow.getByRole("button", { name: /View occurrences for/ })
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    history.getByTestId("day-history-rowpanel").getByRole("heading")
+  ).toHaveText(onlyLabel!);
+
+  // The sole-row selection belongs to the filter state, not the user. Adding
+  // a second row removes it; filtering from two rows back to one restores it.
+  const secondChip = history.getByTestId("day-history-chip").nth(1);
+  await secondChip.click();
+  await expect(history.getByTestId("day-history-rowpanel")).toHaveCount(0);
+  await expect(
+    onlyRow.getByRole("button", { name: /View occurrences for/ })
+  ).toHaveAttribute("aria-pressed", "false");
+
+  await secondChip.click();
+  await expect(
+    onlyRow.getByRole("button", { name: /View occurrences for/ })
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    history.getByTestId("day-history-rowpanel").getByRole("heading")
+  ).toHaveText(onlyLabel!);
+});
+
+// ---- The grain follows the window (#2413) ----------------------------------
+//
+// The histories used to CLAMP a year-scale request back to their 13-week day
+// cap, so 1Y and All-time silently rendered the most recent quarter and the
+// range pill did nothing above it. Above the cap the SAME history now renders
+// at week grain — no toggle, because the range picker already asked.
+const YEAR_AGO = new Date(frozenNow().getTime() - 364 * 24 * 3600 * 1000)
+  .toISOString()
+  .slice(0, 10);
+
+test("a year-scale range re-grains the intake history to weeks (#2413)", async ({
+  page,
+}) => {
+  // The 90D default is untouched: day cells, no strip.
+  await page.goto("/trends?tab=nutrition");
+  const history = page.getByTestId("intake-history");
+  await expect(history.getByTestId("day-history-calendar")).toBeVisible();
+  await expect(history.getByTestId("day-history-day")).not.toHaveCount(0);
+  await expect(history.getByTestId("day-history-strip")).toHaveCount(0);
+
+  // The range pill now visibly re-windows it. Direct navigation, not a
+  // relative advance — the range lives in the URL.
+  await page.goto(`/trends?tab=nutrition&from=${YEAR_AGO}`);
+  await expect(page).toHaveURL(/from=/);
+
+  // The 7-row calendar is replaced by the single-row week strip.
+  const strip = history.getByTestId("day-history-strip");
+  await expect(strip).toBeVisible();
+  await expect(history.getByTestId("day-history-calendar")).toHaveCount(0);
+  await expect(history.getByTestId("day-history-day")).toHaveCount(0);
+
+  // Week cells, capped at the trailing-12-months convention.
+  const weeks = history.getByTestId("day-history-week");
+  await expect(weeks).not.toHaveCount(0);
+  expect(await weeks.count()).toBeLessThanOrEqual(53);
+
+  // The heading counts WEEKS, not days.
+  await expect(history.getByTestId("day-history-calendar-panel")).toHaveCount(
+    0
+  );
+  await expect(history.getByTestId("day-history-strip-panel")).toContainText(
+    "Weeks logged"
+  );
+
+  // The dose history re-grains with it — one decision, both sections.
+  await expect(
+    page.getByTestId("dose-history").getByTestId("day-history-strip")
+  ).toBeVisible();
+});
+
+test("selecting a week opens the WEEK panel, and the live week says how far it got (#2413)", async ({
+  page,
+}) => {
+  await page.goto(`/trends?tab=nutrition&from=${YEAR_AGO}`);
+  const history = page.getByTestId("intake-history");
+  const weeks = history.getByTestId("day-history-week");
+  await expect(weeks.first()).toBeVisible(); // first-ok: read-only presence before selecting
+
+  await hydratedClick(page, weeks.last());
+  const panel = history.getByTestId("day-history-daypanel");
+  await expect(panel).toBeVisible();
+  // A week cell names its week, never its Sunday alone.
+  await expect(panel.getByTestId("day-history-panel-title")).toContainText(
+    "Week of"
+  );
+
+  // "Log for this day" seeds a DATE into a writer; a week is not a date, so
+  // the offer is withheld rather than filing the entry on a day nobody picked.
+  await expect(panel.getByTestId("day-history-add-link")).toHaveCount(0);
+
+  // The Timeline link spans the week rather than pointing at one day.
+  const timeline = panel.getByRole("link", { name: "Timeline →" });
+  const href = await timeline.getAttribute("href");
+  const match = href!.match(/from=(\d{4}-\d{2}-\d{2})&to=(\d{4}-\d{2}-\d{2})/);
+  expect(match).not.toBeNull();
+  expect(match![2] > match![1]).toBe(true);
+
+  // The trailing week is PARTIAL — kept (it is the live week) and declared, so
+  // its smaller total never reads as a decline.
+  await expect(weeks.last()).toHaveAttribute("data-partial", "true");
 });

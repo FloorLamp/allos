@@ -10,11 +10,11 @@
 // page — a /medications copy and a /nutrition copy of "what does no ?kind mean" is the
 // split the shared-machinery rule exists to prevent.
 
-import type { SupplementKind } from "./types";
+import type { IntakeItemKind } from "./types";
 import { DOSE_LEDGER_ALL_KINDS } from "./hrefs";
 import { shiftDateStr } from "./date";
 import { ALL_TIME_RANGE_VALUE, type DateRange } from "./timeline-format";
-import { DOSE_HISTORY_DAYS } from "./supplement-adherence";
+import { DOSE_HISTORY_DAYS } from "./intake-adherence";
 
 // The kind filter's three states. `all` is the widening state — the ledger opens
 // pre-filtered to the surface's own kind (a supplement's ledger under Nutrition, a
@@ -39,7 +39,7 @@ export const DOSE_LEDGER_KIND_LABELS: Record<DoseLedgerKindFilter, string> = {
 // widens or switches.
 export function resolveDoseLedgerKind(
   raw: string | undefined,
-  surface: SupplementKind
+  surface: IntakeItemKind
 ): DoseLedgerKindFilter {
   return DOSE_LEDGER_KIND_FILTERS.includes(raw as DoseLedgerKindFilter)
     ? (raw as DoseLedgerKindFilter)
@@ -49,7 +49,7 @@ export function resolveDoseLedgerKind(
 // The kind actually handed to the reader: `all` asks for no kind narrowing at all.
 export function doseLedgerQueryKind(
   filter: DoseLedgerKindFilter
-): SupplementKind | undefined {
+): IntakeItemKind | undefined {
   return filter === "all" ? undefined : filter;
 }
 

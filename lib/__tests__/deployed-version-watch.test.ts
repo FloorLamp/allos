@@ -90,8 +90,14 @@ const hooks = vi.hoisted(() => {
     queued.push({ slot, run });
   }
 
-  /** Mount a hook and keep re-rendering it until its state stops changing. */
-  function mount<T>(hook: () => T): { current: () => T } {
+  /**
+   * Mount a hook and keep re-rendering it until its state stops changing.
+   *
+   * `rerender` re-runs the same hook with the SAME cells, which is how a prop change
+   * is expressed here: the thunk closes over a mutable holder, so a changed dependency
+   * tears the effect down and starts a new run against refs that outlive both (#2447).
+   */
+  function mount<T>(hook: () => T): { current: () => T; rerender: () => void } {
     reset();
     let latest: T;
     render = () => {
@@ -112,7 +118,7 @@ const hooks = vi.hoisted(() => {
       rendering = false;
     };
     render();
-    return { current: () => latest };
+    return { current: () => latest, rerender: () => render?.() };
   }
 
   function reset() {
@@ -341,6 +347,65 @@ describe("useDeployedVersion (#2329)", () => {
       useDeployedVersion({ baseline: PAGE_SHA, mode: "poll", generation })
     );
     expect(fetchCalls).toBe(2);
+  });
+
+  it("ignores a 401 that lands after its own read was torn down (#2447)", async () => {
+    // `finalRef` is the poll's off switch and it OUTLIVES a single effect run — only a
+    // generation bump resets it. So the 401 branch, which is the one thing that latches
+    // it, must ask the same "am I still the live read" question the sha comparison
+    // beside it always asked. It did not: it fired the moment the fetch resolved.
+    //
+    // The shape below is the one that reaches production: the effect re-runs without a
+    // generation bump (a baseline that resolves late), so read #1 is cancelled while
+    // still in flight and read #2 takes over against the same refs. Read #1 then comes
+    // back 401 — a session that expired, or a request that raced a redirect. Guarding
+    // only `cancelled` would not be enough either; it is the shared ref that carries the
+    // damage from the dead read into the live one.
+    const deferred: { resolve: (r: Response) => void }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            deferred.push({ resolve });
+          })
+      )
+    );
+    const props = { baseline: "0000000" };
+    const watch = hooks.mount(() =>
+      useDeployedVersion({
+        baseline: props.baseline,
+        mode: "poll",
+        generation: 0,
+      })
+    );
+    expect(deferred).toHaveLength(1);
+
+    // The baseline changes, so this effect run is torn down and a fresh one takes over.
+    props.baseline = PAGE_SHA;
+    watch.rerender();
+    expect(deferred).toHaveLength(2);
+
+    // The dead read answers first, with the one status that stops the poll for good.
+    deferred[0].resolve({ ok: false, status: 401 } as unknown as Response);
+    await settleReads();
+
+    // The live read finds a genuine deploy, and must still be able to report it.
+    deferred[1].resolve({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        sha: DEPLOYED_SHA,
+        commitMessage: "Ship the thing",
+      }),
+    } as unknown as Response);
+    await settleReads();
+
+    expect(watch.current()).toEqual({
+      sha: DEPLOYED_SHA,
+      commitMessage: "Ship the thing",
+      settled: true,
+    });
   });
 
   it("has no 'once' mode left — the mount read is what it was for", () => {

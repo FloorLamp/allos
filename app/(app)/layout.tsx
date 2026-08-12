@@ -31,7 +31,7 @@ import {
   getWeekStart,
   getWhatsNewSeenDate,
 } from "@/lib/settings";
-import { getUserAge } from "@/lib/settings/profile-attrs";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
@@ -188,7 +188,7 @@ export default async function AppLayout({
   // food-group serving catalog is meaningless there (issue #591). Cosmetic; the
   // /nutrition page independently gates on the same predicate. Eligible on
   // unknown age (hide only on a positive infant match).
-  const foodLoggingRelevant = isFoodLoggingRelevant(getUserAge(profile.id));
+  const foodLoggingRelevant = isFoodLoggingRelevant(getProfileAge(profile.id));
   // Keeps the Nutrition nav entry (→ Supplements tab) reachable for an infant who
   // takes a supplement even though food-group logging isn't relevant (#746). The
   // Food tab still gates server-side on isFoodLoggingRelevant.

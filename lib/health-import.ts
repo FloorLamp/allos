@@ -118,6 +118,14 @@ export interface ImportedRecord {
   // "QUEST"), when carried. Resolved into the shared registry and linked via
   // medical_records.provider_id.
   provider?: ImportedProvider | null;
+  // The per-item answers behind a screening-instrument SCORE (#2321), 0-based item
+  // index → the option value the document's printed answer carries. Set ONLY on
+  // `category === 'instrument'` records folded out of a document's per-question rows;
+  // every other reading leaves it unset. The persist layer writes them into
+  // `instrument_responses` against the score's new row id — which is why they ride ON
+  // the record rather than in a sidecar list: the child rows have no other way to find
+  // their parent, and the two can never drift apart in transit.
+  instrumentAnswers?: { itemIndex: number; answer: number }[];
   // Medication COURSES derived from the source's effective
   // period(s) + lifecycle status — set ONLY on `category === 'prescription'`
   // records by the CCD/FHIR importers. When present + non-empty, the persist layer

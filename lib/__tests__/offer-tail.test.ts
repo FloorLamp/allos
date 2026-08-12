@@ -9,7 +9,7 @@ import {
   isOfferedOn,
   slotHintBucket,
   slotHintCoversNow,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 import {
   collapsedOfferAction,
   expandedOfferActions,

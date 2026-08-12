@@ -238,7 +238,10 @@ An episode page presents that range as a story:
 
 - symptom-severity series and the temperature curve;
 - as-needed doses and the next safe dose window;
-- visits, appointments, documents, and medication courses during the range;
+- visits, appointments, documents, and medication courses during the range — a
+  **cancelled** appointment is shown as cancelled rather than dropped (#2136),
+  because the visit that fell through is real history and is often why a gap in
+  care exists, but it may not read as care that happened;
 - linked visits across the whole care trail;
 - a note, outcome, editable start/end dates, and comparison with prior episodes.
 
@@ -293,7 +296,7 @@ Context combines ongoing situations with today-only factors such as Work or
 Social while clearly labeling which kind persists. There is one check-in per
 day; another entry updates it.
 
-Mood, Energy, and Calm each chart under **Trends → Body** as their own metric —
+Mood, Energy, and Calm each chart under **Trends → Overview → body census** as their own metric —
 a card in the census, a sparkline tile, and a detail page at
 `/trends/metric/mood`, `/trends/metric/energy`, and `/trends/metric/calm` with
 the shared range control and an editable readings table. Each plots only the
@@ -329,6 +332,14 @@ card deep-links to its section), pillars and never a composite score, with
 absent pillars simply not rendering. Its **#protocols** section absorbed the
 former Protocols page (the old `/protocols` hub URL was removed in #1635 and
 404s).
+
+The **strength** pillar is the exception to "deep-links to its section", because
+it is the one pillar that names a specific thing: "Advanced · Bench Press — for
+your bodyweight & sex". Its card, and the fitness section's onward link, go to
+**Training → Analyze for that lift**, where the level badge and the standards
+table highlighted at your row are the evidence for exactly that claim. The link
+carries the lift you logged, not the standards table's base name, so it lands on
+your own history rather than on whichever lift the panel would otherwise pick.
 
 The biomarker pillar states **how many markers** its ratio describes and **how
 current they are**, because "8 of 10 optimal" says nothing on its own about a
@@ -537,7 +548,7 @@ than one profile is in view — a single view stays exactly as it was.
 
 ## Training
 
-The **Log** tab's journal feed loads the newest window of days and pages older
+The **Log** tab's training log feed loads the newest window of days and pages older
 ones in on demand, but its **search and filters query the whole ledger**: typing
 a name, picking an activity type, clicking a muscle/region badge, or switching on
 "Can't be saved" re-asks the store, and the feed pages over _matches_ — so a
@@ -586,7 +597,7 @@ point. Past about five days out it hedges rather than promising you next
 Wednesday's sunshine, and with no forecast cached it stays quiet. No new
 notification is created: the line rides the morning message you already get.
 
-**Conditions on the record.** An outdoor session's journal card shows what it
+**Conditions on the record.** An outdoor session's training log card shows what it
 was like outside ("31°C · clear"), and Timeline days carry a short conditions
 note when the weather was notable — a heatwave, cold snap, pressure swing, high
 pollen or poor air day. It's read from the cached weather at display time and
@@ -612,7 +623,7 @@ always shown as an estimate (`≈`) and kept separate from device-measured
 calories (imported activities keep their device value). It does **not** ride the
 weekly recap — comparing one week's estimate against another's compounds the
 error, so the recap reports what only week scale makes visible instead. For logging at the gym rather than after the fact, **Start workout**
-(the command palette, the Journal header, or the mobile top bar) opens the same
+(the command palette, the Training Log header, or the mobile top bar) opens the same
 editor in a **live** layout: today's date and start time are pre-stamped, each
 lift's coached next set is pre-seeded so you just confirm it, and a client-side
 **rest timer** (a lift-appropriate default — longer for heavy compounds, shorter
@@ -633,7 +644,7 @@ shows as a chip on the workout card that links to its detail page (strength
 keeps its separate per-set implement tags). Cycling entries share one
 **read-first ride detail** destination across the Training Log and Analyze
 history, Timeline, global search, cardio history panels, and a bike's equipment history;
-non-cycling sessions keep their Journal destination. The ride detail shows
+non-cycling sessions keep their Training Log destination. The ride detail shows
 active and elapsed time, distance and speed,
 route, bike, notes, provenance, and every provider measurement already stored
 for that ride (heart rate, power and W/kg when an as-of bodyweight exists,
@@ -752,8 +763,11 @@ Curl" constrains curls, and the form says so before you save. A constraint is
 also **correctable in place**: an injury is understood gradually, so the same
 controls that logged it reopen on what you declared, and narrowing one tells you
 which lifts come back into your suggestions before you save. Correcting the
-scope never touches the record's lifecycle — the start date stays where it is,
-and moving between active, recovering and resolved stays the chip's own buttons.
+scope never touches the record's lifecycle — the start date, your notes and the
+fine muscles stay where they are, and moving between active, recovering and
+resolved stays the chip's own buttons. That is a property of the write, not of
+the form remembering to send everything back: an edit states what changed, and a
+field it does not name is left exactly as it was.
 An **active** constraint takes the affected work off the card; a **recovering**
 one eases it back, and you can say how much: the app's **60% is a default it
 names as a default**, and your own setting always wins.
@@ -797,7 +811,7 @@ sets and the current RPE; **repeat last session** remains available when coachin
 inputs are sparse. Plateau language stays a hint, not an automatic program
 rewrite. Completing a set starts
 the local rest timer, and finishing the workout presents one in-place session
-summary before returning to the journal.
+summary before returning to the training log.
 
 Form-check clips attach to the activity and may be tagged to an exercise. They
 use the shared video constraints—upload-only, 60 seconds, 100 MB, stored as-is,
@@ -997,6 +1011,19 @@ Fitness separates:
 - **Sport** for repeated sport/activity series;
 - **PRs this window**, linked to the underlying sessions.
 
+A **cardio** record is held to what its own measurement can evidence. Each kind
+is judged against the sessions carrying THAT measurement — a distance record
+against the sessions that recorded a distance — rather than against the
+activity's session count, so an activity with fourteen walks and four measured
+distances no longer sets a record from a pool of four. Where a measurement is
+missing from most of an activity's history no record is claimed at all: the app
+cannot know whether an unmeasured session went further, and a hedged record is
+not worth a line. Coverage, not count, is the test, so an activity measured from
+its very first session can still set one on a short history. A record must also
+beat the previous best by more than the measurement's own error — GPS distance,
+elapsed duration and derived speed each declare their own floor — so two walks
+three metres apart are noise, not two personal bests.
+
 Deeper analysis and benchmark ladders remain under **Training → Analyze**, where
 a lift logged on more than one machine keeps a single entry and offers its
 machines as labeled choices, defaulting to the one used most recently. Trends
@@ -1041,7 +1068,7 @@ on a shared noon-to-noon axis, weekends tinted), **stage composition** over
 recent nights, and — when both are logged — an inline **sleep ↔ mood** view
 (observational co-occurrence, never a diagnosis); every night links to its
 **Timeline** day view. A compact **last-night tile** ships on the dashboard
-(duration + regularity, linking here), and Trends → Body keeps a compact
+(duration + regularity, linking here), and Trends → Overview → body census keeps a compact
 **Sleep** summary tile pointing at this page rather than the full charts.
 
 ## Progress photos
@@ -1083,7 +1110,7 @@ with the parts video needs that photos don't. Two domains: **symptom / episode
 clips** (`symptom_videos`) attached to a symptom-day on the illness episode page
 (a tremor, tic, seizure, gait episode, or a cough/breathing audio note — the
 clip a clinician actually asks for), and **training form-check clips**
-(`activity_videos`) attached to an activity from its Journal card (optional
+(`activity_videos`) attached to an activity from its Training Log card (optional
 exercise tag for per-lift filtering). Phase 1 is **upload-only** (a native file
 picker with `capture`, so a phone opens the camera/mic; in-app MediaRecorder
 recording is phase 2). Deliberately **no `ffmpeg`-class dependency** — pure
@@ -1247,7 +1274,7 @@ offers an **Undo** toast that puts both back.
 
 **When you ate is captured, and correctable (#2019).** A Telegram tap's declared
 contract is "I'm eating now", so the tap instant is recorded as a real eating time
-(`eaten_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
+(`occurred_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
 carries burst-collapsed correction chips plus an absolute-hour picker for the common
 case of being slow to tap. **The chips state the time they set, not an offset**
 (#2206): `19:41 · −30m` and `19:11 · −1h`, in the same absolute vocabulary the picker
@@ -1275,7 +1302,7 @@ the SELECTED day at hour grain, "Not stated" first (choosing it clears back to t
 NULL), and the Meal select following the chosen hour until Meal is set by hand, so the
 window the tally counts and the minute the ranking weights move together. A refused time
 is an error the user sees there — in a correction the statement IS the submission — while
-the log path keeps its validate-never-drop posture. `logged_at` stays the uneditable audit
+the log path keeps its validate-never-drop posture. `recorded_at` stays the uneditable audit
 instant on every surface. The nudge's ranking
 now weights each serving by how near it was eaten to the window it is ranking for,
 which retired the old 14:59/15:01 bucket cliff along with the read-time re-labelling
@@ -1283,7 +1310,7 @@ that let editing a supplement reminder hour move which meal a historical serving
 belonged to.
 
 A **weekly rollup** — ONE pure
-computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and
+computation (`lib/food-daily-totals.ts`) — feeds both the on-page "this week" card and
 the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from
 your flagged labs (#577) as "food before pills," each offering a one-tap **Track
@@ -1328,15 +1355,26 @@ squat, bench, incline bench, overhead press, deadlift) and the weighted
 pull-up/chin-up; shown only when sex and a bodyweight are on file, informational
 only.
 
+A Level is scored from **free-weight sets only**. The tables are barbell
+population norms and a fixed-path machine has a mechanical advantage they do not
+model, so a lift logged under a bare name like "Overhead Press" entirely on
+machine equipment gets **no Level, no Benchmarks card and no pillar standing** —
+untested against the standard, which is not the claim "untrained" makes. Your
+estimated 1RM, your PRs and your progression are unchanged: a machine press is a
+real set and a real record. Where one name carries both barbell and machine work,
+the Level is scored from the barbell sets alone, so a genuine free-weight standing
+survives rather than being suppressed by the machine sets beside it. Sets with no
+equipment recorded are unaffected, which is most of them.
+
 ## Medical
 
 Vitals, labs, genomics — the **Biomarkers** browser, **imaging studies**, and
 **genomic variants** share one merged **Results** page (#1042 phase 5, retabbed
 to route-per-tab in #1079: `/results`, Medical → Results, as three tabs
-`/results/biomarkers` / `/results/imaging` / `/results/genomics` — bare
+`/results/readings` / `/results/imaging` / `/results/genomics` — bare
 `/results` lands on Biomarkers; the old `/biomarkers`, `/imaging`, and
 `/genomics` index routes were removed in #1635 and 404, and the per-biomarker
-detail page `/biomarkers/view` survives at its own route).
+detail page `/results/readings/view` survives at its own route).
 
 **One renderer per cadence (#1932).** A dated reading opens on the surface its
 arrival rate calls for, and `readingDetailHref(canonicalName, rawName)`
@@ -1347,12 +1385,12 @@ metric detail page `/trends/metric/<slug>`: a windowed chart, the rolling
 7/30/90/365-day summary, and the readings table with row actions. Every **episodic**
 reading — labs, and the `category = 'vitals'` DOMAIN vitals (functional-fitness
 markers, audiogram thresholds, intraocular pressure, visual acuity, periodontal
-measures) — opens on `/biomarkers/view`, which reads it against its reference and
+measures) — opens on `/results/readings/view`, which reads it against its reference and
 optimal bands. The classification lives in `lib/reading-cadence.ts`; the pure
 test audits it against every canonical `vitals` entry, so a newly added vital
 cannot ship unclassified, and the DB-tier test pins that each continuous
 reading's metric kind really stores that canonical name. A vitals URL under
-`/biomarkers/view` redirects to the metric page (current-IA plumbing for a stale
+`/results/readings/view` redirects to the metric page (current-IA plumbing for a stale
 bookmark, not a compatibility shim — both routes are live), and blood pressure's
 pediatric AAP percentile card (#150) and the panel cross-reference (#1502)
 travelled with the reading to that surface.
@@ -1385,7 +1423,7 @@ path, and Mental health's crisis line travels with its pane).
 
 ### Biomarkers browser
 
-The Biomarkers tab (`/results/biomarkers`) is a collapsed **panel index**, not a
+The Biomarkers tab (`/results/readings`) is a collapsed **panel index**, not a
 scroll: every reading is grouped under its normalized clinical panel ("Lipids ·
 7 analytes · 3 flagged"), and a group opens on tap to reveal its readings. A
 panel whose current readings include an out-of-range one says so on its header,
@@ -1416,7 +1454,7 @@ This is #1076's "nothing stranded" rule at a finer grain — membership follows
 whether the reading is answered elsewhere — and it stopped the catalog listing
 ten measurements that already were for every one it rescued (measured on a real
 profile: 131 of 145 `vitals` rows). It is **derived** from the metric registries
-(`BODY_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug reachability
+(`TREND_METRIC_SLUGS` + `METRIC_KNOWLEDGE`) plus a per-slug reachability
 declaration, never hand-listed, so an analyte that gains a dedicated surface
 leaves the browser with no second edit and a newly registered metric must state
 whether an imported reading can reach it before it can remove anything.
@@ -1850,17 +1888,21 @@ is defined on fasting serum glucose) and the unqualified `Glucose` otherwise, so
 a fasting panel and an older draw both compute. The acceptance lives on that one
 input: the curated glucose entries stay separate analytes everywhere else, with
 their own flags, charts and retest clocks. The list can also be exactly **one**
-name — **HOMA-IR** takes `Glucose, Fasting` and nothing else, because the index
-_is_ the fasting-frame calculation and its formula says so, so a draw carrying
-only an unqualified glucose gets no HOMA-IR rather than one computed on a frame
-the reading never stated.
+name — **HOMA-IR** takes `Glucose, Fasting` and nothing else, and likewise
+`Insulin, Fasting` and nothing else, because the index _is_ the fasting-frame
+calculation and its formula says so, so a draw carrying only an unqualified
+glucose or an unqualified insulin gets no HOMA-IR rather than one computed on a
+frame the reading never stated.
 
-Only `Glucose, Fasting` carries a reference band (70–99 mg/dL). The unqualified
-entry deliberately carries none — a draw that never said whether the patient
-fasted has not given us enough to flag against, and the fasting and non-fasting
-frames differ by roughly 40 mg/dL at the top of normal — so an unqualified
-reading shows its value, no flag, and the reason it has none. PhenoAge is
-unaffected either way: it consumes the glucose _value_, not its band.
+The same split runs on both analytes. Only `Glucose, Fasting` carries a
+reference band (70–99 mg/dL), and only `Insulin, Fasting` carries the insulin
+band (≤ 18.4, optimal 2–5 µIU/mL). The unqualified entries deliberately carry
+none — a draw that never said whether the patient fasted has not given us enough
+to flag against, and the frames differ by roughly 40 mg/dL at the top of normal
+on glucose and by a multiple on insulin — so an unqualified reading shows its
+value, no flag, and the reason it has none. PhenoAge is unaffected either way:
+it consumes the glucose _value_, not its band, and it does not read insulin at
+all.
 
 A component your lab reported **beyond a detection limit** ("<0.2") is used at
 that limit — the same substitution the charts plot — and the derived value says
@@ -2154,13 +2196,16 @@ Validated screening **instruments** on **Health record → Specialty → Mental
 health** (`/records/specialty/mental-health`; the old `/medical/instruments`
 route is gone — the pane always renders, since the in-app instrument
 flow is the only creation path and the crisis line travels with it): **PHQ-9**
-(depression) and **GAD-7** (anxiety) tracked as numeric, **severity-banded**
-scores (PHQ-9 minimal / mild / moderate / moderately-severe / severe; GAD-7
-minimal / mild / moderate / severe) — the app's measurement DNA, **not** a
-subjective mood diary. Administer the public-domain questionnaire **in-app** (a
-9/7-item tap-through that computes the total from per-item answers) — the
-guided-battery pattern (#834) — or enter an outside total-only score; the score
-is stored as a biomarker-shaped reading (canonical name `PHQ-9`/`GAD-7`) so it
+(depression), **GAD-7** (anxiety) and **EPDS** (perinatal depression) tracked as
+numeric, **severity-banded** scores (PHQ-9 minimal / mild / moderate /
+moderately-severe / severe; GAD-7 minimal / mild / moderate / severe; EPDS
+minimal / possible / probable / severe, banded on the published cut-offs of 10
+and 13) — the app's measurement DNA, **not** a subjective mood diary. Administer
+the public-domain questionnaire **in-app** (a 9/7/10-item tap-through that
+computes the total from per-item answers, on each item's own published options —
+seven of EPDS's ten items are reverse-scored) — the guided-battery pattern
+(#834) — or enter an outside total-only score; the score
+is stored as a biomarker-shaped reading (canonical name `PHQ-9`/`GAD-7`/`EPDS`) so it
 **trends like any biomarker** (no parallel value store — the observation
 substrate), and a recorded score **satisfies** its preventive depression/anxiety
 **screening** (stronger evidence than a bare visit). A completed **Mental
@@ -2173,9 +2218,32 @@ preventive-satisfaction stream (`lib/preventive-inference.ts`) a physical uses
 for its check-up — the `mental_health` appointment folds its kind text into the
 inference record and widens its `allow` to reach the screening matchers, so a
 person in active behavioral-health care isn't also nagged to get screened.
-Item-level answers are stored (needed for the PHQ-9 item-9 handling below) in
-the one small `instrument_responses` table; an outside total-only score degrades
-gracefully to total-only.
+Item-level answers are stored (needed for the PHQ-9 item-9 / EPDS item-10
+handling below) in the one small `instrument_responses` table; an outside
+total-only score degrades gracefully to total-only.
+
+A screening a **clinical document** carries is imported through that same
+substrate (#2321), not as one pseudo-biomarker per question. A CCD files a
+screening as its individual questions — the question text as the observation's
+name, a free-text answer as its value, no number and no range — and the importer
+recognises the set, maps each printed answer onto that item's own published
+option, and writes ONE score row plus its `instrument_responses`. No question
+text ever coins a canonical name. Two cases **refuse and say so** in the import
+report rather than guessing, both safety decisions: a screening the document
+attributes to **another subject** — post-natal screening is administered to a
+_parent_ and routinely filed in the _child's_ chart, and a misattributed
+crisis-escalating score is worse than an unimported one — and a **partly
+answered** one, since a partial total is not a smaller total but a different
+measurement that cannot be banded against whole-instrument cut-offs. Neither
+refusal loses anything: the answers stay on the document as assessment rows, and
+the SCORE is what appears in the Dropped list.
+
+An observation that states **no subject at all** is read against the document
+(#2558). An ordinary CCD is single-patient by construction and establishes its
+patient once in the header, so most of them never restate it — those score. A
+document naming **more than one patient** still refuses an unattributed score,
+because that is the chart where a guess does the harm. A stated other subject
+refuses either way.
 
 A recorded score can be **corrected or removed** from the History list on both
 instrument surfaces (Mental health and Substance use). This is a safety
@@ -2193,7 +2261,8 @@ signal.
 **Sensitivity is deliberate** (#716): this domain is **exempt from the
 milestone/streak machinery** — no streaks, no "improve your score" nudges, no
 celebratory copy on a depression score. A **severe** total, or a **positive
-PHQ-9 item 9** (suicidal ideation) from an in-app administration, renders a
+PHQ-9 item 9** / **EPDS item 10** (self-harm) — from an in-app administration,
+or from a document-imported score, which carries its item answers — renders a
 **NON-DISMISSIBLE** crisis-resources line (the operator-configured resources,
 plus a gentle "discuss with a clinician" note) — structurally outside the
 dismissal bus, the same standing as a safety dose reminder — and joins the
@@ -2239,6 +2308,14 @@ Substance use is behavioral health's other half, on **Health record → Specialt
 shown for adults + unknown-age profiles and hidden for a known minor, since
 AUDIT/DAST are adult-validated): the full **screen → track → support reduction**
 ladder, deliberately **without gamification**.
+
+The minor gate is not a surface decision. Hiding the page was #1174; #1279 added
+the same refusal to every substance-use Server Action, because an action is
+independently POST-callable; and #2107 moved it into the shared instrument write
+cores, which serve the mental-health catalog too and resolve their instrument from
+the targeted ROW — so the mental-health correction/removal actions had been able to
+edit substance scores the substance surface refuses to touch. A refused instrument
+now answers exactly as an unknown row does, whichever surface asked.
 
 **Screening**: **AUDIT-C** (alcohol, 3 items, per-item 0–4 options — public
 domain, Bush et al. 1998 / VA) and, since #1085, the **DAST-10** (drug use, 10
@@ -2417,7 +2494,7 @@ or **May** — and everything else follows from it.
   never chased twice.
 - **May** — no expectation at all. It is never reminded and never counts as
   missed; it stays on your list and one tap away in its usual slot. This is where
-  as-needed items live — a PRN painkiller and a magnesium you take when you feel
+  as-needed items live — an on-demand painkiller and magnesium you take when you feel
   like it are the same shape, so they are the same setting.
 
 Marking something **May** does not hide it. It keeps its schedule as a _hint_ for
@@ -2551,18 +2628,40 @@ session**, or **logged food serving** offers a one-tap **Undo** toast; the row
 (and its children) is held and restored intact if you undo, then purged.
 
 **Your medical records are covered too** (#1847). Deleting an **allergy**, a
-**condition**, an **immunization dose** or a **skin-lesion observation** offers
-the same toast and lands in the same trash — and each one brings back what a
-re-typed row could not: an allergy's graded reactions (which is why it starts
-warning about your medications again the moment you undo), a condition's
-hand-made correction, a lesion's whole photo series. Links whose target has since
-been deleted — the source document, the visit, the clinician — come back cleared
-rather than pointing at nothing.
+**condition**, an **immunization dose**, a **skin-lesion observation** or a
+**visit** offers the same toast and lands in the same trash — and each one brings
+back what a re-typed row could not: an allergy's graded reactions (which is why
+it starts warning about your medications again the moment you undo), a
+condition's hand-made correction, a lesion's whole photo series. Links whose
+target has since been deleted — the source document, the visit, the clinician —
+come back cleared rather than pointing at nothing. Deleting a visit detaches
+everything recorded at it rather than destroying it: the readings, medications
+and the completed appointment all survive, and undoing brings the visit back with
+those links left honestly cleared. (An uploaded **document** is still permanent —
+a document is its file plus every row extracted from it, which needs more than a
+toast.)
+
+**Every row of a metric's readings table is covered** (#2123). Deleting a
+reading from the ⋯ menu on a metric page used to offer Undo for weight, body fat
+and the vitals while HRV, height, steps, waist, lean mass, calories and a mood
+check-in vanished for good — one menu, two different promises. They all offer it
+now, and deleting a **mood check-in** brings the whole day back: the note and the
+factors, not just the rating you tapped. (Clearing one optional rating off a
+check-in, or one measure off a day that holds several, still just clears that
+value — the day itself stays, so there is nothing to undo.)
+
+**Clearing a symptom for the day is reversible** (#2124). The × on a symptom
+chip took the day's **photos and their files** with it, instantly and for good.
+It is still one tap — a confirmation on every symptom clear would be a tax you
+pay dozens of times to prevent something rare — but it now offers Undo, and
+undoing brings back the severity, the note and the whole photo series still
+attached to that day.
 
 The same contract holds at the bulk surface (#2125): selecting rows of an
 undoable kind on **Data → Manage** — activities, body metrics, biomarker
 records, supplements/medications, practice sessions, substance history,
-allergies, conditions, immunizations — captures each row and offers one
+allergies, conditions, immunizations, visits, device/manual measurements, mood
+check-ins and symptom days — captures each row and offers one
 "Deleted N · Undo" toast, so the row menu and the bulk checkbox never disagree
 about whether a delete is reversible. ("Delete all" on a dataset stays
 deliberately permanent, and says so.)
@@ -2573,7 +2672,7 @@ many related rows came with it, and when it expires — with **Restore** (the sa
 one-tap restore the toast performs) and **Delete permanently**, plus **Empty
 trash** for the lot. An admin sets the retention window in **Settings → Server →
 Trash retention** (30 days by default, 1–365). The window holds the deleted
-row's full content and any video clips or lesion photos captured with it, so a
+row's full content and any video clips or lesion/symptom photos captured with it, so a
 longer window keeps deleted health data on the server longer; "Delete
 permanently" removes a row and its media immediately. Every "remove one logged event" path behaves the same way — removing one
 session of a practice is as recoverable as removing the whole practice, and
@@ -2795,8 +2894,8 @@ on the card rather than implying it holds the legal instrument.
 Logging often happens exactly where the signal doesn't: a set at a gym with dead
 reception, a dose on a flight, a weigh-in during an outage. For a small set of
 **idempotent quick-logs** — confirming a **dose taken** or **skipped**
-(Supplements & Meds), a **body-metric** weigh-in (Trends → Body), a **vitals**
-entry (Trends → Body), a daily **mood check-in** (the Dashboard "How are you
+(Supplements & Meds), a **body-metric** weigh-in (Trends → Overview → body census), a **vitals**
+entry (Trends → Overview → body census), a daily **mood check-in** (the Dashboard "How are you
 today?" card — idempotent per day, so a replay updates the day's one entry), a
 **workout session** logged entirely offline (the Training editor: if the
 connection is gone for the whole session, closing the editor queues the
@@ -2863,7 +2962,7 @@ the visible subjects remain clear.
 
 The top bar includes Search and a contextual add action. The primary action
 matches the current page—food on Nutrition, a dose on Medications, weight on
-Trends → Body, and activity elsewhere. Its menu opens the existing forms as
+Trends → Overview → body census, and activity elsewhere. Its menu opens the existing forms as
 overlays for:
 
 - food;

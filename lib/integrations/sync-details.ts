@@ -1,6 +1,6 @@
 import type { HealthConnectOriginChoice } from "./health-connect";
 
-// The structured `details` JSON every provider's sync event can carry. Started as
+// The structured `details` JSON every source's sync event can carry. Started as
 // Health Connect's origin/warning diagnostics and is now the shared event-level
 // channel: Fitbit Takeout writes its partial-failure warning here, and a PULL run
 // that stopped early marks itself `truncated` (#1614) so Review can render it as a
@@ -9,7 +9,7 @@ import type { HealthConnectOriginChoice } from "./health-connect";
 export interface SyncEventDetails {
   warnings: string[];
   origins: HealthConnectOriginChoice[];
-  // The provider had MORE data than this run took: a page cap or a 429 stopped it,
+  // The source had MORE data than this run took: a page cap or a 429 stopped it,
   // and the sync cursor was deliberately not advanced so the next run re-covers the
   // remainder. Absent (rather than false) on an ordinary complete run.
   truncated?: boolean;
@@ -80,7 +80,7 @@ export function isTruncatedSyncEvent(ev: { details?: string | null }): boolean {
   return parseSyncEventDetails(ev.details ?? null)?.truncated === true;
 }
 
-// The one Review line for a pull that a provider page cap or rate limit cut short.
+// The one Review line for a pull that a source page cap or rate limit cut short.
 // Written into the event's own `details` (never a second event), beside the
 // `truncated` marker the UI badges. The cursor is deliberately NOT advanced on such a
 // run, so the next sync re-covers the window.

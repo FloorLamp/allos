@@ -122,7 +122,7 @@ export default function SleepTrendsSection({
             Sleep stages
           </h3>
           <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">
-            Wake-day totals from your source; a recorded nap can contribute.
+            Main-sleep totals from your source; naps stay separate.
           </p>
           <StackedBarCard
             data={stageData}

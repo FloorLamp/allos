@@ -32,7 +32,7 @@ import {
   type RecentChangeRender,
 } from "../recent-changes";
 import { lifeStage } from "../life-stage";
-import { getUserAge } from "../settings";
+import { getProfileAge } from "../settings";
 import {
   getCurrentFlaggedBiomarkers,
   getCurrentFlaggedVitals,
@@ -41,7 +41,7 @@ import { getEncounters } from "./medical/encounters";
 import { getMoodLogs } from "./mood";
 import { getSymptomDaysInRange } from "./symptoms";
 import { getIntegration } from "../integrations/registry";
-import { syncVocabularyForKind } from "../integrations/provider-state";
+import { syncVocabularyForKind } from "../integrations/source-state";
 import type { IntegrationId } from "../types/integrations";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { sharedSurfaceDetail } from "../appointment-sensitivity";
@@ -112,7 +112,7 @@ function weekdayLabel(dateStr: string): string {
 // table each written row landed in, plus the metric for a `metric_samples` row. That
 // is the accounting the sync rows already carry; no second one is minted here, and
 // raw counts stay in Data → Review where a number is what the reader came for. A
-// provider whose window wrote nothing NAMEABLE therefore produces no line at all,
+// source whose window wrote nothing NAMEABLE therefore produces no line at all,
 // which is the honest answer rather than a count standing in for news.
 //
 // CACHE-KIND PROVIDERS ARE NOT ARRIVALS (#1819 item 1). Weather & UV writes cells of
@@ -120,8 +120,8 @@ function weekdayLabel(dateStr: string): string {
 // vocabulary disease), and its sliding fetch window inserts new forecast hours every
 // single day — so the old `HAVING SUM(inserted) > 0` passed every morning forever,
 // and by the attention doctrine a permanent line carries no information. The
-// exclusion is derived from the provider KIND through the ONE shared
-// `syncVocabularyForKind`, so any future cache-kind provider is excluded for free;
+// exclusion is derived from the source KIND through the ONE shared
+// `syncVocabularyForKind`, so any future cache-kind source is excluded for free;
 // its sync accounting lives in Data → Review.
 //
 // ARRIVALS FOLD INTO THE CONTENT LINES THEY DESCRIBE (#1913 item 1). "kinds, not
@@ -129,7 +129,7 @@ function weekdayLabel(dateStr: string): string {
 // substrate vocabulary about records the message was already listing. An arrival's only
 // value is PROVENANCE, and the content lines carry that themselves now (an imported
 // session reads "· Strava"; the digest's Sleep section IS the Health Connect arrival).
-// So this category reports only the arrivals with NO content line to ride: a provider's
+// So this category reports only the arrivals with NO content line to ride: a source's
 // first sync, and a kind this profile has never received before. See the fold below.
 //
 // STALENESS IS NOT RE-DERIVED HERE. #1685 already owns "a source has gone quiet"
@@ -145,11 +145,12 @@ function weekdayLabel(dateStr: string): string {
 function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
   // ONE pass over the profile's whole arrival history, split at the window edge. The
   // fold below needs BOTH halves — what arrived in the window, and whether that kind (or
-  // that provider) has ever arrived before — and asking twice would be two answers to
+  // that source) has ever arrived before — and asking twice would be two answers to
   // one question over a table that is only ever appended to.
   const rows = db
+    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     .prepare(
-      `SELECT e.provider AS provider,
+      `SELECT e.provider AS source_id,
               r.target_table AS target_table,
               s.metric AS metric,
               SUM(CASE WHEN e.at > ? THEN 1 ELSE 0 END) AS n_new,
@@ -166,27 +167,27 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
         ORDER BY n_new DESC, e.provider, r.target_table`
     )
     .all(sinceTs, sinceTs, profileId) as {
-    provider: string;
+    source_id: string;
     target_table: string;
     metric: string | null;
     n_new: number;
     n_prior: number;
   }[];
 
-  // Which providers had ALREADY synced successfully before the window — so a provider's
+  // Which sources had ALREADY synced successfully before the window — so a source's
   // FIRST sync can be told from its thousandth.
   const syncedBefore = new Set(
     (
       db
         .prepare(
-          `SELECT DISTINCT provider FROM integration_sync_events
+          `SELECT DISTINCT provider AS source_id FROM integration_sync_events
             WHERE profile_id = ? AND ok = 1 AND at <= ?`
         )
-        .all(profileId, sinceTs) as { provider: string }[]
-    ).map((r) => r.provider)
+        .all(profileId, sinceTs) as { source_id: string }[]
+    ).map((r) => r.source_id)
   );
 
-  // Which KINDS this profile has ever received before, across every provider — the
+  // Which KINDS this profile has ever received before, across every source — the
   // identity is the reader's word, not the storage tuple, so "steps from Health Connect"
   // and "steps from Fitbit" are one kind and only the first is news.
   const kindsBefore = new Set<string>();
@@ -194,31 +195,31 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
     if (r.n_prior > 0) kindsBefore.add(arrivalKind(r.target_table, r.metric));
   }
 
-  // Provider → the kinds it wrote IN THE WINDOW, in descending row-count order (the
-  // biggest news first), insertion-ordered so the providers keep that order too.
-  const byProvider = new Map<string, string[]>();
+  // Source → the kinds it wrote IN THE WINDOW, in descending row-count order (the
+  // biggest news first), insertion-ordered so the sources keep that order too.
+  const bySource = new Map<string, string[]>();
   for (const r of rows) {
     if (r.n_new === 0) continue;
-    const def = getIntegration(r.provider as IntegrationId);
-    // An UNREGISTERED provider id has no kind to ask about, so it keeps the default
+    const def = getIntegration(r.source_id as IntegrationId);
+    // An UNREGISTERED source id has no kind to ask about, so it keeps the default
     // record dialect (#2301 typed the vocabulary function, which is what stopped an
     // empty-string kind being silently accepted here).
     if (def && syncVocabularyForKind(def.kind) === "forecast") continue;
-    const kinds = byProvider.get(r.provider) ?? [];
+    const kinds = bySource.get(r.source_id) ?? [];
     kinds.push(arrivalKind(r.target_table, r.metric));
-    byProvider.set(r.provider, kinds);
+    bySource.set(r.source_id, kinds);
   }
 
   const out: RecentChange[] = [];
-  for (const [provider, kinds] of byProvider) {
-    const firstSync = !syncedBefore.has(provider);
+  for (const [sourceId, kinds] of bySource) {
+    const firstSync = !syncedBefore.has(sourceId);
     // THE FOLD (#1913 item 1). A routine overnight arrival is no longer narrated: its
     // only value was PROVENANCE, and the content lines the digest already renders carry
     // that themselves — an imported session reads "🏋️ Morning Ride — 18.85 km · Strava",
     // and the Sleep section IS the Health Connect arrival rather than something a 📥 line
     // needs to announce beside it.
     //
-    // What survives is exactly what has no content line to ride: a provider's FIRST sync
+    // What survives is exactly what has no content line to ride: a source's FIRST sync
     // (a new source starting to flow is news about the setup, not about a record), and a
     // kind this profile has never received before (nothing in the message establishes
     // that the app now knows this about you). Both are once-ever events by construction,
@@ -226,9 +227,9 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
     const shown = firstSync ? kinds : kinds.filter((k) => !kindsBefore.has(k));
     const phrase = arrivalKindsPhrase(shown);
     if (!phrase) continue;
-    const name = getIntegration(provider as IntegrationId)?.name ?? provider;
+    const name = getIntegration(sourceId as IntegrationId)?.name ?? sourceId;
     out.push({
-      id: `data:${provider}`,
+      id: `data:${sourceId}`,
       category: "data",
       // Dateless: arrival is about NOW, not about a logged day.
       date: null,
@@ -357,7 +358,7 @@ export function collectRecentChanges(
   // ── growth (#1463 base 3, minors only) ───────────────────────────────────────
   // Life-stage gated at the collector, not the formatter. Height is the growth
   // series every pediatric surface reads (`height_cm` metric samples).
-  const stage = lifeStage(getUserAge(profileId));
+  const stage = lifeStage(getProfileAge(profileId));
   const minor =
     stage === "infant" || stage === "child" || stage === "adolescent";
   if (on("growth") && minor) {

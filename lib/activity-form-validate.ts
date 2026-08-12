@@ -2,7 +2,7 @@
 // (issue #127). No React, no state, no DB: the form keeps rendering + event
 // wiring and delegates every decision here, so the rules are unit-testable in
 // isolation (see lib/__tests__/activity-form-validate.test.ts). The
-// completeness/partial-set primitives are shared with the journal's stored-row
+// completeness/partial-set primitives are shared with the training log's stored-row
 // validator via lib/activity-form-model → lib/activity-validate.
 
 import type { ActivityType } from "./types";

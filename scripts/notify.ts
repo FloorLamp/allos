@@ -241,7 +241,7 @@ async function tickProfile(
   tickMinutes: number
 ): Promise<boolean> {
   // THE PULL PASS, ON ITS OWN CADENCE (#2121 step 1). Runs on every tick regardless
-  // of which notification slots are due — but a provider is POLLED only once per its
+  // of which notification slots are due — but a source is POLLED only once per its
   // registry-declared cadence window (hourly for all four today). That is the whole
   // decoupling: everything below this line is "what is due to send", bounded only by
   // this process's ~0.5 s boot and free to be evaluated as often as the scheduler
@@ -274,7 +274,7 @@ async function tickProfile(
   const prefix = prefixForProfile(profile.id);
   let anyFailed = false;
 
-  // ── Supplement dose reminders: ONE merged send per tick (#1154) ────────────
+  // ── IntakeItem dose reminders: ONE merged send per tick (#1154) ────────────
   // Every slot due (and unsent) this tick — the four fixed windows plus the
   // workout-relative PreWorkout pseudo-slot — coalesces into ONE message, so two
   // windows configured at the same time (or the pseudo-slot colliding with a
@@ -434,7 +434,7 @@ async function tickProfile(
   // check-in rides Evening.
   //
   // The gate here is only "is the slot due"; every other condition — the consent flag
-  // itself, the expected-active gate, the provider-health deference, and the quiet-
+  // itself, the expected-active gate, the source-health deference, and the quiet-
   // stream predicate — lives in buildWearReminder, which returns null for all of them.
   // That is deliberate: null is what the dueSlots loop calls "nothing due", and a
   // "nothing due" night leaves the per-day marker UNSET, so a skipped evaluation never
@@ -518,7 +518,13 @@ async function tickProfile(
   // overnight fever case; the notice can only fire from a dose the user logged). Its
   // own per-item/administration marker (notify_last_redose_<itemId>) dedups.
   try {
-    const rd = await runRedoseNotices(profile.id, profile.name, date, now);
+    const rd = await runRedoseNotices(
+      profile.id,
+      profile.name,
+      date,
+      now,
+      tickMinutes
+    );
     if (rd.failed) anyFailed = true;
   } catch (e) {
     log.error("redose notice check failed", {
@@ -1102,8 +1108,8 @@ async function tick() {
   }
 
   // Sync-event retention sweep (#388): global, once per tick. integration_sync_events
-  // gains a row per provider per hourly tick and was the one tick sibling nothing
-  // pruned. Keeps the last 90 days plus the newest event per (profile, provider).
+  // gains a row per source per hourly tick and was the one tick sibling nothing
+  // pruned. Keeps the last 90 days plus the newest event per (profile, source).
   // Best-effort (pruneSyncEvents never throws); never affects the notification
   // flow/exit code.
   try {

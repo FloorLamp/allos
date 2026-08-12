@@ -20,7 +20,7 @@ import {
   formatMonthDay,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
-import type { SubstanceHistoryEntry, SubstanceTrendWeek } from "@/lib/queries";
+import type { SubstanceDailyTotal, SubstanceTrendWeek } from "@/lib/queries";
 import {
   MAX_SUBSTANCE_ENTRY_AMOUNT,
   MAX_WEEKLY_CAP,
@@ -28,13 +28,13 @@ import {
   type Substance,
 } from "@/lib/substance-use";
 import {
-  addSubstanceHistoryEntryAction,
+  addSubstanceDailyTotalAction,
   clearSubstanceTargetAction,
-  deleteSubstanceHistoryEntryAction,
+  deleteSubstanceDailyTotalAction,
   logSubstanceUnitAction,
   setSubstanceTargetAction,
   undoSubstanceUnitAction,
-  updateSubstanceHistoryEntryAction,
+  updateSubstanceDailyTotalAction,
 } from "./actions";
 
 function mutationError(kind: string): string {
@@ -64,7 +64,7 @@ export default function ConsumptionSection({
   cap: number | null;
   capProgress: string | null;
   capAttention: boolean;
-  history: SubstanceHistoryEntry[];
+  history: SubstanceDailyTotal[];
   trend: SubstanceTrendWeek[];
   defaultDate: string;
   formatPrefs: DisplayFormatPrefs;
@@ -153,7 +153,7 @@ export default function ConsumptionSection({
     setPending(true);
     const fd = new FormData(event.currentTarget);
     fd.set("substance", substance);
-    const result = await addSubstanceHistoryEntryAction(fd);
+    const result = await addSubstanceDailyTotalAction(fd);
     setPending(false);
     if (result.kind !== "added") {
       setError(mutationError(result.kind));
@@ -166,7 +166,7 @@ export default function ConsumptionSection({
 
   async function editEntry(
     event: FormEvent<HTMLFormElement>,
-    entry: SubstanceHistoryEntry,
+    entry: SubstanceDailyTotal,
     done: () => void
   ) {
     event.preventDefault();
@@ -174,7 +174,7 @@ export default function ConsumptionSection({
     const fd = new FormData(event.currentTarget);
     fd.set("substance", substance);
     fd.set("id", String(entry.id));
-    const result = await updateSubstanceHistoryEntryAction(fd);
+    const result = await updateSubstanceDailyTotalAction(fd);
     setPending(false);
     if (result.kind !== "updated") {
       setError(mutationError(result.kind));
@@ -185,7 +185,7 @@ export default function ConsumptionSection({
     toast("Entry updated.");
   }
 
-  const historyColumns: EntryHistoryColumn<SubstanceHistoryEntry>[] = [
+  const historyColumns: EntryHistoryColumn<SubstanceDailyTotal>[] = [
     {
       header: "Date",
       slot: "title",
@@ -382,7 +382,7 @@ export default function ConsumptionSection({
               deleteFormData={(entry) =>
                 withSubstance({ id: String(entry.id) })
               }
-              deleteAction={deleteSubstanceHistoryEntryAction}
+              deleteAction={deleteSubstanceDailyTotalAction}
               deletedMessage="Entry deleted."
             />
           </div>
@@ -512,7 +512,7 @@ function HistoryFields({
   entry,
   defaultDate,
 }: {
-  entry?: SubstanceHistoryEntry;
+  entry?: SubstanceDailyTotal;
   defaultDate: string;
 }) {
   return (

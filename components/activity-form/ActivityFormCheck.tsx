@@ -7,7 +7,7 @@ import ActivityVideoStrip, {
 import { listActivityVideosAction } from "@/app/(app)/training/video-actions";
 
 // The activity editor's "Form check" block (#1457) — the ADD entry point for
-// training clips, and the reason the Journal card's strip could stop rendering an
+// training clips, and the reason the Training Log card's strip could stop rendering an
 // empty state on every writable activity.
 //
 // Why HERE: attaching a clip is an act of editing the activity, so it belongs with
@@ -28,7 +28,7 @@ import { listActivityVideosAction } from "@/app/(app)/training/video-actions";
 // editor's own id timing (#924), not this.
 //
 // It owns its own fetch: the editor is a client component opened from several entry
-// points (Journal card, repeat, live resume), so unlike the Journal card — which is
+// points (Training Log card, repeat, live resume), so unlike the Training Log card — which is
 // handed clips by the feed — there is no server component above it holding them.
 export default function ActivityFormCheck({
   activityId,

@@ -12,8 +12,8 @@ import {
 } from "@/lib/food-eating-time";
 import {
   getExcludedFoodGroups,
-  getUserAge,
-  getUserBirthdate,
+  getProfileAge,
+  getProfileBirthdate,
 } from "@/lib/settings/profile-attrs";
 import {
   showBodyFat,
@@ -35,7 +35,7 @@ import {
   getFoodBarOrder,
   getManualBodyMetricStatedAt,
   getMoodOnDate,
-  getProteinLoggedGrams,
+  getProteinDailyGrams,
   getProteinQuickAddPreset,
   getTrackedPractices,
   type TrackedPractice,
@@ -199,8 +199,8 @@ export async function loadQuickEntry(
   const date = today(profile.id);
 
   if (form === "measurements") {
-    const age = getUserAge(profile.id);
-    const birthdate = getUserBirthdate(profile.id);
+    const age = getProfileAge(profile.id);
+    const birthdate = getProfileBirthdate(profile.id);
     const prefs = getUnitPrefs(login.id);
     return {
       form: "measurements",
@@ -225,7 +225,7 @@ export async function loadQuickEntry(
     // The same gate the Food tab applies server-side (#591): below one year the
     // adult food-group catalog is meaningless, so say so instead of rendering an
     // empty logger.
-    if (!isFoodLoggingRelevant(getUserAge(profile.id))) {
+    if (!isFoodLoggingRelevant(getProfileAge(profile.id))) {
       return {
         form: "unavailable",
         message:
@@ -255,7 +255,7 @@ export async function loadQuickEntry(
       proteinRankBySlot: Object.fromEntries(
         FOOD_SLOTS.map((meal) => [meal, orderBySlot[meal].proteinRank])
       ) as Record<FoodSlot, number | null>,
-      proteinToday: getProteinLoggedGrams(profile.id, date),
+      proteinToday: getProteinDailyGrams(profile.id, date),
       proteinPreset: getProteinQuickAddPreset(profile.id),
       excludedGroups: getExcludedFoodGroups(profile.id),
       slot,

@@ -5,7 +5,7 @@
 // weekday-vs-weekend asymmetry, slot-specific failure).
 //
 // Pure and client-safe — no DB/network. The detectors run over a single dose's
-// per-day adherence strip (lib/supplement-adherence.doseStrip: "taken"/"partial"/
+// per-day adherence strip (lib/intake-adherence.doseStrip: "taken"/"partial"/
 // "skipped"/"missed"/"na", oldest-first), which the server builder in
 // lib/rule-findings.ts assembles from the already profile-scoped intake reads. Each
 // finding rides the shared findings bus with a stable, dose-id-keyed dedupeKey
@@ -17,8 +17,8 @@
 // missed-dose escalation stay their own (deliberately un-suppressible) machinery.
 // A pattern finding just nudges a schedule tweak; it never competes with the tick.
 
-import type { AdherenceDot } from "./supplement-adherence";
-import type { TimeBucket } from "./supplement-schedule";
+import type { AdherenceDot } from "./intake-adherence";
+import type { TimeBucket } from "./intake-schedule";
 
 // ---- Window + thresholds --------------------------------------------------
 
@@ -59,7 +59,7 @@ export const WEEKEND_RATIO = 2;
 // ---- Signal keys (single source of truth) ---------------------------------
 //
 // Every adherence-pattern finding shares ONE dedupeKey namespace (`adherence:`) so
-// the /medicine dismiss action guards the whole domain with a single prefix check
+// the intake surface dismiss action guards the whole domain with a single prefix check
 // (mirroring the training-observation / trajectory actions, #39/#45). Keyed on the
 // DOSE id (AUTOINCREMENT, never recycles — AGENTS.md #203), so a rename/re-time of
 // the supplement never re-attaches a stale dismissal to a different slot.
@@ -159,7 +159,7 @@ export interface DoseAdherenceInput {
 //
 // What survives is the genuinely different question the clamp was conflating with the
 // edit: when did this dose EXIST at all. That bound is `doseWindowSince`
-// (lib/supplement-adherence.ts) — timezone-aware, and widened by logged history because
+// (lib/intake-adherence.ts) — timezone-aware, and widened by logged history because
 // a log is proof the dose existed on its date (#430/#1442) — and the pattern builder
 // reads it, the same one the strip it summarizes reads.
 

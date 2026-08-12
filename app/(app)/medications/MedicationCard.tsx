@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation";
 import type {
   MedicationCourse,
   MedicationSideEffect,
-  Supplement,
-  SupplementDose,
-  SupplementPair,
+  IntakeItem,
+  IntakeDose,
+  IntakePair,
 } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -24,7 +24,7 @@ import {
   unresolvedCount,
   medicationMetaLine,
 } from "@/lib/medication-history";
-import type { AdherenceDot } from "@/lib/supplement-adherence";
+import type { AdherenceDot } from "@/lib/intake-adherence";
 import type { AdherenceCalendarModel } from "@/lib/adherence-calendar";
 import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
@@ -63,10 +63,10 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useToast } from "@/components/Toast";
 import {
-  updateSupplement,
-  deleteSupplement,
+  updateIntakeItem,
+  deleteIntakeItem,
   deleteAdministration,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import {
   stopMedication,
   restartMedication,
@@ -77,7 +77,7 @@ import {
 } from "./actions";
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import { isPrn } from "@/lib/supplement-schedule";
+import { isOnDemand } from "@/lib/intake-schedule";
 import { symptomLabelOptions } from "@/lib/symptoms";
 
 // A side effect is described in the SAME human vocabulary a symptom is (#1676), so
@@ -91,10 +91,10 @@ const SIDE_EFFECT_OPTIONS = symptomLabelOptions();
 // supplements (rendered one row per dose), a medication renders once so its
 // per-medication history has a single home.
 export default function MedicationCard({
-  supplement,
+  medication,
   doses,
   retiredDoses = [],
-  allSupplements,
+  allIntakeItems,
   stackItems,
   pgxVariants,
   pairs,
@@ -128,14 +128,14 @@ export default function MedicationCard({
   initialAction,
   conditions = [],
 }: {
-  supplement: Supplement;
-  doses: SupplementDose[];
+  medication: IntakeItem;
+  doses: IntakeDose[];
   // Retired doses of this med (#2131), for the edit form's Restore affordance.
-  retiredDoses?: SupplementDose[];
-  allSupplements: { id: number; name: string }[];
+  retiredDoses?: IntakeDose[];
+  allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
-  pairs: SupplementPair[];
+  pairs: IntakePair[];
   takenDoseIds: Set<number>;
   skippedDoseIds: Set<number>;
   due: boolean;
@@ -206,7 +206,7 @@ export default function MedicationCard({
   // The profile's conditions for the "For condition…" indication picker (#1052).
   conditions?: { id: number; name: string }[];
 }) {
-  const s = supplement;
+  const s = medication;
   const router = useRouter();
   const [editing, setEditing] = useState(canWrite && initialAction === "edit");
   const [stopping, setStopping] = useState(
@@ -241,11 +241,11 @@ export default function MedicationCard({
     return (
       <div className="card relative z-20 bg-slate-50/60 dark:bg-ink-900/60">
         <MedicationForm
-          action={updateSupplement}
-          supplement={s}
+          action={updateIntakeItem}
+          medication={s}
           doses={doses}
           retiredDoses={retiredDoses}
-          allSupplements={allSupplements}
+          allIntakeItems={allIntakeItems}
           stackItems={stackItems}
           pgxVariants={pgxVariants}
           pairs={pairs}
@@ -296,7 +296,7 @@ export default function MedicationCard({
       amount: dose.amount,
       product: s.product,
       timeOfDay: dose.time_of_day,
-      asNeeded: isPrn(s),
+      asNeeded: isOnDemand(s),
       timeFormat: formatPrefs.timeFormat,
     })
   );
@@ -317,7 +317,7 @@ export default function MedicationCard({
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
               <RxOtcBadge rx={s.rx} />
-              {isPrn(s) && (
+              {isOnDemand(s) && (
                 <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                   As Needed
                 </span>
@@ -355,7 +355,7 @@ export default function MedicationCard({
             </div>
             <div className="mt-4">
               <div className="section-label">
-                {isPrn(s) ? "Dose" : "Dose schedule"}
+                {isOnDemand(s) ? "Dose" : "Dose schedule"}
               </div>
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate-700 dark:text-slate-200">
                 {doseLines.length > 0 && doseLines.some(Boolean) ? (
@@ -489,7 +489,7 @@ export default function MedicationCard({
                         close();
                         const fd = new FormData();
                         fd.set("id", String(s.id));
-                        await undoable(deleteSupplement, fd, {
+                        await undoable(deleteIntakeItem, fd, {
                           deletedMessage: "Medication deleted.",
                         });
                       }}
@@ -504,7 +504,7 @@ export default function MedicationCard({
         </div>
 
         {/* A PRN (as-needed) med keeps logging and today's ledger together. */}
-        {current && isPrn(s) && (
+        {current && isOnDemand(s) && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="prn-administrations"
@@ -578,7 +578,7 @@ export default function MedicationCard({
 
         {/* Today's dose check-offs — a SCHEDULED med only (PRN uses the block above),
           when it's current and due. */}
-        {current && due && !isPrn(s) && doses.length > 0 && (
+        {current && due && !isOnDemand(s) && doses.length > 0 && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="scheduled-today"
@@ -744,13 +744,13 @@ export default function MedicationCard({
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                 <Link
-                  href={`/results/biomarkers?q=${encodeURIComponent(monitoringLabs[0])}`}
+                  href={`/results/readings?q=${encodeURIComponent(monitoringLabs[0])}`}
                   className="font-medium text-brand-600 hover:underline dark:text-brand-400"
                 >
                   View results
                 </Link>
                 <Link
-                  href={`/results/biomarkers?new=1&name=${encodeURIComponent(monitoringLabs[0])}#add-result`}
+                  href={`/results/readings?new=1&name=${encodeURIComponent(monitoringLabs[0])}#add-result`}
                   className="font-medium text-brand-600 hover:underline dark:text-brand-400"
                 >
                   Add {monitoringLabs[0]} result
@@ -830,7 +830,7 @@ export default function MedicationCard({
               amount: dose.amount,
               time_of_day: dose.time_of_day,
             }))}
-            asNeeded={isPrn(s)}
+            asNeeded={isOnDemand(s)}
             history={doseHistory}
             minDate={historyMinDate}
             maxDate={historyMaxDate}

@@ -19,9 +19,9 @@ import { db } from "@/lib/db";
 import { upsertVitals, type NormVital } from "@/lib/integrations/normalize";
 import {
   getBiomarkerSeries,
-  getMedicalRecords,
-  getRecordRevisions,
-  getRevisionsByRecord,
+  getClinicalObservations,
+  getObservationRevisions,
+  getRevisionsByObservation,
 } from "@/lib/queries";
 import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
 import { seedProfile, type SeededProfile } from "./fixtures";
@@ -71,7 +71,7 @@ describe("a re-issued result preserves what it replaces", () => {
     const first = upsertVitals(subject.profileId, [reading()], SOURCE);
     const id = first.ids[0];
     expect(first.counts.inserted).toBe(1);
-    expect(getRecordRevisions(subject.profileId, id)).toEqual([]);
+    expect(getObservationRevisions(subject.profileId, id)).toEqual([]);
 
     // The lab re-issues the draw with a different number, marked corrected.
     const second = upsertVitals(
@@ -87,7 +87,7 @@ describe("a re-issued result preserves what it replaces", () => {
     expect(live.value_num).toBe(4.4);
     expect(live.result_status).toBe("corrected");
 
-    const revs = getRecordRevisions(subject.profileId, id);
+    const revs = getObservationRevisions(subject.profileId, id);
     expect(revs).toHaveLength(1);
     expect(revs[0].value_num).toBe(5.2);
     expect(revs[0].value).toBe("5.2");
@@ -106,7 +106,7 @@ describe("a re-issued result preserves what it replaces", () => {
       [reading({ value_num: 4.1, result_status: "amended" })],
       SOURCE
     );
-    const revs = getRecordRevisions(subject.profileId, id);
+    const revs = getObservationRevisions(subject.profileId, id);
     expect(revs.map((r) => r.value_num)).toEqual([4.4, 5.2]);
     expect(liveRow(id).value_num).toBe(4.1);
   });
@@ -121,14 +121,14 @@ describe("a re-issued result preserves what it replaces", () => {
       SOURCE
     );
     expect(again.counts.updated).toBe(1);
-    expect(getRecordRevisions(subject.profileId, id)).toHaveLength(1);
+    expect(getObservationRevisions(subject.profileId, id)).toHaveLength(1);
   });
 
   it("writes NOTHING for an idempotent re-send of the rolling window", () => {
     const id = upsertVitals(subject.profileId, [reading()], SOURCE).ids[0];
     const again = upsertVitals(subject.profileId, [reading()], SOURCE);
     expect(again.counts).toMatchObject({ unchanged: 1, updated: 0 });
-    expect(getRecordRevisions(subject.profileId, id)).toEqual([]);
+    expect(getObservationRevisions(subject.profileId, id)).toEqual([]);
   });
 
   it("does not manufacture a correction for a re-FILING that changed no value", () => {
@@ -141,7 +141,7 @@ describe("a re-issued result preserves what it replaces", () => {
       SOURCE
     );
     expect(renamed.counts.updated).toBe(1);
-    expect(getRecordRevisions(subject.profileId, id)).toEqual([]);
+    expect(getObservationRevisions(subject.profileId, id)).toEqual([]);
   });
 
   it("still never clobbers a hand-edited imported reading (#133/#659)", () => {
@@ -159,7 +159,7 @@ describe("a re-issued result preserves what it replaces", () => {
     // The user's correction stands, and the edit lock is not a supersession — there
     // was no overwrite, so there is nothing to preserve.
     expect(liveRow(id).value_num).toBe(4.9);
-    expect(getRecordRevisions(subject.profileId, id)).toEqual([]);
+    expect(getObservationRevisions(subject.profileId, id)).toEqual([]);
   });
 });
 
@@ -174,7 +174,7 @@ describe("a preserved value is provenance, never an observation", () => {
 
     const series = getBiomarkerSeries(subject.profileId, "Potassium");
     expect(series.map((r) => r.value_num)).toEqual([4.4]);
-    const rows = getMedicalRecords(subject.profileId, {}).filter(
+    const rows = getClinicalObservations(subject.profileId, {}).filter(
       (r) => r.name === "Potassium"
     );
     expect(rows).toHaveLength(1);
@@ -186,20 +186,20 @@ describe("a preserved value is provenance, never an observation", () => {
     const id = upsertVitals(subject.profileId, [reading()], SOURCE).ids[0];
     upsertVitals(subject.profileId, [reading({ value_num: 4.4 })], SOURCE);
     const other = seedProfile("LabCorrectionOther");
-    expect(getRecordRevisions(other.profileId, id)).toEqual([]);
-    expect(getRevisionsByRecord(other.profileId, [id]).size).toBe(0);
-    expect(getRevisionsByRecord(subject.profileId, [id]).get(id)).toHaveLength(
-      1
-    );
+    expect(getObservationRevisions(other.profileId, id)).toEqual([]);
+    expect(getRevisionsByObservation(other.profileId, [id]).size).toBe(0);
+    expect(
+      getRevisionsByObservation(subject.profileId, [id]).get(id)
+    ).toHaveLength(1);
   });
 
-  it("getRevisionsByRecord groups a set and short-circuits an empty one", () => {
+  it("getRevisionsByObservation groups a set and short-circuits an empty one", () => {
     const id = upsertVitals(subject.profileId, [reading()], SOURCE).ids[0];
     upsertVitals(subject.profileId, [reading({ value_num: 4.4 })], SOURCE);
     // Derived readings carry synthetic NEGATIVE ids and have no lineage.
-    const byRecord = getRevisionsByRecord(subject.profileId, [id, -7]);
+    const byRecord = getRevisionsByObservation(subject.profileId, [id, -7]);
     expect([...byRecord.keys()]).toEqual([id]);
-    expect(getRevisionsByRecord(subject.profileId, []).size).toBe(0);
+    expect(getRevisionsByObservation(subject.profileId, []).size).toBe(0);
   });
 });
 
@@ -211,7 +211,7 @@ describe("row operations carry the lineage", () => {
       [reading({ value_num: 4.4, result_status: "corrected" })],
       SOURCE
     );
-    expect(getRecordRevisions(subject.profileId, id)).toHaveLength(1);
+    expect(getObservationRevisions(subject.profileId, id)).toHaveLength(1);
 
     const undoId = captureDelete("biomarker-record", subject.profileId, id);
     db.prepare(
@@ -230,13 +230,13 @@ describe("row operations carry the lineage", () => {
 
     expect(undoId).not.toBeNull();
     expect(restoreDeletedRow(subject.profileId, undoId!)).toBe(true);
-    const restored = getMedicalRecords(subject.profileId, {}).find(
+    const restored = getClinicalObservations(subject.profileId, {}).find(
       (r) => r.name === "Potassium"
     )!;
     // The reading is back WITH its correction history — an undo that dropped the
     // lineage would quietly destroy what the delete was supposed to be reversible
     // about.
-    const revs = getRecordRevisions(subject.profileId, restored.id);
+    const revs = getObservationRevisions(subject.profileId, restored.id);
     expect(revs).toHaveLength(1);
     expect(revs[0].value_num).toBe(5.2);
   });

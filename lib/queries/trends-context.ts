@@ -13,7 +13,7 @@
 //     A default order that moved with this morning's weigh-in would be a feed, and
 //     chart cards are a place (#1413/#559).
 //
-//  2. CHEAP. It runs on every Body-tab render, so presence is measured with
+//  2. CHEAP. It runs on every body-census render, so presence is measured with
 //     aggregate counts (one grouped statement across `metric_samples`, one over
 //     `body_metrics`) and with reads the tab ALREADY makes —
 //     `getBiomarkerSeries` is `cache()`d per request, so the five vitals presences
@@ -25,8 +25,8 @@
 
 import { db } from "../db";
 import { isGrowthTracked } from "../life-stage";
-import { isGoalLive } from "../goals";
-import { getHomeLocation, getUserAge } from "../settings";
+import { isGoalLive } from "../outcome-goals";
+import { getHomeLocation, getProfileAge } from "../settings";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "../vitals-input";
 import { PEAK_FLOW_METRIC } from "../peak-flow";
 import { WAIST_CIRC_METRIC } from "../waist-circ-extract";
@@ -37,11 +37,11 @@ import {
   type PresenceLevel,
   type TrendsSubjectContext,
 } from "../trends-card-rank";
-import { bodyCardIdForSeriesKey } from "../trends-body-metrics";
+import { bodyCardIdForSeriesKey } from "../trend-metrics";
 import { seriesKeyOfSavedRef } from "../saved-items";
 import type { BodyMetricKind } from "../types";
 import { getConditions } from "./clinical";
-import { getGoals } from "./training";
+import { getOutcomeGoals } from "./training";
 import { getBiomarkerSeries } from "./medical";
 import { getLatestHrDay } from "./metrics";
 import { getMoodLogs } from "./mood";
@@ -108,14 +108,14 @@ export function buildTrendsSubjectContext(
   // ── Life stage ────────────────────────────────────────────────────────────
   // The ONE shared line (lib/life-stage), the same predicate planBodyCharts and
   // the growth quick-add read — never a second age fork.
-  const growthTracked = isGrowthTracked(getUserAge(profileId));
+  const growthTracked = isGrowthTracked(getProfileAge(profileId));
 
   // ── Live goals ────────────────────────────────────────────────────────────
   // Same liveness definition the chart's own target overlay uses (isGoalLive +
   // a target value), so the card a goal decorates is the card a goal promotes.
   const goalMetrics: BodyMetricKind[] = [
     ...new Set(
-      getGoals(profileId)
+      getOutcomeGoals(profileId)
         .filter((g) => isGoalLive(g) && g.target_value != null)
         .map((g) => g.body_metric)
         .filter((m): m is BodyMetricKind => m != null)
@@ -234,7 +234,7 @@ export function buildTrendsSubjectContext(
   return { growthTracked, goalMetrics, monitors, presence };
 }
 
-// The Body tab's ★-PINNED cards, in the profile's SAVED order (#1643).
+// The body census ★-PINNED cards, in the profile's SAVED order (#1643).
 //
 // The other half of the tab's order, and the reason it is a read rather than a
 // second store: `saved_items` is the ONE arrangement substrate on Trends, so the
@@ -245,7 +245,7 @@ export function buildTrendsSubjectContext(
 // dropped, with no ordering decided here.
 //
 // Saved refs that name no Body card (a biomarker, training volume) are simply
-// absent; the mapping is the ONE correspondence in lib/trends-body-metrics.ts.
+// absent; the mapping is the ONE correspondence in lib/trend-metrics.ts.
 // Membership is NOT applied here — a pinned card the tab does not render for this
 // profile stays absent at render time (the #1487 saved-ref-with-no-tile skip),
 // which keeps this read a pure ordering input.

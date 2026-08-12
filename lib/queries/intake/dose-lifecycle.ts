@@ -105,7 +105,7 @@ interface DoseScheduleRow {
 }
 
 // Apply the retire-or-delete rule to every live dose the edit form REMOVED (#2131,
-// formerly two raw statements in updateSupplement). Runs inside the caller's
+// formerly two raw statements in updateIntakeItem). Runs inside the caller's
 // transaction — the Tx token is the proof, since the kept-set was computed under the
 // same write lock. A removed dose with adherence logs is RETIRED (kept, flagged, its
 // dueness window closed as of `todayStr`); one no log ever pointed at is hard-deleted.

@@ -50,6 +50,10 @@ export default function LogPracticeButton({
   usualSessionDay = false,
   compact = false,
   primaryTone = "brand",
+  defaultDetailsOpen = false,
+  initialDetailsDate,
+  detailsMinDate,
+  detailsMaxDate,
 }: {
   practice: string;
   // Sessions already logged on `today`, by contract — both the line beside the button
@@ -91,12 +95,16 @@ export default function LogPracticeButton({
   compact?: boolean;
   // A may-tier practice is a secondary dashboard action, never the page's loudest.
   primaryTone?: "brand" | "neutral";
+  defaultDetailsOpen?: boolean;
+  initialDetailsDate?: string;
+  detailsMinDate?: string;
+  detailsMaxDate?: string;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
   const ledger = useOptimisticLedger("practice-session");
   const [pending, setPending] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(defaultDetailsOpen);
   const [count, setCount] = useState(todayCount);
   // The time the confirm names, dropped once this mount logs its own session: the
   // action answers with the day's count, not with a local clock reading, and a stale
@@ -150,12 +158,16 @@ export default function LogPracticeButton({
 
   function report(outcome: PracticeLogOutcome) {
     if (outcome.kind === "logged") {
-      setCount(outcome.count);
-      setLastTime(null);
+      if (outcome.date === today) {
+        setCount(outcome.count);
+        setLastTime(null);
+      }
       toast(
-        outcome.count === 1
-          ? "Logged today's session"
-          : `Logged — ${outcome.count} sessions today`
+        outcome.date !== today
+          ? "Logged past session"
+          : outcome.count === 1
+            ? "Logged today's session"
+            : `Logged — ${outcome.count} sessions today`
       );
       return;
     }
@@ -372,7 +384,9 @@ export default function LogPracticeButton({
               Date
               <DateField
                 name="date"
-                defaultValue={today}
+                defaultValue={initialDetailsDate ?? today}
+                min={detailsMinDate}
+                max={detailsMaxDate}
                 inputClassName="mt-1 w-full"
                 required
               />

@@ -14,13 +14,13 @@ import {
   getActivities,
   getActivitiesByDate,
   getDashboardStats,
-  getGoals,
-  getGoalProgressMap,
-  getMedicalRecords,
-  getSupplements,
-  getSupplementDoses,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
+  countClinicalObservations,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
-  getBodyMetricDailySeries,
+  getLatestBodyMetricDailyPoints,
   getWorkoutPresence,
   collectHouseholdRollup,
   getFindingSuppressions,
@@ -91,12 +91,12 @@ export default async function HouseholdPage() {
 
     // Today's supplement adherence (x/y): due doses honored via isDueOn.
     const activeSuppById = new Map(
-      getSupplements(pid)
+      getIntakeItems(pid)
         .filter((s) => s.active)
         .map((s) => [s.id, s])
     );
     const adherence = supplementAdherenceToday(
-      getSupplementDoses(pid),
+      getIntakeDoses(pid),
       activeSuppById,
       {
         date: day,
@@ -112,11 +112,15 @@ export default async function HouseholdPage() {
     // Current weight = the primary-source-aware value the dashboard QuickStats
     // shows (getLatestBodyMetricDated, #302/#396) — never a raw newest row, which
     // can disagree with every other "current weight" surface. The trend arrow
-    // compares the two newest DAYS of the deduped one-source-per-day series
-    // (getBodyMetricDailySeries, #14) so it measures change over time, not two
-    // devices reporting the same day.
+    // compares the two newest DAYS of the deduped one-source-per-day series so it
+    // measures change over time, not two devices reporting the same day.
+    //
+    // Two points is all the arrow reads, so it asks for two (#1367,
+    // getLatestBodyMetricDailyPoints — the bound the dashboard has used since it hit
+    // this exact cost). The full series defaults to 365 raw rows, and this loop runs
+    // once per accessible profile.
     const latestWeight = stats.latestWeight;
-    const dailyWeights = getBodyMetricDailySeries(pid, "weight");
+    const dailyWeights = getLatestBodyMetricDailyPoints(pid, "weight");
     const dwLen = dailyWeights.length;
     const trend = weightTrend(
       dailyWeights[dwLen - 1]?.value,
@@ -124,13 +128,15 @@ export default async function HouseholdPage() {
     );
 
     // Biomarkers whose current (latest) reading is out of the lab reference range.
-    const oorBiomarkers = getMedicalRecords(pid, {
+    // A COUNT over the same DEDUP+LATEST pass (#2116): the badge renders a number, and
+    // hydrating every flagged row's every column to take `.length` is the whole read.
+    const oorBiomarkers = countClinicalObservations(pid, {
       current: true,
       range: "oor",
-    }).length;
+    });
 
-    const goals = getGoals(pid);
-    const goalProgress = getGoalProgressMap(pid, goals);
+    const goals = getOutcomeGoals(pid);
+    const goalProgress = getOutcomeGoalProgressMap(pid, goals);
 
     // The actionable rollup — today's attention items (due doses, low refills,
     // next visit) reusing the Upcoming aggregation's per-domain builders.
@@ -199,7 +205,7 @@ export default async function HouseholdPage() {
         );
       })(),
       // Derived workout presence (#921), grants-scoped like the sick chip: a compact
-      // live-only "mid-workout · N min" glance. Unlinked (journalActivityHref anchors
+      // live-only "mid-workout · N min" glance. Unlinked (trainingLogActivityHref anchors
       // the viewer's OWN log, so a cross-profile link would land on a dead anchor,
       // #879) — a plain chip, not a button.
       presence: householdPresenceChip(getWorkoutPresence(pid)),

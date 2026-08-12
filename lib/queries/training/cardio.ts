@@ -1,4 +1,8 @@
-import { speedKmh } from "../../coaching";
+import {
+  speedKmh,
+  type CardioMeasurementEvidence,
+  type CardioRecordKind,
+} from "../../coaching";
 import { activityHistoryKey } from "../../activities-catalog";
 import type { AppRoute } from "../../hrefs";
 import { startOfWeekStr } from "../../date";
@@ -38,6 +42,12 @@ export interface CardioStat {
   longestDurationDate: string;
   fastestKmh: number; // 0 when no distance-and-duration session exists
   fastestKmhDate: string;
+  // Per-measurement record evidence (#2393): how many of this activity's sessions
+  // carry each measurement, and the best value among the OTHER sessions carrying it.
+  // A record is a claim about all history, so it is gated on the population that
+  // actually measured the thing — never on the session count, which counts sessions
+  // the comparison could not see.
+  evidence: Record<CardioRecordKind, CardioMeasurementEvidence>;
   hasDistance: boolean;
   hasHeartRate: boolean;
   hasElevation: boolean;
@@ -77,9 +87,35 @@ export const getCardioByActivity = cache(function getCardioByActivity(
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
   recentLimit = 10
 ): CardioStat[] {
-  interface Acc extends Omit<CardioStat, "activity"> {
-    activity: string;
+  // The evidence under construction: the public shape plus the running best the
+  // runner-up is displaced by (the best itself is already reported as
+  // longestDistanceKm / fastestKmh / longestDurationMin, so it is not re-emitted).
+  interface AccEvidence extends CardioMeasurementEvidence {
+    best: number;
   }
+  interface Acc extends Omit<CardioStat, "activity" | "evidence"> {
+    activity: string;
+    evidence: Record<CardioRecordKind, AccEvidence>;
+  }
+  // Fold one session's value into a measurement's evidence (#2393): count it only
+  // when the session actually carries the measurement, and keep the runner-up so the
+  // record has a prior best to be material against. A tie lands in `priorBest`, so
+  // equalling the best is never a record.
+  const observe = (ev: AccEvidence, value: number): void => {
+    if (!(value > 0)) return;
+    ev.measured += 1;
+    if (value > ev.best) {
+      ev.priorBest = ev.best;
+      ev.best = value;
+    } else if (value > ev.priorBest) {
+      ev.priorBest = value;
+    }
+  };
+  const blankEvidence = (): Record<CardioRecordKind, AccEvidence> => ({
+    distance: { measured: 0, priorBest: 0, best: 0 },
+    speed: { measured: 0, priorBest: 0, best: 0 },
+    duration: { measured: 0, priorBest: 0, best: 0 },
+  });
   const map = new Map<string, Acc>();
   for (const e of effortEntries(profileId, "cardio")) {
     // The shared cardio IDENTITY (#1931), not an inline fold: the PR celebration's
@@ -99,6 +135,7 @@ export const getCardioByActivity = cache(function getCardioByActivity(
         longestDurationDate: e.date,
         fastestKmh: 0,
         fastestKmhDate: e.date,
+        evidence: blankEvidence(),
         hasDistance: false,
         hasHeartRate: false,
         hasElevation: false,
@@ -139,6 +176,10 @@ export const getCardioByActivity = cache(function getCardioByActivity(
       cur.fastestKmh = spd;
       cur.fastestKmhDate = e.date;
     }
+    // Evidence for the three record kinds, from this same one pass (#2393).
+    observe(cur.evidence.distance, dist);
+    observe(cur.evidence.duration, dur);
+    observe(cur.evidence.speed, spd ?? 0);
     if (e.date >= cur.lastDate) {
       cur.lastDate = e.date;
       cur.lastActivityId = e.activityId;
@@ -171,11 +212,28 @@ export const getCardioByActivity = cache(function getCardioByActivity(
   }
 
   return [...map.values()]
-    .map((c) => ({ ...c, recent: c.recent.slice(0, recentLimit) }))
+    .map((c) => ({
+      ...c,
+      recent: c.recent.slice(0, recentLimit),
+      evidence: {
+        distance: evidenceOf(c.evidence.distance),
+        speed: evidenceOf(c.evidence.speed),
+        duration: evidenceOf(c.evidence.duration),
+      },
+    }))
     .sort(
       (a, b) => b.sessions - a.sessions || (a.activity < b.activity ? -1 : 1)
     );
 });
+
+// Drop the accumulator's running best — it is already reported as the record value
+// itself, and shipping it twice invites the two to disagree.
+function evidenceOf(ev: {
+  measured: number;
+  priorBest: number;
+}): CardioMeasurementEvidence {
+  return { measured: ev.measured, priorBest: ev.priorBest };
+}
 
 export interface CardioWeeklyVolume {
   data: Record<string, number | string>[];
@@ -268,7 +326,7 @@ export function getCardioIntensityMix(
     }));
 }
 
-// Per-sport stats for the Training page's Sport explorer + journal detail.
+// Per-sport stats for the Training page's Sport explorer + training log detail.
 // Sports are duration-only (no distance/speed); tolerates a null duration
 // (counts the session, sums/maxes the known durations).
 export interface SportStat {

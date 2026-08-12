@@ -4,7 +4,7 @@ import { round } from "./units";
 
 // Waist circumference has a single home in metric_samples (metric =
 // 'waist_circumference_cm'), NOT body_metrics and NOT the biomarker vocabulary —
-// the owner's ruling on #2322 made it a `BodyMetricSlug` (`waist-circ`) rather than
+// the owner's ruling on #2322 made it a `TrendMetricSlug` (`waist-circ`) rather than
 // a curated canonical entry, for the reason #1850 made peak flow one: it is
 // self-measured with a tape at the metric cadence, and "what is this doing lately?"
 // is the only useful question about it. Curating it as a biomarker would have been
@@ -15,7 +15,7 @@ import { round } from "./units";
 // EXACTLY parallel to the height and head-circumference arms in ./height-extract and
 // ./head-circ-extract (both of which route to metric_samples length metrics). That
 // projection is also what earns the slug its `import-projection` declaration in
-// METRIC_DOCUMENT_REACH (lib/body-metric-analytes.ts): without it the slug would
+// METRIC_DOCUMENT_REACH (lib/trend-metric-analytes.ts): without it the slug would
 // claim the analyte name and remove the reading from the only surface that showed
 // it. Kept pure + unit-tested; the persist writer (lib/import-persist) is the only
 // DB caller.

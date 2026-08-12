@@ -139,8 +139,10 @@ export function getFormRecoveringContext(
   };
 }
 
-// Validated input for a create/update. Regions/muscles are already the parsed, valid
+// Validated input for a CREATE. Regions/muscles are already the parsed, valid
 // vocabulary arrays (the action validates + filters); label is trimmed non-empty.
+// On this shape an omitted optional field means EMPTY — a new row states everything
+// about itself. `InjuryPatch` below is the edit shape, where omitted means unchanged.
 export interface InjuryInput {
   label: string;
   regions: MuscleRegion[];
@@ -156,6 +158,20 @@ export interface InjuryInput {
   loadFactor?: number | null;
   reviewDate?: string | null;
 }
+
+// The EDIT shape (#2359). An absent key means UNCHANGED; a present key is written,
+// including a present `null`, which clears. That is the whole difference from
+// `InjuryInput`, where absent means empty.
+//
+// Ordinary edit forms are last-write-wins, and this still is — for the fields the
+// form actually carries. What it is no longer is whole-ROW: a form that does not
+// carry a field cannot clear it. The edit form used to buy that property by
+// round-tripping four values it never edits as hidden inputs, which is a
+// must-remember invariant whose failure is silent and destructive — add a column,
+// write it from the core, forget the hidden input, and every scope edit quietly
+// erases a value the user has been curating. Nothing would fail. Now the core is
+// told what changed, so a column nobody mentions is a column nobody touches.
+export type InjuryPatch = Partial<InjuryInput>;
 
 // A typed outcome so an action answers from what happened (never unconditionally confirm).
 export type InjuryWriteOutcome =
@@ -278,28 +294,53 @@ export function logInjuryCore(
   });
 }
 
-// Edit an existing injury in place (last-write-wins for ordinary fields, #467). Profile-
-// scoped; a no-such-row is `invalid`.
+// Merge a patch over the row as it stands (#2359). `undefined` — the key absent from
+// the patch — takes the stored value; anything else, `null` included, is the caller
+// stating a new one. Done BEFORE `sanitize` on purpose, so the merged whole still
+// passes every cross-field rule the create path enforces (a label is required, a
+// region or a fine muscle is required, a load preference only survives while
+// recovering) rather than each field being validated against a row it no longer
+// belongs to.
+function mergePatch(existing: Injury, patch: InjuryPatch): InjuryInput {
+  const take = <T>(v: T | undefined, stored: T): T =>
+    v === undefined ? stored : v;
+  return {
+    label: take(patch.label, existing.label),
+    regions: take(patch.regions, existing.regions),
+    muscles: take(patch.muscles, existing.muscles),
+    status: take(patch.status, existing.status),
+    since: take(patch.since, existing.since),
+    notes: take(patch.notes, existing.notes),
+    laterality: take(patch.laterality, existing.laterality),
+    movements: take(patch.movements, existing.movements),
+    exercises: take(patch.exercises, existing.exercises),
+    loadFactor: take(patch.loadFactor, existing.loadFactor),
+    reviewDate: take(patch.reviewDate, existing.reviewDate),
+  };
+}
+
+// Edit an existing injury (last-write-wins for the fields the caller names, #467).
+// PARTIAL since #2359: a field absent from the patch is left exactly as stored, so a
+// form is only ever responsible for what it edits. Profile-scoped; a no-such-row is
+// `invalid`.
 export function updateInjuryCore(
   profileId: number,
   id: number,
-  input: InjuryInput
+  patch: InjuryPatch
 ): InjuryWriteOutcome {
-  const s = sanitize(input);
-  if (!s) return { kind: "invalid" };
   return writeTx(() => {
-    const existing = db
-      .prepare(
-        "SELECT status, resolved_date FROM injuries WHERE id = ? AND profile_id = ?"
-      )
-      .get(id, profileId) as
-      { status: InjuryStatus; resolved_date: string | null } | undefined;
+    // Read the whole row, not just the lifecycle columns: it is both the merge base
+    // and the existence check, and one read inside the transaction is what makes
+    // "unchanged" mean unchanged rather than "as it looked before we started".
+    const existing = getInjury(profileId, id);
     if (!existing) return { kind: "invalid" as const };
+    const s = sanitize(mergePatch(existing, patch));
+    if (!s) return { kind: "invalid" as const };
     // resolved_date follows status: entering 'resolved' stamps it (keeping any existing);
     // leaving 'resolved' clears it.
     const resolvedDate =
       s.status === "resolved"
-        ? (existing.resolved_date ?? s.since ?? null)
+        ? (existing.resolvedDate ?? s.since ?? null)
         : null;
     db.prepare(
       `UPDATE injuries

@@ -51,11 +51,12 @@ import { db, today } from "../db";
 import { createLogger } from "../log";
 import {
   getIntakeItemNames,
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getFrequencyTargetProgress,
+  redoseWindowState,
 } from "../queries";
 import { getProfileNameById } from "../profile-summary-load";
 import { moodLabel } from "../mood";
@@ -72,7 +73,7 @@ import {
 import {
   getProfileFoodTelegram,
   getProfileSetting,
-  getUserAge,
+  getProfileAge,
   setProfileSetting,
 } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
@@ -412,8 +413,14 @@ const intakeDose: FamilyReconciler = {
   // "Vitamin D, Magnesium taken · Omega-3 skipped" (#2170/#2274) — the resolution facts
   // this family just established, restated in the words the buttons used.
   closeStates: "outcome-detail",
-  detail(profileId, tokens) {
-    return doseCloseDetail(profileId, tokens, ["take", "skip"]);
+  detail(profileId, _tokens, p) {
+    // The live keyboard may now contain only correction-time controls. The immutable
+    // delivered keyboard retains every dose this reminder claimed, so the final receipt
+    // can still name what was taken or skipped after those controls expire.
+    return doseCloseDetail(profileId, keyboardTokens(p.receiptKeyboard), [
+      "take",
+      "skip",
+    ]);
   },
   // Rebuild through the identical computation the TAP rebuild uses
   // (slotSessionForKeyboard → renderMergedIntakeMessage), so a partially reconciled
@@ -441,13 +448,63 @@ const intakeDose: FamilyReconciler = {
     // zero-call steady state this sweep exists to hold would be gone.
     return withDoseCorrections(
       profileId,
-      renderMergedIntakeMessage(profileId, parts, date, getUserAge(profileId)),
+      renderMergedIntakeMessage(
+        profileId,
+        parts,
+        date,
+        getProfileAge(profileId)
+      ),
       {
         now: clockNow(),
         pickerAnchor: openPickerAnchor(tokens, DOSE_TIME_PREFIXES),
         ref: { chatId: p.chatId, messageId: p.messageId },
       }
     );
+  },
+};
+
+// ── redose-window ───────────────────────────────────────────────────────────
+// `redose:<profileId>:<itemId>:<armingAdministrationId>:<nonce>`
+// One notice, one administration-armed window. A newer family administration spends
+// it whether that dose was logged from this button, another chat, or the app.
+const redoseWindow: FamilyReconciler = {
+  dead(profileId, tokens) {
+    const dead = new Set<string>();
+    for (const t of tokens) {
+      const f = fields(t);
+      if (f[0] !== "redose") continue;
+      const itemId = Number(f[2]);
+      const administrationId = Number(f[3]);
+      if (
+        !itemId ||
+        !administrationId ||
+        redoseWindowState(profileId, itemId, administrationId) !== "current"
+      ) {
+        dead.add(t);
+      }
+    }
+    return dead;
+  },
+  closeStates: "outcome-detail",
+  detail(profileId, tokens) {
+    for (const t of tokens) {
+      const f = fields(t);
+      if (f[0] !== "redose") continue;
+      const itemId = Number(f[2]);
+      const administrationId = Number(f[3]);
+      if (!itemId || !administrationId) continue;
+      const state = redoseWindowState(profileId, itemId, administrationId);
+      if (state === "superseded") {
+        return { groups: [{ outcome: "dose logged" }] };
+      }
+      if (state === "cancelled") {
+        return { groups: [{ outcome: "opening dose no longer logged" }] };
+      }
+      if (state === "unavailable") {
+        return { groups: [{ outcome: "medication no longer available" }] };
+      }
+    }
+    return null;
   },
 };
 
@@ -791,7 +848,7 @@ function refillSupplyState(profileId: number): {
   const rates = getRefillRates(profileId);
   const low = new Set<number>();
   const names = new Map<number, string>();
-  for (const s of getSupplements(profileId)) {
+  for (const s of getIntakeItems(profileId)) {
     names.set(s.id, s.name);
     if (!s.active || s.quantity_on_hand == null) continue;
     const daysLeft = daysOfSupplyLeft(
@@ -1083,6 +1140,7 @@ function withDigestProfileName(
 // compile error, which is the other half of the completeness guard.
 const FAMILIES: Record<ReconcileFamily, FamilyReconciler> = {
   "intake-dose": intakeDose,
+  "redose-window": redoseWindow,
   escalation,
   "household-round": householdRound,
   food,
@@ -1204,6 +1262,12 @@ async function reconcilePointer(
   }
 
   const tokens = keyboardTokens(pointer.keyboard);
+  // Pre-fix redose notices reused the generic, intentionally inert `prn:` token. Kind
+  // disambiguates those already-delivered buttons: they carry no arming id and cannot
+  // be made window-safe, so retire them once rather than preserving a double-dose
+  // affordance until Telegram's edit horizon passes.
+  const legacyRedose =
+    pointer.kind === "redose" && tokens.some((t) => tokenPrefix(t) === "prn");
   const inert = inertTokens(tokens, tokenPrefix);
   const family = owningFamily(tokens, tokenPrefix);
   const reconciler = family ? FAMILIES[family] : null;
@@ -1228,7 +1292,14 @@ async function reconcilePointer(
 
   // WHAT this pass intends to do, decided BEFORE anything touches the network — so
   // the claim below can be made against the same plan the edit will perform.
-  const plan = planEdit(profileId, pointer, tokens, reconciler, decision);
+  const plan: EditPlan | null = legacyRedose
+    ? {
+        kind: "close",
+        text: reconcileClosingText("resolved", pointer.title, {
+          groups: [{ outcome: "old action expired; use /dose to log" }],
+        }),
+      }
+    : planEdit(profileId, pointer, tokens, reconciler, decision);
   if (!plan) return;
 
   // CLAIM FIRST, EDIT SECOND (#1788). Two overlapping ticks read the same pre-edit

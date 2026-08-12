@@ -28,7 +28,7 @@
 // PURE, and deliberately import-light: only type-only imports, so nothing that consumes
 // the map pulls a DB module in behind it.
 
-import type { BodyMetricSlug } from "./trends-body-metrics";
+import type { TrendMetricSlug } from "./trend-metrics";
 
 /**
  * The `body_metrics` measure columns — the stream keys this map can register, and the
@@ -56,7 +56,7 @@ export interface StreamReadingSource {
  *
  * `surface` is the #1932 CADENCE answer — a slug means "this arrives continuously and
  * is read as a trend, so the metric detail page is its renderer"; `null` means the
- * reading is episodic and belongs on the reading detail page (/biomarkers/view).
+ * reading is episodic and belongs on the reading detail page (/results/readings/view).
  * `stream` is the #1996 STORE answer — present when rows of this quantity land in a
  * stream store rather than (only) in `medical_records`.
  *
@@ -66,7 +66,7 @@ export interface StreamReadingSource {
 export interface ReadingIdentityEntry {
   canonical: string;
   /** The metric-detail kind that renders this reading as a trend, or null (episodic). */
-  surface: BodyMetricSlug | null;
+  surface: TrendMetricSlug | null;
   /** The stream store this quantity's rows land in, or null (observations only). */
   stream: Omit<StreamReadingSource, "canonical"> | null;
 }
@@ -157,7 +157,7 @@ export const STREAM_READING_SOURCES: readonly StreamReadingSource[] =
  * The canonical → metric-surface half (#1932). Derived from the same entries, so a
  * continuous reading cannot be routed to a page nobody declared a store for.
  */
-export const CONTINUOUS_READING_METRIC: Record<string, BodyMetricSlug> =
+export const CONTINUOUS_READING_METRIC: Record<string, TrendMetricSlug> =
   Object.fromEntries(
     READING_IDENTITY_MAP.flatMap((e) =>
       e.surface ? [[e.canonical, e.surface] as const] : []

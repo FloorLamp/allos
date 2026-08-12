@@ -167,7 +167,7 @@ function seedSet(
   const activityId = Number(
     db
       .prepare(
-        "INSERT INTO activities (date, type, title, profile_id, source) VALUES (?, 'strength', 'Journal', ?, ?)"
+        "INSERT INTO activities (date, type, title, profile_id, source) VALUES (?, 'strength', 'Training Log', ?, ?)"
       )
       .run(date, profileId, source).lastInsertRowid
   );

@@ -417,7 +417,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     id: "steps-today",
     label: "Steps today",
     description:
-      "Your step count today against your prior 7 days — surfaced from Trends → Body to the daily glance.",
+      "Your step count today against your prior 7 days — surfaced from Trends → Overview → body census to the daily glance.",
     // On by default (promotion, #1066). Data-aware: a profile with no step data yet
     // gets a connect-a-source CTA. Not fitness-gated — steps matter for every profile.
     defaultOn: true,
@@ -522,6 +522,20 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     actionable: false,
     span: "half",
     dataAware: true,
+  },
+  {
+    id: "naps-today",
+    label: "Today's naps",
+    description:
+      "Today's naps — each sleep window and the combined duration — linking to nap history on the Sleep page. Appears only after a nap is recorded today.",
+    // On by default beside the main-sleep glance, but contextual: no nap is a
+    // normal day, not an onboarding defect, so the dashboard self-hides the slot
+    // until today's nap data exists.
+    defaultOn: true,
+    fitness: false,
+    // Passive: the nap already happened.
+    actionable: false,
+    span: "half",
   },
   {
     id: "weight-trend",

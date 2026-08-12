@@ -132,6 +132,7 @@ describe("redoseNoticeDecision over family-derived inputs (#1027)", () => {
     maxDailyCount: 3,
     notifiedAdministrationId: null,
     now: new Date("2026-07-19T12:00:00Z"),
+    tickMinutes: 60,
   };
 
   it("a sibling's dose an hour ago holds the notice (not-yet, no false GO)", () => {

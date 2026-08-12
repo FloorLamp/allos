@@ -1,3 +1,7 @@
+// THE #2487 BOUNDARY for this module: TypeScript names an integration source
+// `sourceId`, and the persisted column is still named `provider` — the column rename
+// is deferred to its own forward migration (see docs/internals/integrations-sync.md).
+// Reads alias `provider AS source_id`; writes bind the TS value into the old column.
 import { db, writeTx } from "@/lib/db";
 import { toUtcInstant, utcInstant } from "@/lib/date";
 import { createLogger } from "@/lib/log";
@@ -25,17 +29,17 @@ export interface QueueIntegrationBackfillResult {
 
 export function queueIntegrationBackfill(
   profileId: number,
-  provider: IntegrationId,
+  sourceId: IntegrationId,
   kind: string
 ): QueueIntegrationBackfillResult | { error: string } {
-  const definition = getIntegration(provider)?.backfills?.find(
+  const definition = getIntegration(sourceId)?.backfills?.find(
     (backfill) => backfill.id === kind
   );
-  const runner = getIntegrationBackfillRunner(provider, kind);
+  const runner = getIntegrationBackfillRunner(sourceId, kind);
   if (!definition || !runner) return { error: "Backfill is not available." };
 
   return writeTx(() => {
-    const existing = getIntegrationBackfillJob(profileId, provider, kind);
+    const existing = getIntegrationBackfillJob(profileId, sourceId, kind);
     if (existing?.status === "running" || existing?.status === "queued") {
       return { job: existing, shouldRun: false };
     }
@@ -65,7 +69,7 @@ export function queueIntegrationBackfill(
          updated_at = excluded.updated_at`
     ).run(
       profileId,
-      provider,
+      sourceId,
       kind,
       definition.label,
       definition.itemNoun,
@@ -80,7 +84,7 @@ export function queueIntegrationBackfill(
       now
     );
     return {
-      job: getIntegrationBackfillJob(profileId, provider, kind)!,
+      job: getIntegrationBackfillJob(profileId, sourceId, kind)!,
       shouldRun: status === "queued",
     };
   });
@@ -88,10 +92,10 @@ export function queueIntegrationBackfill(
 
 export async function runIntegrationBackfillJob(
   profileId: number,
-  provider: string,
+  sourceId: string,
   kind: string
 ): Promise<IntegrationBackfillJob | null> {
-  const runner = getIntegrationBackfillRunner(provider, kind);
+  const runner = getIntegrationBackfillRunner(sourceId, kind);
   if (!runner) return null;
   const claimed = writeTx(() =>
     db
@@ -102,12 +106,12 @@ export async function runIntegrationBackfillJob(
           WHERE profile_id = ? AND provider = ? AND kind = ?
             AND status IN ('queued','paused')`
       )
-      .run(utcInstant(), profileId, provider, kind)
+      .run(utcInstant(), profileId, sourceId, kind)
   );
   if (claimed.changes !== 1) {
-    return getIntegrationBackfillJob(profileId, provider, kind);
+    return getIntegrationBackfillJob(profileId, sourceId, kind);
   }
-  const initial = getIntegrationBackfillJob(profileId, provider, kind)!;
+  const initial = getIntegrationBackfillJob(profileId, sourceId, kind)!;
   const batchStarted = Date.now();
   const baseSeconds = initial.active_seconds;
   const baseRequests = initial.request_count;
@@ -135,7 +139,7 @@ export async function runIntegrationBackfillJob(
             activeSeconds,
             utcInstant(),
             profileId,
-            provider,
+            sourceId,
             kind
           )
       );
@@ -149,7 +153,7 @@ export async function runIntegrationBackfillJob(
                 SET status = 'failed', error = ?, finished_at = ?, updated_at = ?
               WHERE profile_id = ? AND provider = ? AND kind = ? AND status = 'running'`
           )
-          .run(result.error, now, now, profileId, provider, kind)
+          .run(result.error, now, now, profileId, sourceId, kind)
       );
     } else {
       const now = new Date();
@@ -190,7 +194,7 @@ export async function runIntegrationBackfillJob(
             error,
             utcInstant(now),
             profileId,
-            provider,
+            sourceId,
             kind
           )
       );
@@ -198,7 +202,7 @@ export async function runIntegrationBackfillJob(
   } catch (err) {
     log.error("integration backfill runner failed", {
       profileId,
-      provider,
+      sourceId,
       kind,
       err: String(err),
     });
@@ -215,12 +219,12 @@ export async function runIntegrationBackfillJob(
           now,
           now,
           profileId,
-          provider,
+          sourceId,
           kind
         )
     );
   }
-  return getIntegrationBackfillJob(profileId, provider, kind);
+  return getIntegrationBackfillJob(profileId, sourceId, kind);
 }
 
 export async function resumeDueIntegrationBackfills(
@@ -229,15 +233,15 @@ export async function resumeDueIntegrationBackfills(
 ): Promise<void> {
   const due = db
     .prepare(
-      `SELECT provider, kind FROM integration_backfill_jobs
+      `SELECT provider AS source_id, kind FROM integration_backfill_jobs
         WHERE profile_id = ?
           AND (status = 'queued' OR (
             status = 'paused' AND retry_after_at IS NOT NULL AND retry_after_at <= ?
           ))
         ORDER BY updated_at`
     )
-    .all(profileId, utcInstant(at)) as { provider: string; kind: string }[];
+    .all(profileId, utcInstant(at)) as { source_id: string; kind: string }[];
   for (const job of due) {
-    await runIntegrationBackfillJob(profileId, job.provider, job.kind);
+    await runIntegrationBackfillJob(profileId, job.source_id, job.kind);
   }
 }

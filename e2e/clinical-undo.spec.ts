@@ -19,6 +19,7 @@ import { workerDbPath } from "./worker-env";
 const DB_PATH = workerDbPath();
 const ALLERGEN = "E2EUndoPenicillinMarker";
 const LESION = "E2EUndoLesionMarker";
+const VISIT_REASON = "E2EUndoVisitMarker";
 
 function withDb<T>(fn: (handle: Database.Database) => T): T {
   const handle = new Database(DB_PATH);
@@ -42,11 +43,22 @@ function cleanup() {
         WHERE lesion_id IN (SELECT id FROM skin_lesions WHERE label = ?)`
     ).run(LESION);
     db.prepare("DELETE FROM skin_lesions WHERE label = ?").run(LESION);
+    // The visit probe and the reading recorded at it (the inbound link the delete has
+    // to detach before the row can go).
+    db.prepare(
+      `UPDATE medical_records SET encounter_id = NULL
+        WHERE encounter_id IN (SELECT id FROM encounters WHERE reason = ?)`
+    ).run(VISIT_REASON);
+    db.prepare("DELETE FROM medical_records WHERE name = ?").run(VISIT_REASON);
+    db.prepare("DELETE FROM encounters WHERE reason = ?").run(VISIT_REASON);
     // The holding rows this spec's deletes minted, so a failed run leaves no capture
     // behind for Data → Trash specs to trip over.
     db.prepare(
       "DELETE FROM deleted_rows WHERE payload LIKE ? OR payload LIKE ?"
     ).run(`%${ALLERGEN}%`, `%${LESION}%`);
+    db.prepare("DELETE FROM deleted_rows WHERE payload LIKE ?").run(
+      `%${VISIT_REASON}%`
+    );
   });
 }
 
@@ -180,6 +192,68 @@ test.describe("Clinical deletes are undoable (#1847)", () => {
           .prepare("SELECT caption FROM lesion_photos WHERE lesion_id = ?")
           .get(back.id)
       ).toEqual({ caption: "baseline" });
+    });
+  });
+  test("a visit delete restores the visit, and the reading it detached stays detached", async ({
+    page,
+  }) => {
+    test.slow();
+    withDb((db) => {
+      const encounterId = Number(
+        db
+          .prepare(
+            `INSERT INTO encounters (profile_id, date, type, reason)
+             VALUES (1, '2026-04-08', 'office', ?)`
+          )
+          .run(VISIT_REASON).lastInsertRowid
+      );
+      // A reading recorded AT the visit: a real REFERENCES with no ON DELETE, so this
+      // link is what the delete has to detach first. It is also the half undo
+      // deliberately does not put back.
+      db.prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, value_num, unit, canonical_name, encounter_id)
+         VALUES (1, '2026-04-08', 'lab', ?, '84', 84, 'ng/mL', 'Ferritin', ?)`
+      ).run(VISIT_REASON, encounterId);
+    });
+
+    await page.goto("/records");
+    const row = page.getByRole("row").filter({ hasText: VISIT_REASON });
+    await expect(row).toHaveCount(1);
+
+    await row.getByLabel("Record actions").click();
+    await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+    await settledClick(
+      page,
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Delete", exact: true })
+    );
+    await expect(
+      page.getByRole("row").filter({ hasText: VISIT_REASON })
+    ).toHaveCount(0);
+    await expect(page.getByText("Visit deleted.")).toBeVisible();
+
+    await settledClick(page, page.getByRole("button", { name: "Undo" }));
+    await expect(page.getByText("Restored.")).toBeVisible();
+    await expect(
+      page.getByRole("row").filter({ hasText: VISIT_REASON })
+    ).toHaveCount(1);
+
+    withDb((db) => {
+      // The visit is back (under a new id), and the reading survived the whole trip
+      // with its "recorded at" link honestly cleared — the documented posture for an
+      // inbound null-out, not a bug.
+      expect(
+        db
+          .prepare("SELECT COUNT(*) AS c FROM encounters WHERE reason = ?")
+          .get(VISIT_REASON)
+      ).toEqual({ c: 1 });
+      expect(
+        db
+          .prepare("SELECT encounter_id FROM medical_records WHERE name = ?")
+          .get(VISIT_REASON)
+      ).toEqual({ encounter_id: null });
     });
   });
 });

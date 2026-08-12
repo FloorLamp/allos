@@ -3,7 +3,7 @@ import type { Finding } from "@/lib/findings";
 import {
   acceptDemotionSuggestion,
   dismissDemotionSuggestion,
-} from "./supplement-actions";
+} from "./intake-actions";
 import DemotionSuggestionRow from "./DemotionSuggestionRow";
 
 // Priority DEMOTION SUGGESTIONS (issue #1505 part 2) on the Supplements page: a

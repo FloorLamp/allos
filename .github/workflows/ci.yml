@@ -60,6 +60,35 @@ jobs:
       - name: PHI scan
         run: npm run phi-scan
 
+      # Incremental lint/format results, shared ACROSS RUNS and seeded from main by
+      # cache-seed.yml — the same shape as e2e-setup's `.next/cache` entry.
+      #
+      # Measured on this repo: `eslint .` is 120s and `prettier --check .` is 87s
+      # cold, which was most of this job. With the caches warm and only a PR's own
+      # files changed they are ~3s and ~10s.
+      #
+      # `--cache-strategy content` (set in the npm scripts, not here) is what makes
+      # that real in CI rather than only locally. Both tools default to keying on
+      # mtime+size, and a fresh `git checkout` stamps every file with a new mtime —
+      # so on the default strategy a fully-populated cache still re-lints the whole
+      # tree. Measured: 107s with metadata, 3.5s with content, same cache, same
+      # files. Do not drop that flag to "simplify" the scripts.
+      #
+      # Correctness does not rest on the key below: ESLint and Prettier both fold
+      # their own resolved config into each entry, so a rule change invalidates the
+      # affected entries whether or not the key moved. The key pins the lockfile and
+      # the config files anyway so a plugin upgrade starts clean, and the sha suffix
+      # + restore-keys prefix means each run saves a fresh entry while restoring the
+      # newest previous one (an exact-key hit never saves, so a fixed key would
+      # freeze the cache at its first contents and slowly rot).
+      - name: Cache lint/format results
+        uses: actions/cache@v6
+        with:
+          path: .cache
+          key: lintfmt-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.mjs', '.prettierrc') }}-${{ github.sha }}
+          restore-keys: |
+            lintfmt-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.mjs', '.prettierrc') }}-
+
       - name: Format check
         run: npm run format:check
 
@@ -250,20 +279,48 @@ jobs:
         # edit that cannot leave a stale `/4` behind.
         #
         # The browser suite is the whole critical path — since #2429 split the
-        # non-browser work, the slowest of check/test-db/test-unit is ~204s while
-        # e2e sits at ~650s, so every push waits on this matrix and nothing else.
+        # non-browser work, the slowest of check/test-db/test-unit is ~93s while
+        # e2e sits at ~342s, so every push waits on this matrix and nothing else.
         #
-        # Measured across the 4- and 6-way runs, a shard costs
-        # `179s + 2872s/N`: a 179s floor (146s setup, of which 110s is the Next
-        # build, plus 33s of Playwright start-up) over ~2872s of test work. That
-        # predicted 658s at six against an actual ~650s.
+        # A shard costs `FLOOR + WORK/N`. The old fit — `179s + 2872s/N`, taken
+        # across the 4- and 6-way runs — is retired: BOTH terms moved when #2517
+        # (two workers), #2521 (no redundant `tsc` in the e2e build) and #2542
+        # (the seed stopped hashing ~180 fixture logins, 25.4s -> 4.5s) landed.
         #
-        # Eight puts it near 538s. The floor is why this stops here rather than
-        # going further: at ten it is ~466s and at twelve ~418s, so each extra
-        # pair of runners buys progressively less while costing a full 179s of
-        # setup each. Lowering the FLOOR — or the 2872s itself — is what would
-        # move this next, not more shards.
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        # Re-measured from run 31596131851, an all-green 8-way run, and note the
+        # method: the floor is read PER STEP (job start -> the Playwright step
+        # starting) rather than fitted across two shard counts, so one run now
+        # gives both terms and re-deriving this needs no multi-N bench.
+        #
+        #   FLOOR  ~56s   (~49s setup — checkout, caches, build — plus ~7s of
+        #                  post-job steps; was 179s)
+        #   WORK  ~1778s  (sum of the eight Playwright steps, at two workers)
+        #
+        # That floor collapse is what justifies going past eight. The marginal
+        # wall-clock of one more shard is WORK/(N(N+1)) and does not involve the
+        # floor at all; the floor only sets what each extra runner WASTES. At
+        # 179s an extra pair bought little for a lot — at 56s the same pair costs
+        # a third as much setup, so the trade inverted rather than the arithmetic
+        # changing. Predicted mean: 278s at eight, 234s at ten, 204s at twelve.
+        #
+        # Twelve also attacks the IMBALANCE, which is the other half and is not
+        # in the model at all: `--shard` balances test COUNT, not duration, so
+        # shard 7 has run 289s of work against a 222s mean in every run sampled
+        # (289/240/238 vs a 178s fastest). The critical path is the MAX, not the
+        # mean, and raising N splits that heavy cluster across more runners — 342s
+        # observed at eight, ~249s predicted at twelve.
+        #
+        # Twelve did NOT dissolve that cluster, it only diluted it: measured over
+        # three all-green 12-way runs, shards 7 and 10 are still the two slowest
+        # EVERY time (182/182, 197/185, 183/194) at 1.22–1.32x the mean, because
+        # the skew is a property of the split rather than of N. Test count is
+        # simply the wrong weight — patient-portals-setup is 17 tests / 54s,
+        # food-log is 21 tests / 13s, and profile-switch-toasts is ONE test that
+        # takes 21s. So the shards now plan themselves by measured DURATION
+        # (scripts/e2e-shard-plan.ts), which is the "manifest to maintain" this
+        # comment previously traded away — see that script for why the manifest
+        # rots safely.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
       # brings both parents — enough for the docs-only diff below (HEAD^1 is the
@@ -292,9 +349,33 @@ jobs:
       - uses: ./.github/actions/e2e-setup
         if: steps.changes.outputs.code == 'true'
 
+      # The plan is a pure function of (spec list, e2e/spec-durations.json, shard
+      # count), so every shard computes the SAME twelve buckets and takes its own
+      # — no planning job, nothing serialized ahead of the matrix, no artifact
+      # passed between runners. It prints its bucket's file list, or
+      # `--shard=N/M` if the manifest is missing, so a deleted manifest degrades
+      # to the old count-based split rather than breaking the command line.
+      #
+      # It EXITS NON-ZERO if the twelve buckets are not an exact partition of the
+      # suite. That is the failure worth being loud about: a spec in no bucket is
+      # run by no shard, and the matrix still goes green.
       - name: E2E (Playwright, shard ${{ matrix.shard }}/${{ strategy.job-total }})
         if: steps.changes.outputs.code == 'true'
-        run: npm run test:e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+        run: |
+          set -euo pipefail
+          # Read into an ARRAY rather than letting the shell split an unquoted
+          # $PLAN: word splitting is bash-only (zsh does not do it), so the
+          # unquoted form runs here and silently passes ONE long argument when a
+          # developer reproduces it locally, and it would be glob-expanded too.
+          # The command substitution is what enforces the plan's exit code —
+          # `set -e` aborts here, whereas piping the script into mapfile would
+          # swallow a non-zero exit and leave ARGS empty.
+          PLAN=$(npx tsx scripts/e2e-shard-plan.ts ${{ matrix.shard }} ${{ strategy.job-total }})
+          # Empty would mean NO file filter, i.e. run the whole suite on every
+          # shard. The planner never emits it; refuse rather than trust that.
+          [ -n "$PLAN" ] || { echo "::error::empty shard plan"; exit 1; }
+          mapfile -t ARGS <<< "$PLAN"
+          npm run test:e2e -- "${ARGS[@]}"
 
       # Flake telemetry (retained). The sharded matrix now runs at zero retries
       # (playwright.config.ts, #1159), so there is no "flaky" status here and this

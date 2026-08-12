@@ -6,10 +6,10 @@
 //
 // Why component/sport names matter: an imported Strava ride is stored with the
 // athlete's free-text title ("Morning Ride") but a canonical component sport
-// ("Cycling"). Matching the structured sport first makes the journal icon agree
+// ("Cycling"). Matching the structured sport first makes the training log icon agree
 // with the activity form (which already icons off the canonical name) — see the
 // bug where a bike ride showed a bike icon in the form but a running icon in the
-// journal.
+// training log.
 
 import { parseComponents } from "./types";
 import type { ActivityType } from "./types";

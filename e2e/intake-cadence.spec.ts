@@ -230,7 +230,7 @@ test("the cadence control round-trips through the real edit form (#1602)", async
     // (EditableSupplementRow) — the edit dialog is the signal.
     await hydratedClick(
       page,
-      row.getByRole("button", { name: "Supplement actions" })
+      row.getByRole("button", { name: "IntakeItem actions" })
     );
     await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const editForm = page.getByRole("dialog", { name: `Edit ${FORM_NAME}` });
@@ -282,7 +282,7 @@ test("the cadence control round-trips through the real edit form (#1602)", async
     await expect(again).toHaveCount(1);
     await hydratedClick(
       page,
-      again.getByRole("button", { name: "Supplement actions" })
+      again.getByRole("button", { name: "IntakeItem actions" })
     );
     await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
     const reopened = page.getByRole("dialog", { name: `Edit ${FORM_NAME}` });

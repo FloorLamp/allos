@@ -1,5 +1,5 @@
 // SERVER-ACTION TIER — the PRN redose-notice fields on the intake write path (#798).
-// Drives addSupplement / updateSupplement and pins the confirm/gate semantics the
+// Drives addIntakeItem / updateIntakeItem and pins the confirm/gate semantics the
 // notice's liability posture depends on: the fields persist only for a PRN med, and
 // the opt-in flag is forced OFF unless BOTH interval and max are confirmed (an empty
 // field ⇒ no notice, ever).
@@ -8,9 +8,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
-} from "@/app/(app)/nutrition/supplement-actions";
+  addIntakeItem,
+  updateIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
 import { seedActor, fd } from "./harness";
 
 vi.mocked(revalidatePath);
@@ -45,9 +45,9 @@ beforeEach(() => {
   seedActor();
 });
 
-describe("redose fields on addSupplement", () => {
+describe("redose fields on addIntakeItem", () => {
   it("persists interval/max/opt-in for a PRN medication", async () => {
-    const r = await addSupplement(
+    const r = await addIntakeItem(
       fd({
         name: "Ibuprofen",
         kind: "medication",
@@ -66,7 +66,7 @@ describe("redose fields on addSupplement", () => {
   });
 
   it("persists the amount-aware mg/day max for a PRN medication, without gating the opt-in (#1854)", async () => {
-    const r = await addSupplement(
+    const r = await addIntakeItem(
       fd({
         name: "Ibuprofen 800",
         kind: "medication",
@@ -84,7 +84,7 @@ describe("redose fields on addSupplement", () => {
 
     // A blank/invalid mg field stays NULL (the mg basis is then unavailable) and
     // never blocks the count-gated opt-in.
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Naproxen Sodium",
         kind: "medication",
@@ -101,7 +101,7 @@ describe("redose fields on addSupplement", () => {
   });
 
   it("opt-in is FORCED OFF when a confirmed field is blank (no notice, ever)", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Acetaminophen",
         kind: "medication",
@@ -117,7 +117,7 @@ describe("redose fields on addSupplement", () => {
   });
 
   it("ignores the fields entirely for a NON-PRN medication", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Lisinopril",
         kind: "medication",
@@ -137,9 +137,9 @@ describe("redose fields on addSupplement", () => {
   });
 });
 
-describe("redose fields on updateSupplement", () => {
+describe("redose fields on updateIntakeItem", () => {
   it("turning PRN off clears the redose fields", async () => {
-    await addSupplement(
+    await addIntakeItem(
       fd({
         name: "Naproxen",
         kind: "medication",
@@ -155,7 +155,7 @@ describe("redose fields on updateSupplement", () => {
     expect(redoseRow(id).mdmg).toBe(660);
 
     // Edit it to a scheduled med (as_needed omitted) — the fields must clear.
-    const r = await updateSupplement(
+    const r = await updateIntakeItem(
       fd({
         id,
         name: "Naproxen",

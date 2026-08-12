@@ -15,11 +15,11 @@ import {
   VITAL_CANONICAL,
 } from "@/lib/vitals-input";
 import { reconciledFlag } from "@/lib/reference-range";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 import canonical from "@/lib/canonical-biomarkers.json";
 
 const rows = (canonical as { biomarkers: unknown[] })
-  .biomarkers as CanonicalBiomarker[];
+  .biomarkers as CanonicalResultDefinition[];
 const bodyTemp = rows.find((b) => b.name === "Body Temperature");
 
 describe("toCanonicalTempF — °C/°F boundary conversion", () => {

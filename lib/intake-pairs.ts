@@ -1,4 +1,4 @@
-import type { SupplementPair } from "./types";
+import type { IntakePair } from "./types";
 
 // Canonical ordering for an intake-item "take together / keep apart" pair
 // (intake_item_pairs). The relation is direction-independent, so a pair is stored
@@ -8,13 +8,13 @@ import type { SupplementPair } from "./types";
 // duplicate can never be created and the CHECK is never tripped.
 //
 // Pure (no DB/network) so it lives in lib/ and is unit-tested; the callers
-// (app/(app)/medicine/actions.reconcilePairs, scripts/seed) are formatters over it.
+// (app/(app)/nutrition/intake-actions.reconcilePairs, scripts/seed) are formatters over it.
 export function orderIntakePair(x: number, y: number): [number, number] {
   return x < y ? [x, y] : [y, x];
 }
 
 // The findings-bus namespace for the "keep apart" bucket warnings (issue #435), so
-// the /medicine dismiss action guards the whole domain with one prefix check.
+// the intake surface dismiss action guards the whole domain with one prefix check.
 export const KEEP_APART_PREFIX = "keep-apart:";
 
 // The stable suppression/identity key for a keep-apart warning:
@@ -42,7 +42,7 @@ export interface KeepApartWarning {
 // warning. Returns one keyed warning per offending pair, in the pairs' order (#435).
 export function separatePairWarnings(
   itemIdsInBucket: Iterable<number>,
-  pairs: SupplementPair[]
+  pairs: IntakePair[]
 ): KeepApartWarning[] {
   const ids = new Set(itemIdsInBucket);
   return pairs

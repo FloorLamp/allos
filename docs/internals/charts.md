@@ -356,7 +356,7 @@ at once:
   tooltip inspection. Anything that wraps a plot in an anchor has broken the
   chart.
 - **`detailHref`, required.** `null` is allowed only with a same-line
-  `detail-none: <why>` comment. The destination for a registered body metric is
+  `detail-none: <why>` comment. The destination for a registered trend metric is
   `metricDetailHref(slug)` → `/trends/metric/<slug>`; an aggregate/composite
   chart (training volume, macros, zone minutes) points at the existing
   full-depth surface its bars are summed from, named at the call site. A chart of
@@ -367,8 +367,19 @@ at once:
 - **The plot height.** The card owns it — square below `sm`, `plotHeightClass`
   (default `sm:h-64`) above — through the `.chart-card-plot > *` rule in
   `app/globals.css`. A call site does not pass `heightClass`; that is what keeps
-  every state of a card (populated, empty, loading, error, offline fallback) on
-  one footprint, so a stack does not reflow because one series is empty.
+  a card's loading, error and offline-fallback states on one footprint, so a
+  stack does not reflow while a chunk is still arriving.
+- **…except an absence, which is not a plot (#2399).** Reserving the whole chart
+  footprint for the one sentence saying there is no chart meant that on a lens
+  the profile has not set up, roughly half the page was ~400px empty states
+  stacked above the only card with content. `.chart-card-plot` therefore releases
+  its aspect and height when its DIRECT child is an `EmptyState`, which that
+  component marks with `data-empty-state`. The decision still belongs to the
+  card: the per-call-site height vocabulary #1488 removed stays removed, and no
+  caller can opt a real chart out of the footprint. The companion rule is the
+  lens's: a section with content leads, a setup prompt sinks
+  (`orderNutritionSections`, a `rank-core` table whose only rule is a
+  `data-present` floor).
 - **Desktop is unchanged.** The square is a mobile-only rule; from `sm` up the
   card is exactly the proportions it had before, pinned by a browser test.
 

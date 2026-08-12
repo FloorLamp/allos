@@ -38,12 +38,12 @@ import {
 // untouched); the screening-vs-diagnostic decision is deferred to the owner (#703).
 
 // The studies list renders at `/results/imaging` (#1079). Bare `/results` is a
-// pure `redirect()` stub to `/results/biomarkers` (see its page.tsx) and renders
+// pure `redirect()` stub to `/results/readings` (see its page.tsx) and renders
 // no imaging at all, so revalidating it never invalidated the surface these writes
 // change, and the list's own router-cache entry stayed stale for the next
 // navigation to it. Revalidating the route that actually RENDERS the list is what
 // keeps that cache honest. Same correction `app/(app)/results/actions.ts` already
-// carries for `/results/biomarkers`. (The repaint of the page the writer is
+// carries for `/results/readings`. (The repaint of the page the writer is
 // LOOKING at comes from the action response either way — see
 // docs/internals/server-action-refresh.md.)
 function revalidateImaging() {

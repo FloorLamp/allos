@@ -100,7 +100,7 @@ test.describe("goals can target a lab value (#1853)", () => {
     });
     try {
       await page.goto(
-        `/biomarkers/view?name=${encodeURIComponent(LAB_GOAL_TRACKED)}`
+        `/results/readings/view?name=${encodeURIComponent(LAB_GOAL_TRACKED)}`
       );
       const goal = page.getByTestId("biomarker-goal");
       await expect(goal).toHaveCount(1);

@@ -8,7 +8,7 @@ import { summarizePracticeWeeks } from "@/lib/trends-practices";
 // The guard that replaces the #1398 variant-wiring scan. That issue's problem —
 // two engines feeding the one word "streak" — dissolved when the word stopped
 // being shown: #1935 cut the weekly-recap streak line, #1936 the per-supplement
-// 🔥 chip, #1937 the Training/Journal "N-day streak" on all four surfaces, and
+// 🔥 chip, #1937 the Training Log "N-day streak" on all four surfaces, and
 // #1939 the `streak:` / `adherence:` milestones. #1966 then extended the same
 // ruling to the last analogue those four missed — the Trends Practices lens's
 // "N-week streak" — so this scan covers whichever unit the run was counted in.
@@ -121,7 +121,7 @@ describe("streak scope after the retirement (#1935/#1936/#1937/#1939/#1966)", ()
     // Neither rewards maintaining a run, which is the actual test.
     const surfaces = [
       "app/(app)/training/OverviewSection.tsx",
-      "app/(app)/training/JournalView.tsx",
+      "app/(app)/training/TrainingLogView.tsx",
       "app/(app)/training/HistorySection.tsx",
       "app/(app)/training/RestrictedActivityView.tsx",
       "components/AdherenceRefill.tsx",

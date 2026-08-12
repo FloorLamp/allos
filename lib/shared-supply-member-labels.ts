@@ -35,7 +35,7 @@ export function sharedSupplyMemberLabels(
           member.doseAmounts.map((amount) => amount.trim()).filter(Boolean)
         ),
       ];
-      const kind = member.kind === "medication" ? "Medication" : "Supplement";
+      const kind = member.kind === "medication" ? "Medication" : "IntakeItem";
       return {
         member,
         label: [member.name, kind, amounts.join(", ") || null]

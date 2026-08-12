@@ -110,6 +110,7 @@ function ResponsiveNutrientDetails({ children }: { children: ReactNode }) {
 export default function FoodSuggestionsLayout({
   today,
   days,
+  initialDate,
   logger,
   todaySidebar,
   weeklySidebar,
@@ -119,6 +120,7 @@ export default function FoodSuggestionsLayout({
 }: {
   today: string;
   days: FoodLogDay[];
+  initialDate?: string;
   logger: ReactNode;
   todaySidebar: ReactNode;
   weeklySidebar: ReactNode;
@@ -127,7 +129,11 @@ export default function FoodSuggestionsLayout({
   suggestionCount: number;
 }) {
   const [open, setOpen] = useState(false);
-  const [activeDate, setActiveDate] = useState(today);
+  const initialDateInRange =
+    initialDate != null && days.some((day) => day.date === initialDate);
+  const [activeDate, setActiveDate] = useState(
+    initialDateInRange ? initialDate : today
+  );
   const [countsByDate, setCountsByDate] = useState<CountsByDate>(() =>
     Object.fromEntries(days.map((day) => [day.date, day.counts]))
   );
@@ -164,6 +170,15 @@ export default function FoodSuggestionsLayout({
       }}
     >
       <div data-testid="nutrition-food-layout">
+        {initialDate && !initialDateInRange ? (
+          <p
+            className="mb-4 text-sm text-slate-500 dark:text-slate-400"
+            data-testid="food-date-bound-note"
+          >
+            Food backfill is available for today and the previous six days.
+            Showing today.
+          </p>
+        ) : null}
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           {logger}
           <div data-testid="nutrition-sidebar" className="min-w-0 self-start">

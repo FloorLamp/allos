@@ -39,7 +39,7 @@ import { createLogger } from "@/lib/log";
 // The integrations accounting rule already demands the other half of this: every sync is
 // recorded with inserted/updated/unchanged counts, and Data → Review's failure badge keys
 // off sync events. So the acquirer's run ends here, and the run lands as an ORDINARY sync
-// event for the `mychart` provider — the same row type every other provider writes, read
+// event for the `mychart` source — the same row type every other source writes, read
 // by the same surfaces, with no parallel reporting store to keep consistent.
 //
 // AUTH is identical to the upload route, in the same order and for the same reasons:
@@ -121,7 +121,7 @@ const log = createLogger("api-sync-report");
 const REPORT_RATE_LIMIT = 120;
 const REPORT_RATE_WINDOW_MS = 5 * 60 * 1000;
 
-// The provider these events land under — the registry id, so the card, the staleness
+// The source these events land under — the registry id, so the card, the staleness
 // reader and Data → Review all find them without a special case. Renamed from the
 // tool-shaped "mychart" by migration 131, which moved the stored rows with it.
 const PROVIDER = "patient-portals";
@@ -450,11 +450,11 @@ export async function POST(req: Request): Promise<Response> {
       skipped: ev.skipped,
       // Tombstone-blocked re-offers (#1777) ride the column migration 023 already added
       // for the #507/#508 re-import tombstones, so Data → Review renders "N suppressed"
-      // through the same formatSplitLabel path as every other provider.
+      // through the same formatSplitLabel path as every other source.
       suppressed: ev.suppressed,
       error: ev.error,
       // WHICH identity this run was about (#1739). Null for a `profile=<id>` report from
-      // a human debugging with curl, and for every other provider's events — the card
+      // a human debugging with curl, and for every other source's events — the card
       // shows a per-identity line only where there is an identity to show.
       identity,
     });

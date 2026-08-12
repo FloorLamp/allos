@@ -17,7 +17,7 @@ import {
   unlinkItemAction,
   listSharedSupplyOptions,
 } from "@/app/(app)/supplies/actions";
-import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import { createSharedSupply, getSharedSupply } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -359,7 +359,7 @@ describe("an item created from a bottle links on save", () => {
     actAs(admin, p);
     const supplyId = newPool(`Household ${t}`, 120);
 
-    const res = await addSupplement(
+    const res = await addIntakeItem(
       fd({
         name: `Cholecalciferol ${t}`,
         kind: "supplement",
@@ -402,7 +402,7 @@ describe("an item created from a bottle links on save", () => {
     const mine = createProfile(`Ada Lovelace ${t}`, outsider.id);
     actAs(outsider, mine);
 
-    const res = await addSupplement(
+    const res = await addIntakeItem(
       fd({
         name: `Sneaky ${t}`,
         kind: "supplement",

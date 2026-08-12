@@ -111,6 +111,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "deleteSharedSupply (#1374): unlinks each member row it just read from poolMembers — the statement itself IS profile-scoped (id AND profile_id); listed only because the surrounding function's membership read is the cross-profile one above",
   },
   {
+    file: "lib/queries/intake/supply-pool.ts",
+    includes:
+      "SELECT s.id AS supply_id, i.profile_id AS profile_id FROM shared_supplies s LEFT JOIN intake_items i ON i.supply_id = s.id",
+    why: "countVisiblePools (#2116): the SAME cross-by-construction membership question poolMembers above answers, asked once for the whole cabinet instead of once per bottle. It reads nothing but (supply_id, profile_id) — no name, no dose, no health data — and hands it straight to the pure isPoolVisibleTo rule against the caller's already-resolved accessible set, which is the filter. A LEFT JOIN because an ORPHANED bottle names nobody and must still be countable",
+  },
+  {
     file: "lib/portals.ts",
     includes:
       "SELECT pi.profile_id AS profileId, pi.portal_id AS portalId, pi.account_id AS accountId FROM portal_identities pi WHERE pi.account_id = ? AND pi.patient_label = ? AND pi.ignored = 0 AND pi.profile_id IS NOT NULL",
@@ -252,17 +258,22 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   // queries.ts statements whose profile_id lives inside an interpolated fragment
   // (`${clause}` / `${where.join(...)}` always start with `profile_id = ?`; the
-  // getMedicalRecords query also carries an explicit `WHERE profile_id = ?` in its
+  // getClinicalObservations query also carries an explicit `WHERE profile_id = ?` in its
   // latest-ids CTE).
   {
     file: "lib/queries/medical.ts",
     includes: "AS is_latest FROM medical_records",
-    why: "getMedicalRecords: the latest-ids CTE and ${clause} both filter profile_id = ?",
+    why: "getClinicalObservations: the latest-ids CTE and ${clause} both filter profile_id = ?",
+  },
+  {
+    file: "lib/queries/medical.ts",
+    includes: "SELECT COUNT(*) AS n FROM medical_records ${clause}",
+    why: "countClinicalObservations (#2116): the same ${clause} the row read above composes, from the same observationSelection — it always begins with 'profile_id = ?', and both CTEs bind it too",
   },
   {
     file: "lib/queries/medical.ts",
     includes: "FROM medical_records WHERE ${where.join(",
-    why: "getRecordsForDocument: where[] always begins with 'profile_id = ?'",
+    why: "getObservationsForDocument: where[] always begins with 'profile_id = ?'",
   },
   {
     file: "lib/queries/clinical.ts",

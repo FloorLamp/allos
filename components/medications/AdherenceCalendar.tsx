@@ -3,7 +3,7 @@ import type {
   AdherenceCalendarModel,
   AdherenceCalendarCell,
 } from "@/lib/adherence-calendar";
-import type { AdherenceState } from "@/lib/supplement-adherence";
+import type { AdherenceState } from "@/lib/intake-adherence";
 
 // The month adherence calendar on a medication's detail page (issue #852 item 5): the
 // 14-day strip's own vocabulary (taken / partial / skipped / missed / not-due) at month

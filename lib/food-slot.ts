@@ -1,5 +1,5 @@
 // Pure slot derivation for the food-log ledger (issue #950) — DB-free so it's
-// unit-tested (lib/__tests__). A tap's `logged_at` (a UTC instant) plus the
+// unit-tested (lib/__tests__). A tap's `recorded_at` (a UTC instant) plus the
 // profile's timezone give a local minute-of-day; this maps that minute to one of
 // three food windows — Morning / Midday / Evening — used to make button ranking
 // slot-aware and to label the current window on the Food tab. ONE derivation for
@@ -8,7 +8,7 @@
 //
 // Food space has exactly THREE windows (no bedtime cut): a post-bedtime dinner tap
 // counts as Evening, which runs from the midday/evening boundary to MIDNIGHT. This
-// deliberately does NOT borrow supplement-schedule's `currentTimeBucket` 21:00
+// deliberately does NOT borrow intake-schedule's `currentTimeBucket` 21:00
 // "Before sleep" split — the bedtime DOSE slot does not partition food.
 
 import { hhmmToMinutes } from "./date";

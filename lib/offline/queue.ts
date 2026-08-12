@@ -45,12 +45,14 @@
 // against.
 import type { DoseTakenOutcome, SaveActivityOutcome } from "@/lib/types";
 import type { IdempotentTap, OneTapAffordance } from "@/lib/one-tap";
-// The two runtime imports, and both keep the contract: lib/sw-update.ts and
-// lib/loggable-domains.ts are themselves pure and dependency-free (client-safe,
-// DB-free). The stale-action signature is sw-update's knowledge — deployment
-// skew's Server Action half — and the argued-exclusion brand is the #2130
-// registry vocabulary's.
+// The three runtime imports, and all three keep the contract: lib/sw-update.ts,
+// lib/date.ts and lib/loggable-domains.ts are themselves pure and dependency-free
+// (client-safe, DB-free). The stale-action signature is sw-update's knowledge —
+// deployment skew's Server Action half — the canonical instant minter is date.ts's
+// (#2205: the stored shape is decided by the column, never by the call site), and the
+// argued-exclusion brand is the #2130 registry vocabulary's.
 import { isStaleActionError } from "@/lib/sw-update";
+import { utcInstant } from "@/lib/date";
 import {
   STATED_TIME_REFUSAL_NOTE,
   type StatedTimeRefusal,
@@ -128,6 +130,9 @@ export const OFFLINE_QUEUE_COVERAGE = {
   ),
   "food-usual": arguedExclusion(
     "Declared idempotent, and still excluded for the period-lifecycle reason (#2380): the offer is rendered from server state — the habitual set MINUS what that window already holds — and its write core re-derives that set to refuse a stale tap. Offline neither half is available: the capture would be a list of group keys whose justification expired, and the underlying food_log counter is ADDITIVE, so replaying it against a window logged from another device or the Telegram button double-logs a breakfast with no offer ever having stood. The single-serving taps underneath it queue as they always did, so nothing is unreachable offline — only the shortcut is."
+  ),
+  "routine-usual": arguedExclusion(
+    "Declared idempotent, excluded for `food-usual`'s reason and one MORE (#2458): the bundle's justification is server state on both axes, and its dose half CONFIRMS DOSES — an expired replay would double-log a meal window AND mis-decrement on-hand supply for three items, which is stock arithmetic against a total that moved (the excluded `medication-refill` class). The single-serving taps and the single-dose confirms underneath it queue exactly as they always did, so nothing is unreachable offline — only the shortcut is."
   ),
   "period-lifecycle": arguedExclusion(
     "A lifecycle write rendered from server state (#1892): the offer's verb is only valid against the state that produced it, and the write core's typed refusals need fresh state to refuse honestly. Replaying start/end against state that moved is the destructive-overwrite class the queue's scope comment excludes."
@@ -676,17 +681,38 @@ export function classifySetReplay(outcome: SaveActivityOutcome): {
 // (client clocks drift), else the replay instant. Keeps the food_log_events
 // frecency ranking honest — a Morning tap replayed at dinner still counts for
 // Morning — without ever trusting a garbage or future timestamp.
-export function resolveCapturedInstant(
-  capturedAt: unknown,
-  now: Date = new Date()
-): string {
+//
+// THE RETURN IS THE CANONICAL STORED INSTANT (#2370). This used to be
+// `.toISOString()`, whose millisecond shape is a THIRD serialization — and the value
+// lands straight in `food_log_events.recorded_at`, a column lib/time-columns.ts
+// declares canonical. That is how the column came to hold two shapes at once: this
+// module writes no SQL of its own, so the writer scan's rule C had no literal to
+// object to, and the table was missing from CANONICAL_INSTANT_COLUMNS so rule A never
+// looked at the bind either. Both halves are closed now — the registry entry is in
+// lib/__tests__/instant-writer-scan.test.ts and the shape comes from lib/date.ts. The
+// queued payload's own `capturedAt` is untouched: it is a CLIENT wire value that has
+// already been written to devices, and narrowing it happens here, at the door.
+//
+// `now` IS REQUIRED (#2312), with no `new Date()` default, and that requirement is
+// most of the fix. This module is in the BROWSER bundle, so it cannot read
+// lib/clock.ts's `process.env` seam itself — which is why the default existed, and
+// exactly why it was wrong: a server-side replay call site then judged a captured
+// instant against a SECOND, independent clock without ever naming which one, and
+// only the food path (#2310) had been converted off it. Under the e2e freeze the
+// browser and the server share ONE frozen instant, so a real-time ceiling silently
+// rewrites a seconds-old capture into the replay moment. Required-and-injected is
+// the ONE shape every flow now takes: the seam is passed in from the server, the
+// browser passes its own clock, and neither is ever substituted for the other by
+// default. The same discipline `resolveQueuedTakenAt` / `isGivenAtAccepted` take
+// (lib/dose-log-window.ts, #2031).
+export function resolveCapturedInstant(capturedAt: unknown, now: Date): string {
   if (typeof capturedAt === "string") {
     const t = new Date(capturedAt);
     if (Number.isFinite(t.getTime()) && t.getTime() <= now.getTime()) {
-      return t.toISOString();
+      return utcInstant(t);
     }
   }
-  return now.toISOString();
+  return utcInstant(now);
 }
 
 // The refusal shown when a queued dose entry sat unsent past the dose-log date window

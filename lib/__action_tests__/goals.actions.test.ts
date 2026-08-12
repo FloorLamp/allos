@@ -14,7 +14,7 @@ import {
   updateGoal,
 } from "@/app/(app)/training/goal-actions";
 import {
-  getGoals,
+  getOutcomeGoals,
   dismissFinding,
   getFindingSuppressions,
 } from "@/lib/queries";
@@ -72,7 +72,12 @@ describe("createGoal", () => {
     const row = goalRows(profile.id)[0];
     expect(row.exercise).toBe("Deadlift");
     expect(row.metric).toBe("weight");
+    expect(row.category).toBeNull();
     expect(row.target_weight_kg).toBeCloseTo(315 / LB_PER_KG, 6);
+    expect(getOutcomeGoals(profile.id)[0]).toMatchObject({
+      kind: "exercise",
+      categoryLabel: null,
+    });
   });
 
   it("rejects an exercise goal with a non-positive primary target", async () => {
@@ -86,6 +91,30 @@ describe("createGoal", () => {
       })
     );
     expect(goalRows(profile.id)).toHaveLength(0);
+  });
+});
+
+describe("getOutcomeGoals vocabulary (#2480)", () => {
+  it("derives kind structurally and reserves categoryLabel for freeform text", () => {
+    const { profile } = seedActor();
+    db.prepare(
+      `INSERT INTO goals
+         (profile_id, title, category, body_metric, target_value, status)
+       VALUES (?, 'Legacy body goal', 'body', 'weight', 80, 'active'),
+              (?, 'Sleep routine', 'Wellbeing', NULL, 8, 'active')`
+    ).run(profile.id, profile.id);
+
+    const byTitle = new Map(
+      getOutcomeGoals(profile.id).map((goal) => [goal.title, goal])
+    );
+    expect(byTitle.get("Legacy body goal")).toMatchObject({
+      kind: "body",
+      categoryLabel: null,
+    });
+    expect(byTitle.get("Sleep routine")).toMatchObject({
+      kind: "freeform",
+      categoryLabel: "Wellbeing",
+    });
   });
 });
 
@@ -192,6 +221,40 @@ describe("setStatus", () => {
     expect(goalRows(profile.id)[0].status).toBe("achieved");
   });
 
+  // #2394: `status` says WHETHER, `achieved_at` says WHEN — and without the second
+  // one the recap had nothing to window on but the deadline. This is the only writer.
+  it("stamps the achievement instant, keeps it on a re-state, and clears it on undo", async () => {
+    const { profile } = seedActor();
+    await createGoal(fd({ kind: "freeform", title: "Hold a 2 minute plank" }));
+    const id = goalRows(profile.id)[0].id;
+    const achievedAt = () =>
+      (
+        db.prepare("SELECT achieved_at FROM goals WHERE id = ?").get(id) as {
+          achieved_at: string | null;
+        }
+      ).achieved_at;
+
+    expect(achievedAt()).toBeNull();
+
+    await setStatus(fd({ id, status: "achieved" }));
+    const first = achievedAt();
+    // The canonical UTC+Z convention (lib/date.ts utcInstant), not SQLite's bare shape:
+    // the recap compares this column lexically against canonical bounds.
+    expect(first).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+
+    // Re-stating the current status stays idempotent success AND keeps the original
+    // instant — a second flip must not re-date the goal into a later recap.
+    expect((await setStatus(fd({ id, status: "achieved" }))).ok).toBe(true);
+    expect(achievedAt()).toBe(first);
+
+    // Un-achieving clears it: the goal has not been achieved, and reaching it again is
+    // a new event that earns a new instant.
+    await setStatus(fd({ id, status: "active" }));
+    expect(achievedAt()).toBeNull();
+    await setStatus(fd({ id, status: "achieved" }));
+    expect(achievedAt()).not.toBeNull();
+  });
+
   // Changes-checked (#2140): the UPDATE's WHERE (id + profile) is the CAS
   // expectation, so a forged id — or another profile's — refuses instead of the
   // menu toasting "Goal achieved" over a write that matched nothing.
@@ -242,8 +305,10 @@ describe("scoping", () => {
     actAs(login, profileA);
     await createGoal(fd({ kind: "freeform", title: "A-only goal" }));
 
-    expect(getGoals(profileB.id)).toHaveLength(0);
-    expect(getGoals(profileA.id).map((g) => g.title)).toContain("A-only goal");
+    expect(getOutcomeGoals(profileB.id)).toHaveLength(0);
+    expect(getOutcomeGoals(profileA.id).map((g) => g.title)).toContain(
+      "A-only goal"
+    );
   });
 });
 
@@ -346,7 +411,7 @@ describe("createGoal / updateGoal load context", () => {
         equipment_id: home,
       })
     );
-    const id = getGoals(profile.id)[0].id;
+    const id = getOutcomeGoals(profile.id)[0].id;
     await updateGoal(
       fd({
         id,

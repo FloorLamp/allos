@@ -25,7 +25,7 @@ const FORMATTER_FILES = [
   "lib/record-format.ts",
   "lib/administration-format.ts",
   "lib/format-date.ts",
-  "lib/journal-card.ts",
+  "lib/training-log-card.ts",
 ];
 
 // `toLocaleString` / `toLocaleDateString` / `toLocaleTimeString` invoked with an

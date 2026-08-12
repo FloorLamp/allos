@@ -56,11 +56,13 @@ export type FitnessInputKind =
   "reps" | "seconds" | "number" | "e1rm" | "vo2" | "hrr";
 
 // Where a test's value lands. `set` → exercise_sets on the assessment activity (keyed by
-// the lift's exerciseHistoryKey); `vital` → a medical_records canonical row (category
-// vitals/biomarker); `body` → a body_metrics column.
+// the lift's exerciseHistoryKey); `vital` → a medical_records canonical row (`vitals`,
+// the canonical registry's classification for every measurement this battery stores —
+// VO2 Max used to write the retired `biomarker` catch-all, #2479); `body` → a
+// body_metrics column.
 export type FitnessStore =
   | { kind: "set"; lift: string; timed: boolean }
-  | { kind: "vital"; canonical: string; category: "vitals" | "biomarker" }
+  | { kind: "vital"; canonical: string; category: "vitals" }
   | { kind: "body"; column: "body_fat_pct" | "resting_hr" };
 
 export interface FitnessTestDef {
@@ -214,7 +216,7 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "mL/kg/min",
     inputKind: "vo2",
     normsMarker: "VO2 Max",
-    store: { kind: "vital", canonical: "VO2 Max", category: "biomarker" },
+    store: { kind: "vital", canonical: "VO2 Max", category: "vitals" },
     citation: "Field estimates: Cooper 1968; Kline 1987; McArdle 1972.",
     instructions: [
       "Cardiorespiratory fitness — the single strongest longevity predictor.",

@@ -31,20 +31,20 @@ import {
 import { getSubstanceWeekState } from "@/lib/queries";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import { isMinor } from "@/lib/life-stage";
-import { getUserAge } from "@/lib/settings";
+import { getProfileAge } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
-  addSubstanceHistoryEntryCore,
-  updateSubstanceHistoryEntryCore,
-  deleteSubstanceHistoryEntryCore,
+  addSubstanceDailyTotalCore,
+  updateSubstanceDailyTotalCore,
+  deleteSubstanceDailyTotalCore,
   type SubstanceHistoryMutationOutcome,
-} from "@/lib/substance-history-write";
+} from "@/lib/substance-daily-totals-write";
 
 // #1174 gated the substance-use SURFACE (hidden nav + page redirect) to adults;
 // #1279 closes the gap under it — Server Actions are independently POST-callable, so
 // each write path re-checks life stage at the auth boundary (a UI-only gate is theater
 // if the write core underneath has no independent check). Mirrors the page's
-// isMinor(getUserAge(profile.id)); refuses a KNOWN minor (unknown/adult age passes,
+// isMinor(getProfileAge(profile.id)); refuses a KNOWN minor (unknown/adult age passes,
 // per the module's documented "hide only on a positive under-age match" policy). The
 // lib write cores stay auth-blind — the check belongs here, not below the action layer.
 const MINOR_REFUSAL = "This isn't available for this profile.";
@@ -87,7 +87,7 @@ export async function recordSubstanceInstrumentAction(
   formData: FormData
 ): Promise<SubstanceInstrumentActionResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id)))
+  if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
 
   const instrumentRaw = String(formData.get("instrument") ?? "");
@@ -153,6 +153,10 @@ export async function recordSubstanceInstrumentAction(
     answers,
     notes,
   });
+  // The core now carries the same life-stage gate this action opened with (#2107),
+  // so the refusal is rendered rather than assumed away — the action's own check
+  // above is defense in depth over it, not the only copy.
+  if (id == null) return { ok: false, error: MINOR_REFUSAL };
   revalidateSubstanceUse();
   return { ok: true, id };
 }
@@ -167,7 +171,7 @@ export async function logSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id)))
+  if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance))
@@ -190,7 +194,7 @@ export async function undoSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id)))
+  if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance))
@@ -246,14 +250,14 @@ function historyInput(
 
 // Historical add/correction (#2009). The action contract never names the backing
 // store; the auth-blind core dispatches from the validated substance catalog.
-export async function addSubstanceHistoryEntryAction(
+export async function addSubstanceDailyTotalAction(
   formData: FormData
 ): Promise<SubstanceHistoryMutationOutcome> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return { kind: "not-found" };
+  if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
   const parsed = historyInput(formData, today(profile.id));
   if (!parsed.ok) return parsed.outcome;
-  const outcome = addSubstanceHistoryEntryCore(
+  const outcome = addSubstanceDailyTotalCore(
     profile.id,
     parsed.substance,
     parsed
@@ -262,16 +266,16 @@ export async function addSubstanceHistoryEntryAction(
   return outcome;
 }
 
-export async function updateSubstanceHistoryEntryAction(
+export async function updateSubstanceDailyTotalAction(
   formData: FormData
 ): Promise<SubstanceHistoryMutationOutcome> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return { kind: "not-found" };
+  if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
   const parsed = historyInput(formData, today(profile.id));
   if (!parsed.ok) return parsed.outcome;
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return { kind: "not-found" };
-  const outcome = updateSubstanceHistoryEntryCore(
+  const outcome = updateSubstanceDailyTotalCore(
     profile.id,
     parsed.substance,
     id,
@@ -281,11 +285,11 @@ export async function updateSubstanceHistoryEntryAction(
   return outcome;
 }
 
-export async function deleteSubstanceHistoryEntryAction(
+export async function deleteSubstanceDailyTotalAction(
   formData: FormData
 ): Promise<SubstanceHistoryDeleteResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) {
+  if (isMinor(getProfileAge(profile.id))) {
     return {
       kind: "not-found",
       undoId: null,
@@ -301,7 +305,7 @@ export async function deleteSubstanceHistoryEntryAction(
       error: "Couldn't find that entry.",
     };
   }
-  const outcome = deleteSubstanceHistoryEntryCore(profile.id, substance, id);
+  const outcome = deleteSubstanceDailyTotalCore(profile.id, substance, id);
   if (outcome.kind !== "deleted") {
     return {
       kind: "not-found",
@@ -322,7 +326,7 @@ export async function setSubstanceTargetAction(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
+  if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance)) return formError("Unknown substance.");
   const capRaw = Number(formData.get("cap"));
@@ -349,7 +353,7 @@ export async function clearSubstanceTargetAction(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
+  if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance)) return formError("Unknown substance.");
   const target = db
@@ -374,7 +378,7 @@ export async function updateSubstanceInstrumentAction(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
+  if (isMinor(getProfileAge(profile.id))) return formError(MINOR_REFUSAL);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that score.");
   const instrument = getInstrumentScoreInstrument(profile.id, id);
@@ -404,7 +408,7 @@ export async function deleteSubstanceInstrumentAction(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
   const { profile } = await requireWriteAccess();
-  if (isMinor(getUserAge(profile.id))) return { undoId: null };
+  if (isMinor(getProfileAge(profile.id))) return { undoId: null };
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   const outcome = deleteInstrumentScore(profile.id, id);

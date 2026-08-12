@@ -1,6 +1,6 @@
 // The ONE definition of "this week" (issue #223). A profile's `week_mode` decides
 // what "this week" means, and every surface that shows a weekly window — the
-// weekly-routine counters, the journal week summary, and the weekly recap
+// weekly-routine counters, the training log week summary, and the weekly recap
 // (dashboard card + Telegram notification) — derives its window from here, so they
 // all count the same days. Pure calendar arithmetic (UTC-anchored, DST-immune) on
 // YYYY-MM-DD strings; no DB/network, so it runs in the query layer, the notify

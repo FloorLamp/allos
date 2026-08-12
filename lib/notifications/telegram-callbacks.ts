@@ -33,10 +33,10 @@ import {
   setProfileSetting,
   setProfileFoodTelegram,
   setFoodTelegramPrompted,
-  getUserAge,
+  getProfileAge,
 } from "../settings";
 import { logFoodServingCore } from "../food-log-write";
-import { addProteinGramsCore } from "../protein-log-write";
+import { addProteinGramsCore } from "../protein-daily-totals-write";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
 import { refillSignalKey } from "../refill-nudge";
@@ -81,6 +81,7 @@ import {
   parseFoodProteinCallback,
   parsePreventiveCallback,
   parsePrnLogCallback,
+  parseRedoseLogCallback,
   parseOfferTailCallback,
   parseTuneCallback,
   parseDigestTimeCallback,
@@ -168,6 +169,7 @@ import {
   handlePracticeDoneTap,
   handleRightSizeLowerTap,
   handlePrnLogTap,
+  handleRedoseLogTap,
   handleOfferTailTap,
   handleTuneTap,
   handleDigestTimeTap,
@@ -295,7 +297,7 @@ export async function handleCallbackQuery(
     return;
   }
   // Eating-time correction (#2019): a −Nh chip, or the 🕐 absolute-hour drill-down.
-  // Both ride the food nudge's own keyboard and re-stamp `eaten_at` for a whole burst.
+  // Both ride the food nudge's own keyboard and re-stamp `occurred_at` for a whole burst.
   const foodTimeChip = parseCorrectionChipToken(
     cq.data,
     FOOD_TIME_PREFIXES.chip
@@ -361,6 +363,14 @@ export async function handleCallbackQuery(
   const digestTime = parseDigestTimeCallback(cq.data);
   if (digestTime) {
     await handleDigestTimeTap(cq, digestTime);
+    return;
+  }
+
+  // One administration-armed redose window. Parsed before the reusable `/dose` token:
+  // this button is consumed and refuses after an app log supersedes its window.
+  const redose = parseRedoseLogCallback(cq.data);
+  if (redose) {
+    await handleRedoseLogTap(cq, redose);
     return;
   }
 
@@ -879,7 +889,7 @@ async function handleDoseTap(
           profileId,
           parts,
           tap.date,
-          getUserAge(profileId)
+          getProfileAge(profileId)
         ),
         { ref: { chatId, messageId } }
       )
@@ -1124,7 +1134,7 @@ async function handleAllTaken(
         profileId,
         parts,
         all.date,
-        getUserAge(profileId)
+        getProfileAge(profileId)
       ),
       { ref: { chatId, messageId } }
     )
@@ -1312,8 +1322,10 @@ async function handleFoodExpand(
   const rebuilt = buildFoodNudge(profileId, token.window, token.date, next, {
     ref: { chatId, messageId },
   });
-  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+  // Show more / show less writes nothing: the clamp above IS the outcome, so the ack
+  // goes before the redraw (#2418).
   await answerCallbackQuery(cq.id);
+  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
 }
 
 // Handle the first-connection food opt-in prompt (#682): flip the per-profile

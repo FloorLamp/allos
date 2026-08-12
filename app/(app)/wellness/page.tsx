@@ -5,27 +5,42 @@ import {
   getPracticeTrends,
   getWellnessPractices,
 } from "@/lib/queries";
-import { getWeekStart } from "@/lib/settings";
+import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
 import { MAX_PRACTICE_TREND_WEEKS } from "@/lib/trends-practices";
 import { WELLNESS_PRACTICE_HEATMAP_WEEKS } from "@/lib/practice-heatmap";
-import { dayHistoryStart } from "@/lib/day-history";
+import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import AddPracticeButton from "./AddPracticeButton";
 import PracticeCard from "./PracticeCard";
 import DayHistory from "@/components/DayHistory";
+import PracticeBackfillLauncher from "@/components/practices/PracticeBackfillLauncher";
+import { daysBetweenDateStr, isRealIsoDate, shiftDateStr } from "@/lib/date";
+import { PRACTICE_LOG_DATE_WINDOW_DAYS } from "@/lib/practice-log";
 
 export const dynamic = "force-dynamic";
 
 export default async function WellnessPage(props: {
-  searchParams: Promise<{ new?: string }>;
+  searchParams: Promise<{ new?: string; log?: string }>;
 }) {
   const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
   const weekStart = getWeekStart(profile.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const practices = getWellnessPractices(profile.id, todayStr, weekStart);
+  const requestedLogDate = searchParams.log;
+  const logDateDiff = isRealIsoDate(requestedLogDate)
+    ? daysBetweenDateStr(todayStr, requestedLogDate)
+    : null;
+  const acceptedLogDate =
+    requestedLogDate &&
+    logDateDiff != null &&
+    logDateDiff <= 0 &&
+    logDateDiff >= -PRACTICE_LOG_DATE_WINDOW_DAYS
+      ? requestedLogDate
+      : undefined;
   const trendsByIdentity = new Map(
     getPracticeTrends(profile.id, MAX_PRACTICE_TREND_WEEKS, todayStr).map(
       (trend) => [trend.identity, trend]
@@ -80,23 +95,41 @@ export default async function WellnessPage(props: {
         <RightSizeSuggestions profileId={profile.id} domain="practice" />
       </div>
 
+      {requestedLogDate ? (
+        <PracticeBackfillLauncher
+          items={practices.map((practice) => ({
+            name: practice.name,
+            todayCount: practice.sessions.filter(
+              (session) => session.date === todayStr
+            ).length,
+            atCeiling: practice.atCeiling,
+            defaultDurationMin: practice.previousDurationMin,
+          }))}
+          today={todayStr}
+          initialDate={acceptedLogDate}
+          minDate={shiftDateStr(todayStr, -PRACTICE_LOG_DATE_WINDOW_DAYS)}
+          invalidRequestedDate={!acceptedLogDate}
+        />
+      ) : null}
+
       {practiceValues.length > 0 && (
         <section data-testid="practice-history" className="mb-8">
           <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
             Practice history
           </h2>
           <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-            Every practice day in the trailing quarter, then the same days split
-            by practice. Tap a day to see what it held.
+            {DAY_HISTORY_DOMAINS.practice.helperText}
           </p>
           <DayHistory
             domain="practice"
+            addHref="/wellness"
             values={practiceValues}
             groups={practiceGroups}
             end={todayStr}
             weeks={WELLNESS_PRACTICE_HEATMAP_WEEKS}
             weekStart={weekStart}
             today={todayStr}
+            formatPrefs={formatPrefs}
             testId="practice-day-history"
           />
         </section>

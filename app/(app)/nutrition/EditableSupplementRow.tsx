@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Supplement, SupplementDose, SupplementPair } from "@/lib/types";
+import type { IntakeItem, IntakeDose, IntakePair } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
@@ -9,9 +9,9 @@ import {
   FOOD_TIMING_HINTS,
   OBLIGATION_LABELS,
   obligationClass,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 import { medicationMetaLine } from "@/lib/medication-history";
-import type { AdherenceDot } from "@/lib/supplement-adherence";
+import type { AdherenceDot } from "@/lib/intake-adherence";
 import type { DoseRate } from "@/lib/refill";
 import {
   RefillBadge,
@@ -34,11 +34,11 @@ import OverflowMenu, {
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import {
-  updateSupplement,
+  updateIntakeItem,
   setItemActive,
-  deleteSupplement,
-} from "./supplement-actions";
-import { isPrn } from "@/lib/supplement-schedule";
+  deleteIntakeItem,
+} from "./intake-actions";
+import { isOnDemand } from "@/lib/intake-schedule";
 
 // One scheduled dose of a supplement, as it appears in a time bucket. A
 // supplement with multiple doses renders one of these per dose. Editing opens
@@ -48,7 +48,7 @@ export default function EditableSupplementRow({
   dose,
   doses,
   retiredDoses = [],
-  allSupplements,
+  allIntakeItems,
   stackItems,
   pgxVariants,
   pairs,
@@ -65,15 +65,15 @@ export default function EditableSupplementRow({
   defaultHistoryTime,
   historyWindowDays,
 }: {
-  supplement: Supplement;
-  dose: SupplementDose;
-  doses: SupplementDose[];
+  supplement: IntakeItem;
+  dose: IntakeDose;
+  doses: IntakeDose[];
   // Retired doses of this item (#2131), for the edit form's Restore affordance.
-  retiredDoses?: SupplementDose[];
-  allSupplements: { id: number; name: string }[];
+  retiredDoses?: IntakeDose[];
+  allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
-  pairs: SupplementPair[];
+  pairs: IntakePair[];
   isTaken: boolean;
   isSkipped: boolean;
   strip: AdherenceDot[];
@@ -127,7 +127,7 @@ export default function EditableSupplementRow({
         <div className="col-start-1 row-start-1 min-w-0">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span
-              data-testid="medicine-name"
+              data-testid="intake-item-name"
               className="min-w-0 wrap-break-word font-medium text-slate-800 dark:text-slate-100"
             >
               {s.name}
@@ -191,7 +191,7 @@ export default function EditableSupplementRow({
                 Rx
               </span>
             )}
-            {isMed && isPrn(s) && (
+            {isMed && isOnDemand(s) && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 PRN
               </span>
@@ -224,7 +224,7 @@ export default function EditableSupplementRow({
             />
           )}
           <OverflowMenu
-            label="Supplement actions"
+            label="IntakeItem actions"
             open={menuOpen}
             onOpenChange={setMenuOpen}
           >
@@ -266,12 +266,12 @@ export default function EditableSupplementRow({
                           ok: true,
                           message:
                             res.state === "paused"
-                              ? "Supplement paused"
-                              : "Supplement resumed",
+                              ? "IntakeItem paused"
+                              : "IntakeItem resumed",
                         };
                       },
                       fd,
-                      s.active ? "Supplement paused" : "Supplement resumed"
+                      s.active ? "IntakeItem paused" : "IntakeItem resumed"
                     )
                   }
                 >
@@ -299,8 +299,8 @@ export default function EditableSupplementRow({
                     close();
                     const fd = new FormData();
                     fd.set("id", String(s.id));
-                    await undoable(deleteSupplement, fd, {
-                      deletedMessage: "Supplement deleted.",
+                    await undoable(deleteIntakeItem, fd, {
+                      deletedMessage: "IntakeItem deleted.",
                     });
                   }}
                 >
@@ -372,7 +372,7 @@ export default function EditableSupplementRow({
                 amount: d.amount,
                 time_of_day: d.time_of_day,
               }))}
-              asNeeded={isPrn(s)}
+              asNeeded={isOnDemand(s)}
               courseBound={isMed}
               history={doseHistory}
               maxDate={historyMaxDate}
@@ -399,11 +399,11 @@ export default function EditableSupplementRow({
             className="mt-4 min-h-0 overflow-y-auto px-1"
           >
             <SupplementForm
-              action={updateSupplement}
+              action={updateIntakeItem}
               supplement={s}
               doses={doses}
               retiredDoses={retiredDoses}
-              allSupplements={allSupplements}
+              allIntakeItems={allIntakeItems}
               stackItems={stackItems}
               pgxVariants={pgxVariants}
               pairs={pairs}

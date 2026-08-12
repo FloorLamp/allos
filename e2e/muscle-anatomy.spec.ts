@@ -47,10 +47,10 @@ test("per-exercise anatomy renders in the detail panel guide section (#737)", as
   );
 });
 
-test("per-session anatomy renders on a strength session's journal card, absent for a custom-only session (#789)", async ({
+test("per-session anatomy renders on a strength session's training log card, absent for a custom-only session (#789)", async ({
   page,
 }) => {
-  // /training defaults to the Log tab, which renders the journal feed. The seeded
+  // /training defaults to the Log tab, which renders the training log feed. The seeded
   // "Push day" strength session (Bench Press, Overhead Press, Lateral Raise,
   // Tricep Pushdown — all catalog lifts) resolves to tagged muscles, so its card
   // carries the per-session figure. Multiple weeks exist; the newest is on page one.

@@ -6,7 +6,7 @@ import {
 } from "@/lib/workout-offer";
 
 // The #1893 offer state: the ONE derivation the bolt, the palette's live action, the
-// Journal aside, and the routine card all render, and that openLive/openSession enforce.
+// Training Log aside, and the routine card all render, and that openLive/openSession enforce.
 // The truth table below is the whole contract — a label that says "Start workout" while a
 // session is running is exactly the bug this replaces.
 describe("workoutOffer (#1893)", () => {

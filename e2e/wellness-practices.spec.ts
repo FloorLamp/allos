@@ -5,6 +5,7 @@ import {
   expectNoClippedContent,
   followLink,
   hydratedClick,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import { openCommandPalette } from "./nav";
@@ -203,6 +204,7 @@ test("practice edits reject invalid cadence and logs-only name collisions (#1618
     logSession.run(historyName, today);
     logSession.run(historyName, today);
 
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/wellness");
     const main = page.getByRole("main");
     const trackedCard = main
@@ -267,7 +269,6 @@ test("wellness practices own identity, detailed history, corrections, and Traini
   page,
 }) => {
   test.slow();
-  await page.setViewportSize({ width: 390, height: 844 });
   const unique = `E2E Wellness ${frozenNow().getTime()}`;
   const renamed = `${unique} renamed`;
   const today = frozenNow().toISOString().slice(0, 10);
@@ -589,6 +590,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
 test("the cross-practice day-history renders a row per practice, on one day axis", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   // Spec-owned logs (#868): two uniquely named practices with sessions inside
   // the trailing-quarter window, deleted in finally. The section may also carry
   // seed practices — assert about OUR rows, never exact counts.
@@ -625,6 +627,21 @@ test("the cross-practice day-history renders a row per practice, on one day axis
     await expect(rowB).toHaveCount(1);
     // Rows share ONE day axis: the calendar half renders beside them.
     await expect(history.getByTestId("day-history-calendar")).toBeVisible();
+    await expect(history).toContainText(
+      "Calendar: days you practiced. Matrix: each day by practice."
+    );
+    // Same shape as trends-nutrition's row panel, and the same hazard: a client
+    // toggle whose effect is only awaited by a non-retrying `boundingBox()`.
+    await hydratedClick(
+      page,
+      rowA.getByRole("button", { name: /View occurrences for/ })
+    );
+    const [calendarBox, rowBox] = await settledBoxes([
+      history.getByTestId("day-history-calendar-panel"),
+      history.getByTestId("day-history-rowpanel"),
+    ]);
+    expect(rowBox.y).toBeGreaterThanOrEqual(calendarBox.y + calendarBox.height);
+    await expectNoClippedContent(page);
   } finally {
     db.prepare(
       `DELETE FROM practice_logs WHERE profile_id = 1 AND practice IN (?, ?)`

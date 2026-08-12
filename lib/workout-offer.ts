@@ -1,7 +1,7 @@
 // The workout entry affordance's offer state (issue #1893, following #1892's shape).
 //
 // "Start workout" was rendered UNCONDITIONALLY by every entry point — the mobile bar's
-// bolt, the command palette's live action, the Journal aside, and the routine card's
+// bolt, the command palette's live action, the Training Log aside, and the routine card's
 // "Log this session" — while `openLive()`/`openSession()` unconditionally cleared the
 // editor and re-stamped `liveStartEpoch = Date.now()`. The #921 dock carries a MINIMIZED
 // live session whose elapsed timer ticks off exactly that epoch, so a mid-workout tap

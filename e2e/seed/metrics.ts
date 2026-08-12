@@ -65,9 +65,9 @@ export function seedMultiSourceMetric(): void {
   const COACH_TODAY = today(PROFILE_ID);
   // ── Multi-source metric fixture (issue #14) ───────────────────────────────────
   // The SAME metric (nightly HRV) reported by TWO sources — Health Connect and
-  // Oura — over the last five nights, so the Trends → Body "Compare sources"
+  // Oura — over the last five nights, so the Trends → Overview → body census "Compare sources"
   // overlay has something to render and the primary-source picker can be
-  // exercised. HRV is a point (AVG) metric with no standalone Body-tab chart, so
+  // exercised. HRV is a point (AVG) metric with no standalone body-census chart, so
   // this fixture can't disturb the sleep/SRI/zone fixtures above or the seeded
   // charts. Values are plausible synthetic ms figures — no PHI. Idempotent: clear
   // this window's rows for both sources first. Each source keys its own window
@@ -114,7 +114,7 @@ export function seedSourceCompare(): void {
   // the legend/picker used to collapse both to one "Document" label and one teal
   // color. Seed two DEXA-style documents on a DEDICATED member profile plus a
   // body-fat reading sourced from each (source 'document:<id>') and one manual
-  // reading, so Trends → Body's "Compare sources" renders a body_fat card whose two
+  // reading, so Trends → Overview → body census "Compare sources" renders a body_fat card whose two
   // document series carry distinct filenames + colors. Dedicated profile ON PURPOSE
   // (first landing tried profile 1 and broke two sibling specs): extra documents on
   // profile 1 pluralize review-inbox's re-extract-all "1 scan/PDF" copy, and a
@@ -303,7 +303,7 @@ export function seedSourceCompare(): void {
   );
 
   // A hand-edited imported body-metric row (the user-edit lock, #133) on the default
-  // profile so the Trends → Body edit-lock badge + "Resume sync updates" affordance
+  // profile so the Trends → Overview → body census edit-lock badge + "Resume sync updates" affordance
   // (#659) has a row to render. Synthetic value; source is an integration so the row
   // is genuinely sync-owned (only those carry the lock).
   // The date MUST be a day with no other body-metric row: a Withings weight sharing a
@@ -510,16 +510,16 @@ export function seedSunOutdoor(): void {
   }
 
   // #1081 — N-way activity duplicate merge fixture. A dedicated adult member profile,
-  // isolated from profile 1 so the Review cluster + Journal multi-merge specs (which
+  // isolated from profile 1 so the Review cluster + Training Log multi-merge specs (which
   // CONSUME their rows) never race a neighbor. The spec re-seeds both groups in
   // beforeEach; here we create the profile + login and lay down an initial state. Dates
-  // are RELATIVE to the frozen clock so the Journal group lands on the feed's first page.
+  // are RELATIVE to the frozen clock so the Training Log group lands on the feed's first page.
   {
     const nwayId = fixtureProfileId(NWAY_PROFILE);
     const reviewDate = shiftDateStr(today(nwayId), -3);
-    const journalDate = shiftDateStr(today(nwayId), -2);
+    const trainingLogDate = shiftDateStr(today(nwayId), -2);
     const conflictDate = shiftDateStr(today(nwayId), -4);
-    seedNwayMergeFixture(db, nwayId, reviewDate, journalDate, conflictDate);
+    seedNwayMergeFixture(db, nwayId, reviewDate, trainingLogDate, conflictDate);
     seedMemberLogin(E2E_LOGIN_NWAY, nwayId, "write");
     console.log(
       `e2e: seeded N-way merge fixture — profile ${nwayId} (${NWAY_PROFILE}) (#1081)`

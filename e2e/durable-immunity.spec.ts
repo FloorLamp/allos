@@ -7,7 +7,7 @@ import { test, expect } from "./fixtures";
 test("a 2-year-old positive immunity titer is not marked stale (#516)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers/view?name=E2E%20Varicella%20IgG");
+  await page.goto("/results/readings/view?name=E2E%20Varicella%20IgG");
 
   // Populated detail page for the titer (not the empty state).
   await expect(

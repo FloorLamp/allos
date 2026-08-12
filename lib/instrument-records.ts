@@ -11,6 +11,8 @@
 import { db, writeTx } from "./db";
 import { captureDelete } from "./undo-delete-db";
 import { reconcileFlags } from "./queries/medical";
+import { isMinor } from "./life-stage";
+import { getProfileAge } from "./settings";
 import {
   type Instrument,
   type SeverityBand,
@@ -42,6 +44,41 @@ function canonicalNameFor(instrument: AnyInstrument): string {
     : substanceInstrumentDef(instrument).canonicalName;
 }
 
+// ---- #1279's life-stage gate, enforced HERE (issue #2107) -------------------
+//
+// #1174 gated the substance-use SURFACE to adults; #1279 closed the gap under it,
+// because a Server Action is independently POST-callable and "a UI-only gate is
+// theater if the write core underneath has no independent check". It put that check
+// in every substance-use action.
+//
+// The hole (#2107): this module's cores are SHARED with the mental-health surface,
+// and update/delete RESOLVE their instrument from the targeted ROW. So posting the
+// mental-health twins with a substance-instrument row id reached the very scores
+// #1279 refuses to touch — the gate reopened one module over, through the shared
+// resolver. Narrowing the two mental-health actions to their own family would have
+// closed today's two callers and left the next one to rediscover it.
+//
+// So the refusal lives at the gate instead: every write core below asks this ONE
+// question about the instrument it ends up operating on, whichever surface called
+// it. That is a life-stage CONTENT policy, not an authorization check — the module
+// stays auth-blind (no lib/auth import, profileId still first) and the write-access
+// gate remains the calling action's job. Mental-health instruments are not adult-only
+// and pass unconditionally; a substance instrument refuses for a KNOWN minor, and an
+// unknown or adult age passes (lib/life-stage's documented "hide only on a positive
+// under-age match" policy, the same line the surface and the actions use).
+//
+// The substance actions keep their own copies: they answer sooner and with the
+// surface's own wording. They are now defense in depth over a real gate rather than
+// the only gate. lib/adult-only-writes.ts registers this module so a new mutating
+// export that skips the call fails CI.
+export function adultOnlyRefusal(
+  profileId: number,
+  instrument: AnyInstrument
+): boolean {
+  if (isInstrument(instrument)) return false;
+  return isMinor(getProfileAge(profileId));
+}
+
 // The instrument's maximum possible total, resolved across BOTH catalogs — the one
 // place a correction action asks "is this total in range?" so the mental-health and
 // substance-use surfaces can't drift apart on the same question (#1396).
@@ -70,16 +107,19 @@ export interface RecordInstrumentInput {
 }
 
 // Record ONE instrument score for a profile: an `instrument`-category `medical_records`
-// row (#1076) plus its per-item answers, in one IMMEDIATE transaction. Returns the new id.
+// row (#1076) plus its per-item answers, in one IMMEDIATE transaction. Returns the new
+// id, or `null` when the life-stage gate refuses the instrument (#2107) — the same
+// "there is nothing here for this profile" answer the row-resolving cores give.
 export function recordInstrumentScore(
   profileId: number,
   input: RecordInstrumentInput
-): number {
+): number | null {
+  if (adultOnlyRefusal(profileId, input.instrument)) return null;
   const canonicalName = canonicalNameFor(input.instrument);
   return writeTx(() => {
     // category 'instrument' (#1076): a screening-instrument total scores onto its
     // own class, NOT the general lab bucket — so it joins the instrument series and
-    // can never leak into /results/biomarkers or the flagged hero.
+    // can never leak into /results/readings or the flagged hero.
     const info = db
       .prepare(
         `INSERT INTO medical_records
@@ -194,8 +234,12 @@ export function updateInstrumentScore(
       )
       .get(id, profileId, ...ALL_INSTRUMENT_NAMES) as
       { canon: string | null; total: number | null } | undefined;
-    if (!row || instrumentForName(row.canon) == null)
-      return { kind: "not-found" };
+    const resolved = row ? instrumentForName(row.canon) : null;
+    if (!row || resolved == null) return { kind: "not-found" };
+    // #2107: the instrument comes from the ROW, so this is where a caller from the
+    // other family lands. A gate-refused instrument is answered exactly as an
+    // unknown row is — the substance surface's own minor path returns the same.
+    if (adultOnlyRefusal(profileId, resolved)) return { kind: "not-found" };
 
     const answered = db
       .prepare(
@@ -231,8 +275,11 @@ export function deleteInstrumentScore(
   profileId: number,
   id: number
 ): DeleteInstrumentOutcome {
-  if (getInstrumentScoreInstrument(profileId, id) == null)
-    return { kind: "not-found" };
+  const resolved = getInstrumentScoreInstrument(profileId, id);
+  if (resolved == null) return { kind: "not-found" };
+  // #2107: same gate, same answer as update — the row names the instrument, so the
+  // refusal cannot depend on which surface reached this core.
+  if (adultOnlyRefusal(profileId, resolved)) return { kind: "not-found" };
   const undoId = captureDelete("biomarker-record", profileId, id);
   return undoId == null ? { kind: "not-found" } : { kind: "deleted", undoId };
 }
@@ -405,7 +452,7 @@ export function getInstrumentStates(profileId: number): InstrumentState[] {
 // The stored per-item answers for one record (0-based index → answer), for the detail view.
 export function getInstrumentResponses(
   profileId: number,
-  medicalRecordId: number
+  observationId: number
 ): Record<number, number> {
   const rows = db
     .prepare(
@@ -413,7 +460,7 @@ export function getInstrumentResponses(
        WHERE profile_id = ? AND medical_record_id = ?
        ORDER BY item_index`
     )
-    .all(profileId, medicalRecordId) as { idx: number; answer: number }[];
+    .all(profileId, observationId) as { idx: number; answer: number }[];
   const out: Record<number, number> = {};
   for (const r of rows) out[r.idx] = r.answer;
   return out;

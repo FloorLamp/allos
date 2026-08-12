@@ -49,7 +49,7 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
 });
 
 test.describe("protocol chart annotations (#660 ask 1)", () => {
-  test("the Trends Body tab shows a Protocols annotation toggle", async ({
+  test("the Trends body census shows a Protocols annotation toggle", async ({
     page,
   }) => {
     test.slow();
@@ -92,7 +92,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     // The LDL detail chart now carries the annotation toggle bar (previously it had
     // none at all) with the targeting protocol's "Protocols" window pill.
     await page.goto(
-      `/biomarkers/view?name=${encodeURIComponent("LDL Cholesterol")}`
+      `/results/readings/view?name=${encodeURIComponent("LDL Cholesterol")}`
     );
     await expect(
       page.getByRole("main").getByRole("button", { name: "Protocols" })

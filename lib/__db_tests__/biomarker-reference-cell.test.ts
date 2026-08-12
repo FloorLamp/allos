@@ -30,15 +30,15 @@ import { db } from "@/lib/db";
 import { reconcileFlags } from "@/lib/queries";
 import type { ProfileScope } from "@/lib/scope";
 import {
-  biomarkerIndexRows,
-  parseBiomarkerFilters,
-  type BiomarkerTableRecord,
-} from "@/app/(app)/results/biomarker-index";
+  readingIndexRows,
+  parseReadingFilters,
+  type ReadingTableObservation,
+} from "@/app/(app)/results/reading-index";
 import { medicalValueFlagText } from "@/lib/medical-value";
 
 const DRAW_DATE = "2026-03-04";
 
-// A single-profile scope, hand-built: biomarkerIndexRows takes an ALREADY-resolved
+// A single-profile scope, hand-built: readingIndexRows takes an ALREADY-resolved
 // scope and reads only the acting profile + the view set, so no login/grant fixture
 // is needed to exercise the gather.
 function singleScope(profileId: number): ProfileScope {
@@ -103,22 +103,22 @@ function newReading(
   );
 }
 
-function rowsFor(profileId: number): Map<string, BiomarkerTableRecord> {
-  const rows = biomarkerIndexRows(singleScope(profileId), {
-    ...parseBiomarkerFilters({}),
+function rowsFor(profileId: number): Map<string, ReadingTableObservation> {
+  const rows = readingIndexRows(singleScope(profileId), {
+    ...parseReadingFilters({}),
   });
   return new Map(rows.map((r) => [r.canonical_name ?? r.name, r]));
 }
 
 // The severity word the surface renders beside the value, from the row's stored
 // flag — the same decision `MedicalValue showFlagLabel` makes.
-function flagWord(row: BiomarkerTableRecord): string | null {
+function flagWord(row: ReadingTableObservation): string | null {
   return medicalValueFlagText(row.flag, true)?.label ?? null;
 }
 
 describe("the three readings from the issue's table", () => {
   let profileId: number;
-  let rows: Map<string, BiomarkerTableRecord>;
+  let rows: Map<string, ReadingTableObservation>;
 
   beforeAll(() => {
     profileId = newProfile("Reference Cell Adult", {
@@ -241,7 +241,9 @@ describe("no canonical entry — the printed string IS the deciding range", () =
     const row = rowsFor(profileId).get("Fictional Marker Nine");
     expect(row?.referenceCell?.judged).toBe(false);
     expect(row?.referenceCell?.label).toBe("Lab reference");
-    expect(row?.referenceCell?.text).toBe("2-6");
+    // Prefixed, so the cell says which case it is in without leaning on a column
+    // header the desktop table shares with every other row (#2344).
+    expect(row?.referenceCell?.text).toBe("lab 2-6");
     // Nothing to hover: the content already IS the lab's string.
     expect(row?.referenceCell?.title).toBeNull();
   });

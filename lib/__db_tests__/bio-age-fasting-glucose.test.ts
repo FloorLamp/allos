@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { getBioAgeReadings, getDerivedBiomarkerReadings } from "@/lib/queries";
-import { setUserBirthdate } from "@/lib/settings";
+import { setProfileBirthdate } from "@/lib/settings";
 import { db } from "@/lib/db";
 
 // The canonical name since #2335 — aliased so the assertions stay readable.
@@ -63,7 +63,7 @@ describe("bio-age: a fasting-glucose draw with a censored hs-CRP", () => {
   beforeEach(() => {
     profileId = newProfile("Fasting Glucose Draw");
     // Adult on the draw date so PhenoAge is produced (age gate).
-    setUserBirthdate(profileId, "1980-01-01");
+    setProfileBirthdate(profileId, "1980-01-01");
     seedSevenInputs(profileId);
   });
 
@@ -135,12 +135,13 @@ describe("bio-age: a fasting-glucose draw with a censored hs-CRP", () => {
     expect(draws[0].censored).toBeUndefined();
   });
 
-  it("computes HOMA-IR from the same fasting draw (its input REQUIRES that frame)", () => {
-    // Each index's acceptance list is its own claim, never a fold of the two curated
-    // analytes. HOMA-IR requires the FASTING frame since #2357, so this draw — which
-    // states it — produces one alongside PhenoAge.
+  it("computes HOMA-IR from the same fasting draw (both inputs REQUIRE that frame)", () => {
+    // Each index's acceptance list is its own claim, never a fold of the curated
+    // analytes. HOMA-IR requires the FASTING frame on glucose since #2357 and on
+    // insulin since #2371, so this draw — which states both — produces one alongside
+    // PhenoAge.
     insertLab(profileId, "Glucose, Fasting", "mg/dL", "90", 90);
-    insertLab(profileId, "Insulin", "uIU/mL", "6.1", 6.1);
+    insertLab(profileId, "Insulin, Fasting", "uIU/mL", "6.1", 6.1);
     insertLab(profileId, CRP, "mg/L", "0.4", 0.4);
 
     const derived = getDerivedBiomarkerReadings(profileId);
@@ -153,6 +154,19 @@ describe("bio-age: a fasting-glucose draw with a censored hs-CRP", () => {
     // glucose input accepts the unqualified entry as a fallback) and NOT HOMA-IR
     // (whose label asserts the fasting frame the reading does not state).
     insertLab(profileId, "Glucose", "mg/dL", "90", 90);
+    insertLab(profileId, "Insulin, Fasting", "uIU/mL", "6.1", 6.1);
+    insertLab(profileId, CRP, "mg/L", "0.4", 0.4);
+
+    const derived = getDerivedBiomarkerReadings(profileId);
+    expect(derived.some((r) => r.name === HOMA_IR)).toBe(false);
+    expect(derived.some((r) => r.name === "PhenoAge")).toBe(true);
+  });
+
+  it("declines HOMA-IR on an unqualified-INSULIN draw, PhenoAge unaffected (#2371)", () => {
+    // The insulin half of the same guard, end to end. PhenoAge does not read insulin
+    // at all, so it computes; HOMA-IR declines rather than multiply a fasting glucose
+    // by an insulin whose frame nobody wrote down.
+    insertLab(profileId, "Glucose, Fasting", "mg/dL", "90", 90);
     insertLab(profileId, "Insulin", "uIU/mL", "6.1", 6.1);
     insertLab(profileId, CRP, "mg/L", "0.4", 0.4);
 

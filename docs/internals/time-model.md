@@ -3,9 +3,15 @@
 Status: partial (phases 0, 1 and 3 shipped — the ingest boundary, storage, the writer
 chokepoint, the declared column index and the row-level readers. Phase 2, the
 column-name vocabulary, is open: wave 1 landed `occurred_at` on the three observation
-stores (migration 165) and wave 2 renamed `intake_item_logs.given_at` → `recorded_at`
-(migration 173); the food columns (`eaten_at` / `logged_at`), `food_log_events.time_source`
-and the remaining bare-instant conversions are still to come.)
+stores (migration 165), wave 2 renamed `intake_item_logs.given_at` → `recorded_at`
+(migration 173), and wave 3 — the food wave — renamed
+`food_log_events.logged_at` → `recorded_at` and `eaten_at` → `occurred_at`
+(migration 183). `food_log_events.time_source` is KEPT, by owner ruling on #2205
+(2026-08-08): it distinguishes "nobody stated a time" from "someone stated one and the
+write path refused it", which `occurred_at IS NULL` collapses. Still to come:
+`substance_log.logged_at`, `practice_logs.time`, the window columns
+(`start_time`/`end_time` on event tables), the ledger stamps (`at`, `ts`,
+`snapshot_at`), and the remaining bare-instant conversions.)
 
 Two questions look the same and are not:
 
@@ -114,7 +120,8 @@ Known gaps, stated rather than implied:
 `lib/date.ts` answers a question about a VALUE. The question a surface actually asks is
 about a ROW — "when did this dose happen", "which day does this serving count for" — and
 until phase 3 nothing owned it, so `COALESCE(recorded_at, taken_at)` was hand-rolled in six
-places and food paired `eaten_at ?? logged_at` in four more.
+places and food paired `occurred_at ?? recorded_at` (then spelled
+`eaten_at ?? logged_at`) in four more.
 
 `lib/time-columns.ts` declares what every temporal column MEANS, and `lib/row-instants.ts`
 asks the row-level question over that declaration: `eventInstant`, `recordInstant`,
@@ -325,14 +332,32 @@ future instant is not a diagnosis of the device. The measurements form is the se
 kind: its Time is a field the user can see, so it says "that time hasn't happened
 yet" and never diagnoses their clock.
 
-**Known gap, stated rather than implied.** The VITALS half of the same sitting is
-still silent: `insertVitals` and `recordReading` (`lib/reading-writes.ts`) both take
-`resolveStatedOccurredAt(...).value` and discard `.refused`, so a submission carrying
-only a blood pressure loses a refused statement without saying so. The refusal is
-visible at both call sites rather than erased by the resolver's shape; surfacing it
-means widening `ReadingRecordOutcome` and `insertVitals`, which reaches every reading
-writer (imports, the fitness battery) rather than the manual submission #2311 was
-reproduced on.
+**The whole sitting reports now (#2363).** The vitals half used to be silent:
+`insertVitals` answered a bare `boolean` and `ReadingRecordOutcome` had nowhere to
+carry a verdict, so a submission with only a blood pressure kept its reading, lost
+the stated minute and said nothing — while the very same sitting with a weight
+beside it DID report, off the body half. That the answer turned on which fields the
+user happened to fill is the tell that the SHAPE was wrong, not the scope.
+
+Both are widened: `ReadingRecordOutcome`'s success arm and `insertVitals` carry
+`statedTimeRefused`, and `addMeasurements` answers for the SITTING rather than for
+one half of it. Both halves resolve ONE statement through ONE gate
+(`resolveStatedOccurredAt`), so their verdicts agree by construction and taking
+whichever answered is not a choice between two opinions.
+
+WHO reports is the caller's decision, and both answers are correct:
+
+- a MANUAL sitting reports — the user typed a minute and the app discarded it;
+- a NON-MANUAL writer does not, because there is nobody in the room to tell. A
+  document import's readings carry the DOCUMENT's stated time, not a user's, and its
+  refusals belong in the import report. The fitness battery states a day and no clock
+  at all, so its outcome's `statedTimeRefused` is unreachable by construction rather
+  than collapsed; the sleep form posts hours for a night, likewise.
+
+The point of widening the type is that this choice is now MADE at each call site,
+instead of being made for everyone by a shape that could not carry the answer.
+`STATED_FUTURE_SKEW_MS` is unchanged, and a refusal is still a NOTICE: the reading
+always lands, and nothing is persisted to chase the user later.
 
 ## Related
 
@@ -341,6 +366,16 @@ reproduced on.
   never silent.
 - #2311 — the same ruling carried to body metrics: the resolver and the write core
   stop collapsing the verdict, and the measurements form says what it could not keep.
+- #2363 — the vitals half of the same sitting, and the per-caller rule for who
+  reports a refusal and who is right not to.
+- #2312 — WHICH clock a replayed capture is judged against. `resolveCapturedInstant`
+  now REQUIRES its `now`, so a server-side replay site cannot fall back to the wall
+  clock by omission; the dose guard reads the seam like its `isGivenAtAccepted`
+  sibling already did. Mood queues no instant at all — its time model is the captured
+  `date` — and body/vitals were already on the seam through `resolveStatedOccurredAt`.
+- #2522 — the reading half of the same confusion: `formatRelativeTime` bounds its
+  future tolerance on BOTH sides, so a genuinely future stated time says "in 7 hrs"
+  instead of claiming to have just happened.
 - #94 — the day-attribution decision this deliberately does not revisit.
 - #2243 — phase 0, the ingest boundary: `lib/source-time.ts`, the three-arm
   `SourceTime`, and the narrowing ledger.

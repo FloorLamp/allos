@@ -138,7 +138,12 @@ export async function logInjury(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-// Edit an existing injury in place.
+// Edit an existing injury's DECLARATION — what it covers, and the recovering-load
+// preference attached to it. Deliberately a PARTIAL (#2359): this is the only thing
+// the edit form edits, so it is the only thing named here, and everything else on the
+// row (its status and lifecycle dates, when it started, its notes, the fine muscles)
+// is left alone by the core rather than round-tripped back through hidden inputs the
+// form has to remember to keep in sync.
 export async function updateInjury(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
@@ -146,10 +151,6 @@ export async function updateInjury(formData: FormData): Promise<FormResult> {
   const out = updateInjuryCore(profile.id, id, {
     label: String(formData.get("label") ?? "").trim(),
     regions: parseRegionList(formData),
-    muscles: parseMuscleList(formData),
-    status: parseStatus(formData) ?? "active",
-    since: parseSince(formData),
-    notes: String(formData.get("notes") ?? ""),
     ...parseScopeFields(formData),
   });
   if (out.kind !== "ok")

@@ -28,7 +28,7 @@ import {
   judgeTargets,
   summarizeExercise,
   SET_STATUS_TITLES,
-} from "@/lib/journal-format";
+} from "@/lib/training-log-format";
 import {
   suggestNextSet,
   contextualNextSet,
@@ -360,8 +360,10 @@ export default function StrengthSets({
       units.weightUnit
     );
     // Replace the raw progression with the context-adjusted load — carried by the Use
-    // button, the set-1 ghost + focus-fill, and the plate-builder seed alike, since they
-    // all read this one `suggestion`. Routes through the ONE shared contextualNextSet
+    // button, the set-1 ghost PLACEHOLDERS and the plate-builder seed alike, since they
+    // all read this one `suggestion`. The ghost is an offer and the Use tap is the only
+    // write; the `onFocus` fill #335 once had is gone (see the ghost comment below).
+    // Routes through the ONE shared contextualNextSet
     // (#1115 Fix B) so the form composes BOTH the deload-week shave (#741, for a routine
     // lift) AND the recovering-injury temper (#838, for a lift whose region is recovering)
     // identically to the server-resolved surfaces (coaching card, Training-overview session
@@ -454,7 +456,7 @@ export default function StrengthSets({
   // part with a weighted suggestion — per-side offers via its own Use button,
   // and a bodyweight suggestion has no weight ghost.
   const ghost = !p.perSide && partUntouched ? suggestion : null;
-  // Live version of the journal card's missed-target marker, judged by the
+  // Live version of the training log card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
   const showPerSide = isUnilateral(p.name);
@@ -801,7 +803,7 @@ export default function StrengthSets({
                       {rpeSummaryText(sess.sets)}
                     </span>
                   )}
-                  {/* Same missed-target marker as the journal card; the
+                  {/* Same missed-target marker as the training log card; the
                       session status is judged server-side. */}
                   {sess.status === "missed" && (
                     <span

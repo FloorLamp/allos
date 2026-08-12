@@ -1,9 +1,9 @@
+import type { FrequencyPace } from "@/lib/frequency-targets";
 import {
-  type FrequencyPace,
-  type PaceTone,
+  type ProgressPaceTone,
   PACE_BORDER_CLASS,
   PACE_FILL_CLASS,
-} from "@/lib/goals";
+} from "@/lib/pace-presentation";
 
 // One weekly frequency target's progress, normalized for display.
 export interface WeeklyTarget {
@@ -23,7 +23,11 @@ export interface WeeklyTarget {
 // FrequencyPace, so a chip is never "failed"/rose: a recurring week resets rather than
 // fails. Only the LEGACY met/count fallback (a caller with no pace data — none of the
 // live four) can reach the old not-started rose, kept solely for backward compat.
-function chipTone(met: boolean, count: number, pace?: FrequencyPace): PaceTone {
+function chipTone(
+  met: boolean,
+  count: number,
+  pace?: FrequencyPace
+): ProgressPaceTone {
   if (pace) return pace;
   return met ? "met" : count > 0 ? "behind" : "failed";
 }

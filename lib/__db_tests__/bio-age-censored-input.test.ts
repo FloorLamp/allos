@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { getBioAgeReadings, getDerivedBiomarkerReadings } from "@/lib/queries";
-import { setUserBirthdate } from "@/lib/settings";
+import { setProfileBirthdate } from "@/lib/settings";
 import { db } from "@/lib/db";
 
 const DATE = "2024-05-01";
@@ -56,7 +56,7 @@ describe("bio-age: below-detection hs-CRP still completes the PhenoAge draw", ()
   beforeEach(() => {
     profileId = newProfile("Censored CRP Test");
     // Adult on the draw date so PhenoAge is produced (age gate).
-    setUserBirthdate(profileId, "1980-01-01");
+    setProfileBirthdate(profileId, "1980-01-01");
     seedEightInputs(profileId);
   });
 
@@ -94,7 +94,7 @@ describe("bio-age: below-detection hs-CRP still completes the PhenoAge draw", ()
     const bounded = getBioAgeReadings(profileId).draws[0].bioAge;
 
     const other = newProfile("Exact CRP Test");
-    setUserBirthdate(other, "1980-01-01");
+    setProfileBirthdate(other, "1980-01-01");
     seedEightInputs(other);
     insertLab(
       other,
@@ -153,7 +153,7 @@ describe("bio-age: what moves the number, against the curated bands", () => {
 
   beforeEach(() => {
     profileId = newProfile("Effects Test");
-    setUserBirthdate(profileId, "1980-01-01");
+    setProfileBirthdate(profileId, "1980-01-01");
     seedEightInputs(profileId);
     insertLab(
       profileId,

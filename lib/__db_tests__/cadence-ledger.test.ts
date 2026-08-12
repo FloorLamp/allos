@@ -21,9 +21,13 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setWeekMode } from "@/lib/settings";
 import { CADENCE_SCOPES } from "@/lib/cadence";
-import { FREQUENCY_SCOPE_KINDS } from "@/lib/goals";
+import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 import { practiceIdentity } from "@/lib/practice";
-import { cadenceWindows, getCadenceLedger } from "@/lib/queries/cadence-ledger";
+import {
+  cadenceWindows,
+  getCadenceLedger,
+  getSessionCadenceFacts,
+} from "@/lib/queries/cadence-ledger";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargetWeeklyHistory,
@@ -365,6 +369,58 @@ describe("the cadence ledger (#2034)", () => {
   });
 
   // ---- the anchor clamp ----------------------------------------------------
+
+  // ---- one session's own facts (#2503) -------------------------------------
+
+  it("reads a session's facts from the SAME two sources the workout gathers use", () => {
+    const pid = newProfile("cl-session-facts");
+    const activityId = logActivity(
+      pid,
+      today(pid),
+      "strength",
+      JSON.stringify([{ type: "cardio", name: "Row finisher" }])
+    );
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Bench Press', 1, 60, 8), (?, 'Back Squat', 2, 100, 5)`
+    ).run(activityId, activityId);
+
+    const facts = getSessionCadenceFacts(pid, activityId);
+    // The row's own type plus every component type, exactly as `cadenceCounts` counts
+    // a multi-part session.
+    expect([...facts.types].sort()).toEqual(["cardio", "strength"]);
+    expect([...facts.regions].sort()).toEqual(["Chest", "Legs"]);
+  });
+
+  it("gives a sessionless import no regions — the walk that started #2503", () => {
+    const pid = newProfile("cl-session-walk");
+    const walk = logActivity(pid, today(pid), "cardio");
+    expect(getSessionCadenceFacts(pid, walk)).toEqual({
+      types: ["cardio"],
+      regions: [],
+    });
+  });
+
+  it("answers empty for a missing or cross-profile row rather than guessing", () => {
+    const pid = newProfile("cl-session-scope");
+    const other = newProfile("cl-session-other");
+    const theirs = logActivity(other, today(other), "strength");
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Bench Press', 1, 60, 8)`
+    ).run(theirs);
+
+    // Empty facts advance nothing, which is the honest answer for a row this profile
+    // does not have — never another profile's chest day.
+    expect(getSessionCadenceFacts(pid, theirs)).toEqual({
+      types: [],
+      regions: [],
+    });
+    expect(getSessionCadenceFacts(pid, 987654)).toEqual({
+      types: [],
+      regions: [],
+    });
+  });
 
   it("never lets a FUTURE-dated log fill the in-progress week", () => {
     const pid = newProfile("cl-future");

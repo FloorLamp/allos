@@ -1,4 +1,4 @@
-// SERVER-ACTION TIER — the Journal's manual pair-merge (issue #64).
+// SERVER-ACTION TIER — the Training Log's manual pair-merge (issue #64).
 //
 // Proves mergeActivities runs through the mocked auth guard and: folds the
 // discarded row's gap-filling fields into the keeper (COALESCE(keep, drop)), marks

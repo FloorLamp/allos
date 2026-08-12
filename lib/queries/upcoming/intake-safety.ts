@@ -13,7 +13,7 @@ import {
   slotHintBucket,
   timeBucket,
   TIME_BUCKET_LABELS,
-} from "../../supplement-schedule";
+} from "../../intake-schedule";
 import { cadenceLabel } from "../../intake-cadence";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
@@ -71,8 +71,8 @@ import { biomarkerRetestIdentity } from "../../canonical-name";
 import { biomarkerDismissalKey } from "../../dismissal-keys";
 import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
 import {
-  getUserSex,
-  getUserAgeOn,
+  getProfileSex,
+  getProfileAgeOn,
   profileAgeMonths,
   getMentalHealthShareFull,
 } from "../../settings";
@@ -105,11 +105,11 @@ import {
   plainRiskReasons,
 } from "../../reasons";
 import { isFlaggedForRetest } from "../../biomarker-retest-copy";
-import type { MedicalRecord } from "../../types";
+import type { ClinicalObservation } from "../../types";
 import { pickNextAppointment } from "../../household";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getRefillRates,
   getDietaryLimitWarnings,
@@ -148,7 +148,7 @@ import type { AppRoute } from "../../hrefs";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
 import {
-  getMedicalRecords,
+  getClinicalObservations,
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
@@ -188,8 +188,8 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
 // the page shows and the denominator it prints come from ONE evaluation, so
 // "9 of 14 taken" can never disagree with the rows behind the disclosure (#1504).
 interface ScheduledDoseRow {
-  supp: ReturnType<typeof getSupplements>[number];
-  dose: ReturnType<typeof getSupplementDoses>[number];
+  supp: ReturnType<typeof getIntakeItems>[number];
+  dose: ReturnType<typeof getIntakeDoses>[number];
   taken: boolean;
 }
 
@@ -200,8 +200,8 @@ function scheduledDoseRows(
   profileId: number,
   today: string
 ): ScheduledDoseRow[] {
-  const supplements = getSupplements(profileId);
-  const doses = getSupplementDoses(profileId);
+  const supplements = getIntakeItems(profileId);
+  const doses = getIntakeDoses(profileId);
   const taken = getTakenDoseIds(profileId, today);
   // Derived context (#1292/#1298) widens the active set so a Poor sleep / Period
   // situational dose surfaces on Upcoming + the hero + the digest exactly while its
@@ -282,7 +282,7 @@ function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
       .join(" · "),
     // Shared dose-day sort key (bucket → priority → stack → name) so morning
     // and bedtime doses no longer interleave alphabetically within the band —
-    // the SAME ordering /medicine's due-today section uses (#297).
+    // the SAME ordering the intake surface's due-today section uses (#297).
     sortHint: doseSortKey({
       timeOfDay: dose.time_of_day,
       obligation: supp.obligation,
@@ -306,8 +306,8 @@ function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
 // renderer already speak that shape. The `band` is deliberately absent and `dueDate`
 // null so nothing downstream can mistake one of these for work.
 export function offeredItems(profileId: number, today: string): UpcomingItem[] {
-  const supplements = getSupplements(profileId);
-  const doses = getSupplementDoses(profileId);
+  const supplements = getIntakeItems(profileId);
+  const doses = getIntakeDoses(profileId);
   const activeSituations = getEffectiveActiveSituations(profileId, today);
   const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
@@ -379,7 +379,7 @@ export function refillItems(profileId: number, today: string): UpcomingItem[] {
   // predicate the dose items use gates it here and in the notify tick's runRefills.
   // The Supplements page still shows the item's supply state — this drops only the
   // nudge, never the fact.
-  const tracked = getSupplements(profileId).filter(
+  const tracked = getIntakeItems(profileId).filter(
     (s) => s.active && s.quantity_on_hand != null && isPushedIntake(s)
   );
   if (tracked.length === 0) return [];
@@ -444,9 +444,9 @@ export function poolRefillItems(
   return items;
 }
 
-// Supplement stack totals that exceed an NIH Tolerable Upper Intake Level (issue
+// IntakeItem stack totals that exceed an NIH Tolerable Upper Intake Level (issue
 // #148). Reuses the shared getDietaryLimitWarnings gather (same computation as the
-// /medicine warning rows), so a nutrient over its UL surfaces as a dismissible
+// the intake surfaces warning rows), so a nutrient over its UL surfaces as a dismissible
 // finding keyed by `dietary-limit:<nutrient>` — it goes through getFindingSuppressions
 // like every other finding, so a dismiss/snooze on Upcoming silences it. Standing
 // informational findings (no due date): banded to Today, framed "discuss with your
@@ -496,7 +496,7 @@ export function prnMaxItems(profileId: number, today: string): UpcomingItem[] {
 
 // Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).
 // Reuses the shared getInteractionWarnings gather (same pure detectInteractions the
-// /medicine warning rows format over), so each interacting PAIR surfaces as a
+// the intake surfaces warning rows format over), so each interacting PAIR surfaces as a
 // dismissible finding keyed by `interaction:<lo>-<hi>` — it goes through
 // getFindingSuppressions like every other finding, so a dismiss/snooze on Upcoming
 // silences it ("dismiss once, silence everywhere"). Standing informational findings
@@ -627,7 +627,7 @@ export function weatherMedItems(
 
 // Pharmacogenomics cross-check (issue #710): a stored PGx result (a genomic_variants
 // row, result_type='pharmacogenomic') affecting a medication in the active stack.
-// Reuses the shared getPgxWarnings gather (same pure crossCheckPgx the /medicine row
+// Reuses the shared getPgxWarnings gather (same pure crossCheckPgx the intake surface row
 // notice + the create/edit notice format over), so each affected med surfaces as a
 // dismissible finding keyed by `pgx:<medId>:<gene>:<status>` — it goes through
 // getFindingSuppressions like every other finding, so a dismiss/snooze on Upcoming

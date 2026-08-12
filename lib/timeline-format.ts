@@ -264,7 +264,7 @@ export function compactList(items: string[], max = 3): string {
   return `${clean.slice(0, max).join(", ")} +${clean.length - max} more`;
 }
 
-export function journalActivityHref(activityId: number): AppRoute {
+export function trainingLogActivityHref(activityId: number): AppRoute {
   return `/training?tab=log#activity-${activityId}`;
 }
 
@@ -476,7 +476,7 @@ export function medicalGroupLabel(
 // Destination for a grouped medical/lab panel event: the source document when
 // known, else a single-biomarker chart when the panel is one marker, else the
 // biomarkers index.
-export function medicalRecordHref(
+export function clinicalObservationHref(
   documentId: number | null,
   names: string[],
   firstName: string | null
@@ -485,7 +485,7 @@ export function medicalRecordHref(
   if (names.length === 1 && firstName) {
     return readingDetailHref(firstName);
   }
-  return "/results/biomarkers";
+  return "/results/readings";
 }
 
 // Parse the "label::value::unit::flag" pipe-delimited GROUP_CONCAT payloads the

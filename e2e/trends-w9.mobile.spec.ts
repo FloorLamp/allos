@@ -15,8 +15,11 @@ import { expandTrendsContext } from "./trends-chrome";
 //   • #1485 D(b) — training volume is a per-day total whose rest days are real
 //     zeros; it now draws bars. Asserted as MARKS in the DOM (bar rectangles, and
 //     no line path in that tile), because "it looks less noisy" is not testable.
-// Saved-view round-trip coverage lives in the desktop suite now that the control
-// is deliberately absent from the mobile range row.
+// There is no saved-view coverage to point at any more, on this project or the
+// desktop one: #1653 deleted the feature outright (strip, actions, accessors, list
+// math) and #2512 deleted the last absence spec. What remains is one assertion in
+// e2e/trends-fold.mobile.spec.ts that the mobile range row carries no Views strip
+// (#2524).
 
 test.describe("annotation + protocol-window toggles under the new chrome (#1493 A)", () => {
   test("the toggles are absent on a tab whose charts carry no markers", async ({

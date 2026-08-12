@@ -301,9 +301,14 @@ export default function OfflineQueueProvider({
   );
 
   useEffect(() => {
-    void refreshCount();
-    void refreshRejected();
-    void flush(); // on-load flush for a queue left pending across a reload
+    // Start the initial IndexedDB reads and replay from a browser task. Their state
+    // updates then originate in that external callback, just like every later
+    // online/visibility/service-worker trigger below.
+    const initialSync = window.setTimeout(() => {
+      void refreshCount();
+      void refreshRejected();
+      void flush(); // on-load flush for a queue left pending across a reload
+    }, 0);
 
     const onOnline = () => void flush();
     const onVisible = () => {
@@ -329,6 +334,7 @@ export default function OfflineQueueProvider({
     sw?.addEventListener("message", onSwMessage);
 
     return () => {
+      window.clearTimeout(initialSync);
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
       sw?.removeEventListener("message", onSwMessage);

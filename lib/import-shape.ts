@@ -84,7 +84,7 @@ import type {
   ToothSystem,
 } from "./types/medical";
 import { isRealIsoDate } from "./date";
-import { carriesBiomarkerIdentity } from "./medical-categories";
+import { carriesResultIdentity } from "./medical-categories";
 import {
   bodyMetricsFromExtraction,
   bodyMetricsFromReadings,
@@ -186,6 +186,12 @@ export interface PersistRecord {
   // layer resolves it to the local condition row and stamps the projected medication's
   // indication_condition_id. Null/absent on the AI path.
   indication_condition_external_id?: string | null;
+  // The per-item answers behind a screening-instrument SCORE (#2321), on
+  // `category === 'instrument'` records only. The persist layer writes them into
+  // `instrument_responses` against the row it just inserted — the same child rows the
+  // in-app administration path writes, so a document-imported score and a tapped-in
+  // one are indistinguishable downstream (severity band, item 9 / item 10, undo).
+  instrumentAnswers?: { itemIndex: number; answer: number }[];
 }
 
 export interface PersistImmunization {
@@ -473,7 +479,7 @@ export interface PersistInput {
   // Waist-circumference samples (metric_samples, metric 'waist_circumference_cm') —
   // the third length measure, projected exactly like the other two (#2322). The
   // projection is what lets the `waist-circ` slug claim the analyte name at all; see
-  // METRIC_DOCUMENT_REACH in lib/body-metric-analytes.ts. OPTIONAL for the same
+  // METRIC_DOCUMENT_REACH in lib/trend-metric-analytes.ts. OPTIONAL for the same
   // reason genomicVariants / imagingStudies are: an existing PersistInput literal
   // (the DB-tier fixtures) needs no change, and every reader takes it with `?? []`.
   waistCircs?: DocWaistCirc[];
@@ -695,7 +701,7 @@ export function extractionToPersistInput(
     // A `report` row is a narrative document (#708 — an ECG/stress-test/imaging
     // interpretation the model classified as `report`), not a valued analyte: its text
     // belongs in `notes` with a NULL value, matching the CDA report shape that
-    // Results → Reports reads (getReportRecords renders `notes`). The model puts the
+    // Results → Reports reads (getClinicalReports renders `notes`). The model puts the
     // narrative in `value` (the natural result field), so fold value+notes into one
     // body here — otherwise the report renders with an empty body.
     const isReport = r.category === "report";
@@ -1136,7 +1142,7 @@ export function extractionToPersistInput(
     // categories that carry a biomarker identity at all (#2318) — an `assessment`
     // row names a questionnaire item or a qualifier, never an analyte.
     canonicalNamesToRegister: records
-      .filter((r) => carriesBiomarkerIdentity(r.category))
+      .filter((r) => carriesResultIdentity(r.category))
       .map((r) => r.canonical),
     providers,
   };
@@ -1192,6 +1198,8 @@ export function healthRecordToPersistInput(
     // Tier-1 indication link (#1052): the resolved reason (condition) reference.
     indication_condition_external_id:
       r.indication_condition_external_id ?? null,
+    // The folded screening instrument's per-item answers (#2321), on the score row.
+    instrumentAnswers: r.instrumentAnswers,
   }));
   // Project body-metric records (weight / body fat / resting HR) into body_metrics
   // — the same single-home rule the AI path uses.

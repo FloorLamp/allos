@@ -21,26 +21,26 @@ export function seedMergeFixtures(): void {
   seedDupReviewPair(db, PROFILE_ID);
 
   // ── Manual pair-merge fixture (issue #64) ─────────────────────────────────────
-  // Two same-day MANUAL cardio activities the Journal's manual merge test folds
+  // Two same-day MANUAL cardio activities the Training Log's manual merge test folds
   // together — the "duplicate no heuristic catches" case (two manual rows, no clock
   // windows, so detection deliberately ignores them). Distinct date + titles so this
   // fixture never collides with the cross-source dedup pair above. Synthetic only.
-  // RELATIVE date (#1048 frozen-clock follow-up): the journal feed's first page is the
-  // newest JOURNAL_PAGE_DAYS (14) days, and the run-start frozen clock advances daily,
+  // RELATIVE date (#1048 frozen-clock follow-up): the training log feed's first page is the
+  // newest TRAINING_LOG_PAGE_DAYS (14) days, and the run-start frozen clock advances daily,
   // so the old FIXED "2026-07-05" aged OFF page 1 — the merge specs couldn't see the
   // keeper card and went red suite-wide. Anchor a few days back like the #659 edit-lock
   // fixture so it stays inside the page-1 window; the three pairs stay on DISTINCT days.
   const MERGE_DATE = shiftDateStr(today(PROFILE_ID), -8);
   db.prepare(
-    `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Journal merge keeper', 'Journal merge dupe')`
+    `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Training Log merge keeper', 'Training Log merge dupe')`
   ).run(PROFILE_ID, MERGE_DATE);
   const insMerge = db.prepare(
     `INSERT INTO activities
      (profile_id, date, type, title, duration_min, distance_km, source, external_id, edited)
    VALUES (?, ?, 'cardio', ?, ?, ?, NULL, NULL, 0)`
   );
-  insMerge.run(PROFILE_ID, MERGE_DATE, "Journal merge keeper", 40, 6);
-  insMerge.run(PROFILE_ID, MERGE_DATE, "Journal merge dupe", 42, null);
+  insMerge.run(PROFILE_ID, MERGE_DATE, "Training Log merge keeper", 40, 6);
+  insMerge.run(PROFILE_ID, MERGE_DATE, "Training Log merge dupe", 42, null);
 
   // ── Conflict-aware merge fixture (issue #100) ─────────────────────────────────
   // Two same-day MANUAL cardio rows that genuinely DISAGREE on duration (42 vs 51

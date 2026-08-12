@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { revalidateTarget, type RevalidateTarget } from "./revalidate";
-import { summarizeExercise, type SetRow } from "./journal-format";
+import { summarizeExercise, type SetRow } from "./training-log-format";
 import { baseLiftName } from "./lifts";
 import { toCsv } from "./csv";
 
@@ -741,7 +741,7 @@ export const DATASETS: ExportDataset[] = [
     // "morning × 1 cap; evening × 2 tab (with food)"). Keeping the row at the
     // item level preserves the edit/delete model: deleting a row removes the
     // parent intake_items (its doses/logs cascade). The dose schedule is
-    // read-only here — dose editing lives on /medicine.
+    // read-only here — dose editing lives on the intake surfaces.
     key: "supplements",
     label: "Supplements & Medications",
     table: "intake_items",
@@ -798,7 +798,7 @@ export const DATASETS: ExportDataset[] = [
     // Adherence log: one row per confirmed dose on a date. A child of
     // intake_items (joined via item_id), so browse/export-only.
     key: "intake_log",
-    label: "Supplement & medication log",
+    label: "IntakeItem & medication log",
     table: "intake_item_logs",
     deletable: false,
     // status + skip_reason distinguish a SKIPPED dose from a taken one (a skipped
@@ -1282,7 +1282,7 @@ export const DATASETS: ExportDataset[] = [
   }),
   tableDataset({
     // Food-log EVENT ledger (#950): one append-only row per serving TAP, carrying the
-    // tap `logged_at` (a UTC instant) beside the food day. It's the timing layer behind
+    // tap `recorded_at` (a UTC instant) beside the food day. It's the timing layer behind
     // slot-aware button ranking; the food_log counter stays the day's data of record.
     // User-entered health data, so it's in the portable export; id-keyed + owned, so
     // deletable like the other logged datasets (a wipe just degrades ranking to overall
@@ -1290,9 +1290,9 @@ export const DATASETS: ExportDataset[] = [
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
-    columns: ["date", "group_key", "logged_at", "meal_slot"],
-    select: `SELECT id, date, group_key, logged_at, meal_slot
-       FROM food_log_events WHERE profile_id = ? ORDER BY logged_at DESC`,
+    columns: ["date", "group_key", "recorded_at", "meal_slot"],
+    select: `SELECT id, date, group_key, recorded_at, meal_slot
+       FROM food_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
@@ -1449,7 +1449,7 @@ export const DELETE_POLICY = {
     // Also refresh the import document subpages, which list these readings.
     revalidate: [
       "/results",
-      "/biomarkers/view",
+      "/results/readings/view",
       revalidateTarget("/import/[id]"),
       "/",
     ],

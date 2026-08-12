@@ -9,15 +9,17 @@ import DoseLedgerTable, {
 } from "@/components/intake/DoseLedgerTable";
 import { today } from "@/lib/db";
 import {
-  getIntakeDoseHistoryAll,
-  getSupplements,
-  getSupplementDoses,
+  getIntakeDoseLedgerPage,
+  getIntakeItems,
+  getIntakeDoses,
 } from "@/lib/queries";
+import PaginationControls from "@/components/PaginationControls";
+import { HISTORY_PAGE_SIZE, clampPage, pageCount } from "@/lib/pagination";
 import { getDisplayFormatPrefs, getTimezone } from "@/lib/settings";
 import { zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
-import { isPrn } from "@/lib/supplement-schedule";
+import { isOnDemand } from "@/lib/intake-schedule";
 import {
   DOSE_LEDGER_KIND_FILTERS,
   DOSE_LEDGER_KIND_LABELS,
@@ -36,7 +38,7 @@ import {
   type DateRange,
 } from "@/lib/timeline-format";
 import { doseLedgerHref, intakeHref } from "@/lib/hrefs";
-import type { SupplementKind } from "@/lib/types";
+import type { IntakeItemKind } from "@/lib/types";
 
 // The ISO floor an all-time window reads from — the ledger's reader takes a `since`
 // day, and "all time" is a window with no lower bound rather than a second query.
@@ -71,13 +73,14 @@ export default function DoseLedgerView({
   loginId: number;
   canWrite: boolean;
   // Which surface is rendering — the kind this ledger opens pre-filtered to.
-  surface: SupplementKind;
+  surface: IntakeItemKind;
   params: {
     from?: string | string[];
     to?: string | string[];
     range?: string | string[];
     kind?: string | string[];
     item?: string | string[];
+    page?: string | string[];
   };
 }) {
   const todayStr = today(profileId);
@@ -101,7 +104,7 @@ export default function DoseLedgerView({
   // Every item this profile owns, active or not: an item paused or retired since the
   // dose was taken still took that dose, and both the filter's options and the row's
   // item name have to keep saying so.
-  const allItems = getSupplements(profileId);
+  const allItems = getIntakeItems(profileId);
   const filterItems = allItems.filter(
     (item) => !queryKind || item.kind === queryKind
   );
@@ -110,11 +113,21 @@ export default function DoseLedgerView({
     ? rawItem
     : undefined;
 
-  const rows = getIntakeDoseHistoryAll(profileId, range.from ?? ISO_FLOOR, {
-    kind: queryKind,
-    itemId,
-    untilDate: range.to,
-  });
+  // The ledger is PAGED at the SQL level (#2445). The range control offers an
+  // explicit "All time", which is a window with no lower bound — a legitimate answer
+  // for a record of what was taken, and therefore not a bound at all. A must-obligation
+  // medication logged twice daily for years is thousands of rows, and without a page
+  // every one of them was fetched, serialized and rendered on that tap.
+  const requestedPage = clampPage(Number(firstParam(params.page)) || 1);
+  const ledger = getIntakeDoseLedgerPage(
+    profileId,
+    range.from ?? ISO_FLOOR,
+    { kind: queryKind, itemId, untilDate: range.to },
+    requestedPage,
+    HISTORY_PAGE_SIZE
+  );
+  const rows = ledger.rows;
+  const ledgerPages = pageCount(ledger.total, HISTORY_PAGE_SIZE);
 
   const entries: DoseLedgerEntry[] = rows.map((row) => {
     // The row-level time question, asked once (#2205 phase 3): the stated event
@@ -154,7 +167,7 @@ export default function DoseLedgerView({
     number,
     { id: number; amount: string | null; time_of_day: string | null }[]
   >();
-  for (const dose of getSupplementDoses(profileId)) {
+  for (const dose of getIntakeDoses(profileId)) {
     const list = dosesByItem.get(dose.item_id) ?? [];
     list.push({
       id: dose.id,
@@ -168,7 +181,7 @@ export default function DoseLedgerView({
     name: item.name,
     kind: item.kind,
     product: item.product,
-    asNeeded: isPrn(item),
+    asNeeded: isOnDemand(item),
     doses: dosesByItem.get(item.id) ?? [],
   }));
 
@@ -189,6 +202,22 @@ export default function DoseLedgerView({
         allTime: isAllTimeRange(range),
       }),
     }));
+
+  const pageHref = (page: number) =>
+    isAllTimeRange(range)
+      ? doseLedgerHref(surface, {
+          kind: kindFilter,
+          item: itemId,
+          allTime: true,
+          page,
+        })
+      : doseLedgerHref(surface, {
+          from: range.from,
+          to: range.to,
+          kind: kindFilter,
+          item: itemId,
+          page,
+        });
 
   const rangeHref = (next: DateRange) =>
     isAllTimeRange(next)
@@ -271,6 +300,22 @@ export default function DoseLedgerView({
           defaultTime={defaultTime}
           defaultItemId={itemId}
           note={doseLedgerWindowNote(range)}
+        />
+        {/* A LINK pager: the page rides the URL, so what it turns is the read.
+            Every other control here (kind, item, range) drops the page — a
+            narrowed ledger re-pages from its first row rather than landing the
+            reader on a page the new filter may not have. */}
+        <PaginationControls
+          page={ledger.page}
+          pageCount={ledgerPages}
+          pageSize={HISTORY_PAGE_SIZE}
+          total={ledger.total}
+          visibleCount={rows.length}
+          prevHref={ledger.page > 1 ? pageHref(ledger.page - 1) : null}
+          nextHref={
+            ledger.page < ledgerPages ? pageHref(ledger.page + 1) : null
+          }
+          testId="dose-ledger-pagination"
         />
       </div>
 

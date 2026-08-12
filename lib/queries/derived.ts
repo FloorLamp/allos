@@ -2,7 +2,7 @@
 // biomarker records. This is the DB-facing seam over the pure lib/derived-biomarkers
 // math: it reads the stored component series (through the already profile-scoped
 // getBiomarkerSeries), resolves demographics from settings, computes the indices,
-// and shapes each result as a read-only MedicalRecord the biomarkers table, the
+// and shapes each result as a read-only ClinicalObservation the biomarkers table, the
 // biomarker detail page, and the Trends surfaces render like any other analyte.
 //
 // No raw SQL lives here — every read goes through an already-scoped query
@@ -20,15 +20,15 @@ import { canonicalGroupKey, groupByCanonicalName } from "../biomarker-group";
 import { canonicalResolver } from "../canonical-resolve";
 import { cache } from "../request-cache";
 import {
-  getUserSex,
-  getUserAgeOn,
-  getUserReproductiveStatus,
+  getProfileSex,
+  getProfileAgeOn,
+  getProfileReproductiveStatus,
 } from "../settings";
 import { reconciledFlag, plottableReadingValue } from "../reference-range";
 import {
   computeDerivedReadings,
   derivedInputCanonicalNames,
-  derivedInputSlots,
+  presentInputKeysFor,
   derivedInputUnitsFor,
   DERIVED_NAMES,
   type ComponentReading,
@@ -39,7 +39,7 @@ import {
 } from "../derived-biomarkers";
 import { convertToCanonical } from "../unit-conversions";
 import { PHENOAGE_INPUT_NAMES, phenoAgeReferenceValue } from "../bio-age";
-import type { MedicalRecord } from "../types";
+import type { ClinicalObservation } from "../types";
 
 // The numeric an arithmetic index can consume from a stored reading, WITH its
 // censoring marker: the exact value_num when present, else the DETECTION LIMIT of a
@@ -73,8 +73,8 @@ function componentNumeric(r: {
 // in the formula's unit yields no reference rather than a number in the wrong scale.
 function phenoAgeReferenceResolver(
   profileId: number,
-  sex: ReturnType<typeof getUserSex>,
-  status: ReturnType<typeof getUserReproductiveStatus>
+  sex: ReturnType<typeof getProfileSex>,
+  status: ReturnType<typeof getProfileReproductiveStatus>
 ): PhenoAgeReferenceResolver {
   const units = derivedInputUnitsFor("PhenoAge");
   const cbCache = new Map<string, ReturnType<typeof getCanonicalBiomarker>>();
@@ -84,7 +84,7 @@ function phenoAgeReferenceResolver(
     const ref = phenoAgeReferenceValue(
       cb,
       sex,
-      getUserAgeOn(profileId, date),
+      getProfileAgeOn(profileId, date),
       status
     );
     if (!ref) return null;
@@ -97,13 +97,13 @@ function phenoAgeReferenceResolver(
 }
 
 // A virtual (unstored) record synthesized from a computed derived reading. Same
-// shape as a stored MedicalRecord (so every consumer treats it uniformly) but with
+// shape as a stored ClinicalObservation (so every consumer treats it uniformly) but with
 // `derived` set, a synthetic negative id, and the substituted formula string.
 function toVirtualRecord(
   reading: DerivedReading,
   index: number,
-  flag: MedicalRecord["flag"]
-): MedicalRecord {
+  flag: ClinicalObservation["flag"]
+): ClinicalObservation {
   return {
     // Synthetic, stable, and negative so it can never collide with a real row's
     // positive id (used only as a React key / grouping id — never for a write).
@@ -150,10 +150,13 @@ const getDerivedComputation = cache(function getDerivedComputation(
   profileId: number
 ): {
   readings: DerivedReading[];
-  // The input canonical names the profile has ≥1 usable numeric reading of.
-  presentInputs: Set<string>;
-  sex: ReturnType<typeof getUserSex>;
-  status: ReturnType<typeof getUserReproductiveStatus>;
+  // Which of an index's input SLOTS the profile has ≥1 usable numeric reading for,
+  // keyed by index. Per-index rather than one shared set (#2372): two indices can key
+  // the same slot while accepting different names, so a slot's presence is only an
+  // answer once you say which index is asking.
+  presentInputsByIndex: Map<DerivedName, Set<string>>;
+  sex: ReturnType<typeof getProfileSex>;
+  status: ReturnType<typeof getProfileReproductiveStatus>;
 } {
   const resolve = canonicalResolver();
   const grouped = groupByCanonicalName(
@@ -175,8 +178,10 @@ const getDerivedComputation = cache(function getDerivedComputation(
       .filter(
         (
           x
-        ): x is { r: MedicalRecord; v: { value: number; bound?: "<" | ">" } } =>
-          x.v != null
+        ): x is {
+          r: ClinicalObservation;
+          v: { value: number; bound?: "<" | ">" };
+        } => x.v != null
       )
       .map(({ r, v }) => ({
         date: r.date,
@@ -187,13 +192,13 @@ const getDerivedComputation = cache(function getDerivedComputation(
     seriesByCanonical.set(canonical, rows);
   }
 
-  // An input SLOT is present when ANY name it accepts has a usable reading — the
-  // completeness checklist asks for one glucose, not one per spelling.
-  const presentInputs = new Set<string>();
-  for (const slot of derivedInputSlots()) {
-    if (slot.accepts.some((n) => (seriesByCanonical.get(n) ?? []).length > 0))
-      presentInputs.add(slot.key);
-  }
+  // An input SLOT is present when ANY name THAT INDEX accepts for it has a usable
+  // reading — the completeness checklist asks for one glucose, not one per spelling,
+  // and it asks on behalf of one index (#2372).
+  const hasReading = (n: string) => (seriesByCanonical.get(n) ?? []).length > 0;
+  const presentInputsByIndex = new Map<DerivedName, Set<string>>(
+    DERIVED_NAMES.map((n) => [n, presentInputKeysFor(n, hasReading)])
+  );
 
   // Dates already covered by a stored reading of each derived analyte — skip them
   // (a lab reporting the index directly wins its draw over a computed one).
@@ -205,22 +210,22 @@ const getDerivedComputation = cache(function getDerivedComputation(
     if (dates.size) storedDatesByName[name] = dates;
   }
 
-  const sex = getUserSex(profileId);
-  const status = getUserReproductiveStatus(profileId);
+  const sex = getProfileSex(profileId);
+  const status = getProfileReproductiveStatus(profileId);
   const readings = computeDerivedReadings(
     seriesByCanonical,
-    { sex, ageOn: (date) => getUserAgeOn(profileId, date) },
+    { sex, ageOn: (date) => getProfileAgeOn(profileId, date) },
     {
       storedDatesByName,
       phenoAgeReference: phenoAgeReferenceResolver(profileId, sex, status),
     }
   );
-  return { readings, presentInputs, sex, status };
+  return { readings, presentInputsByIndex, sex, status };
 });
 
 export function getDerivedBiomarkerReadings(
   profileId: number
-): MedicalRecord[] {
+): ClinicalObservation[] {
   const { readings, sex, status } = getDerivedComputation(profileId);
 
   // Cache canonical entries so each analyte's ranges are looked up once for flags.
@@ -232,7 +237,7 @@ export function getDerivedBiomarkerReadings(
 
   return readings.map((reading, i) => {
     const cb = cbFor(reading.name);
-    const age = getUserAgeOn(profileId, reading.date);
+    const age = getProfileAgeOn(profileId, reading.date);
     // reconciledFlag over a null "current" flag yields the flag the ranges imply
     // (high/low/non-optimal) or null/undefined when in-band — collapse both to null.
     const flag =
@@ -259,7 +264,7 @@ export function getDerivedCanonicalNames(profileId: number): string[] {
 export function getDerivedBiomarkerSeriesFor(
   profileId: number,
   canonical: string
-): MedicalRecord[] {
+): ClinicalObservation[] {
   if (!(DERIVED_NAMES as readonly string[]).includes(canonical)) return [];
   return getDerivedBiomarkerReadings(profileId).filter(
     (r) => r.name === canonical
@@ -287,7 +292,7 @@ export function getUsedCanonicalNamesWithDerived(profileId: number): string[] {
 export function getBiomarkerSeriesWithDerived(
   profileId: number,
   canonical: string
-): MedicalRecord[] {
+): ClinicalObservation[] {
   return getBiomarkerSeriesWithDerivedFor(profileId, [canonical]).get(
     canonical
   )!;
@@ -310,7 +315,7 @@ export function getBiomarkerSeriesWithDerived(
 export function getBiomarkerSeriesWithDerivedFor(
   profileId: number,
   canonicals: readonly string[]
-): Map<string, MedicalRecord[]> {
+): Map<string, ClinicalObservation[]> {
   const names = [...new Set(canonicals)];
   const stored = getBiomarkerSeriesFor(profileId, names);
   const wantsDerived = names.some((n) =>
@@ -318,7 +323,7 @@ export function getBiomarkerSeriesWithDerivedFor(
   );
   const derivedAll = wantsDerived ? getDerivedBiomarkerReadings(profileId) : [];
 
-  const out = new Map<string, MedicalRecord[]>();
+  const out = new Map<string, ClinicalObservation[]>();
   for (const name of names) {
     const rows = stored.get(name) ?? [];
     const derived = derivedAll.filter((r) => r.name === name);
@@ -368,21 +373,25 @@ export function getBioAgeReadings(profileId: number): {
   draws: BioAgeDraw[];
   presentInputs: string[];
 } {
-  const { readings, presentInputs } = getDerivedComputation(profileId);
+  const { readings, presentInputsByIndex } = getDerivedComputation(profileId);
   const draws: BioAgeDraw[] = readings
     .filter((r) => r.name === "PhenoAge")
     .map((r) => ({
       date: r.date,
       bioAge: r.value,
-      chronoAge: getUserAgeOn(profileId, r.date),
+      chronoAge: getProfileAgeOn(profileId, r.date),
       inputs: r.inputs,
       ...(r.censored ? { censored: r.censored } : {}),
       effects: r.effects ?? [],
     }));
   // The nine PhenoAge inputs the profile has any usable reading of (drives the
-  // partial-panel checklist CTA) — filtered from the shared present-input set.
+  // partial-panel checklist CTA) — PhenoAge's OWN slot presence, which is what this
+  // checklist is asking about (#2372); a glucose that only PhenoAge accepts counts
+  // here and does not silently count for HOMA-IR beside it.
+  const phenoPresent =
+    presentInputsByIndex.get("PhenoAge") ?? new Set<string>();
   return {
     draws,
-    presentInputs: PHENOAGE_INPUT_NAMES.filter((n) => presentInputs.has(n)),
+    presentInputs: PHENOAGE_INPUT_NAMES.filter((n) => phenoPresent.has(n)),
   };
 }

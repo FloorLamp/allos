@@ -76,6 +76,19 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     await expect(history).toBeVisible();
     await expect(history.getByTestId("day-history-calendar")).toBeVisible();
     await expect(history.getByTestId("day-history-row")).not.toHaveCount(0);
+    const rowButton = history
+      .getByRole("button", { name: /View occurrences for/ })
+      .first(); // first-ok: every workout row shares the same phone stacking contract
+    await rowButton.click();
+    const [calendarBox, rowBox] = await Promise.all([
+      history.getByTestId("day-history-calendar-panel").boundingBox(),
+      history.getByTestId("day-history-rowpanel").boundingBox(),
+    ]);
+    expect(rowBox).not.toBeNull();
+    expect(rowBox!.y).toBeGreaterThanOrEqual(
+      calendarBox!.y + calendarBox!.height
+    );
+    await expectNoClippedContent(page);
 
     // The nested Strength|Cardio|Sport strip is GONE. The section navigation is
     // plain in-page anchors, never a third tab level — so no tab by those names
@@ -183,11 +196,15 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     );
     // Sport: the deep-past match joins the count.
     await expect(page.getByTestId("fitness-sport")).toContainText("3 sessions");
-    // Cadence: the workout-history calendar widened back to its 12-month cap,
-    // so its oldest cell is strictly older than the 90-day grid's.
-    const allTimeFirstCell = await page
-      .getByTestId("workout-history")
-      .getByTestId("day-history-calendar")
+    // Cadence: the workout history widened back to its 12-month cap, so its
+    // oldest cell is strictly older than the 90-day grid's. Above the 13-week
+    // day cap the history re-grains to WEEKS (#2413) — a year of day cells is
+    // the thing that does not scale — so the widened window is read off the
+    // single-row week strip, and the day calendar is gone rather than clamped.
+    const history = page.getByTestId("workout-history");
+    await expect(history.getByTestId("day-history-calendar")).toHaveCount(0);
+    const allTimeFirstCell = await history
+      .getByTestId("day-history-strip")
       .locator("[data-date]")
       .first() // first-ok: same subject as above — the grid's oldest cell
       .getAttribute("data-date");
@@ -200,6 +217,10 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
       TRENDS_FITNESS_OLD_LIFT
     );
     await expect(page.getByTestId("fitness-sport")).toContainText("2 sessions");
+    // …and the grain closes with it: a quarter is day cells again.
+    await expect(
+      page.getByTestId("workout-history").getByTestId("day-history-calendar")
+    ).toBeVisible();
 
     await page.close();
   });

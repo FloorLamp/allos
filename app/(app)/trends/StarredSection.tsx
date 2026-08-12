@@ -3,7 +3,7 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { getSavedItems } from "@/lib/queries/saved";
 import {
   buildMetricSeries,
-  buildSavedBodyMetricSeries,
+  buildSavedTrendMetricSeries,
   buildSavedBiomarkerTile,
   listCompareOptions,
   type TrendSeries,
@@ -88,7 +88,7 @@ export default async function StarredSection({ range }: { range: DateRange }) {
     if (ref.kind === "trend-metric") {
       const tile =
         metricByKey.get(metricSeriesKey(ref.key)) ??
-        buildSavedBodyMetricSeries(
+        buildSavedTrendMetricSeries(
           profile.id,
           login.id,
           ref.key,
@@ -174,6 +174,15 @@ export default async function StarredSection({ range }: { range: DateRange }) {
         // age-gated): phones spend one compact row on the section and its action;
         // larger screens retain the explanatory empty panel. This is one responsive
         // state (and therefore one form), not duplicate mobile/desktop content.
+        //
+        // NOT a hand-rolled EmptyState, and the one #2536 deliberately left behind
+        // when it adopted the other ten: the panel here appears only at `sm` and up
+        // (every token is `sm:`-prefixed), and below that breakpoint the empty state
+        // is the compact row plus the add-tile CONTROL. EmptyState takes a message
+        // and typed links — it can express neither half — and widening it into a
+        // content slot for one caller turns the primitive back into a div. Declared
+        // in lib/__tests__/empty-state-panel-scan.test.ts's allowlist with that
+        // reason; if EmptyState ever earns a responsive variant, this is its caller.
         <div
           className="flex min-h-8 items-center justify-between gap-3 sm:block sm:rounded-xl sm:border sm:border-dashed sm:border-black/10 sm:bg-white sm:p-10 sm:text-center sm:text-sm sm:text-slate-500 sm:dark:border-white/10 sm:dark:bg-ink-900 sm:dark:text-slate-400"
           data-testid="starred-empty-state"

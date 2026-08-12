@@ -167,9 +167,9 @@ export function summarizeSplit(
 // already committed (#1617 for Fitbit Takeout, #1614 for the Health Connect push).
 // Those chunks are durable by design, so the failure event must say what landed
 // rather than reading as "nothing happened": `changed` is inserted + updated from the
-// committed chunks, and `recovery` is the provider's own lowercase re-run clause (the
+// committed chunks, and `recovery` is the source's own lowercase re-run clause (the
 // re-run is always safe — every upsert is idempotent on its natural key). ONE phrasing
-// for both providers so the two partial-failure lines can't drift. Pure.
+// for both sources so the two partial-failure lines can't drift. Pure.
 export function partialWriteFailureMessage(
   subject: string,
   changed: number,
@@ -236,7 +236,7 @@ export function formatSplitLabel(ev: {
   if (supp > 0) segs.push(`${supp} suppressed`);
   // An edit-locked skip is likewise meaningful — the sync tried to overwrite a
   // hand-corrected row and the lock kept it — so it shows (and un-mutes) too, which
-  // is what lets a user find why the provider "stopped updating" that row.
+  // is what lets a user find why the source "stopped updating" that row.
   if (edited > 0) segs.push(`${edited} edited`);
   if (ins + upd + supp + edited === 0) {
     return { primary: "nothing new", muted: true };
@@ -291,7 +291,7 @@ export function formatWindow(start: string | null, end: string | null): string {
 // — 0 inserted AND 0 updated (an all-unchanged re-scan of the rolling window, or an
 // empty incremental pull). A push-based integration that checks in hourly emits one
 // of these every hour, which floods the Review feed; the feed collapses consecutive
-// no-ops per provider into a single summary line. A FAILURE is never a no-op (it's
+// no-ops per source into a single summary line. A FAILURE is never a no-op (it's
 // always signal that stays visible), and a LEGACY event whose split columns are all
 // null predates the accounting — we keep it visible with its flat `written` count
 // rather than guessing. Pure → unit-testable.
@@ -322,19 +322,19 @@ export function isNoOpSyncEvent(ev: {
 
 // The ids to prune from integration_sync_events on the retention sweep (issue #388):
 // every event STRICTLY older than `cutoffIso` EXCEPT the newest event per (profile,
-// provider), which is kept regardless of age. Keeping the newest-per-provider row is
+// source), which is kept regardless of age. Keeping the newest-per-source row is
 // what lets a dormant integration's last-known state (a failure that stopped
-// syncing, say) survive the 90-day window so currentlyFailingProviders can still see
+// syncing, say) survive the 90-day window so currentlyFailingSources can still see
 // it. `cutoffIso` is the retention boundary (`< cutoff` is expired, matching the SQL
 // `at < datetime('now', ?)`). Newest is by id (AUTOINCREMENT, monotonic with `at`),
 // mirroring the SQL's `MAX(id) … GROUP BY profile_id, provider`. Pure →
 // unit-testable, and pinned byte-for-byte against the DB sweep in the db tier.
 export function planSyncEventPrune<
-  T extends { id: number; profile_id: number; provider: string; at: string },
+  T extends { id: number; profile_id: number; sourceId: string; at: string },
 >(events: readonly T[], cutoffIso: string): number[] {
   const newestId = new Map<string, number>();
   for (const e of events) {
-    const key = `${e.profile_id} ${e.provider}`;
+    const key = `${e.profile_id} ${e.sourceId}`;
     const cur = newestId.get(key);
     if (cur === undefined || e.id > cur) newestId.set(key, e.id);
   }
@@ -345,10 +345,10 @@ export function planSyncEventPrune<
     .sort((a, b) => a - b);
 }
 
-// Which recurring providers belong in the Data → Review "Connected sources" section
-// (issue #294). A provider is shown when it is CURRENTLY connected OR it has any
+// Which recurring sources belong in the Data → Review "Connected sources" section
+// (issue #294). A source is shown when it is CURRENTLY connected OR it has any
 // historical sync events — a source that was connected and later removed keeps
-// showing its logs (with a "Not connected" status + a Reconnect link). A provider
+// showing its logs (with a "Not connected" status + a Reconnect link). A source
 // that was never set up and has no sync history is hidden entirely, rather than
 // listing every available integration whether configured or not. Pure → unit-testable.
 export function shouldShowConnectedSource(s: {
@@ -359,34 +359,34 @@ export function shouldShowConnectedSource(s: {
 }
 
 // Given sync events ordered NEWEST-FIRST (as the queries return them), collapse to
-// the single most recent event per provider — each integration's CURRENT state. This
-// is the pure counterpart to the SQL `getLatestSyncEventPerProvider` read: what keeps
-// failure-detection honest is feeding this the TRUE latest row per provider rather
-// than a global-N window that a chatty provider can push a stale failure out of
+// the single most recent event per source — each integration's CURRENT state. This
+// is the pure counterpart to the SQL `getLatestSyncEventPerSource` read: what keeps
+// failure-detection honest is feeding this the TRUE latest row per source rather
+// than a global-N window that a chatty source can push a stale failure out of
 // (issue #304). Pure → unit-testable; structurally typed so it doesn't drag @/lib/db
 // or the full row type into the pure tier.
-export function latestEventPerProvider<T extends { provider: string }>(
+export function latestEventPerSource<T extends { sourceId: string }>(
   eventsNewestFirst: T[]
 ): T[] {
   const seen = new Set<string>();
   const latest: T[] = [];
   for (const e of eventsNewestFirst) {
-    if (seen.has(e.provider)) continue; // a newer event already represents this provider
-    seen.add(e.provider);
+    if (seen.has(e.sourceId)) continue; // a newer event already represents this source
+    seen.add(e.sourceId);
     latest.push(e);
   }
   return latest;
 }
 
-// The integrations that are *currently* broken: providers whose most recent event is
-// a failure (ok = 0). A later successful sync drops a provider off automatically, so
+// The integrations that are *currently* broken: sources whose most recent event is
+// a failure (ok = 0). A later successful sync drops a source off automatically, so
 // this is self-clearing and safe to drive a "needs attention" badge/count from. A
-// provider flipped to `needs_reauth` (issue #326) records an ok:0 sync event the
+// source flipped to `needs_reauth` (issue #326) records an ok:0 sync event the
 // moment its token dies, so it surfaces here too — as long as the caller feeds the
-// provider's TRUE latest event (getLatestSyncEventPerProvider), not a windowed slice
+// source's TRUE latest event (getLatestSyncEventPerSource), not a windowed slice
 // that could have aged that failure out (issue #304). Pure → unit-testable.
-export function currentlyFailingProviders<
-  T extends { provider: string; ok: number },
+export function currentlyFailingSources<
+  T extends { sourceId: string; ok: number },
 >(eventsNewestFirst: T[]): T[] {
-  return latestEventPerProvider(eventsNewestFirst).filter((e) => !e.ok);
+  return latestEventPerSource(eventsNewestFirst).filter((e) => !e.ok);
 }

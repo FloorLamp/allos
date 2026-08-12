@@ -36,7 +36,7 @@
 // out of the readers each domain already owns); this module only decides and phrases.
 
 import type { FindingTone } from "./findings";
-import type { SupplementKind } from "./types/intake";
+import type { IntakeItemKind } from "./types/intake";
 import { intakeHref, medicationEditHref, type AppRoute } from "./hrefs";
 
 // The dedupeKey namespace the setup row keys under, registered in
@@ -95,7 +95,7 @@ export interface SetupIntakeItem {
   name: string;
   // The item's KIND decides where its dose editor lives, which is the whole reason
   // this shape carries anything beyond a name.
-  kind: SupplementKind;
+  kind: IntakeItemKind;
 }
 
 // A preventive rule the planner still considers unactioned.

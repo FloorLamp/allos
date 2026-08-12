@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SegmentedControl from "@/components/SegmentedControl";
 import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import {
   IconActivity,
@@ -65,7 +66,7 @@ import {
   parseViewMode,
   type ViewMode,
 } from "@/lib/multi-view";
-import { getUvDoseForDay } from "@/lib/queries/weather";
+import { getUvDoseForDays } from "@/lib/queries/weather";
 import {
   getDaylightOutdoorMinutesByDay,
   getSymptomSeveritiesOnDate,
@@ -589,10 +590,16 @@ export default async function TimelinePage(props: {
     { uvMinutes: number | null; peakUvIndex: number | null }
   >();
   if (!multiFeed && home) {
-    for (const [date, mins] of daylightOutdoor) {
-      if (mins <= 0) continue;
-      const dose = getUvDoseForDay(daySubjectId, date);
-      if (dose && dose.uvSource === "live") {
+    // ONE widened read for the whole feed (#2113), the same lesson notableByDay
+    // records 20 lines above: the per-day accessor re-read home location, timezone,
+    // skin type and a day's activities on every iteration — none of which vary — so a
+    // 300-event page issued hundreds of statements for a chip. Only days with daylight
+    // outdoor minutes are asked about, exactly as the per-day loop did.
+    const uvDates = [...daylightOutdoor]
+      .filter(([, mins]) => mins > 0)
+      .map(([date]) => date);
+    for (const [date, dose] of getUvDoseForDays(daySubjectId, uvDates)) {
+      if (dose.uvSource === "live") {
         uvByDay.set(date, {
           uvMinutes: dose.uvMinutes,
           peakUvIndex: dose.peakUvIndex,
@@ -1081,9 +1088,12 @@ export default async function TimelinePage(props: {
 }
 
 // The interleaved | by-person ordering toggle for the merged multi-view feed (issue
-// #1327 fix 2 / #1329). Two server-rendered <Link>s (native <a href> that work
-// pre-hydration, #830) — no permanent client chrome. Only rendered in multi-view. The
-// links preserve the active category filter so toggling mode doesn't reset it.
+// #1327 fix 2 / #1329). The shared SegmentedControl in its LINK binding (#2535):
+// server-rendered <Link>s that work pre-hydration (#830), no permanent client chrome,
+// and the selected segment carries `aria-current="page"` — this hand-rolled its own
+// track and marked the selection with `aria-pressed`, which a link does not support,
+// so the mode was announced to nobody. Only rendered in multi-view. The links
+// preserve the active category filter so toggling mode doesn't reset it.
 function ModeToggle({
   mode,
   category,
@@ -1100,35 +1110,28 @@ function ModeToggle({
     byDateQs ? `/timeline?${byDateQs}` : "/timeline"
   ) as AppRoute;
   const byPersonHref = `/timeline?${byPersonQs}` as AppRoute;
-  const base =
-    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition";
-  const on =
-    "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300";
-  const off =
-    "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750";
   return (
-    <div
-      data-testid="timeline-mode-toggle"
-      className="mb-4 inline-flex items-center gap-1 rounded-xl border border-black/10 p-1 dark:border-white/10"
-    >
-      <Link
-        href={byDateHref}
-        data-testid="timeline-mode-interleaved"
-        aria-pressed={mode === "interleaved"}
-        className={`${base} ${mode === "interleaved" ? on : off}`}
-      >
-        <IconLayoutList className="h-4 w-4" stroke={1.75} />
-        By date
-      </Link>
-      <Link
-        href={byPersonHref}
-        data-testid="timeline-mode-by-person"
-        aria-pressed={mode === "by-person"}
-        className={`${base} ${mode === "by-person" ? on : off}`}
-      >
-        <IconUsers className="h-4 w-4" stroke={1.75} />
-        By person
-      </Link>
-    </div>
+    <SegmentedControl<ViewMode>
+      className="mb-4"
+      testId="timeline-mode-toggle"
+      ariaLabel="Timeline grouping"
+      value={mode}
+      options={[
+        {
+          value: "interleaved",
+          label: "By date",
+          href: byDateHref,
+          testId: "timeline-mode-interleaved",
+          icon: <IconLayoutList className="h-4 w-4" stroke={1.75} />,
+        },
+        {
+          value: "by-person",
+          label: "By person",
+          href: byPersonHref,
+          testId: "timeline-mode-by-person",
+          icon: <IconUsers className="h-4 w-4" stroke={1.75} />,
+        },
+      ]}
+    />
   );
 }

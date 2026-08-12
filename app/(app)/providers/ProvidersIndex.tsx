@@ -8,6 +8,7 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import type { ProviderIndexRow } from "@/lib/queries";
+import { EmptyState } from "@/components/ui";
 
 type TypeFilter = "all" | "individual" | "organization";
 
@@ -64,10 +65,10 @@ export default function ProvidersIndex({
       </div>
 
       {filtered.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-black/10 p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
-          No providers match. They’re added automatically when you import a
-          health record’s care team.
-        </p>
+        <EmptyState
+          message="No providers match. They’re added automatically when you import a health record’s care team."
+          action={{ href: "/data", label: "Import a record" }}
+        />
       ) : (
         <ul
           className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10"

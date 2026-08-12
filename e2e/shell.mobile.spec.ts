@@ -243,7 +243,7 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     // Where the primary IS the activity editor, its companion shows.
     await expect(page.getByTestId("start-workout-mobile")).toBeVisible();
     // …and it is the ONLY one since #1509: the ⟳ repeat-last button left the bar
-    // (it was a fourth home for a shortcut the palette and the Journal card's ⋯
+    // (it was a fourth home for a shortcut the palette and the Training Log card's ⋯
     // menu already carry, spending a slot of a 390px bar).
     await expect(page.getByTestId("repeat-last-mobile")).toHaveCount(0);
     await expect(
@@ -273,7 +273,7 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
   }) => {
     // Dropping the bar button did not drop the SHORTCUT: it keeps exactly two
     // homes — the command palette (here, reachable on a phone too) and the
-    // Journal card's ⋯ "Log again" (pinned by entry-ergonomics.spec.ts). It was
+    // Training Log card's ⋯ "Log again" (pinned by entry-ergonomics.spec.ts). It was
     // deliberately NOT added to the quick-log sheet (#1506 keeps that list to
     // logging actions).
     await page.goto("/"); // the seed has plenty of logged activities

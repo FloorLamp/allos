@@ -1,6 +1,107 @@
 {
   "days": [
     {
+      "date": "2026-08-12",
+      "entries": [
+        {
+          "pr": 2549,
+          "title": "Empty panels and view switchers look and read the same everywhere",
+          "body": "A dozen surfaces had each drawn their own version of the same dashed empty panel; they now share one, so spacing and wording match and four of them gained the action link they were missing. The view switchers on Timeline, Upcoming, the body census and the care trail also share one control — which fixes a real accessibility bug: a screen reader previously announced no selected state at all on those, so there was no way to tell which view you were in.",
+          "kind": "fix",
+          "issues": [2536, 2535, 2527, 2524]
+        },
+        {
+          "pr": 2547,
+          "title": "A reading logged offline counts for when you logged it",
+          "body": "Log a dose or a set with no signal and the app judged it against the clock at the moment the queue finally drained, not the moment you tapped — so a morning dose replayed at lunchtime could be read as late. It is now judged at capture time. Separately, a correction you make by hand to a value pulled out of an uploaded document now sticks: it is marked as yours, and re-processing that document no longer quietly overwrites it. And a reading stated for later today reads as later today rather than as the past.",
+          "kind": "fix",
+          "issues": [2522, 2312, 2363, 2364]
+        },
+        {
+          "pr": 2546,
+          "title": "Long histories load a page at a time",
+          "body": "The body-measurement history on Trends, the dose ledger's All time view and the What's new page each rendered every row they had — years of daily weigh-ins in one table. They now page, ten rows at a time, and still tell you the full count so nothing looks smaller than it is. Sleep-stage charts also stop reading half a year of nights to draw two weeks.",
+          "kind": "perf",
+          "issues": [2530, 2445, 2520, 2528]
+        },
+        {
+          "pr": 2545,
+          "title": "Three protections that were not protecting",
+          "body": "Substance-use scores are adult-only, but one editing path could reach them anyway by targeting a row directly; that path is closed at the source every write goes through, so it cannot reopen elsewhere. Deleting the last admin login could also race a second deletion in a way that left an instance with no admin at all. Operator note: this release includes a database migration that runs automatically on start, repairing care-plan follow-ups whose linked reading was removed by an earlier upgrade — those follow-ups keep their resolution and simply lose the dead link.",
+          "kind": "security",
+          "issues": [2444, 2108, 2107]
+        },
+        {
+          "pr": 2544,
+          "title": "Imported documents say what they could not read",
+          "body": "When a lab document carried a blood pressure whose systolic came through but whose diastolic did not, the missing half vanished with no mention on the import report. Refusals are now listed with the reason. Screening questionnaires also import as a real score with its severity band rather than as a row per question — starting with the Edinburgh Postnatal Depression Scale, which joins PHQ-9 and GAD-7.",
+          "kind": "feature",
+          "issues": [2411, 2321]
+        },
+        {
+          "pr": 2540,
+          "title": "Undo covers measurements, mood check-ins and symptom days",
+          "body": "Deleting a weight offered Undo; deleting an HRV sample, a mood check-in or a symptom day offered nothing, and the symptom day took its photos with it. All three are now recoverable from the toast for the usual window, photos included — the files stay put until the trash is purged, so a restored day still shows the pictures. Visits are undoable too.",
+          "kind": "feature",
+          "issues": [2123, 2124]
+        },
+        {
+          "pr": 2538,
+          "title": "A suggestion you keep declining stops leading",
+          "body": "An observation dismissed across two separate occasions moves behind the ones you have not answered, and after four it leaves the dashboard entirely. Nothing is deleted or silenced: every one of them still appears in full on its own tab. Safety items — dose reminders, missed-dose escalations, the crisis card — are exempt by construction and cannot be quieted this way however often they are dismissed.",
+          "kind": "feature",
+          "issues": [2386, 2385]
+        },
+        {
+          "pr": 2531,
+          "title": "The protein chart plots what you actually logged",
+          "body": "Days you did not log were being drawn as real zeroes, which dragged the line down and made a gap look like a bad day. Empty cards also stopped holding open a chart-sized blank space.",
+          "kind": "fix",
+          "issues": [2399, 2414]
+        },
+        {
+          "pr": 2518,
+          "title": "HOMA-IR refuses an insulin value it cannot use",
+          "body": "HOMA-IR is only meaningful from a fasting insulin. A non-fasting value produced a confident-looking score that meant nothing; it now declines to compute rather than mislead. Age labels on the glance cards also read the same way everywhere.",
+          "kind": "fix",
+          "issues": [2371, 2372, 2344, 2332]
+        },
+        {
+          "pr": 2507,
+          "title": "Pickers find an analyte by its abbreviation, and favour what you log",
+          "body": "Typing “psa” offered Prostate-Specific Antigen at no position at all, and “a1c” put a lung-function test above Hemoglobin A1c. An abbreviation is now a search key in its own right. Separately, typing “sqa” in the activity picker offered Squash — never logged once — above five kinds of squat logged for months; options you have actually used now rank ahead of ones you have not, by a margin small enough that a genuinely better name match still wins. Nothing is hidden either way.",
+          "kind": "fix",
+          "issues": [2382, 2384]
+        },
+        {
+          "pr": 2503,
+          "title": "A workout recap only claims the target the session actually advanced",
+          "body": "A 33-minute walk arrived announced as “Workout complete” and carried the line “Chest — 1 of 2 this week, one more to go”, crediting it with a barbell session earlier in the week and nudging toward a chest day it had not touched. The weekly line now comes from the session that just finished, and a session that advanced nothing gets no line. The title names what actually finished too — cardio, sport and mobility each get their own, instead of everything arriving under a barbell.",
+          "kind": "fix",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "date": "2026-08-11",
+      "entries": [
+        {
+          "pr": 2504,
+          "title": "A tab that sat through a sign-out still notices the next update",
+          "body": "The check that watches for a new version stopped for good if a single request came back unauthorised — which happens routinely when a session expires under an open tab. That tab then sat on the old build silently, with no update prompt, until it was closed. The check now ignores a reply that arrived after it had already moved on, so an expired session no longer switches off update notices for the rest of the tab’s life.",
+          "kind": "fix",
+          "issues": [2447]
+        },
+        {
+          "pr": 2506,
+          "title": "The weekly recap reports goals when you reached them, and covers food",
+          "body": "Reaching a goal is now recorded when it happens, so the recap announces it that week. Before, it keyed on the goal’s deadline: a goal reached early was announced a month later, one reached late was never announced, and a goal with no deadline could not be announced at all. A deadline that passes unmet is reported once too. Food — the thing most people log every day — gained a line covering how many days you logged, how varied the groups were, and how protein and fibre landed, never a servings total. Sleep gained a typical-night line beside the regularity index, and lines stop stacking two bracketed asides.",
+          "kind": "feature",
+          "issues": [2389, 2394, 2396]
+        }
+      ]
+    },
+    {
       "date": "2026-08-10",
       "entries": [
         {

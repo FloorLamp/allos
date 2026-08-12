@@ -32,7 +32,7 @@ import { E2E_LOGIN_PANELINDEX, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // its fold still has to hold. The hero's fold test therefore travels to /longevity
 // inside this file rather than into a new spec of its own.
 
-const BIOMARKERS = "/results/biomarkers";
+const BIOMARKERS = "/results/readings";
 const PHONE = { width: 390, height: 844 };
 
 async function openPhone(browser: Parameters<typeof loginAs>[0]) {

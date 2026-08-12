@@ -9,7 +9,7 @@ import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
 import {
   logHistoricalDose,
   updateHistoricalDose,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 
 export interface HistoricalDoseOption {
   id: number;
@@ -44,6 +44,7 @@ export default function HistoricalDoseForm({
   doses,
   minDate,
   maxDate,
+  initialDate,
   defaultTime,
   asNeeded,
   courseBound = true,
@@ -55,6 +56,7 @@ export default function HistoricalDoseForm({
   doses: HistoricalDoseOption[];
   minDate?: string;
   maxDate: string;
+  initialDate?: string;
   defaultTime: string;
   asNeeded: boolean;
   // Whether this item's history is bounded by a medication course. False for an item
@@ -88,10 +90,13 @@ export default function HistoricalDoseForm({
     editing
       ? { date: editing.date, statedAt: editing.statedAt }
       : {
-          date: maxDate,
+          date: initialDate ?? maxDate,
           statedAt:
-            statedInstantOnDate(maxDate, defaultTime, tz)?.toISOString() ??
-            null,
+            statedInstantOnDate(
+              initialDate ?? maxDate,
+              defaultTime,
+              tz
+            )?.toISOString() ?? null,
         }
   );
   const [error, setError] = useState<string | null>(null);

@@ -140,7 +140,7 @@ describe("saveFitnessTest — natural-store routing", () => {
     expect(bm[0].resting_hr).toBe(55);
   });
 
-  it("derives VO2 from a Cooper field test and stores it as the VO2 Max biomarker", async () => {
+  it("derives VO2 from a Cooper field test and stores it as the VO2 Max vital", async () => {
     const { profile } = seedActor();
     setDemographics(profile.id, "male", "1985-06-01");
     const r = await saveFitnessTest(
@@ -155,7 +155,9 @@ describe("saveFitnessTest — natural-store routing", () => {
     const meds = medRows(profile.id, "VO2 Max");
     expect(meds).toHaveLength(1);
     expect(meds[0].value_num).toBeCloseTo(42.4, 1);
-    expect(meds[0].category).toBe("biomarker");
+    // The canonical registry's own classification for VO2 Max. It was the legacy
+    // `biomarker` catch-all until #2479 part 2 retired that value.
+    expect(meds[0].category).toBe("vitals");
     const entry = entryRows(sessionRows(profile.id)[0].id)[0];
     expect(JSON.parse(entry.raw_input).method).toBe("cooper");
   });

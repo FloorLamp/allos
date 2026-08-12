@@ -30,7 +30,7 @@ import { settledClick, settledPickOption } from "./helpers";
 
 // A seeded biomarker WITH readings that the seed does not star.
 const ANALYTE = "HDL Cholesterol";
-const DETAIL_URL = `/biomarkers/view?name=${encodeURIComponent(ANALYTE)}`;
+const DETAIL_URL = `/results/readings/view?name=${encodeURIComponent(ANALYTE)}`;
 
 // A tile's controls live in its corner ⋯ menu since #1485 B, and the panel is
 // PORTALED to <body> — so it is located on the page, never inside the card.
@@ -173,7 +173,7 @@ test("starring a metric detail page adds that chart to Overview", async ({
   page,
 }) => {
   // Steps is deliberately outside the legacy standard saved-metric set. This
-  // proves detail-page stars work for the whole BODY_METRIC_META registry, not
+  // proves detail-page stars work for the whole TREND_METRIC_META registry, not
   // only Weight / Body Fat / Resting Heart Rate.
   await page.goto("/trends/metric/steps");
   const star = page.getByTestId("star-toggle");

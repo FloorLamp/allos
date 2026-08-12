@@ -7,21 +7,21 @@
 import { db, today } from "../db";
 import { shiftDateStr, zonedDateParts } from "../date";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getActivitiesByDate,
   collectUpcoming,
   getCurrentFlaggedBiomarkers,
   getSleepSignal,
-  getSleepRegularity,
+  getSleepRegularityThrough,
+  getSleepStageComposition,
   getSleepSessions,
   // The #2209 deferral trace's arrival-side inputs (#2192): the arrival sample the
   // #2214 statistic is computed over, and when the source was last contacted.
   getSleepArrivals,
   latestSleepSyncAt,
-  getMetricDailyTotals,
   getEffectiveActiveSituations,
   getDerivedSituationLines,
   getStrengthByExercise,
@@ -48,13 +48,12 @@ import {
   type NutrientPosition,
 } from "../nutrition-day";
 import { shortfallFoodPhrase } from "../nutrition-food-suggestion";
+import { foodLimitDigestHead } from "../food-limit-note";
+import { getFoodLimitDayObservations } from "../queries/food-limit";
 import { groupUpcoming } from "../upcoming";
 import { integrationToItem, isEscalatingIntegration } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
-import {
-  mainSleepNights,
-  sleepSessionDurationMinutes,
-} from "../sleep-regularity";
+import { mainSleepNights } from "../sleep-regularity";
 import { isLastNight, isSleepTracking } from "../sleep-summary";
 import {
   arrivalStatistics,
@@ -69,7 +68,7 @@ import {
   countSituationalDue,
   doseDueOn,
   heldItemsBy,
-} from "../supplement-schedule";
+} from "../intake-schedule";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -188,13 +187,14 @@ export function getNewlyFlaggedBiomarkers(
 // Last night's sleep for the morning digest's Sleep section (issue #1117), or null
 // when the summary is off (opt-in) or there's no FRESH sleep data. It composes the
 // SAME computations other surfaces use — getSleepSignal (the rest trigger's main-
-// overnight last-night + baseline, #1118/#221) and getSleepRegularity (the #160 SRI
-// Trends renders) — so the digest can't disagree with them. Freshness gate: the
+// overnight last-night + baseline, #1118/#221) and the #160 SRI engine — so the
+// digest can't disagree with them. Freshness gate: the
 // most recent main-sleep night must BE last night (isLastNight — the shared
 // relative-night rule); a stale night isn't "how'd I sleep". It once accepted
 // yesterday's wake-day too, which is the night BEFORE last night and exactly the
-// night a morning digest reads before the tracker has pushed. The nap total is the
-// wake-day's non-main sleep, kept apart from the overnight figure.
+// night a morning digest reads before the tracker has pushed. The section is an
+// AS-OF-WAKE morning snapshot: a later nap belongs on live surfaces and must not
+// silently edit the digest already delivered in Telegram.
 export function gatherDigestSleep(
   profileId: number,
   // Categories this profile's readers have all demoted (#1714). A demoted Sleep
@@ -223,30 +223,20 @@ export function gatherDigestSleep(
   )
     return null;
 
-  // Nap = all sleep on the wake-day minus the main overnight session (never folded
-  // into the overnight figure). Uses the same session windows as mainSleepNights.
-  let dayTotalMin = 0;
-  for (const s of sessions) {
-    if (zonedDateParts(tz, new Date(s.end)).date !== last.wakeDay) continue;
-    dayTotalMin += sleepSessionDurationMinutes(s);
-  }
-  const napMin = Math.max(0, Math.round(dayTotalMin) - last.durationMin);
-
-  // Stage breakdown for the wake-day when the source reports it (HC/Oura/Withings).
-  const stageFor = (metric: string): number | null => {
-    const row = getMetricDailyTotals(profileId, metric, 14).find(
-      (r) => r.date === last.wakeDay
-    );
-    return row ? Math.round(row.value) : null;
-  };
-
-  const reg = getSleepRegularity(profileId);
+  // Main-session stages use the same timestamp attribution as the Sleep page, so
+  // adding nap stages cannot change this historical morning claim.
+  const stages = getSleepStageComposition(profileId, 14).find(
+    (row) => row.date === last.wakeDay
+  );
+  // Freeze the regularity input at the main session's actual wake instant. SRI
+  // still includes every earlier nap by design; today's later nap simply belongs
+  // to the NEXT live state, not to a message already sent this morning.
+  const reg = getSleepRegularityThrough(profileId, last.end);
   return {
     lastNightMin: signal.lastNightMin,
     baselineMin: Math.round(signal.baselineMin),
-    deepMin: stageFor("sleep_deep_min"),
-    remMin: stageFor("sleep_rem_min"),
-    napMin,
+    deepMin: stages?.deep ?? null,
+    remMin: stages?.rem ?? null,
     sri: reg ? reg.sri : null,
   };
 }
@@ -321,9 +311,9 @@ export function gatherDigestInput(
   // play today before the return object is assembled.
   const sleep = gatherDigestSleep(profileId, demoted);
 
-  const active = getSupplements(profileId).filter((s) => s.active);
+  const active = getIntakeItems(profileId).filter((s) => s.active);
   const suppById = new Map(active.map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profileId).filter((d) =>
+  const doses = getIntakeDoses(profileId).filter((d) =>
     suppById.has(d.item_id)
   );
   // Per-day situation resolver (#654): "today" sees the current set (no events after
@@ -556,6 +546,14 @@ export function gatherDigestInput(
   // day, and today's eating is the food nudge's question, not this one.
   const nutrition = gatherDigestNutrition(profileId, yd, demoted);
 
+  // Yesterday's log × the profile's live curated food limits (#2377), on the same `yd`.
+  // Gathered here and GATED IN `buildDigest`, which appends it only to a Yesterday
+  // section that already has content: the ride-along rule belongs with the assembly that
+  // knows whether the section exists, so this line can never be why a message is sent.
+  const foodLimitHead = foodLimitDigestHead(
+    getFoodLimitDayObservations(profileId, yd)
+  );
+
   return {
     profileName,
     openEpisodeLine,
@@ -625,6 +623,7 @@ export function gatherDigestInput(
     // Null on a day that met its targets, a day with nothing logged, and a profile whose
     // target does not resolve — three different facts, all of them silence.
     nutritionLine: nutrition.line,
+    foodLimitHead,
     newFlaggedBiomarkers,
     newDocuments,
     // What else changed in the last 24 hours (#1713), from the ONE shared collector the

@@ -241,16 +241,19 @@ ${nodeLine}
 - If a tool call is DENIED by the permission system, or fails for an environment
   reason you cannot fix in ONE retry, STOP AND REPORT IMMEDIATELY — quote what was
   refused, verbatim. Do not sit on it.
-- COMMIT AND PUSH after every meaningful step — container restarts are frequent, and
-  your worktree is NOT backed up. This is a HARD GATE, not restart advice: if you
-  have touched more than ~10 files, or worked more than ~45 minutes, since your last
-  commit, COMMIT NOW even mid-task and even if gates have not run. Push a checkpoint
-  branch.
+- Your branch must EXIST ON THE REMOTE at your latest commit, at all times.
+  Committing is not enough — your worktree is NOT backed up and container restarts
+  are frequent. This is a HARD GATE, not restart advice: if you have touched more
+  than ~10 files, or worked more than ~45 minutes, since your last PUSH, commit and
+  push NOW, even mid-task and even if gates have not run.
 - If the work turns out materially bigger than this brief implies, SAY SO and push a
   checkpoint before continuing — do not silently absorb a 15-file footprint that was
   briefed as a one-line registry edit.
 - Foreground ALL gates; never run_in_background for builds/tests; every wait is one
-  blocking Bash call, chunked under the 10-minute tool cap
+  blocking Bash call, chunked under the 10-minute tool cap. Pass an EXPLICIT
+  \`timeout\` (e.g. 600000) to every gate invocation — foreground Bash caps at ~2
+  minutes by default whatever the tool's stated maximum, so a slow tier reports as
+  a failure it did not have.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
 ${issueLines}
@@ -260,6 +263,8 @@ ${slotText}
 - Gates: run bash scripts/orchestration/agent-gates.sh from the worktree root — it
   runs lint, typecheck, both test tiers, the e2e-hygiene scan when specs changed,
   phi-scan, and format LAST, in the mandated order. Report its output verbatim.
+  Give that Bash call an explicit long timeout; if it cannot fit one tool call
+  under contention, run the same gates individually in the same order.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.

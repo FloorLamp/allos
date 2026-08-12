@@ -33,7 +33,10 @@ import {
   reconcileFlags,
 } from "@/lib/queries";
 import { optimalBand, referenceRange } from "@/lib/reference-range";
-import type { CanonicalBiomarker, MedicalRecord } from "@/lib/types";
+import type {
+  CanonicalResultDefinition,
+  ClinicalObservation,
+} from "@/lib/types";
 import {
   biomarkerValueBasis,
   REPORTED_RANGE_LABEL,
@@ -53,7 +56,7 @@ const DRAW = "2026-02-17";
  * publishes a generic band, Leptin publishes none at all — so this stands in for the
  * page's `referenceEntries`/`optimalEntries` without re-implementing their labelling.
  */
-function curatedBandShown(cb: CanonicalBiomarker | undefined): boolean {
+function curatedBandShown(cb: CanonicalResultDefinition | undefined): boolean {
   const ref = referenceRange(cb, null, null, null);
   const opt = optimalBand(cb, null, null);
   return [
@@ -100,12 +103,12 @@ function insertReading(r: {
   );
 }
 
-function seriesFor(canonicalName: string): MedicalRecord[] {
+function seriesFor(canonicalName: string): ClinicalObservation[] {
   return getBiomarkerSeriesWithDerived(profileId, canonicalName);
 }
 
 /** The page's own per-row decision, over a stored row. */
-function basisFor(row: MedicalRecord, canonicalName: string) {
+function basisFor(row: ClinicalObservation, canonicalName: string) {
   return biomarkerValueBasis({
     flag: row.flag,
     hasCuratedBand: curatedBandShown(getCanonicalBiomarker(canonicalName)),

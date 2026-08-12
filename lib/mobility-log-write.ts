@@ -4,7 +4,7 @@
 // whose `components` JSON is the list of tapped moves (ActivityComponent[]; each a move
 // slug typed `recovery`, no per-move sets/weights — the HABIT-tier "one move = one tap"
 // model, the false-precision trap /nutrition refuses). Being an ordinary activities row
-// it rides the timeline/journal/streaks/heatmap for free.
+// it rides the timeline, Training Log, streaks, and heatmap for free.
 //
 // Storage shape mirrors the food log's per-(profile,date) upsert, but into `activities`
 // rather than a counter table: toggling a move on adds it to the day's session (creating
@@ -23,13 +23,13 @@
 // both sides of that subtraction have to come off one clock. In production the seam
 // IS the real clock, so the values are byte-identical to what SQLite would write.
 
-import { db, writeTx, today } from "./db";
+import { db, writeTx } from "./db";
 import { sqlNow } from "./clock";
 import { parseComponents, type ActivityComponent } from "./types";
 import { canonicalMobilityMove, mobilityMoveName } from "./mobility-moves";
 
 // The default title for a mobility session. Kept stable so the row reads sanely on the
-// timeline/journal without a per-move title.
+// timeline and Training Log without a per-move title.
 const MOBILITY_TITLE = "Mobility";
 
 export interface MobilitySession {
@@ -59,7 +59,7 @@ function dayRow(profileId: number, date: string): DayRow | undefined {
 }
 
 // The canonical move SLUGS logged on a recovery row (recovery-typed components only),
-// deduped and order-preserving. Components store the DISPLAY name (so the journal/timeline
+// deduped and order-preserving. Components store the DISPLAY name (so Training Log and Timeline
 // render "Pigeon pose", not a raw slug), so each is canonicalized back to its slug here —
 // every downstream reader (the tap bar's selection, coverage, target counting) keys on the
 // stable slug (#203/#883). An unknown/retired name falls back to itself.
@@ -78,7 +78,7 @@ function movesOf(row: DayRow | undefined): string[] {
 }
 
 // Build the stored components for a set of slugs. The component `name` is the DISPLAY name
-// so the shared journal/timeline machinery renders it sanely for free; the slug identity
+// so the shared Training Log and Timeline machinery renders it sanely for free; the slug identity
 // is recovered via movesOf's canonicalization.
 function componentsFor(moves: string[]): ActivityComponent[] {
   return moves.map((slug) => ({
@@ -196,14 +196,4 @@ export function setMobilityDurationCore(
     ).run(dur, sqlNow(), row.id, profileId);
     return sessionOf(dayRow(profileId, date));
   });
-}
-
-// Convenience for tests/callers: the display names of a session's moves.
-export function mobilitySessionMoveNames(session: MobilitySession): string[] {
-  return session.moves.map(mobilityMoveName);
-}
-
-// The app-local "today" for a profile (re-export so callers don't double-import).
-export function mobilityToday(profileId: number): string {
-  return today(profileId);
 }

@@ -16,7 +16,7 @@ import "../scripts/load-env";
 
 import { seedPrelude } from "./seed/prelude";
 import {
-  seedJournalCard,
+  seedTrainingLogCard,
   seedTrainingZones,
   seedActivityFormPaths,
   seedEndurancePlans,
@@ -105,6 +105,7 @@ import {
   seedNutritionTrio,
   seedFoodSlots,
   seedFoodUsual,
+  seedRoutineUsual,
   seedFoodPinSplit,
 } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
@@ -137,7 +138,7 @@ import {
 } from "./seed/trends";
 
 seedPrelude();
-seedJournalCard();
+seedTrainingLogCard();
 seedIntegrationSyncEvents();
 seedQuietStream();
 seedStreamLifecycle();
@@ -174,6 +175,7 @@ seedBulkCorrection();
 seedIllness();
 seedFoodSlots();
 seedFoodUsual();
+seedRoutineUsual();
 seedFoodPinSplit();
 seedEndurancePlans();
 seedFlaggedFollowups();

@@ -20,10 +20,10 @@ import {
   getNotifySchedule,
   getStoredAge,
   getUnitPrefs,
-  getUserBirthdate,
-  getUserSex,
+  getProfileBirthdate,
+  getProfileSex,
   setOnboardingState,
-  setUserBirthdate,
+  setProfileBirthdate,
 } from "@/lib/settings";
 import { initialOnboardingState } from "@/lib/onboarding";
 import { getActiveRoutine, getRoutines } from "@/lib/routines";
@@ -124,8 +124,8 @@ describe("onboarding actions", () => {
     expect(
       db.prepare("SELECT name FROM profiles WHERE id = ?").get(profile.id)
     ).toEqual({ name: "Ada Example" });
-    expect(getUserSex(profile.id)).toBe("female");
-    expect(getUserBirthdate(profile.id)).toBeNull();
+    expect(getProfileSex(profile.id)).toBe("female");
+    expect(getProfileBirthdate(profile.id)).toBeNull();
     expect(getStoredAge(profile.id)).toBe(38);
     expect(getUnitPrefs(login.id)).toEqual({
       weightUnit: "lb",
@@ -148,7 +148,7 @@ describe("onboarding actions", () => {
         })
       )
     );
-    expect(getUserBirthdate(profile.id)).toBe("2000-01-01");
+    expect(getProfileBirthdate(profile.id)).toBe("2000-01-01");
     expect(getStoredAge(profile.id)).toBeNull();
   });
 
@@ -283,7 +283,7 @@ describe("onboarding actions", () => {
     const profile = createTestProfile("Restricted Layout", login.id);
     actAs(login, profile);
     setMinTrainingAge(18);
-    setUserBirthdate(profile.id, "2018-01-01");
+    setProfileBirthdate(profile.id, "2018-01-01");
     setOnboardingState(profile.id, {
       ...initialOnboardingState(),
       status: "in_progress",

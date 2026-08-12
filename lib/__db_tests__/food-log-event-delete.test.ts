@@ -2,7 +2,7 @@
 //
 // The product had no row-scoped delete anywhere. The only removal was the bar's
 // group-scoped "−" (undoFoodServingCore), which picks its victim with
-// `ORDER BY logged_at DESC` — the newest TAP in the window. #1934 ended the assumption
+// `ORDER BY recorded_at DESC` — the newest TAP in the window. #1934 ended the assumption
 // that made that coherent: a correction gives a row a user-asserted `meal_slot` while
 // deliberately preserving its tap instant, so a serving moved INTO a window is not
 // necessarily the newest thing in it, and the group control takes a neighbour.
@@ -24,7 +24,7 @@ import {
   undoFoodServingCore,
   updateFoodLogEventCore,
 } from "@/lib/food-log-write";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import { getFoodMealDays, getWeeklyServingsForGroup } from "@/lib/queries";
 import { type FoodSlot } from "@/lib/food-slot";

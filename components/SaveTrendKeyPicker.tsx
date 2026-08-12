@@ -8,6 +8,7 @@ import {
   SERIES_PICKER_GROUP_ORDER,
   type SeriesPickerInput,
 } from "@/lib/series-picker-options";
+import { biomarkerSearchTerms } from "@/lib/canonical-name";
 
 // The ★ picker's control (#1675). It replaces a flat alphabetical `<select>` over
 // metrics + ~200 analytes with the shared Combobox: an empty query is the RELEVANCE
@@ -105,6 +106,10 @@ export default function SaveTrendKeyPicker({
           onChange={setLabel}
           options={options.map((o) => o.label)}
           groupFor={(option) => byLabel.get(option)?.group ?? null}
+          // #2382. Mixed list, one prop: a metric label names no analyte, so
+          // biomarkerSearchTerms answers [] for it and only the biomarker rows
+          // gain their acronym and alias keys.
+          searchTermsFor={biomarkerSearchTerms}
           placeholder="Search metrics and biomarkers"
           emptyLabel="No matching metric or biomarker"
         />

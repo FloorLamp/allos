@@ -198,7 +198,7 @@ export default function LineChartCard({
   const c = useChartColors();
   const motion = useChartMotion();
   // For ISO-date series, default to a compact MM-DD axis and a friendly long
-  // date in the tooltip (matching the journal charts). Callers passing their own
+  // date in the tooltip (matching the training log charts). Callers passing their own
   // formatters, or non-date x-values (e.g. HH:MM intraday), are unaffected.
   const isoDates = data.length > 0 && ISO_DATE.test(data[0].date);
   // Day-grain densification (#2258), applied BEFORE aggregation so the buckets see

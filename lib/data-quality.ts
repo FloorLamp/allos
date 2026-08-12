@@ -34,7 +34,7 @@
 // clear from the form with zero factors toggled.)
 
 import {
-  biomarkerAddHref,
+  readingAddHref,
   dataSectionHref,
   medicationEditHref,
   medicationsFilterHref,
@@ -60,7 +60,7 @@ export function dataQualityDedupeKey(key: DataQualityGapKey): string {
 // reproductive status is a real gap for a female profile: below it the age proxy is a
 // safe default, but from ~45 on a woman may be pre- OR post-menopausal, and only an
 // explicit status resolves the female-hormone reference ranges (the FSH false-flag
-// rationale documented on getUserReproductiveStatus / types/medical.ts). This is the
+// rationale documented on getProfileReproductiveStatus / types/medical.ts). This is the
 // "female + age-band" gate the issue names.
 export const REPRODUCTIVE_STATUS_BAND_MIN_AGE = 45;
 
@@ -284,8 +284,8 @@ function phenoAgeGap(i: DataQualityInputs): DataQualityGap | null {
       `the remaining labs unlock your biological age.`,
     // The biomarker add form, prefilled with the first missing analyte (#1146) —
     // the SAME lab deep-link shape the preventive screening rows use (#1083), via
-    // the shared biomarkerAddHref, so the two lanes can't diverge (#221).
-    ctaHref: biomarkerAddHref(i.phenoAgeMissingPrimary),
+    // the shared readingAddHref, so the two lanes can't diverge (#221).
+    ctaHref: readingAddHref(i.phenoAgeMissingPrimary),
     leverage: 1,
   };
 }

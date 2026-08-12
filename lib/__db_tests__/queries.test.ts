@@ -17,22 +17,24 @@ import {
   getActivities,
   getStrengthByExercise,
   getCardioByActivity,
-  getJournalWeekSummary,
+  getTrainingLogWeekSummary,
   getDashboardStats,
-  getGoals,
+  getOutcomeGoals,
   getBodyMetrics,
   getWeights,
   getLatestBodyMetric,
   getMetricDailyTotals,
-  getMedicalRecords,
-  getLatestMedicalRecordByCanonical,
+  getClinicalObservations,
+  getLatestClinicalObservationByCanonical,
   getSavedBiomarkers,
   getMedicalDocuments,
   reconcileFlags,
   getImmunizations,
   getImmunizationOverrides,
+  getIntakeItems,
   getSupplements,
-  getSupplementDoses,
+  getMedications,
+  getIntakeDoses,
   getTakenDoseIds,
   getTakenDoseTimes,
   resolveMedicationAcrossProfiles,
@@ -87,8 +89,8 @@ describe("training reads", () => {
     expect(run!.totalDistanceKm).toBe(5);
   });
 
-  it("getJournalWeekSummary + getDashboardStats aggregate the fixture", () => {
-    const wk = getJournalWeekSummary(fx.profileId);
+  it("getTrainingLogWeekSummary + getDashboardStats aggregate the fixture", () => {
+    const wk = getTrainingLogWeekSummary(fx.profileId);
     expect(wk.sessions).toBe(2);
     expect(wk.activeDays).toBeGreaterThanOrEqual(1); // trained today
     const dash = getDashboardStats(fx.profileId);
@@ -97,9 +99,13 @@ describe("training reads", () => {
     expect(dash.latestWeight?.value).toBe(fx.weightKg);
   });
 
-  it("getGoals returns the seeded active goal", () => {
-    const goals = getGoals(fx.profileId);
-    expect(goals.map((g) => g.title)).toContain(`${fx.tag} Squat 140`);
+  it("getOutcomeGoals returns the seeded active goal", () => {
+    const goals = getOutcomeGoals(fx.profileId);
+    const goal = goals.find((g) => g.title === `${fx.tag} Squat 140`);
+    expect(goal).toMatchObject({
+      kind: "freeform",
+      categoryLabel: "strength",
+    });
   });
 });
 
@@ -119,13 +125,16 @@ describe("metrics reads", () => {
 });
 
 describe("medical / biomarker reads", () => {
-  it("getMedicalRecords + latest-in-group return the seeded Glucose reading", () => {
-    const recs = getMedicalRecords(fx.profileId);
+  it("getClinicalObservations + latest-in-group return the seeded Glucose reading", () => {
+    const recs = getClinicalObservations(fx.profileId);
     expect(recs.length).toBe(1);
     expect(recs[0].name).toBe("Glucose");
     expect((recs[0] as { is_latest: number }).is_latest).toBe(1);
 
-    const latest = getLatestMedicalRecordByCanonical(fx.profileId, "glucose");
+    const latest = getLatestClinicalObservationByCanonical(
+      fx.profileId,
+      "glucose"
+    );
     expect(latest?.value_num).toBe(fx.glucoseValueNum);
 
     expect(getMedicalDocuments(fx.profileId).map((d) => d.filename)).toContain(
@@ -149,17 +158,20 @@ describe("medical / biomarker reads", () => {
        VALUES (?, '2026-01-15', 'lab', 'Glucose, Fasting', '130', 'mg/dL', 'Glucose, Fasting', 130)`
     ).run(fx.profileId);
     expect(
-      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose")?.flag ?? null
+      getLatestClinicalObservationByCanonical(fx.profileId, "Glucose")?.flag ??
+        null
     ).toBeNull();
 
     const changed = reconcileFlags(fx.profileId);
     expect(changed).toBeGreaterThanOrEqual(1);
 
     expect(
-      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose, Fasting")?.flag
+      getLatestClinicalObservationByCanonical(fx.profileId, "Glucose, Fasting")
+        ?.flag
     ).toBe("high");
     expect(
-      getLatestMedicalRecordByCanonical(fx.profileId, "Glucose")?.flag ?? null
+      getLatestClinicalObservationByCanonical(fx.profileId, "Glucose")?.flag ??
+        null
     ).toBeNull();
   });
 });
@@ -196,15 +208,24 @@ describe("immunization reads", () => {
 });
 
 describe("intake / supplement reads", () => {
-  it("getSupplements surfaces both a supplement and a medication row", () => {
-    const items = getSupplements(fx.profileId);
+  it("getIntakeItems surfaces both a supplement and a medication row", () => {
+    const items = getIntakeItems(fx.profileId);
     const kinds = items.map((i) => i.kind).sort();
     expect(kinds).toEqual(["medication", "supplement"]);
     expect(items.some((i) => i.name === `${fx.tag} Lisinopril`)).toBe(true);
   });
 
+  it("kind-named adapters return only their declared intake subset", () => {
+    expect(getSupplements(fx.profileId).map((item) => item.kind)).toEqual([
+      "supplement",
+    ]);
+    expect(getMedications(fx.profileId).map((item) => item.kind)).toEqual([
+      "medication",
+    ]);
+  });
+
   it("dose + taken-log reads reflect the seeded morning dose", () => {
-    const doses = getSupplementDoses(fx.profileId);
+    const doses = getIntakeDoses(fx.profileId);
     expect(doses.length).toBe(2); // one per intake item
     const taken = getTakenDoseIds(fx.profileId, fx.todayStr);
     expect(taken.has(fx.supplementDoseId)).toBe(true);
@@ -214,10 +235,10 @@ describe("intake / supplement reads", () => {
   });
 
   it("refill read: the tracked supplement reports low days-of-supply", () => {
-    const supp = getSupplements(fx.profileId).find(
+    const supp = getIntakeItems(fx.profileId).find(
       (s) => s.id === fx.supplementId
     )!;
-    const dosesPerDay = getSupplementDoses(fx.profileId).filter(
+    const dosesPerDay = getIntakeDoses(fx.profileId).filter(
       (d) => d.item_id === fx.supplementId
     ).length;
     const daysLeft = daysOfSupplyLeft(

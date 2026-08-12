@@ -325,6 +325,58 @@ describe("addMeasurements — one form, three stores", () => {
     );
   });
 
+  // #2363 — the survivor #2311's audit named. `insertVitals` answered a bare
+  // boolean, so a sitting carrying ONLY a blood pressure kept its reading, dropped
+  // the stated minute and said nothing, while the same sitting with a weight beside
+  // it DID report off the body half. The answer is the sitting's now.
+  it("answers a refused stated time for a VITALS-ONLY sitting (#2363)", async () => {
+    const { profile } = seedActor();
+    pinUtc(profile.id);
+
+    // No weight, no body fat, no resting HR — nothing reaches insertBodyMetric, so
+    // this is exactly the case that used to be silent.
+    expect(
+      await addMeasurements(
+        fd({
+          date: DATE,
+          systolic: "128",
+          diastolic: "82",
+          occurred_at: "2026-05-05T07:00:00.000Z",
+        })
+      )
+    ).toEqual({ statedTimeRefused: "other-day" });
+    // The reading landed on its own day with an honest NULL for the minute the gate
+    // discarded — a notice, never a failure.
+    expect(medRows(profile.id, "Blood Pressure Systolic")[0]).toMatchObject({
+      occurred_at: null,
+    });
+
+    // A device clock past the five-minute tolerance, vitals-only.
+    const ahead = "2099-06-01";
+    expect(
+      await addMeasurements(
+        fd({ date: ahead, spo2: "97", occurred_at: `${ahead}T12:00:00.000Z` })
+      )
+    ).toEqual({ statedTimeRefused: "future" });
+
+    // Accepted and unstated are both silence on this half too.
+    expect(
+      await addMeasurements(
+        fd({
+          date: DATE,
+          glucose: "92",
+          glucose_unit: "mg/dL",
+          occurred_at: `${DATE}T07:30:00.000Z`,
+        })
+      )
+    ).toEqual({});
+    expect(
+      await addMeasurements(
+        fd({ date: DATE, systolic: "119", diastolic: "78" })
+      )
+    ).toEqual({});
+  });
+
   it("is a no-op (and does not revalidate) on an empty or invalid submission", async () => {
     const { profile } = seedActor();
     await addMeasurements(fd({ date: DATE }));

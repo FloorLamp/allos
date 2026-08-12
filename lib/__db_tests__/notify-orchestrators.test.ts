@@ -27,8 +27,8 @@ import {
   setProfileHomeAssistant,
   setProfileSetting,
   getProfileSetting,
-  setUserBirthdate,
-  setUserSex,
+  setProfileBirthdate,
+  setProfileSex,
   setWeekMode,
   setWeekStart,
 } from "@/lib/settings";
@@ -343,8 +343,8 @@ function preventiveProfile(name: string): number {
 // The same demographics with NO history at all — a brand-new profile (#1433).
 function bareProfile(name: string): number {
   const p = newProfile(name);
-  setUserBirthdate(p, "1980-01-01");
-  setUserSex(p, "male");
+  setProfileBirthdate(p, "1980-01-01");
+  setProfileSex(p, "male");
   return p;
 }
 
@@ -880,7 +880,7 @@ describe("runRecap calendar-mode completed week (#1021)", () => {
     // The documented grammar, not a second parenthetical (#2391/#2389 item 2).
     // The recap emphasizes a head that carries qualifiers (#2392); pin that rather
     // than loosen the assertion, so the whole line is still checked.
-    expect(text).toContain("<b>Workouts: 1 (strength 1)</b> — 0 last week");
+    expect(text).toContain("<b>Workouts: 1</b> — strength 1 · 0 last week");
   });
 });
 

@@ -19,7 +19,7 @@
 // NULL-AGE POLICY (documented once, here): `lifeStage(null)` is `null` — "unknown".
 // Each predicate then states its own unknown-age default, and those defaults are
 // POLICY, deliberately not uniform:
-//   • Presentations that RESTRUCTURE the UI (Body-tab growth layout, body-fat
+//   • Presentations that RESTRUCTURE the UI (body-census growth layout, body-fat
 //     de-prioritization, BP regime) default UNKNOWN → adult — we never reshape a
 //     page on missing data, only on a positive under-age match.
 //   • Adult-population STATISTICAL models (fitness percentiles, bio-age/PhenoAge,
@@ -48,8 +48,8 @@ export const PEDIATRIC_BP_MAX_AGE = 13;
 // validated in adults only; below it they return nothing rather than a wrong number.
 export const ADULT_MIN_AGE = 18;
 
-// < 20 y (= 240 months) — the WHO/CDC growth-chart data ceiling and the Body-tab
-// growth-led presentation line (#492). The Body tab reorders to height-first, drops
+// < 20 y (= 240 months) — the WHO/CDC growth-chart data ceiling and the body-census
+// growth-led presentation line (#492). The body census reorders to height-first, drops
 // body-fat, floats the growth-percentile card to the top, and offers the height/
 // head-circ quick-add for anyone within growth-chart range. Converges the former
 // split between the fixed-18 layout line and the 240-month chart ceiling onto the
@@ -149,7 +149,7 @@ export function meetsMinAge(
   return !known(age) || age >= minAge;
 }
 
-// The Body-tab growth-led presentation: height-first chart order, body-fat
+// The body-census growth-led presentation: height-first chart order, body-fat
 // de-prioritized, growth-percentile card floated to the top, height/head-circ
 // quick-add offered. True when the profile is within WHO/CDC growth-chart range
 // (< 20 y). Unknown age → false (adult layout, body-fat shown) — we don't

@@ -1,10 +1,10 @@
 import { db, today } from "./db";
 import {
   getAdvanceDirectives,
-  getUserAge,
-  getUserSex,
-  getUserBirthdate,
-  getUserFullName,
+  getProfileAge,
+  getProfileSex,
+  getProfileBirthdate,
+  getProfileFullName,
   getBloodType,
 } from "./settings";
 import { ageInMonthsFromBirthdate } from "./date";
@@ -18,16 +18,16 @@ import {
   getLatestBodyMetricDated,
 } from "./queries/metrics";
 import {
-  getMedicalRecords,
+  getClinicalObservations,
   getSavedBiomarkers,
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
-  getLatestMedicalRecordByCanonical,
+  getLatestClinicalObservationByCanonical,
 } from "./queries/medical";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getMedicationCourses,
 } from "./queries/intake";
 import {
@@ -48,10 +48,9 @@ import {
   type SummaryFamilyHistory,
   type SummaryVital,
 } from "./profile-summary";
-import type { MedicationCourse } from "./types";
+import type { ClinicalObservation, MedicationCourse } from "./types";
 import { medicationDoseDetail } from "./medication-list";
-import type { MedicalRecord } from "./types";
-import { isPrn } from "./supplement-schedule";
+import { isOnDemand } from "./intake-schedule";
 
 // Server-side gathering for the profile passport: it runs the
 // individual profile-scoped latest-value queries and hands the raw results to the
@@ -64,7 +63,7 @@ const ABO_CANONICAL = "ABO Blood Group";
 const RH_CANONICAL = "Rh Type";
 
 // Display identity for a record: its canonical name when set, else the raw name.
-function recordName(r: MedicalRecord): string {
+function recordName(r: ClinicalObservation): string {
   return r.canonical_name?.trim() || r.name;
 }
 
@@ -87,15 +86,15 @@ export function getProfileSummary(
 ): ProfileSummary {
   // Age (months) + sex drive both the pediatric growth badges and the
   // immunization schedule assessment; resolve them up front.
-  const birthdate = getUserBirthdate(profileId);
+  const birthdate = getProfileBirthdate(profileId);
   const now = today(profileId);
   const ageMonths = birthdate ? ageInMonthsFromBirthdate(birthdate, now) : null;
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
 
-  const abo = getLatestMedicalRecordByCanonical(profileId, ABO_CANONICAL);
-  const rh = getLatestMedicalRecordByCanonical(profileId, RH_CANONICAL);
+  const abo = getLatestClinicalObservationByCanonical(profileId, ABO_CANONICAL);
+  const rh = getLatestClinicalObservationByCanonical(profileId, RH_CANONICAL);
 
-  const flagged: SummaryVital[] = getMedicalRecords(profileId, {
+  const flagged: SummaryVital[] = getClinicalObservations(profileId, {
     current: true,
     range: "nonoptimal",
   }).map((r) => ({
@@ -134,9 +133,9 @@ export function getProfileSummary(
   // normalization the structuring uses), so a structured "Lisinopril" hides its
   // raw "Lisinopril 10 mg" medical_records twin and no med double-lists. `active`
   // splits the two kinds.
-  const allSupps = getSupplements(profileId);
+  const allSupps = getIntakeItems(profileId);
   const medDoseAmounts = new Map<number, string[]>();
-  for (const d of getSupplementDoses(profileId)) {
+  for (const d of getIntakeDoses(profileId)) {
     if (!d.amount) continue;
     const arr = medDoseAmounts.get(d.item_id) ?? [];
     arr.push(d.amount);
@@ -157,7 +156,7 @@ export function getProfileSummary(
       // Emergency Card / passport and the printable list can't drift on dose text.
       const detail = medicationDoseDetail(
         medDoseAmounts.get(s.id) ?? [],
-        isPrn(s),
+        isOnDemand(s),
         s.product
       );
       return {
@@ -213,7 +212,10 @@ export function getProfileSummary(
     date: t.date,
   }));
 
-  const history = getMedicalRecords(profileId, { sort: "date", dir: "desc" })
+  const history = getClinicalObservations(profileId, {
+    sort: "date",
+    dir: "desc",
+  })
     .slice(0, MAX_HISTORY)
     .map((r) => ({
       name: recordName(r),
@@ -280,8 +282,8 @@ export function getProfileSummary(
   const restingHr = getLatestBodyMetricDated(profileId, "resting_hr");
 
   return buildProfileSummary({
-    name: getUserFullName(profileId) ?? fallbackName,
-    age: getUserAge(profileId),
+    name: getProfileFullName(profileId) ?? fallbackName,
+    age: getProfileAge(profileId),
     ageMonths,
     sex,
     hasBirthdate: birthdate != null,

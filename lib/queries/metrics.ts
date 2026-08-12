@@ -1,13 +1,14 @@
 import { db } from "../db";
 import { cache } from "../request-cache";
+import { clampPage, pageCount, pageOffset } from "../pagination";
 import { tickCached } from "../tick-cache";
 import {
-  PROVIDER_PREFERENCE,
-  pickOneProviderPerDay,
+  SOURCE_PREFERENCE,
+  pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
   type SourceSelection,
-} from "../metric-providers";
+} from "../metric-sources";
 import {
   DOCUMENTS_SOURCE_CLASS,
   resolveMetricSources,
@@ -34,6 +35,7 @@ import type { ArrivalNight } from "../notifications/digest-schedule";
 import { metricAggregation } from "../metric-buckets";
 import { DOCUMENT_SOURCE_PREFIX } from "../body-metric-extract";
 import { getIntegration } from "../integrations/registry";
+import { mainSleepPeriod } from "../sleep-regularity";
 import type {
   BodyMetric,
   BodyMetricKind,
@@ -51,7 +53,7 @@ function resolutionFor(profileId: number, metric: string): SourceResolution {
   return resolveMetricSources(
     metric,
     getMetricSourcePriority(profileId),
-    PROVIDER_PREFERENCE
+    SOURCE_PREFERENCE
   );
 }
 
@@ -66,7 +68,7 @@ function choiceFor(
 
 // SQL mirror of sourceMatchesSelector: the condition matching a row's `source`
 // column to ONE selector. 'manual' covers NULL (quick-add rows) as well as the
-// journal's literal 'manual'; the 'documents' CLASS (#1640) covers every
+// training log's literal 'manual'; the 'documents' CLASS (#1640) covers every
 // 'document:<id>' provenance through a prefix LIKE. Callers splice `sql` into a
 // WHERE clause and spread `params` at that position.
 function sourceMatchSql(selector: string): { sql: string; params: string[] } {
@@ -129,7 +131,7 @@ export function getWeights(
 // (#634). getWeights returns every source's row interleaved, so two scales
 // reporting the same/adjacent day (body_metrics keys on (profile_id, date, source))
 // feed the detector a false cross-source "jump"; collapsing per day mirrors the
-// Trends → Body chart's getBodyMetricDailySeries so the finding and the chart it
+// Trends → Overview → body census chart's getBodyMetricDailySeries so the finding and the chart it
 // links to can't disagree. Unlike that series this keeps the id (the anomaly finding
 // links to the exact offending row) and doesn't average — it hands whole rows to the
 // pure detector.
@@ -159,7 +161,7 @@ export function documentLabel(d: {
 // Body-metrics rows with their provenance resolved for the history table: rows
 // imported from a medical document ('document:<id>') pick up the document's label
 // and id for linking; integration ids resolve to the registry's display name;
-// manual rows (source NULL, or the journal's 'manual') label as "Manual".
+// manual rows (source NULL, or the training log's 'manual') label as "Manual".
 export function getBodyMetricsWithSource(
   profileId: number,
   limit = 365
@@ -173,16 +175,33 @@ export function getBodyMetricsWithSource(
            ON w.source = '${DOCUMENT_SOURCE_PREFIX}' || d.id
           AND d.profile_id = w.profile_id
         WHERE w.profile_id = ?
-        ORDER BY w.date DESC
+        ${BODY_METRICS_ORDER}
         LIMIT ?`
     )
-    .all(profileId, limit) as (BodyMetric & {
-    document_id: number | null;
-    doc_source: string | null;
-    doc_type: string | null;
-    doc_filename: string | null;
-  })[];
-  return rows.map(({ doc_source, doc_type, doc_filename, ...w }) => ({
+    .all(profileId, limit) as BodyMetricSourceRow[];
+  return rows.map(withSourceLabel);
+}
+
+// Newest first, with `id` breaking a same-day tie. The tiebreak is what makes the
+// order TOTAL, and a paged read needs that: with `date DESC` alone, two rows on one
+// day may sort either way between two queries, so a row could show on both pages of
+// a page boundary or on neither (#2530).
+const BODY_METRICS_ORDER = "ORDER BY w.date DESC, w.id DESC";
+
+type BodyMetricSourceRow = BodyMetric & {
+  document_id: number | null;
+  doc_source: string | null;
+  doc_type: string | null;
+  doc_filename: string | null;
+};
+
+function withSourceLabel({
+  doc_source,
+  doc_type,
+  doc_filename,
+  ...w
+}: BodyMetricSourceRow): BodyMetricWithSource {
+  return {
     ...w,
     source_label:
       w.document_id != null
@@ -196,7 +215,71 @@ export function getBodyMetricsWithSource(
           : w.source.startsWith(DOCUMENT_SOURCE_PREFIX)
             ? "Document" // source document row no longer exists
             : (getIntegration(w.source as IntegrationId)?.name ?? w.source),
-  }));
+  };
+}
+
+export interface BodyMetricsPage {
+  rows: BodyMetricWithSource[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ONE page of the body-metrics history, newest first, plus the total the pager needs
+// to say how much history there is (the audit viewer's `queryAuditEvents` shape).
+//
+// The history table on Trends is deliberately ALL-TIME — it is the record editor, and
+// a stray row you want to delete is usually outside whatever window the charts above
+// are showing — so the bound cannot come from the hub's date range; it has to be a
+// page (#2530). A daily weigh-in over two years is ~700 rows, each carrying notes, a
+// possible edit-lock badge and a client delete button, and before this the whole
+// ledger was read and serialized into every render of the Body census.
+export function getBodyMetricsPage(
+  profileId: number,
+  page: number,
+  pageSize: number
+): BodyMetricsPage {
+  const size = Math.max(1, Math.trunc(pageSize));
+  const total = (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?")
+      .get(profileId) as { n: number }
+  ).n;
+  const clamped = Math.min(clampPage(page), pageCount(total, size));
+  const rows = db
+    .prepare(
+      `SELECT w.*, d.id AS document_id, d.source AS doc_source,
+              d.doc_type AS doc_type, d.filename AS doc_filename
+         FROM body_metrics w
+         LEFT JOIN medical_documents d
+           ON w.source = '${DOCUMENT_SOURCE_PREFIX}' || d.id
+          AND d.profile_id = w.profile_id
+        WHERE w.profile_id = ?
+        ${BODY_METRICS_ORDER}
+        LIMIT ? OFFSET ?`
+    )
+    .all(profileId, size, pageOffset(clamped, size)) as BodyMetricSourceRow[];
+  return {
+    rows: rows.map(withSourceLabel),
+    total,
+    page: clamped,
+    pageSize: size,
+  };
+}
+
+// The body-metrics rows recorded FOR one day. A different question from a page of
+// history: the Body census asks it to decide whether a day's composition number is
+// one physical reading (and may therefore print that reading's clock) or a blend of
+// several, and that answer must not depend on which page of the table is open.
+export function getBodyMetricsOnDate(
+  profileId: number,
+  date: string
+): BodyMetric[] {
+  return db
+    .prepare(
+      "SELECT * FROM body_metrics WHERE profile_id = ? AND date = ? ORDER BY id"
+    )
+    .all(profileId, date) as BodyMetric[];
 }
 
 // ---- Integration metrics (steps, distance, calories, HR) ----
@@ -207,7 +290,7 @@ export function getBodyMetricsWithSource(
 // Source handling (issue #14): an ADDITIVE metric is never summed across sources
 // — every SUM metric picks one source per day (the profile's primary source
 // first, else the default preference, else single-source passthrough), so two
-// providers reporting the same day can't double-count. A POINT (AVG) metric
+// sources reporting the same day can't double-count. A POINT (AVG) metric
 // keeps averaging every source's readings per day (they measure the same
 // quantity and a same-date manual + imported reading must agree, not sum);
 // an explicit primary source narrows it to that source's readings.
@@ -248,7 +331,7 @@ export function getMetricDailyTotals(
       .all(profileId, metric, limitDays) as { date: string; value: number }[];
     return rows.reverse();
   }
-  // Additive metric: one source per day. pickOneProviderPerDay must run in JS,
+  // Additive metric: one source per day. pickOneSourcePerDay must run in JS,
   // so we can't just LIMIT the aggregate; instead find the cutoff date of the
   // limitDays most-recent dates-with-data first, then aggregate only from there.
   // This is exact (the output is those same dates), while bounding both the SUM
@@ -274,7 +357,7 @@ export function getMetricDailyTotals(
     value: number;
   }[];
   return (
-    pickOneProviderPerDay(
+    pickOneSourcePerDay(
       pickRowsOneOriginPerSourceDay(
         rows,
         (r) => r.date,
@@ -282,7 +365,7 @@ export function getMetricDailyTotals(
         (r) => r.origin,
         (r) => r.value
       ),
-      resolveMetricSources(metric, priority, PROVIDER_PREFERENCE)
+      resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
     )
       .sort((a, b) => (a.date < b.date ? 1 : -1))
       // ALL_ROWS is -1 ("no limit" — that is what SQLite's `LIMIT -1` means, and the
@@ -336,13 +419,25 @@ export function getLatestMetricValue(
   return getLatestMetricSample(profileId, metric)?.value ?? null;
 }
 
-// Per-night sleep stage totals (minutes), oldest→newest, pivoted from the four
-// sleep_*_min metrics. Each metric is summed per date (a night maps to one date —
-// its wake day — set by the parser). Stage minutes are additive, and two sources
-// can report the same night (Health Connect + Oura), so ONE source is kept per
-// night (issue #14) — keyed by the 'sleep_min' primary-source choice so the
-// nightly-duration chart and the stage breakdown always agree on whose night is
-// shown.
+// Per-night MAIN-sleep stage totals (minutes), oldest→newest, pivoted from the four
+// sleep_*_min metrics. Stage rows are stored as timestamped observations but carry
+// no session id, so attribution is by overlap with the SAME mainSleepPeriod that
+// owns the duration/bed/wake summary. A same-wake-day nap therefore stays out of
+// the overnight stage chart instead of making its stack out-sum the duration point.
+//
+// Source/origin selection follows the sleep_min session read first, then stage rows
+// must match that elected stream. This preserves issue #14's one-source-per-night
+// contract while avoiding an independent stage-only election that could choose a
+// different wearable from the session whose duration is shown.
+//
+// `limitDays` is a READ bound, not a post-slice (#2520): it is the SQL LIMIT on the
+// stage-day scan, and the cutoff it yields bounds every other statement here. So a
+// caller asking for 14 nights reads 14 nights' rows — Health Connect stores one row
+// per stage per night, so the difference between the caller's window and this
+// function's default is thousands of rows on a daily wearable user. The returned
+// series can be SHORTER than `limitDays`: a stage day whose elected main session is
+// missing contributes no row, and that is the honest answer for "the last N days
+// that have stage data" rather than a silent look-back past the window.
 export function getSleepStageDailyTotals(
   profileId: number,
   limitDays = 180
@@ -359,56 +454,114 @@ export function getSleepStageDailyTotals(
   const cutoff = recentDates[recentDates.length - 1].date;
   const rows = db
     .prepare(
-      `SELECT date, source, origin,
-              SUM(CASE WHEN metric = 'sleep_deep_min'  THEN value ELSE 0 END) AS deep,
-              SUM(CASE WHEN metric = 'sleep_rem_min'   THEN value ELSE 0 END) AS rem,
-              SUM(CASE WHEN metric = 'sleep_light_min' THEN value ELSE 0 END) AS light,
-              SUM(CASE WHEN metric = 'sleep_awake_min' THEN value ELSE 0 END) AS awake
+      `SELECT date, metric, start_time AS start, end_time AS end,
+              source, origin, value
          FROM metric_samples
         WHERE profile_id = ? AND date >= ?
-          AND metric IN ('sleep_deep_min','sleep_rem_min','sleep_light_min','sleep_awake_min')
-        GROUP BY date, source, origin`
+          AND metric IN ('sleep_deep_min','sleep_rem_min','sleep_light_min','sleep_awake_min')`
     )
     .all(profileId, cutoff) as {
     date: string;
+    metric: string;
+    start: string;
+    end: string;
     source: string | null;
     origin: string | null;
+    value: number;
+  }[];
+
+  // Elect the sleep_min source/origin PER DAY exactly as the additive duration
+  // chart does. The SRI session read has a different, stream-wide fallback (the
+  // newest source), so routing this chart through it could make the duration point
+  // Health Connect while its stages came from Oura.
+  const rawSessions = db
+    .prepare(
+      `SELECT date, start_time AS start, end_time AS end, source, origin, value
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' AND date >= ?
+          AND julianday(end_time) > julianday(start_time)`
+    )
+    .all(profileId, cutoff) as SelectedSleepSessionRow[];
+  const sessions = pickRowsOneSourcePerDay(
+    pickRowsOneOriginPerSourceDay(
+      rawSessions,
+      (row) => row.date,
+      (row) => row.source,
+      (row) => row.origin,
+      (row) => row.value
+    ),
+    resolutionFor(profileId, "sleep_min"),
+    (row) => row.date,
+    (row) => row.source,
+    (row) => row.value
+  );
+  const sessionsByDay = new Map<string, SelectedSleepSessionRow[]>();
+  for (const session of sessions) {
+    const day = sessionsByDay.get(session.date);
+    if (day) day.push(session);
+    else sessionsByDay.set(session.date, [session]);
+  }
+  // Bucket the stage rows by date ONCE. The attribution below is per day, and
+  // rescanning the whole array inside that loop made the cost days × rows — a few
+  // thousand stage rows over a half-year window is ~10^6 iterations to answer about
+  // a handful of nights (#2520). The attribution itself is unchanged; only its
+  // access pattern was quadratic.
+  const rowsByDay = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const day = rowsByDay.get(row.date);
+    if (day) day.push(row);
+    else rowsByDay.set(row.date, [row]);
+  }
+
+  const out: {
+    date: string;
     deep: number;
     rem: number;
     light: number;
     awake: number;
-  }[];
-  const oneOrigin = pickRowsOneOriginPerSourceDay(
-    rows,
-    (r) => r.date,
-    (r) => r.source,
-    (r) => r.origin,
-    (r) => r.deep + r.rem + r.light + r.awake
-  );
-  return (
-    pickRowsOneSourcePerDay(
-      oneOrigin,
-      resolutionFor(profileId, "sleep_min"),
-      (r) => r.date,
-      (r) => r.source,
-      (r) => r.deep + r.rem + r.light + r.awake
-    )
-      // Round ONCE, here, on the summed day total. Health Connect stores one row per
-      // sleep stage at sub-minute precision (a night is dozens of rows, many of them
-      // 30-second micro-arousals), so whole minutes have to be taken after the SUM —
-      // rounding per stage at ingest made the breakdown out-sum its own session total
-      // by ~14 min a night (the Fitbit-exporter payload audit). Oura/Withings report whole minutes per stage
-      // already and are unaffected by rounding a value that is already integral.
-      .map(({ date, deep, rem, light, awake }) => ({
-        date,
-        deep: Math.round(deep),
-        rem: Math.round(rem),
-        light: Math.round(light),
-        awake: Math.round(awake),
-      }))
-      .sort((a, b) => (a.date < b.date ? -1 : 1))
-      .slice(-limitDays)
-  );
+  }[] = [];
+  for (const [date, daySessions] of sessionsByDay) {
+    const period = mainSleepPeriod(daySessions);
+    if (!period) continue;
+    const windows = period.members.map((member) => ({
+      start: new Date(member.start).getTime(),
+      end: new Date(member.end).getTime(),
+    }));
+    const totals = { deep: 0, rem: 0, light: 0, awake: 0 };
+    let found = false;
+    for (const row of rowsByDay.get(date) ?? []) {
+      if (row.source !== period.main.source) continue;
+      if (row.origin !== period.main.origin) continue;
+      // Fitbit Takeout aggregate-stage rows append `#deep` / `#rem` / ... to
+      // the session start as part of their natural storage key. The prefix is
+      // still the real session boundary used for overlap attribution.
+      const keySuffix = row.start.indexOf("#");
+      const stageStart =
+        keySuffix < 0 ? row.start : row.start.slice(0, keySuffix);
+      const start = new Date(stageStart).getTime();
+      const end = new Date(row.end).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start)
+        continue;
+      if (!windows.some((window) => end > window.start && start < window.end))
+        continue;
+      const key = row.metric.slice("sleep_".length, -"_min".length) as
+        "deep" | "rem" | "light" | "awake";
+      totals[key] += row.value;
+      found = true;
+    }
+    if (!found) continue;
+    // Round ONCE, after the chosen main session's rows have been summed. Health
+    // Connect stores sub-minute stage observations, so per-row rounding would
+    // accumulate error across a night full of 30-second micro-arousals.
+    out.push({
+      date,
+      deep: Math.round(totals.deep),
+      rem: Math.round(totals.rem),
+      light: Math.round(totals.light),
+      awake: Math.round(totals.awake),
+    });
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : 1)).slice(-limitDays);
 }
 
 // Raw per-night sleep sessions (metric 'sleep_min') as absolute time windows,
@@ -432,6 +585,10 @@ export interface SleepSessionRow {
   end: string;
   value: number;
   source: string | null;
+}
+
+interface SelectedSleepSessionRow extends SleepSessionRow {
+  origin: string | null;
 }
 
 function readSleepSessions(
@@ -583,6 +740,45 @@ export function getSleepSessionsSince(
   since: string
 ): SleepSessionRow[] {
   return readSleepSessions(profileId, { since });
+}
+
+// Valid sleep windows on or after a calendar cutoff, electing one source per
+// wake-day with the SAME resolution used by the additive sleep_min chart. This
+// is deliberately separate from getSleepSessionsSince: SRI needs one continuous
+// source stream across its whole window, while date-keyed display history must
+// not lose older days when a profile changes wearables.
+export function getDailySleepSessionsSince(
+  profileId: number,
+  since: string
+): SleepSessionRow[] {
+  const rows = db
+    .prepare(
+      `SELECT date, start_time AS start, end_time AS end, source, origin, value
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' AND date >= ?
+          AND julianday(end_time) > julianday(start_time)
+        ORDER BY end_time DESC`
+    )
+    .all(profileId, since) as SelectedSleepSessionRow[];
+  return pickRowsOneSourcePerDay(
+    pickRowsOneOriginPerSourceDay(
+      rows,
+      (row) => row.date,
+      (row) => row.source,
+      (row) => row.origin,
+      (row) => row.value
+    ),
+    resolutionFor(profileId, "sleep_min"),
+    (row) => row.date,
+    (row) => row.source,
+    (row) => row.value
+  ).map(({ date, start, end, value, source }) => ({
+    date,
+    start,
+    end,
+    value,
+    source,
+  }));
 }
 
 // Every valid sleep session whose stored wake-day is inside the selected calendar
@@ -1181,7 +1377,7 @@ export function getLatestBodyMetricDailyPoints(
 // ---- Per-source comparison series (issue #14) ----
 // The raw material for the "Compare sources" overlay: the SAME daily rollup the
 // single-series charts use, but grouped per source instead of collapsed to one.
-// Sources are ordered by the default provider preference (then alphabetically) so
+// Sources are ordered by the default source preference (then alphabetically) so
 // series colors/legends are stable.
 
 export interface MetricSourceSeries {
@@ -1191,8 +1387,8 @@ export interface MetricSourceSeries {
 
 function orderSources(sources: string[]): string[] {
   return sources.sort((a, b) => {
-    const ia = PROVIDER_PREFERENCE.indexOf(a);
-    const ib = PROVIDER_PREFERENCE.indexOf(b);
+    const ia = SOURCE_PREFERENCE.indexOf(a);
+    const ib = SOURCE_PREFERENCE.indexOf(b);
     if (ia !== -1 || ib !== -1) {
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
     }

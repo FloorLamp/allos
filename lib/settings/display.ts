@@ -112,7 +112,19 @@ export function setDisplayFormatPrefs(
 // this same read (it can't import settings.ts without a cycle); keep them in sync
 // via the shared lib/timezone.resolveTimezone.
 
-export function getTimezone(profileId: number): string {
+// cache()-wrapped like getUnitPrefs above, and for a stronger reason: lib/db.ts's
+// copy of this read is ALREADY memoized per profile (a 5s TTL, because the notify
+// sidecar is a long-lived process with no request to scope to), while this one —
+// the canonical copy every page and query calls — re-read the two settings rows on
+// every call. The two agreed on the VALUE and diverged on the COST: one `/` render
+// asked for a profile's timezone 41 times and the instance default 53 more.
+// Request scope is strictly tighter than that TTL, so this cannot go stale in a
+// way the db.ts memo would not have. setTimezone writes through
+// setProfileSetting, which invalidates the db.ts memo and revalidates rather than
+// re-reading in the same request.
+export const getTimezone = cache(function getTimezone(
+  profileId: number
+): string {
   // Per-profile setting wins; read the instance default only when it's unset (the
   // `??` short-circuit), then resolveTimezone validates-or-falls-back to UTC.
   const prof = getProfileSetting(profileId, "timezone");
@@ -120,7 +132,7 @@ export function getTimezone(profileId: number): string {
     prof,
     prof == null ? getSetting("timezone") : undefined
   );
-}
+});
 
 export function setTimezone(profileId: number, tz: string): void {
   if (!isValidTimezone(tz)) throw new Error(`Invalid timezone: ${tz}`);
@@ -151,7 +163,7 @@ export function setWeekStart(profileId: number, weekStart: WeekStart): void {
 }
 
 // ---- Weekly counting mode (per profile) ----
-// Whether the weekly-routine counters and the journal week summary count over the
+// Whether the weekly-routine counters and the training log week summary count over the
 // current calendar week (resetting on the week-start day) or a rolling 7-day
 // window. Defaults to the calendar week, so the week-start preference drives them
 // out of the box.
@@ -223,7 +235,7 @@ export function setFreeDays(profileId: number, days: number[]): void {
 // Meanwhile Trends already HAD a user-arrangement substrate — `saved_items`, which
 // the Overview grid's ★, drag and ⋯-menu arrows all write (#1456/#1487/#1485-C).
 //
-// #1643 folded the Body tab onto that one store rather than completing a second:
+// #1643 folded the body census onto that one store rather than completing a second:
 // starred cards lead in their saved order, the ranker sequences the remainder
 // (lib/trends-card-rank.ts `bodyCardOrder`, fed by `getBodyCardPins` in
 // lib/queries/trends-context.ts). Retiring the key needed NO migration and no

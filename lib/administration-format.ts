@@ -11,6 +11,7 @@ import {
   type TimeFormat,
 } from "./format-date";
 import { GLYPH } from "./notifications/glyphs";
+import { formatRecordDate } from "./record-format";
 
 // Render a stored UTC administration time ("YYYY-MM-DD HH:MM:SS") as a profile-local
 // clock ("4:02pm") for the "last …" line. Empty string on a missing/garbage value so
@@ -28,6 +29,23 @@ export function formatGivenAtClock(
   const { hhmm } = zonedDateParts(tz, d);
   const [hStr, m] = hhmm.split(":");
   return formatClock(timeFormat, Number(hStr), Number(m), "lower-nospace");
+}
+
+// A redose notice may legitimately cross midnight (or use a multi-day interval).
+// Keep today's compact clock, but name the date whenever the arming administration was
+// on another local day so `(10:41am)` can never look like it happened this morning.
+export function formatGivenAtNoticeTime(
+  tz: string,
+  stored: string | null | undefined,
+  referenceDate: string
+): string {
+  const d = parseUtcSql(stored);
+  if (!d) return "";
+  const clock = formatGivenAtClock(tz, stored);
+  const localDate = zonedDateParts(tz, d).date;
+  return localDate === referenceDate
+    ? clock
+    : `${formatRecordDate(localDate)} at ${clock}`;
 }
 
 // A displayed administration that landed on the profile's current local day keeps

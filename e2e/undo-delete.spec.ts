@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Issue #30: deleting a row keeps it in a short-lived holding table and offers an
 // Undo toast. This drives the required end-to-end path — delete an activity in the
@@ -19,7 +21,7 @@ import { settledClick } from "./helpers";
 const PROBE_PREFIX = "Undo delete probe";
 let probeSeq = 0;
 
-// Journal card(s) whose title contains `text`, scoped to the main content.
+// Training Log card(s) whose title contains `text`, scoped to the main content.
 function cardsByTitle(page: Page, text: string | RegExp) {
   return page
     .getByRole("main")
@@ -109,4 +111,110 @@ test("delete an activity, then Undo restores it (#30)", async ({ page }) => {
   await cardsByTitle(page, title).getByRole("button", { name: title }).click();
   await confirmDelete(page);
   await expect(cardsByTitle(page, title)).toHaveCount(0);
+});
+
+// ── The readings table's OTHER stores (#2123) ────────────────────────────────
+// One ⋯ menu, two delete contracts: weight and blood pressure offered Undo out of it
+// while HRV, height, steps and a mood check-in were gone for good. This drives the HRV
+// half end to end — the store (`metric_samples`) that also carries the re-import
+// tombstone, so the journey proves the capture kept that protection AND handed the row
+// back.
+//
+// Fixture ownership (docs/internals/e2e-hygiene.md): the spec inserts its OWN sample at
+// a date/value no seed uses, drives the row it created, and sweeps it plus any holding
+// row it minted — it never counts or mutates the shared HRV series.
+const HRV_PROBE_DATE = "2019-03-04";
+// The sample's instant, written out in full rather than interpolated from the date —
+// `${date}T07:00:00` is exactly the shape lib/__tests__/e2e-fixture-time.test.ts
+// ratchets against, and this fixture has no reason to build one.
+const HRV_PROBE_AT = "2019-03-04T07:00:00";
+const HRV_PROBE_VALUE = 137;
+
+function withProbeDb<T>(fn: (handle: Database.Database) => T): T {
+  const handle = new Database(workerDbPath());
+  try {
+    handle.pragma("busy_timeout = 5000");
+    return fn(handle);
+  } finally {
+    handle.close();
+  }
+}
+
+function sweepHrvProbe(): void {
+  withProbeDb((db) => {
+    db.prepare(
+      `DELETE FROM metric_samples WHERE metric = 'hrv_ms' AND date = ?`
+    ).run(HRV_PROBE_DATE);
+    db.prepare(`DELETE FROM deleted_rows WHERE payload LIKE ?`).run(
+      `%${HRV_PROBE_DATE}%`
+    );
+    db.prepare(
+      `DELETE FROM import_tombstones WHERE target_table = 'metric_samples' AND natural_key LIKE ?`
+    ).run(`%${HRV_PROBE_DATE}%`);
+  });
+}
+
+test.describe("a metric_samples reading is undoable too (#2123)", () => {
+  test.beforeEach(sweepHrvProbe);
+  test.afterAll(sweepHrvProbe);
+
+  test("delete an HRV reading from the ⋯ menu, then Undo restores it", async ({
+    page,
+  }) => {
+    test.slow();
+    withProbeDb((db) => {
+      db.prepare(
+        `INSERT INTO metric_samples
+           (profile_id, source, metric, date, start_time, end_time, value)
+         VALUES (1, 'manual', 'hrv_ms', ?, ?, ?, ?)`
+      ).run(HRV_PROBE_DATE, HRV_PROBE_AT, HRV_PROBE_AT, HRV_PROBE_VALUE);
+    });
+
+    await page.goto("/trends/metric/hrv");
+    const row = page
+      .getByTestId("metric-readings-table")
+      .getByRole("row")
+      .filter({ hasText: HRV_PROBE_DATE });
+    await expect(row).toHaveCount(1);
+
+    await row.getByLabel("Reading actions").click();
+    await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+    await settledClick(
+      page,
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Delete", exact: true })
+    );
+
+    // Gone from the table — and, unlike before #2123, the shared Undo toast is there.
+    await expect(
+      page
+        .getByTestId("metric-readings-table")
+        .getByRole("row")
+        .filter({ hasText: HRV_PROBE_DATE })
+    ).toHaveCount(0);
+    await expect(page.getByText("Reading deleted.")).toBeVisible();
+
+    await settledClick(page, page.getByRole("button", { name: "Undo" }));
+    await expect(page.getByText("Restored.")).toBeVisible();
+    await expect(
+      page
+        .getByTestId("metric-readings-table")
+        .getByRole("row")
+        .filter({ hasText: HRV_PROBE_DATE })
+    ).toHaveCount(1);
+
+    // The tombstone the capture wrote is gone again, so the rolling window resumes
+    // ingesting the natural key the restored row occupies (#508/#653).
+    withProbeDb((db) => {
+      expect(
+        db
+          .prepare(
+            `SELECT COUNT(*) AS c FROM import_tombstones
+              WHERE target_table = 'metric_samples' AND natural_key LIKE ?`
+          )
+          .get(`%${HRV_PROBE_DATE}%`)
+      ).toEqual({ c: 0 });
+    });
+  });
 });

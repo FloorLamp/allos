@@ -40,7 +40,7 @@ export const SUN_PROFILE = "Sun Outdoor (e2e)";
 export const E2E_LOGIN_SUN_NOHOME = "e2e_sun_nohome";
 export const SUN_NOHOME_PROFILE = "Sun No Home (e2e)";
 
-// Skin temperature variation on Trends → Body. A dedicated profile carrying a short
+// Skin temperature variation on Trends → Overview → body census. A dedicated profile carrying a short
 // run of nightly skin_temp_delta_c samples — SIGNED, spanning negative and positive, so
 // the chart proves the delta survives ingest and per-day AVERAGING rather than being
 // floored at zero or summed. Isolated from profile 1 so the shared vitals surface (and
@@ -48,11 +48,11 @@ export const SUN_NOHOME_PROFILE = "Sun No Home (e2e)";
 export const E2E_LOGIN_SKIN_TEMP = "e2e_skin_temp";
 export const SKIN_TEMP_PROFILE = "Skin Temp (e2e)";
 
-// #1081 — N-way activity duplicate merge (Review cluster card + Journal multi-merge).
+// #1081 — N-way activity duplicate merge (Review cluster card + Training Log multi-merge).
 // A dedicated ADULT member profile, isolated from profile 1 so the merge specs (which
 // CONSUME their rows) never race a neighbor's blast radius. The spec re-seeds BOTH its
 // fixtures from a shared seeder in beforeEach (repeat-safe, #868): a 3-row cross-source
-// duplicate CLUSTER for the Review card, and a 3-row same-day group for the Journal
+// duplicate CLUSTER for the Review card, and a 3-row same-day group for the Training Log
 // multi-select merge. Synthetic data only.
 export const E2E_LOGIN_NWAY = "e2e_nway";
 export const NWAY_PROFILE = "N-Way Merge (e2e)";

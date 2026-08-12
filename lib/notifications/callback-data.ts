@@ -12,7 +12,7 @@ import type {
 } from "../workout-finish";
 import type { ClassifyActivityTypeOutcome } from "../activity-type-write";
 import type { FoodLogOutcome } from "../food-log-write";
-import type { ProteinAddOutcome } from "../protein-log-write";
+import type { ProteinAddOutcome } from "../protein-daily-totals-write";
 import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
 import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
@@ -582,6 +582,39 @@ export function parsePrnLogCallback(data: unknown): PrnLogCallback | null {
   const itemId = Number(itemStr);
   if (!profileId || !itemId || !token) return null;
   return { profileId, itemId, token };
+}
+
+// A redose NOTICE is one administration-armed window, unlike the reusable `/dose`
+// list above. Its token carries the administration id that opened this exact window,
+// so a dose logged in the app can supersede it and both the tap handler and the
+// reconciliation sweep can retire the old button.
+export interface RedoseLogCallback {
+  profileId: number;
+  itemId: number;
+  administrationId: number;
+  token: string;
+}
+
+export function redoseLogCallback(
+  profileId: number,
+  itemId: number,
+  administrationId: number,
+  token: string
+): string {
+  return `redose:${profileId}:${itemId}:${administrationId}:${token}`;
+}
+
+// `redose:<profileId>:<itemId>:<armingAdministrationId>:<nonce>`.
+export function parseRedoseLogCallback(
+  data: unknown
+): RedoseLogCallback | null {
+  if (typeof data !== "string" || !data.startsWith("redose:")) return null;
+  const [, profStr, itemStr, administrationStr, token] = data.split(":");
+  const profileId = Number(profStr);
+  const itemId = Number(itemStr);
+  const administrationId = Number(administrationStr);
+  if (!profileId || !itemId || !administrationId || !token) return null;
+  return { profileId, itemId, administrationId, token };
 }
 
 // ---- Wellness-practice "Done ✅" logging over Telegram (#1259 phase 2) ----

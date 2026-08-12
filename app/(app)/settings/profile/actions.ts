@@ -7,14 +7,14 @@
 import { requireWriteAccess, requireAdmin } from "@/lib/auth";
 import { revalidateRoute } from "@/lib/revalidate";
 import {
-  getUserSex,
-  setUserSex,
-  getUserBirthdate,
-  setUserBirthdate,
-  getUserFullName,
-  setUserFullName,
-  getUserReproductiveStatus,
-  setUserReproductiveStatus,
+  getProfileSex,
+  setProfileSex,
+  getProfileBirthdate,
+  setProfileBirthdate,
+  getProfileFullName,
+  setProfileFullName,
+  getProfileReproductiveStatus,
+  setProfileReproductiveStatus,
   getStoredAge,
   setStoredAge,
   getTimezone,
@@ -115,8 +115,8 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   const raw = formData.get("sex");
   const sex: Sex | null =
     raw === "male" ? "male" : raw === "female" ? "female" : null;
-  const sexChanged = sex !== getUserSex(profile.id);
-  if (sexChanged) setUserSex(profile.id, sex);
+  const sexChanged = sex !== getProfileSex(profile.id);
+  if (sexChanged) setProfileSex(profile.id, sex);
 
   // Reproductive (menopausal) status — female physiology only. Only accept a value
   // when the sex is female; otherwise force null so switching away from female
@@ -128,16 +128,16 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
       ? rsRaw
       : null;
   const rsChanged =
-    reproductiveStatus !== getUserReproductiveStatus(profile.id);
-  if (rsChanged) setUserReproductiveStatus(profile.id, reproductiveStatus);
+    reproductiveStatus !== getProfileReproductiveStatus(profile.id);
+  if (rsChanged) setProfileReproductiveStatus(profile.id, reproductiveStatus);
 
   // Birthdate (ISO YYYY-MM-DD); the profile's age is derived from it. An <input
   // type="date"> emits either a valid date or "". Setting a birthdate also
-  // clears any stored age fallback (handled in setUserBirthdate).
+  // clears any stored age fallback (handled in setProfileBirthdate).
   const bdRaw = String(formData.get("birthdate") ?? "").trim();
   const birthdate = /^\d{4}-\d{2}-\d{2}$/.test(bdRaw) ? bdRaw : null;
-  const birthdateChanged = birthdate !== getUserBirthdate(profile.id);
-  if (birthdateChanged) setUserBirthdate(profile.id, birthdate);
+  const birthdateChanged = birthdate !== getProfileBirthdate(profile.id);
+  if (birthdateChanged) setProfileBirthdate(profile.id, birthdate);
 
   // Manual age is editable only while no birthdate is set (a birthdate always
   // derives the age and clears this). Blank clears the fallback; an invalid
@@ -175,7 +175,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   if (sexChanged || rsChanged || birthdateChanged || ageChanged) {
     reconcileFlags(profile.id);
     revalidateRoute("/results");
-    revalidateRoute("/biomarkers/view", "page");
+    revalidateRoute("/results/readings/view", "page");
   }
 
   // Full/legal name of the tracked person — distinct from the profile's display
@@ -183,8 +183,8 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   // that don't render it can't wipe an adopted value.)
   if (formData.has("full_name")) {
     const fullName = String(formData.get("full_name") ?? "").trim();
-    if (fullName !== (getUserFullName(profile.id) ?? ""))
-      setUserFullName(profile.id, fullName || null);
+    if (fullName !== (getProfileFullName(profile.id) ?? ""))
+      setProfileFullName(profile.id, fullName || null);
   }
 
   // Timezone defines "today" for this profile (day-window queries, streaks,
@@ -237,7 +237,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   if (wsRaw !== "" && isValidWeekStart(ws)) setWeekStart(profile.id, ws);
 
   // Weekly counting mode: calendar week vs rolling 7 days for the routine
-  // counters and the journal week summary. Ignore an unrecognized value.
+  // counters and the training log week summary. Ignore an unrecognized value.
   const wm = String(formData.get("week_mode") ?? "").trim();
   if (isValidWeekMode(wm)) setWeekMode(profile.id, wm);
 

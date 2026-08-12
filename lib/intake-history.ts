@@ -9,14 +9,14 @@
 //
 // No SQL of its own: everything is read through the existing profile-scoped query
 // functions, so profile scoping is inherited rather than re-implemented. The per-day
-// aggregation is `supplementAdherenceStrip` — the medicine page's own computation,
+// aggregation is `intakeAdherenceStrip` — the medicine page's own computation,
 // including its #430/#1442 lifetime clamp, so a freshly-added item never scores a
 // month of phantom misses.
 
 import { lastNDates, shiftDateStr } from "./date";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getIntakeLogsInRange,
   getActivityDates,
 } from "./queries";
@@ -27,23 +27,23 @@ import {
   doseWindowSince,
   indexTakenByDose,
   stripWithoutTrailingPending,
-  supplementAdherenceStrip,
+  intakeAdherenceStrip,
   type AdherenceDot,
-} from "./supplement-adherence";
-import { isPushedIntake } from "./supplement-schedule";
+} from "./intake-adherence";
+import { isPushedIntake } from "./intake-schedule";
 import {
   classifyIntakeDeltas,
   intakeDeltaLine,
   INTAKE_DELTA_DAYS,
   type IntakeDeltas,
 } from "./intake-deltas";
-import type { Supplement } from "./types";
+import type { IntakeItem } from "./types";
 
 // One item plus its window: the aggregated per-day strip (oldest-first, trailing
 // still-pending day dropped) and whether the item existed with a schedule for the
 // WHOLE window — the cold-start guard the demotion detector needs (#1442).
 export interface IntakeHistoryEntry {
-  item: Supplement;
+  item: IntakeItem;
   strip: AdherenceDot[];
   existedWholeWindow: boolean;
 }
@@ -57,10 +57,10 @@ export function getIntakeHistory(
   today: string,
   days: number
 ): IntakeHistoryEntry[] {
-  const items = getSupplements(profileId).filter((s) => s.active);
+  const items = getIntakeItems(profileId).filter((s) => s.active);
   if (items.length === 0) return [];
 
-  const doses = getSupplementDoses(profileId);
+  const doses = getIntakeDoses(profileId);
   const dosesByItem = new Map<number, typeof doses>();
   for (const d of doses) {
     const list = dosesByItem.get(d.item_id);
@@ -86,7 +86,7 @@ export function getIntakeHistory(
   for (const item of items) {
     const itemDoses = dosesByItem.get(item.id) ?? [];
     const strip = stripWithoutTrailingPending(
-      supplementAdherenceStrip(
+      intakeAdherenceStrip(
         item,
         itemDoses,
         dates,

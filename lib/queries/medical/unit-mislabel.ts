@@ -53,10 +53,10 @@ export function detectRecordUnitMislabel(
   const cb = getCanonicalBiomarker(row.canonical_name);
   if (!cb) return null;
 
-  const sex = getUserSex(profileId);
-  const birthdate = getUserBirthdate(profileId);
+  const sex = getProfileSex(profileId);
+  const birthdate = getProfileBirthdate(profileId);
   const storedAge = getStoredAge(profileId);
-  const reproductiveStatus = getUserReproductiveStatus(profileId);
+  const reproductiveStatus = getProfileReproductiveStatus(profileId);
   const age = ageForRecord({ sex, birthdate, age: storedAge }, row.date);
 
   const hit = detectUnitMislabel(
@@ -127,17 +127,17 @@ export function getUnitMislabelReviews(
     (
       db
         .prepare("SELECT * FROM canonical_biomarkers")
-        .all() as CanonicalBiomarker[]
+        .all() as CanonicalResultDefinition[]
     ).map((c) => [c.name.toLowerCase(), c])
   );
   // Alias-aware, like the flag path: a stored row under a legacy/abbreviation name
   // ("MCHC" pre-migration-103) must still resolve to its canonical entry, else the
   // scan skips it and its mislabel card never surfaces.
   const resolve = canonicalResolver();
-  const sex = getUserSex(profileId);
-  const birthdate = getUserBirthdate(profileId);
+  const sex = getProfileSex(profileId);
+  const birthdate = getProfileBirthdate(profileId);
   const storedAge = getStoredAge(profileId);
-  const reproductiveStatus = getUserReproductiveStatus(profileId);
+  const reproductiveStatus = getProfileReproductiveStatus(profileId);
 
   const out: UnitMislabelReview[] = [];
   for (const r of rows) {
@@ -173,9 +173,9 @@ import { ageForRecord } from "../../flag-reconcile";
 import { detectUnitMislabel } from "../../reference-range";
 import {
   getStoredAge,
-  getUserBirthdate,
-  getUserReproductiveStatus,
-  getUserSex,
+  getProfileBirthdate,
+  getProfileReproductiveStatus,
+  getProfileSex,
 } from "../../settings";
-import type { CanonicalBiomarker } from "../../types";
+import type { CanonicalResultDefinition } from "../../types";
 import { getCanonicalBiomarker } from "./canonical";

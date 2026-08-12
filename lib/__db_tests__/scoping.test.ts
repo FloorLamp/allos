@@ -12,10 +12,10 @@ import { describe, it, expect, beforeAll } from "vitest";
 import {
   getActivities,
   getStrengthByExercise,
-  getGoals,
+  getOutcomeGoals,
   getBodyMetrics,
-  getMedicalRecords,
-  getSupplements,
+  getClinicalObservations,
+  getIntakeItems,
   getImmunizations,
   getImmunizationOverrides,
 } from "@/lib/queries";
@@ -57,24 +57,24 @@ describe("reads are scoped to the querying profile", () => {
     expect(squatA?.totalSets).toBe(2);
   });
 
-  it("getBodyMetrics / getGoals / getSupplements return only A's rows", () => {
+  it("getBodyMetrics / getOutcomeGoals / getIntakeItems return only A's rows", () => {
     expect(getBodyMetrics(a.profileId).every((m) => m.weight_kg === 70)).toBe(
       true
     );
-    expect(getGoals(a.profileId).every((g) => g.title.startsWith("AAA"))).toBe(
-      true
-    );
-    const supps = getSupplements(a.profileId);
+    expect(
+      getOutcomeGoals(a.profileId).every((g) => g.title.startsWith("AAA"))
+    ).toBe(true);
+    const supps = getIntakeItems(a.profileId);
     expect(supps.length).toBe(2);
     expect(supps.every((s) => s.name.startsWith("AAA"))).toBe(true);
     expect(supps.some((s) => s.name.startsWith("BBB"))).toBe(false);
   });
 
-  it("getMedicalRecords never surfaces the other profile's readings", () => {
-    const recsA = getMedicalRecords(a.profileId);
+  it("getClinicalObservations never surfaces the other profile's readings", () => {
+    const recsA = getClinicalObservations(a.profileId);
     expect(recsA.length).toBe(1);
     expect(recsA[0].value_num).toBe(90); // A's glucose, not B's 200
-    const recsB = getMedicalRecords(b.profileId);
+    const recsB = getClinicalObservations(b.profileId);
     expect(recsB[0].value_num).toBe(200);
   });
 

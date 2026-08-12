@@ -12,7 +12,7 @@
 // age-band interpolation.
 //
 // DB-free and pure so it's unit-tested in lib/__tests__. Sex/bodyweight come from
-// the call site (getUserSex + the latest body_metrics weight). When sex or
+// the call site (getProfileSex + the latest body_metrics weight). When sex or
 // bodyweight is unset — or the lift has no baked table — every entry point returns
 // null so the surfaces HIDE the context line (the same absent-data gating as the
 // other sex-gated surfaces). This is the ONE computation behind both the exercise-
@@ -94,6 +94,12 @@ export function strengthLevelColor(level: StrengthLevel): string {
 // A resolved standing for a lift at the lifter's sex + bodyweight.
 export interface StrengthStanding {
   lift: string; // the canonical lift the standing is for (base name)
+  // The LOGGED exercise this standing was computed from — "Barbell Bench Press" where
+  // `lift` is the "Bench Press" standards row it placed against. The two differ whenever
+  // the lifter names an implement, and only this one identifies a row in the profile's own
+  // history: a surface that wants to show the EVIDENCE behind the standing (#1921) must
+  // link on this, because the base name matches nothing the lifter ever logged.
+  exercise: string;
   bodyweightKg: number;
   e1rmKg: number;
   bodyweightLift: boolean;
@@ -113,6 +119,17 @@ export interface StrengthStanding {
 // Resolve an exercise name to its standards table. A barbell or bare-base variant
 // of Bench Press / Overhead Press maps onto that base (mirrors lib/strength
 // .standardFor); dumbbell/cable/machine variants have no barbell standard.
+//
+// THE BARE-BASE DECISION, stated rather than implied (#2326). `equipment === null`
+// — a bare `Bench Press` with no implement in the NAME — is accepted as barbell
+// because that is how most people log the barbell lift, and refusing it would leave
+// the majority of real lifters with no standing at all. It is a default about the
+// NAME, and a name is the weakest evidence on the row: the SET carries an
+// `equipment_id`, and when that says Machine the default is simply wrong. This
+// function is not where that is caught — it is only ever handed a name — so the
+// equipment axis is resolved upstream, in the aggregate the standings path consumes
+// (`ExerciseStat.freeWeightE1rmKg`), and a lift whose free-weight history is empty
+// arrives here with no e1RM and gets no standing.
 function tableFor(exercise: string): { name: string; t: LiftStandards } | null {
   const key = exercise.trim();
   const direct = LIFTS[key];
@@ -235,6 +252,7 @@ export function strengthStanding(
   const placed = placeOnLevels(sn.levels, values, e1rmKg);
   return {
     lift: resolved.name,
+    exercise,
     bodyweightKg,
     e1rmKg,
     bodyweightLift: resolved.t.bodyweight,

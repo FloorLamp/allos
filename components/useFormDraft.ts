@@ -19,8 +19,14 @@ import {
   type FormDraft,
 } from "@/lib/offline/drafts";
 import { useActiveProfileId } from "./ActiveProfileProvider";
-import { markUnsavedWork } from "@/lib/offline/unsaved-work";
+import {
+  markUnsavedWork,
+  type ResumePointer,
+  type UnsavedWorkEntry,
+} from "@/lib/offline/unsaved-work";
 import { useLatestRef } from "./useLatestRef";
+import { takeResumeContinuationFor } from "./resume-continuation";
+import { shouldAutoApplyDraft } from "@/lib/sw-update";
 
 // The React binding for local form drafts (issue #1699): autosave on change,
 // restore only on an explicit tap, clear on successful save.
@@ -40,6 +46,22 @@ import { useLatestRef } from "./useLatestRef";
 // A form supplies either or both. Nothing is ever applied without the user's tap:
 // the hook reports an `offer`, the form renders <DraftRestoreBanner>, and the user
 // chooses Resume or Discard.
+//
+// THE ONE ARGUED EXCEPTION (#2471). When the tab reloaded ITSELF to take a deploy,
+// the tap has already happened: the user typed this draft seconds ago, in this tab,
+// and the app — not they — chose to throw the document away. A one-shot continuation
+// marker written immediately before that reload (`components/resume-continuation.ts`)
+// names one form and one record, and `shouldAutoApplyDraft` decides whether this
+// mount is that continuation. Every other mount, including a revisit in another tab
+// or the next day, still gets the offer. An explicit-submission form gets the same
+// restore and no more: the content comes back, and the user's own submit is still
+// the write.
+//
+// THIS HOOK ALSO REPORTS THE FLUSH (#2471). A form registered as unsaved work hands
+// `lib/offline/unsaved-work.ts` a `capture` callback: cancel the debounce, write the
+// draft, resolve when it is durable, and say what should be reopened. The automatic
+// reload awaits every one of them before it writes a marker, so the reload can never
+// land on top of an unflushed keystroke.
 //
 // See lib/offline/drafts.ts for the draft/offline-queue boundary and the PHI rules.
 
@@ -161,6 +183,8 @@ export function useFormDraft<E = undefined>({
   formKey,
   recordId = null,
   formRef,
+  scopeRef,
+  live = false,
   extra,
   enabled = true,
   onRestore,
@@ -171,6 +195,19 @@ export function useFormDraft<E = undefined>({
   recordId?: number | null;
   /** The form element whose named fields are captured. Omit for state-only forms. */
   formRef?: { current: HTMLFormElement | null };
+  /**
+   * The subtree this draft covers, when it is not the captured form element — the
+   * activity editor keeps everything in `extra`, so its <form> is not `formRef` but
+   * its fields are still durable. Marked `data-draft-backed` so the #1878 dirty-form
+   * registry can tell recoverable input from the kind an automatic reload must
+   * refuse to cross (#2471).
+   */
+  scopeRef?: { current: HTMLElement | null };
+  /**
+   * The editor is in live-workout mode. Carried on the resume pointer only, so the
+   * tab that reloads to take a deploy reopens the same mode it was in (#2471).
+   */
+  live?: boolean;
   /** Serializable state with no named field of its own. */
   extra?: E;
   /**
@@ -221,9 +258,12 @@ export function useFormDraft<E = undefined>({
     [formRef, extraRef]
   );
 
-  const write = useCallback(() => {
+  // Resolves once the draft is durable. Awaited by `capture` below, which is what
+  // lets an automatic update reload prove it is not crossing an unflushed keystroke
+  // (#2471); every other caller still fires and forgets.
+  const write = useCallback((): Promise<void> => {
     const k = keyRef.current;
-    if (!active || k == null || profileId == null) return;
+    if (!active || k == null || profileId == null) return Promise.resolve();
     const snap = snapshot();
     const sig = draftSig(snap.fields, snap.extra);
     if (initialSigRef.current == null) initialSigRef.current = sig;
@@ -233,10 +273,10 @@ export function useFormDraft<E = undefined>({
         initialSig: initialSigRef.current,
       })
     )
-      return;
-    markUnsavedWork(k, true);
+      return Promise.resolve();
+    markUnsavedWork(k, true, entryRef.current);
     lastWrittenSigRef.current = sig;
-    void putDraft({
+    return putDraft({
       key: k,
       profileId,
       formKey,
@@ -247,6 +287,24 @@ export function useFormDraft<E = undefined>({
     });
   }, [active, profileId, formKey, recordId, snapshot]);
 
+  // Cancel the debounce, write, and say what should be reopened on the other side.
+  // A rejection here is what stops the reload: `captureUnsavedWork` answers
+  // `{ ok: false }` and the tab stays exactly where it is.
+  const capture = useCallback(async (): Promise<ResumePointer | null> => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    await write();
+    return { formKey, recordId: recordId ?? null, live };
+  }, [write, formKey, recordId, live]);
+  const captureRef = useLatestRef(capture);
+  // A stable entry whose callback is always the CURRENT mount's: the registry holds
+  // it across re-renders, and a stale closure would flush a form that is gone.
+  const entryRef = useRef<UnsavedWorkEntry>({
+    capture: () => captureRef.current(),
+  });
+
   const schedule = useCallback(() => {
     if (!active) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -255,6 +313,36 @@ export function useFormDraft<E = undefined>({
       write();
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [active, write]);
+
+  // Apply a stored draft to the live form. The one place that writes a draft back,
+  // shared by the user's Resume tap and the #2471 continuation.
+  const applyDraft = useCallback(
+    (draft: FormDraft) => {
+      offeredRef.current = null;
+      setOffer(null);
+      // `extra` first: dynamic rows must exist before their field values land.
+      if (draft.extra != null) onRestoreRef.current?.(draft.extra as E);
+      if (draft.fields.length > 0) {
+        // One frame later, so the re-render triggered by `onRestore` has committed
+        // the rows we are about to fill.
+        requestAnimationFrame(() =>
+          applyFields(formRef?.current ?? null, draft.fields)
+        );
+      }
+    },
+    [formRef, onRestoreRef]
+  );
+
+  // Mark the subtree whose unsaved input is durable (#2471). The #1878 dirty-form
+  // registry reads this to tell recoverable input from the kind an automatic update
+  // reload must refuse to cross. `scopeRef` wins when a form keeps its state in
+  // `extra` rather than in the captured element.
+  useEffect(() => {
+    const el = scopeRef?.current ?? formRef?.current ?? null;
+    if (!active || !el) return;
+    el.setAttribute("data-draft-backed", "");
+    return () => el.removeAttribute("data-draft-backed");
+  }, [active, scopeRef, formRef]);
 
   // Seed the mount signature and look for a draft to offer. Runs once per key.
   useEffect(() => {
@@ -273,19 +361,44 @@ export function useFormDraft<E = undefined>({
         return; // our own writing, not a recovered draft
       }
       const current = snapshot();
+      const currentSig = draftSig(current.fields, current.extra);
       if (
-        shouldOfferDraft({
+        !shouldOfferDraft({
           draft: stored,
           profileId,
           formKey,
           recordId: recordId ?? null,
-          currentSig: draftSig(current.fields, current.extra),
+          currentSig,
           now: Date.now(),
         })
       ) {
-        offeredRef.current = stored;
-        setOffer({ savedAt: stored!.savedAt });
+        return;
       }
+      // THE ONE ARGUED EXCEPTION (#2471): this mount is the continuation of the tab
+      // that reloaded itself seconds ago, so the tap that would apply this draft has
+      // already happened. Every leg is a way of checking that. The conflict leg is
+      // real rather than ceremonial: the draft read is asynchronous, so the user can
+      // have typed into the freshly-mounted form before it landed — and applying on
+      // top of live input is the one thing the offer banner exists to make visible.
+      const continuation = takeResumeContinuationFor(key);
+      if (
+        shouldAutoApplyDraft({
+          marker: continuation,
+          formKey,
+          recordId: recordId ?? null,
+          savedAt: stored!.savedAt,
+          conflicts: draftConflictsWithInput({
+            currentSig,
+            initialSig: initialSigRef.current ?? "",
+          }),
+          now: Date.now(),
+        })
+      ) {
+        applyDraft(stored!);
+        return;
+      }
+      offeredRef.current = stored;
+      setOffer({ savedAt: stored!.savedAt });
     })();
     return () => {
       cancelled = true;
@@ -339,7 +452,7 @@ export function useFormDraft<E = undefined>({
       }
       const k = keyRef.current;
       // The form is gone, so nothing is being composed any more — the DRAFT stays,
-      // the "mid-composition" flag doesn't.
+      // the "mid-composition" flag and its capture callback don't.
       if (k) markUnsavedWork(k, false);
     };
   }, [write]);
@@ -377,19 +490,9 @@ export function useFormDraft<E = undefined>({
         initialSig: initialSigRef.current ?? "",
       });
       if (touched && confirmReplace && !(await confirmReplace())) return;
-      offeredRef.current = null;
-      setOffer(null);
-      // `extra` first: dynamic rows must exist before their field values land.
-      if (draft.extra != null) onRestoreRef.current?.(draft.extra as E);
-      if (draft.fields.length > 0) {
-        // One frame later, so the re-render triggered by `onRestore` has committed
-        // the rows we are about to fill.
-        requestAnimationFrame(() =>
-          applyFields(formRef?.current ?? null, draft.fields)
-        );
-      }
+      applyDraft(draft);
     })();
-  }, [snapshot, formRef, confirmReplace, onRestoreRef]);
+  }, [snapshot, confirmReplace, applyDraft]);
 
   return { offer, resume, discard, clear };
 }

@@ -10,8 +10,8 @@ import { db, today } from "@/lib/db";
 import {
   addProteinGramsCore,
   undoProteinGramsCore,
-} from "@/lib/protein-log-write";
-import { getProteinAdequacy, getProteinLoggedGrams } from "@/lib/queries";
+} from "@/lib/protein-daily-totals-write";
+import { getProteinAdequacy, getProteinDailyGrams } from "@/lib/queries";
 import { buildProteinAdequacyFindings } from "@/lib/rule-findings";
 
 function newProfile(name: string): number {
@@ -57,7 +57,7 @@ describe("protein-grams quick-add end-to-end (#824)", () => {
     // …then a 30 g shake is logged directly.
     const out = addProteinGramsCore(p, anchor, 30);
     expect(out).toEqual({ kind: "logged", grams: 30 });
-    expect(getProteinLoggedGrams(p, anchor)).toBe(30);
+    expect(getProteinDailyGrams(p, anchor)).toBe(30);
 
     const a = getProteinAdequacy(p);
     expect(a?.intake.basis).toBe("combined");
@@ -117,7 +117,7 @@ describe("protein-grams quick-add end-to-end (#824)", () => {
     // Undo the shake → back to the estimated floor alone.
     const undone = undoProteinGramsCore(p, anchor, 30);
     expect(undone).toEqual({ kind: "undone", grams: 0 });
-    expect(getProteinLoggedGrams(p, anchor)).toBe(0);
+    expect(getProteinDailyGrams(p, anchor)).toBe(0);
     // The row is dropped at zero — no stray protein_log row survives.
     expect(
       db

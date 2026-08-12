@@ -9,7 +9,7 @@ import { test, expect } from "./fixtures";
 test("merge preview lets you override a conflicting field to the discarded value (#100)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   const keeperCard = page
     .locator('[id^="activity-"]')

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { matchFoodInteractions } from "@/lib/food-drug-interactions";
 import { meetsMinLifeStage, meetsMinAge } from "@/lib/life-stage";
 import { dominantRxNormCandidate } from "@/lib/rxnorm";
-import { collapsePrnDoses } from "@/lib/supplement-schedule";
+import { collapseOnDemandDoses } from "@/lib/intake-schedule";
 import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
 import { resolveIntakePrefill } from "@/lib/intake-prefill";
 import {
@@ -274,7 +274,7 @@ describe("#851 item 7 — dominantRxNormCandidate auto-confirms unambiguous only
 });
 
 // ---- Item 9: PRN ⇒ single amount-only dose ----
-describe("#851 item 9 — collapsePrnDoses enforces the amount-only shape", () => {
+describe("#851 item 9 — collapseOnDemandDoses enforces the amount-only shape", () => {
   const rows = [
     {
       id: 1,
@@ -291,7 +291,7 @@ describe("#851 item 9 — collapsePrnDoses enforces the amount-only shape", () =
   ];
 
   it("collapses a PRN med to ONE amount-only row, keeping the first dose id + food timing", () => {
-    const out = collapsePrnDoses(rows, true);
+    const out = collapseOnDemandDoses(rows, true);
     expect(out).toHaveLength(1);
     expect(out[0].id).toBe(1);
     expect(out[0].amount).toBe("200 mg");
@@ -300,11 +300,11 @@ describe("#851 item 9 — collapsePrnDoses enforces the amount-only shape", () =
   });
 
   it("is a no-op for a scheduled (non-PRN) med", () => {
-    expect(collapsePrnDoses(rows, false)).toEqual(rows);
+    expect(collapseOnDemandDoses(rows, false)).toEqual(rows);
   });
 
   it("handles an empty PRN dose list", () => {
-    const out = collapsePrnDoses(
+    const out = collapseOnDemandDoses(
       [] as {
         amount: string | null;
         time_of_day: string | null;

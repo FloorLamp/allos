@@ -52,10 +52,18 @@ export const GIVEN_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 // production comparison is byte-identical to `new Date()`. What changes is only that
 // a frozen-clock e2e run judges a frozen-clock timestamp on the frozen clock.
 //
-// The counter-example is `resolveQueuedTakenAt` below, which keeps REAL time on
-// purpose: its input came off an untrusted CLIENT wall clock, so the comparison is
-// genuinely between two independent real clocks rather than inside the app's own
-// calendar frame.
+// `resolveQueuedTakenAt` below was the declared COUNTER-EXAMPLE — it kept real time
+// on purpose, on the reasoning that its input came off an untrusted CLIENT wall
+// clock, so the comparison was between two genuinely independent real clocks. #2312
+// overturned that, exactly as #2287 overturned the identical reasoning on the food
+// path: the guard's second rule compares the stamp's profile-local date against
+// `date`, which is `today()`-derived, so half of it already sits inside the app's
+// calendar frame; and under the e2e freeze the client is not independent at all —
+// the fixture puts the browser on the same frozen instant the server reads, so real
+// time refuses a seconds-old capture as hours in the future and the confirm silently
+// loses its captured minute. Both guards now take the seam. Production is unchanged:
+// with ALLOS_TEST_NOW unset the seam IS `new Date()`, so a genuinely fast device is
+// still refused.
 
 // Whether a supplied recorded_at instant is acceptable, given the profile timezone, its
 // today (YYYY-MM-DD), and "now": not in the future past the skew, and its profile-

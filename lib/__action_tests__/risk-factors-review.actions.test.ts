@@ -20,7 +20,7 @@ import { saveRiskFactors } from "@/app/(app)/medical/background/actions";
 import {
   getRiskAttributesReviewed,
   getRiskAttributes,
-  setUserBirthdate,
+  setProfileBirthdate,
 } from "@/lib/settings";
 import { buildDataQualityFindings } from "@/lib/rule-findings";
 import { dataQualityDedupeKey } from "@/lib/data-quality";
@@ -32,7 +32,7 @@ beforeEach(() => revalidate.mockClear());
 describe("saveRiskFactors — review marker (#1045)", () => {
   it("stamps reviewed even with every flag left off, and clears the data-quality gap", () => {
     const { profile } = seedActor();
-    setUserBirthdate(profile.id, "1985-01-01"); // adult → the risk gap is eligible
+    setProfileBirthdate(profile.id, "1985-01-01"); // adult → the risk gap is eligible
 
     // Before review: the adult profile shows the risk-attributes gap.
     const before = buildDataQualityFindings(profile.id).map((f) => f.dedupeKey);

@@ -12,11 +12,11 @@ import {
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getBodyMetricDailySeries,
-  getMedicalRecords,
+  getClinicalObservations,
   getScheduledAppointments,
   gatherCoachingInput,
   getFindingSuppressions,
@@ -26,6 +26,7 @@ import {
   getLastNightSummary,
   getSleepWaitingState,
   getSleepRegularity,
+  getNapHistory,
   typicalWakeTime,
   getPrnMedicationsForQuickLog,
   getActiveProtocolSummaries,
@@ -54,18 +55,22 @@ import { cyclePhaseOnDate, cycleDayOnDate } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
-import { getUserAge } from "@/lib/settings/profile-attrs";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
-import { isGoalLive } from "@/lib/goals";
+import { isGoalLive } from "@/lib/outcome-goals";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
+import { routineOrder } from "@/lib/dismissal-fatigue";
 import {
   requireSession,
   getAccessibleProfiles,
   ownProfileForLogin,
 } from "@/lib/auth";
 import { writeSubjectName } from "@/lib/own-profile";
+import { currentFoodSlot } from "@/lib/queries/nutrition";
+import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
+import { foodGroupBySlug } from "@/lib/datasets/food-groups";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -119,11 +124,14 @@ import RecentlyResolvedReopen, {
   type RecentlyResolvedItem,
 } from "@/components/dashboard/RecentlyResolvedReopen";
 import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
-import { reopenEligibleEpisodeForProfile } from "@/lib/illness-episode-store";
+import {
+  episodeStatesForProfiles,
+  reopenEligibleFromState,
+} from "@/lib/illness-episode-store";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import {
-  currentEpisodeForProfile,
-  openEpisodeForProfile,
+  currentEpisodeFromState,
+  openEpisodeFromState,
 } from "@/lib/illness-episode";
 import {
   episodeCollapsedStatus,
@@ -133,7 +141,10 @@ import {
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
-import { householdFanoutProfiles } from "@/lib/household-fanout";
+import {
+  householdFanoutProfiles,
+  householdFanoutWithActing,
+} from "@/lib/household-fanout";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
@@ -152,6 +163,7 @@ import NextAppointmentWidget, {
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import SleepLastNightWidget from "@/components/dashboard/SleepLastNightWidget";
 import SleepWaitingWidget from "@/components/dashboard/SleepWaitingWidget";
+import NapsTodayWidget from "@/components/dashboard/NapsTodayWidget";
 import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
 import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
 import NutritionTodayWidget from "@/components/dashboard/NutritionTodayWidget";
@@ -174,13 +186,13 @@ import {
 } from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
-import { isHouseholdRecentlySick } from "@/lib/household-history";
+import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
 
 export const dynamic = "force-dynamic";
 
 // Trailing window for the dashboard weight-trend glance (#395): a deliberate date
-// window, not a row cap, so the widget matches the full deduped Body-tab series it
+// window, not a row cap, so the widget matches the full deduped body-census series it
 // links to instead of silently truncating at N readings.
 const WEIGHT_TREND_WINDOW_DAYS = 90;
 
@@ -234,9 +246,12 @@ export default async function Dashboard() {
 
   // Tier 2 — the household strip. A caregiver reaching 2+ profiles gets a per-
   // profile attention count for their OTHER profiles (same gate as the Household
-  // nav entry). Bounded work: a household is a handful of profiles, each count a
-  // few profile-scoped reads. Grants are respected — getAccessibleProfiles returns
-  // only reachable profiles, and the switch action re-checks.
+  // nav entry). Each chip's number is a WHOLE attention model for that member —
+  // tens of statements, not "a few profile-scoped reads" as this comment used to
+  // claim (#2110) — which is exactly why the fan-out is bounded below rather than
+  // left to scale with the accessible set. Grants are respected —
+  // getAccessibleProfiles returns only reachable profiles, and the switch action
+  // re-checks.
   const accessible = await getAccessibleProfiles();
   // Own-profile link (#1013): the acting-profile write forms (the weight quick-add)
   // name the subject when the login is acting as someone OTHER than its own profile,
@@ -299,7 +314,7 @@ export default async function Dashboard() {
   // relevant (the SAME getNavRelevance().cycle bit as the Cycle nav entry, #1042) — so a
   // card can never disagree with its nav twin about applicability.
   const widgetGate = {
-    foodLogging: isFoodLoggingRelevant(getUserAge(profile.id)),
+    foodLogging: isFoodLoggingRelevant(getProfileAge(profile.id)),
     cycle: getNavRelevance(profile.id).cycle,
   };
   const list = resolveWidgetList(
@@ -326,12 +341,32 @@ export default async function Dashboard() {
   // currentEpisodeForProfile, so a not-yet-symptomatic member stays off the list) is a
   // compact accordion line that expands in place. Grants-scoped upstream (accessible =
   // getAccessibleProfiles). Replaces the former sick-household widget (folded in, #858).
+  //
+  // ONE episode gather for the whole page (#2115). Three surfaces below ask about
+  // the same two rows per member — the accordion (the row covering that member's
+  // today), the reopen band (the most-recently CLOSED row) and the household-history
+  // promo (BOTH) — and each used to re-issue its own SELECTs, so the closed-row read
+  // alone ran twice per profile per render. episodeStatesForProfiles reads them once
+  // and every derivation below is a pure function of the result.
+  //
+  // Bounded on the same set as the household strip (#2435/#2446): the accordion over
+  // the OTHER members, the reopen band and the promo over those plus the viewer,
+  // whose own just-resolved episode is the band's whole point.
+  const illnessFanout = householdFanoutWithActing(accessible, profile.id);
+  const episodeStates = episodeStatesForProfiles([
+    // The viewer is always in the gather even in the degenerate case where the
+    // session's active profile is somehow not in its own accessible set — the hero
+    // is about them, so it must never fall back to a second read to find out.
+    ...new Set([profile.id, ...illnessFanout.map((p) => p.id)]),
+  ]);
+  const episodeStateById = new Map(episodeStates.map((s) => [s.profileId, s]));
+  const stateFor = (pid: number) => episodeStateById.get(pid)!;
   const activeSick = hasActiveIllnessSituation(profile.id);
-  const activeEpisode = activeSick ? openEpisodeForProfile(profile.id) : null;
-  // Bounded on the same set as the household strip above, and for the same
-  // reason: currentEpisodeForProfile assembles an episode per member.
+  const activeEpisode = activeSick
+    ? openEpisodeFromState(stateFor(profile.id))
+    : null;
   const otherSick = householdFanoutProfiles(accessible, profile.id)
-    .map((p) => ({ p, ep: currentEpisodeForProfile(p.id) }))
+    .map((p) => ({ p, ep: currentEpisodeFromState(stateFor(p.id)) }))
     .filter(
       (x): x is { p: (typeof accessible)[number]; ep: AssembledEpisode } =>
         x.ep !== null
@@ -404,11 +439,16 @@ export default async function Dashboard() {
   });
   const heroUi = getIllnessHeroUi(profile.id);
 
-  // Recently-resolved reopen affordance (issue #1140 Part A): for every accessible profile,
-  // the most-recent episode still inside its 7-day reopen window (the SAME
-  // episodeReopenEligibility rule the detail page uses). Cross-profile aware like the hero
-  // (#858) — each row reopens that member's episode via its profileId. Calm/dismissible,
-  // never the attention hero (#449). Names disambiguated across the accessible set (#531).
+  // Recently-resolved reopen affordance (issue #1140 Part A): for the viewer and every
+  // bounded household member, the most-recent episode still inside its 7-day reopen
+  // window (the SAME episodeReopenEligibility rule the detail page uses). Cross-profile
+  // aware like the hero (#858) — each row reopens that member's episode via its
+  // profileId. Calm/dismissible, never the attention hero (#449). Names disambiguated
+  // across the accessible set (#531).
+  //
+  // Derived from the ONE episode gather above (#2115) — it re-read the closed-episode
+  // row the recently-sick predicate below had already read — and bounded on the same
+  // set as the strip (#2446), with the viewer always in it.
   //
   // Filtered SERVER-SIDE against the viewer's stored dismissals (#1548): the X used to
   // be client state only, so a hidden line came back on the next reload. The client
@@ -416,14 +456,14 @@ export default async function Dashboard() {
   // also what decides where the household-history promo goes (#1549), which is why the
   // filter has to happen here rather than in the browser.
   const reopenNames = disambiguateProfileNames(accessible);
-  const recentlyResolvedAll: RecentlyResolvedItem[] = accessible
-    .map((p) => ({ p, ep: reopenEligibleEpisodeForProfile(p.id) }))
+  const recentlyResolvedAll: RecentlyResolvedItem[] = illnessFanout
+    .map((p) => ({ p, ep: reopenEligibleFromState(stateFor(p.id)) }))
     .filter(
       (
         x
       ): x is {
         p: (typeof accessible)[number];
-        ep: NonNullable<ReturnType<typeof reopenEligibleEpisodeForProfile>>;
+        ep: NonNullable<ReturnType<typeof reopenEligibleFromState>>;
       } => x.ep !== null
     )
     .map(({ p, ep }) => ({
@@ -443,8 +483,10 @@ export default async function Dashboard() {
   // Contextual promotion of the merged household history (issue #1009 Ask 2): a CALM
   // link that surfaces near the illness hero when any accessible member is currently or
   // recently sick, and recedes once the house is well. Only for a multi-profile login
-  // (a single-profile login has no household to merge). Reuses the SAME episode rows the
-  // hero reads — never a second "who's sick" derivation — via isHouseholdRecentlySick.
+  // (a single-profile login has no household to merge). Reads the LITERAL SAME rows the
+  // hero and the reopen band read — one gather, three derivations (#2115); the comment
+  // here used to claim that reuse while isHouseholdRecentlySick re-issued both SELECTs
+  // per profile. Bounded on the same set as the strip, viewer included (#2446).
   // It is a link, NOT a notification and NOT a finding (no dedupeKey, no bus): it appears
   // because it's useful and disappears on its own.
   //
@@ -457,8 +499,7 @@ export default async function Dashboard() {
   //   • reopen lines visible → the reopen band's footer;
   //   • otherwise (the tail, or every line dismissed) → the household strip's label row.
   const promoteHouseholdHistory =
-    accessible.length > 1 &&
-    isHouseholdRecentlySick(accessible.map((p) => p.id));
+    accessible.length > 1 && isHouseholdRecentlySickFromStates(episodeStates);
   const promoInReopenBand =
     promoteHouseholdHistory && recentlyResolved.length > 0;
   const promoInHouseholdStrip =
@@ -466,7 +507,7 @@ export default async function Dashboard() {
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
   // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
-  // day and disagree with the Body tab this widget links to. Windowed by DATE
+  // day and disagree with the body census this widget links to. Windowed by DATE
   // (a deliberate trailing-90-day glance) rather than the old undisclosed 60-row cap.
   const weightTrendSince = shiftDateStr(on, -(WEIGHT_TREND_WINDOW_DAYS - 1));
   const bodyMetrics = has("weight-trend")
@@ -509,6 +550,10 @@ export default async function Dashboard() {
     sleepSummary && sleepPresentation?.freshness === "recent"
       ? `${sleepPresentation.label} · ${formatHm(sleepSummary.durationMin)}`
       : null;
+  // naps-today: the detailed nap model the Sleep page also renders. A normal
+  // no-nap day self-hides this contextual widget; once a nap syncs, every window
+  // and the combined duration appear without changing the main-sleep card.
+  const todayNaps = has("naps-today") ? getNapHistory(profile.id, 1).today : [];
 
   // recent-labs (medical): the current reading per lab/biomarker marker, flagged
   // markers surfaced first so an out-of-range result is the headline. Selection
@@ -516,7 +561,7 @@ export default async function Dashboard() {
   let labRows: RecentLabRow[] = [];
   if (has("recent-labs")) {
     labRows = recentLabHighlights(
-      getMedicalRecords(profile.id, { current: true }),
+      getClinicalObservations(profile.id, { current: true }),
       undefined,
       on
     );
@@ -567,12 +612,12 @@ export default async function Dashboard() {
 
   // goals-and-habits: one combined overview of outcomes + weekly behaviors.
   const goals = has("goals-habits")
-    ? getGoals(profile.id)
+    ? getOutcomeGoals(profile.id)
         .filter((g) => isGoalLive(g))
         .slice(0, 4)
     : [];
   const goalProgress = has("goals-habits")
-    ? getGoalProgressMap(profile.id, goals)
+    ? getOutcomeGoalProgressMap(profile.id, goals)
     : new Map();
 
   const freqTargets = has("goals-habits")
@@ -614,17 +659,30 @@ export default async function Dashboard() {
   // count/overflow are computed over what it actually renders. Hiding the Data
   // quality widget drops its family straight back into the rollup, so a hidden card
   // never silently costs a finding its dashboard reach.
+  //
+  // DISMISSAL FATIGUE (#2386). The dashboard is the ROUTINE surface for these — the
+  // place a finding leads without being asked for — so it is where repeat dismissal is
+  // read as an answer. `routineOrder` reranks the already-filtered set over the SAME
+  // suppression map: a topic the user has declined across two separate raisings drops
+  // behind everything unfatigued (it stops leading, and with a cap of 2 it usually
+  // stops occupying a lead slot at all), and a topic declined across four leaves this
+  // surface entirely. Nothing is silenced — every one of them still renders in full on
+  // its own tab, which is where the user goes looking, and the shared bus is untouched.
+  const coachingSuppressions = getFindingSuppressions(profile.id);
   const activeCoaching =
     has("coaching-observations") || has("data-quality")
-      ? activeFindings(
-          collectCoachingFindings(
-            profile.id,
-            on,
-            units.weightUnit,
-            formatPrefs
+      ? routineOrder(
+          activeFindings(
+            collectCoachingFindings(
+              profile.id,
+              on,
+              units.weightUnit,
+              formatPrefs
+            ),
+            coachingSuppressions,
+            on
           ),
-          getFindingSuppressions(profile.id),
-          on
+          coachingSuppressions
         )
       : [];
   const coachingObservations = has("coaching-observations")
@@ -647,6 +705,47 @@ export default async function Dashboard() {
   // Null when there's no target (no bodyweight) or no protein data → the data-aware CTA.
   const proteinToday = has("nutrition-today")
     ? getProteinToday(profile.id)
+    : null;
+
+  // THE COMPOSED MORNING ONE-TAP (#2458) — the food half of the "your usual <window>"
+  // offer plus the doses this profile DECLARED for that window and still owes today.
+  //
+  // Relevance is TRANSIENT and computed here, like the other `available` gates: it is a
+  // pure function of today's state, so it collapses the moment everything it names is
+  // logged and comes back if the servings are undone. Nothing about it is persisted and
+  // it never reaches the hidden set.
+  //
+  // The window is `currentFoodSlot` — the FOOD-slot clock, deliberately not
+  // `currentTimeBucket` (the divergence is documented at lib/food-slot.ts:11): this
+  // offer is food-anchored, so it takes the food side. `getUsualRoutineOffer` evaluates
+  // that half first and returns before touching intake at all when it does not stand,
+  // so the dashboard pays the dose reads only on the mornings the control renders.
+  //
+  // Read-only access renders no control at all. The action gates on
+  // `requireWriteAccess` regardless, so this is presentation rather than security —
+  // but offering a caregiver-view a button that can only refuse is worse than offering
+  // nothing.
+  const routineWindow =
+    has("nutrition-today") && access === "write"
+      ? currentFoodSlot(profile.id)
+      : null;
+  const routineOffer =
+    routineWindow != null
+      ? getUsualRoutineOffer(profile.id, routineWindow, on)
+      : null;
+  // The label names every write, in display names: a slug is not a promise anybody can
+  // read. The subject line follows writeSubjectName so a caregiver acting on another
+  // profile is never ambiguous about whose morning this logs (#1013).
+  const routineControl = routineOffer
+    ? {
+        window: routineOffer.window,
+        food: routineOffer.groups.map((slug) => ({
+          slug,
+          name: foodGroupBySlug(slug)?.name ?? slug,
+        })),
+        doses: routineOffer.doses.map((d) => ({ id: d.doseId, name: d.name })),
+        subjectName: actingSubjectName,
+      }
     : null;
 
   // steps-today (#1221): today's steps vs the prior 7 days, a formatter over
@@ -796,7 +895,10 @@ export default async function Dashboard() {
     emptyIds.add("weight-trend");
   if (has("healthspan-pillars") && pillars.length === 0)
     emptyIds.add("healthspan-pillars");
-  if (has("nutrition-today") && proteinToday == null)
+  // The card is empty only when it has NEITHER number nor offer: the morning tap can
+  // legitimately stand for a profile with no protein target, and swapping it for a
+  // "log food" CTA would replace the fast path with a link to it.
+  if (has("nutrition-today") && proteinToday == null && routineControl == null)
     emptyIds.add("nutrition-today");
   if (has("steps-today") && stepsSummary == null) emptyIds.add("steps-today");
   if (has("vitals-latest") && vitalsModel == null)
@@ -933,6 +1035,13 @@ export default async function Dashboard() {
             presentation={sleepPresentation}
           />
         ) : null;
+      case "naps-today":
+        return todayNaps.length > 0 ? (
+          <NapsTodayWidget
+            naps={todayNaps}
+            timeFormat={formatPrefs.timeFormat}
+          />
+        ) : null;
       case "weight-trend":
         return (
           <WeightTrendWidget
@@ -967,8 +1076,8 @@ export default async function Dashboard() {
           <WeeklyRecapWidget recap={weeklyRecap} formatPrefs={formatPrefs} />
         ) : null;
       case "nutrition-today":
-        return proteinToday ? (
-          <NutritionTodayWidget today={proteinToday} />
+        return proteinToday || routineControl ? (
+          <NutritionTodayWidget today={proteinToday} routine={routineControl} />
         ) : null;
       case "steps-today":
         return stepsSummary ? (
@@ -1071,7 +1180,8 @@ export default async function Dashboard() {
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
       (def.id !== "data-quality" || dataQualityFindings.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
-      (def.id !== "active-protocols" || activeProtocols.length > 0),
+      (def.id !== "active-protocols" || activeProtocols.length > 0) &&
+      (def.id !== "naps-today" || todayNaps.length > 0),
     // symptom-log is the unified "How are you today?" card (#992): the mood tap is
     // always offered, so the slot stays available in both illness states. Its folded
     // "Take any meds?" branch (#1221) is composed inside the card (shown only on a well
@@ -1090,8 +1200,13 @@ export default async function Dashboard() {
   const nowMinutes = hhmmToMinutes(
     zonedDateParts(getTimezone(profile.id), clockNow()).hhmm
   );
+  const latestNapEndMinutes = todayNaps.reduce<number | null>(
+    (latest, nap) =>
+      latest == null || nap.endMinutes > latest ? nap.endMinutes : latest,
+    null
+  );
   // The existing mealtime-shaped anchors: the profile's intake reminder slots.
-  // NOT the food log — `food_log_events.logged_at` is TAP time, documented as
+  // NOT the food log — `food_log_events.recorded_at` is TAP time, documented as
   // explicitly not eating time, so deriving a meal distribution from it would be
   // the new engine this issue's scope guard forbids.
   const nowSlots = getNotifySchedule(profile.id).supplementMinutes;
@@ -1139,6 +1254,8 @@ export default async function Dashboard() {
       nowFreshSleep || nowSleepWaiting ? typicalWakeTime(profile.id) : null,
     freshSleepSummary: nowFreshSleep,
     sleepWaiting: nowSleepWaiting,
+    napEndedMinAgo:
+      latestNapEndMinutes == null ? null : nowMinutes - latestNapEndMinutes,
     workoutFinishedMinAgo: showRecapCard
       ? (finishedPresence?.sinceMin ?? null)
       : null,

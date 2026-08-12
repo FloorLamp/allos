@@ -2,7 +2,7 @@
 //
 // `METRIC_KNOWLEDGE`'s totality is the strongest idea in the #1996 fix: a quantity
 // cannot exist on the metric surface without declaring which knowledge system judges
-// it, or arguing `none` with a reason. But its domain was `Record<BodyMetricSlug, …>`
+// it, or arguing `none` with a reason. But its domain was `Record<TrendMetricSlug, …>`
 // — ONE enum — so a judged quantity with no slug escaped the discipline entirely.
 //
 // The recorded escapee is VO₂ max: a curated canonical entry AND age/sex fitness norms,
@@ -10,7 +10,7 @@
 // the pre-#1996 shape (knowledge existing, readings unjudged) recurring one layer out.
 //
 // So this test enumerates the domain from the REGISTRIES rather than from a hand-list —
-// `BODY_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP` — and requires
+// `TREND_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP` — and requires
 // every judged quantity in it to resolve to a declaration. A norms marker added to the
 // dataset with no declaration fails the build; a declaration naming a marker or a
 // canonical entry that does not exist fails it too, so widening the GUARD can never
@@ -34,7 +34,7 @@ import {
   hasFitnessNorms,
 } from "@/lib/fitness-norms";
 import { readingDetailHref } from "@/lib/hrefs";
-import { BODY_METRIC_SLUGS } from "@/lib/trends-body-metrics";
+import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 
 describe("the domain is judged QUANTITIES, not one enum (#2086)", () => {
   it("every fitness-norm marker declares its knowledge source", () => {
@@ -63,7 +63,7 @@ describe("the domain is judged QUANTITIES, not one enum (#2086)", () => {
   });
 
   it("every metric slug still declares one (the #1996 half, unchanged)", () => {
-    const missing = BODY_METRIC_SLUGS.filter((s) => !METRIC_KNOWLEDGE[s]);
+    const missing = TREND_METRIC_SLUGS.filter((s) => !METRIC_KNOWLEDGE[s]);
     expect(missing).toEqual([]);
   });
 });
@@ -149,7 +149,7 @@ describe("VO₂ max — the acceptance case (#2086, owner ruling 2026-08-05)", (
     // asking it is asking the app, not restating the registry.
     expect(knowledge?.source).toBe("fitness-norms");
     expect(readingDetailHref("VO2 Max")).toBe(
-      "/biomarkers/view?name=VO2%20Max"
+      "/results/readings/view?name=VO2%20Max"
     );
   });
 

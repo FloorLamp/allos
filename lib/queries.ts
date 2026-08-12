@@ -35,7 +35,6 @@ export * from "./queries/appointments";
 export * from "./queries/intake";
 export * from "./queries/intake-options";
 export * from "./queries/immunization-options";
-export * from "./queries/narratives";
 export * from "./queries/clinical";
 export * from "./queries/multi-view-lists";
 export * from "./queries/coverage";

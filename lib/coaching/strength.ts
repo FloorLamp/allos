@@ -2,7 +2,7 @@
 // strength personal records. Pure and client-safe — no DB/network.
 import { isTimed, liftInfo } from "../lifts";
 import { plateauBreakAdvice, plateauBreakClause } from "../plateau-advice";
-import { judgeTargets } from "../journal-format";
+import { judgeTargets } from "../training-log-format";
 import { estimate1RM } from "../strength";
 import { dispWeight, kgTo, toKg, round } from "../units";
 import type { WeightUnit } from "../settings";
@@ -304,7 +304,7 @@ function workingSets(seed: NextSetSeed): SessionWorkSet[] {
 
 // Did EVERY working set meet its own declared rep target? Uses the shared
 // judgeTargets rule (a to-failure / untargeted working set is not a miss), so
-// the suggestion and the journal card's met/missed badge can't fork. A session
+// the suggestion and the training log card's met/missed badge can't fork. A session
 // with no targeted set returns true (there's nothing to have missed).
 function allWorkingSetsMetTarget(working: SessionWorkSet[]): boolean {
   return (

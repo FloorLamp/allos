@@ -11,7 +11,7 @@ import {
   TRENDS_BODY_OLD_DAY,
 } from "./fixture-logins";
 
-// Trends → Body responsive layouts. On mobile the tab used to force scrolling past
+// Trends → Overview → body census responsive layouts. On mobile the tab used to force scrolling past
 // three quick-add forms and a fixed single-column chart stack before the metric you
 // wanted. The final responsive split:
 //   1. (retired by #1486 — the three quick-adds merged into one form; see
@@ -38,7 +38,7 @@ async function openBodyTab(
   await page.goto(q);
 }
 
-test.describe("Trends → Body responsive views (#1067)", () => {
+test.describe("Trends → Overview → body census responsive views (#1067)", () => {
   // The former "quick-adds collapse to a chip row" test retired with that chip row
   // itself (#1486): the three quick-adds merged into ONE "Log measurements" form,
   // hidden behind a desktop "+ Log" modal and absent from the phone entirely
@@ -261,13 +261,18 @@ test.describe("Trends → Body responsive views (#1067)", () => {
     const trigger = page.getByTestId("chart-jump-menu-trigger");
     await expect(controls).toContainText("All charts");
     await expect(controls.getByText("Jump to", { exact: true })).toBeVisible();
+    // The selected segment's state is `aria-current`, not `aria-pressed` (#2535):
+    // these segments are links, and `aria-pressed` is a toggle-BUTTON state that
+    // role="link" does not support — so while it was there, the selected layout was
+    // announced to nobody. "true" rather than "page" because both segments render
+    // the same page in two presentations. The unselected one carries no state
+    // attribute at all, which is how aria-current expresses "not current".
     await expect(page.getByTestId("body-view-all")).toHaveAttribute(
-      "aria-pressed",
+      "aria-current",
       "true"
     );
-    await expect(page.getByTestId("body-view-tiles")).toHaveAttribute(
-      "aria-pressed",
-      "false"
+    await expect(page.getByTestId("body-view-tiles")).not.toHaveAttribute(
+      "aria-current"
     );
     await expect(jumpMenu).toBeVisible();
     await expect(trigger).toBeVisible();

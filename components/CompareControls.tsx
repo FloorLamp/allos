@@ -9,6 +9,7 @@ import {
   type SeriesPickerInput,
   type SeriesPickerOption,
 } from "@/lib/series-picker-options";
+import { biomarkerSearchTerms } from "@/lib/canonical-name";
 import { useResettableState } from "@/components/useResettableState";
 
 // The Compare picker for the Trends hub: two series
@@ -65,6 +66,10 @@ function SeriesPicker({
         onChange={setQuery}
         options={[NONE_LABEL, ...options.map((o) => o.label)]}
         groupFor={(option) => byLabel.get(option)?.group ?? null}
+        // #2382. The clear row and the metric rows name no analyte, so
+        // biomarkerSearchTerms answers [] for them; the biomarker rows gain the
+        // acronym and alias keys the ★ picker and the record form also search.
+        searchTermsFor={biomarkerSearchTerms}
         onPick={(picked) => {
           if (picked === NONE_LABEL) onSelect(undefined);
           else onSelect(byLabel.get(picked)?.key);

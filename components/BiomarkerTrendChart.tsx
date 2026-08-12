@@ -13,7 +13,7 @@ import {
 // The per-analyte biomarker chart plus its event-annotation toggle (issue #660).
 // The detail chart previously drew reference-range bands only — no life-event
 // markers — so "did the statin move my LDL" had nowhere to read. This owns the
-// per-type toggle (client) the same way BodyTrendCharts / CompareOverlay do, and
+// per-type toggle (client) the same way TrendMetricCharts / CompareOverlay do, and
 // fans the enabled markers + the targeting protocol's shaded window into the chart.
 export default function BiomarkerTrendChart({
   data,

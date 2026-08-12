@@ -10,6 +10,26 @@ guide is [`integrations.md`](../integrations.md).
 
 ---
 
+## Vocabulary: `sourceId` in TypeScript, `provider` in SQL (#2487)
+
+`Provider` and `provider_id` are reserved for **healthcare** clinicians and
+organizations (the `providers` table). A connected integration — Strava, Oura,
+Health Connect and friends — is a **source**, named `sourceId` in every
+TypeScript parameter, field, and query API, matching the user-facing "Connected
+sources" wording.
+
+The **persisted columns still say `provider`** on `integration_connections`,
+`integration_sync_events`, `integration_backfill_jobs` and `stream_frontiers`.
+That rename is deliberately deferred to its own forward migration, so phase 1
+leaves a named boundary rather than a hidden one: reads select
+`provider AS source_id` explicitly, writes bind the TS value into the old
+column, and every such statement carries a short `#2487 boundary` comment. Row
+shapes therefore expose `source_id` (snake case, mirroring the aliased result
+column); everything else — parameters, locals, derived types — uses `sourceId`.
+There is no wrapper type and no adapter layer; the alias is the mapping.
+
+---
+
 **Integrations** (`lib/integrations/`) are declarative: `registry.ts` lists
 Health Connect, Strava, Oura, Withings, Fitbit Takeout, Weather & UV, and the
 outbound `calendar-feed` as available; Garmin is planned. Health Connect is
@@ -597,7 +617,7 @@ profile-scoped at both ends (the event join + a `profile_id` filter on every
 target lookup) — resolving each row to a human label + a typed `AppRoute` deep
 link (`timelineDayHref` for a day, `readingDetailHref` for a medical record —
 which resolves a continuous vital to its metric detail page and every episodic
-reading to `/biomarkers/view`, #1932), marking a
+reading to `/results/readings/view`, #1932), marking a
 since-deleted target as removed. `components/SyncRowsDrilldown.tsx` renders it lazily (on `<details>` open, the
 raw-payload-viewer pattern) via the `loadSyncRows` read action.
 
@@ -950,7 +970,11 @@ computation (`lib/uv-dose.ts` `computeUvDose`, #221) that the read layer
 `lib/sun.ts` elevation ceiling) → minutes-only; every surface (the sun-exposure
 protocol, the DaylightChip UV badge, the overexposure care finding
 `uvOverexposureItems`) formats its result. `sun.ts` stays the offline core and
-is never replaced — its #570 offline guarantee is preserved.
+is never replaced — its #570 offline guarantee is preserved. A surface asking about
+MANY days (the Timeline's per-day chip) calls `getUvDoseForDays` (#2113), which
+resolves home location / timezone / skin type once and widens both the activities and
+the cached-UV reads over the whole date set; `getUvDoseForDay` is its one-date adapter,
+so both run the same per-day assembly and cannot drift.
 
 **The DAILY half (#1726).** The same provider gained a second grain:
 `fetchDaily` pulls the daily aggregates the weather-derived situations,
@@ -988,7 +1012,7 @@ Three properties are load-bearing:
 **The session-to-weather join — one join, three consumers (#1724/#1728).**
 `lib/queries/weather-training.ts` joins a profile's logged cardio/sport sessions to the
 cached daily weather of the day each happened on. That ONE result feeds the tolerance
-ENVELOPE (what conditions this person actually trains in), the journal-card conditions
+ENVELOPE (what conditions this person actually trains in), the training-log-card conditions
 STAMP, and — through the #1726 predicates over the same series — the Timeline's
 notable-day context. It is DERIVED AT READ TIME and never written onto the activity row:
 one source of truth, no backfill problem, and a cache gap renders no stamp rather than a

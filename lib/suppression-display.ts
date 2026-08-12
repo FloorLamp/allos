@@ -109,7 +109,7 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     part(t, 0) === "weight-loss-rate"
       ? "Weight-loss rate caution"
       : "Goal pacing note",
-  "adherence:": () => "Supplement adherence pattern",
+  "adherence:": () => "IntakeItem adherence pattern",
   // #1505: keyed on the ITEM id, so there is no name in the key to render — the
   // label names the decision instead ("you chose to keep the current priority").
   "demote-obligation:": () => "Obligation demotion suggestion",
@@ -185,8 +185,8 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     const head = part(t, 0);
     if (head === "clinical-records") return "Lab results recency";
     if (head === "archive") {
-      const provider = titleize(part(t, 1).replace(/[_-]/g, " "));
-      return provider ? `Archive refresh — ${provider}` : "Archive refresh";
+      const sourceName = titleize(part(t, 1).replace(/[_-]/g, " "));
+      return sourceName ? `Archive refresh — ${sourceName}` : "Archive refresh";
     }
     return "Records recency";
   },
@@ -470,13 +470,13 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     // heart rate — want the bedtime reminder?" answered with No thanks. Not in
     // RULE_FINDING_REGISTRY for the same reason `pool-refill:` isn't — no rule builder
     // emits it, and the registry's reflection guards read builder output. Both tails
-    // are registry vocabulary, so the provider reads back as a name.
+    // are registry vocabulary, so the source reads back as a name.
     prefix: STREAM_ONBOARD_PREFIX,
     domain: "Suggestions",
     label: (t) => {
-      const provider = titleize(part(t, 0).replace(/[_-]/g, " "));
-      return provider
-        ? `Bedtime watch reminder offer — ${provider}`
+      const sourceName = titleize(part(t, 0).replace(/[_-]/g, " "));
+      return sourceName
+        ? `Bedtime watch reminder offer — ${sourceName}`
         : "Bedtime watch reminder offer";
     },
   },
@@ -487,9 +487,9 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: STREAM_OFFBOARD_PREFIX,
     domain: "Suggestions",
     label: (t) => {
-      const provider = titleize(part(t, 0).replace(/[_-]/g, " "));
-      return provider
-        ? `Paused watch reminder note — ${provider}`
+      const sourceName = titleize(part(t, 0).replace(/[_-]/g, " "));
+      return sourceName
+        ? `Paused watch reminder note — ${sourceName}`
         : "Paused watch reminder note";
     },
   },

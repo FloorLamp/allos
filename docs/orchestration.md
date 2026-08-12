@@ -42,6 +42,18 @@ What that means in practice:
   `update_pull_request` (REST PATCH can't flip draft; GraphQL is proxy-blocked).
 - **Strategic items wait for the owner** (integrations, mobile shell, IA
   decisions). Never start them unprompted; list them in status reports.
+- **An idle pipeline with work available is an ERROR, and dispatch is the
+  default state.** Never ask permission to relaunch, resume or refill — not
+  after a restart killed the agents, not after a wave lands, not at a check-in
+  that finds nothing to review. Owner ruling, 2026-08-12, after the orchestrator
+  finished a rescue and then asked whether to relaunch the three clusters it had
+  just rescued. The queue and the caps already encode what may run; asking again
+  adds a human round-trip to a decision the runbook has already made. Ask only
+  about things the runbook genuinely does not decide — a product judgement, an
+  owner-authored PR, a scope that has grown past its brief.
+  The corollary at a check-in: if there is nothing to review and a slot is free,
+  DISPATCH, then report what you dispatched. "Nothing to do" is a conclusion the
+  orchestrator is almost never entitled to reach while the backlog is non-empty.
 
 ## Tooling — run the script, don't re-derive the rule
 
@@ -75,8 +87,8 @@ around.
 | Local e2e         | Each Playwright WORKER boots its own server on `E2E_PORT + <worker index>`, so assign each WORKTREE a port RANGE at dispatch (base + at least the worker count: 5400–5410, 5600–5610, …). AVOID 6000–6099: Next.js refuses X11-reserved ports (an agent lost a round discovering port 6000 won't boot). DB/uploads/log isolation is handled by the harness (`e2e/worker-env.ts`). The per-worker servers are `next start`, so build once — `npm run build` — then `ANTHROPIC_API_KEY= E2E_PORT=<base> npx playwright test <specs> --workers=<N> --repeat-each=3 --retries=0 --reporter=list` (global-setup rebuilds by itself when a build input is newer; `E2E_SKIP_BUILD=1` to forbid it). `--workers>1` is honest (no shared DB) and is the point of the range; leave `CI=1` off unless you want CI's one-worker shape. A leftover server from a `kill -9`'d run is swept by global-setup via `e2e/.data/worker-*/server.pid`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Raw Playwright    | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | REST merge        | `PUT /pulls/N/merge` 403s through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash). The refusal is explicit: _"Merging into a protected base branch is not permitted for this session type."_ **The same asymmetry covers CI re-runs**: `POST /actions/runs/N/rerun-failed-jobs` 403s while `mcp__github__actions_run_trigger` with `method: "rerun_failed_jobs"` returns 201 (measured, #2390). So the rule is not "MCP is merge-only" — it is that **write operations against protected refs and Actions go through MCP; everything else uses REST** to spare the owner's rate limit.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| CI shape          | **RE-READ `.github/workflows/ci.yml` BEFORE TRUSTING THIS ROW** — it changed four times on 2026-08-10 alone (#2428 4→6 shards, #2429 split `check`, #2432, #2434 6→8). As of `f8a075f4`: **14 checks** — `check` (static analysis: audit, PHI scan, format, lint, typecheck), `test-unit`, `test-db` (the three that #2429 split out of the old single `check`), `e2e-changed` (the PR's changed specs at `--repeat-each=3 --retries=0`; skips when no spec changed — infra blast radius is the matrix's job), an **8-way** sharded `e2e` matrix (full suite, retries=0, fresh runner + fresh servers per shard), and `gitleaks` (which registers twice). The retry safety-net was deliberately dropped (#1160) so a flaky spec cannot hide — that is what makes the flake-exoneration protocol meaningful. Every push costs a full round: batch fixes before pushing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| CI watchers       | **Use `scripts/orchestration/ci-watch.mjs`, which encodes this whole row; never hand-roll a watcher.** The rules it encodes: never hardcode the expected check count — DERIVE it, or the threshold rots into a false-green machine. A watcher written when the count was 8 silently accepts a 14-check repo the moment 9 have registered. Prefer "zero pending AND zero failed", and treat a low registered count as _not yet settled_ rather than as green. A watcher MUST require the full check count registered (currently **14**, was 8 — see the CI shape row) before concluding GREEN — a fresh push registers `gitleaks` first and alone for a window, and a watcher sampling then declares a false green. And a CONFLICT-DIRTY PR starts NO CI at all (the `pull_request` runs need the merge ref GitHub can't build) — a watcher stuck at "1–2 runs registered" for many polls means check `mergeable` on the PR, not wait longer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| CI shape          | **RE-READ `.github/workflows/ci.yml` BEFORE TRUSTING THIS ROW** — it changed four times on 2026-08-10 alone (#2428 4→6 shards, #2429 split `check`, #2432, #2434 6→8) and again on 2026-08-12 (#2568 8→12). As of `ab6dba27`: **18 checks** — `check` (static analysis: audit, PHI scan, format, lint, typecheck), `test-unit`, `test-db` (the three that #2429 split out of the old single `check`), `e2e-changed` (the PR's changed specs at `--repeat-each=3 --retries=0`; skips when no spec changed — infra blast radius is the matrix's job), a **12-way** sharded `e2e` matrix (full suite, retries=0, fresh runner + fresh servers per shard; the count lives in `matrix.shard` and nowhere else, read back as `strategy.job-total`), and `gitleaks` (which registers twice). The retry safety-net was deliberately dropped (#1160) so a flaky spec cannot hide — that is what makes the flake-exoneration protocol meaningful. Every push costs a full round: batch fixes before pushing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| CI watchers       | **Use `scripts/orchestration/ci-watch.mjs`, which encodes this whole row; never hand-roll a watcher.** The rules it encodes: never hardcode the expected check count — DERIVE it, or the threshold rots into a false-green machine. A watcher written when the count was 8 silently accepts a 14-check repo the moment 9 have registered. Prefer "zero pending AND zero failed", and treat a low registered count as _not yet settled_ rather than as green. A watcher MUST require the registered check set to be SETTLED (identical across two consecutive polls — the count itself lives in the CI shape row and has gone stale in this row twice, which is the point) before concluding GREEN — a fresh push registers `gitleaks` first and alone for a window, and a watcher sampling then declares a false green. And a CONFLICT-DIRTY PR starts NO CI at all (the `pull_request` runs need the merge ref GitHub can't build) — a watcher stuck at "1–2 runs registered" for many polls means check `mergeable` on the PR, not wait longer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Issue auto-close  | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | gitleaks          | CI's gitleaks runs `git --log-opts="--all"` over the refs **in that job's checkout** — its own branch plus `main`. MEASURED (#2409): a finding on one feature branch left every other open PR's gitleaks GREEN. So the blast radius is one branch _until it merges_; the moment the blob reaches `main` it is in every checkout and reds the repo, and the only remaining fix is rewriting published `main` history. Treat it as urgent-before-merge, not as a fire in progress — and check the other PRs before telling anyone the repo is on fire. Either way the blob must STOP EXISTING on the pushed ref: rebase/amend it away + `--force-with-lease`; a clean commit on top is NOT enough. Triggers: an identifier `generic-api-key` recognizes, plus an entropy threshold, plus a word-shape filter — and **entropy alone does not predict it**. The identifier is not only `TOKEN`/`SECRET`/`PASSWORD`: a JSON field literally named `key` counts. Measured on the three sibling values in the same file: `omega3-anticoagulant` 3.522 **FIRED**, `fish-oil-anticoagulant` 3.573 clean, `dairy-levothyroxine` 3.722 clean. All three clear ~3.5; the two that read as plain words are filtered as prose and the one carrying a DIGIT is not. So the predictor is "does this look like a token rather than words", and a digit is what flips it. Fix by RENAMING the value (drop the digit; keep it word-shaped), never by adding a gitleaks allowlist — an allowlist is permanent and a rename costs nothing. Briefs still mandate low-entropy fixture values (`e2e-hc-token-test-value-1`, words+digits, never random hex). |
 
@@ -85,6 +97,55 @@ around.
 Managed containers restart without warning, killing every background task, poll
 and in-flight agent call. Everything here was learned by losing work to it.
 
+- **A CANARY CANNOT DETECT A RESTART. Do not build one.** The obvious design — a
+  long-lived background process whose DEATH signals the restart — is
+  structurally incapable of working, because the restart kills the harness that
+  would deliver the death notification along with the canary. It is a smoke
+  alarm wired to the same fuse as the house. One ran for a whole session on
+  2026-08-12, died at 14:08, and said nothing.
+  The same restart also killed **both check-in timers** (they are `sleep` loops
+  in the same process tree), so the boot-id comparison that DOES work never ran
+  again. The full chain: restart → canary dies unheard → timers die → nothing
+  polls → the orchestrator keeps merging as though nothing happened. A human
+  asking "container died?" is what surfaced it, and only by luck at minute one.
+  **Detect by STATE, not by liveness**, which means: disk-persisted (survives),
+  pull not push (needs no surviving process), and self-describing (says what was
+  running, because the in-flight roster is the OTHER thing a restart destroys —
+  knowing a restart happened is useless without knowing which agents to rescue).
+  `scripts/orchestrator-checkin.sh` is that check: run it as the first action of
+  every check-in and after any gap in activity. Keep `$SCRATCH/.roster` current
+  at dispatch time — it is the only copy of the roster that outlives you. And
+  note that the script itself lives in the REPO, not in scratch: the first
+  version was written to `$SCRATCH` and would have died in the next restart,
+  which is the same mistake one level up.
+- **A restart detector must be SILENT when nothing is wrong**, and that is a
+  harder property than detecting the restart. The first working version flagged
+  every live agent's worktree as `DIRTY: RESCUE BEFORE ANYTHING ELSE` — an agent
+  mid-task has uncommitted work by definition — and every merged branch as
+  `NO REMOTE BRANCH`, because branches are deleted on merge. Three of six rows
+  screamed on two consecutive check-ins with nothing wrong. That is the canary's
+  failure a second time: not absent, but **ignorable**. A monitor nobody reads is
+  a monitor nobody has. The missing input was already on disk — `$SCRATCH/.roster`
+  says which branches have a live agent, and the same facts mean opposite things
+  on either side of that line (dirty + live = work in progress; dirty + no agent
+  = nobody is coming back for it).
+- **`merge-base --is-ancestor HEAD origin/main` cannot answer "was this merged"
+  here.** Everything is SQUASH-merged, so the merged commit is a new object with
+  an unrelated parent and the branch head is never an ancestor. The predicate
+  reads perfectly and can only ever answer "no" — the #2444 shape, a guard that
+  covers nothing while still looking like a guard. Used as the sole test it
+  flagged all three finished worktrees as unpushed **on the very run that fixed
+  the previous false alarm**, i.e. one false alarm traded for another. The signal
+  that separates the cases is whether the branch was ever PUSHED: tracking config
+  survives the upstream branch's deletion, so upstream-configured plus remote-gone
+  is the merged-and-tidied shape, while no upstream and no remote is work that
+  exists nowhere else. Keep `--is-ancestor` only as a second sufficient witness,
+  for the non-squash case.
+- **Prove the alarm can still fire.** After any change that makes a monitor
+  quieter, create a worktree that genuinely deserves the alarm, confirm it fires,
+  then delete it. Silence that has never been tested against a true positive is
+  indistinguishable from a broken detector — this section's own lesson, applied
+  to the fix rather than to the original.
 - **Agents commit AND push after every meaningful step** — in every dispatch. A
   restart then costs at most one uncommitted edit set. Worktrees survive
   restarts; uncommitted gate-run state does not.
@@ -250,6 +311,14 @@ working one's. The two signals that actually separate them:
    The template has said "COMMIT AND PUSH after every meaningful step" for
    months; it was not enough, because an agent deep in a large change reads that
    as advice about restarts rather than a hard gate on its own progress.
+3. **Committed-and-unpushed**, the variant that survives every rewording of the
+   above. Agents on this repo commit reliably and then forget the push; three
+   separate agents needed a nudge in one session. The commit feels like the
+   banking step, so "commit and push" reads as one act that was performed. State
+   the gate as a property of the REMOTE — _your branch must exist on the remote
+   at your latest commit_ — because that is the thing a check-in can verify:
+   `git -C <wt> rev-parse HEAD` against `git ls-remote --heads origin <branch>`,
+   which is now part of the check-in rule below.
 
 **The check-in rule.** At every check-in, run
 `dispatch-brief.mjs list` — it prints every active dispatch's age against the
@@ -267,7 +336,7 @@ slow under contention" is wrong and was wrong here: `test:db` at 6× contention 
 otherwise, and the proof is a worktree with commits in it.
 
 **Under-scoping causes the second kind.** The 13.7 h agent was not thrashing —
-its brief said "add a slug to `BODY_METRIC_SLUGS`" and the honest implementation
+its brief said "add a slug to `TREND_METRIC_SLUGS`" and the honest implementation
 turned out to drag **fifteen files** of import plumbing behind it, because the
 slug had to earn its `METRIC_DOCUMENT_REACH` declaration with a real projector
 plus a migration moving rows already on disk. When a brief's true footprint is
@@ -323,6 +392,12 @@ internal jargon.
 - Purely-internal merges (spec fixes, CI plumbing) are OMITTED. Operator-facing
   notes (auto-applying migrations, behavior a self-hoster must know) go in the
   entry body.
+- The file stays APPEND-ONLY; `/whats-new` pages it (#2528). The page renders
+  `WHATS_NEW_PAGE_ENTRIES` entries at a time — the newest day or two, which is the
+  question the page answers — with `?page=` walking back through the archive. A day
+  split across a page boundary carries its `operatorNotes` onto both pages, so an
+  upgrade action can never hide behind the pager. The bundled JSON itself still
+  ships whole, so trimming the file remains a separate release-process decision.
 
 ## Dispatch prompt template
 
@@ -400,6 +475,23 @@ row poisoning the next repeat; a live-mode finish seam remounting the form).
   orchestrator owns FULL suites; it never excused an author from its one new
   spec. #1066 and #1115 both shipped brand-new specs that failed on first push
   because nobody ran them. An unrun spec is a guaranteed CI round-trip.
+- **NEVER brief "write the spec, do not run it, I will run it."** This is the
+  orchestrator's own failure mode, not an agent's, and it produced red CI both
+  times it was issued: #2562 (8 failures) and #2584 (3/3 on the one new spec).
+  It fails for a structural reason — a spec's author is the only party holding
+  the feature's state in mind at the moment the spec is written, and the split
+  defers discovery of a spec bug past review, past the CI round, to the point
+  where the orchestrator has to reconstruct that state from a job log. Both
+  failures were spec bugs an author's first local run would have caught in
+  seconds (#2584: two taps of the same food row share ONE ledger key, so the
+  second is absorbed by `POST_SUCCESS_COOLDOWN_MS` and never reaches the
+  server; the repo already reloads between repeated taps in `food-log.spec.ts`
+  and `wellness-practices.spec.ts` for exactly this).
+  The e2e cap is a cap on CONCURRENT LOCAL RUNNERS, so a cluster that turns out
+  to need a browser spec has exactly two honest resolutions: **give it a slot**
+  (wait for one, or take one back from a cluster that has stopped running e2e),
+  or **brief it with no browser spec at all** — "prove this in the pure and DB
+  tiers; if it cannot be proven there, say so and stop." Never the split.
 - **A new nav entry breaks `TOP_LEVEL_ORDER`** in
   `e2e/nav-consolidation.spec.ts` (#1042) — say so in any brief that may add one.
 - **The merge bar:** CI fully green on the exact head. No separate local
@@ -586,6 +678,27 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
   commit** — a green run is a claim about the base it ran on.
 - Flag owner-visible judgment calls in the review (tone unifications, behavior
   loosenings) so the owner can veto cheaply.
+- **Read the diffstat for a file git calls `Bin`.** A new `.ts` shipped as
+  `Bin 0 -> 7407 bytes` (#2547) because its key separator was three RAW NUL bytes
+  rather than an escape sequence. The runtime intent was correct, but a file
+  containing a NUL has no diff, no blame and no line comments — and this repo's
+  PHI and secret gates are TEXT scans, so a green `phi-scan` over a file it may
+  not have read as text is not the reassurance it looks like. The fix is the
+  escape sequence, which is byte-identical at runtime.
+- **A claimed count is a measurement with a timestamp.** At this merge rate the
+  numbers in an issue title drift before an agent reads them: #2528 said 274
+  entries and the agent's own base had 278. Ask for a re-count in the brief and
+  check the PR reports one.
+- **A curated dataset's diff must show only intended changes.** #2544 carried four
+  `1.0`→`1` edits in `canonical-biomarkers.json` from a `JSON.parse`/`stringify`
+  round-trip. Semantically nothing, and Prettier is NOT responsible (it leaves
+  JSON numbers alone — check before believing that story). It matters because a
+  regenerate is invisible whenever it happens to preserve key order and lose no
+  precision, so those four lines were the only evidence it occurred at all.
+- **Verify a PR's claims about pre-existing bugs, not just its code.** #2537's body
+  said the rename "caught two real bugs"; both were correct on main and broke only
+  transiently inside the branch. A bug a change introduces and then fixes is not a
+  bug it found, and a PR body is read back later as fact.
 
 ## Migration slots
 

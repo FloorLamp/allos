@@ -57,7 +57,7 @@ export default async function HealthConnectPage() {
     nowMs
   );
 
-  // THE per-provider state (#1772): one computation behind this page, Review's
+  // THE per-source state (#1772): one computation behind this page, Review's
   // inbox, and the Integrations grid. The token card above answers a DIFFERENT
   // question (is the credential alive) and keeps its own lifecycle badge.
   const state = getIntegrationState(
@@ -159,7 +159,7 @@ export default async function HealthConnectPage() {
                   href="/trends#body"
                   className="text-brand-700 underline dark:text-brand-400"
                 >
-                  Trends → Body → Macros
+                  Trends → Nutrition → Macros
                 </Link>{" "}
                 — the supported path for food-log data, since those apps have no
                 usable direct API. Keep your token secret — anyone with it can

@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import type { ChartChip } from "./ChartJumpChips";
 
-// Compact chart navigator for Trends → Body's full-chart layout. The former
+// Compact chart navigator for Trends → Overview → body census full-chart layout. The former
 // sticky chip row looked like a third tab level and spent horizontal/vertical
 // space on every chart name. This keeps the same present-only anchor vocabulary
 // behind one inline dropdown beside the layout toggle.

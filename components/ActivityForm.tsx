@@ -56,6 +56,10 @@ import {
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
 import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
+import {
+  requestUpdateReload,
+  useManualUpdateFallback,
+} from "./update-reload-channel";
 import type { PartEntry } from "@/lib/activity-form-model";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
@@ -75,7 +79,7 @@ import { activityDisclosureSummary } from "@/lib/activity-import-details";
 export type { ActivityEditData };
 
 // The shared activity create/edit form, rendered inside ActivityOverlay or docked
-// in the journal's right column. Either way it auto-saves: changes persist a
+// in the training log's right column. Either way it auto-saves: changes persist a
 // moment after any valid edit (create-then-update), so every way of leaving the
 // form — close button, backdrop, Escape, navigation — is loss-free and there is
 // no Save/Cancel step.
@@ -103,6 +107,7 @@ export default function ActivityForm({
   bodyweightKg,
   editData,
   prefill = null,
+  initialDate,
   live = false,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
@@ -125,6 +130,9 @@ export default function ActivityForm({
   // treats it as a CREATE — saves insert a new activity, and the prefilled
   // content auto-saves on open. Ignored when editData is present.
   prefill?: ActivityEditData | null;
+  // Date-only create seed from a day-history link. Kept separate from a repeat
+  // prefill so choosing a day never fabricates an activity type or title.
+  initialDate?: string;
   // Live workout mode (issue #340): opens the create form in the in-gym layout —
   // a control strip with the rest timer + Finish above the normal form. Purely a
   // presentation flag over the same form state (no second engine); "Finish"
@@ -182,6 +190,13 @@ export default function ActivityForm({
     return { allOptions: all, typeByName: m };
   }, [suggestions]);
 
+  // The evidence the picker's matcher is allowed to weigh (#2384). Built once here
+  // beside allOptions and handed down as data; lib/fuzzy owns what it is worth.
+  const usedActivityNames = useMemo(
+    () => new Set(suggestions.logged),
+    [suggestions]
+  );
+
   // All name→type classification (partType, distance-field, custom flags) is
   // pure logic keyed off the picker vocabulary — built once here and destructured
   // so the inline call sites below stay unchanged (see lib/activity-form-validate).
@@ -233,7 +248,9 @@ export default function ActivityForm({
 
   // Lazy initializers: the fallbacks format dates, no need to redo that work on
   // every render just to discard it.
-  const [date, setDate] = useState(() => seed?.date ?? todayStr(tz));
+  const [date, setDate] = useState(
+    () => seed?.date ?? initialDate ?? todayStr(tz)
+  );
   const [startTime, setStartTime] = useState(() =>
     editData ? (editData.start_time ?? "") : nowHHMM(tz)
   );
@@ -272,6 +289,11 @@ export default function ActivityForm({
   // "Finish workout" can collapse it back to the plain form. `restStartKey` bumps
   // on every set check-off to auto-start the rest timer.
   const [liveMode, setLiveMode] = useState(live && !isEdit);
+  // The editor's root element, marked `data-draft-backed` by the draft hook (#2471).
+  const formElRef = useRef<HTMLFormElement>(null);
+  // Whether the automatic update reload has given up on this episode (#2471). The
+  // stale-save banner is that fallback, not the first answer any more.
+  const manualFallback = useManualUpdateFallback();
   const [restStartKey, setRestStartKey] = useState(0);
   // The shared haptic adapter (#1422) — the set-logged tick below goes through it.
   const haptic = useHaptics();
@@ -739,6 +761,13 @@ export default function ActivityForm({
   type ActivityDraft = typeof draftExtra;
   const draft = useFormDraft<ActivityDraft>({
     formKey: "activity",
+    // This editor keeps everything in `extra`, so its <form> is not the captured
+    // element — but its input is durable all the same, and the #1878 registry has to
+    // know that or an automatic update reload would refuse to cross the very editor
+    // #2471 is about (#2471).
+    scopeRef: formElRef,
+    // Carried on the resume pointer so the tab reopens the mode it was in.
+    live: liveMode,
     // Once auto-save has created the row, the draft belongs to THAT row — so a
     // later blank create form can't restore it into a duplicate activity, and
     // reopening the row still offers the edits that never reached the server.
@@ -994,6 +1023,7 @@ export default function ActivityForm({
 
   return (
     <form
+      ref={formElRef}
       data-testid="activity-form"
       // The form never submits on Enter — the debounced auto-save handles
       // persistence, so a stray Enter (e.g. right after picking from the
@@ -1042,8 +1072,15 @@ export default function ActivityForm({
               every save fails until the tab reloads. Unlike an ordinary failed
               save, retrying cannot help — say so, name the remedy, and make it
               one tap. "Kept on this device" is the draft's promise (#1699), which
-              runs in live mode too for exactly this state. */}
-          {staleBuild && (
+              runs in live mode too for exactly this state.
+
+              Since #2471 the tab normally fixes this itself, so this banner is the
+              RATIONED-FAILURE fallback: it renders only once the registrar has said
+              the automatic attempt is spent (or is refused because work on screen
+              would not survive). Its Reload goes through the same shared path the
+              automatic one does, so a manual tap flushes the draft and leaves the
+              resume marker too. */}
+          {staleBuild && manualFallback && (
             <Notice
               tone="rose"
               icon
@@ -1052,7 +1089,7 @@ export default function ActivityForm({
               action={
                 <button
                   type="button"
-                  onClick={() => window.location.reload()}
+                  onClick={() => void requestUpdateReload()}
                   className="font-medium underline-offset-2 hover:underline"
                   data-testid="stale-save-reload"
                 >
@@ -1098,6 +1135,7 @@ export default function ActivityForm({
             onBwInput={setBwInput}
             onSaveBodyweight={saveBodyweight}
             equipmentRankedOptions={equipmentRankedOptions}
+            usedActivityNames={usedActivityNames}
             enteredLiftBases={enteredLiftBases}
             liftCompanions={suggestions.liftCompanions}
             isKnown={isKnown}

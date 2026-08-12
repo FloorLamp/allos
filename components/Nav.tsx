@@ -113,14 +113,14 @@ const RECORDS: Group = {
     { href: "/records", label: "Health record", icon: IconReportMedical },
     // Results (#1042 phase 5, retabbed #1079): the Biomarkers / Imaging / Genomics
     // index pages merged into ONE surface, now route-per-tab under /results
-    // (/results/biomarkers|/imaging|/genomics) — one leaf replaces the three; bare
-    // /results lands on /results/biomarkers. The per-biomarker detail route
-    // (/biomarkers/view) survives at its own URL; like other unlinked detail pages it
+    // (/results/readings|/imaging|/genomics) — one leaf replaces the three; bare
+    // /results lands on /results/readings. The per-biomarker detail route
+    // (/results/readings/view) survives at its own URL; like other unlinked detail pages it
     // highlights no nav entry.
     { href: "/results", label: "Results", icon: IconChartLine },
     // Supplements left this group for the Nutrition → Supplements tab (#746);
-    // Medications kept a Medical-group home of their own. The old combined
-    // "/medicine" surface was removed outright (#1635) and 404s.
+    // Medications kept a Medical-group home of their own. The former combined
+    // intake surface was removed outright (#1635) and 404s.
     { href: "/medications", label: "Medications", icon: IconPill },
     // The household medicine cabinet (/supplies, #1374) is NOT a nav leaf (#1522).
     // It is a physical-object REGISTRY — bottles that intake items link to — and the
@@ -193,7 +193,7 @@ const entries: Entry[] = [
   // Sleep (#1066): a data-gated READING surface between Trends and Upcoming — it
   // heads the reading cluster (a one-morning-glance page), and its adjacency to
   // Trends fails-soft the old muscle-memory path (sleep is being extracted FROM
-  // Trends → Body). Gate = any recorded sleep session (the `sleep` relevance bit);
+  // Trends → Overview → body census). Gate = any recorded sleep session (the `sleep` relevance bit);
   // like every relevance gate it's cosmetic — the page stays reachable by URL (the
   // pillar deep-link and dashboard tile both point here).
   {

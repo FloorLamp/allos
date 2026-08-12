@@ -52,7 +52,7 @@ describe("extractDoses", () => {
       kind: "preventive",
       actions: [
         { label: "✅ Done", data: "pvdone:2:colorectal_cancer" },
-        { label: "Open form", url: "https://allos.example/medicine" },
+        { label: "Open form", url: "https://allos.example/medications" },
         { label: "bad", data: "take:2:notanumber:9:2026-07-11" },
       ],
     };
@@ -81,11 +81,11 @@ describe("extractLinks", () => {
       body: "b",
       actions: [
         { label: "snooze", data: "rfsnooze:2:9" },
-        { label: "form", url: "https://allos.example/medicine" },
-        { label: "form again", url: "https://allos.example/medicine" },
+        { label: "form", url: "https://allos.example/medications" },
+        { label: "form again", url: "https://allos.example/medications" },
       ],
     };
-    expect(extractLinks(msg)).toEqual(["https://allos.example/medicine"]);
+    expect(extractLinks(msg)).toEqual(["https://allos.example/medications"]);
   });
 });
 

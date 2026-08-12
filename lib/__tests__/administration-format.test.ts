@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatGivenAtClock,
   formatGivenAtClockWithRelativeAge,
+  formatGivenAtNoticeTime,
   administrationDayLabel,
   administrationLastDoseLabel,
   administrationOutcomeText,
@@ -78,6 +79,25 @@ describe("formatGivenAtClockWithRelativeAge", () => {
         now
       )
     ).toBe("16:02 (2 hrs ago)");
+  });
+});
+
+describe("formatGivenAtNoticeTime", () => {
+  it("adds the date when the arming administration was not today", () => {
+    expect(
+      formatGivenAtNoticeTime(
+        "America/New_York",
+        "2026-07-14 20:02:00",
+        "2026-07-15"
+      )
+    ).toBe("Jul 14, 2026 at 4:02pm");
+    expect(
+      formatGivenAtNoticeTime(
+        "America/New_York",
+        "2026-07-15 20:02:00",
+        "2026-07-15"
+      )
+    ).toBe("4:02pm");
   });
 });
 

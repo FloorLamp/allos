@@ -16,13 +16,13 @@ import {
   getProteinToday,
   getFiberAdequacy,
   getFiberOnDate,
-  getProteinLoggedGrams,
+  getProteinDailyGrams,
   getProteinQuickAddPreset,
   getHabitualFoodGroups,
 } from "@/lib/queries";
 import { formatWeekdayDate } from "@/lib/format-date";
 import {
-  getUserAge,
+  getProfileAge,
   getExcludedFoodGroups,
 } from "@/lib/settings/profile-attrs";
 import { preferenceSuggestionNote } from "@/lib/dietary-preferences";
@@ -155,7 +155,11 @@ function NutrientEstimateDetails({
   );
 }
 
-export default async function FoodTab() {
+export default async function FoodTab({
+  initialDate,
+}: {
+  initialDate?: string;
+}) {
   const { login, profile } = await requireSession();
   const formatPrefs = getDisplayFormatPrefs(login.id);
 
@@ -163,7 +167,7 @@ export default async function FoodTab() {
   // the serving logger is meaningless for them (issue #591). Show a calm note instead
   // of the logger; the nav entry is hidden by the same predicate, and this server-side
   // gate covers a direct URL. Eligible on unknown age (hide only on a positive match).
-  if (!isFoodLoggingRelevant(getUserAge(profile.id))) {
+  if (!isFoodLoggingRelevant(getProfileAge(profile.id))) {
     return (
       <div>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
@@ -212,7 +216,7 @@ export default async function FoodTab() {
   const fiberToday = getFiberOnDate(profile.id, date);
   // Direct protein-grams quick-add (#824): today's manual total + the last-used amount
   // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
-  const proteinLoggedGrams = getProteinLoggedGrams(profile.id, date);
+  const proteinLoggedGrams = getProteinDailyGrams(profile.id, date);
   const proteinPreset = getProteinQuickAddPreset(profile.id);
   // Current food slot (#950): the profile's wall-clock window (Morning/Midday/Evening)
   // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME
@@ -348,6 +352,7 @@ export default async function FoodTab() {
       <FoodSuggestionsLayout
         today={date}
         days={mealDays}
+        initialDate={initialDate}
         suggestionCount={suggestions.length}
         logger={
           // Act: the one-tap log bar. On mobile this grid cell leads (bar → Today →

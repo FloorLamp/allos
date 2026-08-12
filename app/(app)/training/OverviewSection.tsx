@@ -6,7 +6,7 @@ import {
   getDayLoadInputs,
   getFrequencyTargetProgress,
   getIllnessCoachingContext,
-  getJournalWeekSummary,
+  getTrainingLogWeekSummary,
   getRecentDatedExercises,
   getReportedBurden,
   getRestAck,
@@ -20,7 +20,7 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatMinutes } from "@/lib/duration";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import {
   coverageFromSets,
@@ -112,7 +112,7 @@ export default async function OverviewSection() {
   const du = units.distanceUnit;
   const todayStr = today(profile.id);
 
-  const summary = getJournalWeekSummary(profile.id);
+  const summary = getTrainingLogWeekSummary(profile.id);
   const targets = getFrequencyTargetProgress(profile.id);
   const strength = getStrengthByExercise(profile.id);
   // PRs read the LOAD-CONTEXT grouping (#1610) so no record blends two machines;

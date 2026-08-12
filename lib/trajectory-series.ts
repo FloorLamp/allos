@@ -18,13 +18,13 @@ import {
   getCanonicalBiomarker,
 } from "./queries";
 import {
-  getUserSex,
-  getUserAgeOn,
-  getUserReproductiveStatus,
+  getProfileSex,
+  getProfileAgeOn,
+  getProfileReproductiveStatus,
 } from "./settings";
 import { canonicalGroupKey, groupByCanonicalName } from "./biomarker-group";
 import { readingDetailHref } from "./hrefs";
-import type { MedicalRecord, ReproductiveStatus, Sex } from "./types";
+import type { ClinicalObservation, ReproductiveStatus, Sex } from "./types";
 import {
   referenceRange,
   optimalBand,
@@ -57,8 +57,8 @@ export function buildTrajectoryInput(
     canonical,
     getBiomarkerSeries(profileId, canonical),
     today,
-    getUserSex(profileId),
-    getUserReproductiveStatus(profileId)
+    getProfileSex(profileId),
+    getProfileReproductiveStatus(profileId)
   );
 }
 
@@ -69,7 +69,7 @@ export function buildTrajectoryInput(
 function buildInputFromSeries(
   profileId: number,
   canonical: string,
-  series: MedicalRecord[],
+  series: ClinicalObservation[],
   today: string,
   sex: Sex | null,
   status: ReproductiveStatus | null
@@ -77,7 +77,7 @@ function buildInputFromSeries(
   if (series.length === 0) return null;
   const cb = getCanonicalBiomarker(canonical);
   const latestDate = series[series.length - 1]?.date ?? null;
-  const age = getUserAgeOn(profileId, latestDate);
+  const age = getProfileAgeOn(profileId, latestDate);
 
   // Exact value_num, or an inexact-but-bounded reading plotted at its limit.
   const plottable = series.flatMap((r) => {
@@ -159,8 +159,8 @@ export function buildTrajectoryFindings(
   today: string
 ): TrajectoryFinding[] {
   const grouped = groupByCanonicalName(getAllBiomarkerSeries(profileId));
-  const sex = getUserSex(profileId);
-  const status = getUserReproductiveStatus(profileId);
+  const sex = getProfileSex(profileId);
+  const status = getProfileReproductiveStatus(profileId);
   const inputs: TrajectoryInput[] = [];
   for (const name of getUsedCanonicalNames(profileId)) {
     const input = buildInputFromSeries(

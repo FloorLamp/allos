@@ -9,13 +9,13 @@ import {
   getFoodCorrectionBursts,
   rankFoodGroups,
   getFoodServingsOnDate,
-  getProteinLoggedGrams,
+  getProteinDailyGrams,
   getProteinTapsOnDate,
   getProteinQuickAddPreset,
   getProteinToday,
   getLoggedFoodWindows,
 } from "../queries";
-import { getTimezone, getUserAge } from "../settings";
+import { getTimezone, getProfileAge } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { now as clockNow } from "../clock";
 import { dateStrInTz, minuteOfDayInTz } from "../date";
@@ -73,7 +73,7 @@ export function buildFoodNudge(
   } = {}
 ): NotificationMessage | null {
   const now = opts.now ?? clockNow();
-  if (!isFoodLoggingRelevant(getUserAge(profileId))) return null;
+  if (!isFoodLoggingRelevant(getProfileAge(profileId))) return null;
   // Slot-aware ranking (#950/#1073): the nudge knows its window, so it passes it through —
   // the buttons lead with what this profile eats at THIS time of day (fish at lunch), and
   // the reserved __protein__ pseudo-group joins the ranked keys for a protein-logging
@@ -99,10 +99,10 @@ export function buildFoodNudge(
     pt ? proteinTodayNudgeParts(pt) : null;
   // A protein-tracker with no target (no bodyweight) still gets a day-grams line when
   // they've logged protein today, so the "+Xg protein" button's contribution is visible and
-  // distinct from the food-serving tally (#1073). getProteinLoggedGrams is a raw stored
+  // distinct from the food-serving tally (#1073). getProteinDailyGrams is a raw stored
   // total — no second engine (#221).
   if (!proteinLine && rankedKeys.includes(PROTEIN_NUDGE_KEY)) {
-    const grams = getProteinLoggedGrams(profileId, date);
+    const grams = getProteinDailyGrams(profileId, date);
     if (grams > 0) proteinLine = `Protein ${grams} g today`;
   }
   const presetGrams = getProteinQuickAddPreset(profileId) ?? undefined;

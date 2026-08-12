@@ -92,9 +92,19 @@ export interface CellRamp {
   emptyClass: string;
   /** Tailwind classes per density step, level 1…N (both themes). */
   stepClasses: readonly string[];
+  /** Theme-aware foreground per level (empty, then 1…N). */
+  labelClasses: readonly string[];
   /** The same ladder as hexes, per theme, for the CI palette validation. */
-  light: { empty: string; steps: readonly string[] };
-  dark: { empty: string; steps: readonly string[] };
+  light: {
+    empty: string;
+    steps: readonly string[];
+    labelText: readonly string[];
+  };
+  dark: {
+    empty: string;
+    steps: readonly string[];
+    labelText: readonly string[];
+  };
 }
 
 /** Workout/activity density — the brand green, since activity is the brand's own
@@ -108,13 +118,52 @@ export const chartActivityRamp: CellRamp = {
     "bg-brand-500 dark:bg-brand-600",
     "bg-brand-600 dark:bg-brand-500",
   ],
+  labelClasses: [
+    "text-slate-800 dark:text-slate-100",
+    "text-slate-950 dark:text-white",
+    "text-slate-950 dark:text-white",
+    "text-slate-950 dark:text-slate-950",
+    "text-slate-950 dark:text-slate-950",
+  ],
   light: {
     empty: "#f1f5f9", // slate-100
     steps: ["#86efac", "#4ade80", "#22c55e", "#16a34a"], // brand 300→600
+    labelText: ["#1e293b", "#020617", "#020617", "#020617", "#020617"],
   },
   dark: {
     empty: "#141a17", // ink-800
     steps: ["#166534", "#15803d", "#16a34a", "#22c55e"], // brand 800→500
+    labelText: ["#f1f5f9", "#ffffff", "#ffffff", "#020617", "#020617"],
+  },
+};
+
+/** Observational quantity density — deliberately vivid royal blue rather than the
+ *  brand green. Food servings and confirmed doses describe what was recorded;
+ *  a darker cell must not imply that more is healthier or more adherent. */
+export const chartObservationRamp: CellRamp = {
+  emptyClass: "bg-slate-100 dark:bg-ink-800",
+  stepClasses: [
+    "bg-blue-200 dark:bg-blue-700",
+    "bg-blue-300 dark:bg-blue-500",
+    "bg-blue-400 dark:bg-blue-300",
+    "bg-blue-600 dark:bg-blue-100",
+  ],
+  labelClasses: [
+    "text-slate-800 dark:text-slate-100",
+    "text-slate-950 dark:text-white",
+    "text-slate-950 dark:text-slate-950",
+    "text-slate-950 dark:text-slate-950",
+    "text-white dark:text-slate-950",
+  ],
+  light: {
+    empty: "#f1f5f9", // slate-100
+    steps: ["#bfdbfe", "#93c5fd", "#60a5fa", "#2563eb"],
+    labelText: ["#1e293b", "#020617", "#020617", "#020617", "#ffffff"],
+  },
+  dark: {
+    empty: "#141a17", // ink-800
+    steps: ["#1d4ed8", "#3b82f6", "#93c5fd", "#dbeafe"],
+    labelText: ["#f1f5f9", "#ffffff", "#020617", "#020617", "#020617"],
   },
 };
 

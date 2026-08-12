@@ -7,6 +7,7 @@ import { isRealIsoDate } from "@/lib/date";
 import {
   isInstrument,
   instrumentDef,
+  instrumentItemOptions,
   type Instrument,
 } from "@/lib/mental-health";
 import {
@@ -75,7 +76,11 @@ export async function recordInstrumentAction(
     const parsedAnswers: InstrumentAnswer[] = [];
     for (let i = 0; i < parsed.length; i++) {
       const a = Number(parsed[i]);
-      if (!Number.isInteger(a) || a < 0 || a > 3) {
+      // Validate against THIS item's own option set, not a hard-coded 0..3 — an
+      // instrument may score its items on different scales (#2321: EPDS reverses
+      // seven of its ten), so the item is the authority on what an answer may be.
+      const options = instrumentItemOptions(instrument, i);
+      if (!Number.isInteger(a) || !options.some((o) => o.value === a)) {
         return { ok: false, error: "Answer every item." };
       }
       parsedAnswers.push({ itemIndex: i, answer: a });
@@ -101,6 +106,10 @@ export async function recordInstrumentAction(
     answers,
     notes,
   });
+  // The core's life-stage gate (#2107). Unreachable from here today — `isInstrument`
+  // above narrows this action to the mental-health family, which is never adult-only
+  // — but the typed outcome is rendered rather than assumed.
+  if (id == null) return { ok: false, error: "Couldn't save that score." };
   revalidateInstruments();
   return { ok: true, id };
 }

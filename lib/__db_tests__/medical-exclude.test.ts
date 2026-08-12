@@ -1,14 +1,14 @@
-// DB INTEGRATION TIER — getMedicalRecords excludeCategories filter.
+// DB INTEGRATION TIER — getClinicalObservations excludeCategories filter.
 //
 // The Biomarkers browser hides medications (category='prescription') via a new
-// `excludeCategories` filter on getMedicalRecords (a parameterized category NOT IN
+// `excludeCategories` filter on getClinicalObservations (a parameterized category NOT IN
 // (…)). These tests seed a real (throwaway) SQLite DB with a mix of categories and
 // prove the clause drops exactly the excluded rows, no-ops on an empty list, and
 // stays profile-scoped.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
-import { getMedicalRecords } from "@/lib/queries";
+import { getClinicalObservations } from "@/lib/queries";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let fx: SeededProfile;
@@ -29,17 +29,17 @@ beforeAll(() => {
   ).run(fx.profileId, fx.todayStr);
 });
 
-describe("getMedicalRecords excludeCategories", () => {
+describe("getClinicalObservations excludeCategories", () => {
   it("drops the excluded category and keeps the rest", () => {
     // Baseline: all three categories present.
-    const all = getMedicalRecords(fx.profileId);
+    const all = getClinicalObservations(fx.profileId);
     expect(all.map((r) => r.category).sort()).toEqual([
       "lab",
       "prescription",
       "vitals",
     ]);
 
-    const noRx = getMedicalRecords(fx.profileId, {
+    const noRx = getClinicalObservations(fx.profileId, {
       excludeCategories: ["prescription"],
     });
     const cats = noRx.map((r) => r.category);
@@ -51,13 +51,13 @@ describe("getMedicalRecords excludeCategories", () => {
 
   it("an empty exclude list is a no-op (all rows returned)", () => {
     expect(
-      getMedicalRecords(fx.profileId, { excludeCategories: [] })
+      getClinicalObservations(fx.profileId, { excludeCategories: [] })
     ).toHaveLength(3);
   });
 
   it("stays profile-scoped — the clause never widens to another profile", () => {
     const other = seedProfile("EXCL2"); // only its own seeded 'lab' Glucose row
-    const rows = getMedicalRecords(other.profileId, {
+    const rows = getClinicalObservations(other.profileId, {
       excludeCategories: ["prescription"],
     });
     expect(rows).toHaveLength(1);

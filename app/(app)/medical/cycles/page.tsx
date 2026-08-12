@@ -15,7 +15,7 @@ import {
 import { getUnitPrefs } from "@/lib/settings";
 import { getCycleForecast, listCyclePeriods } from "@/lib/cycle-store";
 import { getTtcState } from "@/lib/ttc-store";
-import { getUserAge } from "@/lib/settings";
+import { getProfileAge } from "@/lib/settings";
 import { isMinor } from "@/lib/life-stage";
 import {
   cyclePhaseOnDate,
@@ -69,7 +69,7 @@ export default async function CyclePage() {
   const forecast = getCycleForecast(profile.id, todayStr);
   // TTC is adult-only content — the same `!isMinor` line the other adult topics use
   // (#1174) — and off entirely until the user declares a start (the declared-only rule).
-  const ttcEligible = !isMinor(getUserAge(profile.id));
+  const ttcEligible = !isMinor(getProfileAge(profile.id));
   const ttc = ttcEligible ? getTtcState(profile.id, todayStr) : null;
 
   return (

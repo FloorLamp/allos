@@ -14,7 +14,11 @@
 // lib/auth import.
 
 import { getLatestMetricSample } from "@/lib/queries/metrics";
-import { getUserAgeOn, getUserBirthdate, getUserSex } from "@/lib/settings";
+import {
+  getProfileAgeOn,
+  getProfileBirthdate,
+  getProfileSex,
+} from "@/lib/settings";
 import { ageInMonthsFromBirthdate } from "@/lib/date";
 import { measurementPercentile } from "@/lib/growth";
 import {
@@ -34,7 +38,7 @@ function latestHeightPercentile(
   if (sex !== "male" && sex !== "female") return null;
   const h = getLatestMetricSample(profileId, "height_cm");
   if (!h) return null;
-  const birthdate = getUserBirthdate(profileId);
+  const birthdate = getProfileBirthdate(profileId);
   const months = birthdate ? ageInMonthsFromBirthdate(birthdate, h.date) : null;
   if (months == null) return null;
   return (
@@ -58,10 +62,10 @@ export function pediatricBpContextFor(
 ): PediatricBpContext | null {
   const component = bpComponentFor(canonicalName);
   if (!component || value == null) return null;
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
   return pediatricBpContext(component, value, {
     sex,
-    ageYears: getUserAgeOn(profileId, onDate),
+    ageYears: getProfileAgeOn(profileId, onDate),
     heightPercentile: latestHeightPercentile(profileId, sex),
   });
 }

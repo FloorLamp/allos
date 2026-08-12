@@ -76,7 +76,7 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 //     the primary action IS the activity editor; on Nutrition or Medications it
 //     is noise competing for a 390px bar. It used to be a PAIR — the ⟳
 //     repeat-last button left the bar in #1509 as a fourth home for a shortcut
-//     the palette and the Journal card's ⋯ menu already carry.
+//     the palette and the Training Log card's ⋯ menu already carry.
 //
 // The drawer slides in and out (issue #1416, section F): usePresence keeps it
 // mounted for the length of its exit animation and then unmounts it for real, so
@@ -305,7 +305,7 @@ export default function MobileNav({
                     rest timer + set check-off flow (issue #340). It is the ONLY
                     activity-specific bar shortcut since #1509: the ⟳ repeat-last
                     twin was a FOURTH home for a shortcut the command palette and
-                    the Journal card's ⋯ "Log again" already carry, and it spent a
+                    the Training Log card's ⋯ "Log again" already carry, and it spent a
                     slot of a 390px bar on it. Repeat-last now lives in exactly
                     those two homes (deliberately NOT in the quick-log sheet —
                     #1506 keeps that list to logging actions); the

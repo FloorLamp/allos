@@ -55,8 +55,8 @@ import {
   setProfileSetting,
   setTelegramBotConfig,
   setTimezone,
-  setUserBirthdate,
-  setUserSex,
+  setProfileBirthdate,
+  setProfileSex,
 } from "@/lib/settings";
 import { DIGEST_MODE_KEY } from "@/lib/settings/notifications";
 import { shiftDateStr, utcInstant, utcSqlString } from "@/lib/date";
@@ -168,8 +168,8 @@ const PREVENTIVE_RULES = [
 
 function seedPreventiveProfile(name: string): number {
   const p = newProfile(name);
-  setUserBirthdate(p, "1980-01-01");
-  setUserSex(p, "male");
+  setProfileBirthdate(p, "1980-01-01");
+  setProfileSex(p, "male");
   for (const rule of PREVENTIVE_RULES)
     recordPreventiveDone(p, rule, "2012-03-05");
   setTelegramBotConfig({
@@ -571,7 +571,7 @@ const SLEEP_SESSION_SIGNATURE =
 //     cannot also match the recent-changes digest's own DISTINCT-provider read, which
 //     asks a different question (`AND ok = 1 AND at <= ?`) of the same table.
 const INTEGRATION_ATTENTION_SIGNATURE =
-  /SELECT DISTINCT provider FROM integration_sync_events\s+WHERE profile_id = \?\s*$/;
+  /SELECT DISTINCT provider AS source_id FROM integration_sync_events\s+WHERE profile_id = \?\s*$/;
 
 function seedSendNight(
   profileId: number,

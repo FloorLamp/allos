@@ -4,8 +4,8 @@ import {
   getCyclingOverviewData,
   getExerciseComparison,
   getExerciseLoadContexts,
-  getGoalProgressMap,
-  getGoals,
+  getOutcomeGoalProgressMap,
+  getOutcomeGoals,
   getLatestBodyMetric,
   getRecentByExercise,
   getSportByActivity,
@@ -28,7 +28,7 @@ import { chartSeries } from "@/lib/chart-colors";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
-  getUserSex,
+  getProfileSex,
 } from "@/lib/settings";
 import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
@@ -79,7 +79,7 @@ import {
   CYCLING_METRICS,
   cyclingHistoryMetricOrder,
 } from "@/lib/cycling-metrics";
-import { journalActivityHref } from "@/lib/timeline-format";
+import { trainingLogActivityHref } from "@/lib/timeline-format";
 import { isCyclingActivityName } from "@/lib/cycling-activity";
 
 export default async function AnalyzeSection({
@@ -107,11 +107,11 @@ export default async function AnalyzeSection({
   const sports = getSportByActivity(profile.id, formatPrefs);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const recentByExercise = getRecentByExercise(profile.id, wu, formatPrefs);
-  const goals = getGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id);
   const goalProgress = Object.fromEntries(
-    getGoalProgressMap(profile.id, goals)
+    getOutcomeGoalProgressMap(profile.id, goals)
   );
-  const sex = getUserSex(profile.id);
+  const sex = getProfileSex(profile.id);
 
   if (strength.length === 0 && cardio.length === 0 && sports.length === 0) {
     return (
@@ -621,7 +621,7 @@ function strengthView({
   units: ReturnType<typeof getUnitPrefs>;
   bodyweightKg: number | null;
   recentByExercise: ReturnType<typeof getRecentByExercise>;
-  goals: ReturnType<typeof getGoals>;
+  goals: ReturnType<typeof getOutcomeGoals>;
   goalProgress: Record<number, GoalProgress>;
   sex: Sex | null;
 }): AnalyzeView {
@@ -659,10 +659,13 @@ function strengthView({
   );
   const newest = [...sessions].sort(newestFirst);
   const chartMetric = STRENGTH_METRICS.find((m) => m.id === activeMetric)!;
+  // The Benchmarks card is a placing against the barbell population table, so it
+  // reads freeWeightE1rmKg (#2326) — a lift with no free-weight set behind it shows
+  // no card at all, exactly as an explicitly machine-NAMED variant already does.
   const benchmark = benchmarkState(
     stat.exercise,
     sex,
-    stat.e1rmKg,
+    stat.freeWeightE1rmKg,
     bodyweightKg
   );
   return {
@@ -684,7 +687,7 @@ function strengthView({
     chartLabel: chartMetric.chartLabel,
     chartUnit: activeMetric === "reps" ? "" : ` ${units.weightUnit}`,
     color: chartSeries.violet,
-    latestHref: journalActivityHref(
+    latestHref: trainingLogActivityHref(
       newest[0]?.activityId ?? stat.lastActivityId
     ),
     chart: sessions.map((s) => ({
@@ -694,7 +697,7 @@ function strengthView({
     columns: ["Sets", "Best", "Est. 1RM", "Volume"],
     sessions: newest.map((s) => ({
       activityId: s.activityId,
-      href: journalActivityHref(s.activityId),
+      href: trainingLogActivityHref(s.activityId),
       date: s.date,
       cells: [
         String(s.setCount),

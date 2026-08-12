@@ -7,8 +7,8 @@
 import { today } from "../db";
 import { lastNDates, zonedDateParts } from "../date";
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getActivitiesByDate,
@@ -24,7 +24,7 @@ import {
   getActiveSituations,
   getSituationEvents,
   getTimezone,
-  getUserAge,
+  getProfileAge,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
@@ -32,13 +32,9 @@ import {
   doseStrip,
   doseWindowSince,
   indexTakenByDose,
-} from "../supplement-adherence";
-import {
-  doseDueOn,
-  isPostWorkoutReady,
-  timeBucket,
-} from "../supplement-schedule";
-import type { Supplement, SupplementDose } from "../types";
+} from "../intake-adherence";
+import { doseDueOn, isPostWorkoutReady, timeBucket } from "../intake-schedule";
+import type { IntakeItem, IntakeDose } from "../types";
 import {
   doseSendSlot,
   notifiableWindowDoses,
@@ -51,7 +47,7 @@ import {
 } from "./supplement-format";
 import { preWorkoutSlotMinute } from "./schedule";
 import type { NotificationMessage } from "./types";
-import { isPrn } from "../supplement-schedule";
+import { isOnDemand } from "../intake-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
 import { collapsedOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
@@ -162,12 +158,12 @@ function preWorkoutTimed(profileId: number): boolean {
 // resulting minute is always :00 today — the type is minutes so the slot joins the
 // #2121 vocabulary without a private unit.
 export function getPreWorkoutSlotMinute(profileId: number): number | null {
-  const preSupps = getSupplements(profileId).filter(
-    (s) => s.active && !isPrn(s) && s.condition === "pre_workout"
+  const preSupps = getIntakeItems(profileId).filter(
+    (s) => s.active && !isOnDemand(s) && s.condition === "pre_workout"
   );
   if (preSupps.length === 0) return null;
   const ids = new Set(preSupps.map((s) => s.id));
-  const hasAnytime = getSupplementDoses(profileId).some(
+  const hasAnytime = getIntakeDoses(profileId).some(
     (d) => ids.has(d.item_id) && timeBucket(d.time_of_day) === "Anytime"
   );
   if (!hasAnytime) return null;
@@ -190,9 +186,9 @@ function gatherWindowDoses(
   profileId: number,
   slot: IntakeSendSlot,
   date: string,
-  doses: SupplementDose[]
+  doses: IntakeDose[]
 ): WindowDose[] {
-  const supplements = getSupplements(profileId).filter((s) => s.active);
+  const supplements = getIntakeItems(profileId).filter((s) => s.active);
   if (supplements.length === 0) return [];
 
   const suppById = new Map(supplements.map((s) => [s.id, s]));
@@ -332,12 +328,7 @@ export function collectWindowDoses(
   slot: IntakeSendSlot,
   date: string
 ): WindowDose[] {
-  return gatherWindowDoses(
-    profileId,
-    slot,
-    date,
-    getSupplementDoses(profileId)
-  );
+  return gatherWindowDoses(profileId, slot, date, getIntakeDoses(profileId));
 }
 
 // The merged send for every slot due (and unsent) this hour — issue #1154's
@@ -354,7 +345,7 @@ export function buildIntakeReminderForSlots(
   slots: IntakeSendSlot[]
 ): { message: NotificationMessage; slots: IntakeSendSlot[] } | null {
   const date = today(profileId);
-  const doses = getSupplementDoses(profileId);
+  const doses = getIntakeDoses(profileId);
   const parts: IntakeSlotPart[] = [];
   for (const slot of slots) {
     const entries = notifiableWindowDoses(
@@ -370,7 +361,7 @@ export function buildIntakeReminderForSlots(
   if (all.every((e) => e.taken || e.skipped)) return null;
   const message = withDoseCorrections(
     profileId,
-    renderMergedIntakeMessage(profileId, parts, date, getUserAge(profileId))
+    renderMergedIntakeMessage(profileId, parts, date, getProfileAge(profileId))
   );
   // RIDE-ALONG (#1505 Part 1, class 3). A reminder that is going out anyway for this
   // slot's must/should doses carries a More… row exposing the SAME slot's `may`
@@ -414,9 +405,9 @@ export function slotSessionForKeyboard(
   slots: IntakeSendSlot[],
   date: string
 ): IntakeSlotPart[] {
-  const doses = getSupplementDoses(profileId);
-  const supps = new Map<number, Supplement>(
-    getSupplements(profileId).map((s) => [s.id, s])
+  const doses = getIntakeDoses(profileId);
+  const supps = new Map<number, IntakeItem>(
+    getIntakeItems(profileId).map((s) => [s.id, s])
   );
   const workoutTimed = preWorkoutTimed(profileId);
   const wanted = new Set<IntakeSendSlot>(slots);

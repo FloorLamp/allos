@@ -38,6 +38,28 @@ What dispatch used to encode as branches is now declared:
    The same move `trailingAverage` made for #1909 with `basis`.
 3. **Whether the in-progress week is included** — a reader option, not a scope fact.
 
+## What ONE session advances (#2503)
+
+The ledger answers "how many this week". `sessionAdvancesScope(scope, facts)`
+answers "did THIS session put one of them on the board" — the same membership rule
+as `cadenceCounts`, asked of a single activity instead of a window, over the two
+facts an activity row carries: its own `type` plus its components' types, and the
+regions its logged sets map to.
+
+`SESSION_ADVANCE_RULES` is `Record<FrequencyScopeKind, rule | null>`, total by the
+same construction as `CADENCE_SCOPES`. A `null` is a DECLARATION, not a "no": it
+says the question is unanswerable from an activity row — mobility reads a recovery
+session's moves (#840), food and practice count their own ledgers, and a `cap` is
+never advanced at all (#998; asking would be asking for a to-go number on alcohol).
+`SESSION_ADVANCEABLE_SCOPE_KINDS` derives the workout-affectable set from those
+rules, so a consumer's narrowing cannot drift from the rule.
+
+It exists because a surface that congratulates a session must not read the week's
+rollup as if the session had produced it. The post-workout recap did exactly that:
+a 1.42 km walk was told "Chest — 1 of 2 this week, one more to go" about a barbell
+session earlier in the week. `getSessionCadenceFacts(profileId, activityId)` is the
+gather (a missing or cross-profile row answers empty, which advances nothing).
+
 ## The reader (`lib/queries/cadence-ledger.ts`)
 
 `getCadenceLedger(profileId, { weeks, includeCurrent, direction, asOf? })` returns
@@ -55,9 +77,35 @@ Every former reader is a thin adapter over it:
 | `getFrequencyTargetWeeklyHistory` | `weeks: N, includeCurrent: false, direction: "floor"` |
 | `getSubstanceWeekState`           | `weeks: 1, includeCurrent: true, direction: "cap"`    |
 | `getSubstanceWeeklyTrend`         | `weeks: N, includeCurrent: true, direction: "cap"`    |
+| `getCadenceWeekVerdicts`          | `weeks: 1, includeCurrent: true`, **both** directions |
+| `getCadenceCapWeeks`              | `weeks: N, includeCurrent: true, direction: "cap"`    |
 
 `getPracticeTrends` and `getProtocolAdherence` were already formatters over the
 first two and keep working unchanged — which is the proof the layering holds.
+
+The last two rows are the periodic recap's reads (#2395/#2397). The daily digest
+reported a weekly target's PACE while the message that CLOSES the week never
+mentioned the targets that week is defined over; the recap reads the verdict here
+rather than computing one, and `cadenceWeekVerdictLine` (`lib/cadence.ts`) words it
+in the same rollup grammar `weeklyTargetPaceLine` words pace in.
+
+Two things about them are worth copying rather than re-deciding:
+
+- **They anchor on the period's LAST DAY.** A caller that already knows which week it
+  means passes that week's end date and reads the anchor's own window — the calendar
+  week containing it, or the trailing seven days ending on it. Stepping the anchor
+  forward to "the day after the week" instead would shift a rolling profile's whole
+  window by a day.
+- **A read that wants both directions asks twice, by name.**
+  `getCadenceWeekVerdicts` reads floors and caps in two calls and keeps the answers
+  distinguishable all the way into the sentence. That is what lets a cap tenant reach
+  the recap line at all without the floor vocabulary ever touching it: reported as
+  within or over, never with a figure to go.
+
+Both apply the cold-start exclusion — a target the user declared part-way through a
+week is left out rather than scored (#1670) — and `getCadenceCapWeeks` applies it per
+week, so a cap declared mid-period is reported over the weeks it actually existed for
+and stays silent below `CAP_PERIOD_MIN_WEEKS`.
 
 ## Substance is a tenant, not a fork
 

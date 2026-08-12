@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_SKIN_TEMP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// Skin temperature variation on Trends → Body. Health Connect delivers ONE nightly
+// Skin temperature variation on Trends → Overview → body census. Health Connect delivers ONE nightly
 // reading as a SIGNED delta from the tracker's own rolling baseline — not an absolute
 // temperature — so it lands in metric_samples ('skin_temp_delta_c') rather than the
 // reference-range-flagged "Body Temperature" vital, where a 0.6 against a 97–99 °F
@@ -58,7 +58,7 @@ test.describe("Skin temperature variation trend", () => {
 
     // The default seeded profile has vitals but no skin_temp_delta_c samples — no
     // other fixture writes that metric — so the card is data-gated off while the rest
-    // of the Body tab still renders.
+    // of the body census still renders.
     await page.goto("/trends?view=all");
     await expect(page.getByTestId("trends-section-body")).toBeVisible();
     await expect(

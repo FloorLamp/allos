@@ -1,7 +1,7 @@
 // Scheduled-appointment reads. Profile-scoped: every
 // statement filters profile_id. The provider name is resolved through a
 // correlated subquery into the shared, GLOBAL providers registry (the same
-// pattern getMedicalRecords / getImmunizations use) so the FK link stays on the
+// pattern getClinicalObservations / getImmunizations use) so the FK link stays on the
 // profile-owned appointments row while the provider row it points at is global.
 
 import { db } from "../db";

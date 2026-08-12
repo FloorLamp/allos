@@ -7,7 +7,7 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // IA split (#746): supplements folded into the Nutrition → Supplements tab,
-// medications became a standalone Medical-group page. (The old /medicine route was
+// medications became a standalone Medical-group page. (The retired combined intake route was
 // removed outright in #1635 and 404s.) This spec proves all three surfaces:
 //   1. Nutrition is a URL-driven Food | Supplements umbrella
 //   2. /medications renders the medication cards + add form
@@ -108,7 +108,7 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   ).toHaveText("Must");
   await expect(highPriorityRow.getByTestId("adherence-summary")).toBeVisible();
   const supplementNameBox = await highPriorityRow
-    .getByTestId("medicine-name")
+    .getByTestId("intake-item-name")
     .boundingBox();
   const supplementActionBox = await highPriorityRow
     .getByTestId("dose-status")
@@ -248,11 +248,11 @@ test("a newly scheduled supplement does not appear on earlier days", async ({
     ).run(itemId, createdAt);
 
     await page.goto("/nutrition?tab=supplements");
-    await expect(page.getByTestId("medicine-name").filter({ hasText: name }))
+    await expect(page.getByTestId("intake-item-name").filter({ hasText: name }))
       .toBeVisible;
     await page.getByTestId("supplement-day-yesterday").click();
     await expect(
-      page.getByTestId("medicine-name").filter({ hasText: name })
+      page.getByTestId("intake-item-name").filter({ hasText: name })
     ).toHaveCount(0);
   } finally {
     if (itemId != null) {
@@ -409,7 +409,7 @@ function seedBaby(): void {
   try {
     db.pragma("busy_timeout = 5000");
     const pid = createFixtureProfile(db, BABY);
-    // ~6 months old → getUserAge() = 0 → life-stage "infant" → Food logging off.
+    // ~6 months old → getProfileAge() = 0 → life-stage "infant" → Food logging off.
     const bd = frozenNow();
     bd.setMonth(bd.getMonth() - 6);
     db.prepare(
@@ -478,7 +478,7 @@ test.describe("infant supplements stay reachable (#746)", () => {
       await page.goto("/nutrition?tab=supplements");
       await expect(page.getByTestId("supplement-workspace")).toBeVisible();
       await expect(
-        page.getByTestId("medicine-name").filter({ hasText: BABY_SUPP })
+        page.getByTestId("intake-item-name").filter({ hasText: BABY_SUPP })
       ).toBeVisible();
     } finally {
       // Restore the default active profile for any following spec.

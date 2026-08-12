@@ -25,6 +25,7 @@ import {
 } from "@/lib/notifications/workout-presence";
 import { setProfileSetting } from "@/lib/settings";
 import { classifyActivityType } from "@/lib/activity-type-write";
+import { getFrequencyTargetProgress } from "@/lib/queries";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-postworkout";
 const NOW = new Date("2026-07-17T18:00:00Z");
@@ -572,6 +573,104 @@ describe("an imported finish gets its own recap line (#2272)", () => {
 
     await runPostWorkoutFinish(p, NOW);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── #2503: the weekly line is about THIS session, and the title names what finished ──
+//
+// The reported message, verbatim: "🏋️ Workout complete / Afternoon Walk done · 33 min ·
+// 1.42 km · avg HR 84 (max 99) · effort 3 / Chest — 1 of 2 this week, one more to go."
+// Two claims a 1.42 km walk had no business making. The weekly rollup is profile-wide
+// and nothing tied it to the finishing activity, so the line led with the closest-to-done
+// target ANYWHERE — a chest target a barbell session had advanced earlier in the week — and then
+// nudged toward a chest day the walk had not touched.
+
+function makeTarget(
+  profileId: number,
+  kind: string,
+  value: string,
+  perWeek: number
+): void {
+  db.prepare(
+    `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+     VALUES (?, ?, ?, ?)`
+  ).run(profileId, kind, value, perWeek);
+}
+
+// The walk from the report — an imported cardio row with no sets, finishing now.
+function seedWalk(profileId: number, date: string): number {
+  return seedImportedFinished(profileId, date, "cardio", {
+    title: "Afternoon Walk",
+    durationMin: 33,
+    distanceKm: 1.42,
+    avgHr: 84,
+    maxHr: 99,
+    relativeEffort: 3,
+    externalId: `health-connect:walk:${date}`,
+  });
+}
+
+describe("the weekly line names only what this session advanced (#2503)", () => {
+  it("does not credit a walk with the chest day a barbell session did", async () => {
+    const p = newProfile("WalkNotChest");
+    const date = today(p);
+    makeTarget(p, "region", "Chest", 2);
+    // The lift that actually advanced Chest — earlier today, far outside the finished
+    // window, so the walk is what presence observes.
+    addWorkingSets(seedManualFinished(p, date, 400), "Bench Press");
+    seedWalk(p, date);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    const payload = lastPayload(fetchMock);
+    expect(payload.body).toContain("Afternoon Walk done");
+    expect(payload.body).toContain("1.42 km");
+    // The rollup still says Chest is 1 of 2 this week. This message may not say so.
+    expect(getFrequencyTargetProgress(p)).toMatchObject([
+      { count: 1, per_week: 2, met: false },
+    ]);
+    expect(payload.body).not.toMatch(/Chest|this week|more to go/i);
+  });
+
+  it("still speaks for the target the walk DID advance", async () => {
+    const p = newProfile("WalkOwnTarget");
+    const date = today(p);
+    makeTarget(p, "region", "Chest", 2);
+    makeTarget(p, "type", "cardio", 3);
+    addWorkingSets(seedManualFinished(p, date, 400), "Bench Press");
+    seedWalk(p, date);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    const payload = lastPayload(fetchMock);
+    expect(payload.body).toContain("Cardio — 1 of 3 this week, 2 more to go.");
+    expect(payload.body).not.toContain("Chest");
+  });
+
+  it("titles the message by what actually finished", async () => {
+    const p = newProfile("WalkTitle");
+    const date = today(p);
+    seedWalk(p, date);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    // The barbell rode every import from #2272 until here; a walk is not a workout.
+    expect(lastPayload(fetchMock).title).toContain("🏃 Cardio complete");
+    expect(lastPayload(fetchMock).title).not.toMatch(/workout/i);
+  });
+
+  it("keeps the barbell for the strength session it was written for", async () => {
+    const p = newProfile("LiftTitle");
+    const date = today(p);
+    addWorkingSets(seedManualFinished(p, date, 20), "Bench Press");
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    expect(lastPayload(fetchMock).title).toContain("🏋️ Workout complete");
   });
 });
 

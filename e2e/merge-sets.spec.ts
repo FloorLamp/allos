@@ -9,7 +9,7 @@ import { test, expect } from "./fixtures";
 test("merging re-parents the discarded row's sets onto the keeper, shown in the preview (#199)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   const keeperCard = page
     .locator('[id^="activity-"]')

@@ -49,7 +49,7 @@ export const DYNAMIC_ROUTES = [
     pattern: "/trends/metric/[kind]",
     strategy: "literal",
     instance: "/trends/metric/weight",
-    enumSource: "BODY_METRIC_SLUGS (lib/trends-body-metrics)",
+    enumSource: "TREND_METRIC_SLUGS (lib/trend-metrics)",
     slug: "weight",
   },
   {

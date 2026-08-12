@@ -29,8 +29,8 @@ import {
   getExerciseComparison,
   getExerciseE1rmSeries,
   getExerciseLoadContexts,
-  getGoalProgressMap,
-  getGoals,
+  getOutcomeGoalProgressMap,
+  getOutcomeGoals,
   getLoggedEquipmentByExercise,
   getRecentExerciseHistory,
   getStrengthByExercise,
@@ -450,10 +450,10 @@ describe("goal load context (#1610, migration 120)", () => {
   it("measures a machine-scoped goal on that machine only", () => {
     const hotelGoal = addGoal(hotelId);
     const homeGoal = addGoal(homeId);
-    const goals = getGoals(profileId).filter((g) =>
+    const goals = getOutcomeGoals(profileId).filter((g) =>
       [hotelGoal, homeGoal].includes(g.id)
     );
-    const progress = getGoalProgressMap(profileId, goals);
+    const progress = getOutcomeGoalProgressMap(profileId, goals);
 
     // The hotel machine tops out at 50.5 kg, so an 80 kg target is NOT met there —
     // the bug is the home machine's 80.5 kg quietly completing it.
@@ -466,8 +466,8 @@ describe("goal load context (#1610, migration 120)", () => {
 
   it("keeps a goal that names no machine movement-wide", () => {
     const wideGoal = addGoal(null);
-    const goals = getGoals(profileId).filter((g) => g.id === wideGoal);
-    const progress = getGoalProgressMap(profileId, goals);
+    const goals = getOutcomeGoals(profileId).filter((g) => g.id === wideGoal);
+    const progress = getOutcomeGoalProgressMap(profileId, goals);
     // NULL is an UNDECLARED SCOPE, not an unassigned lane: the goal folds every
     // implement, exactly as every goal stored before this column does.
     expect(progress.get(wideGoal)!.lifetimeBest).toBeCloseTo(80.5, 5);
@@ -482,11 +482,11 @@ describe("goal load context (#1610, migration 120)", () => {
       scoped
     );
     deleteEquipment(profileId, doomed);
-    const goal = getGoals(profileId).find((g) => g.id === scoped)!;
+    const goal = getOutcomeGoals(profileId).find((g) => g.id === scoped)!;
     expect(goal.equipment_id).toBeNull();
     // …and it measures the whole movement again rather than nothing at all.
     expect(
-      getGoalProgressMap(profileId, [goal]).get(scoped)!.lifetimeBest
+      getOutcomeGoalProgressMap(profileId, [goal]).get(scoped)!.lifetimeBest
     ).toBeCloseTo(80.5, 5);
   });
 });

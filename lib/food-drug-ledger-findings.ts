@@ -30,9 +30,9 @@
 // every surface.
 
 import { cache } from "./request-cache";
-import { getSupplements, getSupplementDoses } from "./queries/intake";
-import { getFoodServingsInRange } from "./queries/nutrition";
-import { getUserAge } from "./settings";
+import { getIntakeItems, getIntakeDoses } from "./queries/intake";
+import { getFoodDailyServingTotalsInRange } from "./queries/nutrition";
+import { getProfileAge } from "./settings";
 import { matchFoodInteractions } from "./food-drug-interactions";
 import { parseRxcuiIngredients } from "./rxnorm";
 import { shiftDateStr } from "./date";
@@ -69,7 +69,7 @@ const LEDGER_WINDOW_DAYS = 2 * FOOD_DRUG_VARIANCE_WINDOW_DAYS;
 // ongoing prescription is; a course with no dated end simply has no tail to compute, and
 // the engine refuses rather than guessing when treatment stopped.
 function ledgerItems(profileId: number): LedgerItem[] {
-  const age = getUserAge(profileId);
+  const age = getProfileAge(profileId);
   // Per item: the earliest declared start, the latest declared end, and whether ANY
   // current dose is open-ended (which makes the whole course open-ended).
   interface CourseWindow {
@@ -78,7 +78,7 @@ function ledgerItems(profileId: number): LedgerItem[] {
     openEnded: boolean;
   }
   const dosesByItem = new Map<number, CourseWindow>();
-  for (const dose of getSupplementDoses(profileId)) {
+  for (const dose of getIntakeDoses(profileId)) {
     const acc: CourseWindow = dosesByItem.get(dose.item_id) ?? {
       start: null,
       end: null,
@@ -96,7 +96,7 @@ function ledgerItems(profileId: number): LedgerItem[] {
     dosesByItem.set(dose.item_id, acc);
   }
   const out: LedgerItem[] = [];
-  for (const item of getSupplements(profileId)) {
+  for (const item of getIntakeItems(profileId)) {
     const hits = matchFoodInteractions(
       {
         name: item.name,
@@ -121,7 +121,7 @@ function ledgerItems(profileId: number): LedgerItem[] {
 
 function ledgerServings(profileId: number, date: string): LedgerServing[] {
   const from = shiftDateStr(date, -(LEDGER_WINDOW_DAYS - 1));
-  return getFoodServingsInRange(profileId, from, date).map((row) => ({
+  return getFoodDailyServingTotalsInRange(profileId, from, date).map((row) => ({
     group: row.group_key,
     date: row.date,
     servings: row.servings,

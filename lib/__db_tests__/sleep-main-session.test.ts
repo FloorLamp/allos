@@ -23,6 +23,8 @@ import {
   getSleepSessions,
   getMainSleepNightlyMinutes,
   getLastNightSummary,
+  getSleepStageComposition,
+  getNapHistory,
   getSleepSummaryInRange,
   getMetricDailyTotals,
   getSleepMoodData,
@@ -99,6 +101,51 @@ beforeAll(() => {
         `${night2Day}T14:00:00Z`,
         `${night2Day}T15:30:00Z`
       ),
+      // Main-session stages sum to the 300-minute overnight figure.
+      session(
+        "sleep_deep_min",
+        night2Day,
+        50,
+        `${night1Day}T23:30:00Z`,
+        `${night2Day}T04:30:00Z`
+      ),
+      session(
+        "sleep_rem_min",
+        night2Day,
+        70,
+        `${night1Day}T23:30:00Z`,
+        `${night2Day}T04:30:00Z`
+      ),
+      session(
+        "sleep_light_min",
+        night2Day,
+        160,
+        `${night1Day}T23:30:00Z`,
+        `${night2Day}T04:30:00Z`
+      ),
+      session(
+        "sleep_awake_min",
+        night2Day,
+        20,
+        `${night1Day}T23:30:00Z`,
+        `${night2Day}T04:30:00Z`
+      ),
+      // The same wake-day nap carries another 90 minutes of stages. These must
+      // stay out of the overnight chart and hero.
+      session(
+        "sleep_light_min",
+        night2Day,
+        70,
+        `${night2Day}T14:00:00Z`,
+        `${night2Day}T15:30:00Z`
+      ),
+      session(
+        "sleep_awake_min",
+        night2Day,
+        20,
+        `${night2Day}T14:00:00Z`,
+        `${night2Day}T15:30:00Z`
+      ),
     ],
     "health-connect"
   );
@@ -134,17 +181,136 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
   // which MUST pick the main overnight (not the latest/nap session) for the latest
   // wake-day. This pins the exact defect CI caught in the #1066 branch (the hero
   // rendered the 90-min nap instead of the 300-min night).
-  it("getLastNightSummary returns the main overnight (300), with the nap counted separately (#1066)", () => {
+  it("getLastNightSummary returns the main overnight (300), without folding in the nap (#1066)", () => {
     const summary = getLastNightSummary(profileId);
     expect(summary).not.toBeNull();
     expect(summary!.wakeDay).toBe(night2Day);
     // The 5h overnight — NOT the 90-min nap that ends later the same wake-day.
     expect(summary!.durationMin).toBe(300);
-    // The nap is a separate figure, never folded into durationMin.
-    expect(summary!.napMin).toBe(90);
     // Baseline is the prior night's main session (420) → a negative delta.
     expect(summary!.baselineAvgMin).toBe(420);
     expect(summary!.deltaMin).toBe(-120);
+    expect(summary!.stages).toEqual({
+      deep: 50,
+      rem: 70,
+      light: 160,
+      awake: 20,
+    });
+  });
+
+  it("the stage chart matches the main duration and excludes nap stages", () => {
+    expect(
+      getSleepStageComposition(profileId).find((row) => row.date === night2Day)
+    ).toEqual({
+      date: night2Day,
+      deep: 50,
+      rem: 70,
+      light: 160,
+      awake: 20,
+    });
+  });
+
+  it("attributes Fitbit aggregate stage keys to their session window", () => {
+    const fitbitId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('FitbitStageKeys')").run()
+        .lastInsertRowid
+    );
+    setTimezone(fitbitId, "UTC");
+    const wakeDay = today(fitbitId);
+    const start = `${shiftDateStr(wakeDay, -1)}T23:00:00.000Z`;
+    const end = `${wakeDay}T06:00:00.000Z`;
+    upsertMetricSamples(
+      fitbitId,
+      [
+        session("sleep_min", wakeDay, 420, start, end),
+        session("sleep_deep_min", wakeDay, 60, `${start}#deep`, end),
+        session("sleep_rem_min", wakeDay, 90, `${start}#rem`, end),
+        session("sleep_light_min", wakeDay, 250, `${start}#light`, end),
+        session("sleep_awake_min", wakeDay, 20, `${start}#wake`, end),
+      ],
+      "fitbit-takeout"
+    );
+
+    expect(getSleepStageComposition(fitbitId)).toContainEqual({
+      date: wakeDay,
+      deep: 60,
+      rem: 90,
+      light: 250,
+      awake: 20,
+    });
+  });
+
+  it("exposes the nap as a detailed today/history row", () => {
+    const naps = getNapHistory(profileId);
+    const expected = {
+      date: night2Day,
+      startMinutes: 14 * 60,
+      endMinutes: 15 * 60 + 30,
+      durationMin: 90,
+      source: "health-connect",
+    };
+    expect(naps.today).toEqual([expected]);
+    expect(naps.history).toContainEqual(expected);
+    expect(naps.history).not.toContainEqual(
+      expect.objectContaining({ durationMin: 300 })
+    );
+  });
+
+  it("keeps nap history across a provider transition", () => {
+    const transitionedId = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('NapProviderTransition')")
+        .run().lastInsertRowid
+    );
+    setTimezone(transitionedId, "UTC");
+    const currentDay = today(transitionedId);
+    const priorDay = shiftDateStr(currentDay, -1);
+    upsertMetricSamples(
+      transitionedId,
+      [
+        session(
+          "sleep_min",
+          priorDay,
+          420,
+          `${shiftDateStr(priorDay, -1)}T23:00:00Z`,
+          `${priorDay}T06:00:00Z`
+        ),
+        session(
+          "sleep_min",
+          priorDay,
+          45,
+          `${priorDay}T13:00:00Z`,
+          `${priorDay}T13:45:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+    upsertMetricSamples(
+      transitionedId,
+      [
+        session(
+          "sleep_min",
+          currentDay,
+          450,
+          `${priorDay}T22:30:00Z`,
+          `${currentDay}T06:00:00Z`
+        ),
+        session(
+          "sleep_min",
+          currentDay,
+          30,
+          `${currentDay}T14:00:00Z`,
+          `${currentDay}T14:30:00Z`
+        ),
+      ],
+      "oura"
+    );
+
+    const naps = getNapHistory(transitionedId);
+    expect(naps.history.map((nap) => [nap.date, nap.durationMin])).toEqual([
+      [currentDay, 30],
+      [priorDay, 45],
+    ]);
   });
 
   it("SRI's session input KEEPS the nap (naps are never dropped at the source level)", () => {
@@ -363,7 +529,6 @@ describe("segmented night merge — no false rest-sleep nudge (#1191)", () => {
     // The hero/tile summary shows the merged 8h with NO same-day nap.
     const summary = getLastNightSummary(segId)!;
     expect(summary.durationMin).toBe(480);
-    expect(summary.napMin).toBe(0);
 
     // The coaching engine fires no rest-sleep signal (480 ≥ the 360 floor, and no
     // deficit vs the 480 baseline) — the daily false nudge is gone.
@@ -440,7 +605,7 @@ describe("segmented night merge — no false rest-sleep nudge (#1191)", () => {
       "health-connect"
     );
     expect(getSleepSignal(napId)!.lastNightMin).toBe(180);
-    expect(getLastNightSummary(napId)!.napMin).toBe(60);
+    expect(getLastNightSummary(napId)!.durationMin).toBe(180);
   });
 });
 

@@ -1,19 +1,64 @@
 # Curated-dataset framework
 
-Status: **partial** · framework + harness + linter shipped; **22 datasets
-migrated** onto the framework (#860 Track B, waves 1–3 + the deferred
-canonical-biomarkers): `allergen-cross-reactivity`, `biomarker-descriptions`,
-`biomarker-supplement-map`, `bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`,
-`drug-interactions`, `fitness-norms`, `food-drug-interactions`, `food-groups`,
-`growth-charts`, `icd10-common`, `illness-thresholds`,
-`medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`,
-`screenings`, `strength-standards`, `temperature-red-flags`.
-`canonical-biomarkers` is the one **external-source** dataset (below);
-`symptoms` and `exercise-guides` are documented non-candidates (no honest
-external provenance). Curated-dataset migration is effectively complete — issue
-\#860 Track B
+Status: **shipped** · framework, harness, linter, and **31 registered datasets**
+are in place (#860 Track B and subsequent adoptions). **30** use envelope JSON
+under `lib/datasets/data/`; `canonical-biomarkers` is the one
+**external-source** dataset (below). The registry census and the root-JSON
+inventory are checked against this document by
+`lib/__tests__/datasets-framework.test.ts`, so this count cannot silently drift.
 
-Allos bakes ~two dozen curated, human-reviewable reference datasets — MET
+### Registry census (guarded)
+
+- `allergen-cross-reactivity`
+- `biomarker-descriptions`
+- `biomarker-supplement-map`
+- `bp-percentiles`
+- `canonical-biomarkers`
+- `condition-training-considerations`
+- `contrast-safety`
+- `dental-safety`
+- `dri`
+- `drug-allergy`
+- `drug-interactions`
+- `fitness-hold-norms`
+- `fitness-norms`
+- `food-drug-interactions`
+- `food-groups`
+- `growth-charts`
+- `icd10-common`
+- `illness-thresholds`
+- `medication-descriptions`
+- `medication-monitoring`
+- `mets`
+- `mobility-moves`
+- `nutrient-food-map`
+- `ototoxic`
+- `pgx`
+- `prn-defaults`
+- `radiation-dose`
+- `screenings`
+- `strength-standards`
+- `temperature-red-flags`
+- `weather-med-safety`
+
+### Root JSON inventory (guarded)
+
+The framework directory is the default home for new curated reference data.
+Every JSON file directly under `lib/` is an explicit exception:
+
+- `canonical-biomarkers.json` — the registered external-source dataset described
+  below;
+- `exercise-guides.json` and `symptoms.json` — documented framework
+  non-candidates because they have no honest external provenance;
+- `release-notes.json` — product changelog data, not reference data; and
+- `zip-centroids.json` — a generated public-domain Census gazetteer whose source
+  and refresh procedure live in `scripts/gen-zip-centroids.ts`.
+
+The guard fails if a root JSON file is added or removed without updating this
+classification. In particular, a new curated dataset cannot land here to evade
+the framework's citation contract.
+
+Allos bakes about three dozen curated, human-reviewable reference datasets — MET
 values, DRIs, drug interactions, biomarker reference ranges, screening
 schedules, growth charts, and more. Historically each shipped its own
 hand-rolled JSON shape, loader, matcher, citation convention, and drift test.
@@ -390,6 +435,27 @@ for either is redundant — the `FEV1`, `FVC` and `eGFR` routes were deleted whe
 those entries took the long form. A parenthetical containing a **space** is not
 treated as an acronym (`looksLikeAbbreviation`), so the thyroid fractions and the
 ANA screen keep load-bearing curated routes.
+
+That convention also has a SEARCH consequence, fixed in #2382. The app-wide
+combobox matcher (`lib/fuzzy.ts`) is a greedy leftmost subsequence walk that
+never backtracks, so `Long Name (ABBR)` puts the abbreviation exactly where the
+matcher is structurally incapable of seeing it: for `Prostate-Specific Antigen
+(PSA)` the query `psa` is consumed scattered inside "Prostate-Specific" and the
+literal `(PSA)` at the end is never reached — the entry was offered at NO
+position. Searching the abbreviation as its own key is therefore not a nicety.
+`biomarkerSearchTerms(name)` is that one source — `acronymNameForms` plus the
+`CANONICAL_ALIASES` routes that point at the analyte, reverse-indexed once — and
+every biomarker picker passes it as the Combobox's `searchTermsFor` (#1675,
+#221). It is also why `A1c` → `Hemoglobin A1c`, in the vocabulary all along,
+used to contribute nothing to search.
+
+A curated alias is a real search key, so a long WORD alias can add a low-scoring
+row to a short query's results (`Glycated Hemoglobin` carries the subsequence
+l…d…l). That is the same spurious-subsequence noise #2382 measured; its remedy,
+a match-density floor, is deliberately NOT in that change, because applied
+before abbreviation coverage grows it deletes legitimate word-initial acronym
+queries outright (`tc` → Total Cholesterol, `tsat` → Transferrin Saturation).
+Ranking, not membership, is what the abbreviation key fixes.
 
 **Migration 177** carries the 20 renamed entries, reusing #2306's
 `applyCanonicalRename` rather than duplicating its checklist of what a canonical

@@ -103,7 +103,7 @@ export interface TimeColumn {
 // with a reason so the scan's completeness rule can be strict about everything else.
 export const NOT_TEMPORAL: Record<string, string> = {
   time_source:
-    "food_log_events: an enum ('tap' | 'stated'), the provenance of eaten_at.",
+    "food_log_events: an enum ('tap' | 'stated'), the provenance of occurred_at.",
   weekdays:
     "intake_item_doses / schedule versions: a weekday mask for a schedule, not a moment.",
   cadence_weekdays:
@@ -490,10 +490,11 @@ export const TIME_COLUMNS = {
   food_log_events: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
-      column: "logged_at",
+      column: "recorded_at",
       semantic: "record",
       grain: "instant",
       convention: "canonical",
+      note: "The TAP instant, `logged_at` until migration 183 (#2205 phase 2, the food wave). Migration 056 froze what it means — never backfilled, because the ranking predicts the next TAP — which is the `recorded_at` semantic under a name the table had coined for itself. The same migration normalized the millisecond-shaped values the offline replay had been writing (#2370) and bound every writer to lib/date.ts.",
     },
     {
       column: "created_at",
@@ -502,11 +503,18 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
     {
-      column: "eaten_at",
+      column: "occurred_at",
       semantic: "event",
       grain: "instant",
       convention: "canonical",
-      note: "NULL means nobody stated an eating time, and that stays a real answer (#2019/#2053) rather than being filled in from the tap. `time_source` records whether a present value was a tap contract or a stated one.",
+      note: "NULL means nobody stated an eating time, and that stays a real answer (#2019/#2053) rather than being filled in from the tap. `time_source` records whether a present value was a tap contract or a stated one. Named `eaten_at` until migration 183; nothing was backfilled into it then either, because food REFUSES to infer an eating instant where intake infers one, and that divergence is deliberate.",
+    },
+    {
+      column: "eaten_at",
+      semantic: "bookkeeping",
+      grain: "instant",
+      convention: "bare",
+      note: "VESTIGIAL and always NULL — migration 183 renamed it to `occurred_at` and kept an inert shell only because the frozen migration 154 re-adds the column unless its PRAGMA guard finds it, and migrate() replays every migration. Declared `bookkeeping`, never `event`, so a dead column cannot join the chain lib/row-instants.ts walks; the convention is moot for a column that never holds a value.",
     },
   ],
   frequency_targets: [
@@ -543,6 +551,13 @@ export const TIME_COLUMNS = {
       semantic: "bookkeeping",
       grain: "instant",
       convention: "bare",
+    },
+    {
+      column: "achieved_at",
+      semantic: "lifecycle",
+      grain: "instant",
+      convention: "canonical",
+      note: "Migration 182 (#2394) — BORN canonical: the instant `status` became 'achieved', written by setStatus through instantNow() and NULLed when a goal is set back to active. LIFECYCLE and not `event`: it is when the goal ROW was marked reached, not when the underlying performance happened — the app never observes that. NULL on every pre-182 achieved goal, deliberately: the recap announces a goal in the period its RECORDED achievement falls in, so an unrecorded one stays silent rather than being announced retroactively.",
     },
   ],
   hr_minutes: [

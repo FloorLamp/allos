@@ -40,7 +40,7 @@ import {
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import { retestIntervalDays } from "./reference-range";
 import { sameUnit } from "./unit-conversions";
-import type { Goal, GoalDirection } from "./types";
+import type { OutcomeGoal, OutcomeGoalDirection } from "./types";
 
 // A goal is biomarker-linked when it names an analyte AND declares a direction.
 // Both are required: an analyte with no direction cannot say what "met" means, and a
@@ -49,7 +49,7 @@ import type { Goal, GoalDirection } from "./types";
 // basis rather than rendering a bogus 0%.
 export function isBiomarkerGoal(goal: {
   biomarker_name: string | null;
-  target_direction: GoalDirection | null;
+  target_direction: OutcomeGoalDirection | null;
 }): boolean {
   return !!goal.biomarker_name?.trim() && goal.target_direction != null;
 }
@@ -71,7 +71,7 @@ export function isBiomarkerGoalTargetable(name: string): boolean {
   return bodyMetricKindForBiomarker(name) == null;
 }
 
-// The minimal goal slice this module reads (Goal satisfies it).
+// The minimal goal slice this module reads (OutcomeGoal satisfies it).
 export interface BiomarkerGoalTarget {
   // The analyte the goal is anchored on — a DISPLAY name. Readings reach the goal
   // through biomarkerFamily at the gather boundary, never by comparing this string.
@@ -79,7 +79,7 @@ export interface BiomarkerGoalTarget {
   value: number;
   // The unit `value` is expressed in — the analyte's charted unit at capture time.
   unit: string | null;
-  direction: GoalDirection;
+  direction: OutcomeGoalDirection;
   baselineValue: number | null;
 }
 
@@ -98,7 +98,7 @@ export interface BiomarkerGoalProgress extends GoalProgress {
 // user who wrote "under 100" and landed exactly on 100 has hit their number, and a
 // float-exact equality test on a lab value would be a coin flip anyway.
 export function directionMet(
-  direction: GoalDirection,
+  direction: OutcomeGoalDirection,
   current: number,
   target: number
 ): boolean {
@@ -224,7 +224,7 @@ export function biomarkerGoalTargetText(goal: {
   biomarker_name: string | null;
   target_value: number | null;
   unit: string | null;
-  target_direction: GoalDirection | null;
+  target_direction: OutcomeGoalDirection | null;
 }): string | null {
   if (!isBiomarkerGoal(goal) || goal.target_value == null) return null;
   const word = goal.target_direction === "below" ? "under" : "over";
@@ -237,7 +237,9 @@ export function biomarkerGoalTargetText(goal: {
 // The BiomarkerGoalTarget a stored goal row describes, or null when the row is not a
 // well-formed biomarker goal. One place the column tuple is read, so no surface
 // re-derives which columns mean what.
-export function biomarkerTargetOf(goal: Goal): BiomarkerGoalTarget | null {
+export function biomarkerTargetOf(
+  goal: OutcomeGoal
+): BiomarkerGoalTarget | null {
   if (!isBiomarkerGoal(goal) || goal.target_value == null) return null;
   return {
     name: goal.biomarker_name!.trim(),

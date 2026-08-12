@@ -54,20 +54,21 @@ JSX: the corruption class is closable mechanically, the ergonomics class is not.
 
 Today's entries:
 
-| table                                         | cores                                                                                                                                                                    | gate                 | offer state         |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------- |
-| `appointments` (`status`)                     | `lib/appointment-status.ts`                                                                                                                                              | —                    | —                   |
-| `cycles`                                      | `lib/cycle-store.ts`                                                                                                                                                     | `lib/cycle-write.ts` | `cycleControlState` |
-| `illness_episodes`                            | `lib/illness-episode-store.ts`, `lib/illness-episode-write.ts`                                                                                                           | —                    | —                   |
-| `intake_item_logs`                            | `lib/queries/intake/adherence.ts`                                                                                                                                        | —                    | —                   |
-| `shared_supplies` (`quantity_on_hand`)        | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts`                                                                                                      | —                    | `refillRecencyLine` |
-| `intake_items` (`quantity_on_hand`, `active`) | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts`, `lib/intake-active-write.ts`, `lib/intake-obligation-write.ts`, `lib/queries/intake/medications.ts` | —                    | `refillRecencyLine` |
-| `medication_courses`                          | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
-| `intake_item_doses` (`retired`)               | `lib/queries/intake/dose-lifecycle.ts`                                                                                                                                   | —                    | —                   |
-| `intake_item_side_effects` (`resolved`)       | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                   |
-| `routines` (`active`)                         | `lib/routines.ts`                                                                                                                                                        | —                    | —                   |
-| `situations` (`active`)                       | `lib/settings/profile-attrs.ts`                                                                                                                                          | —                    | —                   |
-| `equipment` (`retired`)                       | `lib/equipment.ts`                                                                                                                                                       | —                    | —                   |
+| table                                         | cores                                                                                                                                                                    | gate                 | offer state                 |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- | --------------------------- |
+| `appointments` (`status`)                     | `lib/appointment-status.ts`                                                                                                                                              | —                    | —                           |
+| `cycles`                                      | `lib/cycle-store.ts`                                                                                                                                                     | `lib/cycle-write.ts` | `cycleControlState`         |
+| `illness_episodes`                            | `lib/illness-episode-store.ts`, `lib/illness-episode-write.ts`                                                                                                           | —                    | —                           |
+| `intake_item_logs`                            | `lib/queries/intake/adherence.ts`                                                                                                                                        | —                    | —                           |
+| `shared_supplies` (`quantity_on_hand`)        | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts`                                                                                                      | —                    | `refillRecencyLine`         |
+| `intake_items` (`quantity_on_hand`, `active`) | `lib/queries/intake/refill.ts`, `lib/queries/intake/supply-pool.ts`, `lib/intake-active-write.ts`, `lib/intake-obligation-write.ts`, `lib/queries/intake/medications.ts` | —                    | `refillRecencyLine`         |
+| `protocols` (`end_date`)                      | `lib/protocol-lifecycle.ts`                                                                                                                                              | —                    | `protocolReopenEligibility` |
+| `medication_courses`                          | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                           |
+| `intake_item_doses` (`retired`)               | `lib/queries/intake/dose-lifecycle.ts`                                                                                                                                   | —                    | —                           |
+| `intake_item_side_effects` (`resolved`)       | `lib/queries/intake/medications.ts`                                                                                                                                      | —                    | —                           |
+| `routines` (`active`)                         | `lib/routines.ts`                                                                                                                                                        | —                    | —                           |
+| `situations` (`active`)                       | `lib/settings/profile-attrs.ts`                                                                                                                                          | —                    | —                           |
+| `equipment` (`retired`)                       | `lib/equipment.ts`                                                                                                                                                       | —                    | —                           |
 
 `cycles` is the only entry today whose guard logic and DML live in different
 modules, which is what `gate` exists to record: `lib/cycle-write.ts` owns the
@@ -163,7 +164,7 @@ guard that cannot fail is not a guard.
 
 #2039 added `intake_item_logs`, the dose ledger the supply counter one entry
 below it is driven by. It had a second core: a tri-state twin inside
-`app/(app)/nutrition/supplement-actions.ts` with its own DELETE/INSERT/UPDATE and
+`app/(app)/nutrition/intake-actions.ts` with its own DELETE/INSERT/UPDATE and
 its own supply crossings, which had already drifted — it never refused a paused
 item. One core in `lib/queries/intake/adherence.ts` now owns every transition of
 the table and the Server Action renders its typed outcome. No `offerState`: the
@@ -191,6 +192,34 @@ refusals the list and the palette render) and the two complete+link swaps —
 "Log this visit" (unlinked-only) and the import auto-complete, whose
 scheduled-only guard keeps the machine from overwriting a manual completion or
 cancellation.
+
+## The protocol lifecycle (#2135)
+
+`protocols.end_date` is a THREE-state machine — NULL is ongoing, a date inside
+`PROTOCOL_REOPEN_WINDOW_DAYS` is resumable, an older one is expired and the
+honest move is a new run — and the states were already named once, in the pure
+`protocolReopenEligibility` (`lib/protocol-reopen.ts`) that `ProtocolControls`
+renders its Resume / Run again offer from. Protocols had got halfway: a good
+offer derivation, no core.
+
+`lib/protocol-lifecycle.ts` is the other half, on the `cycles` shape.
+`endProtocolCore` and `resumeProtocolCore` re-read the row INSIDE the writeTx
+(the `lib/tx.ts` token), compare-and-swap on the expected prior end date, and
+answer `already-ended` / `already-ongoing` / `expired` / `invalid` /
+`not-found`; the Server Actions map those to words and no longer pre-check the
+row, because that read was the window the core exists to close. The protocol's
+SITUATION activation is inverted in the same transaction — a protocol reading
+"ended" while its situation stays active keeps firing situational supplements
+and nudges for a block the user has stopped.
+
+The registry entry is column-narrowed to `end_date`: name, notes, outcome and
+practice-link edits are ordinary form writes. Three statements are allowlisted
+in the scan — the create INSERT and the run-again INSERT (born rows) and the
+edit form's whole-record UPDATE, where the end date is a dated FIELD the user is
+correcting rather than a one-tap transition. `protocol-offer-renderers.test.ts`
+is the #221 pin: the derivation has exactly three callers (the control, the
+core, and `runProtocolAgain`'s expired branch), nothing else re-derives the
+window, and every state of the machine is exercised at its boundary day.
 
 Two defects were fixed by #1893:
 

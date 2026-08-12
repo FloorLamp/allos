@@ -24,7 +24,7 @@
 
 import { daysBetweenDateStr } from "../date";
 import {
-  canonicalizeProviderClock,
+  canonicalizeSourceClock,
   clockAtMinute,
   formatOffset,
   minutesFromBase,
@@ -401,7 +401,7 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
   if (wa && wb) {
     if (windowsOverlap(wa, wb))
       return buildPair(a, b, "high", "Overlapping start/end times");
-    const verdict = canonicalizeProviderClock({
+    const verdict = canonicalizeSourceClock({
       reported: activityClockReading(a),
       evidence: [activityClockReading(b)].filter(
         (r): r is ClockReading => r != null
@@ -917,7 +917,7 @@ export function clusterActivityDuplicates<T extends ActivityDupInput>(
 // The default keeper across N members — the pairwise preferActivityKeeper reduced to
 // a single winner (sourced desc → richness desc → lowest id). Since that order is
 // total (ids are unique), the reduce is order-independent. The manual UI (Review +
-// Journal) seeds its keeper selection with this but always lets the user override.
+// Training Log) seeds its keeper selection with this but always lets the user override.
 export function preferActivityKeeperId<
   T extends Pick<ActivityDupInput, "id" | "source">,
 >(members: T[]): number {

@@ -193,7 +193,7 @@ describe("getDrugAllergyWarnings — recorded allergy × active med (#1029)", ()
     addMedication(p2, "Penicillin V", 0); // inactive → out of the active stack
     db.prepare(
       `INSERT INTO intake_items (profile_id, name, active, kind)
-       VALUES (?, 'Penicillin-name Supplement', 1, 'supplement')`
+       VALUES (?, 'Penicillin-name IntakeItem', 1, 'supplement')`
     ).run(p2); // a supplement is never screened as a medication
     addMedication(p2, "Metformin 500 mg"); // unrelated
     expect(getDrugAllergyWarnings(p2)).toEqual([]);

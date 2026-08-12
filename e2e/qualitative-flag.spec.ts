@@ -7,7 +7,7 @@ test("a positive durable-immunity titer shows an Immune status, not Abnormal (#5
   page,
 }) => {
   await page.goto(
-    "/biomarkers/view?name=E2E%20Hepatitis%20B%20Surface%20Antibody"
+    "/results/readings/view?name=E2E%20Hepatitis%20B%20Surface%20Antibody"
   );
 
   await expect(
@@ -30,7 +30,7 @@ test("a positive durable-immunity titer shows an Immune status, not Abnormal (#5
 test("an immutable blood type is not marked stale for retest (#548)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers/view?name=E2E%20ABO%20Blood%20Group");
+  await page.goto("/results/readings/view?name=E2E%20ABO%20Blood%20Group");
 
   await expect(
     page.getByRole("heading", { name: "E2E ABO Blood Group" })

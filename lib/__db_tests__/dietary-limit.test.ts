@@ -19,7 +19,7 @@ import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { getDietaryLimitWarnings, getDietaryAdequacy } from "@/lib/queries";
 import { ulWarningDetail } from "@/lib/dri";
-import type { SupplementCondition } from "@/lib/types";
+import type { IntakeCondition } from "@/lib/types";
 
 function makeAdultProfile(name: string): number {
   const profileId = Number(
@@ -41,7 +41,7 @@ function addSupp(
   name: string,
   amount: string,
   opts: {
-    condition?: SupplementCondition;
+    condition?: IntakeCondition;
     obligation?: "must" | "should" | "may";
   } = {}
 ): void {

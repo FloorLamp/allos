@@ -1,6 +1,6 @@
-// Pure, age-aware MEMBERSHIP for the Trends → Body tab (no DB, no React) —
+// Pure, age-aware MEMBERSHIP for the Trends → Overview → body census (no DB, no React) —
 // unit-tested in lib/__tests__/growth-metrics.test.ts. For a growth-tracked profile,
-// HEIGHT is the priority datapoint and body fat % is not tracked, so the Body tab
+// HEIGHT is the priority datapoint and body fat % is not tracked, so the body census
 // charts height (and head circumference for the very young) and drops the body-fat
 // chart/tile. Adults keep weight + body fat. Keeping this a pure decision function
 // lets both the Body section and the Overview metric tiles (which body measures to
@@ -12,7 +12,7 @@
 // "which charts exist", never "in what sequence".
 //
 // The line is `isGrowthTracked` from lib/life-stage — the WHO/CDC growth-chart data
-// ceiling (< 20 y / 240 mo). This converges the Body tab's two former ceilings — the
+// ceiling (< 20 y / 240 mo). This converges the body census two former ceilings — the
 // fixed-18 "minor" layout line and the 240-month chart-data ceiling — onto the single
 // line the charts actually span (#492), so an 18–19-year-old keeps the growth-led view
 // instead of an adult layout with a demoted trailing growth card. The adult-population
@@ -21,7 +21,7 @@
 
 import { isGrowthTracked } from "./life-stage";
 
-// Re-export so Body-tab consumers and tests read the one shared predicate. The
+// Re-export so body-census consumers and tests read the one shared predicate. The
 // growth-led presentation (layout order, body-fat drop, growth card, quick-add) all
 // key on this single line.
 export { isGrowthTracked, GROWTH_CHART_MAX_AGE } from "./life-stage";
@@ -46,7 +46,7 @@ export function showHeadCircEntry(
 }
 
 // The manual growth quick-add (height + optionally head circ) is a growth-tracked
-// affordance. Adults keep the Body tab byte-identical to before.
+// affordance. Adults keep the body census byte-identical to before.
 export function showGrowthQuickAdd(
   ageYears: number | null | undefined
 ): boolean {

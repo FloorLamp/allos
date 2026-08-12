@@ -2,8 +2,13 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getWorkoutActivityDays } from "@/lib/queries";
-import { getWeekStart } from "@/lib/settings";
-import { dayHistoryStart } from "@/lib/day-history";
+import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
+import {
+  DAY_HISTORY_DOMAINS,
+  dayHistoryStart,
+  dayHistoryWindow,
+} from "@/lib/day-history";
+import { fitnessWindowWeeks, type FitnessWindow } from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
 import DayHistory from "@/components/DayHistory";
 
@@ -14,16 +19,25 @@ import DayHistory from "@/components/DayHistory";
 // activityHistoryKey of the normalized title, so a PPL routine reads as its
 // own rows: Push Day / Pull Day / Legs, with the tail folded). Card-less, a
 // page-level section, so the grids run edge to edge on phones.
+//
+// It takes the lens WINDOW rather than the lens's shared week count: above a
+// quarter this history re-grains to weeks (#2413), and that is a decision about
+// a 7×N grid of day cells, not about the weekly bar charts the shared count
+// feeds. The tab's other builders keep their own week count untouched.
 export default async function WorkoutHistorySection({
-  weeks,
-  end,
+  window,
 }: {
-  weeks: number;
-  end: string;
+  window: FitnessWindow;
 }) {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  const end = window.to;
   const weekStart = getWeekStart(profile.id);
-  const since = dayHistoryStart(end, weeks, weekStart);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
+  const history = dayHistoryWindow({
+    days: window.days,
+    weeks: fitnessWindowWeeks(window.days),
+  });
+  const since = dayHistoryStart(end, history.weeks, weekStart);
   const activityDays = getWorkoutActivityDays(profile.id, since, end);
 
   const values = activityDays.map((d) => ({
@@ -64,8 +78,7 @@ export default async function WorkoutHistorySection({
         </Link>
       </div>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-        Every workout day in this window, then the same days split by activity.
-        Tap a day to see what it held.
+        {DAY_HISTORY_DOMAINS.workout.helperText}
       </p>
       {values.length === 0 ? (
         <EmptyState
@@ -75,12 +88,15 @@ export default async function WorkoutHistorySection({
       ) : (
         <DayHistory
           domain="workout"
+          addHref="/training?tab=log"
           values={values}
           groups={groups}
           end={end}
-          weeks={weeks}
+          weeks={history.weeks}
           weekStart={weekStart}
+          grain={history.grain}
           today={today(profile.id)}
+          formatPrefs={formatPrefs}
           testId="workout-day-history"
         />
       )}

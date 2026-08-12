@@ -15,7 +15,7 @@ import {
   type RightSizeInput,
 } from "../target-rightsize";
 import { DEMOTION_WINDOW_DAYS } from "../supplement-demotion";
-import type { FrequencyScopeKind } from "../types";
+import type { FrequencyScopeKind } from "../frequency-targets";
 
 // The pure #1670 detector: chronic under-floor frequency targets across all three
 // commitment domains that share the `frequency_targets` substrate. Every case here is

@@ -9,7 +9,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { createGoal, updateGoal } from "@/app/(app)/training/goal-actions";
-import { getBiomarkerGoals, getGoalProgressMap, getGoals } from "@/lib/queries";
+import {
+  getBiomarkerOutcomeGoals,
+  getOutcomeGoalProgressMap,
+  getOutcomeGoals,
+} from "@/lib/queries";
 import { createLogin, createProfile, actAs, seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -101,7 +105,11 @@ describe("createGoal — biomarker kind", () => {
       expect(row.target_value).toBe(100);
       // Not trusted from the client — the analyte's own charted unit.
       expect(row.unit).toBe("mg/dL");
-      expect(row.category).toBe("biomarker");
+      expect(row.category).toBeNull();
+      expect(getOutcomeGoals(profile.id)[0]).toMatchObject({
+        kind: "biomarker",
+        categoryLabel: null,
+      });
       // The reading at creation becomes the baseline the bar runs from.
       expect(row.baseline_value).toBe(160);
       expect(row.body_metric).toBeNull();
@@ -148,7 +156,7 @@ describe("createGoal — biomarker kind", () => {
         biomarker_target: 100,
       })
     );
-    expect(getGoals(profile.id)).toHaveLength(0);
+    expect(getOutcomeGoals(profile.id)).toHaveLength(0);
   });
 
   it("refuses an undeclared or bogus direction", async () => {
@@ -163,7 +171,7 @@ describe("createGoal — biomarker kind", () => {
         })
       );
     }
-    expect(getGoals(profile.id)).toHaveLength(0);
+    expect(getOutcomeGoals(profile.id)).toHaveLength(0);
   });
 
   it("refuses a missing target value", async () => {
@@ -175,7 +183,7 @@ describe("createGoal — biomarker kind", () => {
         target_direction: "below",
       })
     );
-    expect(getGoals(profile.id)).toHaveLength(0);
+    expect(getOutcomeGoals(profile.id)).toHaveLength(0);
   });
 });
 
@@ -196,8 +204,8 @@ describe("authorization", () => {
       })
     );
 
-    expect(getGoals(otherProfile.id)).toHaveLength(1);
-    expect(getGoals(ownerProfile.id)).toHaveLength(0);
+    expect(getOutcomeGoals(otherProfile.id)).toHaveLength(1);
+    expect(getOutcomeGoals(ownerProfile.id)).toHaveLength(0);
   });
 
   it("updateGoal cannot reach across profiles", async () => {
@@ -253,8 +261,10 @@ describe("progress over real readings", () => {
     );
     seedReading(profile.id, "2026-04-05", "LDL Cholesterol", 130);
 
-    const goals = getGoals(profile.id);
-    const progress = getGoalProgressMap(profile.id, goals).get(goals[0].id)!;
+    const goals = getOutcomeGoals(profile.id);
+    const progress = getOutcomeGoalProgressMap(profile.id, goals).get(
+      goals[0].id
+    )!;
     expect(progress.current).toBe(130);
     expect(progress.asOf).toBe("2026-04-05");
     expect(progress.unit).toBe("mg/dL");
@@ -279,8 +289,10 @@ describe("progress over real readings", () => {
     );
     seedReading(profile.id, "2026-04-05", "LDL Cholesterol", 92);
 
-    const goals = getGoals(profile.id);
-    const progress = getGoalProgressMap(profile.id, goals).get(goals[0].id)!;
+    const goals = getOutcomeGoals(profile.id);
+    const progress = getOutcomeGoalProgressMap(profile.id, goals).get(
+      goals[0].id
+    )!;
     expect(progress.done).toBe(true);
   });
 
@@ -294,8 +306,10 @@ describe("progress over real readings", () => {
         biomarker_target: 5.7,
       })
     );
-    const goals = getGoals(profile.id);
-    const progress = getGoalProgressMap(profile.id, goals).get(goals[0].id)!;
+    const goals = getOutcomeGoals(profile.id);
+    const progress = getOutcomeGoalProgressMap(profile.id, goals).get(
+      goals[0].id
+    )!;
     expect(progress.unavailable).toBe("no-readings");
     expect(progress.asOf).toBeNull();
   });
@@ -314,14 +328,16 @@ describe("progress over real readings", () => {
     const neighbour = createProfile("neighbour");
     seedReading(neighbour.id, "2026-05-05", "LDL Cholesterol", 70);
 
-    const goals = getGoals(profile.id);
-    const progress = getGoalProgressMap(profile.id, goals).get(goals[0].id)!;
+    const goals = getOutcomeGoals(profile.id);
+    const progress = getOutcomeGoalProgressMap(profile.id, goals).get(
+      goals[0].id
+    )!;
     expect(progress.current).toBe(160);
     expect(progress.done).toBe(false);
   });
 });
 
-describe("getBiomarkerGoals — the goal reaches its own detail page", () => {
+describe("getBiomarkerOutcomeGoals — the goal reaches its own detail page", () => {
   it("finds the goal by FAMILY, not by raw name", async () => {
     const { profile } = seedActor();
     seedReading(profile.id, "2026-01-05", "Hemoglobin A1c", 7.4, "%");
@@ -334,14 +350,18 @@ describe("getBiomarkerGoals — the goal reaches its own detail page", () => {
       })
     );
 
-    expect(getBiomarkerGoals(profile.id, "Hemoglobin A1c")).toHaveLength(1);
+    expect(getBiomarkerOutcomeGoals(profile.id, "Hemoglobin A1c")).toHaveLength(
+      1
+    );
     // The eAG re-expression of the same draw is the same #482 family — one series,
     // one target, so the goal shows on the page that charts them.
     expect(
-      getBiomarkerGoals(profile.id, "Estimated Average Glucose")
+      getBiomarkerOutcomeGoals(profile.id, "Estimated Average Glucose")
     ).toHaveLength(1);
     // A genuinely different analyte does not pick it up.
-    expect(getBiomarkerGoals(profile.id, "LDL Cholesterol")).toHaveLength(0);
+    expect(
+      getBiomarkerOutcomeGoals(profile.id, "LDL Cholesterol")
+    ).toHaveLength(0);
   });
 
   it("excludes archived and achieved goals", async () => {
@@ -357,7 +377,9 @@ describe("getBiomarkerGoals — the goal reaches its own detail page", () => {
     );
     const id = goalRow(profile.id)!.id;
     db.prepare("UPDATE goals SET archived = 1 WHERE id = ?").run(id);
-    expect(getBiomarkerGoals(profile.id, "LDL Cholesterol")).toHaveLength(0);
+    expect(
+      getBiomarkerOutcomeGoals(profile.id, "LDL Cholesterol")
+    ).toHaveLength(0);
   });
 });
 
@@ -381,8 +403,10 @@ describe("the three body-metric goals are unchanged (#1853 is additive)", () => 
     expect(row.biomarker_name).toBeNull();
     expect(row.target_direction).toBeNull();
 
-    const goals = getGoals(profile.id);
-    const progress = getGoalProgressMap(profile.id, goals).get(goals[0].id)!;
+    const goals = getOutcomeGoals(profile.id);
+    const progress = getOutcomeGoalProgressMap(profile.id, goals).get(
+      goals[0].id
+    )!;
     // Baseline 90 → target 80, currently 90: the same 0% it has always been, and
     // NONE of the per-result fields are set — a body goal still paces daily.
     expect(progress.pct).toBe(0);
@@ -403,7 +427,9 @@ describe("the three body-metric goals are unchanged (#1853 is additive)", () => 
         biomarker_target: 80,
       })
     );
-    const rows = getGoals(profile.id).filter((g) => g.biomarker_name != null);
+    const rows = getOutcomeGoals(profile.id).filter(
+      (g) => g.biomarker_name != null
+    );
     expect(rows).toHaveLength(0);
   });
 });

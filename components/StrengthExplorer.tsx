@@ -6,7 +6,7 @@ import type {
   GoalProgress,
   RecentByExercise,
 } from "@/lib/queries";
-import type { Goal, Sex } from "@/lib/types";
+import type { OutcomeGoal, Sex } from "@/lib/types";
 import { strengthStanding } from "@/lib/strength-standards";
 import { exerciseHistoryKey } from "@/lib/lifts";
 import { lastSessionPR } from "@/lib/coaching";
@@ -35,7 +35,7 @@ export default function StrengthExplorer({
   bodyweightKg: number | null;
   units: UnitPrefs;
   recentByExercise: RecentByExercise;
-  goals: Goal[];
+  goals: OutcomeGoal[];
   // Auto-derived progress keyed by goal id (plain object — crosses the
   // server/client boundary, unlike a Map).
   goalProgress: Record<number, GoalProgress>;
@@ -78,11 +78,12 @@ export default function StrengthExplorer({
       cellClassName: "font-medium",
       cell: (e) => {
         // The lifter's standing for an exercise — the SINGLE strength-level
-        // model. Null (⇒ no badge) when the lift isn't covered or
-        // sex/bodyweight is unset.
+        // model. Null (⇒ no badge) when the lift isn't covered, sex/bodyweight
+        // is unset, or (#2326) no free-weight set backs it: the Est. 1RM column
+        // beside this one still shows every set's best, machine included.
         const standing = strengthStanding(
           e.exercise,
-          e.e1rmKg,
+          e.freeWeightE1rmKg,
           sex,
           bodyweightKg
         );

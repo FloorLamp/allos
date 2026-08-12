@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 //
 // It's a COARSE guard, not a proof (the repo style — cf. profile-scoping.test.ts):
 // it inspects only the brace-matched body of each `export async function`, so a
-// bare `return;` in a PRIVATE helper (e.g. supplement-actions' doseStatusResult, appointments'
+// bare `return;` in a PRIVATE helper (e.g. intake-actions' doseStatusResult, appointments'
 // setStatus) is intentionally out of scope. A genuinely-needed bare return inside a
 // nested callback of an action should be written `return undefined;` (or refactored)
 // — an EMPTY `return;` in an exported action body is exactly the silent-no-op smell
@@ -24,7 +24,7 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // The migrated passport-CRUD action modules (issue #474). Adding a new action
 // module to this surface means adding it here — and inheriting the no-bare-return
-// contract. (journal/actions.ts already carries the SaveActivityOutcome contract via
+// contract. (training/activity-actions.ts already carries the SaveActivityOutcome contract via
 // #332; it is covered by its own tests.)
 // Paths are relative to the repo root. The record-domain action modules moved out
 // of their old dead-route directories in #1636 and now sit under the route that
@@ -38,7 +38,7 @@ const MODULES = [
   ["records", "care", "overview", "family-history-actions.ts"],
   ["records", "care", "overview", "care-goal-actions.ts"],
   ["records", "care", "overview", "care-plan-actions.ts"],
-  ["medical", "actions.ts"],
+  ["results", "reading-actions.ts"],
   ["training", "goal-actions.ts"],
   ["protocols", "actions.ts"],
   ["upcoming", "actions.ts"],
@@ -46,9 +46,9 @@ const MODULES = [
   // Appointments merged into the Visits page (#288): their write actions live in
   // encounters/appointment-actions.ts now, not their own route's actions.ts.
   ["encounters", "appointment-actions.ts"],
-  // The former /medicine action module split by kind (#746): shared supplement/
+  // The former combined intake surface action module split by kind (#746): shared supplement/
   // dose CRUD under nutrition, medication-lifecycle under medications.
-  ["nutrition", "supplement-actions.ts"],
+  ["nutrition", "intake-actions.ts"],
   ["medications", "actions.ts"],
 ].map((parts) => path.join("app", "(app)", ...parts));
 

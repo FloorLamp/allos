@@ -6,7 +6,7 @@
 // summary that lists what was taken, instead of a bare "all done". Each line
 // carries its take-with (food) condition plus an adherence percentage.
 
-import type { AdherenceSummary } from "../supplement-adherence";
+import type { AdherenceSummary } from "../intake-adherence";
 import {
   matchFoodInteractions,
   foodGuidanceReminderNote,
@@ -16,17 +16,17 @@ import {
   OBLIGATION_ORDER,
   isPushedIntake,
   type TimeBucket,
-} from "../supplement-schedule";
+} from "../intake-schedule";
 import {
   foodTimingCheckNote,
   type FoodTimingCheck,
 } from "../food-timing-check";
 import { parseRxcuiIngredients } from "../rxnorm";
 import type {
-  Supplement,
-  SupplementCondition,
-  SupplementDose,
-  SupplementKind,
+  IntakeItem,
+  IntakeCondition,
+  IntakeDose,
+  IntakeItemKind,
 } from "../types";
 import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
@@ -86,7 +86,7 @@ export function bucketWindow(b: TimeBucket): ReminderWindow {
 // hour the dose keeps today's fold-to-Morning fallback — so a dose is in the
 // PreWorkout slot XOR its bucket window, never both (no double-listing).
 export function doseSendSlot(
-  condition: SupplementCondition,
+  condition: IntakeCondition,
   bucket: TimeBucket,
   workoutTimed: boolean
 ): IntakeSendSlot {
@@ -108,7 +108,7 @@ export function notifiableWindowDoses(entries: WindowDose[]): WindowDose[] {
 // caregiver setup — must not get prescription reminders titled "supplements". Both
 // kinds present reads "supplements & meds" (matching the nav "Supplements & Meds").
 // The bare "&" is escaped by the Telegram HTML renderer at send time.
-export function intakeWindowNoun(kinds: Iterable<SupplementKind>): string {
+export function intakeWindowNoun(kinds: Iterable<IntakeItemKind>): string {
   let hasMed = false;
   let hasSupp = false;
   for (const k of kinds) {
@@ -122,7 +122,7 @@ export function intakeWindowNoun(kinds: Iterable<SupplementKind>): string {
 
 // The SINGULAR adjectival form of the same kinds, for a "N ___ dose(s)" phrasing
 // where the noun modifies "dose" ("3 medication doses", "1 supplement dose").
-export function intakeItemNoun(kinds: Iterable<SupplementKind>): string {
+export function intakeItemNoun(kinds: Iterable<IntakeItemKind>): string {
   let hasMed = false;
   let hasSupp = false;
   for (const k of kinds) {
@@ -139,8 +139,8 @@ export function intakeItemNoun(kinds: Iterable<SupplementKind>): string {
 // window (the adherence percentage). A dose is "pending" only when neither taken nor
 // skipped — both resolutions clear it from the reminder.
 export interface WindowDose {
-  dose: SupplementDose;
-  supp: Supplement;
+  dose: IntakeDose;
+  supp: IntakeItem;
   taken: boolean;
   skipped: boolean;
   // This item is currently a DEMOTION CANDIDATE (#1505 part 2) — sustainedly untaken
@@ -170,7 +170,7 @@ function byPriority(a: WindowDose, b: WindowDose): number {
 
 // The take-with condition (food timing), lowercased for inline use; "" when it's
 // "with or without food" (nothing worth saying).
-function foodNote(dose: SupplementDose): string {
+function foodNote(dose: IntakeDose): string {
   return dose.food_timing === "any"
     ? ""
     : FOOD_TIMING_LABELS[dose.food_timing].toLowerCase();
@@ -225,13 +225,13 @@ function doseLine(
     }
     // Food–drug guidance (issue #154): a per-item food note for a matching
     // medication/supplement (e.g. "⚠️ Avoid grapefruit juice …"). Same pure
-    // matcher the /medicine row + item-form notice format over. Pending doses
+    // matcher the intake surface row + item-form notice format over. Pending doses
     // only — it's guidance for taking this dose now.
     //
     // SAFETY-TIER, DELIBERATELY UN-GATED (#435): this note rides the scheduled
     // dose reminder, a safety-tier send that is NOT bus-gated (a page dismissal must
     // never silence a possibly-critical medication reminder — the same #171/#227
-    // reasoning as the dose reminder itself). So unlike the /medicine food-guidance
+    // reasoning as the dose reminder itself). So unlike the intake surface food-guidance
     // LINE (which carries a food-timing:<itemId>:<ruleId> key and is dismissible
     // through the findings bus), the reminder tail intentionally ignores those
     // dismissals and always appends the note when the dose is being reminded.

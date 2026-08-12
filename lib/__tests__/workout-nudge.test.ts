@@ -19,7 +19,7 @@ import {
   trainingSignalKey,
   isWorkoutNudgeSuppressed,
 } from "@/lib/workout-nudge";
-import { FREQUENCY_SCOPE_KINDS } from "@/lib/goals";
+import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 import { TYPE_SCOPES } from "@/lib/lifts";
 import type {
   CardioRecent,

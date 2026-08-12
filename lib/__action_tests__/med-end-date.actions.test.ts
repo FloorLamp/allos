@@ -10,9 +10,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import {
-  addSupplement,
-  updateSupplement,
-} from "@/app/(app)/nutrition/supplement-actions";
+  addIntakeItem,
+  updateIntakeItem,
+} from "@/app/(app)/nutrition/intake-actions";
 import {
   stopMedication,
   restartMedication,
@@ -58,7 +58,7 @@ function courseCount(itemId: number): number {
 
 async function addActiveMed(name = "Lisinopril"): Promise<number> {
   const start = shiftDateStr(today(0), -10);
-  await addSupplement(
+  await addIntakeItem(
     fd({ name, kind: "medication", rx: "1", started_on: start })
   );
   return lastItemId();
@@ -77,7 +77,7 @@ describe("edit-form End date (#1140 Part D)", () => {
   it("setting an End date stops the med AS OF that date (not today), flipping active→0", async () => {
     const id = await addActiveMed();
     const finishedOn = shiftDateStr(today(0), -3);
-    const res = await updateSupplement(
+    const res = await updateIntakeItem(
       fd({
         id,
         name: "Lisinopril",
@@ -99,7 +99,7 @@ describe("edit-form End date (#1140 Part D)", () => {
     await stopMedication(fd({ id, stop_reason: "other" }));
     expect(latestCourse(id).active).toBe(0);
     // Clear the End date on the edit form → active again.
-    const res = await updateSupplement(
+    const res = await updateIntakeItem(
       fd({
         id,
         name: "Metformin",
@@ -123,7 +123,7 @@ describe("edit-form End date (#1140 Part D)", () => {
     const viaButton = latestCourse(a);
     // Via the edit-form End date (set to today).
     const b = await addActiveMed("DrugB");
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id: b,
         name: "DrugB",
@@ -141,7 +141,7 @@ describe("edit-form End date (#1140 Part D)", () => {
   it("an unchanged End date is a no-op — no spurious course churn", async () => {
     const id = await addActiveMed("DrugC");
     const before = courseCount(id);
-    await updateSupplement(
+    await updateIntakeItem(
       fd({
         id,
         name: "DrugC",

@@ -1,5 +1,5 @@
 // Shared "dose day" ordering (issue #297). ONE pure comparator for the order a
-// day's due doses read in, so /medicine's due-today section and the Upcoming /
+// day's due doses read in, so the intake surface's due-today section and the Upcoming /
 // needs-attention surfaces answer "what does my dose day look like?" the same
 // way (the AGENTS.md one-question-one-computation rule, ordering edition).
 //
@@ -14,13 +14,9 @@
 // reproduce this exact order with a plain string compare (see compareSortHint).
 
 import type { IntakeObligation } from "./types";
-import {
-  timeBucket,
-  TIME_BUCKETS,
-  OBLIGATION_ORDER,
-} from "./supplement-schedule";
+import { timeBucket, TIME_BUCKETS, OBLIGATION_ORDER } from "./intake-schedule";
 
-// The minimal shape the ordering needs — satisfied by /medicine's { supplement,
+// The minimal shape the ordering needs — satisfied by the intake surface's { supplement,
 // dose } Item and by the Upcoming dose adapter alike.
 export interface DoseDayEntry {
   timeOfDay: string | null;
@@ -42,7 +38,7 @@ const SEP = "\u001f";
 // A lexically-sortable key encoding bucket → obligation → stack → name. Bucket and
 // obligation ranks are single digits (0–4, 0–2), so a fixed-width numeric prefix
 // keeps field boundaries aligned; an unstacked item sorts after stacked ones
-// (matching /medicine's `stack ?? "~"`). Used directly as UpcomingItem.sortHint.
+// (matching the intake surface's `stack ?? "~"`). Used directly as UpcomingItem.sortHint.
 export function doseSortKey(entry: DoseDayEntry): string {
   const bucket = bucketRank(entry.timeOfDay);
   const obligation = OBLIGATION_ORDER[entry.obligation];

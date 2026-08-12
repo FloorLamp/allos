@@ -40,7 +40,7 @@ const HELPER = "lib/trailing-average.ts";
 // assembles per-day parts and hands them here, so there is nothing there to drift.
 const CALLERS = [
   "lib/steps-today.ts",
-  "lib/trends-body-metrics.ts",
+  "lib/trend-metrics.ts",
   "lib/protein.ts",
 ];
 
@@ -120,7 +120,7 @@ function sourceFiles(): { rel: string; code: string }[] {
 }
 
 // The source of ONE exported function, from its signature to the closing brace in
-// column 0 — so a scan can target `bodyMetricPeriodStats` inside a module that
+// column 0 — so a scan can target `trendMetricPeriodStats` inside a module that
 // legitimately does plenty of other windowing.
 function functionBody(rel: string, name: string): string {
   const code = stripCommentsAndStrings(read(rel));
@@ -167,7 +167,7 @@ describe("the trailing-average boundary (issue #1909 / #221)", () => {
 
   it("neither surface still carries the window it handed over", () => {
     // summarizeStepsToday sorted the series and sliced its own N most recent prior
-    // days; bodyMetricPeriodStats built its own cutoff and filtered on it. Both
+    // days; trendMetricPeriodStats built its own cutoff and filtered on it. Both
     // shapes are now the helper's, and a reappearance here is a second average.
     const steps = functionBody("lib/steps-today.ts", "summarizeStepsToday");
     expect(steps).not.toMatch(/\.slice\(/);
@@ -175,8 +175,8 @@ describe("the trailing-average boundary (issue #1909 / #221)", () => {
     expect(steps).not.toMatch(MEAN);
 
     const period = functionBody(
-      "lib/trends-body-metrics.ts",
-      "bodyMetricPeriodStats"
+      "lib/trend-metrics.ts",
+      "trendMetricPeriodStats"
     );
     expect(period).not.toMatch(CUTOFF);
     expect(period).not.toMatch(MEAN);

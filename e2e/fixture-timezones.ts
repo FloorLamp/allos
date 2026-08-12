@@ -29,6 +29,9 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
   "food-usual": {
     why: "The usual-food fixture uses fixed UTC meal-window events and derives its anchor through the same UTC profile calendar.",
   },
+  "routine-usual": {
+    why: "The composed morning fixture seeds a habit in every food window from fixed 08:00Z/12:00Z/19:00Z events, so its window boundaries must be the UTC ones the seed assumes.",
+  },
   "sleep-phase": {
     why: "The phase fixture asserts explicit post-noon UTC wall-clock labels independently of the rotating instance timezone.",
   },

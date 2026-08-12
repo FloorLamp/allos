@@ -359,7 +359,7 @@ export function seedMultiProfile(): void {
     seedMultiAllergy(multiSharedId, MULTI_SHARED_ALLERGY);
     seedMultiGoal(multiOwnerId, MULTI_OWNER_GOAL);
     seedMultiGoal(multiSharedId, MULTI_SHARED_GOAL);
-    // Multi-view Training Journal (#1330): manual cardio activities so /training's Log
+    // Multi-view Training Log (#1330): manual cardio activities so /training's Log
     // feed renders a merged, subject-stamped card feed. Idempotent per (profile, title).
     const seedMultiActivity = (profileId: number, title: string): void => {
       if (

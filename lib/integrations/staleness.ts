@@ -2,12 +2,12 @@
 // integration (#1685b, unified in #2263). No DB, no network, so it lives in the pure
 // unit tier alongside its sibling registry readers pull-cadence.ts and auth-failure.ts.
 //
-// ONE QUESTION, ONE RULE. "How long may this provider be silent before it is broken?"
+// ONE QUESTION, ONE RULE. "How long may this source be silent before it is broken?"
 // used to have two answers at two incompatible grains:
 //
 //   • a CONSECUTIVE FAILED RUN count (FAILING_CONSECUTIVE_RUNS = 3, #1880), which is
-//     not a measure of whether data is arriving at all. For an hourly provider it
-//     meant three hours — BELOW the same provider's own p90 gap between successes
+//     not a measure of whether data is arriving at all. For an hourly source it
+//     meant three hours — BELOW the same source's own p90 gap between successes
 //     (six hours, measured over 171 runs), so ordinary operation tripped it and
 //     Weather & UV read "Sync failing" for 29% of hours while every successful run
 //     re-fetched its full 381-row window.
@@ -16,24 +16,24 @@
 //
 // Between "three hours" and "two days" there was no rule at all. So there is now one:
 //
-//   A connected provider escalates when NO SUCCESSFUL RUN has landed within its
+//   A connected source escalates when NO SUCCESSFUL RUN has landed within its
 //   tolerance — whether the silence was recorded as failures, recorded as nothing,
 //   or a mix.
 //
 // Silence is silence. Both old rules were asking this; neither measured it.
 //
-// WHY THE LAST SUCCESS, NOT THE LAST DATA. Every polled provider records an ok event
+// WHY THE LAST SUCCESS, NOT THE LAST DATA. Every polled source records an ok event
 // for each successful poll, including a quiet one that found nothing new (isQuietSync
 // exists precisely to describe that event). So "last successful sync" tracks the
 // CONNECTION's liveness rather than the user's behavior: a week between weigh-ins, or
-// a rest week with no activities, is not silence. That is what makes a per-provider
+// a rest week with no activities, is not silence. That is what makes a per-source
 // tolerance safe to state at all — see `silenceToleranceMinutes` in the registry for
-// each provider's reasoning.
+// each source's reasoning.
 //
 // WHY THE OTHER DETECTORS DO NOT COVER IT. isAuthRefreshFailure (#326) flips a
 // connection to `needs_reauth` only on a DEFINITIVE auth failure — 429/5xx/timeouts
 // stay transient on purpose, so a passing cloud hiccup cannot tear down a healthy
-// connection. currentlyFailingProviders (./sync-log) fires when a provider's LATEST
+// connection. currentlyFailingSources (./sync-log) fires when a source's LATEST
 // recorded event is a failure, so it can only see events that were actually recorded.
 // Neither can see a connection that is recording nothing: a Health Connect exporter
 // the phone stopped running, a poll that never gets far enough to log an event, a
@@ -43,34 +43,34 @@
 import type { IntegrationDef } from "../types";
 import { parseSyncEventAt, pullCadenceMinutes } from "./pull-cadence";
 
-// How many missed POLLS a provider tolerates before its silence is treated as broken,
+// How many missed POLLS a source tolerates before its silence is treated as broken,
 // when it does not override the number itself. Twelve — half a day of missed polls at
-// whatever cadence the provider declares. DECLARED here rather than fitted to an
+// whatever cadence the source declares. DECLARED here rather than fitted to an
 // observed distribution: the threshold is a policy about how long a person should be
 // left uninformed, and the measurement's job is to check that the policy clears the
-// provider's ordinary variance (weather's p90 success gap is 6 h against this 12 h),
+// source's ordinary variance (weather's p90 success gap is 6 h against this 12 h),
 // not to set it.
 export const DEFAULT_SILENCE_TOLERANCE_POLLS = 12;
 
-// The provider's silence tolerance in whole minutes, or null when it is exempt. The
+// The source's silence tolerance in whole minutes, or null when it is exempt. The
 // ONE reader of the registry field: callers ask this rather than touching
 // `silenceToleranceMinutes`, so "what counts as exempt" and "where does the default
 // come from" are decided once.
 //
 // Three cases, in order:
 //   • an explicit number  → that tolerance;
-//   • an explicit null    → EXEMPT, a statement about the provider (a manual archive
+//   • an explicit null    → EXEMPT, a statement about the source (a manual archive
 //                           import has no cadence to be late against; a planned or
 //                           outbound entry never syncs inbound at all);
-//   • undeclared          → derived from the provider's own declared poll cadence.
-//                           A provider with no `pull` facet has no poll interval to
+//   • undeclared          → derived from the source's own declared poll cadence.
+//                           A source with no `pull` facet has no poll interval to
 //                           derive from and is treated as exempt here, which is the
 //                           safe direction — the registry completeness test in
 //                           lib/__tests__/sync-staleness.test.ts is what fails it, in
 //                           the METRIC_KNOWLEDGE idiom where every entry declares a
 //                           policy or an explicit exemption with a reason.
 //
-// An unknown provider (a connection row for a retired or hand-inserted id) is exempt:
+// An unknown source (a connection row for a retired or hand-inserted id) is exempt:
 // we cannot state a cadence we know nothing about.
 export function silenceToleranceMinutes(
   def: IntegrationDef | undefined
@@ -83,25 +83,25 @@ export function silenceToleranceMinutes(
   return pullCadenceMinutes(def) * DEFAULT_SILENCE_TOLERANCE_POLLS;
 }
 
-// One connected provider's freshness facts, as the DB layer reduces them.
+// One connected source's freshness facts, as the DB layer reduces them.
 export interface SyncFreshness {
-  // The integration id (the `provider` column value).
-  provider: string;
+  // The integration id (the `source` column value).
+  sourceId: string;
   // Timestamp of the most recent ok=1 sync event, or null when the connection has never
   // had one.
   lastSuccessAt: string | null;
-  // The provider's tolerance in whole minutes; null = exempt.
+  // The source's tolerance in whole minutes; null = exempt.
   toleranceMinutes: number | null;
-  // True when this provider is ALREADY represented by a failing/needs-reauth signal.
-  // The silence item must not double-report (#1685): a provider you have been told to
+  // True when this source is ALREADY represented by a failing/needs-reauth signal.
+  // The silence item must not double-report (#1685): a source you have been told to
   // reconnect does not also need to be told it has no recent data — the reauth item
   // names the cause, and this one would only name the symptom.
   alreadyFailing: boolean;
 }
 
-// A provider that has gone quiet, with the facts its copy needs.
+// A source that has gone quiet, with the facts its copy needs.
 export interface StaleSync {
-  provider: string;
+  sourceId: string;
   // The YYYY-MM-DD of the last successful sync — the date the "no data since" copy names.
   since: string;
   // The INSTANT of that last success. The synthetic issue row stamps its `at` /
@@ -158,20 +158,20 @@ export function formatTolerance(minutes: number): string {
   return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
 }
 
-// Whether a connected provider has been silent past its tolerance, measured against
+// Whether a connected source has been silent past its tolerance, measured against
 // `now` as an INSTANT (the caller resolves it through the lib/clock.ts seam).
 //
 // Strictly greater than the tolerance, matching the freshness doctrine: a reading is
-// stale strictly AFTER its interval, so a provider exactly at its tolerance is still
+// stale strictly AFTER its interval, so a source exactly at its tolerance is still
 // current.
 //
 // Three deliberate non-firings:
-//   1. an exempt provider (null tolerance) is never silent;
-//   2. a provider already carrying a failing/needs-reauth signal is never ALSO silent —
+//   1. an exempt source (null tolerance) is never silent;
+//   2. a source already carrying a failing/needs-reauth signal is never ALSO silent —
 //      the reauth item wins, so a broken connection is reported once;
 //   3. a connection with NO successful sync EVER is not silent. The copy this feeds is
 //      "no data since <date>", which requires a date; a connection that has never
-//      succeeded is a setup problem the provider's own page already shows, and firing on
+//      succeeded is a setup problem the source's own page already shows, and firing on
 //      it would flag every freshly-created connection before its first tick. Silence
 //      means "it was working and stopped", which is the state nothing else can see.
 export function isSyncStale(f: SyncFreshness, now: string): boolean {
@@ -182,9 +182,9 @@ export function isSyncStale(f: SyncFreshness, now: string): boolean {
   return minutes != null && minutes > f.toleranceMinutes;
 }
 
-// Every quiet provider among the connected ones, in input order. The single entry point
+// Every quiet source among the connected ones, in input order. The single entry point
 // the DB layer calls; the badge, the attention item and the digest line all read its
-// output, so they cannot disagree about which providers have stopped (#221).
+// output, so they cannot disagree about which sources have stopped (#221).
 export function staleSyncs(
   freshness: readonly SyncFreshness[],
   now: string
@@ -194,7 +194,7 @@ export function staleSyncs(
     if (!isSyncStale(f, now)) continue;
     const sinceAt = f.lastSuccessAt!;
     out.push({
-      provider: f.provider,
+      sourceId: f.sourceId,
       since: syncDay(sinceAt),
       sinceAt,
       minutes: silenceMinutes(sinceAt, now) ?? 0,
@@ -211,14 +211,14 @@ export function staleSyncs(
 //
 // Duration-aware since #2263: a 14-hour silence is now escalatable, so the sentence
 // has to be able to say "14 hours" as well as "4 days".
-export function staleSyncDetail(providerName: string, s: StaleSync): string {
-  return `No data since ${s.since} — ${providerName} hasn't synced successfully in ${formatSilence(s.minutes)}. Check the connection.`;
+export function staleSyncDetail(sourceName: string, s: StaleSync): string {
+  return `No data since ${s.since} — ${sourceName} hasn't synced successfully in ${formatSilence(s.minutes)}. Check the connection.`;
 }
 
 // The attention item's title for a stale connection. Says what is true (it stopped)
 // without asserting why.
-export function staleSyncTitle(providerName: string): string {
-  return `${providerName} sync has stopped`;
+export function staleSyncTitle(sourceName: string): string {
+  return `${sourceName} sync has stopped`;
 }
 
 // The sentinel id every SYNTHETIC stale-sync issue carries, mirroring the
@@ -228,8 +228,8 @@ export function staleSyncTitle(providerName: string): string {
 // second read — which is what both the attention item and the Data → Review row need in
 // order to pick their copy.
 //
-// Because the sentinel is SHARED across providers it is not unique per row: a list
-// rendering these must key on (provider, id), never on id alone.
+// Because the sentinel is SHARED across sources it is not unique per row: a list
+// rendering these must key on (source, id), never on id alone.
 export const STALE_SYNC_EVENT_ID = -2;
 
 // Whether an import issue is the synthetic staleness signal rather than a recorded

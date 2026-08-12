@@ -7,7 +7,7 @@
 
 import { db, writeTx } from "./db";
 import { getPublicUrl } from "./settings";
-import { getGoals } from "./queries";
+import { getOutcomeGoals } from "./queries";
 import {
   detectMilestones,
   type Milestone,
@@ -42,7 +42,7 @@ function totalWorkouts(profileId: number): number {
 export function gatherMilestoneInput(profileId: number): MilestoneInput {
   return {
     totalWorkouts: totalWorkouts(profileId),
-    completedGoals: getGoals(profileId)
+    completedGoals: getOutcomeGoals(profileId)
       .filter((g) => g.status === "achieved" && !g.archived)
       .map((g) => ({ id: g.id, title: g.title })),
     fired: getFiredMilestoneKeys(profileId),

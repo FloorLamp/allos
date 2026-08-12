@@ -159,12 +159,12 @@ export type MedicalFlag =
   | "non-optimal-high"
   | "non-optimal-low";
 
-export interface MedicalRecord {
+export interface ClinicalObservation {
   id: number;
   date: string;
   // The stated event instant (migration 165, #2154): canonical UTC `Z` shape, or
   // NULL for a day-grain reading — absence, never a midnight anchor. Optional
-  // because minimal read shapes may not select it; the `SELECT *` record queries
+  // because minimal read shapes may not select it; the `SELECT *` observation queries
   // always carry it.
   occurred_at?: string | null;
   category: MedicalCategory;
@@ -181,11 +181,11 @@ export interface MedicalRecord {
   value_num: number | null;
   // A clean, consistent biomarker name used to group readings of the same
   // analyte across documents/labs. Assigned by the AI at extraction/backfill,
-  // editable per record; falls back to `name` when absent.
+  // editable per observation; falls back to `name` when absent.
   canonical_name: string | null;
   // The reading's LOINC when the source carried one (migration 034). Optional: the
   // column is nullable and legacy rows predate it. Selected by the `SELECT *`
-  // record queries, so it rides along wherever a MedicalRecord is read — which is
+  // observation queries, so it rides along wherever a ClinicalObservation is read — which is
   // what lets the retest/staleness path reach the qualitative class hint (#910).
   loinc?: string | null;
   // 1 when this is the most recent reading in its biomarker group; only set by
@@ -235,7 +235,7 @@ export interface MedicalRecord {
 // count, or flag. `superseded_by_status` is what the INCOMING result called itself,
 // so a revision row answers both "what did it say?" and "did the lab call this a
 // correction?" without re-reading the live row, which may have moved on again.
-export interface MedicalRecordRevision {
+export interface ClinicalObservationRevision {
   id: number;
   record_id: number;
   date: string | null;
@@ -325,7 +325,18 @@ export interface AgeBandedRange {
   note?: string | null;
 }
 
-export interface CanonicalBiomarker {
+// One entry of the canonical registry — a `canonical_biomarkers` row: the
+// definition of a reportable clinical RESULT plus the knowledge needed to
+// interpret it (unit, reference and optimal bands with their sex / age / status /
+// cycle-phase overrides, direction, retest cadence). Named for what it defines
+// rather than for "biomarker" (#2479): 68 of the 324 curated entries are not lab,
+// 63 carry no unit and 98 no reference range — a blood group is a registered
+// result definition and is not a quantity. The TABLE keeps its shipped name (part
+// 1 makes no persisted change), so the accessors that read it still say
+// `canonical_biomarkers`. The three axes this type does NOT settle — storage
+// category, catalog browsability, identity — are mapped in
+// docs/internals/clinical-result-terminology.md.
+export interface CanonicalResultDefinition {
   name: string;
   category: string | null;
   unit: string | null;

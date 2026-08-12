@@ -163,7 +163,7 @@ describe("quiet-stream detection (#2146)", () => {
     const rows = getQuietStreams(profileId);
     expect(rows).toHaveLength(1);
     const [row] = rows;
-    expect(row.provider).toBe(PROVIDER);
+    expect(row.sourceId).toBe(PROVIDER);
     expect(row.streamId).toBe("heart-rate");
     // BOTH halves of the conversion, stated. 21:05 in New York on 2026-07-14 is
     // 01:05Z on the 15th — a reader that took the stored instant for a wall clock, or
@@ -183,7 +183,7 @@ describe("quiet-stream detection (#2146)", () => {
     const [row] = getQuietStreamRows(profileId, loginId);
     expect(row.key).toBe(
       quietStreamDedupeKey({
-        provider: PROVIDER,
+        sourceId: PROVIDER,
         streamId: "heart-rate",
         today: DAY,
       })

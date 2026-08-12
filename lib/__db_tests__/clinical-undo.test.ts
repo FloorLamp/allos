@@ -345,6 +345,111 @@ describe("immunization delete → undo (#1847)", () => {
   });
 });
 
+describe("visit delete → undo (#1847)", () => {
+  it("detaches every inbound encounter_id so the delete lands, restores the visit, and leaves the links cleared", () => {
+    const encounterId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, reason, notes)
+           VALUES (?, '2026-04-08', 'office', 'Annual physical', 'ran long')`
+        )
+        .run(p.profileId).lastInsertRowid
+    );
+    // Two of the many inbound links a visit collects: a reading recorded at it, and an
+    // appointment kept as it. Both FKs carry no ON DELETE, so until the detach moved
+    // into captureDelete this delete could only ever work from the one action.
+    const recordId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, value_num, unit, canonical_name, encounter_id)
+           VALUES (?, '2026-04-08', 'lab', 'Ferritin', '84', 84, 'ng/mL', 'Ferritin', ?)`
+        )
+        .run(p.profileId, encounterId).lastInsertRowid
+    );
+    const apptId = Number(
+      db
+        .prepare(
+          `INSERT INTO appointments (profile_id, date, title, status, encounter_id)
+           VALUES (?, '2026-04-08', 'Annual physical', 'completed', ?)`
+        )
+        .run(p.profileId, encounterId).lastInsertRowid
+    );
+
+    const undoId = captureDelete("visit", p.profileId, encounterId)!;
+    expect(
+      count("SELECT COUNT(*) c FROM encounters WHERE id = ?", encounterId)
+    ).toBe(0);
+    // The links were detached, not destroyed — the reading and the completed
+    // appointment both survive.
+    expect(
+      one<{ encounter_id: number | null }>(
+        "SELECT encounter_id FROM medical_records WHERE id = ?",
+        recordId
+      )?.encounter_id
+    ).toBeNull();
+    expect(
+      one<{ status: string; encounter_id: number | null }>(
+        "SELECT status, encounter_id FROM appointments WHERE id = ?",
+        apptId
+      )
+    ).toEqual({ status: "completed", encounter_id: null });
+
+    expect(restoreDeletedRow(p.profileId, undoId)).toBe(true);
+    expect(
+      one<{ reason: string; notes: string; type: string }>(
+        `SELECT reason, notes, type FROM encounters
+          WHERE profile_id = ? AND date = '2026-04-08'`,
+        p.profileId
+      )
+    ).toEqual({
+      reason: "Annual physical",
+      notes: "ran long",
+      type: "office",
+    });
+    // The documented posture for an inbound null-out (the condition/protocol siblings):
+    // the visit returns, the other rows' "recorded at" links stay honestly cleared.
+    expect(
+      one<{ encounter_id: number | null }>(
+        "SELECT encounter_id FROM medical_records WHERE id = ?",
+        recordId
+      )?.encounter_id
+    ).toBeNull();
+  });
+
+  it("restores with a since-deleted clinician / facility link NULLed", () => {
+    const providerId = Number(
+      db
+        .prepare(
+          `INSERT INTO providers (name, type, dedup_key)
+             VALUES ('Willow Clinic', 'organization', 'clinundo:willow-clinic')`
+        )
+        .run().lastInsertRowid
+    );
+    const encounterId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, reason, provider_id, location_provider_id)
+           VALUES (?, '2026-04-09', 'Follow-up', ?, ?)`
+        )
+        .run(p.profileId, providerId, providerId).lastInsertRowid
+    );
+    const undoId = captureDelete("visit", p.profileId, encounterId)!;
+    // The registry is GLOBAL and merges/deletes re-point only LIVE rows, so a capture
+    // can outlive its target — a verbatim re-insert would abort the undo (#375).
+    db.prepare("DELETE FROM providers WHERE id = ?").run(providerId);
+
+    expect(restoreDeletedRow(p.profileId, undoId)).toBe(true);
+    expect(
+      one<{ provider_id: number | null; location_provider_id: number | null }>(
+        `SELECT provider_id, location_provider_id FROM encounters
+          WHERE profile_id = ? AND date = '2026-04-09'`,
+        p.profileId
+      )
+    ).toEqual({ provider_id: null, location_provider_id: null });
+  });
+});
+
 describe("skin-lesion delete → undo (#1847)", () => {
   it("captures the whole photo series and restores it re-pointed at the new lesion id", () => {
     const lesionId = newLesion("Left shoulder mole");

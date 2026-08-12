@@ -24,8 +24,8 @@ test("Training → Overview shows a plateau finding for the flat Skullcrusher (#
   await expect(card).toContainText(/deload/i);
 });
 
-// Domain 5 — body-metric data hygiene on Trends → Body.
-test("Trends → Body shows a data-hygiene finding for the weight jump (#45)", async ({
+// Domain 5 — body-metric data hygiene on Trends → Overview → body census.
+test("Trends → Overview → body census shows a data-hygiene finding for the weight jump (#45)", async ({
   page,
 }) => {
   await page.goto("/trends");

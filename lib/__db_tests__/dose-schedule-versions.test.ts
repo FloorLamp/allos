@@ -29,13 +29,13 @@ import {
 import {
   getDoseScheduleVersions,
   getSleepMoodData,
-  getSupplementDoses,
-  getSupplements,
+  getIntakeDoses,
+  getIntakeItems,
   invalidateDoseScheduleVersions,
 } from "@/lib/queries";
 import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import { setTimezone } from "@/lib/settings";
-import { doseBucketOn, doseDueOn } from "@/lib/supplement-schedule";
+import { doseBucketOn, doseDueOn } from "@/lib/intake-schedule";
 
 // Anchors on the profile's today, which is what most tests here want: they assert a
 // SHAPE, so which weekday it happens to be cannot change the answer.
@@ -116,8 +116,8 @@ function seedItemWithDose(
 // The dueness answer for every day of the pattern window — the observable behaviour
 // the migration must not change.
 function duenessOverWindow(profileId: number, anchor: string): string {
-  const items = new Map(getSupplements(profileId).map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profileId);
+  const items = new Map(getIntakeItems(profileId).map((s) => [s.id, s]));
+  const doses = getIntakeDoses(profileId);
   return lastNDates(anchor, ADHERENCE_PATTERN_DAYS)
     .map((date) =>
       doses
@@ -292,8 +292,8 @@ describe("buildAdherencePatternFindings — an edit no longer voids the past (#1
       `${narrowedOn} 09:00:00`
     );
 
-    const items = new Map(getSupplements(profileId).map((s) => [s.id, s]));
-    const dose = getSupplementDoses(profileId).find((d) => d.id === doseId)!;
+    const items = new Map(getIntakeItems(profileId).map((s) => [s.id, s]));
+    const dose = getIntakeDoses(profileId).find((d) => d.id === doseId)!;
     const due = (date: string) =>
       doseDueOn(items.get(itemId)!, dose, {
         date,
@@ -417,7 +417,7 @@ describe("bedtime attribution reads the slot in force that night (#1973/#1972)",
 // ---- 4. The history read is memoized, and answers identically (#2066) -------
 //
 // `withScheduleVersions` runs on EVERY current-schedule read, and both the hourly tick
-// and a single page render fan `getSupplementDoses` out across several consumers — each
+// and a single page render fan `getIntakeDoses` out across several consumers — each
 // of which was re-joining the same profile's whole history. The memo collapses that to
 // one join per profile per request/tick. Its correctness argument has exactly two
 // halves, and both are pinned here: the answers never change, and a write is never read
@@ -441,7 +441,7 @@ describe("#2066 — memoizing the history join changes no answer", () => {
 
     const readBucket = (date: string) =>
       doseBucketOn(
-        getSupplementDoses(profileId).find((d) => d.id === doseId)!,
+        getIntakeDoses(profileId).find((d) => d.id === doseId)!,
         date
       );
     const before = shiftDateStr(movedOn, -1);
@@ -484,10 +484,9 @@ describe("#2066 — memoizing the history join changes no answer", () => {
     // Reading mine first primes the memo; the other profile must not be answered from
     // it — keyed per profile, and the join it runs is still scoped through the parent.
     expect(
-      getSupplementDoses(mine.profileId).find((d) => d.id === a.doseId)!
-        .versions
+      getIntakeDoses(mine.profileId).find((d) => d.id === a.doseId)!.versions
     ).toHaveLength(1);
-    const other = getSupplementDoses(theirs.profileId).find(
+    const other = getIntakeDoses(theirs.profileId).find(
       (d) => d.id === b.doseId
     )!;
     expect(other.versions).toBeUndefined();

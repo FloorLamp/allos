@@ -10,19 +10,19 @@ import {
 import { formatPercentile, type FitnessPercentile } from "@/lib/fitness-norms";
 import { bioAgeDelta, bioAgeDeltaPhrase } from "@/lib/bio-age";
 import { strengthLevelLabel } from "@/lib/strength-standards";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 
 // A minimal canonical row carrying just the fields rangeBadge reads (name/unit for
 // conversion, ref + optimal bands, direction). Cast through unknown so the fixture
 // stays small.
 function cb(
-  partial: Partial<CanonicalBiomarker> & {
+  partial: Partial<CanonicalResultDefinition> & {
     name: string;
     unit: string;
-    direction: CanonicalBiomarker["direction"];
+    direction: CanonicalResultDefinition["direction"];
   }
-): CanonicalBiomarker {
-  return partial as unknown as CanonicalBiomarker;
+): CanonicalResultDefinition {
+  return partial as unknown as CanonicalResultDefinition;
 }
 
 const totalChol = cb({
@@ -113,7 +113,11 @@ describe("buildPillars availability", () => {
 
   it("includes the strength pillar when a standing is present", () => {
     const pillars = buildPillars({
-      strength: { level: "advanced", lift: "Back Squat" },
+      strength: {
+        level: "advanced",
+        lift: "Back Squat",
+        exercise: "Barbell Back Squat",
+      },
     });
     expect(pillars.map((p) => p.key)).toEqual(["strength"]);
     expect(pillars[0].detail).toContain("Back Squat");
@@ -155,7 +159,11 @@ describe("buildPillars value equals its source computation (#224)", () => {
 
   it("strength pillar value is the label of the source level", () => {
     const [pillar] = buildPillars({
-      strength: { level: "intermediate", lift: "Deadlift" },
+      strength: {
+        level: "intermediate",
+        lift: "Deadlift",
+        exercise: "Deadlift",
+      },
     });
     expect(pillar.value).toBe(strengthLevelLabel("intermediate"));
     expect(pillar.tone).toBe("warn"); // intermediate

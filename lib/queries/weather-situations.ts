@@ -19,7 +19,7 @@
 import { db } from "../db";
 import { getHomeLocation } from "../settings";
 import { getWeatherDays } from "../integrations/weather-cache";
-import { getSupplements } from "./intake/schedule";
+import { getIntakeItems } from "./intake/schedule";
 import { shiftDateStr } from "../date";
 import { sameSituation } from "../situations";
 import {
@@ -114,7 +114,7 @@ export const WEATHER_RELEVANCE_SYMPTOM_DAYS = 180;
 // Whether ANY active situational intake item is keyed to a weather situation. The
 // primary relevance signal — the user has already said these matter.
 function hasWeatherKeyedItem(profileId: number): boolean {
-  return getSupplements(profileId).some(
+  return getIntakeItems(profileId).some(
     (s: {
       active?: number | boolean;
       condition?: string;
@@ -242,7 +242,7 @@ export function getWeatherDay(
 }
 
 // The cached daily series for a profile's home location over an inclusive date range —
-// the #1728 display read (journal stamps, Timeline day context). Empty without a home
+// the #1728 display read (training log stamps, Timeline day context). Empty without a home
 // location, so those surfaces quietly render nothing.
 export function getWeatherDaysForProfile(
   profileId: number,

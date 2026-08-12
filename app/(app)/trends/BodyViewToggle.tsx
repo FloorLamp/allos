@@ -1,12 +1,20 @@
-import Link from "next/link";
 import { IconLayoutGrid, IconChartLine } from "@tabler/icons-react";
+import SegmentedControl from "@/components/SegmentedControl";
 import type { AppRoute } from "@/lib/hrefs";
 import type { BodyView } from "./body-view";
 
-// The Trends → Body overview toggle (#1067 Phase 2): sparkline TILES vs the classic
+// The Trends → Overview → body census overview toggle (#1067 Phase 2): sparkline TILES vs the classic
 // full-chart STACK. #2152 makes the phone answer unconditional: tiles only, even
 // for `?view=all` and 1D. This desktop-only control chooses the presentation above
 // the breakpoint. A GET-link segmented control keeps the choice in the URL.
+//
+// The shared SegmentedControl in its LINK binding since #2535 — it had its own
+// private `Segment` sub-component and its own rounded-full track, and marked the
+// selection with `aria-pressed` on a <Link>, which is not a state a link supports.
+// `aria-current="true"`, not `"page"`: both segments render the SAME page (Trends
+// Overview) in two presentations, so claiming the selected one is the current page
+// would overclaim — unlike Timeline's or the care trail's, whose segments really are
+// different views of the surface.
 
 export default function BodyViewToggle({
   view,
@@ -18,57 +26,32 @@ export default function BodyViewToggle({
   allHref: AppRoute;
 }) {
   return (
-    <nav
-      aria-label="Body overview layout"
-      data-testid="body-view-toggle"
-      className="inline-flex gap-1 rounded-full border border-black/10 p-1 text-sm dark:border-white/10"
-    >
-      <Segment
-        href={tilesHref}
-        active={view === "tiles"}
-        testid="body-view-tiles"
-      >
-        <IconLayoutGrid className="h-4 w-4" stroke={1.75} aria-hidden />
-        Tiles
-      </Segment>
-      <Segment
-        href={allHref}
-        // The control only renders on desktop, where the URL-less responsive
-        // default IS the full chart stack. Reflect the effective layout instead
-        // of leaving both segments unselected until `?view=all` is explicit.
-        active={view !== "tiles"}
-        testid="body-view-all"
-      >
-        <IconChartLine className="h-4 w-4" stroke={1.75} aria-hidden />
-        All charts
-      </Segment>
-    </nav>
-  );
-}
-
-function Segment({
-  href,
-  active,
-  testid,
-  children,
-}: {
-  href: AppRoute;
-  active: boolean;
-  testid: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      data-testid={testid}
-      aria-pressed={active}
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium transition ${
-        active
-          ? "bg-brand-600 text-white"
-          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-      }`}
-    >
-      {children}
-    </Link>
+    <SegmentedControl<"tiles" | "all">
+      ariaLabel="Body overview layout"
+      ariaCurrent="true"
+      testId="body-view-toggle"
+      // The control only renders on desktop, where the URL-less responsive default
+      // IS the full chart stack. Reflect the effective layout instead of leaving
+      // both segments unselected until `?view=all` is explicit.
+      value={view === "tiles" ? "tiles" : "all"}
+      options={[
+        {
+          value: "tiles",
+          label: "Tiles",
+          href: tilesHref,
+          testId: "body-view-tiles",
+          icon: (
+            <IconLayoutGrid className="h-4 w-4" stroke={1.75} aria-hidden />
+          ),
+        },
+        {
+          value: "all",
+          label: "All charts",
+          href: allHref,
+          testId: "body-view-all",
+          icon: <IconChartLine className="h-4 w-4" stroke={1.75} aria-hidden />,
+        },
+      ]}
+    />
   );
 }

@@ -1,6 +1,6 @@
 // Server-side write cores for the offline-queueable quick-log flows (issue #28).
 // These are the SINGLE implementation of each write: both the online Server Actions
-// (app/(app)/trends/measurement-actions.ts + body-actions.ts, medicine/actions.ts,
+// (app/(app)/trends/measurement-actions.ts + body-actions.ts, nutrition/intake-actions.ts,
 // nutrition/actions.ts, training/activity-actions.ts — the latter two through their
 // shared lib cores) and the offline replay route (app/api/offline-replay) call them,
 // so a replayed write runs byte-for-byte the same validation + persistence the live
@@ -28,6 +28,7 @@ import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
+import { captureDelete } from "@/lib/undo-delete-db";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
 import {
   MOOD_MAX,
@@ -40,7 +41,7 @@ import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { judgeEatenAt } from "@/lib/food-eating-time";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
 import { recordReading, resolveStatedOccurredAt } from "@/lib/reading-writes";
@@ -310,30 +311,48 @@ function upsertManualSample(
 // resolving them against the profile's timezone is exactly what the WhenControl
 // itself would have done (`statedInstantOnDate`); the temperature time lands on
 // the temperature row only, as it always did, and never writes a note again.
+// What one vitals sitting did (#2363) — the twin of `BodyMetricWriteOutcome`, and
+// for the same reason. This answered a bare `boolean`, so a sitting that stated a
+// time the gate refused had nowhere to put the verdict: the readings landed,
+// `occurred_at` went NULL, and the toast said "Measurements saved" with nothing
+// about the minute it discarded. A sitting that also wrote a weight DID report,
+// because the body half already carried the notice — that asymmetry was the bug.
+//
+// `statedTimeRefused` is a NOTICE, never a failure: `wrote` is still true, the rows
+// are still on their own day, and nothing is persisted to chase the user later.
+// Absent whenever nobody stated a time.
+export type VitalsWriteOutcome =
+  { wrote: false } | { wrote: true; statedTimeRefused?: StatedTimeRefusal };
+
 export function insertVitals(
   profileId: number,
   date: string,
   raw: VitalsRawInput,
   occurredAt?: string | null
-): boolean {
-  if (!isRealIsoDate(date)) return false;
+): VitalsWriteOutcome {
+  // A REJECTED submission never reaches the acceptance gate below, so it has no
+  // refusal to report: nothing was written and nothing was judged.
+  if (!isRealIsoDate(date)) return { wrote: false };
   const normalized = normalizeVitalsInput(raw);
-  if ("error" in normalized) return false;
+  if ("error" in normalized) return { wrote: false };
   const { medical, samples, readings } = normalized;
   if (medical.length === 0 && samples.length === 0 && readings.length === 0) {
-    return false;
+    return { wrote: false };
   }
 
   const tz = getTimezone(profileId);
   // The sitting statement, resolved ONCE through the shared boundary so the
   // peak-flow derivation below can only ever use an instant the gate accepted.
   //
-  // `.refused` is COLLAPSED here, and that is #2311's named audit survivor rather
-  // than an oversight: this core answers `boolean`, and the observations it writes
-  // go through `recordReading`, whose outcome has nowhere to carry a refusal either.
-  // #2311 was scoped to the body-metrics half it was reproduced on; widening the
-  // vitals half is a separate change over a different set of callers.
-  const stated = resolveStatedOccurredAt(profileId, date, occurredAt).value;
+  // The verdict is the SITTING'S (#2363), which is why it is taken here rather than
+  // collected from the per-reading outcomes: one statement went through one gate, so
+  // every row `recordReading` writes for this submission carries the identical
+  // verdict on its own outcome, and reading it once cannot disagree with itself.
+  const { value: stated, refused } = resolveStatedOccurredAt(
+    profileId,
+    date,
+    occurredAt
+  );
   // A pre-fold temperature "HH:MM" (a queued intent, or a stale pre-fold tab whose
   // sitting Time was left empty), as an instant on the row's own day — only
   // consulted when the submission carries no sitting INSTANT, because in the
@@ -387,7 +406,9 @@ export function insertVitals(
       measuredAt: at ? `${date}T${at}:00` : null,
     });
   }
-  return true;
+  // The readings landed. If the sitting stated a time and the gate threw it away,
+  // the caller now holds the reason instead of the resolver's shape erasing it.
+  return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
 
 // ── growth (height / head circumference) ───────────────────────────────────────
@@ -464,6 +485,15 @@ export function insertWaistCirc(
 // ignored counter — a submitted check-in re-arms the auto-paused reminder — done
 // here so every write path re-arms identically. Returns false on a rejected
 // payload (bad date / out-of-range scale), true on a successful upsert.
+//
+// NO CAPTURED INSTANT, deliberately (#2312's inventory, answered rather than left
+// to inference). A check-in is a DAY's answer: `MoodPayload` carries no instant,
+// the queue's captured `date` is the whole of its time model (#94 day attribution,
+// untouched by the instant work), and a replay at dinner still lands on the day the
+// user tapped. The one clock read here is `updated_at = datetime('now')`, a pure
+// audit "last modified" stamp — nothing keys a day off it — which by the #1534 rule
+// correctly keeps SQL's real clock. So there is nothing here to route through the
+// seam; a captured instant is what the other three flows had.
 export function upsertMoodLog(
   profileId: number,
   date: string,
@@ -574,11 +604,13 @@ export function clearMoodRating(
   return stmt.run(id, profileId).changes > 0;
 }
 
-export function deleteMoodLog(profileId: number, id: number): boolean {
-  const info = db
-    .prepare(`DELETE FROM mood_logs WHERE id = ? AND profile_id = ?`)
-    .run(id, profileId);
-  return info.changes > 0;
+// Delete a whole check-in — the row IS the day, so this takes valence, energy, anxiety,
+// factors and the note together. Returns the UNDO TOKEN (#2123) rather than a boolean:
+// the readings table's ⋯ → Delete offered Undo for a weigh-in and nothing for a mood row
+// out of the same menu, and a mis-tap here cost a note nobody could retype. `null` means
+// nothing was deleted (no such row, or not this profile's) — the boolean's `false`.
+export function deleteMoodLog(profileId: number, id: number): number | null {
+  return captureDelete("mood-log", profileId, id);
 }
 
 // ── workout session (#1596 — #28's "add set", landed) ──────────────────────────
@@ -646,10 +678,17 @@ function applySetIntent(
   // making the row read as the completed session it is (isCompletedSessionRow).
   // A payload that already carries an end time or a positive duration is left
   // untouched; a start-less capture is already completed and needs nothing.
+  //
+  // The ceiling this capture is judged against is the app's own now (`clockNow()`,
+  // #2312), never a bare `new Date()` — the same correction #2287/#2310 made for
+  // food, on the flow that fix did not reach. A session closed at 18:05 and
+  // replayed at 21:00 must end at 18:05, and under the e2e freeze the capture and
+  // the seam read one clock, so a real-time ceiling would rewrite the close moment
+  // into the reconnect moment. Inert in production, where the seam IS real time.
   const durationField = Number(fd.get("duration_min"));
   const hasDuration = Number.isFinite(durationField) && durationField > 0;
   if (fd.get("start_time") && !fd.get("end_time") && !hasDuration) {
-    const closedAt = new Date(resolveCapturedInstant(capturedAt));
+    const closedAt = new Date(resolveCapturedInstant(capturedAt, clockNow()));
     fd.set("end_time", zonedDateParts(getTimezone(profileId), closedAt).hhmm);
   }
   // Canonical-unit fallbacks only: the capture always stamps the units each value
@@ -949,7 +988,7 @@ export function applyIntent(
       ok = true;
     } else if (intent.flow === "vitals") {
       const p = intent.payload as VitalsPayload;
-      ok = insertVitals(
+      const applied = insertVitals(
         profileId,
         intent.date,
         {
@@ -975,6 +1014,14 @@ export function applyIntent(
         // has `undefined` here — no statement, and the legacy fields above apply.
         p.occurredAt
       );
+      ok = applied.wrote;
+      // A queued sitting is where a fast device clock bites the vitals half, for
+      // the same reason it bites the weigh-in (#2311): the intent carries a
+      // resolved INSTANT because there was no server to ask while offline. The
+      // readings still land, and the reconnect confirmation now says the minute did
+      // not — on the SAME `timeNotice` channel the food flow opened in #2296
+      // (#2363).
+      if (applied.wrote) timeNotice = applied.statedTimeRefused;
     } else {
       // Unknown flow — treat as a permanent rejection (client drops it).
       outcome = { status: "rejected" };

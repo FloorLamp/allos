@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { isMinor } from "@/lib/life-stage";
-import { getUserAge, getDisplayFormatPrefs } from "@/lib/settings";
+import { getProfileAge, getDisplayFormatPrefs } from "@/lib/settings";
 import { getRecordsSpecialtyRelevance } from "@/lib/queries/nav-relevance";
 import { visibleSpecialtyPanes } from "../../nav";
 import { isSubstanceInstrument } from "@/lib/substance-use";
@@ -26,7 +26,7 @@ export default async function RecordsSubstanceUsePage(props: {
 }) {
   const { login, profile } = await requireSession();
   // The first VISIBLE pane, from the shared gated list (see the Vision pane's note).
-  if (isMinor(getUserAge(profile.id)))
+  if (isMinor(getProfileAge(profile.id)))
     redirect(
       visibleSpecialtyPanes(getRecordsSpecialtyRelevance(profile.id))[0].href
     );

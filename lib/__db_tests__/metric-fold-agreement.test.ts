@@ -5,7 +5,7 @@
 // wearable's, the chart's fold dropped the observation (one plotted point) while
 // the page's table concatenated it back in (two listed rows) — the same surface
 // contradicting itself one scroll apart. The repair is a single decision
-// (`foldObservations`, reached here through `bodyMetricSeriesFold`) whose second
+// (`foldObservations`, reached here through `trendMetricSeriesFold`) whose second
 // half IS the observation set the table lists.
 //
 // What this file proves, against real rows in both stores: the fold's two halves
@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { shiftDateStr } from "@/lib/date";
 import { db } from "@/lib/db";
-import { bodyMetricSeriesFold } from "@/lib/body-metric-series";
+import { trendMetricSeriesFold } from "@/lib/trend-metric-series";
 import { getMetricObservations } from "@/lib/queries/readings";
 import { getMetricReadings } from "@/lib/metric-readings";
 import { seedProfile, type SeededProfile } from "./fixtures";
@@ -78,7 +78,7 @@ describe("the metric page's chart and readings table share one fold (#2029)", ()
     // of a day the stream has not already answered for.
     expect(getMetricObservations(p.profileId, "resting-hr")).toHaveLength(2);
 
-    const fold = bodyMetricSeriesFold(
+    const fold = trendMetricSeriesFold(
       "resting-hr",
       p.profileId,
       "kg",
@@ -96,7 +96,7 @@ describe("the metric page's chart and readings table share one fold (#2029)", ()
   });
 
   it("counts the clinic-only day once on both sides", () => {
-    const fold = bodyMetricSeriesFold(
+    const fold = trendMetricSeriesFold(
       "resting-hr",
       p.profileId,
       "kg",
@@ -115,7 +115,7 @@ describe("the metric page's chart and readings table share one fold (#2029)", ()
     // A clinic reading that DISAGREES with the stream is a different reading of the
     // day, so it survives — and both consumers then show the day twice, together.
     addObservationRhr(d(-1), 64);
-    const fold = bodyMetricSeriesFold(
+    const fold = trendMetricSeriesFold(
       "resting-hr",
       p.profileId,
       "kg",

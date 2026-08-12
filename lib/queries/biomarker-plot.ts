@@ -16,9 +16,9 @@
 import { getBiomarkerSeriesWithDerivedFor } from "./derived";
 import { getCanonicalBiomarker } from "./medical";
 import {
-  getUserSex,
-  getUserReproductiveStatus,
-  userAgeResolver,
+  getProfileSex,
+  getProfileReproductiveStatus,
+  profileAgeResolver,
 } from "../settings";
 import {
   referenceRange,
@@ -26,11 +26,11 @@ import {
   parseLooseValue,
 } from "../reference-range";
 import { convertToCanonical, sameUnit } from "../unit-conversions";
-import type { MedicalRecord } from "../types";
+import type { ClinicalObservation } from "../types";
 
 export interface BiomarkerPlot {
   // The family's readings, oldest→newest (the detail page's table).
-  rows: MedicalRecord[];
+  rows: ClinicalObservation[];
   // The plottable numeric points, in `unit`.
   points: { date: string; value: number }[];
   // The unit `points` are expressed in, or null when the analyte has neither a
@@ -83,9 +83,9 @@ export function biomarkerPlots(
 
   const seriesByName = getBiomarkerSeriesWithDerivedFor(profileId, names);
 
-  const sex = once(() => getUserSex(profileId));
-  const status = once(() => getUserReproductiveStatus(profileId));
-  const ageResolver = once(() => userAgeResolver(profileId));
+  const sex = once(() => getProfileSex(profileId));
+  const status = once(() => getProfileReproductiveStatus(profileId));
+  const ageResolver = once(() => profileAgeResolver(profileId));
 
   for (const canonical of names) {
     out.set(
@@ -119,11 +119,11 @@ function once<T>(fn: () => T): () => T {
 // the identical body; the demographics arrive as thunks so a series-less analyte
 // costs nothing.
 function shapePlot(
-  series: MedicalRecord[],
+  series: ClinicalObservation[],
   canonical: string,
   demographics: {
-    sex: () => ReturnType<typeof getUserSex>;
-    status: () => ReturnType<typeof getUserReproductiveStatus>;
+    sex: () => ReturnType<typeof getProfileSex>;
+    status: () => ReturnType<typeof getProfileReproductiveStatus>;
     ageOn: (on: string | null) => number | null;
   }
 ): BiomarkerPlot | null {

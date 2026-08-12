@@ -11,13 +11,13 @@ import {
 
 // Per-activity form-check video strip (#1224 phase 1). Attach a lift/movement clip
 // to an activity for later form review; each clip streams from the session-scoped
-// Range serve route (/api/activity-video/[id]). Active-profile scoped (the Journal
+// Range serve route (/api/activity-video/[id]). Active-profile scoped (the Training Log
 // is the acting profile's training surface). A clip carrying embedded location
 // metadata shows the privacy note.
 //
 // TWO placements since #1457, distinguished by `showAdd`:
 //
-//   - The Journal CARD (`showAdd` omitted) is a READ surface: it renders only when
+//   - The Training Log CARD (`showAdd` omitted) is a READ surface: it renders only when
 //     clips exist. It used to render for every writable activity regardless of type
 //     or content, so a Strava easy run, a walk, and an imported swim each carried a
 //     "Form check" heading, a "No clips…" line, and a button — the affordance was
@@ -50,7 +50,7 @@ export default function ActivityVideoStrip({
   videos: ActivityVideoView[];
   canWrite: boolean;
   // Render the add affordance (and therefore the empty state). The editor sets it;
-  // the Journal card does not.
+  // the Training Log card does not.
   showAdd?: boolean;
   // Notifies the editor that the clip set changed, so it can re-read it — the card
   // gets the same news from the clip actions' own revalidate.

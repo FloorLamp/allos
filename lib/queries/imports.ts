@@ -54,8 +54,8 @@ import { getMedMatchStates } from "./intake/medications";
 import { foldConsolidatedMeds } from "../medication-renewal";
 import { parsePrescription } from "../prescription-parse";
 import type { PersistInput, PersistRecord } from "../import-shape";
-import { getRecordsForDocument } from "./medical";
-import { recordCategoryRank, recordsTabKey } from "../import-browser";
+import { getObservationsForDocument } from "./medical";
+import { observationCategoryRank, observationsTabKey } from "../import-browser";
 import { encounterTypeDisplay } from "../encounter-kind";
 import { variantDisplayLabel } from "../genomic-variant";
 import { studyDisplayLabel } from "../imaging-study";
@@ -167,22 +167,22 @@ export function getImportLog(profileId: number): ImportLogRow[] {
   ]);
 }
 
-// The registered ATTENDED providers (#2301): the family whose runs only happen because
+// The registered ATTENDED sources (#2301): the family whose runs only happen because
 // a person made them happen — a Takeout archive handed over by hand, a companion tool
 // signed in on the user's own machine. Read from the delivery axis rather than named,
 // which is the whole fix here: this query used to say `provider = 'fitbit-takeout'`,
 // enumerating a two-member family by naming ONE of its members. The consequence was
 // not cosmetic — patient-portals' recorded runs, failures included, appeared on NO
 // Review surface at all, because Connected sources excludes the kind (it is not
-// scheduled), this feed excluded the provider, and `getImportIssues` cannot reach it
-// (an attended provider is exempt from the silence rule, so it can never be `failing`).
-const ATTENDED_PROVIDERS: readonly string[] = integrationsWithDelivery(
+// scheduled), this feed excluded the source, and `getImportIssues` cannot reach it
+// (an attended source is exempt from the silence rule, so it can never be `failing`).
+const ATTENDED_SOURCES: readonly string[] = integrationsWithDelivery(
   "attended"
 ).map((i) => i.id);
 
 // The placeholders for the IN list. Built from the registry at module load, so the SQL
 // is still a fixed shape per build and every value is bound, never interpolated.
-const ATTENDED_PLACEHOLDERS = ATTENDED_PROVIDERS.map(() => "?").join(", ");
+const ATTENDED_SOURCE_PLACEHOLDERS = ATTENDED_SOURCES.map(() => "?").join(", ");
 
 // A profile's ATTENDED-run sync events, newest first. An attended run is a one-off
 // where chronology is the point — exactly what this section already covers — so its
@@ -192,22 +192,25 @@ function getAttendedImportSyncEvents(
   profileId: number,
   limit: number
 ): FeedSyncEvent[] {
-  if (ATTENDED_PROVIDERS.length === 0) return [];
-  return db
-    .prepare(
-      `SELECT id, provider, at, ok, window_start, window_end,
+  if (ATTENDED_SOURCES.length === 0) return [];
+  return (
+    db
+      // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
+      .prepare(
+        `SELECT id, provider AS source_id, at, ok, window_start, window_end,
               inserted, updated, unchanged, written, suppressed, edited, skipped,
               error, raw_ref
          FROM integration_sync_events
-        WHERE profile_id = ? AND provider IN (${ATTENDED_PLACEHOLDERS})
+        WHERE profile_id = ? AND provider IN (${ATTENDED_SOURCE_PLACEHOLDERS})
         ORDER BY at DESC, id DESC
         LIMIT ?`
-    )
-    .all(profileId, ...ATTENDED_PROVIDERS, limit) as FeedSyncEvent[];
+      )
+      .all(profileId, ...ATTENDED_SOURCES, limit) as FeedSyncEvent[]
+  );
 }
 
 // The "Imports" feed behind Data → Review: a profile's ONE-OFF imports — uploaded
-// documents, paste/CSV jobs, and every ATTENDED provider's runs — merged newest-first,
+// documents, paste/CSV jobs, and every ATTENDED source's runs — merged newest-first,
 // where chronology is the point. SCHEDULED integration syncs remain in their own
 // "Connected sources" section (getConnectedSources), collapsed to latest-state, so
 // hourly sync noise cannot drown the occasional import. Capped at `limit` after the
@@ -456,7 +459,7 @@ export function getDocumentProduced(
 //
 // The read-only rows one document produced in each non-medical_records table,
 // for the tabbed browser on /import/[id] (medical_records tabs reuse
-// getRecordsForDocument). Each read is profile-scoped AND traced to the document
+// getObservationsForDocument). Each read is profile-scoped AND traced to the document
 // via the exact provenance link the writer stamped — document_id, or
 // documentSource(id) for the source-keyed tables — mirroring getDocumentProduced
 // above, so a tab's rows are exactly the rows its count counted. The page maps
@@ -822,13 +825,16 @@ export function getDocumentTriageRows(
   // serves whichever of them were hedged on. Ordered by the tab strip's own
   // category order, so "the first match's tab" means the leftmost tab.
   if (want.has("lab") || want.has("vitals") || want.has("medication")) {
-    const records = getRecordsForDocument(profileId, docId)
-      .map((r) => ({ r, rank: recordCategoryRank(r.category) }))
+    const records = getObservationsForDocument(profileId, docId)
+      .map((r) => ({ r, rank: observationCategoryRank(r.category) }))
       .sort((a, b) => a.rank - b.rank || a.r.id - b.r.id);
     for (const { r } of records) {
       const kind = recordConfidenceKind(r.category);
       if (!want.has(kind)) continue;
-      push(kind, recordsTabKey(r.category), r.id, [r.name, r.canonical_name]);
+      push(kind, observationsTabKey(r.category), r.id, [
+        r.name,
+        r.canonical_name,
+      ]);
     }
   }
   if (want.has("encounter")) {

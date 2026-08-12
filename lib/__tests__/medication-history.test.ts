@@ -21,7 +21,7 @@ import {
 import type {
   MedicationCourse,
   MedicationSideEffect,
-  Supplement,
+  IntakeItem,
 } from "../types";
 
 function course(
@@ -57,8 +57,8 @@ function sideEffect(
   };
 }
 
-function med(id: number, name: string, active: 0 | 1 = 1): Supplement {
-  return { id, name, active } as unknown as Supplement;
+function med(id: number, name: string, active: 0 | 1 = 1): IntakeItem {
+  return { id, name, active } as unknown as IntakeItem;
 }
 
 describe("stop_reason validation", () => {

@@ -7,7 +7,7 @@ import {
   deleteAdministration,
   logHistoricalDose,
   updateHistoricalDose,
-} from "@/app/(app)/nutrition/supplement-actions";
+} from "@/app/(app)/nutrition/intake-actions";
 import { actAs, fd, seedActor } from "./harness";
 
 function seedMedication(

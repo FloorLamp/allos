@@ -30,19 +30,19 @@ enable an authenticated ingest endpoint here and point the exporter at it.
 
 **What gets imported** (mapped from the app's native payload):
 
-| Health Connect data                                                 | Where it lands                                                                                                                                                                 |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Weight                                                              | **Trends → Body** (one imported weigh-in per day)                                                                                                                              |
-| Body fat, resting HR                                                | **Trends → Body** charts (kept lossless even on days without a weigh-in)                                                                                                       |
-| Steps, distance, calories                                           | **Trends → Body** charts (daily totals)                                                                                                                                        |
-| Sleep                                                               | **Trends → Body** charts: total per night + a stacked deep/REM/light/awake stage breakdown (attributed to the wake-up day), plus a **Sleep Regularity Index** card (see below) |
-| Heart rate (continuous)                                             | Bucketed to 1-minute averages → daily + intraday HR charts                                                                                                                     |
-| Heart rate variability                                              | Stored per day                                                                                                                                                                 |
-| Exercise sessions                                                   | **Training history** (cardio, sport, or — when Health Connect sends "a workout, unspecified" — an **unspecified** session it asks you to name)                                 |
-| Blood pressure, glucose, SpO₂, body temp, respiratory rate, VO₂ max | **Medical → Results → Biomarkers** (with reference-range flags)                                                                                                                |
-| Lean mass, bone mass, BMR, height                                   | **Trends → Body** charts (height also drives a BMI chart)                                                                                                                      |
-| Hydration                                                           | **Trends → Body** chart (liters/day)                                                                                                                                           |
-| Nutrition                                                           | Calories under **Trends → Body**; macros and fiber under **Trends → Nutrition**                                                                                                |
+| Health Connect data                                                 | Where it lands                                                                                                                                                                                   |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Weight                                                              | **Trends → Overview → body census** (one imported weigh-in per day)                                                                                                                              |
+| Body fat, resting HR                                                | **Trends → Overview → body census** charts (kept lossless even on days without a weigh-in)                                                                                                       |
+| Steps, distance, calories                                           | **Trends → Overview → body census** charts (daily totals)                                                                                                                                        |
+| Sleep                                                               | **Trends → Overview → body census** charts: total per night + a stacked deep/REM/light/awake stage breakdown (attributed to the wake-up day), plus a **Sleep Regularity Index** card (see below) |
+| Heart rate (continuous)                                             | Bucketed to 1-minute averages → daily + intraday HR charts                                                                                                                                       |
+| Heart rate variability                                              | Stored per day                                                                                                                                                                                   |
+| Exercise sessions                                                   | **Training history** (cardio, sport, or — when Health Connect sends "a workout, unspecified" — an **unspecified** session it asks you to name)                                                   |
+| Blood pressure, glucose, SpO₂, body temp, respiratory rate, VO₂ max | **Medical → Results → Biomarkers** (with reference-range flags)                                                                                                                                  |
+| Lean mass, bone mass, BMR, height                                   | **Trends → Overview → body census** charts (height also drives a BMI chart)                                                                                                                      |
+| Hydration                                                           | **Trends → Overview → body census** chart (liters/day)                                                                                                                                           |
+| Nutrition                                                           | Calories under **Trends → Overview → body census**; macros and fiber under **Trends → Nutrition**                                                                                                |
 
 Ingest is **idempotent**: the rolling 48-hour window means records are resent,
 so imports dedup on natural keys (time windows) and never double-count. Manually
@@ -54,7 +54,7 @@ Consistency of sleep timing turns out to predict mortality risk _better than
 sleep duration_ (Windred et al., "Sleep regularity is a stronger predictor of
 mortality risk than sleep duration", _SLEEP_ 2023, UK Biobank; the index itself
 is from Phillips et al., _Sci. Rep._ 2017). So beyond the nightly-duration
-chart, **Trends → Body** shows a **Sleep Regularity Index** card once you have
+chart, **Trends → Overview → body census** shows a **Sleep Regularity Index** card once you have
 enough recorded nights (a rolling 28-night window with a minimum-nights gate).
 The SRI runs −100 (fully irregular) to 100 (a perfectly reproducible schedule)
 and measures the probability of being in the same sleep/wake state at the same
@@ -117,7 +117,7 @@ shows only "Medical appointment" even inside the shared feed.
 Connect once with OAuth and your runs, rides, and other activities sync
 automatically — with heart rate, elevation, pace, calories, and cycling
 power/cadence. A synced activity's **GPS route** (Strava's summary polyline,
-which respects your privacy zones) is captured too and drawn on its Journal card
+which respects your privacy zones) is captured too and drawn on its Training Log card
 as a small **tile-free SVG route thumbnail** — the route's shape, rendered from
 the stored polyline with no basemap and **no map tiles or external requests**
 (nothing about where you were leaves the box). On ride detail, Strava's aligned
@@ -126,7 +126,7 @@ chart; indoor rides and privacy-trimmed streams omit it.
 
 Synced rides use the same read-first ride destination from the Training Log and
 Analyze history, Timeline, global search, cardio history panels, and linked bike
-history. Runs and other activity types retain their Journal destination, so
+history. Runs and other activity types retain their Training Log destination, so
 importing Strava data does not create a separate navigation model. Training →
 Analyze gives each cycling subtype its own home: road/gravel/e-bike rides remain
 Cycling, MountainBikeRide becomes Mountain Biking, and virtual or trainer rides
@@ -134,7 +134,7 @@ become the indoor-only Stationary Bike activity. Each has its own totals, record
 range-selectable distance/speed/elevation/HR/power/cadence/effort progression,
 rolling 28-day form, ride-window HR zones, power bests and load, route/telemetry
 coverage, segment PRs, and linked ride history. Ride details link back to that
-state instead of dropping the reader at one Journal row.
+state instead of dropping the reader at one Training Log row.
 
 1. Create an API application in your
    [Strava API settings](https://www.strava.com/settings/api) to get a **Client
@@ -165,12 +165,12 @@ data from Oura's REST API on the hourly tick (and on demand).
 
 **What gets imported** (mapped from the Oura API v2 responses):
 
-| Oura data                                | Where it lands                                                                                                     |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Sleep (nightly `long_sleep`)             | **Trends → Body** charts: total per night + a deep/REM/light/awake stage breakdown (attributed to the wake-up day) |
-| Nightly HRV (average RMSSD)              | **Trends → Body** (stored per day)                                                                                 |
-| Resting heart rate (lowest during sleep) | **Trends → Body** charts                                                                                           |
-| Workouts                                 | **Training history** (cardio / strength / sport, with distance + calories)                                         |
+| Oura data                                | Where it lands                                                                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Sleep (nightly `long_sleep`)             | **Trends → Overview → body census** charts: total per night + a deep/REM/light/awake stage breakdown (attributed to the wake-up day) |
+| Nightly HRV (average RMSSD)              | **Trends → Overview → body census** (stored per day)                                                                                 |
+| Resting heart rate (lowest during sleep) | **Trends → Overview → body census** charts                                                                                           |
+| Workouts                                 | **Training history** (cardio / strength / sport, with distance + calories)                                                           |
 
 The sync is **incremental and idempotent**: a per-profile cursor tracks the
 newest synced day, each run re-scans a short trailing window (so a night Oura
@@ -208,16 +208,16 @@ app. The app pulls your measurements from Withings' REST API on the hourly tick
 
 **What gets imported** (mapped from the Withings measure + sleep APIs):
 
-| Withings data                         | Where it lands                                                                     |
-| ------------------------------------- | ---------------------------------------------------------------------------------- |
-| Weight, body fat %                    | **Trends → Body** charts (stored per day, source `withings`)                       |
-| Heart pulse (scale / BP cuff)         | **Trends → Body** resting heart rate                                               |
-| Lean & bone mass                      | **Trends → Body** composition charts (`metric_samples`, one reading per weigh-in)  |
-| Muscle mass, total body water         | `metric_samples` (`muscle_mass_kg` / `body_water_kg`) — captured per weigh-in      |
-| VO₂ max                               | **Medical → Results → Biomarkers** (`medical_records`)                             |
-| Blood pressure (systolic + diastolic) | **Medical → Results → Biomarkers**, alongside manually entered blood pressure      |
-| SpO₂, body temperature                | **Vitals** (temperature converted °C → °F canonical)                               |
-| Sleep (deep / REM / light / awake)    | **Trends → Body** — total per night + stage breakdown (attributed to the wake day) |
+| Withings data                         | Where it lands                                                                                       |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Weight, body fat %                    | **Trends → Overview → body census** charts (stored per day, source `withings`)                       |
+| Heart pulse (scale / BP cuff)         | **Trends → Overview → body census** resting heart rate                                               |
+| Lean & bone mass                      | **Trends → Overview → body census** composition charts (`metric_samples`, one reading per weigh-in)  |
+| Muscle mass, total body water         | `metric_samples` (`muscle_mass_kg` / `body_water_kg`) — captured per weigh-in                        |
+| VO₂ max                               | **Medical → Results → Biomarkers** (`medical_records`)                                               |
+| Blood pressure (systolic + diastolic) | **Medical → Results → Biomarkers**, alongside manually entered blood pressure                        |
+| SpO₂, body temperature                | **Vitals** (temperature converted °C → °F canonical)                                                 |
+| Sleep (deep / REM / light / awake)    | **Trends → Overview → body census** — total per night + stage breakdown (attributed to the wake day) |
 
 The sync is **incremental and idempotent**: measures use Withings' `lastupdate`
 cursor (its `updatetime` echo is the next cursor), sleep uses a trailing date
@@ -570,7 +570,7 @@ them on read:
 - **Point metrics** (weight, body fat, resting HR, HRV) keep every source's
   readings for comparison; charts and latest-value readouts resolve to one
   value.
-- **Trends → Body** grows a **Compare sources** section as soon as any metric
+- **Trends → Overview → body census** grows a **Compare sources** section as soon as any metric
   has two or more reporting sources: a per-source overlay chart for each such
   metric, with a **Primary source** picker beside it. "Automatic" (the default)
   prefers a manual entry, then Health Connect, then Oura, then Withings, then

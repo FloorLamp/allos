@@ -2,12 +2,12 @@
 //
 // ── The class this exists for: connection-level health, data-level silence ────
 //
-// A provider can be syncing green while one of its continuous data streams has gone
+// A source can be syncing green while one of its continuous data streams has gone
 // silent. Three detectors already watch a connection and NONE of them can see it:
 //
 //   • #1685 staleness watches the LAST SUCCESSFUL SYNC. The phone is still pushing,
 //     so nothing is stale.
-//   • `currentlyFailingProviders` needs a RECORDED FAILURE. Nothing failed.
+//   • `currentlyFailingSources` needs a RECORDED FAILURE. Nothing failed.
 //   • #2097's sleep predicate is MULTI-DAY. This is a same-day intraday gap.
 //
 // The measured signature: heart-rate minutes stop at 21:05; pushes continue `ok=1`
@@ -21,7 +21,7 @@
 //   > successful pushes, and the frontier is older than the stream's declared dip
 //   > tolerance.
 //
-// THE FIRST CLAUSE IS THE DISCRIMINATOR (#2341 item 4). It used to be "the provider
+// THE FIRST CLAUSE IS THE DISCRIMINATOR (#2341 item 4). It used to be "the source
 // kept syncing ok in that window", and that clause was true in both the case this
 // detects and the case it must not: a push that is merely LATE is still a successful
 // push. #2341 measured this pipeline running 30–61 minutes behind the wrist, against a
@@ -64,17 +64,17 @@ import type { ContinuousStreamId, IntegrationId } from "../types";
 import { frontierEvidence } from "../stream-frontier";
 import { formatSilence } from "./staleness";
 
-/** The facts one (provider, stream) pair presents to the predicate. */
+/** The facts one (source, stream) pair presents to the predicate. */
 export interface QuietStreamSignals {
-  provider: IntegrationId;
+  sourceId: IntegrationId;
   streamId: ContinuousStreamId;
   /**
-   * Is the connection in ordinary standing? False when the provider is already
+   * Is the connection in ordinary standing? False when the source is already
    * carrying a `failing` or `stale` attention row. #2146 constraint 7 / the #1685
-   * rule: one row names the cause, so a provider whose whole connection is broken is
+   * rule: one row names the cause, so a source whose whole connection is broken is
    * not ALSO told that one of its streams is quiet.
    */
-  providerHealthy: boolean;
+  sourceHealthy: boolean;
   /**
    * Was this stream delivering on the days behind today? The shared #2097/#2146
    * expected-active gate (lib/stream-activity.ts), resolved by the caller over the
@@ -104,8 +104,8 @@ export interface QuietStreamSignals {
 }
 
 export type QuietStreamSkip =
-  /** A reconnect/stopped row already owns this provider (#1685, constraint 7). */
-  | "provider-unhealthy"
+  /** A reconnect/stopped row already owns this source (#1685, constraint 7). */
+  | "source-unhealthy"
   /** This stream was not delivering to begin with — nothing was interrupted. */
   | "not-expected-active"
   /** Nothing has ever arrived on the stream: no baseline to be quiet against. */
@@ -139,7 +139,7 @@ export type QuietStreamVerdict =
  * minute, so waiting one more minute means waiting until tomorrow.
  */
 export function quietStreamVerdict(s: QuietStreamSignals): QuietStreamVerdict {
-  if (!s.providerHealthy) return { quiet: false, skip: "provider-unhealthy" };
+  if (!s.sourceHealthy) return { quiet: false, skip: "source-unhealthy" };
   if (!s.expectedActive) return { quiet: false, skip: "not-expected-active" };
   if (s.minutesSinceStream == null) return { quiet: false, skip: "no-stream" };
   if (s.minutesSinceStream <= s.toleranceMin)
@@ -155,7 +155,7 @@ export function quietStreamVerdict(s: QuietStreamSignals): QuietStreamVerdict {
 
 /** One quiet stream, with everything its rendered row needs. */
 export interface QuietStream {
-  provider: IntegrationId;
+  sourceId: IntegrationId;
   streamId: ContinuousStreamId;
   /** Whole minutes of silence, for the duration copy. */
   quietForMin: number;
@@ -175,9 +175,9 @@ export interface QuietStreamCandidate extends QuietStreamSignals {
 }
 
 /**
- * Every quiet stream among the candidates, AT MOST ONE PER PROVIDER.
+ * Every quiet stream among the candidates, AT MOST ONE PER SOURCE.
  *
- * A provider may declare several continuous streams; the surface still gets one row,
+ * A source may declare several continuous streams; the surface still gets one row,
  * because "your watch is off" is one fact however many streams it interrupts. The
  * longest-quiet stream wins — it is the one that has been wrong the longest, so it
  * names the earliest honest "since".
@@ -194,15 +194,15 @@ export function quietStreams(
     if (!verdict.quiet || c.sinceAt == null || c.sinceLocalHhmm == null)
       continue;
     const row: QuietStream = {
-      provider: c.provider,
+      sourceId: c.sourceId,
       streamId: c.streamId,
       quietForMin: verdict.quietForMin,
       sinceAt: c.sinceAt,
       sinceLocalHhmm: c.sinceLocalHhmm,
       today: c.today,
     };
-    const held = best.get(c.provider);
-    if (!held || row.quietForMin > held.quietForMin) best.set(c.provider, row);
+    const held = best.get(c.sourceId);
+    if (!held || row.quietForMin > held.quietForMin) best.set(c.sourceId, row);
   }
   return [...best.values()];
 }
@@ -218,11 +218,11 @@ export function quietStreams(
  * Tuesday's.
  */
 export function quietStreamDedupeKey(s: {
-  provider: IntegrationId;
+  sourceId: IntegrationId;
   streamId: ContinuousStreamId;
   today: string;
 }): string {
-  return `quiet-stream:${s.provider}:${s.streamId}:${s.today}`;
+  return `quiet-stream:${s.sourceId}:${s.streamId}:${s.today}`;
 }
 
 /**
@@ -230,10 +230,10 @@ export function quietStreamDedupeKey(s: {
  * the connection is fine, which is why nothing else reported this.
  */
 export function quietStreamTitle(
-  providerName: string,
+  sourceName: string,
   streamLabel: string
 ): string {
-  return `${providerName} is syncing, but ${streamLabel} data has stopped`;
+  return `${sourceName} is syncing, but ${streamLabel} data has stopped`;
 }
 
 /**

@@ -60,7 +60,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
             flag: "high",
           },
         ],
-        integrations: [{ id: "strava", provider: "Strava", detail: "401" }],
+        integrations: [{ id: "strava", sourceName: "Strava", detail: "401" }],
         reviewCount: 2,
       })
     );
@@ -93,7 +93,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
     // The verb up front — no more actionless "HDL Cholesterol · Flagged result 55".
     expect(item.title).toBe("Review HDL Cholesterol");
     expect(item.detail).toBe("Flagged low — 35");
-    expect(item.href).toBe("/biomarkers/view?name=HDL%20Cholesterol");
+    expect(item.href).toBe("/results/readings/view?name=HDL%20Cholesterol");
     expect(item.dueText).toBe("Low");
     expect(item.suppressible).toBe(true);
     // No risk reasons passed ⇒ plain flag line + a single flagged reason.
@@ -144,7 +144,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
         ],
       })
     );
-    expect(item.href).toBe("/results/biomarkers");
+    expect(item.href).toBe("/results/readings");
   });
 
   it("an out-of-range flag outranks a merely non-optimal one within its group (#517 priority)", () => {
@@ -181,7 +181,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
         integrations: [
           {
             id: "strava",
-            provider: "Strava",
+            sourceName: "Strava",
             detail: "401 Unauthorized",
           },
         ],
@@ -206,7 +206,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
     const [item] = buildAttentionModel(
       input({
         integrations: [
-          { id: null, provider: "Legacy source", detail: "Sync failed" },
+          { id: null, sourceName: "Legacy source", detail: "Sync failed" },
         ],
       })
     );
@@ -478,7 +478,7 @@ describe("the strict subset invariant", () => {
       flaggedBiomarkers: [
         { name: "LDL", canonicalName: "LDL", value: "160", flag: "high" },
       ],
-      integrations: [{ id: "strava", provider: "Strava", detail: "401" }],
+      integrations: [{ id: "strava", sourceName: "Strava", detail: "401" }],
       reviewCount: 4,
     })
   );

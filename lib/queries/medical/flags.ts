@@ -16,7 +16,7 @@
 export function flagReconcileProfileContext(profileId: number) {
   const cbRows = db
     .prepare("SELECT * FROM canonical_biomarkers")
-    .all() as CanonicalBiomarker[];
+    .all() as CanonicalResultDefinition[];
   const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
   // Alias-aware resolution: the pure core looks a row's canonical_name up by exact
   // (lowercased) name, so a stored row whose canonical_name is a legacy spelling or
@@ -32,10 +32,10 @@ export function flagReconcileProfileContext(profileId: number) {
     cbByName,
     resolve,
     ctx: {
-      sex: getUserSex(profileId),
-      birthdate: getUserBirthdate(profileId),
+      sex: getProfileSex(profileId),
+      birthdate: getProfileBirthdate(profileId),
       age: getStoredAge(profileId),
-      reproductiveStatus: getUserReproductiveStatus(profileId),
+      reproductiveStatus: getProfileReproductiveStatus(profileId),
       periods: listCyclePeriods(profileId),
     },
   };
@@ -206,8 +206,8 @@ import {
 import type { PersistInput } from "../../import-shape";
 import {
   getStoredAge,
-  getUserBirthdate,
-  getUserReproductiveStatus,
-  getUserSex,
+  getProfileBirthdate,
+  getProfileReproductiveStatus,
+  getProfileSex,
 } from "../../settings";
-import type { CanonicalBiomarker } from "../../types";
+import type { CanonicalResultDefinition } from "../../types";

@@ -7,7 +7,7 @@ import {
   heldSummaryLine,
   heldResumeAcknowledgment,
   pauseLinkNeedsConfirm,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 
 // Pure tests for the INVERSE situational condition (#1296): pause-during-situation.
 // The dueness matrix (situational-on × pause × PRN), pause-beats-due precedence, the
@@ -63,7 +63,7 @@ describe("isDueOn — pause beats due (#1296)", () => {
     expect(isDueOn(item, ctx(["Illness", "Pre-surgery"]))).toBe(false);
   });
 
-  it("a PRN item stays not-scheduled-due regardless of pause", () => {
+  it("an on-demand item stays not-scheduled-due regardless of pause", () => {
     const item = {
       condition: "daily" as const,
       situation: null,

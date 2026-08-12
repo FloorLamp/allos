@@ -4,13 +4,13 @@ import { loginAs } from "./nav";
 import { followLink, settledClick } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_PIN } from "./fixture-logins";
 
-// ★-PINNED Body card order (#1643) — the USER's half of the Trends → Body sequence.
+// ★-PINNED Body card order (#1643) — the USER's half of the Trends → Overview → body census sequence.
 //
 // Trends had TWO user-arrangement substrates. Overview's is `saved_items`: one ★
 // store, starred from a tile's ⋯ menu or from a metric's own page, re-sequenced by
 // drag (and the menu's arrow fallback) through `reorderSaved` → `setSavedOrder`. The
-// Body tab had a second, order-only one that no UI ever wrote. #1643 retired it: the
-// Body tab now leads with the profile's STARRED cards, in the saved order, and ranks
+// the census formerly had a second, order-only one that no UI ever wrote. #1643 retired it: the
+// body census now leads with the profile's STARRED cards, in the saved order, and ranks
 // everything else behind them.
 //
 // Only a browser can prove the two ends meet, because they are three different pages
@@ -114,7 +114,7 @@ test.describe("★-pinned Body card order (#1643)", () => {
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([WEIGHT, STEPS]);
 
       // One gesture, one store — the same `saved_items` row an Overview tile's star
-      // writes, reached through the card the Body tab already renders.
+      // writes, reached through the card the body census already renders.
       await toggleStepsStarFromItsCard(page, "false");
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([STEPS, WEIGHT]);
 
@@ -159,7 +159,7 @@ test.describe("★-pinned Body card order (#1643)", () => {
         .toBe("metric:weight");
       await settled;
 
-      // No control on the Body tab was touched, and its order moved with the store.
+      // No control on the body census was touched, and its order moved with the store.
       await openBodyTiles(page);
       expect(await tileOrder(page, [WEIGHT, STEPS])).toEqual([WEIGHT, STEPS]);
 

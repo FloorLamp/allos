@@ -50,9 +50,18 @@ import type { AppRoute } from "@/lib/hrefs";
 // The plot box carries `.chart-card-plot` (app/globals.css), whose `> *` rule sizes
 // whatever the caller renders to the box. That is deliberate: the card OWNS the plot
 // height, so a call site can't silently reintroduce its own fixed inner height, and
-// the chart's loading / error / empty fallbacks — separate DOM subtrees, each with
-// its own `h-*` — all land on the same footprint without a prop threaded through
-// three components.
+// the chart's loading / error fallbacks — separate DOM subtrees, each with its own
+// `h-*` — all land on the same footprint without a prop threaded through three
+// components.
+//
+// THE ONE EXCEPTION: AN ABSENCE IS NOT A PLOT (#2399). The square / `sm:h-64` rule is
+// right for a chart and wrong for the sentence saying there is no chart — on a lens the
+// profile has not set up, each empty card reserved ~400px to say one line, so half the
+// page was placeholders sitting above the only card with content. `.chart-card-plot`
+// therefore releases its height when its DIRECT child is an `EmptyState`, recognised by
+// the `data-empty-state` marker that component stamps on itself. This is still the CARD
+// deciding: the per-call-site height vocabulary stays gone, and no caller can opt a real
+// chart out of the footprint.
 
 // For the rare call site that puts a WRAPPER between the plot slot and the chart (the
 // full-bleed intraday panel): `.chart-card-plot > *` only reaches the direct child, so
@@ -108,7 +117,7 @@ export default function ChartCard({
   // A right-aligned affordance beside the phone expand icon (a cross-link to
   // another surface). Rendered OUTSIDE the header link so its own href still wins.
   headerAction?: ReactNode;
-  // Stable in-page anchor (the Body tab's jump chips).
+  // Stable in-page anchor (the body census jump chips).
   anchorId?: string;
   testid?: string;
   className?: string;
@@ -120,7 +129,7 @@ export default function ChartCard({
   // negative margins while retaining the normal desktop card cancellation.
   headerBleedClassName?: string;
   // The card's own SURFACE class, for the one card that isn't a plain `.card` — the
-  // Body tab's full-bleed intraday panel, which spends the phone's full viewport
+  // body census full-bleed intraday panel, which spends the phone's full viewport
   // width on the plot. Everything else keeps the default.
   surfaceClass?: string;
   // The DESKTOP plot height (`sm:` and up). Mobile is always the square.

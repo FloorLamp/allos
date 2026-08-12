@@ -22,7 +22,7 @@
 // answers "what did I do" (and still counts low-priority supplements — #221 at the
 // definition layer); this answers "what changed among the things that push me".
 
-import type { AdherenceDot } from "./supplement-adherence";
+import type { AdherenceDot } from "./intake-adherence";
 
 // ---- Window + thresholds --------------------------------------------------
 //
@@ -62,7 +62,7 @@ export interface IntakeDelta {
 }
 
 // One item's slice: its identity plus the ITEM-LEVEL adherence strip (oldest-first)
-// from `supplementAdherenceStrip` — the same per-day aggregation the Supplements
+// from `intakeAdherenceStrip` — the same per-day aggregation the Supplements
 // page renders, so the digest and the page can never disagree about a given day.
 // The caller passes ONLY pushed-tier items (isPushedIntake); this module does not
 // re-derive pushability, it reports on whatever tier it is handed.

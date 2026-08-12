@@ -6,8 +6,8 @@ import {
   flagTone,
   groupTimelineDays,
   isTimelineUnfiltered,
-  journalActivityHref,
-  medicalRecordHref,
+  trainingLogActivityHref,
+  clinicalObservationHref,
   normalizeTimelineRange,
   parseDetailItems,
   parseUtcStamp,
@@ -108,8 +108,8 @@ describe("timeline formatting", () => {
     });
   });
 
-  it("builds journal deep links for activities", () => {
-    expect(journalActivityHref(42)).toBe("/training?tab=log#activity-42");
+  it("builds training log deep links for activities", () => {
+    expect(trainingLogActivityHref(42)).toBe("/training?tab=log#activity-42");
   });
 
   it("allows activity events to carry activity-icon metadata", () => {
@@ -136,17 +136,19 @@ describe("timeline event helpers", () => {
   });
 
   it("builds the medical panel href by specificity", () => {
-    expect(medicalRecordHref(42, ["LDL", "HDL"], "LDL")).toBe("/import/42");
-    expect(medicalRecordHref(null, ["LDL"], "LDL")).toBe(
-      "/biomarkers/view?name=LDL"
+    expect(clinicalObservationHref(42, ["LDL", "HDL"], "LDL")).toBe(
+      "/import/42"
     );
-    expect(medicalRecordHref(null, ["A B"], "A B")).toBe(
-      "/biomarkers/view?name=A%20B"
+    expect(clinicalObservationHref(null, ["LDL"], "LDL")).toBe(
+      "/results/readings/view?name=LDL"
     );
-    expect(medicalRecordHref(null, ["LDL", "HDL"], "LDL")).toBe(
-      "/results/biomarkers"
+    expect(clinicalObservationHref(null, ["A B"], "A B")).toBe(
+      "/results/readings/view?name=A%20B"
     );
-    expect(medicalRecordHref(null, [], null)).toBe("/results/biomarkers");
+    expect(clinicalObservationHref(null, ["LDL", "HDL"], "LDL")).toBe(
+      "/results/readings"
+    );
+    expect(clinicalObservationHref(null, [], null)).toBe("/results/readings");
   });
 
   it("parses pipe-delimited detail-item payloads", () => {

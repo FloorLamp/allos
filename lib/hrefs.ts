@@ -49,7 +49,7 @@ import { continuousReadingSlug } from "./reading-cadence";
 import type { PanelId } from "./biomarker-panels";
 import type { GrowthMetric } from "./growth";
 import type { IntegrationId } from "./types/integrations";
-import type { SupplementKind } from "./types/intake";
+import type { IntakeItemKind } from "./types/intake";
 
 export type AppRoute = Route;
 
@@ -58,7 +58,7 @@ export type AppRoute = Route;
 // --------------------------------------------------------------------------
 
 // The Nutrition umbrella's deep-linkable tabs (#746): Food is the default (no
-// query), Supplements is the former /medicine supplement surface folded in as a
+// query), Supplements is the former combined supplement surface folded in as a
 // tab. Source of truth for the union — the page parses `?tab=`, so a tab rename
 // is one edit and every caller of `nutritionTabHref` is re-checked by the
 // compiler (typedRoutes validates the `/nutrition` path but NOT the `?tab=`
@@ -71,7 +71,7 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 }
 
 // The standalone Medications page (#746) — medications left the old combined
-// /medicine surface for their own Medical-group page.
+// intake surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
 
 // The household medicine cabinet — the shared supply pools registry (#1374). ONE
@@ -108,7 +108,7 @@ export const INSTRUMENTS_HREF: AppRoute = "/records/specialty/mental-health";
 // ONE place the intake-surface seam is encoded, so every deep-linker (Upcoming,
 // Timeline, search, refill/dose Telegram buttons, imports) agrees on where each
 // kind lives — a #285 "rule-carrying link" (the rule = kind → surface).
-export function intakeHref(kind: SupplementKind): AppRoute {
+export function intakeHref(kind: IntakeItemKind): AppRoute {
   return kind === "medication"
     ? MEDICATIONS_HREF
     : nutritionTabHref("supplements");
@@ -128,16 +128,20 @@ export function intakeHref(kind: SupplementKind): AppRoute {
 export const DOSE_LEDGER_ALL_KINDS = "all";
 
 export function doseLedgerHref(
-  surface: SupplementKind,
+  surface: IntakeItemKind,
   params: {
     from?: string;
     to?: string;
-    kind?: SupplementKind | typeof DOSE_LEDGER_ALL_KINDS;
+    kind?: IntakeItemKind | typeof DOSE_LEDGER_ALL_KINDS;
     item?: number;
     // The explicit all-time sentinel. Needed for the same reason Trends needs it: an
     // empty query string means this surface's DEFAULT window, so the "All time" pill
     // has to be able to say itself.
     allTime?: boolean;
+    // The 1-based page of the ledger (#2445). The range control is a FILTER, not a
+    // bound — "All time" is a legitimate window here — so the page is what bounds
+    // the read, and it has to survive in the URL for the pager's links to work.
+    page?: number;
   } = {}
 ): AppRoute {
   const sp = new URLSearchParams();
@@ -146,6 +150,7 @@ export function doseLedgerHref(
   if (params.to) sp.set("to", params.to);
   if (params.kind) sp.set("kind", params.kind);
   if (params.item) sp.set("item", String(params.item));
+  if (params.page && params.page > 1) sp.set("page", String(params.page));
   const qs = sp.toString();
   if (surface === "medication") {
     return qs ? `/medications/dose-history?${qs}` : "/medications/dose-history";
@@ -160,7 +165,7 @@ export function doseLedgerHref(
 export const SUPPLY_PREFILL_PARAM = "supply";
 
 export function addItemFromPoolHref(
-  kind: SupplementKind,
+  kind: IntakeItemKind,
   supplyId: number
 ): AppRoute {
   return kind === "medication"
@@ -172,14 +177,14 @@ export function addItemFromPoolHref(
 // Query-rule helpers
 // --------------------------------------------------------------------------
 
-// The biomarkers LIST route: where `readingDetailHref` falls back when there is
+// The clinical-readings LIST route: where `readingDetailHref` falls back when there is
 // no canonical name to chart, and (since #1447) where a PARAMLESS
-// /biomarkers/view redirects — that route can only render a degenerate empty
+// /results/readings/view redirects — that route can only render a degenerate empty
 // page, and this helper already owns "no name ⇒ the list". One constant so the
 // link rule and the redirect can never point at different places.
-export const BIOMARKERS_LIST_HREF: AppRoute = "/results/biomarkers";
+export const READINGS_LIST_HREF: AppRoute = "/results/readings";
 
-// PRIVATE destination builder: the EPISODIC reading's page (/biomarkers/view), or
+// PRIVATE destination builder: the EPISODIC reading's page (/results/readings/view), or
 // the list when there's nothing to chart. The RULE (was duplicated, wrong in one
 // place — #283 bug 5): the view page resolves `?name=` as the CANONICAL name, so
 // only a canonicalized reading has a series to link to. Gate on `canonicalName`;
@@ -191,7 +196,7 @@ export const BIOMARKERS_LIST_HREF: AppRoute = "/results/biomarkers";
 // rule. Everything outside this module asks `readingDetailHref` for "the detail
 // page for this reading" and gets whichever surface that reading belongs on —
 // exactly as `metricDetailHref` stays honest about being only the metric surface.
-function biomarkerViewHref(
+function episodicReadingHref(
   canonicalName: string | null | undefined,
   rawName?: string | null
 ): AppRoute {
@@ -202,8 +207,8 @@ function biomarkerViewHref(
   // present `canonical` always wins.
   const name = canonical || rawName?.trim();
   return canonical && name
-    ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-    : BIOMARKERS_LIST_HREF;
+    ? `/results/readings/view?name=${encodeURIComponent(name)}`
+    : READINGS_LIST_HREF;
 }
 
 // THE detail page for a clinical reading, wherever that reading's surface lives
@@ -215,7 +220,7 @@ function biomarkerViewHref(
 // The rule is CADENCE, and it lives in lib/reading-cadence.ts: a continuous reading
 // (SpO2, blood pressure, respiratory rate, body temperature) resolves to its metric
 // detail surface, which charts it as the trend it is; every episodic reading resolves
-// to the reference-range renderer at /biomarkers/view. Named for its SUBJECT rather
+// to the reference-range renderer at /results/readings/view. Named for its SUBJECT rather
 // than either destination, because a helper named after one destination invites a
 // caller to reason "this one is different, so I should use something else" — the
 // drift the centralization exists to prevent.
@@ -226,29 +231,29 @@ export function readingDetailHref(
   const slug = continuousReadingSlug(canonicalName);
   return slug
     ? metricDetailHref(slug)
-    : biomarkerViewHref(canonicalName, rawName);
+    : episodicReadingHref(canonicalName, rawName);
 }
 
 // The biomarkers list FILTERED to one normalized panel (#1502). A rule-carrying
 // helper because the `?panel=` facet now encodes a controlled SLUG (not the old
 // free-text heading) on the post-#1079 list route, and two lanes emit it — the
-// Panel cell in BiomarkersTable and the "see the whole panel" link on biomarker
+// Panel cell in ReadingsTable and the "see the whole panel" link on biomarker
 // detail. One encoding so they can't drift onto different routes or param shapes.
 export function panelFilterHref(panel: PanelId): AppRoute {
-  return `/results/biomarkers?panel=${encodeURIComponent(panel)}`;
+  return `/results/readings?panel=${encodeURIComponent(panel)}`;
 }
 
-// The biomarker ADD-FORM deep link: Results › Biomarkers with the add form
+// The reading ADD-FORM deep link: Results › Readings with the add form
 // focused (?new=1) and optionally name-prefilled (#662). This is the ONE encoding
 // of the lab-record deep-link shape (#1083) shared by the preventive screening
 // rows/nudges (lib/preventive-upcoming) and the data-quality PhenoAge gap
 // (#1146), so the two lanes can't diverge (#221). The base is the post-#1079
 // tabbed route — never `/results#biomarkers`, which only survives via redirect.
-export function biomarkerAddHref(name?: string | null): AppRoute {
+export function readingAddHref(name?: string | null): AppRoute {
   const n = name?.trim();
   return n
-    ? `/results/biomarkers?new=1&name=${encodeURIComponent(n)}`
-    : "/results/biomarkers?new=1";
+    ? `/results/readings?new=1&name=${encodeURIComponent(n)}`
+    : "/results/readings?new=1";
 }
 
 // The Medications list filtered to a maintenance slice (#1146). Source of truth
@@ -282,6 +287,39 @@ export function timelineDayHref(
   return subjectProfileId != null
     ? `/timeline?from=${date}&to=${date}&subject=${subjectProfileId}#timeline-day-${date}`
     : `/timeline?from=${date}&to=${date}#timeline-day-${date}`;
+}
+
+// The Timeline over a SPAN of days (#2413). The day link above scrolls to one
+// day's anchor; a span has no single anchor to scroll to, so this filters the
+// feed and stops there rather than inventing one. The week-grain day-history
+// panel is its caller: a week cell selects a week, and "show me that week"
+// means the whole week's feed.
+export function timelineRangeHref(from: string, to: string): AppRoute {
+  return `/timeline?from=${from}&to=${to}`;
+}
+
+// The Training Log's date anchor. Workout-day surfaces land in the domain
+// ledger rather than routing through Timeline; the log owns activity review
+// and editing, while Timeline remains the cross-domain destination.
+export function trainingLogDayHref(date: string): AppRoute {
+  return `/training?tab=log#day-${date}`;
+}
+
+// Turn a day-history panel's domain landing page into its dated CREATE entry
+// point (#2420). The base route remains AppRoute-checked at the server call site;
+// this helper owns the four parameter names so a chart cannot send a date to a
+// destination that does not read it.
+export type DayHistoryAddKind = "food" | "dose" | "practice" | "workout";
+
+export function dayHistoryAddHref(
+  base: AppRoute,
+  kind: DayHistoryAddKind,
+  date: string
+): AppRoute {
+  const param =
+    kind === "dose" ? "backfill" : kind === "practice" ? "log" : "date";
+  const separator = String(base).includes("?") ? "&" : "?";
+  return `${base}${separator}${param}=${encodeURIComponent(date)}` as AppRoute;
 }
 
 // The Data hub's deep-linkable sections. Source of truth for the union — the page
@@ -448,7 +486,7 @@ export function cyclingOverviewHref(lens: CyclingLens): AppRoute {
 }
 
 // The all-ride Cycling home within Training → Analyze. Ride detail pages use
-// this canonical state instead of sending the reader back to a single Journal
+// this canonical state instead of sending the reader back to a single Training Log
 // row; `range=all` makes the first landing an actual overall history.
 export const CYCLING_OVERVIEW_HREF: AppRoute =
   "/training?tab=analyze&kind=cardio&item=Cycling&range=all";
@@ -463,9 +501,9 @@ export function immunizationHref(vaccine: string): AppRoute {
 // full-depth surface (`/trends/metric/weight`, `/trends/metric/steps`,
 // `/trends/metric/mood`, …): the biomarker-view pattern applied to body metrics,
 // and since #1488 the tap-through destination EVERY full-size Trends chart of a
-// registered kind points at. The slug is a stable BodyMetricSlug (see
-// lib/trends-body-metrics); a dynamic route needs the widening cast. Typed `string`
-// (not the slug union) to avoid a hrefs ↔ trends-body-metrics import cycle — the
+// registered kind points at. The slug is a stable TrendMetricSlug (see
+// lib/trend-metrics); a dynamic route needs the widening cast. Typed `string`
+// (not the slug union) to avoid a hrefs ↔ trend-metrics import cycle — the
 // page validates the slug against the registry, and `chart-detail-href.test.ts`
 // pins that every kind the registry declares resolves there.
 export function metricDetailHref(kind: string): AppRoute {

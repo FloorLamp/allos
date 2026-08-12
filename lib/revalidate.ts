@@ -4,7 +4,7 @@
 // dead `<Link href>` a build error (#285) — could never see a revalidate target.
 // That gap produced a real defect class: after the #1042/#1079 route merges several
 // Server Actions kept revalidating URLs that no longer served anything
-// (`/encounters`, `/journal`, `/body`), so the refresh became a silent no-op and the
+// (`/encounters`, a retired training path, `/body`), so the refresh became a silent no-op and the
 // moved surface stayed stale. It was closed by a TEXT SWEEP over app/ sources
 // (lib/__tests__/nav-routes.test.ts, #1636) whose own comment apologized for
 // existing.

@@ -22,23 +22,32 @@ export function usePresence(
   open: boolean,
   durationMs: number
 ): { mounted: boolean; phase: PresencePhase } {
-  const [mounted, setMounted] = useState(open);
-  const [phase, setPhase] = useState<PresencePhase>(open ? "enter" : "exit");
+  const [presence, setPresence] = useState({ open, mounted: open });
+
+  // Opening mounts immediately; closing keeps the prior mount only when an exit
+  // animation actually has time to run. React retries this hook before children
+  // commit, so prop and presence state are never one render out of step.
+  if (
+    presence.open !== open ||
+    (!open && presence.mounted && durationMs <= 0)
+  ) {
+    setPresence({
+      open,
+      mounted: open || (durationMs > 0 && presence.mounted),
+    });
+  }
 
   useEffect(() => {
-    if (open) {
-      setMounted(true);
-      setPhase("enter");
-      return;
-    }
-    setPhase("exit");
-    if (durationMs <= 0) {
-      setMounted(false);
-      return;
-    }
-    const timer = setTimeout(() => setMounted(false), durationMs);
+    if (open || !presence.mounted || durationMs <= 0) return;
+    const timer = setTimeout(
+      () =>
+        setPresence((current) =>
+          current.open ? current : { ...current, mounted: false }
+        ),
+      durationMs
+    );
     return () => clearTimeout(timer);
-  }, [open, durationMs]);
+  }, [open, durationMs, presence.mounted]);
 
-  return { mounted, phase };
+  return { mounted: presence.mounted, phase: open ? "enter" : "exit" };
 }

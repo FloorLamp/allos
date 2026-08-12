@@ -11,8 +11,8 @@ import {
   labGoalHasCheckedIn,
   type BiomarkerGoalTarget,
 } from "../biomarker-goal";
-import { goalPaceTone, isGoalDirection } from "../goals";
-import { GOAL_DIRECTIONS, type Goal } from "../types";
+import { goalPaceTone, isOutcomeGoalDirection } from "../outcome-goals";
+import { OUTCOME_GOAL_DIRECTIONS, type OutcomeGoal } from "../types";
 
 // PURE TIER — biomarker goals (#1853). No DB: every input here is a series the
 // query layer already gathered.
@@ -28,18 +28,20 @@ function target(over: Partial<BiomarkerGoalTarget> = {}): BiomarkerGoalTarget {
   };
 }
 
-function goal(over: Partial<Goal> = {}): Goal {
+function goal(over: Partial<OutcomeGoal> = {}): OutcomeGoal {
   return {
     id: 1,
     title: "LDL under 100",
     description: null,
-    category: "biomarker",
+    kind: "biomarker",
+    categoryLabel: null,
     target_value: 100,
     current_value: null,
     unit: "mg/dL",
     target_date: "2026-06-01",
     status: "active",
     created_at: "2026-01-01 08:00:00",
+    achieved_at: null,
     exercise: null,
     metric: null,
     equipment_id: null,
@@ -86,12 +88,13 @@ describe("directionMet — the declared side of the number", () => {
   });
 });
 
-describe("isGoalDirection — single-sourced from GOAL_DIRECTIONS", () => {
+describe("isOutcomeGoalDirection — single-sourced from OUTCOME_GOAL_DIRECTIONS", () => {
   it("accepts exactly the declared vocabulary", () => {
-    for (const d of GOAL_DIRECTIONS) expect(isGoalDirection(d)).toBe(true);
-    expect(GOAL_DIRECTIONS).toEqual(["below", "above"]);
-    expect(isGoalDirection("under")).toBe(false);
-    expect(isGoalDirection(null)).toBe(false);
+    for (const d of OUTCOME_GOAL_DIRECTIONS)
+      expect(isOutcomeGoalDirection(d)).toBe(true);
+    expect(OUTCOME_GOAL_DIRECTIONS).toEqual(["below", "above"]);
+    expect(isOutcomeGoalDirection("under")).toBe(false);
+    expect(isOutcomeGoalDirection(null)).toBe(false);
   });
 });
 

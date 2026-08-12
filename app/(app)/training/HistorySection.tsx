@@ -2,26 +2,30 @@ import {
   getStrengthByExercise,
   getCardioByActivity,
   getSportByActivity,
-  getGoals,
-  getGoalProgressMap,
+  getOutcomeGoals,
+  getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getLatestBodyMetric,
-  getJournalWeekSummary,
+  getTrainingLogWeekSummary,
   getRecentByExercise,
   getActiveDaysStrip,
 } from "@/lib/queries";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import {
   getUnitPrefs,
-  getUserSex,
+  getProfileSex,
   getDisplayFormatPrefs,
 } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
-import { EMPTY_JOURNAL_FILTERS } from "@/lib/journal-filters";
-import { resolveJournalFeedContext } from "./journal-feed-resolve";
-import JournalView from "./JournalView";
+import { EMPTY_TRAINING_LOG_FILTERS } from "@/lib/training-log-filters";
+import { resolveTrainingLogFeedContext } from "./training-log-feed-resolve";
+import TrainingLogView from "./TrainingLogView";
 
-export default async function HistorySection() {
+export default async function HistorySection({
+  initialCreateDate,
+}: {
+  initialCreateDate?: string;
+}) {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
@@ -29,18 +33,18 @@ export default async function HistorySection() {
   // The feed's FIRST page under NO filters (issues #451, #1634): the newest window
   // of day-grouped cards, not the whole history. Older windows — and, when a filter
   // is on, the filtered page one — are fetched by the "Load more" / filter Server
-  // Action (loadJournalPage), which calls the SAME resolver, so the initial render
+  // Action (loadTrainingLogPage), which calls the SAME resolver, so the initial render
   // and every later fetch build identical cards, authorize identically, and (in a
   // household view) stamp the same subject identity.
   //
-  // Render JournalView unconditionally, even for a brand-new/post-onboarding
+  // Render TrainingLogView unconditionally, even for a brand-new/post-onboarding
   // profile with no activities (issue #809). The early return that short-circuited
-  // to a bare EmptyState kept JournalView — which owns the Log-activity action row
+  // to a bare EmptyState kept TrainingLogView — which owns the Log-activity action row
   // and the activity-editor wiring — from ever mounting, leaving first-run users
-  // with no way to log their first activity. JournalView now renders a dedicated
+  // with no way to log their first activity. TrainingLogView now renders a dedicated
   // first-run empty variant (action row prominent, filters/search hidden); the
   // stats/goals queries below are cheap and empty for a fresh profile.
-  const feed = await resolveJournalFeedContext(EMPTY_JOURNAL_FILTERS);
+  const feed = await resolveTrainingLogFeedContext(EMPTY_TRAINING_LOG_FILTERS);
 
   // Per-exercise recent sessions (last 10) for the exercise detail pane.
   const recentByExercise = getRecentByExercise(
@@ -49,11 +53,11 @@ export default async function HistorySection() {
     getDisplayFormatPrefs(login.id)
   );
 
-  const summary = getJournalWeekSummary(profile.id);
-  const goals = getGoals(profile.id);
+  const summary = getTrainingLogWeekSummary(profile.id);
+  const goals = getOutcomeGoals(profile.id);
   // Map → plain object so it can cross the server/client boundary.
   const goalProgress = Object.fromEntries(
-    getGoalProgressMap(profile.id, goals)
+    getOutcomeGoalProgressMap(profile.id, goals)
   );
   const targets = getFrequencyTargetProgress(profile.id).map((t) => ({
     label: frequencyScopeLabel(t.target.scope_kind, t.target.scope_value),
@@ -64,7 +68,8 @@ export default async function HistorySection() {
   }));
 
   return (
-    <JournalView
+    <TrainingLogView
+      initialCreateDate={initialCreateDate}
       groups={feed.groups}
       initialCursor={feed.cursor}
       sourceOptions={feed.sourceOptions}
@@ -91,7 +96,7 @@ export default async function HistorySection() {
       }}
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}
-      sex={getUserSex(profile.id)}
+      sex={getProfileSex(profile.id)}
       canWriteVideos={feed.canWriteVideos}
       multiView={
         feed.multi ? { actingProfileId: feed.actingProfileId } : undefined

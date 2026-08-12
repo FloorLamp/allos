@@ -95,7 +95,7 @@ export default function TrendMiniCard({
   // off the green/red directional badge while retaining its plotted trajectory.
   showChange?: boolean;
   // The tile's corner ⋯ menu (star / reorder). Omitted by tile grids that carry no
-  // per-tile controls (the Body tab's).
+  // per-tile controls (the body census).
   menu?: ReactNode;
   // Render as a one-line row rather than a card (#1485 A). Only meaningful for a
   // tile with no points AND no out-of-window reading.
@@ -121,7 +121,7 @@ export default function TrendMiniCard({
   emptyMessage?: string;
   // #1485 G: the latest reading BEHIND the window, for a series with no points in
   // it. Optional and off by default, so the range-driven Overview tiles opt in
-  // while BodyMetricTiles keeps the plain empty state. Rendered only when `data`
+  // while TrendMetricTiles keeps the plain empty state. Rendered only when `data`
   // is empty — it is a fallback FOR the empty state, never an annotation on a
   // drawn series.
   outsideWindow?: {

@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -28,15 +29,16 @@ import {
   todayStr,
 } from "./activity-form/model";
 import { useTimezone } from "./TimezoneProvider";
+import { resumeContinuation } from "./resume-continuation";
 import type { PracticeType } from "@/lib/protocol-practice";
 
-// The training route hosts the inline docked editor (JournalView registers a dock
+// The training route hosts the inline docked editor (TrainingLogView registers a dock
 // column), so the app-wide bottom bar is suppressed there — the session is already
 // visible in the page column. Everywhere else the minimized bar carries it.
-const JOURNAL_ROUTE = "/training";
+const TRAINING_LOG_ROUTE = "/training";
 
 interface ActivityEditorApi {
-  openCreate: (prefill?: { type?: PracticeType }) => void;
+  openCreate: (prefill?: { type?: PracticeType; date?: string }) => void;
   // Start a LIVE workout (issue #340): opens a fresh create form (date=today,
   // start=now) in the in-gym layout — the rest timer + set check-off flow. A
   // no-op for an age-restricted profile (strength is gated, #489); gate the
@@ -51,7 +53,7 @@ interface ActivityEditorApi {
   // Whether live workout mode is available (false for age-restricted profiles).
   canStartWorkout: boolean;
   // The ONE start-vs-resume derivation every workout entry point renders (#1893/#221):
-  // the bolt, the palette's live action, the Journal aside, and the routine card all
+  // the bolt, the palette's live action, the Training Log aside, and the routine card all
   // take their LABEL from here, and the open* calls above enforce the same state. See
   // lib/workout-offer.ts.
   workoutOffer: WorkoutOffer;
@@ -176,6 +178,7 @@ export default function ActivityEditorProvider({
   // Repeat-last prefill: seeds a create form. Bumped `repeatNonce` forces a fresh
   // remount so tapping "Log again" twice on the same source re-seeds cleanly.
   const [prefill, setPrefill] = useState<ActivityEditData | null>(null);
+  const [createDate, setCreateDate] = useState<string | null>(null);
   const [repeatNonce, setRepeatNonce] = useState(0);
   const [dockEl, setDockEl] = useState<HTMLElement | null>(null);
   // Whether the currently-open editor should render into the dock. Captured
@@ -183,9 +186,9 @@ export default function ActivityEditorProvider({
   // session, so a dock that registers mid-edit can't yank an open overlay
   // editor into it — which would re-parent the form to a new portal, remounting
   // it back to a blank state and dropping the user's unfinished input. This
-  // happens on the journal page's 0→1-activities transition: with no activities
+  // happens on the training log page's 0→1-activities transition: with no activities
   // the page shows an empty state (no dock), so "Log activity" opens the
-  // overlay; the first auto-save's server re-render mounts JournalView, which
+  // overlay; the first auto-save's server re-render mounts TrainingLogView, which
   // registers the dock. A ref mirrors it so open* can read the live dock
   // presence without taking dockEl as a dependency (which would churn the
   // memoized api on every dock registration).
@@ -195,7 +198,7 @@ export default function ActivityEditorProvider({
   const registerDock = useCallback((el: HTMLElement | null) => {
     dockElRef.current = el;
     setDockEl(el);
-    // The dock is going away (e.g. navigating off the journal). Close the editor
+    // The dock is going away (e.g. navigating off the training log). Close the editor
     // rather than letting it pop back as an overlay on the next page; the
     // docked ActivityForm flushes any pending auto-save on unmount.
     if (!el) setOpen(false);
@@ -203,7 +206,7 @@ export default function ActivityEditorProvider({
 
   // Resume the acting profile's active session in the live editor from the dock —
   // hydrated from the persisted #451 draft (getActivityEditData). Docks into the
-  // journal column when one is present, else the overlay. The elapsed baseline comes
+  // training log column when one is present, else the overlay. The elapsed baseline comes
   // from the SERVER's recorded start (`liveStartEpochMs`), never a fresh Date.now(),
   // so a reload mid-workout resumes the same clock.
   const resumeLive = useCallback(() => {
@@ -216,6 +219,65 @@ export default function ActivityEditorProvider({
     setDocked(dockElRef.current != null);
     setOpen(true);
   }, [liveEditData, liveStartEpochMs]);
+
+  // REOPEN WHAT THE DEPLOY CLOSED (#2471). The tab reloaded ITSELF to take a new
+  // build, so the editor that was on screen a second ago is gone with the document —
+  // and unlike a user's own refresh, nobody asked for that. The one-shot marker
+  // written just before the reload names what to bring back; `useFormDraft` then
+  // applies the draft into it without a banner, because the tap that would have
+  // applied it already happened (see components/resume-continuation.ts).
+  //
+  // WHAT THIS DELIBERATELY DOES NOT DO. A marker naming a STORED row is consumed but
+  // not acted on here: this provider holds the live session's edit data and nothing
+  // else, so reopening an arbitrary activity would need a fetch it has no business
+  // making. That row's draft is untouched and still offered the moment the user opens
+  // it — the pre-#2471 behaviour, which is the honest fallback for a case that cannot
+  // be proven safe rather than a silent partial reopen.
+  const reopenedRef = useRef(false);
+  useEffect(() => {
+    if (reopenedRef.current) return;
+    const marker = resumeContinuation();
+    if (!marker || marker.formKey !== "activity") return;
+    reopenedRef.current = true;
+    // A stored row this provider has no edit data for cannot be reopened here — but
+    // a LIVE session always can, whatever its row id, because presence supplies it.
+    if (marker.live && restricted) return;
+    if (!marker.live && marker.recordId != null) return;
+    if (marker.live && marker.recordId != null && !liveEditData) return;
+    // Reopening is a response to state this document booted with, not a render this
+    // one derives — queue it with the other post-commit work rather than cascading a
+    // second render straight out of the effect body.
+    queueMicrotask(() => {
+      if (!marker.live) {
+        setEditData(null);
+        setCreateDate(null);
+        setPrefill(null);
+        setLive(false);
+        setLiveStartEpoch(null);
+        setMinimized(false);
+        setDocked(dockElRef.current != null);
+        setOpen(true);
+        return;
+      }
+      // Live mode rides its existing rails: presence still decides that a session
+      // exists, and the marker only spares the user the "Resume workout" tap.
+      if (liveEditData) {
+        resumeLive();
+        return;
+      }
+      // A live session the deploy caught before its first save has no server row to
+      // resume from — the create form in live mode IS the session, and its draft is
+      // the whole of it.
+      setEditData(null);
+      setCreateDate(null);
+      setPrefill(null);
+      setLive(true);
+      setLiveStartEpoch(Date.now());
+      setMinimized(false);
+      setDocked(false);
+      setOpen(true);
+    });
+  }, [liveEditData, resumeLive, restricted]);
 
   // A fresh-load active session: nothing is mounted in this client, but the
   // server-hydrated #921 presence says one is running and its draft is reopenable.
@@ -247,12 +309,13 @@ export default function ActivityEditorProvider({
 
   // Memoized so always-mounted consumers (e.g. MobileNav's quick-log button)
   // only re-render when open/editData actually change — not on every provider
-  // render (dock registration churns on journal mount/unmount). `offer` is a
+  // render (dock registration churns on training log mount/unmount). `offer` is a
   // dependency ON PURPOSE: the bolt's label must flip the moment a session goes live.
   const api: ActivityEditorApi = useMemo(
     () => ({
       openCreate: (createPrefill) => {
         setEditData(null);
+        setCreateDate(createPrefill?.date ?? null);
         setPrefill(
           createPrefill?.type
             ? buildActivityTypePrefill(createPrefill.type, todayStr(tz))
@@ -261,7 +324,8 @@ export default function ActivityEditorProvider({
         setLive(false);
         setLiveStartEpoch(null);
         setMinimized(false);
-        if (createPrefill?.type) setRepeatNonce((n) => n + 1);
+        if (createPrefill?.type || createPrefill?.date)
+          setRepeatNonce((n) => n + 1);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
@@ -276,12 +340,13 @@ export default function ActivityEditorProvider({
           return;
         }
         setEditData(null);
+        setCreateDate(null);
         setPrefill(null);
         setLive(true);
         setLiveStartEpoch(Date.now());
         setMinimized(false);
         // Live mode is a focused, full-attention flow — never dock it into the
-        // journal's side column; use the overlay so it reads as its own screen.
+        // training log's side column; use the overlay so it reads as its own screen.
         setDocked(false);
         setOpen(true);
       },
@@ -298,6 +363,7 @@ export default function ActivityEditorProvider({
           return;
         }
         setEditData(null);
+        setCreateDate(null);
         setPrefill(prefillData);
         setLive(true);
         setLiveStartEpoch(Date.now());
@@ -309,6 +375,7 @@ export default function ActivityEditorProvider({
       },
       openEdit: (data) => {
         setEditData(data);
+        setCreateDate(null);
         setPrefill(null);
         setLive(false);
         setLiveStartEpoch(null);
@@ -318,6 +385,7 @@ export default function ActivityEditorProvider({
       },
       openRepeat: (data) => {
         setEditData(null);
+        setCreateDate(null);
         setPrefill(buildRepeatPrefill(data, todayStr(tz)));
         setLive(false);
         setLiveStartEpoch(null);
@@ -329,6 +397,7 @@ export default function ActivityEditorProvider({
       openRepeatLast: () => {
         if (!lastActivity) return;
         setEditData(null);
+        setCreateDate(null);
         setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
         setLive(false);
         setLiveStartEpoch(null);
@@ -369,11 +438,12 @@ export default function ActivityEditorProvider({
   // (see `docked`) and that dock is still mounted; otherwise it's the overlay.
   const showDock = docked && dockEl != null;
 
-  const onJournal = pathname === JOURNAL_ROUTE;
+  const onTrainingLog = pathname === TRAINING_LOG_ROUTE;
   // The bar shows for a client-minimized live session (mounted, hidden) anywhere,
-  // and for a fresh-load active session everywhere except the journal route (where
+  // and for a fresh-load active session everywhere except the training log route (where
   // the editor docks inline instead). A docked-open editor never shows the bar.
-  const showBar = (minimized && !showDock) || (hydrationActive && !onJournal);
+  const showBar =
+    (minimized && !showDock) || (hydrationActive && !onTrainingLog);
   // Elapsed baseline + copy for the bar: the mounted session's own start when
   // minimized, else the server-hydrated start.
   const barStartEpoch = minimized
@@ -402,7 +472,9 @@ export default function ActivityEditorProvider({
       ? `repeat-${repeatNonce}`
       : live
         ? "live"
-        : "create";
+        : createDate
+          ? `create-${repeatNonce}`
+          : "create";
 
   return (
     <Ctx.Provider value={api}>
@@ -420,6 +492,7 @@ export default function ActivityEditorProvider({
               bodyweightKg={bodyweightKg}
               editData={editData}
               prefill={prefill}
+              initialDate={createDate ?? undefined}
               live={live}
               deloadContext={deloadContext}
               recoveringContext={recoveringContext}
@@ -439,6 +512,7 @@ export default function ActivityEditorProvider({
             bodyweightKg={bodyweightKg}
             editData={editData}
             prefill={prefill}
+            initialDate={createDate ?? undefined}
             live={live}
             deloadContext={deloadContext}
             recoveringContext={recoveringContext}

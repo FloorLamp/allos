@@ -118,7 +118,8 @@ export const OWNED_TABLES = [
   "integration_connections",
   "integration_sync_events",
   "integration_backfill_jobs",
-  // The continuous-stream watermark (#2341): one row per (profile, provider, stream)
+  // The continuous-stream watermark (#2341): one row per (profile, source, stream)
+  // — the column is still named `provider` (#2487 phase 1 renamed types only)
   // holding the frontier and whether the last pushes advanced it.
   "stream_frontiers",
   "profile_share_links",
@@ -145,7 +146,7 @@ export const OWNED_TABLES = [
   "situations",
   "food_log",
   // Food-log EVENT ledger (#950): per-tap append-only rows beside the food_log
-  // daily counter, carrying the tap `logged_at` so button ranking can be slot-aware.
+  // daily counter, carrying the tap `recorded_at` so button ranking can be slot-aware.
   // Directly owned; deleteProfile clears it by profile_id (the row-ops side-state
   // rule — the ledger is popped/cleared alongside its counter).
   "food_log_events",

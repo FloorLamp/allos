@@ -4,6 +4,7 @@ import {
   type Page,
   type Request,
 } from "@playwright/test";
+import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 
 // The blessed e2e interaction module (issue #868, fix b2).
 //
@@ -49,6 +50,18 @@ import {
 //    It retries the click until the client router commits (and HOLDS) the URL.
 //    Do NOT reach for networkidle "to let it hydrate first" — followLink already
 //    tolerates the un-hydrated window by retrying.
+//
+// 2b. …but the control's navigation is RELATIVE — a pager's Next/Prev, a stepper,
+//    anything whose handler reads the CURRENT state and moves one from it:
+//        → hydratedClick(page, locator), then assert the destination URL.
+//    followLink is for an IDEMPOTENT navigation: re-clicking a `<Link>` that
+//    already committed asks for the same URL again, so its retry is free. A
+//    relative control is the toggle case in navigation clothing — every extra
+//    click moves the target one further, and once the URL passes the destination
+//    the retry can never converge, so it clicks until the budget dies (#2437: a
+//    pager's `p_medical_records=2` guard observed at `=11`, ten compounded
+//    advances). hydratedClick closes the pre-hydration window WITHOUT a retry
+//    loop, which is exactly what a non-idempotent control needs.
 //
 // 3. Everything else — a pure client toggle, a value that settles in place, a
 //    toast that appears — needs NO settle on the network. Assert it with a plain
@@ -405,24 +418,75 @@ export async function followLink(
   // failure as if it were the one benign race, so a genuinely-broken click
   // spent 25s retrying and then failed with no trace of why.
   let lastClickError: Error | undefined;
+  // The URL the click is being retried FROM. Re-clicking is only ever justified
+  // while the page is still standing on it: the two races this helper absorbs —
+  // a swallowed pre-hydration click, and a transition that commits and then
+  // unwinds — both leave the page on the source URL, so both are still covered.
+  // A url() that is neither the source nor the destination means the click LANDED
+  // and went somewhere else, and clicking again cannot walk it back. Before
+  // #2437 the loop kept clicking anyway: on a RELATIVE control (a pager's Next)
+  // every extra click moved the target one further, so a single overshoot past
+  // the destination spent the whole 25 s budget compounding — a pager guarded on
+  // page 2 was observed at page 11 — and reported it as a bare URL-match timeout,
+  // which reads as latency and is why #2437's diagnosis came out as "the
+  // transition did not commit in time" when the clicks had in fact all landed.
+  //
+  // Captured lazily, at the first click rather than here, because a page can
+  // move its OWN url at hydration — `RangeFilterSelect` restores a remembered
+  // `range` param from sessionStorage in a mount effect — and a baseline taken
+  // before that lands would read as a departure the helper never caused, and
+  // refuse to click at all. The guard is about "did MY click move the page", so
+  // it may only arm once a click has actually been issued.
+  //
+  // "Departed" is judged WITHOUT the fragment. A hash-only move is not a
+  // navigation at all: same document, same tree, and the pre-hydration swallow
+  // this helper exists for is still live, so re-clicking is still both safe and
+  // necessary. Pages here write their own hash — `/training` lands on
+  // `/training#day-2026-08-09` — and comparing whole URLs treated that as a
+  // departure and refused to click a ride link that had never been clicked
+  // (shard 5, e2e (5), the first CI run of this change). A pager step moves the
+  // SEARCH and a route change moves the PATHNAME, so both still register; only
+  // the one case where nothing navigated is forgiven. (A stepper that advances
+  // purely in the fragment would slip through this — none exists here, and it
+  // would be a strange thing to build.)
+  let source = page.url();
+  let clicked = false;
+  let departedTo: string | undefined;
+  const withoutHash = (url: string): string => url.split("#")[0];
   try {
     await expect(async () => {
       if (!destination.test(page.url())) {
-        try {
-          await link.click({ timeout: 2000 });
-        } catch (err) {
-          lastClickError = err instanceof Error ? err : new Error(String(err));
-          // The ONE benign, expected race is a click on a link a PRIOR iteration
-          // already navigated away from: the old element is detached, and this
-          // same iteration's URL check below will observe the destination and
-          // pass — so swallow it and fall through. EVERY other click failure (a
-          // wrong/ambiguous selector, an overlay intercepting the click, a
-          // disabled or pointer-events:none target, a stubborn click timeout)
-          // is rethrown into toPass. toPass still retries — tolerating a genuine
-          // transient — but its final timeout now carries this error, and the
-          // catch below names it explicitly, so a broken click fails with a
-          // useful message rather than masquerading as a URL-match timeout.
-          if (!isDetachedElementError(lastClickError)) throw lastClickError;
+        if (clicked && withoutHash(page.url()) !== withoutHash(source)) {
+          // Left the source for a third URL: stop clicking, keep waiting. A
+          // redirect chain or a slow multi-hop transition still converges on its
+          // own; anything else fails at the ceiling with both URLs named below.
+          departedTo = page.url();
+        } else {
+          // Back on the source URL (or never left it) — the click is live again,
+          // so a departure recorded by an earlier iteration is stale.
+          departedTo = undefined;
+          // Re-baseline until the first click: everything up to here is the
+          // page moving itself, which this guard has no opinion about.
+          if (!clicked) source = page.url();
+          try {
+            clicked = true;
+            await link.click({ timeout: 2000 });
+          } catch (err) {
+            lastClickError =
+              err instanceof Error ? err : new Error(String(err));
+            // The ONE benign, expected race is a click on a link a PRIOR
+            // iteration already navigated away from: the old element is
+            // detached, and this same iteration's URL check below will observe
+            // the destination and pass — so swallow it and fall through. EVERY
+            // other click failure (a wrong/ambiguous selector, an overlay
+            // intercepting the click, a disabled or pointer-events:none target,
+            // a stubborn click timeout) is rethrown into toPass. toPass still
+            // retries — tolerating a genuine transient — but its final timeout
+            // now carries this error, and the catch below names it explicitly,
+            // so a broken click fails with a useful message rather than
+            // masquerading as a URL-match timeout.
+            if (!isDetachedElementError(lastClickError)) throw lastClickError;
+          }
         }
       }
       // The navigation must have STUCK, not merely flipped. The same hydration
@@ -438,11 +502,27 @@ export async function followLink(
       expect(page.url()).toMatch(destination);
     }).toPass({ timeout: 25000, intervals: [300, 700, 1500, 3000] });
   } catch (err) {
-    // The navigation never committed within the budget. If a click failed along
-    // the way, surface it — otherwise the caller sees only "url never matched",
-    // which is exactly the causeless timeout #890 is about.
+    // The navigation never committed within the budget. Say WHICH of the two
+    // shapes it was, so the failure names its own cause instead of leaving the
+    // reader to infer latency from a bare "url never matched" (#890/#2437).
+    const wrapped = err instanceof Error ? err : new Error(String(err));
+    if (departedTo) {
+      // The click landed and took the page somewhere that is not the
+      // destination. Not latency: no amount of waiting or re-clicking reaches
+      // the destination from here, and on a relative control (a pager step) the
+      // re-clicking is what carried it past.
+      wrapped.message =
+        `${wrapped.message}\n\n[followLink] the click LANDED but the page left ` +
+        `${source} for ${departedTo} instead of ${destination}, so the link was ` +
+        `not re-clicked. If this control's navigation is RELATIVE (a pager's ` +
+        `Next/Prev, a stepper), followLink is the wrong helper — it may only ` +
+        `retry an idempotent navigation; use hydratedClick + a URL assertion.`;
+      throw wrapped;
+    }
+    // If a click failed along the way, surface it — otherwise the caller sees
+    // only "url never matched", which is exactly the causeless timeout #890 is
+    // about.
     if (lastClickError) {
-      const wrapped = err instanceof Error ? err : new Error(String(err));
       wrapped.message =
         `${wrapped.message}\n\n[followLink] navigation to ${destination} never ` +
         `committed; the last click on the link failed with:\n${lastClickError.message}`;
@@ -609,6 +689,62 @@ export async function expectInView(
       opts.mobile ? "profile-identity-bar-mobile" : "profile-identity-bar"
     )
   ).toHaveAttribute("data-view-count", String(count));
+}
+
+// Measure SEVERAL elements as ONE consistent layout snapshot — the group analog of
+// centerOf, and the only honest way to assert a RELATIVE geometry (this card sits
+// one gap below that one, these two columns share an x).
+//
+// `await Promise.all([a.boundingBox(), b.boundingBox(), …])` looks atomic and is
+// not: each box is a separate CDP round-trip, and the page keeps laying out
+// between them. So a card whose chart sizes itself after mount can be measured
+// SHORT while the card below it is measured at its FINAL, lower y — and the gap
+// computed from those two reads belongs to no layout that ever existed. It is
+// then handed to a plain numeric `expect(...)`, which cannot retry, so the run
+// fails on a measurement rather than on the product. That is #2437's
+// `sleep-page:246`: a 20–28 px gap window read as wider than 28 while the
+// duration card was still growing, on a shard where two workers competed for the
+// CPU that lays it out.
+//
+// Two consecutive passes that agree is centerOf's rule, applied to the whole
+// group: it costs a few frames, it returns as soon as the page is quiet, and
+// every box it returns comes from the same settled layout. A null box (the
+// element is detached or `display:none`) is never a settled reading — it throws,
+// so callers get non-null boxes and need no `!`.
+export async function settledBoxes(
+  locators: Locator[],
+  opts: { timeout?: number } = {}
+): Promise<{ x: number; y: number; width: number; height: number }[]> {
+  const deadline = Date.now() + (opts.timeout ?? 10_000);
+  const page = locators[0].page();
+  let previous: string | null = null;
+  for (;;) {
+    const boxes = await Promise.all(locators.map((l) => l.boundingBox()));
+    const key = boxes
+      .map((b) =>
+        b
+          ? `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.width)},${Math.round(b.height)}`
+          : "none"
+      )
+      .join("|");
+    if (boxes.every((b) => b !== null) && key === previous) {
+      return boxes as { x: number; y: number; width: number; height: number }[];
+    }
+    if (Date.now() > deadline) {
+      const missing = boxes
+        .map((b, i) => (b ? null : i))
+        .filter((i) => i !== null);
+      throw new Error(
+        missing.length > 0
+          ? `[settledBoxes] locator(s) at index ${missing.join(", ")} have no ` +
+              `bounding box (detached or not displayed) after ${opts.timeout ?? 10_000}ms`
+          : `[settledBoxes] the layout never held still: last two reads were\n` +
+              `${previous}\n${key}`
+      );
+    }
+    previous = key;
+    await page.waitForTimeout(50);
+  }
 }
 
 // Toggle a checkbox so the change durably lands in React STATE — the checkbox analog
@@ -1284,4 +1420,40 @@ export async function settledPickOption(
     await option.click();
     await expect(field).toHaveValue(label, { timeout: 2_000 });
   }).toPass({ timeout });
+}
+
+// ── The #2471 automatic update reload, switched off for one page ──────────────
+//
+// Since #2471 a tab that notices a deploy converges on the new build by itself at
+// the first provably-safe moment, and the "Update ready" bar / stale-save banner
+// survive ONLY as the rationed-failure fallback: the automatic attempt has been
+// spent and the tab is still stale. Every spec that drives one of those affordances
+// therefore has to put the tab in that state first — otherwise it is asserting on a
+// surface the app is right not to render.
+//
+// This seeds the ration as already spent, for every target, and keeps refreshing it
+// so a long spec cannot age out of its 60s window mid-test. It simulates a state the
+// app genuinely reaches (one automatic attempt already made); it does not disable
+// anything the app would otherwise do.
+export async function spendAutoReloadRation(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ key, targets, refreshMs }) => {
+      // clock-ok: runs IN the page, whose clock the harness freezes for the whole run — the same clock the guard's own window is measured against
+      const write = () =>
+        sessionStorage.setItem(
+          key,
+          JSON.stringify({ targets, at: Date.now() })
+        ); // clock-ok: as above
+
+      write();
+      setInterval(write, refreshMs);
+    },
+    {
+      key: AUTO_RELOAD_KEY,
+      // Two distinct targets is the window total, so the ration reads as spent for
+      // any sha the spec's simulated deploy names.
+      targets: ["e2e-ration-spent-a", "e2e-ration-spent-b"],
+      refreshMs: 5_000,
+    }
+  );
 }

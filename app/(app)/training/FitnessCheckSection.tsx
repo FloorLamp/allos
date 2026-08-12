@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { getUserSex, getUserAge, getUnitPrefs } from "@/lib/settings";
+import { getProfileSex, getProfileAge, getUnitPrefs } from "@/lib/settings";
 import { getEquipment } from "@/lib/equipment";
 import { usesSeniorBattery, VO2_METHODS } from "@/lib/fitness-battery";
 import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
@@ -13,8 +13,8 @@ import FitnessCheckView from "./FitnessCheckView";
 // hands the ONE pure model to the client.
 export default async function FitnessCheckSection() {
   const { login, profile } = await requireSession();
-  const sex = getUserSex(profile.id);
-  const age = getUserAge(profile.id);
+  const sex = getProfileSex(profile.id);
+  const age = getProfileAge(profile.id);
   const weightUnit = getUnitPrefs(login.id).weightUnit;
   const senior = usesSeniorBattery(age);
 

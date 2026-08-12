@@ -1,12 +1,13 @@
 import { IconBell, IconMapPin, IconCalendarEvent } from "@tabler/icons-react";
 import { FEED_CATEGORY_LABELS, type FeedPreviewRow } from "@/lib/calendar-ics";
 import type { CalendarFeedDetail } from "@/lib/settings";
+import { EmptyState } from "@/components/ui";
 
 // Presentational preview of what a subscribed calendar client would show for this
 // profile, rendered at the saved detail level. It's a faithful mirror: the rows
 // come from the SAME composition the live feed route uses (see the page), so what's
 // shown here is exactly what leaves the app across every enabled category —
-// including, at "full", the provider/reason PHI. Read-only; no client interactivity.
+// including, at "full", the source/reason PHI. Read-only; no client interactivity.
 const MAX_VISIBLE = 10;
 
 export default function CalendarFeedPreview({
@@ -34,7 +35,7 @@ export default function CalendarFeedPreview({
           ) : (
             <>
               At <strong>minimal</strong> detail each event shows only a neutral
-              label (e.g. “Medical appointment”) — no names, provider, or reason
+              label (e.g. “Medical appointment”) — no names, sourceId, or reason
               leave the app.
             </>
           )}
@@ -42,13 +43,12 @@ export default function CalendarFeedPreview({
       </div>
 
       {visible.length === 0 ? (
-        <p
-          className="rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
-          data-testid="calendar-preview-empty"
-        >
-          Nothing in the feed yet — enable more categories above, or add
-          appointments and reminders and they&apos;ll appear here.
-        </p>
+        <EmptyState
+          compact
+          testId="calendar-preview-empty"
+          message="Nothing in the feed yet — enable more categories above, or add appointments and reminders and they’ll appear here."
+          action={{ href: "/appointments", label: "Add an appointment" }}
+        />
       ) : (
         <ul
           className="divide-y divide-black/5 dark:divide-white/5"

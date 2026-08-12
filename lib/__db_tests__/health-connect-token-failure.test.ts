@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — Health Connect token failures surface instead of stopping
 // ingest silently (#607).
 //
-// A push provider's only real failure mode is "the phone's bearer token no longer
+// A push source's only real failure mode is "the phone's bearer token no longer
 // matches" (rotated or expired). Before the fix that produced NO sync event (the
 // profile is unknown, so the 401 has nothing to attribute) and never consulted the
 // stored expiry, so the badge/Issues/card stayed green while data silently stopped.
@@ -25,7 +25,7 @@ let profileId: number;
 
 function hcIssue() {
   return getImportIssues(profileId).find(
-    (e) => e.provider === "health-connect"
+    (e) => e.source_id === "health-connect"
   );
 }
 function failureEventCount(): number {

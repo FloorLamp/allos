@@ -59,7 +59,7 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
 test("the strength set editor's ⓘ opens the shared guide overlay for a catalog lift (#734)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Journal feed
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form (fields addressed by testid/role — the editor mounts
   // in the dock or the overlay portal; see entry-ergonomics.spec.ts's note).

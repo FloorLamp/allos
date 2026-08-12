@@ -32,7 +32,7 @@ import { unlinkVideoFiles } from "./video/store";
 import { thumbSiblingPath, unlinkPhotoFiles } from "./photo/store";
 import {
   unlinkFollowUpsForSkinLesion,
-  unlinkFollowUpsForMedicalRecord,
+  unlinkFollowUpsForClinicalObservation,
 } from "./followup-write";
 import { revertActivityMerge } from "./merge-activity";
 import { restoreAdministrationLog } from "./queries/intake/adherence";
@@ -42,6 +42,7 @@ import {
   removeImportTombstoneForRow,
   liveRowIdForCapturedRoot,
 } from "./integrations/tombstones";
+import { nullEncounterLinks } from "./queries/visit-links";
 import { practiceIdentity } from "./practice";
 import { TRASH_EXCLUDED_KIND } from "./trash";
 
@@ -80,6 +81,12 @@ const KIND_LABELS: Record<string, string> = {
   condition: "condition",
   immunization: "immunization",
   "skin-lesion": "skin lesion",
+  visit: "visit",
+  // The readings table's other two stores (#2123) and the symptom-day (#2124). Generic
+  // and non-PHI on the same rule — "symptom day", never which symptom.
+  "metric-sample": "measurement",
+  "mood-log": "mood check-in",
+  "symptom-day": "symptom day",
   // PRN administration (#851 item 11) — captured/restored by its own bespoke path
   // (deleteAdministrationLog / restoreAdministrationLog in lib/queries/intake/
   // adherence.ts), because its restore must invert a SUPPLY side effect and the ledger
@@ -253,7 +260,7 @@ export function captureDelete(
     // throw while a protocol still points at this supplement/medication. Null it in
     // the same transaction; the protocol survives, its intervention link is honestly
     // gone (not restored on undo, like the sibling equipment_id/supply-decrement
-    // side effects). Centralized here so both delete paths — deleteSupplement and the
+    // side effects). Centralized here so both delete paths — deleteIntakeItem and the
     // Data → Manage bulk delete — inherit it.
     if (spec.ownedTable === "intake_items") {
       db.prepare(
@@ -282,7 +289,7 @@ export function captureDelete(
     // on undo (like the equipment_id / supply-decrement side effects) — the reading
     // returns, its follow-up linkage stays honestly gone.
     if (spec.ownedTable === "medical_records") {
-      unlinkFollowUpsForMedicalRecord(profileId, rootId);
+      unlinkFollowUpsForClinicalObservation(profileId, rootId);
       // A projected medication (#1051) may link this prescription record as its
       // source_record_id (a REFERENCES FK, no ON DELETE). NULL it first so the
       // medical_records DELETE below can't trip the FK; the med survives, its
@@ -308,6 +315,21 @@ export function captureDelete(
         `UPDATE intake_items SET indication_condition_id = NULL
           WHERE indication_condition_id = ? AND profile_id = ?`
       ).run(rootId, profileId);
+    }
+    if (spec.ownedTable === "encounters") {
+      // A visit is the most linked-TO row in the passport (#1847 fifth kind). An
+      // appointment names the encounter it was kept as (#288), and every record /
+      // med / condition / procedure / imaging / immunization / episode back-link
+      // names the visit it was recorded at (#1050/#1053) — all REFERENCES with no
+      // ON DELETE, so all of them must be detached before the root DELETE or
+      // foreign_keys = ON aborts it. Centralized here for the reason the conditions
+      // block above states: the bulk path must inherit the same detach, and before
+      // this it did not (a bulk delete of a linked visit threw on the FK).
+      db.prepare(
+        `UPDATE appointments SET encounter_id = NULL
+          WHERE encounter_id = ? AND profile_id = ?`
+      ).run(rootId, profileId);
+      nullEncounterLinks(profileId, rootId);
     }
     if (spec.ownedTable === "skin_lesions") {
       // A recheck follow-up may link this observation as its SOURCE finding, or a

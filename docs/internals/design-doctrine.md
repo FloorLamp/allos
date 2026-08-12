@@ -65,7 +65,7 @@ Doctrine: a new metric or quantity ships with a declared knowledge source or an
 argued exclusion — absence is a build failure, not an audit finding. The
 identity functions themselves are indexed in
 `docs/internals/identity-registry.md`, whose census test keeps the doc honest.
-The known gap — completeness is currently guarded only over `BodyMetricSlug` —
+The known gap — completeness is currently guarded only over `TrendMetricSlug` —
 is #2086 (VO₂ max is its acceptance case, ruled to earn a surface).
 
 ## 3. One side-state grammar
@@ -160,6 +160,21 @@ work must not erode them:
 - The registry-plus-reflection-test culture — conventions with CI teeth — which
   is what made this quarter's consolidations safe to land in days. When a
   convention matters, its scan is part of shipping it.
+- **A bound is a decision, and a surface that promises one must have it in the
+  READ.** A range selector, a `limitDays` parameter and a page are three
+  different promises, and only the last two are bounds — "all time" and "every
+  row this profile ever recorded" are legitimate answers, so what limits the
+  query has to be something else. The failure mode is quiet: the surface looks
+  finished while its cost scales with the profile's whole history (#2530 /
+  #2445 / #2520 / #2528). Two rules follow. A window parameter is applied in
+  SQL, never as a `.slice()` after the read — otherwise every caller pays the
+  function's own default. And a paged surface takes its page size and its
+  arithmetic from `lib/pagination.ts` (`HISTORY_PAGE_SIZE`, `clampPage`,
+  `pageOffset`, `pageCount`) and renders `components/PaginationControls.tsx`,
+  which pages by callback for a client table and by href for a server-paged
+  read — two surfaces capping the same kind of list do not each invent a
+  number. Paging needs a TOTAL order, so a read ordered by day breaks ties on
+  `id` before it takes an `OFFSET`.
 
 ## 8. The one rebuild delta that stays parked: the physical readings merge
 

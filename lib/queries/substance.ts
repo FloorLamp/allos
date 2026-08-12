@@ -43,7 +43,7 @@ export interface SubstanceTarget {
 // The unified consumption-history row (#2009). There is deliberately no ledger
 // field: each card and every mutation addresses a substance plus this row id,
 // while the query layer owns dispatch to food_log or substance_log.
-export interface SubstanceHistoryEntry {
+export interface SubstanceDailyTotal {
   id: number;
   substance: Substance;
   date: string;
@@ -51,10 +51,10 @@ export interface SubstanceHistoryEntry {
   notes: string | null;
 }
 
-export function getSubstanceHistory(
+export function getSubstanceDailyTotals(
   profileId: number,
   substance: Substance
-): SubstanceHistoryEntry[] {
+): SubstanceDailyTotal[] {
   const rows =
     substanceDef(substance).ledger === "food-log"
       ? (db
@@ -86,11 +86,11 @@ export function getSubstanceHistory(
   return rows.map((row) => ({ ...row, substance }));
 }
 
-export function getAllSubstanceHistory(
+export function getAllSubstanceDailyTotals(
   profileId: number
-): SubstanceHistoryEntry[] {
+): SubstanceDailyTotal[] {
   return SUBSTANCES.flatMap((substance) =>
-    getSubstanceHistory(profileId, substance)
+    getSubstanceDailyTotals(profileId, substance)
   ).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
 }
 

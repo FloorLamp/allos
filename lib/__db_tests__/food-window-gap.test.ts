@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { logFoodServingCore } from "@/lib/food-log-write";
-import { addProteinGramsCore } from "@/lib/protein-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { getLoggedFoodWindows } from "@/lib/queries";
 import { buildFoodNudge } from "@/lib/notifications/food";
 import { getNotifySchedule } from "@/lib/settings/notifications";

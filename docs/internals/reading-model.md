@@ -139,7 +139,7 @@ one stream row, with nothing to notice.
 
 Clinical knowledge (reference range, optimal band, direction, age bands) is filed
 in the canonical vocabulary by biomarker NAME. The metric detail surface is keyed
-by `BodyMetricSlug`. Nothing mapped one to the other, so a streamed reading was
+by `TrendMetricSlug`. Nothing mapped one to the other, so a streamed reading was
 charted **unjudged** — a toddler's steady 120 bpm resting heart rate measured
 against nothing, while the band that says it is normal (1–3 → 80–150) already
 existed. That is an identity problem, not a storage one: a merged table would
@@ -147,7 +147,7 @@ still be keyed by metric and still need this lookup.
 
 `lib/metric-judgment.ts` answers it:
 
-- `METRIC_KNOWLEDGE` — **every** `BodyMetricSlug` declares which knowledge system
+- `METRIC_KNOWLEDGE` — **every** `TrendMetricSlug` declares which knowledge system
   answers for it: a `canonical` entry, a `growth-percentile` (a percentile-for-age
   is not a band; the growth card owns it), or `none` **with a reason** — where the
   reason is load-bearing, not filler. `waist-circ` (#2322) is the sharpest example:
@@ -168,7 +168,7 @@ still be keyed by metric and still need this lookup.
 ### The domain is judged quantities, not one enum (#2086)
 
 `METRIC_KNOWLEDGE`'s totality is the strongest idea in the #1996 fix, and its
-weakness was its domain: `Record<BodyMetricSlug, …>` — one enum. A judged
+weakness was its domain: `Record<TrendMetricSlug, …>` — one enum. A judged
 quantity with no metric slug escaped the discipline entirely, and the recorded
 escapee proves it: **VO₂ max** has a curated canonical entry _and_ age/sex
 fitness norms (#158), with nothing in the build able to notice whether either
@@ -187,7 +187,7 @@ functional-fitness markers (readings by canonical name, knowledge in a separate
 norms dataset — #2086).
 
 **The teeth** (`lib/__tests__/judged-quantities.test.ts`): the domain is derived
-from `BODY_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a
+from `TREND_METRIC_SLUGS`, `FITNESS_NORM_MARKERS` and `READING_IDENTITY_MAP`, so a
 marker added to the norms dataset without a declaration fails the build; a
 declaration naming a marker or canonical entry that does not exist fails too, so
 widening the **guard** can never widen the **vocabulary**. VO₂ max is the
@@ -217,7 +217,7 @@ Two consequences on `/trends/metric/[kind]`:
 **The fold decides once (#2029).** `foldObservations` is that decision: the
 observation side is collapsed by `dedupeReadings`, then anything the stream's
 day/value coverage already answers for is dropped. `foldObservationPoints` is its
-chart projection, and `bodyMetricSeriesFold` returns both halves together — the
+chart projection, and `trendMetricSeriesFold` returns both halves together — the
 points to plot and the observations that survived — so `/trends/metric/[kind]`
 takes its chart and its readings table from ONE call. It used to read the raw
 observations for the table, which meant a clinic value equal to the wearable's
@@ -243,7 +243,7 @@ outside the optimal band.
 
 The cell is now a **judgment cell**, and nothing about it is a second derivation:
 
-- `judgeRecords(profileId, rows)` (`lib/queries/metric-judgment.ts`) resolves one
+- `judgeObservations(profileId, rows)` (`lib/queries/metric-judgment.ts`) resolves one
   `MetricJudgment` per row through `flagReconcileProfileContext` — the same
   canonical map, the same alias-aware name resolver and the same subject context
   (sex, birthdate/stored age, reproductive status, cycle log) `reconcileFlags`
@@ -273,16 +273,16 @@ with no band is a judgment with no visible basis. `MedicalValue` gains
 `showFlagLabel`, which renders `flagLabel` visibly **instead of** the `sr-only` span
 (never both — the severity is announced once), decided by
 `medicalValueFlagText`/`medicalValueCaret` in `lib/medical-value.ts`. The biomarkers
-table and `/biomarkers/view`'s readings table adopt it, and `RecentLabsWidget`
+table and `/results/readings/view`'s readings table adopt it, and `RecentLabsWidget`
 migrates onto it and drops the parallel label #1220 built beside the component. The
-other `MedicalValue` call sites — Timeline, Passport, ExtractedRecords,
+other `MedicalValue` call sites — Timeline, Passport, ExtractedObservations,
 BiomarkerScale, the Longevity section, the import preview — keep the `sr-only` label
 until each is considered against its own density; without the prop the behavior is
 byte-identical.
 
 ### And the DETAIL page must be able to point at what it coloured (#2340)
 
-#2315 fixed the list. The detail page (`/biomarkers/view`) had the mirror-image
+#2315 fixed the list. The detail page (`/results/readings/view`) had the mirror-image
 defect: it coloured its latest value from `latest.flag` while building its range
 display — `referenceEntries` / `optimalEntries` — **exclusively from the curated
 entry**. When the catalog carries no band those lists are empty and no range renders
@@ -384,7 +384,7 @@ offer that already renders is the attention doctrine's "enrich what it was alrea
 saying" case, and a note that appears only where the page has already declined to
 judge cannot widen anything.
 
-The **list** surfaces (`BiomarkersTable`, `StarredBiomarkers`) have no counterpart to
+The **list** surfaces (`ReadingsTable`, `StarredBiomarkers`) have no counterpart to
 this, for a reason worth writing down rather than re-deriving: `TrackLabFollowUpControl`
 renders on the detail page ONLY, so no list row carries a recheck offer, and their
 `isBiomarkerStale` calls are the retest clock in its ordinary form (the table passes no
@@ -503,6 +503,48 @@ A MOOD check-in rating is **not** a reading: a 1–5 self-rating has no canonica
 identity, no clinical knowledge and therefore no placement. It stays outside
 `ReadingTarget`, and `lib/metric-readings.ts` splits it off to the mood store's
 own write core, where #992 requires every mutation of that table to live.
+
+### The lock is reachable, and it survives a reprocess (#2364)
+
+Correcting a reading arms the #133 lock. `updateReadingAt` used to arm it on
+`medical_records` with `CASE WHEN external_id IS NOT NULL`, which asks **which
+import path produced the row** rather than **did a human change a value this app
+derived** — and `extractionToPersistInput` sets `external_id: null`
+unconditionally, so for an AI-extracted reading the lock was not merely unset, it
+was _unsettable_ (measured: 309 of 309 AI-extracted rows on a real database carry
+a null `external_id`; deterministic CCD rows are the mirror image at 250 of 250).
+Every `medical_records` correction writer arms it unconditionally now — the
+Results record editor, the temperature editor, the audiogram entry form,
+`updateReadingAt`, and `lib/unit-mislabel-correction.ts`, which always did; the
+disagreement between them was the tell. On a table an import reaches ONLY through
+`external_id` — `practice_logs`, which has no `document_id` — that condition is
+still the right question and stays, so
+`lib/__tests__/observation-substrate.test.ts` scans `medical_records` statements
+alone.
+
+The lock alone was not enough. A reprocess is **delete-and-reinsert** over
+`IMPORT_FOOTPRINT_TABLES` — that is what makes the delete-set and the reprocess
+path the same code — so even a correctly locked row was removed by a
+re-extraction, a re-import from the saved raw (#903), or a reprocess-all.
+`edited` therefore protected against integration sync while the likeliest
+overwrite of a document-derived reading is the document's own reprocess.
+
+The footprint does not grow a per-table exception. `lib/import-corrections.ts`
+captures the document's corrected readings **before** the clear and re-applies
+them **after** the insert — the `reapplyVisitLinkDecisions` (#1050/#1053) shape,
+for the other durable user decision a reprocess would otherwise discard. Matching
+is on **#482 identity + day + unit**, never on row id (the ids are new); same-day
+duplicates of one identity pair in order, since a second same-day reading is a
+curve and not a correction (#800/#843). A different unit does not match — pasting
+104 mg/dL onto a mmol/L row would be corruption dressed as a rescue.
+
+A correction the fresh extraction produces no counterpart for is **reported, not
+resurrected**: an `ImportDrop` with reason `correction_orphaned` on the document's
+import report, so the user learns the correction lost its subject instead of
+keeping a row the document stopped claiming. It does not move the report's
+`considered` count — a lost correction was never a candidate the document
+offered. No schema change: the capture lives for one persist transaction, and
+nothing is stored between reprocesses.
 
 ### What routed differently
 

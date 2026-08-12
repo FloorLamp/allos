@@ -2,7 +2,7 @@
 // lib/__tests__/metric-source-priority.test.ts.
 //
 // With more than one real metric source (Health Connect push + Oura pull +
-// Strava), the same metric can arrive from several providers. The profile picks
+// Strava), the same metric can arrive from several sources. The profile picks
 // ONE authoritative ("primary") source per metric; single-value surfaces and the
 // additive daily rollups read that source, while point metrics keep every
 // source's rows stored for comparison. The choice is stored per profile as ONE
@@ -12,7 +12,7 @@
 // read/write.
 
 import { assignHashedColors } from "./trend-colors";
-import { BODY_METRIC_META } from "./trends-body-metrics";
+import { TREND_METRIC_META } from "./trend-metrics";
 import { documentSourceId } from "./document-source";
 
 export { documentSourceId };
@@ -81,7 +81,7 @@ export function sourceMatchesSelector(
 // A choice is a source (or class) id plus its MODE (issue #1642):
 //   • preference (strict: false) — the chosen source first, then the instance
 //     defaults, then single-source passthrough: a day it didn't cover shows
-//     whoever did, so a chart never goes blank when a provider lapses.
+//     whoever did, so a chart never goes blank when a source lapses.
 //   • strict (strict: true) — ONLY that source answers. Uncovered days are real
 //     gaps and a latest-value read with no reading is the honest empty state,
 //     never another source's number.
@@ -104,7 +104,7 @@ export function isValidSourceId(source: string): boolean {
 }
 
 // body_metrics stores manual rows with source NULL (or 'manual' from the
-// journal); map both onto the one 'manual' key so preference matching and
+// training log); map both onto the one 'manual' key so preference matching and
 // display grouping agree.
 export function sourceKey(source: string | null | undefined): string {
   return source == null || source === "" || source === "manual"
@@ -204,7 +204,7 @@ export function resolveMetricSources(
 
 // The source-preference list alone — the profile's explicit primary source first
 // (when set), then the instance defaults. Consumers hand the full resolution to
-// pickOneProviderPerDay / pickRowsOneSourcePerDay (lib/metric-providers), whose
+// pickOneSourcePerDay / pickRowsOneSourcePerDay (lib/metric-sources), whose
 // fallback for a day none of these sources covers is single-source passthrough
 // (preference mode) or nothing at all (strict) — so an unset priority degrades
 // to today's behavior.
@@ -216,7 +216,7 @@ export function sourcePreference(
   return resolveMetricSources(metric, priority, defaults).order;
 }
 
-// Normalize a picker argument: a plain preference list (the default provider
+// Normalize a picker argument: a plain preference list (the default source
 // order, and what the pure tests pass) or an already-resolved selection.
 export function asSourceResolution(
   selection: readonly string[] | SourceResolution
@@ -242,7 +242,7 @@ export function sourceGroupKey(
   return sourceKey(source);
 }
 
-// The metrics the comparison UI (Trends → Body → "Compare sources") surfaces and
+// The metrics the comparison UI (Trends → Overview → body census → "Compare sources") surfaces and
 // the settings picker accepts. `kind` routes the read: 'sample' → metric_samples
 // by its metric string; 'body' → the body_metrics column of that kind;
 // 'hr-minutes' → the per-minute HR stream. This is a UI/write allowlist — storage
@@ -259,30 +259,30 @@ export const COMPARABLE_METRICS: readonly ComparableMetric[] = [
   {
     key: "weight",
     kind: "body",
-    title: BODY_METRIC_META.weight.title,
+    title: TREND_METRIC_META.weight.title,
     unit: " kg",
-    decimals: BODY_METRIC_META.weight.decimals,
+    decimals: TREND_METRIC_META.weight.decimals,
   },
   {
     key: "body_fat",
     kind: "body",
-    title: BODY_METRIC_META["body-fat"].title,
-    unit: BODY_METRIC_META["body-fat"].unit,
-    decimals: BODY_METRIC_META["body-fat"].decimals,
+    title: TREND_METRIC_META["body-fat"].title,
+    unit: TREND_METRIC_META["body-fat"].unit,
+    decimals: TREND_METRIC_META["body-fat"].decimals,
   },
   {
     key: "resting_hr",
     kind: "body",
-    title: BODY_METRIC_META["resting-hr"].title,
-    unit: BODY_METRIC_META["resting-hr"].unit,
-    decimals: BODY_METRIC_META["resting-hr"].decimals,
+    title: TREND_METRIC_META["resting-hr"].title,
+    unit: TREND_METRIC_META["resting-hr"].unit,
+    decimals: TREND_METRIC_META["resting-hr"].decimals,
   },
   {
     key: "steps",
     kind: "sample",
-    title: BODY_METRIC_META.steps.title,
-    unit: BODY_METRIC_META.steps.unit,
-    decimals: BODY_METRIC_META.steps.decimals,
+    title: TREND_METRIC_META.steps.title,
+    unit: TREND_METRIC_META.steps.unit,
+    decimals: TREND_METRIC_META.steps.decimals,
   },
   {
     key: "sleep_min",
@@ -294,23 +294,23 @@ export const COMPARABLE_METRICS: readonly ComparableMetric[] = [
   {
     key: "active_kcal",
     kind: "sample",
-    title: BODY_METRIC_META["active-calories"].title,
-    unit: BODY_METRIC_META["active-calories"].unit,
-    decimals: BODY_METRIC_META["active-calories"].decimals,
+    title: TREND_METRIC_META["active-calories"].title,
+    unit: TREND_METRIC_META["active-calories"].unit,
+    decimals: TREND_METRIC_META["active-calories"].decimals,
   },
   {
     key: "hrv_ms",
     kind: "sample",
-    title: BODY_METRIC_META.hrv.title,
-    unit: BODY_METRIC_META.hrv.unit,
-    decimals: BODY_METRIC_META.hrv.decimals,
+    title: TREND_METRIC_META.hrv.title,
+    unit: TREND_METRIC_META.hrv.unit,
+    decimals: TREND_METRIC_META.hrv.decimals,
   },
   {
     key: "heart_rate",
     kind: "hr-minutes",
-    title: BODY_METRIC_META.hr.title,
-    unit: BODY_METRIC_META.hr.unit,
-    decimals: BODY_METRIC_META.hr.decimals,
+    title: TREND_METRIC_META.hr.title,
+    unit: TREND_METRIC_META.hr.unit,
+    decimals: TREND_METRIC_META.hr.decimals,
   },
 ] as const;
 
@@ -330,7 +330,7 @@ export const SOURCE_COLORS: Record<string, string> = {
   oura: "#7c3aed",
   strava: "#ea580c",
   withings: "#db2777",
-  // amber-600. A first-class provider needs its OWN color, not the shared unknown
+  // amber-600. A first-class source needs its OWN color, not the shared unknown
   // fallback (#531/#534: every distinct entity gets a stable color, never one family
   // color) — and this one especially, because the surface it matters on is the
   // compare-sources overlay, where a Takeout series is routinely plotted against the

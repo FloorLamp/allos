@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { frequencyPace, frequencyPaceLabel } from "@/lib/goals";
+import { frequencyPace, frequencyPaceLabel } from "@/lib/frequency-targets";
 
 // Pure-tier tests for the weekly-habit pacing state (issue #748 item 3). The bug: a
 // target was only ever "met" or "Behind", so on the first day of the week EVERY unmet

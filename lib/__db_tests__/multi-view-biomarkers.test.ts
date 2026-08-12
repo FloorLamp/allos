@@ -12,18 +12,18 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import {
-  getMedicalRecords,
+  getClinicalObservations,
   getDerivedBiomarkerReadings,
   reconcileFlags,
 } from "@/lib/queries";
-import { setUserSex } from "@/lib/settings";
+import { setProfileSex } from "@/lib/settings";
 import {
   filterDerivedForTable,
-  prepareMultiViewTableRecords,
+  prepareMultiViewTableObservations,
   type WithProfile,
 } from "@/lib/derived-table";
-import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
-import type { MedicalRecord } from "@/lib/types";
+import { NON_RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
+import type { ClinicalObservation } from "@/lib/types";
 
 let male: number;
 let female: number;
@@ -59,19 +59,19 @@ function addReading(
 function mergedTable(
   ids: number[],
   opts: { current?: boolean } = {}
-): WithProfile<MedicalRecord>[] {
+): WithProfile<ClinicalObservation>[] {
   const stored = ids.flatMap((id) =>
-    getMedicalRecords(id, {
-      excludeCategories: NON_BIOMARKER_CATEGORIES,
+    getClinicalObservations(id, {
+      excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
       current: opts.current,
     }).map((r) => ({ ...r, profileId: id }))
   );
   const derived = ids.flatMap((id) =>
     filterDerivedForTable(getDerivedBiomarkerReadings(id), {
-      excludeCategories: NON_BIOMARKER_CATEGORIES,
+      excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
     }).map((r) => ({ ...r, profileId: id }))
   );
-  return prepareMultiViewTableRecords(stored, derived, {
+  return prepareMultiViewTableObservations(stored, derived, {
     current: opts.current,
   });
 }
@@ -79,8 +79,8 @@ function mergedTable(
 beforeAll(() => {
   male = mkProfile("MV Bio Male (e2e)");
   female = mkProfile("MV Bio Female (e2e)");
-  setUserSex(male, "male");
-  setUserSex(female, "female");
+  setProfileSex(male, "male");
+  setProfileSex(female, "female");
 
   // Shared "Vitamin D" family, different values AND dates per member. Male's newest
   // is 2024-06; female's newest is 2024-03 — each member's own newest must win.
@@ -142,8 +142,8 @@ describe("multi-view Biomarkers table — per-member partitions (#1331)", () => 
 
   it("a single-member view yields exactly that member's rows (byte-identical basis)", () => {
     const single = mergedTable([male]);
-    const direct = getMedicalRecords(male, {
-      excludeCategories: NON_BIOMARKER_CATEGORIES,
+    const direct = getClinicalObservations(male, {
+      excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
     });
     // Same stored readings, same is_latest marks — the multi-view merge over one
     // member is the per-profile reader's own result.

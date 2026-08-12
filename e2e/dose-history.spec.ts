@@ -1,10 +1,15 @@
 import { test, expect } from "./fixtures";
+import Database from "better-sqlite3";
 import {
   followLink,
   hydratedClick,
   settledClick,
   settledSelect,
 } from "./helpers";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
+import { HISTORY_PAGE_SIZE } from "@/lib/pagination";
+import { pinnedTimezone } from "./pinned-timezone";
+import { frozenNow, workerDbPath } from "./worker-env";
 // A dosage/schedule edit must never destroy or rewrite adherence history.
 // Before the `retired` flag, removing a dose row on edit hard-deleted it and
 // ON DELETE CASCADE silently wiped every taken-log that referenced it; and with
@@ -54,7 +59,7 @@ test("dosage restructure keeps the taken history at its original amount", async 
   ).toBeVisible();
 
   // ── Restructure: replace both doses with a single 1000 mg dose ─────────────
-  await morningRow.getByRole("button", { name: "Supplement actions" }).click();
+  await morningRow.getByRole("button", { name: "IntakeItem actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const editForm = page.getByRole("dialog", { name: `Edit ${name}` });
   await expect(editForm.getByTestId("supplement-edit-panel")).toHaveCSS(
@@ -73,13 +78,13 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await expect(rows.first()).toContainText("1000 mg"); // first-ok: the single remaining dose row (count asserted above) — order-agnostic
 
   // ── History survived at the original amount ─────────────────────────────────
-  // The timeline's "Supplement doses confirmed" event for today still lists the
+  // The timeline's "IntakeItem doses confirmed" event for today still lists the
   // confirmed dose — retired, not cascaded — and its expanded detail shows the
   // amount SNAPSHOTTED at confirm time (500 mg), not the post-edit 1000 mg.
   await page.goto("/timeline");
   const confirmedEvent = page
     .locator("details")
-    .filter({ hasText: "Supplement doses confirmed" })
+    .filter({ hasText: "IntakeItem doses confirmed" })
     .filter({ hasText: name })
     .first(); // first-ok: filtered to the confirmed-doses event for THIS spec's supplement — one match
   await confirmedEvent.locator("summary").click();
@@ -118,7 +123,7 @@ test("a supplement's dose history offers the medication row actions, and an edit
   ).toBeVisible();
 
   // ── The row's ⋯ menu now reaches dose history ──────────────────────────────
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await row.getByRole("button", { name: "IntakeItem actions" }).click();
   await page.getByRole("menuitem", { name: "Dose history" }).click();
   const panel = row.getByTestId("supplement-dose-history-panel");
   await expect(
@@ -276,11 +281,101 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
 
   // ── The item-filtered ledger says exactly what the item's own panel says ───
   await page.goto("/nutrition?tab=supplements");
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await row.getByRole("button", { name: "IntakeItem actions" }).click();
   await page.getByRole("menuitem", { name: "Dose history" }).click();
   const panel = row.getByTestId("supplement-dose-history-panel");
   await expect(panel.getByTestId("dose-history-row")).toHaveCount(2);
   await expect(
     panel.getByTestId("dose-history-row").filter({ hasText: "175 mg" })
   ).toHaveCount(1);
+});
+
+// Issue #2445 — the ledger's "All time" range is a FILTER, not a bound.
+//
+// The range control offers an explicit "All time", which reads from the ISO floor;
+// with no LIMIT and no client truncation, a must-obligation medication logged twice
+// daily for years rendered its entire ledger on that tap. The bound is the page, and
+// the page has to reach the query. This seeds one item past the page size and proves
+// the widest possible window still renders exactly one page.
+test("the ledger pages its rows, even on All time", async ({
+  page,
+}, testInfo) => {
+  const name = `Ledger Page ${testInfo.repeatEachIndex}-${testInfo.retry}`;
+  const logged = HISTORY_PAGE_SIZE + 4;
+
+  await page.goto("/nutrition?tab=supplements");
+  await page.getByTestId("supplement-add-toggle").click();
+  const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+  await addDialog.getByLabel("Name").fill(name);
+  await addDialog.getByLabel("Amount").first().fill("250 mg"); // first-ok: the first (only) dose's Amount field in the scoped add modal
+  await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first (only) dose's Time-of-day field in the scoped add modal
+  await addDialog.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(addDialog).toHaveCount(0);
+
+  // The history itself is planted directly: the claim is about VOLUME, and logging
+  // fourteen past doses through the form would test the form, not the bound. Days
+  // run into the deep past so nothing recent moves for a neighbouring spec, and the
+  // instants are built through the run's pinned zone (#1417) rather than bare `Z`.
+  const { zone } = pinnedTimezone(frozenNow().toISOString());
+  const anchor = frozenNow().toISOString().slice(0, 10);
+  const handle = new Database(workerDbPath());
+  try {
+    handle.pragma("busy_timeout = 5000");
+    const item = handle
+      .prepare("SELECT id FROM intake_items WHERE name = ?")
+      .get(name) as { id: number };
+    const dose = handle
+      .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
+      .get(item.id) as { id: number };
+    const insert = handle.prepare(
+      `INSERT INTO intake_item_logs (item_id, dose_id, date, taken_at, status)
+       VALUES (?, ?, ?, ?, 'taken')`
+    );
+    for (let i = 1; i <= logged; i++) {
+      const day = shiftDateStr(anchor, -(200 + i));
+      insert.run(
+        item.id,
+        dose.id,
+        day,
+        zonedWallTimeToUtc(zone, day, "08:00")!.toISOString()
+      );
+    }
+  } finally {
+    handle.close();
+  }
+
+  // Open the ledger narrowed to this item, on the WIDEST window there is.
+  await page.goto("/nutrition/dose-history?range=all");
+  const ledger = page.getByTestId("dose-ledger");
+  const itemFilter = page.getByTestId("dose-ledger-item-filter");
+  const itemValue = await itemFilter
+    .locator("option")
+    .filter({ hasText: name })
+    .getAttribute("value");
+  await settledSelect(page, itemFilter, itemValue ?? "", {
+    destination: /item=/,
+  });
+
+  // One page of rows for a ledger that holds more — the record count and the
+  // rendered count are no longer the same number.
+  await expect(ledger.getByTestId("dose-ledger-row")).toHaveCount(
+    HISTORY_PAGE_SIZE
+  );
+  const pager = page.getByTestId("dose-ledger-pagination");
+  await expect(pager).toContainText(
+    `Showing 1–${HISTORY_PAGE_SIZE} of ${logged}`
+  );
+
+  // The pager turns the READ: page 2 carries the remainder, and the filter it was
+  // narrowed to rides along.
+  // hydratedClick, not followLink: a pager's Next is a RELATIVE navigation, so a
+  // retried click would walk to page 3 instead of re-asserting page 2.
+  await hydratedClick(page, pager.getByRole("link", { name: "Next" }));
+  await page.waitForURL(/page=2/);
+  await expect(page.getByTestId("dose-ledger-row")).toHaveCount(
+    logged - HISTORY_PAGE_SIZE
+  );
+  await expect(page.getByTestId("dose-ledger-pagination")).toContainText(
+    `of ${logged}`
+  );
 });

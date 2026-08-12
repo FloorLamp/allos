@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseStat, GoalProgress } from "@/lib/queries";
-import type { Goal, Sex } from "@/lib/types";
+import type { OutcomeGoal, Sex } from "@/lib/types";
 import { dispWeight, fmtWeight } from "@/lib/units";
 import { liftInfo } from "@/lib/lifts";
 import {
@@ -13,7 +13,7 @@ import {
   strengthStandingPhrase,
   bodyweightMultiple,
 } from "@/lib/strength-standards";
-import { goalsForExercise, goalTargetText } from "@/lib/goals";
+import { goalsForExercise, goalTargetText } from "@/lib/outcome-goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -29,7 +29,7 @@ import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import LevelBadge from "@/components/LevelBadge";
 import { StatBox } from "@/components/StatBox";
-import { journalActivityHref } from "@/lib/timeline-format";
+import { trainingLogActivityHref } from "@/lib/timeline-format";
 import type { AppRoute } from "@/lib/hrefs";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 
@@ -64,7 +64,7 @@ export function bestSetText(
 }
 
 // Per-exercise detail: muscle/region badges, benchmark stat grid, training-volume
-// trend, and any matching goals. Shared by the Strength page and the journal's
+// trend, and any matching goals. Shared by the Strength page and the training log's
 // right-hand detail pane.
 export default function ExerciseDetailPanel({
   stat,
@@ -86,12 +86,12 @@ export default function ExerciseDetailPanel({
   units: UnitPrefs;
   // Profile sex, so strength standards/levels use the sex-appropriate chart.
   sex?: Sex | null;
-  goals?: Goal[];
+  goals?: OutcomeGoal[];
   // Auto-derived progress keyed by goal id (plain object — crosses the
   // server/client boundary, unlike a Map).
   goalProgress?: Record<number, GoalProgress>;
   // Recent sessions of this exercise (newest first), already summarized.
-  // `href` links to the session's activity in the journal (an INTERNAL route, so
+  // `href` links to the session's activity in the training log (an INTERNAL route, so
   // `AppRoute` — issue #285 — matching the RecentSessionSummary rows the query
   // layer produces); `date` is preformatted.
   recent?: {
@@ -128,9 +128,18 @@ export default function ExerciseDetailPanel({
   // computation (no more flat-ratio second model that could disagree by a tier).
   // Hidden entirely when sex or bodyweight is unset, or the lift isn't covered.
   // Gated on showLevel so it doesn't double up with the Analyze Benchmarks card.
+  // Scored from freeWeightE1rmKg (#2326): a lift backed entirely by machine sets
+  // gets no badge and no coaching line — "untested against the standard", which is
+  // honest, rather than the wrong claim a barbell-table placing would make. The
+  // panel's own e1RM readout is unchanged; the machine set is a real set.
   const standing =
     showLevel && sex && bodyweightKg
-      ? strengthStanding(stat.exercise, stat.e1rmKg, sex, bodyweightKg)
+      ? strengthStanding(
+          stat.exercise,
+          stat.freeWeightE1rmKg,
+          sex,
+          bodyweightKg
+        )
       : null;
   const badge = standing
     ? {
@@ -235,7 +244,7 @@ export default function ExerciseDetailPanel({
           label="Last trained"
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
-          href={journalActivityHref(stat.lastActivityId)}
+          href={trainingLogActivityHref(stat.lastActivityId)}
         />
         {matchedGoals.map((g) => {
           const pct = goalProgress?.[g.id]?.pct ?? 0;

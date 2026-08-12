@@ -3,12 +3,12 @@
 import { createContext, useContext } from "react";
 import type { RankedBiomarker } from "@/lib/biomarker-rank";
 
-// Section-level supply of the canonical biomarker-name suggestions for the RecordForm
+// Section-level supply of the canonical biomarker-name suggestions for the ResultForm
 // combobox (issue #1177). Like ProviderOptionsContext: the native suggestion dropdown
 // it replaces was rendered once per page and every canonical-name input referenced it
-// by id; the combobox needs the strings in hand. RecordForm is nested (BiomarkersTable →
-// RecordForm, ExtractedRecords → EditableRecordRow → RecordForm), so the two host
-// pages wrap their subtree in this provider ONCE and RecordForm reads the list here.
+// by id; the combobox needs the strings in hand. ResultForm is nested (ReadingsTable →
+// ResultForm, ExtractedObservations → EditableResultRow → ResultForm), so the two host
+// pages wrap their subtree in this provider ONCE and ResultForm reads the list here.
 //
 // #1675: the rows arrive RELEVANCE-RANKED and group-tagged from
 // `getRankedBiomarkerOptions`, so the two hosts (the Biomarkers add slot / row editor,

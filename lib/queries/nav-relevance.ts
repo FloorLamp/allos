@@ -7,9 +7,9 @@
 
 import { db } from "../db";
 import {
-  getUserAge,
-  getUserReproductiveStatus,
-  getUserSex,
+  getProfileAge,
+  getProfileReproductiveStatus,
+  getProfileSex,
 } from "../settings/profile-attrs";
 import {
   cycleTrackingRelevant,
@@ -57,9 +57,9 @@ export function getNavRelevance(profileId: number): NavRelevance {
   return {
     cycle: cycleTrackingRelevant({
       hasCycleRows,
-      sex: getUserSex(profileId),
-      reproductiveStatus: getUserReproductiveStatus(profileId),
-      age: getUserAge(profileId),
+      sex: getProfileSex(profileId),
+      reproductiveStatus: getProfileReproductiveStatus(profileId),
+      age: getProfileAge(profileId),
     }),
     vision: hasVisionRows,
     dental: hasDentalRows,
@@ -95,6 +95,6 @@ export function getRecordsSpecialtyRelevance(profileId: number): {
   return {
     vision: nav.vision,
     dental: nav.dental,
-    substanceUse: !isMinor(getUserAge(profileId)),
+    substanceUse: !isMinor(getProfileAge(profileId)),
   };
 }

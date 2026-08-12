@@ -1,0 +1,20 @@
+"use client";
+
+import Combobox from "@/components/Combobox";
+
+// Free-text intake-item/brand autocomplete: the typed value is always kept, and
+// an unmatched query offers an "Use '<query>'" row. `onPick` fires on selection
+// so the form can auto-fill dosage/time from the catalog. Thin wrapper over the
+// shared Combobox.
+export default function IntakeItemCombobox(props: {
+  value: string;
+  onChange: (v: string) => void;
+  onPick?: (v: string, query?: string) => void;
+  options: string[];
+  placeholder?: string;
+  name?: string;
+  id?: string;
+  ariaLabel?: string;
+}) {
+  return <Combobox {...props} allowFreeText />;
+}

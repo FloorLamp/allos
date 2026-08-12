@@ -122,7 +122,7 @@ describe("the condition-name vocabulary (#1676)", () => {
       [...ICD10_CONDITION_NAMES],
       "high blood pressure",
       icd10SearchTerms,
-      8
+      { limit: 8 }
     );
     expect(filtered).toContain("Essential (primary) hypertension");
   });

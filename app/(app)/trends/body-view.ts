@@ -1,4 +1,4 @@
-// The Trends → Body overview layout mode (#1067 Phase 2). Shared by the page (URL
+// The Trends → Overview → body census overview layout mode (#1067 Phase 2). Shared by the page (URL
 // parse), the toggle control, and BodySection (visibility classes) so the three
 // agree on the three-state responsive default.
 //

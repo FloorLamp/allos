@@ -62,7 +62,7 @@ export default function VideoClipGrid({
   serveBase: string;
   canWrite: boolean;
   // Whether the ADD affordance (file picker + caption + button) renders. Split out
-  // of `canWrite` by #1457: the training tenant's Journal card now shows clips
+  // of `canWrite` by #1457: the training tenant's Training Log card now shows clips
   // read/playback-style with per-clip edit + delete (so it still needs `canWrite`)
   // while the "add" entry point lives in the activity editor. Defaults to today's
   // behavior so the symptom/episode tenant is untouched.

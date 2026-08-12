@@ -13,9 +13,9 @@ import {
   SLEEP_STAGES_SERIES_KEY,
 } from "../trend-sparkline";
 import {
-  BODY_METRIC_SLUGS,
-  savedMetricIdForBodySlug,
-} from "../trends-body-metrics";
+  TREND_METRIC_SLUGS,
+  savedMetricIdForTrendSlug,
+} from "../trend-metrics";
 import { metricSeriesKey } from "../saved-items";
 
 // The DAY-GRAIN GAP chokepoint (issue #2258), in the repo's source-scan idiom
@@ -140,13 +140,13 @@ describe("day-grain gap chokepoint (issue #2258)", () => {
 });
 
 describe("gap registry completeness (issue #2258)", () => {
-  it("every registered body metric carries a declared gap", () => {
-    const missing = BODY_METRIC_SLUGS.filter(
-      (slug) => METRIC_GAP[savedMetricIdForBodySlug(slug)] == null
+  it("every registered trend metric carries a declared gap", () => {
+    const missing = TREND_METRIC_SLUGS.filter(
+      (slug) => METRIC_GAP[savedMetricIdForTrendSlug(slug)] == null
     );
     expect(
       missing,
-      `These body metrics reach a chart with no declared gap policy. Add them to ` +
+      `These trend metrics reach a chart with no declared gap policy. Add them to ` +
         `METRIC_GAP in lib/trend-sparkline.ts with their reason — is a missing ` +
         `day an unsampled LEVEL, an absent READING, or a total that is a real ` +
         `zero?:\n${missing.join(", ")}`
@@ -170,7 +170,7 @@ describe("gap registry completeness (issue #2258)", () => {
 
   it("every declared id is still a real series (no stale entries)", () => {
     const live = new Set<string>([
-      ...BODY_METRIC_SLUGS.map(savedMetricIdForBodySlug),
+      ...TREND_METRIC_SLUGS.map(savedMetricIdForTrendSlug),
       "volume",
       SLEEP_DURATION_SERIES_KEY.slice("metric:".length),
       SLEEP_STAGES_SERIES_KEY.slice("metric:".length),

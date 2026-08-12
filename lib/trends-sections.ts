@@ -1,6 +1,6 @@
 // The Trends LANDING SURFACE's anchored parts (issues #1644, #2151).
 //
-// #1644 merged the Body tab into Overview: `/trends` (the default view, still
+// #1644 moved the body census into Overview: `/trends` (the default view, still
 // labelled Overview) is now the trending digest, then the cross-domain **starred
 // grid**, then the **body census** streamed below them. This module names those
 // anchored parts — nothing else.
@@ -20,7 +20,7 @@
 //
 // The curation contract stays with the GRID (#1487/#1456): the starred grid renders
 // nothing unconditionally, while the census below it renders everything for the
-// domain, exactly as the Body tab did.
+// domain, exactly as the body census did.
 
 import type { AppRoute } from "./hrefs";
 

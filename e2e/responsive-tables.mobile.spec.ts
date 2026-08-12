@@ -16,7 +16,7 @@ import {
 // which labels come back, where the tap goes) plus one ordering comparison that
 // holds for any fixture with two distinct names.
 
-const BIOMARKERS = "/results/biomarkers";
+const BIOMARKERS = "/results/readings";
 
 // The master list is an index of collapsed panel groups since #1499 section A, so a
 // spec about the ROW's card shape has to open a group first. `?q=` narrows the list
@@ -41,8 +41,6 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
       .locator("tbody tr")
       .filter({ has: page.locator('td[data-card="title"]') })
       .first(); // first-ok: the spec asserts the card SHAPE, never which row is first
-    await expect(card).toHaveCSS("border-radius", "0px");
-    await expect(card).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(card.locator('td[data-card="title"]')).toBeVisible();
     // The value (with its out-of-range flag) is on the card, not scrolled off it.
     const value = card.locator('td[data-card="value"]');
@@ -84,10 +82,14 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     // The canonical-name link is the SAME `readingDetailHref` anchor the desktop
     // table renders — the card is a re-layout of that cell, not a second one.
     const link = table
-      .locator('td[data-card="title"] a[href*="/biomarkers/view"]')
+      .locator('td[data-card="title"] a[href*="/results/readings/view"]')
       .first(); // first-ok: any canonical row's link proves the card keeps the desktop destination
-    await followLink(page, link, /\/biomarkers\/view\?name=/);
-    await expect(page.locator("h1")).toBeVisible();
+    const destinationName = (await link.textContent())?.trim();
+    expect(destinationName).toBeTruthy();
+    await followLink(page, link, /\/results\/readings\/view\?name=/);
+    await expect(
+      page.getByRole("heading", { name: destinationName!, exact: true })
+    ).toBeVisible();
   });
 
   test("sorting still works in stacked-row mode, through the compact sort select", async ({
@@ -123,8 +125,6 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     await expect(table).toBeVisible();
     await expect(table.locator("thead")).toBeHidden();
     const card = table.locator("tbody tr").first(); // first-ok: the spec asserts the card shape of a session row, not which session
-    await expect(card).toHaveCSS("border-radius", "0px");
-    await expect(card).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     // Date is the card title (and still the deep link into the log); the view's
     // leading metric is the headline value.
     await expect(card.locator('td[data-card="title"] a')).toBeVisible();

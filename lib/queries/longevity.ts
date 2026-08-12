@@ -17,11 +17,11 @@
 // `.prepare` lives here and the scoping guard is unaffected.
 
 import { today } from "../db";
-import { getUserSex, getUserAge } from "../settings";
+import { getProfileSex, getProfileAge } from "../settings";
 import { retestDaysForBiomarker } from "../biomarker-retest";
 import {
-  getLatestMedicalRecordByCanonical,
-  getMedicalRecords,
+  getLatestClinicalObservationByCanonical,
+  getClinicalObservations,
   getCanonicalBiomarker,
 } from "./medical";
 import { getBioAgeReadings } from "./derived";
@@ -68,13 +68,13 @@ function sriTrendArrow(profileId: number): PillarTrend | null {
 // with no data (age/sex unset, no readings, child-gated bio-age) simply doesn't
 // appear — pillars hide when their data is absent, no composite score.
 export function getHealthspanPillars(profileId: number): Pillar[] {
-  const sex = getUserSex(profileId);
-  const age = getUserAge(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAge(profileId);
 
   const inputs: PillarInputs = {};
 
   // VO2 Max percentile (#158) — from the latest VO2 Max reading + fitnessContext.
-  const vo2 = getLatestMedicalRecordByCanonical(profileId, VO2_MARKER);
+  const vo2 = getLatestClinicalObservationByCanonical(profileId, VO2_MARKER);
   const vo2ctx =
     vo2?.value_num != null
       ? fitnessContext(VO2_MARKER, vo2.value_num, sex, age)
@@ -95,10 +95,23 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
   const bodyweightKg = getLatestBodyMetric(profileId, "weight");
   if (sex && bodyweightKg && isAdultForClinical(age)) {
     const standings = getStrengthByExercise(profileId)
-      .map((e) => strengthStanding(e.exercise, e.e1rmKg, sex, bodyweightKg))
+      // freeWeightE1rmKg, not e1rmKg (#2326): the pillar scores against a barbell
+      // population table, so a lift backed only by machine sets contributes no
+      // standing rather than a meaningless one.
+      .map((e) =>
+        strengthStanding(e.exercise, e.freeWeightE1rmKg, sex, bodyweightKg)
+      )
       .filter((s): s is NonNullable<typeof s> => s != null);
     const best = bestStanding(standings);
-    if (best) inputs.strength = { level: best.level, lift: best.lift };
+    // `lift` is the standards row the claim is judged against ("Bench Press"); `exercise`
+    // is the logged lift that produced it ("Barbell Bench Press"), which is what the
+    // pillar's deep link has to address (#1921).
+    if (best)
+      inputs.strength = {
+        level: best.level,
+        lift: best.lift,
+        exercise: best.exercise,
+      };
   }
 
   // Sleep regularity (#160, SRI).
@@ -155,7 +168,7 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
 // verdict from the existing `biomarkerRetestStatus` — Longevity adds no retest model of
 // its own (#2023 non-goal).
 function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
-  return getMedicalRecords(profileId, { current: true })
+  return getClinicalObservations(profileId, { current: true })
     .filter((r) => LAB_CATEGORIES.has(r.category) && r.canonical_name)
     .map((r) => ({
       name: r.name,
@@ -173,8 +186,8 @@ function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
 // expanded #biomarkers section (non-optimal first — the judged set and verdicts
 // are optimalShareRows over the SAME gather as the pillar count).
 export function getOptimalShareRows(profileId: number): OptimalShareRow[] {
-  const sex = getUserSex(profileId);
-  const age = getUserAge(profileId);
+  const sex = getProfileSex(profileId);
+  const age = getProfileAge(profileId);
   return optimalShareRows(
     gatherOptimalReadings(profileId),
     sex,
@@ -189,8 +202,8 @@ export function getOptimalShareRows(profileId: number): OptimalShareRow[] {
 export function getOptimalHitRate(profileId: number): OptimalHitRate {
   return optimalRangeHitRate(
     gatherOptimalReadings(profileId),
-    getUserSex(profileId),
-    getUserAge(profileId),
+    getProfileSex(profileId),
+    getProfileAge(profileId),
     today(profileId)
   );
 }

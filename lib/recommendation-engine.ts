@@ -32,7 +32,7 @@ import {
   shouldSaveInsight,
   type RecommendationTrigger,
 } from "./recommendation-run";
-import { getInsight } from "./queries/intake/insights";
+import { getDailyInsight } from "./queries/coaching/daily-insights";
 import {
   autoSuggestFromBiomarkers,
   generateAndStoreSuggestions,
@@ -135,7 +135,7 @@ export async function runRecommendation(
     }
 
     const startedAt = Date.now();
-    // Supplement half: scope to the just-imported records on an upload (respects
+    // IntakeItem half: scope to the just-imported records on an upload (respects
     // the auto-suggest toggle), else a full-lab scan for a scheduled/other run.
     let suggested = 0;
     try {
@@ -159,7 +159,7 @@ export async function runRecommendation(
       if (
         shouldSaveInsight({
           newModel: result.model,
-          hasExisting: getInsight(profileId, date) !== undefined,
+          hasExisting: getDailyInsight(profileId, date) !== undefined,
         })
       ) {
         saveInsight(profileId, date, result);

@@ -2,13 +2,13 @@
 // amount-only dose (#851 item 9). A scheduled item keeps its per-slot doses; a PRN
 // med has no schedule, so its multiple slotted dose rows collapse to ONE dose with a
 // NULL time_of_day (the amount + food-timing of the first row preserved). The collapse
-// is collapsePrnDoses, applied by addSupplement/updateSupplement before insert; these
+// is collapseOnDemandDoses, applied by addIntakeItem/updateIntakeItem before insert; these
 // drive the real actions and read back the stored dose rows.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import { seedActor, fd } from "./harness";
 
 vi.mocked(revalidatePath);
@@ -50,7 +50,7 @@ beforeEach(() => {
 
 describe("PRN medication dose collapse (#851 item 9)", () => {
   it("collapses two slotted doses to ONE amount-only dose (time_of_day NULL, food preserved)", async () => {
-    const r = await addSupplement(
+    const r = await addIntakeItem(
       fd({
         name: "Ibuprofen",
         kind: "medication",
@@ -68,7 +68,7 @@ describe("PRN medication dose collapse (#851 item 9)", () => {
   });
 
   it("keeps BOTH slotted doses for a SCHEDULED medication (no collapse)", async () => {
-    const r = await addSupplement(
+    const r = await addIntakeItem(
       fd({
         name: "Lisinopril",
         kind: "medication",

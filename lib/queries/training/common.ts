@@ -27,7 +27,7 @@ export function recentWindowStart(profileId: number): string {
 // All dated weights ascending, for bodyweightAsOf lookups. Weightless
 // body-metrics rows (HR/body-fat only) are excluded — no bodyweight.
 // cache(): both getStrengthByExercise and getRecentExerciseHistory load this, so a
-// page rendering both (journal, strength) would otherwise scan the weight history
+// page rendering both (training log, strength) would otherwise scan the weight history
 // twice — cache() collapses it to one scan per profile per request.
 export const loadWeightsAsc = cache(function loadWeightsAsc(
   profileId: number
@@ -64,7 +64,7 @@ interface EffortEntry {
 
 // cache(): a single page can aggregate the same (profile, type) efforts 3–4 times
 // per request (getCardioByActivity + getCardioVolumeByWeek + getCardioIntensityMix
-// on the training page; + getSportByActivity/journal), each a full activities scan
+// on the training page, plus getSportByActivity for the Training Log), each a full activities scan
 // with per-row JSON.parse. cache() computes it once per (profile, type[, since])
 // per request. Pass `since` (YYYY-MM-DD) to bound the scan — used by the
 // suggestion path, which needs recent names rather than all history, and by the

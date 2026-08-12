@@ -10,7 +10,7 @@
 
 import type { NotificationAction, NotificationMessage } from "./types";
 import type { LifecycleSuppressionPolicy } from "../lifecycle";
-import type { SupplementKind } from "../types/intake";
+import type { IntakeItemKind } from "../types/intake";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { intakeHref } from "../hrefs";
 import { GLYPH } from "./glyphs";
@@ -49,7 +49,7 @@ export interface EscalationCandidate {
   window: EscalationWindow;
   // Which surface the item lives on, so the message can carry the right deep link
   // (#1716) — a medication points at Medications, a supplement at the Supplements tab.
-  kind: SupplementKind;
+  kind: IntakeItemKind;
   // The window's scheduled reminder minute of day (0–1439, profile-local), so the
   // elapsed check anchors on when the reminder went out (#2121 minute grain).
   slotMinute: number;
@@ -86,7 +86,7 @@ export interface EscalationDue {
   amount: string | null;
   product?: string | null;
   window: EscalationWindow;
-  kind: SupplementKind;
+  kind: IntakeItemKind;
   // Minutes since the window's own slot hour — the fact that MADE this fire, which
   // the message states outright (#1716). Anchored on the slot, not on the escalation
   // threshold: "unconfirmed for 2h 40m" is time since the dose was due, which is what

@@ -12,7 +12,7 @@ import {
   RHYTHM_WINDOW_WEEKS,
   type WeeklyRhythm,
 } from "../../weekly-rhythm";
-import { db, today } from "../../db";
+import { db, hoistedStatement, today } from "../../db";
 import { decayedWeight } from "../../decay";
 import {
   LIFT_OPTIONS,
@@ -27,10 +27,10 @@ import {
 } from "../../activity-validate";
 import {
   activityProvenanceKey,
-  JOURNAL_SOURCE_DOCUMENT,
-  JOURNAL_SOURCE_MANUAL,
-} from "../../journal-format";
-import type { JournalFilters } from "../../journal-filters";
+  TRAINING_LOG_SOURCE_DOCUMENT,
+  TRAINING_LOG_SOURCE_MANUAL,
+} from "../../training-log-format";
+import type { TrainingLogFilters } from "../../training-log-filters";
 import { likePattern } from "../../search-projections";
 import { DOCUMENT_SOURCE_PREFIX } from "../../body-metric-extract";
 import {
@@ -52,6 +52,18 @@ export interface ActivitySuggestions {
   // Per-lift co-occurrence: base-name (lowercased) -> top co-logged lifts, used
   // to bias the combobox toward companions of the draft's exercises (issue #195).
   liftCompanions: CompanionMap;
+  // Lowercased names this profile has ACTUALLY logged inside the recent window —
+  // the base-collapsed lifts plus the cardio and sport component names, from the
+  // three usage tallies already gathered here. It is what lets the picker's
+  // ranking survive a keystroke (#2384): the fuzzy matcher sorts on string shape
+  // and keeps the caller's order only as an exact-score tiebreak, so without a
+  // usage signal a never-logged "Squash" outranks five logged squats for "sqa".
+  //
+  // Deliberately NOT the other three biases: today's routine slots (#1115) and the
+  // draft's companions (#195) are claims about which head to show on an empty
+  // query, not evidence that the person does the movement. Only logged usage earns
+  // the bonus.
+  logged: string[];
 }
 
 // The base-collapsed exercise names prescribed by TODAY'S resolved routine day (#1115
@@ -145,22 +157,32 @@ export const getActivitySuggestions = cache(function getActivitySuggestions(
   // Cardio/sport names come from the structured component names ("Running"), not
   // the freeform activity title ("Morning run"), so the picker suggests real
   // activity names rather than one-off session labels.
+  const cardioCounts = effortNameCounts(profileId, "cardio");
+  const sportCounts = effortNameCounts(profileId, "sport");
   return {
     lifts: prioritizeRoutineSlots(
       rankByFrequency(LIFT_OPTIONS, liftRows),
       routineSlotNames
     ),
-    cardio: rankByFrequency(
-      CARDIO_ACTIVITIES,
-      effortNameCounts(profileId, "cardio")
-    ),
-    sports: rankByFrequency(SPORTS, effortNameCounts(profileId, "sport")),
+    cardio: rankByFrequency(CARDIO_ACTIVITIES, cardioCounts),
+    sports: rankByFrequency(SPORTS, sportCounts),
     liftCompanions: buildCompanionMap(companionRows, t),
+    // The same three tallies the rankings above are built from, flattened to the
+    // bare "has this been logged" question the matcher can carry (#2384). No new
+    // query, and profile- and window-scoped by construction because the tallies
+    // are. `liftCounts` is already keyed by the lowercased base name.
+    logged: [
+      ...new Set([
+        ...liftCounts.keys(),
+        ...cardioCounts.map((r) => r.name.toLowerCase()),
+        ...sportCounts.map((r) => r.name.toLowerCase()),
+      ]),
+    ],
   };
 });
 
-// ---- Activities / Journal ----
-// Omit `limit` to fetch the full history (the journal pages all activities
+// ---- Activities / Training Log ----
+// Omit `limit` to fetch the full history (the training log pages all activities
 // client-side); pass a number to cap the result (e.g. dashboard previews).
 export function getActivities(profileId: number, limit?: number): Activity[] {
   if (limit == null) {
@@ -210,13 +232,15 @@ export function getRecentActivityEquipmentIds(profileId: number): number[] {
 // two, because the rest-tolerant activityStreak counted ACTIVE days with a rest-day
 // of tolerance, so a Mon/Wed/Fri rhythm read "5-day streak" across a nine-day span.
 // `activeDays` is accurate, already present, and already what the surfaces lead with.
-export interface JournalWeekSummary {
+export interface TrainingLogWeekSummary {
   sessions: number; // activities logged in the profile's weekly window
   activeDays: number; // distinct days trained in the profile's weekly window
   volumeKg: number; // total weight × reps (both sides) in the profile's weekly window
 }
 
-export function getJournalWeekSummary(profileId: number): JournalWeekSummary {
+export function getTrainingLogWeekSummary(
+  profileId: number
+): TrainingLogWeekSummary {
   // "This week" per the profile's setting: the current calendar week (resetting
   // on the week-start day) or a rolling 7-day window.
   const since = weekWindowStart(profileId);
@@ -269,8 +293,8 @@ export function getActivitiesSince(
     .all(profileId, since) as Activity[];
 }
 
-// One page of the Journal feed, windowed SERVER-SIDE by whole days (issue #451). The
-// journal is browsed by recency, so paging by day (not by row) keeps a day's cards
+// One page of the Training Log feed, windowed SERVER-SIDE by whole days (issue #451). The
+// training log is browsed by recency, so paging by day (not by row) keeps a day's cards
 // intact — a page never splits a single day across the boundary, so the client can
 // append pages by plain concatenation. Keyset ("seek") pagination on `date`: pass the
 // previous page's `nextBefore` as `before` to get the next-older window; null starts
@@ -279,14 +303,14 @@ export function getActivitiesSince(
 // on every visit. `nextBefore` is the oldest loaded date when more days remain (an
 // over-fetch of one extra date decides this without a phantom trailing page), else
 // null. Profile-scoped on both statements.
-export interface JournalPage {
+export interface TrainingLogPage {
   activities: Activity[]; // every activity on the returned days, date DESC, id DESC
   days: string[]; // the distinct dates covered, date DESC
   nextBefore: string | null; // cursor for the next-older page, or null when exhausted
 }
 
 // The SQL-shaped form of the feed's active filters (issue #1634) — what
-// resolveJournalFilterSpec() turns a JournalFilters into once per request. Every
+// resolveTrainingLogFilterSpec() turns a TrainingLogFilters into once per request. Every
 // field is already reduced to something a WHERE clause can use: the derived filters
 // (muscle/region tag, fault) arrive as finite PREIMAGES resolved in JS, because
 // regionForExercise() and storedActivityFault() are pure TypeScript that SQLite
@@ -295,7 +319,17 @@ export interface JournalPage {
 // `null` on a field means "this filter is not active". An EMPTY preimage array
 // means "active, and nothing in the ledger can match" — the page is empty, which is
 // very different from absent; keep the two apart.
-export interface JournalFilterSpec {
+//
+// That distinction is made by the SHAPE, not by a predicate over it: an empty
+// preimage builds a `WHERE … IN ()` that matches nothing, while a null field emits
+// no clause at all, so the two already answer differently one line further down.
+// `trainingLogFilterSpecActive` — a spec-level "is anything filtered" that shipped in
+// #2501 and never gained a caller — was deleted in #2527: the question is asked one
+// level EARLIER, on the UI-shaped filters, by `trainingLogFiltersActive`
+// (lib/training-log-filters.ts), which is what decides whether a spec gets resolved
+// at all (lib/training-log-feed.ts). Asking it again of the resolved spec would be a
+// second answer to a settled question.
+export interface TrainingLogFilterSpec {
   query: string | null; // free text (already trimmed), matched by LIKE
   type: ActivityType | null;
   source: string | null; // a provenance KEY (activityProvenanceKey)
@@ -305,7 +339,7 @@ export interface JournalFilterSpec {
   faultIds: readonly number[] | null;
 }
 
-export const NO_JOURNAL_FILTERS: JournalFilterSpec = {
+export const NO_TRAINING_LOG_FILTERS: TrainingLogFilterSpec = {
   query: null,
   type: null,
   source: null,
@@ -313,24 +347,17 @@ export const NO_JOURNAL_FILTERS: JournalFilterSpec = {
   faultIds: null,
 };
 
-export function journalFilterSpecActive(spec: JournalFilterSpec): boolean {
-  return (
-    spec.query != null ||
-    spec.type != null ||
-    spec.source != null ||
-    spec.tagExercises != null ||
-    spec.faultIds != null
-  );
-}
-
 // The `source` half of the WHERE clause for a provenance KEY. Mirrors
 // activityProvenanceKey()'s collapse in SQL: 'manual' covers NULL and the literal
 // 'manual'; 'document' covers every 'document:<id>' row; anything else is the raw
 // integration id stored on the row.
-function journalSourceClause(key: string): { sql: string; params: unknown[] } {
-  if (key === JOURNAL_SOURCE_MANUAL)
+function trainingLogSourceClause(key: string): {
+  sql: string;
+  params: unknown[];
+} {
+  if (key === TRAINING_LOG_SOURCE_MANUAL)
     return { sql: "(a.source IS NULL OR a.source = 'manual')", params: [] };
-  if (key === JOURNAL_SOURCE_DOCUMENT)
+  if (key === TRAINING_LOG_SOURCE_DOCUMENT)
     return {
       // Prefix match — DOCUMENT_SOURCE_PREFIX carries no LIKE wildcards itself.
       sql: "a.source LIKE ?",
@@ -341,8 +368,8 @@ function journalSourceClause(key: string): { sql: string; params: unknown[] } {
 
 // Build the shared `AND …` fragments + params for a filter spec. Used by the day
 // scan below; deliberately a SUPERSET of the pure card predicate
-// (lib/journal-filters.ts) — see that module's superset contract.
-function journalFilterSql(spec: JournalFilterSpec): {
+// (lib/training-log-filters.ts) — see that module's superset contract.
+function trainingLogFilterSql(spec: TrainingLogFilterSpec): {
   sql: string;
   params: unknown[];
 } {
@@ -353,7 +380,7 @@ function journalFilterSql(spec: JournalFilterSpec): {
     params.push(spec.type);
   }
   if (spec.source != null) {
-    const s = journalSourceClause(spec.source);
+    const s = trainingLogSourceClause(spec.source);
     clauses.push(s.sql);
     params.push(...s.params);
   }
@@ -396,14 +423,14 @@ function journalFilterSql(spec: JournalFilterSpec): {
   };
 }
 
-export function getJournalPage(
+export function getTrainingLogPage(
   profileId: number,
   before: string | null,
   dayLimit: number,
-  spec: JournalFilterSpec = NO_JOURNAL_FILTERS
-): JournalPage {
+  spec: TrainingLogFilterSpec = NO_TRAINING_LOG_FILTERS
+): TrainingLogPage {
   const limit = Math.max(1, dayLimit);
-  const filter = journalFilterSql(spec);
+  const filter = trainingLogFilterSql(spec);
   // Over-fetch one extra date so we can tell whether an older page exists without
   // issuing a separate count (or a trailing page that comes back empty). Under a
   // filter the scan selects the days that CONTAIN a match across the whole ledger,
@@ -429,7 +456,7 @@ export function getJournalPage(
 
   // EVERY activity on the selected days — including, under a filter, the ones that
   // do NOT match. Deliberate: the filter selects DAYS here and the pure card
-  // predicate (journalCardMatches) selects CARDS within them, and the card layer
+  // predicate (trainingLogCardMatches) selects CARDS within them, and the card layer
   // needs a day's full row set anyway for the manual-merge sibling picker, which
   // must keep offering a same-day duplicate a search would otherwise hide (#64).
   const placeholders = days.map(() => "?").join(",");
@@ -447,7 +474,7 @@ export function getJournalPage(
   };
 }
 
-// ---- Journal filter preimages (issue #1634) ----
+// ---- Training Log filter preimages (issue #1634) ----
 
 // The profile's distinct exercise names, as stored. Small (dozens–hundreds even for
 // a long history) and the input to the tag preimage below. cache(): a request that
@@ -473,7 +500,7 @@ const distinctExerciseNames = cache(function distinctExerciseNames(
 // exercise name still resolves through that fallback. So the mapping is evaluated in
 // JS over the names the profile ACTUALLY logged, and the result becomes an IN-list.
 // Bounded by the distinct-name count, resolved once per request.
-export function getJournalTagExercises(
+export function getTrainingLogTagExercises(
   profileId: number,
   tag: { kind: "muscle" | "region"; value: string }
 ): string[] {
@@ -496,7 +523,7 @@ export function getJournalTagExercises(
 //
 // COST. storedActivityFault() is a pure judgment over the row plus its sets, so this
 // walks the profile's activities and exercise_sets once. That is the SAME shape of
-// scan the Journal page already pays for its analytics side panel
+// scan the Training Log page already pays for its analytics side panel
 // (getStrengthByExercise reads every non-warmup set of the profile), so it does not
 // change the surface's cost class — and cache() collapses it to one pass per request
 // no matter how many callers ask.
@@ -546,33 +573,33 @@ export const getActivityFaults = cache(function getActivityFaults(
 // is exactly one option and 'document:<id>' rows don't fan out into one option per
 // uploaded file. Manual first, then the rest alphabetically by key — a stable order
 // that doesn't shuffle as history grows. cache(): one scan per request.
-export const getJournalSourceKeys = cache(function getJournalSourceKeys(
+export const getTrainingLogSourceKeys = cache(function getTrainingLogSourceKeys(
   profileId: number
 ): string[] {
   const rows = db
     .prepare("SELECT DISTINCT source FROM activities WHERE profile_id = ?")
     .all(profileId) as { source: string | null }[];
   const keys = new Set(rows.map((r) => activityProvenanceKey(r.source)));
-  const rest = [...keys].filter((k) => k !== JOURNAL_SOURCE_MANUAL).sort();
-  return keys.has(JOURNAL_SOURCE_MANUAL)
-    ? [JOURNAL_SOURCE_MANUAL, ...rest]
+  const rest = [...keys].filter((k) => k !== TRAINING_LOG_SOURCE_MANUAL).sort();
+  return keys.has(TRAINING_LOG_SOURCE_MANUAL)
+    ? [TRAINING_LOG_SOURCE_MANUAL, ...rest]
     : rest;
 });
 
 // Turn the feed's user-facing filters into the SQL-shaped spec, resolving the two
 // derived filters against this profile's own data. Called ONCE per feed request (the
 // page assembler), never per render.
-export function resolveJournalFilterSpec(
+export function resolveTrainingLogFilterSpec(
   profileId: number,
-  filters: JournalFilters
-): JournalFilterSpec {
+  filters: TrainingLogFilters
+): TrainingLogFilterSpec {
   const query = filters.query.trim();
   return {
     query: query === "" ? null : query,
     type: filters.type,
     source: filters.source,
     tagExercises: filters.tag
-      ? getJournalTagExercises(profileId, filters.tag)
+      ? getTrainingLogTagExercises(profileId, filters.tag)
       : null,
     faultIds: filters.faultOnly ? getActivityFaults(profileId).ids : null,
   };
@@ -582,12 +609,13 @@ export function getActivitiesByDate(
   profileId: number,
   date: string
 ): Activity[] {
-  return db
-    .prepare(
-      "SELECT * FROM activities WHERE profile_id = ? AND date = ? ORDER BY id DESC"
-    )
-    .all(profileId, date) as Activity[];
+  return ACTIVITIES_BY_DATE_STMT.all(profileId, date) as Activity[];
 }
+// Hoisted: read per member on every cross-profile surface (360 executions on one
+// /household render — two per member).
+const ACTIVITIES_BY_DATE_STMT = hoistedStatement(
+  "SELECT * FROM activities WHERE profile_id = ? AND date = ? ORDER BY id DESC"
+);
 
 export function getActivityDates(profileId: number): string[] {
   return (
@@ -610,15 +638,18 @@ export type InferredWorkoutSchedule = WeeklyRhythm;
 // enough, and the most common start hour. Falls back to every day at 18:00 when
 // there's no clear pattern. A thin SQL gather over the shared inference core
 // (#2188) — the thresholds live in lib/weekly-rhythm.ts, not here.
+// Hoisted for the same reason as ACTIVITIES_BY_DATE_STMT above.
+const WORKOUT_RHYTHM_STMT = hoistedStatement(
+  `SELECT date, start_time FROM activities WHERE profile_id = ? AND date >= ?`
+);
 export function inferWorkoutSchedule(
   profileId: number,
   weeks = RHYTHM_WINDOW_WEEKS
 ): InferredWorkoutSchedule {
-  const rows = db
-    .prepare(
-      `SELECT date, start_time FROM activities WHERE profile_id = ? AND date >= ?`
-    )
-    .all(profileId, shiftDateStr(today(profileId), -weeks * 7)) as {
+  const rows = WORKOUT_RHYTHM_STMT.all(
+    profileId,
+    shiftDateStr(today(profileId), -weeks * 7)
+  ) as {
     date: string;
     start_time: string | null;
   }[];
@@ -682,7 +713,7 @@ export function getSetsForActivities(
 
 // The encoded GPS route polyline for each of `ids` that has one (issue #569),
 // returned as activityId -> polyline. Profile-scoped through the activities JOIN
-// (activity_routes carries no profile_id of its own). Feeds the Journal card's
+// (activity_routes carries no profile_id of its own). Feeds the Training Log card's
 // tile-free SVG route thumbnail; only activities with a captured route appear.
 export function getRoutePolylinesForActivities(
   profileId: number,
@@ -812,7 +843,7 @@ export function getActiveCaloriesForActivities(
 // for a "Repeat last activity" command palette entry / mobile quick action, so
 // repeat-last isn't desktop-only. Newest by (date, id); null when nothing is
 // logged. Profile-scoped; its sets come through getSetsForActivities (also
-// scoped). Mirrors buildJournalCards' editData mapping so the repeated draft is
+// scoped). Mirrors buildTrainingLogCards' editData mapping so the repeated draft is
 // identical whichever surface launched it.
 // Map an activity row (+ its scoped sets) to the ActivityEditData the editor
 // consumes. Shared by getMostRecentActivityEditData and getActivityEditData so a
@@ -904,7 +935,7 @@ export function getDashboardStats(profileId: number) {
       .get(profileId) as { c: number }
   ).c;
   // Hard rolling 7-day window (today + the prior 6 days) behind the "Activities
-  // (7d)" tile. This is intentionally NOT the journal week summary, which is now
+  // (7d)" tile. This is intentionally NOT the training log week summary, which is now
   // week_mode-aware (lib/week-window.ts, #223) — the tile's label says "7d", so
   // keep the fixed window and don't "align" the two.
   const last7 = (

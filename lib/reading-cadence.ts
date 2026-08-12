@@ -6,7 +6,7 @@
 //   • EPISODIC — a few readings a year, read against a reference band. A lab draw,
 //     an audiogram threshold, a periodontal probing depth, an intraocular pressure,
 //     a grip-strength test. The question is "where does this value sit in its
-//     range?", so the reading detail page (/biomarkers/view) is the right renderer:
+//     range?", so the reading detail page (/results/readings/view) is the right renderer:
 //     reference + optimal bands, lab provenance ("Reported as", the reporting lab's
 //     own range), a whole-history line that CONNECTS the draws because connecting
 //     them is the story.
@@ -53,7 +53,7 @@
 
 import { biomarkerFamily } from "./canonical-name";
 import type { MedicalCategory } from "./types";
-import type { BodyMetricSlug } from "./trends-body-metrics";
+import type { TrendMetricSlug } from "./trend-metrics";
 import { CONTINUOUS_READING_METRIC } from "./reading-identity-map";
 
 export type ReadingCadence = "continuous" | "episodic";
@@ -123,7 +123,7 @@ export const CATEGORY_CADENCE = {
 // land in — the half-added entry this pair made possible.
 export { CONTINUOUS_READING_METRIC };
 
-const SLUG_BY_FAMILY = new Map<string, BodyMetricSlug>(
+const SLUG_BY_FAMILY = new Map<string, TrendMetricSlug>(
   Object.entries(CONTINUOUS_READING_METRIC).map(([name, slug]) => [
     biomarkerFamily(name).toLowerCase(),
     slug,
@@ -137,7 +137,7 @@ const SLUG_BY_FAMILY = new Map<string, BodyMetricSlug>(
  */
 export function continuousReadingSlug(
   canonicalName: string | null | undefined
-): BodyMetricSlug | null {
+): TrendMetricSlug | null {
   const name = canonicalName?.trim();
   if (!name) return null;
   return SLUG_BY_FAMILY.get(biomarkerFamily(name).toLowerCase()) ?? null;

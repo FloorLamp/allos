@@ -256,7 +256,7 @@ const NETWORKIDLE_ALLOW: Record<string, number> = {};
 
 // EMPTY — the only sanctioned waitForTimeout is the IRREDUCIBLE bounded absence-of-effect
 // proof, now carried by a same-line `waitfortimeout-ok: <why>` marker at each site (the
-// journal-provenance 700ms-autosave-must-not-fire probes and the profile-switch-toasts
+// training-log-provenance 700ms-autosave-must-not-fire probes and the profile-switch-toasts
 // 6s-idle-poll ghost-toast probes), so it's excluded from the count and the allowlist is
 // empty — uniform with FIRST_ALLOW/TOPASS_ALLOW. A NEW unmarked waitForTimeout fails CI.
 const WAITFORTIMEOUT_ALLOW: Record<string, number> = {};
@@ -284,6 +284,53 @@ const FIRST_ALLOW: Record<string, number> = {};
 // that ONE blessed helper (family-helpers.ts). The freeze stays at ZERO: a NEW unmarked
 // .toPass( on any e2e/*.ts fails.
 const TOPASS_ALLOW: Record<string, number> = {};
+
+// ── Multi-box geometry reads (#2437's settledBoxes, the #2559 follow-up) ─────
+// `await Promise.all([a.boundingBox(), b.boundingBox()])` LOOKS atomic and is
+// not: each box is its own CDP round-trip and the page keeps laying out between
+// them. Subtract two of those reads and the result can describe a layout that
+// never existed — then it is asserted with a plain numeric `expect`, which
+// cannot retry, because the numbers are already in variables. That is a flake
+// with two nasty properties: it needs a real layout shift to show up (so it
+// hides for months), and `boundingBox()` has no ceiling of its own, so when the
+// element never arrives the test burns its FULL timeout instead of failing at
+// five seconds.
+//
+// `settledBoxes([...])` reads the whole group and repeats until two consecutive
+// passes agree, so every box comes from one settled layout and none is null.
+//
+// Frozen, not banned: the survivors below predate the helper and are a migration
+// list, not an exemption — `checkPattern` fails a file whose count goes UP and
+// equally fails one whose count drops without the entry shrinking, so this
+// ratchets to zero. There is no per-line escape marker on purpose: unlike
+// `.first()` there is no legitimate reason to read a RELATIVE geometry from two
+// unsynchronised snapshots.
+// The `(?!Promise\.all)` lookahead is load-bearing twice over. Without it a lazy
+// `[\s\S]*?` walks out of one Promise.all and into the NEXT one to find its second
+// `.boundingBox(`, so a block holding a single box pairs up with a stranger's and
+// the count drifts. Bounding on `[^\]]` instead does not work either: a selector
+// like `locator('[data-testid="x"]')` inside the array carries its own `]` and
+// ends the match early, under-counting. Both mistakes were made writing this.
+const MULTI_BOX_RE =
+  /await\s+Promise\.all\(\s*\[(?:(?!Promise\.all)[\s\S])*?\.boundingBox\((?:(?!Promise\.all)[\s\S])*?\.boundingBox\(/g;
+const MULTI_BOX_ALLOW: Record<string, number> = {
+  "dashboard.spec.ts": 1,
+  "encounters.spec.ts": 2,
+  "entry-ergonomics.spec.ts": 1,
+  "kids-growth.spec.ts": 1,
+  "medications-followups.spec.ts": 1,
+  "medications-page.spec.ts": 4,
+  "mobile-ui-polish.spec.ts": 2,
+  "muscle-anatomy.spec.ts": 1,
+  "saved-star.mobile.spec.ts": 1,
+  "sleep-page.spec.ts": 1,
+  "training-overview-doing.mobile.spec.ts": 4,
+  "trends-annotations.spec.ts": 2,
+  "trends-body-mobile.spec.ts": 1,
+  "trends-context-bar.mobile.spec.ts": 1,
+  "trends-fitness-lens.mobile.spec.ts": 1,
+  "trends-metric-pages.spec.ts": 4,
+};
 
 // ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────
 // Every seeded fixture login is a PERMANENT row on Settings → Family and a
@@ -460,6 +507,23 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `add a same-line \`topass-ok: <why>\` comment for a reviewed last-resort ` +
         `use; see docs/internals/e2e-hygiene.md.`,
     });
+  });
+
+  it("no NEW multi-box Promise.all geometry read in an e2e/*.ts (use settledBoxes)", () => {
+    checkPattern(
+      "multi-box Promise.all boundingBox read",
+      MULTI_BOX_RE,
+      MULTI_BOX_ALLOW,
+      {
+        hint:
+          `Reading two or more boundingBox()es through Promise.all is not atomic — ` +
+          `each is its own round-trip and the page lays out between them, so a ` +
+          `RELATIVE assertion built from them can describe a layout that never ` +
+          `existed. Use settledBoxes([...]) from e2e/helpers.ts, which repeats the ` +
+          `whole group until two consecutive reads agree and returns non-null ` +
+          `boxes; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
   });
 
   it("no NEW inline create-login sequence in an e2e/*.ts (use createLoginViaFamily)", () => {

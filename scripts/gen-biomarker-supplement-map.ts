@@ -97,7 +97,7 @@ export interface SupplementSource {
   // start it). Matched as whole-token subsequences by the shared tokenizer.
   matchTokens: string[];
   // How to take it relative to food, in the SAME vocabulary the schedule uses
-  // (lib/supplement-schedule FOOD_TIMINGS), so a suggestion and a scheduled item speak
+  // (lib/intake-schedule FOOD_TIMINGS), so a suggestion and a scheduled item speak
   // one language.
   foodTiming: FoodTiming;
   // One-line, dose-free practical note ("absorbed better with a fat-containing meal"),
@@ -138,7 +138,7 @@ export interface BiomarkerSupplementEntry {
   evidence: string;
   // Public, citable provenance for that justification.
   source: string;
-  // Supplement-specific condition/situation tags, checked against the profile's active
+  // IntakeItem-specific condition/situation tags, checked against the profile's active
   // conditions AND situations. "drop" withholds the whole suggestion (increasing the
   // substance is hazardous with that condition); "caution" annotates it. Rules already
   // covered by CONDITION_NUTRIENT_RULES are NOT repeated here.

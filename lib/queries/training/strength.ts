@@ -1,5 +1,5 @@
 import { bodyweightAsOf } from "../../bodyweight";
-import { journalActivityHref } from "../../timeline-format";
+import { trainingLogActivityHref } from "../../timeline-format";
 import type { AppRoute } from "../../hrefs";
 import {
   sessionBestSet,
@@ -13,8 +13,8 @@ import {
   formatLongDate,
   type DisplayFormatPrefs,
 } from "../../format-date";
-import type { SetStatus } from "../../journal-format";
-import { judgeTargets, summarizeExercise } from "../../journal-format";
+import type { SetStatus } from "../../training-log-format";
+import { judgeTargets, summarizeExercise } from "../../training-log-format";
 import {
   classifyBodyweightByExercise,
   equipmentLoadLane,
@@ -26,6 +26,7 @@ import {
 } from "../../lifts";
 import type { WeightUnit } from "../../settings";
 import { estimate1RM } from "../../strength";
+import { contradictsFreeWeightStandard } from "../../equipment-availability";
 import { cache, loadWeightsAsc, recentWindowStart } from "./common";
 
 export interface RecentSession {
@@ -35,7 +36,7 @@ export interface RecentSession {
   // own logged name — the only place the specific variant spelling survives the
   // merge, so the editor can still recover the last-used variant/implement.
   exercise: string;
-  // The activity this session belongs to (for linking to it in the journal).
+  // The activity this session belongs to (for linking to it in the training log).
   activityId: number;
   // User-defined implement used in the session (first non-null), else null.
   equipment: string | null;
@@ -50,7 +51,7 @@ export interface RecentSession {
   // bodyweight lifts, 0 otherwise — the same base getStrengthByExercise folds.
   baseKg: number;
   // Hit/missed the declared rep targets (null when none were declared).
-  // Judged here so the journal card and editor needn't re-derive it.
+  // Judged here so the training log card and editor needn't re-derive it.
   status: SetStatus;
   sets: {
     set_number: number;
@@ -123,7 +124,7 @@ export const getExerciseBodyweightMap = cache(function getExerciseBodyweightMap(
 });
 
 // cache(): resolved on every app navigation (the layout's activity editor) and
-// again via getRecentByExercise on the journal/strength pages. cache() dedupes to
+// again via getRecentByExercise on the Training Log and Strength pages. cache() dedupes to
 // one scan per (profile, perExercise) per request. The scan is bounded to the
 // recent window — the editor only needs the last few sessions, so a session older
 // than 12 months is never shown. The bodyweight KIND, however, is resolved over
@@ -250,7 +251,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
 });
 
 // One summarized recent session of an exercise, for the exercise detail panel.
-// `href` links to the session's activity in the journal; `date`/`text` are
+// `href` links to the session's activity in the training log; `date`/`text` are
 // preformatted so the (client) panel needs no units or formatting.
 export interface RecentSessionSummary {
   date: string;
@@ -262,8 +263,8 @@ export interface RecentSessionSummary {
 // Recent sessions per exercise, keyed by lowercased exercise name (newest first).
 export type RecentByExercise = Record<string, RecentSessionSummary[]>;
 
-// The last `limit` sessions per exercise, summarized and linked to their journal
-// entry. Shared by the journal feed and the strength page so both surface the
+// The last `limit` sessions per exercise, summarized and linked to their training log
+// entry. Shared by the training log feed and the strength page so both surface the
 // same history. Links are absolute so they work from any page.
 export function getRecentByExercise(
   profileId: number,
@@ -277,7 +278,7 @@ export function getRecentByExercise(
   )) {
     out[key] = h.sessions.map((s) => ({
       date: formatLongDate(s.date, prefs),
-      href: journalActivityHref(s.activityId),
+      href: trainingLogActivityHref(s.activityId),
       equipment: s.equipment,
       text: summarizeExercise(s.sets, unit).text,
     }));
@@ -801,6 +802,23 @@ export interface ExerciseStat {
   totalSets: number;
   topWeightKg: number;
   e1rmKg: number;
+  // The best e1RM among sets whose equipment does not CONTRADICT a free-weight
+  // population standard (#2326) — 0 when every backing set was logged on a machine.
+  //
+  // This is the aggregate the strength-STANDING path consumes, and only that path.
+  // `e1rmKg` above answers "what is this lifter's best e1RM?" and every set counts
+  // toward it, machine included: a machine press is a real set and a real PR. This
+  // one answers the different question "what can be scored against a barbell
+  // population table?", which a fixed-path machine's mechanical advantage
+  // disqualifies a set from. A bare base name like `Overhead Press` used to reach
+  // the barbell table on the strength of the NAME while the row's own equipment link
+  // said Machine — the guard existed, the evidence existed, and they never met.
+  //
+  // Mixed history scores from the free-weight sets alone, so genuine barbell work
+  // keeps its standing rather than being suppressed by machine sets logged under the
+  // same name. Nothing else reads this: PRs, progression seeds and volume are
+  // unchanged, and nothing is filtered out of storage.
+  freeWeightE1rmKg: number;
   bestWeightKg: number;
   bestReps: number;
   bestDate: string;
@@ -825,7 +843,7 @@ export interface ExerciseStat {
   // can judge the whole session's working sets rather than the single best set
   // (#330). Empty when the newest session had no usable set.
   lastSessionSets: SessionWorkSet[];
-  // Activity id of the most recent session, for linking to its journal entry.
+  // Activity id of the most recent session, for linking to its training log entry.
   lastActivityId: number;
   // Body itself is the load (pull ups, dips), so per-set numbers show "BW".
   // topWeightKg/e1rmKg/bestWeightKg still carry the real load (bodyweight + any
@@ -852,6 +870,10 @@ interface StrengthSetRow {
   rpe: number | null;
   equipmentId: number | null;
   equipment: string | null;
+  // The implement's registry CATEGORY (#2326) — the axis that decides whether a set
+  // can be scored against a free-weight population table. NULL for a set with no
+  // equipment row, which is not a contradiction (see contradictsFreeWeightStandard).
+  equipmentCategory: string | null;
 }
 
 // THE all-history strength scan — the single unbounded read every strength aggregate
@@ -875,7 +897,9 @@ export const strengthSetRows = cache(function strengthSetRows(
               -- context, so the forward-looking seed below can't blend two machines
               -- that were both logged under the same exact exercise name — and the
               -- grouping lane itself when byLoadContext is asked for.
-              s.equipment_id AS equipmentId, eq.name AS equipment
+              s.equipment_id AS equipmentId, eq.name AS equipment,
+              -- …and its category, the axis the free-weight standing reads (#2326).
+              eq.category AS equipmentCategory
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        LEFT JOIN equipment eq ON eq.id = s.equipment_id
        -- Any set with reps, weighted OR bodyweight (bodyweight sets store a
@@ -935,6 +959,11 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     topWeightKg: number;
     topWeightDate: string;
     e1rmKg: number;
+    // #2326: the same max, restricted to sets whose equipment doesn't contradict a
+    // free-weight standard. No sentinel — 0 is the honest answer for "no free-weight
+    // set has ever backed this lift", and it is exactly the value strengthStanding
+    // already declines to place.
+    freeWeightE1rmKg: number;
     bestWeightKg: number;
     bestReps: number;
     bestDate: string;
@@ -981,6 +1010,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         // Sentinel so the first set always seeds the "best" fields, even for
         // bodyweight lifts where every set's estimated 1RM is 0.
         e1rmKg: -1,
+        freeWeightE1rmKg: 0,
         bestWeightKg: 0,
         bestReps: 0,
         bestDate: r.date,
@@ -1030,6 +1060,10 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
       });
     let setVol = 0;
     let setReps = 0;
+    // Does THIS set's own implement rule it out of a free-weight comparison (#2326)?
+    // Asked per set, not per group: a name's history routinely mixes implements, and
+    // the whole point is that the row knows something the name does not.
+    const freeWeight = !contradictsFreeWeightStandard(r.equipmentCategory);
     for (const side of sides) {
       // Strict compare (not Math.max) so topWeightDate records when the heaviest
       // load was *first* reached.
@@ -1048,6 +1082,8 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         cur.bestReps = side.reps;
         cur.bestDate = r.date;
       }
+      if (freeWeight && e1rm > cur.freeWeightE1rmKg)
+        cur.freeWeightE1rmKg = e1rm;
       setVol += side.weight * side.reps;
       setReps += side.reps;
     }
@@ -1092,6 +1128,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         topWeightKg: c.topWeightKg,
         topWeightDate: c.topWeightDate,
         e1rmKg: Math.max(0, c.e1rmKg),
+        freeWeightE1rmKg: Math.max(0, c.freeWeightE1rmKg),
         bestWeightKg: c.bestWeightKg,
         bestReps: c.bestReps,
         bestDate: c.bestDate,

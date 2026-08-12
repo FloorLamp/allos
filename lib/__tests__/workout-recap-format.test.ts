@@ -4,6 +4,7 @@ import {
   ACTIVITY_TYPE_ASK_PROMPT,
   activityTypeAskActions,
   composeFinishNudge,
+  finishNudgeTitle,
   importedRecapLine,
   recapNudgeLine,
   weeklyRemainingLine,
@@ -11,6 +12,8 @@ import {
 } from "../notifications/workout-recap-format";
 import type { NotificationMessage } from "../notifications/types";
 import type { Recap } from "../session-recap";
+import { ACTIVITY_TYPES } from "@/lib/types";
+import type { SessionCadenceFacts } from "@/lib/cadence";
 
 function recap(over: Partial<Recap> = {}): Recap {
   return {
@@ -120,6 +123,75 @@ describe("composeFinishNudge", () => {
   });
 });
 
+// #2503: the title was one hardcoded "🏋️ Workout complete" from the days when only a
+// manual strength session could produce a recap line. #2272 opened the message to every
+// import and the barbell came with it — a 1.42 km walk arrived announced as a workout.
+describe("finishNudgeTitle (#2503)", () => {
+  it("names what actually finished, per discipline", () => {
+    expect(finishNudgeTitle("strength")).toBe("🏋️ Workout complete");
+    expect(finishNudgeTitle("cardio")).toBe("🏃 Cardio complete");
+    expect(finishNudgeTitle("sport")).toBe("⚽ Sport complete");
+  });
+
+  it("gives every named discipline its own face", () => {
+    // The leading glyph (everything before the first space, so a variation selector
+    // travels with its base) is distinct per named discipline — one shared face would
+    // put #2503 back on a different pair.
+    const named = ["strength", "cardio", "sport", "recovery"] as const;
+    const faces = named.map((t) => finishNudgeTitle(t).split(" ")[0]);
+    expect(new Set(faces).size).toBe(named.length);
+  });
+
+  it("claims no discipline for the stated absence, or for an unreadable row", () => {
+    // `unclassified` means the SOURCE did not say (#2272): the message is carrying the
+    // ask that fixes it, so its own title must not answer the question first. The glyph
+    // is the vocabulary's declared GENERIC training marker, not the strength one — the
+    // per-discipline faces are what name a discipline.
+    expect(finishNudgeTitle("unclassified")).toBe("🏋️ Session complete");
+    expect(finishNudgeTitle("unclassified")).not.toMatch(
+      /workout|cardio|sport/i
+    );
+    expect(finishNudgeTitle(null)).toBe(finishNudgeTitle("unclassified"));
+  });
+
+  it("does not call a mobility session a workout (#840)", () => {
+    // Its own face, not the training marker: announcing mobility work under a barbell
+    // tells a person it counted as training load (#482, trained ≠ mobilized).
+    expect(finishNudgeTitle("recovery")).toBe("🤸 Mobility complete");
+    expect(finishNudgeTitle("recovery")).not.toMatch(/workout/i);
+    expect(finishNudgeTitle("recovery")).not.toContain("🏋️");
+  });
+
+  it("answers for every declared type", () => {
+    // The per-type map is an exhaustive Record, so tsc is the real guard; this pins
+    // that no member was quieted with an empty placeholder.
+    for (const t of ACTIVITY_TYPES)
+      expect(finishNudgeTitle(t).trim().length).toBeGreaterThan(2);
+  });
+
+  it("titles the recap-only message by the finishing row's type", () => {
+    const msg = composeFinishNudge(
+      "Afternoon Walk done · 33 min · 1.42 km",
+      null,
+      null,
+      "cardio"
+    );
+    expect(msg!.title).toBe("🏃 Cardio complete");
+  });
+
+  it("leaves the dose message's own title alone — it names the dose condition", () => {
+    // A combined message keeps the SAFETY-tier dose title and kind: "Post-workout" there
+    // is the name of the dose's `condition`, not a claim about the session.
+    const msg = composeFinishNudge(
+      "Afternoon Walk done · 33 min",
+      doseMsg,
+      null,
+      "cardio"
+    );
+    expect(msg!.title).toBe(doseMsg.title);
+  });
+});
+
 // A minimal FrequencyTargetProgress-shaped fixture for the workout-scoped recap line.
 function target(
   scope_kind: string,
@@ -135,16 +207,29 @@ function target(
   };
 }
 
-describe("weeklyRemainingLine (#981 §3, #1122)", () => {
+// What the finishing session itself put on the board (#2503). The default is the
+// strength session the older cases were written against: a Bench Press day, which the
+// exercise→region rollup lands on Chest.
+function session(over: Partial<SessionCadenceFacts> = {}): SessionCadenceFacts {
+  return { types: ["strength"], regions: ["Chest"], ...over };
+}
+
+// The walk from the report: a `cardio` row with no sets, so no region anywhere.
+const WALK = session({ types: ["cardio"], regions: [] });
+
+describe("weeklyRemainingLine (#981 §3, #1122, #2503)", () => {
   it("leads with the in-progress workout target, pace-framed (count 1 / per_week 2)", () => {
     // The issue's example: a `region` (Legs) target the session just advanced.
-    expect(weeklyRemainingLine([target("region", "Legs", 1, 2)])).toBe(
-      "Legs — 1 of 2 this week, one more to go."
-    );
+    expect(
+      weeklyRemainingLine(
+        [target("region", "Legs", 1, 2)],
+        session({ regions: ["Legs"] })
+      )
+    ).toBe("Legs — 1 of 2 this week, one more to go.");
   });
 
   it("pluralizes the tail when more than one session remains", () => {
-    expect(weeklyRemainingLine([target("type", "cardio", 1, 3)])).toBe(
+    expect(weeklyRemainingLine([target("type", "cardio", 1, 3)], WALK)).toBe(
       "Cardio — 1 of 3 this week, 2 more to go."
     );
   });
@@ -153,54 +238,103 @@ describe("weeklyRemainingLine (#981 §3, #1122)", () => {
     // A lifting session can't advance veg-servings; grading it here is the "0 of N" bug.
     // With only a food_group target present, the workout recap has nothing to say.
     expect(
-      weeklyRemainingLine([target("food_group", "vegetables", 0, 5)])
+      weeklyRemainingLine([target("food_group", "vegetables", 0, 5)], session())
     ).toBeNull();
   });
 
   it("excludes mobility_region targets too, and leads with the workout one", () => {
     // food_group + mobility_region are dropped; the in-progress `region` leads.
     expect(
-      weeklyRemainingLine([
-        target("food_group", "vegetables", 0, 5),
-        target("mobility_region", "Legs", 0, 3),
-        target("region", "Chest", 1, 2),
-      ])
+      weeklyRemainingLine(
+        [
+          target("food_group", "vegetables", 0, 5),
+          target("mobility_region", "Legs", 0, 3),
+          target("region", "Chest", 1, 2),
+        ],
+        session()
+      )
     ).toBe("Chest — 1 of 2 this week, one more to go.");
   });
 
-  it("leads with the closest-to-done in-progress target", () => {
+  it("leads with the closest-to-done in-progress target the session advanced", () => {
     // Lower body needs 1 more (2 of 3), Cardio needs 2 more (1 of 3) → lead with Lower.
     expect(
-      weeklyRemainingLine([
-        target("type", "cardio", 1, 3),
-        target("group", "Lower", 2, 3),
-      ])
+      weeklyRemainingLine(
+        [target("type", "cardio", 1, 3), target("group", "Lower", 2, 3)],
+        // A leg day: `group` Lower is the union of Legs + Glutes.
+        session({ regions: ["Legs"] })
+      )
     ).toBe("Lower body — 2 of 3 this week, one more to go.");
   });
 
   it("all workout targets met ⇒ a calm celebratory-neutral line", () => {
     expect(
-      weeklyRemainingLine([
-        target("region", "Legs", 2, 2),
-        target("type", "cardio", 3, 3),
-      ])
+      weeklyRemainingLine(
+        [target("region", "Legs", 2, 2), target("type", "cardio", 3, 3)],
+        session({ regions: ["Legs"] })
+      )
     ).toBe("All weekly targets met — nice work.");
   });
 
   it("no workout targets at all ⇒ omitted (null)", () => {
-    expect(weeklyRemainingLine([])).toBeNull();
+    expect(weeklyRemainingLine([], session())).toBeNull();
     expect(
-      weeklyRemainingLine([target("mobility_region", "Legs", 0, 3)])
+      weeklyRemainingLine([target("mobility_region", "Legs", 0, 3)], session())
     ).toBeNull();
   });
 
   it("nothing advanced and nothing met ⇒ stays quiet (no misleading '0 of N')", () => {
     // Targets exist but this session didn't advance any (all count 0) — don't tally them.
     expect(
-      weeklyRemainingLine([
-        target("region", "Legs", 0, 2),
-        target("type", "cardio", 0, 3),
-      ])
+      weeklyRemainingLine(
+        [target("region", "Legs", 0, 2), target("type", "cardio", 0, 3)],
+        session({ regions: ["Legs"] })
+      )
+    ).toBeNull();
+  });
+});
+
+// The defect in the report: the rollup is profile-wide, so before #2503 the line led
+// with the closest-to-done target ANYWHERE — a chest target a barbell session had
+// advanced earlier in the week, printed under "Afternoon Walk done · 33 min · 1.42 km" and
+// tailed with a nudge toward a chest day the walk had nothing to do with.
+describe("the weekly line is about THIS session (#2503)", () => {
+  it("does not credit a walk with the chest day it did not do", () => {
+    expect(
+      weeklyRemainingLine([target("region", "Chest", 1, 2)], WALK)
+    ).toBeNull();
+  });
+
+  it("still speaks for the target the walk DID advance", () => {
+    // Same walk, same week: the cardio target it actually moved leads, and the chest
+    // target it did not touch stays out of the message entirely.
+    expect(
+      weeklyRemainingLine(
+        [target("region", "Chest", 1, 2), target("type", "cardio", 1, 3)],
+        WALK
+      )
+    ).toBe("Cardio — 1 of 3 this week, 2 more to go.");
+  });
+
+  it("reads a component's type, the way the ledger counts one", () => {
+    // A multi-part session counts for each component type it logged (cadenceCounts),
+    // so a strength row with a cardio finisher advances the cardio target too.
+    expect(
+      weeklyRemainingLine(
+        [target("type", "cardio", 2, 4)],
+        session({ types: ["strength", "cardio"] })
+      )
+    ).toBe("Cardio — 2 of 4 this week, 2 more to go.");
+  });
+
+  it("stays quiet on an all-met week the session had no part in", () => {
+    // "All weekly targets met" is true of the week, but a session that advanced none of
+    // them has not earned the congratulation — and saying it here would read as one.
+    expect(
+      weeklyRemainingLine(
+        [target("region", "Legs", 2, 2), target("type", "strength", 3, 3)],
+        WALK
+      )
     ).toBeNull();
   });
 });

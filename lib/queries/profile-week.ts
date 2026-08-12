@@ -14,7 +14,7 @@ import { weekWindow } from "../week-window";
 // Inclusive start date (YYYY-MM-DD) of a profile's "this week" window: either the
 // current calendar week (from the configured week-start day) or a rolling 7-day
 // window, per the profile's week_mode. Delegates to the shared `weekWindow`
-// computation (lib/week-window.ts) so the weekly-routine counters, the journal
+// computation (lib/week-window.ts) so the weekly-routine counters, the training log
 // week summary, and the weekly recap all agree on which days count (issue #223).
 export function weekWindowStart(profileId: number): string {
   return weekWindowStartOn(profileId, today(profileId));

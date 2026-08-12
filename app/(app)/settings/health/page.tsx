@@ -1,9 +1,9 @@
 import {
-  getUserSex,
-  getUserReproductiveStatus,
-  getUserBirthdate,
-  getUserAge,
-  getUserFullName,
+  getProfileSex,
+  getProfileReproductiveStatus,
+  getProfileBirthdate,
+  getProfileAge,
+  getProfileFullName,
   getTimezone,
   getHomeLocation,
   getSkinType,
@@ -40,11 +40,11 @@ export default async function HealthProfileSettingsPage() {
       <PageContainer width="form" className="space-y-6">
         <ProfilePhotoCard profile={profile} disabled={demoRestricted} />
         <ProfileForm
-          fullName={getUserFullName(profile.id)}
-          sex={getUserSex(profile.id)}
-          reproductiveStatus={getUserReproductiveStatus(profile.id)}
-          birthdate={getUserBirthdate(profile.id)}
-          age={getUserAge(profile.id)}
+          fullName={getProfileFullName(profile.id)}
+          sex={getProfileSex(profile.id)}
+          reproductiveStatus={getProfileReproductiveStatus(profile.id)}
+          birthdate={getProfileBirthdate(profile.id)}
+          age={getProfileAge(profile.id)}
           timezone={getTimezone(profile.id)}
           weekStart={getWeekStart(profile.id)}
           weekMode={getWeekMode(profile.id)}

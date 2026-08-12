@@ -17,10 +17,10 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import { quickAddMedicationFormData } from "@/lib/quick-add-medication";
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
-import { adherenceSummary } from "@/lib/supplement-adherence";
+import { adherenceSummary } from "@/lib/intake-adherence";
 import { shiftDateStr } from "@/lib/date";
 import { seedActor } from "./harness";
 
@@ -63,7 +63,7 @@ function backdateCreation(
 describe("medication cold-start adherence (#1442)", () => {
   it("a just-quick-added medication reports NO HISTORY, never 0%", async () => {
     const { profile } = seedActor();
-    const res = await addSupplement(
+    const res = await addIntakeItem(
       quickAddMedicationFormData({
         name: "Ibuprofen (test)",
         amount: "200 mg",
@@ -82,7 +82,7 @@ describe("medication cold-start adherence (#1442)", () => {
 
   it("keeps the honest 0% once a slot has elapsed untaken", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       quickAddMedicationFormData({
         name: "Lisinopril (test)",
         amount: "10 mg",
@@ -100,7 +100,7 @@ describe("medication cold-start adherence (#1442)", () => {
 
   it("scores only the days since the item existed, not the whole lookback", async () => {
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       quickAddMedicationFormData({
         name: "Metformin (test)",
         amount: "500 mg",
@@ -137,7 +137,7 @@ describe("medication cold-start adherence (#1442)", () => {
     // is proof the dose existed on its date, so the window widens to cover it —
     // clamping strictly on created_at would blank a history the user really has.
     const { profile } = seedActor();
-    await addSupplement(
+    await addIntakeItem(
       quickAddMedicationFormData({
         name: "Levothyroxine (test)",
         amount: "50 mcg",

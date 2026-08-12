@@ -35,7 +35,7 @@ import {
 // ── Reading time ─────────────────────────────────────────────────────────────
 
 // The minimal row shape both layers read. Deliberately a structural subset of
-// MedicalRecord (and satisfiable by a synthetic {date, value_num} for the daily
+// ClinicalObservation (and satisfiable by a synthetic {date, value_num} for the daily
 // aggregates), so the section can hand this module the rows it already has.
 export interface VitalReadingRow {
   id?: number;

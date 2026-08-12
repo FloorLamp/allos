@@ -373,14 +373,22 @@ notify-orchestrators harness. **The PRN redose notice
 **administration-armed one-shot**: for each opted-in PRN med with CONFIRMED
 `min_interval_hours`/`max_daily_count` (an unconfirmed/empty field ⇒ no notice,
 ever — the liability line), the pure `redoseNoticeDecision`
-(`lib/prn-redose.ts`) fires ONCE when the minimum interval elapses since the
-latest logged administration, keyed by that administration's id in the
+(`lib/prn-redose.ts`) fires only in two bounded, observed-tick-wide bands around
+the instant the minimum interval elapses since the latest logged administration:
+the first tick after opening and one retry an hour later. It never catches up on
+a window whose bands passed during an outage. Delivery is keyed by that
+administration's id in the
 `notify_last_redose_<itemId>` marker (the `notify_last_*` discipline). It
 **re-arms only on the next administration** (a newer id ≠ the marker) and is
-**suppressed at the confirmed daily max**. It carries a "Log dose" button that
-reuses the `/dose` `prn:` callback → `logAdministration` through the ONE
-chokepoint (NOT idempotent — a dedup nonce + `logAdministration`'s short-window
-guard), and sends via `dispatch()` so push mirrors the content-safe body (#692)
+**suppressed at the confirmed daily max**. Its `redose:` "Log dose" button is
+bound to that arming administration. A newer administration logged in Telegram
+or the app spends the old window; the callback's compare and write share one
+immediate transaction, and the reconciliation sweep closes every delivered copy.
+The reusable `/dose` command keeps its additive `prn:` buttons. The notice sends
+via `dispatch()` so push mirrors the content-safe body (#692)
+and the sweep retires pre-split redose messages whose legacy `prn:` token carries
+no arming administration id; a tap arriving before that sweep is refused and the
+message is closed, never interpreted as a reusable `/dose` action.
 and the delivery marker folds like any other send. **QUIET-HOURS EXCEPTION
 (deliberate):** unlike the episode nudges (refill/preventive/milestone), the
 tick calls `runRedoseNotices` UNCONDITIONALLY — it is NOT gated by
@@ -459,7 +467,43 @@ left the episode outstanding — though not one that found the dose already
 resolved, which is reassurance rather than refusal). Deliberately not everywhere: a modal costs a dismissal,
 and spending one on "Logged ✅" or on a food quick-log is how the one that
 matters stops being read, so the coaching tier keeps its toasts. The predicate
-governs DELIVERY only — the wording was already honest. Pure
+governs DELIVERY only — the wording was already honest.
+
+**A tap answers as soon as the OUTCOME is known (#2418) — the latency half of the
+same rule.** Telegram spins the tapped button until `answerCallbackQuery` lands, so
+a handler that edits the message first makes the user wait one Bot API round-trip
+for news that was already decided. The ordering, now uniform across
+`telegram-quick-log.ts`, `telegram-callbacks.ts` and the correction handlers:
+
+- **pure keyboard edits** (offer expand/collapse, ⚙️ Tune expand/collapse, food
+  show-more/less, the symptom severity picker, the 🕐 picker's `open`/`back`) write
+  NOTHING, so validate the token → `answerCallbackQuery` → edit;
+- **writing taps** perform the local write first — SQLite, synchronous, fast — then
+  answer WITH the outcome text, then edit. The toast rides the ack and must stay
+  accurate, so it may never move ahead of the write that produced it.
+
+The ack may move ahead of the edit; the **pointer sync may not**. `rebuildMessage`,
+`closeMessage` and `updateMessageKeyboard` write `notify_messages` only after a
+SUCCESSFUL Bot API call (#2443), so a failed edit never leaves the pointer claiming a
+keyboard the chat never received — which is the staleness that machinery exists to
+remove. Reordering a handler means moving the `answerCallbackQuery` call, never
+anything inside those three chokepoints.
+
+**A dose logged from the digest's offer list gets the same 🕐 chips a reminder's does
+(#2418 part 2).** The `prn:` taps `expandedOfferActions` builds used to carry no
+correction row anywhere, so stating WHEN was impossible for exactly the taps most
+likely to be late — a `may` item logged from a digest hours after the fact. The
+rebuilt keyboard now carries the chips for the tap that just landed, assembled from
+the SAME `getDoseCorrectionBursts` read the reminder ride-along uses, and collapsing
+on use through the existing `dosetime`/`dosetimeat` reconcile families. Two things
+make it possible: the offer-list log stamps `notify_message_id` (`logAdministration`
+takes it exactly as `markDoseTaken` does), so its burst is BOUND to the digest rather
+than riding the newest live `dose` message in the chat (#2264); and the keyboard
+cannot supply the dose or the day, so — the `doseAnchor` lesson from #2443 — the
+ledger does. The rebuild is scoped by the keyboard's own collapse token: a `/dose`
+message shares the `prn:` prefix and keeps its buttons untouched.
+
+Pure
 parse/decide lives in `lib/notifications/callback-data.ts` (unit-tested); the
 handler flows in `telegram-callbacks.ts`. **Channel chokepoint (#454):** every outbound Telegram
 write — the tick's channel send, escalation's explicit-chat send, and the
@@ -673,7 +717,7 @@ rides the GATHER rather than a renderer parameter, every surface built from thos
 — the dedicated window reminder, a merged multi-slot send, every tap rebuild — words the
 same fact identically (#221). A gather for a PAST date carries no check at all: "in the
 last 90 min" is a statement about right now, and pinning it to a day that has ended would
-be a confident falsehood. `COALESCE(eaten_at, logged_at)` is where #2019 slots in
+be a confident falsehood. `COALESCE(occurred_at, recorded_at)` is where #2019 slots in
 transparently — a stated eating instant beats a tap stamp, with no branch and no second
 read.
 
@@ -684,10 +728,11 @@ NOW" — so **the tap instant IS a measurement** of when the thing happened, wit
 known error. Two things were missing: recording it, and a correction path for when
 the contract is false because the tap was late.
 
-**The capture.** A Telegram food tap writes `food_log_events.eaten_at` with
-`time_source = 'tap'` (migration 154). `logged_at` is untouched and stays the audit
-stamp migration 056 froze, and stays the ranking input. A write with nothing to
-state — a web backfill — leaves `eaten_at` NULL, because defaulting to now would
+**The capture.** A Telegram food tap writes `food_log_events.occurred_at` with
+`time_source = 'tap'` (migration 154, which spelled the column `eaten_at` until the
+#2205 phase 2 food wave renamed it in migration 183). `recorded_at` is untouched and
+stays the audit stamp migration 056 froze, and stays the ranking input. A write with
+nothing to state — a web backfill — leaves `occurred_at` NULL, because defaulting to now would
 reintroduce the guess under a more authoritative name. The web bar's own **Now /
 Earlier…** chips (#2053, `lib/food-eating-time.ts`) are how that silence is broken
 deliberately: they write `'stated'` for either shape, because the web "+" declares no
@@ -737,8 +782,8 @@ label gets silently wrong across a fall-back hour. Two chips rather than three, 
 repeat taps reach the middle of the range and the absolute labels need the width.
 
 **A chip counts back from the STORED instant, not the tap (#2206).** Repeat taps
-COMPOSE: two `−1h` taps mean two hours back. That costs no new state — `eaten_at` /
-`recorded_at` IS the ledger the row set is already a query over — so the chips still
+COMPOSE: two `−1h` taps mean two hours back. That costs no new state — the stored
+`occurred_at` IS the ledger the row set is already a query over — so the chips still
 survive a rebuild, a pointer rotation and a restart. It replaces the older idempotence,
 which turned into the wrong answer once the row started showing its result: "tap again
 to go further" is the only reading a visibly-moving value supports, and a silent no-op
@@ -1212,12 +1257,12 @@ comes from the ONE server-side `getSessionRecap` gather
 card and the live "Session complete" step render, so the three surfaces can't
 drift (#221). Everything still routes through the Telegram chokepoint with the
 usual delivery accounting. **Weekly-remaining line (#981 §3, corrected by
-\#1122):** the recap line gains a forward-looking, pace-framed status leading
-with the target the session just advanced ("Legs — 1 of 2 this week, one more to
-go"; calm all-met line when every workout target is met; omitted otherwise),
-computed by `weeklyRemainingLine` as a **workout-scoped FORMATTER** over the
-SAME `getFrequencyTargetProgress` rollup (#221). Two #1122 fixes over the
-original "N of M met" tally: it (1) SCOPES to workout-affectable targets
+\#1122 and #2503):** the recap line gains a forward-looking, pace-framed status
+leading with the target the session just advanced ("Legs — 1 of 2 this week, one
+more to go"; calm all-met line when every workout target is met; omitted
+otherwise), computed by `weeklyRemainingLine` as a **workout-scoped FORMATTER**
+over the SAME `getFrequencyTargetProgress` rollup (#221). Two #1122 fixes over
+the original "N of M met" tally: it (1) SCOPES to workout-affectable targets
 (`region`/`group`/`type` only — `food_group`/`mobility_region` dropped, since a
 barbell session can't move veg-servings or mobility days, which is how it read
 "0 of 4"), and (2) reports PACE via each target's `count`, not the
@@ -1226,6 +1271,44 @@ still reads as progress. It rides WITH the recap line inside the congratulatory
 message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
+
+**And it is about THIS session (#2503).** Both fixes above were written but only
+the first was implemented: the rollup is profile-wide and nothing tied it to the
+finishing activity, so the line led with the closest-to-done target ANYWHERE —
+"Chest — 1 of 2 this week, one more to go" printed under "Afternoon Walk done ·
+33 min · 1.42 km", crediting a walk with a barbell session earlier in the week and
+then nudging toward a chest day it had not touched. `weeklyRemainingLine` now
+takes the finishing session's own `SessionCadenceFacts` and a target it did not
+advance is not eligible to lead. The membership rule is ONE computation:
+`sessionAdvancesScope` (`lib/cadence.ts`) is the same rule `cadenceCounts`
+counts by, asked of a single activity — a region its logged sets map to, the
+union of a group's regions, its own type or a component's — and it is declared
+per scope kind as a rule or an explicit `null` ("unanswerable from an activity
+row": mobility reads a recovery session's MOVES, food and practice count their
+own ledgers, and a cap is never advanced at all). The recap's workout-affectable
+narrowing is DERIVED from those rules rather than hand-listed, so the two cannot
+drift. `getSessionCadenceFacts` (`lib/queries/cadence-ledger.ts`) is the gather,
+reading the same two sources; a missing or cross-profile row answers with empty
+facts, which advance nothing. A session that advanced no target gets no weekly
+line — including the all-met line, which is true of the week but is not this
+session's to claim.
+
+**The title names what actually finished (#2503).** It was one hardcoded
+`🏋️ Workout complete`, from #924 when only a manual strength session with logged
+sets could produce a recap line at all. #2272 opened the same message to every
+import, correctly, and the barbell came with it — a 33-minute, 1.42 km walk
+arrived announced as a workout. `finishNudgeTitle` is an exhaustive
+`Record<ActivityType, string>` over the declared tuple: strength keeps
+`🏋️ Workout complete`; cardio and sport take the per-discipline glyphs the
+vocabulary already declared (`🏃 Cardio complete`, `⚽ Sport complete`);
+`recovery` takes the new `mobility` glyph (`🤸 Mobility complete`) rather than
+the training marker, because announcing mobility work under a barbell says it
+counted as training load, which is the #840/#482 distinction the app keeps
+everywhere else; and `unclassified` takes the GENERIC training marker with a
+discipline-free `Session complete`, since a source that did not say (#2272) must
+not be answered by the title of the message carrying the ask. A COMBINED message
+keeps the dose message's own title: "Post-workout" there is the name of the dose
+`condition`, not a claim about the session.
 
 **An IMPORTED finish gets a recap of its own, and is asked what it was (#2272).**
 The recap-line gate above ("real strength working sets") meant a SOURCED row —
@@ -1536,6 +1619,47 @@ scales speak **shares, rates and directions** instead — `training-mix`
 the drift, which is what a monthly percentage averages away), `weight-trajectory`
 (robust net change, a per-week rate, and the same figure one period back). A line
 that merely still _works_ at a longer scale is not admitted.
+
+**What the week says and the month does not (#2395/#2397).** Three lines were
+added under that same test, and each names the one scale its fact exists at.
+
+- `targets` — the closed week's **verdict** against the frequency targets the
+  profile declared: "4 of 5 targets met — short on Back". Week-only, because a
+  verdict is a week fact by definition: at day scale only PACE exists (which the
+  morning digest already reports, in the same rollup grammar), and at month scale
+  it becomes a distribution. The verdict is read from the cadence ledger and never
+  recomputed (`docs/internals/cadence-ledger.md`), it requires a **closed** period —
+  a week still running is under its floor by construction — and a target the user
+  declared part-way through the week is left out rather than scored. The workout
+  COUNT stays: a count of what happened and a verdict against what was intended are
+  different facts, and the recap carries both.
+- `food-habits` — a group's share of the days food was logged at all, with the
+  rationale drawn from the curated nutrient map: "Fatty fish 12 of 26 logged days,
+  a source of Omega-3". Month-only, because a habit is a multi-week pattern by
+  definition. A **share, never a run** (#1955), never a cap-direction group, and
+  structurally incapable of carrying a biomarker beside it —
+  `docs/internals/food-regularity.md` records why that boundary is a type rather
+  than a wording rule.
+- `caps` — how a **declared** weekly cap fared across the period's whole weeks:
+  "over the Alcohol cap in 3 of 4 weeks", or that it held. Month-only, because it
+  counts weeks. Silent for a profile that declared no cap, and stated in the cap
+  vocabulary throughout: no to-go, no pace, no comparative (#998).
+
+**Direction is selected, never subtracted.** A cap tenant reaches the weekly
+`targets` line — a profile that set an alcohol cap wants to know whether it held —
+and the line reports it as within or over, never with a figure to go. The head
+counts the FLOOR partition, so a cap can never reach the "short on …" clause;
+there is no branch to forget. A profile whose only targets are caps gets a
+cap-shaped head ("2 of 2 weekly caps held") rather than a floor's success
+condition applied to a scope that has none.
+
+**A bare failure is not a message.** Target verdicts and cap records are
+deliberately NOT evidence in the recap's emptiness test: a period with nothing else
+in it stays empty, so "0 of 2 targets met" can never be the whole of a send on a
+week someone spent ill, travelling or deliberately resting. The period's food
+habits ARE evidence — that is #2396's ruling (a profile that only logs food has not
+had an empty period) reaching month scale, where the weekly coverage line does not
+speak.
 
 **The precedence rule — replace, never stack.** A profile has ONE recap slot: the
 weekday and time it already configured (`notify_recap_day` / `notify_recap_hour`,
@@ -2161,7 +2285,7 @@ arrival's only value is **provenance**, and the lines it described were already 
 the same message. So a routine overnight sync is no longer narrated at all:
 
 - **Yesterday's activity lines carry the source** — `🏋️ Morning Ride — 18.85 km ·
-Strava` — through the same `activityProvenanceLabel` the Journal and the timeline
+Strava` — through the same `activityProvenanceLabel` the Training Log and the timeline
   render. A **manual** row carries no clause: "Manual" beside a session you logged
   yourself is not provenance.
 - **The Sleep section IS the Health Connect arrival.** It needs no `📥` restatement
@@ -2377,9 +2501,24 @@ scope for now: keying on every punctuation mark that could ever join two clauses
 how the scan stops being readable and the abstraction under it turns into a join
 helper. So it is a known edge, not a guarantee: the scan proves nobody re-implements
 `—`/`·`, and REVIEW is what keeps a qualifier out of a head under different
-punctuation. The recap's remaining breakdown parenthetical (`value: "7 (strength 4,
-cardio 3)"`) is exactly such a case and is #2389 item 1's to re-cut — a breakdown
-decomposing the head's own figure, left deliberately.
+punctuation. The recap's breakdown parenthetical (`value: "7 (strength 4, cardio 3)"`)
+was exactly such a case; #2389 item 1 re-cut it, and the rule it left behind is what
+review applies to the next line:
+
+> **A line's `value` carries the headline quantity and nothing else.** Every qualifier —
+> a breakdown, a prior figure, the count an average was taken over — is a declared
+> `note` (or a `comparison`), so `recapLineAnnotation` owns every aside on the line and
+> there is exactly one chain of them. A value that punctuates itself stacks a second
+> aside the composition cannot see coming, and a value carrying a label that legitimately
+> contains parentheses (`Romanian Deadlift (Rep Trap Bar)`) is how one ends up nested
+> inside another.
+
+That rule governs BOTH system-initiated messages, not only the one that broke it: the
+digest and the recap compose through the same `MessageLineParts`, so a surface that
+inherits the grammar inherits this with it rather than rediscovering it a third time.
+`lib/__tests__/recap.test.ts` walks every line the recap can emit and fails a `value`
+carrying a parenthetical (the declared exemption is a `bare` line — the shared #1505
+intake delta line is a finished line the recap passes through, parentheses and all).
 
 ## The glyph vocabulary (#2392)
 
@@ -2597,13 +2736,14 @@ renderer (#221).
 
 **The substrate.** Migration 135's `notify_messages` records one pointer per
 DELIVERED keyboard-bearing message — `(profile_id, chat_id, message_id, kind,
-date, keyboard, title, sent_at)` — written in the Telegram chokepoint, the only
+date, keyboard, receipt_keyboard, title, sent_at)` — written in the Telegram
+chokepoint, the only
 place holding both the sent message id and the message it was rendered from. It is per
 DELIVERY, not per send: one send fans out to N deduped chats (#1072), so a dose
 confirmed from a family group's copy corrects the copies in every other
 subscriber's chat. The delivered (post-cap) keyboard is stored because Telegram
-has no "read my message" API — that blob is the only record of what a chat is
-showing.
+has no "read my message" API. `keyboard` follows what the chat currently shows;
+`receipt_keyboard` retains the original claims needed to describe the outcome.
 
 **An edit inherits the send's size guards too.** `sendMessageRaw` says it holds
 Telegram's 4096-char and ~100-button caps "in ONE place so every message builder
@@ -2635,7 +2775,7 @@ tier where the instant those chips correct is what arms the PRN redose window.
 And it COLLAPSED a food nudge the user had expanded, because the visible count
 is read off the pointer (#1807), so the first sweep after any label change put
 "Show more" back. So `rebuildMessage` and `updateMessageKeyboard` sync the
-pointer's keyboard and `closeMessage` forgets it, at the same chokepoint and for
+pointer's live keyboard and `closeMessage` forgets it, at the same chokepoint and for
 the same reason the send records one: that is the only moment anyone holds both
 the message id and the keyboard that actually reached the chat. This is NOT a
 claim — `claimMessagePointerKeyboard` is a compare-and-swap because two
@@ -2643,7 +2783,10 @@ overlapping TICKS race to compute one edit and only one may pay for it, whereas 
 callback is the authority on what it just did, runs after its own edit succeeded,
 and has no pre-edit version to swap against. The sweep still claims first and
 edits second; the sync afterwards rewrites the value the claim already wrote,
-which is why it is a no-op there rather than a conflict.
+which is why it is a no-op there rather than a conflict. The delivered keyboard
+also remains immutable in `receipt_keyboard`: a dose callback replaces its
+take/skip rows with short-lived correction controls, but the final close still
+needs those original claims to say which supplements were taken or skipped.
 
 Retention is a named cleanup class (#203): pointers past Telegram's
 ~48h edit horizon are pruned on every sweep. Two indexes serve it: 135's
@@ -3147,7 +3290,7 @@ slot's `notify_last_supp_<slot>` marker is stamped on delivery. Telegram
 rebuilds re-render the whole merged keyboard footprint.
 
 **Priority floor (#1156).** `doseReminderNotifies`
-(`lib/supplement-schedule.ts`): low-priority SUPPLEMENTS are excluded from every
+(`lib/intake-schedule.ts`): low-priority SUPPLEMENTS are excluded from every
 dose-reminder send (window/merged/post-workout/digest count/buttons) at the
 send-assembly layer (`notifiableWindowDoses`); medications are never gated, and
 the escalation gather deliberately reads the unfiltered `collectWindowDoses` —

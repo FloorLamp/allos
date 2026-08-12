@@ -48,7 +48,9 @@ describe("fitness-check recap line (#1307)", () => {
       baseInput({ fitnessCheck: { fitnessAge: 34, priorFitnessAge: 36 } })
     );
     const line = recap.lines.find((l) => l.key === "fitness-check");
-    expect(line?.value).toBe("fitness age 34, was 36");
+    // #2389 item 1: the figure is the value, the prior age qualifies it.
+    expect(line?.value).toBe("fitness age 34");
+    expect(line?.notes).toEqual(["was 36"]);
   });
 
   it("drops the 'was' clause when the prior age matches or is absent", () => {
@@ -108,7 +110,7 @@ describe("recapWindow", () => {
 });
 
 // Issue #223: the weekly recap honors the profile's week_mode so its window lines
-// up with the routine counters / journal week summary (both derive from
+// up with the routine counters / training log week summary (both derive from
 // lib/week-window). resolveRecapWindow is the shared resolver; buildRecap's
 // {start, end} must follow it. TODAY is a Thursday.
 describe("recap honors week_mode (issue #223)", () => {
@@ -293,7 +295,10 @@ describe("buildRecap", () => {
       })
     );
     const line = recap.lines.find((l) => l.key === "workouts")!;
-    expect(line.value).toBe("3 (strength 2, cardio 1)");
+    // #2389 item 1: the value is the headline QUANTITY and nothing else; the
+    // breakdown decomposes it, so it is a note the grammar punctuates.
+    expect(line.value).toBe("3");
+    expect(line.notes).toEqual(["strength 2, cardio 1"]);
     expect(line.comparison).toEqual({ kind: "prior", text: "1 last week" });
     expect(recap.headline).toContain("3 workouts");
     expect(recap.isEmpty).toBe(false);
@@ -303,7 +308,9 @@ describe("buildRecap", () => {
     const recap = buildRecap(baseInput({ sri: 82, socialJetlagMin: 78 }));
     const line = recap.lines.find((l) => l.key === "sleepRegularity")!;
     expect(line.value).toBe("SRI 82");
-    expect(line.notes).toEqual(["1.3h weekend shift"]);
+    // #2389 item 4: one duration convention per message — the shared formatter,
+    // not decimal hours beside the duration line's "7h 20m".
+    expect(line.notes).toEqual(["1h 18m weekend shift"]);
     // A weekend shift is context, not a comparison — the line compares nothing.
     expect(line.comparison.kind).toBe("none");
   });
@@ -487,13 +494,12 @@ describe("renderRecapMessage", () => {
     )
       .split("\n")
       .slice(1);
-    // The workouts line still carries ONE parenthetical, inside `value`: a breakdown
-    // decomposing the head's own figure. That is #2389 item 1's to re-cut, not an
-    // oversight here — what this pins is that the COMPOSITION adds no second set, so a
-    // label legitimately containing parens ("Romanian Deadlift (Rep Trap Bar)") cannot
-    // nest inside one.
+    // #2389 item 1 landed: the workouts breakdown moved out of `value` into a note,
+    // so the line carries NO parenthetical of its own and the composition adds none —
+    // a label legitimately containing parens ("Romanian Deadlift (Rep Trap Bar)")
+    // cannot nest inside one, and no line renders two asides in a row.
     expect(lines).toEqual([
-      "• Workouts: 2 (strength 1, cardio 1) — 1 last week",
+      "• Workouts: 2 — strength 1, cardio 1 · 1 last week",
       "• PRs: 1 — Romanian Deadlift (Rep Trap Bar)",
       "• Adherence: 92% — 12/13 doses · 1 skipped",
     ]);
@@ -664,7 +670,7 @@ describe("recap coverage rule (#1935)", () => {
     expect(plainBody(msg.body)).not.toMatch(/Volume|kcal|streak|active day/i);
     // The line the volume percentage was restating is still there, and is the
     // honest version of the same claim.
-    expect(plainBody(msg.body)).toContain("• Workouts: 2 (strength 2)");
+    expect(plainBody(msg.body)).toContain("• Workouts: 2 — strength 2");
     expect(plainBody(msg.body)).toContain("3 last week");
   });
 
@@ -724,6 +730,13 @@ describe("typed comparison slot (#1935)", () => {
         mood: { avgValence: 3.5, daysLogged: 4 },
         goalsCompleted: ["Run a 10k"],
         fitnessCheck: { fitnessAge: 34, priorFitnessAge: 36 },
+        // The week's target verdicts (#2395) — rolling mode, so `completed` selects the
+        // same trailing seven days and only tells the builder the period has closed.
+        completed: true,
+        targetVerdicts: [
+          { label: "Back", direction: "floor", verdict: "under" },
+          { label: "Cardio", direction: "floor", verdict: "met" },
+        ],
       })
     );
 
@@ -745,7 +758,7 @@ describe("typed comparison slot (#1935)", () => {
     // Record; this pins the other direction (no stale entries) and, with the loop
     // above, closes the loop for every line the builder can emit.
     const keys = Object.keys(RECAP_COMPARISON_KINDS) as RecapLineKey[];
-    expect(keys.length).toBe(14);
+    expect(keys.length).toBe(20);
     for (const k of keys) expect(RECAP_COMPARISON_KINDS[k]).toBeTruthy();
   });
 
@@ -804,8 +817,11 @@ describe("mood line phrasing (#1935/#992)", () => {
       baseInput({ mood: { avgValence: 2, daysLogged: 1 } })
     );
     const line = recap.lines.find((l) => l.key === "mood")!;
-    expect(line.value).toBe("one check-in: 2/5");
-    expect(line.value).not.toContain("averaged");
+    // The figure is the value (#2389 item 1); the #1935 decision lives in the note,
+    // which still refuses to call one check-in an average.
+    expect(line.value).toBe("2/5");
+    expect(line.notes).toEqual(["one check-in"]);
+    expect(recapLineAnnotation(line)).not.toContain("averaged");
   });
 
   it("uses the averaging language once there is something to average", () => {
@@ -813,7 +829,8 @@ describe("mood line phrasing (#1935/#992)", () => {
       baseInput({ mood: { avgValence: 3.46, daysLogged: 5 } })
     );
     const line = recap.lines.find((l) => l.key === "mood")!;
-    expect(line.value).toBe("averaged 3.5/5 over 5 check-ins");
+    expect(line.value).toBe("3.5/5");
+    expect(line.notes).toEqual(["averaged over 5 check-ins"]);
   });
 
   it("never compares — a summary, never a score to beat", () => {
@@ -871,6 +888,13 @@ describe("per-line scale model (#2178)", () => {
     );
     expect(monthOnly.sort()).toEqual([
       "adherence-pattern",
+      // A cap's record is a count of WEEKS a verdict held, not a re-total of the four
+      // weekly numbers under it (#2397).
+      "caps",
+      // A SHARE of the period's logged days, which is a shape rather than a sum: the
+      // month does not add up four weekly habit counts, it re-measures over its own
+      // denominator (#2397).
+      "food-habits",
       "training-mix",
       "weight-trajectory",
     ]);
@@ -1033,5 +1057,335 @@ describe("the month/quarter lines (#2178)", () => {
     }));
     // 2 taken of 2 intended (3 due − 1 skipped) is 100%, not 67%.
     expect(adherenceShape(days)!.weekdayPct).toBe(100);
+  });
+});
+
+// ── #2389 item 1: the value carries the quantity, every qualifier is a note ──
+//
+// The rule is general, not a patch on the one line that broke it: `recapLineAnnotation`
+// owns every parenthetical on a line, so a `value` that carries its own aside stacks two
+// unrelated ones and a `value` that carries a label with parentheses in it can nest.
+// This walks EVERY line the builder can emit and holds each one to it.
+describe("line composition — value is the quantity (#2389 item 1)", () => {
+  const everyLine = () =>
+    buildRecap(
+      baseInput({
+        illnessDays: 2,
+        workouts: [
+          { date: "2026-07-04", type: "strength" },
+          { date: "2026-07-06", type: "cardio" },
+        ],
+        prevWorkouts: [{ date: "2026-07-01", type: "strength" }],
+        prLabels: ["Romanian Deadlift (Rep Trap Bar)"],
+        intakeDeltaLine: "Missed: Glycine (2 days)",
+        adherence: { taken: 12, skipped: 1, due: 14 },
+        food: {
+          daysLogged: 6,
+          groups: 12,
+          nutrients: [
+            { nutrient: "protein", onTarget: 4, days: 6 },
+            { nutrient: "fiber", onTarget: 2, days: 6 },
+          ],
+        },
+        weights: [
+          { date: "2026-07-04", weightKg: 74 },
+          { date: "2026-07-08", weightKg: 73 },
+        ],
+        prevWeights: [{ date: "2026-07-01", weightKg: 75 }],
+        zone2Min: 90,
+        zone2Target: 150,
+        sleepMinutes: [430, 455, 410, 470, 445],
+        prevSleepMinutes: [400, 420, 435, 415, 405],
+        sri: 82,
+        socialJetlagMin: 78,
+        mood: { avgValence: 3.5, daysLogged: 4 },
+        goalsCompleted: ["Run a 10k"],
+        goalsMissed: ["Deadlift 180 kg"],
+        fitnessCheck: { fitnessAge: 34, priorFitnessAge: 36 },
+      })
+    );
+
+  it("no line's value carries a parenthetical of its own", () => {
+    for (const line of everyLine().lines) {
+      // The BARE line is the one exemption, and it is declared: the shared #1505 intake
+      // delta line is a finished line the recap passes through, parentheses and all.
+      if (line.bare) continue;
+      expect(line.value, line.key).not.toMatch(/[()]/);
+    }
+  });
+
+  it("the composed message renders exactly one aside chain per line, never nested", () => {
+    const body = plainBody(renderRecapMessage(everyLine(), "Ada")!.body);
+    expect(body).not.toMatch(/\(\(|\)\)/);
+    // Every qualifier chain starts at the em dash and continues with `·` — never a
+    // second parenthetical stacked after the first.
+    for (const line of body.split("\n").slice(1)) {
+      expect(line, line).not.toMatch(/\)\s*\(/);
+    }
+  });
+});
+
+// ── #2394: the goals lines ───────────────────────────────────────────────────
+describe("goal lines (#2394)", () => {
+  it("reports goals reached, whether or not they carried a deadline", () => {
+    const line = buildRecap(
+      baseInput({ goalsCompleted: ["Run a 10k", "Sleep 7h"] })
+    ).lines.find((l) => l.key === "goals")!;
+    expect(line.label).toBe("Goals reached");
+    expect(line.value).toBe("2");
+    expect(line.notes).toEqual(["Run a 10k, Sleep 7h"]);
+  });
+
+  it("reports a deadline that passed unmet, factually and without a score", () => {
+    const recap = buildRecap(baseInput({ goalsMissed: ["Deadlift 180 kg"] }));
+    const line = recap.lines.find((l) => l.key === "goals-missed")!;
+    expect(line.label).toBe("Goals not met");
+    expect(line.value).toBe("1");
+    expect(recapLineAnnotation(line)).toBe(
+      "Deadlift 180 kg · target date reached"
+    );
+    // No streak, no cumulative miss count, nothing to beat.
+    expect(line.comparison.kind).toBe("none");
+    expect(recapLineAnnotation(line)).not.toMatch(/streak|in a row|total/i);
+  });
+
+  it("emits neither line when nothing was reached and no deadline passed", () => {
+    const keys = buildRecap(baseInput({})).lines.map((l) => l.key as string);
+    expect(keys).not.toContain("goals");
+    expect(keys).not.toContain("goals-missed");
+  });
+});
+
+// ── #2396: food and sleep duration ───────────────────────────────────────────
+describe("food line (#2396)", () => {
+  const food = {
+    daysLogged: 6,
+    groups: 12,
+    nutrients: [
+      { nutrient: "protein" as const, onTarget: 4, days: 6 },
+      { nutrient: "fiber" as const, onTarget: 2, days: 6 },
+    ],
+  };
+
+  it("reports coverage and shape — never a serving total", () => {
+    const line = buildRecap(baseInput({ food })).lines.find(
+      (l) => l.key === "food"
+    )!;
+    expect(line.value).toBe("6/7 days");
+    expect(recapLineAnnotation(line)).toBe(
+      "12 food groups · protein on target 4 of 6 days · fiber on target 2 of 6 days"
+    );
+    // The #2178 never-re-total rule, by name: no serving count anywhere on the line.
+    expect(`${line.value} ${recapLineAnnotation(line)}`).not.toMatch(
+      /servings?/i
+    );
+  });
+
+  it("does not compare itself week over week — that is the streak line #1935 cut", () => {
+    const line = buildRecap(baseInput({ food })).lines.find(
+      (l) => l.key === "food"
+    )!;
+    expect(line.comparison.kind).toBe("none");
+  });
+
+  it("drops a nutrient that positioned on no day rather than reporting 0 of 0", () => {
+    const line = buildRecap(
+      baseInput({
+        food: {
+          daysLogged: 3,
+          groups: 4,
+          nutrients: [{ nutrient: "protein", onTarget: 3, days: 3 }],
+        },
+      })
+    ).lines.find((l) => l.key === "food")!;
+    expect(recapLineAnnotation(line)).toBe(
+      "4 food groups · protein on target 3 of 3 days"
+    );
+  });
+
+  it("a week whose ONLY logging was food is not an empty week", () => {
+    // The acceptance criterion: a profile whose logging is concentrated in a domain
+    // sees that domain. Before #2396 this week reported nothing at all and sent nothing.
+    const recap = buildRecap(
+      baseInput({ food: { daysLogged: 7, groups: 9, nutrients: [] } })
+    );
+    expect(recap.isEmpty).toBe(false);
+    expect(recap.headline).toBe("food logged on 7 of 7 days");
+    expect(renderRecapMessage(recap, "Ada")).not.toBeNull();
+  });
+
+  it("omits the line when nothing was logged", () => {
+    const keys = buildRecap(
+      baseInput({ food: { daysLogged: 0, groups: 0, nutrients: [] } })
+    ).lines.map((l) => l.key as string);
+    expect(keys).not.toContain("food");
+  });
+});
+
+describe("sleep duration line (#2396)", () => {
+  it("states the typical night as a median and how it moved", () => {
+    const line = buildRecap(
+      baseInput({
+        sleepMinutes: [430, 455, 410, 470, 445],
+        prevSleepMinutes: [400, 420, 435, 415, 405],
+      })
+    ).lines.find((l) => l.key === "sleep-duration")!;
+    // median(410, 430, 445, 455, 470) = 445 → 7h 25m
+    expect(line.value).toBe("7h 25m");
+    expect(line.comparison).toEqual({
+      kind: "prior",
+      text: "6h 55m last week",
+    });
+    expect(line.notes).toEqual(["typical night over 5 nights"]);
+  });
+
+  it("one outlier night does not define the week (a median, not a mean)", () => {
+    const line = buildRecap(
+      baseInput({ sleepMinutes: [420, 425, 430, 435, 120] })
+    ).lines.find((l) => l.key === "sleep-duration")!;
+    expect(line.value).toBe("7h 5m");
+  });
+
+  it("declares no comparison when the previous window is too thin", () => {
+    const line = buildRecap(
+      baseInput({ sleepMinutes: [420, 425, 430], prevSleepMinutes: [400] })
+    ).lines.find((l) => l.key === "sleep-duration")!;
+    expect(line.comparison.kind).toBe("none");
+  });
+
+  it("says nothing below the minimum nights — one night is a digest fact (#1117)", () => {
+    const keys = buildRecap(baseInput({ sleepMinutes: [430, 455] })).lines.map(
+      (l) => l.key as string
+    );
+    expect(keys).not.toContain("sleep-duration");
+  });
+
+  it("renders beside regularity in one duration convention", () => {
+    const recap = buildRecap(
+      baseInput({
+        // Sleep arrives from a device rather than from a person logging, so it does
+        // not on its own make a week worth interrupting for — the weigh-in is what
+        // lifts this fixture out of the empty case (unchanged by #2396).
+        weights: [{ date: "2026-07-08", weightKg: 73 }],
+        sleepMinutes: [430, 455, 410, 470, 445],
+        sri: 82,
+        socialJetlagMin: 78,
+      })
+    );
+    const body = plainBody(renderRecapMessage(recap, "Ada")!.body);
+    expect(body).toContain("• Sleep: 7h 25m — typical night over 5 nights");
+    expect(body).toContain("1h 18m weekend shift");
+    // The decimal-hours spelling is gone (#2389 item 4).
+    expect(body).not.toMatch(/\d\.\dh/);
+  });
+});
+
+// ── The week's verdict, and the month's observations (#2395 / #2397) ─────────────
+//
+// The builder half: which scale each line speaks at, what a closed period means for a
+// verdict, and the one emptiness decision the new evidence changes.
+
+describe("the target-verdict line (#2395)", () => {
+  const verdicts = [
+    { label: "Back", direction: "floor" as const, verdict: "under" as const },
+    { label: "Cardio", direction: "floor" as const, verdict: "met" as const },
+  ];
+
+  it("reports the verdict of a CLOSED period", () => {
+    const recap = buildRecap(
+      baseInput({ completed: true, targetVerdicts: verdicts })
+    );
+    const line = recap.lines.find((l) => l.key === "targets")!;
+    expect(line.value).toBe("1 of 2 targets met");
+    expect(recapLineAnnotation(line)).toBe("short on Back");
+  });
+
+  it("refuses to score a period still in progress", () => {
+    // Not a gather detail: a week that has not ended is under its floor by construction,
+    // so the builder states the rule rather than trusting its caller to.
+    const recap = buildRecap(baseInput({ targetVerdicts: verdicts }));
+    expect(recap.lines.find((l) => l.key === "targets")).toBeUndefined();
+  });
+
+  it("emits nothing for a profile with no targets", () => {
+    expect(
+      buildRecap(baseInput({ completed: true, targetVerdicts: [] })).lines.find(
+        (l) => l.key === "targets"
+      )
+    ).toBeUndefined();
+  });
+
+  it("does not make a bare failure into a whole message", () => {
+    // A period with nothing else in it stays EMPTY even when every target was missed:
+    // "0 of 2 targets met" as the entire send is a scold on a week someone may have
+    // spent ill, travelling or deliberately resting.
+    const recap = buildRecap(
+      baseInput({
+        completed: true,
+        targetVerdicts: [
+          { label: "Back", direction: "floor", verdict: "under" },
+          { label: "Cardio", direction: "floor", verdict: "under" },
+        ],
+      })
+    );
+    expect(recap.isEmpty).toBe(true);
+    expect(renderRecapMessage(recap, "Test")).toBeNull();
+  });
+});
+
+describe("the monthly food-habit and cap lines (#2397)", () => {
+  const habits = [
+    {
+      groupKey: "fatty_fish",
+      label: "Fatty fish",
+      days: 12,
+      observedDays: 26,
+      rationale: "a source of Omega-3 and Vitamin D",
+    },
+  ];
+
+  it("names the LOGGED-day denominator once, then each group as a note", () => {
+    const recap = buildRecap(
+      baseInput({ scale: "month", foodHabits: habits, capWeeks: [] })
+    );
+    const line = recap.lines.find((l) => l.key === "food-habits")!;
+    expect(line.value).toBe("over 26 logged days");
+    expect(recapLineAnnotation(line)).toBe(
+      "Fatty fish 12 of 26 logged days, a source of Omega-3 and Vitamin D"
+    );
+  });
+
+  it("counts a month of logged eating as something to say", () => {
+    // #2396 established that a profile which only logs food has not had an empty period.
+    // At month scale the coverage line does not speak, so the habits are that evidence.
+    const recap = buildRecap(baseInput({ scale: "month", foodHabits: habits }));
+    expect(recap.isEmpty).toBe(false);
+  });
+
+  it("keeps both lines off a weekly recap, by declaration", () => {
+    const week = buildRecap(
+      baseInput({
+        foodHabits: habits,
+        capWeeks: [{ label: "Alcohol", overWeeks: 1, weeks: 4 }],
+      })
+    );
+    expect(week.lines.find((l) => l.key === "food-habits")).toBeUndefined();
+    expect(week.lines.find((l) => l.key === "caps")).toBeUndefined();
+  });
+
+  it("states each declared cap once, in the cap vocabulary", () => {
+    const recap = buildRecap(
+      baseInput({
+        scale: "month",
+        capWeeks: [
+          { label: "Alcohol", overWeeks: 3, weeks: 4 },
+          { label: "Nicotine", overWeeks: 0, weeks: 4 },
+        ],
+      })
+    );
+    const line = recap.lines.find((l) => l.key === "caps")!;
+    expect(line.value).toBe("over the Alcohol cap in 3 of 4 weeks");
+    expect(recapLineAnnotation(line)).toBe("Nicotine cap held all 4 weeks");
+    expect(line.comparison.kind).toBe("none");
   });
 });

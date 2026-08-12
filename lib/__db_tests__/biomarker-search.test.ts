@@ -8,7 +8,7 @@
 // values only (no PHI).
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { getMedicalRecords } from "@/lib/queries";
+import { getClinicalObservations } from "@/lib/queries";
 import { db } from "@/lib/db";
 
 let profileId: number;
@@ -25,19 +25,21 @@ beforeAll(() => {
   ).run(profileId);
 });
 
-describe("getMedicalRecords free-text search matches the canonical name (#383)", () => {
+describe("getClinicalObservations free-text search matches the canonical name (#383)", () => {
   it("finds a row by its displayed canonical heading", () => {
-    const rows = getMedicalRecords(profileId, { q: "total cholesterol" });
+    const rows = getClinicalObservations(profileId, { q: "total cholesterol" });
     expect(rows.map((r) => r.canonical_name)).toContain("Total Cholesterol");
   });
 
   it("still finds a row by the raw lab string", () => {
-    const rows = getMedicalRecords(profileId, { q: "cholesterol, total" });
+    const rows = getClinicalObservations(profileId, {
+      q: "cholesterol, total",
+    });
     expect(rows.map((r) => r.name)).toContain("CHOLESTEROL, TOTAL");
   });
 
   it("does not match unrelated text", () => {
-    const rows = getMedicalRecords(profileId, { q: "glucose" });
+    const rows = getClinicalObservations(profileId, { q: "glucose" });
     expect(rows).toHaveLength(0);
   });
 });

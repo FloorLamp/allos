@@ -63,7 +63,7 @@ export function sparklineShapeForSeriesKey(key: string): SparklineShape {
 // densifies the series to the calendar; what a densified day CARRIES is decided
 // here, once per series, on the same `metric:` / `bio:` vocabulary — because it is
 // a property of the QUANTITY, not of the surface drawing it. A per-surface prop is
-// exactly how the Body tab, the tile grid and the detail page would come to
+// exactly how the body census, the tile grid and the detail page would come to
 // disagree about whether a missing steps day is a zero.
 //
 // Four policies plus an exemption:
@@ -119,7 +119,7 @@ export const MACROS_SERIES_KEY = "metric:macros";
 
 /**
  * The gap policy per `metric:` id. EXHAUSTIVE over the metric vocabulary — every
- * savable metric id (`savedMetricIdForBodySlug` over every registered body slug,
+ * savable metric id (`savedMetricIdForTrendSlug` over every registered body slug,
  * plus training volume) and every render-only key above appears exactly once, and
  * `lib/__tests__/day-fill-scan.test.ts` fails the build when a new one does not.
  * A metric joins by NAME with its reason, never by a heuristic over the data:

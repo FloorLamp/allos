@@ -7,6 +7,7 @@ import {
   derivedInputCanonicalNamesFor,
   derivedInputKeysFor,
   derivedInputSlots,
+  presentInputKeysFor,
   derivedInputUnitsFor,
   DERIVED_NAMES,
   DERIVED_DEFS_BY_NAME,
@@ -294,15 +295,18 @@ describe("computeDerivedReadings — Triglyceride/HDL Ratio", () => {
   });
 });
 
-// HOMA-IR's glucose input REQUIRES the fasting frame (#2357) — the index is defined
-// on a fasting measurement and its own label says so, so the unqualified "Glucose"
-// entry (which since #2337 is explicitly the unknown-frame one) is not accepted.
+// BOTH of HOMA-IR's inputs REQUIRE the fasting frame — glucose since #2357, insulin
+// since #2371. The index is defined on fasting measurements and its own label says
+// so, so the unqualified "Glucose"/"Insulin" entries (which are explicitly the
+// unknown-frame ones) are not accepted for either half.
 describe("computeDerivedReadings — HOMA-IR", () => {
-  it("computes (fasting glucose mg/dL × insulin µU/mL) ÷ 405", () => {
+  it("computes (fasting glucose mg/dL × fasting insulin µU/mL) ÷ 405", () => {
     const r = computeDerivedReadings(
       seriesOf({
         "Glucose, Fasting": [{ date: "2024-01-01", value: 96, unit: "mg/dL" }],
-        Insulin: [{ date: "2024-01-01", value: 9.5, unit: "uIU/mL" }],
+        "Insulin, Fasting": [
+          { date: "2024-01-01", value: 9.5, unit: "uIU/mL" },
+        ],
       }),
       noDemo
     );
@@ -311,7 +315,7 @@ describe("computeDerivedReadings — HOMA-IR", () => {
     // The reading names the entry the value came from.
     expect(find(r, HOMA_IR, "2024-01-01")?.inputs.map((i) => i.name)).toEqual([
       "Glucose, Fasting",
-      "Insulin",
+      "Insulin, Fasting",
     ]);
   });
 
@@ -321,7 +325,9 @@ describe("computeDerivedReadings — HOMA-IR", () => {
         "Glucose, Fasting": [
           { date: "2024-01-01", value: 96 / 18.02, unit: "mmol/L" },
         ],
-        Insulin: [{ date: "2024-01-01", value: 9.5 / 0.1439, unit: "pmol/L" }],
+        "Insulin, Fasting": [
+          { date: "2024-01-01", value: 9.5 / 0.1439, unit: "pmol/L" },
+        ],
       }),
       noDemo
     );
@@ -335,6 +341,23 @@ describe("computeDerivedReadings — HOMA-IR", () => {
     const r = computeDerivedReadings(
       seriesOf({
         Glucose: [{ date: "2024-01-01", value: 96, unit: "mg/dL" }],
+        "Insulin, Fasting": [
+          { date: "2024-01-01", value: 9.5, unit: "uIU/mL" },
+        ],
+      }),
+      noDemo
+    );
+    expect(find(r, HOMA_IR, "2024-01-01")).toBeUndefined();
+    expect(r.some((x) => x.name === HOMA_IR)).toBe(false);
+  });
+
+  it("produces NOTHING from an unqualified insulin, even with a fasting glucose (#2371)", () => {
+    // The other half of the same guard, asserted as an ABSENCE. It is the half that
+    // moves the number more: a post-prandial insulin runs several times its fasting
+    // value, so computing here would have been the larger of the two lies.
+    const r = computeDerivedReadings(
+      seriesOf({
+        "Glucose, Fasting": [{ date: "2024-01-01", value: 96, unit: "mg/dL" }],
         Insulin: [{ date: "2024-01-01", value: 9.5, unit: "uIU/mL" }],
       }),
       noDemo
@@ -343,14 +366,18 @@ describe("computeDerivedReadings — HOMA-IR", () => {
     expect(r.some((x) => x.name === HOMA_IR)).toBe(false);
   });
 
-  it("ignores an unqualified glucose sitting beside the fasting one", () => {
-    // Both entries on one draw: the fasting value is the only one this index accepts,
-    // so the answer is the fasting answer and the other reading is not a fallback.
+  it("ignores unqualified glucose and insulin sitting beside the fasting pair", () => {
+    // All four entries on one draw: the fasting values are the only ones this index
+    // accepts, so the answer is the fasting answer and neither other reading is a
+    // fallback.
     const r = computeDerivedReadings(
       seriesOf({
         "Glucose, Fasting": [{ date: "2024-01-01", value: 96, unit: "mg/dL" }],
         Glucose: [{ date: "2024-01-01", value: 150, unit: "mg/dL" }],
-        Insulin: [{ date: "2024-01-01", value: 9.5, unit: "uIU/mL" }],
+        "Insulin, Fasting": [
+          { date: "2024-01-01", value: 9.5, unit: "uIU/mL" },
+        ],
+        Insulin: [{ date: "2024-01-01", value: 42, unit: "uIU/mL" }],
       }),
       noDemo
     );
@@ -632,17 +659,20 @@ describe("computeDerivedReadings — PhenoAge", () => {
       expect(find(r, "PhenoAge", "2024-01-01")).toBeUndefined();
     });
 
-    it("leaves HOMA-IR's own acceptance list to HOMA-IR (#2357: the frame is now REQUIRED)", () => {
+    it("leaves HOMA-IR's own acceptance list to HOMA-IR (#2357/#2371: the frame is now REQUIRED)", () => {
       // The acceptance list is per-input, so PhenoAge's preference never decides what
-      // another index takes. HOMA-IR declares ["Glucose, Fasting"] alone — the fasting
-      // frame is required, not preferred — so the fasting-only draw below computes and
-      // the unqualified-only draw does not. Neither entry is folded into the other.
+      // another index takes. HOMA-IR declares ["Glucose, Fasting"] and
+      // ["Insulin, Fasting"] alone — the fasting frame is required, not preferred — so
+      // the fasting-only draw below computes and the unqualified-only draw does not.
+      // Neither entry is folded into the other.
       const fasting = computeDerivedReadings(
         seriesOf({
           "Glucose, Fasting": [
             { date: "2024-01-01", value: 90, unit: "mg/dL" },
           ],
-          Insulin: [{ date: "2024-01-01", value: 6, unit: "uIU/mL" }],
+          "Insulin, Fasting": [
+            { date: "2024-01-01", value: 6, unit: "uIU/mL" },
+          ],
         }),
         demo("male", 45)
       );
@@ -1095,7 +1125,11 @@ describe("derivedInputCanonicalNames", () => {
         // PhenoAge's glucose input accepts the fasting sibling too, so BOTH series
         // must be loaded for it (#2334).
         "Glucose, Fasting",
-        "Insulin",
+        // Same shape on the insulin axis since #2371: HOMA-IR accepts only the
+        // fasting entry, but the unqualified one is still a curated analyte other
+        // surfaces read, and it is loaded because PhenoAge's glucose precedent makes
+        // every ACCEPTED name of every input a series this layer must have.
+        "Insulin, Fasting",
         "Creatinine",
         "Albumin",
         "High-Sensitivity C-Reactive Protein (hs-CRP)",
@@ -1137,24 +1171,60 @@ describe("derivedInputCanonicalNames", () => {
     expect(names).toContain("Glucose");
   });
 
-  it("gives HOMA-IR a glucose input that accepts ONLY the fasting entry (#2357)", () => {
+  it("gives HOMA-IR inputs that accept ONLY the fasting entries (#2357, #2371)", () => {
     // The acceptance list is what every downstream consumer reads — the retest clock,
     // the Upcoming coverage gap — so the requirement is pinned here, not only in the
-    // arithmetic. The unqualified entry is absent on purpose: it is the one for a draw
-    // whose fasting state is unknown (#2337), and this index asserts that frame.
+    // arithmetic. The unqualified entries are absent on purpose: they are the ones for
+    // a draw whose fasting state is unknown, and this index asserts that frame on
+    // BOTH halves of its product.
     const names = derivedInputCanonicalNamesFor(HOMA_IR);
-    expect(names).toEqual(["Glucose, Fasting", "Insulin"]);
+    expect(names).toEqual(["Glucose, Fasting", "Insulin, Fasting"]);
     expect(derivedInputKeysFor(HOMA_IR)).toEqual([
       "Glucose, Fasting",
-      "Insulin",
+      "Insulin, Fasting",
     ]);
   });
 
-  it("groups the input slots by key, each with the names it accepts", () => {
-    // A UNION across the indices sharing the key: HOMA-IR contributes only the fasting
-    // entry, PhenoAge both (see derivedInputSlots' note on who may read this).
-    const slot = derivedInputSlots().find((s) => s.key === "Glucose, Fasting");
-    expect(slot?.accepts).toEqual(["Glucose, Fasting", "Glucose"]);
+  it("reports each index's OWN slots, never a union across indices (#2372)", () => {
+    // The same key, two indices, two different answers — which is the whole reason
+    // the index is an argument. A union here reported PhenoAge's list for both, so a
+    // profile holding only the unqualified glucose read as "slot filled" for HOMA-IR,
+    // which declines on exactly that reading.
+    const pheno = derivedInputSlots("PhenoAge").find(
+      (s) => s.key === "Glucose, Fasting"
+    );
+    expect(pheno?.accepts).toEqual(["Glucose, Fasting", "Glucose"]);
+    const homa = derivedInputSlots(HOMA_IR).find(
+      (s) => s.key === "Glucose, Fasting"
+    );
+    expect(homa?.accepts).toEqual(["Glucose, Fasting"]);
+    // One slot per INPUT, in spec order — never one per accepted spelling.
+    expect(derivedInputSlots(HOMA_IR).map((s) => s.key)).toEqual([
+      "Glucose, Fasting",
+      "Insulin, Fasting",
+    ]);
+  });
+
+  it("answers slot presence per index, so a shared key can differ between them (#2372)", () => {
+    // A profile holding the unqualified glucose and nothing else: PhenoAge's glucose
+    // slot is filled (it falls back), HOMA-IR's is not (it declines). Before #2372 the
+    // shared slot answered "present" for both.
+    const held = new Set(["Glucose"]);
+    const has = (n: string) => held.has(n);
+    expect(presentInputKeysFor("PhenoAge", has).has("Glucose, Fasting")).toBe(
+      true
+    );
+    expect(presentInputKeysFor(HOMA_IR, has).has("Glucose, Fasting")).toBe(
+      false
+    );
+    // And the fasting entry fills both, so the split is about the FALLBACK only.
+    const fasting = (n: string) => n === "Glucose, Fasting";
+    expect(
+      presentInputKeysFor("PhenoAge", fasting).has("Glucose, Fasting")
+    ).toBe(true);
+    expect(presentInputKeysFor(HOMA_IR, fasting).has("Glucose, Fasting")).toBe(
+      true
+    );
   });
 
   it("asks for the URINE creatinine as its own series, not the serum one (#2300)", () => {

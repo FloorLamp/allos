@@ -40,7 +40,7 @@ async function selectAndSave(
 // follows. This drives the real Settings selects and confirms:
 //   - a record date (the seeded "Essential hypertension" onset, 2019-03-01) renders
 //     in the chosen date shape on /conditions, and
-//   - a journal timestamp (the seeded "Strava morning ride", 07:15–08:17, logged 3
+//   - a training log timestamp (the seeded "Strava morning ride", 07:15–08:17, logged 3
 //     days ago) renders in the chosen clock on the Training → Log feed,
 //   - a timeline day header renders in the chosen date shape (#1020), and
 //   - the seeded 92 kg weight-jump finding's TEXT re-renders its embedded dates in
@@ -49,7 +49,7 @@ async function selectAndSave(
 // restores the defaults so the shared admin login doesn't leak the preference into
 // other specs.
 
-test("flipping the date/time prefs re-renders a record date and a journal timestamp", async ({
+test("flipping the date/time prefs re-renders a record date and a training log timestamp", async ({
   page,
 }) => {
   try {
@@ -103,7 +103,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     await page.goto("/records/problems/conditions");
     await expect(page.getByText("2019-03-01").first()).toBeVisible(); // first-ok: asserts a date renders in ISO format — order-agnostic presence
 
-    // The journal timestamp now renders a 12-hour clock on Training → Log.
+    // The training log timestamp now renders a 12-hour clock on Training → Log.
     await page.goto("/training");
     await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // first-ok: the seeded Strava ride activity — order-agnostic presence
     await expect(page.getByText(/7:15\s*AM/).first()).toBeVisible(); // first-ok: asserts a time renders in 12h format — order-agnostic presence

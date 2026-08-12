@@ -18,7 +18,7 @@ import {
   MAX_CITATIONS,
   type RecordCitation,
 } from "../record-qa";
-import type { SupplementKind } from "../types";
+import type { IntakeItemKind } from "../types";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
 import {
   CONDITION_REPRESENTATIVE_IDS,
@@ -107,7 +107,7 @@ function isoDate(value: string | null): string | null {
 
 function biomarkerHits(profileId: number, like: string): SearchHit[] {
   // One row per distinct canonical biomarker. Only canonical-named records are
-  // returned because the detail page (/biomarkers/view) resolves its series by
+  // returned because the detail page (/results/readings/view) resolves its series by
   // canonical_name alone — a raw, uncanonicalized name has no viewable
   // destination (the biomarkers list renders those as non-clickable text), so
   // surfacing it here would be a dead link. A query still matches on the raw
@@ -214,7 +214,7 @@ function activityHits(
     // place to look for a workout — made the selection a same-route push, so the
     // palette closed and nothing moved, reading as a dead control.
     //
-    // NOT the journal anchor (`#activity-<id>` in JournalCard): HistorySection
+    // NOT the training log anchor (`#activity-<id>` in TrainingLogCard): HistorySection
     // renders one newest window with "Load more" (#451), so an older activity's
     // anchor isn't on the page you land on. timelineDayHref filters the feed BY
     // the date, so it resolves for an activity of any age.
@@ -237,7 +237,7 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     id: number;
     name: string;
     active: number;
-    kind: SupplementKind;
+    kind: IntakeItemKind;
     quantity_on_hand: number | null;
   }[];
   return rows.map((r) => ({

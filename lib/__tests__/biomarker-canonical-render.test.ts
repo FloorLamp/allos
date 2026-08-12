@@ -7,7 +7,7 @@ import {
   optimalShareRows,
   type NamedBiomarkerReading,
 } from "@/lib/longevity-pillars";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 
 // Biomarker rows render the CANONICAL name, and lead with the value (#1501).
 //
@@ -31,7 +31,7 @@ import type { CanonicalBiomarker } from "@/lib/types";
 // and a 13-entry allowlist of non-analyte names is noise that hides the next real
 // one. One known raw site sits outside that reach by naming its variable
 // `canonical` — the biomarker detail page's "Reported as" column
-// (app/(app)/biomarkers/view/page.tsx) — and it is a DELIBERATE provenance surface
+// (app/(app)/results/readings/view/page.tsx) — and it is a DELIBERATE provenance surface
 // too, so the guard's blind spot and its exemption coincide.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -45,11 +45,11 @@ const BARE_NAME =
 
 // Each entry: the file, and WHY rendering the raw name there is correct.
 const ALLOWED: Record<string, string> = {
-  "components/BiomarkersTable.tsx":
+  "components/ReadingsTable.tsx":
     "the no-canonical fallback branch (guarded by `if (!r.canonical_name)`) — the correct precedent",
-  "components/ExtractedRecords.tsx":
+  "components/ExtractedObservations.tsx":
     "import-review provenance: the row must show what the document actually said",
-  "components/EditableRecordRow.tsx":
+  "components/EditableResultRow.tsx":
     "the edit surface: you edit the raw stored name, so it renders raw",
 };
 
@@ -87,7 +87,7 @@ describe("canonical-name rendering guard (#1501)", () => {
     }
     expect(
       offenders,
-      `Render the canonical name: \`{x.canonical_name ?? x.name}\` (see components/BiomarkersTable.tsx).\n` +
+      `Render the canonical name: \`{x.canonical_name ?? x.name}\` (see components/ReadingsTable.tsx).\n` +
         `A provenance/edit surface that must show the raw string goes on this test's ALLOWED list with a reason.\n` +
         offenders.join("\n")
     ).toEqual([]);
@@ -125,8 +125,10 @@ describe("rangeBadgeFlag: the badge → MedicalValue flag translation", () => {
   });
 });
 
-function cb(partial: Partial<CanonicalBiomarker>): CanonicalBiomarker {
-  return partial as unknown as CanonicalBiomarker;
+function cb(
+  partial: Partial<CanonicalResultDefinition>
+): CanonicalResultDefinition {
+  return partial as unknown as CanonicalResultDefinition;
 }
 
 const totalChol = cb({

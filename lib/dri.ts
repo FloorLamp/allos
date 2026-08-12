@@ -4,7 +4,7 @@
 // intake PER NUTRIENT and flags any nutrient whose stack total exceeds the NIH
 // Tolerable Upper Intake Level (UL). No DB, no network — the DB gather lives in
 // lib/queries/intake.ts (getDietaryLimitWarnings), which calls the pure functions
-// here so the /medicine warning row and the dismissible Upcoming finding are
+// here so the intake surface warning row and the dismissible Upcoming finding are
 // formatters over ONE computation (AGENTS.md "one question, one computation").
 //
 // The reference values (UL/RDA by age/sex, the supplemental-vs-total `basis`, the
@@ -56,7 +56,7 @@ const BY_KEY = new Map(NUTRIENTS.map((n) => [n.key, n]));
 // never OVER-flagged against a stricter child band it may not belong to.
 export const DEFAULT_ADULT_AGE = 30;
 
-// Supplement/medication NAME → nutrient key. Ordered; the first matching pattern
+// IntakeItem/medication NAME → nutrient key. Ordered; the first matching pattern
 // wins. Patterns are matched case-insensitively against the item name. This is the
 // app's recognized vocabulary (the supplement catalog): a name that matches nothing
 // (a multivitamin, a herb, a protein) contributes to no nutrient total — a
@@ -314,7 +314,7 @@ export function summarizeStack(
 }
 
 // A nutrient whose stack total EXCEEDS its UL — the payload behind both the
-// /medicine warning row and the dismissible Upcoming finding.
+// the intake surfaces warning row and the dismissible Upcoming finding.
 // `includesOptional` is true when at least one on-demand (`may`) item fed the total.
 // The amount is NOT reduced — per the conservative-direction rule a risk number may
 // never shrink because of an obligation — the flag exists so the detail line can say
@@ -447,7 +447,7 @@ export function ulWarningEvidence(w: UlWarning): string {
 // one (see the conservative-direction rule at the top of this module). `optionalTotal`
 // is the on-demand remainder, reported as a labelled aside rather than folded in.
 // `sharePct` is committed/rda as a percent (0–99, since >= 100 is not a shortfall).
-// Payload behind the /medicine adequacy row.
+// Payload behind the intake surface adequacy row.
 export interface RdaAdequacy {
   key: string;
   label: string;

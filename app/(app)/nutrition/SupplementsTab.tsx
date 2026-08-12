@@ -1,11 +1,11 @@
 import {
-  getSupplements,
-  getSupplementDoses,
+  getIntakeItems,
+  getIntakeDoses,
   getRetiredDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getIntakeLogsInRange,
-  getSupplementPairs,
+  getIntakePairs,
   getRefillRates,
   getPoolChips,
   findLinkableSupply,
@@ -102,9 +102,9 @@ import {
   workoutDaySubtitleLabel,
   heldBySituation,
   type TimeBucket,
-} from "@/lib/supplement-schedule";
+} from "@/lib/intake-schedule";
 import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
-import type { Supplement, SupplementDose } from "@/lib/types";
+import type { IntakeItem, IntakeDose } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
@@ -114,11 +114,11 @@ import DismissSuggestionButton from "./DismissSuggestionButton";
 import {
   indexTakenByDose,
   doseWindowSince,
-  supplementAdherenceStrip,
+  intakeAdherenceStrip,
   STRIP_DAYS,
   DOSE_HISTORY_DAYS,
   type AdherenceDot,
-} from "@/lib/supplement-adherence";
+} from "@/lib/intake-adherence";
 import {
   separatePairWarnings,
   type KeepApartWarning,
@@ -138,28 +138,32 @@ import {
   clearSurgerySituation,
   dismissSurgeryBridge,
   dismissDerivedPoorSleep,
-} from "./supplement-actions";
+} from "./intake-actions";
 import { getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
 import { IconChevronDown } from "@tabler/icons-react";
+import HistoricalDoseLauncher from "@/components/intake/HistoricalDoseLauncher";
+import { isHistoricalDoseDateAccepted } from "@/lib/dose-log-window";
 
 export const dynamic = "force-dynamic";
 
 interface Item {
-  supplement: Supplement;
-  dose: SupplementDose;
+  supplement: IntakeItem;
+  dose: IntakeDose;
 }
 
-// The Supplements tab of the Nutrition umbrella (#746): the former /medicine
-// supplement surface — context-aware scheduling, stack UL/RDA + cross-kind interaction/PGx
+// The Supplements tab of the Nutrition umbrella (#746): the former combined surface's
+// supplement half — context-aware scheduling, stack UL/RDA + cross-kind interaction/PGx
 // warnings, a slot-filterable schedule, compact coaching disclosures, and modal
 // add/edit flows. A self-contained async server component rendered by the tabbed
 // nutrition page.
 export default async function SupplementsTab({
   supplyId = 0,
+  backfillDate,
 }: {
   // The cabinet's "Add for another person" deep link (#1705). 0 / unreachable = no seed.
   supplyId?: number;
+  backfillDate?: string;
 }) {
   const { login, profile } = await requireSession();
   // The medicine-cabinet door (#1522) counts over the caller's WHOLE accessible set,
@@ -172,14 +176,18 @@ export default async function SupplementsTab({
   // outside this caller's reach simply doesn't seed anything.
   const initialSupply = findLinkableSupply(scope.ids, supplyId);
   const todayStr = today(profile.id);
+  const acceptedBackfillDate =
+    backfillDate && isHistoricalDoseDateAccepted(todayStr, backfillDate)
+      ? backfillDate
+      : undefined;
   const formatPrefs = getDisplayFormatPrefs(login.id);
   // Dietary preferences (#975): the RDA-adequacy food-source lines filter/substitute
   // excluded groups the same way the #577 suggestions do.
   const excludedGroups = getExcludedFoodGroups(profile.id);
-  const supplements = getSupplements(profile.id);
-  const suppById = new Map(supplements.map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profile.id);
-  const dosesBySupp = new Map<number, SupplementDose[]>();
+  const intakeItems = getIntakeItems(profile.id);
+  const suppById = new Map(intakeItems.map((item) => [item.id, item]));
+  const doses = getIntakeDoses(profile.id);
+  const dosesBySupp = new Map<number, IntakeDose[]>();
   for (const d of doses) {
     const arr = dosesBySupp.get(d.item_id) ?? [];
     arr.push(d);
@@ -187,7 +195,7 @@ export default async function SupplementsTab({
   }
   // Retired doses (#2131): the edit form's Restore affordance. Kept apart from the
   // live map so no schedule consumer can act on one.
-  const retiredBySupp = new Map<number, SupplementDose[]>();
+  const retiredBySupp = new Map<number, IntakeDose[]>();
   for (const d of getRetiredDoses(profile.id)) {
     const arr = retiredBySupp.get(d.item_id) ?? [];
     arr.push(d);
@@ -270,12 +278,12 @@ export default async function SupplementsTab({
   // a day is "taken" when all its due doses were logged, "partial" when some
   // were, "skipped" when every due dose was deliberately skipped (#232),
   // "missed" when none were resolved (but it was due), and "na" when not due.
-  // Policy lives in the shared supplementAdherenceStrip (issue #313).
+  // Policy lives in the shared intakeAdherenceStrip (issue #313).
   const stripBySupp = new Map<number, AdherenceDot[]>();
-  for (const s of supplements) {
+  for (const s of intakeItems) {
     stripBySupp.set(
       s.id,
-      supplementAdherenceStrip(
+      intakeAdherenceStrip(
         s,
         dosesBySupp.get(s.id) ?? [],
         dates,
@@ -286,7 +294,7 @@ export default async function SupplementsTab({
       )
     );
   }
-  const stripFor = (s: Supplement): AdherenceDot[] =>
+  const stripFor = (s: IntakeItem): AdherenceDot[] =>
     stripBySupp.get(s.id) ?? [];
 
   // Recent dose history per item (#1933), for the row's Dose history panel — the same
@@ -300,10 +308,10 @@ export default async function SupplementsTab({
   const historySince = shiftDateStr(todayStr, -(DOSE_HISTORY_DAYS - 1));
   const doseHistoryByItem = getIntakeDoseHistoryForItems(
     profile.id,
-    supplements.map((s) => s.id),
+    intakeItems.map((s) => s.id),
     historySince
   );
-  const historyFor = (s: Supplement): DoseHistoryEntry[] =>
+  const historyFor = (s: IntakeItem): DoseHistoryEntry[] =>
     (doseHistoryByItem.get(s.id) ?? []).map((row) => {
       // The row-level time question, asked once (#2205 phase 3): the stated event
       // instant (`occurred_at`) when somebody named one, else the record chain
@@ -334,8 +342,8 @@ export default async function SupplementsTab({
     });
 
   // Build dose-level items, partitioned by today's context.
-  const itemsFor = (preds: (s: Supplement) => boolean): Item[] =>
-    supplements
+  const itemsFor = (preds: (s: IntakeItem) => boolean): Item[] =>
+    intakeItems
       .filter(preds)
       .flatMap((s) =>
         (dosesBySupp.get(s.id) ?? []).map((dose) => ({ supplement: s, dose }))
@@ -352,10 +360,10 @@ export default async function SupplementsTab({
 
   // Medications render in their own section; the buckets/paused
   // lists below are supplements only, so the two kinds never intermix.
-  const isMed = (s: Supplement) => s.kind === "medication";
-  // Supplement-kind items only — this tab's empty state keys on these, not the
+  const isMed = (s: IntakeItem) => s.kind === "medication";
+  // IntakeItem-kind items only — this tab's empty state keys on these, not the
   // full intake list (a profile with only medications is empty HERE, #746).
-  const supplementItems = supplements.filter((s) => !isMed(s));
+  const supplementItems = intakeItems.filter((s) => !isMed(s));
   const currentWeek = weekWindow(
     todayStr,
     getWeekMode(profile.id),
@@ -405,7 +413,7 @@ export default async function SupplementsTab({
   // held/due/not-scheduled split stays consistent: a pause link naming a derived context
   // (e.g. "Poor sleep") holds exactly while that context is active, and a declared
   // surgery hold and a derived poor-sleep flow through the one union together.
-  const isHeld = (s: Supplement) => !!heldBySituation(s, effectiveSituations);
+  const isHeld = (s: IntakeItem) => !!heldBySituation(s, effectiveSituations);
   // Per-ROW, not per-item (#1602): with a per-dose weekday subset or validity window,
   // two rows of the SAME item can land differently today (warfarin's 5 mg row is due on
   // Monday, its 2.5 mg row is not), so the due/not-scheduled split has to be made at the
@@ -471,7 +479,7 @@ export default async function SupplementsTab({
   // "Keep apart" warnings: a separate-pair whose both supplements have a due
   // dose in the same bucket. Policy lives in the shared separatePairWarnings
   // (issue #313); this surface just supplies the bucket's supplement ids.
-  const pairs = getSupplementPairs(profile.id);
+  const pairs = getIntakePairs(profile.id);
   // Filtered through the findings bus (#435): a keep-apart warning the profile has
   // dismissed (on this page or Upcoming) is held out, keyed by its keep-apart:<lo>-<hi>
   // dedupeKey. `suppressions`/`todayStr` are resolved above.
@@ -579,7 +587,7 @@ export default async function SupplementsTab({
   // Known drug-/supplement-interactions among the ACTIVE stack (issue #148's drug
   // twin, issue #144). Severity-ranked; the create/edit inline check + the
   // dismissible Upcoming finding format over the SAME detectInteractions. Routed
-  // through the findings bus (#435) — the /medicine list used to render UNFILTERED,
+  // through the findings bus (#435) — the intake surface list used to render UNFILTERED,
   // so an Upcoming dismissal left its identical twin standing here; now they agree.
   const allInteractionWarnings = activeByKey(
     getInteractionWarnings(profile.id),
@@ -591,7 +599,7 @@ export default async function SupplementsTab({
   // PGx findings always target a medication, so they have no Supplements twin.
   const { interactionWarnings, pgxWarnings } = intakeWarningsForSurface(
     "supplement",
-    supplements,
+    intakeItems,
     allInteractionWarnings,
     []
   );
@@ -613,7 +621,7 @@ export default async function SupplementsTab({
   // The item stack (name + cached RxCUI(s) + active) threaded to every form for
   // the client-side create/edit interaction notice. Cached ingredient CUIs (issue
   // #279) keep a combination product matchable against ingredient-keyed concepts.
-  const stackItems: InteractionItem[] = supplements.map((s) => ({
+  const stackItems: InteractionItem[] = intakeItems.map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,
@@ -647,7 +655,7 @@ export default async function SupplementsTab({
         dose={it.dose}
         doses={dosesBySupp.get(it.supplement.id) ?? []}
         retiredDoses={retiredBySupp.get(it.supplement.id) ?? []}
-        allSupplements={supplements}
+        allIntakeItems={intakeItems}
         stackItems={stackItems}
         pgxVariants={pgxVariants}
         pairs={pairsFor(it.supplement.id)}
@@ -895,6 +903,32 @@ export default async function SupplementsTab({
     <SituationOptionsProvider options={situationOptionNames}>
       <IntakeOptionsProvider options={getIntakeCatalogOptions(profile.id)}>
         <div>
+          {backfillDate ? (
+            <HistoricalDoseLauncher
+              items={intakeItems
+                .filter(
+                  (supplement) =>
+                    supplement.kind === "supplement" &&
+                    !!supplement.active &&
+                    (dosesBySupp.get(supplement.id)?.length ?? 0) > 0
+                )
+                .map((supplement) => ({
+                  id: supplement.id,
+                  name: supplement.name,
+                  product: supplement.product,
+                  asNeeded: supplement.obligation === "may",
+                  doses: (dosesBySupp.get(supplement.id) ?? []).map((dose) => ({
+                    id: dose.id,
+                    amount: dose.amount,
+                    timeOfDay: dose.time_of_day,
+                  })),
+                }))}
+              initialDate={acceptedBackfillDate}
+              maxDate={todayStr}
+              defaultTime={hhmm}
+              invalidRequestedDate={!acceptedBackfillDate}
+            />
+          ) : null}
           {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
           the profile's own data, NOT a manual toggle — rendered distinctly and NON-
           toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
@@ -962,12 +996,12 @@ export default async function SupplementsTab({
           {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
           that toggling a situation changed the shape of the due dose list, counted
           from the SAME dueness computation the list uses (never a second count). */}
-          {situationActivationLine(countSituationalDue(supplements, ctx)) && (
+          {situationActivationLine(countSituationalDue(intakeItems, ctx)) && (
             <p
               className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-400"
               data-testid="situation-activation"
             >
-              {situationActivationLine(countSituationalDue(supplements, ctx))}
+              {situationActivationLine(countSituationalDue(intakeItems, ctx))}
             </p>
           )}
 
@@ -1145,7 +1179,7 @@ export default async function SupplementsTab({
             </div>
           )}
 
-          {/* Supplement-related interaction warnings. Cross-kind findings also render on
+          {/* IntakeItem-related interaction warnings. Cross-kind findings also render on
           Medications with the same dedupeKey, so dismissing either twin silences both.
           Medication-only interaction and PGx findings stay on Medications. */}
           <IntakeWarnings
@@ -1186,7 +1220,7 @@ export default async function SupplementsTab({
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <AddSupplementModal
                         initialSupply={initialSupply}
-                        allSupplements={supplements}
+                        allIntakeItems={intakeItems}
                         stackItems={stackItems}
                         pgxVariants={pgxVariants}
                         trainingRestricted={trainingRestricted}
@@ -1213,7 +1247,7 @@ export default async function SupplementsTab({
                     <AddSupplementModal
                       key="add-supplement"
                       initialSupply={initialSupply}
-                      allSupplements={supplements}
+                      allIntakeItems={intakeItems}
                       stackItems={stackItems}
                       pgxVariants={pgxVariants}
                       trainingRestricted={trainingRestricted}

@@ -7,7 +7,7 @@ import {
   mergedSituationOptions,
   nonIllnessSituationOptions,
 } from "@/lib/situations";
-import { SUGGESTED_SITUATIONS } from "@/lib/supplement-schedule";
+import { SUGGESTED_SITUATIONS } from "@/lib/intake-schedule";
 
 describe("mergedSituationOptions (#1221 part 6 / #1177)", () => {
   it("with no vocabulary → exactly the built-in suggestions, none in vocabulary", () => {

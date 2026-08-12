@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink, settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
@@ -46,9 +46,9 @@ test.describe("Import detail: tabbed records browser", () => {
     // A canonicalized lab row's name still links to its biomarker series view.
     await expect(
       page.getByRole("link", { name: "Ferritin", exact: true })
-    ).toHaveAttribute("href", "/biomarkers/view?name=Ferritin");
+    ).toHaveAttribute("href", "/results/readings/view?name=Ferritin");
     // The lab table keeps its editing affordances inside the tab.
-    await page.getByRole("button", { name: "Record actions" }).first().click(); // first-ok: any lab row's Record actions menu carries Edit — order-agnostic (asserted next)
+    await page.getByRole("button", { name: "Result actions" }).first().click(); // first-ok: any lab row's Result actions menu carries Edit — order-agnostic (asserted next)
     await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
     await page.keyboard.press("Escape");
   });
@@ -74,7 +74,7 @@ test.describe("Import detail: tabbed records browser", () => {
       "/medications"
     );
     // Nothing in the medications panel may point at a biomarker series page.
-    const biomarkerLinks = listing.locator('a[href^="/biomarkers/view"]');
+    const biomarkerLinks = listing.locator('a[href^="/results/readings/view"]');
     await expect(biomarkerLinks).toHaveCount(0);
   });
 
@@ -143,7 +143,7 @@ test.describe("Import detail: tabbed records browser", () => {
 
     // The consolidated verb: "Preview changes" reads the diff (never writes) —
     // there is no bare "Reprocess" control anymore (the removed unsafe path can't
-    // return), and no immediate ExtractedRecords fire-and-replace icon.
+    // return), and no immediate ExtractedObservations fire-and-replace icon.
     await expect(
       page.getByRole("button", { name: "Reprocess document" })
     ).toHaveCount(0);
@@ -167,7 +167,15 @@ test.describe("Import detail: tabbed records browser", () => {
     await page.goto("/import/908");
     // Debug is behind a collapsed, self-hiding disclosure now (#1340) — open it
     // first, then the nested Raw extraction disclosure (both native <details>).
-    await page.locator('[data-testid="debug-disclosure"] > summary').click();
+    // The OUTER disclosure is the first interaction after the goto. Lose that
+    // click pre-hydration and "Raw extraction" never renders, so the click below
+    // retries against an element that is not visible and dies on its own
+    // timeout naming the INNER disclosure — which is not where the problem is
+    // (shard 3 of #2559's run).
+    await hydratedClick(
+      page,
+      page.locator('[data-testid="debug-disclosure"] > summary')
+    );
     await page.getByText("Raw extraction", { exact: true }).click();
     const viewer = page.getByTestId("raw-data-viewer");
     await expect(viewer).toBeVisible();

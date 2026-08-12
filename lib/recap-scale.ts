@@ -262,7 +262,7 @@ function calendarPeriod(
 /**
  * The week period, delegating to the profile's ONE definition of "this week"
  * (`lib/week-window.ts`, honoring `week_mode`) so the weekly recap keeps matching the
- * routine counters and the journal (#223), and the notification keeps summarizing the
+ * routine counters and the training log (#223), and the notification keeps summarizing the
  * last COMPLETED calendar week (#1021). Byte-for-byte the pre-#2178 behaviour.
  */
 function weekPeriod(

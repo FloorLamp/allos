@@ -16,7 +16,7 @@ import MedicationAddWorkspace from "./MedicationAddWorkspace";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
-import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import PageContainer from "@/components/PageContainer";
 import {
   getDisplayFormatPrefs,
@@ -29,7 +29,7 @@ import {
   medStripMember,
   type MedStripMember,
 } from "@/lib/medication-multi-view";
-import { isPrn } from "@/lib/supplement-schedule";
+import { isOnDemand } from "@/lib/intake-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -132,7 +132,9 @@ export default async function MedicationsPage(props: {
   ).map((o) => o.name);
 
   const medCount = actingData.current.length + actingData.past.length;
-  const prnCount = actingData.current.filter((item) => isPrn(item.med)).length;
+  const prnCount = actingData.current.filter((item) =>
+    isOnDemand(item.med)
+  ).length;
   const subtitle = [
     `${actingData.current.length} current`,
     prnCount > 0 ? `${prnCount} as needed` : null,
@@ -161,8 +163,8 @@ export default async function MedicationsPage(props: {
                   ? "Track prescriptions, over-the-counter medications, doses, and refills."
                   : subtitle
               }
-              action={addSupplement}
-              allSupplements={actingData.allSupplements}
+              action={addIntakeItem}
+              allIntakeItems={actingData.allIntakeItems}
               stackItems={actingData.stackItems}
               pgxVariants={actingData.pgxVariants}
               trainingRestricted={actingData.trainingRestricted}

@@ -30,10 +30,10 @@ the same table. **Surfaces (#746):** the two kinds render on separate pages —
 supplements on **Nutrition → Supplements** (`/nutrition?tab=supplements`, a tab
 of the Food | Supplements umbrella), medications on the standalone
 **Medications** page (`/medications`, Medical nav group). The former combined
-`/medicine` route was removed outright (#1635) and now 404s — historical deep
+intake route was removed outright (#1635) and now 404s — historical deep
 links to it are not kept alive. This is a UI/route split only: one `intake_items` table, and the write
 cores are shared — the kind-agnostic dose/item CRUD lives in
-`app/(app)/nutrition/supplement-actions.ts` (imported by both surfaces), the
+`app/(app)/nutrition/intake-actions.ts` (imported by both surfaces), the
 medication-lifecycle actions (stop/restart/side effects) in
 `app/(app)/medications/actions.ts`. **Medications-page shape (#817).** The page
 is built around what's unique to meds, not a supplement-shaped lifecycle card: a
@@ -214,7 +214,7 @@ guarded inverse — `unretireDose`, surfaced as the edit form's "Retired doses �
 Restore to schedule" affordance — reopens the SAME dose id (typed refusals:
 `not-found` / `not-retired` / `schedule-conflict` when a live dose covers the
 slot) with dueness resuming from the restore day, never retroactively.
-`getSupplementDoses` is the "current schedule" read and excludes retired doses;
+`getIntakeDoses` is the "current schedule" read and excludes retired doses;
 history reads join `intake_item_doses` directly. `markDoseTaken` returns a
 `DoseTakenOutcome`
 (`logged`/`already-taken`/`already-skipped`/`stale-dose`/`inactive`; an
@@ -338,7 +338,7 @@ on its date (#1442). The schedule resolver must never override it.
 
 **Attaching the history costs one join per profile per request/tick** (#2066).
 `withScheduleVersions` runs on every current-schedule read, and both the hourly tick and
-a single page render fan `getSupplementDoses` out across several consumers, so that read
+a single page render fan `getIntakeDoses` out across several consumers, so that read
 is memoized per profile with a short TTL (the `tzMemo` shape in `lib/db.ts`, for the same
 three-processes-one-file reason). A dose edit and an undo restore drop the entry
 in-process through `invalidateDoseScheduleVersions`; `getDoseScheduleVersions` itself is
@@ -416,7 +416,7 @@ and the scheduled time-slot/split-dose path are **mutually exclusive** — an
 no split; the redose interval owns "when"), a scheduled med keeps the slot/split
 editor and no interval/max. The invariant is enforced at BOTH surfaces: the form
 collapses to a single amount-only editor (`DoseRowsEditor singleAmountOnly`) and
-the save action runs `collapsePrnDoses` (pure, `lib/supplement-schedule.ts`) so
+the save action runs `collapseOnDemandDoses` (pure, `lib/intake-schedule.ts`) so
 a legacy hybrid row (a PRN med with slots) collapses to its first dose's amount
 on the next save — keeping that dose's id (and its administration history).
 Migration-free: existing hybrid rows still render; new saves are clean.
@@ -495,7 +495,7 @@ batched `getIntakeDoseHistoryForItems`.
 One panel renders it on both surfaces — `components/intake/DoseHistoryPanel.tsx`,
 inline in the medication card and behind the supplement row's ⋯ "Dose history"
 disclosure — over the Server Actions in
-`app/(app)/nutrition/supplement-actions.ts` (the kind-agnostic intake action
+`app/(app)/nutrition/intake-actions.ts` (the kind-agnostic intake action
 module), each rendering its core's typed outcome. Since #2417 that panel's ROWS
 are the shared `components/EntryHistoryTable.tsx` (the ⋯ menu, the in-place edit
 row, the confirm-then-undo delete), settling the debt that component's own header
@@ -532,6 +532,18 @@ renderer:
   owns, active or not), and the shared `DateRange` vocabulary with
   `DOSE_HISTORY_DAYS` as the default window and `?range=all` as the explicit
   all-time sentinel. The pure half is `lib/dose-ledger.ts`.
+- **A range is a filter; the PAGE is the bound (#2445).** "All time" is a
+  legitimate answer here — history outlives retirement — so it cannot be what
+  limits the read, and a `must` medication logged twice daily for years is
+  thousands of rows. The surface therefore reads
+  `getIntakeDoseLedgerPage(profileId, since, filters, page, HISTORY_PAGE_SIZE)`,
+  a real `LIMIT`/`OFFSET` over the same statement plus the `COUNT(*)` the pager
+  needs, with `?page=` riding the URL and every other control dropping it (a
+  narrowed ledger re-pages from its first row). `HISTORY_PAGE_SIZE` and the page
+  arithmetic are `lib/pagination.ts`, shared with the other record-history
+  tables. `getIntakeDoseHistoryAll` stays for callers that genuinely want the
+  whole window in one array, and as the row-for-row cross-check against the
+  per-item panel — but nothing that RENDERS the ledger uses it.
 - **"Log past dose" is a top-level entry** on the ledger — the same
   `HistoricalDoseForm` with an item picker in front, which opens on the item the
   ledger is filtered to. The per-item panel keeps its own entry: an item-scoped
@@ -580,7 +592,7 @@ window.
 
 **The obligation model (#1505).** One user-owned field, `obligation`, replaced
 BOTH `priority` (mandatory/high/low) and `as_needed`. Migration 124 rebuilds
-`intake_items`: `as_needed = 1 → may` (first, so a PRN item lands on may whatever
+`intake_items`: `as_needed = 1 → may` (first, so a formerly as-needed row lands on may whatever
 tag it carried), then `mandatory → must`, `low → may`, everything else `should`.
 
 | Obligation | Meaning                       | Push                            | Adherence                                            |
@@ -589,10 +601,11 @@ tag it carried), then `mandatory → must`, `low → may`, everything else `shou
 | `should`   | a miss is a tracked shortfall | remind, never escalate          | counted                                              |
 | `may`      | there is no expectation       | never pushed                    | **no dueness, no misses, no fraction** — ledger only |
 
-Three predicates in `lib/supplement-schedule.ts` are the whole of the semantics —
-`isPushedIntake`, `accruesMisses`, `escalatesOnMiss` — plus `isPrn`, since `may`
-absorbed PRN wholesale (the amount-only dose shape #851, the redose notice #798,
-the over-max finding #1027 all key off it). They are deliberately separate
+Three predicates in `lib/intake-schedule.ts` are the whole of the semantics —
+`isPushedIntake`, `accruesMisses`, `escalatesOnMiss` — plus `isOnDemand`, the generic
+name for `may` across both kinds. PRN remains a medication-specific dose-limit and
+redosing policy (#798/#1027); an optional supplement is simply on demand. They are
+deliberately separate
 functions: `should` reminds but never escalates, which the old two-value model
 could not express.
 
@@ -783,9 +796,9 @@ fasting day skips with-food doses; "hold this while on antibiotics"). It is
 INDEPENDENT of `condition`: a plain `daily` medication can be held during
 Pre-surgery, so the form's "Pause during…" picker is always available (beside
 "Only during…", over the same #1177 `situation-options` vocabulary), and
-`getSupplements`/`getMedication` COALESCE the linked row's name into
+`getIntakeItems`/`getMedication` COALESCE the linked row's name into
 `pause_situation` (a second `situations` join). **Held BEATS due** — one pure
-decision, `heldBySituation` in `lib/supplement-schedule.ts`, consulted at the
+decision, `heldBySituation` in `lib/intake-schedule.ts`, consulted at the
 TOP of `isDueOn` (before PRN/condition), so a held item is suppressed on EVERY
 surfacing path the same engine already feeds (Upcoming, dose strips, reminders,
 digest, escalation) without a second lookup: the active-situations set `isDueOn`
@@ -865,7 +878,7 @@ single flag: the one-way resolvers (`markDoseTaken` / `markDoseSkipped` — Tele
 offline replay, dashboard, household) short-circuit on ANY existing row and report
 its ACTUAL status, while the explicit web set (`setDoseStatusCore`) may flip or
 clear because the user is looking at the control. Until #2039 the tri-state was a
-second core living in `app/(app)/nutrition/supplement-actions.ts`, and it had
+second core living in `app/(app)/nutrition/intake-actions.ts`, and it had
 drifted: it never refused a PAUSED item, so the one contract `markDoseTaken` exists
 to state held on the Telegram path and not on the web one. The Server Action is now
 a thin authorization + validation boundary that renders the core's typed outcome
@@ -964,7 +977,12 @@ sees: any pool an accessible profile draws from, plus member-less orphans (they 
 nobody, and somebody has to be able to clear them). The page lists
 `listVisiblePoolViews(scope.ids)` and every door counts `countVisiblePools(scope.ids)`
 through the SAME predicate, so a door can never promise a bottle the page won't show.
-The count skips the pooled-projection build the list needs.
+The count skips the pooled-projection build the list needs, and since #2116 it reads
+membership for the whole cabinet in ONE query instead of one `poolMembers` call per
+bottle — the rule stays in `isPoolVisibleTo`, evaluated in JS over that one read, so
+there is still exactly one definition of "in the cabinet". `poolIdsForProfiles` (the
+pools an accessible SET draws from) is set-based for the same reason, which is why
+`lib/queries/intake/supply-pool.ts` is a registered `CROSS_PROFILE_SQL_MODULES` module.
 
 **The product-fact exchange (#1705).** A bottle carries `name`/`strength`/`form`;
 an item carries `name`, `product`/`brand` and its dose amounts — **there is no
@@ -986,7 +1004,7 @@ cabinet heading) reads.
   `listLinkableSupplies(ids)` — the SAME `isPoolVisibleTo` rule the cabinet lists
   by, so a picker can never offer a bottle the cabinet hides. Two entry points: the
   item forms' create-mode bottle selector (in the shared `SharedSupplyPicker`,
-  posting `supply_id` on the item's own save so `addSupplement` links it and forces
+  posting `supply_id` on the item's own save so `addIntakeItem` links it and forces
   the private count NULL), and the cabinet's **"Add for another person"** — a
   profile selector whose submit switches the active profile and lands on
   `addItemFromPoolHref(kind, poolId)` (`?supply=`), so the item is created under the
@@ -1013,7 +1031,7 @@ members they explicitly ticked, each with an inline confirm. It changes NOTHING
 about this domain's rules and adds no second dueness engine: the round's
 per-member gather is the SAME `collectWindowDoses` + `isPushedIntake` floor that
 builds that member's own reminder (#221), evaluated in that member's own
-timezone/day, so a PRN item is absent (never scheduled-due), a taken or
+timezone/day, so an on-demand item is absent (never scheduled-due), a taken or
 deliberately skipped dose (#232) is not "due", and a held item stays held. The
 confirm writes through `markDoseTaken` ONLY — adherence history stays truthful,
 the amount snapshot and retired/paused refusals are unchanged, and the handler
@@ -1050,6 +1068,33 @@ by `lib/queries/provider-options.ts`) and `lib/immunization-rank.ts` (age/life-
 stage buckets read off the SAME `assessSchedule` status engine the schedule grid
 draws, fed by `lib/queries/immunization-options.ts`) — so an adult's vaccine
 picker no longer opens on an infant's first year.
+
+**A ranked source only survives the EMPTY query unless it declares usage
+(#2384).** The model above — "an empty query keeps source order, so the source
+array's first 8 entries are the picker" — is true only for the empty query.
+`fuzzyFilter` sorts on `b.s - a.s || a.i - b.i`, so the caller's order is kept
+only as an exact-score TIEBREAK, and the score carries a fractional length term
+that makes exact ties essentially never occur. One keystroke therefore replaced
+every ranker above with string geometry: a never-logged "Squash" outranked five
+logged squats on `sqa`, purely because its `s` sits at index 0.
+
+The fix keeps the split the rankers already have. The CALLER answers "does this
+profile actually use this?" — it is the domain question, and these rankers
+already resolve it — and passes the answer as `usedOptions`, a `ReadonlySet` of
+lowercased option names. `lib/fuzzy.ts` owns what that is worth: one app-wide
+`USAGE_BONUS` (1.5), bounded so it overturns the +1 first-character bonus and
+the length tiebreak but never a word boundary (+2) or a contiguity run (+3), and
+BINARY rather than graded, per the same #1490 discipline these rankers follow.
+It de-ranks, never hides. Omitting `usedOptions` is byte-for-byte the old
+behavior, which is the right default: a picker earns the bonus by declaring real
+evidence, never by merely having an order — a position-derived bonus over an
+alphabetical list would just favour names beginning with "A".
+
+The activity picker is the first consumer (`ActivitySuggestions.logged`, built
+from the three usage tallies `getActivitySuggestions` already gathers).
+Medications, supplements, providers, specialties and immunizations should pass
+`usedOptions` as each ranked source lands, or their rank will keep evaporating
+on the first keystroke.
 
 ## Biomarker → supplement: the curated engine, and the AI route as fallback (#2378)
 

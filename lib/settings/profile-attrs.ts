@@ -1,4 +1,5 @@
-import { db, today, writeTx } from "../db";
+import { db, hoistedStatement, today, writeTx } from "../db";
+import { cache } from "../request-cache";
 import { readAllForUpdate } from "../tx";
 import { ageFromBirthdate, ageMonthsFrom } from "../date";
 import { normalizeExcludedGroups } from "../dietary-preferences";
@@ -59,12 +60,12 @@ import {
 
 // The profile's biological sex, used to pick sex-specific optimal biomarker
 // bands. Null when unset — callers then fall back to the generic optimal range.
-export function getUserSex(profileId: number): Sex | null {
+export function getProfileSex(profileId: number): Sex | null {
   const v = getProfileSetting(profileId, "sex");
   return v === "male" ? "male" : v === "female" ? "female" : null;
 }
 
-export function setUserSex(profileId: number, sex: Sex | null) {
+export function setProfileSex(profileId: number, sex: Sex | null) {
   if (sex === null) {
     deleteProfileSetting(profileId, "sex");
     return;
@@ -94,13 +95,13 @@ export function setSkinType(
 }
 
 // The profile's reproductive (menopausal) status — a CURRENT attribute of the
-// tracked person, mirroring getUserSex/setUserSex. Used to pick life-stage-aware
+// tracked person, mirroring getProfileSex/setProfileSex. Used to pick life-stage-aware
 // reference ranges for the female reproductive hormones (Estradiol/FSH/LH): when
 // set (and the sex is female) it overrides the age proxy so a genuinely
 // post-menopausal high hormone flags. Null when unset (not specified) — then the
 // age-proxy fallback (e.g. the FSH 51+ band) applies, unchanged. Applies to female
 // physiology only; a male profile's ranges are unaffected regardless of this value.
-export function getUserReproductiveStatus(
+export function getProfileReproductiveStatus(
   profileId: number
 ): ReproductiveStatus | null {
   const v = getProfileSetting(profileId, "reproductive_status");
@@ -111,7 +112,7 @@ export function getUserReproductiveStatus(
       : null;
 }
 
-export function setUserReproductiveStatus(
+export function setProfileReproductiveStatus(
   profileId: number,
   status: ReproductiveStatus | null
 ) {
@@ -228,12 +229,12 @@ export function adoptSmokingStatusFromImport(
 // profile_settings like the other per-person facts (sex, birthdate); used where a
 // real name matters (e.g. a medical-summary handout) and backfilled from imported
 // records. Null when unset.
-export function getUserFullName(profileId: number): string | null {
+export function getProfileFullName(profileId: number): string | null {
   const v = getProfileSetting(profileId, "full_name");
   return v && v.trim() ? v : null;
 }
 
-export function setUserFullName(profileId: number, name: string | null) {
+export function setProfileFullName(profileId: number, name: string | null) {
   const v = name?.trim();
   if (!v) {
     deleteProfileSetting(profileId, "full_name");
@@ -244,16 +245,27 @@ export function setUserFullName(profileId: number, name: string | null) {
 
 // The profile's birthdate (ISO YYYY-MM-DD), when known. A property of the tracked
 // person, so it lives in profile_settings. Preferred over a bare age because the
-// current age can be derived from it at any time (see getUserAge).
-export function getUserBirthdate(profileId: number): string | null {
+// current age can be derived from it at any time (see getProfileAge).
+//
+// cache()-wrapped because this is the most-repeated single read in the app: every
+// age gate, life-stage check and age-banded reference range asks for it, and one
+// `/` render read the SAME profile's birthdate 175 times. #1961 already hoisted
+// this read out of the per-DATE loop inside profileAgeResolver; request scope is
+// the same fix one level up, across the ~90 unrelated callers that each resolve an
+// age independently. A birthdate cannot change mid-render — setProfileBirthdate is
+// a settings write that revalidates rather than re-reading — and outside a request
+// cache() degrades to a plain passthrough.
+export const getProfileBirthdate = cache(function getProfileBirthdate(
+  profileId: number
+): string | null {
   return getProfileSetting(profileId, "birthdate") ?? null;
-}
+});
 
 // Set (or clear, with null) the profile's birthdate. Setting a real date also
 // drops any stored age fallback: once the birthdate is known, a bare age is
 // redundant (and would otherwise linger as stale data). Keeps the invariant
 // that the 'age' key exists only while no birthdate is set.
-export function setUserBirthdate(profileId: number, date: string | null) {
+export function setProfileBirthdate(profileId: number, date: string | null) {
   if (!date) {
     deleteProfileSetting(profileId, "birthdate");
     return;
@@ -287,10 +299,10 @@ export function setStoredAge(profileId: number, age: number | null) {
 // preventive-care assessments (via Upcoming) and the dashboard/immunization
 // pages so every surface agrees which vaccines are due. The month-resolution
 // math is the pure ageMonthsFrom() in lib/date.ts; this wrapper adds the
-// profile-scoped reads (getUserBirthdate/getStoredAge filter profile_id).
+// profile-scoped reads (getProfileBirthdate/getStoredAge filter profile_id).
 export function profileAgeMonths(profileId: number, on: string): number | null {
   return ageMonthsFrom(
-    getUserBirthdate(profileId),
+    getProfileBirthdate(profileId),
     getStoredAge(profileId),
     on
   );
@@ -299,8 +311,8 @@ export function profileAgeMonths(profileId: number, on: string): number | null {
 // The profile's current age in whole years: derived from the birthdate when set,
 // otherwise the stored age fallback. Null when neither is known. The profile id
 // also resolves "today" in that profile's timezone.
-export function getUserAge(profileId: number): number | null {
-  const bd = getUserBirthdate(profileId);
+export function getProfileAge(profileId: number): number | null {
+  const bd = getProfileBirthdate(profileId);
   if (bd) return ageFromBirthdate(bd, today(profileId));
   return getStoredAge(profileId);
 }
@@ -309,25 +321,25 @@ export function getUserAge(profileId: number): number | null {
 // ranges: derived from the birthdate on that date (the "age on the collection
 // date, not today" rule), else the stored age fallback, else null. Used by the
 // biomarker UI to pick the band that applied to a given reading.
-export function getUserAgeOn(
+export function getProfileAgeOn(
   profileId: number,
   on: string | null | undefined
 ): number | null {
-  return userAgeResolver(profileId)(on);
+  return profileAgeResolver(profileId)(on);
 }
 
-// getUserAgeOn's reads, hoisted OUT of the per-date call so a caller that needs
+// getProfileAgeOn's reads, hoisted OUT of the per-date call so a caller that needs
 // the age on many dates (every reading of a series, every analyte of a batch)
 // pays for the two profile_settings reads once instead of once per date (#1961).
 //
-// The returned closure is the SAME decision getUserAgeOn makes — that function is
+// The returned closure is the SAME decision getProfileAgeOn makes — that function is
 // now literally a single-date call of this one, so the two can't drift. The stored
 // age is read LAZILY, exactly as the eager path only reached it when the birthdate
 // couldn't answer, so a profile with a birthdate still issues one read, not two.
-export function userAgeResolver(
+export function profileAgeResolver(
   profileId: number
 ): (on: string | null | undefined) => number | null {
-  const bd = getUserBirthdate(profileId);
+  const bd = getProfileBirthdate(profileId);
   let stored: number | null | undefined;
   return (on) => {
     if (bd && on) {
@@ -757,19 +769,19 @@ export function adoptProfileFromExtraction(
   };
   if (!meta) return out;
 
-  if (meta.patient_sex !== null && getUserSex(profileId) === null) {
-    setUserSex(profileId, meta.patient_sex);
+  if (meta.patient_sex !== null && getProfileSex(profileId) === null) {
+    setProfileSex(profileId, meta.patient_sex);
     out.sexAdopted = true;
     out.changed = true;
   }
-  if (meta.patient_name && getUserFullName(profileId) === null) {
-    setUserFullName(profileId, meta.patient_name);
+  if (meta.patient_name && getProfileFullName(profileId) === null) {
+    setProfileFullName(profileId, meta.patient_name);
     out.fullName = meta.patient_name.trim() || null;
     out.changed = true;
   }
-  if (getUserBirthdate(profileId) === null) {
+  if (getProfileBirthdate(profileId) === null) {
     if (meta.patient_birthdate) {
-      setUserBirthdate(profileId, meta.patient_birthdate);
+      setProfileBirthdate(profileId, meta.patient_birthdate);
       out.birthdate = meta.patient_birthdate;
       out.changed = true;
     } else if (meta.patient_age !== null && getStoredAge(profileId) === null) {
@@ -1059,17 +1071,19 @@ export function resolveSituationId(
 // Currently-active situation NAMES for a profile (e.g. "Illness", "Travel"), read
 // from the id-keyed situations table. Returned as names because that stays the
 // shared currency across the notifier / adherence / digest layers — and, since
-// getSupplements coalesces the same situations.name onto each item, a rename
+// getIntakeItems coalesces the same situations.name onto each item, a rename
 // re-keys both sides together (no detachment).
+// Statement hoisted: this is read once per situation-gated decision, so a
+// cross-profile surface pays it per member (748 executions on one /household
+// render) and compiled the SQL every time.
+const ACTIVE_SITUATIONS_STMT = hoistedStatement(
+  `SELECT name FROM situations
+    WHERE profile_id = ? AND active = 1 ORDER BY name COLLATE NOCASE`
+);
 export function getActiveSituations(profileId: number): string[] {
-  return (
-    db
-      .prepare(
-        `SELECT name FROM situations
-          WHERE profile_id = ? AND active = 1 ORDER BY name COLLATE NOCASE`
-      )
-      .all(profileId) as { name: string }[]
-  ).map((r) => r.name);
+  return (ACTIVE_SITUATIONS_STMT.all(profileId) as { name: string }[]).map(
+    (r) => r.name
+  );
 }
 
 // Set the profile's active situations to exactly `situations` (by name). Rows are

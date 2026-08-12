@@ -101,7 +101,7 @@ describe("renderPreventiveMessage", () => {
         item({
           ruleKey: "lipid_screening",
           name: "Cholesterol (lipid) screening",
-          href: "/results/biomarkers?new=1&name=LDL%20Cholesterol",
+          href: "/results/readings?new=1&name=LDL%20Cholesterol",
           ctaLabel: "Record your LDL Cholesterol result",
         }),
         3,
@@ -109,7 +109,7 @@ describe("renderPreventiveMessage", () => {
       );
       expect(msg.actions![0].label).toBe("Record your LDL Cholesterol result");
       expect(msg.actions![0].url).toBe(
-        "https://allos.example/results/biomarkers?new=1&name=LDL%20Cholesterol"
+        "https://allos.example/results/readings?new=1&name=LDL%20Cholesterol"
       );
     });
 

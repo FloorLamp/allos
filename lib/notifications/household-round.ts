@@ -65,7 +65,7 @@ function sectionFor(
   const doses: HouseholdRoundSection["doses"] = [];
   for (const slot of slots) {
     // The #1156 priority floor applies at send assembly, the same as the member's own
-    // reminder. PRN items never appear: they are not scheduled-due, so `isDueOn`
+    // reminder. On-demand items never appear: they are not scheduled-due, so `isDueOn`
     // inside the gather excludes them (a PRN med has no dose to confirm on a clock).
     for (const entry of notifiableWindowDoses(
       collectWindowDoses(memberProfileId, slot, date)

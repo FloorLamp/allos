@@ -27,7 +27,7 @@ import {
 } from "@/lib/queries/weather-training";
 import { contextNotes } from "@/lib/coaching/engine";
 import { recommendCoaching } from "@/lib/coaching";
-import { buildJournalFeedPage } from "@/lib/journal-feed";
+import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
 import type { UnitPrefs } from "@/lib/settings";
 
 // A login reading in Celsius, so the stamp assertions name the canonical figure.
@@ -379,14 +379,14 @@ describe("the parked figure reads in the reason's own unit (#1967)", () => {
   });
 });
 
-describe("conditions stamps on the journal feed (#1728)", () => {
+describe("conditions stamps on the training log feed (#1728)", () => {
   it("stamps an outdoor session with the weather of its day, writing nothing", () => {
     const p = newProfile("wt-stamp");
     const anchor = today(p);
     logSession(p, anchor, "Cycling", 31);
     cacheDay(p, anchor, { tempMaxC: 31, weatherCode: 0 });
 
-    const feed = buildJournalFeedPage(p, null, CELSIUS_UNITS);
+    const feed = buildTrainingLogFeedPage(p, null, CELSIUS_UNITS);
     const card = feed.groups[0].cards[0];
     expect(card.metrics[0]).toBe("31°C · clear");
 
@@ -403,7 +403,7 @@ describe("conditions stamps on the journal feed (#1728)", () => {
     logSession(p, anchor, "Treadmill", 31);
     cacheDay(p, anchor, { tempMaxC: 31, weatherCode: 0 });
 
-    const feed = buildJournalFeedPage(p, null, CELSIUS_UNITS);
+    const feed = buildTrainingLogFeedPage(p, null, CELSIUS_UNITS);
     // No stamp anywhere in the metrics row — the outdoor flag decides, not the data.
     const metrics = feed.groups[0].cards[0].metrics;
     expect(metrics.some((m) => m.includes("·"))).toBe(false);
@@ -417,7 +417,7 @@ describe("conditions stamps on the journal feed (#1728)", () => {
        VALUES (?, ?, 'cardio', 'Cycling', 60)`
     ).run(p, anchor);
 
-    const feed = buildJournalFeedPage(p, null, CELSIUS_UNITS);
+    const feed = buildTrainingLogFeedPage(p, null, CELSIUS_UNITS);
     const metrics = feed.groups[0].cards[0].metrics;
     expect(metrics.some((m) => m.includes("·"))).toBe(false);
   });

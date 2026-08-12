@@ -185,7 +185,7 @@ export interface CyclingOverviewData {
 }
 
 // One profile-scoped read model for the ride detail page. It enriches the same
-// editor payload used by Journal with the ride's route, measured energy, gear,
+// editor payload used by Training Log with the ride's route, measured energy, gear,
 // as-of bodyweight, and HR buckets bounded to this activity's clock window.
 export function getRideDetailData(
   profileId: number,

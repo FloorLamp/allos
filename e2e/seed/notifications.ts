@@ -24,9 +24,12 @@ import {
   NOTIFY_SCOPE_OWN_PROFILE,
   NOTIFY_SCOPE_WARD_PROFILE,
 } from "../fixture-logins";
-import { seedMemberLogin, fixtureProfileId } from "./common";
+import {
+  seedMemberLogin,
+  fixtureProfileId,
+  memberPasswordHash,
+} from "./common";
 import { db } from "../../lib/db";
-import { hashPasswordSync } from "../../lib/password";
 
 // ── Admin notification opt-in (#2345) ──
 export function seedNotifyScope(): void {
@@ -40,7 +43,7 @@ export function seedNotifyScope(): void {
   fixtureProfileId(NOTIFY_SCOPE_WARD_PROFILE);
   db.prepare(
     "INSERT OR IGNORE INTO logins (username, password_hash, role) VALUES (?, ?, 'admin')"
-  ).run(E2E_LOGIN_NOTIFY_SCOPE, hashPasswordSync(E2E_MEMBER_PASSWORD));
+  ).run(E2E_LOGIN_NOTIFY_SCOPE, memberPasswordHash());
   const loginId = (
     db
       .prepare("SELECT id FROM logins WHERE username = ?")

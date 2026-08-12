@@ -473,7 +473,7 @@ describe("trajectoryFindings — batch + dedupeKeys", () => {
       retestDays: 10,
       velocityPerYear: 5,
       points: line([0, 365, 730], 88, -8), // velocity + persistent(below-optimal)
-      href: "/biomarkers/view?name=eGFR",
+      href: "/results/readings/view?name=eGFR",
     });
     const fs = trajectoryFindings([egfr]);
     expect(fs.length).toBeGreaterThan(0);
@@ -482,7 +482,7 @@ describe("trajectoryFindings — batch + dedupeKeys", () => {
     );
     expect(fs.every((f) => f.domain === "trajectory")).toBe(true);
     // href threads through to the action affordance.
-    expect(fs[0].actionHref).toBe("/biomarkers/view?name=eGFR");
+    expect(fs[0].actionHref).toBe("/results/readings/view?name=eGFR");
     expect(fs[0].actionLabel).toBe("Schedule a retest");
   });
 });

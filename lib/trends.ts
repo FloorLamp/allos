@@ -11,7 +11,7 @@ import { formatCompactAge } from "./format-date";
 // SQLite treats a negative LIMIT as "no upper bound". The Trends sections must
 // read a domain's WHOLE series before windowing it (filterSeriesByRange), so
 // they pass this instead of a query's default row cap (getWeights /
-// getBodyMetricsWithSource default to 365 rows, getInsights to 30) — otherwise a
+// getBodyMetricsWithSource default to 365 rows, getDailyInsights to 30) — otherwise a
 // selected window older than the newest N rows would silently render an empty or
 // partial chart, and even "All time" would be truncated.
 export const ALL_ROWS = -1;

@@ -4,7 +4,7 @@
 // intake_items.situation_id) lives in lib/settings/profile-attrs.ts; this module is
 // the string discipline + the one-way condition bridge, kept pure/unit-testable.
 
-import { SUGGESTED_SITUATIONS } from "./supplement-schedule";
+import { SUGGESTED_SITUATIONS } from "./intake-schedule";
 
 // The merged situation-OPTION set — the profile's saved vocabulary rows UNION the
 // built-in suggestions, NOCASE-deduped (a stored "illness" collapses onto the suggested

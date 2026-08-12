@@ -9,12 +9,8 @@ import {
   type DoseScheduleVersion,
   type ItemCadence,
 } from "../../intake-cadence";
-import { db } from "../../db";
-import type {
-  Supplement,
-  SupplementDose,
-  SupplementSuggestion,
-} from "../../types";
+import { db, hoistedStatement } from "../../db";
+import type { IntakeItem, IntakeDose, SupplementSuggestion } from "../../types";
 
 // Whether this profile has ANY intake item (supplement or medication). Drives the
 // Nutrition nav entry's visibility for an infant profile (#746): the food-group
@@ -30,7 +26,7 @@ export function profileHasIntakeItems(profileId: number): boolean {
 // Every intake item's DISPLAY NAME for one profile, id-keyed. The narrowest possible
 // read for a surface that has an item id and needs the word the user sees — the
 // reconcile close (#2274/#2275) names the doses a resolved reminder covered, and paying
-// for `getSupplements`' seven correlated subselects to reach one column would be absurd
+// for `getIntakeItems`' seven correlated subselects to reach one column would be absurd
 // on the notify tick. Retired and inactive items are included on purpose: a dose logged
 // against an item that has since been retired still happened, and the close is a
 // snapshot of what the message claimed.
@@ -41,16 +37,14 @@ export function getIntakeItemNames(profileId: number): Map<number, string> {
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-// ---- Supplements ----
-export function getSupplements(profileId: number): Supplement[] {
-  // COALESCE(situations.name, intake_items.situation): a situational item's
-  // displayed situation follows its linked ROW (issue #560), so a rename re-keys it
-  // (and it stays in lockstep with getActiveSituations, which reads the same table);
-  // the free-text column is the fallback for legacy/unlinked rows. The `AS situation`
-  // alias comes last, so it wins over intake_items.* on the duplicate column name.
-  return db
-    .prepare(
-      `SELECT intake_items.*,
+// ---- Intake items ----
+// Statement hoisted: the widest read in this module (seven correlated subselects)
+// and one of the most-executed anywhere — getSupplements and getMedications are
+// filters over it, so a surface that wants both runs it twice, and a cross-profile
+// surface multiplies that by every member (1094 executions on one /household
+// render). Compiling this SQL each time cost more than running it.
+const INTAKE_ITEMS_STMT = hoistedStatement(
+  `SELECT intake_items.*,
               COALESCE(situations.name, intake_items.situation) AS situation,
               pause_situations.name AS pause_situation,
               (SELECT p.name FROM providers p WHERE p.id = intake_items.provider_id)
@@ -70,19 +64,35 @@ export function getSupplements(profileId: number): Supplement[] {
                 ON pause_situations.id = intake_items.pause_situation_id
                AND pause_situations.profile_id = intake_items.profile_id
         WHERE intake_items.profile_id = ? ORDER BY active DESC, name`
-    )
-    .all(profileId) as Supplement[];
+);
+// COALESCE(situations.name, intake_items.situation): a situational item's
+// displayed situation follows its linked ROW (issue #560), so a rename re-keys it
+// (and it stays in lockstep with getActiveSituations, which reads the same table);
+// the free-text column is the fallback for legacy/unlinked rows. The `AS situation`
+// alias comes last, so it wins over intake_items.* on the duplicate column name.
+export function getIntakeItems(profileId: number): IntakeItem[] {
+  return INTAKE_ITEMS_STMT.all(profileId) as IntakeItem[];
+}
+
+// Kind-specific adapters are intentionally named after the subset they return.
+// Shared scheduling, adherence, and safety code reads getIntakeItems instead.
+export function getSupplements(profileId: number): IntakeItem[] {
+  return getIntakeItems(profileId).filter((item) => item.kind === "supplement");
+}
+
+export function getMedications(profileId: number): IntakeItem[] {
+  return getIntakeItems(profileId).filter((item) => item.kind === "medication");
 }
 
 // One medication this profile owns, or null — the scoped single-item read behind
 // the /medications/[id] detail page (issue #817). Filters by id AND profile_id AND
 // kind='medication', so guessing another profile's id (or a supplement's id) yields
 // null and the page 404s (the encounters/[id] precedent). Same COALESCE(situation)/
-// provider_name shape as getSupplements so the detail row matches a list row.
+// provider_name shape as getIntakeItems so the detail row matches a list row.
 export function getMedication(
   profileId: number,
   id: number
-): Supplement | null {
+): IntakeItem | null {
   const row = db
     .prepare(
       `SELECT intake_items.*,
@@ -107,7 +117,7 @@ export function getMedication(
         WHERE intake_items.id = ? AND intake_items.profile_id = ?
           AND intake_items.kind = 'medication'`
     )
-    .get(id, profileId) as Supplement | undefined;
+    .get(id, profileId) as IntakeItem | undefined;
   return row ?? null;
 }
 
@@ -118,7 +128,7 @@ export function getMedication(
 export function resolveMedicationAcrossProfiles(
   profileIds: number[],
   id: number
-): { profileId: number; medication: Supplement } | null {
+): { profileId: number; medication: IntakeItem } | null {
   for (const profileId of profileIds) {
     const medication = getMedication(profileId, id);
     if (medication) return { profileId, medication };
@@ -127,22 +137,21 @@ export function resolveMedicationAcrossProfiles(
 }
 
 // All CURRENTLY SCHEDULED doses, ordered for stable rendering. Doses are a
-// child of supplements, so they're scoped through the parent's profile_id.
+// child of intake items, so they're scoped through the parent's profile_id.
 // Retired doses (removed from the schedule by an edit but kept for their
 // adherence logs) are excluded — every "current schedule" consumer (the page,
 // reminders, refill math, digests) reads through here; history reads join
 // intake_item_doses directly and still see retired rows.
-export function getSupplementDoses(profileId: number): SupplementDose[] {
+const INTAKE_DOSES_STMT = hoistedStatement(
+  `SELECT d.* FROM intake_item_doses d
+     JOIN intake_items s ON s.id = d.item_id
+    WHERE s.profile_id = ? AND d.retired = 0
+    ORDER BY d.item_id, d.sort, d.id`
+);
+export function getIntakeDoses(profileId: number): IntakeDose[] {
   return withScheduleVersions(
     profileId,
-    db
-      .prepare(
-        `SELECT d.* FROM intake_item_doses d
-         JOIN intake_items s ON s.id = d.item_id
-        WHERE s.profile_id = ? AND d.retired = 0
-        ORDER BY d.item_id, d.sort, d.id`
-      )
-      .all(profileId) as SupplementDose[]
+    INTAKE_DOSES_STMT.all(profileId) as IntakeDose[]
   );
 }
 
@@ -187,7 +196,7 @@ export function getDoseScheduleVersions(
 // was the tempting reading of the tick's cost, and it is wrong: the hourly intake gather
 // (lib/notifications/supplements.ts `gatherWindowDoses`) scores each due dose's ADHERENCE
 // STRIP over the trailing window, calling `doseDueOn` for every past day in it. Three of
-// the tick's four `getSupplementDoses` call sites reach that gather, so a lean
+// the tick's four `getIntakeDoses` call sites reach that gather, so a lean
 // "current schedule only" reader would silently re-introduce exactly the retroactive
 // re-judgment #1973 exists to prevent. The join is not waste in that path — it is
 // REPETITION: the same profile's history was being re-joined for every one of those
@@ -237,12 +246,12 @@ function memoizedDoseScheduleVersions(
 //
 // The attached arrays are SHARED with the memo above and across the rows of every reader
 // that ran inside the TTL. Every consumer of `versions` only ever reads it (the resolvers
-// in lib/intake-cadence and lib/supplement-schedule), and a dose's recorded history is
+// in lib/intake-cadence and lib/intake-schedule), and a dose's recorded history is
 // append-only by construction, so there is nothing here to copy defensively.
 function withScheduleVersions(
   profileId: number,
-  doses: SupplementDose[]
-): SupplementDose[] {
+  doses: IntakeDose[]
+): IntakeDose[] {
   if (doses.length === 0) return doses;
   const byDose = memoizedDoseScheduleVersions(profileId);
   for (const d of doses) {
@@ -253,11 +262,9 @@ function withScheduleVersions(
 }
 
 // Every dose row, including retired doses retained for adherence history. This is
-// deliberately separate from getSupplementDoses: current-schedule consumers must
+// deliberately separate from getIntakeDoses: current-schedule consumers must
 // never accidentally surface or make a retired dose actionable.
-export function getSupplementDosesForHistory(
-  profileId: number
-): SupplementDose[] {
+export function getIntakeDosesForHistory(profileId: number): IntakeDose[] {
   return withScheduleVersions(
     profileId,
     db
@@ -267,15 +274,15 @@ export function getSupplementDosesForHistory(
         WHERE s.profile_id = ?
         ORDER BY d.item_id, d.sort, d.id`
       )
-      .all(profileId) as SupplementDose[]
+      .all(profileId) as IntakeDose[]
   );
 }
 
 // The RETIRED doses only — removed from the schedule by an edit but kept for their
 // adherence logs (#2131). The edit form renders these with their Restore affordance
 // (the equipment pattern); every current-schedule consumer keeps reading
-// getSupplementDoses, so a retired row can never become schedulable by accident.
-export function getRetiredDoses(profileId: number): SupplementDose[] {
+// getIntakeDoses, so a retired row can never become schedulable by accident.
+export function getRetiredDoses(profileId: number): IntakeDose[] {
   return db
     .prepare(
       `SELECT d.* FROM intake_item_doses d
@@ -283,7 +290,7 @@ export function getRetiredDoses(profileId: number): SupplementDose[] {
       WHERE s.profile_id = ? AND d.retired = 1
       ORDER BY d.item_id, d.sort, d.id`
     )
-    .all(profileId) as SupplementDose[];
+    .all(profileId) as IntakeDose[];
 }
 
 // AI suggestions still awaiting review, newest first.

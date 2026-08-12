@@ -63,8 +63,8 @@ import { getFindingSuppressions } from "./upcoming/suppressions";
 
 /** One declared stream's resolved lifecycle, before any offer question is asked. */
 export interface StreamLifecycle {
-  provider: IntegrationId;
-  providerName: string;
+  sourceId: IntegrationId;
+  sourceName: string;
   streamId: ContinuousStreamId;
   streamLabel: string;
   state: StreamLifecycleState;
@@ -82,20 +82,20 @@ export interface StreamLifecycleOffer {
   kind: StreamOfferKind;
   /** The suppression-bus key. It is BOTH the render key and the action's only token. */
   key: string;
-  provider: IntegrationId;
-  providerName: string;
+  sourceId: IntegrationId;
+  sourceName: string;
   streamId: ContinuousStreamId;
   streamLabel: string;
   title: string;
   body: string;
-  /** The provider's own setup page, when it has one. */
+  /** The source's own setup page, when it has one. */
   href: AppRoute | null;
 }
 
 /**
  * Every declared stream's lifecycle state for this profile.
  *
- * Only CONNECTED providers are walked. A disconnected or needs-reauth provider is not
+ * Only CONNECTED sources are walked. A disconnected or needs-reauth source is not
  * delivering and is not being asked to — its stream has no lifecycle to be in, and
  * "your watch stopped sending" would be a worse name for "the integration is
  * unplugged", which #1685 already owns and already says.
@@ -112,11 +112,11 @@ export const getStreamLifecycles = cache(function getStreamLifecycles(
   const todayStr = profileToday(profileId);
 
   const out: StreamLifecycle[] = [];
-  for (const { provider, providerName, stream } of streams) {
-    if (getConnection(profileId, provider)?.status !== "connected") continue;
+  for (const { sourceId, sourceName, stream } of streams) {
+    if (getConnection(profileId, sourceId)?.status !== "connected") continue;
 
-    const firstAt = earliestStreamInstant(profileId, stream.table, provider);
-    const lastAt = latestStreamInstant(profileId, stream.table, provider);
+    const firstAt = earliestStreamInstant(profileId, stream.table, sourceId);
+    const lastAt = latestStreamInstant(profileId, stream.table, sourceId);
     // The stored instants projected to the PROFILE's own days (#94). A day is never a
     // substring of a UTC instant, so both go through localDayOf rather than a slice.
     const firstDay = firstAt ? localDayOf(tz, firstAt) : null;
@@ -132,7 +132,7 @@ export const getStreamLifecycles = cache(function getStreamLifecycles(
             streamDeliveredDays(
               profileId,
               stream.table,
-              provider,
+              sourceId,
               tz,
               todayStr,
               stream.expectedActive.windowDays
@@ -143,8 +143,8 @@ export const getStreamLifecycles = cache(function getStreamLifecycles(
           );
 
     out.push({
-      provider,
-      providerName,
+      sourceId,
+      sourceName,
       streamId: stream.id,
       streamLabel: stream.label,
       state: streamLifecycleState({
@@ -188,11 +188,11 @@ export const getStreamLifecycleOffers = cache(function getStreamLifecycleOffers(
 
   const offers: StreamLifecycleOffer[] = [];
   for (const life of lifecycles) {
-    const onboardKey = streamOnboardKey(life.provider, life.streamId);
+    const onboardKey = streamOnboardKey(life.sourceId, life.streamId);
     const offboardKey =
       life.lastDay == null
         ? null
-        : streamOffboardKey(life.provider, life.streamId, life.lastDay);
+        : streamOffboardKey(life.sourceId, life.streamId, life.lastDay);
 
     const kind = streamOfferKind({
       state: life.state,
@@ -204,24 +204,24 @@ export const getStreamLifecycleOffers = cache(function getStreamLifecycleOffers(
     if (kind == null) continue;
     if (
       kind === "offboard" &&
-      (watched?.provider !== life.provider ||
+      (watched?.sourceId !== life.sourceId ||
         watched.stream.id !== life.streamId)
     )
       continue;
 
     const shared = {
-      provider: life.provider,
-      providerName: life.providerName,
+      sourceId: life.sourceId,
+      sourceName: life.sourceName,
       streamId: life.streamId,
       streamLabel: life.streamLabel,
-      href: integrationDetailHref(life.provider),
+      href: integrationDetailHref(life.sourceId),
     };
     if (kind === "onboard") {
       offers.push({
         ...shared,
         kind,
         key: onboardKey,
-        title: streamOnboardTitle(life.providerName, life.streamLabel),
+        title: streamOnboardTitle(life.sourceName, life.streamLabel),
         body: streamOnboardBody(life.streamLabel),
       });
     } else if (offboardKey != null && life.quietDays != null) {
@@ -231,7 +231,7 @@ export const getStreamLifecycleOffers = cache(function getStreamLifecycleOffers(
         key: offboardKey,
         title: streamOffboardTitle(),
         body: streamOffboardBody(
-          life.providerName,
+          life.sourceName,
           life.streamLabel,
           life.quietDays
         ),
@@ -256,12 +256,12 @@ export function wearReminderPausedNote(profileId: number): string | null {
   const watched = reminderStream("bedtime-wear");
   if (!watched) return null;
   const life = getStreamLifecycles(profileId).find(
-    (l) => l.provider === watched.provider && l.streamId === watched.stream.id
+    (l) => l.sourceId === watched.sourceId && l.streamId === watched.stream.id
   );
   if (!life || life.quietDays == null) return null;
   if (life.state !== "lapsed" && life.state !== "ended") return null;
   return streamReminderPausedNote(
-    life.providerName,
+    life.sourceName,
     life.streamLabel,
     life.quietDays
   );

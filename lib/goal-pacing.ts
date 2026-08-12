@@ -1,6 +1,6 @@
 // Goal pacing (issue #45, domain 6): two calm, observational checks over a
 // profile's body-metric goals and weight trend, layered on the SAME robust
-// projection the Trends → Body chart already draws (lib/trend-projection.projectGoal,
+// projection the Trends → Overview → body census chart already draws (lib/trend-projection.projectGoal,
 // Theil–Sen). Nothing here re-derives a slope — it reuses projectGoal so the finding
 // and the chart caption can never disagree ("one question, one computation").
 //
@@ -11,7 +11,7 @@
 //      gentle nudge that faster isn't better (lean-mass/adherence risk).
 //
 // Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings.ts
-// (getGoals + getWeights → these → Finding[]), surfaced on the Goals tab. Thresholds
+// (getOutcomeGoals + getWeights → these → Finding[]), surfaced on the Goals tab. Thresholds
 // are named constants with rationale; boundaries unit-tested in
 // lib/__tests__/goal-pacing.test.ts.
 
@@ -27,7 +27,7 @@ import { theilSenSlopePerDay, median, type DatedPoint } from "./robust-stats";
 export const PACE_SLACK_DAYS = 3;
 
 // The trailing window (days) the goal-pacing finding fits its projection over (#433).
-// The finding and the Trends → Body chart caption BOTH call projectGoal, but the
+// The finding and the Trends → Overview → body census chart caption BOTH call projectGoal, but the
 // finding used to feed it the raw all-source year of weights while the chart fed the
 // primary-source-collapsed daily series windowed to the selected range — so the
 // "can never disagree" comment was aspirational, not true (a 9-month-flat + 8-week-cut

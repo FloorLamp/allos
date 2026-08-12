@@ -162,7 +162,7 @@ function localTodayStr(): string {
 // pure guard lib/__tests__/date-locale-guard.test.ts fails CI on a pref-less call
 // and on any implicit-locale toLocale* date render.
 
-// Consistent journal date formatting: "Weekday, Month Day", with the year
+// Consistent training log date formatting: "Weekday, Month Day", with the year
 // appended only when it isn't the current calendar year by default. A dense set
 // that can cross years may request `year: "always"` while retaining this same long
 // shape. Input is an ISO YYYY-MM-DD string (parsed as local midnight so the day
@@ -382,11 +382,32 @@ export function formatCompactAge(iso: string, todayStr: string): string {
   return `${Math.round(days / 365)}y`;
 }
 
+// The clock-skew tolerance around `now`, in seconds (#2522). An instant a few
+// seconds either side of the reader's clock is the SAME moment reported by two
+// machines, so it reads "just now" whichever side it falls on. Beyond it, a future
+// instant is a real statement about the future and takes the forward vocabulary.
+//
+// BOUNDED, not one-sided — that was the whole defect. The age is a SIGNED
+// difference and only its upper edge was ever tested, so any future instant made
+// `secs` negative and won the "just now" branch: ten seconds ahead and twenty-two
+// hours ahead produced the same string. The illness cockpit showed a 08:00
+// temperature and a 23:39 dose both "(just now)" at 01:10.
+const RELATIVE_SKEW_SECS = 45;
+
 // Fine-grained "time since" for timestamps (not just calendar dates): "just
 // now", "N minutes/hours ago", then day granularity ("Yesterday", "N days ago",
 // weeks/months/years). Accepts an ISO string or a SQLite UTC datetime
 // ("YYYY-MM-DD HH:MM:SS"), the latter parsed as UTC (not local). `now` is
 // injectable for testing.
+//
+// FORWARD AS WELL AS BACK (#2522). A stated time can genuinely be later than the
+// reader's clock — the illness cockpit's "Reading time" is a user-owned input, and
+// a dose's recorded instant can sit a moment ahead of the device reading it — and a
+// future instant is a fact to state, not an error to hide. So the same buckets run
+// mirrored ("in 7 hrs", "Tomorrow"), and beyond the tolerance nothing is ever
+// labelled with an age it does not have. The one answer this must never give is the
+// one it used to: "just now" for a reading nobody has taken yet, on a safety-tier
+// card whose whole job is to answer "when was the last dose".
 export function formatRelativeTime(
   input: string,
   now: Date = new Date()
@@ -400,7 +421,12 @@ export function formatRelativeTime(
   if (Number.isNaN(d.getTime())) return input;
 
   const secs = Math.round((now.getTime() - d.getTime()) / 1000);
-  if (secs < 45) return "just now";
+  if (Math.abs(secs) < RELATIVE_SKEW_SECS) return "just now";
+  return secs < 0 ? forwardLabel(-secs) : pastLabel(secs);
+}
+
+// The past half: "N minutes ago" … "N years ago", with "Yesterday" at one day.
+function pastLabel(secs: number): string {
   const mins = Math.round(secs / 60);
   if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
   const hours = Math.round(mins / 60);
@@ -415,9 +441,28 @@ export function formatRelativeTime(
   return plural(Math.round(days / 365), "year");
 }
 
+// The forward half, mirroring `pastLabel` bucket for bucket so one instant seven
+// hours either side of now reads with the same granularity in both directions.
+// `secs` is the POSITIVE distance into the future.
+function forwardLabel(secs: number): string {
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `in ${mins} minute${mins === 1 ? "" : "s"}`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `in ${hours} hour${hours === 1 ? "" : "s"}`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "Tomorrow";
+  if (days < 7) return `in ${days} days`;
+  const plural = (n: number, unit: string) =>
+    `in ${n} ${unit}${n === 1 ? "" : "s"}`;
+  if (days < 30) return plural(Math.round(days / 7), "week");
+  if (days < 365) return plural(Math.round(days / 30), "month");
+  return plural(Math.round(days / 365), "year");
+}
+
 // Compact variant for dense status lines. It preserves the app-wide relative-time
 // thresholds while shortening only minute/hour units ("2 hrs ago"); day-and-longer
 // labels stay unabbreviated because they are already concise and easier to scan.
+// The forward labels (#2522) abbreviate on the same rule ("in 7 hrs").
 export function formatCompactRelativeTime(
   input: string,
   now: Date = new Date()
@@ -426,7 +471,11 @@ export function formatCompactRelativeTime(
     .replace(/^(\d+) minute ago$/, "$1 min ago")
     .replace(/^(\d+) minutes ago$/, "$1 mins ago")
     .replace(/^(\d+) hour ago$/, "$1 hr ago")
-    .replace(/^(\d+) hours ago$/, "$1 hrs ago");
+    .replace(/^(\d+) hours ago$/, "$1 hrs ago")
+    .replace(/^in (\d+) minute$/, "in $1 min")
+    .replace(/^in (\d+) minutes$/, "in $1 mins")
+    .replace(/^in (\d+) hour$/, "in $1 hr")
+    .replace(/^in (\d+) hours$/, "in $1 hrs");
 }
 
 // Whole days from `todayStr` to an ISO date: positive = future, negative = past,

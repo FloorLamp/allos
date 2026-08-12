@@ -23,7 +23,7 @@
 // Pure: no db, no auth, no React. One computation for both directions, so the pool
 // created from an item and the item created from a pool can never disagree.
 
-import type { SupplementKind } from "./types/intake";
+import type { IntakeItemKind } from "./types/intake";
 
 // A bottle's product identity, as `shared_supplies` stores it.
 export interface PoolProductFacts {
@@ -122,8 +122,8 @@ export function bottleLabel(pool: PoolProductFacts): string {
 // the medication surface carries the prescribing, interaction and course machinery).
 // A bottle nobody links yet defaults to the supplement surface.
 export function poolSurfaceKind(
-  members: readonly { kind: SupplementKind }[]
-): SupplementKind {
+  members: readonly { kind: IntakeItemKind }[]
+): IntakeItemKind {
   return members.some((m) => m.kind === "medication")
     ? "medication"
     : "supplement";

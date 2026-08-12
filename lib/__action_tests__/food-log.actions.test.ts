@@ -100,13 +100,13 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
   function events(profileId: number) {
     return db
       .prepare(
-        `SELECT date, group_key, eaten_at, time_source FROM food_log_events
+        `SELECT date, group_key, occurred_at, time_source FROM food_log_events
           WHERE profile_id = ? ORDER BY id`
       )
       .all(profileId) as {
       date: string;
       group_key: string;
-      eaten_at: string | null;
+      occurred_at: string | null;
       time_source: string | null;
     }[];
   }
@@ -119,7 +119,7 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     await logFoodServing(fd({ group_key: "fatty_fish", date: DATE }));
 
     expect(events(profile.id)[0]).toMatchObject({
-      eaten_at: null,
+      occurred_at: null,
       time_source: null,
     });
   });
@@ -131,7 +131,7 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     const date = today(profile.id);
 
     await logFoodServing(
-      fd({ group_key: "fatty_fish", date, eaten_at: "now" })
+      fd({ group_key: "fatty_fish", date, occurred_at: "now" })
     );
 
     const [event] = events(profile.id);
@@ -140,7 +140,7 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     // client timestamp. 'stated', not 'tap': the web "+" declares no "I'm eating now"
     // contract of its own, so the SOURCE of the instant is the person who said so.
     expect(
-      Math.abs(Date.now() - new Date(event.eaten_at!).getTime())
+      Math.abs(Date.now() - new Date(event.occurred_at!).getTime())
     ).toBeLessThan(60_000);
   });
 
@@ -153,15 +153,15 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     // Local midnight is always today-local and always already past, whatever hour CI
     // runs at — so it is an offered hour by construction.
     await logFoodServing(
-      fd({ group_key: "fatty_fish", date, eaten_at: "00:00" })
+      fd({ group_key: "fatty_fish", date, occurred_at: "00:00" })
     );
 
     const [event] = events(profile.id);
     expect(event.time_source).toBe("stated");
-    // utcInstant, not toISOString: food_log_events.eaten_at stores the canonical
+    // utcInstant, not toISOString: food_log_events.occurred_at stores the canonical
     // second-resolution UTC instant (#2205), so the expectation names the same writer
     // the action uses rather than a second serialization of it.
-    expect(event.eaten_at).toBe(
+    expect(event.occurred_at).toBe(
       utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!)
     );
   });
@@ -173,12 +173,12 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     const date = today(profile.id);
 
     const res = await logFoodServing(
-      fd({ group_key: "fatty_fish", date, eaten_at: "whenever" })
+      fd({ group_key: "fatty_fish", date, occurred_at: "whenever" })
     );
 
     expect(res.ok).toBe(true);
     expect(events(profile.id)[0]).toMatchObject({
-      eaten_at: null,
+      occurred_at: null,
       time_source: null,
     });
   });
@@ -188,18 +188,18 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     const profile = createProfile("wrong-day", login.id);
     actAs(login, profile);
     // Backfilling YESTERDAY while stating "now" — the instant's profile-local date isn't
-    // the day the serving lands on, and `eaten_at` is what the window derivation and the
+    // the day the serving lands on, and `occurred_at` is what the window derivation and the
     // cross-midnight re-date read, so a row carrying it would contradict itself.
     const date = shiftDateStr(today(profile.id), -1);
 
     const res = await logFoodServing(
-      fd({ group_key: "fatty_fish", date, eaten_at: "now" })
+      fd({ group_key: "fatty_fish", date, occurred_at: "now" })
     );
 
     expect(res.ok).toBe(true);
     expect(events(profile.id)[0]).toMatchObject({
       date,
-      eaten_at: null,
+      occurred_at: null,
       time_source: null,
     });
   });
@@ -230,17 +230,17 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
   function events(profileId: number) {
     return db
       .prepare(
-        `SELECT meal_slot, eaten_at, time_source FROM food_log_events
+        `SELECT meal_slot, occurred_at, time_source FROM food_log_events
           WHERE profile_id = ? ORDER BY id`
       )
       .all(profileId) as {
       meal_slot: string | null;
-      eaten_at: string | null;
+      occurred_at: string | null;
       time_source: string | null;
     }[];
   }
 
-  it("stores eaten_at and NO meal_slot when a time is stated from a disagreeing tab", async () => {
+  it("stores occurred_at and NO meal_slot when a time is stated from a disagreeing tab", async () => {
     const login = createLogin();
     const profile = createProfile("stated-wins", login.id);
     actAs(login, profile);
@@ -252,14 +252,14 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
         group_key: "berries",
         date,
         meal_slot: "Morning",
-        eaten_at: "19:00",
+        occurred_at: "19:00",
       })
     );
     expect(res.ok).toBe(true);
     const [row] = events(profile.id);
     expect(row.meal_slot).toBeNull();
     expect(row.time_source).toBe("stated");
-    expect(row.eaten_at).toBe(
+    expect(row.occurred_at).toBe(
       utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "19:00")!)
     );
     // The action's answer names the DERIVED placement, so the bar lands the serving
@@ -281,7 +281,7 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
         group_key: "berries",
         date,
         meal_slot: "Morning",
-        eaten_at: "19:00",
+        occurred_at: "19:00",
       })
     );
     await logFoodServing(
@@ -289,7 +289,7 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
         group_key: "leafy_greens",
         date,
         meal_slot: "Evening",
-        eaten_at: "08:00",
+        occurred_at: "08:00",
       })
     );
 
@@ -320,7 +320,12 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
 
     // The tab still says Morning; the user answered "now" (21:30 → Evening).
     const res = await logFoodServing(
-      fd({ group_key: "berries", date, meal_slot: "Morning", eaten_at: "now" })
+      fd({
+        group_key: "berries",
+        date,
+        meal_slot: "Morning",
+        occurred_at: "now",
+      })
     );
     expect(res.ok).toBe(true);
     const [row] = events(profile.id);
@@ -342,7 +347,7 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
     const [row] = events(profile.id);
     // Backfill keeps its meal: the declaration stores, exactly as before #2269.
     expect(row.meal_slot).toBe("Morning");
-    expect(row.eaten_at).toBeNull();
+    expect(row.occurred_at).toBeNull();
     expect(res).toMatchObject({ mealSlot: "Morning", mealServings: 1 });
   });
 
@@ -361,13 +366,13 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
     const yesterday = shiftDateStr(today(profile.id), -1);
 
     const res = await logFoodServing(
-      fd({ group_key: "berries", date: yesterday, eaten_at: "19:00" })
+      fd({ group_key: "berries", date: yesterday, occurred_at: "19:00" })
     );
     // The write SUCCEEDED — that posture is not negotiable, the serving is the thing
     // that must never be lost — and it carries the reason the minute did not land.
     expect(res).toMatchObject({ ok: true, statedTimeRefused: "other-day" });
     expect(events(profile.id)[0]).toMatchObject({
-      eaten_at: null,
+      occurred_at: null,
       time_source: null,
     });
   });
@@ -398,13 +403,13 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
         group_key: "berries",
         date,
         meal_slot: "Morning",
-        eaten_at: "whenever",
+        occurred_at: "whenever",
       })
     );
     expect(res.ok).toBe(true);
     expect(events(profile.id)[0]).toMatchObject({
       meal_slot: "Morning",
-      eaten_at: null,
+      occurred_at: null,
     });
   });
 });
@@ -423,7 +428,7 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
   function eventRow(profileId: number) {
     const rows = db
       .prepare(
-        `SELECT id, date, group_key, meal_slot, logged_at, eaten_at, time_source
+        `SELECT id, date, group_key, meal_slot, recorded_at, occurred_at, time_source
            FROM food_log_events WHERE profile_id = ? ORDER BY id`
       )
       .all(profileId) as {
@@ -431,8 +436,8 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
       date: string;
       group_key: string;
       meal_slot: string | null;
-      logged_at: string;
-      eaten_at: string | null;
+      recorded_at: string;
+      occurred_at: string | null;
       time_source: string | null;
     }[];
     expect(rows).toHaveLength(1);
@@ -450,17 +455,17 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
     const event = eventRow(profile.id);
 
     const res = await updateFoodLogEvent(
-      fd({ event_id: event.id, date, eaten_at: "12:00" })
+      fd({ event_id: event.id, date, occurred_at: "12:00" })
     );
     expect(res.ok).toBe(true);
     const after = eventRow(profile.id);
     expect(after.time_source).toBe("stated");
     // The same writer + resolver the log path uses — one serialization, one zone.
-    expect(after.eaten_at).toBe(
+    expect(after.occurred_at).toBe(
       utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "12:00")!)
     );
     // The audit stamp is not the statement's to touch.
-    expect(after.logged_at).toBe(event.logged_at);
+    expect(after.recorded_at).toBe(event.recorded_at);
   });
 
   it('"none" clears the statement back to "nobody said"', async () => {
@@ -471,15 +476,15 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
     await logFoodServing(fd({ group_key: "berries", date }));
     const event = eventRow(profile.id);
     await updateFoodLogEvent(
-      fd({ event_id: event.id, date, eaten_at: "12:00" })
+      fd({ event_id: event.id, date, occurred_at: "12:00" })
     );
 
     const res = await updateFoodLogEvent(
-      fd({ event_id: event.id, date, eaten_at: "none" })
+      fd({ event_id: event.id, date, occurred_at: "none" })
     );
     expect(res.ok).toBe(true);
     expect(eventRow(profile.id)).toMatchObject({
-      eaten_at: null,
+      occurred_at: null,
       time_source: null,
     });
   });
@@ -492,9 +497,9 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
     await logFoodServing(fd({ group_key: "berries", date }));
     const event = eventRow(profile.id);
     await updateFoodLogEvent(
-      fd({ event_id: event.id, date, eaten_at: "12:00" })
+      fd({ event_id: event.id, date, occurred_at: "12:00" })
     );
-    const stated = eventRow(profile.id).eaten_at;
+    const stated = eventRow(profile.id).occurred_at;
 
     // A meal-only correction says nothing about the time — and changes nothing.
     const res = await updateFoodLogEvent(
@@ -503,7 +508,7 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
     expect(res.ok).toBe(true);
     expect(eventRow(profile.id)).toMatchObject({
       meal_slot: "Evening",
-      eaten_at: stated,
+      occurred_at: stated,
       time_source: "stated",
     });
   });
@@ -516,7 +521,7 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
     await logFoodServing(fd({ group_key: "berries", date: yesterday }));
     const event = eventRow(profile.id);
     await updateFoodLogEvent(
-      fd({ event_id: event.id, date: yesterday, eaten_at: "12:00" })
+      fd({ event_id: event.id, date: yesterday, occurred_at: "12:00" })
     );
     const before = eventRow(profile.id);
 
@@ -527,7 +532,7 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
       fd({
         event_id: event.id,
         date: shiftDateStr(today(profile.id), 1),
-        eaten_at: "12:00",
+        occurred_at: "12:00",
       })
     );
     // #2296: the refusal now names the rule that fired. This one is FUTURE, and the
@@ -539,7 +544,7 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
 
     // Garbage is refused as loudly, not coerced and not swallowed.
     const garbage = await updateFoodLogEvent(
-      fd({ event_id: event.id, date: yesterday, eaten_at: "25:99" })
+      fd({ event_id: event.id, date: yesterday, occurred_at: "25:99" })
     );
     expect(garbage.ok).toBe(false);
     expect(eventRow(profile.id)).toEqual(before);
@@ -572,13 +577,13 @@ describe("food_log_events ledger through the actions (#950)", () => {
   function ledger(profileId: number) {
     return db
       .prepare(
-        `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
+        `SELECT group_key, date, recorded_at, meal_slot FROM food_log_events
           WHERE profile_id = ? ORDER BY id`
       )
       .all(profileId) as {
       group_key: string;
       date: string;
-      logged_at: string;
+      recorded_at: string;
       meal_slot: string | null;
     }[];
   }
@@ -594,8 +599,8 @@ describe("food_log_events ledger through the actions (#950)", () => {
     const evs = ledger(profile.id);
     expect(evs).toHaveLength(2);
     expect(evs[0]).toMatchObject({ group_key: "fatty_fish", date: DATE });
-    // logged_at is a real ISO instant (tap time), not the food date.
-    expect(evs[0].logged_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // recorded_at is a real ISO instant (tap time), not the food date.
+    expect(evs[0].recorded_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it("undoFoodServing pops the newest event", async () => {

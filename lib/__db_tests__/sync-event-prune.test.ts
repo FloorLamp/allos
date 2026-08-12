@@ -4,9 +4,9 @@
 //   1. Equivalence: the rows the DB DELETE removes are EXACTLY the ids the pure
 //      planSyncEventPrune predicts for the same cutoff — so the sweep's policy is the
 //      unit-tested pure decision, not a second hand-rolled rule that can drift.
-//   2. The newest event per (profile, provider) survives regardless of age, so a
-//      dormant provider's last-known state stays visible to
-//      getLatestSyncEventPerProvider / the failure detector after the sweep.
+//   2. The newest event per (profile, source) survives regardless of age, so a
+//      dormant source's last-known state stays visible to
+//      getLatestSyncEventPerSource / the failure detector after the sweep.
 //
 // Events are seeded well away from the 90-day boundary so a few-ms drift between the
 // test's computed cutoff and the DELETE's own datetime('now') can't flip a row.
@@ -17,7 +17,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { utcInstant } from "@/lib/date";
 import { db } from "@/lib/db";
 import { pruneSyncEvents } from "@/lib/integrations/connections";
-import { getLatestSyncEventPerProvider } from "@/lib/queries";
+import { getLatestSyncEventPerSource } from "@/lib/queries";
 import { planSyncEventPrune } from "@/lib/integrations/sync-log";
 import { SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
 
@@ -29,7 +29,7 @@ let pB: number;
 // uses, so the two agree on the wall clock.
 function insertAged(
   profileId: number,
-  provider: string,
+  sourceId: string,
   daysAgo: number,
   ok = true
 ): void {
@@ -41,13 +41,13 @@ function insertAged(
        VALUES (?, ?, ?, ?)`
   ).run(
     profileId,
-    provider,
+    sourceId,
     utcInstant(new Date(Date.now() - daysAgo * 86_400_000)),
     ok ? 1 : 0
   );
 }
 
-type Ev = { id: number; profile_id: number; provider: string; at: string };
+type Ev = { id: number; profile_id: number; sourceId: string; at: string };
 
 function allEvents(): Ev[] {
   return db
@@ -68,13 +68,13 @@ beforeAll(() => {
   );
 
   // Profile A / health-connect: a flood — mostly old, one recent. The old ones EXCEPT
-  // the newest-per-provider (which is the recent one here) should prune.
+  // the newest-per-source (which is the recent one here) should prune.
   insertAged(pA, "health-connect", 200);
   insertAged(pA, "health-connect", 150);
   insertAged(pA, "health-connect", 100); // still > 90 → old
   insertAged(pA, "health-connect", 3); // recent + newest → kept
 
-  // Profile A / strava: a dormant broken provider — ALL events are old, last is a
+  // Profile A / strava: a dormant broken source — ALL events are old, last is a
   // failure 120 days ago. Its newest must survive so the failure stays detectable.
   insertAged(pA, "strava", 400);
   insertAged(pA, "strava", 120, false); // newest strava/A, old, failure → kept
@@ -108,12 +108,12 @@ describe("pruneSyncEvents equals planSyncEventPrune (#388)", () => {
 
   it("keeps the newest event per (profile, provider) — dormant broken provider stays visible", () => {
     // After the sweep, strava/A's failure (120 days old, its newest) is still there.
-    const latestA = getLatestSyncEventPerProvider(pA);
-    const strava = latestA.find((e) => e.provider === "strava");
+    const latestA = getLatestSyncEventPerSource(pA);
+    const strava = latestA.find((e) => e.source_id === "strava");
     expect(strava).toBeDefined();
     expect(strava!.ok).toBe(0);
-    // One row per provider that had history, both providers still represented.
-    expect(new Set(latestA.map((e) => e.provider))).toEqual(
+    // One row per source that had history, both sources still represented.
+    expect(new Set(latestA.map((e) => e.source_id))).toEqual(
       new Set(["health-connect", "strava"])
     );
   });
@@ -129,7 +129,7 @@ describe("pruneSyncEvents equals planSyncEventPrune (#388)", () => {
     );
     insertAged(p, "strava", 900); // ancient, but the only strava event for p
     expect(pruneSyncEvents()).toBe(0);
-    expect(getLatestSyncEventPerProvider(p).map((e) => e.provider)).toEqual([
+    expect(getLatestSyncEventPerSource(p).map((e) => e.source_id)).toEqual([
       "strava",
     ]);
   });

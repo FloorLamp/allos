@@ -16,7 +16,7 @@
 import {
   getProfileMoodCheckin,
   getProfilesByTelegramChatId,
-  getUserAge,
+  getProfileAge,
 } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { getPracticeTargets } from "../queries";
@@ -49,7 +49,7 @@ export function chatCommandContext(
     // food_telegram_enabled opt-in is deliberately NOT consulted — it decides whether
     // the tick may CONTACT this profile, and a verb the user types is access.
     foodLogging: profileIds.some((pid) =>
-      isFoodLoggingRelevant(getUserAge(pid))
+      isFoodLoggingRelevant(getProfileAge(pid))
     ),
     // A cheap existence read, not the weekly progress rollup: this runs on every inbound
     // slash command, and "is there anything to log" needs only the targets.

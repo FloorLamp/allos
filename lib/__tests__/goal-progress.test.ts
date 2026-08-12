@@ -4,21 +4,23 @@ import {
   computeBodyGoalProgress,
   type GoalSetRow,
 } from "../goal-progress";
-import type { Goal } from "../types";
+import type { OutcomeGoal } from "../types";
 
-// Minimal Goal factory — only the fields the progress functions read matter.
-function goal(overrides: Partial<Goal>): Goal {
+// Minimal outcome-goal factory — only the fields the progress functions read matter.
+function goal(overrides: Partial<OutcomeGoal>): OutcomeGoal {
   return {
     id: 1,
     title: "Goal",
     description: null,
-    category: null,
+    kind: "freeform",
+    categoryLabel: null,
     target_value: null,
     current_value: null,
     unit: null,
     target_date: null,
     status: "active",
     created_at: "2026-01-01",
+    achieved_at: null,
     exercise: null,
     metric: null,
     equipment_id: null,

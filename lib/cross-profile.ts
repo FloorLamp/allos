@@ -68,6 +68,16 @@ export const CROSS_PROFILE_SQL_MODULES: readonly string[] = [
   // auth boundary, which is the same authority the card's `identities` list already
   // filters by. One reader, its own module, so the registry entry stays reviewable.
   "lib/portal-visibility.ts",
+  // #2116: poolIdsForProfiles — "which shared bottles does this accessible set draw
+  // from?". A shared bottle's takers are DIFFERENT PEOPLE by construction (the #1374
+  // module header), so the question is cross-profile at its root, and the answer is a
+  // FLAT list of `shared_supplies` ids with no per-profile context anywhere in it —
+  // precisely what the scope limit above reserves the shape for. The ids arrive from a
+  // resolved ProfileScope at every call site (the cabinet doors and the Upcoming
+  // pooled-supply generator both pass an already-authorized set). It replaces a
+  // SELECT-DISTINCT-per-profile loop that answered the same question one member at a
+  // time.
+  "lib/queries/intake/supply-pool.ts",
 ];
 
 // True when a repo-relative path is a registered cross-profile module. Suffix match

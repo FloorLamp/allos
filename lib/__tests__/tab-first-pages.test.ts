@@ -21,7 +21,7 @@ describe("tab-first page registry", () => {
       RECORDS_TAB_FIRST_PAGE
     );
     expect(tabFirstPageForPath("/results")).toBe(RESULTS_TAB_FIRST_PAGE);
-    expect(tabFirstPageForPath("/results/biomarkers")).toBe(
+    expect(tabFirstPageForPath("/results/readings")).toBe(
       RESULTS_TAB_FIRST_PAGE
     );
     expect(tabFirstPageForPath("/results/reports")).toBe(

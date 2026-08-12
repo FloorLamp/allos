@@ -5,22 +5,24 @@ import {
   supplementAdherenceToday,
   weightTrend,
 } from "@/lib/household";
-import type { Goal, Supplement } from "@/lib/types";
+import type { OutcomeGoal, IntakeItem } from "@/lib/types";
 import type { UpcomingItem } from "@/lib/upcoming";
 
-// Minimal Goal factory (freeform by default), matching goals.test.ts.
-function makeGoal(overrides: Partial<Goal> = {}): Goal {
+// Minimal outcome-goal factory (freeform by default), matching goals.test.ts.
+function makeGoal(overrides: Partial<OutcomeGoal> = {}): OutcomeGoal {
   return {
     id: 1,
     title: "Goal",
     description: null,
-    category: null,
+    kind: "freeform",
+    categoryLabel: null,
     target_value: null,
     current_value: null,
     unit: null,
     target_date: null,
     status: "active",
     created_at: "2026-01-01",
+    achieved_at: null,
     exercise: null,
     metric: null,
     equipment_id: null,
@@ -37,7 +39,7 @@ function makeGoal(overrides: Partial<Goal> = {}): Goal {
   };
 }
 
-function supp(overrides: Partial<Supplement> = {}): Supplement {
+function supp(overrides: Partial<IntakeItem> = {}): IntakeItem {
   return {
     id: 1,
     name: "S",

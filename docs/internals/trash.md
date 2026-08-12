@@ -13,9 +13,9 @@ second restore engine.** All of the hard machinery already existed:
 
 | Concern         | Owner                                                                                         | Note                                                                                                                                                                                                                                                                 |
 | --------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Capture         | `captureDelete` (`lib/undo-delete-db.ts`) over the pure kind registry in `lib/undo-delete.ts` | root row + cascade children + video clip rows + (since #1847) clinical children and lesion photo rows, one transaction with the delete                                                                                                                               |
+| Capture         | `captureDelete` (`lib/undo-delete-db.ts`) over the pure kind registry in `lib/undo-delete.ts` | root row + cascade children + video clip rows + (since #1847) clinical children and lesion photo rows + (since #2124) symptom-day photo rows, one transaction with the delete                                                                                        |
 | Restore         | `restoreDeletedRow`                                                                           | new ids, external-FK reconciliation (#202/#375), merge inversion (#199/#200), re-import tombstone removal (#200)                                                                                                                                                     |
-| Retention purge | `sweepDeletedRows`                                                                            | one call per hourly notify tick, global, unlinks orphaned clip files (#1290) and lesion photos + their derived thumbnail siblings (#1847)                                                                                                                            |
+| Retention purge | `sweepDeletedRows`                                                                            | one call per hourly notify tick, global, unlinks orphaned clip files (#1290) and lesion + symptom photos with their derived thumbnail siblings (#1847/#2124)                                                                                                         |
 | Auth            | `requireProfileWriteAccess(capture's profile)` + profile-scoped SQL                           | the restore gates the profile the CAPTURE carries (#2104), resolved from the holding row via `deletedRowProfile` — not the acting profile, which a multi-view delete need not match; the `profile_id` filter in `restoreDeletedRow` stays as the anti-replay compare |
 
 The Trash adds: `lib/trash.ts` (pure derivation), `lib/queries/trash.ts` (the
@@ -117,15 +117,24 @@ text through `<NotesText>`.
 
 For its whole life the registry covered activities, weigh-ins, biomarker
 readings, supplements, practices and food servings — every low-stakes row — while
-the medical passport deleted for good. `allergy`, `condition`, `immunization` and
-`skin-lesion` close that inversion. What each capture carries beyond its root row:
+the medical passport deleted for good. `allergy`, `condition`, `immunization`,
+`skin-lesion` and `visit` close that inversion. What each capture carries beyond
+its root row:
 
-| Kind           | Children                                                | Reconciled links            | Side effects NOT inverted                       |
-| -------------- | ------------------------------------------------------- | --------------------------- | ----------------------------------------------- |
-| `allergy`      | `allergy_reactions` (ON DELETE CASCADE)                 | document / visit / provider | —                                               |
-| `condition`    | —                                                       | document / visit            | `intake_items.indication_condition_id` null-out |
-| `immunization` | —                                                       | visit / provider            | `sweepImmunizationDismissals` (#376)            |
-| `skin-lesion`  | `lesion_photos` (explicit — `lesion_id` has no cascade) | document / visit / provider | `care_plan_items` follow-up links (#700)        |
+| Kind           | Children                                                | Reconciled links                | Side effects NOT inverted                       |
+| -------------- | ------------------------------------------------------- | ------------------------------- | ----------------------------------------------- |
+| `allergy`      | `allergy_reactions` (ON DELETE CASCADE)                 | document / visit / provider     | —                                               |
+| `condition`    | —                                                       | document / visit                | `intake_items.indication_condition_id` null-out |
+| `immunization` | —                                                       | visit / provider                | `sweepImmunizationDismissals` (#376)            |
+| `skin-lesion`  | `lesion_photos` (explicit — `lesion_id` has no cascade) | document / visit / provider     | `care_plan_items` follow-up links (#700)        |
+| `visit`        | —                                                       | document / clinician / facility | every inbound `encounter_id` (#288/#1050/#1053) |
+
+**`medical_documents` is the one root of the issue's six that is still NOT
+undoable.** A document delete is not one row: it is the file, the extracted rows
+across every table the import writes, the reassignment and extracted-count
+accounting that must stay consistent with it, and the per-document dedupe. That
+is a capture design of its own, not another registry entry, so #1847 stays open
+for it.
 
 Three things worth naming:
 
@@ -146,10 +155,58 @@ siblings (`protocols.intake_item_id`, the medical-record follow-up links, and
 `intake_items.source_record_id`): the clinical row comes back, the other row's
 link stays honestly cleared.
 
-`allergies`, `conditions` and `immunizations` are also deletable datasets, so
-`DATASET_UNDO_KIND` maps them and the Data → Manage bulk delete captures each
-selected row. `skin_lesions` is not a deletable dataset, so its kind is reachable
-only from the row menu.
+`allergies`, `conditions`, `immunizations` and `encounters` are also deletable
+datasets, so `DATASET_UNDO_KIND` maps them and the Data → Manage bulk delete
+captures each selected row. For `encounters` that mapping does more than add an
+Undo: the inbound detach lives in `captureDelete` now, so bulk-deleting a LINKED
+visit works at all — it used to throw on the FK, exactly as a bulk-deleted
+condition a medication treated did before #1847. `skin_lesions` is not a
+deletable dataset, so its kind is reachable only from the row menu.
+
+## The readings table and the symptom-day (#2123/#2124)
+
+Two more inversions of the same shape, both inside a single control.
+
+`deleteReadingAt` (`lib/reading-writes.ts`) is the ONE editability contract, and
+it deleted by STORE: `body_metrics` and `medical_records` captured, while
+`metric_samples` and the mood check-in were removed outright. So the identical
+⋯ → Delete row offered Undo for weight and blood pressure and nothing for HRV,
+height, steps, waist, lean mass or a mood rating. `metric-sample` and `mood-log`
+end that; every store in that contract captures now. The one branch that still
+answers with no token is `body_metrics`, and not because of its store: a row
+there carries up to three measures, so removing one of several NULLs a column
+rather than deleting a row, and a column clear is not a capture. The same
+distinction runs through mood — deleting VALENCE drops the whole check-in (note
+and factors included) and captures; clearing energy or calm nulls one column of
+a row that stays and does not.
+
+`symptom-day` (#2124) is the one that reached off-DB. The symptom bar's one-tap
+× ran `deletePhotosForSymptomLog`, which unlinked every bound photo FILE before
+the row went — no confirm, no undo, and a rash series a caregiver took to show a
+doctor was simply gone. The kind captures the log row plus its `symptom_photos`
+children (explicit, because `symptom_log_id` carries no cascade — the
+`skin-lesion` shape) and leaves the files alone; the purge reclaims them. That is
+what finally makes `PHOTO_FILE_TABLES`' long-declared `symptom_photos` entry
+reachable. The × stays ONE TAP deliberately: a confirm on every symptom clear is
+the wrong tax, and undo-after-the-fact is the calmer contract. The whole-custom-
+symptom delete returns the #202 token BATCH instead, one per removed day.
+
+`symptom_videos` is deliberately NOT captured. A clip binds to the DAY
+(profile, date, symptom) and carries no `symptom_log_id`, so the live delete has
+never taken one — capturing it would mean DELETING it, widening what the ×
+destroys in the name of making the × reversible. `VIDEO_FILE_TABLES`' `symptom`
+branch therefore stays unreachable, honestly, until a kind actually deletes a
+symptom clip.
+
+Both new roots plus `symptom_logs` are deletable datasets, so all three are
+mapped in `DATASET_UNDO_KIND`. That mapping forced the 1:1 rule in
+`lib/__tests__/dataset-undo.test.ts` to ask its real question. It read
+`deleteExplicitly` as a proxy for "convention sibling", which held only while
+every explicit child WAS one; a photo series is deleted explicitly for a purely
+physical reason (no ON DELETE on the FK) while being selected by
+`<fk> = <root id>` and remapped onto the root on restore. The rule now excludes a
+counter, and an explicit child with NO fk to the root — not `deleteExplicitly`
+itself.
 
 ## What `deleted_rows` holds that the Trash does not list
 
@@ -178,12 +235,23 @@ by-hand purges — the expiry sweep still takes it, on its own schedule.
   intact; restore-from-Trash is the same core as undo.
   `lib/__db_tests__/video-write.test.ts` covers the clip unlink on both the
   sweep and the by-hand purge; `lib/__db_tests__/clinical-undo.test.ts` covers
-  the four clinical kinds' capture/restore fidelity and the photo unlink on all
+  the five clinical kinds' capture/restore fidelity and the photo unlink on all
   three purge paths (including the "an undone delete keeps its files" case).
-- Server action — `lib/__action_tests__/clinical-undo.actions.test.ts`: each
-  clinical delete answers `{ undoId, error? }` and REFUSES an id that is not the
-  acting profile's rather than reporting a delete it did not perform.
+  `lib/__db_tests__/symptom-episode-photo-links.test.ts` covers the symptom-day
+  round trip, the batch the custom-symptom wipe returns, and the purge branch
+  that had no kind to reach it; `lib/__db_tests__/reading-writes.test.ts` and
+  `lib/__db_tests__/mood-log-store.test.ts` cover the two readings-table stores,
+  including the tombstone going down with the capture and back up with the
+  restore, and the natural-key ADOPTIONS the new `uniqueKey`s resolve.
+- Server action — `lib/__action_tests__/clinical-undo.actions.test.ts`: each of
+  the five clinical deletes answers `{ undoId, error? }` and REFUSES an id that is
+  not the acting profile's rather than reporting a delete it did not perform.
 - E2E — `e2e/trash.spec.ts`: delete a row, let the toast go, open
   `/data?section=trash`, restore it, assert it is back on its own surface.
-  `e2e/clinical-undo.spec.ts`: delete an allergy and a lesion in the UI and Undo,
-  proving the graded manifestations and the photo series come back too.
+  `e2e/clinical-undo.spec.ts`: delete an allergy, a lesion and a visit in the UI
+  and Undo, proving the graded manifestations and the photo series come back too
+  — and that the visit's detached reading stays detached.
+  `e2e/undo-delete.spec.ts` drives the HRV readings row (the store that also
+  carries the re-import tombstone); `e2e/symptom-photo-link.spec.ts` clears a
+  symptom-day carrying a photo and proves Undo brings the series back bound to
+  the restored log.

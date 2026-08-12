@@ -5,10 +5,10 @@ import { redirect } from "next/navigation";
 import { requireWriteAccess } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { generateInsight, saveInsight } from "@/lib/ai";
-import { generateRecapNarrative } from "@/lib/ai-narrative";
+import { generatePeriodRecap } from "@/lib/ai-period-recap";
 import { withAiLogContext } from "@/lib/ai-log";
-import { dismissFinding, saveNarrative } from "@/lib/queries";
-import type { NarrativePeriod } from "@/lib/recap-narrative";
+import { dismissFinding, savePeriodRecap } from "@/lib/queries";
+import type { PeriodRecapKind } from "@/lib/recap-narrative";
 import { parseRecapScale } from "@/lib/recap-scale";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -51,14 +51,14 @@ export async function generateRecap(formData: FormData) {
   // The narrative period IS the recap scale (#2178) — parsed through the registry's
   // own parser, so a fourth scale needs no change here and an unknown value falls back
   // to `week` rather than being refused.
-  const period: NarrativePeriod = parseRecapScale(
+  const period: PeriodRecapKind = parseRecapScale(
     String(formData.get("period") ?? "").trim()
   );
   const result = await withAiLogContext(
     { loginId: login.id, profileId: profile.id },
-    () => generateRecapNarrative(profile.id, period, login.id)
+    () => generatePeriodRecap(profile.id, period, login.id)
   );
-  saveNarrative(profile.id, {
+  savePeriodRecap(profile.id, {
     kind: result.kind,
     periodStart: result.periodStart,
     periodEnd: result.periodEnd,
@@ -102,7 +102,7 @@ export async function dismissBodyHygiene(
 }
 
 // `saveTrendsCardOrder` / `resetTrendsCardOrder` lived here until #1643. They wrote
-// #1490's per-tab arrangement blob and never gained a UI caller, so the Body tab's
+// #1490's per-tab arrangement blob and never gained a UI caller, so the body census
 // arrangement now runs on the ONE store the ★ already writes (`saved_items`): the
 // star toggle is app/(app)/saved-actions.ts `toggleSavedItem`, the sequence is its
 // `reorderSaved`, and lib/trends-card-rank.ts `bodyCardOrder` composes pinned-first
@@ -115,5 +115,19 @@ export async function dismissBodyHygiene(
 // still-POSTable Server Actions reading and writing a `trend_views` blob no surface
 // showed. The pure list math (lib/trend-views.ts) and the `getTrendViews` /
 // `setTrendViews` settings accessors went with them; the stored rows are simply
-// inert. e2e/trends-saved-views.spec.ts keeps the browser guard that neither those
-// rows nor anything else brings the strip back.
+// inert.
+//
+// #2524 re-read this file expecting to find one of those actions still shipping —
+// a "use server" export with no renderer, which would be a live request-boundary
+// surface rather than dead prose. It is not here: the four exports above are the
+// whole module, migration 142 purges the `trend_views` rows on upgrade, and the
+// only "saved-view" token left in `app/` is this paragraph. The census that filed
+// the issue matched the COMMENT. Nothing to delete; recorded so the next reader
+// does not go looking either.
+//
+// The browser guard moved: e2e/trends-saved-views.spec.ts was deleted by #2512 as
+// a permanently-green absence test, and the surviving assertion that the strip
+// cannot come back is "range controls fill the row without saved views" in
+// e2e/trends-fold.mobile.spec.ts, which runs over the shared seed — the profile
+// that still CARRIES inert `trend_views` rows (scripts/seed.ts seeds them back
+// after migration 142 exactly so an upgraded database is what the assertion sees).

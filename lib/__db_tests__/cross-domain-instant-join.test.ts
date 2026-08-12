@@ -10,7 +10,7 @@
 //
 // The fixture spans every pattern the issue enumerates:
 //
-//   1. event/record pair — food_log_events (eaten_at canonical / logged_at canonical),
+//   1. event/record pair — food_log_events (occurred_at canonical / recorded_at canonical),
 //                          and intake_item_logs, whose recorded_at/taken_at turned out
 //                          under the owner's ruling to be a RECORD CHAIN rather than
 //                          an event/record pair — so its event instant is the separate
@@ -71,13 +71,13 @@ beforeAll(() => {
   ).run(doseId, itemId, DAY, "2026-03-10 13:30:00", "2026-03-10 18:05:00");
 
   // Pattern 1b — two servings. The first STATES an eating time (13:20Z); the second is
-  // a web backfill that states none, so `eaten_at` is NULL and stays that way.
+  // a web backfill that states none, so `occurred_at` is NULL and stays that way.
   db.prepare(
-    `INSERT INTO food_log_events (profile_id, group_key, date, logged_at, eaten_at, time_source)
+    `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at, occurred_at, time_source)
      VALUES (?, 'protein', ?, ?, ?, 'stated')`
   ).run(profileId, DAY, "2026-03-10T13:25:00Z", "2026-03-10T13:20:00Z");
   db.prepare(
-    `INSERT INTO food_log_events (profile_id, group_key, date, logged_at, eaten_at, time_source)
+    `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at, occurred_at, time_source)
      VALUES (?, 'vegetables', ?, ?, NULL, NULL)`
   ).run(profileId, DAY, "2026-03-10T23:50:00Z");
 
@@ -129,9 +129,9 @@ function doseAndMeal() {
     .get(profileId, DAY) as Record<string, unknown>;
   const meal = db
     .prepare(
-      `SELECT date, logged_at, eaten_at, time_source
+      `SELECT date, recorded_at, occurred_at, time_source
          FROM food_log_events
-        WHERE profile_id = ? AND date = ? AND eaten_at IS NOT NULL`
+        WHERE profile_id = ? AND date = ? AND occurred_at IS NOT NULL`
     )
     .get(profileId, DAY) as Record<string, unknown>;
   return { dose, meal };
@@ -140,17 +140,17 @@ function doseAndMeal() {
 describe("the comparison that produced the wrong answers", () => {
   it("is still wrong when two conventions are compared as strings", () => {
     // This is not a hypothetical. `recorded_at` is bare ('2026-03-10 13:30:00') and
-    // `eaten_at` carries a Z ('2026-03-10T13:20:00Z'); within one day ' ' (0x20) sorts
+    // `occurred_at` carries a Z ('2026-03-10T13:20:00Z'); within one day ' ' (0x20) sorts
     // before 'T' (0x54), so the LATER dose compares as EARLIER — and the query returns
     // a clean, confident, wrong row rather than an error.
     const row = db
       .prepare(
-        `SELECT (l.recorded_at > f.eaten_at) AS dose_came_after
+        `SELECT (l.recorded_at > f.occurred_at) AS dose_came_after
            FROM intake_item_logs l
            JOIN intake_items ii ON ii.id = l.item_id
            JOIN food_log_events f
              ON f.profile_id = ii.profile_id AND f.date = l.date
-          WHERE ii.profile_id = ? AND l.date = ? AND f.eaten_at IS NOT NULL`
+          WHERE ii.profile_id = ? AND l.date = ? AND f.occurred_at IS NOT NULL`
       )
       .get(profileId, DAY) as { dose_came_after: number };
     expect(row.dose_came_after).toBe(0); // the dose WAS after the meal. This says no.
@@ -185,12 +185,12 @@ describe("the comparison that produced the wrong answers", () => {
     // caller should not have to remember which of the two a column is on.
     const row = db
       .prepare(
-        `SELECT (julianday(l.recorded_at) > julianday(f.eaten_at)) AS dose_came_after
+        `SELECT (julianday(l.recorded_at) > julianday(f.occurred_at)) AS dose_came_after
            FROM intake_item_logs l
            JOIN intake_items ii ON ii.id = l.item_id
            JOIN food_log_events f
              ON f.profile_id = ii.profile_id AND f.date = l.date
-          WHERE ii.profile_id = ? AND l.date = ? AND f.eaten_at IS NOT NULL`
+          WHERE ii.profile_id = ? AND l.date = ? AND f.occurred_at IS NOT NULL`
       )
       .get(profileId, DAY) as { dose_came_after: number };
     expect(row.dose_came_after).toBe(1);
@@ -227,7 +227,7 @@ describe("one ordering across all five patterns", () => {
 
     const food = db
       .prepare(
-        `SELECT group_key, date, logged_at, eaten_at, time_source
+        `SELECT group_key, date, recorded_at, occurred_at, time_source
            FROM food_log_events WHERE profile_id = ? AND date = ? ORDER BY id`
       )
       .all(profileId, DAY) as Record<string, unknown>[];
@@ -301,7 +301,7 @@ describe("the null-event rows do not contaminate an event-time analysis", () => 
   it("an eating-time distribution counts only the servings that stated one", () => {
     const rows = db
       .prepare(
-        `SELECT group_key, date, logged_at, eaten_at, time_source
+        `SELECT group_key, date, recorded_at, occurred_at, time_source
            FROM food_log_events WHERE profile_id = ? AND date = ?`
       )
       .all(profileId, DAY) as Record<string, unknown>[];
@@ -317,7 +317,7 @@ describe("the null-event rows do not contaminate an event-time analysis", () => 
       .map((r) => eventInstant("food_log_events", r))
       .filter((r) => !r.known);
     expect(absent).toEqual([
-      { known: false, why: "not-recorded", column: "eaten_at" },
+      { known: false, why: "not-recorded", column: "occurred_at" },
     ]);
   });
 

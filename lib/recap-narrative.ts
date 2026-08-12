@@ -14,20 +14,21 @@
 
 import { recapLineAnnotation } from "./recap";
 import type { Recap, RecapLine } from "./recap";
-import { recapScaleEntry, type RecapScale } from "./recap-scale";
+import { recapScaleEntry } from "./recap-scale";
+import type { PeriodRecapKind } from "./types";
 
 // The AI narrative period IS the recap scale (#2178): one vocabulary for the message,
 // the card and the stored narrative, so the AI read can never claim a different window
 // shape than the recap it narrates over.
-export type NarrativePeriod = RecapScale;
+export type { PeriodRecapKind } from "./types";
 
 // A human label for the period ("This week" / "This month"), for headings.
-export function periodLabel(period: NarrativePeriod): string {
+export function periodLabel(period: PeriodRecapKind): string {
   return `This ${recapScaleEntry(period).noun}`;
 }
 
 // The adjective form ("weekly" / "monthly" / "quarterly"), for prose.
-export function periodAdjective(period: NarrativePeriod): string {
+export function periodAdjective(period: PeriodRecapKind): string {
   return recapScaleEntry(period).adjective;
 }
 
@@ -53,7 +54,7 @@ function lineClause(line: RecapLine): string {
 // insight's document fencing; the period + date window frame the ask.
 export function buildRecapNarrativePrompt(
   recap: Recap,
-  period: NarrativePeriod,
+  period: PeriodRecapKind,
   profileName?: string
 ): string {
   const who = profileName ? ` for ${profileName}` : "";
@@ -98,7 +99,7 @@ function proseClause(line: RecapLine): string {
 // failed). Never throws; an empty recap yields one sensible nudge line.
 export function composeRecapNarrativeOffline(
   recap: Recap,
-  period: NarrativePeriod
+  period: PeriodRecapKind
 ): string {
   const adj = periodAdjective(period);
   if (recap.isEmpty || recap.lines.length === 0) {

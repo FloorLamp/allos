@@ -376,3 +376,9 @@ export function acknowledgeRestToday(
   const ack: RestAck = { date: today(profileId), reasonIds };
   setProfileSetting(profileId, REST_ACK_KEY, JSON.stringify(ack));
 }
+
+// Stored coaching summaries live in this domain too. Their physical table names are
+// versioned compatibility details; application APIs distinguish daily insights from
+// period recaps explicitly.
+export * from "./coaching/daily-insights";
+export * from "./coaching/period-recaps";

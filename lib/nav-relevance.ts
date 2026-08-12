@@ -80,7 +80,7 @@ export interface CycleRelevanceInput {
   hasCycleRows: boolean;
   sex: Sex | null;
   reproductiveStatus: ReproductiveStatus | null;
-  // Whole years, null when unknown (getUserAge).
+  // Whole years, null when unknown (getProfileAge).
   age: number | null;
 }
 

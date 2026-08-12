@@ -31,7 +31,7 @@ instead of coining a fifth synonym.
 1. **A control says exactly what happens.** "Preview changes" never writes; the
    button that writes is "Save changes". There is no button labelled "Reprocess"
    that is secretly a read (the pre-#1071 bug), and no immediate
-   fire-and-replace twin of the preview flow (`ExtractedRecords`' old reprocess
+   fire-and-replace twin of the preview flow (`ExtractedObservations`' old reprocess
    icon was removed — the sole per-document reprocess is the preview→save pair).
 
 2. **The no-change preview disables the commit.** When a fresh re-extraction

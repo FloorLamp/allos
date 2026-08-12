@@ -153,10 +153,11 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 7,
     why: "the mood store's updated_at audit stamps + the replayed_keys retention DELETE. The check-in upsert, the three per-column past-day corrections and the two optional-rating clears (#1488, extended per rating column by #1408) each stamp updated_at; the column can't be interpolated without making the SQL unreadable to the profile-scoping scanner, so one literal statement per column means one stamp per statement. An audit stamp records when the write happened; nothing compares its calendar DAY to a today()-derived value.",
   },
-  "lib/queries/attention.ts": {
-    count: 1,
-    why: "the hero's flagged-biomarker window start (now - 14 days) — a rolling duration compared lexically against stored created_at values.",
-  },
+  // lib/queries/attention.ts held one until #2112: the hero's flagged-biomarker
+  // window start. It was never really a duration — the value meets a day-grained
+  // column as `date >= date(?)` — and it is now computed purely from the seam
+  // (utcSqlString over lib/clock's now()), so the entry is retired rather than
+  // re-justified.
   "lib/queries/coverage.ts": {
     count: 1,
     why: "coverage ai_generated_at — a generation audit stamp.",
@@ -181,7 +182,7 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     count: 1,
     why: "med-link decision created_at — an audit stamp.",
   },
-  "lib/queries/narratives.ts": {
+  "lib/queries/coaching/period-recaps.ts": {
     count: 1,
     why: "narratives.created_at — audit stamp; the anchor is the explicit period_start/period_end.",
   },

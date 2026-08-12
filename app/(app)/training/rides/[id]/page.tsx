@@ -24,8 +24,8 @@ import { DOCUMENT_SOURCE_PREFIX } from "@/lib/body-metric-extract";
 import { formatActivityCalories } from "@/lib/calorie-estimate";
 import { speedKmh } from "@/lib/coaching/cardio";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
-import { activityTimeText } from "@/lib/journal-card";
-import { activityProvenanceLabel } from "@/lib/journal-format";
+import { activityTimeText } from "@/lib/training-log-card";
+import { activityProvenanceLabel } from "@/lib/training-log-format";
 import {
   CYCLING_OVERVIEW_HREF,
   cyclingOverviewHref,

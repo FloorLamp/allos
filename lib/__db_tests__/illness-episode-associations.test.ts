@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";
+import { illnessCareTimelineEvents } from "@/lib/illness-timeline-view";
 import { episodeComparisonFor } from "@/lib/illness-episode-compare";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -65,6 +66,35 @@ describe("getEpisodeInRangeEvents (#856 items 7-8)", () => {
     expect(ev.courses.map((c) => c.name)).toEqual(["Amoxicillin"]);
     expect(ev.documents.map((d) => d.filename)).toEqual(["visit-summary.pdf"]);
     expect(ev.total).toBe(4);
+  });
+
+  it("keeps a CANCELLED appointment in the window, and the timeline names it (#2136)", () => {
+    // The row is real history — the visit that fell through is often the reason an
+    // illness ran on unseen — so it is gathered, not filtered. What must not survive
+    // is the line that read "«title» scheduled" and asserted care that never happened.
+    const p = newProfile("cancelled-appointment");
+    db.prepare(
+      `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+       VALUES (?, '2026-06-04', '09:00', 'Paediatric follow-up', 'cancelled')`
+    ).run(p);
+    db.prepare(
+      `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
+       VALUES (?, '2026-06-05', '11:00', 'Nurse check', 'scheduled')`
+    ).run(p);
+
+    const ev = getEpisodeInRangeEvents(p, "2026-06-01", "2026-06-05");
+    expect(ev.appointments.map((a) => [a.title, a.status])).toEqual([
+      ["Paediatric follow-up", "cancelled"],
+      ["Nurse check", "scheduled"],
+    ]);
+
+    const lines = illnessCareTimelineEvents(ev)
+      .filter((e) => e.kind === "appointment")
+      .map((e) => ({ label: e.label, detail: e.detail }));
+    expect(lines).toEqual([
+      { label: "Appointment cancelled", detail: "Paediatric follow-up" },
+      { label: "Appointment", detail: "Nurse check" },
+    ]);
   });
 
   it("returns nothing for a null (unknown-start) window", () => {

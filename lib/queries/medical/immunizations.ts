@@ -17,7 +17,7 @@ import {
 import type {
   Immunization,
   ImmunizationExemptionType,
-  MedicalRecord,
+  ClinicalObservation,
 } from "../../types";
 
 // One row per (vaccine, date, dose label) across overlapping documents. The window is
@@ -113,7 +113,7 @@ export function getImmunityTiters(profileId: number): ImmunityTiter[] {
     .all(
       profileId,
       ...TITER_DISTINCTIVE_TOKENS.map((token) => likeContains(token))
-    ) as MedicalRecord[];
+    ) as ClinicalObservation[];
 
   const seen = new Set<string>();
   const titers: ImmunityTiter[] = [];

@@ -19,9 +19,9 @@ import {
   getWeights,
   getWeightsOneSourcePerDay,
   getBodyMetricDailySeries,
-  getGoals,
-  getSupplements,
-  getSupplementDoses,
+  getOutcomeGoals,
+  getIntakeItems,
+  getIntakeDoses,
   getIntakeLogsInRange,
   getActivityDates,
   getRecentDatedExercises,
@@ -45,9 +45,9 @@ import {
   getActiveSituations,
   getSituationEvents,
   getHomeLocation,
-  getUserSex,
-  getUserAge,
-  getUserReproductiveStatus,
+  getProfileSex,
+  getProfileAge,
+  getProfileReproductiveStatus,
   getSmokingHistory,
   getRiskAttributesReviewed,
   getTimezone,
@@ -87,7 +87,7 @@ import { listCyclePeriods } from "./cycle-store";
 import { decideWorkupPrompt } from "./ttc";
 import { getTtcStart } from "./settings/profile-attrs";
 import { getRiskAttributes } from "./settings";
-import { isPrn } from "./supplement-schedule";
+import { isOnDemand } from "./intake-schedule";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import {
   fitnessRetestDue,
@@ -101,7 +101,8 @@ import {
   deriveRiskFactors,
   EMPTY_RISK_ATTRIBUTES,
 } from "./risk-stratification";
-import { isGoalLive, frequencyScopeLabel } from "./goals";
+import { isGoalLive } from "./outcome-goals";
+import { frequencyScopeLabel } from "./frequency-targets";
 import { getRoutineCycleStatus } from "./routines";
 import {
   foodHabitSignalKey,
@@ -218,12 +219,8 @@ import {
   doseWindowSince,
   indexTakenByDose,
   stripWithoutTrailingPending,
-} from "./supplement-adherence";
-import {
-  doseDueOn,
-  doseSlotChangedSince,
-  timeBucket,
-} from "./supplement-schedule";
+} from "./intake-adherence";
+import { doseDueOn, doseSlotChangedSince, timeBucket } from "./intake-schedule";
 import { unrecordedScheduleChangeOn } from "./intake-cadence";
 
 // ---- #449: the unified coaching-findings collection -------------------------
@@ -362,12 +359,12 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     getSmokingHistory(profileId),
     hasImportedSmokingHistory(profileId)
   );
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
   const inputs: DataQualityInputs = {
-    age: getUserAge(profileId),
+    age: getProfileAge(profileId),
     sexKnown: sex !== null,
     sex,
-    reproductiveStatusKnown: getUserReproductiveStatus(profileId) !== null,
+    reproductiveStatusKnown: getProfileReproductiveStatus(profileId) !== null,
     heightKnown: getLatestMetricSample(profileId, "height_cm") !== null,
     smokingKnown: smoking.source !== null,
     medsMissingRxcui: getMedicationsMissingRxcuiCount(profileId),
@@ -537,7 +534,7 @@ export function buildSleepMoodBridgeFindings(
   });
 
   // Mean nightly duration, recent 14 days vs the prior 14 — the same daily
-  // totals series the Body tab's sleep chart renders.
+  // totals series the body census sleep chart renders.
   const nights = getMetricDailyTotals(profileId, "sleep_min");
   const recentStart = shiftDateStr(today, -13);
   const priorEnd = shiftDateStr(today, -14);
@@ -754,11 +751,11 @@ export function buildTtcWorkupFindings(
   today: string
 ): Finding[] {
   // Adult-only content, the same `!isMinor` line the other adult-topic surfaces use.
-  if (isMinor(getUserAge(profileId))) return [];
+  if (isMinor(getProfileAge(profileId))) return [];
   const prompt = decideWorkupPrompt({
     ttcStart: getTtcStart(profileId),
     today,
-    age: getUserAge(profileId),
+    age: getProfileAge(profileId),
     pregnant: getRiskAttributes(profileId).pregnant,
   });
   if (!prompt) return [];
@@ -835,7 +832,7 @@ export function buildFoodHabitFindings(profileId: number): Finding[] {
 export function buildSubstanceUseFindings(profileId: number): Finding[] {
   // The substance-use surface is adult-gated (#1174/#1279); never emit a coaching
   // finding that deep-links a known minor to a now-redirected route.
-  if (isMinor(getUserAge(profileId))) return [];
+  if (isMinor(getProfileAge(profileId))) return [];
   const out: Finding[] = [];
   for (const state of getAllSubstanceWeekStates(profileId)) {
     if (!state.status || !state.status.over) continue;
@@ -1091,7 +1088,7 @@ export function buildMuscleVolumeFindings(
   }).map(volumeObservationToFinding);
 }
 
-// ---- Domain 5: body-metric data hygiene (Trends → Body) -------------------
+// ---- Domain 5: body-metric data hygiene (Trends → Overview → body census) -------------------
 
 function weightAnomalyToFinding(
   a: WeightAnomaly,
@@ -1161,10 +1158,10 @@ export function buildGoalPacingFindings(
 
   // The profile's goals, read ONCE for both loops below (they used to re-query the
   // same list) — nothing here writes, so the two passes always saw one snapshot.
-  const goals = getGoals(profileId);
+  const goals = getOutcomeGoals(profileId);
 
   // Weight readings in canonical kg, ascending, as projection input. The SAME
-  // primary-source-collapsed daily series (one row/day, #14) the Trends → Body
+  // primary-source-collapsed daily series (one row/day, #14) the Trends → Overview → body census
   // chart caption charts — not the raw all-source getWeights rows — windowed to the
   // shared GOAL_PACE_WINDOW_DAYS so the finding and the caption run projectGoal over
   // identical points and can't disagree (#433). getBodyMetricDailySeries already
@@ -1349,9 +1346,9 @@ export function buildAdherencePatternFindings(
   profileId: number,
   today: string
 ): Finding[] {
-  const supplements = getSupplements(profileId);
+  const supplements = getIntakeItems(profileId);
   const suppById = new Map(supplements.map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profileId);
+  const doses = getIntakeDoses(profileId);
   // The profile's timezone resolves the UTC creation stamps onto the same profile-local
   // calendar the `dates` window is built from (#1442).
   const tz = getTimezone(profileId);
@@ -1372,7 +1369,7 @@ export function buildAdherencePatternFindings(
   for (const d of doses) {
     const supp = suppById.get(d.item_id);
     // Only active, scheduled (non-PRN) items produce due days to miss.
-    if (!supp || !supp.active || isPrn(supp)) continue;
+    if (!supp || !supp.active || isOnDemand(supp)) continue;
     const status = takenByDose.get(d.id);
     // Clamp the window to the dose's EXISTENCE, and to nothing else (#1973).
     //
@@ -1466,7 +1463,7 @@ export function buildDemotionSuggestionFindings(
     name: item.name,
     kind: item.kind,
     obligation: item.obligation,
-    asNeeded: Boolean(isPrn(item)),
+    asNeeded: Boolean(isOnDemand(item)),
     active: Boolean(item.active),
     strip,
     existedWholeWindow,
@@ -1613,8 +1610,8 @@ export function buildSunExposureFindings(
   const status = optimalStatus(
     latest.value_num,
     cb,
-    getUserSex(profileId),
-    getUserAge(profileId)
+    getProfileSex(profileId),
+    getProfileAge(profileId)
   );
 
   // Daylight-outdoor minutes over the window — the ONE computation (lib/queries/sun),
@@ -1643,7 +1640,7 @@ export function buildSunExposureFindings(
       // Calm FYI — a neutral observation, never an alarm.
       tone: "info",
       // The biomarker browser lives on Results (#1164 merged the Trends duplicate in).
-      actionHref: "/results/biomarkers",
+      actionHref: "/results/readings",
       actionLabel: "View biomarkers",
     },
   ];

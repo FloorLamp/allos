@@ -23,6 +23,24 @@ import {
 } from "@/lib/queries";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
+import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
+import { logUsualRoutineCore } from "@/lib/usual-routine-write";
+import type { UsualFoodLogged } from "@/lib/food-usual-write";
+import type { UsualRoutineDoseResult } from "@/lib/usual-routine-write";
+
+// The composed tap's answer. Both halves are reported SEPARATELY and unflattened: the
+// surface must be able to say "logged fermented and berries, creatine already logged"
+// rather than a count, because the composed answer may never claim more than was
+// written (#2458). `groups` carries the server's authoritative per-group counters, the
+// same pair a single serving tap answers with.
+export type UsualRoutineResult =
+  | {
+      ok: true;
+      window: FoodSlot;
+      groups: UsualFoodLogged[];
+      doses: UsualRoutineDoseResult[];
+    }
+  | { ok: false; error: string };
 
 // Persist the active profile's dashboard customization: the widget
 // display order and the set of hidden widget ids. Profile-scoped like the other
@@ -210,4 +228,49 @@ export async function markAttentionDose(
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");
   return { ok: true, outcome };
+}
+
+// The composed "your usual <window>" tap (#2458): one serving of each still-offered
+// habitual group PLUS a confirm for each still-pending dose the profile declared in
+// that window. The morning is one physical event; this is its one tap.
+//
+// The user's tap is the write — the app never logs food or a dose on anyone's behalf
+// — and the control that raised this named every group and every dose below.
+//
+// The action validates SHAPE only. WHICH groups and WHICH doses may land is the
+// core's question, and it re-derives BOTH halves from fresh server state rather than
+// trusting this form, so a forged, replayed or simply stale submission can never
+// write outside the bundle that currently stands. There is no `date` field: the core
+// resolves the profile's own today, so this path cannot backfill.
+export async function logUsualRoutine(
+  formData: FormData
+): Promise<UsualRoutineResult> {
+  const { profile } = await requireWriteAccess();
+  const rawWindow = String(formData.get("meal_slot") ?? "").trim();
+  if (!isFoodSlot(rawWindow))
+    return { ok: false, error: "Unknown meal window." };
+  const groups = String(formData.get("groups") ?? "")
+    .split(",")
+    .map((slug) => slug.trim())
+    .filter(Boolean);
+  const doseIds = String(formData.get("dose_ids") ?? "")
+    .split(",")
+    .map((raw) => Number(raw.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (groups.length === 0 && doseIds.length === 0)
+    return { ok: false, error: "Nothing to log." };
+  const outcome = logUsualRoutineCore(profile.id, rawWindow, groups, doseIds);
+  if (outcome.kind === "nothing-to-log")
+    return { ok: false, error: "That's already logged." };
+  revalidateRoute("/");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/trends");
+  return {
+    ok: true,
+    window: outcome.window,
+    groups: outcome.groups,
+    doses: outcome.doses,
+  };
 }

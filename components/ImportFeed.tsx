@@ -16,14 +16,14 @@ import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
 
 // Data → Review, "Imports": the chronological feed of ONE-OFF imports into this
 // profile — uploaded documents/archives and pasted/CSV jobs — merged newest-first,
-// where chronology is the point. Recurring per-provider syncs live in their own
+// where chronology is the point. Recurring per-source syncs live in their own
 // "Connected sources" section now (issue #208), so this feed no longer commingles
 // hourly sync noise with the occasional document. Every entry renders through the
 // ONE <FeedRow> below; the pure lib/import-feed shapes each into a common view, so
 // only the stream-specific extras (a document's provenance flag) branch here.
 // Server component — the page reads the feed via lib/queries (getImportDocumentsFeed).
 
-function providerName(id: string): string {
+function sourceName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
 }
 
@@ -74,10 +74,10 @@ function FeedRow({
   knownNames: (string | null | undefined)[];
   isAdmin: boolean;
 }) {
-  const v = feedItemView(entry, providerName);
+  const v = feedItemView(entry, sourceName);
   const mismatch =
     v.patientName != null && isProvenanceMismatch(v.patientName, knownNames);
-  // Admins can inspect the captured provider payload on a sync that has one (#9).
+  // Admins can inspect the captured source payload on a sync that has one (#9).
   const rawRef = entry.stream === "sync" ? entry.event.raw_ref : null;
   const rawId = entry.stream === "sync" ? entry.event.id : null;
   const syncError =
@@ -212,7 +212,7 @@ export default function ImportFeed({
         >
           {feed.map((entry) => (
             <FeedRow
-              key={feedItemView(entry, providerName).key}
+              key={feedItemView(entry, sourceName).key}
               entry={entry}
               knownNames={knownNames}
               isAdmin={isAdmin}

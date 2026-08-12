@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { IconHistory, IconChevronRight } from "@tabler/icons-react";
 import { doseLedgerHref } from "@/lib/hrefs";
-import type { SupplementKind } from "@/lib/types";
+import type { IntakeItemKind } from "@/lib/types";
 
 // The door to the cross-item dose ledger (#2417), rendered by both intake surfaces.
 //
@@ -16,7 +16,7 @@ export default function DoseLedgerLink({
   kind,
   className = "",
 }: {
-  kind: SupplementKind;
+  kind: IntakeItemKind;
   className?: string;
 }) {
   return (

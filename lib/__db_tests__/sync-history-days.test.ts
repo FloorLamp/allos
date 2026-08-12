@@ -25,7 +25,7 @@ import {
   syncDayAttention,
   syncDayLabel,
 } from "@/lib/integrations/sync-history-days";
-import { syncRunNounForKind } from "@/lib/integrations/provider-state";
+import { syncRunNounForKind } from "@/lib/integrations/source-state";
 
 const PROVIDER = "health-connect";
 // The exporter's rolling window: mostly unchanged re-sends, a few new rows.

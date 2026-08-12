@@ -147,7 +147,7 @@ test("the Trends modal's fields stay inside the modal at a desktop viewport", as
   const form = page.getByTestId("measurements-quick-add");
   await expect(form).toBeVisible();
 
-  // Trends → Body opens Body — the SAME component, a different entry point.
+  // Trends → Overview → body census opens Body — the SAME component, a different entry point.
   await expect(form.locator("#measurements-group-body-fields")).toBeVisible();
 
   await openEveryGroup(page, form);
@@ -357,7 +357,7 @@ test("the sitting's Time (#2235): empty by default, one-tap Now, census renders 
       handle.close();
     }
 
-    // The body census's Today cell says WHEN the weigh-in was taken.
+    // The body census Today cell says WHEN the weigh-in was taken.
     await expect(page.getByTestId("vitals-today-weight")).toContainText(
       `at ${statedHhmm}`
     );

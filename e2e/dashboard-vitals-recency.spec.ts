@@ -24,6 +24,12 @@ import { setFixtureTimezone } from "./fixture-timezones";
 //
 // Fixture-OWNED (#868): its own login and profile, created and destroyed by the spec, so
 // nothing depends on the shared seed and a --repeat-each run can't collide.
+//
+// The same fixture also carries one years-old LAB reading, because #2332 is about the
+// two glance cards SIDE BY SIDE: they sit on one dashboard, mean the same thing by an
+// age label, and used to say it two ways. Both now read one decision (lib/glance-age),
+// and the assertions below check the pair rather than each card alone — which is the
+// review the two cards never got.
 
 const DB_PATH = workerDbPath();
 const TZ = pinnedTimezone(frozenNow().toISOString()).zone;
@@ -103,6 +109,17 @@ function createVitalsFixture(testInfo: TestInfo): VitalsFixture {
           );
         }
 
+        // One lab result, as old as the blood pressure, so the Recent labs card on the
+        // same dashboard has a stale row of its own. SYNTHETIC value.
+        handle
+          .prepare(
+            `INSERT INTO medical_records
+               (profile_id, date, category, name, value, unit, canonical_name, value_num)
+             VALUES (?, ?, 'lab', 'LDL Cholesterol', '118', 'mg/dL',
+                     'LDL Cholesterol', 118)`
+          )
+          .run(profileId, day(BP_DAYS_AGO));
+
         // A resting HR from yesterday, with a prior reading on a DIFFERENT day so it
         // legitimately carries a direction.
         const hr = handle.prepare(
@@ -173,7 +190,10 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
     const bpAge = card.getByTestId("vitals-latest-bp-age");
     await expect(bpAge).toHaveText("4 years ago");
     await expect(bpAge).toHaveAttribute("data-stale", "true");
-    await expect(bpAge).toHaveAttribute("title", /Older than six months/);
+    await expect(bpAge).toHaveAttribute(
+      "title",
+      "Older than six months — still your latest reading, but not a current one"
+    );
     // No arrow: the direction it used to claim was between two readings of one sitting.
     await expect(bp).not.toContainText("versus previous blood pressure");
 
@@ -190,6 +210,24 @@ test("a years-old blood pressure is age-labeled and loses its arrow, while yeste
     // obvious next move.
     await expect(card).toContainText("Latest vitals");
     await expect(card.getByTestId("vitals-log-reading")).toBeVisible();
+
+    // #2332: the other glance card on the same dashboard, saying the same thing the
+    // same way. Its column is narrow, so the age is compact rather than spelled out —
+    // that is the one thing the surface declares — but the amber, the data-stale hook
+    // and the hover SENTENCE are the shared decision, naming this card's own floor.
+    const labs = page
+      .getByRole("main")
+      .getByTestId("dashboard-widget-recent-labs");
+    await expect(labs).toBeVisible();
+    const labAge = labs.getByTestId("recent-lab-date");
+    await expect(labAge).toHaveText("4y");
+    await expect(labAge).toHaveAttribute("data-stale", "true");
+    await expect(labAge).toHaveAttribute(
+      "title",
+      "Older than a year — still your latest reading, but not a current one"
+    );
+    // The value is not hidden here either — the fix is what the card claims.
+    await expect(labs).toContainText("118");
   } finally {
     await page.context().close();
     destroyVitalsFixture(fixture);

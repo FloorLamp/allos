@@ -44,7 +44,11 @@ import {
 } from "@/lib/fitness-favorability";
 import { holdBand, type HoldBand } from "@/lib/fitness-hold-norms";
 import { daysBetweenDateStr } from "@/lib/date";
-import { freshnessState, type FreshnessState } from "@/lib/freshness";
+import {
+  freshnessState,
+  tallyFreshness,
+  type FreshnessState,
+} from "@/lib/freshness";
 import { fitnessFreshnessDays } from "@/lib/fitness-freshness";
 import type { Sex } from "@/lib/types";
 import {
@@ -66,7 +70,7 @@ export interface AssessmentLike {
 
 // The latest natural-store reading for a test (#1129), gathered by the DB layer
 // (getAmbientFitnessReadings). `source` is the raw store source string ("oura", "withings",
-// "manual", null for a plain quick-add, "logged set" for a journal set, …) — the resolver
+// "manual", null for a plain quick-add, "logged set" for a training log set, …) — the resolver
 // classifies it into a provenance kind + human label.
 export interface AmbientReading {
   testKey: string;
@@ -91,7 +95,7 @@ export type ProvenanceKind = "check" | "synced" | "logged";
 export interface FitnessProvenance {
   kind: ProvenanceKind;
   label: string; // "from your check" / "from Oura" / "from a logged set"
-  sourceName: string | null; // "Oura" / "Withings" / "your journal" / null
+  sourceName: string | null; // "Oura" / "Withings" / "your training log" / null
   date: string;
   ageDays: number | null;
   freshness: FreshnessState;
@@ -208,7 +212,7 @@ const DOMAIN_ORDER: FitnessDomain[] = [
 
 // Known device/sync sources → a human name for the provenance label. Anything else that
 // isn't a manual/quick-add source is shown title-cased verbatim; a manual/null source (or a
-// journal set) is "logged", not "synced".
+// training log set) is "logged", not "synced".
 const SOURCE_NAMES: Record<string, string> = {
   oura: "Oura",
   withings: "Withings",
@@ -241,17 +245,17 @@ function classifyAmbient(
     const name = SOURCE_NAMES[raw] ?? titleCase(raw);
     return { kind: "synced", sourceName: name, label: `from ${name}` };
   }
-  // manual / null / journal — logged, not synced.
+  // manual / null / training log — logged, not synced.
   if (storeKind === "set") {
     return {
       kind: "logged",
-      sourceName: "your journal",
+      sourceName: "your training log",
       label: "from a logged set",
     };
   }
   return {
     kind: "logged",
-    sourceName: "your journal",
+    sourceName: "your training log",
     label: "from your data",
   };
 }
@@ -259,23 +263,20 @@ function classifyAmbient(
 // The fresh / stale / unmeasured split over a set of results (#2025) — the ONE counting
 // rule the whole check and every domain share, so a domain's numbers always sum to the
 // check's. A measured test the model could not date counts as measured but not fresh:
-// it has a value and no evidence that value is current.
+// it has a value and no evidence that value is current — which is precisely what
+// `tallyFreshness` already means by `notApplicable`, so the current/due discrimination is
+// the SHARED one (#2194) and not a second copy of it here. Only the measured/unmeasured
+// axis is this domain's own: an unmeasured test has no reading to be fresh about, so it
+// never enters the tally at all.
 function coverageOf(results: readonly FitnessTestResult[]): FitnessCoverage {
-  let measured = 0;
-  let fresh = 0;
-  let stale = 0;
-  for (const r of results) {
-    if (!r.measured) continue;
-    measured++;
-    if (r.freshness === "current") fresh++;
-    else if (r.freshness === "due") stale++;
-  }
+  const measured = results.filter((r) => r.measured);
+  const tally = tallyFreshness(measured.map((r) => r.freshness));
   return {
     total: results.length,
-    measured,
-    fresh,
-    stale,
-    unmeasured: results.length - measured,
+    measured: measured.length,
+    fresh: tally.current,
+    stale: tally.due,
+    unmeasured: results.length - measured.length,
   };
 }
 

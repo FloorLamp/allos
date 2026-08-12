@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { shiftDateStr } from "@/lib/date";
-import type { AdherenceDot, AdherenceState } from "@/lib/supplement-adherence";
+import type { AdherenceDot, AdherenceState } from "@/lib/intake-adherence";
 import {
   detectWeekdayMissPattern,
   detectWeekendAsymmetry,

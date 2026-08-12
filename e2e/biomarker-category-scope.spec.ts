@@ -18,30 +18,30 @@ test("the Biomarkers browser lists labs but not a re-homed instrument score (#10
   page,
 }) => {
   // A lab is present.
-  await page.goto("/results/biomarkers?q=Cholesterol");
-  const section = page.getByTestId("results-biomarkers");
+  await page.goto("/results/readings?q=Cholesterol");
+  const section = page.getByTestId("results-readings");
   const cholesterol = section.getByText("Total Cholesterol").first(); // first-ok: read-only presence check; shared seed may hold several Total Cholesterol readings
   await expect(cholesterol).toBeVisible();
 
   // A screening instrument (the seeded AUDIT-C substance-use score) is NOT browsable
   // here — the SENSITIVITY case: a substance/depression score belongs on its own
   // surface, never the general biomarker catalog.
-  await page.goto("/results/biomarkers?q=" + encodeURIComponent("AUDIT-C"));
+  await page.goto("/results/readings?q=" + encodeURIComponent("AUDIT-C"));
   await expect(
-    page.getByTestId("results-biomarkers").getByText("AUDIT-C", { exact: true })
+    page.getByTestId("results-readings").getByText("AUDIT-C", { exact: true })
   ).toHaveCount(0);
 });
 
 test("the browser drops a vitals analyte with a metric home, keeps one without (#2365)", async ({
   page,
 }) => {
-  const section = page.getByTestId("results-biomarkers");
+  const section = page.getByTestId("results-readings");
 
-  // Blood pressure is a BodyMetricSlug quantity charted at /trends/metric/systolic, so
+  // Blood pressure is a TrendMetricSlug quantity charted at /trends/metric/systolic, so
   // the flat catalog no longer duplicates it — the 131-of-145 population #1076's
   // per-category decision dragged along.
   await page.goto(
-    "/results/biomarkers?q=" + encodeURIComponent("Blood Pressure Systolic")
+    "/results/readings?q=" + encodeURIComponent("Blood Pressure Systolic")
   );
   await expect(
     section.getByText("Blood Pressure Systolic", { exact: true })
@@ -50,7 +50,7 @@ test("the browser drops a vitals analyte with a metric home, keeps one without (
   // An audiogram threshold has no chart anywhere, so the catalog is still its home —
   // the "nothing stranded" rule, kept and applied per analyte instead of per category.
   await page.goto(
-    "/results/biomarkers?q=" + encodeURIComponent("Hearing Threshold")
+    "/results/readings?q=" + encodeURIComponent("Hearing Threshold")
   );
   await expect(
     section.getByText("Hearing Threshold", { exact: false }).first() // first-ok: read-only presence check; the seed holds several ear/frequency series

@@ -262,7 +262,7 @@ describe("removeRowContaining", () => {
     ],
     [
       { text: "📦 Ordered", callback_data: "rfsnooze:1:7" },
-      { text: "Open form", url: "https://x/medicine" },
+      { text: "Open form", url: "https://x/medications" },
     ],
   ];
 

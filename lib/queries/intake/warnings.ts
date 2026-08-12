@@ -6,7 +6,11 @@
 // Upper Intake Level (UL) exceedances and known drug/supplement interactions.
 import { today } from "../../db";
 import { ageFromBirthdate } from "../../date";
-import { getUserSex, getUserBirthdate, getStoredAge } from "../../settings";
+import {
+  getProfileSex,
+  getProfileBirthdate,
+  getStoredAge,
+} from "../../settings";
 import {
   stackUlWarnings,
   stackRdaAdequacy,
@@ -62,7 +66,7 @@ import {
 import { biomarkerFamily } from "../../canonical-name";
 import { medicationStartDate } from "../../profile-summary";
 import { getMedicationCourses } from "./medications";
-import { getMedicalRecords } from "../medical";
+import { getClinicalObservations } from "../medical";
 import { isInvasiveDentalProcedure, dentalDisplayLabel } from "../../dental";
 import {
   getGenomicVariants,
@@ -76,25 +80,25 @@ import { getIntakeSafetyContext } from "./safety";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import { activeByKey } from "../../findings";
 import { getFindingSuppressions } from "../upcoming/suppressions";
-import { contributesToDailyLimit, isPrn } from "../../supplement-schedule";
-import { getSupplements, getSupplementDoses } from "./schedule";
+import { contributesToDailyLimit, isOnDemand } from "../../intake-schedule";
+import { getIntakeItems, getIntakeDoses } from "./schedule";
 
 // ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
 
 // A UL warning enriched with an optional condition caveat: when an active condition
 // makes the population UL unreliable for the nutrient (CKD × magnesium, #657), the
 // caveat is computed here — the ONE place with the conditions in hand — and both
-// surfaces (the /medicine row, the Upcoming finding) format it, so they can't disagree.
+// surfaces (the intake surface row, the Upcoming finding) format it, so they can't disagree.
 export type UlWarningWithCaveat = UlWarning & {
   conditionCaveat: string | null;
 };
 
 // The active stack's nutrients whose summed daily supplemental intake exceeds the
 // NIH Tolerable Upper Intake Level (UL) for the profile's age/sex. The SINGLE
-// gather behind both surfaces — the /medicine warning rows and the dismissible
+// gather behind both surfaces — the intake surface warning rows and the dismissible
 // Upcoming finding — so they can never disagree on which nutrients are over
 // (AGENTS.md "one question, one computation"). Reuses the profile-scoped
-// getSupplements + getSupplementDoses reads (no new SQL, so profile scoping is
+// getIntakeItems + getIntakeDoses reads (no new SQL, so profile scoping is
 // already enforced) and resolves age/sex from profile_settings; the UL math is the
 // pure lib/dri.stackUlWarnings. `today` selects the age from a birthdate. Each warning
 // carries the #657 condition caveat when an active condition lowers the nutrient's ceiling.
@@ -131,18 +135,18 @@ export function getDietaryAdequacy(
 // The shared DRI input assembly: the active stack as StackItems + the resolved
 // age/sex band. Factored out so the UL and RDA reads build their input identically
 // (they must, or the two nutrient sets could diverge). Profile-scoped through
-// getSupplements/getSupplementDoses; no new SQL.
+// getIntakeItems/getIntakeDoses; no new SQL.
 function stackDriContext(
   profileId: number,
   todayStr: string
 ): {
   items: StackItem[];
   ageYears: number | null;
-  sex: ReturnType<typeof getUserSex>;
+  sex: ReturnType<typeof getProfileSex>;
 } {
-  const supplements = getSupplements(profileId);
+  const supplements = getIntakeItems(profileId);
   const dosesBySupp = new Map<number, (string | null)[]>();
-  for (const d of getSupplementDoses(profileId)) {
+  for (const d of getIntakeDoses(profileId)) {
     const arr = dosesBySupp.get(d.item_id) ?? [];
     arr.push(d.amount);
     dosesBySupp.set(d.item_id, arr);
@@ -164,26 +168,26 @@ function stackDriContext(
       name: s.name,
       active: !!s.active,
       doseAmounts: dosesBySupp.get(s.id) ?? [],
-      optional: isPrn(s),
+      optional: isOnDemand(s),
     }));
 
-  const birthdate = getUserBirthdate(profileId);
+  const birthdate = getProfileBirthdate(profileId);
   const ageYears = birthdate
     ? ageFromBirthdate(birthdate, todayStr)
     : getStoredAge(profileId);
-  const sex = getUserSex(profileId);
+  const sex = getProfileSex(profileId);
   return { items, ageYears, sex };
 }
 
 // Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).
 // Reuses the pure detectInteractions over each item's name + cached RxCUI(s) +
-// active flag — the SAME computation the /medicine warnings, the create/edit inline
+// active flag — the SAME computation the intake surface warnings, the create/edit inline
 // notice, and the dismissible Upcoming finding all format over. Cached ingredient
 // CUIs (issue #279) let a combination product match each ingredient's concept.
-// Profile-scoped (getSupplements filters profile_id); inactive/paused rows are
+// Profile-scoped (getIntakeItems filters profile_id); inactive/paused rows are
 // dropped by the pure detector.
 export function getInteractionWarnings(profileId: number): InteractionHit[] {
-  const items: InteractionItem[] = getSupplements(profileId).map((s) => ({
+  const items: InteractionItem[] = getIntakeItems(profileId).map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,
@@ -195,7 +199,7 @@ export function getInteractionWarnings(profileId: number): InteractionHit[] {
 
 // Pharmacogenomics cross-check (issue #710): the profile's stored PGx variants
 // (genomic_variants, result_type='pharmacogenomic') × its ACTIVE medications, matched
-// against the curated CPIC gene–drug table. The SAME pure crossCheckPgx the /medicine
+// against the curated CPIC gene–drug table. The SAME pure crossCheckPgx the intake surface
 // row notice, the create/edit inline notice, and the dismissible Upcoming finding all
 // format over ("one question, one computation"). The active meds come from the ONE
 // shared safety-context gather (getIntakeSafetyContext, #661) — active + kind
@@ -439,14 +443,14 @@ export function getPgxMedCrossLinks(
 // Safety-screening coverage summary (issue #1032): how much of the ACTIVE stack the
 // curated interaction set actually covers, so an empty safety strip can say
 // "checked N of M, no flags" instead of rendering exactly like "nothing was
-// checked". Reuses the profile-scoped getSupplements read + the pure
+// checked". Reuses the profile-scoped getIntakeItems read + the pure
 // stackScreeningCoverage over the ONE shared concept matcher, so the fraction can
 // never disagree with what detectInteractions screens. No new SQL.
 export function getSafetyScreeningCoverage(
   profileId: number
 ): SafetyCoverageModel {
   return stackScreeningCoverage(
-    getSupplements(profileId).map((s) => ({
+    getIntakeItems(profileId).map((s) => ({
       name: s.name,
       rxcui: s.rxcui,
       rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
@@ -465,7 +469,7 @@ const MONITORING_LAB_CATEGORIES = new Set(["lab", "biomarker"]);
 // 'medication', each carrying its intake_items id), so this can't drift from the
 // interaction/PGx/ototoxic consumers. Each med's start / recent-change dates are derived
 // from its medication_courses (medicationStartDate) + its dose re-time timestamps; the
-// newest date each monitoring lab was drawn comes from getMedicalRecords' current-per-
+// newest date each monitoring lab was drawn comes from getClinicalObservations' current-per-
 // group read, keyed FAMILY-AWARE (#482) so an eAG reading satisfies an HbA1c requirement.
 // The SAME pure buildMedMonitoring the medications-row note and the Upcoming retest items
 // format over ("one question, one computation"). Profile-scoped through the underlying
@@ -482,7 +486,7 @@ export function getMedMonitoringItems(
 
   // Per-med start date (open course start, else created_at) + most recent change
   // (start / dose re-time / course restart), from the profile-scoped reads.
-  const supplements = getSupplements(profileId);
+  const supplements = getIntakeItems(profileId);
   const createdById = new Map<number, string | null>(
     supplements.map((s) => [s.id, s.created_at ?? null])
   );
@@ -496,7 +500,7 @@ export function getMedMonitoringItems(
     coursesByItem.set(c.item_id, arr);
   }
   const doseChangeByItem = new Map<number, string>();
-  for (const d of getSupplementDoses(profileId)) {
+  for (const d of getIntakeDoses(profileId)) {
     const changed = (d.updated_at ?? d.created_at ?? "").slice(0, 10);
     if (!changed) continue;
     const prev = doseChangeByItem.get(d.item_id);
@@ -529,7 +533,7 @@ export function getMedMonitoringItems(
 
   // Newest date each monitoring lab (family-aware) was drawn, over current lab readings.
   const labDatesByFamily = new Map<string, string>();
-  for (const r of getMedicalRecords(profileId, { current: true })) {
+  for (const r of getClinicalObservations(profileId, { current: true })) {
     if (!MONITORING_LAB_CATEGORIES.has(r.category ?? "")) continue;
     // Same family key monitoringLabFamilyKey derives for a required lab's canonical
     // name, so an eAG reading lands under the HbA1c family (#482).
@@ -558,14 +562,14 @@ export function getMedMonitoringItems(
 // still a photosensitizer on a day it is taken; obligation governs whether the app
 // contacts you, never whether a drug reacts to sunlight.
 //
-// Profile-scoped through getSupplements (profile_id-filtered); no new SQL, so the
+// Profile-scoped through getIntakeItems (profile_id-filtered); no new SQL, so the
 // scoping guard is unaffected. Informational, never prescriptive; absence of a flag is
 // not clearance.
 export function getWeatherMedWarnings(
   profileId: number,
   exposure: WeatherExposure
 ): WeatherMedHit[] {
-  const items: WeatherMedInput[] = getSupplements(profileId)
+  const items: WeatherMedInput[] = getIntakeItems(profileId)
     .filter((s) => s.active)
     .map((s) => ({
       id: s.id,

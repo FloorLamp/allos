@@ -26,7 +26,7 @@ export const TRAINING_TABS = [
 
 export type TrainingTab = (typeof TRAINING_TABS)[number];
 
-// Log leads: it IS the Journal (JOURNAL_ROUTE = "/training"), the surface a training
+// Log leads: it IS the Training Log (TRAINING_LOG_ROUTE = "/training"), the surface a training
 // visit usually wants, and it was the first tab (hence the default) before #1496.
 export const DEFAULT_TRAINING_TAB: TrainingTab = "log";
 

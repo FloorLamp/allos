@@ -19,19 +19,33 @@ import {
   getStrengthByExercise,
   getCardioByActivity,
   getWeights,
-  getGoals,
-  getSupplements,
-  getSupplementDoses,
+  getOutcomeGoals,
+  getIntakeItems,
+  getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
   getActivitiesByDate,
   getZone2MinutesInWindow,
   getSleepRegularity,
+  getSleepDurationTrend,
   getMoodLogs,
+  getFoodDailyServingTotalsInRange,
+  getFoodPeriodHabits,
+  getNutritionDay,
 } from "../queries";
+import {
+  getCadenceCapWeeks,
+  getCadenceWeekVerdicts,
+} from "../queries/cadence-ledger";
+import {
+  NUTRIENT_KEYS,
+  nutritionShortfalls,
+  type NutrientKey,
+} from "../nutrition-day";
+import { localDayOf } from "../local-day-window";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { loadContextLabel } from "../lifts";
-import { doseDueOn } from "../supplement-schedule";
+import { doseDueOn } from "../intake-schedule";
 import { getIntakeDeltaLine } from "../intake-history";
 import {
   buildRecap,
@@ -43,6 +57,7 @@ import {
   inWindow,
   type Recap,
   type RecapAdherenceDay,
+  type RecapFood,
   type RecapInput,
   type RecapLineKey,
   type RecapWorkout,
@@ -55,13 +70,14 @@ import {
   type RecapScale,
 } from "../recap-scale";
 import type { ActivityType } from "../types/training";
-import { getRecentNarratives } from "../queries";
+import { getRecentPeriodRecaps } from "../queries";
 import {
   getActiveSituations,
   getSituationEvents,
   getWeekMode,
   getProfileMoodRecap,
   getWeekStart,
+  getTimezone,
   getZone2WeeklyTargetMin,
   getProfileSetting,
   setProfileSetting,
@@ -101,7 +117,7 @@ function asWorkout(a: { date: string; type: string }): RecapWorkout {
   return { date: a.date, type };
 }
 
-// Supplement adherence (taken / skipped / due) across the window, using the same
+// IntakeItem adherence (taken / skipped / due) across the window, using the same
 // due-dose derivation as the digest (isDueOn honoring workout-day + active
 // situations). Deliberate skips (#232) are tallied separately so the recap can
 // show them alongside taken and exclude them from the percentage denominator.
@@ -113,10 +129,10 @@ function windowAdherence(
   total: { taken: number; skipped: number; due: number };
   days: RecapAdherenceDay[];
 } | null {
-  const active = getSupplements(profileId).filter((s) => s.active);
+  const active = getIntakeItems(profileId).filter((s) => s.active);
   if (active.length === 0) return null;
   const suppById = new Map(active.map((s) => [s.id, s]));
-  const doses = getSupplementDoses(profileId).filter((d) =>
+  const doses = getIntakeDoses(profileId).filter((d) =>
     suppById.has(d.item_id)
   );
   if (doses.length === 0) return null;
@@ -162,6 +178,51 @@ function windowAdherence(
   return due > 0 ? { total: { taken, skipped, due }, days } : null;
 }
 
+// The window's FOOD coverage and shape (#2396) — days logged, group variety, and how
+// many of the days that could be POSITIONED landed on their protein and fibre targets.
+//
+// NOT A RE-TOTAL, by construction: nothing here sums servings or grams. Days-logged and
+// variety come from one ranged read of the same `food_log` rows the nutrition card and
+// the Trends rollup use; the nutrient half asks the SAME per-day question the morning
+// digest asks of one day (`getNutritionDay` → `nutritionShortfalls`), so a day the recap
+// counts as short and a day the digest called short can never be different days.
+//
+// THE DENOMINATOR IS THE POSITIONED DAYS, NOT THE WINDOW. A day with no quantified
+// intake, or a profile with no resolvable target, yields no position at all — counting
+// such a day as a miss would assert something about someone's eating that was never
+// observed. A nutrient that positioned on no day is dropped rather than reported as 0/0.
+function windowFood(
+  profileId: number,
+  start: string,
+  end: string
+): RecapFood | null {
+  const rows = getFoodDailyServingTotalsInRange(profileId, start, end);
+  if (rows.length === 0) return null;
+  const days = new Set(rows.map((r) => r.date));
+  const tally = new Map<NutrientKey, { onTarget: number; days: number }>();
+  for (const date of [...days].sort()) {
+    const position = getNutritionDay(profileId, date);
+    if (!position) continue;
+    const short = new Set(nutritionShortfalls(position).map((s) => s.nutrient));
+    for (const nutrient of NUTRIENT_KEYS) {
+      if (position[nutrient] == null) continue;
+      const t = tally.get(nutrient) ?? { onTarget: 0, days: 0 };
+      t.days += 1;
+      if (!short.has(nutrient)) t.onTarget += 1;
+      tally.set(nutrient, t);
+    }
+  }
+  return {
+    daysLogged: days.size,
+    groups: new Set(rows.map((r) => r.group_key)).size,
+    // Declared order (NUTRIENT_KEYS), never Map insertion order.
+    nutrients: NUTRIENT_KEYS.flatMap((nutrient) => {
+      const t = tally.get(nutrient);
+      return t && t.days > 0 ? [{ nutrient, ...t }] : [];
+    }),
+  };
+}
+
 // Gather the recap facts for one profile over the declared SCALE's period. weightUnit
 // controls how the values render (the dashboard passes the login's preference; the
 // notification uses canonical kg).
@@ -190,7 +251,7 @@ export function gatherRecapInput(
 ): RecapInput {
   const td = asOf ?? today(profileId);
   // "This week" per the profile's week_mode for the 7-day recap (issue #223), so
-  // the recap window matches the routine counters / journal. Months and quarters are
+  // the recap window matches the routine counters / training log. Months and quarters are
   // always calendar — week_mode defines only weeks.
   const weekMode = getWeekMode(profileId);
   const weekStart = getWeekStart(profileId);
@@ -262,11 +323,39 @@ export function gatherRecapInput(
     inWindow(w.date, win.prevStart, win.prevEnd)
   );
 
-  const goalsCompleted = getGoals(profileId)
+  // GOALS, KEYED ON WHAT ACTUALLY HAPPENED WHEN (#2394).
+  //
+  // The reached line used to window on `target_date` — the DEADLINE — because that was
+  // the only date the table carried. Three consequences, all of them wrong: a goal
+  // reached early was announced in the week its deadline fell (possibly a month later),
+  // a goal reached late was never announced at all, and a goal with NO deadline, which
+  // is most of them, was excluded by the `target_date != null` clause and could never
+  // fire. Migration 182 records `achieved_at`, so the line keys on the achievement and
+  // the target date is no longer needed for it.
+  //
+  // The achievement instant is a canonical UTC instant; the recap's window is in
+  // profile-local days, so it is attributed through `localDayOf` — the one instant→day
+  // path — and never by slicing ten characters off the string.
+  //
+  // A goal achieved before migration 182 has no instant and is simply absent: silence,
+  // not a retroactive announcement in whatever week the deploy landed in.
+  const goals = getOutcomeGoals(profileId).filter((g) => !g.archived);
+  const tz = getTimezone(profileId);
+  const goalsCompleted = goals
+    .filter((g) => {
+      if (g.status !== "achieved" || g.achieved_at == null) return false;
+      const day = localDayOf(tz, g.achieved_at);
+      return day != null && inWindow(day, win.start, win.end);
+    })
+    .map((g) => g.title);
+  // The MISS half (#2394): a deadline that arrived inside this period without being met.
+  // `target_date` is the right key here and only here — a miss is by definition about a
+  // deadline — and the goal must still be unachieved NOW, so a goal finished late is
+  // reported as reached in its own period rather than as missed in an earlier one.
+  const goalsMissed = goals
     .filter(
       (g) =>
-        g.status === "achieved" &&
-        !g.archived &&
+        g.status !== "achieved" &&
         g.target_date != null &&
         inWindow(g.target_date, win.start, win.end)
     )
@@ -302,6 +391,62 @@ export function gatherRecapInput(
     weights,
     prevWeights,
     goalsCompleted,
+    goalsMissed,
+    // The week's FOOD coverage and shape (#2396). Skipped entirely at the scales the
+    // line does not speak at, which is what keeps its per-day nutrient walk bounded at
+    // seven days (RECAP_LINE_MODEL.food states the cost reason beside the meaning one).
+    food: speaks("food") ? windowFood(profileId, win.start, win.end) : null,
+    // THE WEEK'S TARGET VERDICTS (#2395), from the cadence ledger's own read of the week
+    // ENDING on this period's last day — the one reader of "how did this target do in
+    // week W", asked with a declared option set rather than forked into a fifth model.
+    //
+    // Only for a CLOSED period: an in-progress week has no verdict, only pace, and pace
+    // is the morning digest's line. `completed` is the recap's existing name for that
+    // distinction, so nothing new decides it here.
+    targetVerdicts:
+      speaks("targets") && completed
+        ? getCadenceWeekVerdicts(profileId, win.end)
+        : [],
+    // THE PERIOD'S FOOD HABITS (#2397): a share of the days food was logged at all, with
+    // the curated nutrient rationale. One bounded rollup read over the period, skipped
+    // at every scale the line does not speak at.
+    foodHabits: speaks("food-habits")
+      ? getFoodPeriodHabits(profileId, win.start, win.end)
+      : [],
+    // HOW EACH DECLARED CAP FARED over the period's whole weeks (#2397). `weeks` counts
+    // only the complete 7-day windows the period holds, ending on its last day: a month
+    // is not a whole number of weeks, and claiming "4 weeks" over 31 days would be the
+    // arithmetic saying something the calendar does not.
+    capWeeks: speaks("caps")
+      ? getCadenceCapWeeks(profileId, {
+          asOf: win.end,
+          weeks: Math.floor(
+            ((daysBetweenDateStr(win.start, win.end) ?? 0) + 1) / 7
+          ),
+        })
+      : [],
+    // The window's per-night MAIN sleep minutes and the previous window's (#2396) — the
+    // duration half of the sleep story the SRI line never told. Naps are already dropped
+    // by the shared main-session classifier behind getSleepDurationTrend, so a long
+    // afternoon nap cannot inflate a "typical night".
+    ...(() => {
+      if (!speaks("sleep-duration"))
+        return { sleepMinutes: [], prevSleepMinutes: [] };
+      // Bounded by the span both windows cover, with a little slack for a window whose
+      // nights are sparse — the reader caps by DAYS, not by rows.
+      const nightly = getSleepDurationTrend(
+        profileId,
+        Math.max(30, spanDays + 7)
+      );
+      const within = (from: string, to: string) =>
+        nightly
+          .filter((n) => inWindow(n.date, from, to) && n.value > 0)
+          .map((n) => n.value);
+      return {
+        sleepMinutes: within(win.start, win.end),
+        prevSleepMinutes: within(win.prevStart, win.prevEnd),
+      };
+    })(),
     // Sick days within the window (issue #837) — the recovery-context honesty line,
     // from the SAME illness_episodes rows the illness surfaces use (one derivation).
     illnessDays: speaks("recovery")
@@ -436,7 +581,7 @@ export async function runRecap(
   // the recap's OWN window and the kinds are read at the SENT scale, so a weekly
   // narrative can never be pasted under a monthly heading.
   const narrative = pickRecapNarrative(
-    getRecentNarratives(profileId, [scale], 5),
+    getRecentPeriodRecaps(profileId, [scale], 5),
     recap
   );
   const msg = renderRecapMessage(recap, profileName, narrative, getPublicUrl());

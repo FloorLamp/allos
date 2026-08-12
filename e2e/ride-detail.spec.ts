@@ -7,7 +7,7 @@ import {
   summarizeCyclingStreams,
 } from "@/lib/cycling-stream-summary";
 
-test("a Journal ride opens a read-first detail with the stored ride measurements", async ({
+test("a Training Log ride opens a read-first detail with the stored ride measurements", async ({
   page,
 }) => {
   await page.goto("/training");

@@ -130,7 +130,7 @@ test.describe("Import triage: the confidence card links to the row it names", ()
     // The table shows the rows carrying that name, and only those. The analyte
     // grid prints a repeated name once per contiguous group, so the pair reads as
     // two rows under one name — and the count in the heading says so out loud.
-    const table = page.getByTestId("extracted-records");
+    const table = page.getByTestId("extracted-observations");
     await expect(
       table.getByRole("heading", { name: "Labs (2)" })
     ).toBeVisible();

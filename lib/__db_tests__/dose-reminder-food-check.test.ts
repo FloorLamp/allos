@@ -7,7 +7,7 @@
 //
 // and the properties that matter are the ones a pure test cannot see: that the ledger is
 // actually consulted, that a serving written through the real write core silences the
-// clause, that `eaten_at` beats `logged_at` end-to-end, and — the safety property — that
+// clause, that `occurred_at` beats `recorded_at` end-to-end, and — the safety property — that
 // none of it changes WHETHER the reminder fires.
 
 import { describe, it, expect } from "vitest";
