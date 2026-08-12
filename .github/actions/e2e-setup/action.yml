@@ -65,9 +65,20 @@ runs:
 
     # CI runs production-like: build once, then the Playwright webServer boots
     # `next start` against the built app (see playwright.config.ts).
+    #
+    # NEXT_SKIP_TYPECHECK drops `next build`'s own `tsc` pass (see the `typescript`
+    # block in next.config.js). It is REDUNDANT here, not skipped: the `check` job
+    # runs `npm run typecheck` over the same tsconfig and more files, on every pull
+    # request. Without this, every Playwright job — the 8-way shard matrix, the
+    # changed-spec lane, the on-demand full suite — re-ran that identical check on
+    # the critical path, inside the per-shard floor ci.yml wants to lower. Only
+    # this action sets it, so a local build and the deploy image build are
+    # unchanged.
     - name: Build
       run: npm run build
       shell: bash
+      env:
+        NEXT_SKIP_TYPECHECK: "1"
 
     # UTC-midnight backstop (issue #1534). Date-keyed specs assert against "today",
     # and a suite that STRADDLES real 00:00 UTC can write a row on one side of the
