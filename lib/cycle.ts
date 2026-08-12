@@ -165,8 +165,21 @@ export function periodOnDate(
 }
 
 // The cycle PHASE on `date`, or null when it can't be derived (before the first recorded
-// period). The ONE phase computation every surface formats over (the Cycle "current
-// phase" card, the Timeline day chip, and the #718 phase-specific reference-range feed).
+// period, or after `today`). The ONE phase computation every surface formats over (the
+// Cycle "current phase" card, the Timeline day chip, and the #718 phase-specific
+// reference-range feed).
+//
+// `today` is the caller's PROFILE-LOCAL today, and it is required because the refusal
+// below is the contract, not a caller's option (#2613). This derivation is retrospective
+// — "what the body did" — and for any date past the last recorded period it answers
+// `follicular` from the open-cycle branch. Fed a date four months out, that branch
+// answered with total confidence about days nobody has lived, and the Timeline stamped a
+// bare "Follicular" chip on every future goal-target day group in exactly the voice it
+// uses for today. Several periods will happen in between: the phase there is not
+// uncertain, it is unknowable. So a future date gets an ABSENCE — no phase, hence no
+// chip — rather than a hedge; /medical/cycles already owns the honest vocabulary for
+// what CAN be said about the future ("a projection from your own recorded cycles, not a
+// certainty"), and that stays the only place saying it.
 //
 // Derivation (retrospective, non-predictive):
 //   • menstrual — `date` falls within a recorded period (start..inclusive end, or an
@@ -184,8 +197,10 @@ export function periodOnDate(
 //     next period is actually logged.
 export function cyclePhaseOnDate(
   periods: CyclePeriod[],
-  date: string
+  date: string,
+  today: string
 ): CyclePhase | null {
+  if (date > today) return null; // after today — unknowable, not merely uncertain
   const sorted = sortByStart(periods);
   let idx = -1;
   for (let i = 0; i < sorted.length; i++) {

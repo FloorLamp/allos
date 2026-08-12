@@ -110,7 +110,9 @@ export function cycleStateLine(
   date: string
 ): string | null {
   const day = cycleDayOnDate(periods, date);
-  const phase = cyclePhaseOnDate(periods, date);
+  // `date` IS this surface's today — cycleControlState is always resolved for the
+  // profile-local current day — so it is both the subject and the horizon (#2613).
+  const phase = cyclePhaseOnDate(periods, date, date);
   if (day == null || phase == null) return null;
   return `Day ${day} · ${CYCLE_PHASE_LABELS[phase]}`;
 }
