@@ -713,6 +713,19 @@ See `docs/internals/e2e-hygiene.md`.
 - Use `readTx` when several reads must share one snapshot.
 - Ordinary edit forms are last-write-wins. Counter-like, lifecycle, and
   access-control fields need atomic transitions or compare-and-swap.
+- Last-write-wins is not whole-**ROW**. An edit core takes a PATCH (`Partial` of
+  the create input): absent means unchanged, a present `null` still clears, and
+  the merge runs INSIDE the transaction and BEFORE `sanitize`, so cross-field
+  rules judge the merged whole rather than each field against a row it no longer
+  belongs to. A form that buys the same property with hidden inputs is a trap
+  whose failure is silent and destructive — add a column, write it from the core,
+  forget the hidden input. `updateInjury` (#2359) had the hidden inputs;
+  `updateEndurancePlan` (#2573) never had them, so it wrote `notes = null` on
+  every edit. The guard is a schema CENSUS, not a list of today's fields:
+  enumerate the table via `PRAGMA table_info`, force the fixture to give every
+  column a real value, name ONE field in the edit, and require every other column
+  byte-identical. A complete editor that genuinely carries every column it writes
+  (`saveActivityCore`) is a different shape and stays whole-row.
 - `lib/` write cores are auth-blind. They take `profileId` first and never import
   `lib/auth`; the Server Action performs authorization and validation.
 - Server Action records pass serializable data only. Do not return a
