@@ -48,7 +48,12 @@ import type { TrendItem } from "./trends-digest";
 import type { WeightUnit, DistanceUnit } from "./settings";
 import { fmtWeight, fmtDistance, fmtKmh } from "./units";
 import { formatMinutes } from "./duration";
-import { isSuppressed, type SuppressionRecord } from "./upcoming-suppress";
+import {
+  isSuppressed,
+  itemSuppressionPolicy,
+  type SuppressionRecord,
+} from "./upcoming-suppress";
+import type { LifecycleSuppressionPolicy } from "./lifecycle";
 
 // Visual/semantic tone, doubling as a coarse severity signal. A superset of
 // CoachingTone (caution/action/positive/neutral) plus a plain informational tone
@@ -93,6 +98,14 @@ export interface Finding {
   band?: UrgencyBand;
   // Explicit due-text override; else a computed countdown label.
   dueText?: string;
+  // The lifecycle suppression policy this finding travels under (#942), carried across
+  // the bus so a Finding answers the same question its UpcomingItem already does.
+  // Absent = the ordinary "normal" tier (a dismiss hides it indefinitely). A signal that
+  // must RESIST the bus declares it — "safety-ungated" for the crisis finding and the
+  // dose safety signals, "snooze-only" for an overdue care follow-up — and that ONE
+  // declaration is also what keeps repeat-dismissal quieting away from it
+  // (lib/dismissal-fatigue.ts, #2386).
+  suppressionPolicy?: LifecycleSuppressionPolicy;
 }
 
 export interface FindingGroup {
@@ -180,6 +193,12 @@ export function upcomingToFinding(item: UpcomingItem): Finding {
     dueDate: item.dueDate,
     band: item.band,
     dueText: item.dueText,
+    // The item's DECLARED suppression tier travels with it (#2386). Without this the
+    // envelope silently downgraded a "safety-ungated" crisis item or a "snooze-only"
+    // overdue follow-up to the ordinary tier the moment it crossed the bus — harmless
+    // while nothing read the field off a Finding, and exactly the wrong default once
+    // dismissal-fatigue quieting does.
+    suppressionPolicy: itemSuppressionPolicy(item),
   };
 }
 
