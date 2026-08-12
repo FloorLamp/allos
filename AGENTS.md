@@ -388,20 +388,30 @@ See `docs/ai.md` for provider, logging, and extraction details.
 
 ### Integrations
 
-`lib/integrations/registry.ts` is the provider registry. Current entries include
+`lib/integrations/registry.ts` is the SOURCE registry. Current entries include
 Health Connect, Strava, Oura, Withings, Fitbit Takeout, Weather & UV, Calendar
 feed, and the planned Garmin integration.
 
-A provider also declares its **continuous streams** there — the ones expected to
+A connected integration is a **source** — `sourceId` in every TypeScript
+parameter, field and query API (#2487), matching the user-facing "Connected
+sources" wording. `Provider` and `provider_id` are reserved for healthcare
+clinicians and organizations, always. The persisted columns still say `provider`
+on `integration_connections`, `integration_sync_events`,
+`integration_backfill_jobs` and `stream_frontiers`; that rename is deferred to
+its own forward migration, so reads select `provider AS source_id` at an
+explicitly commented boundary and row shapes expose `source_id`. There is no
+wrapper type — see `docs/internals/integrations-sync.md`.
+
+A source also declares its **continuous streams** there — the ones expected to
 keep arriving minute after minute while a device is worn — beside
 `silenceToleranceMinutes`, read only through `lib/integrations/continuous-streams.ts`.
 That tolerance is about the CONNECTION; a stream declaration is about the DATA, and
 the two are independent: a phone can keep pushing aggregates while the watch feeding
 heart rate is off a wrist. `quietStreamVerdict` (#2146) reports that — stream silent
-past its DECLARED dip tolerance _while the provider kept syncing ok in that window_,
+past its DECLARED dip tolerance _while the source kept syncing ok in that window_,
 which is the clause that keeps it disjoint from #1685 staleness — with no stored
 state, and it renders on Data → Review only: it is coaching tier and never a send.
-A provider with no continuous stream declares none and is exempt by construction.
+A source with no continuous stream declares none and is exempt by construction.
 
 Sync and import behavior must remain idempotent:
 

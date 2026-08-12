@@ -46,8 +46,8 @@ export function lastPullAttemptAt(
   sourceId: string
 ): string | null {
   const row = db
+    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     .prepare(
-      // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
       `SELECT at FROM integration_sync_events
         WHERE profile_id = ? AND provider = ?
         ORDER BY at DESC, id DESC

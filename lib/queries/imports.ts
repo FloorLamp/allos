@@ -194,8 +194,8 @@ function getAttendedImportSyncEvents(
 ): FeedSyncEvent[] {
   if (ATTENDED_SOURCES.length === 0) return [];
   return db
+    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     .prepare(
-      // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
       `SELECT id, provider AS source_id, at, ok, window_start, window_end,
               inserted, updated, unchanged, written, suppressed, edited, skipped,
               error, raw_ref

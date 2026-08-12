@@ -205,7 +205,7 @@ describe("the attended family reaches Review at all (#2301)", () => {
       (e) => e.stream === "sync"
     );
     expect(syncs).toHaveLength(2);
-    expect(syncs.map((e) => e.stream === "sync" && e.event.sourceId)).toEqual([
+    expect(syncs.map((e) => e.stream === "sync" && e.event.source_id)).toEqual([
       PORTALS,
       PORTALS,
     ]);
@@ -226,7 +226,7 @@ describe("the attended family reaches Review at all (#2301)", () => {
 
     const sourceIds = getImportDocumentsFeed(p, 100)
       .filter((e) => e.stream === "sync")
-      .map((e) => (e.stream === "sync" ? e.event.sourceId : ""))
+      .map((e) => (e.stream === "sync" ? e.event.source_id : ""))
       .sort();
     expect(sourceIds).toEqual([TAKEOUT, PORTALS].sort());
   });

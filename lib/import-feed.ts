@@ -126,7 +126,7 @@ export function syncQuietEntry(runNewestFirst: FeedSyncEvent[]): FeedEntry {
     stream: "sync-quiet",
     at: latest.at,
     sortId: latest.id,
-    source_id: latest.source_id,
+    sourceId: latest.source_id,
     count: runNewestFirst.length,
     oldest: oldest.at,
     latest: latest.at,
@@ -344,9 +344,9 @@ export function feedItemView(
   }
   if (entry.stream === "sync-quiet") {
     return {
-      key: `sync-quiet:${entry.source_id}:${entry.sortId}`,
+      key: `sync-quiet:${entry.sourceId}:${entry.sortId}`,
       tone: "neutral",
-      title: sourceName(entry.source_id),
+      title: sourceName(entry.sourceId),
       href: null,
       detail:
         entry.count === 1

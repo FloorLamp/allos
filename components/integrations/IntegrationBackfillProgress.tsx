@@ -89,7 +89,7 @@ export default function IntegrationBackfillProgress({
             : `ETA ${formatBackfillTime(view.etaSeconds)}`;
         return (
           <div
-            key={`${job.sourceId}:${job.kind}`}
+            key={`${job.source_id}:${job.kind}`}
             className="rounded-lg border border-black/5 bg-slate-50/70 p-3 dark:border-white/5 dark:bg-white/3"
             data-testid={`backfill-job-${job.kind}`}
           >

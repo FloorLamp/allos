@@ -57,8 +57,8 @@ describe("failing-provider detection is per-provider (issue #304)", () => {
   it("the buried strava failure IS outside a naive 100-newest global window", () => {
     // Reproduce the OLD detector's feed to show the failure genuinely fell off it.
     const naiveWindow = db
+      // #2487 boundary: the column is still named `provider`.
       .prepare(
-        // #2487 boundary: the column is still named `provider`.
         `SELECT provider AS source_id, ok FROM integration_sync_events
           WHERE profile_id = ?
           ORDER BY at DESC, id DESC

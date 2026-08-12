@@ -10,6 +10,26 @@ guide is [`integrations.md`](../integrations.md).
 
 ---
 
+## Vocabulary: `sourceId` in TypeScript, `provider` in SQL (#2487)
+
+`Provider` and `provider_id` are reserved for **healthcare** clinicians and
+organizations (the `providers` table). A connected integration — Strava, Oura,
+Health Connect and friends — is a **source**, named `sourceId` in every
+TypeScript parameter, field, and query API, matching the user-facing "Connected
+sources" wording.
+
+The **persisted columns still say `provider`** on `integration_connections`,
+`integration_sync_events`, `integration_backfill_jobs` and `stream_frontiers`.
+That rename is deliberately deferred to its own forward migration, so phase 1
+leaves a named boundary rather than a hidden one: reads select
+`provider AS source_id` explicitly, writes bind the TS value into the old
+column, and every such statement carries a short `#2487 boundary` comment. Row
+shapes therefore expose `source_id` (snake case, mirroring the aliased result
+column); everything else — parameters, locals, derived types — uses `sourceId`.
+There is no wrapper type and no adapter layer; the alias is the mapping.
+
+---
+
 **Integrations** (`lib/integrations/`) are declarative: `registry.ts` lists
 Health Connect, Strava, Oura, Withings, Fitbit Takeout, Weather & UV, and the
 outbound `calendar-feed` as available; Garmin is planned. Health Connect is

@@ -16,7 +16,7 @@ import {
 function sync(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
   return {
     id: 1,
-    sourceId: "health-connect",
+    source_id: "health-connect",
     at: "2026-07-08 07:00:00",
     ok: 1,
     window_start: "2026-07-06",
@@ -151,7 +151,7 @@ describe("feedItemView — sync", () => {
       syncEntry(
         sync({
           ok: 0,
-          sourceId: "fitbit-takeout",
+          source_id: "fitbit-takeout",
           inserted: 3,
           updated: 1,
           unchanged: 0,
@@ -365,12 +365,12 @@ describe("collapseQuietSyncs", () => {
     expect(firstQuiet.count).toBe(2);
   });
 
-  it("collapses each provider's own run independently even when interleaved", () => {
+  it("collapses each source's own run independently even when interleaved", () => {
     const entries = collapseQuietSyncs([
-      quiet({ id: 4, sourceId: "strava", at: "2026-07-08 11:00:00" }),
-      quiet({ id: 3, sourceId: "health-connect", at: "2026-07-08 10:30:00" }),
-      quiet({ id: 2, sourceId: "strava", at: "2026-07-08 10:00:00" }),
-      quiet({ id: 1, sourceId: "health-connect", at: "2026-07-08 09:30:00" }),
+      quiet({ id: 4, source_id: "strava", at: "2026-07-08 11:00:00" }),
+      quiet({ id: 3, source_id: "health-connect", at: "2026-07-08 10:30:00" }),
+      quiet({ id: 2, source_id: "strava", at: "2026-07-08 10:00:00" }),
+      quiet({ id: 1, source_id: "health-connect", at: "2026-07-08 09:30:00" }),
     ]);
     // One quiet summary per source (each run is that source's own two no-ops),
     // not four rows and not one merged row.

@@ -204,8 +204,8 @@ export function getLatestSyncEventPerSource(
   // O(N) with a per-row subquery. Output is byte-identical: the latest event per
   // source, ordered newest-first overall.
   const sourceIds = db
+    // #2487 boundary: the column is still named `provider`; TS calls it a source id.
     .prepare(
-      // #2487 boundary: the column is still named `source`; TS calls it a source id.
       `SELECT DISTINCT provider AS source_id FROM integration_sync_events
         WHERE profile_id = ?`
     )

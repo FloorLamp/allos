@@ -148,8 +148,8 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
   // that source) has ever arrived before — and asking twice would be two answers to
   // one question over a table that is only ever appended to.
   const rows = db
+    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     .prepare(
-      // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
       `SELECT e.provider AS source_id,
               r.target_table AS target_table,
               s.metric AS metric,
@@ -200,14 +200,14 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
   const bySource = new Map<string, string[]>();
   for (const r of rows) {
     if (r.n_new === 0) continue;
-    const def = getIntegration(r.sourceId as IntegrationId);
+    const def = getIntegration(r.source_id as IntegrationId);
     // An UNREGISTERED source id has no kind to ask about, so it keeps the default
     // record dialect (#2301 typed the vocabulary function, which is what stopped an
     // empty-string kind being silently accepted here).
     if (def && syncVocabularyForKind(def.kind) === "forecast") continue;
-    const kinds = bySource.get(r.sourceId) ?? [];
+    const kinds = bySource.get(r.source_id) ?? [];
     kinds.push(arrivalKind(r.target_table, r.metric));
-    bySource.set(r.sourceId, kinds);
+    bySource.set(r.source_id, kinds);
   }
 
   const out: RecentChange[] = [];

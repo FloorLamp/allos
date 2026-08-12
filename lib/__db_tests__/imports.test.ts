@@ -453,7 +453,7 @@ describe("getDocumentProduced", () => {
       stream: "sync",
       event: {
         id: eventA,
-        provider: "fitbit-takeout",
+        source_id: "fitbit-takeout",
         inserted: 3,
         unchanged: 2,
       },
