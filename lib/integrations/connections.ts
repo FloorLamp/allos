@@ -24,8 +24,8 @@ import type { ProvenanceEntry } from "./sync-log";
 
 // THE #2487 BOUNDARY, stated once for this module: TypeScript names an integration
 // source `sourceId`, and every SQL statement below binds it against a column still
-// named `source` — the persisted rename is deferred to its own forward migration
-// (see docs/internals/integrations-sync.md). Reads alias `source AS source_id` so
+// named `provider` — the persisted rename is deferred to its own forward migration
+// (see docs/internals/integrations-sync.md). Reads alias `provider AS source_id` so
 // the row shape carries the TS noun; writes bind the TS value into the old column.
 export function getConnection(
   profileId: number,
