@@ -272,11 +272,23 @@ export function getSleepConsistency(
 // The per-night MAIN-sleep stage composition over time (stacked-area input) — the
 // SAME getSleepStageDailyTotals read the hero uses. Timestamp attribution keeps a
 // same-wake-day nap out, so each stage stack describes the overnight duration point.
+//
+// `limitDays` reaches the READ (#2520). It used to be a `.slice(-limitDays)` over the
+// underlying function's OWN 180-day default, so the digest's 14-night ask computed
+// half a year of stage attribution to read one night. Every caller wants a recent
+// window (the /sleep chart's 90, the sleep↔mood pairing's 60, the digest's 14) and
+// none of them aggregates over anything its window excludes, so narrowing the scan
+// changes cost, not answers.
+//
+// Not a single-date accessor for the digest, deliberately: the newest stage day is
+// not necessarily the newest MAIN night (a nap-only day carries stage rows too), so a
+// one-day read could answer "no stages" for a night that has them. The window read is
+// what makes the wake-day lookup safe.
 export function getSleepStageComposition(
   profileId: number,
   limitDays = 42
 ): { date: string; deep: number; rem: number; light: number; awake: number }[] {
-  return getSleepStageDailyTotals(profileId).slice(-limitDays);
+  return getSleepStageDailyTotals(profileId, limitDays);
 }
 
 export const NAP_HISTORY_DAYS = 60;
@@ -715,13 +727,13 @@ export function getSleepWaitingState(
     wakeMinutes: typicalWakeTime(profileId),
     tracking,
     arrivalLagMin: getSleepArrivalLagMinutes(profileId),
-    providerHealthy: attention.length === 0,
+    sourceHealthy: attention.length === 0,
     lastCheckedAt: latestSleepSyncAt(profileId),
   });
 }
 
-// The most recent sync ATTEMPT of whichever provider last wrote this profile's
-// sleep — "last checked 6:33 AM". Reuses the grid's own per-provider event read
+// The most recent sync ATTEMPT of whichever source last wrote this profile's
+// sleep — "last checked 6:33 AM". Reuses the grid's own per-source event read
 // rather than introducing a second notion of when a source was last contacted.
 export function latestSleepSyncAt(profileId: number): string | null {
   const row = db

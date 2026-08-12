@@ -1,4 +1,4 @@
-import type { StatusTone } from "@/lib/integrations/provider-state";
+import type { StatusTone } from "@/lib/integrations/source-state";
 
 // The ONE tint map for integration status/outcome tones (#1772). Before this, the
 // same three states wore different colours on the grid card, the setup-page status

@@ -8,7 +8,7 @@
 // to correct it when the contract is false because the tap was late.
 //
 // This module is the correction half, and it is deliberately DOMAIN-BLIND: food
-// servings (`food_log_events.eaten_at`, #2019) and dose administrations
+// servings (`food_log_events.occurred_at`, #2019) and dose administrations
 // (`intake_item_logs.recorded_at`, #2020) are the same shape — an immutable audit stamp
 // for WHEN THE TAP LANDED, and a separate, correctable instant for WHEN IT HAPPENED.
 // One model, one chip vocabulary, one picker, so the two chats cannot drift.
@@ -43,7 +43,7 @@
 // go further" is the mental model a visibly-moving value creates, and a second `−1h` that
 // silently landed on the same instant was the worst possible answer to it.
 //
-// So repeat taps COMPOSE, and doing so costs no new state: the stored `eaten_at` /
+// So repeat taps COMPOSE, and doing so costs no new state: the stored `occurred_at` /
 // `recorded_at` IS ledger state, the same ledger the row set is already a query over. Two
 // taps of `−1h` mean two hours back; the re-render after each is what makes the step
 // visible; a rebuild, a pointer rotation or a restart changes nothing.
@@ -134,12 +134,14 @@ export interface TapEvent {
   // handler re-derives the burst from the ledger at tap time — so a token stays valid
   // across a rebuild, a rotation, and a restart, and carries no state of its own.
   id: number;
-  // The IMMUTABLE audit stamp: when the tap landed (`logged_at` / `taken_at`). Burst
+  // The IMMUTABLE audit stamp: when the tap landed — `food_log_events.recorded_at` for a
+  // serving, `intake_item_logs.taken_at` for a dose. Burst
   // identity and FRESHNESS are computed from this and never from the corrected instant —
   // a correction is not a tap, so a multi-tap correction session must not extend its own
   // hour (#2206).
   tapAt: string;
-  // The instant the ledger CURRENTLY holds for this row (`eaten_at` / `recorded_at`), or
+  // The instant the ledger CURRENTLY holds for this row — `food_log_events.occurred_at`
+  // for a serving, `intake_item_logs.recorded_at` for a dose — or
   // null when it holds none. This is what a chip counts back from and what the row's
   // header states, so both the label and the write read one value (#2206). Ledger state,
   // not a memory of some earlier message — the row set was already a query over exactly

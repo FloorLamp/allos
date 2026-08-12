@@ -130,7 +130,7 @@ export async function POST(req: Request) {
 
     const result = importTakeoutArchive(profile.id, staged);
     // An archive kind has nothing to authenticate, but recording the connection
-    // gives the Integrations page a "last import" to show and puts this provider in
+    // gives the Integrations page a "last import" to show and puts this source in
     // the same status vocabulary as the rest.
     upsertConnection(profile.id, FITBIT_TAKEOUT_ID, { status: "connected" });
     return Response.json({ ok: true, ...result });

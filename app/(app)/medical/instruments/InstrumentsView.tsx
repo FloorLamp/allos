@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   INSTRUMENTS,
-  INSTRUMENT_OPTIONS,
   instrumentDef,
+  instrumentItemOptions,
   severityBand,
   type Instrument,
 } from "@/lib/mental-health";
@@ -165,8 +165,7 @@ export default function InstrumentsView({
         {mode === "administer" ? (
           <>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Over the last 2 weeks, how often have you been bothered by the
-              following?
+              {def.prompt}
             </p>
             {def.items.map((item, i) => (
               <fieldset
@@ -178,7 +177,7 @@ export default function InstrumentsView({
                   {i + 1}. {item}
                 </legend>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {INSTRUMENT_OPTIONS.map((opt) => {
+                  {instrumentItemOptions(instrument, i).map((opt) => {
                     const selected = answers[i] === opt.value;
                     return (
                       <button

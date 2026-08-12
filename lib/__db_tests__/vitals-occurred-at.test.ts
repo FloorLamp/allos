@@ -87,7 +87,7 @@ describe("the manual vitals core (insertVitals)", () => {
         { systolic: "118", diastolic: "76" },
         // Millisecond ISO in — the shape a client's toISOString() posts.
         "2026-03-02T07:12:00.000Z"
-      )
+      ).wrote
     ).toBe(true);
     for (const canonical of [
       "Blood Pressure Systolic",
@@ -111,9 +111,9 @@ describe("the manual vitals core (insertVitals)", () => {
   });
 
   it("stores NULL for an untimed sitting, which reads back day-grain", () => {
-    expect(insertVitals(profileId, "2026-03-03", { spo2: "97" }, null)).toBe(
-      true
-    );
+    expect(
+      insertVitals(profileId, "2026-03-03", { spo2: "97" }, null).wrote
+    ).toBe(true);
     const rows = medRows("Oxygen Saturation", "2026-03-03");
     expect(rows).toHaveLength(1);
     // Honest absence — never a `${date}T00:00:00` anchor.
@@ -133,7 +133,9 @@ describe("the manual vitals core (insertVitals)", () => {
         { glucose: "94", glucoseUnit: "mg/dL" },
         "2026-03-05T01:30:00Z" // the NEXT UTC day — off the row's own day
       )
-    ).toBe(true);
+      // …and SAYS SO now (#2363): the reading lands, and the sitting's verdict
+      // rides back out instead of the boolean erasing it.
+    ).toEqual({ wrote: true, statedTimeRefused: "other-day" });
     const rows = medRows("Glucose", "2026-03-04");
     expect(rows).toHaveLength(1);
     expect(rows[0].occurred_at).toBeNull();
@@ -147,7 +149,7 @@ describe("the manual vitals core (insertVitals)", () => {
         "2026-03-05",
         { peakFlow: "410" },
         "2026-03-05T07:30:00Z"
-      )
+      ).wrote
     ).toBe(true);
     // metric_samples keeps its own convention: the instant's profile-local wall
     // clock on the row's own day, part of the natural key — a second blow at
@@ -165,7 +167,7 @@ describe("the manual vitals core (insertVitals)", () => {
         "2026-03-05",
         { peakFlow: "380" },
         "2026-03-05T20:10:00Z"
-      )
+      ).wrote
     ).toBe(true);
     expect(
       db
@@ -186,7 +188,7 @@ describe("the manual vitals core (insertVitals)", () => {
         temperature: "100.4",
         tempUnit: "F",
         temperatureTime: "19:40",
-      })
+      }).wrote
     ).toBe(true);
     const temp = medRows("Body Temperature", "2026-03-06");
     expect(temp).toHaveLength(1);

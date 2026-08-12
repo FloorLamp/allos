@@ -41,8 +41,10 @@ import {
 
 // The bar reconciles its optimistic chip to the server's authoritative severity (the
 // FoodLogBar #748-item-2 pattern), so a dropped write can't leave a phantom chip.
+// `undoId` is present only on the REMOVE path (#2124) and is null when nothing was
+// deleted, so the bar offers Undo exactly when there is a capture to restore.
 export type SymptomLogResult =
-  | { ok: true; symptom: string; severity: number }
+  | { ok: true; symptom: string; severity: number; undoId?: number | null }
   | { ok: false; error: string };
 
 function parseDate(formData: FormData, profileId: number): string {
@@ -188,7 +190,14 @@ export async function removeSymptom(
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't find that symptom." };
   revalidateSymptoms();
-  return { ok: true, symptom: outcome.symptom, severity: 0 };
+  // The undo token (#2124) rides back on the very tap that removed the day, so the ×
+  // can offer Undo in place. Null when there was nothing logged to remove.
+  return {
+    ok: true,
+    symptom: outcome.symptom,
+    severity: 0,
+    undoId: outcome.undoId,
+  };
 }
 
 // Attach a logged symptom-day to an illness episode, or detach it (#1093). A symptom
@@ -242,10 +251,12 @@ export async function renameCustomSymptom(
   return formOk();
 }
 
-// Delete a custom symptom entirely (#203 hygiene).
+// Delete a custom symptom entirely (#203 hygiene). Every removed day is captured, so the
+// result carries the #202 token BATCH — one Undo restores the whole custom symptom's
+// history, its photo rows and their files included.
 export async function deleteCustomSymptom(
   formData: FormData
-): Promise<FormResult> {
+): Promise<FormResult & { undoIds?: number[] }> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("symptom") ?? "");
   const outcome = deleteCustomSymptomCore(profile.id, name);
@@ -254,7 +265,7 @@ export async function deleteCustomSymptom(
   if (outcome.kind === "not-custom")
     return formError("Only your own custom symptoms can be deleted.");
   revalidateSymptoms();
-  return formOk();
+  return { ...formOk(), undoIds: outcome.undoIds ?? [] };
 }
 
 // Quick body-temperature log from the illness symptom card (issue #800). The bar posts

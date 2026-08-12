@@ -13,7 +13,9 @@ import { fileURLToPath } from "node:url";
 // (#133), and each upsert bumped the insert/update/unchanged split by hand.
 //
 //   1. edit-lock (#133)  — the keyed upserts consult the `edited` lock ONLY through
-//                          isEditLocked (lib/integrations/sync-log.ts).
+//                          isEditLocked (lib/integrations/sync-log.ts); the lock is
+//                          REACHABLE for every import-derived row and SURVIVES a
+//                          document reprocess (#2364).
 //   2. source-dedup (#14) — the insert/update/unchanged split is bumped ONLY by
 //                          tallyUpsert (lib/integrations/sync-log.ts); no upsert
 //                          increments those three UpsertCounts segments by hand.
@@ -119,6 +121,89 @@ describe("observation-substrate helpers boundary (issue #944)", () => {
         "\n"
       )}`
     ).toEqual([]);
+  });
+
+  // ---- 1b. the lock must be REACHABLE (#2364) ------------------------------
+  //
+  // Consulting the lock correctly is worth nothing if the lock can never be SET.
+  // `updateReadingAt`'s medical_records branch armed it with
+  // `CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END` — which asks WHICH
+  // IMPORT PATH produced the row, not whether a human changed a value this app
+  // derived. `external_id` is NULL for every AI-extracted row by construction
+  // (`extractionToPersistInput` sets it so, measured 309 of 309 on a real database),
+  // so on the majority of readings in the app the lock was not merely unset, it was
+  // unsettable — and the writers on this one table disagreed about it
+  // (`lib/unit-mislabel-correction.ts` always set it), so which you got depended on
+  // which field you happened to correct.
+  //
+  // Scoped to `medical_records` deliberately. On a table an import reaches ONLY
+  // through `external_id` — `practice_logs`, which has no `document_id` — that
+  // condition IS the right question and stays. medical_records is the table where it
+  // is the wrong one, because a document import is the dominant writer there and
+  // mints no external_id at all on the AI path.
+  it("no medical_records writer gates the edit lock on external_id", () => {
+    const offenders: string[] = [];
+    // Each `UPDATE medical_records …` statement, up to the end of its template
+    // literal — so a lock condition is attributed to the table it actually writes.
+    const statements = /UPDATE medical_records[\s\S]*?`/g;
+    for (const { rel, text } of sourceFiles()) {
+      // Migrations are frozen history and may legitimately describe the old shape.
+      if (rel.startsWith("lib/migrations/")) continue;
+      for (const stmt of text.match(statements) ?? []) {
+        if (/edited\s*=\s*CASE\s+WHEN\s+external_id/i.test(stmt)) {
+          offenders.push(rel);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `The #133 lock answers "did a human change a value this app derived", not ` +
+        `"which import path produced this row" — and external_id is NULL for every ` +
+        `AI-extracted reading, which makes such a lock unsettable (issue #2364):\n${offenders.join(
+          "\n"
+        )}`
+    ).toEqual([]);
+  });
+
+  // ---- 1c. the lock must SURVIVE a reprocess (#2364) -----------------------
+  //
+  // The other half, and the one that actually bit: `IMPORT_FOOTPRINT_TABLES` makes a
+  // reprocess a DELETE-and-reinsert, so even a correctly locked row was deleted by a
+  // re-extraction, a re-import from the saved raw (#903), or a reprocess-all —
+  // silently, with no diff saying corrections would be lost. The footprint's
+  // delete-set is load-bearing and must not grow per-table exceptions, so the
+  // correction is captured before the clear and re-applied after the insert (the
+  // `reapplyVisitLinkDecisions` shape). ORDER is the whole contract: capture before
+  // the clear or there is nothing to read; re-apply after the insert or there is
+  // nothing to write onto.
+  it("the persist core captures corrections before the clear and re-applies them after the insert", () => {
+    const src = stripCommentsAndStrings(read("lib/import-persist.ts"));
+    const at = (needle: string) => src.indexOf(needle);
+    const capture = at("captureDocumentCorrections(");
+    const clear = at("clearImportedDocumentRows(profileId, docId)");
+    const insert = at("insertImportRows(");
+    const reapply = at("reapplyDocumentCorrections(");
+    for (const [name, idx] of [
+      ["captureDocumentCorrections", capture],
+      ["clearImportedDocumentRows", clear],
+      ["insertImportRows", insert],
+      ["reapplyDocumentCorrections", reapply],
+    ] as const) {
+      expect(
+        idx,
+        `${name} must be called by lib/import-persist.ts (#2364)`
+      ).toBeGreaterThan(-1);
+    }
+    expect(
+      capture,
+      "corrections must be CAPTURED before clearImportedDocumentRows — after it " +
+        "there is nothing left to read (#2364)"
+    ).toBeLessThan(clear);
+    expect(
+      reapply,
+      "corrections must be RE-APPLIED after insertImportRows — before it there is " +
+        "nothing to write them onto (#2364)"
+    ).toBeGreaterThan(insert);
   });
 
   // ---- 2. source-dedup (#14) ----------------------------------------------

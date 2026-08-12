@@ -1,10 +1,10 @@
 // PURE TIER — the silence-tolerance derivation (#1685b, unified in #2263) and the
-// per-provider tolerances it reads from the registry.
+// per-source tolerances it reads from the registry.
 //
-// This is the ONE rule that decides whether a connected provider is broken: no
+// This is the ONE rule that decides whether a connected source is broken: no
 // successful run inside its tolerance. It replaced two rules at two incompatible
-// grains — a consecutive-failed-RUN count that for an hourly provider sat below that
-// provider's own p90 gap between successes, and a whole-DAY threshold that could see
+// grains — a consecutive-failed-RUN count that for an hourly source sat below that
+// source's own p90 gap between successes, and a whole-DAY threshold that could see
 // silence only at day resolution. The cases below are the ones that keep the unified
 // rule honest: it must fire on a connection that stopped, and must NOT fire on one
 // that is merely flapping, exempt, or already reported by the reauth signal.
@@ -30,14 +30,14 @@ const NOW = "2026-07-30T12:00:00Z";
 const HOUR = 60;
 const DAY = 24 * HOUR;
 
-// A connected provider with a 3-day tolerance whose last success was `minutes` ago.
+// A connected source with a 3-day tolerance whose last success was `minutes` ago.
 function fresh(
   minutes: number,
   over: Partial<SyncFreshness> = {}
 ): SyncFreshness {
   const at = new Date(Date.parse(NOW) - minutes * 60_000);
   return {
-    provider: "strava",
+    sourceId: "strava",
     lastSuccessAt: `${at.toISOString().slice(0, 19)}Z`,
     toleranceMinutes: 3 * DAY,
     alreadyFailing: false,
@@ -53,7 +53,7 @@ describe("silenceToleranceMinutes", () => {
   });
 
   it("derives an UNDECLARED tolerance from the provider's own poll cadence", () => {
-    // Weather is the one provider that takes the default, which is why the default
+    // Weather is the one source that takes the default, which is why the default
     // is 12 polls: 12 × its declared 60-minute cadence = 12 hours. That clears its
     // measured p90 success→success gap (6 h) with headroom and still reports a real
     // outage inside half a day.
@@ -126,7 +126,7 @@ describe("isSyncStale", () => {
   // THE #2263 case, at MINUTE grain — the resolution the old day-grained rule could
   // not express, and the reason weather read "Sync failing" for 29% of hours.
   it("resolves a SUB-DAY tolerance, which the day-grained rule could not", () => {
-    const weather = { provider: "weather", toleranceMinutes: 12 * HOUR };
+    const weather = { sourceId: "weather", toleranceMinutes: 12 * HOUR };
     expect(isSyncStale(fresh(2 * HOUR, weather), NOW)).toBe(false);
     expect(isSyncStale(fresh(6 * HOUR, weather), NOW)).toBe(false);
     expect(isSyncStale(fresh(12 * HOUR, weather), NOW)).toBe(false);
@@ -137,7 +137,7 @@ describe("isSyncStale", () => {
     expect(
       isSyncStale(
         fresh(400 * DAY, {
-          provider: "fitbit-takeout",
+          sourceId: "fitbit-takeout",
           toleranceMinutes: null,
         }),
         NOW
@@ -165,11 +165,11 @@ describe("isSyncStale", () => {
   });
 
   it("uses a per-provider tolerance, so the same gap decides differently", () => {
-    // Thirteen hours of silence: fine for a 3-day provider, broken for the 12-hour one.
+    // Thirteen hours of silence: fine for a 3-day source, broken for the 12-hour one.
     expect(isSyncStale(fresh(13 * HOUR), NOW)).toBe(false);
     expect(
       isSyncStale(
-        fresh(13 * HOUR, { provider: "weather", toleranceMinutes: 12 * HOUR }),
+        fresh(13 * HOUR, { sourceId: "weather", toleranceMinutes: 12 * HOUR }),
         NOW
       )
     ).toBe(true);
@@ -189,16 +189,16 @@ describe("staleSyncs", () => {
     const out = staleSyncs(
       [
         fresh(1 * DAY), // healthy
-        fresh(10 * DAY, { provider: "oura" }), // quiet
+        fresh(10 * DAY, { sourceId: "oura" }), // quiet
         fresh(99 * DAY, {
-          provider: "fitbit-takeout",
+          sourceId: "fitbit-takeout",
           toleranceMinutes: null,
         }), // exempt
-        fresh(99 * DAY, { provider: "withings", alreadyFailing: true }), // reauth wins
+        fresh(99 * DAY, { sourceId: "withings", alreadyFailing: true }), // reauth wins
       ],
       NOW
     );
-    expect(out.map((s) => s.provider)).toEqual(["oura"]);
+    expect(out.map((s) => s.sourceId)).toEqual(["oura"]);
     expect(out[0]).toMatchObject({
       since: "2026-07-20",
       // The INSTANT, not the date: the synthetic issue row stamps `at`/`created_at`
@@ -210,7 +210,7 @@ describe("staleSyncs", () => {
 
   it("is empty for a healthy set — a working setup produces no signal at all", () => {
     expect(
-      staleSyncs([fresh(0), fresh(1 * DAY, { provider: "oura" })], NOW)
+      staleSyncs([fresh(0), fresh(1 * DAY, { sourceId: "oura" })], NOW)
     ).toEqual([]);
   });
 });
@@ -218,7 +218,7 @@ describe("staleSyncs", () => {
 describe("copy", () => {
   it("states the observation and asks the user to CHECK, never to reconnect", () => {
     const detail = staleSyncDetail("Withings", {
-      provider: "withings",
+      sourceId: "withings",
       since: "2026-07-12",
       sinceAt: "2026-07-12T04:00:00Z",
       minutes: 18 * DAY,
@@ -236,7 +236,7 @@ describe("copy", () => {
   it("names a sub-day silence in HOURS and a longer one in days", () => {
     const at = (minutes: number) =>
       staleSyncDetail("Weather & UV", {
-        provider: "weather",
+        sourceId: "weather",
         since: "2026-07-29",
         sinceAt: "2026-07-29T22:00:00Z",
         minutes,

@@ -82,7 +82,7 @@ function allCounters(profileId: number) {
 function ledgerRow(profileId: number, id: number) {
   return db
     .prepare(
-      `SELECT group_key, date, logged_at, meal_slot, eaten_at, time_source
+      `SELECT group_key, date, recorded_at, meal_slot, occurred_at, time_source
          FROM food_log_events
         WHERE id = ? AND profile_id = ?`
     )
@@ -90,9 +90,9 @@ function ledgerRow(profileId: number, id: number) {
     | {
         group_key: string;
         date: string;
-        logged_at: string;
+        recorded_at: string;
         meal_slot: string | null;
-        eaten_at: string | null;
+        occurred_at: string | null;
         time_source: string | null;
       }
     | undefined;
@@ -172,7 +172,7 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
     });
   });
 
-  it("keeps logged_at as the audit instant across a slot correction", () => {
+  it("keeps recorded_at as the audit instant across a slot correction", () => {
     const { profileId, anchor } = makeProfile("food-correct-audit-instant");
     const tapped = `${anchor}T08:15:00Z`;
     logFoodServingCore(profileId, "berries", anchor, tapped, "Morning");
@@ -182,12 +182,12 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
 
     // The WINDOW is the corrected grain; the tap instant is history and stays put.
     expect(ledgerRow(profileId, eventId)).toMatchObject({
-      logged_at: tapped,
+      recorded_at: tapped,
       meal_slot: "Evening",
     });
   });
 
-  it("leaves a legacy NULL meal_slot deriving from logged_at when only the group moves", () => {
+  it("leaves a legacy NULL meal_slot deriving from recorded_at when only the group moves", () => {
     const { profileId, anchor } = makeProfile("food-correct-legacy-null");
     // A pre-#1704 tap: no explicit window, so its slot derives from the instant.
     logFoodServingCore(profileId, "berries", anchor, `${anchor}T08:00:00Z`);
@@ -362,9 +362,9 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     expect(ledgerRow(profileId, eventId)).toEqual({
       group_key: "berries",
       date: yesterday,
-      logged_at: tapped,
+      recorded_at: tapped,
       meal_slot: "Morning",
-      eaten_at: `${yesterday}T09:30:00Z`,
+      occurred_at: `${yesterday}T09:30:00Z`,
       time_source: "stated",
     });
     // Constraint 4: a time-only patch performs neither unbump nor bump — the whole
@@ -392,7 +392,7 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     updateFoodLogEventCore(profileId, eventId, { mealSlot: "Evening" });
     expect(ledgerRow(profileId, eventId)).toMatchObject({
       meal_slot: "Evening",
-      eaten_at: `${yesterday}T09:30:00Z`,
+      occurred_at: `${yesterday}T09:30:00Z`,
       time_source: "stated",
     });
 
@@ -402,7 +402,7 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     });
     expect(outcome.kind).toBe("updated");
     expect(ledgerRow(profileId, eventId)).toMatchObject({
-      eaten_at: null,
+      occurred_at: null,
       time_source: null,
     });
   });
@@ -434,8 +434,8 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     // Both refusals wrote NOTHING — row and counter alike.
     expect(ledgerRow(profileId, eventId)).toMatchObject({
       date: yesterday,
-      logged_at: tapped,
-      eaten_at: null,
+      recorded_at: tapped,
+      occurred_at: null,
       time_source: null,
     });
     expect(allCounters(profileId)).toEqual([
@@ -449,7 +449,7 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
     expect(moved.kind).toBe("updated");
     expect(ledgerRow(profileId, eventId)).toMatchObject({
       date: twoDaysAgo,
-      eaten_at: `${twoDaysAgo}T19:00:00Z`,
+      occurred_at: `${twoDaysAgo}T19:00:00Z`,
       time_source: "stated",
     });
     expect(allCounters(profileId)).toEqual([
@@ -488,7 +488,7 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
 
   it("moves the ranking: a dinner tapped at 23:40 corrected to 19:00 ranks as a dinner (#2019/#2227)", () => {
     // THE regression the issue is about, end to end: the Evening ranking weights each
-    // serving by proximity between the minute it was EATEN (eaten_at ?? logged_at) and
+    // serving by proximity between the minute it was EATEN (occurred_at ?? recorded_at) and
     // the window's anchor. Before the correction the 23:40 tap minute is outside the
     // Evening proximity span entirely (as it is outside Morning's — in the pre-#2019
     // bucket world it TAUGHT the morning nudge), so the control group with a real

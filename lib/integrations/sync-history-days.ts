@@ -1,12 +1,12 @@
 import { dateStrInTz, parseUtcSql } from "../date";
 import { isTruncatedSyncEvent } from "./sync-details";
-import { pluralRunNoun } from "./provider-state";
+import { pluralRunNoun } from "./source-state";
 import type {
   StatusTone,
   SyncEventFacts,
   SyncRunNoun,
   SyncVocabulary,
-} from "./provider-state";
+} from "./source-state";
 
 // Sync history, GROUPED BY DAY (#1991).
 //
@@ -25,7 +25,7 @@ import type {
 // This is #137's no-op collapsing generalized from *nothing happened* to *nothing
 // notable happened*, and it is frequency-agnostic: Health Connect collapses
 // dramatically, an hourly source turns 24 rows into a line plus its anomalies, and a
-// once-a-week import renders one line per import either way. No per-provider variants.
+// once-a-week import renders one line per import either way. No per-source variants.
 //
 // PURE — no DB, no React. The caller supplies the profile's time zone, because a
 // "day" is the reader's day, not UTC's.
@@ -95,7 +95,7 @@ function num(v: number | null | undefined): number {
   return v ?? 0;
 }
 
-// Fold a provider's events (NEWEST-FIRST, as the queries return them) into per-day
+// Fold a source's events (NEWEST-FIRST, as the queries return them) into per-day
 // summaries with their itemized entries.
 export function groupSyncDays<T extends SyncEventFacts>(
   eventsNewestFirst: readonly T[],
@@ -197,7 +197,7 @@ function runCount(n: number, noun: SyncRunNoun): string {
 
 // A day's one line: "26 pushes · 340 new · 12 changed". Zero terms are dropped —
 // a day that wrote nothing says so once instead of printing two zeros — and a cache
-// provider speaks the forecast dialect, where the only interesting figure is how much
+// source speaks the forecast dialect, where the only interesting figure is how much
 // of the republished window this day REVISED.
 export function syncDayLabel(
   day: { runs: number; inserted: number; updated: number },
@@ -292,7 +292,7 @@ export function drilldownCoverage(
   return {
     itemizable: capped,
     remainder: Math.max(written - capped, 0),
-    // Nothing to open is NOT an apologetic empty expander (#1771): a provider that
+    // Nothing to open is NOT an apologetic empty expander (#1771): a source that
     // writes cells of a global forecast cache names no user record, and gets no
     // drill-in at all.
     offer: capped > 0,

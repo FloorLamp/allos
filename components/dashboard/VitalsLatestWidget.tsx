@@ -13,7 +13,7 @@ import {
   type VitalsLatestModel,
 } from "@/lib/vitals-latest";
 import type { FreshnessState } from "@/lib/freshness";
-import { formatRelativeDate } from "@/lib/format-date";
+import { glanceAgeToken } from "@/lib/glance-age";
 
 // The prepared model the page builds from the SAME series queries behind Trends →
 // Vitals (getBiomarkerSeries for BP, getBodyMetricDailySeries for resting HR), reduced
@@ -49,9 +49,13 @@ function DirArrow({
 // and states its AGE here instead of a raw ISO date — "2022-03-08" does not read as
 // "four years ago" at a glance, which is how half this card came to look like a
 // snapshot of "my vitals now" (#2303). Amber plus an explaining `title`, the same
-// treatment #1216 established on Recent labs, so the two glance cards speak one visual
-// language for one meaning. `not-applicable` (no knowable age) states the date plainly
-// and claims nothing either way.
+// treatment #1216 established on Recent labs.
+//
+// Since #2332 that is not a resemblance maintained by hand: both cards read the ONE
+// glance-age decision (lib/glance-age), and this line declares only what is its own —
+// the LONG form, which a full-width prose line can hold, and the interval its floor
+// names. `not-applicable` (no knowable age) states the date plainly and claims nothing
+// either way.
 function ProvenanceLine({
   label,
   quantity,
@@ -67,23 +71,23 @@ function ProvenanceLine({
   today: string;
   testId: string;
 }) {
-  const stale = freshness === "due";
+  const age = glanceAgeToken({
+    date,
+    today,
+    freshness,
+    form: "long",
+    floorLabel: VITAL_PRESENTATION_FLOORS[quantity].label,
+  });
   return (
     <div className="text-xs text-slate-500 dark:text-slate-400">
       {label} ·{" "}
       <span
         data-testid={testId}
-        data-stale={stale ? "true" : undefined}
-        title={
-          stale
-            ? `Older than ${VITAL_PRESENTATION_FLOORS[quantity].label} — still your latest reading, but not a current one`
-            : undefined
-        }
-        className={
-          stale ? "font-medium text-amber-600 dark:text-amber-400" : undefined
-        }
+        data-stale={age.stale ? "true" : undefined}
+        title={age.title ?? undefined}
+        className={age.stale ? age.className : undefined}
       >
-        {stale ? formatRelativeDate(date, today) : date}
+        {age.text}
       </span>
     </div>
   );

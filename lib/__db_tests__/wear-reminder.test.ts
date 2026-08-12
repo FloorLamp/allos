@@ -220,8 +220,8 @@ describe("bedtime wear reminder (#2161)", () => {
     // rule. "Still on the charger?" would be false advice with the pipeline down, and
     // #1685's one-row rule forbids two contacts for one fault.
     //
-    // The credential dying (#326) is what escalates a provider that is still pushing:
-    // since #2263 the OTHER escalation is a silence tolerance, and a provider whose
+    // The credential dying (#326) is what escalates a source that is still pushing:
+    // since #2263 the OTHER escalation is a silence tolerance, and a source whose
     // pushes are landing has no silence to measure.
     db.prepare(
       `UPDATE integration_connections SET status = 'needs_reauth'
@@ -362,7 +362,7 @@ describe("bedtime wear reminder (#2161)", () => {
 // ── The frontier discriminator, end to end (#2341) ───────────────────────────
 //
 // The two nights the old predicate could not tell apart, against the real stores. They
-// run the SAME pipeline at the SAME lag with the provider healthy throughout; the only
+// run the SAME pipeline at the SAME lag with the source healthy throughout; the only
 // difference is whether the watch kept producing. The first of them is the night this
 // send went out wrongly, and this fixture fails on the code that sent it.
 
@@ -455,7 +455,7 @@ describe("the frontier, not the clock (#2341)", () => {
   });
 
   it("keeps another provider's watermark out of this one's answer", () => {
-    // The watermark is keyed on (profile, provider, stream). The app's other
+    // The watermark is keyed on (profile, source, stream). The app's other
     // hr_minutes writer declares no continuous stream at all, so it can never write
     // one — but a row planted under its name must not be read as this stream's either.
     seedLostNightSignature();

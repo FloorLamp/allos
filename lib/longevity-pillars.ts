@@ -41,7 +41,7 @@ import {
   type FreshnessState,
   type FreshnessTally,
 } from "./freshness";
-import type { CanonicalBiomarker, MedicalFlag, Sex } from "./types";
+import type { CanonicalResultDefinition, MedicalFlag, Sex } from "./types";
 
 // ── Optimal-range hit rate ("31 of 38 markers optimal") ──────────────────────
 
@@ -94,7 +94,7 @@ export interface OptimalHitRate {
 export interface BiomarkerReading {
   value_num: number | null;
   unit: string | null;
-  cb: CanonicalBiomarker | null | undefined;
+  cb: CanonicalResultDefinition | null | undefined;
   // The reading's effective date + the retest-clock inputs (#2023), so the pillar can
   // state how current its ratio is. All OPTIONAL: absent ⇒ the retest status is
   // "not-applicable" and the pillar reports unknown freshness rather than inventing

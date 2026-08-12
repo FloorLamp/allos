@@ -29,6 +29,10 @@ const PERSIST_FILE = "lib/import-persist.ts";
 // not a per-row document artifact) and must NOT be added to IMPORT_FOOTPRINT_TABLES.
 const ALLOW_INSERT: { table: string; why: string }[] = [
   {
+    table: "instrument_responses",
+    why: "child of medical_records (FK medical_record_id → medical_records(id) ON DELETE CASCADE): the per-item answers behind a folded screening-instrument SCORE (#2321) follow their parent score row, which IS the footprint entry (medical_records), so they are cleared/counted transitively via the parent. A reassign moves the parent's profile_id, which the child does NOT inherit, so moveImportedDocumentRows carries them explicitly",
+  },
+  {
     table: "intake_item_doses",
     why: "child of intake_items (FK item_id → intake_items(id) ON DELETE CASCADE): a dose row follows its parent extracted-medication row, which IS the footprint entry (intake_items, source='extracted'), so it is cleared/moved/counted transitively via the parent — not a footprint row of its own",
   },

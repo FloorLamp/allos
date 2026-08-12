@@ -14,7 +14,7 @@
 // Only mock-free specs run here. The config excludes every file containing
 // vi.mock(), because a shared registry cannot re-mock a module an earlier file
 // already evaluated.
-import { beforeAll } from "vitest";
+import { afterAll, beforeAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -68,3 +68,18 @@ beforeAll(async () => {
   await resetCarriedState();
   if (previousDir !== activeDir) discard(previousDir);
 });
+
+// The rolling discard above can only ever clean the PREVIOUS directory, so the
+// LAST one a worker seeds has no later `beforeAll` to drop it — it survives the
+// run. One stranded directory per worker per vitest invocation sounds mild; it is
+// not, because agents and watch loops invoke vitest constantly. Measured on a
+// long-lived container: 13,615 directories, ~15.5 GB, which is the whole writable
+// allowance (#2529). CI never noticed because its runners are ephemeral.
+//
+// The isolated tier (setup.ts) has always torn its directory down here and has
+// leaked nothing, which is the A/B that identified this. Same treatment, and the
+// same reasoning about safety: unlinking an open file is fine on Linux, and the
+// `beforeAll` above has already reopened the singleton onto the NEXT directory by
+// the time this file's turn ends. `discard` is force+recursive, so the next
+// `beforeAll` re-dropping an already-gone directory is a no-op.
+afterAll(() => discard(activeDir));

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { MedicalValue } from "@/components/ui";
-import { type RecentLabRow } from "@/lib/recent-labs";
-import { formatCompactAge } from "@/lib/format-date";
+import { RECENT_LAB_STALE_LABEL, type RecentLabRow } from "@/lib/recent-labs";
+import { glanceAgeToken } from "@/lib/glance-age";
 
 // One latest lab/biomarker reading, flattened for display by the page. The shape
 // and its selection policy live in lib/recent-labs (issue #313); re-exported here
@@ -29,9 +29,19 @@ export default function RecentLabsWidget({
       ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => {
-            // Only `due` earns the amber age label. `not-applicable` — an undatable
-            // reading — states its date plainly and claims nothing (#2303).
-            const stale = r.freshness === "due";
+            // The age token both glance cards share (#2332). This card's layout holds
+            // the COMPACT form — a `w-14` column takes "4y", not "4 years ago" — and
+            // that is the only thing it declares; when a reading earns the amber
+            // treatment, and what the hover sentence says, are the shared decision.
+            // Only `due` earns it: `not-applicable`, an undatable reading, states its
+            // age plainly and claims nothing (#2303).
+            const age = glanceAgeToken({
+              date: r.date,
+              today,
+              freshness: r.freshness,
+              form: "compact",
+              floorLabel: RECENT_LAB_STALE_LABEL,
+            });
             return (
               <li key={r.name} className="flex items-center gap-3">
                 <Link
@@ -57,19 +67,11 @@ export default function RecentLabsWidget({
                 </span>
                 <span
                   data-testid="recent-lab-date"
-                  data-stale={stale ? "true" : undefined}
-                  title={
-                    stale
-                      ? "Older than a year — not a recent result"
-                      : undefined
-                  }
-                  className={`w-12 shrink-0 whitespace-nowrap text-right text-xs sm:w-14 ${
-                    stale
-                      ? "font-medium text-amber-600 dark:text-amber-400"
-                      : "text-slate-500 dark:text-slate-400"
-                  }`}
+                  data-stale={age.stale ? "true" : undefined}
+                  title={age.title ?? undefined}
+                  className={`w-12 shrink-0 whitespace-nowrap text-right text-xs sm:w-14 ${age.className}`}
                 >
-                  {formatCompactAge(r.date, today)}
+                  {age.text}
                 </span>
               </li>
             );

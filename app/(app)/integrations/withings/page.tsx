@@ -53,7 +53,7 @@ export default async function WithingsPage(props: {
     ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;
 
-  // THE per-provider state (#1772): one computation behind this page, Review's
+  // THE per-source state (#1772): one computation behind this page, Review's
   // inbox, and the Integrations grid.
   const state = getIntegrationState(
     profile.id,
@@ -103,7 +103,7 @@ export default async function WithingsPage(props: {
               isAdmin={login.role === "admin"}
               controls={
                 <>
-                  <SyncNowButton provider="withings" />
+                  <SyncNowButton sourceId="withings" />
                   <form action={disconnectWithingsAction}>
                     <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
                       Disconnect

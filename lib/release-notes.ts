@@ -15,6 +15,7 @@
 // that hints at it — the surfaces are formatters over this one answer.
 
 import raw from "./release-notes.json";
+import { clampPage, pageCount, pageOffset } from "./pagination";
 import { REPO_URL } from "./version";
 
 export const RELEASE_NOTE_KINDS = [
@@ -191,6 +192,76 @@ export function hasUnseenNotes(
   if (!newestDate) return false;
   if (!seenDate) return true;
   return seenDate < newestDate;
+}
+
+/**
+ * How many ENTRIES one page of /whats-new renders (#2528).
+ *
+ * The page's job is "what did the image I just pulled bring me" — the newest day or
+ * two — and everything below that is archive. But the file is append-only by design
+ * (~15 entries a merge day), so with no bound the page grew about 4,000 px a day; at
+ * 20 days it was the tallest surface in the app by 1.7×, roughly 87 mobile viewport
+ * heights in one scroll. Counting ENTRIES rather than days is what makes the bound
+ * steady: a merge day here holds anywhere from 1 to 32 of them, so a day-count page
+ * size would swing the page height by 30×.
+ *
+ * Not `HISTORY_PAGE_SIZE` (lib/pagination.ts): that one sizes a table row, this one
+ * a titled paragraph with links, and those are different questions. The arithmetic
+ * underneath is the shared one.
+ */
+export const WHATS_NEW_PAGE_ENTRIES = 20;
+
+/**
+ * One page of the notes, newest first, with each day kept in reading order.
+ *
+ * The unit is the ENTRY, so a day may be split across the boundary — and a split
+ * day's `operatorNotes` ride EVERY page that shows any of its entries. Those are the
+ * one-time upgrade actions for that release: a reader on page 2 looking at the rest
+ * of a day must not have to page back to learn the day needs a manual step, and
+ * hiding them behind a page boundary would be the regression this bound exists to
+ * avoid.
+ *
+ * Pure, like the rest of this module — the page renders exactly what this returns.
+ */
+export function releaseNotesPage(
+  notes: ReleaseNotes,
+  page: number,
+  pageSize = WHATS_NEW_PAGE_ENTRIES
+): {
+  days: ReleaseNoteDay[];
+  page: number;
+  pageCount: number;
+  total: number;
+  shown: number;
+} {
+  const size = Math.max(1, Math.trunc(pageSize));
+  const total = notes.days.reduce((n, day) => n + day.entries.length, 0);
+  const pages = pageCount(total, size);
+  const current = Math.min(clampPage(page), pages);
+  const from = pageOffset(current, size);
+  const to = from + size;
+
+  const days: ReleaseNoteDay[] = [];
+  let seen = 0;
+  for (const day of notes.days) {
+    const start = seen;
+    seen += day.entries.length;
+    if (seen <= from || start >= to) continue;
+    days.push({
+      ...day,
+      entries: day.entries.slice(
+        Math.max(0, from - start),
+        Math.min(day.entries.length, to - start)
+      ),
+    });
+  }
+  return {
+    days,
+    page: current,
+    pageCount: pages,
+    total,
+    shown: days.reduce((n, day) => n + day.entries.length, 0),
+  };
 }
 
 /** External link to a merged PR. External URLs stay plain strings (#285). */

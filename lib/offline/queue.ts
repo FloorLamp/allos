@@ -45,12 +45,14 @@
 // against.
 import type { DoseTakenOutcome, SaveActivityOutcome } from "@/lib/types";
 import type { IdempotentTap, OneTapAffordance } from "@/lib/one-tap";
-// The two runtime imports, and both keep the contract: lib/sw-update.ts and
-// lib/loggable-domains.ts are themselves pure and dependency-free (client-safe,
-// DB-free). The stale-action signature is sw-update's knowledge — deployment
-// skew's Server Action half — and the argued-exclusion brand is the #2130
-// registry vocabulary's.
+// The three runtime imports, and all three keep the contract: lib/sw-update.ts,
+// lib/date.ts and lib/loggable-domains.ts are themselves pure and dependency-free
+// (client-safe, DB-free). The stale-action signature is sw-update's knowledge —
+// deployment skew's Server Action half — the canonical instant minter is date.ts's
+// (#2205: the stored shape is decided by the column, never by the call site), and the
+// argued-exclusion brand is the #2130 registry vocabulary's.
 import { isStaleActionError } from "@/lib/sw-update";
+import { utcInstant } from "@/lib/date";
 import {
   STATED_TIME_REFUSAL_NOTE,
   type StatedTimeRefusal,
@@ -676,17 +678,38 @@ export function classifySetReplay(outcome: SaveActivityOutcome): {
 // (client clocks drift), else the replay instant. Keeps the food_log_events
 // frecency ranking honest — a Morning tap replayed at dinner still counts for
 // Morning — without ever trusting a garbage or future timestamp.
-export function resolveCapturedInstant(
-  capturedAt: unknown,
-  now: Date = new Date()
-): string {
+//
+// THE RETURN IS THE CANONICAL STORED INSTANT (#2370). This used to be
+// `.toISOString()`, whose millisecond shape is a THIRD serialization — and the value
+// lands straight in `food_log_events.recorded_at`, a column lib/time-columns.ts
+// declares canonical. That is how the column came to hold two shapes at once: this
+// module writes no SQL of its own, so the writer scan's rule C had no literal to
+// object to, and the table was missing from CANONICAL_INSTANT_COLUMNS so rule A never
+// looked at the bind either. Both halves are closed now — the registry entry is in
+// lib/__tests__/instant-writer-scan.test.ts and the shape comes from lib/date.ts. The
+// queued payload's own `capturedAt` is untouched: it is a CLIENT wire value that has
+// already been written to devices, and narrowing it happens here, at the door.
+//
+// `now` IS REQUIRED (#2312), with no `new Date()` default, and that requirement is
+// most of the fix. This module is in the BROWSER bundle, so it cannot read
+// lib/clock.ts's `process.env` seam itself — which is why the default existed, and
+// exactly why it was wrong: a server-side replay call site then judged a captured
+// instant against a SECOND, independent clock without ever naming which one, and
+// only the food path (#2310) had been converted off it. Under the e2e freeze the
+// browser and the server share ONE frozen instant, so a real-time ceiling silently
+// rewrites a seconds-old capture into the replay moment. Required-and-injected is
+// the ONE shape every flow now takes: the seam is passed in from the server, the
+// browser passes its own clock, and neither is ever substituted for the other by
+// default. The same discipline `resolveQueuedTakenAt` / `isGivenAtAccepted` take
+// (lib/dose-log-window.ts, #2031).
+export function resolveCapturedInstant(capturedAt: unknown, now: Date): string {
   if (typeof capturedAt === "string") {
     const t = new Date(capturedAt);
     if (Number.isFinite(t.getTime()) && t.getTime() <= now.getTime()) {
-      return t.toISOString();
+      return utcInstant(t);
     }
   }
-  return now.toISOString();
+  return utcInstant(now);
 }
 
 // The refusal shown when a queued dose entry sat unsent past the dose-log date window

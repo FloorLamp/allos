@@ -200,13 +200,78 @@ export interface ReopenEligibleEpisode {
 export function reopenEligibleEpisodeForProfile(
   profileId: number
 ): ReopenEligibleEpisode | null {
-  const row = mostRecentClosedEpisodeRow(profileId);
+  // Reads only the closed row this derivation actually needs — a caller with no
+  // other episode question to ask (the dismissal action's prune) must not pay for
+  // the dashboard's second read.
+  return reopenEligibleFromState({
+    profileId,
+    today: today(profileId),
+    mostRecentClosed: mostRecentClosedEpisodeRow(profileId),
+  });
+}
+
+// ── ONE per-profile episode state (issue #2115) ───────────────────────────────
+//
+// "What is this profile's illness situation right now?" is ONE question, and the
+// dashboard used to ask it three times per profile per render: the hero accordion
+// read the row covering today, the reopen affordance read the most-recent CLOSED
+// row, and the household-history promo read BOTH again — while the page's own
+// comment claimed it reused the hero's rows. Two of the four statements were
+// literally the same SQL with the same binds.
+//
+// So the two row reads are gathered ONCE, per profile, and every derivation is a
+// pure function of the result: the open-episode accordion (currentEpisodeFromState,
+// lib/illness-episode.ts), the reopen line (reopenEligibleFromState below) and the
+// recently-sick promo (isHouseholdRecentlySickFromStates, lib/household-history.ts).
+// The reduction is STRUCTURAL — one gather handed down — not a request-scoped memo,
+// so it holds in the notify tick and the DB test tier too, where cache() is identity.
+//
+// `today` is resolved in the profile's OWN timezone and carried on the state, because
+// every consumer needs it and re-deriving it per consumer is how two of them end up
+// on different days for the same render.
+export interface ProfileEpisodeState {
+  profileId: number;
+  // The profile's today, in its own timezone.
+  today: string;
+  // The episode row COVERING today (start_date ≤ today ≤ end_date, either bound
+  // NULL-open), or null — the same row getEpisodeRowForDate returns.
+  todayRow: IllnessEpisodeRow | null;
+  // The most-recently CLOSED episode row, or null.
+  mostRecentClosed: IllnessEpisodeRow | null;
+}
+
+export function episodeStateForProfile(profileId: number): ProfileEpisodeState {
+  const day = today(profileId);
+  return {
+    profileId,
+    today: day,
+    todayRow: getEpisodeRowForDate(profileId, day),
+    mostRecentClosed: mostRecentClosedEpisodeRow(profileId),
+  };
+}
+
+// The same state for a whole (already-authorized) profile set — the dashboard's one
+// gather. Loop-composed rather than set-based `profile_id IN` SQL on purpose: each
+// member's `today` is its OWN timezone, which the per-profile-context trap
+// (lib/cross-profile.ts) forbids evaluating in another member's context. Takes ids,
+// never imports lib/auth.
+export function episodeStatesForProfiles(
+  profileIds: readonly number[]
+): ProfileEpisodeState[] {
+  return profileIds.map(episodeStateForProfile);
+}
+
+// The reopen-eligible episode derived from an already-gathered state. The ONE extra
+// read (is the same situation open again?) happens only for a profile that actually
+// has an in-window closed episode, which is the rare case.
+export function reopenEligibleFromState(
+  state: Pick<ProfileEpisodeState, "profileId" | "today" | "mostRecentClosed">
+): ReopenEligibleEpisode | null {
+  const row = state.mostRecentClosed;
   if (!row || !row.end_date) return null;
-  if (
-    episodeReopenEligibility(row.end_date, today(profileId)).kind !== "eligible"
-  )
+  if (episodeReopenEligibility(row.end_date, state.today).kind !== "eligible")
     return null;
-  if (getOpenEpisodeRow(profileId, row.situation)) return null;
+  if (getOpenEpisodeRow(state.profileId, row.situation)) return null;
   return { id: row.id, situation: row.situation, endDate: row.end_date };
 }
 

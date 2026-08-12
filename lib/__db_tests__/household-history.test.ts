@@ -13,9 +13,15 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   gatherHouseholdHistory,
-  isHouseholdRecentlySick,
+  isHouseholdRecentlySickFromStates,
+  isRecentlySickOn,
   gatherHouseholdEpisodeContext,
 } from "@/lib/household-history";
+import {
+  episodeStatesForProfiles,
+  getEpisodeRowForDate,
+  mostRecentClosedEpisodeRow,
+} from "@/lib/illness-episode-store";
 import { summarizeEpisodesForProfile } from "@/lib/illness-episode-summary";
 
 function newProfile(name: string): number {
@@ -51,6 +57,29 @@ function addEpisode(
          VALUES (?, 'Illness', ?, ?)`
       )
       .run(profileId, startDate, endDate).lastInsertRowid
+  );
+}
+
+// The promotion predicate EXACTLY as it read before #2115 — its own two SELECTs per
+// profile, resolved in that profile's own today. Kept verbatim so the state-driven
+// replacement is pinned against the behaviour it replaced rather than against a
+// re-derivation of it.
+function recentlySickTheOldWay(profileIds: number[]): boolean {
+  for (const pid of profileIds) {
+    const day = today(pid);
+    const hasOpenToday = getEpisodeRowForDate(pid, day) != null;
+    const closed = mostRecentClosedEpisodeRow(pid);
+    if (isRecentlySickOn(hasOpenToday, closed?.end_date ?? null, day)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The shipped path: gather each profile's episode state once, then derive.
+function recentlySick(profileIds: number[]): boolean {
+  return isHouseholdRecentlySickFromStates(
+    episodeStatesForProfiles(profileIds)
   );
 }
 
@@ -124,18 +153,42 @@ describe("household history — merged gather, access pin, promotion, episode co
 
   it("promotes when any accessible profile is currently or recently sick", () => {
     // p3 is currently sick (open episode covers today).
-    expect(isHouseholdRecentlySick([p3])).toBe(true);
+    expect(recentlySick([p3])).toBe(true);
     // pRecent closed an episode 5 days ago → within the recency window.
-    expect(isHouseholdRecentlySick([pRecent])).toBe(true);
+    expect(recentlySick([pRecent])).toBe(true);
     // Mixed set with a sick member → true.
-    expect(isHouseholdRecentlySick([pWell, p3])).toBe(true);
+    expect(recentlySick([pWell, p3])).toBe(true);
   });
 
   it("does not promote when no accessible profile is currently or recently sick", () => {
     // pWell has no illness; p1's only episode was last active 26 days ago (outside 14).
-    expect(isHouseholdRecentlySick([pWell])).toBe(false);
-    expect(isHouseholdRecentlySick([p1])).toBe(false);
-    expect(isHouseholdRecentlySick([pWell, p1])).toBe(false);
+    expect(recentlySick([pWell])).toBe(false);
+    expect(recentlySick([p1])).toBe(false);
+    expect(recentlySick([pWell, p1])).toBe(false);
+  });
+
+  it("answers exactly what the pre-#2115 two-reads-per-profile predicate answered", () => {
+    // Every combination that matters, including the empty set (no members = no
+    // promotion), a single sick member, a single well member, and mixed sets where
+    // the sick member is first, last, and absent.
+    const sets: number[][] = [
+      [],
+      [p1],
+      [p3],
+      [pWell],
+      [pRecent],
+      [pWell, p1],
+      [pWell, p3],
+      [p3, pWell],
+      [p1, p2, p3, pWell, pRecent],
+      [p1, p2],
+    ];
+    for (const ids of sets) {
+      expect({ ids, sick: recentlySick(ids) }).toEqual({
+        ids,
+        sick: recentlySickTheOldWay(ids),
+      });
+    }
   });
 
   it("returns overlapping/adjacent members' episodes for the episode-page card", () => {

@@ -244,10 +244,13 @@ export function recordAudiogram(
       `UPDATE medical_records
           SET value = ?, value_num = ?, unit = ?, reference_range = ?, notes = ?,
               panel = ?,
-              -- Lock an integration-imported row against re-ingest once a person has
-              -- corrected it by hand (#133) — the same CASE the biomarker editor uses.
-              -- A manual/document row (external_id NULL) is unaffected.
-              edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
+              -- Lock the row once a person has written this value by hand (#133),
+              -- unconditionally (#2364). This used to be
+              -- CASE WHEN external_id IS NOT NULL, which asked which import path
+              -- produced the row instead of whether a human set the value — and
+              -- external_id is NULL for every document-extracted reading, so the row
+              -- most in need of the lock was the one that could never take it.
+              edited = 1
         WHERE id = ? AND profile_id = ?`
     );
 

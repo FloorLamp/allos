@@ -30,7 +30,7 @@ import {
 import { collectUpcoming } from "@/lib/queries/upcoming";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import { isBiomarkerStale } from "@/lib/reference-range";
-import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { NON_RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import type { ProfileScope } from "@/lib/scope";
 import { METRIC_DOCUMENT_REACH } from "@/lib/trend-metric-analytes";
 import { METRIC_READING_STORE } from "@/lib/metric-readings";
@@ -235,7 +235,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
   it("the biomarker browser excludes the re-homed classes with a home (instruments/derived/reference)", () => {
     const pid = seedMixedProfile();
     const rows = getClinicalObservations(pid, {
-      excludeCategories: [...NON_BIOMARKER_CATEGORIES],
+      excludeCategories: [...NON_RESULTS_CATALOG_CATEGORIES],
     }).map((r) => r.name);
     expect(rows).toContain("LDL Cholesterol");
     // Instruments (sensitivity), derived bio-age, and immutable facts are excluded —
@@ -310,7 +310,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
   it("the lab-only TRAJECTORY exclusion (Trends → Biomarkers) drops vitals too", () => {
     const pid = seedMixedProfile();
     const rows = getClinicalObservations(pid, {
-      excludeCategories: [...NON_BIOMARKER_CATEGORIES, "vitals"],
+      excludeCategories: [...NON_RESULTS_CATALOG_CATEGORIES, "vitals"],
     }).map((r) => r.name);
     expect(rows).toContain("LDL Cholesterol");
     for (const leaked of [

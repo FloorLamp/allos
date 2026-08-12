@@ -69,8 +69,8 @@ export async function disableCalendarFeedAction(): Promise<FeedResult> {
   return { ok: true, message: "Feed disabled." };
 }
 
-// Switch the detail level. "full" is an explicit opt-in that sends provider/reason
-// to the calendar provider; "minimal" (default) sends only "Medical appointment".
+// Switch the detail level. "full" is an explicit opt-in that sends source/reason
+// to the calendar source; "minimal" (default) sends only "Medical appointment".
 export async function setCalendarFeedDetailAction(
   formData: FormData
 ): Promise<FeedResult> {

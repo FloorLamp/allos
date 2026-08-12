@@ -35,7 +35,7 @@ function tap(profileId: number, group: string, date: string, hhmmss: string) {
        DO UPDATE SET servings = servings + 1`
   ).run(profileId, date, group);
   db.prepare(
-    `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+    `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
      VALUES (?, ?, ?, ?)`
   ).run(profileId, group, date, `${date}T${hhmmss}Z`);
 }
@@ -82,16 +82,16 @@ describe("logUsualFood", () => {
     // The window is a DECLARATION, and no eating time is invented (#2269).
     const written = db
       .prepare(
-        `SELECT meal_slot, eaten_at FROM food_log_events
+        `SELECT meal_slot, occurred_at FROM food_log_events
           WHERE profile_id = ? AND date = ?`
       )
       .all(profile.id, anchor) as {
       meal_slot: string | null;
-      eaten_at: string | null;
+      occurred_at: string | null;
     }[];
     expect(written).toHaveLength(2);
     expect(written.every((r) => r.meal_slot === "Morning")).toBe(true);
-    expect(written.every((r) => r.eaten_at === null)).toBe(true);
+    expect(written.every((r) => r.occurred_at === null)).toBe(true);
     expect(revalidate).toHaveBeenCalledWith("/nutrition");
   });
 

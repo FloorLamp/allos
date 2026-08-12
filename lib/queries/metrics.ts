@@ -1,13 +1,14 @@
 import { db } from "../db";
 import { cache } from "../request-cache";
+import { clampPage, pageCount, pageOffset } from "../pagination";
 import { tickCached } from "../tick-cache";
 import {
-  PROVIDER_PREFERENCE,
-  pickOneProviderPerDay,
+  SOURCE_PREFERENCE,
+  pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
   type SourceSelection,
-} from "../metric-providers";
+} from "../metric-sources";
 import {
   DOCUMENTS_SOURCE_CLASS,
   resolveMetricSources,
@@ -52,7 +53,7 @@ function resolutionFor(profileId: number, metric: string): SourceResolution {
   return resolveMetricSources(
     metric,
     getMetricSourcePriority(profileId),
-    PROVIDER_PREFERENCE
+    SOURCE_PREFERENCE
   );
 }
 
@@ -174,16 +175,33 @@ export function getBodyMetricsWithSource(
            ON w.source = '${DOCUMENT_SOURCE_PREFIX}' || d.id
           AND d.profile_id = w.profile_id
         WHERE w.profile_id = ?
-        ORDER BY w.date DESC
+        ${BODY_METRICS_ORDER}
         LIMIT ?`
     )
-    .all(profileId, limit) as (BodyMetric & {
-    document_id: number | null;
-    doc_source: string | null;
-    doc_type: string | null;
-    doc_filename: string | null;
-  })[];
-  return rows.map(({ doc_source, doc_type, doc_filename, ...w }) => ({
+    .all(profileId, limit) as BodyMetricSourceRow[];
+  return rows.map(withSourceLabel);
+}
+
+// Newest first, with `id` breaking a same-day tie. The tiebreak is what makes the
+// order TOTAL, and a paged read needs that: with `date DESC` alone, two rows on one
+// day may sort either way between two queries, so a row could show on both pages of
+// a page boundary or on neither (#2530).
+const BODY_METRICS_ORDER = "ORDER BY w.date DESC, w.id DESC";
+
+type BodyMetricSourceRow = BodyMetric & {
+  document_id: number | null;
+  doc_source: string | null;
+  doc_type: string | null;
+  doc_filename: string | null;
+};
+
+function withSourceLabel({
+  doc_source,
+  doc_type,
+  doc_filename,
+  ...w
+}: BodyMetricSourceRow): BodyMetricWithSource {
+  return {
     ...w,
     source_label:
       w.document_id != null
@@ -197,7 +215,71 @@ export function getBodyMetricsWithSource(
           : w.source.startsWith(DOCUMENT_SOURCE_PREFIX)
             ? "Document" // source document row no longer exists
             : (getIntegration(w.source as IntegrationId)?.name ?? w.source),
-  }));
+  };
+}
+
+export interface BodyMetricsPage {
+  rows: BodyMetricWithSource[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ONE page of the body-metrics history, newest first, plus the total the pager needs
+// to say how much history there is (the audit viewer's `queryAuditEvents` shape).
+//
+// The history table on Trends is deliberately ALL-TIME — it is the record editor, and
+// a stray row you want to delete is usually outside whatever window the charts above
+// are showing — so the bound cannot come from the hub's date range; it has to be a
+// page (#2530). A daily weigh-in over two years is ~700 rows, each carrying notes, a
+// possible edit-lock badge and a client delete button, and before this the whole
+// ledger was read and serialized into every render of the Body census.
+export function getBodyMetricsPage(
+  profileId: number,
+  page: number,
+  pageSize: number
+): BodyMetricsPage {
+  const size = Math.max(1, Math.trunc(pageSize));
+  const total = (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?")
+      .get(profileId) as { n: number }
+  ).n;
+  const clamped = Math.min(clampPage(page), pageCount(total, size));
+  const rows = db
+    .prepare(
+      `SELECT w.*, d.id AS document_id, d.source AS doc_source,
+              d.doc_type AS doc_type, d.filename AS doc_filename
+         FROM body_metrics w
+         LEFT JOIN medical_documents d
+           ON w.source = '${DOCUMENT_SOURCE_PREFIX}' || d.id
+          AND d.profile_id = w.profile_id
+        WHERE w.profile_id = ?
+        ${BODY_METRICS_ORDER}
+        LIMIT ? OFFSET ?`
+    )
+    .all(profileId, size, pageOffset(clamped, size)) as BodyMetricSourceRow[];
+  return {
+    rows: rows.map(withSourceLabel),
+    total,
+    page: clamped,
+    pageSize: size,
+  };
+}
+
+// The body-metrics rows recorded FOR one day. A different question from a page of
+// history: the Body census asks it to decide whether a day's composition number is
+// one physical reading (and may therefore print that reading's clock) or a blend of
+// several, and that answer must not depend on which page of the table is open.
+export function getBodyMetricsOnDate(
+  profileId: number,
+  date: string
+): BodyMetric[] {
+  return db
+    .prepare(
+      "SELECT * FROM body_metrics WHERE profile_id = ? AND date = ? ORDER BY id"
+    )
+    .all(profileId, date) as BodyMetric[];
 }
 
 // ---- Integration metrics (steps, distance, calories, HR) ----
@@ -208,7 +290,7 @@ export function getBodyMetricsWithSource(
 // Source handling (issue #14): an ADDITIVE metric is never summed across sources
 // — every SUM metric picks one source per day (the profile's primary source
 // first, else the default preference, else single-source passthrough), so two
-// providers reporting the same day can't double-count. A POINT (AVG) metric
+// sources reporting the same day can't double-count. A POINT (AVG) metric
 // keeps averaging every source's readings per day (they measure the same
 // quantity and a same-date manual + imported reading must agree, not sum);
 // an explicit primary source narrows it to that source's readings.
@@ -249,7 +331,7 @@ export function getMetricDailyTotals(
       .all(profileId, metric, limitDays) as { date: string; value: number }[];
     return rows.reverse();
   }
-  // Additive metric: one source per day. pickOneProviderPerDay must run in JS,
+  // Additive metric: one source per day. pickOneSourcePerDay must run in JS,
   // so we can't just LIMIT the aggregate; instead find the cutoff date of the
   // limitDays most-recent dates-with-data first, then aggregate only from there.
   // This is exact (the output is those same dates), while bounding both the SUM
@@ -275,7 +357,7 @@ export function getMetricDailyTotals(
     value: number;
   }[];
   return (
-    pickOneProviderPerDay(
+    pickOneSourcePerDay(
       pickRowsOneOriginPerSourceDay(
         rows,
         (r) => r.date,
@@ -283,7 +365,7 @@ export function getMetricDailyTotals(
         (r) => r.origin,
         (r) => r.value
       ),
-      resolveMetricSources(metric, priority, PROVIDER_PREFERENCE)
+      resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
     )
       .sort((a, b) => (a.date < b.date ? 1 : -1))
       // ALL_ROWS is -1 ("no limit" — that is what SQLite's `LIMIT -1` means, and the
@@ -347,6 +429,15 @@ export function getLatestMetricValue(
 // must match that elected stream. This preserves issue #14's one-source-per-night
 // contract while avoiding an independent stage-only election that could choose a
 // different wearable from the session whose duration is shown.
+//
+// `limitDays` is a READ bound, not a post-slice (#2520): it is the SQL LIMIT on the
+// stage-day scan, and the cutoff it yields bounds every other statement here. So a
+// caller asking for 14 nights reads 14 nights' rows — Health Connect stores one row
+// per stage per night, so the difference between the caller's window and this
+// function's default is thousands of rows on a daily wearable user. The returned
+// series can be SHORTER than `limitDays`: a stage day whose elected main session is
+// missing contributes no row, and that is the honest answer for "the last N days
+// that have stage data" rather than a silent look-back past the window.
 export function getSleepStageDailyTotals(
   profileId: number,
   limitDays = 180
@@ -410,6 +501,17 @@ export function getSleepStageDailyTotals(
     if (day) day.push(session);
     else sessionsByDay.set(session.date, [session]);
   }
+  // Bucket the stage rows by date ONCE. The attribution below is per day, and
+  // rescanning the whole array inside that loop made the cost days × rows — a few
+  // thousand stage rows over a half-year window is ~10^6 iterations to answer about
+  // a handful of nights (#2520). The attribution itself is unchanged; only its
+  // access pattern was quadratic.
+  const rowsByDay = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const day = rowsByDay.get(row.date);
+    if (day) day.push(row);
+    else rowsByDay.set(row.date, [row]);
+  }
 
   const out: {
     date: string;
@@ -427,8 +529,7 @@ export function getSleepStageDailyTotals(
     }));
     const totals = { deep: 0, rem: 0, light: 0, awake: 0 };
     let found = false;
-    for (const row of rows) {
-      if (row.date !== date) continue;
+    for (const row of rowsByDay.get(date) ?? []) {
       if (row.source !== period.main.source) continue;
       if (row.origin !== period.main.origin) continue;
       // Fitbit Takeout aggregate-stage rows append `#deep` / `#rem` / ... to
@@ -644,7 +745,7 @@ export function getSleepSessionsSince(
 // Valid sleep windows on or after a calendar cutoff, electing one source per
 // wake-day with the SAME resolution used by the additive sleep_min chart. This
 // is deliberately separate from getSleepSessionsSince: SRI needs one continuous
-// provider stream across its whole window, while date-keyed display history must
+// source stream across its whole window, while date-keyed display history must
 // not lose older days when a profile changes wearables.
 export function getDailySleepSessionsSince(
   profileId: number,
@@ -1276,7 +1377,7 @@ export function getLatestBodyMetricDailyPoints(
 // ---- Per-source comparison series (issue #14) ----
 // The raw material for the "Compare sources" overlay: the SAME daily rollup the
 // single-series charts use, but grouped per source instead of collapsed to one.
-// Sources are ordered by the default provider preference (then alphabetically) so
+// Sources are ordered by the default source preference (then alphabetically) so
 // series colors/legends are stable.
 
 export interface MetricSourceSeries {
@@ -1286,8 +1387,8 @@ export interface MetricSourceSeries {
 
 function orderSources(sources: string[]): string[] {
   return sources.sort((a, b) => {
-    const ia = PROVIDER_PREFERENCE.indexOf(a);
-    const ib = PROVIDER_PREFERENCE.indexOf(b);
+    const ia = SOURCE_PREFERENCE.indexOf(a);
+    const ib = SOURCE_PREFERENCE.indexOf(b);
     if (ia !== -1 || ib !== -1) {
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
     }

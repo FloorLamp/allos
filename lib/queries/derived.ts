@@ -28,7 +28,7 @@ import { reconciledFlag, plottableReadingValue } from "../reference-range";
 import {
   computeDerivedReadings,
   derivedInputCanonicalNames,
-  derivedInputSlots,
+  presentInputKeysFor,
   derivedInputUnitsFor,
   DERIVED_NAMES,
   type ComponentReading,
@@ -150,8 +150,11 @@ const getDerivedComputation = cache(function getDerivedComputation(
   profileId: number
 ): {
   readings: DerivedReading[];
-  // The input canonical names the profile has ≥1 usable numeric reading of.
-  presentInputs: Set<string>;
+  // Which of an index's input SLOTS the profile has ≥1 usable numeric reading for,
+  // keyed by index. Per-index rather than one shared set (#2372): two indices can key
+  // the same slot while accepting different names, so a slot's presence is only an
+  // answer once you say which index is asking.
+  presentInputsByIndex: Map<DerivedName, Set<string>>;
   sex: ReturnType<typeof getProfileSex>;
   status: ReturnType<typeof getProfileReproductiveStatus>;
 } {
@@ -189,13 +192,13 @@ const getDerivedComputation = cache(function getDerivedComputation(
     seriesByCanonical.set(canonical, rows);
   }
 
-  // An input SLOT is present when ANY name it accepts has a usable reading — the
-  // completeness checklist asks for one glucose, not one per spelling.
-  const presentInputs = new Set<string>();
-  for (const slot of derivedInputSlots()) {
-    if (slot.accepts.some((n) => (seriesByCanonical.get(n) ?? []).length > 0))
-      presentInputs.add(slot.key);
-  }
+  // An input SLOT is present when ANY name THAT INDEX accepts for it has a usable
+  // reading — the completeness checklist asks for one glucose, not one per spelling,
+  // and it asks on behalf of one index (#2372).
+  const hasReading = (n: string) => (seriesByCanonical.get(n) ?? []).length > 0;
+  const presentInputsByIndex = new Map<DerivedName, Set<string>>(
+    DERIVED_NAMES.map((n) => [n, presentInputKeysFor(n, hasReading)])
+  );
 
   // Dates already covered by a stored reading of each derived analyte — skip them
   // (a lab reporting the index directly wins its draw over a computed one).
@@ -217,7 +220,7 @@ const getDerivedComputation = cache(function getDerivedComputation(
       phenoAgeReference: phenoAgeReferenceResolver(profileId, sex, status),
     }
   );
-  return { readings, presentInputs, sex, status };
+  return { readings, presentInputsByIndex, sex, status };
 });
 
 export function getDerivedBiomarkerReadings(
@@ -370,7 +373,7 @@ export function getBioAgeReadings(profileId: number): {
   draws: BioAgeDraw[];
   presentInputs: string[];
 } {
-  const { readings, presentInputs } = getDerivedComputation(profileId);
+  const { readings, presentInputsByIndex } = getDerivedComputation(profileId);
   const draws: BioAgeDraw[] = readings
     .filter((r) => r.name === "PhenoAge")
     .map((r) => ({
@@ -382,9 +385,13 @@ export function getBioAgeReadings(profileId: number): {
       effects: r.effects ?? [],
     }));
   // The nine PhenoAge inputs the profile has any usable reading of (drives the
-  // partial-panel checklist CTA) — filtered from the shared present-input set.
+  // partial-panel checklist CTA) — PhenoAge's OWN slot presence, which is what this
+  // checklist is asking about (#2372); a glucose that only PhenoAge accepts counts
+  // here and does not silently count for HOMA-IR beside it.
+  const phenoPresent =
+    presentInputsByIndex.get("PhenoAge") ?? new Set<string>();
   return {
     draws,
-    presentInputs: PHENOAGE_INPUT_NAMES.filter((n) => presentInputs.has(n)),
+    presentInputs: PHENOAGE_INPUT_NAMES.filter((n) => phenoPresent.has(n)),
   };
 }

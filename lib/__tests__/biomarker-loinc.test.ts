@@ -11,7 +11,7 @@ import {
 } from "@/lib/biomarker-loinc";
 import { reconciledFlag, referenceRange } from "@/lib/reference-range";
 import { convertToCanonical } from "@/lib/unit-conversions";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 import canonical from "@/lib/canonical-biomarkers.json";
 import {
   buildCanonicalIndex,
@@ -20,14 +20,14 @@ import {
 } from "@/lib/canonical-name";
 import { curateBiomarkers, CURATED_LABS } from "@/lib/curated-biomarkers";
 
-// The committed JSON is the seed for CanonicalBiomarker rows; treat it as such
+// The committed JSON is the seed for CanonicalResultDefinition rows; treat it as such
 // (rows omit fields that are null in the DB, so a structural cast is fine here).
 const rows = (canonical as { biomarkers: unknown[] })
-  .biomarkers as CanonicalBiomarker[];
-const byName = new Map<string, CanonicalBiomarker>(
+  .biomarkers as CanonicalResultDefinition[];
+const byName = new Map<string, CanonicalResultDefinition>(
   rows.map((b) => [b.name.toLowerCase(), b])
 );
-const cb = (name: string): CanonicalBiomarker => {
+const cb = (name: string): CanonicalResultDefinition => {
   const c = byName.get(name.toLowerCase());
   if (!c) throw new Error(`no canonical entry named "${name}"`);
   return c;

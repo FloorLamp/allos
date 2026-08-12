@@ -362,15 +362,17 @@ export function hasTrendMetricHome(name: string | null | undefined): boolean {
 }
 
 /**
- * Whether the flat Biomarkers browser lists this analyte — the ONE place the question
- * is asked, so the rows the gather returns and the panels the facet offers can never
- * disagree about what "listed" means.
+ * Whether the flat Results catalog (/results/readings, rendered as Results ›
+ * Biomarkers) lists this analyte — the ONE place the question is asked, so the rows
+ * the gather returns and the panels the facet offers can never disagree about what
+ * "listed" means. The CATALOG axis, one level finer than
+ * RESULTS_CATALOG_CATEGORIES; it says nothing about the row's identity (#2479).
  *
  * The identity checked is the one the table itself renders and SQL groups on
  * (`biomarkerNameKey`: the canonical name when the vocabulary recognized the row,
  * otherwise the name the source printed).
  */
-export function listedInBiomarkerBrowser(row: {
+export function listedInResultsCatalog(row: {
   category?: string | null;
   canonical_name?: string | null;
   name?: string | null;

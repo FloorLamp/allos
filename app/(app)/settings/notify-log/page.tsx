@@ -9,7 +9,7 @@ import {
   type NotifyLevel,
   type NotifyLogFilters,
 } from "@/lib/notify-log-format";
-import { clampPage, pageCount, pageOffset } from "@/lib/audit-actions";
+import { clampPage, pageCount, pageOffset } from "@/lib/pagination";
 import type { AppRoute } from "@/lib/hrefs";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import NotifyRunTable from "./NotifyRunTable";

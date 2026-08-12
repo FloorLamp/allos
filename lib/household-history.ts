@@ -15,14 +15,10 @@
 // (getEncounters, summarizeEpisodesForProfile) it introduces no un-scoped SQL, so the
 // profile-scoping rule holds without a new allowlist entry.
 
-import { today } from "./db";
 import { daysBetweenDateStr } from "./date";
 import { getEncounters } from "./queries/medical";
 import { summarizeEpisodesForProfile } from "./illness-episode-summary";
-import {
-  getEpisodeRowForDate,
-  mostRecentClosedEpisodeRow,
-} from "./illness-episode-store";
+import type { ProfileEpisodeState } from "./illness-episode-store";
 import type { EpisodeIndexEntry } from "./illness-episode-summary";
 import type { Encounter } from "./types";
 
@@ -159,26 +155,30 @@ export function isRecentlySickOn(
   return ago != null && ago >= 0 && ago <= windowDays;
 }
 
-// The DB gather behind Ask 2 (dashboard promotion). True when ANY profile in the set
-// is currently sick (an episode row covers that profile's today) or recently recovered
-// (its most-recently-closed episode ended within the window). Reuses the SAME episode
-// rows every illness surface reads — never a second "who's sick" derivation. Each
-// profile's "today" is resolved in its own timezone via today(pid).
-export function isHouseholdRecentlySick(
-  profileIds: number[],
+// The verdict behind Ask 2 (dashboard promotion). True when ANY profile in the set is
+// currently sick (an episode row covers that profile's today) or recently recovered
+// (its most-recently-closed episode ended within the window).
+//
+// It takes ALREADY-GATHERED states rather than ids (issue #2115). It used to take ids
+// and re-issue both SELECTs per profile, while the dashboard comment above it claimed
+// it "reuses the SAME episode rows the hero reads — never a second 'who's sick'
+// derivation". Now that is literally true: the page reads each member's two rows once
+// (episodeStatesForProfiles) and the accordion, the reopen band and this promo are
+// three pure derivations of that one gather, so none of them can drift onto a
+// different day or a different row than the others. Each state carries the profile's
+// own timezone-resolved today; nothing here re-resolves one.
+export function isHouseholdRecentlySickFromStates(
+  states: readonly ProfileEpisodeState[],
   windowDays: number = HOUSEHOLD_RECENTLY_SICK_DAYS
 ): boolean {
-  for (const pid of profileIds) {
-    const day = today(pid);
-    const hasOpenToday = getEpisodeRowForDate(pid, day) != null;
-    const closed = mostRecentClosedEpisodeRow(pid);
-    if (
-      isRecentlySickOn(hasOpenToday, closed?.end_date ?? null, day, windowDays)
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return states.some((s) =>
+    isRecentlySickOn(
+      s.todayRow != null,
+      s.mostRecentClosed?.end_date ?? null,
+      s.today,
+      windowDays
+    )
+  );
 }
 
 // ── Ask 3: episode-page household-context computation ─────────────────────────

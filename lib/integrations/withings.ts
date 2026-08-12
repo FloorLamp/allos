@@ -4,7 +4,7 @@ import { toKg } from "@/lib/units";
 import type { NormBodyMetric, NormMetricSample, NormVital } from "./normalize";
 
 // Maps Withings API responses (https://developer.withings.com/api-reference) into
-// the provider-agnostic normalized records (see normalize.ts), so the shared
+// the source-agnostic normalized records (see normalize.ts), so the shared
 // upserts handle all of the DB mapping and idempotency. Mirrors the Oura/Strava
 // parsers: tolerant field reads, timezone-aware day attribution, and canonical-unit
 // conversion at the boundary. This module is PURE (no @/lib/db, no fetch) so it

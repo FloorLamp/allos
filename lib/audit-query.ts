@@ -7,12 +7,8 @@
 // gone.
 
 import { db } from "./db";
-import {
-  AUDIT_PAGE_SIZE,
-  actionDomain,
-  clampPage,
-  pageOffset,
-} from "./audit-actions";
+import { AUDIT_PAGE_SIZE, actionDomain } from "./audit-actions";
+import { clampPage, pageOffset } from "./pagination";
 
 export interface AuditRow {
   id: number;

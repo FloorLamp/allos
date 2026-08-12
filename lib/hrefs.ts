@@ -138,6 +138,10 @@ export function doseLedgerHref(
     // empty query string means this surface's DEFAULT window, so the "All time" pill
     // has to be able to say itself.
     allTime?: boolean;
+    // The 1-based page of the ledger (#2445). The range control is a FILTER, not a
+    // bound — "All time" is a legitimate window here — so the page is what bounds
+    // the read, and it has to survive in the URL for the pager's links to work.
+    page?: number;
   } = {}
 ): AppRoute {
   const sp = new URLSearchParams();
@@ -146,6 +150,7 @@ export function doseLedgerHref(
   if (params.to) sp.set("to", params.to);
   if (params.kind) sp.set("kind", params.kind);
   if (params.item) sp.set("item", String(params.item));
+  if (params.page && params.page > 1) sp.set("page", String(params.page));
   const qs = sp.toString();
   if (surface === "medication") {
     return qs ? `/medications/dose-history?${qs}` : "/medications/dose-history";

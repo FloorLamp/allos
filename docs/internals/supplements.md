@@ -532,6 +532,18 @@ renderer:
   owns, active or not), and the shared `DateRange` vocabulary with
   `DOSE_HISTORY_DAYS` as the default window and `?range=all` as the explicit
   all-time sentinel. The pure half is `lib/dose-ledger.ts`.
+- **A range is a filter; the PAGE is the bound (#2445).** "All time" is a
+  legitimate answer here — history outlives retirement — so it cannot be what
+  limits the read, and a `must` medication logged twice daily for years is
+  thousands of rows. The surface therefore reads
+  `getIntakeDoseLedgerPage(profileId, since, filters, page, HISTORY_PAGE_SIZE)`,
+  a real `LIMIT`/`OFFSET` over the same statement plus the `COUNT(*)` the pager
+  needs, with `?page=` riding the URL and every other control dropping it (a
+  narrowed ledger re-pages from its first row). `HISTORY_PAGE_SIZE` and the page
+  arithmetic are `lib/pagination.ts`, shared with the other record-history
+  tables. `getIntakeDoseHistoryAll` stays for callers that genuinely want the
+  whole window in one array, and as the row-for-row cross-check against the
+  per-item panel — but nothing that RENDERS the ledger uses it.
 - **"Log past dose" is a top-level entry** on the ledger — the same
   `HistoricalDoseForm` with an item picker in front, which opens on the item the
   ledger is filtered to. The per-item panel keeps its own entry: an item-scoped

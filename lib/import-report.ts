@@ -30,6 +30,9 @@ export type DropReason =
   | "non_analyte" // an administrative/structural observation (specimen date, "Approved By", accession #) — not a measurement (#681/#693)
   | "derived_percentile" // a derived anthropometric percentile (BMI/weight-for-length/head-circ) the app recomputes itself, not a raw measurement (#684/#722/#693)
   | "negated" // a negated / retracted / entered-in-error assertion
+  | "other_subject" // a screening instrument the document says is somebody ELSE's — or does not say whose (#2321). Post-natal screening is administered to a parent and filed in the child's chart; a misattributed crisis-escalating score is worse than an unimported one, so silence refuses too
+  | "incomplete_instrument" // a recognised screening instrument that is only PARTIALLY answered (#2321). A partial total is not a smaller total, it is a different measurement — it cannot be banded against cut-offs derived from the whole
+  | "correction_orphaned" // a HAND CORRECTION this reprocess could not carry over (#2364) — the one reason here that is not about a candidate the document offered. A reprocess deletes and re-inserts the footprint, so a user's corrected value is captured and re-applied by identity (lib/import-corrections.ts); when the new extraction produces no counterpart, the correction has lost its subject. Reported rather than resurrected: putting the row back would keep something the document stopped claiming, and dropping it in silence is the defect
   | "unrecognized_section" // a whole section / resource type no extractor consumes
   | "other"; // anything else (e.g. no usable date)
 
@@ -331,8 +334,15 @@ export function unresolvedNameIssueUrl(u: {
 
 // A row-level drop is a dropped candidate READING (not a whole unrecognized
 // section / resource type). These are what `considered - imported` counts.
+//
+// `correction_orphaned` is excluded for a DIFFERENT reason than
+// `unrecognized_section` (#2364): it is not a candidate the document offered at all,
+// it is a user's own correction that lost its subject. Counting it would inflate
+// "how many readings did this parse consider" with something the parse never saw.
 export function isRowDrop(d: ImportDrop): boolean {
-  return d.reason !== "unrecognized_section";
+  return (
+    d.reason !== "unrecognized_section" && d.reason !== "correction_orphaned"
+  );
 }
 
 export function rowDropCount(report: ImportReport): number {
@@ -415,18 +425,36 @@ export function withFootprintCounts(
 // adapter, any parser producing none) passes null and stores null; an unparseable
 // blob is left exactly as it came rather than being rewritten or dropped — the
 // debugger already ignores it, and persist is not the place to destroy input.
+//
+// `persistDrops` are drops only the PERSIST step can know (#2364: a hand correction
+// this reprocess had no counterpart to re-apply to). They are appended rather than
+// re-derived, and they do not move `considered` — `isRowDrop` excludes them, because
+// a lost correction was never a candidate the parse offered.
+//
+// The one place a report is SYNTHESIZED: when there is no stored report at all but a
+// correction was orphaned, an empty report is minted to carry it. Losing a user's
+// correction in silence because the parser happened to emit no debug report would be
+// the same defect one level up. An UNPARSEABLE blob still passes through untouched —
+// that rule is about not destroying input, and it stands.
 export function reconcileStoredReportCounts(
   raw: string | null,
-  footprint: number
+  footprint: number,
+  persistDrops: readonly ImportDrop[] = []
 ): string | null {
-  const report = parseImportReport(raw);
+  const parsed = parseImportReport(raw);
+  const report =
+    parsed ?? (raw === null && persistDrops.length ? emptyReport() : null);
   if (!report) return raw;
-  return serializeImportReport(withFootprintCounts(report, footprint));
+  const withDrops = persistDrops.length
+    ? { ...report, drops: [...report.drops, ...persistDrops] }
+    : report;
+  return serializeImportReport(withFootprintCounts(withDrops, footprint));
 }
 
 // ---- reason labels ----
 
 const REASON_LABELS: Record<DropReason, string> = {
+  correction_orphaned: "Your correction has no matching reading",
   null_flavor: "No value (null-flavored)",
   unmapped_loinc: "Unrecognized code",
   placeholder_noise: "Placeholder / noise",
@@ -436,6 +464,8 @@ const REASON_LABELS: Record<DropReason, string> = {
   non_analyte: "Non-analyte / administrative",
   derived_percentile: "Derived percentile (recomputed)",
   negated: "Negated / retracted",
+  other_subject: "Screening for another subject",
+  incomplete_instrument: "Screening only partly answered",
   unrecognized_section: "Section not consumed",
   other: "Other",
 };
@@ -446,6 +476,9 @@ export function reasonLabel(reason: DropReason): string {
 
 // The order reasons are shown in the grouped list — most actionable first.
 const REASON_ORDER: DropReason[] = [
+  // First: it is the only reason here that describes something the USER did and
+  // this import could not keep, so it outranks every parser-side refusal.
+  "correction_orphaned",
   "unmapped_loinc",
   "no_value",
   "null_flavor",
@@ -453,6 +486,8 @@ const REASON_ORDER: DropReason[] = [
   "unparsable_value",
   "non_analyte",
   "derived_percentile",
+  "incomplete_instrument",
+  "other_subject",
   "negated",
   "deduped",
   "unrecognized_section",

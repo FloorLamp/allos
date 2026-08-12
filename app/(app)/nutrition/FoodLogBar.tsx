@@ -596,12 +596,12 @@ export default function FoodLogBar({
     // off its own day.
     const draftHhmm = statedHhmm(draft.when.statedAt, tz) || null;
     if (draftHhmm === null) {
-      if (editing.eatenAt !== null) fd.set("eaten_at", "none");
+      if (editing.eatenAt !== null) fd.set("occurred_at", "none");
     } else if (
       draftHhmm !== editing.eatenAt ||
       draft.when.date !== editing.date
     ) {
-      fd.set("eaten_at", draftHhmm);
+      fd.set("occurred_at", draftHhmm);
     }
     let outcome: FoodEventEditResult;
     try {
@@ -823,7 +823,7 @@ export default function FoodLogBar({
         // "now". Only an add states a time — an undo removes a serving and asserts
         // nothing about when anything was eaten.
         if (statedChoice && delta === 1)
-          fd.set("eaten_at", eatingTimeChoiceValue(statedChoice));
+          fd.set("occurred_at", eatingTimeChoiceValue(statedChoice));
         return {
           kind: "wrote",
           outcome:
@@ -1628,7 +1628,7 @@ export default function FoodLogBar({
               {/* The day + eating-time PAIR, owned together by the shared control
                   (#2227/#2236): hour grain (the data's own precision), correct mode
                   ("Not stated" is first and clears), bounded to the same recent days
-                  the retired Day dropdown offered. `logged_at` is deliberately not
+                  the retired Day dropdown offered. `recorded_at` is deliberately not
                   here — the tap instant is audit history, never editable. */}
               <WhenControl
                 mode="correct"

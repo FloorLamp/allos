@@ -1,4 +1,4 @@
-// PURE TIER — THE #2263 regression fixture: replay a provider's recorded run history
+// PURE TIER — THE #2263 regression fixture: replay a source's recorded run history
 // through the real standing derivation, one event at a time, and count how many hours
 // it spent escalated.
 //
@@ -7,25 +7,25 @@
 // success→success gap of median 2.0 h / p90 6.0 h — and 381 rows written on EVERY
 // success, the full rolling forecast window, so no failure ever lost anything. Replayed
 // through the rule that shipped, the standing read `failing` for 49 of those 171 hours:
-// 29% of the time, on a provider whose data was arriving fine.
+// 29% of the time, on a source whose data was arriving fine.
 //
-// The defect was that the rule counted CONSECUTIVE FAILED RUNS. For an hourly provider
-// three runs is three hours of silence, which sits BELOW that provider's own p90 gap
+// The defect was that the rule counted CONSECUTIVE FAILED RUNS. For an hourly source
+// three runs is three hours of silence, which sits BELOW that source's own p90 gap
 // between successes — so ordinary operating variance tripped an escalation threshold.
 //
 // So this file replays a weather-shaped history under BOTH rules and pins the contrast:
 // the old count-based rule escalates on ordinary operation, the silence tolerance does
-// not, and a genuinely stopped provider still escalates under the new rule — which is
+// not, and a genuinely stopped source still escalates under the new rule — which is
 // the half that must not be lost.
 
 import { describe, it, expect } from "vitest";
 import {
   consecutiveLeadingFailures,
-  providerStanding,
+  sourceStanding,
   standingEscalates,
   STANDING_RUN_WINDOW,
   type SyncEventFacts,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import { silenceToleranceMinutes } from "@/lib/integrations/staleness";
 import { getIntegration } from "@/lib/integrations/registry";
 
@@ -96,8 +96,8 @@ function replay(
     );
     window.reverse(); // newest-first, the shape the derivation is fed
     const lastSuccess = history.slice(0, i + 1).findLast((e) => e.ok);
-    const standing = providerStanding({
-      // Every provider replayed here is SCHEDULED (#2301) — a real hourly poll's
+    const standing = sourceStanding({
+      // Every source replayed here is SCHEDULED (#2301) — a real hourly poll's
       // recorded history is exactly what the silence rule was written for.
       delivery: "scheduled",
       connected: true,
@@ -157,7 +157,7 @@ describe("the replayed weather history (#2263)", () => {
 
   it("BEFORE: the retired consecutive-run rule escalated on ordinary operation", () => {
     // The measured figure was 49/171 = 29% of hours. The rule fires on every hour of
-    // a normal 4- and 6-hour gap, which this provider has several of a day.
+    // a normal 4- and 6-hour gap, which this source has several of a day.
     const escalated = replayRetiredRule(HISTORY);
     expect(escalated).toBeGreaterThan(0.2 * HISTORY.length);
   });
@@ -214,7 +214,7 @@ describe("the tolerance still catches a provider that genuinely stops", () => {
   });
 
   // THE case the retired rule could not see AT ALL (#2263 decision 3b): a push
-  // provider whose device-side failures never reach the server. There are no events to
+  // source whose device-side failures never reach the server. There are no events to
   // classify — only absence — so a run-count rule has nothing to count.
   it("escalates a PUSH provider that recorded nothing at all, at its declared tolerance", () => {
     const tolerance = silenceToleranceMinutes(
@@ -231,7 +231,7 @@ describe("the tolerance still catches a provider that genuinely stops", () => {
       written: 103,
     };
     const standingAt = (hours: number) =>
-      providerStanding({
+      sourceStanding({
         delivery: "scheduled",
         connected: true,
         needsReauth: false,

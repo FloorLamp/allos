@@ -205,7 +205,7 @@ const withingsSpec: PullSpec<
     let skipped = 0;
     let truncated = false;
 
-    // The one shared window rule, in this provider's units: a trailing re-scan
+    // The one shared window rule, in this source's units: a trailing re-scan
     // before the cursor, or the first-run backfill when there is none yet.
     const { startSec, endSec } = pullSecondsWindow(
       cursor,

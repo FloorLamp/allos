@@ -1247,7 +1247,7 @@ offers an **Undo** toast that puts both back.
 
 **When you ate is captured, and correctable (#2019).** A Telegram tap's declared
 contract is "I'm eating now", so the tap instant is recorded as a real eating time
-(`eaten_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
+(`occurred_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
 carries burst-collapsed correction chips plus an absolute-hour picker for the common
 case of being slow to tap. **The chips state the time they set, not an offset**
 (#2206): `19:41 · −30m` and `19:11 · −1h`, in the same absolute vocabulary the picker
@@ -1275,7 +1275,7 @@ the SELECTED day at hour grain, "Not stated" first (choosing it clears back to t
 NULL), and the Meal select following the chosen hour until Meal is set by hand, so the
 window the tally counts and the minute the ranking weights move together. A refused time
 is an error the user sees there — in a correction the statement IS the submission — while
-the log path keeps its validate-never-drop posture. `logged_at` stays the uneditable audit
+the log path keeps its validate-never-drop posture. `recorded_at` stays the uneditable audit
 instant on every surface. The nudge's ranking
 now weights each serving by how near it was eaten to the window it is ranking for,
 which retired the old 14:59/15:01 bucket cliff along with the read-time re-labelling
@@ -1850,17 +1850,21 @@ is defined on fasting serum glucose) and the unqualified `Glucose` otherwise, so
 a fasting panel and an older draw both compute. The acceptance lives on that one
 input: the curated glucose entries stay separate analytes everywhere else, with
 their own flags, charts and retest clocks. The list can also be exactly **one**
-name — **HOMA-IR** takes `Glucose, Fasting` and nothing else, because the index
-_is_ the fasting-frame calculation and its formula says so, so a draw carrying
-only an unqualified glucose gets no HOMA-IR rather than one computed on a frame
-the reading never stated.
+name — **HOMA-IR** takes `Glucose, Fasting` and nothing else, and likewise
+`Insulin, Fasting` and nothing else, because the index _is_ the fasting-frame
+calculation and its formula says so, so a draw carrying only an unqualified
+glucose or an unqualified insulin gets no HOMA-IR rather than one computed on a
+frame the reading never stated.
 
-Only `Glucose, Fasting` carries a reference band (70–99 mg/dL). The unqualified
-entry deliberately carries none — a draw that never said whether the patient
-fasted has not given us enough to flag against, and the fasting and non-fasting
-frames differ by roughly 40 mg/dL at the top of normal — so an unqualified
-reading shows its value, no flag, and the reason it has none. PhenoAge is
-unaffected either way: it consumes the glucose _value_, not its band.
+The same split runs on both analytes. Only `Glucose, Fasting` carries a
+reference band (70–99 mg/dL), and only `Insulin, Fasting` carries the insulin
+band (≤ 18.4, optimal 2–5 µIU/mL). The unqualified entries deliberately carry
+none — a draw that never said whether the patient fasted has not given us enough
+to flag against, and the frames differ by roughly 40 mg/dL at the top of normal
+on glucose and by a multiple on insulin — so an unqualified reading shows its
+value, no flag, and the reason it has none. PhenoAge is unaffected either way:
+it consumes the glucose _value_, not its band, and it does not read insulin at
+all.
 
 A component your lab reported **beyond a detection limit** ("<0.2") is used at
 that limit — the same substitution the charts plot — and the derived value says
@@ -2154,13 +2158,16 @@ Validated screening **instruments** on **Health record → Specialty → Mental
 health** (`/records/specialty/mental-health`; the old `/medical/instruments`
 route is gone — the pane always renders, since the in-app instrument
 flow is the only creation path and the crisis line travels with it): **PHQ-9**
-(depression) and **GAD-7** (anxiety) tracked as numeric, **severity-banded**
-scores (PHQ-9 minimal / mild / moderate / moderately-severe / severe; GAD-7
-minimal / mild / moderate / severe) — the app's measurement DNA, **not** a
-subjective mood diary. Administer the public-domain questionnaire **in-app** (a
-9/7-item tap-through that computes the total from per-item answers) — the
-guided-battery pattern (#834) — or enter an outside total-only score; the score
-is stored as a biomarker-shaped reading (canonical name `PHQ-9`/`GAD-7`) so it
+(depression), **GAD-7** (anxiety) and **EPDS** (perinatal depression) tracked as
+numeric, **severity-banded** scores (PHQ-9 minimal / mild / moderate /
+moderately-severe / severe; GAD-7 minimal / mild / moderate / severe; EPDS
+minimal / possible / probable / severe, banded on the published cut-offs of 10
+and 13) — the app's measurement DNA, **not** a subjective mood diary. Administer
+the public-domain questionnaire **in-app** (a 9/7/10-item tap-through that
+computes the total from per-item answers, on each item's own published options —
+seven of EPDS's ten items are reverse-scored) — the guided-battery pattern
+(#834) — or enter an outside total-only score; the score
+is stored as a biomarker-shaped reading (canonical name `PHQ-9`/`GAD-7`/`EPDS`) so it
 **trends like any biomarker** (no parallel value store — the observation
 substrate), and a recorded score **satisfies** its preventive depression/anxiety
 **screening** (stronger evidence than a bare visit). A completed **Mental
@@ -2173,9 +2180,25 @@ preventive-satisfaction stream (`lib/preventive-inference.ts`) a physical uses
 for its check-up — the `mental_health` appointment folds its kind text into the
 inference record and widens its `allow` to reach the screening matchers, so a
 person in active behavioral-health care isn't also nagged to get screened.
-Item-level answers are stored (needed for the PHQ-9 item-9 handling below) in
-the one small `instrument_responses` table; an outside total-only score degrades
-gracefully to total-only.
+Item-level answers are stored (needed for the PHQ-9 item-9 / EPDS item-10
+handling below) in the one small `instrument_responses` table; an outside
+total-only score degrades gracefully to total-only.
+
+A screening a **clinical document** carries is imported through that same
+substrate (#2321), not as one pseudo-biomarker per question. A CCD files a
+screening as its individual questions — the question text as the observation's
+name, a free-text answer as its value, no number and no range — and the importer
+recognises the set, maps each printed answer onto that item's own published
+option, and writes ONE score row plus its `instrument_responses`. No question
+text ever coins a canonical name. Two cases **refuse and say so** in the import
+report rather than guessing, both safety decisions: a screening the document
+attributes to **another subject** — or to nobody, since post-natal screening is
+administered to a _parent_ and routinely filed in the _child's_ chart, and a
+misattributed crisis-escalating score is worse than an unimported one — and a
+**partly answered** one, since a partial total is not a smaller total but a
+different measurement that cannot be banded against whole-instrument cut-offs.
+Neither refusal loses anything: the answers stay on the document as assessment
+rows, and the SCORE is what appears in the Dropped list.
 
 A recorded score can be **corrected or removed** from the History list on both
 instrument surfaces (Mental health and Substance use). This is a safety
@@ -2193,7 +2216,8 @@ signal.
 **Sensitivity is deliberate** (#716): this domain is **exempt from the
 milestone/streak machinery** — no streaks, no "improve your score" nudges, no
 celebratory copy on a depression score. A **severe** total, or a **positive
-PHQ-9 item 9** (suicidal ideation) from an in-app administration, renders a
+PHQ-9 item 9** / **EPDS item 10** (self-harm) — from an in-app administration,
+or from a document-imported score, which carries its item answers — renders a
 **NON-DISMISSIBLE** crisis-resources line (the operator-configured resources,
 plus a gentle "discuss with a clinician" note) — structurally outside the
 dismissal bus, the same standing as a safety dose reminder — and joins the
@@ -2239,6 +2263,14 @@ Substance use is behavioral health's other half, on **Health record → Specialt
 shown for adults + unknown-age profiles and hidden for a known minor, since
 AUDIT/DAST are adult-validated): the full **screen → track → support reduction**
 ladder, deliberately **without gamification**.
+
+The minor gate is not a surface decision. Hiding the page was #1174; #1279 added
+the same refusal to every substance-use Server Action, because an action is
+independently POST-callable; and #2107 moved it into the shared instrument write
+cores, which serve the mental-health catalog too and resolve their instrument from
+the targeted ROW — so the mental-health correction/removal actions had been able to
+edit substance scores the substance surface refuses to touch. A refused instrument
+now answers exactly as an unknown row does, whichever surface asked.
 
 **Screening**: **AUDIT-C** (alcohol, 3 items, per-item 0–4 options — public
 domain, Bush et al. 1998 / VA) and, since #1085, the **DAST-10** (drug use, 10
@@ -2551,18 +2583,40 @@ session**, or **logged food serving** offers a one-tap **Undo** toast; the row
 (and its children) is held and restored intact if you undo, then purged.
 
 **Your medical records are covered too** (#1847). Deleting an **allergy**, a
-**condition**, an **immunization dose** or a **skin-lesion observation** offers
-the same toast and lands in the same trash — and each one brings back what a
-re-typed row could not: an allergy's graded reactions (which is why it starts
-warning about your medications again the moment you undo), a condition's
-hand-made correction, a lesion's whole photo series. Links whose target has since
-been deleted — the source document, the visit, the clinician — come back cleared
-rather than pointing at nothing.
+**condition**, an **immunization dose**, a **skin-lesion observation** or a
+**visit** offers the same toast and lands in the same trash — and each one brings
+back what a re-typed row could not: an allergy's graded reactions (which is why
+it starts warning about your medications again the moment you undo), a
+condition's hand-made correction, a lesion's whole photo series. Links whose
+target has since been deleted — the source document, the visit, the clinician —
+come back cleared rather than pointing at nothing. Deleting a visit detaches
+everything recorded at it rather than destroying it: the readings, medications
+and the completed appointment all survive, and undoing brings the visit back with
+those links left honestly cleared. (An uploaded **document** is still permanent —
+a document is its file plus every row extracted from it, which needs more than a
+toast.)
+
+**Every row of a metric's readings table is covered** (#2123). Deleting a
+reading from the ⋯ menu on a metric page used to offer Undo for weight, body fat
+and the vitals while HRV, height, steps, waist, lean mass, calories and a mood
+check-in vanished for good — one menu, two different promises. They all offer it
+now, and deleting a **mood check-in** brings the whole day back: the note and the
+factors, not just the rating you tapped. (Clearing one optional rating off a
+check-in, or one measure off a day that holds several, still just clears that
+value — the day itself stays, so there is nothing to undo.)
+
+**Clearing a symptom for the day is reversible** (#2124). The × on a symptom
+chip took the day's **photos and their files** with it, instantly and for good.
+It is still one tap — a confirmation on every symptom clear would be a tax you
+pay dozens of times to prevent something rare — but it now offers Undo, and
+undoing brings back the severity, the note and the whole photo series still
+attached to that day.
 
 The same contract holds at the bulk surface (#2125): selecting rows of an
 undoable kind on **Data → Manage** — activities, body metrics, biomarker
 records, supplements/medications, practice sessions, substance history,
-allergies, conditions, immunizations — captures each row and offers one
+allergies, conditions, immunizations, visits, device/manual measurements, mood
+check-ins and symptom days — captures each row and offers one
 "Deleted N · Undo" toast, so the row menu and the bulk checkbox never disagree
 about whether a delete is reversible. ("Delete all" on a dataset stays
 deliberately permanent, and says so.)
@@ -2573,7 +2627,7 @@ many related rows came with it, and when it expires — with **Restore** (the sa
 one-tap restore the toast performs) and **Delete permanently**, plus **Empty
 trash** for the lot. An admin sets the retention window in **Settings → Server →
 Trash retention** (30 days by default, 1–365). The window holds the deleted
-row's full content and any video clips or lesion photos captured with it, so a
+row's full content and any video clips or lesion/symptom photos captured with it, so a
 longer window keeps deleted health data on the server longer; "Delete
 permanently" removes a row and its media immediately. Every "remove one logged event" path behaves the same way — removing one
 session of a practice is as recoverable as removing the whole practice, and

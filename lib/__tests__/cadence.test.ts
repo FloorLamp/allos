@@ -202,7 +202,7 @@ describe("the anti-nudge pin", () => {
   });
 });
 
-// ── What ONE session advances (#2439) ───────────────────────────────────────────
+// ── What ONE session advances (#2503) ───────────────────────────────────────────
 //
 // The ledger's membership rule asked of a single activity. It exists because the
 // post-workout recap read the profile-wide weekly rollup as if the finishing session

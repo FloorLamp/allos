@@ -9,10 +9,12 @@ import DoseLedgerTable, {
 } from "@/components/intake/DoseLedgerTable";
 import { today } from "@/lib/db";
 import {
-  getIntakeDoseHistoryAll,
+  getIntakeDoseLedgerPage,
   getIntakeItems,
   getIntakeDoses,
 } from "@/lib/queries";
+import PaginationControls from "@/components/PaginationControls";
+import { HISTORY_PAGE_SIZE, clampPage, pageCount } from "@/lib/pagination";
 import { getDisplayFormatPrefs, getTimezone } from "@/lib/settings";
 import { zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
@@ -78,6 +80,7 @@ export default function DoseLedgerView({
     range?: string | string[];
     kind?: string | string[];
     item?: string | string[];
+    page?: string | string[];
   };
 }) {
   const todayStr = today(profileId);
@@ -110,11 +113,21 @@ export default function DoseLedgerView({
     ? rawItem
     : undefined;
 
-  const rows = getIntakeDoseHistoryAll(profileId, range.from ?? ISO_FLOOR, {
-    kind: queryKind,
-    itemId,
-    untilDate: range.to,
-  });
+  // The ledger is PAGED at the SQL level (#2445). The range control offers an
+  // explicit "All time", which is a window with no lower bound — a legitimate answer
+  // for a record of what was taken, and therefore not a bound at all. A must-obligation
+  // medication logged twice daily for years is thousands of rows, and without a page
+  // every one of them was fetched, serialized and rendered on that tap.
+  const requestedPage = clampPage(Number(firstParam(params.page)) || 1);
+  const ledger = getIntakeDoseLedgerPage(
+    profileId,
+    range.from ?? ISO_FLOOR,
+    { kind: queryKind, itemId, untilDate: range.to },
+    requestedPage,
+    HISTORY_PAGE_SIZE
+  );
+  const rows = ledger.rows;
+  const ledgerPages = pageCount(ledger.total, HISTORY_PAGE_SIZE);
 
   const entries: DoseLedgerEntry[] = rows.map((row) => {
     // The row-level time question, asked once (#2205 phase 3): the stated event
@@ -189,6 +202,22 @@ export default function DoseLedgerView({
         allTime: isAllTimeRange(range),
       }),
     }));
+
+  const pageHref = (page: number) =>
+    isAllTimeRange(range)
+      ? doseLedgerHref(surface, {
+          kind: kindFilter,
+          item: itemId,
+          allTime: true,
+          page,
+        })
+      : doseLedgerHref(surface, {
+          from: range.from,
+          to: range.to,
+          kind: kindFilter,
+          item: itemId,
+          page,
+        });
 
   const rangeHref = (next: DateRange) =>
     isAllTimeRange(next)
@@ -271,6 +300,22 @@ export default function DoseLedgerView({
           defaultTime={defaultTime}
           defaultItemId={itemId}
           note={doseLedgerWindowNote(range)}
+        />
+        {/* A LINK pager: the page rides the URL, so what it turns is the read.
+            Every other control here (kind, item, range) drops the page — a
+            narrowed ledger re-pages from its first row rather than landing the
+            reader on a page the new filter may not have. */}
+        <PaginationControls
+          page={ledger.page}
+          pageCount={ledgerPages}
+          pageSize={HISTORY_PAGE_SIZE}
+          total={ledger.total}
+          visibleCount={rows.length}
+          prevHref={ledger.page > 1 ? pageHref(ledger.page - 1) : null}
+          nextHref={
+            ledger.page < ledgerPages ? pageHref(ledger.page + 1) : null
+          }
+          testId="dose-ledger-pagination"
         />
       </div>
 

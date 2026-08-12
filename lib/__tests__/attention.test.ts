@@ -60,7 +60,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
             flag: "high",
           },
         ],
-        integrations: [{ id: "strava", provider: "Strava", detail: "401" }],
+        integrations: [{ id: "strava", sourceName: "Strava", detail: "401" }],
         reviewCount: 2,
       })
     );
@@ -181,7 +181,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
         integrations: [
           {
             id: "strava",
-            provider: "Strava",
+            sourceName: "Strava",
             detail: "401 Unauthorized",
           },
         ],
@@ -206,7 +206,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
     const [item] = buildAttentionModel(
       input({
         integrations: [
-          { id: null, provider: "Legacy source", detail: "Sync failed" },
+          { id: null, sourceName: "Legacy source", detail: "Sync failed" },
         ],
       })
     );
@@ -478,7 +478,7 @@ describe("the strict subset invariant", () => {
       flaggedBiomarkers: [
         { name: "LDL", canonicalName: "LDL", value: "160", flag: "high" },
       ],
-      integrations: [{ id: "strava", provider: "Strava", detail: "401" }],
+      integrations: [{ id: "strava", sourceName: "Strava", detail: "401" }],
       reviewCount: 4,
     })
   );

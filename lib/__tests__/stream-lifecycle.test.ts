@@ -138,7 +138,7 @@ describe("streamLifecycleState — the lifecycle, derived at read time", () => {
     for (const s of allContinuousStreams()) {
       expect(
         STREAM_ENDED_AFTER_DAYS,
-        `${s.provider}:${s.stream.id} expected-active window`
+        `${s.sourceId}:${s.stream.id} expected-active window`
       ).toBeGreaterThan(s.stream.expectedActive.windowDays * 3);
     }
   });
@@ -213,7 +213,7 @@ describe("the dismissal keys — the two one-shot semantics", () => {
   it("the onboarding key is per (provider, stream) and carries no date", () => {
     const key = streamOnboardKey("health-connect", "heart-rate");
     expect(key).toBe(`${STREAM_ONBOARD_PREFIX}health-connect:heart-rate`);
-    // A different provider is a different offer.
+    // A different source is a different offer.
     expect(streamOnboardKey("oura" as never, "heart-rate")).not.toBe(key);
   });
 
@@ -238,7 +238,7 @@ describe("the dismissal keys — the two one-shot semantics", () => {
       streamOfferTarget(streamOnboardKey("health-connect", "heart-rate"))
     ).toEqual({
       kind: "onboard",
-      provider: "health-connect",
+      sourceId: "health-connect",
       streamId: "heart-rate",
     });
     expect(
@@ -247,7 +247,7 @@ describe("the dismissal keys — the two one-shot semantics", () => {
       )
     ).toEqual({
       kind: "offboard",
-      provider: "health-connect",
+      sourceId: "health-connect",
       streamId: "heart-rate",
     });
     expect(streamOfferTarget("right-size:12")).toBeNull();

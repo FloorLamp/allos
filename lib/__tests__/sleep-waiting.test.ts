@@ -29,7 +29,7 @@ function signals(over: Partial<SleepWaitingSignals> = {}): SleepWaitingSignals {
     wakeMinutes: WAKE,
     tracking: true,
     arrivalLagMin: null,
-    providerHealthy: true,
+    sourceHealthy: true,
     lastCheckedAt: "2026-08-05 06:33:00",
     ...over,
   };
@@ -41,14 +41,14 @@ describe("sleepWaitingState — precedence", () => {
   });
 
   it("says nothing when the profile is not sleep-tracking", () => {
-    // The abandoned device: watch in a drawer, phone still syncing steps, provider
+    // The abandoned device: watch in a drawer, phone still syncing steps, source
     // green. Checked BEFORE any clock branch, or it would ask again every morning.
     expect(sleepWaitingState(signals({ tracking: false }))).toBeNull();
   });
 
   it("says nothing when the provider is failing or stale", () => {
     // A broken connection has its own reconnect path and a different message.
-    expect(sleepWaitingState(signals({ providerHealthy: false }))).toBeNull();
+    expect(sleepWaitingState(signals({ sourceHealthy: false }))).toBeNull();
   });
 
   it("checks tracking even when the clock is deep in the waiting window", () => {

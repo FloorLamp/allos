@@ -48,7 +48,7 @@ import { parseUtcSql } from "./date";
  */
 export type FrontierMove = "advanced" | "frozen" | "empty";
 
-/** The folded state for one (profile, provider, stream), as stored. */
+/** The folded state for one (profile, source, stream), as stored. */
 export interface StreamFrontierState {
   /**
    * The newest row's instant as of the last observation — canonical UTC, or null when
@@ -125,7 +125,7 @@ export function observeFrontier(
  *
  * ONE push carrying nothing new is ordinary jitter: the exporter batches, and a push
  * can legitimately land between two of the device's own writes. TWO consecutive ones,
- * with the provider syncing ok, means the source has stopped producing. At Health
+ * with the source syncing ok, means the source has stopped producing. At Health
  * Connect's measured median 16-minute cadence (#2263) that is ~30 minutes of REAL
  * evidence — evidence, not elapsed clock — and it is available at the slot minute.
  *
@@ -154,7 +154,7 @@ export type FrontierEvidence =
  * THE frozen question, asked the same way by every predicate that asks it.
  *
  * `null` means the stream has never been observed — the app was deployed, or the
- * provider connected, and no push has landed since. That is deliberately NOT frozen:
+ * source connected, and no push has landed since. That is deliberately NOT frozen:
  * absence of evidence is not evidence, and the first push repairs it.
  */
 export function frontierEvidence(

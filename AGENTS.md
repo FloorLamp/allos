@@ -147,6 +147,19 @@ For every schema change:
 - Add a new profile-owned table to `lib/owned-tables.ts`.
 - Null dangling links before rebuilding a table to enforce a foreign key.
 
+A one-shot row-move migration that DELETES rows declares the (table, column)
+child links that must block a delete, and probes each with `PRAGMA table_info`
+so it can run against every historical schema shape. That probe cannot tell "this
+database predates the table" from "this pair is a typo", so a misnamed entry drops
+out silently and the guard covers nothing while still reading like a guard —
+migration 180 shipped with three of four entries naming columns that have never
+existed, and deleted rows a live care-plan follow-up still referenced (#2444).
+A typo is only visible against the FINAL migrated schema, so that is where it is
+checked: `lib/__db_tests__/migration-child-links.test.ts` reads every migration's
+link literals, fails an unknown pair, and pins the non-cascading FK parents of
+`medical_records`. The frozen entries a hash-locked migration cannot un-name are
+allowlisted there with the corrective migration named beside them.
+
 The runner applies migrations in individual immediate transactions, guards
 against a newer database being opened by older code, and temporarily disables
 foreign-key enforcement for safe SQLite table rebuilds. Per-boot work such as
@@ -199,7 +212,11 @@ Identity runs on the CODE and on the NAME, and a guard on one axis is not a guar
 (#2318 was exactly that: `functionalStatusExtractor` nulled the assessment LOINC
 and the same rows coined canonical names anyway). An attribute of another entity —
 a vaccine's lot number and expiry — is not an observation at all; the entity that
-owns it already stores it.
+owns it already stores it. Storage category, catalog browsability and identity are
+three DIFFERENT axes and quantitation is none of them — a urine dipstick result
+states no number and carries full identity, a questionnaire ITEM answer is numeric
+and carries none — so `carriesResultIdentity()` is named for what it gates and
+`docs/internals/clinical-result-terminology.md` is the map.
 
 ### Weekly cadence
 
@@ -273,7 +290,7 @@ undeclared temporal column fails CI and the published index
 (`docs/internals/time-columns.md`, `npm run gen:time-columns`) cannot rot.
 `lib/row-instants.ts` asks the question over it: `eventInstant`, `recordInstant`,
 `bestKnownInstant`, `rowLocalDay`. Never hand-roll `COALESCE(recorded_at, taken_at)`
-or `eaten_at ?? logged_at` again — a ledger in
+or `occurred_at ?? recorded_at` again — a ledger in
 `lib/__tests__/time-columns.test.ts` freezes the ones that remain.
 `eventInstant` NEVER falls back to the record instant: a row that states no event
 time returns an explicit absence with a reason, because answering it with the tap
@@ -388,20 +405,30 @@ See `docs/ai.md` for provider, logging, and extraction details.
 
 ### Integrations
 
-`lib/integrations/registry.ts` is the provider registry. Current entries include
+`lib/integrations/registry.ts` is the SOURCE registry. Current entries include
 Health Connect, Strava, Oura, Withings, Fitbit Takeout, Weather & UV, Calendar
 feed, and the planned Garmin integration.
 
-A provider also declares its **continuous streams** there — the ones expected to
+A connected integration is a **source** — `sourceId` in every TypeScript
+parameter, field and query API (#2487), matching the user-facing "Connected
+sources" wording. `Provider` and `provider_id` are reserved for healthcare
+clinicians and organizations, always. The persisted columns still say `provider`
+on `integration_connections`, `integration_sync_events`,
+`integration_backfill_jobs` and `stream_frontiers`; that rename is deferred to
+its own forward migration, so reads select `provider AS source_id` at an
+explicitly commented boundary and row shapes expose `source_id`. There is no
+wrapper type — see `docs/internals/integrations-sync.md`.
+
+A source also declares its **continuous streams** there — the ones expected to
 keep arriving minute after minute while a device is worn — beside
 `silenceToleranceMinutes`, read only through `lib/integrations/continuous-streams.ts`.
 That tolerance is about the CONNECTION; a stream declaration is about the DATA, and
 the two are independent: a phone can keep pushing aggregates while the watch feeding
 heart rate is off a wrist. `quietStreamVerdict` (#2146) reports that — stream silent
-past its DECLARED dip tolerance _while the provider kept syncing ok in that window_,
+past its DECLARED dip tolerance _while the source kept syncing ok in that window_,
 which is the clause that keeps it disjoint from #1685 staleness — with no stored
 state, and it renders on Data → Review only: it is coaching tier and never a send.
-A provider with no continuous stream declares none and is exempt by construction.
+A source with no continuous stream declares none and is exempt by construction.
 
 Sync and import behavior must remain idempotent:
 
@@ -748,6 +775,22 @@ See `docs/internals/e2e-hygiene.md`.
   `substance_log`, `protein_log`); the undo path builds its ledger from the same
   `CounterSpec` the undo registry declares, so the write side and the undo side
   cannot drift.
+- **Adult-only content refuses at the CORE**, not only at the surface. #1174 hid
+  the substance-use surface from a known minor; #1279 re-checked in every one of
+  that surface's actions, because a Server Action is independently POST-callable
+  and a UI-only gate is theater. #2107 closed the last hole: the instrument write
+  cores are SHARED with the mental-health catalog and update/delete resolve their
+  instrument from the targeted ROW, so the calling surface's family was no evidence
+  at all about what was being written, and the mental-health twins reached the very
+  scores #1279 refuses to touch. `adultOnlyRefusal`
+  (`lib/instrument-records.ts`) is the one question each of those cores asks about
+  the instrument it resolved; a refused one answers exactly as an unknown row does
+  (`null` / `not-found`), mental-health instruments pass unconditionally, and an
+  unknown age still passes (`lib/life-stage`'s positive-match-only policy).
+  `ADULT_ONLY_WRITE_CORES` (`lib/adult-only-writes.ts`) registers the gated modules
+  and its scan fails a new mutating export there that skips the gate — the
+  exemption list is empty. Narrowing the known callers is the fix that leaves the
+  next caller to rediscover the hole.
 - Identity families use one canonical pure function everywhere (movement facts
   key on `exerciseHistoryKey`; load-sensitive strength facts on
   `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,
@@ -771,6 +814,25 @@ See `docs/internals/e2e-hygiene.md`.
   unilaterally, never increase it or rewrite user-owned state), which domains can
   carry an obligation at all, and the right-sizing family every "the system
   noticed X" suggestion belongs to.
+- The doctrine's other half is **how a feature would learn it should stop**
+  (#2385). A feature that claims to change BEHAVIOUR declares three things beside
+  its acceptance criteria: what would show it working, what would show it wrong,
+  and its **deceptive success** — the measure that improves while the feature does
+  harm (food coverage rising while servings-per-window falls). Local queries over
+  data the instance already holds; never telemetry, never a user-facing score,
+  never on a correctness feature, and never on a safety signal, whose
+  justification is not effectiveness. This is prose in the issue and in the module
+  header — do not build a registry, a scoring engine or a metrics pipeline for it.
+- Its first application is **repeat dismissal read as an answer** (#2386):
+  `lib/dismissal-fatigue.ts` counts distinct declined RAISINGS of one topic
+  (keyed on the #436 episode anchor a finding declares through `supersedes`, never
+  rows) and de-prioritises, then retires from the routine surface — never mutes,
+  never writes, never touches the suppression bus, and always still reachable
+  where the user goes looking. The safety floor is DERIVED, not listed:
+  `mayQuietOnDismissal` asks `isHiddenUnderPolicy`, so quieting can only ever
+  reach a finding a plain dismiss would already have silenced. A dose reminder, a
+  missed-dose escalation, the crisis finding and an overdue care follow-up are
+  refused before any count is read.
 
 ## Repository hygiene
 

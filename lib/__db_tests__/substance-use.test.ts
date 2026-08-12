@@ -521,7 +521,7 @@ describe("no gamification for the new substances (#1078) — structural exemptio
 
 // #2073 — a historical correction that LOWERS a day's drink count has to decide
 // which per-tap `food_log_events` rows survive. They are not interchangeable: each
-// carries its own `logged_at`, so the choice is what any timing surface over the
+// carries its own `recorded_at`, so the choice is what any timing surface over the
 // alcohol group (a "last drink at HH:MM", mirroring the food-log timing work in
 // lib/correction-time.ts) will read. The rule is drop the EARLIEST taps and keep
 // the latest, so the day's last-drink instant survives a correction.
@@ -538,7 +538,7 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
       .all(profileId, date) as { id: number }[];
     expect(ids.length).toBe(hours.length);
     const stamp = db.prepare(
-      "UPDATE food_log_events SET logged_at = ? WHERE id = ?"
+      "UPDATE food_log_events SET recorded_at = ? WHERE id = ?"
     );
     ids.forEach((row, i) => {
       stamp.run(`${date}T${String(hours[i]).padStart(2, "0")}:00:00Z`, row.id);
@@ -549,12 +549,12 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
     return (
       db
         .prepare(
-          `SELECT logged_at FROM food_log_events
+          `SELECT recorded_at FROM food_log_events
            WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?
-           ORDER BY logged_at`
+           ORDER BY recorded_at`
         )
-        .all(profileId, date) as { logged_at: string }[]
-    ).map((row) => row.logged_at);
+        .all(profileId, date) as { recorded_at: string }[]
+    ).map((row) => row.recorded_at);
   }
 
   it("keeps the latest taps when an edit shrinks the day", () => {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { IconDeviceWatchOff } from "@tabler/icons-react";
 import type { QuietStreamRow } from "@/lib/queries/continuous-streams";
 
-// Data → Review: a provider that is syncing green while one of its continuous data
+// Data → Review: a source that is syncing green while one of its continuous data
 // streams has gone quiet (#2146) — the watch off the wrist while the phone keeps
 // pushing daily aggregates.
 //
@@ -20,7 +20,7 @@ import type { QuietStreamRow } from "@/lib/queries/continuous-streams";
 // Settings → Notifications opt-in, which is where that consent is given and the only
 // place it may be offered.
 //
-// The single link goes to the provider's own setup page, which is where sync history
+// The single link goes to the source's own setup page, which is where sync history
 // and controls already live. It offers nothing new, and that is the point.
 export default function QuietStreams({ rows }: { rows: QuietStreamRow[] }) {
   if (rows.length === 0) return null;
@@ -41,7 +41,7 @@ export default function QuietStreams({ rows }: { rows: QuietStreamRow[] }) {
             // The date-scoped identity from the pure model (quietStreamDedupeKey), so
             // the rendered key and any future suppression entry are the same string.
             key={row.key}
-            data-testid={`quiet-stream-${row.id ?? row.provider}`}
+            data-testid={`quiet-stream-${row.id ?? row.sourceName}`}
             className="rounded-lg border border-black/10 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-slate-900/40"
           >
             <p className="font-medium text-slate-800 dark:text-slate-100">
@@ -57,7 +57,7 @@ export default function QuietStreams({ rows }: { rows: QuietStreamRow[] }) {
                 href={row.href}
                 className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
               >
-                {row.provider} sync history →
+                {row.sourceName} sync history →
               </Link>
             )}
           </li>

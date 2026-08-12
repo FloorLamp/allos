@@ -3,17 +3,17 @@ import Database from "better-sqlite3";
 import { workerDbPath, frozenSyncInstant } from "./worker-env";
 
 // #1880/#2263: flapping is not failing, and what separates them is SILENCE. A
-// provider alternating Failed/Refreshed with a recent success is `intermittent` — a
+// source alternating Failed/Refreshed with a recent success is `intermittent` — a
 // calm amber fact on Review's Connected sources, the Import grid, and its own source
 // page — and NEVER enters Needs attention, the Data badge, or Upcoming. Once no run
-// has succeeded inside the provider's declared tolerance the ONE standing escalates,
+// has succeeded inside the source's declared tolerance the ONE standing escalates,
 // and every surface flips at once, with the failing source rendered exactly once on
 // Review (the duplicate-text tripwire).
 //
 // Weather on PROFILE 1 is this spec's own fixture (the shared seed leaves it
 // untouched there — the healthy weather fixture lives on its own findings profile),
 // mirroring integration-staleness.spec.ts, which owns the quiet-stop variant of the
-// same provider and likewise restores it in afterAll.
+// same source and likewise restores it in afterAll.
 
 const PROFILE_ID = 1;
 const PROVIDER = "weather";
@@ -275,7 +275,7 @@ test("the grid pitches what you don't own and reports on what you do, attention 
     expect(lastAttention).toBeLessThan(firstConnected);
   }
 
-  // An unconnected provider keeps the pitch: blurb, a few chips, Set up →. Health
+  // An unconnected source keeps the pitch: blurb, a few chips, Set up →. Health
   // Connect is never set up on profile 1.
   const hc = main.getByTestId("integration-card-health-connect");
   await expect(hc).toHaveAttribute("data-card-state", "available");

@@ -1,12 +1,12 @@
-// Persisted raw provider payloads for integration syncs (issue #9). Each sync can
-// point at the exact request/response body it exchanged with the provider via
+// Persisted raw source payloads for integration syncs (issue #9). Each sync can
+// point at the exact request/response body it exchanged with the source via
 // integration_sync_events.raw_ref, and the admin-only viewer
 // (app/api/integrations/raw/[id]) reads it back to make "why did/didn't this
 // change" debuggable from the UI. Mirrors lib/ai-log.ts's bounded, best-effort
 // file pattern.
 //
 // PHI-adjacent: payloads are written under the gitignored data/ volume, scoped per
-// profile, byte-capped, and retained newest-N per (profile, provider). Reads are
+// profile, byte-capped, and retained newest-N per (profile, source). Reads are
 // admin-only + profile-scoped at the route.
 //
 // Server-only: uses node:fs. NEVER import from a client component.
@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createLogger } from "@/lib/log";
-import { capPayload, isSafeRawRef, KEEP_PER_PROVIDER } from "./raw-log-format";
+import { capPayload, isSafeRawRef, KEEP_PER_SOURCE } from "./raw-log-format";
 
 const log = createLogger("integration-raw");
 
@@ -31,16 +31,16 @@ function profileDir(profileId: number): string {
   return path.join(RAW_PAYLOAD_ROOT, String(profileId));
 }
 
-// Retain only the newest KEEP_PER_PROVIDER payloads for this (profile, provider),
-// unlinking older ones. Files are named `<provider>-<uuid>.json`, so the provider
-// prefix lets retention prune per provider by directory listing. Best-effort.
-function pruneOld(dir: string, provider: string) {
+// Retain only the newest KEEP_PER_SOURCE payloads for this (profile, source),
+// unlinking older ones. Files are named `<source>-<uuid>.json`, so the source
+// prefix lets retention prune per source by directory listing. Best-effort.
+function pruneOld(dir: string, sourceId: string) {
   try {
-    const prefix = `${provider}-`;
+    const prefix = `${sourceId}-`;
     const entries = fs
       .readdirSync(dir)
       .filter((f) => f.startsWith(prefix) && f.endsWith(".json"));
-    if (entries.length <= KEEP_PER_PROVIDER) return;
+    if (entries.length <= KEEP_PER_SOURCE) return;
     const withTime = entries.map((f) => {
       let mtime = 0;
       try {
@@ -51,7 +51,7 @@ function pruneOld(dir: string, provider: string) {
       return { f, mtime };
     });
     withTime.sort((a, b) => b.mtime - a.mtime); // newest first
-    for (const { f } of withTime.slice(KEEP_PER_PROVIDER)) {
+    for (const { f } of withTime.slice(KEEP_PER_SOURCE)) {
       try {
         fs.unlinkSync(path.join(dir, f));
       } catch {
@@ -63,29 +63,29 @@ function pruneOld(dir: string, provider: string) {
   }
 }
 
-// Persist a raw provider payload, returning the ref (bare filename) to store on the
+// Persist a raw source payload, returning the ref (bare filename) to store on the
 // sync event, or null on ANY failure — writing MUST NEVER throw into ingest.
 export function writeRawPayload(
   profileId: number,
-  provider: string,
+  sourceId: string,
   payload: string
 ): string | null {
   if (typeof payload !== "string") return null;
-  // provider comes from our own registry ids ('health-connect' | 'strava'), but
+  // source comes from our own registry ids ('health-connect' | 'strava'), but
   // sanitize defensively so it can't influence the filename/prefix.
-  const safeProvider = provider.replace(/[^\w-]/g, "");
-  if (!safeProvider) return null;
+  const safeSourceId = sourceId.replace(/[^\w-]/g, "");
+  if (!safeSourceId) return null;
   try {
     const dir = profileDir(profileId);
     fs.mkdirSync(dir, { recursive: true });
-    const ref = `${safeProvider}-${crypto.randomUUID()}.json`;
+    const ref = `${safeSourceId}-${crypto.randomUUID()}.json`;
     if (!isSafeRawRef(ref)) return null; // belt-and-suspenders: prefix+uuid is always safe
     fs.writeFileSync(path.join(dir, ref), capPayload(payload));
-    pruneOld(dir, safeProvider);
+    pruneOld(dir, safeSourceId);
     return ref;
   } catch (err) {
     log.error("failed to write integration raw payload", {
-      provider,
+      sourceId,
       err: String(err),
     });
     return null;

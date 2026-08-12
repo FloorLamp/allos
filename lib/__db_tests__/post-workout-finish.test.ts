@@ -576,13 +576,13 @@ describe("an imported finish gets its own recap line (#2272)", () => {
   });
 });
 
-// ── #2439: the weekly line is about THIS session, and the title names what finished ──
+// ── #2503: the weekly line is about THIS session, and the title names what finished ──
 //
 // The reported message, verbatim: "🏋️ Workout complete / Afternoon Walk done · 33 min ·
 // 1.42 km · avg HR 84 (max 99) · effort 3 / Chest — 1 of 2 this week, one more to go."
 // Two claims a 1.42 km walk had no business making. The weekly rollup is profile-wide
 // and nothing tied it to the finishing activity, so the line led with the closest-to-done
-// target ANYWHERE — a chest target a barbell session had advanced days earlier — and then
+// target ANYWHERE — a chest target a barbell session had advanced earlier in the week — and then
 // nudged toward a chest day the walk had not touched.
 
 function makeTarget(
@@ -610,7 +610,7 @@ function seedWalk(profileId: number, date: string): number {
   });
 }
 
-describe("the weekly line names only what this session advanced (#2439)", () => {
+describe("the weekly line names only what this session advanced (#2503)", () => {
   it("does not credit a walk with the chest day a barbell session did", async () => {
     const p = newProfile("WalkNotChest");
     const date = today(p);

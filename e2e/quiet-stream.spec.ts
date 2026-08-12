@@ -19,7 +19,7 @@ import { expectNoClippedContent } from "./helpers";
 // rule forbids. The one send in this family (#2161's bedtime wear reminder) lives
 // behind an explicit Settings → Notifications opt-in and may be offered nowhere else.
 
-test("Data → Review names a device that stopped sending while its provider syncs green (#2146)", async ({
+test("Data → Review names a device that stopped sending while its source syncs green (#2146)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -47,7 +47,7 @@ test("Data → Review names a device that stopped sending while its provider syn
     await expect(row).not.toContainText("Reconnect");
 
     // A healthy connection, so the escalation card must NOT have claimed it: #2146
-    // constraint 7 gives one row per provider and the escalating kinds win.
+    // constraint 7 gives one row per source and the escalating kinds win.
     await expect(page.getByTestId("import-issue-health-connect")).toHaveCount(
       0
     );
@@ -76,7 +76,7 @@ test("the quiet-stream row offers NO push-shaped affordance anywhere (#2146 cons
     }
     await expect(card.getByRole("checkbox")).toHaveCount(0);
     await expect(card.getByRole("switch")).toHaveCount(0);
-    // The card's ONLY affordance is a read-only link to the provider's own page.
+    // The card's ONLY affordance is a read-only link to the source's own page.
     const links = card.getByRole("link");
     await expect(links).toHaveCount(1);
     await expect(links).toHaveAttribute("href", "/integrations/health-connect");

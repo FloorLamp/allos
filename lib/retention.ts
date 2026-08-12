@@ -21,11 +21,11 @@
 export const REPLAYED_KEYS_RETENTION_DAYS = 7;
 
 // integration_sync_events: keep 90 days (issue #388). This append-only debug log
-// gains a row per provider per hourly tick (~10-70/day with active integrations)
+// gains a row per source per hourly tick (~10-70/day with active integrations)
 // and was the one tick sibling nothing pruned — ~25k+ rows/year/profile, forever.
-// The Review feed and failing-provider banner only ever read recent events, so 90
+// The Review feed and failing-source banner only ever read recent events, so 90
 // days is generous. The prune ALSO always keeps the newest event per (profile,
-// provider) regardless of age (see planSyncEventPrune) so a dormant provider's last
+// source) regardless of age (see planSyncEventPrune) so a dormant source's last
 // known state never disappears out from under the failure detector.
 export const SYNC_EVENTS_RETENTION_DAYS = 90;
 

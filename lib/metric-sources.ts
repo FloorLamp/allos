@@ -1,5 +1,5 @@
-// Cross-provider daily-metric reconciliation (pure — no DB), so it can be
-// unit-tested in isolation. Some metrics are reported by more than one provider
+// Cross-source daily-metric reconciliation (pure — no DB), so it can be
+// unit-tested in isolation. Some metrics are reported by more than one source
 // for the same day (e.g. active calories from Strava, Health Connect, AND Oura;
 // sleep from Health Connect and Oura); summing across sources would
 // double-count, so additive reads keep a single source per day. The per-profile
@@ -37,10 +37,10 @@ export type SourceSelection = readonly string[] | SourceResolution;
 // archive's re-scored record instead — that choice is prepended to this list by the
 // query layer, so it wins without editing the default.
 //
-// Being listed at all is the load-bearing part: pickOneProviderPerDay falls back to
-// "the largest single-source total" for a provider absent from this list, which for
+// Being listed at all is the load-bearing part: pickOneSourcePerDay falls back to
+// "the largest single-source total" for a source absent from this list, which for
 // sleep would systematically favour the archive purely because it reports longer.
-export const PROVIDER_PREFERENCE = [
+export const SOURCE_PREFERENCE = [
   "manual",
   "health-connect",
   "fitbit-takeout",
@@ -50,9 +50,9 @@ export const PROVIDER_PREFERENCE = [
 ];
 
 // Collapse per-(date, source) subtotals to one value per day by choosing a single
-// provider — the first present in `selection`, else the largest single-source
+// source — the first present in `selection`, else the largest single-source
 // total (which for a lone source is just that source, and avoids double-counting
-// two unknown providers).
+// two unknown sources).
 //
 // A CLASS selector (#1640) makes its members ONE candidate: their subtotals sum,
 // because the class IS the source for that day (two reports covering the same
@@ -61,7 +61,7 @@ export const PROVIDER_PREFERENCE = [
 // In STRICT mode (#1642) the "largest single-source total" fallback is skipped
 // entirely: a day no selector covers yields no point at all, so the series shows
 // an honest gap instead of another source's number.
-export function pickOneProviderPerDay(
+export function pickOneSourcePerDay(
   rows: { date: string; source: string | null; value: number }[],
   selection: SourceSelection
 ): { date: string; value: number }[] {

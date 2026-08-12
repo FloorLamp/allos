@@ -13,7 +13,7 @@ import {
 } from "../biomarker-panels";
 import { CANONICAL_BIOMARKERS } from "../datasets/canonical-biomarkers";
 import { DERIVED_NAMES } from "../derived-biomarkers";
-import { BIOMARKER_CATEGORIES } from "../medical-categories";
+import { RESULTS_CATALOG_CATEGORIES } from "../medical-categories";
 import { hasTrendMetricHome } from "../trend-metric-analytes";
 
 // #1581 section D — the panel facet must not offer an option that can never return a
@@ -92,7 +92,9 @@ describe("reachablePanelIds (#1581 section D)", () => {
     // The independent oracle: a panel is reachable iff some canonical entry in it
     // carries a listed category AND is not an analyte the browser drops for having a
     // body-metric home (#2365), or a derived index resolves to it, or it is `other`.
-    const listed = new Set<string>(BIOMARKER_CATEGORIES as readonly string[]);
+    const listed = new Set<string>(
+      RESULTS_CATALOG_CATEGORIES as readonly string[]
+    );
     const expected = new Set<PanelId>([OTHER_PANEL]);
     for (const e of CANONICAL_BIOMARKERS) {
       if (!listed.has(e.category)) continue;

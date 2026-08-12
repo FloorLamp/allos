@@ -5,14 +5,19 @@ import AppVersion from "@/components/AppVersion";
 import MarkWhatsNewSeen from "@/components/MarkWhatsNewSeen";
 import { getDisplayFormatPrefs, getWhatsNewSeenDate } from "@/lib/settings";
 import { formatLongDate } from "@/lib/format-date";
+import PaginationControls from "@/components/PaginationControls";
+import { clampPage } from "@/lib/pagination";
 import {
+  WHATS_NEW_PAGE_ENTRIES,
   hasUnseenNotes,
   issueUrl,
   loadReleaseNotes,
   newestNoteDate,
   pullRequestUrl,
+  releaseNotesPage,
   type ReleaseNoteKind,
 } from "@/lib/release-notes";
+import type { AppRoute } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,14 @@ export const dynamic = "force-dynamic";
 // what clears the unread dot beside the version hash in the sidebar footer and on
 // the Settings index footer. Notes are per-image content, not per-profile data, so
 // nothing here is profile-scoped.
+//
+// PAGED (#2528). The file is append-only by design — a merge day adds ~15 entries —
+// so "render everything" is a page that grows forever, and at 20 days it was the
+// tallest surface in the app: 76,647 px on a 390 px-wide phone, ~87 viewport heights
+// in one scroll. The bound is `releaseNotesPage`, counted in ENTRIES so a 1-entry day
+// and a 32-entry day page the same, with `?page=` in the URL. Marking the notes seen
+// stays a property of VISITING, not of reaching the last page: the dot means "there
+// is something you haven't looked at", and the newest notes are on page 1.
 
 // Kind chips. Each kind gets its OWN color (never one family color, #533) so the
 // classification is readable at a glance; an entry with no kind renders no chip.
@@ -51,10 +64,19 @@ const KIND_CHIP: Record<ReleaseNoteKind, { label: string; className: string }> =
     },
   };
 
-export default async function WhatsNewPage() {
+export default async function WhatsNewPage(props: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}) {
   const { login } = await requireSession();
+  const searchParams = await props.searchParams;
   const notes = loadReleaseNotes();
   const prefs = getDisplayFormatPrefs(login.id);
+  const rawPage = Array.isArray(searchParams.page)
+    ? searchParams.page[0]
+    : searchParams.page;
+  const paged = releaseNotesPage(notes, clampPage(Number(rawPage) || 1));
+  const pageHref = (page: number): AppRoute =>
+    page <= 1 ? "/whats-new" : `/whats-new?page=${page}`;
   // Mount the seen-marker writer only when there IS something unseen, so a repeat
   // visit issues no write at all. Same one comparison the dot uses.
   const unseen = hasUnseenNotes(
@@ -83,7 +105,7 @@ export default async function WhatsNewPage() {
         </div>
       ) : (
         <div className="space-y-6" data-testid="whats-new-days">
-          {notes.days.map((day) => (
+          {paged.days.map((day) => (
             <section
               key={day.date}
               className="card space-y-4"
@@ -160,6 +182,20 @@ export default async function WhatsNewPage() {
               )}
             </section>
           ))}
+          {/* The bound, and the way back to the archive it hides. Older notes stay
+              reachable in-app rather than only on GitHub. */}
+          <PaginationControls
+            page={paged.page}
+            pageCount={paged.pageCount}
+            pageSize={WHATS_NEW_PAGE_ENTRIES}
+            total={paged.total}
+            visibleCount={paged.shown}
+            prevHref={paged.page > 1 ? pageHref(paged.page - 1) : null}
+            nextHref={
+              paged.page < paged.pageCount ? pageHref(paged.page + 1) : null
+            }
+            testId="whats-new-pagination"
+          />
         </div>
       )}
     </PageContainer>
