@@ -498,7 +498,7 @@ card (its own badge, `Last sync: <raw SQLite UTC string> UTC`, and the
 accounting alongside `formatSplitLabel` and the legacy `written` fallback),
 `IntegrationSyncHistoryLink`, and Review's Connected-sources card. Same question,
 different timestamps, different accountings, different affordances depending on
-where you stood. The computation is now `lib/integrations/provider-state.ts`
+where you stood. The computation is now `lib/integrations/source-state.ts`
 (pure) over `getIntegrationState` (`lib/queries/integrations.ts`), and every
 surface FORMATS its answers:
 

@@ -241,12 +241,19 @@ export function deleteTotpChallenge(rawToken: string): void {
   );
 }
 
-// Opportunistic prune of expired challenge rows, called at login alongside the
-// existing expired-session/attempt prunes.
-export function purgeExpiredTotpChallenges(): void {
-  db.prepare(
-    "DELETE FROM login_totp_challenges WHERE expires_at <= datetime('now')"
-  ).run();
+// Prune expired challenge rows, returning how many went. Called opportunistically
+// at login alongside the existing expired-session/attempt prunes, AND from the
+// hourly notify tick's sweep block (#1843) so the table is bounded on an instance
+// nobody signs into.
+//
+// `datetime('now')` is correct here: `login_totp_challenges.expires_at` is
+// declared `convention: "bare"` in lib/time-columns.ts.
+export function purgeExpiredTotpChallenges(): number {
+  return db
+    .prepare(
+      "DELETE FROM login_totp_challenges WHERE expires_at <= datetime('now')"
+    )
+    .run().changes;
 }
 
 // ---- Bootstrap safety: env-var override ----
