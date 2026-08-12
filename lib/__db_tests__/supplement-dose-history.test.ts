@@ -20,6 +20,7 @@ import {
   deleteAdministrationLog,
   getIntakeDoseHistory,
   getIntakeDoseHistoryAll,
+  getIntakeDoseLedgerPage,
   getIntakeDoseHistoryForItems,
   getRedoseArmingState,
   linkItemToPool,
@@ -881,5 +882,124 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
       getNotifySchedule(profileId)
     );
     expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
+
+// ── The ledger's READ BOUND (#2445) ──────────────────────────────────────────
+//
+// The dose-history surface offers an explicit "All time" range, which passes the ISO
+// floor as `sinceDate` — a window with no lower bound. The reader behind it had no
+// LIMIT and the table it fed had no client truncation, so a must-obligation
+// medication logged twice daily for years fetched and rendered its entire ledger on
+// that tap. "All time" is a legitimate ANSWER (history outlives retirement), so the
+// bound is the page, and the page has to be SQL.
+describe("getIntakeDoseLedgerPage — the surface's bound (#2445)", () => {
+  // A medication, so the kind filter has both kinds to sort.
+  function seedMedication(profileId: number): {
+    itemId: number;
+    doseId: number;
+  } {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, 'medication', 'daily', 'must')`
+        )
+        .run(profileId, `Statin ${++unique}`).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '10 mg', 'evening', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    return { itemId, doseId };
+  }
+
+  // One item, many taken rows, on consecutive days so the order is unambiguous.
+  function seedLedger(profileId: number, days: number): number {
+    const { itemId, doseId } = seedSupplement(profileId, { onHand: null });
+    for (let i = 1; i <= days; i++) {
+      const day = shiftDateStr(today(profileId), -i);
+      logHistoricalDose(profileId, itemId, doseId, at(day, "08:00"), null, false);
+    }
+    return itemId;
+  }
+
+  it("returns one page plus the total of the whole window", () => {
+    const p = newProfile();
+    seedLedger(p, 25);
+
+    const page = getIntakeDoseLedgerPage(p, "0001-01-01", {}, 1, 10);
+    expect(page.rows).toHaveLength(10);
+    expect(page.total).toBe(25);
+    // Newest first, exactly as the unpaged reader orders — the page is a window on
+    // the SAME ledger, not a second answer.
+    const all = getIntakeDoseHistoryAll(p, "0001-01-01");
+    expect(page.rows.map((r) => r.id)).toEqual(all.slice(0, 10).map((r) => r.id));
+  });
+
+  it("pages disjointly and completely, and clamps past the end", () => {
+    const p = newProfile();
+    seedLedger(p, 25);
+    const seen = [1, 2, 3].flatMap(
+      (n) => getIntakeDoseLedgerPage(p, "0001-01-01", {}, n, 10).rows
+    );
+    expect(new Set(seen.map((r) => r.id)).size).toBe(25);
+
+    const past = getIntakeDoseLedgerPage(p, "0001-01-01", {}, 99, 10);
+    expect(past.page).toBe(3);
+    expect(past.rows).toHaveLength(5);
+  });
+
+  it("counts and pages the FILTERED ledger, not the whole one", () => {
+    const p = newProfile();
+    seedLedger(p, 12);
+    const med = seedMedication(p);
+    const day = shiftDateStr(today(p), -1);
+    logHistoricalDose(p, med.itemId, med.doseId, at(day, "20:00"), null, false);
+
+    const meds = getIntakeDoseLedgerPage(
+      p,
+      "0001-01-01",
+      { kind: "medication" },
+      1,
+      10
+    );
+    expect(meds.total).toBe(1);
+    expect(meds.rows).toHaveLength(1);
+    expect(meds.rows[0].item_id).toBe(med.itemId);
+
+    // A window narrows both halves the same way.
+    const since = shiftDateStr(today(p), -5);
+    const recent = getIntakeDoseLedgerPage(p, since, {}, 1, 10);
+    expect(recent.total).toBe(
+      getIntakeDoseHistoryAll(p, since).length
+    );
+  });
+
+  it("never reaches another profile's ledger", () => {
+    const mine = newProfile();
+    const theirs = newProfile();
+    seedLedger(mine, 3);
+    const other = seedSupplement(theirs, { onHand: null });
+    logHistoricalDose(
+      theirs,
+      other.itemId,
+      other.doseId,
+      at(shiftDateStr(today(theirs), -1), "08:00"),
+      null,
+      false
+    );
+
+    const page = getIntakeDoseLedgerPage(mine, "0001-01-01", {}, 1, 10);
+    expect(page.total).toBe(3);
+    expect(
+      getIntakeDoseLedgerPage(mine, "0001-01-01", { itemId: other.itemId }, 1, 10)
+    ).toMatchObject({ total: 0, rows: [] });
   });
 });

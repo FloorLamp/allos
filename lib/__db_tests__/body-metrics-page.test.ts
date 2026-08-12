@@ -105,7 +105,18 @@ describe("getBodyMetricsPage (#2530)", () => {
 
   it("is profile-scoped", () => {
     const mine = getBodyMetricsPage(profileId, 3, 10);
-    expect(mine.rows.every((r) => r.profile_id === profileId)).toBe(true);
+    const owners = new Set(
+      (
+        db
+          .prepare(
+            `SELECT DISTINCT profile_id AS p FROM body_metrics WHERE id IN (${mine.rows
+              .map(() => "?")
+              .join(",")})`
+          )
+          .all(...mine.rows.map((r) => r.id)) as { p: number }[]
+      ).map((r) => r.p)
+    );
+    expect([...owners]).toEqual([profileId]);
     expect(getBodyMetricsPage(otherId, 1, 10).total).toBe(1);
   });
 });
