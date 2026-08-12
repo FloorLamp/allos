@@ -124,7 +124,7 @@ const REPORT_RATE_WINDOW_MS = 5 * 60 * 1000;
 // The source these events land under — the registry id, so the card, the staleness
 // reader and Data → Review all find them without a special case. Renamed from the
 // tool-shaped "mychart" by migration 131, which moved the stored rows with it.
-const PROVIDER = "patient-portals";
+const SOURCE_ID = "patient-portals";
 
 function jsonError(error: string, status: number): Response {
   return Response.json({ ok: false, error }, { status });
@@ -440,7 +440,7 @@ export async function POST(req: Request): Promise<Response> {
     // The append-only event history: this is what Data → Review reads and what the
     // failure badge keys off. recordSyncEvent is best-effort by contract (it never throws
     // into its caller), so a reporting hiccup can't fail an otherwise-good run.
-    recordSyncEvent(profileId, PROVIDER, {
+    recordSyncEvent(profileId, SOURCE_ID, {
       ok: ev.ok,
       received: ev.received,
       written: ev.inserted + ev.updated,
@@ -471,8 +471,8 @@ export async function POST(req: Request): Promise<Response> {
       // connection for an external-attended integration: there is no OAuth dance or
       // token paste to create the row beforehand, so the first successful run is what
       // marks it connected.
-      upsertConnection(profileId, PROVIDER, { status: "connected" });
-      recordSync(profileId, PROVIDER, {
+      upsertConnection(profileId, SOURCE_ID, { status: "connected" });
+      recordSync(profileId, SOURCE_ID, {
         inserted: ev.inserted,
         updated: ev.updated,
         unchanged: ev.unchanged,

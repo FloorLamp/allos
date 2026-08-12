@@ -74,6 +74,22 @@ test.describe("shared supply pools", () => {
   test("two members' confirms decrement ONE shared bottle", async ({
     browser,
   }) => {
+    // The longest case in this file by a wide margin, and what is left is the claim
+    // itself: four profile switches (each a Server Action plus a layout revalidate)
+    // around five /medications loads and four cabinet loads is what "two members draw
+    // from one bottle" costs through the real UI. #2525 measured it at 22–25s against
+    // the 30s default and watched identical work spread 5× with box load. Two things
+    // answer that, in order of preference:
+    //
+    //   • less work — the chip claim now asserts on the page the confirm already left
+    //     us on, and the switch-and-open claim moved to the deep-link case below,
+    //     which was half this one's length and owed nothing to the pooled arithmetic.
+    //     Measured on a 4-core container at --workers=4 --repeat-each=3: 26.1–28.3s
+    //     before, 22.3–22.9s after (and 8.5–9.0s at one worker on an idle box);
+    //   • a DECLARED budget for the rest. 22s of 30s is not a margin on a runner that
+    //     varies 5×, and at retries: 0 test.slow() masks nothing — a pool that stops
+    //     pooling still fails, it just stops failing because the box was busy.
+    test.slow();
     const page = await loginAs(browser, {
       username: E2E_LOGIN_SUPPLY,
       password: E2E_MEMBER_PASSWORD,
@@ -114,13 +130,16 @@ test.describe("shared supply pools", () => {
 
       // The parent (the acting profile) confirms their dose.
       await setDoseTaken(page, SUPPLY_PARENT_MED, true);
-      await page.goto(CABINET);
-      expect(await onHand(page, SUPPLY_SHARED_BOTTLE)).toBe(before - 1);
 
       // The member's own medication row shows the SHARED chip, not a private badge.
-      await page.goto("/medications");
+      // Asserted HERE, on the page setDoseTaken already left us on, rather than after
+      // a second /medications load — the chip is a static rendering fact and owes
+      // nothing to the confirm's ordering.
       const ownChip = page.getByTestId("shared-supply-chip").first(); // first-ok: spec-owned profile whose only tracked meds are this fixture's linked set
       await expect(ownChip).toContainText("Shared");
+
+      await page.goto(CABINET);
+      expect(await onHand(page, SUPPLY_SHARED_BOTTLE)).toBe(before - 1);
 
       // Switch to the CHILD and confirm theirs — the SAME bottle falls again.
       await switchToProfile(page, SUPPLY_CHILD_PROFILE);
@@ -135,25 +154,6 @@ test.describe("shared supply pools", () => {
       await setDoseTaken(page, SUPPLY_PARENT_MED, false);
       await page.goto(CABINET);
       expect(await onHand(page, SUPPLY_SHARED_BOTTLE)).toBe(before);
-
-      // A member item owned by another profile uses the shared explicit
-      // switch-and-open chip, so its profile-owned destination cannot render
-      // against the caregiver's previous acting profile.
-      const restored = bottleCard(page, SUPPLY_SHARED_BOTTLE);
-      await settledClick(
-        page,
-        restored.getByRole("button", {
-          name: `Switch to ${SUPPLY_CHILD_PROFILE} and open ${SUPPLY_CHILD_MED}`,
-        })
-      );
-      await expect(page).toHaveURL(/\/medications\/\d+$/);
-      await expect(page.getByTestId("medication-subject-name")).toHaveText(
-        SUPPLY_CHILD_PROFILE,
-        { timeout: 15_000 }
-      );
-      await expect(page.getByTestId("medication-detail")).toContainText(
-        SUPPLY_CHILD_MED
-      );
     } finally {
       // Leave the login acting as the profile it started on.
       await switchToProfile(page, SUPPLY_PARENT_PROFILE);
@@ -249,7 +249,7 @@ test.describe("shared supply pools", () => {
     }
   });
 
-  test("the cabinet edits a bottle and is reachable from a medication chip", async ({
+  test("the cabinet edits a bottle and links both ways with a medication", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -319,7 +319,50 @@ test.describe("shared supply pools", () => {
       );
       await expect(dialog).not.toBeVisible();
       await expect(editable).toBeVisible();
+
+      // The door back OUT, and the reason it is a button rather than a link: a member
+      // item owned by ANOTHER profile switches first, so its profile-owned destination
+      // cannot render against the caregiver's previous acting profile. Asserted here
+      // rather than in the decrement case, which needs its 30s budget for the pooled
+      // arithmetic and owes nothing to this navigation (#2525).
+      //
+      // From a FRESH cabinet, deliberately: driven straight off the tree the cancelled
+      // delete sheet left behind, the form submit above it produced no action POST at
+      // all (settledClick's "no same-origin POST was seen"), which is a different
+      // question from this claim.
+      await page.goto(CABINET);
+      await settledClick(
+        page,
+        bottleCard(page, SUPPLY_SHARED_BOTTLE).getByRole("button", {
+          name: `Switch to ${SUPPLY_CHILD_PROFILE} and open ${SUPPLY_CHILD_MED}`,
+        })
+      );
+      await expect(page).toHaveURL(/\/medications\/\d+$/);
+      await expect(page.getByTestId("medication-subject-name")).toHaveText(
+        SUPPLY_CHILD_PROFILE,
+        { timeout: 15_000 }
+      );
+      await expect(page.getByTestId("medication-detail")).toContainText(
+        SUPPLY_CHILD_MED
+      );
     } finally {
+      // The switch-and-open above moved the acting profile; leave the login on the
+      // one it started on so a later case in this worker's database sees the same
+      // world (this file's other cases drive the PARENT's medications page).
+      //
+      // ASKED FIRST, because switchToProfile has no no-op path: the switcher panel
+      // offers no row for the profile already being acted as, so calling it there
+      // spins its popover retry until the test budget dies — and on a failure BEFORE
+      // the click above, that timeout is what gets reported instead of the real
+      // error. The trigger's accessible name states the acting profile, which is
+      // exactly the question.
+      const acting =
+        (await page
+          .getByTestId("profile-identity-bar")
+          .getAttribute("aria-label")) ?? "";
+      if (!acting.includes(SUPPLY_PARENT_PROFILE)) {
+        await switchToProfile(page, SUPPLY_PARENT_PROFILE);
+      }
       await page.context().close();
     }
   });

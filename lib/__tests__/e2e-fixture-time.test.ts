@@ -29,28 +29,72 @@ function filesUnder(dir: string): string[] {
 }
 
 const ALL_E2E_FILES = filesUnder(E2E);
-const TIMEZONE_SCAN_FILES = ALL_E2E_FILES.filter(
-  (file) => relative(file) !== "e2e/fixture-timezones.ts"
-);
-const DATETIME_SCAN_FILES = ALL_E2E_FILES.filter(
-  (file) =>
-    file.startsWith(`${path.join(E2E, "seed")}${path.sep}`) ||
-    file.endsWith(".spec.ts")
-);
+
+// PARSING is what this file costs, and the e2e tree only grows: 455 `.ts` files /
+// ~4 MB today, ~480 ms to TypeScript-parse them all before either scan walks a
+// node, against vitest's inherited 5 s default — which a loaded CI runner crossed
+// (#2511). Reading the tree is ~22 ms, so each scan READS every candidate and
+// parses only the files whose text could possibly answer its question. A file both
+// scans want is parsed once.
+const TEXTS = new Map<string, string>();
+const PARSED = new Map<string, ts.SourceFile>();
 
 function relative(file: string): string {
   return path.relative(REPO, file).replaceAll(path.sep, "/");
 }
 
-function source(file: string): ts.SourceFile {
-  return ts.createSourceFile(
-    file,
-    fs.readFileSync(file, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS
-  );
+function text(file: string): string {
+  let cached = TEXTS.get(file);
+  if (cached === undefined) {
+    cached = fs.readFileSync(file, "utf8");
+    TEXTS.set(file, cached);
+  }
+  return cached;
 }
+
+function source(file: string): ts.SourceFile {
+  let cached = PARSED.get(file);
+  if (!cached) {
+    cached = ts.createSourceFile(
+      file,
+      text(file),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS
+    );
+    PARSED.set(file, cached);
+  }
+  return cached;
+}
+
+// Every timezone detector below keys on an identifier or literal whose own text
+// contains "timezone": `setFixtureTimezone`, `setTimezone` (or a local alias, whose
+// import statement still names `setTimezone`), a `"timezone"` string argument, and
+// the `profile_settings` SQL literal. A file with no such substring can neither
+// carry a violation nor declare a registry entry, so it is never parsed — 38 of the
+// 455 files match. The filter cannot quietly swallow a `setFixtureTimezone` caller
+// either: the scan asserts the declarations it FOUND equal the registry exactly, so
+// a dropped caller shows up as a registry entry nobody uses.
+const TIMEZONE_MARKER = /timezone/i;
+
+// The interpolated-date-time detector fires on a template SPAN whose literal begins
+// with `T`, which is written `}T` in source. Only an escape-encoded `T` could evade
+// that, a form Prettier never emits — and for a file already in the allowlist the
+// evasion is self-reporting, since its declared count would drop to zero and the
+// exact comparison below fails. 17 of the 416 candidates match.
+const DATETIME_MARKER = "}T";
+
+const TIMEZONE_SCAN_FILES = ALL_E2E_FILES.filter(
+  (file) =>
+    relative(file) !== "e2e/fixture-timezones.ts" &&
+    TIMEZONE_MARKER.test(text(file))
+);
+const DATETIME_SCAN_FILES = ALL_E2E_FILES.filter(
+  (file) =>
+    (file.startsWith(`${path.join(E2E, "seed")}${path.sep}`) ||
+      file.endsWith(".spec.ts")) &&
+    text(file).includes(DATETIME_MARKER)
+);
 
 function callName(call: ts.CallExpression): string | null {
   const callee = call.expression;
@@ -130,109 +174,129 @@ function isInsideSafeBuilder(node: ts.Node): boolean {
   return false;
 }
 
-describe("e2e fixture time declarations", () => {
-  it("routes every per-profile timezone override through the declared registry", () => {
-    const raw: string[] = [];
-    const used = new Set<string>();
+// Both scans DECLARE their budget rather than inheriting vitest's 5 s default,
+// because a tree scan's cost is set by the tree and not by this file (#2511: the
+// timezone scan timed out at 5 s on a loaded `test-unit` runner while measuring
+// 1.17 s at rest). Measured after the pre-filters above, on an otherwise idle
+// 4-core container: 245–269 ms for the timezone scan, 27–36 ms for the date-time
+// scan, 3/3 runs each. At `retries: 0` a declared budget masks nothing — a broken
+// invariant still fails; only a busy runner stops doing so.
+const SCAN_TIMEOUT_MS = 30_000;
 
-    for (const file of TIMEZONE_SCAN_FILES) {
-      const sf = source(file);
-      const rawTimezoneSetters = new Set(["setTimezone"]);
-      for (const statement of sf.statements) {
-        if (
-          !ts.isImportDeclaration(statement) ||
-          !ts.isStringLiteral(statement.moduleSpecifier) ||
-          !statement.moduleSpecifier.text.endsWith("lib/settings") ||
-          !statement.importClause?.namedBindings ||
-          !ts.isNamedImports(statement.importClause.namedBindings)
-        ) {
-          continue;
-        }
-        for (const imported of statement.importClause.namedBindings.elements) {
-          if ((imported.propertyName ?? imported.name).text === "setTimezone") {
-            rawTimezoneSetters.add(imported.name.text);
+describe("e2e fixture time declarations", () => {
+  it(
+    "routes every per-profile timezone override through the declared registry",
+    { timeout: SCAN_TIMEOUT_MS },
+    () => {
+      const raw: string[] = [];
+      const used = new Set<string>();
+
+      for (const file of TIMEZONE_SCAN_FILES) {
+        const sf = source(file);
+        const rawTimezoneSetters = new Set(["setTimezone"]);
+        for (const statement of sf.statements) {
+          if (
+            !ts.isImportDeclaration(statement) ||
+            !ts.isStringLiteral(statement.moduleSpecifier) ||
+            !statement.moduleSpecifier.text.endsWith("lib/settings") ||
+            !statement.importClause?.namedBindings ||
+            !ts.isNamedImports(statement.importClause.namedBindings)
+          ) {
+            continue;
+          }
+          for (const imported of statement.importClause.namedBindings
+            .elements) {
+            if (
+              (imported.propertyName ?? imported.name).text === "setTimezone"
+            ) {
+              rawTimezoneSetters.add(imported.name.text);
+            }
           }
         }
-      }
-      const visit = (node: ts.Node): void => {
-        if (ts.isCallExpression(node)) {
-          const name = callName(node);
-          if (name === "setFixtureTimezone") {
-            const declaration = node.arguments[2];
-            if (!declaration || !ts.isStringLiteral(declaration)) {
+        const visit = (node: ts.Node): void => {
+          if (ts.isCallExpression(node)) {
+            const name = callName(node);
+            if (name === "setFixtureTimezone") {
+              const declaration = node.arguments[2];
+              if (!declaration || !ts.isStringLiteral(declaration)) {
+                raw.push(
+                  `${relative(file)}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1} dynamic declaration`
+                );
+              } else {
+                used.add(declaration.text);
+              }
+            } else if (
+              (name && rawTimezoneSetters.has(name)) ||
+              node.arguments.some(
+                (arg) => ts.isStringLiteral(arg) && arg.text === "timezone"
+              )
+            ) {
               raw.push(
-                `${relative(file)}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1} dynamic declaration`
+                `${relative(file)}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1} raw timezone call`
               );
-            } else {
-              used.add(declaration.text);
             }
-          } else if (
-            (name && rawTimezoneSetters.has(name)) ||
-            node.arguments.some(
-              (arg) => ts.isStringLiteral(arg) && arg.text === "timezone"
+          }
+          if (
+            (ts.isStringLiteral(node) ||
+              ts.isNoSubstitutionTemplateLiteral(node) ||
+              ts.isTemplateExpression(node)) &&
+            /\b(?:INSERT\s+INTO|UPDATE)\s+profile_settings\b[\s\S]*['"]timezone['"]/i.test(
+              node.getText(sf)
             )
           ) {
             raw.push(
-              `${relative(file)}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1} raw timezone call`
+              `${relative(file)}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1} raw timezone SQL`
             );
           }
-        }
-        if (
-          (ts.isStringLiteral(node) ||
-            ts.isNoSubstitutionTemplateLiteral(node) ||
-            ts.isTemplateExpression(node)) &&
-          /\b(?:INSERT\s+INTO|UPDATE)\s+profile_settings\b[\s\S]*['"]timezone['"]/i.test(
-            node.getText(sf)
-          )
-        ) {
-          raw.push(
-            `${relative(file)}:${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1} raw timezone SQL`
-          );
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(sf);
+          ts.forEachChild(node, visit);
+        };
+        visit(sf);
+      }
+
+      expect(raw).toEqual([]);
+      const declared = Object.entries(FIXTURE_TIMEZONE_OVERRIDES);
+      expect(declared.every(([, entry]) => entry.why.trim().length > 0)).toBe(
+        true
+      );
+      expect([...used].sort()).toEqual(declared.map(([key]) => key).sort());
     }
+  );
 
-    expect(raw).toEqual([]);
-    const declared = Object.entries(FIXTURE_TIMEZONE_OVERRIDES);
-    expect(declared.every(([, entry]) => entry.why.trim().length > 0)).toBe(
-      true
-    );
-    expect([...used].sort()).toEqual(declared.map(([key]) => key).sort());
-  });
+  it(
+    "adds no undeclared interpolated date-time fixture strings",
+    { timeout: SCAN_TIMEOUT_MS },
+    () => {
+      const counts = new Map<string, number>();
+      for (const file of DATETIME_SCAN_FILES) {
+        const sf = source(file);
+        const visit = (node: ts.Node): void => {
+          if (
+            ts.isTemplateExpression(node) &&
+            node.templateSpans.some((span) =>
+              /^T(?:\d|$)/.test(span.literal.text)
+            ) &&
+            !isInsideSafeBuilder(node)
+          ) {
+            const key = relative(file);
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          }
+          ts.forEachChild(node, visit);
+        };
+        visit(sf);
+      }
 
-  it("adds no undeclared interpolated date-time fixture strings", () => {
-    const counts = new Map<string, number>();
-    for (const file of DATETIME_SCAN_FILES) {
-      const sf = source(file);
-      const visit = (node: ts.Node): void => {
-        if (
-          ts.isTemplateExpression(node) &&
-          node.templateSpans.some((span) =>
-            /^T(?:\d|$)/.test(span.literal.text)
-          ) &&
-          !isInsideSafeBuilder(node)
-        ) {
-          const key = relative(file);
-          counts.set(key, (counts.get(key) ?? 0) + 1);
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(sf);
+      const actual = Object.fromEntries([...counts].sort());
+      const allowed = Object.fromEntries(
+        Object.entries(INTERPOLATED_DATETIME_ALLOW)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([file, entry]) => [file, entry.count])
+      );
+      expect(
+        Object.values(INTERPOLATED_DATETIME_ALLOW).every(
+          (entry) => entry.count > 0 && entry.why.trim().length > 0
+        )
+      ).toBe(true);
+      expect(actual).toEqual(allowed);
     }
-
-    const actual = Object.fromEntries([...counts].sort());
-    const allowed = Object.fromEntries(
-      Object.entries(INTERPOLATED_DATETIME_ALLOW)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([file, entry]) => [file, entry.count])
-    );
-    expect(
-      Object.values(INTERPOLATED_DATETIME_ALLOW).every(
-        (entry) => entry.count > 0 && entry.why.trim().length > 0
-      )
-    ).toBe(true);
-    expect(actual).toEqual(allowed);
-  });
+  );
 });
