@@ -580,8 +580,34 @@ export function getSleepStageDailyTotals(
 // sources reporting the same nights would interleave duplicate windows and wreck
 // the timing statistics. When several sources have sessions, the profile's
 // 'sleep_min' primary source wins; unset (or a chosen source with no sessions)
-// falls back to the source of the most recent session (the most-recently-synced
-// stream). A single-source profile is passthrough, as before.
+// falls back to the most-recently-synced stream. A single-source profile is
+// passthrough, as before.
+//
+// THE BUCKET IS STILL THE STREAM, and #2552 did not change that. Its per-window
+// election (pickRowsOneSourcePerWindow) is the right shape for date-keyed DISPLAY
+// history, which is why getDailySleepSessionsSince exists separately — but this read
+// feeds a statistic over a whole window, and a timeline stitched from two devices'
+// sleep detection is a different quantity from either device's. The stream stays.
+//
+// WHAT WAS WRONG WAS THE PROBE (#2603). "Most-recently-synced" used to be read off
+// the single newest session of any kind, so an afternoon nap synced by a phone was
+// the newest session most afternoons and elected the phone — taking a ring's entire
+// session history out of the read, and leaving the hero, the SRI, the consistency
+// strip, the typical wake time and the digest's sleep line all describing 45 minutes.
+// A stream is a stream because it reports NIGHTS, so the probe asks for the newest
+// OVERNIGHT and only falls back to the newest session at all for a profile that
+// records no overnight anywhere. Recency is still the rule — a new wearable takes the
+// stream over on its first night, which "whoever has the most sessions" would not
+// have allowed.
+//
+// WHAT WOULD SHOW IT WORKING (#2385): on a two-source profile whose second source
+// contributes only naps, the session history keeps its night count and the hero's
+// duration stays in overnight range. WHAT WOULD SHOW IT WRONG: a profile that has
+// genuinely switched wearables sitting on the OLD device's nights while the new one
+// syncs — recency lost, which is the failure the previous probe existed to prevent.
+// THE DECEPTIVE SUCCESS: "sessions returned per read went up", which also goes up
+// when the election starts interleaving two devices — the very thing #14 forbids. The
+// honest measure is the elected source's OWN night count, not the row count.
 //
 // A STRICT choice (#1642) applies its filter unconditionally — even to a
 // single-source profile, whose lone stream is simply not the elected one — so an
@@ -597,6 +623,18 @@ export interface SleepSessionRow {
 interface SelectedSleepSessionRow extends SleepSessionRow {
   origin: string | null;
 }
+
+// A sleep sample is an OVERNIGHT rather than a nap at/above this duration. The
+// provenance ledger carries no session label, so the sample is bounded by duration
+// instead: a three-hour window is short for a night and long for a nap.
+//
+// TWO askers, one number, because it is one question. The arrival statistic (#2214)
+// asks it to keep a nap's sync latency out of "when does last night normally land?";
+// the stream election above asks it to keep a nap from electing a whole source
+// (#2603). Migration 166 froze its own COPY of this floor under the constant's former
+// name — a shipped migration must keep converting as it did on the day it ran, so
+// retuning this number deliberately does not reach back into it.
+const SLEEP_OVERNIGHT_MIN_MINUTES = 180;
 
 function readSleepSessions(
   profileId: number,
@@ -629,14 +667,20 @@ function readSleepSessions(
         : null;
     if (picked != null) applyFilter(picked);
     else {
+      // The newest OVERNIGHT, falling back to the newest session of any length —
+      // both in ONE statement, so this stays the three-statement read the memo above
+      // getSleepSessions describes. `value >= ?` sorts overnights ahead of naps and
+      // `end_time DESC` picks the newest inside whichever group survives, so a
+      // nap-only profile still elects somebody instead of nobody.
       const newest = db
         .prepare(
           `SELECT source FROM metric_samples
             WHERE profile_id = ? AND metric = 'sleep_min'
               ${validWindow}
-            ORDER BY end_time DESC LIMIT 1`
+            ORDER BY (value >= ?) DESC, end_time DESC LIMIT 1`
         )
-        .get(profileId) as { source: string | null } | undefined;
+        .get(profileId, SLEEP_OVERNIGHT_MIN_MINUTES) as
+        { source: string | null } | undefined;
       applyFilter(sourceKey(newest?.source));
     }
   }
@@ -812,13 +856,6 @@ export function getSleepSessionsInRange(
   });
 }
 
-// A night is an overnight (rather than a nap) for arrival purposes at this
-// duration. The provenance ledger carries no session label, so the sample is
-// bounded by duration instead: a three-hour window is short for a night and long
-// for a nap, and an afternoon nap's sync latency is not the quantity being asked
-// about ("when does last night normally land?").
-const ARRIVAL_LAG_MIN_OVERNIGHT_MIN = 180;
-
 // WHEN each recent night's row actually landed — the GATHER behind the arrival
 // statistic (#2214). The decision itself is `arrivalStatistics`
 // (lib/notifications/digest-schedule.ts); this side reads rows and converts
@@ -885,7 +922,7 @@ function getSleepArrivalsUncached(
         ORDER BY ms.date DESC
         LIMIT ?`
     )
-    .all(profileId, ARRIVAL_LAG_MIN_OVERNIGHT_MIN, limitNights) as {
+    .all(profileId, SLEEP_OVERNIGHT_MIN_MINUTES, limitNights) as {
     endTime: string | null;
     arrivedAt: string | null;
   }[];
