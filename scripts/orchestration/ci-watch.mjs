@@ -64,32 +64,46 @@ const once = args.includes("--once");
 // environments route GitHub through an agent proxy — the identical token 401s
 // through fetch and succeeds through curl. curl is also what every other
 // runbook tool uses, so proxy/CA behavior stays uniform.
-function gh(pathname) {
-  const out = execFileSync(
-    "curl",
-    [
-      "-sS",
-      "-w",
-      "\n%{http_code}",
-      "-H",
-      `Authorization: Bearer ${token}`,
-      "-H",
-      "Accept: application/vnd.github+json",
-      `https://api.github.com/${pathname}`,
-    ],
-    { encoding: "utf8", timeout: 30_000 }
-  );
-  const cut = out.lastIndexOf("\n");
-  const status = Number(out.slice(cut + 1));
-  if (status === 401) {
-    console.error(
-      "BLOCKED: GitHub answered 401 — the token exists but is bad/expired. Re-mint before trusting any poll."
+async function gh(pathname) {
+  // Transient 5xxs are routine (a 503 was measured on this script's first real
+  // run) and must never masquerade as a verdict: retry briefly, then exit 2
+  // (re-invoke) — the exit-1 lane is reserved for a SETTLED RED.
+  for (let attempt = 1; ; attempt++) {
+    const out = execFileSync(
+      "curl",
+      [
+        "-sS",
+        "-w",
+        "\n%{http_code}",
+        "-H",
+        `Authorization: Bearer ${token}`,
+        "-H",
+        "Accept: application/vnd.github+json",
+        `https://api.github.com/${pathname}`,
+      ],
+      { encoding: "utf8", timeout: 30_000 }
     );
-    process.exit(3);
+    const cut = out.lastIndexOf("\n");
+    const status = Number(out.slice(cut + 1));
+    if (status === 401) {
+      console.error(
+        "BLOCKED: GitHub answered 401 — the token exists but is bad/expired. Re-mint before trusting any poll."
+      );
+      process.exit(3);
+    }
+    if (status >= 200 && status < 300) return JSON.parse(out.slice(0, cut));
+    if (status >= 500 && attempt < 4) {
+      console.error(
+        `GET ${pathname} -> ${status} (transient; retry ${attempt}/3)`
+      );
+      await new Promise((r) => setTimeout(r, attempt * 5_000));
+      continue;
+    }
+    console.error(
+      `GET ${pathname} -> ${status} — cannot poll right now. This is NOT a verdict; re-invoke.`
+    );
+    process.exit(2);
   }
-  if (status < 200 || status >= 300)
-    throw new Error(`GET ${pathname} -> ${status}`);
-  return JSON.parse(out.slice(0, cut));
 }
 
 async function checkRuns(sha) {
