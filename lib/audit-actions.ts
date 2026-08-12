@@ -19,6 +19,22 @@ export const AUDIT_ACTIONS = {
   // the old behavior minted a session and silently bounced, leaving no trail.
   loginNoAccess: "login.no-profile-access",
   logout: "login.logout",
+  // Session revocation without a credential change (#1843). `logout` covers a
+  // login ending its OWN session from the header; these cover a session being
+  // TERMINATED from elsewhere: one device dropped off the active-sessions list
+  // (sessionRevoke), or every other device at once (sessionRevokeAll — both the
+  // "sign out everywhere else" button and the admin force sign-out of ANOTHER
+  // login). target = the login whose sessions ended, detail = how many did.
+  //
+  // They stay in the `login` domain rather than opening a `session` one: the
+  // viewer's action filter groups on the domain, `login.logout` is already a
+  // session-ending event, and splitting "a session ended" across two filter
+  // groups would leave an admin reading half a trail. The admin path is why the
+  // pair exists at all — force-terminating another login's live sessions was the
+  // one privileged auth action writing no event, while the password reset ninety
+  // lines away in the same file wrote one.
+  sessionRevoke: "login.session-revoke",
+  sessionRevokeAll: "login.session-revoke-all",
   passwordChange: "login.password-change",
   passwordReset: "login.password-reset",
   // Optional TOTP 2FA (issue #23). enable/disable are the enrollment lifecycle;
