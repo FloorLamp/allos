@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -144,8 +144,17 @@ test("the strength pillar card lands on the panel for the lift it names", async 
     "/training?tab=analyze&kind=strength&item=Deadlift"
   );
 
-  await hydratedClick(page, card);
-  await expect(page).toHaveURL(
+  // followLink, not hydratedClick: this click NAVIGATES, and the two helpers guard
+  // different races. hydratedClick waits for React's markers on the node and clicks
+  // ONCE, which is exactly right for a toggle a retry would undo — a link has no such
+  // hazard and a different one instead. Playwright reports a click on a link a prior
+  // attempt already navigated away from as "detached", and a click that lands before
+  // the router is ready leaves the URL assertion to time out with no trace of why.
+  // followLink is the blessed helper for that, and it asserts the destination as it
+  // goes, so the separate toHaveURL is redundant.
+  await followLink(
+    page,
+    card,
     /\/training\?tab=analyze&kind=strength&item=Deadlift$/
   );
   const main = page.getByRole("main");
