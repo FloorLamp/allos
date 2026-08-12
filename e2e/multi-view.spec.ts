@@ -843,6 +843,19 @@ test.describe("Multi-view Timeline divergent-day (issue #1329)", () => {
       /group=by-person/
     );
     await expect(page.getByTestId("timeline-by-person")).toBeVisible();
+    // The LINK binding of SegmentedControl states its selection with
+    // `aria-current`, and "page" here because the two segments are genuinely
+    // different views of the timeline (#2535). Until then this was `aria-pressed`
+    // on an <a href>, which role="link" does not support — so no assistive
+    // technology announced which mode was in effect. The unselected segment
+    // carries no state attribute, which is how aria-current says "not current".
+    await expect(page.getByTestId("timeline-mode-by-person")).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
+    await expect(
+      page.getByTestId("timeline-mode-interleaved")
+    ).not.toHaveAttribute("aria-current");
     const eastSection = page.getByTestId(`timeline-member-section-${eastId}`);
     const westSection = page.getByTestId(`timeline-member-section-${westId}`);
     await expect(eastSection).toContainText(TL_EAST_ACTIVITY);
