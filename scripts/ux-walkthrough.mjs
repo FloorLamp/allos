@@ -65,7 +65,11 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
-import { DYNAMIC_ROUTES, routeSlug } from "./ux-census-routes.mjs";
+import {
+  DISCLOSURE_EXPANSIONS,
+  DYNAMIC_ROUTES,
+  routeSlug,
+} from "./ux-census-routes.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -295,6 +299,22 @@ function writeAuditArtifacts(baselineDir) {
     lines.push("| route | why |", "|---|---|");
     for (const u of unresolvedDynamic)
       lines.push(`| ${u.pattern} | ${u.why} |`);
+    lines.push("");
+  }
+  // #2616: routes that landed somewhere other than their own path are aliases —
+  // their byte-identical shots are expected, not the stuck-census signature the
+  // capture-validation hash check hunts. Desktop rows only; the mobile pass
+  // lands identically.
+  const aliased = metricsRows.filter(
+    (r) => r.landedOn && r.viewport === "desktop"
+  );
+  if (aliased.length) {
+    lines.push(
+      "## Alias routes (redirected — byte-identical shots are expected)",
+      ""
+    );
+    lines.push("| route | landed on |", "|---|---|");
+    for (const r of aliased) lines.push(`| ${r.route} | ${r.landedOn} |`);
     lines.push("");
   }
   if (mobile.length) {
@@ -732,6 +752,36 @@ async function resolveDynamicRoutes(page, patterns) {
 // each through DYNAMIC_ROUTES (#1544) instead of being skipped — detail pages
 // are exactly where density problems concentrate. Redirect routes screenshot
 // their target — that's fine, the point is "what does a user see at every URL".
+// Where they land is RECORDED (`landedOn` on the metrics row, an "Alias routes"
+// table in audit.md), so the capture-validation hash check can tell a known
+// alias's byte-identical shot from a genuinely stuck census (#2616).
+
+// #2616: open every still-closed disclosure a registered surface hides its
+// content behind. Re-queries after each click so toggles revealed by earlier
+// expansion are included; iteration caps are pathology guards (a selector that
+// never empties), not expected limits. Returns how many toggles it opened.
+async function expandDisclosures(page, exp) {
+  let opened = 0;
+  for (let i = 0; i < 80; i++) {
+    const closed = page.locator(exp.closedToggle).first();
+    if ((await closed.count()) === 0) break;
+    await closed.click();
+    opened++;
+    await page.waitForTimeout(150);
+  }
+  if (exp.loadMore) {
+    // Long groups reveal a "load the rest" button once open; drain those too —
+    // the whole point is seeing every row. Load is async, so give each a beat.
+    for (let i = 0; i < 40; i++) {
+      const more = page.locator(exp.loadMore).first();
+      if ((await more.count()) === 0) break;
+      await more.click().catch(() => {});
+      await page.waitForTimeout(400);
+    }
+  }
+  return opened;
+}
+
 async function pagesJourney(browser) {
   const appDir = path.join(process.cwd(), "app", "(app)");
   const routes = [];
@@ -811,17 +861,26 @@ async function pagesJourney(browser) {
       ...picked.map((route) => ({ route, target: route })),
       ...[...dynamicTargets].map(([route, r]) => ({ route, target: r.target })),
     ].sort((a, b) => a.route.localeCompare(b.route));
+    const expansionByRoute = new Map(
+      DISCLOSURE_EXPANSIONS.map((e) => [e.route, e])
+    );
     for (const { route, target } of visits) {
       const slug = routeSlug(route);
       try {
         await page.goto(`${BASE}${target}`);
         await page.waitForTimeout(1200);
         await shot(page, `page-${tag}-${slug}`);
+        // #2616: a route that redirects captures its destination — fine, but
+        // record WHERE, so the hash-validation step can tell a known alias's
+        // byte-identical shot from a stuck census.
+        const landedOn = new URL(page.url()).pathname;
+        const wanted = new URL(`${BASE}${target}`).pathname;
         // #1510 Part 1: the metrics probe rides the census visit it already made.
         const m = await page.evaluate(pageProbe);
         metricsRows.push({
           route,
           ...(target === route ? {} : { resolved: target }),
+          ...(landedOn === wanted ? {} : { landedOn }),
           viewport: tag,
           ...m,
         });
@@ -829,6 +888,38 @@ async function pagesJourney(browser) {
           log(
             `RENDER FAULT ${route} (${tag}) at ${target}: ${m.renderFault} — the shot is a boundary, not the page`
           );
+        // #2616: registered disclosure surfaces get a second, expanded capture.
+        // Only on the route's own visit (aliases landing here would quintuple
+        // the shot), and only AFTER the metrics probe — the default state is
+        // what `--baseline` diffs, so expansion must never touch its numbers.
+        const exp = expansionByRoute.get(route);
+        if (exp && landedOn === wanted) {
+          const opened = await expandDisclosures(page, exp);
+          if (opened === 0) {
+            log(
+              `BLIND SPOT ${route} (${tag}): no closed ${exp.label} to expand — expanded shot skipped`
+            );
+          } else {
+            // Expanded content can still hide below an INTERNAL fold — the
+            // readings table caps itself at 70vh and scrolls inside the card,
+            // and a fullPage screenshot only sees a scroller's visible part.
+            // Uncap every internal scroller for this capture; the default shot
+            // is already on disk, so the page's real presentation is untouched.
+            await page.evaluate(() => {
+              for (const el of document.querySelectorAll("*")) {
+                if (
+                  el instanceof HTMLElement &&
+                  el.scrollHeight > el.clientHeight + 8
+                ) {
+                  el.style.maxHeight = "none";
+                  el.style.overflow = "visible";
+                }
+              }
+            });
+            await page.waitForTimeout(400);
+            await shot(page, `page-${tag}-${slug}-expanded`);
+          }
+        }
       } catch (err) {
         log(`FAILED to shoot ${route} (${tag}): ${err.message.split("\n")[0]}`);
       }

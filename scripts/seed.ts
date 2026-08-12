@@ -445,19 +445,23 @@ goal.run(
 );
 // #2594 dial: volume. The "goal pile" look — many far-dated freeform goals
 // (45–120 days out), the exact shape that crowded Upcoming's Later band in
-// #2579 and gives ordering defects enough same-band rows to show.
+// #2579 and gives ordering defects enough same-band rows to show. Titles must
+// not near-duplicate the baseline exercise-linked goals below ("Bench Press
+// 100 kg", "Back Squat 140 kg", "Plank 2:30 hold") — the 2026-08 sweep's
+// reviewers read those collisions as a data bug, drowning the defects the
+// dial exists to surface.
 if (DIALS.volume === "heavy") {
   const heavyGoals: [string, string | null, number, number, string, number][] =
     [
       // title, category, target, current, unit, days out
       ["Meditate 100 sessions", null, 100, 38, "sessions", 45],
-      ["Bench press 100 kg", "strength", 100, 90, "kg", 52],
-      ["Plank 3 minutes", "strength", 180, 120, "sec", 60],
+      ["Overhead press 60 kg", "strength", 60, 52, "kg", 52],
+      ["Wall sit 3 minutes", "strength", 180, 120, "sec", 60],
       ["Read 12 books", null, 12, 7, "books", 68],
       ["Swim 1 km nonstop", "cardio", 1, 0.6, "km", 75],
       ["Row 2k under 7:30", "cardio", 450, 468, "sec", 85],
       ["Cycle 300 km this quarter", "cardio", 300, 190, "km", 95],
-      ["Squat 140 kg", "strength", 140, 125, "kg", 105],
+      ["Leg press 200 kg", "strength", 200, 170, "kg", 105],
       ["8,000 steps daily average", "body", 8000, 7100, "steps", 118],
     ];
   for (const [title, category, target, current, unit, out] of heavyGoals) {
