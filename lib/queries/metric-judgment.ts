@@ -122,8 +122,12 @@ export function judgeObservations<T extends JudgedObservation>(
     const entry = cbByName.get(name.toLowerCase());
     if (!entry) return null;
     const age = ageForRecord(ctx, r.date);
+    // The phase on THIS row's own collection date, against the profile-local today
+    // the shared context resolved (#2613) — a row dated after today derives none.
     const cyclePhase =
-      periods.length > 0 && r.date ? cyclePhaseOnDate(periods, r.date) : null;
+      periods.length > 0 && r.date
+        ? cyclePhaseOnDate(periods, r.date, ctx.today)
+        : null;
     const key = `${name.toLowerCase()}|${age ?? ""}|${cyclePhase ?? ""}`;
     const hit = cache.get(key);
     if (hit !== undefined) return hit;

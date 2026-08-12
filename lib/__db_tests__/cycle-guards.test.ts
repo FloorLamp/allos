@@ -117,7 +117,9 @@ describe("reopenPeriodCore outcomes (#1681 bug 3)", () => {
     expect(open?.period_end).toBeNull();
     // The phase re-derives as menstrual — the reopen restores the claim, and the start
     // day the user recorded is untouched.
-    expect(cyclePhaseOnDate(listCyclePeriods(p), today(p))).toBe("menstrual");
+    expect(cyclePhaseOnDate(listCyclePeriods(p), today(p), today(p))).toBe(
+      "menstrual"
+    );
   });
 
   it("not-found: nothing has ever been closed", () => {
@@ -166,7 +168,7 @@ describe("a stale open period stops claiming menstrual (#1682 fix a)", () => {
     const id = seedPeriod(p, startAgo, null);
 
     const rows = listCyclePeriods(p);
-    expect(cyclePhaseOnDate(rows, today(p))).toBe("follicular");
+    expect(cyclePhaseOnDate(rows, today(p), today(p))).toBe("follicular");
     expect(periodOnDate(rows, today(p))).toBeNull();
 
     // The record is untouched: still open, still owned by the user to close.
@@ -179,8 +181,25 @@ describe("a stale open period stops claiming menstrual (#1682 fix a)", () => {
 
     // Its own early days still read as menstrual — only the lapsed tail is withdrawn.
     expect(
-      cyclePhaseOnDate(rows, shiftDateStr(today(p), -(startAgo - 1)))
+      cyclePhaseOnDate(rows, shiftDateStr(today(p), -(startAgo - 1)), today(p))
     ).toBe("menstrual");
+  });
+});
+
+describe("no phase is derivable past the profile's own today (#2613)", () => {
+  it("answers null for tomorrow and beyond while today still answers", () => {
+    const p = newProfile("cycle-future");
+    // An open cycle: before #2613 every future date fell into the open-cycle branch
+    // and came back "follicular", which is what stamped a confident phase chip on
+    // Timeline day groups months out.
+    seedPeriod(p, 20, 15);
+    const rows = listCyclePeriods(p);
+    // `today(p)` is the PROFILE-LOCAL day (lib/db resolves it through the profile's
+    // stored timezone), which is the horizon every surface passes.
+    const now = today(p);
+    expect(cyclePhaseOnDate(rows, now, now)).toBe("follicular");
+    expect(cyclePhaseOnDate(rows, shiftDateStr(now, 1), now)).toBeNull();
+    expect(cyclePhaseOnDate(rows, shiftDateStr(now, 120), now)).toBeNull();
   });
 });
 
