@@ -66,9 +66,7 @@ function withDb<T>(fn: (handle: Database.Database) => T): T {
 // sharing the worker DB, may legitimately have left one behind.
 function clearFutureGoal(): void {
   withDb((handle) => {
-    handle
-      .prepare("DELETE FROM goals WHERE title = ?")
-      .run(FUTURE_GOAL_TITLE);
+    handle.prepare("DELETE FROM goals WHERE title = ?").run(FUTURE_GOAL_TITLE);
   });
 }
 

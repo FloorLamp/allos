@@ -753,11 +753,13 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   // and a request-time one can't disagree about which day it is.
   const readToday = (profileId: number): string => {
     const prof = (
-      profileSetting.get(profileId, "timezone") as { value?: string } | undefined
+      profileSetting.get(profileId, "timezone") as
+        { value?: string } | undefined
     )?.value;
     const instance = prof
       ? undefined
-      : (globalSetting.get("timezone") as { value?: string } | undefined)?.value;
+      : (globalSetting.get("timezone") as { value?: string } | undefined)
+          ?.value;
     return dateStrInTz(resolveTimezone(prof, instance), now());
   };
 
