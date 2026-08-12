@@ -425,10 +425,31 @@ function cmdNew(argv) {
 function cmdList() {
   const rows = readLedger();
   const active = activeDispatches(rows);
-  const durations = completedDurationsMs(rows).sort((a, b) => a - b);
-  const median = durations.length
-    ? durations[Math.floor(durations.length / 2)]
-    : null;
+  // A stall threshold derived from a degenerate sample is a FALSE ALARM
+  // GENERATOR, which is worse than no threshold — the whole point of the
+  // check-in tooling is that its alarms are worth reading.
+  //
+  // Observed live: backfilling three in-flight clusters into a fresh ledger
+  // (dispatch, then `done`, then re-dispatch with the right worktree names)
+  // left five "completed" entries lasting about a minute each. Median 1m,
+  // threshold 3m, and both real clusters — 23 minutes into work that routinely
+  // runs an hour — were immediately branded STALL. Every row shouting is how
+  // the previous restart detector failed.
+  //
+  // Two guards, because the sample can be degenerate in two different ways:
+  // too FEW completions to be a distribution at all, and completions too SHORT
+  // to be real dispatches (a backfill, an aborted probe, a `done` typo). A
+  // dispatch that finished in under MIN_REAL_DISPATCH_MS did not do a cluster's
+  // work, so it says nothing about how long a cluster takes.
+  const MIN_COMPLETIONS_FOR_MEDIAN = 3;
+  const MIN_REAL_DISPATCH_MS = 5 * 60_000;
+  const allDurations = completedDurationsMs(rows).sort((a, b) => a - b);
+  const durations = allDurations.filter((d) => d >= MIN_REAL_DISPATCH_MS);
+  const median =
+    durations.length >= MIN_COMPLETIONS_FOR_MEDIAN
+      ? durations[Math.floor(durations.length / 2)]
+      : null;
+  const discarded = allDurations.length - durations.length;
   const fmt = (ms) =>
     `${Math.floor(ms / 3_600_000)}h${String(Math.floor(ms / 60_000) % 60).padStart(2, "0")}m`;
 
@@ -448,13 +469,19 @@ function cmdList() {
       );
     }
   }
+  const note = discarded
+    ? ` (${discarded} completion(s) under ${MIN_REAL_DISPATCH_MS / 60_000}m ignored as not-real-work)`
+    : "";
   if (median !== null) {
     console.log(
-      `Completed: ${durations.length}, median ${fmt(median)} (stall threshold ${fmt(3 * median)}).`
+      `Completed: ${durations.length}, median ${fmt(median)} (stall threshold ${fmt(3 * median)})${note}.`
     );
   } else {
+    // Say WHY it is unavailable — "no completions yet" was reported even when
+    // five existed and were all discarded, which reads as a broken ledger.
     console.log(
-      "No completed dispatches yet — stall threshold unavailable until one closes."
+      `Stall threshold unavailable: ${durations.length} real completion(s), need ` +
+        `${MIN_COMPLETIONS_FOR_MEDIAN}${note}. Ages above are informational only.`
     );
   }
 }
