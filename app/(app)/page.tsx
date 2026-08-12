@@ -120,11 +120,14 @@ import RecentlyResolvedReopen, {
   type RecentlyResolvedItem,
 } from "@/components/dashboard/RecentlyResolvedReopen";
 import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
-import { reopenEligibleEpisodeForProfile } from "@/lib/illness-episode-store";
+import {
+  episodeStatesForProfiles,
+  reopenEligibleFromState,
+} from "@/lib/illness-episode-store";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import {
-  currentEpisodeForProfile,
-  openEpisodeForProfile,
+  currentEpisodeFromState,
+  openEpisodeFromState,
 } from "@/lib/illness-episode";
 import {
   episodeCollapsedStatus,
@@ -134,7 +137,10 @@ import {
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
-import { householdFanoutProfiles } from "@/lib/household-fanout";
+import {
+  householdFanoutProfiles,
+  householdFanoutWithActing,
+} from "@/lib/household-fanout";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
@@ -176,7 +182,7 @@ import {
 } from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
-import { isHouseholdRecentlySick } from "@/lib/household-history";
+import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
 
 export const dynamic = "force-dynamic";
@@ -236,9 +242,12 @@ export default async function Dashboard() {
 
   // Tier 2 — the household strip. A caregiver reaching 2+ profiles gets a per-
   // profile attention count for their OTHER profiles (same gate as the Household
-  // nav entry). Bounded work: a household is a handful of profiles, each count a
-  // few profile-scoped reads. Grants are respected — getAccessibleProfiles returns
-  // only reachable profiles, and the switch action re-checks.
+  // nav entry). Each chip's number is a WHOLE attention model for that member —
+  // tens of statements, not "a few profile-scoped reads" as this comment used to
+  // claim (#2110) — which is exactly why the fan-out is bounded below rather than
+  // left to scale with the accessible set. Grants are respected —
+  // getAccessibleProfiles returns only reachable profiles, and the switch action
+  // re-checks.
   const accessible = await getAccessibleProfiles();
   // Own-profile link (#1013): the acting-profile write forms (the weight quick-add)
   // name the subject when the login is acting as someone OTHER than its own profile,
@@ -328,12 +337,32 @@ export default async function Dashboard() {
   // currentEpisodeForProfile, so a not-yet-symptomatic member stays off the list) is a
   // compact accordion line that expands in place. Grants-scoped upstream (accessible =
   // getAccessibleProfiles). Replaces the former sick-household widget (folded in, #858).
+  //
+  // ONE episode gather for the whole page (#2115). Three surfaces below ask about
+  // the same two rows per member — the accordion (the row covering that member's
+  // today), the reopen band (the most-recently CLOSED row) and the household-history
+  // promo (BOTH) — and each used to re-issue its own SELECTs, so the closed-row read
+  // alone ran twice per profile per render. episodeStatesForProfiles reads them once
+  // and every derivation below is a pure function of the result.
+  //
+  // Bounded on the same set as the household strip (#2435/#2446): the accordion over
+  // the OTHER members, the reopen band and the promo over those plus the viewer,
+  // whose own just-resolved episode is the band's whole point.
+  const illnessFanout = householdFanoutWithActing(accessible, profile.id);
+  const episodeStates = episodeStatesForProfiles([
+    // The viewer is always in the gather even in the degenerate case where the
+    // session's active profile is somehow not in its own accessible set — the hero
+    // is about them, so it must never fall back to a second read to find out.
+    ...new Set([profile.id, ...illnessFanout.map((p) => p.id)]),
+  ]);
+  const episodeStateById = new Map(episodeStates.map((s) => [s.profileId, s]));
+  const stateFor = (pid: number) => episodeStateById.get(pid)!;
   const activeSick = hasActiveIllnessSituation(profile.id);
-  const activeEpisode = activeSick ? openEpisodeForProfile(profile.id) : null;
-  // Bounded on the same set as the household strip above, and for the same
-  // reason: currentEpisodeForProfile assembles an episode per member.
+  const activeEpisode = activeSick
+    ? openEpisodeFromState(stateFor(profile.id))
+    : null;
   const otherSick = householdFanoutProfiles(accessible, profile.id)
-    .map((p) => ({ p, ep: currentEpisodeForProfile(p.id) }))
+    .map((p) => ({ p, ep: currentEpisodeFromState(stateFor(p.id)) }))
     .filter(
       (x): x is { p: (typeof accessible)[number]; ep: AssembledEpisode } =>
         x.ep !== null
@@ -406,11 +435,16 @@ export default async function Dashboard() {
   });
   const heroUi = getIllnessHeroUi(profile.id);
 
-  // Recently-resolved reopen affordance (issue #1140 Part A): for every accessible profile,
-  // the most-recent episode still inside its 7-day reopen window (the SAME
-  // episodeReopenEligibility rule the detail page uses). Cross-profile aware like the hero
-  // (#858) — each row reopens that member's episode via its profileId. Calm/dismissible,
-  // never the attention hero (#449). Names disambiguated across the accessible set (#531).
+  // Recently-resolved reopen affordance (issue #1140 Part A): for the viewer and every
+  // bounded household member, the most-recent episode still inside its 7-day reopen
+  // window (the SAME episodeReopenEligibility rule the detail page uses). Cross-profile
+  // aware like the hero (#858) — each row reopens that member's episode via its
+  // profileId. Calm/dismissible, never the attention hero (#449). Names disambiguated
+  // across the accessible set (#531).
+  //
+  // Derived from the ONE episode gather above (#2115) — it re-read the closed-episode
+  // row the recently-sick predicate below had already read — and bounded on the same
+  // set as the strip (#2446), with the viewer always in it.
   //
   // Filtered SERVER-SIDE against the viewer's stored dismissals (#1548): the X used to
   // be client state only, so a hidden line came back on the next reload. The client
@@ -418,14 +452,14 @@ export default async function Dashboard() {
   // also what decides where the household-history promo goes (#1549), which is why the
   // filter has to happen here rather than in the browser.
   const reopenNames = disambiguateProfileNames(accessible);
-  const recentlyResolvedAll: RecentlyResolvedItem[] = accessible
-    .map((p) => ({ p, ep: reopenEligibleEpisodeForProfile(p.id) }))
+  const recentlyResolvedAll: RecentlyResolvedItem[] = illnessFanout
+    .map((p) => ({ p, ep: reopenEligibleFromState(stateFor(p.id)) }))
     .filter(
       (
         x
       ): x is {
         p: (typeof accessible)[number];
-        ep: NonNullable<ReturnType<typeof reopenEligibleEpisodeForProfile>>;
+        ep: NonNullable<ReturnType<typeof reopenEligibleFromState>>;
       } => x.ep !== null
     )
     .map(({ p, ep }) => ({
@@ -445,8 +479,10 @@ export default async function Dashboard() {
   // Contextual promotion of the merged household history (issue #1009 Ask 2): a CALM
   // link that surfaces near the illness hero when any accessible member is currently or
   // recently sick, and recedes once the house is well. Only for a multi-profile login
-  // (a single-profile login has no household to merge). Reuses the SAME episode rows the
-  // hero reads — never a second "who's sick" derivation — via isHouseholdRecentlySick.
+  // (a single-profile login has no household to merge). Reads the LITERAL SAME rows the
+  // hero and the reopen band read — one gather, three derivations (#2115); the comment
+  // here used to claim that reuse while isHouseholdRecentlySick re-issued both SELECTs
+  // per profile. Bounded on the same set as the strip, viewer included (#2446).
   // It is a link, NOT a notification and NOT a finding (no dedupeKey, no bus): it appears
   // because it's useful and disappears on its own.
   //
@@ -459,8 +495,7 @@ export default async function Dashboard() {
   //   • reopen lines visible → the reopen band's footer;
   //   • otherwise (the tail, or every line dismissed) → the household strip's label row.
   const promoteHouseholdHistory =
-    accessible.length > 1 &&
-    isHouseholdRecentlySick(accessible.map((p) => p.id));
+    accessible.length > 1 && isHouseholdRecentlySickFromStates(episodeStates);
   const promoInReopenBand =
     promoteHouseholdHistory && recentlyResolved.length > 0;
   const promoInHouseholdStrip =
@@ -1110,7 +1145,7 @@ export default async function Dashboard() {
     null
   );
   // The existing mealtime-shaped anchors: the profile's intake reminder slots.
-  // NOT the food log — `food_log_events.logged_at` is TAP time, documented as
+  // NOT the food log — `food_log_events.recorded_at` is TAP time, documented as
   // explicitly not eating time, so deriving a meal distribution from it would be
   // the new engine this issue's scope guard forbids.
   const nowSlots = getNotifySchedule(profile.id).supplementMinutes;

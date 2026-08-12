@@ -19,7 +19,10 @@ import {
 } from "@/app/(app)/results/reading-actions";
 import { loadBiomarkerPanelRows } from "@/app/(app)/results/actions";
 import type { ReadingsSearchParams } from "@/app/(app)/results/reading-index";
-import type { ReferenceCell } from "@/lib/reading-reference-cell";
+import {
+  referenceCell,
+  type ReferenceCell,
+} from "@/lib/reading-reference-cell";
 import { groupContiguous } from "@/lib/table-sort";
 import { isBiomarkerStale } from "@/lib/reference-range";
 import { DATE_AGE_SEPARATOR, readingDateLine } from "@/lib/reading-date-line";
@@ -270,14 +273,13 @@ function ReferenceCellTd({
   cell?: ReferenceCell;
   printed: string | null;
 }) {
-  // The pre-#2315 shape is the fallback for a row that somehow arrives unjudged:
-  // the lab's string, labelled as the lab's.
-  const resolved: ReferenceCell = cell ?? {
-    label: "Lab reference",
-    text: printed?.trim() || null,
-    title: null,
-    judged: false,
-  };
+  // The fallback for a row that somehow arrives without a resolved cell: the lab's
+  // string, labelled and prefixed as the lab's. Built by the SAME pure function the
+  // gather uses rather than hand-assembled here, so the fallback cannot drift from
+  // the real answer's spelling (which is what would have happened to #2344's `lab`
+  // prefix the moment this literal was left behind).
+  const resolved: ReferenceCell =
+    cell ?? referenceCell({ judgment: null, printed, unit: null });
   return (
     <Td
       slot="meta"

@@ -62,7 +62,7 @@ export function addProteinGramsCore(
   grams: number,
   // The tap instant (ISO-8601 UTC), appended to the food_log_events ledger under the
   // reserved __protein__ key (#1073) so the protein "+Xg" nudge button self-surfaces in the
-  // slots the profile logs protein. Defaults to NOW — logged_at is the TAP time, never
+  // slots the profile logs protein. Defaults to NOW — recorded_at is the TAP time, never
   // backfilled (ranking predicts the next tap), the same discipline as logFoodServingCore.
   // Injectable so tests can seed a specific slot; production passes the default.
   loggedAt: string = instantNow(),
@@ -92,7 +92,7 @@ export function addProteinGramsCore(
     // day counter and every food-GROUP path, so it never becomes a serving.
     db.prepare(
       `INSERT INTO food_log_events
-         (profile_id, group_key, date, logged_at, meal_slot, eaten_at, time_source,
+         (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
           notify_message_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
@@ -131,7 +131,7 @@ export function undoProteinGramsCore(
         WHERE id = (
           SELECT id FROM food_log_events
            WHERE profile_id = ? AND date = ? AND group_key = ?
-           ORDER BY logged_at DESC, id DESC LIMIT 1
+           ORDER BY recorded_at DESC, id DESC LIMIT 1
         )`
     ).run(profileId, date, PROTEIN_NUDGE_KEY);
     return { kind: "undone", grams: remaining };

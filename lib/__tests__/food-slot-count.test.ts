@@ -23,7 +23,7 @@ const BOUNDS = foodSlotBoundaries({
 const DAY = "2026-07-13";
 
 describe("foodEventWindow", () => {
-  it("buckets a tap by its logged_at instant in the profile's tz + boundaries", () => {
+  it("buckets a tap by its recorded_at instant in the profile's tz + boundaries", () => {
     expect(foodEventWindow(`${DAY}T08:00:00Z`, TZ, BOUNDS)).toBe("Morning");
     expect(foodEventWindow(`${DAY}T12:30:00Z`, TZ, BOUNDS)).toBe("Midday");
     expect(foodEventWindow(`${DAY}T19:00:00Z`, TZ, BOUNDS)).toBe("Evening");

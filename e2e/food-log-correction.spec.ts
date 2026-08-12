@@ -17,8 +17,8 @@ import { shiftDateStr } from "@/lib/date";
 //
 // Both removals here are ROW-ADDRESSED on purpose (#1959, #1963). The bar's "−" is
 // group-scoped — `bump(slug, -1)` → `undoFoodServingCore`, which pops the NEWEST event in
-// the window by `logged_at` — while a corrected serving deliberately keeps its original
-// tap instant (lib/food-log-write.ts: "`logged_at` is deliberately NOT edited"). So a
+// the window by `recorded_at` — while a corrected serving deliberately keeps its original
+// tap instant (lib/food-log-write.ts: "`recorded_at` is deliberately NOT edited"). So a
 // serving moved INTO Evening is not necessarily the newest thing in Evening, and the
 // group control can legitimately take a seeded neighbour instead. Until #1963 that left
 // the teardown below with no product affordance to use and it had to reach into SQLite;
@@ -174,7 +174,7 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
 
   // 1. The serving that will be CORRECTED, tapped into Morning FIRST — so its tap
   //    instant is the older of the two, and it stays older, because a correction
-  //    deliberately preserves `logged_at`.
+  //    deliberately preserves `recorded_at`.
   await page.getByTestId("food-slot-morning").click();
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
   await revealFoodGroup(page, "shellfish");
@@ -427,7 +427,7 @@ test("the correction sheet names the time it shows: eating time when stated, log
   const idsWithFirst = await loggedIds(page);
 
   // 2. A serving logged UNDER a statement, through the bar's own control (#2053):
-  //    "Eaten now" is a human answer and writes eaten_at via the real action path.
+  //    "Eaten now" is a human answer and writes occurred_at via the real action path.
   //    A DIFFERENT group on purpose: a second tap of the same row inside the tap
   //    ledger's cooldown is absorbed as an accidental double.
   await revealFoodGroup(page, "berries");

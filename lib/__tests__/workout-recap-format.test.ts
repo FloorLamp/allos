@@ -123,10 +123,10 @@ describe("composeFinishNudge", () => {
   });
 });
 
-// #2439: the title was one hardcoded "🏋️ Workout complete" from the days when only a
+// #2503: the title was one hardcoded "🏋️ Workout complete" from the days when only a
 // manual strength session could produce a recap line. #2272 opened the message to every
 // import and the barbell came with it — a 1.42 km walk arrived announced as a workout.
-describe("finishNudgeTitle (#2439)", () => {
+describe("finishNudgeTitle (#2503)", () => {
   it("names what actually finished, per discipline", () => {
     expect(finishNudgeTitle("strength")).toBe("🏋️ Workout complete");
     expect(finishNudgeTitle("cardio")).toBe("🏃 Cardio complete");
@@ -136,7 +136,7 @@ describe("finishNudgeTitle (#2439)", () => {
   it("gives every named discipline its own face", () => {
     // The leading glyph (everything before the first space, so a variation selector
     // travels with its base) is distinct per named discipline — one shared face would
-    // put #2439 back on a different pair.
+    // put #2503 back on a different pair.
     const named = ["strength", "cardio", "sport", "recovery"] as const;
     const faces = named.map((t) => finishNudgeTitle(t).split(" ")[0]);
     expect(new Set(faces).size).toBe(named.length);
@@ -207,7 +207,7 @@ function target(
   };
 }
 
-// What the finishing session itself put on the board (#2439). The default is the
+// What the finishing session itself put on the board (#2503). The default is the
 // strength session the older cases were written against: a Bench Press day, which the
 // exercise→region rollup lands on Chest.
 function session(over: Partial<SessionCadenceFacts> = {}): SessionCadenceFacts {
@@ -217,7 +217,7 @@ function session(over: Partial<SessionCadenceFacts> = {}): SessionCadenceFacts {
 // The walk from the report: a `cardio` row with no sets, so no region anywhere.
 const WALK = session({ types: ["cardio"], regions: [] });
 
-describe("weeklyRemainingLine (#981 §3, #1122, #2439)", () => {
+describe("weeklyRemainingLine (#981 §3, #1122, #2503)", () => {
   it("leads with the in-progress workout target, pace-framed (count 1 / per_week 2)", () => {
     // The issue's example: a `region` (Legs) target the session just advanced.
     expect(
@@ -294,11 +294,11 @@ describe("weeklyRemainingLine (#981 §3, #1122, #2439)", () => {
   });
 });
 
-// The defect in the report: the rollup is profile-wide, so before #2439 the line led
+// The defect in the report: the rollup is profile-wide, so before #2503 the line led
 // with the closest-to-done target ANYWHERE — a chest target a barbell session had
-// advanced days earlier, printed under "Afternoon Walk done · 33 min · 1.42 km" and
+// advanced earlier in the week, printed under "Afternoon Walk done · 33 min · 1.42 km" and
 // tailed with a nudge toward a chest day the walk had nothing to do with.
-describe("the weekly line is about THIS session (#2439)", () => {
+describe("the weekly line is about THIS session (#2503)", () => {
   it("does not credit a walk with the chest day it did not do", () => {
     expect(
       weeklyRemainingLine([target("region", "Chest", 1, 2)], WALK)

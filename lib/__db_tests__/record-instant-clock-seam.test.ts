@@ -220,11 +220,11 @@ describe("offline food replay judges a statement on the seam's clock (#2287)", (
     expect(outcome).toEqual({ status: "done" });
     const row = db
       .prepare(
-        `SELECT eaten_at, time_source FROM food_log_events
+        `SELECT occurred_at, time_source FROM food_log_events
           WHERE profile_id = ? AND group_key = 'berries' ORDER BY id DESC LIMIT 1`
       )
-      .get(p) as { eaten_at: string | null; time_source: string | null };
+      .get(p) as { occurred_at: string | null; time_source: string | null };
     expect(row.time_source).toBe("stated");
-    expect(row.eaten_at).not.toBeNull();
+    expect(row.occurred_at).not.toBeNull();
   });
 });

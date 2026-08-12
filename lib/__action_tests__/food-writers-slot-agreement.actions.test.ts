@@ -60,17 +60,17 @@ function derivedWindows(profileId: number, group: string): FoodSlot[] {
   return (
     db
       .prepare(
-        `SELECT logged_at, meal_slot, eaten_at FROM food_log_events
+        `SELECT recorded_at, meal_slot, occurred_at FROM food_log_events
           WHERE profile_id = ? AND date = ? AND group_key = ?
           ORDER BY id`
       )
       .all(profileId, DATE, group) as {
-      logged_at: string;
+      recorded_at: string;
       meal_slot: FoodSlot | null;
-      eaten_at: string | null;
+      occurred_at: string | null;
     }[]
   ).map((r) =>
-    foodEventWindow(r.logged_at, tz, boundaries, r.meal_slot, r.eaten_at)
+    foodEventWindow(r.recorded_at, tz, boundaries, r.meal_slot, r.occurred_at)
   );
 }
 

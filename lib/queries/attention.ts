@@ -11,7 +11,10 @@
 // already filters profile_id (enforced by lib/__tests__/profile-scoping.test.ts),
 // so this adds no new scoping surface.
 
-import { db, today } from "../db";
+import { now } from "../clock";
+import { today } from "../db";
+import { utcSqlString } from "../date";
+import { cache } from "../request-cache";
 import {
   buildAttentionModel,
   buildFlaggedItem,
@@ -65,20 +68,39 @@ export const FLAGGED_ATTENTION_WINDOW_DAYS = 14;
 
 // The window start as a datetime('now')-format UTC string (medical_records
 // created_at values compare lexically in that format).
+//
+// PURE, and off the clock seam (issue #2112). This used to be a `SELECT
+// datetime('now', ?)` round-trip — a whole prepared statement per call for a value
+// that is arithmetic — and it read SQLite's REAL clock, which lib/clock.ts's freeze
+// cannot reach. The seam is the right owner here and not merely cheaper: the value
+// is compared as `date >= date(?)` against a COLLECTION date, i.e. its calendar DAY
+// meets a day-grained column, which is exactly the case lib/clock.ts's header says
+// must bind sqlNow() rather than SQL's own now. Same shape, same truncation-to-the-
+// second, same UTC.
 function flaggedAttentionSince(): string {
-  return (
-    db
-      .prepare("SELECT datetime('now', ?) AS since")
-      .get(`-${FLAGGED_ATTENTION_WINDOW_DAYS} days`) as { since: string }
-  ).since;
+  return utcSqlString(
+    new Date(now().getTime() - FLAGGED_ATTENTION_WINDOW_DAYS * DAY_MS)
+  );
 }
+
+const DAY_MS = 86_400_000;
 
 // The newly-flagged biomarkers for the hero's stable window, still LIVE (not
 // snooze/dismiss-filtered). The caller decides whether to keep or drop the
 // suppressed ones — the live model drops them, the restore gather keeps only them.
-function flaggedInWindow(profileId: number) {
+//
+// Request-scoped cache() (issue #2112), keyed on the profile — the ONLY thing the
+// answer varies by, since the window start is derived from the clock, which is fixed
+// for a request. The heavy read underneath is getCurrentFlaggedBiomarkers' DEDUP +
+// LATEST window-function pass over medical_records — the one the household and
+// passport surfaces already cache — and /upcoming asks for it TWICE per member, once
+// through collectAttentionModel and once through collectSuppressedAttention. Same
+// reasoning as rawUpcoming's #389 memo, and the same degradation: outside a server
+// request (the notify tick, the DB tiers) cache() is identity, so behaviour is
+// unchanged there.
+const flaggedInWindow = cache(function flaggedInWindow(profileId: number) {
   return getNewlyFlaggedBiomarkers(profileId, flaggedAttentionSince());
-}
+});
 
 // The risk-layer "why THIS profile" reasons for a flagged analyte (issue #656 item
 // 4): the SAME retestModulationFor over the SAME risk factors the retest generator
@@ -265,13 +287,17 @@ export interface MultiProfileAttention {
   total: number;
 }
 
-// PERF NOTE (issue #1327 fix 8, deliberately deferred): the Upcoming page runs ~2×N
-// sequential full per-member gathers — collectMultiProfileAttention here AND
+// PERF NOTE, kept current (issue #1327 fix 8, narrowed by #2112): the Upcoming page
+// runs 2×N sequential per-member gathers — collectMultiProfileAttention here AND
 // collectMultiProfileSuppressed below each loop collectAttentionModel /
-// collectSuppressedAttention over every member, and those independently recompute
-// collectUpcoming / flaggedInWindow / the suppression set. Fine at family scale (a
-// household is a handful of profiles); if it ever matters, share the per-member gather
-// between the two entry points. Recorded so nobody rediscovers it in production.
+// collectSuppressedAttention over every member. What those two share is now shared for
+// real, per request: the generator fan-out through rawUpcoming's cache() (#389) and the
+// DEDUP+LATEST flagged-biomarker pass through flaggedInWindow's (#2112 — it used to run
+// twice per member). What still repeats per call is getFindingSuppressions, a single
+// indexed read of upcoming_dismissals, and that repetition is DELIBERATE: it is the
+// only read in the chain a dismiss/snooze write invalidates, so memoizing it would let
+// a Server Action's revalidated render answer from the pre-write map. getRiskFactors
+// repeats too and is the remaining candidate if this ever matters again.
 export function collectMultiProfileAttention(
   viewIds: readonly number[],
   units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS

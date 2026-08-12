@@ -370,7 +370,7 @@ describe("the cadence ledger (#2034)", () => {
 
   // ---- the anchor clamp ----------------------------------------------------
 
-  // ---- one session's own facts (#2439) -------------------------------------
+  // ---- one session's own facts (#2503) -------------------------------------
 
   it("reads a session's facts from the SAME two sources the workout gathers use", () => {
     const pid = newProfile("cl-session-facts");
@@ -392,7 +392,7 @@ describe("the cadence ledger (#2034)", () => {
     expect([...facts.regions].sort()).toEqual(["Chest", "Legs"]);
   });
 
-  it("gives a sessionless import no regions — the walk that started #2439", () => {
+  it("gives a sessionless import no regions — the walk that started #2503", () => {
     const pid = newProfile("cl-session-walk");
     const walk = logActivity(pid, today(pid), "cardio");
     expect(getSessionCadenceFacts(pid, walk)).toEqual({

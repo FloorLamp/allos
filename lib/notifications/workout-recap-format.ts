@@ -37,7 +37,7 @@ import { GLYPH } from "./glyphs";
 // `substance` (a weekly cap, #998) is already excluded upstream by
 // `getFrequencyTargetProgress`.
 //
-// DERIVED from the advance rules (#2439) rather than hand-listed: a scope is
+// DERIVED from the advance rules (#2503) rather than hand-listed: a scope is
 // workout-affectable exactly when a session's own facts can advance it, so the
 // narrowing and the per-session test are one declaration and cannot drift.
 const WORKOUT_RECAP_SCOPE_KINDS: ReadonlySet<string> = new Set(
@@ -55,7 +55,7 @@ export interface WeeklyRecapTarget {
 }
 
 // The weekly-status line the recap message gains (issue #981 §3, corrected by #1122 and
-// #2439): riding INSIDE the congratulatory finish message where its tone is natural.
+// #2503): riding INSIDE the congratulatory finish message where its tone is natural.
 // Three fixes over the original "N of M met" tally:
 //   1. SCOPE to workout-affectable targets — a workout recap never grades food/mobility
 //      habits a lifting session can't move (that's how it showed "0 of 4").
@@ -64,11 +64,12 @@ export interface WeeklyRecapTarget {
 //      rather than the all-or-nothing `met`, so a session that rarely *completes* a
 //      2–4×/week goal still reads as progress. Acknowledge the session; don't tally
 //      unfinished weekly goals.
-//   3. ABOUT THIS SESSION (#2439). Points 1 and 2 were written but not implemented: the
+//   3. ABOUT THIS SESSION (#2503). Points 1 and 2 were written but not implemented: the
 //      rollup is profile-wide and nothing tied it to the finishing activity, so the line
 //      led with the closest-to-done target ANYWHERE — "Chest — 1 of 2 this week" printed
 //      under "Afternoon Walk done · 33 min · 1.42 km", crediting a walk with a barbell
-//      session two days earlier and then nudging toward a chest day it had not touched.
+//      session earlier in the week and then nudging toward a chest day it had not
+//      touched.
 //      A target this session did not advance is now not eligible to lead, which is what
 //      the comment claimed all along.
 // The underlying rollup stays the ONE computation (`getFrequencyTargetProgress`, #221);
@@ -195,7 +196,7 @@ export function importedRecapLine(facts: ImportedSessionFacts): string | null {
   return [`${lead} done`, ...segs].join(" · ");
 }
 
-// ---- The finish message's own title (#2439) ----
+// ---- The finish message's own title (#2503) ----
 
 // WHAT FINISHED, named by the row's own type. The title was one hardcoded string —
 // `🏋️ Workout complete` — from #924, when only a manual strength session with logged
@@ -277,7 +278,7 @@ export interface FinishTypeAsk {
 // SAFETY-tier routing/actions are preserved AND its title, which names the dose
 // condition rather than the session; a recap-only message is classified
 // "workout-recap" for structured-channel routing and titled by `type` — what
-// actually finished (#2439).
+// actually finished (#2503).
 //
 // It also carries the type ask (#2272) when the finishing session is `unclassified`
 // — a LINE and BUTTONS on a message that was already going out, never a send of its

@@ -25,13 +25,13 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
 function events(profileId: number) {
   return db
     .prepare(
-      `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
+      `SELECT group_key, date, recorded_at, meal_slot FROM food_log_events
         WHERE profile_id = ? ORDER BY id`
     )
     .all(profileId) as {
     group_key: string;
     date: string;
-    logged_at: string;
+    recorded_at: string;
     meal_slot: string | null;
   }[];
 }
@@ -56,7 +56,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     const evs = events(profileId);
     expect(evs).toHaveLength(2);
     expect(evs.every((e) => e.group_key === "fatty_fish")).toBe(true);
-    expect(evs[0].logged_at).toBe(`${anchor}T12:30:00Z`);
+    expect(evs[0].recorded_at).toBe(`${anchor}T12:30:00Z`);
   });
 
   it("undo pops the NEWEST event alongside the counter decrement", () => {
@@ -69,7 +69,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     const evs = events(profileId);
     // The newest (20:00) event was popped; the 08:00 one survives.
     expect(evs).toHaveLength(1);
-    expect(evs[0].logged_at).toBe(`${anchor}T08:00:00Z`);
+    expect(evs[0].recorded_at).toBe(`${anchor}T08:00:00Z`);
   });
 
   it("tolerates a pre-ledger counter row (popless decrement, no throw)", () => {
@@ -96,7 +96,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     expect(events(profileId)[0]).toMatchObject({
       date: backfillDate,
       meal_slot: "Morning",
-      logged_at: tapTime,
+      recorded_at: tapTime,
     });
     const [day] = getFoodMealDays(profileId, [backfillDate]);
     expect(day.counts.berries).toBe(1);

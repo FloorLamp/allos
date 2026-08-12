@@ -58,6 +58,13 @@ import {
   profileFoodSlotBoundaries,
 } from "../profile-food-slot";
 import { blendFoodOrder, slotProximityOccurrences } from "../food-rank";
+import {
+  buildMacroFiberSeries,
+  mergeProteinSources,
+  type MacroFiberDay,
+} from "../nutrition-trends";
+import { filterSeriesByRange } from "../trends";
+import type { DateRange } from "../timeline-format";
 import { foodEventWindow, type FoodLedgerEvent } from "../food-slot-count";
 import { hhmmToMinutes } from "../date";
 import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../protein-nudge";
@@ -224,7 +231,7 @@ export interface FoodMealEvent {
   // nothing renders tap-vs-stated, only whether an eating time exists at all.
   eatenAt: string | null;
   // Local wall-clock "HH:MM" the serving was LOGGED at — the audit/tap instant, always
-  // present. `logged_at` itself is never edited, so after a correction this is no
+  // present. `recorded_at` itself is never edited, so after a correction this is no
   // longer the number the user would recognise; the eating time above is.
   loggedTime: string;
 }
@@ -278,10 +285,10 @@ export function getFoodMealDays(
 
   const events = db
     .prepare(
-      `SELECT id, group_key AS name, date, logged_at, meal_slot, eaten_at
+      `SELECT id, group_key AS name, date, recorded_at, meal_slot, occurred_at
          FROM food_log_events
         WHERE profile_id = ? AND date >= ? AND date <= ?
-        ORDER BY logged_at, id`
+        ORDER BY recorded_at, id`
     )
     .all(profileId, from, to) as (FoodLedgerEvent & { id: number })[];
   const boundaries = profileFoodSlotBoundaries(profileId);
@@ -294,11 +301,11 @@ export function getFoodMealDays(
     const day = byDate.get(event.date);
     if (!day) continue;
     const slot = foodEventWindow(
-      event.logged_at,
+      event.recorded_at,
       tz,
       boundaries,
       event.meal_slot,
-      event.eaten_at
+      event.occurred_at
     );
     const slotCounts = day.slotCounts[slot];
     slotCounts[event.name] = (slotCounts[event.name] ?? 0) + 1;
@@ -314,10 +321,10 @@ export function getFoodMealDays(
       // facts — never collapsed here, so the sheet can say which one it is showing
       // (#2227 decision 7). The list renders eatenAt ?? loggedTime, visually unchanged
       // for a row nobody timed.
-      eatenAt: event.eaten_at
-        ? zonedDateParts(tz, new Date(event.eaten_at)).hhmm
+      eatenAt: event.occurred_at
+        ? zonedDateParts(tz, new Date(event.occurred_at)).hhmm
         : null,
-      loggedTime: zonedDateParts(tz, new Date(event.logged_at)).hhmm,
+      loggedTime: zonedDateParts(tz, new Date(event.recorded_at)).hhmm,
     });
   }
   // Newest first: the serving most likely to need correcting is the one just tapped.
@@ -450,7 +457,7 @@ export function currentFoodSlot(profileId: number): FoodSlot {
 // a stale one and the curated catalog order breaks ties (and IS the whole order for a
 // fresh profile). SLOT-AWARE (issue #950, by PROXIMITY since #2019): with a `window`,
 // each food_log_events tap contributes a second, slot-specific signal weighted by how
-// near its EATING minute (`eaten_at`, or the tap minute when none was captured) fell to
+// near its EATING minute (`occurred_at`, or the tap minute when none was captured) fell to
 // that window's anchor — no bucket equality anywhere, so there is no boundary cliff and a
 // tap that never claimed a meal still participates. That signal LEADS the blend with
 // overall frecency backfilling; omitting `window` collapses to the pre-#950 overall order
@@ -550,7 +557,7 @@ function gatherFoodRankingSignals(
   // anchor (#2019) rather than by bucket equality. Only when a window is requested —
   // otherwise the blend degrades to pure overall frecency.
   //
-  // Each event contributes at the minute it was EATEN when one was captured (`eaten_at`,
+  // Each event contributes at the minute it was EATEN when one was captured (`occurred_at`,
   // #2019), and at the minute it was TAPPED otherwise. The minute is read in the
   // profile's timezone; the anchor is the profile's own configured slot hour. Nothing
   // here asks which BUCKET an event fell in, so the 14:59/15:01 cliff is gone and an
@@ -569,7 +576,7 @@ function gatherFoodRankingSignals(
     const tz = getTimezone(profileId);
     const events = db
       .prepare(
-        `SELECT group_key AS name, date, logged_at, eaten_at
+        `SELECT group_key AS name, date, recorded_at, occurred_at
            FROM food_log_events
           WHERE profile_id = ? AND date >= ?`
       )
@@ -579,7 +586,7 @@ function gatherFoodRankingSignals(
         name: e.name,
         date: e.date,
         minuteOfDay: hhmmToMinutes(
-          zonedDateParts(tz, new Date(e.eaten_at ?? e.logged_at)).hhmm
+          zonedDateParts(tz, new Date(e.occurred_at ?? e.recorded_at)).hhmm
         ),
       })),
       profileFoodSlotAnchors(profileId)[window]
@@ -655,7 +662,7 @@ export function getFoodRegularity(profileId: number): FoodRegularity {
   const from = foodRegularityWindowStart(t);
   const rows = db
     .prepare(
-      `SELECT group_key AS name, date, logged_at, meal_slot, eaten_at
+      `SELECT group_key AS name, date, recorded_at, meal_slot, occurred_at
          FROM food_log_events
         WHERE profile_id = ? AND date >= ? AND date <= ?`
     )
@@ -669,11 +676,11 @@ export function getFoodRegularity(profileId: number): FoodRegularity {
       groupKey: row.name,
       date: row.date,
       window: foodEventWindow(
-        row.logged_at,
+        row.recorded_at,
         tz,
         boundaries,
         row.meal_slot,
-        row.eaten_at
+        row.occurred_at
       ),
     });
   }
@@ -760,7 +767,7 @@ export function getUsualFoodOffer(
 
 // For each calendar date in [from, to], the set of food windows that derived AT LEAST
 // ONE event, through the ONE existing precedence (`foodEventWindow`: explicit slot →
-// eaten_at → tap instant). The empty-window notice reads this both for the day it is
+// occurred_at → tap instant). The empty-window notice reads this both for the day it is
 // asking about and for the trailing days its habit gate is measured over, so the two
 // halves can never be derived through different boundaries.
 //
@@ -782,24 +789,24 @@ export function getLoggedFoodWindows(
 ): Map<string, Set<FoodSlot>> {
   const rows = db
     .prepare(
-      `SELECT date, logged_at, meal_slot, eaten_at
+      `SELECT date, recorded_at, meal_slot, occurred_at
          FROM food_log_events
         WHERE profile_id = ? AND date >= ? AND date <= ?`
     )
     .all(profileId, from, to) as Pick<
     FoodLedgerEvent,
-    "date" | "logged_at" | "meal_slot" | "eaten_at"
+    "date" | "recorded_at" | "meal_slot" | "occurred_at"
   >[];
   const boundaries = profileFoodSlotBoundaries(profileId);
   const tz = getTimezone(profileId);
   const byDate = new Map<string, Set<FoodSlot>>();
   for (const row of rows) {
     const slot = foodEventWindow(
-      row.logged_at,
+      row.recorded_at,
       tz,
       boundaries,
       row.meal_slot,
-      row.eaten_at
+      row.occurred_at
     );
     let set = byDate.get(row.date);
     if (!set) byDate.set(row.date, (set = new Set()));
@@ -814,8 +821,8 @@ export function getLoggedFoodWindows(
 // none within the lookback window. The ONE ledger read behind the dose reminder's
 // food-timing clause (lib/food-timing-check.ts owns what to say about it).
 //
-// THE EATING INSTANT WINS OVER THE TAP STAMP. `eaten_at` is a stated or tap-contracted
-// measurement of when the food actually went in (#2019); `logged_at` is when the button
+// THE EATING INSTANT WINS OVER THE TAP STAMP. `occurred_at` is a stated or tap-contracted
+// measurement of when the food actually went in (#2019); `recorded_at` is when the button
 // was pressed. COALESCE puts the better fact first and falls back to the tap for the
 // rows — historical, and every un-stated web log — that genuinely have no eating time.
 // That is the whole of #2019 slotting in "transparently": no branch, no second read.
@@ -835,9 +842,9 @@ export function getMinutesSinceLastFoodLog(
   );
   const row = db
     .prepare(
-      `SELECT MAX(COALESCE(eaten_at, logged_at)) AS ate
+      `SELECT MAX(COALESCE(occurred_at, recorded_at)) AS ate
          FROM food_log_events
-        WHERE profile_id = ? AND COALESCE(eaten_at, logged_at) >= ?`
+        WHERE profile_id = ? AND COALESCE(occurred_at, recorded_at) >= ?`
     )
     .get(profileId, since) as { ate: string | null };
   if (!row.ate) return null;
@@ -867,28 +874,28 @@ export function getRecentFoodTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, group_key, logged_at, eaten_at, notify_message_id
+      `SELECT id, group_key, recorded_at, occurred_at, notify_message_id
          FROM food_log_events
-        WHERE profile_id = ? AND logged_at >= ?
-        ORDER BY logged_at, id
+        WHERE profile_id = ? AND recorded_at >= ?
+        ORDER BY recorded_at, id
         LIMIT 100`
     )
     .all(profileId, since) as {
     id: number;
     group_key: string;
-    logged_at: string;
-    eaten_at: string | null;
+    recorded_at: string;
+    occurred_at: string | null;
     notify_message_id: number | null;
   }[];
   return rows.map((r) => ({
     id: r.id,
     groupKey: r.group_key,
-    tapAt: r.logged_at,
+    tapAt: r.recorded_at,
     // Where the row STANDS (#2206): the chips count back from it and the row's header
     // states it, so a corrected serving stops being displayed at its tap time and a
     // second chip tap composes onto the first. Read regardless of `time_source` — the
     // question is what the ledger holds, not who put it there.
-    statedAt: r.eaten_at,
+    statedAt: r.occurred_at,
     // Which message's tap wrote the row (#2264) — the burst's attribution, so a
     // correction row renders only on the message that produced it.
     messageRef: r.notify_message_id,
@@ -1016,6 +1023,36 @@ export function getProteinDailyTotals(
         ORDER BY date DESC`
     )
     .all(profileId, since) as { date: string; grams: number }[];
+}
+
+// ---- Trends → Nutrition → Macros & fiber (issues #1166, #2414) ----
+
+// The Macros & fiber chart's per-day series, windowed to the hub's shared range.
+//
+// The gather lives here rather than in the section so the composition is ONE thing the
+// DB tier can assert: protein is the #2414 merge of BOTH its sources (a tracked
+// `protein_g` total overrides, the Food tab's hand-logged `protein_log` grams fill the
+// days it does not cover), carbs/fat/fiber are their tracked daily totals. Windowing is
+// the #2258 §4 precondition of the chart's day-fill; "0000-01-01" is the open lower
+// bound of an all-time range.
+export function getMacroFiberDays(
+  profileId: number,
+  range: DateRange
+): MacroFiberDay[] {
+  return filterSeriesByRange(
+    buildMacroFiberSeries({
+      protein: mergeProteinSources(
+        getMetricDailyTotals(profileId, "protein_g"),
+        getProteinDailyTotals(profileId, range.from ?? "0000-01-01").map(
+          (r) => ({ date: r.date, value: r.grams })
+        )
+      ),
+      carbs: getMetricDailyTotals(profileId, "carbs_g"),
+      fat: getMetricDailyTotals(profileId, "fat_g"),
+      fiber: getMetricDailyTotals(profileId, "fiber_g"),
+    }),
+    range
+  );
 }
 
 // The profile's last-used quick-add amount (the repeated scoop size), or null when they

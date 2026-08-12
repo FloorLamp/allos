@@ -115,7 +115,7 @@ export async function logFoodServing(
   // not an absence — it was stated.
   const at = clockNow();
   const tz = getTimezone(profile.id);
-  const choice = parseEatingTimeChoice(formData.get("eaten_at"));
+  const choice = parseEatingTimeChoice(formData.get("occurred_at"));
   const resolved = choice ? resolveEatingTimeChoice(choice, at, tz) : null;
   const verdict: StatedTimeVerdict = !choice
     ? { kind: "unstated" }
@@ -241,7 +241,7 @@ export type FoodEventEditResult =
 // in ONE IMMEDIATE transaction. The core's statements are id + profile_id scoped, so
 // another profile's event id answers "not-found" and writes nothing.
 //
-// The `eaten_at` field has three wire values (#2227): absent/empty = unchanged, "none"
+// The `occurred_at` field has three wire values (#2227): absent/empty = unchanged, "none"
 // = clear (back to the honest "nobody said"), "HH:MM" = state that local wall time on
 // the submitted day. `judgeEatenAt`'s POSTURE INVERTS here relative to the log path,
 // deliberately: at log time an unusable instant costs the statement and never the
@@ -280,7 +280,7 @@ export async function updateFoodLogEvent(
     if (!isFoodSlot(rawMealSlot)) return formError("Unknown meal.");
     patch.mealSlot = rawMealSlot;
   }
-  const rawEatenAt = String(formData.get("eaten_at") ?? "").trim();
+  const rawEatenAt = String(formData.get("occurred_at") ?? "").trim();
   if (rawEatenAt === "none") {
     patch.eatenAt = null;
   } else if (rawEatenAt) {
@@ -288,7 +288,7 @@ export async function updateFoodLogEvent(
       return formError("Enter a valid time.");
     // A wall time is only meaningful ON a day; the sheet always submits its day
     // alongside. Resolved in the profile's timezone against the SUBMITTED day, then
-    // gated — the same judgeEatenAt every eaten_at write passes, with the inverted
+    // gated — the same judgeEatenAt every occurred_at write passes, with the inverted
     // consequence described above (the core re-checks against the final date too).
     if (!patch.date) return formError("Enter a valid date.");
     const tz = getTimezone(profile.id);
@@ -325,7 +325,7 @@ export type FoodEventDeleteResult =
   | { ok: false; error: string };
 
 // Remove ONE named logged serving (issue #1963). The bar's "−" is group-scoped and pops
-// the newest tap in the window by `logged_at`; since #1934 a corrected serving keeps its
+// the newest tap in the window by `recorded_at`; since #1934 a corrected serving keeps its
 // original tap instant, so it is not necessarily the newest thing in the window it was
 // moved into and the group control could take a neighbour. The ⋯ menu already asserts a
 // per-row identity — this is the removal that honours it. `undoFoodServing` is unchanged.

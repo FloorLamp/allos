@@ -145,7 +145,7 @@ export const OWNED_TABLES = [
   "situations",
   "food_log",
   // Food-log EVENT ledger (#950): per-tap append-only rows beside the food_log
-  // daily counter, carrying the tap `logged_at` so button ranking can be slot-aware.
+  // daily counter, carrying the tap `recorded_at` so button ranking can be slot-aware.
   // Directly owned; deleteProfile clears it by profile_id (the row-ops side-state
   // rule — the ledger is popped/cleared alongside its counter).
   "food_log_events",

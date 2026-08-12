@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 
 // Issue #186's two questions, asked of the surface that now answers them.
@@ -126,7 +126,7 @@ test("selecting a workout day opens its panel, which links to that Training Log 
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
   // A cell SELECTS rather than navigating (#2415): the URL must not move.
-  await day.click();
+  await hydratedClick(page, day);
   await expect(day).toHaveAttribute("aria-pressed", "true");
   await expect(day.getByTestId("day-history-cell-date")).toHaveText(
     String(Number(date!.slice(8, 10)))

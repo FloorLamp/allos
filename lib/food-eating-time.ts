@@ -3,10 +3,10 @@
 // ── WHY THE WEB BAR NEEDED ITS OWN VOCABULARY ────────────────────────────────
 //
 // The Telegram food button carries a contract — "I'm eating NOW" — so its tap instant IS
-// a measurement, and #2052 records it as `eaten_at` with `time_source = 'tap'`. The web
+// a measurement, and #2052 records it as `occurred_at` with `time_source = 'tap'`. The web
 // bar's "+" carries no such contract: the same button logs the apple in your hand and
 // backfills Sunday's dinner from a bounded seven-day picker. Defaulting it to now would
-// reintroduce the guess `eaten_at` exists to end, under a more authoritative name, so an
+// reintroduce the guess `occurred_at` exists to end, under a more authoritative name, so an
 // unstated web log keeps a NULL eating time and always will.
 //
 // This module is the EXPLICIT statement that overrides that silence: "now", or one of the

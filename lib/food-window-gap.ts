@@ -92,7 +92,7 @@ export interface LocalNow {
 
 // The ledger slice the decision reads: for each calendar date, the set of windows that
 // derived AT LEAST ONE food event, using the one existing precedence (`foodEventWindow`
-// — explicit slot → eaten_at → tap instant).
+// — explicit slot → occurred_at → tap instant).
 //
 // A date that is ABSENT from the map derived nothing, and that is deliberately not the
 // same thing as a gap: days before the events ledger existed carry no derivable window

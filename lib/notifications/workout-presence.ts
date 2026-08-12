@@ -281,9 +281,9 @@ export async function runPostWorkoutForActivity(
   // congratulatory moment) — omitted when there's no recap line to lead it, no targets,
   // or the message is dose-only.
   //
-  // The rollup is profile-wide, so the facts of THIS session go with it (#2439): without
+  // The rollup is profile-wide, so the facts of THIS session go with it (#2503): without
   // them the line led with the closest-to-done target anywhere, and a walk's recap
-  // reported a chest target a barbell session had advanced days earlier.
+  // reported a chest target a barbell session had advanced earlier in the week.
   const weeklyLine = recapLine
     ? weeklyRemainingLine(
         getFrequencyTargetProgress(profileId),

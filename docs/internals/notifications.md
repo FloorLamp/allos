@@ -681,7 +681,7 @@ rides the GATHER rather than a renderer parameter, every surface built from thos
 — the dedicated window reminder, a merged multi-slot send, every tap rebuild — words the
 same fact identically (#221). A gather for a PAST date carries no check at all: "in the
 last 90 min" is a statement about right now, and pinning it to a day that has ended would
-be a confident falsehood. `COALESCE(eaten_at, logged_at)` is where #2019 slots in
+be a confident falsehood. `COALESCE(occurred_at, recorded_at)` is where #2019 slots in
 transparently — a stated eating instant beats a tap stamp, with no branch and no second
 read.
 
@@ -692,10 +692,11 @@ NOW" — so **the tap instant IS a measurement** of when the thing happened, wit
 known error. Two things were missing: recording it, and a correction path for when
 the contract is false because the tap was late.
 
-**The capture.** A Telegram food tap writes `food_log_events.eaten_at` with
-`time_source = 'tap'` (migration 154). `logged_at` is untouched and stays the audit
-stamp migration 056 froze, and stays the ranking input. A write with nothing to
-state — a web backfill — leaves `eaten_at` NULL, because defaulting to now would
+**The capture.** A Telegram food tap writes `food_log_events.occurred_at` with
+`time_source = 'tap'` (migration 154, which spelled the column `eaten_at` until the
+#2205 phase 2 food wave renamed it in migration 183). `recorded_at` is untouched and
+stays the audit stamp migration 056 froze, and stays the ranking input. A write with
+nothing to state — a web backfill — leaves `occurred_at` NULL, because defaulting to now would
 reintroduce the guess under a more authoritative name. The web bar's own **Now /
 Earlier…** chips (#2053, `lib/food-eating-time.ts`) are how that silence is broken
 deliberately: they write `'stated'` for either shape, because the web "+" declares no
@@ -745,8 +746,8 @@ label gets silently wrong across a fall-back hour. Two chips rather than three, 
 repeat taps reach the middle of the range and the absolute labels need the width.
 
 **A chip counts back from the STORED instant, not the tap (#2206).** Repeat taps
-COMPOSE: two `−1h` taps mean two hours back. That costs no new state — `eaten_at` /
-`recorded_at` IS the ledger the row set is already a query over — so the chips still
+COMPOSE: two `−1h` taps mean two hours back. That costs no new state — the stored
+`occurred_at` IS the ledger the row set is already a query over — so the chips still
 survive a rebuild, a pointer rotation and a restart. It replaces the older idempotence,
 which turned into the wrong answer once the row started showing its result: "tap again
 to go further" is the only reading a visibly-moving value supports, and a silent no-op
@@ -1220,7 +1221,7 @@ comes from the ONE server-side `getSessionRecap` gather
 card and the live "Session complete" step render, so the three surfaces can't
 drift (#221). Everything still routes through the Telegram chokepoint with the
 usual delivery accounting. **Weekly-remaining line (#981 §3, corrected by
-\#1122 and #2439):** the recap line gains a forward-looking, pace-framed status
+\#1122 and #2503):** the recap line gains a forward-looking, pace-framed status
 leading with the target the session just advanced ("Legs — 1 of 2 this week, one
 more to go"; calm all-met line when every workout target is met; omitted
 otherwise), computed by `weeklyRemainingLine` as a **workout-scoped FORMATTER**
@@ -1235,11 +1236,11 @@ message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
 
-**And it is about THIS session (#2439).** Both fixes above were written but only
+**And it is about THIS session (#2503).** Both fixes above were written but only
 the first was implemented: the rollup is profile-wide and nothing tied it to the
 finishing activity, so the line led with the closest-to-done target ANYWHERE —
 "Chest — 1 of 2 this week, one more to go" printed under "Afternoon Walk done ·
-33 min · 1.42 km", crediting a walk with a barbell session two days earlier and
+33 min · 1.42 km", crediting a walk with a barbell session earlier in the week and
 then nudging toward a chest day it had not touched. `weeklyRemainingLine` now
 takes the finishing session's own `SessionCadenceFacts` and a target it did not
 advance is not eligible to lead. The membership rule is ONE computation:
@@ -1256,7 +1257,7 @@ facts, which advance nothing. A session that advanced no target gets no weekly
 line — including the all-met line, which is true of the week but is not this
 session's to claim.
 
-**The title names what actually finished (#2439).** It was one hardcoded
+**The title names what actually finished (#2503).** It was one hardcoded
 `🏋️ Workout complete`, from #924 when only a manual strength session with logged
 sets could produce a recap line at all. #2272 opened the same message to every
 import, correctly, and the barbell came with it — a 33-minute, 1.42 km walk

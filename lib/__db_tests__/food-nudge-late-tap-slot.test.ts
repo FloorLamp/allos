@@ -9,7 +9,7 @@
 // onto the row as an explicit `meal_slot`.
 //
 // #2019 REVERSED that write: the nudge's window is the NUDGE naming itself, not the user
-// declaring a meal, and with a real `eaten_at` on the row the meal is derived from when the
+// declaring a meal, and with a real `occurred_at` on the row the meal is derived from when the
 // serving was eaten (so a later correction MOVES it, which a frozen assertion would not).
 // The suffix became the DAY total in the same change — a number the ledger can always
 // answer, with no window derivation anywhere in it. So the reported symptom stays fixed,
@@ -141,7 +141,7 @@ function cqForWindow(
   };
 }
 
-// The stored eaten_at values for one group on one day, in insert order.
+// The stored occurred_at values for one group on one day, in insert order.
 function storedEatenAt(
   profileId: number,
   date: string,
@@ -150,12 +150,12 @@ function storedEatenAt(
   return (
     db
       .prepare(
-        `SELECT eaten_at FROM food_log_events
+        `SELECT occurred_at FROM food_log_events
           WHERE profile_id = ? AND date = ? AND group_key = ?
           ORDER BY id`
       )
-      .all(profileId, date, group) as { eaten_at: string | null }[]
-  ).map((r) => r.eaten_at);
+      .all(profileId, date, group) as { occurred_at: string | null }[]
+  ).map((r) => r.occurred_at);
 }
 
 // The stored meal_slot values for one group on one day, in insert order.

@@ -45,7 +45,7 @@ function appendAlcoholEvents(
   const loggedAt = instantNow();
   const insert = db.prepare(
     `INSERT INTO food_log_events
-       (profile_id, group_key, date, logged_at, meal_slot)
+       (profile_id, group_key, date, recorded_at, meal_slot)
      VALUES (?, ?, ?, ?, NULL)`
   );
   for (let index = 0; index < amount; index += 1) {
@@ -67,7 +67,7 @@ function reconcileAlcoholEvents(
   }
   // Newest tap first. When a correction SHRINKS the day, the taps that survive are
   // the LATEST ones and the earliest are dropped (#2073): a per-tap row carries a
-  // `logged_at`, so which rows survive decides what a "last drink at HH:MM" surface
+  // `recorded_at`, so which rows survive decides what a "last drink at HH:MM" surface
   // reads. Keeping the head of this list keeps the most recent drink instant, which
   // is the datum such a surface is about; slicing the head off instead deleted
   // exactly that row and left the day's timing reading backwards.
@@ -75,7 +75,7 @@ function reconcileAlcoholEvents(
     .prepare(
       `SELECT id FROM food_log_events
        WHERE profile_id = ? AND group_key = ? AND date = ?
-       ORDER BY logged_at DESC, id DESC`
+       ORDER BY recorded_at DESC, id DESC`
     )
     .all(profileId, ALCOHOL_FOOD_GROUP, toDate) as { id: number }[];
   if (ids.length > amount) {
