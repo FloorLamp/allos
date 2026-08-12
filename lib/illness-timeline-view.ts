@@ -2,6 +2,7 @@
 // contains only symptoms, temperatures, and doses; this pure adapter adds care events
 // for the logged-in episode page, then groups the combined ledger by day.
 
+import type { AppointmentStatus } from "./types";
 import type { AppRoute } from "./hrefs";
 import { encounterHref, medicationHref } from "./hrefs";
 import type { IllnessTimelineEvent } from "./illness-episode-format";
@@ -17,6 +18,40 @@ export type IllnessCareTimelineEvent = {
   detail: string;
   href?: AppRoute;
 };
+
+// ── What an appointment row on a care timeline may CLAIM (#2136) ─────────────
+//
+// The row said "Appointment · «title» scheduled" for every status, so a visit the
+// user cancelled read on the illness record as care that took place. The row itself
+// is real history and stays — it is what the line asserts that was wrong, the same
+// posture `hasNoCurrentReading` takes one domain over: keep the value, fix the claim.
+//
+// So the STATUS is the label. Nothing here is a filter and nothing is hidden; a reader
+// scanning the day column sees "Appointment cancelled" and knows the gap in care is a
+// gap, not a visit they have forgotten.
+const APPOINTMENT_LINES: Record<
+  AppointmentStatus,
+  { label: string; untitled: string }
+> = {
+  scheduled: { label: "Appointment", untitled: "Appointment scheduled" },
+  completed: { label: "Appointment", untitled: "Appointment attended" },
+  cancelled: {
+    label: "Appointment cancelled",
+    // The title is what a titled row shows, so the untitled fallback carries the fact
+    // instead — never the bare word "Appointment", which is the claim being retired.
+    untitled: "This visit did not happen",
+  },
+};
+
+// The label + detail one appointment contributes. Exported for the pin in
+// lib/__tests__/illness-timeline-view.test.ts; the timeline is its only caller.
+export function appointmentTimelineLine(appointment: {
+  title: string | null;
+  status: AppointmentStatus;
+}): { label: string; detail: string } {
+  const line = APPOINTMENT_LINES[appointment.status];
+  return { label: line.label, detail: appointment.title || line.untitled };
+}
 
 export type IllnessTimelineDisplayEvent =
   IllnessTimelineEvent | IllnessCareTimelineEvent;
@@ -48,8 +83,7 @@ export function illnessCareTimelineEvents(
         date: event.date,
         time: event.timeOfDay,
         time24: event.timeOfDay,
-        label: "Appointment",
-        detail: event.title || "Appointment scheduled",
+        ...appointmentTimelineLine(event),
         href: "/appointments" as AppRoute,
       };
     }),
