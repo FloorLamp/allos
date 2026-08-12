@@ -11,6 +11,8 @@ import {
 import { createPortal } from "react-dom";
 import { IconDots } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import { useConfirmOpen } from "@/components/ConfirmDialog";
+import { useLatestRef } from "@/components/useLatestRef";
 
 // Shared kebab (⋯) overflow menu used by the goals and supplement cards and the
 // extracted-observations table. The caller owns the open state (so it can also lift
@@ -61,6 +63,7 @@ export default function OverflowMenu({
   children: (helpers: MenuHelpers) => ReactNode;
 }) {
   const toast = useToast();
+  const confirmOpen = useConfirmOpen();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // null until measured; kept hidden until then so the panel never paints at a
@@ -133,6 +136,26 @@ export default function OverflowMenu({
       window.removeEventListener("resize", reposition);
     };
   }, [open, reposition]);
+
+  // A DECISION opened over this menu ends it (#2599).
+  //
+  // A menu item that awaits `useConfirm()` hands the interaction to a modal
+  // layered above (`z-110`) — but the menu's own click-away backdrop below is
+  // `fixed inset-0`, and it survives underneath. Every call site closes the menu
+  // on the CONFIRM branch; most `return` early on CANCEL, so the backdrop
+  // outlived the interaction and silently ate the user's next tap ANYWHERE on the
+  // page: cancel a delete on the supply cabinet, then tap the profile-switch chip
+  // beside it, and nothing happens, with no error (reproduced 3/3 — it is also
+  // what made a Server Action form look like it fired no POST at all).
+  //
+  // The rule belongs here, not at fifteen call sites: this menu is a transient
+  // popover, and it is stale the moment something the user must answer opens over
+  // it. `close()` is called through a ref so the effect keys on the STATE, not on
+  // a callback whose identity changes every render.
+  const closeRef = useLatestRef(close);
+  useEffect(() => {
+    if (open && confirmOpen) closeRef.current();
+  }, [open, confirmOpen, closeRef]);
 
   // Escape closes, matching the click-away backdrop.
   useEffect(() => {

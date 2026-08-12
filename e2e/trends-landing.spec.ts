@@ -136,3 +136,51 @@ test("the shared window drives the head and the census together", async ({
   await expect(page.getByTestId("saved-tiles")).toBeVisible();
   await expect(page.getByTestId("trends-context-label")).toHaveText("All");
 });
+
+test("every starred tile shows its whole title, never a mid-word clip (#2523)", async ({
+  page,
+}) => {
+  // The starred grid is the only curated area on this surface, and its tile
+  // titles were being HARD-CLIPPED from the `sm:` breakpoint up: `truncate`
+  // supplies `overflow: hidden`, `sm:whitespace-normal` re-enabled wrapping, and
+  // `sm:text-clip` removed the ellipsis, so a token wider than the ~110px the
+  // value leaves it was cut mid-glyph with nothing to signal the loss.
+  // `Lipoprotein(a)` rendered as `Lipoprotein(` — and the `(a)` is the entire
+  // distinction between Lp(a) and ordinary lipoprotein, so that is a WRONG LABEL,
+  // not a truncated one. The seed stars it, which is why this needs no fixture.
+  //
+  // Measured, not eyeballed: a wrapped-but-whole title has content no wider and
+  // no taller than the box it renders into. `scrollWidth`/`scrollHeight` are
+  // integers rounded UP from fractional layout, so a 1px allowance is the
+  // rounding, not slack (#2505) — the defect this pins overflowed by tens of px.
+  await page.goto("/trends");
+  const grid = page.getByTestId("trends-section-starred");
+  await expect(grid.getByTestId("saved-tiles")).toBeVisible();
+
+  const lpa = grid
+    .getByTestId("trend-mini-card")
+    .filter({ hasText: "Lipoprotein(a)" });
+  // Anchored on the named tile, but asserted over the WHOLE grid: the widest
+  // value on a row is what squeezes its neighbour's title, so one tile cannot
+  // prove the grid. (A text assertion would prove nothing either way — the DOM
+  // always carries the full string; the loss is purely visual, hence measured.)
+  await expect(lpa).toHaveCount(1);
+
+  const clipped = await grid
+    .getByTestId("trend-mini-header-link")
+    .locator("span[title]")
+    .evaluateAll((titles) =>
+      titles
+        .filter(
+          (el) =>
+            el.scrollWidth > el.clientWidth + 1 ||
+            el.scrollHeight > el.clientHeight + 1
+        )
+        .map(
+          (el) =>
+            `"${el.getAttribute("title")}" renders ${el.scrollWidth}×${el.scrollHeight} ` +
+            `into a ${el.clientWidth}×${el.clientHeight} box`
+        )
+    );
+  expect(clipped, clipped.join("\n")).toEqual([]);
+});

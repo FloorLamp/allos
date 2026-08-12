@@ -543,20 +543,20 @@ can still be read directly.
 ONE home for settled interactions. The file header carries the authoritative
 decision tree; the summary:
 
-| Situation                                                                                                            | Use                                                                                                                                   |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits an action POST that started AFTER the click and targets this page's route (#1952)              |
-| …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                    | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858) |
-| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)           |
-| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                           |
-| …but the navigation is **relative** (a pager's Next/Prev, a stepper — the handler reads current state and moves one) | `hydratedClick(page, locator)` then assert the URL — a retry loop compounds a relative advance and can never converge back (#2437)    |
-| A **relative geometry** assertion over several elements (this card one gap below that, these columns share an x)     | `settledBoxes([...locators])` — one snapshot from one settled layout, so no gap is computed across two of them (#2437)                |
-| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                  |
-| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard      |
-| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                       |
-| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration          | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)         |
-| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                               | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231) |
-| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                            |
+| Situation                                                                                                            | Use                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — hydration-gated, clicks ONCE, then awaits an action POST that started AFTER that click and targets this page's route (#1952/#2599) |
+| …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                    | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858)                              |
+| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)                                        |
+| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                                                        |
+| …but the navigation is **relative** (a pager's Next/Prev, a stepper — the handler reads current state and moves one) | `hydratedClick(page, locator)` then assert the URL — a retry loop compounds a relative advance and can never converge back (#2437)                                 |
+| A **relative geometry** assertion over several elements (this card one gap below that, these columns share an x)     | `settledBoxes([...locators])` — one snapshot from one settled layout, so no gap is computed across two of them (#2437)                                             |
+| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                                               |
+| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard                                   |
+| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                                                    |
+| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration          | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)                                      |
+| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                               | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231)                              |
+| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                                                         |
 
 Why not networkidle: it waits for network SILENCE, not "my interaction landed" —
 it settles falsely on a page with a long-poll/SSE/streaming request and adds
@@ -568,6 +568,33 @@ a click that fires NO action (a client toggle, an `<a href>` nav) there is no
 POST to await and it times out — that's what `followLink`/`hydratedClick`/`expect`
 are for. Its timeout message says so explicitly, because that timeout almost
 always means the CALL SITE is wrong rather than the app being slow (#1952).
+
+### The pre-hydration ACTION-click swallow (`settledClick`, #2599)
+
+A `<form action={serverAction}>` submit is swallow-proof by construction: before
+React attaches, the form still carries a real `action` attribute and the click
+posts natively — which is exactly the case `armActionPost` matches by route, since
+a pre-hydration submit carries no `next-action` header. A `<button onClick>` that
+runs its action through `useTransition` (`ReprocessDiffPanel`'s "Preview changes",
+every Family create/grant button) has **no such fallback**: a click dispatched in
+the hydration window does nothing at all, and `settledClick` then waits its whole
+budget for a POST nobody asked for. Reproduced 4/4 at a 20× CPU throttle on
+`import-records-browser.spec.ts`, with the hydration probe reading `false` at the
+moment of the click.
+
+So `settledClick` gates on React's own hydration markers first — the same probe
+`settledFill` and `hydratedClick` use — inside its existing shared deadline, and
+then clicks ONCE. It is not a retry: a Server Action click is rarely idempotent
+and re-clicking is the #2437 defect. The gate lives in the helper rather than at
+the call site because every action click already passes through it, and no spec
+author should have to know which of the two shapes they are holding.
+
+Its diagnosis also stopped conflating two failures. Both halves share one
+deadline, so a click that never LANDS (a control covered by a stale overlay, a
+button that is never enabled) expires at the same moment as the response wait;
+`Promise.all` then reported whichever rejected first, and the click's own error
+was dropped — printing "NO same-origin POST was seen at all" about a page that was
+never asked to post. The click error now leads whenever there is one.
 
 ### The pre-hydration fill-revert (`settledFill`, #1188)
 

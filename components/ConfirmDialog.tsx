@@ -45,6 +45,18 @@ export interface ConfirmOptions {
 type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
 
 const ConfirmContext = createContext<ConfirmFn | null>(null);
+// Is a confirm on screen right now? A SEPARATE context from the `confirm` fn
+// above, because the two have opposite change profiles: `confirm` is stable for
+// the life of the app and every call site consumes it, while this flips on every
+// open/close and only a transient surface layered UNDERNEATH the dialog cares.
+// One context carrying both would re-render every consumer of `useConfirm` twice
+// per confirm.
+//
+// Defaults to `false` rather than throwing (unlike `useConfirm`): asking "is a
+// decision open over me?" outside a provider has an honest answer — no — and a
+// shared primitive must not become un-renderable outside the app shell just
+// because it started asking.
+const ConfirmOpenContext = createContext(false);
 
 interface Pending {
   options: ConfirmOptions;
@@ -103,7 +115,9 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ConfirmContext.Provider value={confirm}>
-      {children}
+      <ConfirmOpenContext.Provider value={pending != null}>
+        {children}
+      </ConfirmOpenContext.Provider>
       {retained && (
         <ConfirmModal
           key={retained.nonce}
@@ -182,4 +196,11 @@ export function useConfirm(): ConfirmFn {
   const ctx = useContext(ConfirmContext);
   if (!ctx) throw new Error("useConfirm must be used within a ConfirmProvider");
   return ctx;
+}
+
+// True while a confirm is on screen. For a surface that must stand down when a
+// decision opens over it — see OverflowMenu, whose click-away backdrop otherwise
+// outlives the interaction that opened the dialog (#2599).
+export function useConfirmOpen(): boolean {
+  return useContext(ConfirmOpenContext);
 }

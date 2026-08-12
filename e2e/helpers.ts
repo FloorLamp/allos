@@ -976,6 +976,26 @@ function armActionPost(
 //
 // The wait is correlated with the click; see armActionPost above for what that
 // does and does not guarantee.
+//
+// ── Why it waits for hydration first (#2599, sighting 2) ─────────────────────
+//
+// A `<form action={serverAction}>` submit is swallow-proof by construction: before
+// React attaches, the form still carries a real `action` attribute and the click
+// posts natively (armActionPost matches exactly that case by route, since a
+// pre-hydration submit carries no `next-action` header). A `<button onClick>` that
+// calls a Server Action through `useTransition` — ReprocessDiffPanel's "Preview
+// changes", every Family create/grant button — has NO such fallback: a click
+// dispatched in the hydration window does nothing at all, and this helper then
+// waits its whole budget for a POST that was never going to happen. Under a 20×
+// CPU throttle that reproduces 4/4 on `import-records-browser.spec.ts`'s preview
+// click, with the un-hydrated probe reading `false` at the moment of the click.
+//
+// So the click is gated on React's own hydration markers — the same probe
+// settledFill and hydratedClick use — and then dispatched ONCE. This is not a
+// retry: a Server Action click is rarely idempotent, and clicking twice is the
+// #2437 defect. It is the pre-hydration window closed at the one chokepoint every
+// action click already goes through, so no call site has to know which of the two
+// shapes above it is holding.
 export async function settledClick(
   page: Page,
   locator: Locator,
@@ -995,9 +1015,25 @@ export async function settledClick(
   // always gets a real attempt and can report its own diagnosis, not a 0ms expiry).
   const deadline = Date.now() + timeout;
   await expect(locator).toBeVisible({ timeout });
+  // The hydration gate (see the note above). Inside the SAME deadline, so it can
+  // never widen the ceiling the call site declared.
+  await expect(async () => {
+    const hydrated = await locator.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    expect(hydrated, "action control not hydrated yet").toBe(true);
+  }).toPass({ timeout: Math.max(1_000, deadline - Date.now()) }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; the click stays outside the loop so a non-idempotent action is never fired twice
   const rest = Math.max(1_000, deadline - Date.now());
 
   const wait = armActionPost(page, here, { timeout: rest, url: opts.url });
+  // Held outside the try so the CATCH can tell "the app fired no POST" from "the
+  // click never landed" — see the catch below. A one-field holder rather than a
+  // bare `let`, because the assignment happens inside a `.catch()` callback and
+  // TypeScript's flow analysis narrows such a `let` back to `null` for the catch
+  // clause, which is precisely where it has to be readable.
+  const click: { error: Error | null } = { error: null };
   try {
     // Set INSIDE the same synchronous turn as the click: the wait is already
     // listening (a fast action cannot resolve in the gap), and the browser cannot
@@ -1009,15 +1045,30 @@ export async function settledClick(
     // rejected first, which is usually the wait. That would blame "no POST" for a
     // click that never happened. Hold the click's failure and report it alongside,
     // the same way followLink surfaces `lastClickError` (#890).
-    let clickError: Error | null = null;
     const clicked = locator.click({ timeout: rest }).catch((err: unknown) => {
-      clickError = err instanceof Error ? err : new Error(String(err));
+      click.error = err instanceof Error ? err : new Error(String(err));
     });
     await Promise.all([wait.settled, clicked]);
     // The response landed, but the click behind it did not: something else on the
     // page produced that POST, so the caller's premise is already false.
-    if (clickError) throw clickError;
+    if (click.error) throw click.error;
   } catch (err) {
+    // The hold above only worked when the WAIT succeeded. When both halves fail —
+    // which is the normal shape of a click that never lands, since they share one
+    // deadline — `Promise.all` rejects with whichever lost the coin flip, and the
+    // "NO same-origin POST was seen at all" diagnosis then blamed a page that was
+    // never asked to post. That misdirection cost a whole session in #2599: the
+    // real cause was a cancelled confirm's overflow-menu backdrop covering the
+    // button, i.e. a click Playwright refused to dispatch. The click's own failure
+    // is the more proximate fact, so it leads.
+    if (click.error) {
+      click.error.message +=
+        `\n\n[settledClick] the CLICK ITSELF failed, so no Server Action POST ` +
+        `was ever going to follow it — the response wait's timeout is a ` +
+        `CONSEQUENCE of this, not an independent symptom. Look at what is ` +
+        `covering or disabling this control, not at the app's traffic.`;
+      throw click.error;
+    }
     throw wait.diagnose(
       err,
       "settledClick",
