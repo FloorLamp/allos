@@ -190,19 +190,40 @@ export async function changeOwnPassword(
 // ever end one of the caller's sessions (or nothing).
 // requireLoginWriteAccess (#278): the demo login is SHARED — "the caller's own
 // sessions" are every other visitor's sessions, so demo mode refuses revocation.
+// Audited (#1843) only when a row actually went: a forged or stale session id
+// deletes nothing, and an audit row claiming a revocation that never happened is
+// worse than no row.
 export async function revokeSessionAction(formData: FormData) {
   const { login } = await requireLoginWriteAccess();
   const id = String(formData.get("session_id") ?? "");
-  if (id) revokeSession(login.id, id);
+  if (id && revokeSession(login.id, id)) {
+    recordAudit({
+      loginId: login.id,
+      action: AUDIT_ACTIONS.sessionRevoke,
+      target: String(login.id),
+    });
+  }
   revalidateRoute("/settings");
 }
 
 // "Sign out everywhere else": drop every session for this login except the one
 // making the request. Standalone counterpart to the eviction that a password
 // change triggers. Demo-guarded like revokeSessionAction (#278).
+//
+// Audited (#1843) with the count, and only when there WAS another device to
+// sign out — the button is always live, so an event per click would mostly
+// record that somebody pressed a button.
 export async function signOutOtherSessions() {
   const { login } = await requireLoginWriteAccess();
-  await destroyOtherSessionsForCurrent(login.id);
+  const ended = await destroyOtherSessionsForCurrent(login.id);
+  if (ended > 0) {
+    recordAudit({
+      loginId: login.id,
+      action: AUDIT_ACTIONS.sessionRevokeAll,
+      target: String(login.id),
+      detail: `${ended} session(s)`,
+    });
+  }
   revalidateRoute("/settings");
 }
 

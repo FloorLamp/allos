@@ -376,6 +376,56 @@ describe("foldInstrumentScores", () => {
     });
   });
 
+  // #2553. Every assertion above holds on a document that happens to print the items
+  // in the instrument's own order, where "the first item" and "the first row" are the
+  // same row — which is exactly why the mismatch survived review. This fixture makes
+  // the two orders DISAGREE: the document prints item 10 first and item 1 last, and
+  // each row carries its own date and performer. Only a fold that reads DOCUMENT
+  // position answers 2026-03-01 here; one that reads the instrument's item numbering
+  // answers 2026-03-10, the row the document printed LAST.
+  const shuffledEpdsRows = (): ImportedRecord[] =>
+    epdsRows(() => 0)
+      .reverse()
+      .map((row, position) => {
+        const day = `2026-03-${String(position + 1).padStart(2, "0")}`;
+        return {
+          ...row,
+          date: day,
+          occurred_at: `${day}T09:00:00Z`,
+          provider: {
+            name: `Riverbend Clinic ${position + 1}`,
+            type: "organization" as const,
+            npi: null,
+            identifier: null,
+            phone: null,
+            address: null,
+          },
+          external_id: `${row.external_id}:${position}`,
+        };
+      });
+
+  it("dates and provenances the score from the row the DOCUMENT printed first", () => {
+    const folded = foldInstrumentScores(shuffledEpdsRows(), OWN, "Results");
+    expect(folded.records).toHaveLength(1);
+    expect(folded.records[0]).toMatchObject({
+      canonical: "EPDS",
+      value_num: 21,
+      date: "2026-03-01",
+      occurred_at: "2026-03-01T09:00:00Z",
+      provider: { name: "Riverbend Clinic 1" },
+    });
+  });
+
+  it("keys the score on the document-first day too", () => {
+    // The dedupe key embeds that same date, so an item-index read would put the same
+    // sitting on a different row than a re-import whose section happened to print the
+    // items in the instrument's order.
+    const folded = foldInstrumentScores(shuffledEpdsRows(), OWN, "Results");
+    expect(folded.records[0].external_id).toBe(
+      "ccda:instrument:epds:2026-03-01"
+    );
+  });
+
   it("never touches a real reading — a lab row is not a candidate", () => {
     const lab: ImportedRecord = {
       category: "lab",

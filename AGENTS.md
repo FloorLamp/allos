@@ -102,8 +102,12 @@ npx vitest run -t "estimate1RM"
 CI runs formatting, lint, type checking, PHI scanning, a non-blocking full
 dependency audit plus a blocking high-severity audit gate, both coverage-gated
 test tiers, changed Playwright specs repeated three times at zero retries, and
-the full browser suite in twelve shards. Documentation-only changes skip the
-browser matrix. `.github/workflows/e2e-full.yml` provides the manually
+the full browser suite in twelve shards. A change with NO RUNTIME SURFACE skips
+the browser matrix — prose, plus the orchestration tooling under
+`scripts/orchestration/`, which nothing in the app or the e2e harness imports.
+The rest of `scripts/` is not exempt: `seed.ts`, `notify.ts` and the `gen-*.ts`
+generators feed the app and its fixtures. Grow that set only against the
+question "what imports this". `.github/workflows/e2e-full.yml` provides the manually
 dispatched full-suite census. Pre-commit runs Prettier through lint-staged and
 `phi-scan --staged`.
 
@@ -622,9 +626,17 @@ See `docs/internals/supplements.md`.
 ### Health endpoint
 
 `app/api/health` is public and deliberately coarse. It returns 503 for database,
-write, cached-integrity, or configured backup-staleness failures without
-exposing paths, versions, or health data. Keep status composition in
+write, cached-integrity, disk-headroom, or configured backup-staleness failures
+without exposing paths, versions, or health data. Keep status composition in
 `lib/health-status.ts`; the endpoint itself must stay cheap.
+
+A new reason is a WORD, and the numbers behind it stay server-side — `disk-low`
+(#1856) is decided from free bytes, volume size and DB size that the caller never
+sees. It must also be a state a healthy install is NOT in: a reason that describes
+the DEFAULT deployment posture would pin every default install at 503 forever,
+which is why "uploads are in no backup" is an admin-card fact and not a reason
+here. Prefer a transient, self-clearing alarm over a standing complaint about how
+the operator set the box up.
 
 ### Deploys and deployment skew
 

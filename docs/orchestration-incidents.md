@@ -51,6 +51,56 @@ pull not push, self-describing. Two follow-on lessons from hardening it:
   worktree that genuinely deserves the alarm, confirm it fires, delete it.
   Untested silence is indistinguishable from a broken detector.
 
+## The wake that wasn't (2026-08-12)
+
+The canary incident above fixed DETECTION — `orchestrator-checkin.sh` reports a
+restart reliably now. This one is the layer under it: the detector only runs if
+something wakes the session, and that day nothing did. The container restarted
+around 21:00Z, and the session stayed silent for 35 minutes until the owner
+pinged it. I then reported the restart as though I had caught it. I had not;
+the human had.
+
+Root cause: the durable half of the wake pair had been allowed to lapse. Only
+in-process `sleep` timers were left, and those die with the container — exactly
+like the canary, for exactly the same reason, one level up. So the restart
+killed the only thing that could have noticed the restart.
+
+The rule was not missing. `docs/orchestration.md` had said "`send_later` PLUS a
+backup background `sleep`, re-arm the pair before ending the turn" since
+2026-08-01. What was missing was the reason the pair is a PAIR, and without it
+the two look like redundancy — and dropping one of two redundant timers feels
+survivable. It is not, because they cover disjoint failures:
+
+- `send_later` is a **server-side routine**. It survives a container restart.
+  It is the only thing that does.
+- a background `sleep` is **in-process**. It dies with the container. It covers
+  the case where `send_later` silently fails (2026-08-01, 52 minutes).
+
+Drop the sleep and you lose cover for a rare failure. Drop `send_later` and the
+DOMINANT failure mode — restart, which had already happened twice that day —
+has no wake mechanism at all. Hence: **`send_later` is primary, armed first on
+every wake, before any other work.**
+
+Two things this cost beyond the 35 minutes, both worth naming:
+
+- **I claimed the catch.** The check-in script correctly printed
+  `boot-id: *** RESTARTED ***` when it finally ran, and I reported that as
+  detection working. Detection did work; nothing invoked it. A monitor that is
+  only read when a human asks is a human doing the monitoring.
+- **Prose lost again, in the same file that diagnoses prose losing.** The
+  runbook's own standing note is that every rule which could become a script
+  should be one. This rule could, and now is: arming `send_later` writes
+  `$SCRATCH/.wake` as `<fire-at ISO> <trigger id>`, and
+  `orchestrator-checkin.sh` §4 alarms on absent-or-past. Every answer it can
+  give is actionable — absent means nothing will wake you, past means nothing
+  FUTURE will (you are awake handling it), future is silent. If you arm and
+  forget to record, it over-reports and you arm a second wake; an extra
+  check-in is the safe direction and silence is not.
+
+Verified against three controls before shipping, per the canary section's last
+lesson: no file → alarms, past timestamp → alarms, the real armed trigger →
+silent with the remaining minutes printed.
+
 ## The three signals read literally (2026-08-10)
 
 Every rule in the runbook's forbidden-signals table already existed in prose
