@@ -1282,6 +1282,19 @@ surface. Its terminal state adds nothing new: the existing dated label, then the
 four-night stale CTA, with a genuinely dead connection still handled by
 Data → Review.
 
+**Its health gate is scoped the same way (#2192).** The waiting window also refuses
+to speak over a broken connection: saying "waiting" on top of a source that cannot
+deliver is a message that cannot resolve. That gate used to read the account-wide
+attention list, so an expired Strava token silenced the state on a profile whose
+ring was syncing perfectly, and the surface fell back to the stale old-night
+headline #2097 exists to remove. It now filters that list to the sources actually
+recording this profile's sleep over the same tracking lookback
+(`getSyncedSleepSources`). WHICH source that is gets resolved from the DATA — the
+way `latestSleepSyncAt` already resolves whose last check the "hasn't synced" line
+quotes — rather than from a second hand-kept list of sleep-capable sources for the
+registry to drift from. A source that is sleep-capable but is not feeding this
+profile's sleep is not what anyone is waiting for anyway.
+
 **…and the same-day version of it: the quiet stream (#2146).** `isSleepTracking`
 answers the multi-day question. Between it and connection staleness there was a
 gap nothing could see: **connection-level health, data-level silence** — a

@@ -123,6 +123,33 @@ export function pickRowsOneOriginPerSourceDay<T>(
   );
 }
 
+// THE election, shared by both row filters below: given each candidate source
+// group's summed weight inside one bucket, which group owns the bucket? The first
+// group present in `order` wins; else the largest weight, ties broken
+// lexicographically so the pick is deterministic. STRICT (#1642) skips that
+// fallback, so a bucket no selector covers elects nobody and keeps no rows.
+//
+// The two filters differ ONLY in what a bucket is — a calendar day, or one
+// overlapping window cluster — which is the whole of #2552. Keeping the choice in
+// one place is what stops the two grains from drifting into two different rules.
+function electSourceGroup(
+  weights: Map<string, number>,
+  { order, strict }: SourceResolution
+): string | null {
+  const preferred = order.find((p) => weights.has(p));
+  if (preferred != null) return preferred;
+  if (strict) return null;
+  let best: string | null = null;
+  let bestWeight = -Infinity;
+  for (const [src, w] of weights) {
+    if (w > bestWeight || (w === bestWeight && (best == null || src < best))) {
+      best = src;
+      bestWeight = w;
+    }
+  }
+  return best;
+}
+
 // Filter arbitrary per-source rows down to ONE source per day, generically: the
 // first source present in `selection` wins; else the source with the largest
 // summed `weightOf` (defaults to row count — "most coverage"); ties break
@@ -134,6 +161,11 @@ export function pickRowsOneOriginPerSourceDay<T>(
 // documents source" is the whole family, so two scans on one day both survive and
 // the caller's fold averages them exactly as it would two same-day manual rows.
 // In STRICT mode (#1642) an uncovered day keeps NO rows: the honest gap.
+//
+// THE DAY IS THE RIGHT BUCKET ONLY FOR A PER-DAY QUANTITY (#2552). It is right for
+// a day's HR minutes or a day's weigh-in — one day, one number, and a second source
+// reporting it is a competing account of the same thing. It is WRONG for a list of
+// events that merely happen to share a date: see pickRowsOneSourcePerWindow.
 export function pickRowsOneSourcePerDay<T>(
   rows: T[],
   selection: SourceSelection,
@@ -141,7 +173,8 @@ export function pickRowsOneSourcePerDay<T>(
   sourceOf: (row: T) => string | null,
   weightOf: (row: T) => number = () => 1
 ): T[] {
-  const { order, strict } = asSourceResolution(selection);
+  const resolution = asSourceResolution(selection);
+  const { order } = resolution;
   // Total weight per (date, source-group).
   const byDate = new Map<string, Map<string, number>>();
   for (const r of rows) {
@@ -157,26 +190,79 @@ export function pickRowsOneSourcePerDay<T>(
   // Chosen source per date. A date absent from this map keeps no rows.
   const chosenByDate = new Map<string, string>();
   for (const [date, m] of byDate) {
-    const preferred = order.find((p) => m.has(p));
-    if (preferred != null) {
-      chosenByDate.set(date, preferred);
-      continue;
-    }
-    if (strict) continue;
-    let best: string | null = null;
-    let bestWeight = -Infinity;
-    for (const [src, w] of m) {
-      if (
-        w > bestWeight ||
-        (w === bestWeight && (best == null || src < best))
-      ) {
-        best = src;
-        bestWeight = w;
-      }
-    }
-    chosenByDate.set(date, best!);
+    const chosen = electSourceGroup(m, resolution);
+    if (chosen != null) chosenByDate.set(date, chosen);
   }
   return rows.filter(
     (r) => chosenByDate.get(dateOf(r)) === sourceGroupKey(sourceOf(r), order)
   );
+}
+
+// Filter WINDOWED rows down to ONE source per overlapping window, generically —
+// the same election as the per-day filter above, over a bucket that is a cluster of
+// overlapping windows rather than a calendar day.
+//
+// WHY THE DAY WAS THE WRONG BUCKET (#2552). Two sources describing one night are a
+// duplicate and only one may survive; two sources describing an overnight and a
+// daytime nap are two EVENTS, and dropping either loses something that really
+// happened. The day cannot tell those apart — it sees "two sources on 2026-07-15"
+// in both cases — so a nap logged by hand on the same wake-day elected `manual`
+// (first in SOURCE_PREFERENCE, "the user's own correction") and took the wearable's
+// entire overnight session out of the read with it. The overlap can tell them
+// apart, because a duplicate of an event covers the same clock time and a distinct
+// event does not.
+//
+// Windows are clustered transitively: a row joins the cluster it overlaps, and a
+// cluster spans the union of its members. Touching endpoints do NOT overlap (a
+// session that begins exactly when another ends is a second event). A row whose
+// window will not parse, or is inverted, belongs to no cluster and is KEPT — this
+// filter de-duplicates, it does not validate, and its callers' SQL already refuses
+// an inverted window.
+export function pickRowsOneSourcePerWindow<T>(
+  rows: T[],
+  selection: SourceSelection,
+  startOf: (row: T) => string,
+  endOf: (row: T) => string,
+  sourceOf: (row: T) => string | null,
+  weightOf: (row: T) => number = () => 1
+): T[] {
+  const resolution = asSourceResolution(selection);
+  const groupOf = (row: T) => sourceGroupKey(sourceOf(row), resolution.order);
+  const keep = new Set<number>();
+  const spans: { index: number; start: number; end: number }[] = [];
+  rows.forEach((row, index) => {
+    const start = Date.parse(startOf(row));
+    const end = Date.parse(endOf(row));
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      spans.push({ index, start, end });
+    } else {
+      keep.add(index);
+    }
+  });
+  spans.sort((a, b) => a.start - b.start || a.end - b.end || a.index - b.index);
+
+  for (let i = 0; i < spans.length;) {
+    let clusterEnd = spans[i].end;
+    let j = i + 1;
+    while (j < spans.length && spans[j].start < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, spans[j].end);
+      j++;
+    }
+    const weights = new Map<string, number>();
+    for (let k = i; k < j; k++) {
+      const group = groupOf(rows[spans[k].index]);
+      weights.set(
+        group,
+        (weights.get(group) ?? 0) + weightOf(rows[spans[k].index])
+      );
+    }
+    const chosen = electSourceGroup(weights, resolution);
+    if (chosen != null) {
+      for (let k = i; k < j; k++) {
+        if (groupOf(rows[spans[k].index]) === chosen) keep.add(spans[k].index);
+      }
+    }
+    i = j;
+  }
+  return rows.filter((_, index) => keep.has(index));
 }

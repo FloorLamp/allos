@@ -115,9 +115,16 @@ export interface SleepWaitingSignals {
   tracking: boolean;
   // The measured median arrival lag in minutes, or null under MIN_ARRIVAL_SAMPLES.
   arrivalLagMin: number | null;
-  // No source is in the failing/stale attention state. A broken connection has
-  // its own reconnect path and a different message; saying "waiting" over the top
-  // of it would be a message that cannot resolve.
+  // THE SLEEP SOURCE is not in the failing/stale attention state. A broken
+  // connection has its own reconnect path and a different message; saying "waiting"
+  // over the top of it would be a message that cannot resolve.
+  //
+  // The sleep source, and not the ACCOUNT (#2192). This field is about whether the
+  // thing being waited for can still arrive, so the caller scopes it to the sources
+  // actually recording this profile's sleep (`getSyncedSleepSources`) rather than
+  // handing over the account-wide attention list: an expired Strava token says
+  // nothing about last night and must not silence the state. Same discipline as
+  // `tracking` above — what this surface decides is what to FEED the decision.
   sourceHealthy: boolean;
   // The most recent sync attempt for the sleep source, for the "hasn't synced"
   // detail line. Null when there is none to name.
