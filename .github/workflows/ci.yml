@@ -394,3 +394,15 @@ jobs:
           name: playwright-report-shard-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7
+
+      # The raw JSON report, so e2e/spec-durations.json can be refreshed from a
+      # RUNNER rather than from someone's laptop. Twelve of these cover the whole
+      # suite, which is what the manifest needs — see the refresh recipe in
+      # docs/internals/e2e-hygiene.md. Small next to the HTML report above.
+      - name: Upload raw JSON report (sharding manifest source)
+        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results-shard-${{ matrix.shard }}
+          path: test-results/e2e-results.json
+          retention-days: 7
