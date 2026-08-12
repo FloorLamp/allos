@@ -340,10 +340,8 @@ diagnosing any red; every class there recurred at least once.
 
 ## Review checklist
 
-The FIRST item is a routing decision:
-`adversarial-review-brief.mjs <pr> --check`. If it answers MANDATORY, the PR
-also goes through **The adversarial review lane** below — the ordinary review
-continues in parallel, but the merge waits for both.
+First, route: `adversarial-review-brief.mjs <pr> --check` — MANDATORY sends
+the PR through **The adversarial review lane** too; the merge waits for both.
 
 - Does the fix match the issue's prescription **including comment-thread
   clarifications**, and are deviations argued? (Good agents deviate correctly —
@@ -376,34 +374,17 @@ continues in parallel, but the merge waits for both.
 
 ## The adversarial review lane
 
-One review lane has a structural blind spot: the orchestrator reviews a diff
-against the brief the orchestrator wrote, from the same model family, primed by
-the same framing — and the record shows what that misses. #2444 (a shipped
-migration whose FK-guard was silently dead) passed the authoring agent, the
-pre-merge review, and CI, and was caught only by the post-merge audit sweep —
-24 hours after it could have deleted referenced rows. For most diffs that
-residual risk is acceptable; for some it is not.
-
-**When**: `adversarial-review-brief.mjs <pr> --check` — mandatory when the diff
-touches a path where a plausible bug corrupts stored data, crosses the
-login/profile authorization boundary, or silences a safety signal. The path
-list is declared IN THE SCRIPT (migrations/runner, auth/password/middleware/
-public-paths, backup/restore, the notifications send/suppression tier, offline
-replay, lib/db.ts); growing it is a one-line change with a `why`.
-
-**Who**: a SEPARATE agent, never the author and never the orchestrator-as-
-reviewer. The generated brief prompts it to REFUTE, not summarize: for each
-claim in the PR body, construct and EXECUTE the concrete input, database state,
-or call sequence that would falsify it (a fresh worktree at the PR's merge ref,
-db-tier runs, scratch scripts against in-memory databases). "I read it and it
-looks right" is not a verdict.
-
-**Disposition**: the merge waits for the report on mandatory diffs. Every
-REFUTED claim is fixed or explicitly overridden with a written reason in the
-review thread — never silently absorbed. A fully-CONFIRMED report after honest
-attack is the lane working, not a wasted dispatch; do not lean on the refuter
-to find something. The lane is additive: the ordinary review, the checklist,
-and the post-merge audit sweep all continue unchanged.
+One review lane reviews a diff against the brief the same orchestrator wrote —
+and #2444 is what that misses (_incidents: §Assorted receipts_). So high-stakes
+diffs get a SECOND lane: `adversarial-review-brief.mjs <pr> --check` says
+whether it is MANDATORY (the path list and the reasoning live in the script:
+data-corrupting, auth-boundary, or safety-signal paths), and the full mode
+emits the refuter brief — a SEPARATE agent, prompted to construct and EXECUTE
+the input that would falsify each of the PR's claims, never to summarize.
+Disposition: the merge waits for the report; every REFUTED claim is fixed or
+overridden with a written reason in the thread; a fully-CONFIRMED report after
+honest attack is the lane working, not a wasted dispatch. The ordinary review
+and the post-merge sweep continue unchanged.
 
 ## Migrations are name-keyed — the slot system is retired
 
@@ -457,38 +438,22 @@ touches a shared signature and has sat.
 
 ## The merge queue
 
-The queue is the structural fix for the class above: it validates every merge's
-SPECULATIVE merge commit — the exact bytes that will become main, in the exact
-order they will land — so a two-green-PRs interaction fails in the queue
-instead of on main. The pieces:
+The structural fix for the class above: the queue validates every merge's
+SPECULATIVE commit — the exact bytes that will become main, in landing order —
+so a two-green-PRs interaction fails in the queue instead of on main.
+`ci.yml`/`gitleaks.yml` run on `merge_group` (cheap tiers + gitleaks only; two
+`if:` lines in `ci.yml` extend the bar to the browser tier). **Owner-applied,
+inert until then** — a session cannot mutate repo settings:
+`gh api repos/FloorLamp/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`
+(squash, ALLGREEN groups of ≤5, admin bypass for direct owner pushes, which
+`ci-main.yml` keeps covering).
 
-- `ci.yml` and `gitleaks.yml` run on `merge_group`; the browser jobs are gated
-  to `pull_request` (the queue's bar is deliberately the three cheap tiers +
-  gitleaks — the documented interaction class is type/unit, and 12 e2e shards
-  per queue group at this merge rate would dwarf the rest of CI; two `if:`
-  lines in `ci.yml` flip that dial).
-- `.github/merge-queue-ruleset.json` is the ruleset, **owner-applied** (a
-  session cannot mutate repo settings — verified refused):
-  `gh api repos/FloorLamp/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`.
-  Squash merges, ALLGREEN grouping up to 5 entries, admin bypass so the owner's
-  direct pushes to main keep working (those stay covered by `ci-main.yml`).
-
-**Until the ruleset is applied, everything in this file's merge flow stands
-unchanged.** Once it is active:
-
-- Merging = queueing: `mcp__github__enable_pr_auto_merge` on a PR whose own CI
-  is green (PR-side full-suite green REMAINS the entry bar — e2e is not
-  re-validated in the queue, so never queue a PR that isn't green on its own
-  head). Direct `merge_pull_request` stops being the path.
-- The hand-serialization rules retire: "serialize merges", "defer the later
-  rebase until the LAST conflicting merge lands", and "re-check every open PR's
-  mergeability after each merge" were all compensation for unserialized
-  landings — the queue rebuilds and revalidates each entry against the one
-  ahead of it, and kicks out an entry whose validation fails rather than
-  landing it. Conflict-dirty PRs still never enter the queue; `ci-watch.mjs`'s
-  exit-3 report is unchanged.
-- `ci-main.yml` narrows to what the queue cannot see: the owner's bypass
-  pushes, and any breakage class outside the required checks.
+Once active: merging = `enable_pr_auto_merge` on a PR whose OWN CI is fully
+green (e2e is not re-validated in the queue — never queue a red-head PR), and
+three hand-serialization rules retire: "serialize merges", "defer the later
+rebase until the LAST conflicting merge lands", "re-check every open PR's
+mergeability after each merge" — the queue does that serialization itself and
+kicks out an entry whose validation fails.
 
 ## Cadence & lifecycle
 
