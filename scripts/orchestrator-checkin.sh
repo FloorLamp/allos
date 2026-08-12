@@ -117,8 +117,25 @@ for d in "$STATE_DIR"/wt-*; do
   r=$(git -C "$REPO" ls-remote --heads origin "$b" 2>/dev/null | cut -c1-7)
   live=0
   printf '%s\n' "$live_branches" | grep -qx -- "$b" && live=1
+  # "Was this branch ever pushed?" — read the tracking CONFIG, not @{upstream}.
+  #
+  # The two are not the same thing and the difference is a false alarm. The
+  # config entry `branch.<name>.remote` survives the upstream branch being
+  # deleted at merge AND survives `git remote prune`; `@{upstream}` RESOLVES
+  # `refs/remotes/origin/<branch>`, which prune deletes. So after an ordinary
+  # `git remote prune origin` — routine hygiene after a few squash merges —
+  # every merged worktree read as NEVER PUSHED and demanded rescue.
+  #
+  # Measured on wt-reach-am, whose work merged as #2617:
+  #   branch.claude/notify-reach-am1.remote -> origin        (intact)
+  #   claude/notify-reach-am1@{upstream}    -> fatal: unknown revision
+  #
+  # The original comment here already said "tracking config survives the
+  # upstream branch's deletion", which is true — it was tested with the wrong
+  # command. Third time this detector has cried wolf, and each time the fix was
+  # to ask a question whose answer does not depend on a ref that gets cleaned up.
   pushed=0
-  git -C "$d" rev-parse --abbrev-ref --symbolic-full-name "$b@{upstream}" >/dev/null 2>&1 && pushed=1
+  [ -n "$(git -C "$d" config --get "branch.$b.remote" 2>/dev/null)" ] && pushed=1
   git -C "$REPO" merge-base --is-ancestor "$h" origin/main 2>/dev/null && pushed=1
 
   state="LIVE"; flag=""

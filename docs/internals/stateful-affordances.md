@@ -69,6 +69,21 @@ Today's entries:
 | `routines` (`active`)                         | `lib/routines.ts`                                                                                                                                                        | —                    | —                           |
 | `situations` (`active`)                       | `lib/settings/profile-attrs.ts`                                                                                                                                          | —                    | —                           |
 | `equipment` (`retired`)                       | `lib/equipment.ts`                                                                                                                                                       | —                    | —                           |
+| `integration_backfill_jobs`                   | `lib/integrations/backfill-jobs.ts`                                                                                                                                      | —                    | —                           |
+
+`integration_backfill_jobs` (#2196/#2195) is not column-narrowed because the
+table has no non-lifecycle column: `status` decides what the hourly pass resumes
+and what boot recovery reaps, and the completed/failed/request/active-seconds
+counters are the durable checkpoint a resumed run continues from — which is
+exactly what a raw write got wrong, restarting them over imported rows that were
+still on disk. The crash-lease reaper in `lib/migrations/boot-tasks.ts` writes
+the table too and is out of the scan's scope under the migrations carve-out; it
+expires a lease before any request exists rather than serving a user's tap. No
+`offerState`: the Strava button renders a count of rides missing details, not the
+job's state, so its label does not yet name the write it will perform. It cannot
+corrupt — `queueIntegrationBackfill` refuses a running/queued job with a typed
+outcome the action renders, and the run claim is a CAS on
+`status IN ('queued','paused')` — but that derivation is not extracted.
 
 `cycles` is the only entry today whose guard logic and DML live in different
 modules, which is what `gate` exists to record: `lib/cycle-write.ts` owns the

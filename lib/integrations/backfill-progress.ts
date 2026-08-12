@@ -49,6 +49,24 @@ export function integrationBackfillView(
   };
 }
 
+// What the progress line calls a job's not-completed items (#2196).
+//
+// `failed_items` holds retryable failures AND items the source gave a final answer
+// for, because the JOB STATUS already separates them and a second column would be a
+// second place for the two to disagree: a retryable failure keeps `remaining > 0`,
+// which ends the run `failed`, so a `completed` job's leftovers can only be the
+// permanent kind. Saying "retrying" about those was the visible half of the bug —
+// it promised a success that was never coming.
+export function backfillFailureLabel(
+  status: BackfillProgressInput["status"],
+  failedItems: number
+): string | null {
+  if (failedItems <= 0) return null;
+  // A queued/running/paused job may hold a mix; "retrying" is the honest word there,
+  // because the run those items belong to has not reached its verdict yet.
+  return `${failedItems} ${status === "completed" ? "unavailable" : "retrying"}`;
+}
+
 export function formatBackfillTime(seconds: number): string {
   if (seconds < 60) return "under a minute";
   const minutes = Math.ceil(seconds / 60);
