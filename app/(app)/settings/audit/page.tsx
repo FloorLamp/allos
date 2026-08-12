@@ -8,7 +8,8 @@ import {
   auditFilterOptions,
   type AuditFilters,
 } from "@/lib/audit-query";
-import { AUDIT_PAGE_SIZE, clampPage, pageCount } from "@/lib/audit-actions";
+import { AUDIT_PAGE_SIZE } from "@/lib/audit-actions";
+import { clampPage, pageCount } from "@/lib/pagination";
 import type { AppRoute } from "@/lib/hrefs";
 import LogTable from "@/components/LogTable";
 

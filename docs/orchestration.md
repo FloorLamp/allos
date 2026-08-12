@@ -301,6 +301,12 @@ internal jargon.
 - Purely-internal merges (spec fixes, CI plumbing) are OMITTED. Operator-facing
   notes (auto-applying migrations, behavior a self-hoster must know) go in the
   entry body.
+- The file stays APPEND-ONLY; `/whats-new` pages it (#2528). The page renders
+  `WHATS_NEW_PAGE_ENTRIES` entries at a time — the newest day or two, which is the
+  question the page answers — with `?page=` walking back through the archive. A day
+  split across a page boundary carries its `operatorNotes` onto both pages, so an
+  upgrade action can never hide behind the pager. The bundled JSON itself still
+  ships whole, so trimming the file remains a separate release-process decision.
 
 ## Dispatch prompt template
 

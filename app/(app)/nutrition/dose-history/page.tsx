@@ -18,6 +18,8 @@ export default async function SupplementDoseHistoryPage(props: {
     range?: string | string[];
     kind?: string | string[];
     item?: string | string[];
+    // The ledger's page (#2445) — the read's bound, so it has to reach the view.
+    page?: string | string[];
   }>;
 }) {
   const searchParams = await props.searchParams;

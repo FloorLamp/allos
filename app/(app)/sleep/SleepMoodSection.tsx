@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { IconPencil } from "@tabler/icons-react";
 import PaginationControls from "@/components/PaginationControls";
+import { HISTORY_PAGE_SIZE, pageCount as countPages } from "@/lib/pagination";
 import ScatterChartCard from "@/components/ScatterChartCard";
 import ScrollFade from "@/components/ScrollFade";
 import { chartSeries } from "@/lib/chart-colors";
@@ -30,7 +31,6 @@ import type { NapHistoryRow } from "@/lib/queries/sleep";
 // unstable Pearson coefficient. Five paired nights is the minimum for the plot;
 // the factual history table below is always available.
 const MIN_SLEEP_MOOD_SCATTER_POINTS = 5;
-const HISTORY_PAGE_SIZE = 10;
 const STAGE_COLUMNS: {
   key: keyof SleepStageMinutes;
   label: string;
@@ -102,10 +102,9 @@ export default function SleepMoodSection({
   const newestFirst = [...historyByDate.values()].sort((a, b) =>
     a.date < b.date ? 1 : a.date > b.date ? -1 : 0
   );
-  const pageCount = Math.max(
-    1,
-    Math.ceil(newestFirst.length / HISTORY_PAGE_SIZE)
-  );
+  // The record-history page size and its arithmetic are shared (lib/pagination.ts):
+  // this table, the Trends body history and the dose ledger page the same way.
+  const pageCount = countPages(newestFirst.length, HISTORY_PAGE_SIZE);
   const page = Math.min(requestedPage, pageCount);
   const pageRows = newestFirst.slice(
     (page - 1) * HISTORY_PAGE_SIZE,

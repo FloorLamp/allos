@@ -40,13 +40,19 @@ export default function DeleteBodyMetricButton({
     }
   }
 
+  // The row's own date is already in hand for the confirm message, so the accessible
+  // name says WHICH entry (#2530): a table of N buttons all named "Delete entry"
+  // tells a screen-reader user nothing about which record is about to be destroyed,
+  // in the one place rows are destroyed.
+  const name = `Delete entry from ${label}`;
+
   return (
     <button
       type="button"
       onClick={onDelete}
       disabled={busy}
-      aria-label="Delete entry"
-      title="Delete entry"
+      aria-label={name}
+      title={name}
       className="tap-target inline-flex h-8 w-8 items-center justify-center rounded-sm text-slate-300 transition hover:bg-slate-100 hover:text-rose-500 disabled:opacity-50 dark:hover:bg-ink-800"
     >
       <IconX className="h-4 w-4" />
