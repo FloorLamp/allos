@@ -363,3 +363,83 @@ test("selecting a week opens the WEEK panel, and the live week says how far it g
   // its smaller total never reads as a decline.
   await expect(weeks.last()).toHaveAttribute("data-partial", "true");
 });
+
+// #2582: in a heatmap the cell's fill level IS the data, so nothing translucent may
+// sit on a cell. The shared DayHistory calendar used to overlay its month and weekday
+// labels on the grid behind a `bg-white/70` + blur chip, which made a covered day read
+// as a level LIGHTER than it has. The labels now live in reserved gutters, so the
+// invariant is geometric and checkable: no axis label's box may intersect any cell's.
+//
+// Asserted here because the food calendar is the widest seeded day-grain window in the
+// suite — the component is shared, so the four consumers (food, dose, workout,
+// practice) inherit the same geometry from the same constants.
+test("calendar axis labels sit outside the grid, never on a cell (#2582)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/trends?tab=nutrition");
+  const history = page.getByTestId("intake-history");
+  const calendar = history.getByTestId("day-history-calendar");
+  await expect(calendar).toBeVisible();
+
+  const weekdays = calendar.getByTestId("day-history-weekday-label");
+  // ALL SEVEN rows are labelled. Only alternating rows were, which meant counting
+  // rows to find Tue — an artifact of the labels colliding with the cells.
+  await expect(weekdays).toHaveCount(7);
+  const months = calendar.getByTestId("day-history-month-label");
+  await expect(months).not.toHaveCount(0);
+
+  // Calendar cells resize themselves after mount (they grow toward 34px when the
+  // window is short), so wait for a layout that holds still before measuring.
+  await settledBoxes([
+    calendar.getByTestId("day-history-weekday-label").first(), // first-ok: any one label proves the whole grid has settled
+    calendar.getByTestId("day-history-day").first(), // first-ok: same, on the cell side
+  ]);
+
+  const overlaps = await calendar.evaluate((root) => {
+    // One layout pass, so every rect below belongs to the same layout.
+    const rect = (el: Element) => el.getBoundingClientRect();
+    const labels = [
+      ...root.querySelectorAll<HTMLElement>(
+        '[data-testid="day-history-weekday-label"],[data-testid="day-history-month-label"]'
+      ),
+    ];
+    const cells = [...root.querySelectorAll<HTMLElement>("button[data-date]")];
+    // Sub-pixel tolerance: a fractional cell size can put a label's edge and a
+    // cell's edge a hair apart, which is touching, not covering.
+    const EPS = 0.5;
+    const hits: string[] = [];
+    for (const label of labels) {
+      const l = rect(label);
+      for (const cell of cells) {
+        const c = rect(cell);
+        const dx = Math.min(l.right, c.right) - Math.max(l.left, c.left);
+        const dy = Math.min(l.bottom, c.bottom) - Math.max(l.top, c.top);
+        if (dx > EPS && dy > EPS) {
+          hits.push(
+            `"${label.textContent}" covers ${cell.dataset.date} by ` +
+              `${dx.toFixed(1)}x${dy.toFixed(1)}px`
+          );
+        }
+      }
+    }
+    return hits;
+  });
+  expect(overlaps, overlaps.join("\n")).toEqual([]);
+
+  // The matrix's frozen first column is a different case: it necessarily sits over
+  // cells at any scroll offset past zero, and those cells stay reachable by
+  // scrolling. What it may NOT do is leave them dimly visible through it — a
+  // washed-out cell states a level it does not have. So its backdrop is opaque.
+  const label = history.locator("[data-matrix-label]").first(); // first-ok: every matrix row label shares one backdrop constant
+  const backdrop = await label.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return {
+      backgroundColor: cs.backgroundColor,
+      backdropFilter: cs.backdropFilter,
+    };
+  });
+  // No fractional alpha, and no blur reaching the cells behind it.
+  expect(backdrop.backgroundColor).not.toMatch(/,\s*0(\.\d+)?\s*\)/);
+  expect(backdrop.backdropFilter).toBe("none");
+});

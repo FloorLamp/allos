@@ -87,6 +87,15 @@ test("Trends → Fitness leads with the workout history and its active days (#18
   });
   await rowLabelButton.click();
   await expect(rowLabelButton).toHaveAttribute("aria-pressed", "true");
+  // Re-place the pointer on the row before reading the calendar's context. That
+  // context is fed by LIVE HOVER, which deliberately outranks the selection
+  // ("a click does not end the pointer's live preview") and disappears entirely
+  // once the pointer leaves — so this line is about the pointer, not the click.
+  // Selecting a row opens the detail pane, which narrows the calendar's container
+  // and remeasures its cells, and the matrix rows below can slide a row-height
+  // under a pointer left where it clicked: without this, the assertion reads a
+  // NEIGHBOUR's hover on any build whose calendar height moves by more than a row.
+  await rowHeader.hover();
   await expect(
     section.getByTestId("day-history-calendar-row-context")
   ).toHaveText(`${rowLabel} days`);

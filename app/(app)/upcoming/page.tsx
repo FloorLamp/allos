@@ -12,6 +12,8 @@ import {
   IconFlask,
   IconTarget,
   IconBarbell,
+  IconSalad,
+  IconStretching,
   IconSparkles,
   IconClipboardList,
   IconPlugConnected,
@@ -127,6 +129,13 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "med-monitor": IconMicroscope,
   goal: IconTarget,
   training: IconBarbell,
+  // The other two weekly-floor-target identities (#2578) get the glyph their SCOPE
+  // already carries elsewhere in the app: the salad the dashboard's nutrition card and
+  // the palette's food actions use, and a stretch for the mobility habit. The barbell
+  // belongs to the strength/cardio scopes only — it is what made "Berries" read as a
+  // training target on the live page.
+  "nutrition-target": IconSalad,
+  "mobility-target": IconStretching,
   practice: IconSparkles,
   careplan: IconClipboardList,
   followup: IconStethoscope,

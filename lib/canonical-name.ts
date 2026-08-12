@@ -1201,6 +1201,26 @@ export function biomarkerFamilyAnchor(name: string | null | undefined): string {
   return FAMILY_BY_IDENTITY.get(biomarkerFamily(trimmed))?.anchor ?? trimmed;
 }
 
+// The anchor for an already-computed IDENTITY string — the `family:<key>` value a
+// stored key carries — or null when the string is not a registered family identity.
+//
+// The distinction from biomarkerFamilyAnchor is which direction you are coming from.
+// That one takes a reading's NAME and resolves it forward through biomarkerFamily.
+// This one takes the identity itself, which is what a persisted key holds: #564 moved
+// the flag dismissal to `biomarker-flag:family:vitamin-d-25-hydroxy` so one dismissal
+// silences the flag and the trajectory together, and the key is stored LOWERCASED —
+// so a surface that later has only the key has a family identity, not a name, and
+// title-casing it printed "Flagged result — Family:vitamin-d-25-hydroxy" on the live
+// Upcoming page (#2578). Returns null rather than the input so a caller can tell "this
+// is a family" from "this is some other tail" and fall back to its own formatting.
+export function biomarkerIdentityAnchor(
+  identity: string | null | undefined
+): string | null {
+  const trimmed = (identity ?? "").trim().toLowerCase();
+  if (!trimmed) return null;
+  return FAMILY_BY_IDENTITY.get(trimmed)?.anchor ?? null;
+}
+
 // The RETEST-clock grouping key (#1193). BROADER than biomarkerFamily's identity
 // scope for vitamin D ONLY: the 25-OH storage-form metabolites (total + D2 + D3)
 // share ONE retest clock — a fresh reading of ANY member satisfies the redraw for

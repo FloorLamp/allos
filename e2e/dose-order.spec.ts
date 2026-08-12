@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { expandUpcomingAggregates } from "./helpers";
+import { TIME_BUCKETS, timeBucket } from "@/lib/intake-schedule";
 // Issue #297: on the Upcoming page's Today band, due doses used to sort
 // alphabetically because the adapter dropped time_of_day — morning and bedtime
 // doses interleaved A–Z. The seed (e2e/seed-events.ts) ships a MORNING dose named
@@ -39,4 +40,35 @@ test("Upcoming Today band orders doses by time bucket, not alphabetically (#297)
     .filter({ hasText: "Ashwagandha Bedtime (e2e)" });
   await expect(morningRow).toContainText("Morning");
   await expect(bedtimeRow).toContainText("Before sleep");
+});
+
+test("the dose fold reads in DOSE-DAY order, matching the slot label on each row (#297/#2578)", async ({
+  page,
+}) => {
+  // Since #1096 the page renders every view through mergeAttentionPageGroups, whose
+  // comparator had lost the #297 sortHint — so the fold came back ordered by raw key
+  // string ("dose:104" before "dose:12") while each row carried the slot label that
+  // was added to EXPLAIN the ordering. The label and the order have to agree.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/upcoming");
+  await expect(page.getByTestId("upcoming-total")).toBeVisible();
+  await expandUpcomingAggregates(page, "dose");
+
+  const fold = page.getByTestId("upcoming-aggregate-dose");
+  await expect(fold).toHaveJSProperty("open", true);
+
+  // The row's status IS its bucket, optionally qualified by a cadence
+  // ("Morning · Mondays"), so the bucket is the head of that line.
+  const statuses = await fold.getByTestId("upcoming-status").allInnerTexts();
+  expect(statuses.length).toBeGreaterThan(1);
+  const ranks = statuses.map((s) =>
+    TIME_BUCKETS.indexOf(timeBucket(s.split("·")[0].trim()))
+  );
+  // Every label resolved to a real bucket, and the seed spans more than one of them —
+  // otherwise this would pass on a page with nothing to order.
+  expect(ranks).not.toContain(-1);
+  expect(new Set(ranks).size).toBeGreaterThan(1);
+  expect(ranks, `slot labels out of order: ${statuses.join(" → ")}`).toEqual(
+    [...ranks].sort((a, b) => a - b)
+  );
 });

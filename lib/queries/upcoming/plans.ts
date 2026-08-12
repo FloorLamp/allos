@@ -15,13 +15,78 @@ export function goalItems(profileId: number): UpcomingItem[] {
     }));
 }
 
-// The weekly targets the Upcoming `training` domain is ABOUT, before the unmet
-// filter: everything getFrequencyTargetProgress reports, minus the wellness-practice
-// scope (which has its own pace-aware item) and minus the deload-softened
-// region/group scopes. Factored out so the count line's denominator and the items
-// themselves are the SAME set — a "2 of 4 on pace" whose 4 didn't match what the page
-// lists would be a second definition of "your training targets" (#221).
-function weeklyTrainingTargets(profileId: number): FrequencyTargetProgress[] {
+// What an unmet weekly FLOOR target IS on the Upcoming page, per scope kind (#2578).
+//
+// `frequency_targets` is scope-generic machinery, and reading a row's presence in it
+// as "a training target" put "Berries — Weekly training target" on the live page with
+// a barbell glyph and a /training link. The scope is what the row is ABOUT, so the
+// scope decides the identity: the domain (which picks the row's glyph), the honest
+// detail line, and a destination that actually holds the target. Identity, not
+// filtering — every one of these targets belongs on the page.
+//
+// Two scope kinds declare `null` — this builder renders no row for them — and
+// neither is an omission:
+//   • `practice` — wellness practices get their OWN pace-aware item (practiceItems),
+//     with the distinct `practice:` key namespace and a ceiling-aware due-text.
+//   • `substance` — a `cap`-direction tenant of the cadence ledger, so it never
+//     reaches a floor reader at all (#998's anti-nudge rule, stated positively in
+//     getFrequencyTargetProgress). A cap target must never be rendered "3 to go".
+//
+// Total over FrequencyScopeKind on purpose (the CADENCE_SCOPES discipline): an eighth
+// scope kind is a compile error here rather than a silent fall-through back into the
+// training identity, which is exactly how food_group and mobility_region got one.
+//
+// The KEY is unchanged for every scope: `trainingSignalKey` is keyed on the target
+// id, is shared with the workout nudge's suppression bus (#245), and every stored
+// dismissal in `upcoming_dismissals` uses it. Identity is what was wrong; the key was
+// never wrong, so re-keying would only orphan dismissals.
+const WEEKLY_TARGET_IDENTITY: Record<
+  FrequencyScopeKind,
+  { domain: UpcomingDomain; detail: string; href: AppRoute } | null
+> = {
+  region: {
+    domain: "training",
+    detail: "Weekly training target",
+    href: "/training",
+  },
+  group: {
+    domain: "training",
+    detail: "Weekly training target",
+    href: "/training",
+  },
+  type: {
+    domain: "training",
+    detail: "Weekly training target",
+    href: "/training",
+  },
+  // A food-group serving target (#579/#580). It lives on the Nutrition Food tab's
+  // weekly-habits card, which is where its progress, its trend strip and its untrack
+  // control are — /training holds nothing about it.
+  food_group: {
+    domain: "nutrition-target",
+    detail: "Weekly nutrition target",
+    href: nutritionTabHref("food"),
+  },
+  // A mobility-region habit (#840). It DOES live on the Training hub (the mobility
+  // card), so the href is right and only the identity was wrong: mobilizing a region
+  // is not training it — that distinction is the whole reason the `mobility_region`
+  // scope exists beside `region` (#482).
+  mobility_region: {
+    domain: "mobility-target",
+    detail: "Weekly mobility target",
+    href: "/training",
+  },
+  practice: null,
+  substance: null,
+};
+
+// The weekly FLOOR targets the Upcoming page is ABOUT, before the unmet filter:
+// everything getFrequencyTargetProgress reports, minus the wellness-practice scope
+// (which has its own pace-aware item) and minus the deload-softened region/group
+// scopes. Factored out so the count line's denominator and the items themselves are
+// drawn from the SAME set — a "2 of 4 on pace" whose 4 didn't match what the page
+// lists would be a second definition of "your weekly targets" (#221).
+function weeklyFloorTargets(profileId: number): FrequencyTargetProgress[] {
   // Deload-week softening (#741): the mesocycle's deload week is SUPPOSED to be
   // lighter, so a region/group frequency target being "behind" isn't a real gap —
   // suppress those findings that week (decided in the ONE gather; type targets like
@@ -30,10 +95,10 @@ function weeklyTrainingTargets(profileId: number): FrequencyTargetProgress[] {
     getRoutineCycleStatus(profileId, today(profileId))?.isDeloadWeek ?? false;
   return (
     getFrequencyTargetProgress(profileId)
-      // Wellness-practice targets (#1259) get their OWN pace-aware item (practiceItems)
-      // with the distinct `practice:` key namespace — never mislabeled "Weekly training
-      // target" here.
-      .filter((p) => p.target.scope_kind !== "practice")
+      // Every scope kind WEEKLY_TARGET_IDENTITY declares a row for. `practice` is the
+      // one this drops (it has its own pace-aware item); `substance` never arrives
+      // here at all, because getFrequencyTargetProgress is floor-direction only.
+      .filter((p) => weeklyTargetIdentity(p) !== null)
       .filter(
         (p) =>
           !(
@@ -45,38 +110,56 @@ function weeklyTrainingTargets(profileId: number): FrequencyTargetProgress[] {
   );
 }
 
-// The morning digest's weekly-progress line (#1819 item 4): "2 of 4 training targets
-// on pace — behind on Back, Chest", or null for a profile with no weekly targets (and
-// for an age-restricted one, mirroring the items). Formats the SAME paced set the
-// Upcoming items are drawn from through the SAME shared `weeklyTargetPaceLine`, so the
-// digest's phrase and the page's chips can never disagree.
+function weeklyTargetIdentity(p: FrequencyTargetProgress) {
+  return WEEKLY_TARGET_IDENTITY[p.target.scope_kind as FrequencyScopeKind];
+}
+
+// The morning digest's weekly-progress line (#1819 item 4): "2 of 3 training targets
+// on pace — behind on Back, Chest", or null for a profile with no weekly TRAINING
+// targets (and for an age-restricted one, mirroring the items).
+//
+// Scoped to the `training` domain's own targets since #2578, and that is what keeps
+// the invariant rather than breaking it. The digest applies this phrase in place of a
+// band's per-domain count, so its denominator has to be the set of rows that count
+// covers — and those rows are the `training`-domain ones. Before the identity split
+// the phrase said "4 training targets" over a set that included berries; counting
+// them here now would say "3" over a band holding 2. The nutrition and mobility rows
+// are counted plainly by their own domains in the same band, which is honest and
+// costs no new digest surface.
 export function trainingPaceLine(profileId: number): string | null {
   if (isTrainingRestricted(profileId)) return null;
   return weeklyTargetPaceLine(
-    weeklyTrainingTargets(profileId).map((p) => ({
-      label: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
-      pace: p.pace,
-    }))
+    weeklyFloorTargets(profileId)
+      .filter((p) => weeklyTargetIdentity(p)?.domain === "training")
+      .map((p) => ({
+        label: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
+        pace: p.pace,
+      }))
   );
 }
 
 // Unmet weekly frequency targets (reuses getFrequencyTargetProgress). Hidden for
 // age-restricted profiles, mirroring the Training surface. A weekly concern, so
-// each unmet target sits in This week with a progress due-text.
+// each unmet target sits in This week with a progress due-text. The row's domain,
+// detail and destination come from its SCOPE (WEEKLY_TARGET_IDENTITY, #2578) — a
+// food-group target is not a training target with a barbell on it.
 export function trainingItems(profileId: number): UpcomingItem[] {
   if (isTrainingRestricted(profileId)) return [];
-  return weeklyTrainingTargets(profileId)
+  return weeklyFloorTargets(profileId)
     .filter((p) => !p.met)
-    .map((p) => ({
-      key: trainingSignalKey(p.target.id),
-      domain: "training" as const,
-      title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
-      detail: "Weekly training target",
-      href: "/training",
-      dueDate: null,
-      band: "week" as const,
-      dueText: `${p.count}/${p.per_week} this week`,
-    }));
+    .map((p) => {
+      const identity = weeklyTargetIdentity(p)!;
+      return {
+        key: trainingSignalKey(p.target.id),
+        domain: identity.domain,
+        title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
+        detail: identity.detail,
+        href: identity.href,
+        dueDate: null,
+        band: "week" as const,
+        dueText: `${p.count}/${p.per_week} this week`,
+      };
+    });
 }
 
 // The outdoor-session PLANNING item (#1724 part 5) — Upcoming is the planning surface,
@@ -274,11 +357,13 @@ import { isGoalLive } from "../../outcome-goals";
 import {
   frequencyScopeLabel,
   weeklyTargetPaceLine,
+  type FrequencyScopeKind,
 } from "../../frequency-targets";
+import { nutritionTabHref, type AppRoute } from "../../hrefs";
 import { practiceSignalKey } from "../../practice";
 import { getRoutineCycleStatus } from "../../routines";
 import type { DistanceUnit } from "../../settings";
-import type { UpcomingItem } from "../../upcoming";
+import type { UpcomingDomain, UpcomingItem } from "../../upcoming";
 import { fmtDistance } from "../../units";
 import { trainingSignalKey } from "../../workout-nudge";
 import { getOutdoorPlans } from "../weather-training";
