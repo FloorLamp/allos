@@ -2370,13 +2370,13 @@ const foodLog = db.prepare(
    VALUES (1, ?, ?, ?)
    ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
 );
-// The per-TAP event ledger (#950): each serving also records a tap `logged_at` (a UTC
+// The per-TAP event ledger (#950): each serving also records a tap `recorded_at` (a UTC
 // instant) at a slot-appropriate hour, so slot-aware ranking has a realistic skew in
 // dev — greens/grains at breakfast, fatty fish reliably at lunch, alcohol/dessert in
 // the evening. Default boundaries are 11:00/15:00, so these land in Morning/Midday/
 // Evening respectively.
 const foodEvent = db.prepare(
-  `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+  `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
    VALUES (1, ?, ?, ?)`
 );
 const logFood = (

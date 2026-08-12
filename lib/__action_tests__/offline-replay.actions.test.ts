@@ -723,11 +723,11 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
   function eventTimes(profileId: number, date: string, group: string) {
     return db
       .prepare(
-        `SELECT eaten_at, time_source FROM food_log_events
+        `SELECT occurred_at, time_source FROM food_log_events
           WHERE profile_id = ? AND date = ? AND group_key = ? ORDER BY id`
       )
       .all(profileId, date, group) as {
-      eaten_at: string | null;
+      occurred_at: string | null;
       time_source: string | null;
     }[];
   }
@@ -791,11 +791,14 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     // so slot frecency ranks the tap where the user actually made it.
     const events = db
       .prepare(
-        "SELECT logged_at, meal_slot FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = 'leafy_greens'"
+        "SELECT recorded_at, meal_slot FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = 'leafy_greens'"
       )
-      .all(profile.id, date) as { logged_at: string; meal_slot: string }[];
+      .all(profile.id, date) as { recorded_at: string; meal_slot: string }[];
     expect(events).toHaveLength(2);
-    expect(events[0].logged_at).toBe(capturedAt);
+    // The captured instant, NARROWED to the canonical stored shape at the door
+    // (#2370): the millisecond spelling the browser captured in is a third
+    // serialization, and `recorded_at` holds exactly one.
+    expect(events[0].recorded_at).toBe(capturedAt.replace(".000Z", "Z"));
     expect(events[0].meal_slot).toBe("Morning");
   });
 
@@ -811,7 +814,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     actAs(admin, profile);
     const date = today(profile.id);
     // Local midnight on the intent's own day: always past, always that day.
-    // The canonical stored instant (#2205) — the shape food_log_events.eaten_at
+    // The canonical stored instant (#2205) — the shape food_log_events.occurred_at
     // actually holds, so the round-trip assertion below is an identity and not a
     // comparison between two serializations.
     const eatenAt = utcInstant(
@@ -829,7 +832,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     expect((await replay([intent])).body.results?.[0].status).toBe("done");
 
     expect(eventTimes(profile.id, date, "leafy_greens")).toEqual([
-      { eaten_at: eatenAt, time_source: "stated" },
+      { occurred_at: eatenAt, time_source: "stated" },
     ]);
     // #2269: the stated time WON — the captured tab slot travels but is not stored,
     // because the core is the one chokepoint and the replay inherits the same
@@ -860,7 +863,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     expect((await replay([intent])).body.results?.[0].status).toBe("done");
 
     expect(eventTimes(profile.id, date, "leafy_greens")).toEqual([
-      { eaten_at: null, time_source: null },
+      { occurred_at: null, time_source: null },
     ]);
   });
 
@@ -908,7 +911,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
     const times = eventTimes(profile.id, date, "berries");
     expect(times).toHaveLength(3);
     expect(
-      times.every((t) => t.eaten_at === null && t.time_source === null)
+      times.every((t) => t.occurred_at === null && t.time_source === null)
     ).toBe(true);
     expect(servingsFor(profile.id, date, "berries")).toBe(3);
   });

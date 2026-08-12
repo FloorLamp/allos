@@ -1282,7 +1282,7 @@ export const DATASETS: ExportDataset[] = [
   }),
   tableDataset({
     // Food-log EVENT ledger (#950): one append-only row per serving TAP, carrying the
-    // tap `logged_at` (a UTC instant) beside the food day. It's the timing layer behind
+    // tap `recorded_at` (a UTC instant) beside the food day. It's the timing layer behind
     // slot-aware button ranking; the food_log counter stays the day's data of record.
     // User-entered health data, so it's in the portable export; id-keyed + owned, so
     // deletable like the other logged datasets (a wipe just degrades ranking to overall
@@ -1290,9 +1290,9 @@ export const DATASETS: ExportDataset[] = [
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
-    columns: ["date", "group_key", "logged_at", "meal_slot"],
-    select: `SELECT id, date, group_key, logged_at, meal_slot
-       FROM food_log_events WHERE profile_id = ? ORDER BY logged_at DESC`,
+    columns: ["date", "group_key", "recorded_at", "meal_slot"],
+    select: `SELECT id, date, group_key, recorded_at, meal_slot
+       FROM food_log_events WHERE profile_id = ? ORDER BY recorded_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
   tableDataset({

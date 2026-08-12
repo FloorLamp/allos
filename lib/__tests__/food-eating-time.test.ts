@@ -310,7 +310,7 @@ describe("judgeEatenAt — validate, never drop, never silently (#2053, #2296)",
 
   it("keeps `no statement` apart from `a statement we threw away`", () => {
     // The #2296 distinction, at the food door: an absent choice has nothing to
-    // report, an unreadable one does. Both leave `eaten_at` NULL; only one leaves
+    // report, an unreadable one does. Both leave `occurred_at` NULL; only one leaves
     // the user owed an explanation.
     expect(judgeEatenAt(null, UTC, date, now)).toEqual({ kind: "unstated" });
     expect(judgeEatenAt(undefined, UTC, date, now)).toEqual({

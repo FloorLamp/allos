@@ -297,7 +297,7 @@ export async function handleCallbackQuery(
     return;
   }
   // Eating-time correction (#2019): a −Nh chip, or the 🕐 absolute-hour drill-down.
-  // Both ride the food nudge's own keyboard and re-stamp `eaten_at` for a whole burst.
+  // Both ride the food nudge's own keyboard and re-stamp `occurred_at` for a whole burst.
   const foodTimeChip = parseCorrectionChipToken(
     cq.data,
     FOOD_TIME_PREFIXES.chip

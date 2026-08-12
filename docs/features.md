@@ -1247,7 +1247,7 @@ offers an **Undo** toast that puts both back.
 
 **When you ate is captured, and correctable (#2019).** A Telegram tap's declared
 contract is "I'm eating now", so the tap instant is recorded as a real eating time
-(`eaten_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
+(`occurred_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
 carries burst-collapsed correction chips plus an absolute-hour picker for the common
 case of being slow to tap. **The chips state the time they set, not an offset**
 (#2206): `19:41 · −30m` and `19:11 · −1h`, in the same absolute vocabulary the picker
@@ -1275,7 +1275,7 @@ the SELECTED day at hour grain, "Not stated" first (choosing it clears back to t
 NULL), and the Meal select following the chosen hour until Meal is set by hand, so the
 window the tally counts and the minute the ranking weights move together. A refused time
 is an error the user sees there — in a correction the statement IS the submission — while
-the log path keeps its validate-never-drop posture. `logged_at` stays the uneditable audit
+the log path keeps its validate-never-drop posture. `recorded_at` stays the uneditable audit
 instant on every surface. The nudge's ranking
 now weights each serving by how near it was eaten to the window it is ranking for,
 which retired the old 14:59/15:01 bucket cliff along with the read-time re-labelling

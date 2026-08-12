@@ -45,12 +45,14 @@
 // against.
 import type { DoseTakenOutcome, SaveActivityOutcome } from "@/lib/types";
 import type { IdempotentTap, OneTapAffordance } from "@/lib/one-tap";
-// The two runtime imports, and both keep the contract: lib/sw-update.ts and
-// lib/loggable-domains.ts are themselves pure and dependency-free (client-safe,
-// DB-free). The stale-action signature is sw-update's knowledge — deployment
-// skew's Server Action half — and the argued-exclusion brand is the #2130
-// registry vocabulary's.
+// The three runtime imports, and all three keep the contract: lib/sw-update.ts,
+// lib/date.ts and lib/loggable-domains.ts are themselves pure and dependency-free
+// (client-safe, DB-free). The stale-action signature is sw-update's knowledge —
+// deployment skew's Server Action half — the canonical instant minter is date.ts's
+// (#2205: the stored shape is decided by the column, never by the call site), and the
+// argued-exclusion brand is the #2130 registry vocabulary's.
 import { isStaleActionError } from "@/lib/sw-update";
+import { utcInstant } from "@/lib/date";
 import {
   STATED_TIME_REFUSAL_NOTE,
   type StatedTimeRefusal,
@@ -676,6 +678,17 @@ export function classifySetReplay(outcome: SaveActivityOutcome): {
 // (client clocks drift), else the replay instant. Keeps the food_log_events
 // frecency ranking honest — a Morning tap replayed at dinner still counts for
 // Morning — without ever trusting a garbage or future timestamp.
+//
+// THE RETURN IS THE CANONICAL STORED INSTANT (#2370). This used to be
+// `.toISOString()`, whose millisecond shape is a THIRD serialization — and the value
+// lands straight in `food_log_events.recorded_at`, a column lib/time-columns.ts
+// declares canonical. That is how the column came to hold two shapes at once: this
+// module writes no SQL of its own, so the writer scan's rule C had no literal to
+// object to, and the table was missing from CANONICAL_INSTANT_COLUMNS so rule A never
+// looked at the bind either. Both halves are closed now — the registry entry is in
+// lib/__tests__/instant-writer-scan.test.ts and the shape comes from lib/date.ts. The
+// queued payload's own `capturedAt` is untouched: it is a CLIENT wire value that has
+// already been written to devices, and narrowing it happens here, at the door.
 export function resolveCapturedInstant(
   capturedAt: unknown,
   now: Date = new Date()
@@ -683,10 +696,10 @@ export function resolveCapturedInstant(
   if (typeof capturedAt === "string") {
     const t = new Date(capturedAt);
     if (Number.isFinite(t.getTime()) && t.getTime() <= now.getTime()) {
-      return t.toISOString();
+      return utcInstant(t);
     }
   }
-  return now.toISOString();
+  return utcInstant(now);
 }
 
 // The refusal shown when a queued dose entry sat unsent past the dose-log date window

@@ -5,7 +5,7 @@
 // The harm this pins shut, twice:
 //
 //   • FOOD. The food ledger had no eating time at all. Two features needed one and both
-//     routed around it, because `logged_at` is TAP time and says so in migration 056.
+//     routed around it, because `recorded_at` is TAP time and says so in migration 056.
 //   • DOSES. `recorded_at` DOES have consumers — the PRN redose window arms off it — and a
 //     late tap wrote the tap moment into it with no way to correct. Take a painkiller at
 //     22:00, confirm at 07:00, and the window believes you are nine hours fresher.
@@ -110,15 +110,15 @@ function cq(chatId: string, data: string, keyboard: unknown) {
 function foodEvents(profileId: number) {
   return db
     .prepare(
-      `SELECT id, group_key, date, logged_at, eaten_at, time_source, meal_slot
+      `SELECT id, group_key, date, recorded_at, occurred_at, time_source, meal_slot
          FROM food_log_events WHERE profile_id = ? ORDER BY id`
     )
     .all(profileId) as {
     id: number;
     group_key: string;
     date: string;
-    logged_at: string;
-    eaten_at: string | null;
+    recorded_at: string;
+    occurred_at: string | null;
     time_source: string | null;
     meal_slot: string | null;
   }[];
@@ -181,7 +181,7 @@ async function tapFood(
 // ---- #2019: the tap IS the capture -----------------------------------------
 
 describe("a Telegram food tap records WHEN it was eaten (#2019)", () => {
-  it("stamps eaten_at from the tap and marks it tap-sourced, asserting no meal", async () => {
+  it("stamps occurred_at from the tap and marks it tap-sourced, asserting no meal", async () => {
     const pid = newProfile("Capture Cass");
     seedLoginTelegram(pid, "5552019");
     await tapFood(pid, "5552019", "leafy_greens", NOW_ISO);
@@ -189,22 +189,22 @@ describe("a Telegram food tap records WHEN it was eaten (#2019)", () => {
     const [row] = foodEvents(pid);
     expect(row.group_key).toBe("leafy_greens");
     // The button's own contract — "I'm eating NOW" — recorded as the measurement it is.
-    expect(row.eaten_at).toBe("2026-08-05T19:30:00Z");
+    expect(row.occurred_at).toBe("2026-08-05T19:30:00Z");
     expect(row.time_source).toBe("tap");
-    // `logged_at` stays the audit stamp migration 056 froze, and equals the tap here.
-    expect(row.logged_at).toBe("2026-08-05T19:30:00Z");
+    // `recorded_at` stays the audit stamp migration 056 froze, and equals the tap here.
+    expect(row.recorded_at).toBe("2026-08-05T19:30:00Z");
     // #1704 REVERSED: the nudge's window is the nudge naming itself, not the user
     // declaring a meal. With a real instant on the row, the meal is derived from it.
     expect(row.meal_slot).toBeNull();
   });
 
-  it("a write with nothing to state leaves eaten_at NULL rather than defaulting to now", () => {
+  it("a write with nothing to state leaves occurred_at NULL rather than defaulting to now", () => {
     const pid = newProfile("Backfill Bea");
     // The web bar's backfill shape: a day, no stated time. Defaulting to now would
     // reintroduce the guess under a more authoritative name.
     logFoodServingCore(pid, "berries", "2026-08-01", NOW_ISO, "Morning");
     const [row] = foodEvents(pid);
-    expect(row.eaten_at).toBeNull();
+    expect(row.occurred_at).toBeNull();
     expect(row.time_source).toBeNull();
     expect(row.meal_slot).toBe("Morning");
   });
@@ -267,15 +267,15 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     );
 
     const rows = foodEvents(pid);
-    expect(rows.map((r) => r.eaten_at)).toEqual([
+    expect(rows.map((r) => r.occurred_at)).toEqual([
       "2026-08-05T18:02:00Z",
       "2026-08-05T18:08:00Z",
     ]);
     // The burst keeps its internal spread: each row moved from its OWN tap.
     expect(rows.map((r) => r.time_source)).toEqual(["stated", "stated"]);
-    // `logged_at` is untouched — it is the audit stamp, and it is what makes the chip
+    // `recorded_at` is untouched — it is the audit stamp, and it is what makes the chip
     // idempotent.
-    expect(rows.map((r) => r.logged_at)).toEqual([
+    expect(rows.map((r) => r.recorded_at)).toEqual([
       "2026-08-05T19:02:00Z",
       "2026-08-05T19:08:00Z",
     ]);
@@ -294,19 +294,19 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     await handleCallbackQuery(
       cq("5552023", `foodtime:${pid}:${anchor}:60`, kb)
     );
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T18:02:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T18:02:00Z");
     // The same STALE keyboard, tapped again. The write reads its base inside its own
     // transaction, so the second tap starts where the first one landed: "tap again to go
     // further" is the only reading a row that now SHOWS its result supports.
     await handleCallbackQuery(
       cq("5552023", `foodtime:${pid}:${anchor}:60`, kb)
     );
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T17:02:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T17:02:00Z");
     // A finer step composes onto the coarse ones just the same.
     await handleCallbackQuery(
       cq("5552023", `foodtime:${pid}:${anchor}:30`, kb)
     );
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T16:32:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T16:32:00Z");
   });
 
   it("the row re-renders with the STORED time, marked, and never with the tap (#2206)", async () => {
@@ -349,7 +349,7 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
     // Already corrected to twenty minutes above the floor (NOW − 12h = 07:30Z).
     db.prepare(
-      `UPDATE food_log_events SET eaten_at = ?, time_source = 'stated' WHERE id = ?`
+      `UPDATE food_log_events SET occurred_at = ?, time_source = 'stated' WHERE id = ?`
     ).run("2026-08-05T07:50:00Z", anchor);
 
     const rebuilt = messageKeyboard(
@@ -368,7 +368,7 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     await handleCallbackQuery(
       cq("5552027", `foodtime:${pid}:${anchor}:60`, kb)
     );
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T07:50:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T07:50:00Z");
     expect(String(answer.mock.calls[0][1])).toContain(
       "as far back as the chips"
     );
@@ -390,7 +390,7 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
       handleCallbackQuery(cq("5552028", `foodtime:${pid}:${anchor}:60`, kb)),
       handleCallbackQuery(cq("5552028", `foodtime:${pid}:${anchor}:60`, kb)),
     ]);
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T17:02:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T17:02:00Z");
     // Both taps were answered, and neither claimed something that did not happen.
     expect(answer.mock.calls).toHaveLength(2);
     for (const call of answer.mock.calls)
@@ -408,7 +408,7 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     await handleCallbackQuery(
       cq("5552029", `foodtime:${pid}:${anchor}:60`, kb)
     );
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T18:00:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T18:00:00Z");
     // Freshness is keyed on the TAP, which the correction never touched — so correcting
     // at 19:50 does not buy the row another hour past 20:00.
     expect(getFoodCorrectionBursts(pid, clockNow())).toHaveLength(1);
@@ -420,7 +420,7 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     await handleCallbackQuery(
       cq("5552029", `foodtime:${pid}:${anchor}:60`, kb)
     );
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T18:00:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T18:00:00Z");
     expect(String(answer.mock.calls[0][1])).toMatch(
       /Too late|nothing was changed/
     );
@@ -438,7 +438,7 @@ describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
     await handleCallbackQuery(
       cq("5552024", `foodtime:${pid}:${anchor}:60`, kb)
     );
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T19:00:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T19:00:00Z");
     expect(String(answer.mock.calls[0][1])).toMatch(
       /nothing was changed|Too late/
     );
@@ -463,7 +463,7 @@ describe("the picker's absolute hour, and the cross-midnight re-date (#2019)", (
     );
 
     const [row] = foodEvents(pid);
-    expect(row.eaten_at).toBe("2026-08-05T18:00:00Z");
+    expect(row.occurred_at).toBe("2026-08-05T18:00:00Z");
     expect(row.date).toBe("2026-08-05");
     // The ledger row and the day counter are ONE fact in two shapes: exactly one
     // serving exists throughout, and it moved with the correction.
@@ -485,7 +485,7 @@ describe("the picker's absolute hour, and the cross-midnight re-date (#2019)", (
     await handleCallbackQuery(
       cq("5552026", `foodtimeat:${pid}:${anchor}:21:00`, kb)
     );
-    expect(foodEvents(pid)[0].eaten_at).toBe("2026-08-05T19:10:00Z");
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T19:10:00Z");
     expect(String(answer.mock.calls[0][1])).toContain("nothing was changed");
   });
 

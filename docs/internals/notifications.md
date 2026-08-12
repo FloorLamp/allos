@@ -681,7 +681,7 @@ rides the GATHER rather than a renderer parameter, every surface built from thos
 — the dedicated window reminder, a merged multi-slot send, every tap rebuild — words the
 same fact identically (#221). A gather for a PAST date carries no check at all: "in the
 last 90 min" is a statement about right now, and pinning it to a day that has ended would
-be a confident falsehood. `COALESCE(eaten_at, logged_at)` is where #2019 slots in
+be a confident falsehood. `COALESCE(occurred_at, recorded_at)` is where #2019 slots in
 transparently — a stated eating instant beats a tap stamp, with no branch and no second
 read.
 
@@ -692,10 +692,11 @@ NOW" — so **the tap instant IS a measurement** of when the thing happened, wit
 known error. Two things were missing: recording it, and a correction path for when
 the contract is false because the tap was late.
 
-**The capture.** A Telegram food tap writes `food_log_events.eaten_at` with
-`time_source = 'tap'` (migration 154). `logged_at` is untouched and stays the audit
-stamp migration 056 froze, and stays the ranking input. A write with nothing to
-state — a web backfill — leaves `eaten_at` NULL, because defaulting to now would
+**The capture.** A Telegram food tap writes `food_log_events.occurred_at` with
+`time_source = 'tap'` (migration 154, which spelled the column `eaten_at` until the
+#2205 phase 2 food wave renamed it in migration 183). `recorded_at` is untouched and
+stays the audit stamp migration 056 froze, and stays the ranking input. A write with
+nothing to state — a web backfill — leaves `occurred_at` NULL, because defaulting to now would
 reintroduce the guess under a more authoritative name. The web bar's own **Now /
 Earlier…** chips (#2053, `lib/food-eating-time.ts`) are how that silence is broken
 deliberately: they write `'stated'` for either shape, because the web "+" declares no
@@ -745,8 +746,8 @@ label gets silently wrong across a fall-back hour. Two chips rather than three, 
 repeat taps reach the middle of the range and the absolute labels need the width.
 
 **A chip counts back from the STORED instant, not the tap (#2206).** Repeat taps
-COMPOSE: two `−1h` taps mean two hours back. That costs no new state — `eaten_at` /
-`recorded_at` IS the ledger the row set is already a query over — so the chips still
+COMPOSE: two `−1h` taps mean two hours back. That costs no new state — the stored
+`occurred_at` IS the ledger the row set is already a query over — so the chips still
 survive a rebuild, a pointer rotation and a restart. It replaces the older idempotence,
 which turned into the wrong answer once the row started showing its result: "tap again
 to go further" is the only reading a visibly-moving value supports, and a silent no-op

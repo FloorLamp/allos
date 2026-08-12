@@ -446,17 +446,23 @@ describe("resolveCapturedInstant (#1596)", () => {
 
   it("keeps a parseable past capture instant (the honest tap time)", () => {
     expect(resolveCapturedInstant("2026-07-15T08:12:00.000Z", now)).toBe(
-      "2026-07-15T08:12:00.000Z"
+      // Narrowed to the canonical stored shape at the door (#2370): the value goes
+      // straight into food_log_events.recorded_at, and the millisecond spelling it
+      // arrived in is a third serialization that column may not hold.
+      "2026-07-15T08:12:00Z"
     );
   });
 
   it("falls back to now for garbage, missing, or future timestamps", () => {
-    expect(resolveCapturedInstant("not a time", now)).toBe(now.toISOString());
-    expect(resolveCapturedInstant(undefined, now)).toBe(now.toISOString());
-    expect(resolveCapturedInstant(42, now)).toBe(now.toISOString());
+    // The fallback is the same canonical shape, not `now.toISOString()` — one column,
+    // one serialization, whichever arm answered (#2370).
+    const nowCanonical = "2026-07-15T19:40:00Z";
+    expect(resolveCapturedInstant("not a time", now)).toBe(nowCanonical);
+    expect(resolveCapturedInstant(undefined, now)).toBe(nowCanonical);
+    expect(resolveCapturedInstant(42, now)).toBe(nowCanonical);
     // A client clock running ahead must not ledger an event in the future.
     expect(resolveCapturedInstant("2026-07-15T21:00:00.000Z", now)).toBe(
-      now.toISOString()
+      nowCanonical
     );
   });
 });

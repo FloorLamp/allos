@@ -494,14 +494,14 @@ describe("what a refusal COSTS stays the caller's", () => {
     ).toEqual({ kind: "invalid-eaten-at", reason: "other-day" });
     const event = db
       .prepare(
-        `SELECT eaten_at, time_source FROM food_log_events
+        `SELECT occurred_at, time_source FROM food_log_events
           WHERE id = ? AND profile_id = ?`
       )
       .get(eventId, profileId) as {
-      eaten_at: string | null;
+      occurred_at: string | null;
       time_source: string | null;
     };
     // Never a silent clear: the row is exactly as the tap left it.
-    expect(event).toEqual({ eaten_at: null, time_source: null });
+    expect(event).toEqual({ occurred_at: null, time_source: null });
   });
 });

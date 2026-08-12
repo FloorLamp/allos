@@ -9,7 +9,7 @@
 //
 //   2. A SOURCE SCAN over the fallbacks the row readers exist to replace. A dozen
 //      surfaces hand-roll `COALESCE(recorded_at, taken_at)` and four more pair
-//      `eaten_at ?? logged_at`. Both are declared fallbacks now — the first WITHIN the
+//      `occurred_at ?? recorded_at`. Both are declared fallbacks now — the first WITHIN the
 //      record question (the owner's #2205 ruling made recorded_at a record instant), the
 //      second ACROSS questions, which is the one that has to stay visible. Each is
 //      frozen at its current count with a reason; a NEW one fails, and converting one
@@ -238,7 +238,7 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   },
   "lib/queries/nutrition.ts": {
     count: 3,
-    why: "the EATING-TIME reads: the eating-minute distribution and the recent-serving lookup, each pairing `eaten_at` with `logged_at` (the meal-event projection stopped collapsing them in #2227 — it now carries both facts so the correction sheet can say which one it shows). This is the sharpest instance of the substitution in the repo — an eating-time distribution that quietly includes tap times for every serving nobody stated a time for — and the module's own comments already say so. Converting the rest is a product decision about what those charts should show when the instant is undeclared, not a mechanical swap, so #2205 phase 3 declares it and leaves the answer to its own change.",
+    why: "the EATING-TIME reads: the eating-minute distribution and the recent-serving lookup, each pairing `occurred_at` with `recorded_at` (the meal-event projection stopped collapsing them in #2227 — it now carries both facts so the correction sheet can say which one it shows). This is the sharpest instance of the substitution in the repo — an eating-time distribution that quietly includes tap times for every serving nobody stated a time for — and the module's own comments already say so. Converting the rest is a product decision about what those charts should show when the instant is undeclared, not a mechanical swap, so #2205 phase 3 declares it and leaves the answer to its own change.",
   },
   "lib/queries/search.ts": {
     count: 1,
@@ -300,10 +300,18 @@ interface PairPattern {
 
 function pairPatterns(): PairPattern[] {
   const out: PairPattern[] = [];
+  // ONE PATTERN PER COLUMN PAIR, not per (table, pair). These patterns are TEXTUAL —
+  // they match a spelling, not a table — and phase 2's whole point is that different
+  // tables now spell the same question the same way: `intake_item_logs` and
+  // `food_log_events` both declare (`occurred_at`, `recorded_at`) as of migration 183.
+  // Without the dedupe one hand-rolled pairing counts once per table declaring those
+  // two names, so every frozen count above inflates the next time a rename wave lands
+  // — a ratchet tripping on a rename rather than on a new substitution.
+  const seen = new Set<string>();
   for (const table of Object.keys(TIME_COLUMNS) as TemporalTable[]) {
     // The table's declared FALLBACK ORDER: its event column, then its record chain.
     // Any ordered pair drawn from it is a substitution a reader can hand-roll —
-    // whether it crosses the event/record line (`eaten_at ?? logged_at`) or stays
+    // whether it crosses the event/record line (`occurred_at ?? recorded_at`) or stays
     // inside the record question (`COALESCE(recorded_at, taken_at)`). Both belong to
     // lib/row-instants.ts now, so both are counted here.
     const chain = [
@@ -318,6 +326,8 @@ function pairPatterns(): PairPattern[] {
       }
     }
     for (const [e, r] of pairs) {
+      if (seen.has(`${e}|${r}`)) continue;
+      seen.add(`${e}|${r}`);
       // `\b` already lets `a.recorded_at` and `admins[0].recorded_at` match, so no member
       // path has to be spelled out — which is also what keeps the regex linear.
       out.push({
@@ -411,7 +421,7 @@ describe("the event/record pairing ledger (issue #2205 phase 3)", () => {
     const hits = (s: string) => countPairings(s, patterns);
     expect(hits("ORDER BY COALESCE(l.recorded_at, l.taken_at) ASC")).toBe(1);
     expect(hits("const stored = r.recorded_at ?? r.taken_at;")).toBe(1);
-    expect(hits("new Date(eatenAt ?? loggedAt)")).toBe(1);
+    expect(hits("new Date(occurredAt ?? recordedAt)")).toBe(1);
     // The other direction is not a substitution and must not be flagged.
     expect(hits("const stamp = r.taken_at ?? r.recorded_at;")).toBe(0);
   });
