@@ -2,12 +2,23 @@ import { describe, expect, it } from "vitest";
 import {
   DAY_HISTORY_DOMAINS,
   FOLDED_ROW_KEY,
+  MAX_HISTORY_DAY_WEEKS,
+  MAX_HISTORY_WEEK_COLUMNS,
   activeHistoryWeeks,
+  bucketWord,
   buildDayHistoryCalendar,
   buildDayHistoryRows,
+  buildDayHistoryStrip,
   dayHistoryStart,
+  dayHistoryWindow,
+  desiredHistoryWeeks,
   dayTotals,
+  historyBucket,
+  historyBucketCoverage,
+  historyBuckets,
   historyDays,
+  historyWeeks,
+  weeklyIntensityLevel,
   type DayHistoryDomainKey,
   type DayHistoryValue,
 } from "../day-history";
@@ -30,13 +41,25 @@ describe("DAY_HISTORY_DOMAINS", () => {
       expect(spec.levelLabels).toHaveLength(5);
       expect(typeof spec.calendarLevel).toBe("function");
       expect(typeof spec.cellLevel).toBe("function");
+      // The WEEK-grain half of the declaration (#2413). A domain that grows a
+      // day ladder and forgets its week twin fails HERE rather than rendering a
+      // saturated strip nobody can read.
+      expect(spec.weekCalendarTitle.length).toBeGreaterThan(0);
+      expect(spec.weekLevelLabels).toHaveLength(5);
+      expect(typeof spec.weekCellLevel).toBe("function");
+      expect(typeof spec.weekStripLevel).toBe("function");
     }
   });
 
   it("levels are 0 exactly at zero and monotonic over rising values", () => {
     for (const key of keys) {
       const spec = DAY_HISTORY_DOMAINS[key];
-      for (const level of [spec.calendarLevel, spec.cellLevel]) {
+      for (const level of [
+        spec.calendarLevel,
+        spec.cellLevel,
+        spec.weekCellLevel,
+        spec.weekStripLevel,
+      ]) {
         expect(level(0)).toBe(0);
         expect(level(1)).toBeGreaterThan(0);
         let prev = 0;
@@ -52,6 +75,11 @@ describe("DAY_HISTORY_DOMAINS", () => {
       expect(spec.calendarLevel(12)).toBe(
         spec.calendarKind === "coverage" ? 1 : 4
       );
+      // A week ladder must still reach its top step within a plausible week.
+      expect(spec.weekCellLevel(40)).toBe(4);
+      expect(spec.weekStripLevel(40)).toBe(
+        spec.calendarKind === "coverage" ? 1 : 4
+      );
     }
   });
 
@@ -62,6 +90,52 @@ describe("DAY_HISTORY_DOMAINS", () => {
       expect(spec.calendarLevel(20)).toBe(1);
       expect(spec.cellLevel(4)).toBe(4);
     }
+  });
+
+  // The coverage decision is a claim about what a total MEANS, so re-grading it
+  // by seven would have been a rescale of the wrong thing: a twelve-serving
+  // week must not glow better than a three-serving one, for exactly the reason
+  // a twelve-serving day must not.
+  it("food and dose STRIPS stay coverage at week grain", () => {
+    for (const key of ["food", "dose"] as const) {
+      const spec = DAY_HISTORY_DOMAINS[key];
+      expect(spec.weekStripLevel(1)).toBe(1);
+      expect(spec.weekStripLevel(60)).toBe(1);
+    }
+  });
+
+  it("week ladders do not saturate on an ordinary week", () => {
+    // A daily supplement is 7 doses a week and must not sit on the top step.
+    expect(DAY_HISTORY_DOMAINS.dose.weekCellLevel(7)).toBe(1);
+    expect(DAY_HISTORY_DOMAINS.dose.weekCellLevel(14)).toBe(2);
+    // Four servings of one food group across a whole week is unremarkable.
+    expect(DAY_HISTORY_DOMAINS.food.weekCellLevel(4)).toBe(2);
+    expect(DAY_HISTORY_DOMAINS.food.cellLevel(4)).toBe(4);
+    // Four workouts in a week is a strong week for the WHOLE strip, not the top.
+    expect(DAY_HISTORY_DOMAINS.workout.weekStripLevel(4)).toBe(1);
+    expect(DAY_HISTORY_DOMAINS.workout.weekStripLevel(21)).toBe(3);
+  });
+
+  it("the week-level legend names the week ladder's own buckets", () => {
+    const keys2 = Object.keys(DAY_HISTORY_DOMAINS) as DayHistoryDomainKey[];
+    for (const key of keys2) {
+      const spec = DAY_HISTORY_DOMAINS[key];
+      expect(spec.weekLevelLabels[0]).toBe("0");
+      // Every label above zero names a bucket the ladder actually reaches.
+      expect(new Set(spec.weekLevelLabels).size).toBe(5);
+    }
+  });
+});
+
+describe("weeklyIntensityLevel", () => {
+  it("is the shared day ladder with its boundaries taken x7", () => {
+    expect(weeklyIntensityLevel(0)).toBe(0);
+    expect(weeklyIntensityLevel(1)).toBe(1);
+    expect(weeklyIntensityLevel(7)).toBe(1);
+    expect(weeklyIntensityLevel(8)).toBe(2);
+    expect(weeklyIntensityLevel(14)).toBe(2);
+    expect(weeklyIntensityLevel(21)).toBe(3);
+    expect(weeklyIntensityLevel(22)).toBe(4);
   });
 });
 
@@ -360,5 +434,289 @@ describe("buildDayHistoryCalendar", () => {
     // Monday-start week containing Wed Jul 8 begins Mon Jul 6.
     expect(cal.columns[0][0].date).toBe("2026-07-06");
     expect(cal.weekdayOrder[0]).toBe(1);
+  });
+});
+
+// ---- Week grain (#2413) ----------------------------------------------------
+//
+// The histories used to CLAMP a year-scale request back to their day cap, so a
+// 1Y range rendered the most recent quarter and the range pill did nothing
+// above it. The grain now follows the window; these pin the decision, the
+// bucketing, and the partial trailing week the decision creates.
+
+describe("dayHistoryWindow — the grain decision", () => {
+  it("keeps day grain at and below the cap, passing the lens's own count through", () => {
+    // 90D is the hub's default and resolves to 13 weeks — exactly the cap. The
+    // boundary case stays on day cells, and its column count is untouched.
+    const at = dayHistoryWindow({ days: 90, weeks: 13 });
+    expect(at).toEqual({ grain: "day", weeks: 13 });
+
+    const under = dayHistoryWindow({ days: 30, weeks: 5 });
+    expect(under).toEqual({ grain: "day", weeks: 5 });
+  });
+
+  it("measures the span the way the lens does, not by calendar alignment", () => {
+    // The regression this pins: a Wednesday-anchored 90 days TOUCHES 14 calendar
+    // weeks, so a week-aligned measure reads 14 > 13 and flips the hub's own
+    // default to week grain. `clampLensWeeks` uses ceil(days / 7) = 13, and the
+    // cap comparison has to speak the same units or the two disagree.
+    expect(desiredHistoryWeeks(90)).toBe(13);
+    expect(dayHistoryWindow({ days: 90, weeks: 13 }).grain).toBe("day");
+    expect(desiredHistoryWeeks(null)).toBeNull();
+    expect(desiredHistoryWeeks(1)).toBe(1);
+  });
+
+  it("re-grains STRICTLY above the cap", () => {
+    expect(dayHistoryWindow({ days: 91, weeks: 13 }).grain).toBe("day");
+    const over = dayHistoryWindow({ days: 92, weeks: 13 });
+    expect(over).toEqual({ grain: "week", weeks: 14 });
+  });
+
+  it("reads the UNCLAMPED span, not the clamped week count", () => {
+    // This is the whole defect: `weeks` arrives already clamped to 13 by
+    // `lensWindow`, so asking IT whether the request exceeded 13 can only ever
+    // answer no — which is why 1Y rendered a quarter.
+    const year = dayHistoryWindow({ days: 365, weeks: 13 });
+    expect(year.grain).toBe("week");
+    expect(year.weeks).toBe(53);
+    expect(year.weeks).toBeLessThanOrEqual(MAX_HISTORY_WEEK_COLUMNS);
+  });
+
+  it("an all-time window takes week grain at the 53-week cap", () => {
+    expect(dayHistoryWindow({ days: null, weeks: 13 })).toEqual({
+      grain: "week",
+      weeks: MAX_HISTORY_WEEK_COLUMNS,
+    });
+  });
+
+  it("caps a multi-year window at 53 weeks rather than growing without bound", () => {
+    expect(dayHistoryWindow({ days: 3650, weeks: 13 }).weeks).toBe(
+      MAX_HISTORY_WEEK_COLUMNS
+    );
+  });
+
+  it("honours a surface's own day cap when it declares one", () => {
+    expect(dayHistoryWindow({ days: 120, weeks: 18, maxDayWeeks: 26 })).toEqual(
+      {
+        grain: "day",
+        weeks: 18,
+      }
+    );
+    expect(MAX_HISTORY_DAY_WEEKS).toBe(13);
+  });
+});
+
+describe("historyBucket / historyWeeks / historyBuckets", () => {
+  it("buckets a date to itself at day grain and to its week start at week grain", () => {
+    expect(historyBucket("2026-08-12", "day")).toBe("2026-08-12");
+    expect(historyBucket("2026-08-12", "week", 0)).toBe("2026-08-09");
+    expect(historyBucket("2026-08-12", "week", 1)).toBe("2026-08-10");
+  });
+
+  it("enumerates week starts ascending, including the partial trailing week", () => {
+    expect(historyWeeks("2026-07-26", "2026-08-12", 0)).toEqual([
+      "2026-07-26",
+      "2026-08-02",
+      "2026-08-09",
+    ]);
+  });
+
+  it("aligns a mid-week start back rather than dropping its days", () => {
+    // A bucket list that began at the mid-week date would silently disagree
+    // with the totals, which bucket every value they are handed.
+    expect(historyWeeks("2026-07-29", "2026-08-05", 0)).toEqual([
+      "2026-07-26",
+      "2026-08-02",
+    ]);
+  });
+
+  it("historyBuckets is the one list both halves read", () => {
+    expect(historyBuckets("2026-08-09", "2026-08-12", "day")).toHaveLength(4);
+    expect(historyBuckets("2026-08-09", "2026-08-12", "week", 0)).toEqual([
+      "2026-08-09",
+    ]);
+  });
+});
+
+describe("historyBucketCoverage — the partial trailing week", () => {
+  it("a complete week covers seven days and is not partial", () => {
+    expect(historyBucketCoverage("2026-08-02", "week", "2026-08-12")).toEqual({
+      through: "2026-08-08",
+      span: "2026-08-08",
+      days: 7,
+      partial: false,
+    });
+  });
+
+  it("the LIVE trailing week is partial, and keeps its real span", () => {
+    // Wednesday: four days elapsed of the current week. The cell is kept — a
+    // trailing trim that ate it would hide the live week — and DECLARED, so a
+    // half-elapsed week's smaller total is never read as a decline.
+    const live = historyBucketCoverage("2026-08-09", "week", "2026-08-12");
+    expect(live.partial).toBe(true);
+    expect(live.days).toBe(4);
+    expect(live.through).toBe("2026-08-12");
+    expect(live.span).toBe("2026-08-15");
+  });
+
+  it("a day is never partial", () => {
+    const day = historyBucketCoverage("2026-08-12", "day", "2026-08-12");
+    expect(day).toEqual({
+      through: "2026-08-12",
+      span: "2026-08-12",
+      days: 1,
+      partial: false,
+    });
+  });
+});
+
+describe("bucketWord", () => {
+  it("names the unit every bucket count is measured in", () => {
+    expect(bucketWord("day")).toEqual({ one: "day", many: "days" });
+    expect(bucketWord("week")).toEqual({ one: "week", many: "weeks" });
+  });
+});
+
+describe("week-grain bucketing through the builders", () => {
+  const weekStart = 0;
+  const values: DayHistoryValue[] = [
+    // Week of 2026-07-26
+    { date: "2026-07-27", group: "veg", value: 2 },
+    { date: "2026-07-30", group: "veg", value: 1 },
+    { date: "2026-07-30", group: "fish", value: 1 },
+    // Week of 2026-08-02
+    { date: "2026-08-03", group: "veg", value: 3 },
+    // Week of 2026-08-09 — the live, partial week
+    { date: "2026-08-10", group: "fish", value: 2 },
+  ];
+  const groups = [
+    { key: "veg", label: "Vegetables" },
+    { key: "fish", label: "Fish" },
+  ];
+  const end = "2026-08-12";
+  const buckets = historyBuckets("2026-07-26", end, "week", weekStart);
+
+  it("sums a group's whole week into one cell", () => {
+    const rows = buildDayHistoryRows({
+      days: buckets,
+      values,
+      groups,
+      selected: null,
+      maxRows: 8,
+      cellLevel: DAY_HISTORY_DOMAINS.food.weekCellLevel,
+      today: end,
+      grain: "week",
+      weekStart,
+    });
+    const veg = rows.find((r) => r.key === "veg")!;
+    expect(veg.cells.map((c) => c.value)).toEqual([3, 3, 0]);
+    // `activeDays` counts BUCKETS that carried a value — weeks, here.
+    expect(veg.activeDays).toBe(2);
+    expect(veg.total).toBe(6);
+  });
+
+  it("marks the CURRENT WEEK as today's cell, not the week's first day", () => {
+    const rows = buildDayHistoryRows({
+      days: buckets,
+      values,
+      groups,
+      selected: null,
+      maxRows: 8,
+      cellLevel: DAY_HISTORY_DOMAINS.food.weekCellLevel,
+      today: end, // a Wednesday
+      grain: "week",
+      weekStart,
+    });
+    const marked = rows[0].cells.filter((c) => c.today);
+    expect(marked).toHaveLength(1);
+    expect(marked[0].date).toBe("2026-08-09");
+  });
+
+  it("dayTotals buckets to weeks when asked, and to days otherwise", () => {
+    expect(dayTotals(values, null, { grain: "week", weekStart })).toEqual(
+      new Map([
+        ["2026-07-26", 4],
+        ["2026-08-02", 3],
+        ["2026-08-09", 2],
+      ])
+    );
+    expect(dayTotals(values, null).get("2026-07-30")).toBe(2);
+  });
+
+  it("the group filter still applies before bucketing", () => {
+    expect(
+      dayTotals(values, new Set(["fish"]), { grain: "week", weekStart })
+    ).toEqual(
+      new Map([
+        ["2026-07-26", 1],
+        ["2026-08-09", 2],
+      ])
+    );
+  });
+});
+
+describe("buildDayHistoryStrip", () => {
+  const end = "2026-08-12";
+  const totals = new Map([
+    ["2026-07-26", 4],
+    ["2026-08-09", 2],
+  ]);
+
+  const strip = buildDayHistoryStrip({
+    totals,
+    end,
+    weeks: 3,
+    weekStart: 0,
+    stripLevel: DAY_HISTORY_DOMAINS.food.weekStripLevel,
+    today: end,
+  });
+
+  it("lays one cell per week, oldest first, on the shared grid", () => {
+    expect(strip.cells.map((c) => c.date)).toEqual([
+      "2026-07-26",
+      "2026-08-02",
+      "2026-08-09",
+    ]);
+    expect(strip.start).toBe(dayHistoryStart(end, 3, 0));
+    expect(strip.end).toBe(end);
+  });
+
+  it("counts active WEEKS and the window total", () => {
+    expect(strip.activeWeeks).toBe(2);
+    expect(strip.totalValue).toBe(6);
+  });
+
+  it("keeps a quiet week visible rather than compressing it away", () => {
+    // The day-fill discipline at week grain: an empty week is a cell, not a
+    // missing column, or a two-week gap would render as adjacent weeks.
+    expect(strip.cells[1]).toMatchObject({ value: 0, level: 0 });
+  });
+
+  it("declares the live trailing week partial and rings it as today", () => {
+    const live = strip.cells[2];
+    expect(live).toMatchObject({ partial: true, days: 4, today: true });
+    expect(live.through).toBe(end);
+    expect(live.span).toBe("2026-08-15");
+    expect(strip.cells[0].partial).toBe(false);
+  });
+
+  it("colors a week by the domain's declared strip ladder", () => {
+    const quantity = buildDayHistoryStrip({
+      totals: new Map([["2026-07-26", 4]]),
+      end,
+      weeks: 3,
+      weekStart: 0,
+      stripLevel: DAY_HISTORY_DOMAINS.workout.weekStripLevel,
+      today: end,
+    });
+    expect(quantity.cells[0].level).toBe(1);
+    expect(strip.cells[0].level).toBe(1); // food: coverage, whatever the total
+  });
+
+  it("labels the months its weeks open", () => {
+    expect(strip.monthLabels).toEqual([
+      { col: 0, label: "Jul" },
+      { col: 1, label: "Aug" },
+    ]);
   });
 });

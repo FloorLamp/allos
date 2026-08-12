@@ -42,6 +42,18 @@ What that means in practice:
   `update_pull_request` (REST PATCH can't flip draft; GraphQL is proxy-blocked).
 - **Strategic items wait for the owner** (integrations, mobile shell, IA
   decisions). Never start them unprompted; list them in status reports.
+- **An idle pipeline with work available is an ERROR, and dispatch is the
+  default state.** Never ask permission to relaunch, resume or refill — not
+  after a restart killed the agents, not after a wave lands, not at a check-in
+  that finds nothing to review. Owner ruling, 2026-08-12, after the orchestrator
+  finished a rescue and then asked whether to relaunch the three clusters it had
+  just rescued. The queue and the caps already encode what may run; asking again
+  adds a human round-trip to a decision the runbook has already made. Ask only
+  about things the runbook genuinely does not decide — a product judgement, an
+  owner-authored PR, a scope that has grown past its brief.
+  The corollary at a check-in: if there is nothing to review and a slot is free,
+  DISPATCH, then report what you dispatched. "Nothing to do" is a conclusion the
+  orchestrator is almost never entitled to reach while the backlog is non-empty.
 
 ## Environment facts (hard-won — trust these)
 
@@ -67,6 +79,27 @@ What that means in practice:
 Managed containers restart without warning, killing every background task, poll
 and in-flight agent call. Everything here was learned by losing work to it.
 
+- **A CANARY CANNOT DETECT A RESTART. Do not build one.** The obvious design — a
+  long-lived background process whose DEATH signals the restart — is
+  structurally incapable of working, because the restart kills the harness that
+  would deliver the death notification along with the canary. It is a smoke
+  alarm wired to the same fuse as the house. One ran for a whole session on
+  2026-08-12, died at 14:08, and said nothing.
+  The same restart also killed **both check-in timers** (they are `sleep` loops
+  in the same process tree), so the boot-id comparison that DOES work never ran
+  again. The full chain: restart → canary dies unheard → timers die → nothing
+  polls → the orchestrator keeps merging as though nothing happened. A human
+  asking "container died?" is what surfaced it, and only by luck at minute one.
+  **Detect by STATE, not by liveness**, which means: disk-persisted (survives),
+  pull not push (needs no surviving process), and self-describing (says what was
+  running, because the in-flight roster is the OTHER thing a restart destroys —
+  knowing a restart happened is useless without knowing which agents to rescue).
+  `scripts/orchestrator-checkin.sh` is that check: run it as the first action of
+  every check-in and after any gap in activity. Keep `$SCRATCH/.roster` current
+  at dispatch time — it is the only copy of the roster that outlives you. And
+  note that the script itself lives in the REPO, not in scratch: the first
+  version was written to `$SCRATCH` and would have died in the next restart,
+  which is the same mistake one level up.
 - **Agents commit AND push after every meaningful step** — in every dispatch. A
   restart then costs at most one uncommitted edit set. Worktrees survive
   restarts; uncommitted gate-run state does not.

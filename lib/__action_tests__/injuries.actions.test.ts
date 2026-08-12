@@ -109,10 +109,13 @@ describe("setInjuryStatus (#838)", () => {
 });
 
 describe("updateInjury + deleteInjury (#838)", () => {
-  it("edits label/regions in place", async () => {
+  it("edits label/regions in place and leaves the lifecycle to its own action", async () => {
     const { profile } = seedActor();
     await logInjury(injuryForm({ label: "shoulder" }, ["Chest"]));
     const id = getInjuries(profile.id)[0].id;
+    // Since #2359 this action sends a PARTIAL naming only the declaration. A status
+    // in the form data is not part of that patch and is ignored — the chip's
+    // lifecycle buttons own status, through setInjuryStatus.
     const res = await updateInjury(
       injuryForm(
         { id: String(id), label: "left shoulder", status: "recovering" },
@@ -122,8 +125,8 @@ describe("updateInjury + deleteInjury (#838)", () => {
     expect(res.ok).toBe(true);
     const row = getInjuries(profile.id)[0];
     expect(row.label).toBe("left shoulder");
-    expect(row.status).toBe("recovering");
     expect(row.regions).toEqual(["Shoulders"]);
+    expect(row.status).toBe("active");
   });
 
   it("deletes an injury row (plain profile-scoped delete)", async () => {

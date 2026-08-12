@@ -71,7 +71,7 @@ export default async function FitnessSection({ range }: { range: DateRange }) {
         <ChartJumpMenu items={FITNESS_SECTIONS.map((s) => ({ ...s }))} />
       </div>
 
-      <WorkoutHistorySection weeks={weeks} end={window.to} />
+      <WorkoutHistorySection window={window} />
 
       <hr className="border-black/5 dark:border-white/10" />
 

@@ -631,17 +631,11 @@ function EditInjuryForm({
       data-testid="injury-edit-form"
     >
       <input type="hidden" name="id" value={injury.id} />
-      {/* The lifecycle this form deliberately does not touch, carried through unchanged. */}
-      <input type="hidden" name="status" value={injury.status} />
-      {injury.since && (
-        <input type="hidden" name="since" value={injury.since} />
-      )}
-      {injury.notes && (
-        <input type="hidden" name="notes" value={injury.notes} />
-      )}
-      {injury.muscles.map((m) => (
-        <input key={m} type="hidden" name="muscles" value={m} />
-      ))}
+      {/* The lifecycle, the start date, the notes and the fine muscles are NOT
+          round-tripped here (#2359). `updateInjury` sends a partial and the write
+          core leaves an unnamed column alone, so this form carries only what it
+          edits — and a column added to the injury row later cannot be silently
+          cleared by a scope edit that never heard of it. */}
       <InjuryScopeFields
         idPrefix={`injury-edit-${injury.id}`}
         liftOptions={liftOptions}

@@ -249,7 +249,16 @@ Calendar grids and lens windows are the same discipline one level down:
 `dayGrid()` (`lib/day-grid.ts`) lays days on a 7×N grid for every heatmap and
 calendar, with the payload and level function supplied by the caller; `lensWindow()`
 (`lib/trends.ts`) resolves the Trends hub's shared `DateRange` to one anchor, with
-only the per-lens week caps supplied.
+only the per-lens week caps supplied; and `dayHistoryWindow()`
+(`lib/day-history.ts`) resolves it to a GRAIN. A day-history column is a day or a
+week, and above `MAX_HISTORY_DAY_WEEKS` it re-grains rather than clamping a
+year-scale request back to a quarter (#2413) — read on the UNCLAMPED span, because
+asking the already-clamped week count whether it exceeded the cap can only answer
+no. Ladders are declared per domain PER GRAIN and the completeness test fails a
+missing twin; the coverage domains stay coverage at week grain rather than being
+rescaled. The partial trailing week is KEPT and DECLARED (`historyBucketCoverage`),
+never dropped and never compared as a whole week. See
+`docs/internals/day-history.md`.
 
 ### Food regularity
 

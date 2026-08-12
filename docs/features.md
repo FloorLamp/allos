@@ -752,8 +752,11 @@ Curl" constrains curls, and the form says so before you save. A constraint is
 also **correctable in place**: an injury is understood gradually, so the same
 controls that logged it reopen on what you declared, and narrowing one tells you
 which lifts come back into your suggestions before you save. Correcting the
-scope never touches the record's lifecycle — the start date stays where it is,
-and moving between active, recovering and resolved stays the chip's own buttons.
+scope never touches the record's lifecycle — the start date, your notes and the
+fine muscles stay where they are, and moving between active, recovering and
+resolved stays the chip's own buttons. That is a property of the write, not of
+the form remembering to send everything back: an edit states what changed, and a
+field it does not name is left exactly as it was.
 An **active** constraint takes the affected work off the card; a **recovering**
 one eases it back, and you can say how much: the app's **60% is a default it
 names as a default**, and your own setting always wins.
@@ -996,6 +999,19 @@ Fitness separates:
   labeled progression;
 - **Sport** for repeated sport/activity series;
 - **PRs this window**, linked to the underlying sessions.
+
+A **cardio** record is held to what its own measurement can evidence. Each kind
+is judged against the sessions carrying THAT measurement — a distance record
+against the sessions that recorded a distance — rather than against the
+activity's session count, so an activity with fourteen walks and four measured
+distances no longer sets a record from a pool of four. Where a measurement is
+missing from most of an activity's history no record is claimed at all: the app
+cannot know whether an unmeasured session went further, and a hedged record is
+not worth a line. Coverage, not count, is the test, so an activity measured from
+its very first session can still set one on a short history. A record must also
+beat the previous best by more than the measurement's own error — GPS distance,
+elapsed duration and derived speed each declare their own floor — so two walks
+three metres apart are noise, not two personal bests.
 
 Deeper analysis and benchmark ladders remain under **Training → Analyze**, where
 a lift logged on more than one machine keeps a single entry and offers its
@@ -1327,6 +1343,17 @@ own anchor ratios scaled by bodyweight^(2/3) — the cross-sectional-area law
 squat, bench, incline bench, overhead press, deadlift) and the weighted
 pull-up/chin-up; shown only when sex and a bodyweight are on file, informational
 only.
+
+A Level is scored from **free-weight sets only**. The tables are barbell
+population norms and a fixed-path machine has a mechanical advantage they do not
+model, so a lift logged under a bare name like "Overhead Press" entirely on
+machine equipment gets **no Level, no Benchmarks card and no pillar standing** —
+untested against the standard, which is not the claim "untrained" makes. Your
+estimated 1RM, your PRs and your progression are unchanged: a machine press is a
+real set and a real record. Where one name carries both barbell and machine work,
+the Level is scored from the barbell sets alone, so a genuine free-weight standing
+survives rather than being suppressed by the machine sets beside it. Sets with no
+equipment recorded are unaffected, which is most of them.
 
 ## Medical
 

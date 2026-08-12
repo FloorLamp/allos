@@ -1584,6 +1584,47 @@ the drift, which is what a monthly percentage averages away), `weight-trajectory
 (robust net change, a per-week rate, and the same figure one period back). A line
 that merely still _works_ at a longer scale is not admitted.
 
+**What the week says and the month does not (#2395/#2397).** Three lines were
+added under that same test, and each names the one scale its fact exists at.
+
+- `targets` — the closed week's **verdict** against the frequency targets the
+  profile declared: "4 of 5 targets met — short on Back". Week-only, because a
+  verdict is a week fact by definition: at day scale only PACE exists (which the
+  morning digest already reports, in the same rollup grammar), and at month scale
+  it becomes a distribution. The verdict is read from the cadence ledger and never
+  recomputed (`docs/internals/cadence-ledger.md`), it requires a **closed** period —
+  a week still running is under its floor by construction — and a target the user
+  declared part-way through the week is left out rather than scored. The workout
+  COUNT stays: a count of what happened and a verdict against what was intended are
+  different facts, and the recap carries both.
+- `food-habits` — a group's share of the days food was logged at all, with the
+  rationale drawn from the curated nutrient map: "Fatty fish 12 of 26 logged days,
+  a source of Omega-3". Month-only, because a habit is a multi-week pattern by
+  definition. A **share, never a run** (#1955), never a cap-direction group, and
+  structurally incapable of carrying a biomarker beside it —
+  `docs/internals/food-regularity.md` records why that boundary is a type rather
+  than a wording rule.
+- `caps` — how a **declared** weekly cap fared across the period's whole weeks:
+  "over the Alcohol cap in 3 of 4 weeks", or that it held. Month-only, because it
+  counts weeks. Silent for a profile that declared no cap, and stated in the cap
+  vocabulary throughout: no to-go, no pace, no comparative (#998).
+
+**Direction is selected, never subtracted.** A cap tenant reaches the weekly
+`targets` line — a profile that set an alcohol cap wants to know whether it held —
+and the line reports it as within or over, never with a figure to go. The head
+counts the FLOOR partition, so a cap can never reach the "short on …" clause;
+there is no branch to forget. A profile whose only targets are caps gets a
+cap-shaped head ("2 of 2 weekly caps held") rather than a floor's success
+condition applied to a scope that has none.
+
+**A bare failure is not a message.** Target verdicts and cap records are
+deliberately NOT evidence in the recap's emptiness test: a period with nothing else
+in it stays empty, so "0 of 2 targets met" can never be the whole of a send on a
+week someone spent ill, travelling or deliberately resting. The period's food
+habits ARE evidence — that is #2396's ruling (a profile that only logs food has not
+had an empty period) reaching month scale, where the weekly coverage line does not
+speak.
+
 **The precedence rule — replace, never stack.** A profile has ONE recap slot: the
 weekday and time it already configured (`notify_recap_day` / `notify_recap_hour`,
 off by default). Every scale arrives in that slot and nowhere else.
