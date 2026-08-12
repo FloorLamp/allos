@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { settledClick, expectInView } from "./helpers";
+import { switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -340,6 +341,48 @@ test.describe("Unified profile switcher (issue #1801)", () => {
     expect(
       Math.abs((await boxOf(dashboard)).y - dashboardBefore.y)
     ).toBeLessThan(1);
+  });
+
+  test("switchToProfile is free when it is already acting, and still switches otherwise", async ({
+    browser,
+  }) => {
+    // The shared helper's no-op fast path (#2600). A restore in a `finally` is the
+    // natural call, and until now a redundant one still paid the whole
+    // open-panel → submit → revalidate → re-render round trip (~1.5s measured)
+    // for nothing. The fast path reads the bar's ACCESSIBLE NAME, which states
+    // only who is acting — its TEXT also carries the view-set remainder, so a
+    // substring match there could return early for a profile merely IN VIEW.
+    //
+    // Both directions, because a fast path that is only fast is a bug: the no-op
+    // must not open the panel, and a real switch must still happen.
+    test.slow();
+    const selfId = profileId(MVMEDS_SELF_PROFILE);
+    const roId = profileId(MVMEDS_RO_PROFILE);
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MVMEDS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/medications");
+      const panel = page.getByTestId("profile-switcher-panel");
+
+      // Already acting → returns without ever opening the panel.
+      await switchToProfile(page, MVMEDS_SELF_PROFILE);
+      await expect(panel).toBeHidden();
+      await expectActing(page, selfId);
+
+      // A DIFFERENT profile still switches, through the panel as before.
+      await switchToProfile(page, MVMEDS_RO_PROFILE);
+      await expectActing(page, roId);
+
+      // …and the fast path now holds for the profile it switched TO, which is
+      // what makes a restore-after-switch free rather than merely quick.
+      await switchToProfile(page, MVMEDS_RO_PROFILE);
+      await expect(panel).toBeHidden();
+      await expectActing(page, roId);
+    } finally {
+      await page.context().close();
+    }
   });
 
   test("the retired sidebar profile menu and view strip are gone", async ({

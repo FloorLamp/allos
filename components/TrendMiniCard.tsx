@@ -192,7 +192,8 @@ export default function TrendMiniCard({
           className="group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-0.5 px-4 py-2.5 transition-colors hover:bg-brand-50/80 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-5 dark:hover:bg-brand-950/40"
         >
           <span
-            className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:whitespace-normal sm:text-clip dark:text-slate-400 dark:group-hover:text-brand-300"
+            // Same breakpoint swap, same fix as the full variant's title below.
+            className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:wrap-anywhere sm:whitespace-normal dark:text-slate-400 dark:group-hover:text-brand-300"
             title={title}
           >
             {mobileTitle && mobileTitle !== title ? (
@@ -281,7 +282,23 @@ export default function TrendMiniCard({
           } ${menu ? "" : "rounded-tr-xl"}`}
         >
           <span
-            className="min-w-0 truncate group-hover:underline sm:flex-1 sm:whitespace-normal sm:text-clip sm:text-base sm:font-semibold"
+            // `truncate` is the MOBILE contract (nowrap + ellipsis in a one-line
+            // box) and it reads correctly there. From `sm:` the title WRAPS
+            // instead — but `truncate`'s `overflow: hidden` comes along, and
+            // `sm:text-clip` took the ellipsis away, so a token wider than the
+            // line box was cut mid-glyph with nothing to signal the loss:
+            // `Lipoprotein(` for `Lipoprotein(a)`, `Trainir`/`Volum` for
+            // `Training Volume` (#2523). The `(a)` is the entire distinction
+            // between Lp(a) and ordinary lipoprotein, so that render is not
+            // truncation, it is a WRONG LABEL — and the box is narrowest on the
+            // tiles carrying the most value+delta context, which is backwards.
+            //
+            // `wrap-anywhere` (`overflow-wrap: anywhere`) gives an unbreakable
+            // token break opportunities, so the whole name renders across lines
+            // and nothing is lost; the ellipsis stays behind it for anything that
+            // still cannot fit. Below `sm:` this is inert — `white-space: nowrap`
+            // leaves nothing to wrap.
+            className="min-w-0 truncate group-hover:underline sm:flex-1 sm:wrap-anywhere sm:whitespace-normal sm:text-base sm:font-semibold"
             title={title}
           >
             {mobileTitle && mobileTitle !== title ? (
