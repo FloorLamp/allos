@@ -5,7 +5,7 @@
 // profile-scoped (enforced by lib/__tests__/profile-scoping.test.ts and the
 // dynamic no-bleed guard in lib/__db_tests__/upcoming.scoping.test.ts).
 
-import { db } from "../../db";
+import { db, hoistedStatement } from "../../db";
 import { type SuppressionRecord } from "../../upcoming-suppress";
 import {
   biomarkerDismissalKey,
@@ -29,15 +29,19 @@ import { NON_IDENTITY_CATEGORIES } from "../../medical-categories";
 // single map answers "is this key suppressed?" for all of them. Profile-scoped
 // (the WHERE filters profile_id — enforced by lib/__tests__/profile-scoping.test.ts
 // and lib/__db_tests__/upcoming.scoping).
+// Statement hoisted: every findings builder asks the suppression bus, so this runs
+// many times per render and once per member on a cross-profile surface (622
+// executions on one /household render). NOT cache()-wrapped — dismissFinding and
+// restoreFinding write this table, and an inline re-read after a dismissal must
+// see the new row.
+const FINDING_SUPPRESSIONS_STMT = hoistedStatement(
+  `SELECT signal_key, snooze_until, dismissed_at
+     FROM upcoming_dismissals WHERE profile_id = ?`
+);
 export function getFindingSuppressions(
   profileId: number
 ): Map<string, SuppressionRecord> {
-  const rows = db
-    .prepare(
-      `SELECT signal_key, snooze_until, dismissed_at
-         FROM upcoming_dismissals WHERE profile_id = ?`
-    )
-    .all(profileId) as {
+  const rows = FINDING_SUPPRESSIONS_STMT.all(profileId) as {
     signal_key: string;
     snooze_until: string | null;
     dismissed_at: string | null;

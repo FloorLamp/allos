@@ -5,7 +5,7 @@
 // Adherence / dose-log reads and writes: taken/skipped dose sets, the idempotent
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
-import { db, today, writeTx } from "../../db";
+import { db, hoistedStatement, today, writeTx } from "../../db";
 import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
@@ -120,15 +120,19 @@ export function getIntakeLogsForDate(
 // Dose ids TAKEN on `date` (per-dose view for the schedule check-offs), scoped to
 // the profile through the dose's parent supplement. Skipped doses are NOT taken —
 // getSkippedDoseIds surfaces those separately for the tri-state (issue #232).
+// Hoisted: adherence is asked per member on every cross-profile surface (360
+// executions on one /household render). NOT cache()-wrapped — markDoseTaken writes
+// this table and the same request re-reads it to render the new state.
+const TAKEN_DOSE_IDS_STMT = hoistedStatement(
+  `SELECT l.dose_id FROM intake_item_logs l
+     JOIN intake_item_doses d ON d.id = l.dose_id
+     JOIN intake_items s ON s.id = d.item_id
+    WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
+);
 export function getTakenDoseIds(profileId: number, date: string): Set<number> {
-  const rows = db
-    .prepare(
-      `SELECT l.dose_id FROM intake_item_logs l
-         JOIN intake_item_doses d ON d.id = l.dose_id
-         JOIN intake_items s ON s.id = d.item_id
-        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
-    )
-    .all(profileId, date) as { dose_id: number }[];
+  const rows = TAKEN_DOSE_IDS_STMT.all(profileId, date) as {
+    dose_id: number;
+  }[];
   return new Set(rows.map((r) => r.dose_id));
 }
 

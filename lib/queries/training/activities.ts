@@ -12,7 +12,7 @@ import {
   RHYTHM_WINDOW_WEEKS,
   type WeeklyRhythm,
 } from "../../weekly-rhythm";
-import { db, today } from "../../db";
+import { db, hoistedStatement, today } from "../../db";
 import { decayedWeight } from "../../decay";
 import {
   LIFT_OPTIONS,
@@ -609,12 +609,13 @@ export function getActivitiesByDate(
   profileId: number,
   date: string
 ): Activity[] {
-  return db
-    .prepare(
-      "SELECT * FROM activities WHERE profile_id = ? AND date = ? ORDER BY id DESC"
-    )
-    .all(profileId, date) as Activity[];
+  return ACTIVITIES_BY_DATE_STMT.all(profileId, date) as Activity[];
 }
+// Hoisted: read per member on every cross-profile surface (360 executions on one
+// /household render — two per member).
+const ACTIVITIES_BY_DATE_STMT = hoistedStatement(
+  "SELECT * FROM activities WHERE profile_id = ? AND date = ? ORDER BY id DESC"
+);
 
 export function getActivityDates(profileId: number): string[] {
   return (
@@ -637,15 +638,18 @@ export type InferredWorkoutSchedule = WeeklyRhythm;
 // enough, and the most common start hour. Falls back to every day at 18:00 when
 // there's no clear pattern. A thin SQL gather over the shared inference core
 // (#2188) — the thresholds live in lib/weekly-rhythm.ts, not here.
+// Hoisted for the same reason as ACTIVITIES_BY_DATE_STMT above.
+const WORKOUT_RHYTHM_STMT = hoistedStatement(
+  `SELECT date, start_time FROM activities WHERE profile_id = ? AND date >= ?`
+);
 export function inferWorkoutSchedule(
   profileId: number,
   weeks = RHYTHM_WINDOW_WEEKS
 ): InferredWorkoutSchedule {
-  const rows = db
-    .prepare(
-      `SELECT date, start_time FROM activities WHERE profile_id = ? AND date >= ?`
-    )
-    .all(profileId, shiftDateStr(today(profileId), -weeks * 7)) as {
+  const rows = WORKOUT_RHYTHM_STMT.all(
+    profileId,
+    shiftDateStr(today(profileId), -weeks * 7)
+  ) as {
     date: string;
     start_time: string | null;
   }[];

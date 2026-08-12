@@ -1,11 +1,17 @@
 import { db, hoistedStatement, invalidateTimezoneMemo } from "../db";
 
 // Generic key/value access over the global settings table, for simple scalar
-// app-wide prefs.
+// app-wide prefs. Statement hoisted for the same reason as
+// LOGIN_SETTING_GET_STMT below: an instance setting is read many times per
+// render (`min_training_age` alone answers every age gate), and preparing it
+// inline pays SQL COMPILATION on each one. NOT cache()-wrapped — a request may
+// write via setSetting then re-read, and hoisting caches the compiled statement,
+// never the value.
+const SETTING_GET_STMT = hoistedStatement(
+  "SELECT value FROM settings WHERE key = ?"
+);
 export function getSetting(key: string): string | undefined {
-  const row = db
-    .prepare("SELECT value FROM settings WHERE key = ?")
-    .get(key) as { value?: string } | undefined;
+  const row = SETTING_GET_STMT.get(key) as { value?: string } | undefined;
   return row?.value;
 }
 
@@ -35,16 +41,21 @@ export function getSettingKeysWithPrefix(prefix: string): string[] {
   return rows.map((r) => r.key);
 }
 
-// Generic per-profile key/value access (profile_settings table).
+// Generic per-profile key/value access (profile_settings table). Hoisted for the
+// same reason as the two statements above, and more urgently: this is the single
+// most-executed read in the app (~1100 times per `/` render, ~10,600 on
+// /household, where the per-member checks fan out across every accessible
+// profile). Inline, each of those compiled its own copy of the SQL. Value
+// semantics are unchanged — only the compiled statement is reused.
+const PROFILE_SETTING_GET_STMT = hoistedStatement(
+  "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
+);
 export function getProfileSetting(
   profileId: number,
   key: string
 ): string | undefined {
-  const row = db
-    .prepare(
-      "SELECT value FROM profile_settings WHERE profile_id = ? AND key = ?"
-    )
-    .get(profileId, key) as { value?: string } | undefined;
+  const row = PROFILE_SETTING_GET_STMT.get(profileId, key) as
+    { value?: string } | undefined;
   return row?.value;
 }
 
