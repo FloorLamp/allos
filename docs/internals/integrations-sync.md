@@ -181,6 +181,31 @@ rests on proximity agreement and nothing else. No backfill was needed —
 `loadFullCandidateRows` selects by profile, not by recency, so the next sync's
 auto-merge pass re-evaluates the whole history.
 
+**A merge destroys the identity a SEND was keyed on (#2570).** `writeActivityFold`
+carries a dropped row's data onto the keeper — sets, routes, telemetry, laps, segment
+efforts, videos, tombstones, pair decisions, provenance. It did not carry the one fact
+about a dropped row that is not data and cannot be recovered from it: **that the user
+was already told about this session.** The post-workout nudge is one-shot per activity
+**id**, and `autoMergeKeeperId` prefers the richer sourced row, so a provider syncing
+LAST wins the keeper slot as a row that did not exist a moment ago and carries no
+marker. One bike ride mirrored into Health Connect by three apps — one of them twice,
+32 seconds apart — produced three notifications in one afternoon, the third of them
+CAUSED by the merge.
+
+`writeActivityFold` now calls `carryPostWorkoutMarker`
+(`lib/notifications/post-workout-marker.ts`, a leaf module so a merge never imports
+the notification stack) before the caller's delete, so the survivor inherits the
+announcement. Undo deliberately does NOT reverse it: `revertActivityMerge` restores a
+drop under a NEW id with no marker of its own, so reversing could only cause a second
+send for a session already announced, and the contact-consent rule permits reducing
+contact unilaterally, never increasing it. The dropped rows' markers are left as inert
+orphans — an id never recycles, so they can never suppress another session.
+
+The same-source half of that defect is NOT fixed here and is not a merge change at
+all: `autoMergeCluster`'s cross-source gate declines every same-source group by design
+and stays as it is, so the dispatch grew its own duplicate awareness instead. See
+`docs/internals/notifications.md`.
+
 **Which clock survives the merge is the person's call, not a guess (#2011).** The
 fold rule already settles it mechanically: the keeper's own `start_time`/`end_time`
 win outright and the discarded row only ever fills a GAP, so keeping the
@@ -1151,6 +1176,43 @@ and `lib/__db_tests__/tick-repetition.test.ts` drives the real pass with stubbed
 provider hosts: two ticks in one window make one round of outbound calls and write
 one event row per provider.
 
+**The window has a PHASE now, because :00:00 is a bad minute to call anyone
+(#2567).** Weather & UV lost **209 of 289 runs (72.3%)** in twelve days, every one
+of them `weather fetch failed (503)`. Not a bad request, not the network, not
+Open-Meteo being down — **when** the poll fires. Buckets are epoch-aligned, so an
+hourly source fires on the first tick of each hour, at `:00:00`, with no jitter
+anywhere in the loop. Probing that exact instant from the affected host returned
+503s at T+0s — rejected in ~0.40 s against a 15 s timeout, a load shedder answering
+before doing work — and 5/5 clean at T+10s and every later offset. The stored ledger
+carries the same signature: failures stamped 01–03 seconds past the hour, successes
+02–08. **Strava is the control**: same container, same egress, same epoch-aligned
+bucket, same instant, 348 runs at `:00` and zero failures.
+
+So `pullWindow` takes an `offsetMinutes` that **shifts the window BOUNDARY**, and
+`pullDecision` resolves one per `(install, profile, source)` — hashed, never random,
+because a moving offset is a moving boundary and an untestable one. The install
+ingredient is `install_first_boot_at` (an existing global settings key, no new
+setting and no migration), and it is the part that matters most: without it every
+allos in the world would still hash profile 1 + weather to the same minute, and the
+herd being shed is exactly what the offset exists to leave.
+
+Shifting the boundary rather than _declining the window's first N ticks_ is the
+whole safety argument. Declining ticks is unsafe at coarse tick rates: an operator
+running an hourly tick at `:00` against a 60-minute cadence would decline every tick
+it ever gets and the source would never poll again. `floor((t − offset) / cadence)`
+is still a fixed-length bucket turning over once per cadence — the once-per-window
+bound, the absence of drift and the absence of any tolerance to tune are all
+untouched — and it degrades to today's behaviour at an hourly tick while giving the
+intended stagger at the 5-minute tick the sidecar ships. The offset is clamped to
+`[5, cadence − 5]` so the shifted edge is never within one shipped tick of `:00`.
+
+**Retry on 5xx was proposed and declined.** The probe's own evidence (70/70 off-peak,
+5/5 at T+10s) says jitter is the fix and a retry is hygiene; with the boundary moved
+it answers nothing measured, doubles the outbound calls a keyless free API sees during
+a genuine outage, and would make a real outage look like a flap in a ledger that
+records one event per run. If it is wanted later it has to be recorded, which is its
+own change.
+
 **Truncated pull runs (#1614).** A Strava/Oura/Withings run cut short by a page
 cap or 429 stays `ok=1` (its rows landed and the cursor deliberately does not
 advance), but its event carries `details.truncated` plus a standard Review
@@ -1158,6 +1220,19 @@ line — written through the one `truncatedSyncDetails()` shape in
 `lib/integrations/sync-details.ts` — and the Connected-sources card badges it
 "partial" instead of a clean green success. The marker survives the details
 char-budget bounding by construction.
+
+**A half-failed weather run recorded as a clean success (#2567).** `runWeatherSync`
+computes `partial` when the daily/air-quality half fails, folds it into the returned
+summary and logs it — and then wrote its `integration_sync_events` row WITHOUT it:
+`ok: true`, no details, no error, nothing anywhere saying the run was degraded. The
+only trace was `received` dropping from 381 (360 hourly + 21 daily) to 360, which is
+how two silently-degraded runs among eighty were eventually found. Nothing was
+missing but the write: `isTruncatedSyncEvent` already reads the marker,
+`scheduledStanding` already returns `"partial"` off it, and three sources already
+share the serializer. It writes it now, through that same shape, with its own Review
+line: `truncatedSyncDetails()` takes an optional warning so weather can name the half
+that failed instead of claiming a page cap or a rate limit it never hit. The durable
+marker is identical either way.
 
 **Silence is the whole escalation rule (#1685, unified in #2263).** The two
 event-driven "this provider needs attention" signals cannot see a connection that
@@ -1335,15 +1410,49 @@ and **30.7** minutes from two snapshots at known instants, with #2263's census
 over 1223 pushes putting the push gap at median 16 / p90 34 / **p99 67** minutes.
 Both terms live in the same range, so **no threshold on that quantity can
 separate them**. A watch on a wrist behind a slow pipeline **advances**
-`MAX(stream.ts)` on every push; a watch on a charger leaves it **frozen** while
-pushes keep landing. That distinction contains no lag term, and it is what both
+`MAX(stream.ts)` across pushes; a watch on a charger leaves it **frozen** while
+pushes keep landing. ("On EVERY push" was the false half of that — see N below.) That distinction contains no lag term, and it is what both
 readers now ask.
 
-`N = 2`: one push carrying nothing new is ordinary jitter, two consecutive ones
-with the provider healthy means the source stopped producing. It is declared once,
-as `FROZEN_SYNC_EVIDENCE` in `lib/stream-frontier.ts`, because it is a property of
-what a push MEANS rather than of any one stream's wear pattern. What each surface
-declares for itself is the **floor on the frontier's own age**.
+**N is declared per stream, and it is 4 (#2560).** It was `N = 2`, a single
+`FROZEN_SYNC_EVIDENCE` constant in `lib/stream-frontier.ts`, defended there as a
+property of what a push MEANS rather than of any one stream's wear pattern. That
+argument was made against a measurement taken on the wrong leg. There are **two**
+batching stages —
+
+```
+watch --(Bluetooth, batches coarsely)--> phone Health Connect --(exporter, ~15 min)--> allos
+```
+
+— and every #2422 measurement was on the second. The exporter forwards what Health
+Connect currently holds; the watch's own sync into it batches independently, and in
+the measured window single pushes delivered **324, 195, 183, 165 and 164** minutes
+of heart rate at once. Over 1514 pushes: **9% carry no new `hr_minutes` at all**,
+and the FRONTIER-ADVANCE interval — the quantity this counter is denominated in —
+runs median 16 / p75 25 / **p90 39** / p95 51 / p99 81 / max 183 min, over 30 min
+**19.6%** of the time. At `N = 2` that p90 sits on top of the 40-minute floor, so
+one long batch satisfies both conditions at once instead of them cross-checking
+each other. Scored against whether `hr_minutes` (late, but arriving) later covered
+the frozen window, **every clean false positive in 28 days was `k = 2` and every
+true detection was `k >= 5`**.
+
+So the bar moved to 4, and it moved **into the registry** as
+`ContinuousStreamDef.frozenEvidence` (`{ syncs, because }`), beside
+`quiet.dipToleranceMin` and `reminder.frontierFloorMin` and for the same reason:
+how many pushes it takes for the SOURCE's state to be reflected is a property of
+that source's delivery chain — a device writing straight into its vendor cloud
+would need 1. `frontierEvidence(syncs, required)` therefore has **no default**; a
+default is exactly how a new stream would inherit another pipeline's batching. Both
+readers move together, deliberately: #2146's quiet row is render-only coaching tier,
+so a false row there is cheap, and the same batching argument applies to it anyway.
+At `N = 4` the 40-minute floor is **dominated** (four quiet pushes is ~64 minutes)
+and is kept only because it costs nothing and still states the intent.
+
+**The ceiling this does not raise.** A backlog that drains _through_ a real wear gap
+advances the frontier mid-gap and resets the counter — the mirror image of the false
+positive, silent at every N, and raising N makes it strictly worse. Nothing about a
+frontier can fix it; it is pinned as a documented non-detection in
+`lib/__tests__/wear-reminder.test.ts` rather than left to be rediscovered.
 
 The two detectors stay disjoint for the reason they always were, restated: with
 the phone off, no push lands, so nothing is ever OBSERVED frozen — that is #1685's

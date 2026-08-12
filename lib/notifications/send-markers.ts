@@ -196,9 +196,9 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     shape: "`<activityId>`",
     value: "the profile-local date the finish reminder was delivered",
     writer:
-      "lib/notifications/workout-presence.ts, and the Telegram finish tap (telegram-callbacks.ts), which stamps it so the tick's separate dispatch cannot duplicate the message (#924)",
+      "lib/notifications/post-workout-marker.ts declares the key; lib/notifications/workout-presence.ts stamps it on delivery, the Telegram finish tap (telegram-callbacks.ts) stamps it so the tick's separate dispatch cannot duplicate the message (#924), and writeActivityFold (lib/merge-activity.ts) CARRIES it onto a merge keeper (#2570)",
     retention:
-      "None: one reminder per finished session. The activity id never recycles, so a marker outliving its activity can never suppress another session's reminder.",
+      "None, and the id-keyed class is what makes that safe: an activity id never recycles, so a marker outliving its activity can never suppress another session's reminder. The MERGE case is an IDENTITY question rather than a retention one (#2570) — a merge deletes the keyed row and can make a brand-new, unmarked row the keeper, so the fold carries the announcement fact onto the survivor and the dispatch additionally declines when a high-confidence duplicate twin has already been announced. The dropped rows' markers are left as inert orphans deliberately: deleting them would make an ingest-time fold a destructive settings write for no gain.",
   },
   {
     key: "notify_stale_workout_",

@@ -41,9 +41,16 @@ import {
 import {
   lastPullAttemptAt,
   pullDecision,
+  pullOffsetFor,
   syncIntegrations,
 } from "@/lib/integrations/pull-tick";
-import { parseSyncEventAt } from "@/lib/integrations/pull-cadence";
+import {
+  parseSyncEventAt,
+  pullCadenceMinutes,
+  pullWindow,
+} from "@/lib/integrations/pull-cadence";
+import { getIntegration } from "@/lib/integrations/registry";
+import type { IntegrationId } from "@/lib/types";
 import {
   getRestEpisode,
   reconcileRestEpisode,
@@ -92,13 +99,35 @@ function plusMinutes(d: Date, minutes: number): Date {
   return new Date(d.getTime() + minutes * 60_000);
 }
 
-// The LAST second of the hourly cadence window `d` falls in — i.e. a LATER tick that
-// is still the same poll opportunity. Windows are epoch-aligned buckets, not "minutes
-// since", so "30 minutes later" is not necessarily the same window; a fixture that
-// assumed it was would be testing the wall clock rather than the guard.
-function lateInSameWindow(d: Date): Date {
-  const hour = 60 * 60_000;
-  return new Date(Math.floor(d.getTime() / hour) * hour + hour - 1_000);
+// When the cadence window that `d` falls in ENDS, for one (profile, source). Since
+// #2567 the window boundary is phase-shifted by a stable per-(install, profile, source)
+// offset, so "the end of the wall-clock hour" is no longer the same instant as "the end
+// of this source's window" — and a fixture that assumed it was would be asserting the
+// wrong thing about the right guard.
+function windowEndMs(
+  profileId: number,
+  sourceId: IntegrationId,
+  d: Date
+): number {
+  const cadence = pullCadenceMinutes(getIntegration(sourceId));
+  const offset = pullOffsetFor(profileId, sourceId);
+  const w = pullWindow(d.getTime(), cadence, offset);
+  return (w + 1) * cadence * 60_000 + offset * 60_000;
+}
+
+// A LATER tick that is still the same poll opportunity for EVERY named source. Each
+// source has its own phase, so the instant has to sit inside the intersection of their
+// windows — which is non-empty by construction, because `d` is in all of them.
+// Windows are fixed buckets, not "minutes since", so "30 minutes later" is not
+// necessarily the same window; a fixture that assumed it was would be testing the wall
+// clock rather than the guard.
+function lateInSameWindow(
+  d: Date,
+  profileId: number,
+  ...sourceIds: IntegrationId[]
+): Date {
+  const ends = sourceIds.map((id) => windowEndMs(profileId, id, d));
+  return new Date(Math.min(...ends) - 1_000);
 }
 
 // ── A. The pull pass ─────────────────────────────────────────────────────────
@@ -175,7 +204,7 @@ describe("the pull pass, run twice in one hour", () => {
     // whatever the wall clock happens to read.
     const second = await syncIntegrations(
       p,
-      lateInSameWindow(attemptInstant(p, "strava"))
+      lateInSameWindow(attemptInstant(p, "strava"), p, "strava", "oura")
     );
     expect(second.polled).toEqual([]);
     expect(second.skipped.sort()).toEqual(["oura", "strava"]);
@@ -195,7 +224,12 @@ describe("the pull pass, run twice in one hour", () => {
     const attempt = attemptInstant(p, "oura");
     // Anywhere else inside the window: still held.
     expect(
-      (await syncIntegrations(p, lateInSameWindow(attempt))).polled
+      (
+        await syncIntegrations(
+          p,
+          lateInSameWindow(attempt, p, "strava", "oura")
+        )
+      ).polled
     ).toEqual([]);
     // Past it: polled.
     const next = await syncIntegrations(p, plusMinutes(attempt, 61));
@@ -248,7 +282,11 @@ describe("the pull pass, run twice in one hour", () => {
     recordSyncEvent(p, "health-connect", { ok: true });
     const attempt = attemptInstant(p, "health-connect");
     expect(
-      pullDecision(p, "health-connect", lateInSameWindow(attempt))
+      pullDecision(
+        p,
+        "health-connect",
+        lateInSameWindow(attempt, p, "health-connect")
+      )
     ).toEqual({ poll: false, reason: "same-window" });
     expect(
       pullDecision(p, "health-connect", plusMinutes(attempt, 61 + 59))
@@ -276,9 +314,61 @@ describe("the pull pass, run twice in one hour", () => {
 
     const second = await syncIntegrations(
       p,
-      lateInSameWindow(attemptInstant(p, "strava"))
+      lateInSameWindow(attemptInstant(p, "strava"), p, "strava", "oura")
     );
     expect(second.polled).toEqual([]);
+  });
+
+  // ── #2567: the poll no longer aims at the top of the hour ──────────────────
+  it("gives each (profile, source) a stable window offset off the epoch boundary", () => {
+    // Weather lost 209 of 289 runs to 503s in the first ~5 seconds of each hour: the
+    // cadence buckets are epoch-aligned, so an hourly source fires on the tick at
+    // :00:00 with no jitter anywhere. The offset shifts the BOUNDARY, so the first tick
+    // inside a fresh window is no longer the top-of-hour one.
+    const p = connectedProfile("offset");
+    const weather = pullOffsetFor(p, "weather");
+    expect(weather).toBeGreaterThan(0);
+    expect(weather).toBeLessThan(60);
+    // Stable — asked twice, the same answer, because a moving offset is a moving
+    // window boundary.
+    expect(pullOffsetFor(p, "weather")).toBe(weather);
+    // Seeded per (install, profile, source), so an instance's sources are spread
+    // rather than moving together. Asserted as a SPREAD over many keys, never as
+    // "these two differ": two hashes into 51 slots collide often enough that pinning
+    // one pair would be a coin flip in CI. The exact per-seed values are pinned in
+    // lib/__tests__/pull-cadence.test.ts, where the seeds are fixed.
+    const spread = new Set(
+      [p, connectedProfile("offset-b"), connectedProfile("offset-c")].flatMap(
+        (id) =>
+          (["weather", "strava", "oura", "withings"] as const).map((source) =>
+            pullOffsetFor(id, source)
+          )
+      )
+    );
+    expect(spread.size).toBeGreaterThan(4);
+  });
+
+  it("still polls exactly once per hour with the boundary shifted", () => {
+    // THE BOUND THE OFFSET MAY NOT WEAKEN, asserted against the real recorded-attempt
+    // path rather than the pure simulation: a tick anywhere inside the shifted window
+    // is held, and the first tick past it polls.
+    const p = connectedProfile("offset-bound");
+    recordSyncEvent(p, "weather", { ok: true });
+    const attempt = attemptInstant(p, "weather");
+    expect(pullDecision(p, "weather", attempt)).toEqual({
+      poll: false,
+      reason: "same-window",
+    });
+    expect(
+      pullDecision(p, "weather", lateInSameWindow(attempt, p, "weather"))
+    ).toEqual({ poll: false, reason: "same-window" });
+    expect(
+      pullDecision(
+        p,
+        "weather",
+        new Date(windowEndMs(p, "weather", attempt) + 1_000)
+      )
+    ).toEqual({ poll: true, reason: "window-open" });
   });
 });
 
@@ -488,7 +578,7 @@ describe("the point of the split: dues still evaluate on every tick", () => {
     // tick would have multiplied them.
     const secondPull = await syncIntegrations(
       p,
-      lateInSameWindow(attemptInstant(p, "strava"))
+      lateInSameWindow(attemptInstant(p, "strava"), p, "strava", "oura")
     );
     expect(secondPull.polled).toEqual([]);
     expect(calls).toEqual(afterFirstPoll);

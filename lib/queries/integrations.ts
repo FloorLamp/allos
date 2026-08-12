@@ -56,6 +56,7 @@ import {
   findActivityDuplicates,
   findBodyMetricConflicts,
   clusterActivityDuplicates,
+  highConfidenceTwinIds,
   undecidedPairs,
   suppressingSignatures,
   ACTIVITY_DOMAIN,
@@ -579,6 +580,38 @@ export function getActivityDuplicates(
     findActivityDuplicates(loadActivityDupRows(profileId)),
     decided
   );
+}
+
+// THE POST-WORKOUT DISPATCH'S DUPLICATE AWARENESS (#2570).
+//
+// Given an activity that is about to be announced, the id of a row a HIGH-confidence
+// detection calls the same session AND which has already been announced — or null.
+//
+// This exists because one-contact-per-session was never a stated property of the send.
+// It was an emergent side effect of merge timing: a freshly-imported duplicate usually
+// got auto-merged away inside its own 60-second dispatch window, so its timer found no
+// row and stayed quiet. When auto-merge DECLINES — and it declines every same-source
+// group by design, `detect.ts`'s cross-source gate — nothing was watching, and one bike
+// ride mirrored twice into Health Connect by the same app produced two contacts.
+//
+// `undecidedPairs` is what makes this honour the user. A `kept-both` decision is the
+// user saying these are two different sessions; the second one must then be announced,
+// and a suppressed pair is exactly the set this must not read. (A `merged` decision is
+// excluded from suppression by #507 — but a merged pair has no second row to detect, so
+// it cannot reach here anyway.)
+//
+// It also covers the case no fold can: a pair a human has NOT yet merged, sitting in
+// Review, must still not be announced twice.
+export function announcedActivityTwin(
+  profileId: number,
+  activityId: number,
+  announced: (twinId: number) => boolean
+): number | null {
+  const twins = highConfidenceTwinIds(
+    getActivityDuplicates(profileId),
+    activityId
+  );
+  return twins.find((id) => announced(id)) ?? null;
 }
 
 // Undecided duplicate activity rows CLUSTERED into connected groups (#1081): the

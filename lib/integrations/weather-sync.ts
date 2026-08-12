@@ -5,6 +5,7 @@ import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
 import { openMeteoSource, type WeatherSource } from "./open-meteo";
 import { upsertUvHours, upsertWeatherDays } from "./weather-cache";
 import { summarizeSplit, type UpsertCounts, emptyCounts } from "./sync-log";
+import { truncatedSyncDetails } from "./sync-details";
 
 // Pulls the hourly UV + irradiance series for a profile's HOME LOCATION from Open-Meteo
 // and upserts it into the GLOBAL, location-keyed cache (weather_uv_hours). Runs from
@@ -44,6 +45,15 @@ export interface WeatherSyncResult {
   // Set when the daily fetch's air-quality half failed: the run still SUCCEEDED and
   // cached temperature/pressure; pollen/AQI are simply absent for this window.
   partial?: string;
+}
+
+// The Review line for a weather run whose DAILY half failed (#2567). It names the
+// half that failed and what is missing, because the shared default line names a page
+// cap or a rate limit — neither of which is what happened here — and says the next
+// sync picks up where it left off, which for a rolling re-fetch means nothing.
+// Exported so its test asserts the copy rather than a paraphrase of it.
+export function weatherPartialWarning(reason: string): string {
+  return `Partial sync — the hourly UV series was cached, but the daily forecast/air-quality half failed (${reason}). Pollen, AQI and daily conditions are absent for this window; the next run re-fetches it.`;
 }
 
 function shiftDate(day: string, n: number): string {
@@ -171,6 +181,21 @@ export async function runWeatherSync(
     ok: true,
     windowStart: startDate,
     windowEnd: dailyEnd,
+    // THE DEGRADED RUN, RECORDED (#2567). `partial` was computed here, folded into the
+    // returned summary and logged — and then this event was written WITHOUT it, so a
+    // run whose daily/air-quality half failed stored `ok: true`, no details, no error,
+    // and nothing anywhere said it was degraded. The only trace was `received`
+    // silently dropping; 2 of the 80 successes in a twelve-day window had been
+    // degraded that way, invisibly.
+    //
+    // The standing already existed and already rendered: `isTruncatedSyncEvent` reads
+    // this marker, `scheduledStanding` returns "partial" off it, and Strava, Oura and
+    // Withings share the serializer. This run computed the input for all of it and
+    // dropped it on the floor. It writes it now, through the shared shape with its own
+    // honest line rather than a fourth spelling of the same fact.
+    details: partial
+      ? truncatedSyncDetails(weatherPartialWarning(partial))
+      : null,
     received: tally.received,
     written: tally.inserted + tally.updated + tally.unchanged,
     inserted: tally.inserted,

@@ -18,12 +18,47 @@
 //
 // ── The quantity that can ────────────────────────────────────────────────────
 //
-// A watch on the wrist behind a slow pipeline ADVANCES `MAX(stream.ts)` on every push:
-// the rows arrive late, but they arrive, and each push carries newer ones than the
-// last. A watch on the charger leaves it FROZEN while pushes keep landing. That
-// distinction contains no lag term at all, needs no fitted estimate (#2146 constraint
-// 2 forbids one), and is invisible to any reader that looks at the frontier ONCE —
-// which is why it had to become stored state.
+// A watch on the wrist behind a slow pipeline ADVANCES `MAX(stream.ts)` ACROSS pushes:
+// the rows arrive late, but they arrive, and the frontier keeps moving forward. A watch
+// on the charger leaves it FROZEN while pushes keep landing. That distinction contains
+// no lag term at all, needs no fitted estimate (#2146 constraint 2 forbids one), and is
+// invisible to any reader that looks at the frontier ONCE — which is why it had to
+// become stored state.
+//
+// ── "on EVERY push" was the false half of that, and it is why N is declared ───
+//
+// #2560. This module used to say a worn watch advances the frontier on every push, and
+// therefore that ONE quiet push is jitter and TWO mean the device stopped. There are
+// two batching stages, not one:
+//
+//     watch --(Bluetooth, batches)--> phone Health Connect --(exporter, ~15 min)--> allos
+//
+// and every measurement behind "two" was taken on the second leg. The exporter pushing
+// every 15 minutes only means it forwards what Health Connect currently HOLDS; the
+// watch's own sync into Health Connect batches independently and coarsely. Measured
+// over 1514 real pushes: 9% carry no new heart-rate rows at all, and the
+// frontier-ADVANCE interval — the quantity this counter is denominated in — runs p90 39
+// / p99 81 minutes. Consecutive quiet pushes with the watch on the wrist the whole time
+// are ordinary, so the bar was set exactly where the false positives live.
+//
+// The fold below is unchanged and was never the problem. What changed is that N is no
+// longer a constant here: it is DECLARED PER STREAM in the source registry
+// (`ContinuousStreamDef.frozenEvidence`), because it counts pushes against one
+// source's delivery chain and a device writing straight into its vendor cloud would
+// need 1.
+//
+// ── #2385: how this would show itself wrong ──────────────────────────────────
+//
+// WORKING: a frozen run that a send fired on is one whose window `hr_minutes` later
+// turns out NOT to have covered — the rows arrive late, so the ground truth is
+// available afterwards for any run, and at N=4 the three k=2 runs that were covered
+// 99–100% no longer fire.
+// WRONG: a real overnight charger event that produces no send, or one detected a full
+// slot attempt later than the wear gap's own end.
+// DECEPTIVE SUCCESS: the count of wear-reminder sends falling. It falls if the bar is
+// simply too high to reach, and it falls hardest on a profile whose watch is always
+// worn — where there was nothing to catch. The measure that is not deceptive is the
+// per-run coverage score above, which distinguishes "sent less" from "stopped lying".
 //
 // This module owns the state transition. It is a fold over the push sequence:
 //
@@ -119,24 +154,6 @@ export function observeFrontier(
   };
 }
 
-/**
- * N — how many successive successful syncs must land WITHOUT advancing the frontier
- * before the source is called stopped.
- *
- * ONE push carrying nothing new is ordinary jitter: the exporter batches, and a push
- * can legitimately land between two of the device's own writes. TWO consecutive ones,
- * with the source syncing ok, means the source has stopped producing. At Health
- * Connect's measured median 16-minute cadence (#2263) that is ~30 minutes of REAL
- * evidence — evidence, not elapsed clock — and it is available at the slot minute.
- *
- * Declared ONCE, here, rather than per stream in the registry: this is a property of
- * what a push MEANS, not of any one stream's wear pattern. What each surface declares
- * for itself is the FLOOR on the frontier's own age (the registry's
- * `quiet.dipToleranceMin` and `reminder.frontierFloorMin`), because that is the part
- * that genuinely differs — one is asked continuously, the other once at a bedtime slot.
- */
-export const FROZEN_SYNC_EVIDENCE = 2;
-
 /** Why the frontier is not (yet) known to be frozen. */
 export type FrontierUnfrozen =
   /** The last push advanced it — the source is producing, however late it arrives. */
@@ -156,10 +173,19 @@ export type FrontierEvidence =
  * `null` means the stream has never been observed — the app was deployed, or the
  * source connected, and no push has landed since. That is deliberately NOT frozen:
  * absence of evidence is not evidence, and the first push repairs it.
+ *
+ * `required` has NO DEFAULT (#2560). It used to be the shared `FROZEN_SYNC_EVIDENCE`
+ * constant declared in this module, on the argument that the bar is a property of what
+ * a push means rather than of any one stream. It is not: the bar counts pushes against
+ * the source's own delivery chain, and this pipeline has a second batching stage
+ * (watch → phone Health Connect) that #2422 never measured. It is now declared per
+ * stream in the registry, with its measurement beside it
+ * (`ContinuousStreamDef.frozenEvidence`), and every caller must resolve one — a
+ * default here is exactly how a stream would inherit another stream's wear pattern.
  */
 export function frontierEvidence(
   syncsSinceAdvance: number | null,
-  required: number = FROZEN_SYNC_EVIDENCE
+  required: number
 ): FrontierEvidence {
   if (syncsSinceAdvance == null)
     return { frozen: false, why: "no-recent-sync" };

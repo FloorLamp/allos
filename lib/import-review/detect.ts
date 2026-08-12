@@ -669,6 +669,32 @@ export function undecidedPairs<T extends { signature: string }>(
   return pairs.filter((p) => !decided.has(p.signature));
 }
 
+// The ids a HIGH-confidence detection says are the SAME SESSION as `activityId`
+// (#2570). Pure; the caller supplies the already-filtered undecided pairs.
+//
+// HIGH ONLY. A `medium` pair is a proximity match — two rows near each other in time
+// with matching magnitudes — and the whole reason it is medium is that a human is
+// meant to look at it. A `high` pair is genuinely overlapping clock windows, which one
+// person cannot produce from two real sessions. Declining a send is cheap; declining
+// it on a proximity guess would silence a second real workout on a busy day.
+//
+// NOT TRANSITIVE, deliberately. `clusterActivityDuplicates` would give the connected
+// group, but a cluster is built from medium pairs too, so transitivity through one
+// would reach rows no high-confidence detection ever linked. Direct high-confidence
+// partners are what the announcement question is actually about.
+export function highConfidenceTwinIds<T extends ActivityDupInput>(
+  pairs: readonly ActivityDupPair<T>[],
+  activityId: number
+): number[] {
+  const out: number[] = [];
+  for (const p of pairs) {
+    if (p.confidence !== "high") continue;
+    if (p.a.id === activityId) out.push(p.b.id);
+    else if (p.b.id === activityId) out.push(p.a.id);
+  }
+  return out;
+}
+
 // The signatures whose recorded decision should keep SUPPRESSING a re-detected pair
 // (#507). A pair is only in the detector's input when BOTH its rows exist again — so a
 // re-detected pair means the pair RE-FORMED. For 'kept-both'/'dismissed' the user ruled
