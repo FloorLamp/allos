@@ -1,7 +1,7 @@
 import type {
   AgeBandedRange,
   BiomarkerDirection,
-  CanonicalBiomarker,
+  CanonicalResultDefinition,
   CyclePhaseRanges,
   MedicalFlag,
   ReproductiveStatus,
@@ -181,7 +181,9 @@ export type OptimalStatus = "optimal" | "above" | "below" | "unknown";
 export function optimalStatus(
   value: number | null | undefined,
   cb:
-    (OptimalFields & Pick<CanonicalBiomarker, "direction">) | null | undefined,
+    | (OptimalFields & Pick<CanonicalResultDefinition, "direction">)
+    | null
+    | undefined,
   sex?: Sex | null,
   age?: number | null
 ): OptimalStatus {
@@ -213,7 +215,7 @@ export function optimalStatus(
 // It never overrides a clinical flag (high/low/abnormal), and only judges when
 // the value converts to the canonical unit and an optimal bound exists.
 export type CanonicalRanges = Pick<
-  CanonicalBiomarker,
+  CanonicalResultDefinition,
   "name" | "unit" | "direction"
 > &
   ReferenceFields &

@@ -3,7 +3,7 @@ import {
   METRIC_DOCUMENT_REACH,
   trendMetricHomeFor,
   hasTrendMetricHome,
-  listedInBiomarkerBrowser,
+  listedInResultsCatalog,
 } from "../trend-metric-analytes";
 import { acronymNameForms } from "../canonical-name";
 import { readingDetailHref } from "../hrefs";
@@ -141,7 +141,7 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
     ])
       expect(trendMetricHomeFor(name), name).toBeNull();
     expect(
-      listedInBiomarkerBrowser({
+      listedInResultsCatalog({
         category: "vitals",
         name: "Heart Rate Variability",
         canonical_name: "Heart Rate Variability",
@@ -382,7 +382,7 @@ describe("what STAYS in the browser (#2365)", () => {
       "import-projection"
     );
     expect(
-      listedInBiomarkerBrowser({
+      listedInResultsCatalog({
         category: "vitals",
         name: "Waist Circumference",
         canonical_name: "Waist Circumference",
@@ -433,17 +433,17 @@ describe("what STAYS in the browser (#2365)", () => {
   });
 });
 
-describe("listedInBiomarkerBrowser scopes the rule to `vitals`", () => {
+describe("listedInResultsCatalog scopes the rule to `vitals`", () => {
   it("drops a homed vitals row and keeps a homeless one", () => {
     expect(
-      listedInBiomarkerBrowser({
+      listedInResultsCatalog({
         category: "vitals",
         name: "Blood Pressure Systolic",
         canonical_name: "Blood Pressure Systolic",
       })
     ).toBe(false);
     expect(
-      listedInBiomarkerBrowser({
+      listedInResultsCatalog({
         category: "vitals",
         name: "Periodontal Probing Depth",
         canonical_name: "Periodontal Probing Depth",
@@ -455,17 +455,17 @@ describe("listedInBiomarkerBrowser scopes the rule to `vitals`", () => {
     // The rule is about the one category that holds two populations. A `scan` body-fat
     // reading is a DEXA measurement and keeps its catalog row; a lab keeps its.
     expect(
-      listedInBiomarkerBrowser({
+      listedInResultsCatalog({
         category: "scan",
         name: "Body Fat Percentage",
         canonical_name: "Body Fat Percentage",
       })
     ).toBe(true);
     expect(
-      listedInBiomarkerBrowser({ category: "lab", name: "LDL Cholesterol" })
+      listedInResultsCatalog({ category: "lab", name: "LDL Cholesterol" })
     ).toBe(true);
     expect(
-      listedInBiomarkerBrowser({ category: "genomics", name: "APOE Genotype" })
+      listedInResultsCatalog({ category: "genomics", name: "APOE Genotype" })
     ).toBe(true);
   });
 
@@ -473,14 +473,14 @@ describe("listedInBiomarkerBrowser scopes the rule to `vitals`", () => {
     // biomarkerNameKey's COALESCE, in JS. A document that printed "BMI" and snapped
     // onto a canonical spelling is one analyte, matched either way.
     expect(
-      listedInBiomarkerBrowser({
+      listedInResultsCatalog({
         category: "vitals",
         name: "BMI",
         canonical_name: null,
       })
     ).toBe(false);
     expect(
-      listedInBiomarkerBrowser({
+      listedInResultsCatalog({
         category: "vitals",
         name: "TEMP",
         canonical_name: "Body Temperature",
@@ -489,7 +489,7 @@ describe("listedInBiomarkerBrowser scopes the rule to `vitals`", () => {
     // A blank canonical name falls through to the printed one rather than matching
     // nothing.
     expect(
-      listedInBiomarkerBrowser({
+      listedInResultsCatalog({
         category: "vitals",
         name: "Oxygen Saturation",
         canonical_name: "   ",

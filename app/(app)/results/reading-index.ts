@@ -24,9 +24,9 @@ import {
 } from "@/lib/derived-table";
 import { parseSortDir } from "@/lib/table-sort";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
-import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
-import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
-import { listedInBiomarkerBrowser } from "@/lib/trend-metric-analytes";
+import { NON_RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
+import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
+import { listedInResultsCatalog } from "@/lib/trend-metric-analytes";
 import { parsePanelId, type PanelId } from "@/lib/biomarker-panels";
 import {
   groupRowsByPanel,
@@ -96,8 +96,10 @@ export function parseReadingFilters(
   // Prescriptions are medications and don't belong in the Readings browser —
   // they live on the document detail view and Supplements & Meds. So they're never
   // a valid `?category=` here, never listed (excludeCategories below), and never
-  // an add-form / filter option (BIOMARKER_CATEGORIES).
-  const category = BIOMARKER_CATEGORIES.includes(searchParams.category as never)
+  // an add-form / filter option (RESULTS_CATALOG_CATEGORIES).
+  const category = RESULTS_CATALOG_CATEGORIES.includes(
+    searchParams.category as never
+  )
     ? searchParams.category
     : undefined;
   // `?panel=` is a normalized panel SLUG (#1502), validated against the closed
@@ -152,7 +154,7 @@ export function readingIndexRows(
   const { category, panel, range, q, sort, dir, current } = filters;
   const storedFilters = {
     category,
-    excludeCategories: NON_BIOMARKER_CATEGORIES,
+    excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
     panel,
     range,
     q,
@@ -166,7 +168,7 @@ export function readingIndexRows(
   // like stored analytes.
   const derivedFilters = {
     category,
-    excludeCategories: NON_BIOMARKER_CATEGORIES,
+    excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
     panel,
     range,
     q,
@@ -219,7 +221,7 @@ export function readingIndexRows(
 // panel header or claims an is_latest marker. Grouping is per analyte family, so
 // removing one leaves every other analyte's rows and markers untouched.
 const listedRows = (rows: ClinicalObservation[]): ClinicalObservation[] =>
-  rows.filter(listedInBiomarkerBrowser);
+  rows.filter(listedInResultsCatalog);
 
 // Resolve every stored row's Reference cell (#2315) — the bands the row's own flag
 // was derived from, or the lab's printed string relabelled when nothing canonical
