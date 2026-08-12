@@ -311,30 +311,48 @@ function upsertManualSample(
 // resolving them against the profile's timezone is exactly what the WhenControl
 // itself would have done (`statedInstantOnDate`); the temperature time lands on
 // the temperature row only, as it always did, and never writes a note again.
+// What one vitals sitting did (#2363) — the twin of `BodyMetricWriteOutcome`, and
+// for the same reason. This answered a bare `boolean`, so a sitting that stated a
+// time the gate refused had nowhere to put the verdict: the readings landed,
+// `occurred_at` went NULL, and the toast said "Measurements saved" with nothing
+// about the minute it discarded. A sitting that also wrote a weight DID report,
+// because the body half already carried the notice — that asymmetry was the bug.
+//
+// `statedTimeRefused` is a NOTICE, never a failure: `wrote` is still true, the rows
+// are still on their own day, and nothing is persisted to chase the user later.
+// Absent whenever nobody stated a time.
+export type VitalsWriteOutcome =
+  { wrote: false } | { wrote: true; statedTimeRefused?: StatedTimeRefusal };
+
 export function insertVitals(
   profileId: number,
   date: string,
   raw: VitalsRawInput,
   occurredAt?: string | null
-): boolean {
-  if (!isRealIsoDate(date)) return false;
+): VitalsWriteOutcome {
+  // A REJECTED submission never reaches the acceptance gate below, so it has no
+  // refusal to report: nothing was written and nothing was judged.
+  if (!isRealIsoDate(date)) return { wrote: false };
   const normalized = normalizeVitalsInput(raw);
-  if ("error" in normalized) return false;
+  if ("error" in normalized) return { wrote: false };
   const { medical, samples, readings } = normalized;
   if (medical.length === 0 && samples.length === 0 && readings.length === 0) {
-    return false;
+    return { wrote: false };
   }
 
   const tz = getTimezone(profileId);
   // The sitting statement, resolved ONCE through the shared boundary so the
   // peak-flow derivation below can only ever use an instant the gate accepted.
   //
-  // `.refused` is COLLAPSED here, and that is #2311's named audit survivor rather
-  // than an oversight: this core answers `boolean`, and the observations it writes
-  // go through `recordReading`, whose outcome has nowhere to carry a refusal either.
-  // #2311 was scoped to the body-metrics half it was reproduced on; widening the
-  // vitals half is a separate change over a different set of callers.
-  const stated = resolveStatedOccurredAt(profileId, date, occurredAt).value;
+  // The verdict is the SITTING'S (#2363), which is why it is taken here rather than
+  // collected from the per-reading outcomes: one statement went through one gate, so
+  // every row `recordReading` writes for this submission carries the identical
+  // verdict on its own outcome, and reading it once cannot disagree with itself.
+  const { value: stated, refused } = resolveStatedOccurredAt(
+    profileId,
+    date,
+    occurredAt
+  );
   // A pre-fold temperature "HH:MM" (a queued intent, or a stale pre-fold tab whose
   // sitting Time was left empty), as an instant on the row's own day — only
   // consulted when the submission carries no sitting INSTANT, because in the
@@ -388,7 +406,9 @@ export function insertVitals(
       measuredAt: at ? `${date}T${at}:00` : null,
     });
   }
-  return true;
+  // The readings landed. If the sitting stated a time and the gate threw it away,
+  // the caller now holds the reason instead of the resolver's shape erasing it.
+  return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
 
 // ── growth (height / head circumference) ───────────────────────────────────────
@@ -968,7 +988,7 @@ export function applyIntent(
       ok = true;
     } else if (intent.flow === "vitals") {
       const p = intent.payload as VitalsPayload;
-      ok = insertVitals(
+      const applied = insertVitals(
         profileId,
         intent.date,
         {
@@ -994,6 +1014,14 @@ export function applyIntent(
         // has `undefined` here — no statement, and the legacy fields above apply.
         p.occurredAt
       );
+      ok = applied.wrote;
+      // A queued sitting is where a fast device clock bites the vitals half, for
+      // the same reason it bites the weigh-in (#2311): the intent carries a
+      // resolved INSTANT because there was no server to ask while offline. The
+      // readings still land, and the reconnect confirmation now says the minute did
+      // not — on the SAME `timeNotice` channel the food flow opened in #2296
+      // (#2363).
+      if (applied.wrote) timeNotice = applied.statedTimeRefused;
     } else {
       // Unknown flow — treat as a permanent rejection (client drops it).
       outcome = { status: "rejected" };

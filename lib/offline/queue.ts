@@ -702,10 +702,7 @@ export function classifySetReplay(outcome: SaveActivityOutcome): {
 // browser passes its own clock, and neither is ever substituted for the other by
 // default. The same discipline `resolveQueuedTakenAt` / `isGivenAtAccepted` take
 // (lib/dose-log-window.ts, #2031).
-export function resolveCapturedInstant(
-  capturedAt: unknown,
-  now: Date
-): string {
+export function resolveCapturedInstant(capturedAt: unknown, now: Date): string {
   if (typeof capturedAt === "string") {
     const t = new Date(capturedAt);
     if (Number.isFinite(t.getTime()) && t.getTime() <= now.getTime()) {

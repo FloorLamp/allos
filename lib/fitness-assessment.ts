@@ -143,6 +143,11 @@ export function saveFitnessEntry(
           ? store.canonical
           : canonicalForStreamKey("body_metrics", store.column);
       if (!canonical) return { ok: false, error: "unknown test" };
+      // No `occurredAt`: a battery test states a DAY, not a clock — the check IS a
+      // session and the day is the whole of its time model. So there is no
+      // statement for the acceptance gate to judge, and the outcome's
+      // `statedTimeRefused` (#2363) is unreachable here by construction rather
+      // than deliberately collapsed.
       const outcome = recordReading(profileId, {
         name: canonical,
         value: input.value,
