@@ -297,6 +297,42 @@ time rather than stored as competing facts. The aligned `time` and `latlng`
 streams remain optional but, when present, drive the ride detail's chart-linked
 route marker without making a map or geocoding request.
 
+**A candidate the source can never answer for (#2196).** Not every candidate leaves
+the missing-row query by succeeding. A deleted or now-private activity answers
+404/403 forever and stores nothing; an indoor or manually-entered ride answers 200
+with no telemetry at all and stores an empty `streams_json` the same predicate
+matches again. Both used to hold the job in `failed` permanently — `remaining` never
+reached zero — while the progress line said "N retrying" about a success that was
+never coming, and the second class is invisible to any rule keyed on HTTP status.
+
+So `remaining` means **still worth asking about**, not "still missing". A run
+classifies each candidate it attempts through `backfillFetchVerdict`
+(`lib/integrations/backfill-outcome.ts`, which owns the HTTP half — 403/404/410 are
+final, everything else including 400, 401 and a network throw stays retryable) plus
+the runner's own "fetched fine, carries no payload" half, and subtracts the final
+ones from `remaining`. The job then reaches `completed`, which is also what stops the
+automatic re-attempt: a completed job is not due.
+
+No give-up marker is stored, deliberately. The verdict is recomputed from the
+source's answer on every run, so a ride made public again, a token re-authorized with
+`activity:read_all`, or an upload Strava has since processed is picked up by the next
+retry — and a wrong verdict is wrong for one run rather than for the life of the row.
+The cost is two requests per unavailable candidate, spent only when a person retries.
+`failed_items` holds both counts because the STATUS already separates them: a
+retryable failure keeps `remaining > 0` and so keeps the job `failed`, which is why
+`backfillFailureLabel` reads a completed job's leftovers as "N unavailable" and
+everything else as "N retrying" without a second column.
+
+**A re-queue resumes, it does not restart (#2195).** `paused` and `failed` are both
+"stopped part-way, imported rows intact", so both preserve `total_items`,
+`completed_items`, `request_count`, `active_seconds` and `started_at` on the next
+manual queue — the earlier run's throughput is what the ETA is computed from, and
+zeroing it made a job that was 60 rides in read "0 of 40". `total` is re-derived as
+`completed + missing` (floored at the prior total) rather than carried forward, so a
+candidate set that has changed since cannot leave the bar describing work that no
+longer exists. `completed` is not resumable: nothing stopped part-way, so a fresh
+queue over newly-imported rides starts at 0 of N.
+
 **One rendering of sync history (#1212 → #1772).** Per-provider sync history —
 the events of `integration_sync_events` with the #674 inserted/updated/unchanged
 split — renders in exactly ONE place per stream. #1212 established that rule by
@@ -462,7 +498,7 @@ card (its own badge, `Last sync: <raw SQLite UTC string> UTC`, and the
 accounting alongside `formatSplitLabel` and the legacy `written` fallback),
 `IntegrationSyncHistoryLink`, and Review's Connected-sources card. Same question,
 different timestamps, different accountings, different affordances depending on
-where you stood. The computation is now `lib/integrations/provider-state.ts`
+where you stood. The computation is now `lib/integrations/source-state.ts`
 (pure) over `getIntegrationState` (`lib/queries/integrations.ts`), and every
 surface FORMATS its answers:
 
