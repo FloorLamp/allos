@@ -1,62 +1,155 @@
 import type Database from "better-sqlite3";
+import { instantNow } from "../clock";
 import { runBootTx } from "./schema-utils";
 import { MIGRATIONS } from "./versions";
 
-// Versioned migration runner (issue #119). A minimal, zero-dependency runner over
-// SQLite's built-in `PRAGMA user_version`. Migrations are ordered, append-only,
-// synchronous TypeScript functions (see lib/migrations/versions/). The whole
-// pre-runner `migrate()` body is migration 001 ("baseline"), frozen; every future
-// schema change is a new numbered migration. This replaces the per-mechanism
-// idempotency schemes (addColumnIfMissing registry, ENUM_CHECKS reconcile, settings
-// flags, rename shims) with one structural guarantee: a version number.
+// Versioned migration runner (issue #119; name-keyed since #2601's follow-up). A
+// minimal, zero-dependency runner whose applied-set lives in a `schema_migrations`
+// ledger table keyed by migration NAME. Migrations are ordered, append-only,
+// synchronous TypeScript functions (see lib/migrations/versions/); the MIGRATIONS
+// array in versions/index.ts is the single ordering authority.
+//
+// TWO ERAS, ONE REGISTRY. Migrations 001–185 are the closed NUMBERED era: their
+// ids are frozen 1-based array positions and their files are hash-locked by the
+// immutability manifest. Everything after them is name-keyed only — a new
+// migration is `versions/YYYYMMDD-slug.ts` with a unique name and NO id, appended
+// LAST to the array. The number was the coordination bottleneck of parallel
+// development (slot reservations, the renumber recipe, a gap failing every DB test
+// at import); a name plus explicit array order keeps the determinism and drops the
+// contention — two branches that each add a migration now conflict only on
+// index.ts, and the resolution is keeping both lines.
+//
+// `PRAGMA user_version` is retained as a monotonic applied-COUNT, for exactly two
+// consumers: releases older than the ledger (their downgrade guard compares
+// user_version against their own migration count, so a ledger-era database must
+// keep it climbing past 185 to make them refuse), and the backup/restore version
+// gate (lib/restore.ts, lib/backup-verify.ts) which compares a snapshot's
+// user_version to the build's migration count. The LEDGER is authoritative;
+// user_version is a tripwire.
 
 export interface Migration {
-  /** 1-based, contiguous, === position in the MIGRATIONS array. */
-  id: number;
-  /** Matches the file slug (e.g. "001-baseline"). */
+  /** Unique; matches the file slug ("001-baseline", "20260812-foo"). */
   name: string;
+  /**
+   * The closed numbered era only (1..185, contiguous, === position). New
+   * migrations OMIT this — the registry assertion refuses a numbered migration
+   * after the first name-keyed one.
+   */
+  id?: number;
   /** Synchronous; runs inside the runner's IMMEDIATE transaction. */
   up(db: Database.Database): void;
 }
 
-// The schema version this DB has been migrated to. 0 on a brand-new DB and on
-// every DB deployed before the runner existed.
+// The applied-count tripwire. 0 on a brand-new DB; on a migrated DB it equals the
+// number of applied migrations (numbered-era stamps and ledger-era bumps agree on
+// that meaning).
 export function readVersion(db: Database.Database): number {
   return db.pragma("user_version", { simple: true }) as number;
 }
 
-// Apply every migration whose id exceeds the DB's current `user_version`, each in
-// its own `BEGIN IMMEDIATE` transaction (via runBootTx's bounded SQLITE_BUSY
+// The applied-set ledger. Created by the runner itself (not by a migration —
+// chicken-and-egg: recording an application needs the table to exist first), so
+// every historical database shape gains it on its next boot. `applied_at` is a
+// canonical UTC+`Z` instant (lib/date.ts convention; minted via instantNow());
+// for rows BACKFILLED from a pre-ledger user_version stamp it records when the
+// backfill ran, not when the migration originally applied — the name is the
+// authoritative fact, the timestamp is provenance.
+export function ensureLedger(db: Database.Database): void {
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (
+       name TEXT PRIMARY KEY,
+       applied_at TEXT NOT NULL
+     )`
+  );
+}
+
+function appliedNames(db: Database.Database): Set<string> {
+  return new Set(
+    (
+      db.prepare(`SELECT name FROM schema_migrations`).all() as {
+        name: string;
+      }[]
+    ).map((r) => r.name)
+  );
+}
+
+// Apply every migration whose name is not yet in the ledger, in array order, each
+// in its own `BEGIN IMMEDIATE` transaction (via runBootTx's bounded SQLITE_BUSY
 // retry). Semantics:
 //
-//   • Downgrade guard: if the DB is at a version HIGHER than this build knows, a
-//     newer release wrote it and we've rolled back to older code — fail the boot
-//     with a clear error rather than limping until the old code hits a shape it
-//     doesn't understand (see below).
+//   • Downgrade guard: a ledger row naming a migration this build does not know
+//     means a newer release wrote this database and the running code has been
+//     rolled back — fail the boot with a clear error rather than limping until the
+//     old code hits a shape it doesn't understand. (The user_version comparison is
+//     kept beside it for databases that predate the ledger.)
 //   • One IMMEDIATE transaction PER migration. `next build` runs several parallel
 //     workers that all import lib/db.ts and race the boot path; IMMEDIATE takes the
 //     write lock at BEGIN (waiting out a peer via busy_timeout), and the
-//     IN-TRANSACTION re-read of user_version is the AUTHORITATIVE dedup — a worker
-//     that lost the race sees the bumped version and no-ops. (PRAGMA user_version
-//     writes are transactional in SQLite and roll back with the txn, but the in-txn
-//     re-read, not the pragma's atomicity, is what guarantees exactly-once.)
-//   • Fresh and upgraded DBs take the SAME path: a fresh DB is just user_version 0
-//     replaying baseline + everything after it, so fresh/upgraded schema divergence
-//     is impossible by construction.
-export function runMigrations(db: Database.Database): void {
-  assertContiguousIds();
+//     IN-TRANSACTION re-read of the ledger row is the AUTHORITATIVE dedup — a
+//     worker that lost the race sees the recorded name and no-ops.
+//   • Fresh and upgraded DBs take the SAME path: a fresh DB is just an empty
+//     ledger replaying baseline + everything after it, so fresh/upgraded schema
+//     divergence is impossible by construction.
+//   • Order divergence is tolerated, deliberately, because it is a DEV-ONLY shape:
+//     production only ever follows main, whose array is append-only, so its
+//     applied set is always a prefix. A dev database that applied a branch's
+//     migration and then merged main (which added one EARLIER in the array) simply
+//     has the missing one applied on the next boot — late relative to array order,
+//     which is exactly what the branch's own database already experienced.
+//
+// `migrations` is injectable for the runner's own tests; production callers pass
+// nothing and get the real registry.
+export function runMigrations(
+  db: Database.Database,
+  migrations: readonly Migration[] = MIGRATIONS
+): void {
+  const legacyCount = assertRegistry(migrations);
 
-  const current = readVersion(db);
-  if (current > MIGRATIONS.length) {
+  runBootTx(db.transaction(() => ensureLedger(db)));
+
+  // Downgrade guards FIRST, so a refused boot writes nothing — most-specific
+  // (a ledger row this build does not know) before the pre-ledger fallback
+  // (a bare user_version ahead of the code).
+  const known = new Set(migrations.map((m) => m.name));
+  const unknown = [...appliedNames(db)].filter((n) => !known.has(n)).sort();
+  if (unknown.length > 0) {
     throw new Error(
-      `Database schema version (user_version = ${current}) is NEWER than this ` +
-        `build knows about (latest migration is ${MIGRATIONS.length}). A newer ` +
-        `release wrote this database and the running code has been rolled back. ` +
-        `Running old code against a newer schema is refused to avoid corruption — ` +
-        `restore the backup that matches this build (see scripts/restore.ts), or ` +
-        `redeploy the newer image.`
+      `Database has applied migration(s) this build does not know about: ` +
+        `${unknown.join(", ")}. A newer release wrote this database and the ` +
+        `running code has been rolled back. Running old code against a newer ` +
+        `schema is refused to avoid corruption — restore the backup that matches ` +
+        `this build (see scripts/restore.ts), or redeploy the newer image.`
     );
   }
+  if (readVersion(db) > migrations.length) {
+    throw new Error(
+      `Database schema version (user_version = ${readVersion(db)}) is NEWER ` +
+        `than this build knows about (this build carries ${migrations.length} ` +
+        `migrations). A newer release wrote this database and the running code ` +
+        `has been rolled back. Running old code against a newer schema is ` +
+        `refused to avoid corruption — restore the backup that matches this ` +
+        `build (see scripts/restore.ts), or redeploy the newer image.`
+    );
+  }
+
+  // Numbered-era backfill, as one IMMEDIATE transaction so parallel boot workers
+  // serialize on it; INSERT OR IGNORE makes the loser's replay a no-op. A
+  // database stamped `user_version = V` by a pre-ledger release has, by that
+  // release's contiguity invariant, applied exactly migrations 1..V.
+  runBootTx(
+    db.transaction(() => {
+      const stamped = Math.min(readVersion(db), legacyCount);
+      if (stamped > 0) {
+        const backfill = db.prepare(
+          `INSERT OR IGNORE INTO schema_migrations (name, applied_at) VALUES (?, ?)`
+        );
+        const at = instantNow();
+        for (let i = 0; i < stamped; i++) backfill.run(migrations[i].name, at);
+      }
+    })
+  );
+
+  const applied = appliedNames(db);
 
   // Apply migrations with foreign_keys DISABLED, restoring the prior setting after
   // (issue #95). SQLite cannot attach a foreign key to an existing column, so a
@@ -72,15 +165,28 @@ export function runMigrations(db: Database.Database): void {
   const fkWasOn = (db.pragma("foreign_keys", { simple: true }) as number) === 1;
   if (fkWasOn) db.pragma("foreign_keys = OFF");
   try {
-    for (const m of MIGRATIONS) {
-      if (m.id <= current) continue;
+    const isApplied = db.prepare(
+      `SELECT 1 FROM schema_migrations WHERE name = ?`
+    );
+    const record = db.prepare(
+      `INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)`
+    );
+    for (const m of migrations) {
+      if (applied.has(m.name)) continue;
       const tx = db.transaction(() => {
-        // Authoritative in-txn dedup: a peer worker may have applied this migration
-        // (and bumped user_version) between our pre-loop read and taking the write
-        // lock. Re-read inside the transaction and no-op if it's already done.
-        if (readVersion(db) >= m.id) return;
+        // Authoritative in-txn dedup: a peer worker may have applied this
+        // migration between our pre-loop read and taking the write lock.
+        if (isApplied.get(m.name)) return;
         m.up(db);
-        db.pragma(`user_version = ${m.id}`);
+        record.run(m.name, instantNow());
+        // Keep the tripwire climbing: a numbered-era migration stamps its own id
+        // (max-guarded so the value never moves backwards); a ledger-era one
+        // bumps past the numbered ceiling by one per application.
+        const next =
+          m.id !== undefined
+            ? Math.max(readVersion(db), m.id)
+            : Math.max(readVersion(db), legacyCount) + 1;
+        db.pragma(`user_version = ${next}`);
       });
       runBootTx(tx);
     }
@@ -89,17 +195,49 @@ export function runMigrations(db: Database.Database): void {
   }
 }
 
-// Defensive invariant: migration ids must be 1-based, contiguous, and match their
-// array position, so `user_version = N` unambiguously means "migrations 1..N have
-// run". A gap or duplicate is a packaging bug (a mis-numbered new migration).
-function assertContiguousIds(): void {
-  MIGRATIONS.forEach((m, i) => {
-    if (m.id !== i + 1) {
+// Registry invariants, checked at boot. The numbered era is a frozen PREFIX:
+// every migration carrying an id sits before every name-keyed one, ids are
+// 1-based, contiguous, and equal to array position (so a pre-ledger stamp
+// `user_version = N` unambiguously names migrations 1..N for the backfill). After
+// the first name-keyed migration, a numbered one is refused — the era is closed,
+// new migrations declare a name only. Names must be unique: they are the ledger's
+// primary key. Returns the numbered-era length.
+function assertRegistry(migrations: readonly Migration[]): number {
+  const seen = new Set<string>();
+  let legacyCount = 0;
+  let namedEraStarted = false;
+  migrations.forEach((m, i) => {
+    if (!m.name) {
       throw new Error(
-        `Migration ordering is broken: MIGRATIONS[${i}] has id ${m.id} ` +
-          `(expected ${i + 1}, name "${m.name}"). Ids must be 1-based and ` +
-          `contiguous — renumber the offending migration.`
+        `MIGRATIONS[${i}] has no name — the name is the identity.`
       );
     }
+    if (seen.has(m.name)) {
+      throw new Error(
+        `Duplicate migration name "${m.name}" — names are the ledger's primary ` +
+          `key and must be unique. Rename the new migration's file and slug.`
+      );
+    }
+    seen.add(m.name);
+    if (m.id !== undefined) {
+      if (namedEraStarted) {
+        throw new Error(
+          `MIGRATIONS[${i}] ("${m.name}") declares id ${m.id} after a name-keyed ` +
+            `migration. The numbered era is CLOSED — new migrations declare a ` +
+            `name only and are appended last.`
+        );
+      }
+      if (m.id !== i + 1) {
+        throw new Error(
+          `Migration ordering is broken: MIGRATIONS[${i}] has id ${m.id} ` +
+            `(expected ${i + 1}, name "${m.name}"). Numbered-era ids are 1-based ` +
+            `and contiguous.`
+        );
+      }
+      legacyCount = m.id;
+    } else {
+      namedEraStarted = true;
+    }
   });
+  return legacyCount;
 }

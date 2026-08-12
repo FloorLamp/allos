@@ -158,7 +158,11 @@ assertions: `lib/__db_tests__/auth.test.ts` asserts a cookie and DB expiry land
 within 1000 ms and measured 1027 ms. The same pressure is the suspected cause
 of container restarts — hence the ~4-agent cap and sequential gates.
 
-## Migration-slot incidents
+## Migration-slot incidents (the era these closed)
+
+The numbered era ended at 185 — migrations are name-keyed now
+(lib/migrations/runner.ts), so this class of incident can no longer occur. It
+is kept because it is the argument for the change:
 
 - Two agents both wrote `165-*.ts` because one brief never mentioned slots — a
   prompt silent on slots is not neutral, it delegates the choice.
@@ -169,6 +173,14 @@ of container restarts — hence the ~4-agent cap and sequential gates.
   claiming 167, the slot the map recorded as free — the ledger is
   authoritative only over dispatches it recorded, so unknown remote `claude/*`
   branches get their trailers read, not assumed.
+- The renumber recipe (merge, `git mv`, bump id + name + comment, re-hash the
+  manifest, grep the old number out of test files, cheap-tier validation) was
+  run three times on the #1059/#1061/#1062 train alone. Under name-keying the
+  same situation is a two-line `index.ts` conflict resolved by keeping both
+  sides.
+- Every slot collision in the 2026-08-12 session was a memory error — the
+  owner's stated reason for wanting the reservation computed, and half the
+  reason the number itself was retired the next day.
 
 ## CI tests the merge commit — the case studies
 

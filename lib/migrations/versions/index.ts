@@ -378,3 +378,14 @@ export const MIGRATIONS: Migration[] = [
   m184,
   m185,
 ];
+
+// The CLOSED numbered era (001–185): ids frozen, each === its array position + 1
+// (asserted by the runner at boot and by lib/__db_tests__/runner.test.ts). The
+// historical-shape tests that rebuild a database "as of migration N" iterate
+// THIS slice — iterating MIGRATIONS and breaking on `m.id >= N` stopped being
+// safe the day name-keyed (id-less) migrations could follow the prefix: the
+// break never fires for them, and the "historical" database silently receives
+// the future.
+export const NUMBERED_MIGRATIONS = MIGRATIONS.filter(
+  (m): m is Migration & { id: number } => m.id !== undefined
+);

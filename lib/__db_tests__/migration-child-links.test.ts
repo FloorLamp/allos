@@ -71,7 +71,10 @@ function linkLiterals(): LinkLiteral[] {
   const out: LinkLiteral[] = [];
   for (const file of fs
     .readdirSync(VERSIONS)
-    .filter((f) => /^\d{3}-.*\.ts$/.test(f))
+    // Both eras: the closed numbered prefix (NNN-slug.ts) and the name-keyed era
+    // after it (YYYYMMDD-slug.ts) — a new migration's CHILD_LINKS must be scanned
+    // regardless of which naming scheme it shipped under.
+    .filter((f) => f.endsWith(".ts") && f !== "index.ts")
     .sort()) {
     const src = fs.readFileSync(path.join(VERSIONS, file), "utf8");
     const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true);

@@ -15,7 +15,7 @@
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { migrate } from "@/lib/db";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { bootTasks } from "@/lib/migrations/boot-tasks";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
@@ -86,7 +86,7 @@ describe("import_jobs 'committing' state — migration 015", () => {
     db.pragma("foreign_keys = OFF");
     // Apply everything BEFORE 015 (baseline still has the old CHECK), seed a profile
     // + a ready job, then apply only 015 and confirm the row survives the rebuild.
-    for (const m of MIGRATIONS) {
+    for (const m of NUMBERED_MIGRATIONS) {
       if (m.id >= 15) break;
       m.up(db);
     }

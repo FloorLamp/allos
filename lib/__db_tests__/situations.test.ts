@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
 import { db, migrate } from "@/lib/db";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import {
   getActiveSituations,
   setActiveSituations,
@@ -143,7 +143,7 @@ describe("migration 029 backfill", () => {
     const d = new Database(":memory:");
     d.pragma("busy_timeout = 10000");
     d.pragma("foreign_keys = OFF");
-    for (const m of MIGRATIONS) {
+    for (const m of NUMBERED_MIGRATIONS) {
       if (m.id >= 29) break;
       m.up(d);
     }

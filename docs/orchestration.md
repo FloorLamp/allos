@@ -55,13 +55,13 @@ error. So every rule in this file that could become a script is one, and when a
 rule has a script, **running the script IS the rule**; if prose and script ever
 disagree, fix the script in the same change, never work around it.
 
-| Script                                     | What it does                                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/orchestrator-checkin.sh`          | The check-in preamble and restart detector — by STATE, not liveness (a canary structurally cannot work; _incidents: §The canary that couldn't_). Compares the disk-persisted boot-id, classifies every worktree LIVE/banked/DONE against `$SCRATCH/.roster`, prints the roster and environment facts. Run it FIRST at every check-in and after any gap in activity.                                |
-| `scripts/orchestration/dispatch-brief.mjs` | `new --branch <b> [--issues 1,2] [--slot] [--e2e]` prints a complete brief with the node-24 path, canonical node_modules, E2E port range, and migration slot **computed**; records the dispatch in a JSONL ledger AND the `$SCRATCH/.roster` line the check-in script reads; enforces the 2-agent e2e cap. `list` shows ages against the completed-median stall threshold; `done <branch>` closes. |
-| `scripts/orchestration/ci-watch.mjs`       | The CI watcher. Derives settlement (identical check set across two consecutive polls, zero pending) instead of hardcoding a count, refuses to poll without a token, exits 3 immediately on a conflict-dirty PR. Exit 0 green / 1 settled red / 2 unsettled-re-invoke / 3 blocked.                                                                                                                  |
-| `scripts/orchestration/agent-gates.sh`     | The gate sequence in the mandated order: lint → typecheck → pure tier → DB tier → e2e-hygiene (when `e2e/` changed) → phi-scan → format LAST. Goes in every brief.                                                                                                                                                                                                                                 |
-| `.github/workflows/ci-main.yml`            | Tests main itself: static analysis + both unit tiers on every push, so a two-green-PRs semantic conflict reds main directly. See **CI tests the merge commit**.                                                                                                                                                                                                                                    |
+| Script                                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/orchestrator-checkin.sh`          | The check-in preamble and restart detector — by STATE, not liveness (a canary structurally cannot work; _incidents: §The canary that couldn't_). Compares the disk-persisted boot-id, classifies every worktree LIVE/banked/DONE against `$SCRATCH/.roster`, prints the roster and environment facts. Run it FIRST at every check-in and after any gap in activity.                                                        |
+| `scripts/orchestration/dispatch-brief.mjs` | `new --branch <b> [--issues 1,2] [--e2e]` prints a complete brief with the node-24 path, canonical node_modules, and E2E port range **computed** (plus the name-keyed migration convention block); records the dispatch in a JSONL ledger AND the `$SCRATCH/.roster` line the check-in script reads; enforces the 2-agent e2e cap. `list` shows ages against the completed-median stall threshold; `done <branch>` closes. |
+| `scripts/orchestration/ci-watch.mjs`       | The CI watcher. Derives settlement (identical check set across two consecutive polls, zero pending) instead of hardcoding a count, refuses to poll without a token, exits 3 immediately on a conflict-dirty PR. Exit 0 green / 1 settled red / 2 unsettled-re-invoke / 3 blocked.                                                                                                                                          |
+| `scripts/orchestration/agent-gates.sh`     | The gate sequence in the mandated order: lint → typecheck → pure tier → DB tier → e2e-hygiene (when `e2e/` changed) → phi-scan → format LAST. Goes in every brief.                                                                                                                                                                                                                                                         |
+| `.github/workflows/ci-main.yml`            | Tests main itself: static analysis + both unit tiers on every push, so a two-green-PRs semantic conflict reds main directly. See **CI tests the merge commit**.                                                                                                                                                                                                                                                            |
 
 ## Environment facts (verify before trusting; the volatile ones say so)
 
@@ -337,9 +337,11 @@ diagnosing any red; every class there recurred at least once.
   raw names, auth gates stay in actions.
 - Tests at the tier that can SEE the bug (builder input-layer bugs need
   DB-tier fixtures).
-- Cross-PR conflicts among in-flight branches (same AGENTS.md line, same
-  migration number) — plan merge order and who resolves.
-- Migration hygiene: append-only, manifest regenerated, number announced.
+- Cross-PR conflicts among in-flight branches (same AGENTS.md line, two
+  migrations appending to `versions/index.ts`) — plan merge order and who
+  resolves.
+- Migration hygiene: append-only, manifest entry in the same diff, the new
+  file appended LAST to the array (see **Migrations are name-keyed**).
 - Has this branch sat while a shared signature moved? See **CI tests the merge
   commit**.
 - Flag owner-visible judgment calls in the review so the owner can veto
@@ -354,45 +356,33 @@ diagnosing any red; every class there recurred at least once.
 - **Verify a PR's claims about pre-existing bugs** — a bug a change introduces
   and then fixes is not a bug it found (#2537).
 
-## Migration slots
+## Migrations are name-keyed — the slot system is retired
 
-The slot map lives in the dispatch ledger, not in the orchestrator's head:
-`dispatch-brief.mjs new --slot` computes the next free number from
-`origin/main` plus active reservations, prints the full slot line (including
-the unhonorable-until-earlier-merges warning), and records the reservation so
-it survives the session; `done <branch>` releases it. The mechanism it
-encodes:
+Migrations stopped being numbered (lib/migrations/runner.ts): the applied set
+lives in the `schema_migrations` ledger keyed by NAME, migrations 001–185 are
+the closed numbered era, and a new migration is `versions/YYYYMMDD-slug.ts`
+appended LAST to the `MIGRATIONS` array with its hash added to
+`manifest.json`. There is nothing to reserve, no renumber recipe, and no gap
+that can fail the suite — the whole coordination protocol this section used to
+carry (slot map, tentative reservations, unhonorable-until-merged, the 6-step
+renumber done 3×) existed to manage a contended integer, and the integer is
+gone (_incidents: §Migration-slot incidents_ records what it cost).
 
-- Every reservation is TENTATIVE — whoever merges second renumbers. Every
-  brief states the slot line, INCLUDING the negative case ("you have NO slot —
-  if you conclude you need one, STOP and report"), and says what is already ON
-  MAIN (_incidents: §Migration-slot incidents_).
-- **A gap is a total failure, not a migration-test failure** —
-  `assertContiguousIds` runs inside `createDb()`, so a gap fails EVERY DB test
-  file and every browser shard at import. Say so when reserving a non-next
-  slot.
-- **A later slot is unhonorable until the earlier one MERGES.** An agent
-  holding N+1 builds on N and renumbers only after N lands. Message the agent
-  the moment N's fate is known.
-- **Owner PRs preempt reservations** — every reserved in-flight slot shifts up
-  one; message each affected agent rather than letting them find it in CI.
-- **Another Claude session may hold a slot you think is free** — check
-  `git ls-remote --heads origin` for branches you did not create (the
-  generator warns about them) and read the `Claude-Session:` trailer.
+What remains the orchestrator's job:
 
-**Renumber recipe** (done 3× on the #1059/#1061/#1062 train), one PR at a
-time:
-
-1. `git merge origin/main`;
-2. `git mv NNN-slug.ts MMM-slug.ts`, bump its `id:` + `name:` + inline comment;
-3. fix `lib/migrations/versions/index.ts` — MAIN's import PLUS yours; append
-   `mMMM` to the array;
-4. `prettier --write`, `sha256sum`, hash under the new filename key in
-   `manifest.json` (keep main's entries);
-5. grep the OLD number in test files — `migration-NNN-*.test.ts`, its import
-   path, the profile-scoping allowlist's PRAGMA entry;
-6. validate cheap-first: `migration-immutability` + db-tier `migrate`/`runner`
-   - `typecheck` (always typecheck after a hand-resolved conflict).
+- **Merge-order = migration order.** Two PRs adding migrations conflict only in
+  `versions/index.ts`; the resolution is keeping BOTH sides (both import
+  lines, both array entries) — whichever lands second appends after the first.
+  Never reorder already-merged entries.
+- **The generated brief carries the convention** (dispatch-brief.mjs prints it
+  in every brief); an agent needs no per-dispatch migration facts anymore.
+- **A dev database that applied a branch's migration** and then merged main is
+  handled by the runner (the missing earlier migration applies late); if a
+  branch is ABANDONED, its migration name stays in that dev DB's ledger and the
+  runner will refuse it as unknown — recreate the dev database.
+- **Review still checks**: shipped files untouched (hash manifest), the new
+  file appended LAST, its name unique and date-slug shaped, manifest entry in
+  the same diff.
 
 ## CI tests the merge commit, not your branch
 

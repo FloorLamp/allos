@@ -12,7 +12,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up113 } from "@/lib/migrations/versions/113-saved-items";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
@@ -32,7 +32,7 @@ interface SavedRow {
 function preFoldDb(): Database.Database {
   const db = new Database(":memory:");
   db.pragma("foreign_keys = OFF");
-  for (const m of MIGRATIONS) {
+  for (const m of NUMBERED_MIGRATIONS) {
     if (m.id >= SAVED_ITEMS_MIGRATION) break;
     m.up(db);
   }

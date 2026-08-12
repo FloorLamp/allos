@@ -33,7 +33,7 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/183-food-event-occurred-at";
 import { eventInstant, recordInstant } from "@/lib/row-instants";
 
@@ -41,7 +41,7 @@ import { eventInstant, recordInstant } from "@/lib/row-instants";
 function schemaAt(maxId: number): Database.Database {
   const mem = new Database(":memory:");
   mem.pragma("foreign_keys = OFF");
-  for (const m of MIGRATIONS) if (m.id <= maxId) m.up(mem);
+  for (const m of NUMBERED_MIGRATIONS) if (m.id <= maxId) m.up(mem);
   return mem;
 }
 

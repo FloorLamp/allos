@@ -2,7 +2,8 @@
 //
 // The orchestration runbook's dispatch template was pasted into agent briefs
 // BY HAND, with the volatile values — node 24 path, canonical node_modules,
-// E2E port range, migration slot — filled in from memory. Every documented
+// E2E port range, and (in the numbered-migration era) the slot — filled in
+// from memory. Every documented
 // drift incident in that template's history is a hand-fill error: `PORT=`
 // where the harness reads `E2E_PORT` (two agents sharing ports and
 // manufacturing flakes), a pinned node patch version that went stale within
@@ -15,14 +16,18 @@
 // Usage:
 //   node scripts/orchestration/dispatch-brief.mjs new --branch <branch> \
 //     [--worktree wt-<name>] [--issues 123,456] [--task "one line"] \
-//     [--slot] [--e2e] [--port-base N]
+//     [--e2e] [--port-base N]
 //   node scripts/orchestration/dispatch-brief.mjs list
 //   node scripts/orchestration/dispatch-brief.mjs done <branch>
 //
 // `new` prints a complete brief block (stdout) and appends a ledger entry.
 // `list` shows active dispatches with ages, flagging anything past 3x the
 //   median completed-dispatch duration (the runbook's stall threshold).
-// `done` closes a dispatch, freeing its port range and slot reservation.
+// `done` closes a dispatch, freeing its port range.
+//
+// Migration slots are RETIRED: migrations are name-keyed (lib/migrations/
+// runner.ts), so the brief carries a fixed convention block instead of a
+// computed reservation.
 //
 // Ledger location: $ALLOS_DISPATCH_LEDGER, else $SCRATCH/allos-dispatch-ledger.jsonl,
 // else /tmp/allos-dispatch-ledger.jsonl. The ledger is orchestration state,
@@ -155,46 +160,6 @@ function canonicalNodeModules() {
   return { path: nm, verified: ok };
 }
 
-// Highest migration id on origin/main — the slot map's ground truth. Reading
-// the REF (not the working tree) means a stale checkout can't hand out a slot
-// main already owns; `git fetch origin main` first is still on the caller.
-function maxMigrationOnMain() {
-  // -r is required: without it, a path-filtered ls-tree lists the DIRECTORY
-  // entry itself and the parse below sees zero migrations.
-  const listing =
-    git("ls-tree -r --name-only origin/main -- lib/migrations/versions", {
-      allowFail: true,
-    }) ||
-    fs.readdirSync(path.join(repoRoot, "lib/migrations/versions")).join("\n");
-  let max = 0;
-  for (const name of listing.split("\n")) {
-    const m = /^(?:lib\/migrations\/versions\/)?(\d{3})-/.exec(name.trim());
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  if (max === 0) {
-    throw new Error(
-      "could not read any migration ids from origin/main — refusing to hand out a slot. " +
-        "Run `git fetch origin main` and retry."
-    );
-  }
-  return max;
-}
-
-// Best-effort: remote claude/* branches this ledger has no record of. Another
-// Claude session's branch once claimed a slot this orchestrator's map recorded
-// as free — the ledger is authoritative only over dispatches it recorded.
-function unknownRemoteBranches(active) {
-  const out = git("ls-remote --heads origin", { allowFail: true });
-  if (out === null) return null;
-  const known = new Set(active.map((d) => d.branch));
-  return out
-    .split("\n")
-    .map((line) => line.split("\t")[1])
-    .filter((ref) => ref?.startsWith("refs/heads/claude/"))
-    .map((ref) => ref.slice("refs/heads/".length))
-    .filter((branch) => !known.has(branch));
-}
-
 // Port ranges: 200 apart so each worktree has headroom for its worker count,
 // skipping 6000-6099 (Next refuses X11-reserved ports — an agent lost a round
 // discovering port 6000 won't boot).
@@ -211,42 +176,23 @@ function allocatePortBase(active) {
 
 // --- brief -----------------------------------------------------------------
 
-function slotLine({ reserve, active, maxOnMain }) {
-  if (!reserve) {
-    return (
-      "- Migration slot: you have NONE — if you conclude you need one, STOP and report\n" +
-      "  rather than taking a number."
-    );
-  }
-  const reserved = active.map((d) => d.slot).filter(Boolean);
-  const slot = Math.max(maxOnMain, ...reserved, 0) + 1;
-  let line =
-    `- Migration slot: your slot is ${String(slot).padStart(3, "0")}; ` +
-    `${String(maxOnMain).padStart(3, "0")} and ${String(maxOnMain - 1).padStart(3, "0")} are already on main.`;
-  if (slot > maxOnMain + 1) {
-    const holders = active
-      .filter((d) => d.slot)
-      .map((d) => `${String(d.slot).padStart(3, "0")} (${d.branch})`);
-    line +=
-      `\n  In-flight reservations ahead of you: ${holders.join(", ")}. Your slot is\n` +
-      "  UNHONORABLE until they merge — build on the reserved number below yours and\n" +
-      "  renumber when its fate is known. A gap fails EVERY DB test file at import\n" +
-      "  (assertContiguousIds), so a wall of red on unrelated tests means the slot\n" +
-      "  below you has not landed, not that your migration is broken.";
-  }
-  return { line, slot };
-}
+// Migrations are NAME-KEYED (the numbered era closed at 185 — see
+// lib/migrations/runner.ts), so there is no slot to reserve and every brief
+// carries the same convention block.
+const MIGRATION_LINES = `- Migrations are NAME-KEYED — there is NO slot to reserve. If your work needs a
+  schema change: create lib/migrations/versions/YYYYMMDD-<slug>.ts exporting
+  { name: "YYYYMMDD-<slug>", up } (no id), append it LAST to the MIGRATIONS array
+  in versions/index.ts, and add its sha256 to lib/migrations/manifest.json in the
+  same change. Never edit a shipped migration. If index.ts conflicts when you
+  merge origin/main, keep BOTH sides (both import lines, both array entries —
+  merge order is the order) and re-run the DB tier.`;
 
 function buildBrief(opts) {
   const node24 = discoverNode24();
   const nm = canonicalNodeModules();
-  const maxOnMain = maxMigrationOnMain();
   const rows = readLedger();
   const active = activeDispatches(rows);
   const portBase = opts.portBase ?? allocatePortBase(active);
-  const slotInfo = slotLine({ reserve: opts.slot, active, maxOnMain });
-  const slot = typeof slotInfo === "object" ? slotInfo.slot : null;
-  const slotText = typeof slotInfo === "object" ? slotInfo.line : slotInfo;
 
   const nodeLine = node24
     ? `- export PATH=${node24}:$PATH in EVERY shell (verify better-sqlite3 loads)`
@@ -289,7 +235,7 @@ ${nodeLine}
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
 ${issueLines}
-${slotText}
+${MIGRATION_LINES}
 - Immediately before opening the PR: git merge origin/main && npm run typecheck.
   A signature that widened while you worked is not a textual conflict.
 - Gates: run bash scripts/orchestration/agent-gates.sh from the worktree root — it
@@ -321,7 +267,7 @@ ${slotText}
 - Return: PR number/URL, per-issue fix summary, VERBATIM gate results (say plainly if
   something failed — never report a green you did not see), surprises`;
 
-  return { brief, portBase, slot, active };
+  return { brief, portBase, active };
 }
 
 // --- commands ---------------------------------------------------------------
@@ -329,7 +275,6 @@ ${slotText}
 function parseArgs(argv) {
   const opts = {
     issues: [],
-    slot: false,
     e2e: false,
     portBase: null,
     task: null,
@@ -344,7 +289,10 @@ function parseArgs(argv) {
         .map((s) => s.trim())
         .filter(Boolean);
     else if (a === "--task") opts.task = argv[++i];
-    else if (a === "--slot") opts.slot = true;
+    else if (a === "--slot")
+      throw new Error(
+        "--slot is retired: migrations are name-keyed (no reservation needed) — the brief already carries the convention"
+      );
     else if (a === "--e2e") opts.e2e = true;
     else if (a === "--port-base") opts.portBase = Number(argv[++i]);
     else throw new Error(`unknown flag: ${a}`);
@@ -357,7 +305,7 @@ function cmdNew(argv) {
   if (!opts.branch) {
     console.error(
       "usage: dispatch-brief.mjs new --branch <branch> [--worktree wt-x] [--issues 1,2]" +
-        ' [--task "..."] [--slot] [--e2e] [--port-base N]'
+        ' [--task "..."] [--e2e] [--port-base N]'
     );
     process.exit(2);
   }
@@ -373,7 +321,7 @@ function cmdNew(argv) {
     process.exit(1);
   }
 
-  const { brief, portBase, slot } = buildBrief(opts);
+  const { brief, portBase } = buildBrief(opts);
   const entry = {
     at: new Date().toISOString(),
     status: "active",
@@ -381,7 +329,6 @@ function cmdNew(argv) {
     worktree: opts.worktree,
     issues: opts.issues,
     task: opts.task,
-    slot,
     portBase,
     e2e: opts.e2e,
   };
@@ -396,21 +343,8 @@ function cmdNew(argv) {
   console.log(brief);
   console.error(
     `\n[ledger] recorded in ${ledgerPath} — port base ${portBase}` +
-      (slot ? `, slot ${slot}` : ", no slot") +
       `. Close with: dispatch-brief.mjs done ${opts.branch}`
   );
-
-  const unknown = unknownRemoteBranches(activeDispatches(readLedger()));
-  if (unknown === null) {
-    console.error(
-      "[ledger] could not list remote branches — check ls-remote by hand before trusting a slot."
-    );
-  } else if (unknown.length) {
-    console.error(
-      `[ledger] CAUTION: ${unknown.length} remote claude/* branch(es) this ledger never dispatched — ` +
-        `they may hold unannounced migration slots:\n  ${unknown.join("\n  ")}`
-    );
-  }
 }
 
 function cmdList() {
@@ -431,7 +365,7 @@ function cmdList() {
       const age = Date.now() - Date.parse(d.at);
       const stalled = median !== null && age > 3 * median;
       console.log(
-        `  ${d.branch}  age=${fmt(age)}  port=${d.portBase}${d.slot ? `  slot=${d.slot}` : ""}` +
+        `  ${d.branch}  age=${fmt(age)}  port=${d.portBase}` +
           `${d.e2e ? "  [e2e]" : ""}${d.issues?.length ? `  issues=${d.issues.join(",")}` : ""}` +
           (stalled
             ? "  << past 3x median — STALL until proven otherwise (check worktree + transcript bytes)"
@@ -466,17 +400,19 @@ function cmdDone(argv) {
   }
   appendLedger({ at: new Date().toISOString(), status: "done", branch });
   rosterClose(branch);
-  console.log(
-    `closed ${branch} — freed port base ${entry.portBase}` +
-      (entry.slot ? ` and slot reservation ${entry.slot}` : "")
-  );
+  console.log(`closed ${branch} — freed port base ${entry.portBase}`);
 }
 
 const [cmd = "new", ...rest] = process.argv.slice(2);
-if (cmd === "new") cmdNew(rest);
-else if (cmd === "list") cmdList();
-else if (cmd === "done") cmdDone(rest);
-else {
-  console.error(`unknown command: ${cmd} (expected new | list | done)`);
-  process.exit(2);
+try {
+  if (cmd === "new") cmdNew(rest);
+  else if (cmd === "list") cmdList();
+  else if (cmd === "done") cmdDone(rest);
+  else {
+    console.error(`unknown command: ${cmd} (expected new | list | done)`);
+    process.exit(2);
+  }
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
 }
