@@ -23,6 +23,7 @@ import {
   setManualUpdateFallback,
   subscribeStaleBuild,
 } from "./update-reload-channel";
+import { useLatestRef } from "./useLatestRef";
 
 // The tab that takes the deploy by itself (#2471) — the wiring half. Every decision
 // it makes is `autoReloadPlan` in lib/sw-update.ts; this file owns listeners, the
@@ -98,14 +99,12 @@ export function useAutoUpdateReload({
   const [captureRefused, setCaptureRefused] = useState(false);
   const lastInputRef = useRef(0);
   const lastSubmitRef = useRef(0);
-  const pendingRef = useRef(pending);
-  const targetShaRef = useRef(targetSha);
-  const commitMessageRef = useRef(commitMessage);
-  const machineryReloadRef = useRef(machineryReload);
-  pendingRef.current = pending;
-  targetShaRef.current = targetSha;
-  commitMessageRef.current = commitMessage;
-  machineryReloadRef.current = machineryReload;
+  // The evaluation tick and the reload routine both outlive any one render, so they
+  // read the latest COMMITTED props rather than a render's snapshot.
+  const pendingRef = useLatestRef(pending);
+  const targetShaRef = useLatestRef(targetSha);
+  const commitMessageRef = useLatestRef(commitMessage);
+  const machineryReloadRef = useLatestRef(machineryReload);
 
   // Input activity, watched at the document in the capture phase so nothing can stop
   // it from being seen. Passive: this only ever reads a timestamp.
@@ -184,7 +183,7 @@ export function useAutoUpdateReload({
     takingRef.current = true;
     machineryReloadRef.current();
     return true;
-  }, []);
+  }, [targetShaRef, commitMessageRef, machineryReloadRef]);
 
   // Publish the shared routine for the surviving manual affordances, so a tap
   // reloads through exactly the same flush-then-marker sequence.
@@ -228,7 +227,7 @@ export function useAutoUpdateReload({
       unsubscribeStale();
       document.removeEventListener("visibilitychange", evaluate);
     };
-  }, [pending, targetSha, captureRefused, takeUpdate]);
+  }, [pending, targetSha, captureRefused, takeUpdate, pendingRef, targetShaRef]);
 
   // The manual affordances render off ONE answer, wherever they are in the tree.
   const fallback = showsManualUpdateNotice(verdict);
@@ -246,11 +245,7 @@ function readGuard(target: string) {
     // No storage means no guard, and an unrationed automatic reload is exactly the
     // loop the ration exists to prevent — so answer "spent for this target" rather
     // than "clear", and let the manual affordance be the remedy.
-    return {
-      target,
-      attempts: Number.MAX_SAFE_INTEGER,
-      at: Date.now(),
-    };
+    return { targets: [target], at: Date.now() };
   }
 }
 

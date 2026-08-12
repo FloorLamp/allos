@@ -240,35 +240,40 @@ export default function ActivityEditorProvider({
     if (!marker || marker.formKey !== "activity") return;
     reopenedRef.current = true;
     if (marker.recordId != null) return;
-    if (!marker.live) {
+    if (marker.live && restricted) return;
+    // Reopening is a response to state this document booted with, not a render this
+    // one derives — queue it with the other post-commit work rather than cascading a
+    // second render straight out of the effect body.
+    queueMicrotask(() => {
+      if (!marker.live) {
+        setEditData(null);
+        setCreateDate(null);
+        setPrefill(null);
+        setLive(false);
+        setLiveStartEpoch(null);
+        setMinimized(false);
+        setDocked(dockElRef.current != null);
+        setOpen(true);
+        return;
+      }
+      // Live mode rides its existing rails: presence still decides that a session
+      // exists, and the marker only spares the user the "Resume workout" tap.
+      if (liveEditData) {
+        resumeLive();
+        return;
+      }
+      // A live session the deploy caught before its first save has no server row to
+      // resume from — the create form in live mode IS the session, and its draft is
+      // the whole of it.
       setEditData(null);
       setCreateDate(null);
       setPrefill(null);
-      setLive(false);
-      setLiveStartEpoch(null);
+      setLive(true);
+      setLiveStartEpoch(Date.now());
       setMinimized(false);
-      setDocked(dockElRef.current != null);
+      setDocked(false);
       setOpen(true);
-      return;
-    }
-    // Live mode rides its existing rails: presence still decides that a session
-    // exists, and the marker only spares the user the "Resume workout" tap.
-    if (restricted) return;
-    if (liveEditData) {
-      resumeLive();
-      return;
-    }
-    // A live session the deploy caught before its first save has no server row to
-    // resume from — the create form in live mode IS the session, and its draft is
-    // the whole of it.
-    setEditData(null);
-    setCreateDate(null);
-    setPrefill(null);
-    setLive(true);
-    setLiveStartEpoch(Date.now());
-    setMinimized(false);
-    setDocked(false);
-    setOpen(true);
+    });
   }, [liveEditData, resumeLive, restricted]);
 
   // A fresh-load active session: nothing is mounted in this client, but the

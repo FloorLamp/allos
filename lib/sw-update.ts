@@ -496,15 +496,27 @@ export function skewRecoveryPlan({
  */
 export const AUTO_RELOAD_KEY = "allos-auto-reload";
 export const AUTO_RELOAD_WINDOW_MS = 60_000;
+/** At most one automatic attempt per target build, per window. */
 export const AUTO_RELOAD_MAX_ATTEMPTS = 1;
+/**
+ * …and at most this many DISTINCT targets per window, whatever the server says.
+ *
+ * The per-target rule alone is not a bound. Two servers mid-rolling-deploy answering
+ * A, B, A, B each look like a fresh target to a guard that only remembers the last
+ * one, so the tab would reload forever while each individual target stayed within its
+ * ration. Remembering the SET is what closes that, and the total cap is what keeps
+ * three servers from doing the same thing more slowly. Two is generous: a genuine
+ * second deploy inside one 60s window, under one open tab, is not a thing that
+ * happens on a single-operator instance.
+ */
+export const AUTO_RELOAD_MAX_TARGETS = 2;
 
 /** The target name used when a trigger knows a deploy happened but not which build. */
 export const AUTO_RELOAD_UNNAMED_TARGET = "unnamed";
 
 export type AutoReloadGuard = {
-  /** The build this tab was trying to reach. */
-  target: string;
-  attempts: number;
+  /** The builds this tab has already tried to reach in this window. */
+  targets: string[];
   /** When the window opened — the first attempt's timestamp, not the last. */
   at: number;
 };
@@ -517,38 +529,53 @@ export function parseAutoReloadGuard(
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
-    const { target, attempts, at } = parsed as Record<string, unknown>;
-    if (typeof target !== "string" || target === "") return null;
-    if (typeof attempts !== "number" || typeof at !== "number") return null;
-    if (!Number.isFinite(attempts) || !Number.isFinite(at)) return null;
-    return { target, attempts, at };
+    const { targets, at } = parsed as Record<string, unknown>;
+    if (!Array.isArray(targets) || targets.length === 0) return null;
+    if (!targets.every((t) => typeof t === "string" && t !== "")) return null;
+    if (typeof at !== "number" || !Number.isFinite(at)) return null;
+    return { targets: targets as string[], at };
   } catch {
     return null;
   }
 }
 
-/** Attempts that still count: same window AND same target, or nothing. */
-function autoReloadAttempts(
+/** The guard, or null when its window has aged out and it counts for nothing. */
+function liveGuard(
   guard: AutoReloadGuard | null,
-  target: string,
   now: number
-): number {
-  if (!guard) return 0;
-  if (guard.target !== target) return 0;
+): AutoReloadGuard | null {
+  if (!guard) return null;
   const age = now - guard.at;
-  if (age < 0 || age > AUTO_RELOAD_WINDOW_MS) return 0;
-  return guard.attempts;
+  if (age < 0 || age > AUTO_RELOAD_WINDOW_MS) return null;
+  return guard;
 }
 
-/** The guard to store when taking an attempt. A new target opens a new window. */
+/** Whether the automatic path has nothing left to spend on this target. */
+export function autoReloadRationSpent({
+  guard,
+  target,
+  now,
+}: {
+  guard: AutoReloadGuard | null;
+  target: string;
+  now: number;
+}): boolean {
+  const live = liveGuard(guard, now);
+  if (!live) return false;
+  if (live.targets.includes(target)) return true;
+  return live.targets.length >= AUTO_RELOAD_MAX_TARGETS;
+}
+
+/** The guard to store when taking an attempt. An aged-out window opens a new one. */
 export function nextAutoReloadGuard(
   guard: AutoReloadGuard | null,
   target: string,
   now: number
 ): AutoReloadGuard {
-  const counted = autoReloadAttempts(guard, target, now);
-  if (counted === 0 || !guard) return { target, attempts: 1, at: now };
-  return { target, attempts: counted + 1, at: guard.at };
+  const live = liveGuard(guard, now);
+  if (!live) return { targets: [target], at: now };
+  if (live.targets.includes(target)) return live;
+  return { targets: [...live.targets, target], at: live.at };
 }
 
 /**
@@ -643,7 +670,7 @@ export function autoReloadPlan({
 }): AutoReloadVerdict {
   if (!staleBuild && !pending) return { action: "none" };
   const target = targetSha ?? AUTO_RELOAD_UNNAMED_TARGET;
-  if (autoReloadAttempts(guard, target, now) >= AUTO_RELOAD_MAX_ATTEMPTS) {
+  if (autoReloadRationSpent({ guard, target, now })) {
     return { action: "hold", reason: "ration-spent" };
   }
   if (unrecoverableWork) {
