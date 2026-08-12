@@ -102,7 +102,7 @@ npx vitest run -t "estimate1RM"
 CI runs formatting, lint, type checking, PHI scanning, a non-blocking full
 dependency audit plus a blocking high-severity audit gate, both coverage-gated
 test tiers, changed Playwright specs repeated three times at zero retries, and
-the full browser suite in eight shards. Documentation-only changes skip the
+the full browser suite in twelve shards. Documentation-only changes skip the
 browser matrix. `.github/workflows/e2e-full.yml` provides the manually
 dispatched full-suite census. Pre-commit runs Prettier through lint-staged and
 `phi-scan --staged`.
