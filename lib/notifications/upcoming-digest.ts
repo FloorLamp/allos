@@ -64,6 +64,13 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   "med-monitor": "monitoring lab",
   goal: "goal",
   training: "training target",
+  // The nutrition and mobility weekly-floor targets (#2578). Same tier and the same
+  // digest reach as `training` — they were already counted inside this digest's
+  // training line before the identity split, so they stay in DOMAIN_SEQ under their
+  // own nouns rather than quietly leaving the message. No new send, no new schedule:
+  // the same line, one honest noun each.
+  "nutrition-target": "nutrition target",
+  "mobility-target": "mobility target",
   // A wellness-practice weekly target (#1259). Coaching-tier (calm) — its OWN pace-aware
   // nudge is the push channel, so it's deliberately omitted from DOMAIN_SEQ and never
   // counted in this digest; the exhaustive Record needs the noun.
@@ -139,6 +146,8 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
   "biomarker",
   "goal",
   "training",
+  "nutrition-target",
+  "mobility-target",
 ];
 
 // A surfaced "why" for a high-priority item (issue #656 item 3): the item's title

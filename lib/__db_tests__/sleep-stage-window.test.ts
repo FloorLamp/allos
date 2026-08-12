@@ -19,6 +19,10 @@ import {
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import { getSleepStageComposition } from "@/lib/queries";
+import {
+  getLastNightSummary,
+  LAST_NIGHT_STAGE_DAYS,
+} from "@/lib/queries/sleep";
 import { setTimezone } from "@/lib/settings";
 
 // Nights of stage history seeded — comfortably past every window under test.
@@ -127,5 +131,33 @@ describe("getSleepStageComposition is bounded by the window it is asked for (#25
     const counted = countStageRowsRead();
     expect(getSleepStageComposition(profileId, 500)).toHaveLength(NIGHTS);
     expect(counted.rows()).toBe(NIGHTS * STAGES_PER_NIGHT);
+  });
+});
+
+// The FIFTH instance of the same class (#2551). `getLastNightSummary` calls
+// getSleepStageDailyTotals directly and was left out of #2546's sweep, so it kept
+// running on the function's own 180-day default — to read a single key out of the
+// map it builds. It backs the dashboard's sleep tile and the /sleep hero, both
+// uncached on every render, which makes it the most expensive place in the app to
+// have left unbounded.
+describe("getLastNightSummary reads only the nights it needs (#2551)", () => {
+  it("bounds the stage read to a week, and still answers about last night", () => {
+    const counted = countStageRowsRead();
+    const summary = getLastNightSummary(profileId)!;
+
+    // Unchanged answer: the newest wake-day, with its stage stack.
+    expect(summary.wakeDay).toBe(wakeDays[0]);
+    expect(summary.durationMin).toBe(420);
+    expect(summary.stages).toEqual({
+      deep: 60,
+      rem: 90,
+      light: 250,
+      awake: 20,
+    });
+    // The bound is the READ: a week of stage rows, not the thirty nights seeded
+    // here and not the 180 the default would have scanned.
+    expect(LAST_NIGHT_STAGE_DAYS).toBe(7);
+    expect(counted.rows()).toBe(LAST_NIGHT_STAGE_DAYS * STAGES_PER_NIGHT);
+    expect(counted.rows()).toBeLessThan(NIGHTS * STAGES_PER_NIGHT);
   });
 });

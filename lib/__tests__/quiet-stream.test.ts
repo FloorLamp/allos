@@ -46,6 +46,10 @@ import {
 const HOUR = 60;
 // The declared Health Connect heart-rate tolerance: 2.5 h, the measured valley.
 const TOLERANCE = 150;
+// The declared evidence bar for the same stream (#2560), READ from the registry rather
+// than restated here: this test must not be able to disagree with the declaration.
+const EVIDENCE = continuousStream("health-connect", "heart-rate")!.stream
+  .frozenEvidence.syncs;
 
 /** The measured off-wrist signature, with one field at a time overridden. */
 function offWrist(over: Partial<QuietStreamSignals> = {}): QuietStreamSignals {
@@ -57,10 +61,11 @@ function offWrist(over: Partial<QuietStreamSignals> = {}): QuietStreamSignals {
     // 21:05 → 06:24, the worst of the five measured events: the watch spent the night
     // on the charger and the profile lost its only sleep night in eight weeks.
     minutesSinceStream: 9 * HOUR + 19,
-    // Frozen across two successive pushes (#2341) — the evidence that the SOURCE
-    // stopped, as distinct from the pipeline running late.
-    syncsSinceAdvance: 2,
+    // Frozen across the DECLARED number of successive pushes (#2341/#2560) — the
+    // evidence that the SOURCE stopped, as distinct from the pipeline running late.
+    syncsSinceAdvance: EVIDENCE,
     toleranceMin: TOLERANCE,
+    frozenSyncs: EVIDENCE,
     ...over,
   };
 }
@@ -107,11 +112,15 @@ describe("quietStreamVerdict (#2146)", () => {
     });
   });
 
-  it("does NOT fire on one quiet push, or with no observation at all (constraint 1)", () => {
-    // One push carrying nothing new is jitter. NONE at all is the PHONE being off,
-    // not the watch: #1685's staleness detector owns that and already names it, so
-    // reporting it here would be two rows and two voices for one fault.
-    expect(quietStreamVerdict(offWrist({ syncsSinceAdvance: 1 }))).toEqual({
+  it("does NOT fire below the declared bar, or with no observation at all (constraint 1)", () => {
+    // A push carrying nothing new is jitter — and since #2560 the number of them that
+    // still counts as jitter is the stream's own declaration, because the watch batches
+    // into Health Connect independently of the exporter's push. NONE at all is the
+    // PHONE being off, not the watch: #1685's staleness detector owns that and already
+    // names it, so reporting it here would be two rows and two voices for one fault.
+    expect(
+      quietStreamVerdict(offWrist({ syncsSinceAdvance: EVIDENCE - 1 }))
+    ).toEqual({
       quiet: false,
       skip: "no-recent-sync",
     });
@@ -298,6 +307,17 @@ describe("the registry declaration", () => {
     expect(hc?.stream.reminder?.because).toMatch(/lag/i);
   });
 
+  it("declares the frozen-evidence bar on the STREAM, at the measured four (#2560)", () => {
+    // The ruling #2560 asked for. It was one shared constant in lib/stream-frontier.ts,
+    // defended as "a property of what a push MEANS, not of any one stream's wear
+    // pattern" — and every measurement behind it was taken on the exporter → allos leg
+    // only. The watch → Health Connect leg batches independently and coarsely, so how
+    // many quiet pushes mean anything is a property of THIS source's delivery chain.
+    const hc = continuousStream("health-connect", "heart-rate");
+    expect(hc?.stream.frozenEvidence.syncs).toBe(4);
+    expect(hc?.stream.frozenEvidence.because).toMatch(/batch/i);
+  });
+
   it("exempts a provider with no continuous streams BY CONSTRUCTION (constraint 3)", () => {
     // No exemption list anywhere in lib/: a source with nothing continuous to
     // deliver simply declares nothing, and the detector never sees it. This is the
@@ -362,6 +382,12 @@ describe("the registry declaration", () => {
         expect(stream.reminder.frontierFloorMin).toBeGreaterThan(0);
         expect(stream.reminder.because.length).toBeGreaterThan(40);
       }
+      // And so does the frozen-evidence bar (#2560). Required, not optional: a stream
+      // with no declaration would silently inherit another pipeline's batching, which
+      // is exactly the defect that moved this number out of lib/stream-frontier.ts.
+      expect(stream.frozenEvidence.syncs).toBeGreaterThan(0);
+      expect(Number.isInteger(stream.frozenEvidence.syncs)).toBe(true);
+      expect(stream.frozenEvidence.because.length).toBeGreaterThan(40);
     }
   });
 });

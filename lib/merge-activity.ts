@@ -21,6 +21,7 @@ import {
   orderDropsForFold,
 } from "./import-review/detect";
 import { deletePairDecision } from "./queries/integrations";
+import { carryPostWorkoutMarker } from "./notifications/post-workout-marker";
 import { parsePayload, type MergeUndoContext, type Row } from "./undo-delete";
 
 // What writeActivityFold actually moved for one dropped row, returned so an undoable
@@ -193,6 +194,23 @@ export function writeActivityFold(
       movedSegmentEffortIds,
     });
   }
+
+  // THE ANNOUNCEMENT FACT (#2570). Everything above carries a dropped row's DATA onto
+  // the keeper — sets, routes, telemetry, laps, segment efforts, videos, and the fold
+  // columns. This carries the one thing about a dropped row that is not data and is
+  // not recoverable from it: that the user has already been told about this session.
+  //
+  // It belongs HERE, at the point where the identity the marker is keyed on is
+  // destroyed, and it fixes every merge path at once — the unattended auto-merge that
+  // manufactured the third send, the Review resolver, and the Training Log's manual
+  // pair merge — for the same reason the child re-parenting lives here: no caller can
+  // forget it. Read BEFORE the caller's delete, which is why it is inside the fold and
+  // not beside it.
+  carryPostWorkoutMarker(
+    profileId,
+    keepId,
+    moves.map((m) => m.dropId)
+  );
 
   writeKeeperFoldState(profileId, keepId, state);
   return moves;

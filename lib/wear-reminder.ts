@@ -53,15 +53,38 @@
 //
 // A watch on a wrist behind a slow pipeline ADVANCES the frontier on every push. A
 // watch on a charger leaves it FROZEN while pushes keep landing. lib/stream-frontier.ts
-// owns that observation; N = 2 pushes is its evidence bar, which at the measured
-// 16-minute median cadence is ~30 minutes of evidence, available at the slot minute.
+// owns that observation; N is the stream's DECLARED evidence bar, resolved from the
+// registry by the gather and passed in as `frozenSyncs`.
+//
+// ── The lag term the frontier test still contained (#2560) ────────────────────
+//
+// N was 2, shared across every stream, and on 2026-08-11 this sent again — at the
+// 23:00 attempt of the 22:00 slot, on a night `hr_minutes` shows 60/60 minutes in every
+// hour from 22:00 through 05:24. The pipeline satisfied both conditions; the wrist
+// satisfied neither. #2422 replaced an elapsed-time quantity with a movement quantity,
+// which is better, but the movement quantity is not lag-free either: the watch batches
+// into phone Health Connect independently of the exporter's push, so consecutive
+// healthy pushes carry nothing new while the watch records every minute. Measured, the
+// frontier-advance interval is p90 39 minutes against a 40-minute floor — the two
+// conditions co-fire on ONE long batch instead of cross-checking each other.
+//
+// Every frozen run in 28 days separates cleanly: every clean false positive was k=2,
+// every true detection k>=5. The bar moved to 4, and it moved INTO THE REGISTRY, beside
+// the floor, because what it measures is this source's delivery chain.
+//
+// THE CEILING THIS DOES NOT RAISE, stated so it is not rediscovered: on 29 Jul the
+// watch was off 21:12–22:28 and no send fired at any N, because a push at 22:08
+// delivered 31 minutes of heart rate recorded BEFORE 21:12 and advanced the frontier
+// mid-gap. A backlog draining through a real wear gap resets the counter, and raising N
+// makes that strictly worse. Nothing about a frontier can fix it.
 //
 // The floor is DECLARED, not learned (#2146 constraint 2), and since #2341 it is
 // declared in the REGISTRY beside the quiet facet's own tolerance
 // (`reminder.frontierFloorMin`), not as a constant here. Its value is unchanged at 40
 // minutes and its meaning is not: it bounds the frontier's own age, a quantity with no
-// lag term in it, and it exists so that a watch put down minutes before a late bedtime
-// is not announced on the strength of two quiet pushes.
+// lag term in it. At N=4 it is DOMINATED — four quiet pushes is ~64 minutes, so the
+// frontier is always well past 40 — and it is kept anyway, because it costs nothing and
+// still states the intent. It simply stopped being load-bearing.
 //
 // The two detectors stay disjoint exactly as before, restated: with the phone off, no
 // push lands, so nothing is ever OBSERVED frozen — that is #1685's connection outage,
@@ -121,8 +144,12 @@ export interface BedtimeWearSignals {
    * a constant in this module again (#2341).
    */
   floorMin: number;
-  /** Override for tests; defaults to the shared FROZEN_SYNC_EVIDENCE. */
-  frozenSyncs?: number;
+  /**
+   * N — the watched stream's DECLARED `frozenEvidence.syncs`, resolved by the caller.
+   * Required since #2560: it used to be an optional override over a shared constant,
+   * and a shared constant is how one stream inherits another pipeline's batching.
+   */
+  frozenSyncs: number;
 }
 
 export type BedtimeWearSkip =

@@ -142,6 +142,14 @@ filtered as prose and the one carrying a DIGIT is not. A JSON field literally
 named `key` counts as an identifier. Fix by renaming to a word-shaped value,
 never by allowlisting: an allowlist is permanent and a rename costs nothing.
 
+And a red gitleaks is not always a finding (#2592): the job downloads its own
+binary, and an unguarded fetch redded the check having scanned nothing — three
+unrelated PRs inside eight minutes, in two different curl signatures
+(`(22) 503` and `(56) Connection died`, whose "tried 5 times" is curl's
+internal connection reuse, not `--retry`). #2592 gave the download
+`--retry 5 --retry-all-errors`, pinned the archive by sha256, and made every
+install failure emit a `gitleaks did not run` annotation.
+
 ## Container load, measured (#2398)
 
 Several worktrees running gates at once pushed `npm run test:db` to ~6× normal

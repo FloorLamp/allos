@@ -78,6 +78,29 @@ export const INTEGRATIONS: IntegrationDef[] = [
         // watch nobody has worn for three days is not "quiet", it is put away, and a
         // row about it every morning is how a surface earns being ignored.
         expectedActive: { windowDays: 3, minDays: 2 },
+        // THE DECISION'S EVIDENCE BAR (#2560). Four quiet pushes, not two.
+        frozenEvidence: {
+          syncs: 4,
+          because:
+            "Measured over 1514 pushes of one real profile since 15 Jul, " +
+            "decomposing integration_sync_events.inserted against " +
+            "integration_sync_rows so the count is hr_minutes rows exactly. The " +
+            "watch batches into phone Health Connect independently of the " +
+            "exporter's own ~15-minute push, and coarsely: single pushes in one " +
+            "evening delivered 324, 195, 183, 165 and 164 minutes of heart rate at " +
+            "once. So 9% of ALL pushes carry no new hr_minutes at all — a quiet " +
+            "push is ordinary, not rare — and the FRONTIER-ADVANCE interval, which " +
+            "is the quantity this bar is counted in, runs median 16 / p75 25 / p90 " +
+            "39 / p95 51 / p99 81 / max 183 min, over 30 min 19.6% of the time. At " +
+            "N=2 that p90 sits on top of the 40-minute floor, so ONE long batch " +
+            "satisfies both conditions at once instead of them cross-checking each " +
+            "other. Every frozen run in 28 days, scored against whether hr_minutes " +
+            "(late but arriving) covered the frozen window: every clean false " +
+            "positive was k=2, every true detection k>=5. At N=4 the three false " +
+            "sends go, both real wear gaps that touched a slot attempt are still " +
+            "caught, and the cost is one slot attempt of latency on 24 Jul — on a " +
+            "gap the user closed by 22:28 unprompted either way.",
+        },
         quiet: {
           // A FLOOR on the frontier's age since #2341, not the discriminator. The
           // measurement below is what places it; what changed is the quantity it

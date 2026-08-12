@@ -36,6 +36,7 @@ import {
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
 import { STEPS_PACE_PREFIX } from "./steps-target";
+import { biomarkerKeyLabel, titleizeKeyTail } from "./biomarker-key-label";
 import { PR_CARDIO_PREFIX, PR_STRENGTH_PREFIX } from "./dismissal-keys";
 import { formatNotifyTime } from "./notifications/schedule";
 
@@ -65,12 +66,9 @@ export function orphanSuppressionDisplay(): SuppressedKeyDisplay {
 // Capitalize each word of a subject parsed out of a lowercased key so it reads
 // as a name ("bench press" → "Bench Press"). Keys store subjects lowercased;
 // the original casing is gone, so title case is the honest approximation.
-function titleize(s: string): string {
-  return s
-    .split(/\s+/)
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(" ");
-}
+// Shared with lib/biomarker-key-label.ts, which uses it as ITS last resort after the
+// two lookups that can recover a real spelling.
+const titleize = titleizeKeyTail;
 
 // One resolver entry: the key namespace it owns and the label template over the
 // key's tail (the part after the prefix).
@@ -283,9 +281,15 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
   },
   { prefix: "goal:", domain: "Due & scheduled", label: () => "Goal check-in" },
   {
+    // Every weekly FLOOR target — training, nutrition and mobility scopes alike —
+    // shares this id-keyed namespace (trainingSignalKey, #245). The key carries only
+    // the target id, so this pure resolver cannot know the scope; "Training target"
+    // therefore asserted something it could not check, and asserted it wrongly for the
+    // food-group and mobility rows #2578 found on the page. "Weekly target" is what
+    // the key actually says.
     prefix: "training:",
     domain: "Due & scheduled",
-    label: () => "Training target",
+    label: () => "Weekly target",
   },
   {
     // The outdoor-session planning item (#1724 part 5) — "Saturday is the best window
@@ -321,11 +325,14 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     label: () => "Medication monitoring",
   },
   // ---- Biomarkers ----------------------------------------------------------
+  // Both tails are an IDENTITY, not a name — `family:<key>` for a registered family
+  // (#482/#564/#1193), a lowercased analyte name otherwise — so both resolve through
+  // the shared biomarkerKeyLabel rather than title-casing the raw tail (#2578).
   {
     prefix: "biomarker-flag:",
     domain: "Biomarkers",
     label: (t) => {
-      const n = titleize(t);
+      const n = biomarkerKeyLabel(t);
       return n ? `Flagged result — ${n}` : "Flagged result";
     },
   },
@@ -333,15 +340,19 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: "biomarker:",
     domain: "Biomarkers",
     label: (t) => {
-      const n = titleize(t);
+      const n = biomarkerKeyLabel(t);
       return n ? `Retest — ${n}` : "Biomarker retest";
     },
   },
   {
+    // The trajectory key keeps the analyte's ORIGINAL casing
+    // (`trajectory:LDL Cholesterol:<rule>`), so its subject needs no recovery — but it
+    // is still a biomarker name, so it shares the same resolver: a family identity
+    // here would resolve, and a curated spelling is returned unchanged.
     prefix: "trajectory:",
     domain: "Biomarkers",
     label: (t) => {
-      const n = titleize(part(t, 0));
+      const n = biomarkerKeyLabel(part(t, 0));
       return n ? `Trajectory — ${n}` : "Trajectory note";
     },
   },

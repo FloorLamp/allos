@@ -43,15 +43,22 @@ import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
 } from "@/components/FoodGroupIcon";
 
-// Three-letter weekday labels indexed by 0=Sun … 6=Sat, overlaid on the grid.
+// Three-letter weekday labels indexed by 0=Sun … 6=Sat, one per grid row.
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Cell geometry, shared by the cells and the overlaid label offsets. The
+// Cell geometry, shared by the cells and the axis-label offsets. The
 // calendar cell GROWS from the 24px base to fill the container when the
 // window is short (a 4-week range gets ~34px cells, 13 weeks keeps 24).
 const CAL_CELL = 24;
 const CAL_CELL_MAX = 34;
 const CAL_GAP = 3;
+// The calendar's RESERVED axis gutters (#2582). A text-xs label's line box is 16px
+// and "Wed" needs about 27px, so a 16px header row and a 30px left column hold the
+// month and weekday labels entirely OUTSIDE the grid. Both are also the offset every
+// absolutely-positioned label adds, because they are padding on the labels' own
+// containing block.
+const CAL_LABEL_H = 16;
+const CAL_LABEL_W = 30;
 const MTX_CELL_W = 18;
 const MTX_CELL_H = 26;
 const MTX_GAP = 2;
@@ -61,19 +68,31 @@ const MTX_STEP = MTX_CELL_W + MTX_GAP;
 // calendar gets for free from its columns.
 const MTX_WEEK_GAP = 5;
 
-// Calendar axis labels stay overlaid so its compact seven-row overview keeps
-// every pixel of width. The matrix gets a real reserved header below: date
-// labels must never cover the quantity cells they explain.
-const OVERLAY_LABEL =
-  "pointer-events-none absolute rounded-sm bg-white/70 px-1 text-xs font-semibold uppercase tracking-wide text-slate-700 backdrop-blur-[2px] dark:bg-ink-950/60 dark:text-slate-200";
+// Calendar axis labels, in the reserved gutters above and to the left of the grid
+// (#2582). They USED to be overlaid on the grid itself with a `bg-white/70` +
+// `backdrop-blur-[2px]` chip, which bought one cell of width at the cost of the one
+// thing a heatmap has: in a heatmap the cell's fill level IS the data, so a
+// translucent chip on top of it made a covered day read as a LOWER level than it had.
+// A month chip's 16px line box, hung 6px above the grid, reached 10px into the first
+// row's 24px cells; a "Mon" chip was wider than a whole 24px cell in column 0. Now
+// they sit outside the grid box, which also means they need no background at all —
+// the same rule the matrix half already states for its reserved date header — and
+// their typography is the shared `.section-label` primitive rather than a hand-roll.
+const AXIS_LABEL = "section-label pointer-events-none absolute";
 
 // The horizontal scroll wrapper both halves share. A small, breakpoint-free
 // gutter escape uses nearly all available width without assuming which shell
 // owns the page padding. Its matching inner padding leaves focus/selection
 // rings room at the clipped edges.
 const SCROLLER = "-mx-1 overflow-x-auto px-1 pb-1 pt-2";
-const MATRIX_LABEL_FADE =
-  "bg-gradient-to-r from-white/70 via-white/70 via-[82%] to-transparent dark:from-ink-950/70 dark:via-ink-950/70";
+// The matrix's sticky row-label backdrop. OPAQUE, and that is the whole point
+// (#2582): a sticky first column necessarily sits over cells at every scroll offset
+// past zero — that is what "frozen column" means, and the cells it hides are reachable
+// by scrolling — but a 70%-opacity gradient over them made those cells DIMLY VISIBLE,
+// i.e. showing a level they do not have. Hidden is honest; washed out is not. The
+// blur went with it, for the same reason.
+const MATRIX_LABEL_BG =
+  "bg-white dark:bg-ink-950 border-r border-black/5 dark:border-white/10";
 const PANE_TITLE = "text-sm font-semibold text-slate-800 dark:text-slate-100";
 const PANE_META = "text-xs text-slate-500 dark:text-slate-400";
 const PANE_ROW = "text-xs text-slate-700 dark:text-slate-200";
@@ -422,6 +441,10 @@ export default function DayHistory({
         el.clientWidth -
         parseFloat(cs.paddingLeft) -
         parseFloat(cs.paddingRight) -
+        // The reserved weekday gutter is inside the scroller and is NOT available to
+        // the cells (#2582) — leaving it out here would size a short window's cells
+        // to overflow the container by exactly one gutter.
+        CAL_LABEL_W -
         (shownWeeks - 1) * CAL_GAP;
       setCalCell(
         Math.max(
@@ -957,9 +980,11 @@ export default function DayHistory({
             : ""
         }`}
       >
-        {/* Calendar half: coverage. Labels are OVERLAID on the grid (no gutter
-          rows/columns), so the cells themselves get the full width — on a
-          phone the window fills the screen edge to edge. */}
+        {/* Calendar half: coverage. The month and weekday labels sit in RESERVED
+          gutters (a 16px header row, a 30px left column — #2582), never on the
+          cells: the fill level is the data, so nothing translucent may sit on
+          top of it. The cost is one cell of width; the cost of the overlay was
+          a day reading as a level lighter than it is. */}
         {calendar && (
           <section
             aria-labelledby={`${testId}-calendar-title`}
@@ -971,7 +996,16 @@ export default function DayHistory({
               className={SCROLLER}
               data-testid="day-history-calendar"
             >
-              <div className="relative inline-block align-top">
+              {/* The gutters are PADDING on the labels' own containing block, so
+                every absolute offset below simply adds them and the flex grid needs
+                no change. */}
+              <div
+                className="relative inline-block align-top"
+                style={{
+                  paddingTop: CAL_LABEL_H,
+                  paddingLeft: CAL_LABEL_W,
+                }}
+              >
                 <div className="flex">
                   {calendar.columns.map((col, ci) => (
                     <div key={ci} className="flex flex-col">
@@ -1061,28 +1095,38 @@ export default function DayHistory({
                     </div>
                   ))}
                 </div>
+                {/* Month names ride the reserved header row, aligned to the column
+                  that opens the month. */}
                 {calendar.monthLabels.map((m) => (
                   <span
                     key={m.col}
+                    data-testid="day-history-month-label"
                     aria-hidden="true"
-                    className={`${OVERLAY_LABEL} -top-1.5 z-2`}
-                    style={{ left: m.col * calStep }}
+                    className={`${AXIS_LABEL} top-0 leading-4`}
+                    style={{ left: CAL_LABEL_W + m.col * calStep }}
                   >
                     {m.label}
                   </span>
                 ))}
-                {calendar.weekdayOrder.map((wd, row) =>
-                  row % 2 === 1 ? (
-                    <span
-                      key={row}
-                      aria-hidden="true"
-                      className={`${OVERLAY_LABEL} -left-1 z-2`}
-                      style={{ top: row * calStep + (calCell - 16) / 2 }}
-                    >
-                      {DOW[wd]}
-                    </span>
-                  ) : null
-                )}
+                {/* ALL SEVEN weekdays, right-aligned in the reserved left column.
+                  Only alternating rows were labelled before, so finding Tue meant
+                  counting rows — an artifact of the labels colliding with the cells
+                  they were sitting on, not a choice worth keeping once they no
+                  longer do (#2582). */}
+                {calendar.weekdayOrder.map((wd, row) => (
+                  <span
+                    key={row}
+                    data-testid="day-history-weekday-label"
+                    aria-hidden="true"
+                    className={`${AXIS_LABEL} left-0 text-right leading-4`}
+                    style={{
+                      top: CAL_LABEL_H + row * calStep + (calCell - 16) / 2,
+                      width: CAL_LABEL_W - 4,
+                    }}
+                  >
+                    {DOW[wd]}
+                  </span>
+                ))}
               </div>
             </div>
           </section>
@@ -1091,8 +1135,8 @@ export default function DayHistory({
         {/* Week strip: the aggregate half at week grain. One row, one cell per
           week — the 7-row day-of-week shape means nothing when every cell IS a
           week, and `ActiveDaysStrip` is the in-app precedent. Month names ride
-          above the weeks that open a month, the same overlay the calendar uses
-          for its columns. */}
+          the same reserved header row the calendar uses (#2582): its 12px
+          padding left a 16px chip 4px inside the cells. */}
         {strip && (
           <section
             aria-labelledby={`${testId}-calendar-title`}
@@ -1104,7 +1148,10 @@ export default function DayHistory({
               className={SCROLLER}
               data-testid="day-history-strip"
             >
-              <div className="relative inline-block align-top pt-3">
+              <div
+                className="relative inline-block align-top"
+                style={{ paddingTop: CAL_LABEL_H }}
+              >
                 <div className="flex">
                   {strip.cells.map((cell, ci) => {
                     const isSelected = selectedDay === cell.date;
@@ -1170,8 +1217,9 @@ export default function DayHistory({
                 {strip.monthLabels.map((m) => (
                   <span
                     key={m.col}
+                    data-testid="day-history-month-label"
                     aria-hidden="true"
-                    className={`${OVERLAY_LABEL} top-0 z-2`}
+                    className={`${AXIS_LABEL} top-0 leading-4`}
                     style={{ left: m.col * (MTX_CELL_W + MTX_GAP) }}
                   >
                     {m.label}
@@ -1440,7 +1488,7 @@ export default function DayHistory({
                 unambiguous. */}
               <div className="relative h-6" aria-hidden="true">
                 <span
-                  className={`sticky left-0 z-[3] block h-full w-24 backdrop-blur-[2px] sm:w-28 ${MATRIX_LABEL_FADE}`}
+                  className={`sticky left-0 z-[3] block h-full w-24 sm:w-28 ${MATRIX_LABEL_BG}`}
                 />
                 {axisLabels.map(({ index: i, label }) =>
                   matrixMarkerIndexes.some(
@@ -1547,7 +1595,7 @@ export default function DayHistory({
                           title={row.foldedKeys.map(labelFor).join(", ")}
                           data-matrix-label
                           aria-label={`${row.label}; expand ${row.foldedKeys.map(labelFor).join(", ")}`}
-                          className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end gap-1 self-stretch px-3 text-xs font-medium text-brand-700 backdrop-blur-[2px] hover:font-semibold sm:w-28 dark:text-brand-400 ${MATRIX_LABEL_FADE}`}
+                          className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end gap-1 self-stretch px-3 text-xs font-medium text-brand-700 hover:font-semibold sm:w-28 dark:text-brand-400 ${MATRIX_LABEL_BG}`}
                           {...rowHoverProps}
                           onFocus={() => {
                             setDetail(rowSummary);
@@ -1566,7 +1614,7 @@ export default function DayHistory({
                           role="rowheader"
                           data-matrix-label
                           aria-label={rowSummary}
-                          className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end self-stretch px-3 text-xs text-slate-600 backdrop-blur-[2px] transition-colors hover:text-slate-900 sm:w-28 dark:text-slate-300 dark:hover:text-slate-100 ${MATRIX_LABEL_FADE}`}
+                          className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end self-stretch px-3 text-xs text-slate-600 transition-colors hover:text-slate-900 sm:w-28 dark:text-slate-300 dark:hover:text-slate-100 ${MATRIX_LABEL_BG}`}
                           title={row.label}
                           {...rowHoverProps}
                         >

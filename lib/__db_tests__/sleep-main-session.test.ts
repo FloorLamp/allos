@@ -21,6 +21,7 @@ import {
 import {
   getSleepSignal,
   getSleepSessions,
+  getDailySleepSessionsSince,
   getMainSleepNightlyMinutes,
   getLastNightSummary,
   getSleepStageComposition,
@@ -354,6 +355,189 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
     expect(summary.durationMin).toBe(270); // 4h30 asleep, not the 5h window
     expect(summary.bedMinutes).toBe(23 * 60);
     expect(summary.wakeMinutes).toBe(4 * 60);
+  });
+});
+
+// Two sources on ONE wake-day, describing two different things (#2552). The nap
+// read used to elect one source per calendar DAY — the additive rule, right for a
+// day's total and wrong for a list of events — so the day's winning source took
+// every row of the losing one with it, including a whole overnight session.
+//
+// THE TRIGGER IS CROSS-SOURCE, NOT MANUAL. #2552 tells the story with a
+// hand-logged nap, which cannot happen: the only manual sleep writer is the
+// measurements quick-add (lib/offline/writes.ts), which stores a duration-only row
+// at `date||'T00:00:00'` for BOTH ends, and every session read filters on
+// `julianday(end_time) > julianday(start_time)`. A manual sleep row is therefore
+// never a session at all. What IS reachable is two syncing sources: a ring
+// reporting the night while the phone's Health Connect reports an afternoon nap.
+// health-connect outranks oura in SOURCE_PREFERENCE, so the nap won the day and the
+// ring's entire overnight vanished — the exact failure #2552 describes, arrived at
+// by the door that is actually open.
+//
+// What is pinned here is the DROPPED case, not the happy path: the nap must still
+// be a nap, the overnight must still be the night, and the night's stage stack must
+// still be on the chart.
+//
+// NOT asserted here, deliberately: `getLastNightSummary` on this same fixture. It
+// reads `getSleepSessions`, which elects a whole SOURCE STREAM for the profile and
+// falls back to "the source of the newest session" — so the afternoon nap flips the
+// entire session history onto the phone and the hero reads 45 minutes. That is a
+// different election at a different grain (a stream, not a day), with its own #14
+// rationale behind it, and it is reported separately rather than widened into here.
+describe("one wake-day, two sources, two real sessions (#2552)", () => {
+  let crossId: number;
+  let wakeDay: string;
+  let priorDay: string;
+
+  beforeAll(() => {
+    crossId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('NapCrossSource')").run()
+        .lastInsertRowid
+    );
+    setTimezone(crossId, "UTC");
+    wakeDay = today(crossId);
+    priorDay = shiftDateStr(wakeDay, -1);
+
+    // The ring's overnight, with its stage rows on the same window.
+    upsertMetricSamples(
+      crossId,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          420,
+          `${priorDay}T23:00:00Z`,
+          `${wakeDay}T06:00:00Z`
+        ),
+        session(
+          "sleep_deep_min",
+          wakeDay,
+          60,
+          `${priorDay}T23:00:00Z`,
+          `${wakeDay}T06:00:00Z`
+        ),
+        session(
+          "sleep_rem_min",
+          wakeDay,
+          90,
+          `${priorDay}T23:00:00Z`,
+          `${wakeDay}T06:00:00Z`
+        ),
+        session(
+          "sleep_light_min",
+          wakeDay,
+          250,
+          `${priorDay}T23:00:00Z`,
+          `${wakeDay}T06:00:00Z`
+        ),
+        session(
+          "sleep_awake_min",
+          wakeDay,
+          20,
+          `${priorDay}T23:00:00Z`,
+          `${wakeDay}T06:00:00Z`
+        ),
+      ],
+      "oura"
+    );
+    // …and the phone's afternoon nap the same wake-day. Nothing about it overlaps
+    // the night, so it is not a competing account of the night.
+    upsertMetricSamples(
+      crossId,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          45,
+          `${wakeDay}T13:00:00Z`,
+          `${wakeDay}T13:45:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+  });
+
+  it("keeps the phone's nap AND the ring's overnight", () => {
+    const naps = getNapHistory(crossId);
+    expect(naps.today).toEqual([
+      {
+        date: wakeDay,
+        startMinutes: 13 * 60,
+        endMinutes: 13 * 60 + 45,
+        durationMin: 45,
+        source: "health-connect",
+      },
+    ]);
+    // The 7h overnight is the NIGHT, so it must not appear as a nap either — the
+    // failure ran both ways round: the night vanished, and with it the only session
+    // that could have made the nap a nap.
+    expect(naps.history).toHaveLength(1);
+  });
+
+  it("keeps that night's stage stack on the chart", () => {
+    expect(getSleepStageComposition(crossId)).toContainEqual({
+      date: wakeDay,
+      deep: 60,
+      rem: 90,
+      light: 250,
+      awake: 20,
+    });
+  });
+
+  it("hands the nap read both sessions, one per source", () => {
+    // The read itself, under the surfaces: two rows, because the day held two
+    // events. The day-grained election returned one.
+    const rows = getDailySleepSessionsSince(crossId, priorDay)
+      .map((row) => ({ source: row.source, value: row.value }))
+      .sort((left, right) => left.value - right.value);
+    expect(rows).toEqual([
+      { source: "health-connect", value: 45 },
+      { source: "oura", value: 420 },
+    ]);
+  });
+
+  it("still collapses two sources describing the SAME night to one", () => {
+    // The de-duplication the day-grained election was there for, and the reason the
+    // fix narrows the bucket instead of removing it. Two wearables reporting one
+    // overnight OVERLAP, so exactly one survives — by preference, which puts
+    // health-connect above oura — and no phantom "nap" is left behind.
+    const dupId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('NapDupNight')").run()
+        .lastInsertRowid
+    );
+    setTimezone(dupId, "UTC");
+    const day = today(dupId);
+    const before = shiftDateStr(day, -1);
+    upsertMetricSamples(
+      dupId,
+      [
+        session(
+          "sleep_min",
+          day,
+          420,
+          `${before}T23:00:00Z`,
+          `${day}T06:00:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+    upsertMetricSamples(
+      dupId,
+      [
+        session(
+          "sleep_min",
+          day,
+          410,
+          `${before}T22:50:00Z`,
+          `${day}T05:40:00Z`
+        ),
+      ],
+      "oura"
+    );
+    expect(
+      getDailySleepSessionsSince(dupId, before).map((row) => row.source)
+    ).toEqual(["health-connect"]);
+    expect(getNapHistory(dupId).history).toEqual([]);
   });
 });
 

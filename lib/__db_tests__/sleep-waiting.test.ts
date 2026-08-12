@@ -5,8 +5,14 @@ import { shiftDateStr, utcInstant } from "@/lib/date";
 import {
   getSleepArrivalLagMinutes,
   getSleepWaitingState,
+  getSyncedSleepSources,
   getSyncedSleepWakeDays,
 } from "@/lib/queries/sleep";
+import { getIntegrationAttention } from "@/lib/queries/integrations";
+import {
+  markConnectionNeedsReauth,
+  recordSyncEvent,
+} from "@/lib/integrations/connections";
 import { isSleepTracking } from "@/lib/sleep-summary";
 import { MIN_ARRIVAL_SAMPLES } from "@/lib/sleep-waiting";
 
@@ -231,5 +237,69 @@ describe("getSleepArrivalLagMinutes", () => {
        VALUES (?, 'metric_samples', ?, 'inserted', ?)`
     ).run(otherEvent, mine.id, `${T}T23:59:00Z`);
     expect(getSleepArrivalLagMinutes(profileId)).toBe(70);
+  });
+});
+
+// #2192 — the waiting window's health gate is about THE SLEEP SOURCE, not the
+// account. `getIntegrationAttention` is the account-wide failing/stale list, so an
+// expired Strava token — nothing to do with sleep — used to answer "no, the source
+// is not healthy" and drop a perfectly healthy Oura/Health Connect morning back to
+// the stale old-night headline that #2097 exists to remove.
+//
+// Asserted as a DIFFERENCE rather than a named kind: this tier does not freeze the
+// clock, so which of the three states a morning is in depends on the hour the suite
+// runs. What must hold at EVERY hour is that an unrelated source's failure changes
+// nothing, and that the sleep source's own failure still silences the state.
+describe("the waiting window is scoped to the sleep source (#2192)", () => {
+  // Nights through last-night-but-one, with last night not yet in hand: tracking is
+  // true and there is something to wait for.
+  function trackingNights(): void {
+    for (let back = 1; back <= 6; back++) night(shiftDateStr(T, -back));
+  }
+  const YESTERDAY = () => shiftDateStr(T, -1);
+
+  function breakSource(sourceId: string): void {
+    recordSyncEvent(profileId, sourceId, {
+      ok: false,
+      error: "token refresh failed (400)",
+    });
+    markConnectionNeedsReauth(profileId, sourceId);
+  }
+
+  it("an unrelated failing source changes nothing about the sleep state", () => {
+    trackingNights();
+    const healthy = getSleepWaitingState(profileId, YESTERDAY());
+    expect(healthy).not.toBeNull();
+
+    breakSource("strava");
+    // The fixture really does reproduce the account-wide signal the gate read.
+    expect(getIntegrationAttention(profileId).map((a) => a.id)).toEqual([
+      "strava",
+    ]);
+
+    expect(getSleepWaitingState(profileId, YESTERDAY())).toEqual(healthy);
+  });
+
+  it("the SLEEP source failing still silences it — that message cannot resolve", () => {
+    trackingNights();
+    expect(getSleepWaitingState(profileId, YESTERDAY())).not.toBeNull();
+
+    breakSource(PROVIDER);
+    expect(getIntegrationAttention(profileId).map((a) => a.id)).toEqual([
+      PROVIDER,
+    ]);
+
+    expect(getSleepWaitingState(profileId, YESTERDAY())).toBeNull();
+  });
+
+  it("a source that stopped feeding sleep before the lookback is not the sleep source", () => {
+    // The ring recorded the recent nights; a Withings scale that last saw sleep a
+    // fortnight ago is broken. It is not what anyone is waiting for this morning.
+    trackingNights();
+    night(shiftDateStr(T, -20), "withings");
+    expect(getSyncedSleepSources(profileId, T)).toEqual([PROVIDER]);
+
+    breakSource("withings");
+    expect(getSleepWaitingState(profileId, YESTERDAY())).not.toBeNull();
   });
 });

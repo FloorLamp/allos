@@ -58,10 +58,10 @@ function withShareHeaders(res: NextResponse): NextResponse {
 // jar, and a cookie modified during an action marks the whole response
 // "revalidated": the action reply then carries a full page re-render and
 // invalidates the client router cache. Doing that on EVERY action — including
-// pure reads like the Journal's loadJournalPage — contradicted the documented
-// contract (an action that skips revalidation must not refresh the page,
-// docs/internals/server-action-refresh.md) and fed a client fetch loop:
-// JournalView re-fetches the filtered feed when the server refreshes its first
+// pure reads like the Training Log's loadTrainingLogPage — contradicted the
+// documented contract (an action that skips revalidation must not refresh the
+// page, docs/internals/server-action-refresh.md) and fed a client fetch loop:
+// TrainingLogView re-fetches the filtered feed when the server refreshes its first
 // page, so each fetch's cookie-stamped reply triggered the next fetch and
 // clobbered "Load more" pages.
 //

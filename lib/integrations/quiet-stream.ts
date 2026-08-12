@@ -99,8 +99,14 @@ export interface QuietStreamSignals {
    * frontier's age, not the decision.
    */
   toleranceMin: number;
-  /** Override for tests; defaults to the shared FROZEN_SYNC_EVIDENCE. */
-  frozenSyncs?: number;
+  /**
+   * N — the stream's DECLARED `frozenEvidence.syncs`, resolved by the caller. Required
+   * since #2560; see lib/stream-frontier.ts for why it stopped being a shared constant.
+   * This row is render-only coaching tier, so a false row is cheap — but the batching
+   * argument that moved the bar applies to it identically, so it moves with the
+   * reminder rather than keeping a bar of its own.
+   */
+  frozenSyncs: number;
 }
 
 export type QuietStreamSkip =
