@@ -301,9 +301,7 @@ test.describe("Sleep page (#1066)", () => {
     // (Which range is selected depends on how much history this profile has, so
     // assert the invariant rather than a specific segment.)
     await expect(
-      main.locator(
-        '[data-testid^="sleep-trend-range-"][aria-pressed="true"]'
-      )
+      main.locator('[data-testid^="sleep-trend-range-"][aria-pressed="true"]')
     ).toHaveCount(1);
     await expect(
       main.locator(

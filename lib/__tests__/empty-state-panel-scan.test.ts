@@ -204,8 +204,8 @@ describe("the shared empty-state panel (#2536)", () => {
     // Centered text without a dashed border is not this panel either.
     expect(panelLiterals('const c = "text-center text-sm";')).toEqual([]);
     // Not fooled by a token that merely contains one of the names.
-    expect(
-      panelLiterals('const c = "border-dashed-alt text-center";')
-    ).toEqual([]);
+    expect(panelLiterals('const c = "border-dashed-alt text-center";')).toEqual(
+      []
+    );
   });
 });

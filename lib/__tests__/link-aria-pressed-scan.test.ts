@@ -109,11 +109,11 @@ describe("aria-pressed never lands on a link (#2535)", () => {
 
   it("recognises the defect and leaves buttons alone", () => {
     expect(
-      linkAriaPressedLines('<Link href={h} aria-pressed={active}>x</Link>')
+      linkAriaPressedLines("<Link href={h} aria-pressed={active}>x</Link>")
     ).toEqual([1]);
-    expect(linkAriaPressedLines('<a href="/x" aria-pressed="true">x</a>')).toEqual(
-      [1]
-    );
+    expect(
+      linkAriaPressedLines('<a href="/x" aria-pressed="true">x</a>')
+    ).toEqual([1]);
     // A multi-line tag with an arrow function before the attribute still matches.
     expect(
       linkAriaPressedLines(
