@@ -50,6 +50,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { usualFoodOffer } from "@/lib/food-regularity";
+import { foodLimitNoteText } from "@/lib/food-limit-note";
 import {
   deleteFoodLogEvent,
   logFoodServing,
@@ -844,6 +845,19 @@ export default function FoodLogBar({
                 STATED_TIME_REFUSAL_NOTE[outcome.statedTimeRefused]
               }.`
             );
+          }
+          // The curated limit note (#2377). NON-BLOCKING and after the fact: the
+          // serving is already on the counter, and this only reports what the curated
+          // map and the food–drug ledger have to say about the group. Success tone on
+          // purpose — an error tone on a tap that worked reads as "your tap failed"
+          // (#2296) — so the two kinds are told apart by PROMINENCE instead: an
+          // interaction holds until the reader dismisses it, a dietary note takes the
+          // ordinary timer. The server already ranked them; at most one ever arrives.
+          if (outcome.limitNote) {
+            toast(foodLimitNoteText(outcome.limitNote), {
+              key: `food-limit-${outcome.limitNote.groupKey}`,
+              ...(outcome.limitNote.hold ? { duration: null } : {}),
+            });
           }
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.

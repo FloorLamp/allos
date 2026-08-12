@@ -211,6 +211,21 @@ export interface DigestInput {
   // Adequacy is an OBSERVATION, never an obligation: no streak, no failure language, no
   // escalation. The line states the number against the target and stops.
   nutritionLine?: MessageLine | null;
+  // Yesterday's log × the profile's live CURATED food limits (#2377) — the head clause
+  // of one line, which the Yesterday section stamps its own glyph onto. Null is silence:
+  // no live limit, nothing of it logged, or every candidate dismissed on the shared bus.
+  //
+  // A RIDE-ALONG, NOT A REASON TO SEND. It is appended only to a Yesterday section that
+  // ALREADY has content, so it can neither cause a digest nor be one — the same posture
+  // the digest time suggestion takes (#2217), for the same contact-consent reason: the
+  // system may reduce contact unilaterally, never increase it, and nobody declared
+  // "message me when I eat fried food."
+  //
+  // AND IT NAMES NO BIOMARKER, EVER. This is the pattern-shaped surface of #2377, and
+  // #2397/#2572's rule is that the app may not place a person's own pattern beside their
+  // own result and let the reader draw the causal conclusion. The producer's type has no
+  // field to carry one — see lib/food-limit-note.ts.
+  foodLimitHead?: string | null;
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
   // The documents that finished extracting since the send cursor (#1913 item 3), each
@@ -700,6 +715,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   if (input.nutritionLine)
     yLines.push(
       formatEmphasizedLine({ glyph: GLYPH.food, ...input.nutritionLine })
+    );
+  // The curated food-limit intersection (#2377), LAST in the section and — the whole of
+  // its contact-consent argument — only when the section already has something in it.
+  // `yLines.length > 0` at this point means the digest was already going to carry a
+  // Yesterday report, so this line can never be the thing that makes a message exist.
+  // See DigestInput.foodLimitHead for why it names no biomarker.
+  if (input.foodLimitHead && yLines.length > 0)
+    yLines.push(
+      formatEmphasizedLine({ glyph: GLYPH.food, head: input.foodLimitHead })
     );
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 
