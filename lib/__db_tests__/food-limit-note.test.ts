@@ -180,7 +180,9 @@ describe("getFoodLimitTapNote — the dietary half (#2377)", () => {
     logServing(p, "fried_food", shiftDateStr(t, -20));
     // Spent against the old result.
     logServing(p, "fried_food", shiftDateStr(t, -2));
-    expect(getFoodLimitTapNote(p, "fried_food", shiftDateStr(t, -2), 0)).toBeNull();
+    expect(
+      getFoodLimitTapNote(p, "fried_food", shiftDateStr(t, -2), 0)
+    ).toBeNull();
 
     // A newer reading of the same family replaces it as the CURRENT one, and its own
     // collection date is a clean slate for the arming gate.
@@ -395,6 +397,8 @@ describe("getFoodLimitDayObservations — the digest half (#2377)", () => {
     // membership in a curated list and stops.
     expect(head).not.toContain("LDL");
     expect(head).not.toMatch(/\d/);
-    expect(head.toLowerCase()).not.toMatch(/high|flag|cholesterol|result|marker/);
+    expect(head.toLowerCase()).not.toMatch(
+      /high|flag|cholesterol|result|marker/
+    );
   });
 });

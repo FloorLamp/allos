@@ -1003,9 +1003,9 @@ describe("the food-limit line rides an existing Yesterday section (#2377)", () =
       foodLimitHead: HEAD,
     })!;
     expect(model.sections.map((s) => s.heading)).not.toContain("Yesterday");
-    expect(model.sections.flatMap((s) => plain(s.lines)).join(" ")).not.toContain(
-      "Foods to limit"
-    );
+    expect(
+      model.sections.flatMap((s) => plain(s.lines)).join(" ")
+    ).not.toContain("Foods to limit");
   });
 
   it("appends LAST to a Yesterday section that already has content", () => {
@@ -1029,7 +1029,9 @@ describe("the food-limit line rides an existing Yesterday section (#2377)", () =
       foodLimitHead: null,
     })!;
     expect(
-      plain(model.sections.find((s) => s.heading === "Yesterday")!.lines).join(" ")
+      plain(model.sections.find((s) => s.heading === "Yesterday")!.lines).join(
+        " "
+      )
     ).not.toContain("Foods to limit");
   });
 });

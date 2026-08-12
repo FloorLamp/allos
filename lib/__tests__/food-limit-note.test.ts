@@ -68,7 +68,8 @@ function interaction(
       food: "Alcohol",
       severity: "major",
       advice:
-        opts.advice ?? "Avoid all alcohol during treatment and for 3 days after.",
+        opts.advice ??
+        "Avoid all alcohol during treatment and for 3 days after.",
       mechanism: "Disulfiram-like reaction.",
       source: "Test source",
       catalog: { groups, rule: "event", tailDays: 3 },
@@ -107,7 +108,14 @@ describe("the curated limits come from the engine, never a second copy", () => {
           direction: "reduce",
           dedupeKey: "food-reduce:x",
           triggeredBy: ["Whatever"],
-          foods: [{ food: "Organ meats", foodGroup: null, serving: "", isAlternative: false }],
+          foods: [
+            {
+              food: "Organ meats",
+              foodGroup: null,
+              serving: "",
+              isAlternative: false,
+            },
+          ],
           evidence: "e",
           source: "s",
           caveat: null,
@@ -154,7 +162,9 @@ describe("the tap note: ranking and the frequency gates (#2377)", () => {
   });
 
   it("is silent once the group has been logged since the flag — one per activation", () => {
-    expect(tap({ dietary: [{ limit: LDL, firstSinceActive: false }] })).toBeNull();
+    expect(
+      tap({ dietary: [{ limit: LDL, firstSinceActive: false }] })
+    ).toBeNull();
   });
 
   it("ranks an interaction above a dietary note and speaks in the ledger's own words", () => {
@@ -176,7 +186,9 @@ describe("the tap note: ranking and the frequency gates (#2377)", () => {
   });
 
   it("stays silent for a cap-governed group — the cap vocabulary owns it (#998)", () => {
-    expect(tap({ groupKey: "alcohol", capGoverned: true, dietary: armed(LDL) })).toBeNull();
+    expect(
+      tap({ groupKey: "alcohol", capGoverned: true, dietary: armed(LDL) })
+    ).toBeNull();
   });
 
   it("still speaks the INTERACTION for a cap-governed group", () => {
@@ -248,7 +260,12 @@ describe("the digest observation (#2377)", () => {
   it("caps how many it names, and drops the rest rather than counting them", () => {
     const many: ActiveFoodLimit = {
       ...LDL,
-      groupKeys: ["fried_food", "processed_meat", "added_sugar", "sugary_drinks"],
+      groupKeys: [
+        "fried_food",
+        "processed_meat",
+        "added_sugar",
+        "sugary_drinks",
+      ],
     };
     const out = foodLimitDayObservations({
       loggedGroups: many.groupKeys,
@@ -304,7 +321,9 @@ describe("nothing here reflects a limit back as a run (#998)", () => {
 
   it("never congratulates a day spent under a limit", () => {
     for (const s of strings)
-      expect(s.toLowerCase()).not.toMatch(/well done|nice work|good job|keep it up/);
+      expect(s.toLowerCase()).not.toMatch(
+        /well done|nice work|good job|keep it up/
+      );
   });
 });
 
@@ -333,7 +352,14 @@ describe("a pattern is never joined to a biomarker (#2397/#2572)", () => {
       capGoverned: new Set<string>(),
     });
     const keys = Object.keys(observation);
-    for (const forbidden of ["biomarker", "flag", "result", "value", "reading", "marker"])
+    for (const forbidden of [
+      "biomarker",
+      "flag",
+      "result",
+      "value",
+      "reading",
+      "marker",
+    ])
       expect(keys.some((k) => k.toLowerCase().includes(forbidden))).toBe(false);
   });
 

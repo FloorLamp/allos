@@ -7,12 +7,12 @@ since #577, and its high-side twin — which foods a HIGH flag says to limit —
 existed since #775 as `meta.reduceEntries` in the curated nutrient-food map. Four
 entries, each with a plain-language evidence line and a public source:
 
-| key        | families                        | groups it names                                 |
-| ---------- | ------------------------------- | ----------------------------------------------- |
-| `ldl-apob` | LDL Cholesterol, ApoB           | `fried_food`, `processed_meat`                   |
-| `glucose`  | Glucose, Hemoglobin A1c         | `added_sugar`, `sugary_drinks`, `refined_grains` |
-| `urate`    | Uric Acid                       | `alcohol`, `sugary_drinks`                       |
-| `sodium`   | Sodium                          | `processed_meat`                                 |
+| key        | families                | groups it names                                  |
+| ---------- | ----------------------- | ------------------------------------------------ |
+| `ldl-apob` | LDL Cholesterol, ApoB   | `fried_food`, `processed_meat`                   |
+| `glucose`  | Glucose, Hemoglobin A1c | `added_sugar`, `sugary_drinks`, `refined_grains` |
+| `urate`    | Uric Acid               | `alcohol`, `sugary_drinks`                       |
+| `sodium`   | Sodium                  | `processed_meat`                                 |
 
 The map is deliberately small. An uncovered family simply has no limit answer, and
 that is measurable rather than hidden — the same posture #2378 took for the curated
