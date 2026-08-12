@@ -1,6 +1,7 @@
 import { IconBell, IconMapPin, IconCalendarEvent } from "@tabler/icons-react";
 import { FEED_CATEGORY_LABELS, type FeedPreviewRow } from "@/lib/calendar-ics";
 import type { CalendarFeedDetail } from "@/lib/settings";
+import { EmptyState } from "@/components/ui";
 
 // Presentational preview of what a subscribed calendar client would show for this
 // profile, rendered at the saved detail level. It's a faithful mirror: the rows
@@ -42,13 +43,12 @@ export default function CalendarFeedPreview({
       </div>
 
       {visible.length === 0 ? (
-        <p
-          className="rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
-          data-testid="calendar-preview-empty"
-        >
-          Nothing in the feed yet — enable more categories above, or add
-          appointments and reminders and they&apos;ll appear here.
-        </p>
+        <EmptyState
+          compact
+          testId="calendar-preview-empty"
+          message="Nothing in the feed yet — enable more categories above, or add appointments and reminders and they’ll appear here."
+          action={{ href: "/appointments", label: "Add an appointment" }}
+        />
       ) : (
         <ul
           className="divide-y divide-black/5 dark:divide-white/5"

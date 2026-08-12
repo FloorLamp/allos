@@ -11,7 +11,7 @@ import { kindOf } from "@/lib/types";
 import { kgTo, kmTo, round } from "@/lib/units";
 import { formatLastUsed } from "@/lib/usage-format";
 import { formatRecordDate } from "@/lib/record-format";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import EquipmentTrend from "@/components/EquipmentTrend";
 import EquipmentDetailActions from "@/components/EquipmentDetailActions";
@@ -160,13 +160,14 @@ export default async function EquipmentDetailPage(props: {
           />
         </div>
       ) : (
-        <p
-          className="mt-6 rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
-          data-testid="equipment-no-usage"
-        >
-          No sessions have used this equipment yet. Tag a workout with it to
-          start building usage history.
-        </p>
+        <div className="mt-6">
+          <EmptyState
+            compact
+            testId="equipment-no-usage"
+            message="No sessions have used this equipment yet. Tag a workout with it to start building usage history."
+            action={{ href: "/training", label: "Log a workout" }}
+          />
+        </div>
       )}
 
       {sessions.length > 0 ? (

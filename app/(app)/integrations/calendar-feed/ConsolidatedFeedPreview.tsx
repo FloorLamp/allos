@@ -1,5 +1,6 @@
 import { IconBell, IconMapPin, IconUsersGroup } from "@tabler/icons-react";
 import type { ConsolidatedDateGroup } from "@/lib/calendar-ics";
+import { EmptyState } from "@/components/ui";
 
 // Presentational preview of the CONSOLIDATED "family" feed: every accessible
 // profile's upcoming appointments, grouped by date and labeled with the profile
@@ -39,10 +40,11 @@ export default function ConsolidatedFeedPreview({
       </div>
 
       {shownRows === 0 ? (
-        <p className="rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
-          No upcoming appointments across your profiles — add one under
-          Appointments and it&apos;ll appear here.
-        </p>
+        <EmptyState
+          compact
+          message="No upcoming appointments across your profiles — add one under Appointments and it’ll appear here."
+          action={{ href: "/appointments", label: "Add an appointment" }}
+        />
       ) : (
         <div className="space-y-4">
           {visible.map((g) => (

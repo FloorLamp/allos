@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import ScrollFade from "@/components/ScrollFade";
+import { EmptyState } from "@/components/ui";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatTimestamp } from "@/lib/format-date";
 import {
@@ -95,24 +96,24 @@ export default function NotifyRunTable({
       </div>
 
       {runs.length === 0 ? (
-        <div
-          className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
-          data-testid="notify-log-empty"
-        >
-          {filtered ? (
-            "No tick runs match these filters."
-          ) : (
-            <>
-              {/* Not "nothing here yet": the log lives on the data volume and
-                  survives deploys, so a genuinely empty page means something
-                  specific and actionable. */}
-              No tick runs recorded. This log survives deploys, so an empty page
-              means the notification tick has never run on this instance — check
-              that the scheduler (the <code>allos-notify</code> sidecar, or your
-              own cron) is alive.
-            </>
-          )}
-        </div>
+        <EmptyState
+          testId="notify-log-empty"
+          message={
+            filtered ? (
+              "No tick runs match these filters."
+            ) : (
+              <>
+                {/* Not "nothing here yet": the log lives on the data volume and
+                    survives deploys, so a genuinely empty page means something
+                    specific and actionable. */}
+                No tick runs recorded. This log survives deploys, so an empty
+                page means the notification tick has never run on this instance
+                — check that the scheduler (the <code>allos-notify</code>
+                sidecar, or your own cron) is alive.
+              </>
+            )
+          }
+        />
       ) : (
         <div className="card overflow-hidden p-0">
           <ScrollFade>
