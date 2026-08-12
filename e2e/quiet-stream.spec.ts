@@ -19,7 +19,7 @@ import { expectNoClippedContent } from "./helpers";
 // rule forbids. The one send in this family (#2161's bedtime wear reminder) lives
 // behind an explicit Settings → Notifications opt-in and may be offered nowhere else.
 
-test("Data → Review names a device that stopped sending while its provider syncs green (#2146)", async ({
+test("Data → Review names a device that stopped sending while its source syncs green (#2146)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {

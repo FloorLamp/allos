@@ -27,7 +27,7 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-test("every available registry provider renders as a connectable card in the Import grid", async ({
+test("every available registry source renders as a connectable card in the Import grid", async ({
   page,
 }) => {
   await page.goto("/data?section=import");

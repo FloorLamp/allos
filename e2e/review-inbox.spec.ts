@@ -179,7 +179,7 @@ test.describe("Data → Review import inbox", () => {
   // a real table. These two assert the properties the redesign was FOR: a truncated
   // run still reads as partial rather than a clean success (#1614), and a failure row
   // that is no longer the latest still carries its reason.
-  test("the provider's own page owns the sync-history table (#1772)", async ({
+  test("the source's own page owns the sync-history table (#1772)", async ({
     page,
   }) => {
     await page.goto("/integrations/strava");

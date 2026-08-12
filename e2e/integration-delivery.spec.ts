@@ -131,7 +131,7 @@ test("the Import grid never claims a source allos does not drive is Connected", 
   await expect(portals.locator(".bg-brand-100")).toHaveCount(0);
 });
 
-test("an attended provider's runs — failures included — reach Review's Imports feed", async ({
+test("an attended source's runs — failures included — reach Review's Imports feed", async ({
   page,
 }) => {
   seedFixture();
@@ -160,7 +160,7 @@ test("an attended provider's runs — failures included — reach Review's Impor
   ).toHaveCount(0);
 });
 
-test("an attended provider's page states the escalation policy's attended inverse", async ({
+test("an attended source's page states the escalation policy's attended inverse", async ({
   page,
 }) => {
   // Every scheduled source page states its escalation rule under its sync history.
