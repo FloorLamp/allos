@@ -346,7 +346,13 @@
     {
       "name": "Cortisol",
       "full_name": "Cortisol",
-      "description": "Cortisol is the body's main stress hormone, made by the adrenal glands, and it regulates metabolism, blood sugar, and the stress response. Levels follow a daily rhythm, and abnormal values can indicate adrenal or pituitary problems."
+      "description": "Cortisol is the body's main stress hormone, made by the adrenal glands, and it regulates metabolism, blood sugar, and the stress response. Levels follow a strong daily rhythm, peaking soon after waking and falling through the day. This entry is a cortisol whose draw time the report never stated, so it is shown without a reference band \u2014 the published band belongs to the morning peak, and the same number can be low in the morning and normal at night."
+    },
+    {
+      "name": "Cortisol, Morning",
+      "full_name": "Morning Cortisol",
+      "abbreviation": "AM Cortisol",
+      "description": "Cortisol measured on a morning draw, when the adrenal glands' daily rhythm is at its peak. This is the timing the standard adult reference band is defined on, so it is the draw used to look for adrenal or pituitary problems; a value from later in the day is a different measurement and is recorded separately."
     },
     {
       "name": "Insulin-Like Growth Factor 1 (IGF-1)",

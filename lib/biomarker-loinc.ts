@@ -175,7 +175,8 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "2986-8": "Testosterone, Total", // Testosterone [Mass/volume] in Serum/Plasma (ng/dL)
   "2991-8": "Testosterone, Free", // Testosterone Free [Mass/volume] in Serum/Plasma (pg/mL)
   "2243-4": "Estradiol", // Estradiol (E2) [Mass/volume] in Serum/Plasma (pg/mL)
-  "2143-6": "Cortisol", // Cortisol [Mass/volume] in Serum/Plasma (ug/dL)
+  "2143-6": "Cortisol", // Cortisol [Mass/volume] in Serum/Plasma (ug/dL) — no stated timing
+  "2147-7": "Cortisol, Morning", // Cortisol [Mass/volume] in Serum/Plasma --8 AM (ug/dL)
   "15067-2": "Follicle Stimulating Hormone (FSH)", // Follitropin [Units/volume] (mIU/mL)
   "10501-5": "Luteinizing Hormone (LH)", // Lutropin [Units/volume] (mIU/mL)
   "2191-5": "DHEA-Sulfate", // DHEA-S [Mass/volume] in Serum/Plasma (ug/dL)

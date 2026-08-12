@@ -58,7 +58,7 @@
       "optimal_low": null,
       "optimal_high": 80,
       "direction": "lower_better",
-      "note": "Fasting; sensitive to recent carbohydrate intake",
+      "note": "Sensitive to recent fat and carbohydrate intake \u2014 a draw taken within a few hours of a meal reads higher than the same person's fasting value. The band is NOT restated per frame: current lipid guidance measures the panel either way and applies one screening threshold, so unlike glucose and insulin this analyte has no second published band for the frame to select.",
       "conversions": {
         "mmol/L": 88.57
       },
@@ -1392,12 +1392,27 @@
       "name": "Cortisol",
       "category": "lab",
       "unit": "ug/dL",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Serum cortisol drawn at a time of day the report did not state. Cortisol follows a strong diurnal rhythm \u2014 a value near 5 \u00b5g/dL is low for 8 a.m. and entirely normal at 8 p.m. \u2014 so the published band belongs to one point in that rhythm, not to the analyte. The value is shown but not flagged, because either frame would be a guess. A draw the report times to the morning belongs under Cortisol, Morning, which carries the 6\u201318 \u00b5g/dL band.",
+      "conversions": {
+        "nmol/L": 0.03625
+      },
+      "panel": "hormones"
+    },
+    {
+      "name": "Cortisol, Morning",
+      "category": "lab",
+      "unit": "ug/dL",
       "ref_low": 6,
       "ref_high": 18,
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Morning draw; strong diurnal variation",
+      "note": "Morning (roughly 6\u201310 a.m.) serum cortisol \u2014 the frame the standard adult band is defined on, at the peak of the diurnal rhythm. Distinct from a cortisol of unstated timing (Cortisol) and from a late-evening or midnight draw, which is normal several times lower.",
       "conversions": {
         "nmol/L": 0.03625
       },
