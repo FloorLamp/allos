@@ -102,7 +102,7 @@ interface CandidateRow {
 }
 
 // "the row still carries a biomarker identity" as SQL — the exact statement
-// carriesBiomarkerIdentity makes in TypeScript, so the sweep below and
+// carriesResultIdentity makes in TypeScript, so the sweep below and
 // getUsedCanonicalNames can never disagree about what backs a name.
 const IDENTITY_ONLY_SQL = `category NOT IN (${NON_IDENTITY_CATEGORIES.map(
   () => "?"

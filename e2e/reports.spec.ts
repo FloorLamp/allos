@@ -75,7 +75,7 @@ test("the Reports pane renders on a direct deep link, with its tab selected (#15
 test("a narrative report never appears in the Biomarkers analyte catalog (#708)", async ({
   page,
 }) => {
-  // The `report` category is excluded from BIOMARKER_CATEGORIES, so the analyte
+  // The `report` category is excluded from RESULTS_CATALOG_CATEGORIES, so the analyte
   // browser must never list a report body as a row. The culture body text is a
   // report-only marker — its absence here proves the exclusion.
   await page.goto("/results/readings");

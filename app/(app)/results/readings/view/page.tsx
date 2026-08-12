@@ -27,7 +27,10 @@ import { isIopBiomarker } from "@/lib/followup-iop";
 import TrackLabFollowUpControl from "../TrackLabFollowUpControl";
 import FoodSuggestions from "@/components/FoodSuggestions";
 import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
-import type { CanonicalBiomarker, ClinicalObservation } from "@/lib/types";
+import type {
+  CanonicalResultDefinition,
+  ClinicalObservation,
+} from "@/lib/types";
 import {
   rangeBadge,
   RANGE_BADGE_META,
@@ -159,7 +162,8 @@ export default async function ReadingDetailPage(props: {
     );
   }
 
-  const cb: CanonicalBiomarker | undefined = getCanonicalBiomarker(canonical);
+  const cb: CanonicalResultDefinition | undefined =
+    getCanonicalBiomarker(canonical);
   const info = getBiomarkerInfo(canonical);
   // Deterministic food suggestions for THIS biomarker (issue #577): the same
   // getFoodSuggestions computation the coaching rollup reads, filtered to the

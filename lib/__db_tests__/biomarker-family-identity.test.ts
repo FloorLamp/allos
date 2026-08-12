@@ -26,20 +26,20 @@ import {
 } from "@/lib/canonical-name";
 import { reconciledFlag } from "@/lib/reference-range";
 import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 import canonicalSeed from "@/lib/canonical-biomarkers.json";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
-// The committed JSON is the seed for CanonicalBiomarker rows; treat it as such for the
+// The committed JSON is the seed for CanonicalResultDefinition rows; treat it as such for the
 // reconciledFlag() calls below, which take the full CanonicalRanges shape (the same
 // cast the sibling biomarker-loinc test uses — the dataset's CanonicalBiomarkerEntry
 // omits the sex-specific optimal_* fields CanonicalRanges now Picks).
 const CB_ROWS = (canonicalSeed as { biomarkers: unknown[] })
-  .biomarkers as CanonicalBiomarker[];
-const cbByName = new Map<string, CanonicalBiomarker>(
+  .biomarkers as CanonicalResultDefinition[];
+const cbByName = new Map<string, CanonicalResultDefinition>(
   CB_ROWS.map((b) => [b.name.toLowerCase(), b])
 );
-const cbRanges = (name: string): CanonicalBiomarker | null =>
+const cbRanges = (name: string): CanonicalResultDefinition | null =>
   cbByName.get(name.toLowerCase()) ?? null;
 
 const VOCAB = (

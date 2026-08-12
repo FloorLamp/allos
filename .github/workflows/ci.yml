@@ -263,6 +263,13 @@ jobs:
         # pair of runners buys progressively less while costing a full 179s of
         # setup each. Lowering the FLOOR — or the 2872s itself — is what would
         # move this next, not more shards.
+        #
+        # Both figures above PREDATE `NEXT_SKIP_TYPECHECK` (see the Build step in
+        # .github/actions/e2e-setup): the Next build here no longer re-runs the
+        # `tsc` pass the `check` job already owns, which measured 12.3–13.5s of a
+        # 21.3s warm local build. The floor is therefore lower than 179s now, by
+        # whatever that pass costs on a runner — re-measure both terms before
+        # re-deriving a shard count from them.
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2

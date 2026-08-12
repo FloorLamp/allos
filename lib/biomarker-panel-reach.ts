@@ -3,8 +3,8 @@
 //
 // WHY. The panel facet offered the whole 35-entry taxonomy "rather than only the
 // panels present in the current view", which is the right instinct: a facet whose
-// options appear and vanish as you filter is unusable. But the browser lists only
-// BIOMARKER_CATEGORIES (`lab | vitals | genomics | scan`), and #1076 re-homed three
+// options appear and vanish as you filter is unusable. But the catalog lists only
+// RESULTS_CATALOG_CATEGORIES (`lab | vitals | genomics | scan`), and #1076 re-homed three
 // classes OUT of it — `instrument` (screening scores), `derived` (bio-age
 // composites), `reference` (immutable facts). A panel whose analytes ALL carry a
 // re-homed category is therefore a dead option: choosing it can only ever produce
@@ -35,19 +35,19 @@ import {
   panelForCanonicalName,
   type PanelId,
 } from "./biomarker-panels";
-import { BIOMARKER_CATEGORIES } from "./medical-categories";
-import { listedInBiomarkerBrowser } from "./trend-metric-analytes";
+import { RESULTS_CATALOG_CATEGORIES } from "./medical-categories";
+import { listedInResultsCatalog } from "./trend-metric-analytes";
 import type { MedicalCategory } from "./types";
 
-// The medical categories the browser lists, as a lookup.
-const LISTED = new Set<string>(BIOMARKER_CATEGORIES as readonly string[]);
+// The medical categories the catalog lists, as a lookup.
+const LISTED = new Set<string>(RESULTS_CATALOG_CATEGORIES as readonly string[]);
 
 // The panels a browser row can land in, computed once at module load.
 //
 // Three sources, all of them rows the browser can actually render:
 //
 //  1. A canonical entry the browser LISTS — its curated `category` is one of
-//     BIOMARKER_CATEGORIES, and (since #2365) the analyte itself is not one whose
+//     RESULTS_CATALOG_CATEGORIES, and (since #2365) the analyte itself is not one whose
 //     quantity already owns a `/trends/metric/<slug>` home. This is the bulk of the
 //     taxonomy, and it is why `vision`, `hearing`, `dental`, `fitness` (all `vitals`)
 //     and `body-composition` (`scan`) STAY — #1076 kept those browsable on purpose
@@ -72,9 +72,7 @@ const REACHABLE: ReadonlySet<PanelId> = (() => {
     if (!LISTED.has(entry.category as MedicalCategory)) continue;
     // The SAME predicate the row gather applies (#2365), so the facet can never offer
     // a panel whose every member the gather drops.
-    if (
-      !listedInBiomarkerBrowser({ category: entry.category, name: entry.name })
-    )
+    if (!listedInResultsCatalog({ category: entry.category, name: entry.name }))
       continue;
     reachable.add(panelForCanonicalName(entry.name));
   }
