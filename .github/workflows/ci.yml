@@ -60,6 +60,35 @@ jobs:
       - name: PHI scan
         run: npm run phi-scan
 
+      # Incremental lint/format results, shared ACROSS RUNS and seeded from main by
+      # cache-seed.yml — the same shape as e2e-setup's `.next/cache` entry.
+      #
+      # Measured on this repo: `eslint .` is 120s and `prettier --check .` is 87s
+      # cold, which was most of this job. With the caches warm and only a PR's own
+      # files changed they are ~3s and ~10s.
+      #
+      # `--cache-strategy content` (set in the npm scripts, not here) is what makes
+      # that real in CI rather than only locally. Both tools default to keying on
+      # mtime+size, and a fresh `git checkout` stamps every file with a new mtime —
+      # so on the default strategy a fully-populated cache still re-lints the whole
+      # tree. Measured: 107s with metadata, 3.5s with content, same cache, same
+      # files. Do not drop that flag to "simplify" the scripts.
+      #
+      # Correctness does not rest on the key below: ESLint and Prettier both fold
+      # their own resolved config into each entry, so a rule change invalidates the
+      # affected entries whether or not the key moved. The key pins the lockfile and
+      # the config files anyway so a plugin upgrade starts clean, and the sha suffix
+      # + restore-keys prefix means each run saves a fresh entry while restoring the
+      # newest previous one (an exact-key hit never saves, so a fixed key would
+      # freeze the cache at its first contents and slowly rot).
+      - name: Cache lint/format results
+        uses: actions/cache@v6
+        with:
+          path: .cache
+          key: lintfmt-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.mjs', '.prettierrc') }}-${{ github.sha }}
+          restore-keys: |
+            lintfmt-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.mjs', '.prettierrc') }}-
+
       - name: Format check
         run: npm run format:check
 
