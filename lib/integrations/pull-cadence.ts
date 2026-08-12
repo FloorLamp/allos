@@ -9,15 +9,15 @@
 //     process boot (~0.5 s). It is allowed to go to minutes, and finer is strictly
 //     better for escalation latency and workout-finish backstops.
 //   • "How often do we call someone ELSE'S API." Bounded by their quota. Every tick
-//     polled every connected pull provider for every profile, so the second cadence
+//     polled every connected pull source for every profile, so the second cadence
 //     was silently pinned to the first — and a 1-minute tick would have meant ~1,440
 //     Strava calls per profile per day, at or over typical app quotas.
 //
 // This module owns the second one. With it in place the tick rate and the poll rate
-// are independent: a finer tick evaluates dues more often and polls providers exactly
+// are independent: a finer tick evaluates dues more often and polls sources exactly
 // as often as they declare.
 //
-// THE GUARANTEE, stated precisely: at most ONE poll per (profile, provider) per
+// THE GUARANTEE, stated precisely: at most ONE poll per (profile, source) per
 // cadence WINDOW. Windows are fixed epoch-aligned buckets of `cadenceMinutes`, not a
 // "minutes since last poll" comparison — that distinction is the whole design:
 //
@@ -39,15 +39,15 @@
 
 import type { IntegrationDef } from "../types";
 
-// The cadence a pull provider that declares none is polled at: hourly, which is what
-// every provider was polled at before the split. A new provider therefore joins at
+// The cadence a pull source that declares none is polled at: hourly, which is what
+// every source was polled at before the split. A new source therefore joins at
 // the cadence the quota table in #2121 was measured against, and has to opt IN to
 // anything finer.
 export const DEFAULT_PULL_CADENCE_MINUTES = 60;
 
-// The provider's declared poll cadence in whole minutes, or the safe default. The ONE
+// The source's declared poll cadence in whole minutes, or the safe default. The ONE
 // reader of the registry field — callers ask this rather than touching
-// `pull.cadenceMinutes` — so "what cadence is this provider on" is decided once. A
+// `pull.cadenceMinutes` — so "what cadence is this source on" is decided once. A
 // non-positive or non-integer declaration is ignored rather than obeyed: a cadence of
 // 0 would mean "poll on every tick", which is the very thing the guard exists to
 // prevent, and silently honouring it would make a registry typo a quota incident.
@@ -89,14 +89,14 @@ export interface PollDecision {
   //   window-open   — the last attempt was in an earlier (or later) cadence window
   //   same-window   — already polled this window; this is the skip that bounds quota
   //   unreadable    — a stamp we could not parse; polls, so a bad row can never wedge
-  //                   a provider off forever
+  //                   a source off forever
   reason: "never-polled" | "window-open" | "same-window" | "unreadable";
 }
 
-// Whether a provider may be polled now, given its last recorded ATTEMPT.
+// Whether a source may be polled now, given its last recorded ATTEMPT.
 //
 // LAST ATTEMPT, NOT LAST SUCCESS. The thing being rationed is the outbound API call,
-// and a failed poll spent one. Keying on success would let a provider that is failing
+// and a failed poll spent one. Keying on success would let a source that is failing
 // — the exact case where a remote is rate-limiting or down — be retried on every
 // single tick, which is the opposite of what a quota guard is for. A failure
 // therefore waits out its window like a success does, which is also precisely the

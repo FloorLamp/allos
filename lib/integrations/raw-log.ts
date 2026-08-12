@@ -1,12 +1,12 @@
-// Persisted raw provider payloads for integration syncs (issue #9). Each sync can
-// point at the exact request/response body it exchanged with the provider via
+// Persisted raw source payloads for integration syncs (issue #9). Each sync can
+// point at the exact request/response body it exchanged with the source via
 // integration_sync_events.raw_ref, and the admin-only viewer
 // (app/api/integrations/raw/[id]) reads it back to make "why did/didn't this
 // change" debuggable from the UI. Mirrors lib/ai-log.ts's bounded, best-effort
 // file pattern.
 //
 // PHI-adjacent: payloads are written under the gitignored data/ volume, scoped per
-// profile, byte-capped, and retained newest-N per (profile, provider). Reads are
+// profile, byte-capped, and retained newest-N per (profile, source). Reads are
 // admin-only + profile-scoped at the route.
 //
 // Server-only: uses node:fs. NEVER import from a client component.
@@ -31,12 +31,12 @@ function profileDir(profileId: number): string {
   return path.join(RAW_PAYLOAD_ROOT, String(profileId));
 }
 
-// Retain only the newest KEEP_PER_PROVIDER payloads for this (profile, provider),
-// unlinking older ones. Files are named `<provider>-<uuid>.json`, so the provider
-// prefix lets retention prune per provider by directory listing. Best-effort.
-function pruneOld(dir: string, provider: string) {
+// Retain only the newest KEEP_PER_PROVIDER payloads for this (profile, source),
+// unlinking older ones. Files are named `<source>-<uuid>.json`, so the source
+// prefix lets retention prune per source by directory listing. Best-effort.
+function pruneOld(dir: string, sourceId: string) {
   try {
-    const prefix = `${provider}-`;
+    const prefix = `${sourceId}-`;
     const entries = fs
       .readdirSync(dir)
       .filter((f) => f.startsWith(prefix) && f.endsWith(".json"));
@@ -63,17 +63,17 @@ function pruneOld(dir: string, provider: string) {
   }
 }
 
-// Persist a raw provider payload, returning the ref (bare filename) to store on the
+// Persist a raw source payload, returning the ref (bare filename) to store on the
 // sync event, or null on ANY failure — writing MUST NEVER throw into ingest.
 export function writeRawPayload(
   profileId: number,
-  provider: string,
+  sourceId: string,
   payload: string
 ): string | null {
   if (typeof payload !== "string") return null;
-  // provider comes from our own registry ids ('health-connect' | 'strava'), but
+  // source comes from our own registry ids ('health-connect' | 'strava'), but
   // sanitize defensively so it can't influence the filename/prefix.
-  const safeProvider = provider.replace(/[^\w-]/g, "");
+  const safeProvider = sourceId.replace(/[^\w-]/g, "");
   if (!safeProvider) return null;
   try {
     const dir = profileDir(profileId);
@@ -85,7 +85,7 @@ export function writeRawPayload(
     return ref;
   } catch (err) {
     log.error("failed to write integration raw payload", {
-      provider,
+      sourceId,
       err: String(err),
     });
     return null;

@@ -9,7 +9,7 @@ import { silenceToleranceMinutes } from "@/lib/integrations/staleness";
 import {
   escalationPolicyLabel,
   syncRunNounForKind,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import TakeoutUpload from "./TakeoutUpload";

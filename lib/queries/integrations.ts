@@ -24,13 +24,13 @@ import {
 } from "@/lib/integrations/sync-log";
 import {
   observedSuccessCadenceMinutes,
-  providerStanding,
+  sourceStanding,
   standingEscalates,
   syncVocabularyForKind,
   STANDING_RUN_WINDOW,
-  type ProviderStanding,
+  type SourceStanding,
   type SyncVocabulary,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import {
   isScheduledKind,
   type IntegrationDelivery,
@@ -78,37 +78,37 @@ import {
 // ingest writes its events under the token-resolved profile, so a profile sees
 // exactly its own device's sync history.
 
-// Recent sync events for one provider, newest first — the debug panel's table.
+// Recent sync events for one source, newest first — the debug panel's table.
 export function getIntegrationSyncEvents(
   profileId: number,
-  provider: string,
+  sourceId: string,
   limit = 15
 ): IntegrationSyncEvent[] {
   return db
     .prepare(
-      `SELECT * FROM integration_sync_events
+      `SELECT *, provider AS source_id FROM integration_sync_events
         WHERE profile_id = ? AND provider = ?
         ORDER BY at DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, provider, limit) as IntegrationSyncEvent[];
+    .all(profileId, sourceId, limit) as IntegrationSyncEvent[];
 }
 
-// The provider page promises the FULL retained history, whose age is bounded by the
+// The source page promises the FULL retained history, whose age is bounded by the
 // #388 sweep. This deliberately has no row cap: a cap can bisect a profile-local day,
 // making that day's aggregate false and hiding an anomaly earlier in the same day.
 // Review remains a short status window and uses getIntegrationSyncEvents instead.
 export function getRetainedIntegrationSyncEvents(
   profileId: number,
-  provider: string
+  sourceId: string
 ): IntegrationSyncEvent[] {
   return db
     .prepare(
-      `SELECT * FROM integration_sync_events
+      `SELECT *, provider AS source_id FROM integration_sync_events
         WHERE profile_id = ? AND provider = ?
         ORDER BY at DESC, id DESC`
     )
-    .all(profileId, provider) as IntegrationSyncEvent[];
+    .all(profileId, sourceId) as IntegrationSyncEvent[];
 }
 
 export const SYNC_HISTORY_PAGE_DAYS = 7;
@@ -124,13 +124,13 @@ export interface IntegrationSyncEventPage {
 // time, so a busy push source no longer ships its whole 90-day history on first load.
 export function getIntegrationSyncEventPage(
   profileId: number,
-  provider: string,
+  sourceId: string,
   timeZone: string,
   beforeDay: string | null,
   dayLimit = SYNC_HISTORY_PAGE_DAYS
 ): IntegrationSyncEventPage {
   const limit = Math.max(1, dayLimit);
-  const eligible = getRetainedIntegrationSyncEvents(profileId, provider).filter(
+  const eligible = getRetainedIntegrationSyncEvents(profileId, sourceId).filter(
     (event) => beforeDay == null || syncEventDay(event.at, timeZone) < beforeDay
   );
   const dayKeys: string[] = [];
@@ -151,28 +151,28 @@ export function getIntegrationSyncEventPage(
 }
 
 // Lazy range expansion: resolve only the ids the already-authorized page supplied,
-// and re-check both profile and provider at the SQL boundary.
+// and re-check both profile and source at the SQL boundary.
 export function getIntegrationSyncEventsByIds(
   profileId: number,
-  provider: string,
+  sourceId: string,
   ids: readonly number[]
 ): IntegrationSyncEvent[] {
   if (ids.length === 0) return [];
   const placeholders = ids.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT * FROM integration_sync_events
+      `SELECT *, provider AS source_id FROM integration_sync_events
         WHERE profile_id = ? AND provider = ? AND id IN (${placeholders})
         ORDER BY at DESC, id DESC`
     )
-    .all(profileId, provider, ...ids) as IntegrationSyncEvent[];
+    .all(profileId, sourceId, ...ids) as IntegrationSyncEvent[];
 }
 
-// Timestamp of the most recent SUCCESSFUL sync for a provider, or null — powers the
+// Timestamp of the most recent SUCCESSFUL sync for a source, or null — powers the
 // "last successful sync" hint on the setup page and the grid card.
 export function getLastSuccessfulSyncAt(
   profileId: number,
-  provider: string
+  sourceId: string
 ): string | null {
   const row = db
     .prepare(
@@ -181,43 +181,44 @@ export function getLastSuccessfulSyncAt(
         ORDER BY at DESC, id DESC
         LIMIT 1`
     )
-    .get(profileId, provider) as { at: string } | undefined;
+    .get(profileId, sourceId) as { at: string } | undefined;
   return row?.at ?? null;
 }
 
-// The single most recent event (any outcome) for EACH provider the profile has any
-// sync history for — one row per provider, newest-first overall. Unlike a window-
-// capped "N newest across all providers" read, this is uncapped PER PROVIDER by
-// construction (a correlated `id = latest-for-this-provider` match), so a provider
-// whose latest event is a failure is never lost behind a chattier provider's flood of
+// The single most recent event (any outcome) for EACH source the profile has any
+// sync history for — one row per source, newest-first overall. Unlike a window-
+// capped "N newest across all sources" read, this is uncapped PER SOURCE by
+// construction (a correlated `id = latest-for-this-source` match), so a source
+// whose latest event is a failure is never lost behind a chattier source's flood of
 // recent rows (issue #304). This is the failure detector's feed: it matches, row for
 // row, what each grid card shows via getLatestSyncEvent, so the badge/hero and the
-// per-provider card can no longer disagree. Profile-scoped.
-export function getLatestSyncEventPerProvider(
+// per-source card can no longer disagree. Profile-scoped.
+export function getLatestSyncEventPerSource(
   profileId: number
 ): IntegrationSyncEvent[] {
-  // Instead of scanning every event with a correlated `id = latest-for-provider`
+  // Instead of scanning every event with a correlated `id = latest-for-source`
   // subquery per row (issue #388), enumerate the profile's DISTINCT providers and do
   // ONE indexed seek per provider — idx_sync_events_profile_provider_at
   // (profile_id, provider, at) satisfies both the DISTINCT skip-scan and each
-  // `ORDER BY at DESC, id DESC LIMIT 1`, so this is O(providers × log N) rather than
+  // `ORDER BY at DESC, id DESC LIMIT 1`, so this is O(sources × log N) rather than
   // O(N) with a per-row subquery. Output is byte-identical: the latest event per
-  // provider, ordered newest-first overall.
-  const providers = db
+  // source, ordered newest-first overall.
+  const sourceIds = db
     .prepare(
-      `SELECT DISTINCT provider FROM integration_sync_events
+      // #2487 boundary: the column is still named `provider`; TS calls it a source id.
+      `SELECT DISTINCT provider AS source_id FROM integration_sync_events
         WHERE profile_id = ?`
     )
-    .all(profileId) as { provider: string }[];
+    .all(profileId) as { source_id: string }[];
   const latest = db.prepare(
-    `SELECT * FROM integration_sync_events
+    `SELECT *, provider AS source_id FROM integration_sync_events
       WHERE profile_id = ? AND provider = ?
       ORDER BY at DESC, id DESC
       LIMIT 1`
   );
   const out: IntegrationSyncEvent[] = [];
-  for (const { provider } of providers) {
-    const ev = latest.get(profileId, provider) as
+  for (const { source_id: sourceId } of sourceIds) {
+    const ev = latest.get(profileId, sourceId) as
       IntegrationSyncEvent | undefined;
     if (ev) out.push(ev);
   }
@@ -228,8 +229,8 @@ export function getLatestSyncEventPerProvider(
 // behind the profile-menu badge. Two contributions (issue #10): integrations
 // CURRENTLY in a failed state (self-clearing on the next good sync) PLUS unresolved
 // detected duplicate/conflict pairs. Both are profile-scoped. The failing set is read
-// per-provider (issue #304) so a broken integration can't be missed just because a
-// chatty provider crowds a global-N window.
+// per-source (issue #304) so a broken integration can't be missed just because a
+// chatty source crowds a global-N window.
 export function getImportReviewCount(profileId: number): number {
   // getImportIssues folds in the expired-Health-Connect-token signal (#607), so the
   // badge count matches the Issues list exactly — one source for both.
@@ -238,7 +239,7 @@ export function getImportReviewCount(profileId: number): number {
 
 // A synthetic failing sync event for an expired Health Connect ingest token (#607).
 // The expiry is fully known server-side (stored on the connection), so an expired
-// token surfaces as a failing provider even when the phone has stopped pushing — no
+// token surfaces as a failing source even when the phone has stopped pushing — no
 // real sync event is ever recorded for it (an expired token drops out of candidacy,
 // so its pushes 401 with nothing to attribute). Returns null when the HC token isn't
 // expired. The negative id can't collide with a real AUTOINCREMENT row.
@@ -250,7 +251,7 @@ function expiredHealthConnectIssue(
   return {
     id: -1,
     profile_id: profileId,
-    provider: HEALTH_CONNECT_ID,
+    sourceId: HEALTH_CONNECT_ID,
     // The synthetic row is SORTED against real events, so it must carry their
     // convention (#2205). integration_connections.updated_at is still on SQLite's
     // bare shape, hence the re-serialization rather than a raw copy.
@@ -273,13 +274,13 @@ function expiredHealthConnectIssue(
   };
 }
 
-// THE per-provider standing resolution (#1772, flap-aware since #1880): connection
+// THE per-source standing resolution (#1772, flap-aware since #1880): connection
 // status + the recent run window + the #1685 staleness facts, folded through the ONE
-// pure derivation (providerStanding). Both getIntegrationState (every rendered
+// pure derivation (sourceStanding). Both getIntegrationState (every rendered
 // surface) and getImportIssues (the badge / Needs attention / digest feed) read this
-// helper, so a surface and the escalation set can never disagree about a provider's
+// helper, so a surface and the escalation set can never disagree about a source's
 // shape. Profile-scoped through every read it composes.
-interface ProviderFacts {
+interface SourceFacts {
   connected: boolean;
   needsReauth: boolean;
   latest: IntegrationSyncEvent | null;
@@ -287,30 +288,30 @@ interface ProviderFacts {
   // for every caller, however much display history it asked for.
   window: IntegrationSyncEvent[];
   lastSuccessAt: string | null;
-  // The quiet-stop facts when the silence rule fires for this CONNECTED provider,
+  // The quiet-stop facts when the silence rule fires for this CONNECTED source,
   // for the "no data since" copy. Null otherwise.
   stale: StaleSync | null;
-  standing: ProviderStanding;
+  standing: SourceStanding;
   // WHO MOVES THE DATA (#2301) — resolved from the registry kind here and carried, so
   // the standing and every surface reading it agree on which family it came from.
   delivery: IntegrationDelivery;
 }
 
-function resolveProviderFacts(
+function resolveSourceFacts(
   profileId: number,
-  providerId: IntegrationId
-): ProviderFacts {
-  const def = getIntegration(providerId);
-  const status = getConnection(profileId, providerId)?.status;
+  sourceId: IntegrationId
+): SourceFacts {
+  const def = getIntegration(sourceId);
+  const status = getConnection(profileId, sourceId)?.status;
   const connected = status === "connected";
   const needsReauth = status === "needs_reauth";
   const window = getIntegrationSyncEvents(
     profileId,
-    providerId,
+    sourceId,
     STANDING_RUN_WINDOW
   );
   const latest = window[0] ?? null;
-  const lastSuccessAt = getLastSuccessfulSyncAt(profileId, providerId);
+  const lastSuccessAt = getLastSuccessfulSyncAt(profileId, sourceId);
   const toleranceMinutes = silenceToleranceMinutes(def);
   // NOW as an instant, through the clock seam (#2263): the silence rule is instant
   // arithmetic against `integration_sync_events.at`, which migration 163 put on the
@@ -318,12 +319,12 @@ function resolveProviderFacts(
   const nowAt = instantNow();
   // The quiet-stop copy facts, from the same staleSyncs derivation the standing
   // composes (`alreadyFailing: false` — this IS the failing derivation, so there is
-  // no other signal to defer to; getImportIssues still reports each provider once).
+  // no other signal to defer to; getImportIssues still reports each source once).
   const stale = connected
     ? (staleSyncs(
         [
           {
-            provider: providerId,
+            sourceId: sourceId,
             lastSuccessAt,
             toleranceMinutes,
             alreadyFailing: false,
@@ -341,7 +342,7 @@ function resolveProviderFacts(
     lastSuccessAt,
     stale,
     delivery,
-    standing: providerStanding({
+    standing: sourceStanding({
       delivery,
       connected,
       needsReauth,
@@ -355,7 +356,7 @@ function resolveProviderFacts(
 }
 
 // A synthetic failing sync event for a connection that went QUIET (#1685) — no
-// recorded failure, just a last success beyond the provider's threshold. Shaped as an
+// recorded failure, just a last success beyond the source's threshold. Shaped as an
 // IntegrationSyncEvent for the same reason the expired-token issue is: everything
 // downstream of getImportIssues (the profile-menu badge, the Data → Review count and
 // Needs-attention card, the attention item, and the digest) already reads that one
@@ -365,14 +366,14 @@ function resolveProviderFacts(
 // full instants.
 function syntheticStaleIssue(
   profileId: number,
-  provider: string,
+  sourceId: string,
   s: StaleSync
 ): IntegrationSyncEvent {
-  const def = getIntegration(provider as IntegrationId);
+  const def = getIntegration(sourceId as IntegrationId);
   return {
     id: STALE_SYNC_EVENT_ID,
     profile_id: profileId,
-    provider,
+    sourceId,
     at: s.sinceAt,
     ok: 0,
     window_start: null,
@@ -386,7 +387,7 @@ function syntheticStaleIssue(
     edited: null,
     skipped: null,
     raw_ref: null,
-    error: staleSyncDetail(def?.name ?? provider, s),
+    error: staleSyncDetail(def?.name ?? sourceId, s),
     created_at: s.sinceAt,
   };
 }
@@ -617,50 +618,50 @@ export function getReviewPairCount(profileId: number): number {
   );
 }
 
-// The ESCALATED-integration events (one per genuinely-broken provider), for the
+// The ESCALATED-integration events (one per genuinely-broken source), for the
 // Review tab's "Needs attention" card, the profile-menu/Data badge, the dashboard
 // hero, and the digest. Since #1880 this is the flap-aware standing, not
-// latest-event-wins: a provider contributes an issue only when its standing
-// escalates (`failing` — no successful run inside the provider's silence tolerance,
-// #2263 — or `needs-reauth`). An `intermittent` provider — failures in the recent
+// latest-event-wins: a source contributes an issue only when its standing
+// escalates (`failing` — no successful run inside the source's silence tolerance,
+// #2263 — or `needs-reauth`). An `intermittent` source — failures in the recent
 // window but a success inside the tolerance — never appears here; it renders as a
-// calm amber fact on the non-escalating surfaces instead. Profile-scoped via getLatestSyncEventPerProvider
-// — per-provider, so it can't miss a broken provider whose failure has aged out of
+// calm amber fact on the non-escalating surfaces instead. Profile-scoped via getLatestSyncEventPerSource
+// — per-source, so it can't miss a broken source whose failure has aged out of
 // a global recent-events window (#304).
 export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
   const failing: IntegrationSyncEvent[] = [];
-  for (const latest of getLatestSyncEventPerProvider(profileId)) {
-    const def = getIntegration(latest.provider as IntegrationId);
+  for (const latest of getLatestSyncEventPerSource(profileId)) {
+    const def = getIntegration(latest.sourceId as IntegrationId);
     if (!def) {
-      // An unregistered provider id (hand-inserted or retired) has no registry
+      // An unregistered source id (hand-inserted or retired) has no registry
       // standing, so the latest-event rule keeps covering it rather than silently
       // dropping a recorded failure.
       if (!latest.ok) failing.push(latest);
       continue;
     }
-    const facts = resolveProviderFacts(profileId, def.id);
+    const facts = resolveSourceFacts(profileId, def.id);
     if (!standingEscalates(facts.standing)) continue;
     if (facts.latest && !facts.latest.ok) {
       // A recorded failure names the cause — the honest row.
       failing.push(facts.latest);
     } else if (facts.stale) {
       // The quiet stop: nothing failed, nothing arrived. The synthetic row states
-      // the observation. One row per provider either way.
+      // the observation. One row per source either way.
       failing.push(syntheticStaleIssue(profileId, def.id, facts.stale));
     }
   }
   // Fold in the expired-Health-Connect-token signal (#607), but only when a real HC
-  // failure event isn't already representing the provider (a rotated-token push
+  // failure event isn't already representing the source (a rotated-token push
   // records its own via recordUnmatchedHealthConnectPush) — so HC appears at most once.
-  if (!failing.some((e) => e.provider === HEALTH_CONNECT_ID)) {
+  if (!failing.some((e) => e.sourceId === HEALTH_CONNECT_ID)) {
     const expired = expiredHealthConnectIssue(profileId);
     if (expired) failing.push(expired);
   }
   return failing;
 }
 
-// The profile's broken providers reduced to what the shared attention model renders —
-// one entry per currently-broken provider, tagged with WHICH kind of broken it is so the
+// The profile's broken sources reduced to what the shared attention model renders —
+// one entry per currently-broken source, tagged with WHICH kind of broken it is so the
 // item can pick its copy (#1685).
 //
 // It lives here, next to getImportIssues, rather than in lib/queries/attention.ts because
@@ -670,11 +671,11 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
 // digest-data for the newly-flagged-biomarker read — a cycle. One home, no cycle, and the
 // badge/page/digest provably read the same list.
 //
-// MEMOIZED ON BOTH LIFETIMES (#2283). `getImportIssues` behind it walks EVERY provider
+// MEMOIZED ON BOTH LIFETIMES (#2283). `getImportIssues` behind it walks EVERY source
 // with a recorded event — a DISTINCT-provider scan, an indexed seek per provider, then
-// a `resolveProviderFacts` standing window plus a last-success seek for each — and one
+// a `resolveSourceFacts` standing window plus a last-success seek for each — and one
 // digest tick asks it TWICE for the same profile: `logDigestTick` reports
-// `providerHealthy` on the decision (#2192), and `gatherDigestInput` builds the banded
+// `sourceHealthy` on the decision (#2192), and `gatherDigestInput` builds the banded
 // broken-sync section (#1685) from the same list. `cache()` is identity in a tick
 // (lib/request-cache.ts says so deliberately), so the collapse that matters here is
 // `tickCached`; the `cache()` beside it collapses the request-side readers — the
@@ -691,7 +692,7 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
 // `tick()` AFTER the profile loop, outside every scope. The scope closes with the
 // profile — see lib/tick-cache.ts for the rule this depends on.
 //
-// The one input that is not a row is NOW: `resolveProviderFacts` compares
+// The one input that is not a row is NOW: `resolveSourceFacts` compares
 // `instantNow()` against the last successful run, so the memo pins the tick's first
 // reading of the clock for the rest of that profile's tick. That is sound because the
 // quantity being compared is a SILENCE TOLERANCE measured in hours (the registry's
@@ -709,41 +710,41 @@ function getIntegrationAttentionUncached(
   profileId: number
 ): AttentionIntegration[] {
   return getImportIssues(profileId).map((ev) => {
-    const integration = getIntegration(ev.provider as IntegrationId);
+    const integration = getIntegration(ev.sourceId as IntegrationId);
     return {
       id: integration?.id ?? null,
-      provider: integration?.name ?? ev.provider,
+      sourceId: integration?.name ?? ev.sourceId,
       detail: ev.error ?? "Reconnect to resume syncing.",
       kind: isStaleSyncEvent(ev) ? ("stale" as const) : ("failing" as const),
     };
   });
 }
 
-// The single most recent event (any outcome) for a provider, or null — the grid
+// The single most recent event (any outcome) for a source, or null — the grid
 // card uses it for a subtle last-sync time / last-error dot.
 export function getLatestSyncEvent(
   profileId: number,
-  provider: string
+  sourceId: string
 ): IntegrationSyncEvent | null {
   const row = db
     .prepare(
-      `SELECT * FROM integration_sync_events
+      `SELECT *, provider AS source_id FROM integration_sync_events
         WHERE profile_id = ? AND provider = ?
         ORDER BY at DESC, id DESC
         LIMIT 1`
     )
-    .get(profileId, provider) as IntegrationSyncEvent | undefined;
+    .get(profileId, sourceId) as IntegrationSyncEvent | undefined;
   return row ?? null;
 }
 
-// THE per-provider state record (#1772). One provider used to be described by four
+// THE per-source state record (#1772). One source used to be described by four
 // surfaces in three visual languages — the Integrations grid card, the setup page's
 // status card (its own badge, a raw SQLite UTC timestamp, and the `last_sync_summary`
 // JSON echoed as key:value badges, a third accounting with no formatter),
 // IntegrationSyncHistoryLink, and Review's Connected-sources card. They now all read
-// THIS, and format it through the pure lib/integrations/provider-state helpers.
+// THIS, and format it through the pure lib/integrations/source-state helpers.
 //
-// `canSyncNow` marks a provider the app can pull on demand; a push-only provider
+// `canSyncNow` marks a source the app can pull on demand; a push-only source
 // (Health Connect) explains that instead of offering the button.
 export interface IntegrationState {
   id: IntegrationId;
@@ -753,11 +754,11 @@ export interface IntegrationState {
   // instead of one that silently defaults.
   kind: IntegrationKind;
   // WHO MOVES THE DATA, resolved once here so no surface re-derives it. It decides
-  // which FAMILY of standings this provider's `standing` is drawn from, and therefore
+  // which FAMILY of standings this source's `standing` is drawn from, and therefore
   // which questions the surface may ask about it at all.
   delivery: IntegrationDelivery;
   connected: boolean;
-  // The provider's credential died (dead/revoked token) and it flipped to
+  // The source's credential died (dead/revoked token) and it flipped to
   // `needs_reauth` (issue #326) — distinct from a never-configured / user-removed
   // "not connected". The card surfaces a "Needs reconnect" prompt instead of the
   // benign "Not connected" one.
@@ -765,7 +766,7 @@ export interface IntegrationState {
   canSyncNow: boolean;
   latest: IntegrationSyncEvent | null;
   history: IntegrationSyncEvent[];
-  // Older-day cursor for the provider page. Review's short status window is not
+  // Older-day cursor for the source page. Review's short status window is not
   // paged and carries null.
   historyNextBefore: string | null;
   // How many rows the drill-in can actually LIST, per event id, among `latest` +
@@ -780,8 +781,8 @@ export interface IntegrationState {
   // header reports when the latest attempt failed.
   lastSuccessAt: string | null;
   // The pure derivations, resolved once here so no surface re-derives them: which
-  // shape the provider is in, and which words its counts are reported in.
-  standing: ProviderStanding;
+  // shape the source is in, and which words its counts are reported in.
+  standing: SourceStanding;
   vocabulary: SyncVocabulary;
   // The quiet-stop facts when the silence rule fires (a `failing` standing whose
   // latest run SUCCEEDED long ago) — the "no data since <date>" copy's ingredients.
@@ -814,13 +815,13 @@ export type ConnectedSource = IntegrationState;
 // naming four of the seven kinds by hand — and that hand-enumeration had already
 // caused this exact bug once: `public` was missing, which left Weather's successful
 // history unreachable while its failures still showed under Needs attention (#1614).
-// Attended providers (a Takeout archive, patient portals) reach Review through the
+// Attended sources (a Takeout archive, patient portals) reach Review through the
 // chronological Imports feed instead; the outbound calendar feed imports nothing.
 
-// The recurring-stream providers for the "Connected sources" section, each collapsed
+// The recurring-stream sources for the "Connected sources" section, each collapsed
 // to its latest sync outcome plus a short expandable history. Profile-scoped via the
-// per-provider reads it composes (getConnection / getLatestSyncEvent /
-// getIntegrationSyncEvents). A provider is only surfaced once it's been set up:
+// per-source reads it composes (getConnection / getLatestSyncEvent /
+// getIntegrationSyncEvents). A source is only surfaced once it's been set up:
 // currently connected, or carrying historical sync events (issue #294) — a
 // never-configured integration is hidden rather than shown as an empty
 // "Not connected" card.
@@ -840,22 +841,22 @@ export function getConnectedSources(profileId: number): ConnectedSource[] {
 
 // How many events each surface loads. Review is an inbox — it shows the current
 // state, so it needs only enough history to say whether the latest run is typical.
-// The setup page is the provider's HOME and owns the paged retained ledger.
+// The setup page is the source's HOME and owns the paged retained ledger.
 const REVIEW_HISTORY_LIMIT = 10;
 export const SETUP_HISTORY_LIMIT = "paged" as const;
 
-// ONE provider's complete state, for whichever surface is asking (#1772): the
+// ONE source's complete state, for whichever surface is asking (#1772): the
 // Integrations grid card, its setup page's status header + history table, or Review's
 // Connected-sources entry. Returns null for an id that isn't a registered
 // integration. Profile-scoped through every read it composes.
 export function getIntegrationState(
   profileId: number,
-  providerId: string,
+  sourceId: string,
   historyLimit: number | typeof SETUP_HISTORY_LIMIT = REVIEW_HISTORY_LIMIT
 ): IntegrationState | null {
-  const def = getIntegration(providerId as IntegrationId);
+  const def = getIntegration(sourceId as IntegrationId);
   if (!def) return null;
-  const facts = resolveProviderFacts(profileId, def.id);
+  const facts = resolveSourceFacts(profileId, def.id);
   const timeZone = getTimezone(profileId);
   // The DISPLAY history is independent from the fixed STANDING window. Setup gets
   // seven complete local days; Review keeps its short event slice.
@@ -880,8 +881,8 @@ export function getIntegrationState(
     delivery: facts.delivery,
     connected: facts.connected,
     needsReauth: facts.needsReauth,
-    // Which providers can be synced on demand is a REGISTRY fact now (#2040): a
-    // provider with a pull facet has a runner behind the button. Health Connect is
+    // Which sources can be synced on demand is a REGISTRY fact now (#2040): a
+    // source with a pull facet has a runner behind the button. Health Connect is
     // push-only and shows an explainer instead.
     canSyncNow: isPullIntegration(def),
     latest: facts.latest,
@@ -905,25 +906,25 @@ export function getIntegrationState(
   };
 }
 
-// How many provenance rows each of a provider's recent sync events RECORDED (#1771,
+// How many provenance rows each of a source's recent sync events RECORDED (#1771,
 // counted rather than merely detected in #1991). The "What this wrote" drill-in
 // promises record-level detail, so it may only be offered for an event that has some,
 // and it must promise exactly as many as it will list — whether an event has any, and
 // how many, is a fact about
-// the EVENT, not about the provider: Weather legitimately records none (it writes
+// the EVENT, not about the source: Weather legitimately records none (it writes
 // cells of the global location-keyed forecast cache, which name no user record —
 // #1212's scoping decision), and genuine pre-#1333 legacy events of the other
-// providers have none either. Both used to render an expander that apologized 100%
+// sources have none either. Both used to render an expander that apologized 100%
 // of the time.
 //
-// One indexed seek per provider rather than a per-event existence check: sync-event
+// One indexed seek per source rather than a per-event existence check: sync-event
 // ids are monotonic, so the events being rendered are exactly those at or above the
 // oldest id in the rendered set, and `integration_sync_rows` is keyed on event_id.
 // PROFILE-SCOPED through the parent event (the child-table convention — the table has
 // no own profile_id).
 export function provenanceCountsByEvent(
   profileId: number,
-  provider: string,
+  sourceId: string,
   minEventId: number
 ): Record<number, number> {
   const rows = db
@@ -934,7 +935,7 @@ export function provenanceCountsByEvent(
         WHERE e.profile_id = ? AND e.provider = ? AND r.event_id >= ?
         GROUP BY r.event_id`
     )
-    .all(profileId, provider, minEventId) as {
+    .all(profileId, sourceId, minEventId) as {
     event_id: number;
     n: number;
   }[];

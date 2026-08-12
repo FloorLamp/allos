@@ -30,7 +30,7 @@ export interface CachedUvHour {
   directRadiation: number | null;
   diffuseRadiation: number | null;
   // Precipitation in the hour, mm (#1967). Null on every row cached before the column
-  // existed and on any hour the provider omitted it — the readers treat a partial day as
+  // existed and on any hour the source omitted it — the readers treat a partial day as
   // having no timing rather than guessing from the hours they do have.
   precipitationMm: number | null;
 }
@@ -48,7 +48,7 @@ function eq(a: number | null, b: number | null): boolean {
 // Idempotent (the sync invariant, docs/internals/integrations-sync.md): a re-fetch of
 // the same hour with the same values is `unchanged`, a changed value is `updated`, a
 // new hour is `inserted`. There are NO manually-entered rows in this cache (it is
-// provider-only, derived public weather), so the user-edit lock does not apply here —
+// source-only, derived public weather), so the user-edit lock does not apply here —
 // the "never overwrite a manual row" invariant is satisfied by there being none. lat/
 // lng are coarsened to the storage precision so the key matches the home-location one.
 export function upsertUvHours(
@@ -241,7 +241,7 @@ const DAY_COLUMNS = [
 
 type DayColumn = (typeof DAY_COLUMNS)[number];
 
-// A fetched row's value for a storage column — the ONE mapping between the provider
+// A fetched row's value for a storage column — the ONE mapping between the source
 // shape and the table shape.
 function dayValue(r: DailyWeatherRow, column: DayColumn): number | null {
   switch (column) {
@@ -280,7 +280,7 @@ function dayValue(r: DailyWeatherRow, column: DayColumn): number | null {
 // alone, and only a real reading ever overwrites. A day whose incoming values are all
 // null-or-equal is therefore `unchanged`, not a destructive `updated`.
 //
-// As with the hourly cache there are no manually-entered rows here (provider-only,
+// As with the hourly cache there are no manually-entered rows here (source-only,
 // derived public weather), so the never-overwrite-a-manual-edit invariant is satisfied
 // by there being no manual rows to protect.
 export function upsertWeatherDays(

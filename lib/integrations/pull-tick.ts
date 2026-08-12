@@ -11,13 +11,13 @@ import {
 import type { IntegrationId } from "@/lib/types";
 import { resumeDueIntegrationBackfills } from "./backfill-jobs";
 
-// THE TICK'S PULL PASS (#2121 step 1). One profile's connected pull providers, polled
-// at each provider's DECLARED cadence rather than once per tick.
+// THE TICK'S PULL PASS (#2121 step 1). One profile's connected pull sources, polled
+// at each source's DECLARED cadence rather than once per tick.
 //
 // WHY THIS IS A lib MODULE AND NOT A BLOCK IN scripts/notify.ts. It used to be the
 // latter, and the tick was therefore the only thing that could exercise it — the loop
 // that decides how many external API calls the instance makes had no DB-tier test at
-// all. Moving it here is what lets "two ticks in one hour poll a provider once" be an
+// all. Moving it here is what lets "two ticks in one hour poll a source once" be an
 // assertion instead of a claim. Auth-blind like every other lib write core: it takes
 // `profileId` first and never imports lib/auth; the tick resolved the profile.
 //
@@ -30,7 +30,7 @@ import { resumeDueIntegrationBackfills } from "./backfill-jobs";
 //
 // THE LAST-RUN FACT IS NOT NEW STATE. Every pull already appends an
 // integration_sync_events row per run — success or failure — so "when did we last
-// call this provider for this profile" was already recorded, indexed
+// call this source for this profile" was already recorded, indexed
 // (idx_sync_events_profile_provider_at) and retention-swept (#388). The guard reads
 // it. Minting a `notify_*` marker or a new settings key for a fact the database
 // already holds would have added a second source of truth to keep in step, and a
@@ -38,12 +38,12 @@ import { resumeDueIntegrationBackfills } from "./backfill-jobs";
 
 const log = createLogger("pull-tick");
 
-// The most recent recorded ATTEMPT for one (profile, provider) — ok or failed, since
-// both spent an API call. Profile-scoped; served by the (profile_id, provider, at)
-// index, so this is one seek per provider per tick rather than a scan.
+// The most recent recorded ATTEMPT for one (profile, source) — ok or failed, since
+// both spent an API call. Profile-scoped; served by the (profile_id, source, at)
+// index, so this is one seek per source per tick rather than a scan.
 export function lastPullAttemptAt(
   profileId: number,
-  provider: string
+  sourceId: string
 ): string | null {
   const row = db
     .prepare(
@@ -52,35 +52,35 @@ export function lastPullAttemptAt(
         ORDER BY at DESC, id DESC
         LIMIT 1`
     )
-    .get(profileId, provider) as { at: string } | undefined;
+    .get(profileId, sourceId) as { at: string } | undefined;
   return row?.at ?? null;
 }
 
-// Whether this provider may be polled for this profile now — the registry-declared
+// Whether this source may be polled for this profile now — the registry-declared
 // cadence met with the recorded last attempt. Exported so an operator surface (or a
 // test) can ask the question without running the pass.
 export function pullDecision(
   profileId: number,
-  provider: IntegrationId,
+  sourceId: IntegrationId,
   now: Date
 ): PollDecision {
   return shouldPollNow({
-    lastAttemptAt: lastPullAttemptAt(profileId, provider),
+    lastAttemptAt: lastPullAttemptAt(profileId, sourceId),
     now,
-    cadenceMinutes: pullCadenceMinutes(getIntegration(provider)),
+    cadenceMinutes: pullCadenceMinutes(getIntegration(sourceId)),
   });
 }
 
 export interface PullTickResult {
-  // Providers whose runner actually ran this pass.
+  // Sources whose runner actually ran this pass.
   polled: IntegrationId[];
-  // Connected providers held back by their cadence window.
+  // Connected sources held back by their cadence window.
   skipped: IntegrationId[];
 }
 
-// Pull from a profile's connected pull-integrations, at most once per provider per
+// Pull from a profile's connected pull-integrations, at most once per source per
 // cadence window. Best-effort: a sync failure must never affect the notification flow
-// or the process exit code, and one provider throwing must not stop the next — which
+// or the process exit code, and one source throwing must not stop the next — which
 // is why each run is isolated.
 //
 // This used to be four copy-pasted try/if(connected)/log blocks (#2040), then one

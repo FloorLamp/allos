@@ -12,7 +12,7 @@ import {
   standingBadge,
   standingHeadline,
   syncRunNounForKind,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import { groupSyncDays } from "@/lib/integrations/sync-history-days";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";

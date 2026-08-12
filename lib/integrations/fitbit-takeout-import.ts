@@ -243,7 +243,7 @@ export function parseTakeoutArchive(
 }
 
 // Parse + write, recording ONE sync event for the run so Data → Review shows it
-// beside every other provider's. Each record type is written in bounded slices, each
+// beside every other source's. Each record type is written in bounded slices, each
 // slice its own IMMEDIATE transaction (#468), so the single better-sqlite3
 // connection is never held for the length of a multi-thousand-row import.
 export function importTakeoutArchive(

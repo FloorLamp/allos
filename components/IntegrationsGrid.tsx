@@ -12,7 +12,7 @@ import {
   standingHeadline,
   standingUnconfigured,
   syncRunNounForKind,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import StatusBadge from "./integrations/StatusBadge";
 import SyncTimestamp from "./integrations/SyncTimestamp";
 

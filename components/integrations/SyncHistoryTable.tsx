@@ -7,7 +7,7 @@ import {
   escalationPolicyLabel,
   runWindowNorm,
   syncRunNounForKind,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import { projectSyncHistoryDays } from "@/lib/integrations/sync-history-view";
 import SyncHistoryDays from "./SyncHistoryDays";
 

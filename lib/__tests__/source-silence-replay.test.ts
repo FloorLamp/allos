@@ -25,7 +25,7 @@ import {
   standingEscalates,
   STANDING_RUN_WINDOW,
   type SyncEventFacts,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import { silenceToleranceMinutes } from "@/lib/integrations/staleness";
 import { getIntegration } from "@/lib/integrations/registry";
 

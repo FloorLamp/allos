@@ -9,7 +9,7 @@ import { followLink, openAllSyncDays } from "./helpers";
 // 200px below.
 //
 // Since #1772 "Connected sources" is an INBOX rendered through the shared state model
-// (lib/integrations/provider-state): a provider with something unfinished is expanded
+// (lib/integrations/source-state): a provider with something unfinished is expanded
 // with the reason and the action, a healthy one collapses to a single line, and the
 // full per-provider history lives on the provider's own page (see the setup-page
 // specs below and weather-uv.spec.ts).

@@ -7,7 +7,7 @@ export type IntegrationBackfillStatus =
 export interface IntegrationBackfillJob {
   id: number;
   profile_id: number;
-  provider: IntegrationId;
+  sourceId: IntegrationId;
   kind: string;
   label: string;
   item_noun: string;
@@ -27,15 +27,15 @@ export interface IntegrationBackfillJob {
 
 export function getIntegrationBackfillJobs(
   profileId: number,
-  provider?: string
+  sourceId?: string
 ): IntegrationBackfillJob[] {
-  if (provider) {
+  if (sourceId) {
     return db
       .prepare(
         `SELECT * FROM integration_backfill_jobs
           WHERE profile_id = ? AND provider = ? ORDER BY updated_at DESC, id DESC`
       )
-      .all(profileId, provider) as IntegrationBackfillJob[];
+      .all(profileId, sourceId) as IntegrationBackfillJob[];
   }
   return db
     .prepare(
@@ -47,7 +47,7 @@ export function getIntegrationBackfillJobs(
 
 export function getIntegrationBackfillJob(
   profileId: number,
-  provider: string,
+  sourceId: string,
   kind: string
 ): IntegrationBackfillJob | null {
   return (
@@ -56,7 +56,7 @@ export function getIntegrationBackfillJob(
         `SELECT * FROM integration_backfill_jobs
           WHERE profile_id = ? AND provider = ? AND kind = ?`
       )
-      .get(profileId, provider, kind) as IntegrationBackfillJob | undefined) ??
+      .get(profileId, sourceId, kind) as IntegrationBackfillJob | undefined) ??
     null
   );
 }

@@ -4,7 +4,7 @@ import {
   formatSyncOutcome,
   outcomeTone,
   type SyncVocabulary,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import {
   originChoiceLabel,
   parseSyncEventDetails,

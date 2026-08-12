@@ -41,7 +41,7 @@ import { getEncounters } from "./medical/encounters";
 import { getMoodLogs } from "./mood";
 import { getSymptomDaysInRange } from "./symptoms";
 import { getIntegration } from "../integrations/registry";
-import { syncVocabularyForKind } from "../integrations/provider-state";
+import { syncVocabularyForKind } from "../integrations/source-state";
 import type { IntegrationId } from "../types/integrations";
 import { currentEpisodeForProfile } from "../illness-episode";
 import { sharedSurfaceDetail } from "../appointment-sensitivity";

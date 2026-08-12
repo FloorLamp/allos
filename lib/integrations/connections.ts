@@ -19,18 +19,23 @@ import { utcInstant } from "@/lib/date";
 import { boundSyncDetailsJson } from "./sync-details";
 import type { ProvenanceEntry } from "./sync-log";
 
-// Generic per-provider connection state, backed by integration_connections. Holds
+// Generic per-source connection state, backed by integration_connections. Holds
 // the push token for Health Connect and OAuth tokens for Strava (Garmin later).
 
+// THE #2487 BOUNDARY, stated once for this module: TypeScript names an integration
+// source `sourceId`, and every SQL statement below binds it against a column still
+// named `provider` — the persisted rename is deferred to its own forward migration
+// (see docs/internals/integrations-sync.md). Reads alias `provider AS source_id` so
+// the row shape carries the TS noun; writes bind the TS value into the old column.
 export function getConnection(
   profileId: number,
-  provider: string
+  sourceId: string
 ): IntegrationConnection | undefined {
   return db
     .prepare(
-      "SELECT * FROM integration_connections WHERE profile_id = ? AND provider = ?"
+      "SELECT *, provider AS source_id FROM integration_connections WHERE profile_id = ? AND provider = ?"
     )
-    .get(profileId, provider) as IntegrationConnection | undefined;
+    .get(profileId, sourceId) as IntegrationConnection | undefined;
 }
 
 // A recurring inbound health-data source, excluding the outbound calendar feed.
@@ -71,10 +76,10 @@ const VALID_STATUSES: ReadonlySet<IntegrationConnectionStatus> = new Set([
 // Insert-or-update a connection row, bumping updated_at. `config` is stored as JSON.
 export function upsertConnection(
   profileId: number,
-  provider: string,
+  sourceId: string,
   patch: ConnectionPatch
 ) {
-  const existing = getConnection(profileId, provider);
+  const existing = getConnection(profileId, sourceId);
   const status = patch.status ?? existing?.status ?? "disconnected";
   if (!VALID_STATUSES.has(status)) {
     throw new Error(`upsertConnection: invalid status "${status}"`);
@@ -92,7 +97,7 @@ export function upsertConnection(
        status = excluded.status,
        config = excluded.config,
        updated_at = datetime('now')`
-  ).run(profileId, provider, status, config);
+  ).run(profileId, sourceId, status, config);
 }
 
 // Read-merge-write a connection's config JSON inside an IMMEDIATE transaction (issue
@@ -105,14 +110,14 @@ export function upsertConnection(
 // is fully synchronous, so `read` runs entirely inside the transaction with no await.
 function mergeConnectionConfig<T extends object>(
   profileId: number,
-  provider: string,
+  sourceId: string,
   read: () => T,
   patch: Partial<T>,
   status?: "connected" | "disconnected"
 ): void {
   writeTx(() => {
     const next = { ...read(), ...patch } as Record<string, unknown>;
-    upsertConnection(profileId, provider, { status, config: next });
+    upsertConnection(profileId, sourceId, { status, config: next });
   });
 }
 
@@ -127,7 +132,7 @@ function mergeConnectionConfig<T extends object>(
 // stale claim frees within a tick. Returns true iff THIS caller won and may refresh.
 export function claimTokenRefresh(
   profileId: number,
-  provider: string
+  sourceId: string
 ): boolean {
   const res = db
     .prepare(
@@ -137,7 +142,7 @@ export function claimTokenRefresh(
           AND (refresh_claimed_at IS NULL
                OR refresh_claimed_at < datetime('now','-60 seconds'))`
     )
-    .run(profileId, provider);
+    .run(profileId, sourceId);
   return res.changes === 1;
 }
 
@@ -149,14 +154,14 @@ export function claimTokenRefresh(
 // unbounded failing-forever refresh loop (issue #326) until the user reconnects — at
 // which point setStravaTokens/setOuraToken/setWithingsTokens flip it back to
 // `connected`. Idempotent: a row already in `needs_reauth` just bumps updated_at.
-export function markConnectionNeedsReauth(profileId: number, provider: string) {
-  upsertConnection(profileId, provider, { status: "needs_reauth" });
+export function markConnectionNeedsReauth(profileId: number, sourceId: string) {
+  upsertConnection(profileId, sourceId, { status: "needs_reauth" });
 }
 
 // Record the result of a sync (timestamp + per-type counts as JSON).
 export function recordSync(
   profileId: number,
-  provider: string,
+  sourceId: string,
   summary: Record<string, number>
 ) {
   db.prepare(
@@ -165,7 +170,7 @@ export function recordSync(
            last_sync_summary = ?,
            updated_at = datetime('now')
      WHERE profile_id = ? AND provider = ?`
-  ).run(JSON.stringify(summary), profileId, provider);
+  ).run(JSON.stringify(summary), profileId, sourceId);
 }
 
 export interface SyncEventInput {
@@ -190,12 +195,12 @@ export interface SyncEventInput {
   // Structured, non-secret diagnostics surfaced with a successful sync in Data →
   // Review (exporter-shape warnings and origin reconciliation for Health Connect).
   details?: string | null;
-  // Bare filename of the raw provider payload captured for this sync (issue #9),
+  // Bare filename of the raw source payload captured for this sync (issue #9),
   // written by lib/integrations/raw-log.ts. Null when capture was off/failed.
   raw_ref?: string | null;
   error?: string | null;
   // WHICH external identity this run was about (#1739): the (portal, login, patient) an
-  // attended acquirer reported. Undefined/null for every other provider — a Strava poll
+  // attended acquirer reported. Undefined/null for every other source — a Strava poll
   // has no identity beyond the profile — and for a `profile=<id>` report from a human
   // debugging with curl. It is what lets the card answer "when was THIS patient on THIS
   // login last checked", which one per-profile connection stamp cannot.
@@ -216,7 +221,7 @@ export interface SyncEventInput {
 // pathological message can't bloat the row; tokens/secrets are never passed here.
 export function recordSyncEvent(
   profileId: number,
-  provider: string,
+  sourceId: string,
   ev: SyncEventInput
 ): number | null {
   try {
@@ -230,7 +235,7 @@ export function recordSyncEvent(
       )
       .run(
         profileId,
-        provider,
+        sourceId,
         // The ledger stores UTC with an explicit `Z` (#2205). Real time, not the clock
         // seam: this stamp is a sync AUDIT time, and lib/clock.ts bars the seam from
         // owning anything whose calendar day never meets a today()-derived value.
@@ -258,7 +263,7 @@ export function recordSyncEvent(
   } catch (err) {
     // Swallow: debug logging can never be allowed to break the ingest it observes.
     log.error("recordSyncEvent failed", {
-      provider,
+      sourceId,
       err: String(err),
     });
     return null;
@@ -296,8 +301,8 @@ export function recordSyncRows(
 // Retention sweep for integration_sync_events (issue #388), run once per hourly
 // notify tick alongside the other maintenance sweeps (sweepReplayedKeys /
 // pruneAuditEvents / sweepDeletedRows). Deletes events STRICTLY older than the
-// window EXCEPT the newest event per (profile, provider) — kept regardless of age so
-// a dormant provider's last-known state survives for the failure detector. GLOBAL by
+// window EXCEPT the newest event per (profile, source) — kept regardless of age so
+// a dormant source's last-known state survives for the failure detector. GLOBAL by
 // design (one call prunes every profile's aged rows), mirroring the sibling sweeps;
 // the retained-newest subquery names `profile_id`, so it clears the profile-scoping
 // guard. Best-effort — never throws, so a prune failure can't affect the tick. The
@@ -517,7 +522,7 @@ function clearHealthConnectReauth(profileId: number): void {
 // True when this profile's stored Health Connect ingest token is present AND past its
 // optional expiry (#607). The env-fallback token carries no expiry, and a profile with
 // no DB token has nothing to enforce — both read false. Read at page render time by
-// the Review/Issues surfaces so an expired token surfaces as a failing provider even
+// the Review/Issues surfaces so an expired token surfaces as a failing source even
 // when the phone has stopped pushing entirely (an expired token is dropped from
 // candidacy, so its pushes 401 with nothing to attribute a sync event to).
 export function isHealthConnectTokenExpired(profileId: number): boolean {
@@ -536,7 +541,7 @@ export function isHealthConnectTokenExpired(profileId: number): boolean {
 // which phone is misconfigured, so we skip rather than misattribute to the wrong
 // profile. RATE-LIMITED to once per hour per profile so a phone hammering the ingest
 // with a stale token can't flood integration_sync_events. The recorded ok:0 event
-// flows through the existing currentlyFailingProviders read (badge, Issues, card) and
+// flows through the existing currentlyFailingSources read (badge, Issues, card) and
 // self-clears on the next successful ingest; we also flip the connection needs_reauth
 // so the setup card shows a Reconnect prompt.
 export function recordUnmatchedHealthConnectPush(
@@ -550,7 +555,7 @@ export function recordUnmatchedHealthConnectPush(
     .all() as { profile_id: number }[];
   if (rows.length !== 1) return; // can't attribute (0 or many) — skip
   const profileId = rows[0].profile_id;
-  // Rate limit: skip if any failure event for this provider landed within the hour.
+  // Rate limit: skip if any failure event for this source landed within the hour.
   // Same bound-cutoff rule as the retention sweep above (#2205).
   const recent = db
     .prepare(
@@ -1068,12 +1073,12 @@ export async function getWithingsAccessToken(
 
 // ---- Weather / UV (Open-Meteo) ----
 
-// The keyless weather/UV provider (issue #1172). Open-Meteo needs NO API key/account,
+// The keyless weather/UV source (issue #1172). Open-Meteo needs NO API key/account,
 // so there is no token or OAuth config — the only prerequisite is the profile's home
 // location (Settings → Profile), and the connection's `config` stays null. The
 // integration_connections row is used purely as the enable/disable flag the hourly
 // tick reads (status === "connected") and the Integrations grid renders, mirroring the
-// other providers so the surface stays uniform. The cached hourly series itself is a
+// other sources so the surface stays uniform. The cached hourly series itself is a
 // GLOBAL, location-keyed table (weather_uv_hours), not this per-profile row.
 export const WEATHER_ID = "weather";
 

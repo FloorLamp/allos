@@ -17,7 +17,7 @@ import {
   provenanceCountsByEvent,
   SYNC_HISTORY_PAGE_DAYS,
 } from "@/lib/queries";
-import { syncVocabularyForKind } from "@/lib/integrations/provider-state";
+import { syncVocabularyForKind } from "@/lib/integrations/source-state";
 import {
   projectSyncHistoryDays,
   projectSyncRun,

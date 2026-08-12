@@ -13,7 +13,7 @@ import {
   needsAttention,
   standingBadge,
   standingEscalates,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import SyncNowButton from "@/components/SyncNowButton";
 import StatusBadge from "@/components/integrations/StatusBadge";
 import SyncTimestamp from "@/components/integrations/SyncTimestamp";
@@ -27,7 +27,7 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 // that a provider's status and controls were still rendered twice in two visual
 // languages — here and on its own setup page — with different badges, different
 // timestamp formats, and (with the setup pages' raw `last_sync_summary` echo) a third
-// accounting. The state model is now one computation (lib/integrations/provider-state
+// accounting. The state model is now one computation (lib/integrations/source-state
 // over getIntegrationState) and the surfaces have deliberate, different ROLES:
 //
 //   • the setup page is the provider's HOME — status header, controls, full history;

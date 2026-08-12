@@ -25,7 +25,7 @@ import {
   standingBadge,
   standingEscalates,
   syncRunNounForKind,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 
 const TAKEOUT = "fitbit-takeout";
 const PORTALS = "patient-portals";

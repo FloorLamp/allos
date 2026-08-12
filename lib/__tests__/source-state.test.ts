@@ -40,7 +40,7 @@ import {
   type ProviderStanding,
   type SyncEventFacts,
   type SyncRunNoun,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import { truncatedSyncDetails } from "@/lib/integrations/sync-details";
 
 // The instant every fixture below is measured against, and the shape the sync ledger
