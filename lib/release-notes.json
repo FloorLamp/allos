@@ -5,22 +5,15 @@
       "entries": [
         {
           "pr": 2507,
-          "title": "Type an analyte’s abbreviation and the picker finds it",
-          "body": "Typing “psa” offered Prostate-Specific Antigen at no position at all, and “a1c” put a lung-function test above Hemoglobin A1c. An abbreviation is now a search key in its own right, alongside the alternate spellings the vocabulary already knew, so the short name people actually type reaches the reading they mean.",
+          "title": "Pickers find an analyte by its abbreviation, and favour what you log",
+          "body": "Typing “psa” offered Prostate-Specific Antigen at no position at all, and “a1c” put a lung-function test above Hemoglobin A1c. An abbreviation is now a search key in its own right. Separately, typing “sqa” in the activity picker offered Squash — never logged once — above five kinds of squat logged for months; options you have actually used now rank ahead of ones you have not, by a margin small enough that a genuinely better name match still wins. Nothing is hidden either way.",
           "kind": "fix",
-          "issues": [2382]
-        },
-        {
-          "pr": 2507,
-          "title": "Pickers put the things you log above the things you never have",
-          "body": "Typing “sqa” in the activity picker offered Squash — never logged once — above five kinds of squat logged for months. Options you have actually used now rank ahead of ones you have not, by a margin small enough that a genuinely better name match still wins. Nothing is hidden: an option you have never logged keeps its place in the list.",
-          "kind": "fix",
-          "issues": [2384]
+          "issues": [2382, 2384]
         },
         {
           "pr": 2503,
           "title": "A workout recap only claims the target the session actually advanced",
-          "body": "A 33-minute walk arrived announced as “Workout complete” and carried the line “Chest — 1 of 2 this week, one more to go”, crediting it with a barbell session two days earlier and nudging toward a chest day it had not touched. The weekly line now comes from the session that just finished, and a session that advanced nothing gets no line. The title names what actually finished too — cardio, sport and mobility each get their own, instead of everything arriving under a barbell.",
+          "body": "A 33-minute walk arrived announced as “Workout complete” and carried the line “Chest — 1 of 2 this week, one more to go”, crediting it with a barbell session earlier in the week and nudging toward a chest day it had not touched. The weekly line now comes from the session that just finished, and a session that advanced nothing gets no line. The title names what actually finished too — cardio, sport and mobility each get their own, instead of everything arriving under a barbell.",
           "kind": "fix",
           "issues": []
         }
@@ -38,17 +31,10 @@
         },
         {
           "pr": 2506,
-          "title": "The weekly recap reports a goal in the week you actually reached it",
-          "body": "Reaching a goal is now recorded when it happens, so the recap announces it that week. Before, it keyed on the goal’s deadline: a goal reached early was announced a month later when its target date came round, a goal reached late was never announced at all, and a goal with no deadline could not be announced under any circumstances. A deadline that passes unmet is now reported once too — plainly, with no running tally.",
-          "kind": "fix",
-          "issues": [2394]
-        },
-        {
-          "pr": 2506,
-          "title": "The weekly recap covers food, and reads with one aside per line",
-          "body": "Food is the thing most people log every day and the recap said nothing about it. It now reports how many days of the week you logged, how varied the groups were, and how the protein and fibre days landed — never a servings total, and never a week-on-week score to beat. Sleep gained a typical-night line beside the regularity index, since a perfectly consistent five hours scored well before. Lines also stop stacking two bracketed asides against each other.",
+          "title": "The weekly recap reports goals when you reached them, and covers food",
+          "body": "Reaching a goal is now recorded when it happens, so the recap announces it that week. Before, it keyed on the goal’s deadline: a goal reached early was announced a month later, one reached late was never announced, and a goal with no deadline could not be announced at all. A deadline that passes unmet is reported once too. Food — the thing most people log every day — gained a line covering how many days you logged, how varied the groups were, and how protein and fibre landed, never a servings total. Sleep gained a typical-night line beside the regularity index, and lines stop stacking two bracketed asides.",
           "kind": "feature",
-          "issues": [2389, 2396]
+          "issues": [2389, 2394, 2396]
         }
       ]
     },
