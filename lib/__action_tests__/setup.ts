@@ -67,6 +67,13 @@ vi.mock("@/lib/auth", async () => {
   // files, and a destructured snapshot would keep querying the file before it.
   // Reading dbMod.db per call follows the live binding in both tiers.
   const dbMod = await import("@/lib/db");
+  // The REAL session-teardown helpers (#1843). They are pure SQL over the temp DB
+  // with no cookie/request dependency, so there is nothing to fake — and now that
+  // the revocation actions AUDIT based on how many sessions actually died, an
+  // inert spy returning undefined would make the audit branch untestable in this
+  // tier. Only the cookie-reading wrapper below still needs standing in for.
+  const authActual =
+    await vi.importActual<typeof import("@/lib/auth")>("@/lib/auth");
   // Demo-mode guard (#181): the mock applies the SAME pure predicate the real
   // requireWriteAccess() uses, reading process.env.ALLOS_DEMO_MODE each call, so a
   // demo-mode write-refusal test exercises the guard faithfully (see demo.actions.test.ts).
@@ -171,10 +178,18 @@ vi.mock("@/lib/auth", async () => {
     getCurrentViewProfileIds: async () => null,
     // Session-teardown helpers some login-scoped actions call after their write
     // (change-own-password evicts other devices; the revoke actions delegate
-    // here). Prod reads the live cookie token, which doesn't exist in this tier,
-    // so they're inert spies — tests assert the DB writes, not the eviction.
-    destroyOtherSessionsForCurrent: vi.fn(async () => {}),
-    revokeSession: vi.fn(),
+    // here). The two that are plain SQL run for REAL against the temp DB, so the
+    // #1843 audit rows — which are written only when a session actually ended —
+    // are observable here.
+    revokeSession: authActual.revokeSession,
+    destroyLoginSessions: authActual.destroyLoginSessions,
+    // The one that genuinely cannot run as-is: prod resolves the caller's live
+    // cookie to spare that session. There is no cookie in this tier, which is
+    // exactly the no-cookie branch prod already documents — it falls through to
+    // destroyLoginSessions(loginId) and ends every session for the login. So this
+    // is the real behaviour for the real inputs available here, not a stub.
+    destroyOtherSessionsForCurrent: async (loginId: number) =>
+      authActual.destroyLoginSessions(loginId),
     // The NON-throwing read (prod returns null for an anonymous request), so a
     // route handler's "no session" branch is testable: a test calls
     // clearActingSession() and asserts the handler's own refusal.

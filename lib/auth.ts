@@ -132,16 +132,24 @@ export function accessForProfile(
   return row?.access === "read" ? "read" : "write";
 }
 
-// Delete every expired session. Called opportunistically at login so the table
-// doesn't accumulate dead rows.
-export function purgeExpiredSessions(): void {
+// Delete every expired session, returning how many rows went. Called
+// opportunistically at login AND from the hourly notify tick's sweep block
+// (#1843) — an instance nobody signs into for months used to accumulate dead
+// rows unbounded, because "someone signs in" was the only trigger.
+//
+// `datetime('now')` is correct here: both `sessions.expires_at` and
+// `sessions.created_at` are declared `convention: "bare"` in lib/time-columns.ts,
+// so this compares like against like.
+export function purgeExpiredSessions(): number {
   // Drop both sliding-expired rows AND any past the absolute created_at ceiling,
   // so the ceiling can't be defeated by a session that keeps sliding expires_at.
-  db.prepare(
-    `DELETE FROM sessions
+  return db
+    .prepare(
+      `DELETE FROM sessions
        WHERE expires_at <= datetime('now')
           OR created_at <= datetime('now', ?)`
-  ).run(SESSION_ABSOLUTE_MAX_MODIFIER);
+    )
+    .run(SESSION_ABSOLUTE_MAX_MODIFIER).changes;
 }
 
 // Mint a session for a login and return the raw token (the caller sets it as
@@ -464,27 +472,33 @@ export function canAccessProfile(
 // login's password (all its live cookies must stop working). Optionally spare
 // one token's session, which change-own-password uses to keep the caller logged
 // in while logging out every other device.
+//
+// Returns HOW MANY sessions were ended. The count is what makes the #1843 audit
+// row worth reading ("an admin ended three live sessions" vs "an admin clicked
+// the button on an account with none") and what lets the call sites record an
+// event only when a session actually died.
 export function destroyLoginSessions(
   loginId: number,
   keepTokenHash?: string
-): void {
+): number {
   if (keepTokenHash) {
-    db.prepare(
-      "DELETE FROM sessions WHERE login_id = ? AND token_hash != ?"
-    ).run(loginId, keepTokenHash);
-  } else {
-    db.prepare("DELETE FROM sessions WHERE login_id = ?").run(loginId);
+    return db
+      .prepare("DELETE FROM sessions WHERE login_id = ? AND token_hash != ?")
+      .run(loginId, keepTokenHash).changes;
   }
+  return db.prepare("DELETE FROM sessions WHERE login_id = ?").run(loginId)
+    .changes;
 }
 
 // Change-own-password helper: drop every session for this login EXCEPT the
 // caller's current one (identified by the live cookie). Returns silently if
 // there's no cookie (nothing to keep — caller handles the full destroy).
+// Returns the number of sessions ended, like destroyLoginSessions.
 export async function destroyOtherSessionsForCurrent(
   loginId: number
-): Promise<void> {
+): Promise<number> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  destroyLoginSessions(loginId, token ? hashToken(token) : undefined);
+  return destroyLoginSessions(loginId, token ? hashToken(token) : undefined);
 }
 
 // A live session as shown on Settings → Preferences. `id`
@@ -529,10 +543,15 @@ export async function listLoginSessions(
 // Revoke one session by its token_hash, scoped to the owning login so a login
 // can only ever end its own sessions. Revoking the current session logs the
 // caller out on their next request (getCurrentSession finds no row).
-export function revokeSession(loginId: number, sessionId: string): void {
-  db.prepare("DELETE FROM sessions WHERE token_hash = ? AND login_id = ?").run(
-    sessionId,
-    loginId
+//
+// Returns TRUE only when a row actually went. A forged, stale, or foreign
+// session id deletes nothing, and the caller must not write an audit event (or
+// otherwise claim success) for a revocation that never happened.
+export function revokeSession(loginId: number, sessionId: string): boolean {
+  return (
+    db
+      .prepare("DELETE FROM sessions WHERE token_hash = ? AND login_id = ?")
+      .run(sessionId, loginId).changes > 0
   );
 }
 

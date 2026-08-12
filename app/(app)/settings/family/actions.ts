@@ -736,10 +736,16 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
 // the "sign out all devices" companion to the password reset,
 // exposed directly so an admin can boot a login off every device on suspicion of
 // compromise. Admin-only; profiles/credentials are untouched.
+//
+// AUDITED (#1843). This is the sharpest of the three revocation paths: one login
+// force-terminating ANOTHER person's live sessions, in an app where a caregiver
+// login can reach someone else's health record. It used to write nothing at all,
+// while resetPassword — ninety lines above, doing strictly more — recorded an
+// event. actor = the admin, target = the login signed out, detail = the count.
 export async function revokeLoginSessions(
   formData: FormData
 ): Promise<FamilyResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown login." };
 
@@ -747,7 +753,16 @@ export async function revokeLoginSessions(
     { id: number } | undefined;
   if (!acct) return { ok: false, error: "Login not found." };
 
-  destroyLoginSessions(id);
+  const ended = destroyLoginSessions(id);
+  if (ended > 0) {
+    recordAudit({
+      loginId: admin.login.id,
+      profileId: admin.profile.id,
+      action: AUDIT_ACTIONS.sessionRevokeAll,
+      target: String(id),
+      detail: `${ended} session(s)`,
+    });
+  }
   revalidateRoute("/settings/family");
   return { ok: true, message: "Signed out of all devices." };
 }

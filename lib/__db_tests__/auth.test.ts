@@ -262,11 +262,20 @@ describe("session lifecycle", () => {
     ); // fresh expiry, over ceiling
 
     expect(countSessions(id)).toBe(3);
-    purgeExpiredSessions();
+    // The count (#1843) is what the notify tick's sweep block logs — and what
+    // makes "the sweep ran and found nothing" distinguishable from "the sweep
+    // never ran", which is the state this instance was in before the tick called
+    // it at all.
+    expect(purgeExpiredSessions()).toBe(2);
 
     expect(sessionRow(sha256hex(live.token))).toBeDefined();
     expect(sessionRow(sha256hex(expired.token))).toBeUndefined();
     expect(sessionRow(sha256hex(overCeiling.token))).toBeUndefined();
+    expect(countSessions(id)).toBe(1);
+
+    // Idempotent: running it again on the next tick finds nothing left to do and
+    // touches no live session.
+    expect(purgeExpiredSessions()).toBe(0);
     expect(countSessions(id)).toBe(1);
   });
 });
@@ -527,8 +536,11 @@ describe("teardown", () => {
     createSession(id);
     expect(countSessions(id)).toBe(3);
 
-    destroyLoginSessions(id);
+    // Returns how many died (#1843) — the number the admin force-sign-out audit
+    // row carries, and the test for whether an event should be written at all.
+    expect(destroyLoginSessions(id)).toBe(3);
     expect(countSessions(id)).toBe(0);
+    expect(destroyLoginSessions(id)).toBe(0);
   });
 
   it("destroyLoginSessions(keepTokenHash) keeps EXACTLY the current session (change-own-password)", () => {
@@ -541,7 +553,7 @@ describe("teardown", () => {
 
     // This is the core destroyOtherSessionsForCurrent() delegates to after reading
     // the caller's cookie.
-    destroyLoginSessions(id, sha256hex(keep.token));
+    expect(destroyLoginSessions(id, sha256hex(keep.token))).toBe(2);
 
     expect(countSessions(id)).toBe(1);
     expect(sessionRow(sha256hex(keep.token))).toBeDefined();
@@ -556,13 +568,18 @@ describe("teardown", () => {
     const bobSession = createSession(bob.id);
 
     // Alice tries to revoke Bob's session by hash — scoped to login_id, so no-op.
-    revokeSession(alice.id, sha256hex(bobSession.token));
+    // It reports FALSE (#1843): the caller must be able to tell "I ended a
+    // session" from "nothing happened", or it writes an audit row for a
+    // revocation that never occurred.
+    expect(revokeSession(alice.id, sha256hex(bobSession.token))).toBe(false);
     expect(sessionRow(sha256hex(bobSession.token))).toBeDefined();
 
     // Bob revokes his own — gone; Alice's untouched.
-    revokeSession(bob.id, sha256hex(bobSession.token));
+    expect(revokeSession(bob.id, sha256hex(bobSession.token))).toBe(true);
     expect(sessionRow(sha256hex(bobSession.token))).toBeUndefined();
     expect(sessionRow(sha256hex(aliceSession.token))).toBeDefined();
+    // Replaying the same revocation ends nothing the second time.
+    expect(revokeSession(bob.id, sha256hex(bobSession.token))).toBe(false);
   });
 });
 
@@ -731,7 +748,9 @@ describe("two-factor: login challenges", () => {
     expect(getTotpChallenge(token)).toBeNull();
 
     const live = createTotpChallenge(id, username, null);
-    purgeExpiredTotpChallenges();
+    // Reports its count (#1843), like the session sweep it now runs beside in the
+    // notify tick.
+    expect(purgeExpiredTotpChallenges()).toBe(1);
     // The expired row is gone; the live one survives.
     expect(
       (
