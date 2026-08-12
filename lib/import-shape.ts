@@ -186,6 +186,12 @@ export interface PersistRecord {
   // layer resolves it to the local condition row and stamps the projected medication's
   // indication_condition_id. Null/absent on the AI path.
   indication_condition_external_id?: string | null;
+  // The per-item answers behind a screening-instrument SCORE (#2321), on
+  // `category === 'instrument'` records only. The persist layer writes them into
+  // `instrument_responses` against the row it just inserted — the same child rows the
+  // in-app administration path writes, so a document-imported score and a tapped-in
+  // one are indistinguishable downstream (severity band, item 9 / item 10, undo).
+  instrumentAnswers?: { itemIndex: number; answer: number }[];
 }
 
 export interface PersistImmunization {
@@ -1192,6 +1198,8 @@ export function healthRecordToPersistInput(
     // Tier-1 indication link (#1052): the resolved reason (condition) reference.
     indication_condition_external_id:
       r.indication_condition_external_id ?? null,
+    // The folded screening instrument's per-item answers (#2321), on the score row.
+    instrumentAnswers: r.instrumentAnswers,
   }));
   // Project body-metric records (weight / body fat / resting HR) into body_metrics
   // — the same single-home rule the AI path uses.

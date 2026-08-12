@@ -1,4 +1,5 @@
 import type { ImportResult } from "../health-import";
+import type { ImportDrop } from "../import-report";
 // The care-plan CATEGORY vocabulary is owned by the care-plan domain module (#1676)
 // so the importer and the entry form can never disagree about the bucket names.
 import type { CarePlanCategory } from "../care-plan-upcoming";
@@ -338,8 +339,18 @@ export interface SectionExtractor {
   extract: (
     section: CdaSection,
     contextDate?: string | null
-  ) => Partial<ImportResult>;
+  ) => SectionExtractorOutput;
 }
+
+// What an extractor hands back: the rows it produced, PLUS the candidates it itself
+// refused. Almost every drop in the CDA path is re-derived from the raw nodes in
+// lib/cda/coverage.ts, which works because the leaf mappers' refusals are visible in
+// the node. A screening instrument's refusal is not (#2321): "these ten questions are
+// an EPDS for somebody else" is a fact about the SET, invisible in any one node, so
+// the extractor that recognised the set is the only thing that can report it.
+export type SectionExtractorOutput = Partial<ImportResult> & {
+  drops?: ImportDrop[];
+};
 
 // A resolved value string that is empty or a bare placeholder ("—", "-", "N/A",
 // …) carries no result. Normalize it to null so the observation is dropped

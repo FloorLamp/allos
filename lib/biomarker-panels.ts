@@ -614,7 +614,7 @@ export const BIOMARKER_PANELS: Record<
     "Forced Vital Capacity (FVC)",
     "FEV1/FVC Ratio",
   ],
-  "mental-health": ["PHQ-9", "GAD-7", "AUDIT", "AUDIT-C", "DAST-10"],
+  "mental-health": ["PHQ-9", "GAD-7", "EPDS", "AUDIT", "AUDIT-C", "DAST-10"],
   "biological-age": ["Biological Age", "PhenoAge"],
 };
 

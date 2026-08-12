@@ -7,6 +7,7 @@ import { isRealIsoDate } from "@/lib/date";
 import {
   isInstrument,
   instrumentDef,
+  instrumentItemOptions,
   type Instrument,
 } from "@/lib/mental-health";
 import {
@@ -75,7 +76,11 @@ export async function recordInstrumentAction(
     const parsedAnswers: InstrumentAnswer[] = [];
     for (let i = 0; i < parsed.length; i++) {
       const a = Number(parsed[i]);
-      if (!Number.isInteger(a) || a < 0 || a > 3) {
+      // Validate against THIS item's own option set, not a hard-coded 0..3 — an
+      // instrument may score its items on different scales (#2321: EPDS reverses
+      // seven of its ten), so the item is the authority on what an answer may be.
+      const options = instrumentItemOptions(instrument, i);
+      if (!Number.isInteger(a) || !options.some((o) => o.value === a)) {
         return { ok: false, error: "Answer every item." };
       }
       parsedAnswers.push({ itemIndex: i, answer: a });

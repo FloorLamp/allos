@@ -817,6 +817,165 @@ describe("FHIR Observation component[] + valueless guard", () => {
   });
 });
 
+// #2411: a component-level refusal REACHES the import report. The row-level path has
+// always reported every drop; the component-level path reported none, so a BP whose
+// diastolic is unusable imported as a lone systolic and the document's report said
+// nothing at all — neither in the Dropped list nor in `considered`.
+describe("FHIR component[] refusals reach the import report (#2411)", () => {
+  const bpWith = (diastolic: object) => ({
+    resourceType: "Observation",
+    status: "final",
+    code: {
+      text: "Blood pressure",
+      coding: [{ system: "http://loinc.org", code: "85354-9" }],
+    },
+    effectiveDateTime: "2024-05-01",
+    component: [
+      {
+        code: {
+          text: "Systolic",
+          coding: [{ system: "http://loinc.org", code: "8480-6" }],
+        },
+        valueQuantity: { value: 118, unit: "mm[Hg]" },
+      },
+      {
+        code: {
+          text: "Diastolic",
+          coding: [{ system: "http://loinc.org", code: "8462-4" }],
+        },
+        ...diastolic,
+      },
+    ],
+  });
+
+  it("reports a null-flavored component under its OWN label, and counts it", () => {
+    const r = parseFhirBundle(
+      bundle([
+        bpWith({
+          dataAbsentReason: {
+            coding: [
+              {
+                system:
+                  "http://terminology.hl7.org/CodeSystem/data-absent-reason",
+                code: "not-performed",
+              },
+            ],
+          },
+        }),
+      ])
+    );
+    // The systolic still imports — a refused sibling never takes a good reading down.
+    expect(r.records.map((x) => x.canonical)).toEqual([
+      "Blood Pressure Systolic",
+    ]);
+    const report = r.report!;
+    const drop = report.drops.find((d) => d.label === "Diastolic");
+    // Its OWN label and its OWN reason, not the parent panel's.
+    expect(drop).toMatchObject({
+      kind: "vitals",
+      reason: "null_flavor",
+      section: "Observation",
+    });
+    expect(report.drops.some((d) => d.label === "Blood pressure")).toBe(false);
+    // Kept + dropped add up: two candidates were considered, one kept.
+    expect(report.considered).toBe(report.imported + 1);
+  });
+
+  it("classifies a component the duration door refused as unparsable_value", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Observation",
+          status: "final",
+          code: { text: "Exercise test" },
+          effectiveDateTime: "2024-05-01",
+          component: [
+            {
+              code: { text: "Exercise Duration" },
+              valueQuantity: { value: "not recorded", unit: "min:sec" },
+            },
+            {
+              code: { text: "Workload" },
+              valueQuantity: { value: 9, unit: "MET" },
+            },
+          ],
+        },
+      ])
+    );
+    expect(r.records.map((x) => x.name)).toEqual(["Workload"]);
+    const drop = r.report!.drops.find((d) => d.label === "Exercise Duration");
+    // "no value" would say the opposite of what happened — the source stated one.
+    expect(drop?.reason).toBe("unparsable_value");
+  });
+
+  it("counts every component ONCE when the whole panel is refused", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Observation",
+          status: "final",
+          code: {
+            text: "Blood pressure",
+            coding: [{ system: "http://loinc.org", code: "85354-9" }],
+          },
+          effectiveDateTime: "2024-05-01",
+          component: [
+            { code: { text: "Systolic" } },
+            { code: { text: "Diastolic" } },
+          ],
+        },
+      ])
+    );
+    expect(r.records).toHaveLength(0);
+    const report = r.report!;
+    // TWO candidates, two drops — and no third resource-level "no value" on top of
+    // them, which would count a candidate that never existed.
+    expect(report.drops.map((d) => d.label).sort()).toEqual([
+      "Diastolic",
+      "Systolic",
+    ]);
+    expect(report.considered).toBe(2);
+  });
+
+  it("reports a component refused inside a DiagnosticReport's own Observation", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          resource: {
+            resourceType: "DiagnosticReport",
+            status: "final",
+            code: { text: "Vitals panel" },
+            effectiveDateTime: "2024-05-02",
+            contained: [
+              {
+                resourceType: "Observation",
+                id: "inner-bp",
+                status: "final",
+                code: {
+                  text: "Blood pressure",
+                  coding: [{ system: "http://loinc.org", code: "85354-9" }],
+                },
+                effectiveDateTime: "2024-05-02",
+                component: [
+                  {
+                    code: {
+                      text: "Systolic",
+                      coding: [{ system: "http://loinc.org", code: "8480-6" }],
+                    },
+                    valueQuantity: { value: 120, unit: "mm[Hg]" },
+                  },
+                  { code: { text: "Diastolic" } },
+                ],
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.report!.drops.some((d) => d.label === "Diastolic")).toBe(true);
+  });
+});
+
 // #1018: an imported Body Temperature converts to canonical °F at the boundary —
 // the same conversion every live-entry writer performs — so it joins the one
 // series (charts + reference-range flags) instead of sitting verbatim in "Cel".

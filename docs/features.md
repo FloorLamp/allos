@@ -2158,13 +2158,16 @@ Validated screening **instruments** on **Health record → Specialty → Mental
 health** (`/records/specialty/mental-health`; the old `/medical/instruments`
 route is gone — the pane always renders, since the in-app instrument
 flow is the only creation path and the crisis line travels with it): **PHQ-9**
-(depression) and **GAD-7** (anxiety) tracked as numeric, **severity-banded**
-scores (PHQ-9 minimal / mild / moderate / moderately-severe / severe; GAD-7
-minimal / mild / moderate / severe) — the app's measurement DNA, **not** a
-subjective mood diary. Administer the public-domain questionnaire **in-app** (a
-9/7-item tap-through that computes the total from per-item answers) — the
-guided-battery pattern (#834) — or enter an outside total-only score; the score
-is stored as a biomarker-shaped reading (canonical name `PHQ-9`/`GAD-7`) so it
+(depression), **GAD-7** (anxiety) and **EPDS** (perinatal depression) tracked as
+numeric, **severity-banded** scores (PHQ-9 minimal / mild / moderate /
+moderately-severe / severe; GAD-7 minimal / mild / moderate / severe; EPDS
+minimal / possible / probable / severe, banded on the published cut-offs of 10
+and 13) — the app's measurement DNA, **not** a subjective mood diary. Administer
+the public-domain questionnaire **in-app** (a 9/7/10-item tap-through that
+computes the total from per-item answers, on each item's own published options —
+seven of EPDS's ten items are reverse-scored) — the guided-battery pattern
+(#834) — or enter an outside total-only score; the score
+is stored as a biomarker-shaped reading (canonical name `PHQ-9`/`GAD-7`/`EPDS`) so it
 **trends like any biomarker** (no parallel value store — the observation
 substrate), and a recorded score **satisfies** its preventive depression/anxiety
 **screening** (stronger evidence than a bare visit). A completed **Mental
@@ -2177,9 +2180,25 @@ preventive-satisfaction stream (`lib/preventive-inference.ts`) a physical uses
 for its check-up — the `mental_health` appointment folds its kind text into the
 inference record and widens its `allow` to reach the screening matchers, so a
 person in active behavioral-health care isn't also nagged to get screened.
-Item-level answers are stored (needed for the PHQ-9 item-9 handling below) in
-the one small `instrument_responses` table; an outside total-only score degrades
-gracefully to total-only.
+Item-level answers are stored (needed for the PHQ-9 item-9 / EPDS item-10
+handling below) in the one small `instrument_responses` table; an outside
+total-only score degrades gracefully to total-only.
+
+A screening a **clinical document** carries is imported through that same
+substrate (#2321), not as one pseudo-biomarker per question. A CCD files a
+screening as its individual questions — the question text as the observation's
+name, a free-text answer as its value, no number and no range — and the importer
+recognises the set, maps each printed answer onto that item's own published
+option, and writes ONE score row plus its `instrument_responses`. No question
+text ever coins a canonical name. Two cases **refuse and say so** in the import
+report rather than guessing, both safety decisions: a screening the document
+attributes to **another subject** — or to nobody, since post-natal screening is
+administered to a _parent_ and routinely filed in the _child's_ chart, and a
+misattributed crisis-escalating score is worse than an unimported one — and a
+**partly answered** one, since a partial total is not a smaller total but a
+different measurement that cannot be banded against whole-instrument cut-offs.
+Neither refusal loses anything: the answers stay on the document as assessment
+rows, and the SCORE is what appears in the Dropped list.
 
 A recorded score can be **corrected or removed** from the History list on both
 instrument surfaces (Mental health and Substance use). This is a safety
@@ -2197,7 +2216,8 @@ signal.
 **Sensitivity is deliberate** (#716): this domain is **exempt from the
 milestone/streak machinery** — no streaks, no "improve your score" nudges, no
 celebratory copy on a depression score. A **severe** total, or a **positive
-PHQ-9 item 9** (suicidal ideation) from an in-app administration, renders a
+PHQ-9 item 9** / **EPDS item 10** (self-harm) — from an in-app administration,
+or from a document-imported score, which carries its item answers — renders a
 **NON-DISMISSIBLE** crisis-resources line (the operator-configured resources,
 plus a gentle "discuss with a clinician" note) — structurally outside the
 dismissal bus, the same standing as a safety dose reminder — and joins the

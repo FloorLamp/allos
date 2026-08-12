@@ -17,7 +17,7 @@ import {
 
 // Mental-health instrument tracking (issue #716): the mental-health surface —
 // (#1042: folded from /medical/instruments into the /records#mental-health section).
-// an in-app PHQ-9/GAD-7 tap-through that computes a severity-banded score, an outside
+// an in-app PHQ-9/GAD-7/EPDS tap-through that computes a severity-banded score, an outside
 // total-only entry, a NON-DISMISSIBLE crisis-resources line on a severe score, and the
 // score trended like a biomarker.
 //
@@ -26,7 +26,7 @@ import {
 // and asserts against relative counts (before/after) — never an exact shared-seed count —
 // so --repeat-each stays clean. Interactions settle via settledClick.
 
-async function pickInstrument(page: Page, key: "PHQ-9" | "GAD-7") {
+async function pickInstrument(page: Page, key: "PHQ-9" | "GAD-7" | "EPDS") {
   await openScreening(page);
   // A picker chip: onClick only calls pickInstrument (client state).
   await hydratedClick(page, page.getByTestId(`instrument-select-${key}`));
@@ -147,6 +147,35 @@ test.describe("mental-health instruments (#716)", () => {
     await answerAll(page, 9, 1);
     await expect(page.getByTestId("instrument-total")).toHaveText("9");
     await expect(page.getByTestId("instrument-band")).toContainText("Mild");
+
+    await settledClick(page, page.getByTestId("instrument-submit"));
+    await expect(rows).toHaveCount(before + 1);
+  });
+
+  test("in-app EPDS offers each item its OWN options and bands the published cut-off", async () => {
+    await page.goto("/records/specialty/mental-health");
+    await openScreening(page);
+
+    const rows = page.getByTestId(/^instrument-reading-\d+$/);
+    const before = await rows.count();
+
+    await pickInstrument(page, "EPDS");
+    // EPDS scores items 1, 2 and 4 forward and REVERSES the other seven, so the buttons
+    // are not one shared scale: the first option of item 1 is worth 0 and the first
+    // option of item 3 is worth 3. Asserted on the button LABELS, which is where an
+    // instrument that quietly reused the PHQ-9 scale would show up.
+    await expect(page.getByTestId("instrument-option-0-0")).toContainText(
+      "As much as I always could"
+    );
+    await expect(page.getByTestId("instrument-option-2-3")).toContainText(
+      "Yes, most of the time"
+    );
+    // 10 items × option value 1 = total 10, the published "possible depression" cut-off.
+    await answerAll(page, 10, 1);
+    await expect(page.getByTestId("instrument-total")).toHaveText("10");
+    await expect(page.getByTestId("instrument-band")).toContainText(
+      "Possible depression"
+    );
 
     await settledClick(page, page.getByTestId("instrument-submit"));
     await expect(rows).toHaveCount(before + 1);
