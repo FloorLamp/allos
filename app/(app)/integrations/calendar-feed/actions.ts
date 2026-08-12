@@ -23,7 +23,7 @@ import { isValidExpiryChoice } from "@/lib/token-lifecycle";
 // token is returned exactly once (on enable/regenerate) and never stored — only
 // its hash is persisted (lib/settings.mintCalendarFeedToken).
 
-const PROVIDER = "calendar-feed";
+const SOURCE_ID = "calendar-feed";
 
 export type FeedResult =
   { ok: true; path?: string; message?: string } | { ok: false; error: string };
@@ -39,7 +39,7 @@ export async function enableCalendarFeedAction(
   const { profile, login } = await requireWriteAccess();
   const choice = isValidExpiryChoice(expiry) ? expiry : "never";
   const token = mintCalendarFeedToken(profile.id, choice);
-  upsertConnection(profile.id, PROVIDER, { status: "connected" });
+  upsertConnection(profile.id, SOURCE_ID, { status: "connected" });
   // Minting kills any prior token, so this covers both first mint and rotation.
   recordAudit({
     loginId: login.id,
@@ -57,7 +57,7 @@ export async function enableCalendarFeedAction(
 export async function disableCalendarFeedAction(): Promise<FeedResult> {
   const { profile, login } = await requireWriteAccess();
   disableCalendarFeed(profile.id);
-  upsertConnection(profile.id, PROVIDER, { status: "disconnected" });
+  upsertConnection(profile.id, SOURCE_ID, { status: "disconnected" });
   recordAudit({
     loginId: login.id,
     profileId: profile.id,

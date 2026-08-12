@@ -462,6 +462,26 @@ already covered by a sibling test in the same file. When you find yourself
 raising a number a third time, ask what the test is NAMED for and seed everything
 that isn't that.
 
+**A test can outgrow 30 s with no oversized assertion anywhere in it** (#2525).
+`shared-supply-pool`'s decrement case declared no ceiling above the defaults and
+still ran at 22–25 s of the 30 s TEST budget, because "two members draw from one
+bottle" is four profile switches (each a Server Action plus a layout revalidate)
+around nine page loads. The same box runs it at 8.5 s idle and 26–28 s at four
+workers, so the margin is set by load, not by the diff. Two answers, in this
+order: move the claims that do not need this sequence to a case that already has
+the page (a static chip assertion needs no navigation of its own; a navigation
+claim needs no pooled arithmetic), then declare `test.slow()` for what is left,
+with the before/after measurement and its conditions in the comment. At
+`retries: 0` that budget masks nothing — only a busy runner stops failing.
+
+**A helper with no no-op path turns "already there" into a timeout that hides the
+real error.** `switchToProfile` drives the switcher popover, which offers no row
+for the profile already being acted as, so calling it for the CURRENT profile
+spins its `toPass` until the budget dies. In a `finally` that is worse than slow:
+a case that failed BEFORE the switch it was restoring reports the restore's
+timeout, in the restore's stack, and the actual failure never appears. Ask before
+restoring — the identity-bar trigger's `aria-label` states the acting profile.
+
 ## A retry is only safe on an IDEMPOTENT interaction (2026-08-11, #2437)
 
 Every retrying helper in this module rests on an unstated premise: doing the
