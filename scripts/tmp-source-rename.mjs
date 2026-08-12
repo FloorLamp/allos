@@ -8,6 +8,12 @@
 import fs from "node:fs";
 
 const CODE_MAP = [
+  ["canonicalizeProviderClock", "canonicalizeSourceClock"],
+  ["pickOneProviderPerDay", "pickOneSourcePerDay"],
+  ["PROVIDER_PREFERENCE", "SOURCE_PREFERENCE"],
+  ["KEEP_PER_PROVIDER", "KEEP_PER_SOURCE"],
+  ["safeProvider", "safeSourceId"],
+  ["providerName", "sourceName"],
   ["getLatestSyncEventPerProvider", "getLatestSyncEventPerSource"],
   ["latestEventPerProvider", "latestEventPerSource"],
   ["currentlyFailingProviders", "currentlyFailingSources"],
@@ -30,6 +36,12 @@ const CODE_MAP = [
 ];
 
 const PROSE_MAP = [
+  ["canonicalizeProviderClock", "canonicalizeSourceClock"],
+  ["pickOneProviderPerDay", "pickOneSourcePerDay"],
+  ["PROVIDER_PREFERENCE", "SOURCE_PREFERENCE"],
+  ["KEEP_PER_PROVIDER", "KEEP_PER_SOURCE"],
+  ["safeProvider", "safeSourceId"],
+  ["providerName", "sourceName"],
   ["getLatestSyncEventPerProvider", "getLatestSyncEventPerSource"],
   ["currentlyFailingProviders", "currentlyFailingSources"],
   ["resolveProviderFacts", "resolveSourceFacts"],

@@ -57,7 +57,7 @@ export default async function HealthConnectPage() {
     nowMs
   );
 
-  // THE per-provider state (#1772): one computation behind this page, Review's
+  // THE per-source state (#1772): one computation behind this page, Review's
   // inbox, and the Integrations grid. The token card above answers a DIFFERENT
   // question (is the credential alive) and keeps its own lifecycle badge.
   const state = getIntegrationState(

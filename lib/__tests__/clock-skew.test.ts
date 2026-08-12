@@ -15,14 +15,14 @@ import {
   spansMidnight,
   nearMidnightCandidate,
   localReadingOf,
-  canonicalizeProviderClock,
+  canonicalizeSourceClock,
   type ClockReading,
 } from "@/lib/clock-skew";
 
-// THE clock-skew primitive (#2088). The provider-clock-error family was repaired one
+// THE clock-skew primitive (#2088). The source-clock-error family was repaired one
 // symptom at a time — a whole-hour rescue (#2011/#2055), the fractional offsets the
 // world actually uses (#2063/#2092), the same gap across midnight (#2056) — because
-// "a provider's timestamp disagrees with the profile's clock by a plausible offset"
+// "a source's timestamp disagrees with the profile's clock by a plausible offset"
 // was being answered at DETECTION, differently each time. This is the one answer, and
 // this is its one test surface.
 
@@ -158,7 +158,7 @@ describe("the near-midnight candidate window", () => {
 
 describe("branch A — a true instant needs no evidence", () => {
   it("reads the instant on the PROFILE's clock, moving the local day when it must", () => {
-    // 23:30 in Berlin on 8 July is 21:30 UTC. A provider that filed the same instant
+    // 23:30 in Berlin on 8 July is 21:30 UTC. A source that filed the same instant
     // as "22:30" was a whole hour out — and in London it is a different local day.
     const instant = new Date("2026-07-08T21:30:00Z");
     expect(localReadingOf(instant, "Europe/Berlin")).toEqual({
@@ -171,7 +171,7 @@ describe("branch A — a true instant needs no evidence", () => {
   });
 
   it("canonicalizes a wrongly-offset wall clock, naming what moved", () => {
-    const verdict = canonicalizeProviderClock({
+    const verdict = canonicalizeSourceClock({
       reported: at("2026-07-08", 22 * 60 + 30),
       instant: { at: new Date("2026-07-08T21:30:00Z"), tz: "Europe/Berlin" },
     });
@@ -185,10 +185,10 @@ describe("branch A — a true instant needs no evidence", () => {
   });
 
   it("says so when the wrong offset moves the DATE too (#2056 at ingest)", () => {
-    // The provider filed 23:30 on the 8th against a UTC clock; in Berlin that
+    // The source filed 23:30 on the 8th against a UTC clock; in Berlin that
     // instant is 01:30 on the NINTH. The row belongs on the next local day, and the
     // gap is measured across it rather than as the 22 hours minutes-of-day would say.
-    const verdict = canonicalizeProviderClock({
+    const verdict = canonicalizeSourceClock({
       reported: at("2026-07-08", 23 * 60 + 30),
       instant: { at: new Date("2026-07-08T23:30:00Z"), tz: "Europe/Berlin" },
     });
@@ -202,7 +202,7 @@ describe("branch A — a true instant needs no evidence", () => {
   });
 
   it("is IDEMPOTENT — an already-canonical row reports no change", () => {
-    const verdict = canonicalizeProviderClock({
+    const verdict = canonicalizeSourceClock({
       reported: at("2026-07-08", 23 * 60 + 30),
       instant: { at: new Date("2026-07-08T21:30:00Z"), tz: "Europe/Berlin" },
     });
@@ -217,10 +217,10 @@ describe("branch B — a bare wall clock, and what may be concluded from it", ()
     // of whoever happened to call it. A single row's clock is never shifted on a
     // suspicion.
     expect(
-      canonicalizeProviderClock({ reported: at("2026-07-08", 1410) })
+      canonicalizeSourceClock({ reported: at("2026-07-08", 1410) })
     ).toEqual({ kind: "refused", reason: "no-evidence" });
     expect(
-      canonicalizeProviderClock({
+      canonicalizeSourceClock({
         reported: at("2026-07-08", 1410),
         evidence: [],
       })
@@ -228,16 +228,16 @@ describe("branch B — a bare wall clock, and what may be concluded from it", ()
   });
 
   it("reports a SKEW — never a winner — when cross-source evidence supports one", () => {
-    // Nothing in two wall clocks says which provider lied (#2055), so the primitive
+    // Nothing in two wall clocks says which source lied (#2055), so the primitive
     // measures the disagreement and stops. The person resolves it in Review.
     expect(
-      canonicalizeProviderClock({
+      canonicalizeSourceClock({
         reported: at("2026-07-08", 1410),
         evidence: [at("2026-07-09", 30)],
       })
     ).toEqual({ kind: "skew", offsetMinutes: 60, spansMidnight: true });
     expect(
-      canonicalizeProviderClock({
+      canonicalizeSourceClock({
         reported: at("2026-07-08", 545),
         evidence: [at("2026-07-08", 515)],
       })
@@ -246,7 +246,7 @@ describe("branch B — a bare wall clock, and what may be concluded from it", ()
 
   it("prefers the SMALLEST plausible offset among several candidates", () => {
     expect(
-      canonicalizeProviderClock({
+      canonicalizeSourceClock({
         reported: at("2026-07-08", 600),
         evidence: [at("2026-07-08", 480), at("2026-07-08", 570)],
       })
@@ -255,7 +255,7 @@ describe("branch B — a bare wall clock, and what may be concluded from it", ()
 
   it("refuses evidence whose gap is not offset-shaped", () => {
     expect(
-      canonicalizeProviderClock({
+      canonicalizeSourceClock({
         reported: at("2026-07-08", 600),
         evidence: [at("2026-07-08", 528)],
       })
@@ -265,10 +265,10 @@ describe("branch B — a bare wall clock, and what may be concluded from it", ()
 
 describe("what canonicalization must never touch", () => {
   it("refuses an EDIT-LOCKED row before it looks at anything else", () => {
-    // A manual correction outranks every provider, instant or not — the same stance
+    // A manual correction outranks every source, instant or not — the same stance
     // isEditLocked enforces on every ingest path.
     expect(
-      canonicalizeProviderClock({
+      canonicalizeSourceClock({
         reported: at("2026-07-08", 22 * 60 + 30),
         instant: { at: new Date("2026-07-08T21:30:00Z"), tz: "Europe/Berlin" },
         editLocked: true,
@@ -277,12 +277,12 @@ describe("what canonicalization must never touch", () => {
   });
 
   it("refuses a row with no clock at all", () => {
-    expect(canonicalizeProviderClock({ reported: null })).toEqual({
+    expect(canonicalizeSourceClock({ reported: null })).toEqual({
       kind: "refused",
       reason: "no-clock",
     });
     expect(
-      canonicalizeProviderClock({
+      canonicalizeSourceClock({
         reported: null,
         instant: { at: new Date("nonsense"), tz: "UTC" },
       })

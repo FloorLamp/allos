@@ -15,11 +15,11 @@ function plural(count: number, noun: string): string {
 }
 
 export default function IntegrationBackfillProgress({
-  provider,
+  sourceId,
   initialJobs,
   watch = false,
 }: {
-  provider: string;
+  sourceId: string;
   initialJobs: IntegrationBackfillJob[];
   watch?: boolean;
 }) {
@@ -28,7 +28,7 @@ export default function IntegrationBackfillProgress({
   const poll = useCallback(async () => {
     try {
       const response = await fetch(
-        `/api/jobs/integration-backfills?provider=${encodeURIComponent(provider)}`,
+        `/api/jobs/integration-backfills?provider=${encodeURIComponent(sourceId)}`,
         { cache: "no-store" }
       );
       if (!response.ok) return;
@@ -40,7 +40,7 @@ export default function IntegrationBackfillProgress({
     } catch {
       // A progress read is observational; keep the last durable snapshot offline.
     }
-  }, [provider]);
+  }, [sourceId]);
 
   const running = jobs.some((job) =>
     ["queued", "running"].includes(job.status)
@@ -69,7 +69,7 @@ export default function IntegrationBackfillProgress({
   return (
     <div
       className="mt-3 space-y-3"
-      data-testid={`backfill-progress-${provider}`}
+      data-testid={`backfill-progress-${sourceId}`}
     >
       {jobs.map((job) => {
         const view = integrationBackfillView(job);
@@ -89,7 +89,7 @@ export default function IntegrationBackfillProgress({
             : `ETA ${formatBackfillTime(view.etaSeconds)}`;
         return (
           <div
-            key={`${job.provider}:${job.kind}`}
+            key={`${job.sourceId}:${job.kind}`}
             className="rounded-lg border border-black/5 bg-slate-50/70 p-3 dark:border-white/5 dark:bg-white/3"
             data-testid={`backfill-job-${job.kind}`}
           >

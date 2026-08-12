@@ -16,7 +16,7 @@ import {
 function sync(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
   return {
     id: 1,
-    provider: "health-connect",
+    sourceId: "health-connect",
     at: "2026-07-08 07:00:00",
     ok: 1,
     window_start: "2026-07-06",
@@ -64,7 +64,7 @@ function job(over: Partial<FeedJob> = {}): FeedJob {
   };
 }
 
-const providerName = (id: string) =>
+const sourceName = (id: string) =>
   id === "health-connect" ? "Google Health Connect" : id;
 
 describe("mergeFeed", () => {
@@ -108,7 +108,7 @@ describe("mergeFeed", () => {
 
 describe("feedItemView — sync", () => {
   it("humanizes the split and carries the data window + skipped", () => {
-    const v = feedItemView(syncEntry(sync()), providerName);
+    const v = feedItemView(syncEntry(sync()), sourceName);
     expect(v.tone).toBe("ok");
     expect(v.title).toBe("Google Health Connect");
     expect(v.href).toBeNull();
@@ -121,7 +121,7 @@ describe("feedItemView — sync", () => {
   it("collapses an all-unchanged re-scan to a muted 'nothing new'", () => {
     const v = feedItemView(
       syncEntry(sync({ inserted: 0, updated: 0, unchanged: 6, skipped: 0 })),
-      providerName
+      sourceName
     );
     expect(v.detail).toBe("nothing new");
     expect(v.detailMuted).toBe(true);
@@ -140,7 +140,7 @@ describe("feedItemView — sync", () => {
           error: "token refresh failed",
         })
       ),
-      providerName
+      sourceName
     );
     expect(v.tone).toBe("error");
     expect(v.detail).toBe("import failed");
@@ -151,7 +151,7 @@ describe("feedItemView — sync", () => {
       syncEntry(
         sync({
           ok: 0,
-          provider: "fitbit-takeout",
+          sourceId: "fitbit-takeout",
           inserted: 3,
           updated: 1,
           unchanged: 0,
@@ -159,7 +159,7 @@ describe("feedItemView — sync", () => {
           error: "Takeout import stopped after writing 4 records.",
         })
       ),
-      providerName
+      sourceName
     );
     expect(v.tone).toBe("error");
     expect(v.detail).toBe("import failed · 3 new · 1 changed");
@@ -170,7 +170,7 @@ describe("feedItemView — document", () => {
   it("links to the detail page and shows the produced count when done", () => {
     const v = feedItemView(
       documentEntry(doc({ extracted_count: 12, live_count: 12 })),
-      providerName
+      sourceName
     );
     expect(v.tone).toBe("ok");
     expect(v.title).toBe("labs.pdf");
@@ -184,7 +184,7 @@ describe("feedItemView — document", () => {
   it("renders a single produced item as '1 item' (not '1 items')", () => {
     const v = feedItemView(
       documentEntry(doc({ extracted_count: 1, live_count: 1 })),
-      providerName
+      sourceName
     );
     expect(v.detail).toBe("1 item");
     expect(v.detailMuted).toBe(false);
@@ -193,7 +193,7 @@ describe("feedItemView — document", () => {
   it("reads a done-but-empty extraction as a muted 'no items'", () => {
     const v = feedItemView(
       documentEntry(doc({ extracted_count: 0, live_count: 0 })),
-      providerName
+      sourceName
     );
     expect(v.detail).toBe("no items");
     expect(v.detailMuted).toBe(true);
@@ -205,7 +205,7 @@ describe("feedItemView — document", () => {
   it("reconciles a fully-drained document as a muted 'M of N' (not the snapshot)", () => {
     const v = feedItemView(
       documentEntry(doc({ extracted_count: 7, live_count: 0 })),
-      providerName
+      sourceName
     );
     expect(v.detail).toBe("0 of 7 items");
     expect(v.detailMuted).toBe(true);
@@ -214,7 +214,7 @@ describe("feedItemView — document", () => {
   it("reconciles a partially-drifted document as 'live of extracted'", () => {
     const v = feedItemView(
       documentEntry(doc({ extracted_count: 33, live_count: 32 })),
-      providerName
+      sourceName
     );
     expect(v.detail).toBe("32 of 33 items");
     expect(v.detailMuted).toBe(false);
@@ -228,7 +228,7 @@ describe("feedItemView — document", () => {
           extraction_error: "Unsupported file type.",
         })
       ),
-      providerName
+      sourceName
     );
     expect(v.tone).toBe("error");
     expect(v.detail).toBe("import failed");
@@ -237,7 +237,7 @@ describe("feedItemView — document", () => {
   it("shows an in-flight extraction as pending", () => {
     const v = feedItemView(
       documentEntry(doc({ extraction_status: "processing" })),
-      providerName
+      sourceName
     );
     expect(v.tone).toBe("pending");
     expect(v.detail).toBe("extracting…");
@@ -246,7 +246,7 @@ describe("feedItemView — document", () => {
   it("carries the stated patient name for the provenance flag", () => {
     const v = feedItemView(
       documentEntry(doc({ patient_name: "Test Patient" })),
-      providerName
+      sourceName
     );
     expect(v.patientName).toBe("Test Patient");
   });
@@ -267,7 +267,7 @@ describe("feedItemView — document", () => {
             'Duplicate records — … already imported from "first.xml".',
         })
       ),
-      providerName
+      sourceName
     );
     expect(v.detail).toBe("duplicate — nothing imported");
     // Neither kind is an error: both stay muted and neutral.
@@ -277,7 +277,7 @@ describe("feedItemView — document", () => {
   it("still reads a skipped row that HAS a file as a plain skip (reprocessable)", () => {
     const v = feedItemView(
       documentEntry(doc({ extraction_status: "skipped", has_file: 1 })),
-      providerName
+      sourceName
     );
     expect(v.detail).toBe("skipped");
   });
@@ -287,7 +287,7 @@ describe("feedItemView — job", () => {
   it("prompts review on a ready paste job and links back to the importer", () => {
     const v = feedItemView(
       jobEntry(job({ status: "ready", type: "biomarkers" })),
-      providerName
+      sourceName
     );
     expect(v.tone).toBe("neutral");
     expect(v.title).toBe("Pasted labs");
@@ -298,7 +298,7 @@ describe("feedItemView — job", () => {
   it("marks a failed job with the error tone", () => {
     const v = feedItemView(
       jobEntry(job({ status: "failed", summary: null })),
-      providerName
+      sourceName
     );
     expect(v.tone).toBe("error");
     expect(v.detail).toBe("extraction failed");
@@ -307,7 +307,7 @@ describe("feedItemView — job", () => {
   it("shows a processing job as pending", () => {
     const v = feedItemView(
       jobEntry(job({ status: "processing", summary: null })),
-      providerName
+      sourceName
     );
     expect(v.tone).toBe("pending");
     expect(v.detail).toBe("extracting…");
@@ -367,12 +367,12 @@ describe("collapseQuietSyncs", () => {
 
   it("collapses each provider's own run independently even when interleaved", () => {
     const entries = collapseQuietSyncs([
-      quiet({ id: 4, provider: "strava", at: "2026-07-08 11:00:00" }),
-      quiet({ id: 3, provider: "health-connect", at: "2026-07-08 10:30:00" }),
-      quiet({ id: 2, provider: "strava", at: "2026-07-08 10:00:00" }),
-      quiet({ id: 1, provider: "health-connect", at: "2026-07-08 09:30:00" }),
+      quiet({ id: 4, sourceId: "strava", at: "2026-07-08 11:00:00" }),
+      quiet({ id: 3, sourceId: "health-connect", at: "2026-07-08 10:30:00" }),
+      quiet({ id: 2, sourceId: "strava", at: "2026-07-08 10:00:00" }),
+      quiet({ id: 1, sourceId: "health-connect", at: "2026-07-08 09:30:00" }),
     ]);
-    // One quiet summary per provider (each run is that provider's own two no-ops),
+    // One quiet summary per source (each run is that source's own two no-ops),
     // not four rows and not one merged row.
     const quiets = entries.filter((e) => e.stream === "sync-quiet");
     expect(quiets).toHaveLength(2);
@@ -390,7 +390,7 @@ describe("collapseQuietSyncs", () => {
 describe("feedItemView — sync-quiet", () => {
   it("renders a single quiet sync as a muted 'No new data'", () => {
     const [entry] = collapseQuietSyncs([quiet({ id: 1 })]);
-    const v = feedItemView(entry, providerName);
+    const v = feedItemView(entry, sourceName);
     expect(v.tone).toBe("neutral");
     expect(v.title).toBe("Google Health Connect");
     expect(v.href).toBeNull();
@@ -406,10 +406,10 @@ describe("feedItemView — sync-quiet", () => {
       quiet({ id: 2, at: "2026-07-08 09:00:00" }),
       quiet({ id: 1, at: "2026-07-08 08:00:00" }),
     ]);
-    const v = feedItemView(entry, providerName);
+    const v = feedItemView(entry, sourceName);
     expect(v.detail).toBe("No new data · 3 checks");
     expect(v.detailMuted).toBe(true);
-    // Key is stable/unique per provider + newest id.
+    // Key is stable/unique per source + newest id.
     expect(v.key).toBe("sync-quiet:health-connect:3");
   });
 });
@@ -418,7 +418,7 @@ describe("feedItemView — extraction-confidence badge (#1601)", () => {
   it("carries the scrutiny count for a done document", () => {
     const v = feedItemView(
       documentEntry(doc({ confidence_scrutiny: 3 })),
-      providerName
+      sourceName
     );
     expect(v.scrutiny).toBe(3);
     // The badge is additive — the produced-count detail is untouched.
@@ -428,9 +428,9 @@ describe("feedItemView — extraction-confidence badge (#1601)", () => {
   it("is 0 when the document carries no confidence signal", () => {
     // A deterministic import, a keyless extraction, and any pre-#1601 document all
     // land here: no badge, and never a fabricated 0-vs-unknown distinction on screen.
-    expect(feedItemView(documentEntry(doc()), providerName).scrutiny).toBe(0);
+    expect(feedItemView(documentEntry(doc()), sourceName).scrutiny).toBe(0);
     expect(
-      feedItemView(documentEntry(doc({ confidence_scrutiny: 0 })), providerName)
+      feedItemView(documentEntry(doc({ confidence_scrutiny: 0 })), sourceName)
         .scrutiny
     ).toBe(0);
   });
@@ -443,14 +443,14 @@ describe("feedItemView — extraction-confidence badge (#1601)", () => {
         documentEntry(
           doc({ extraction_status: status, confidence_scrutiny: 4 })
         ),
-        providerName
+        sourceName
       );
       expect(v.scrutiny, status).toBe(0);
     }
   });
 
   it("is 0 for every non-document stream", () => {
-    expect(feedItemView(syncEntry(sync()), providerName).scrutiny).toBe(0);
-    expect(feedItemView(jobEntry(job()), providerName).scrutiny).toBe(0);
+    expect(feedItemView(syncEntry(sync()), sourceName).scrutiny).toBe(0);
+    expect(feedItemView(jobEntry(job()), sourceName).scrutiny).toBe(0);
   });
 });

@@ -55,8 +55,8 @@ import { type Reason, concatReasons, flaggedReason } from "./reasons";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 import type { IntegrationId } from "./types";
 
-// A broken integration provider, reduced to what the model renders. `kind` distinguishes
-// the two ways a provider can be broken (#1685), because they need different copy and ask
+// A broken integration source, reduced to what the model renders. `kind` distinguishes
+// the two ways a source can be broken (#1685), because they need different copy and ask
 // the user for different things:
 //   "failing" — a recorded failure / dead grant. The cause is known and the fix is
 //               consent: reconnect.
@@ -64,15 +64,15 @@ import type { IntegrationId } from "./types";
 //               perfectly authorized; all we honestly know is that it stopped, so the
 //               copy states the observation ("no data since <date>") and asks the user to
 //               check rather than claiming a cause.
-// Both carry the SAME item key, so a provider is one row on every surface no matter which
-// signal raised it, and the gather guarantees only one of the two can fire per provider.
+// Both carry the SAME item key, so a source is one row on every surface no matter which
+// signal raised it, and the gather guarantees only one of the two can fire per source.
 //
 // A THIRD kind since #2146, and it is not a third way of being broken:
 //   "quiet-stream" — the connection is FINE and one continuous DATA STREAM stopped (the
 //               watch off the wrist while the phone keeps pushing). Heart rate is an
 //               observation domain — nobody committed to wearing a watch — so this is
 //               COACHING TIER: it renders where the user goes looking and never travels
-//               a send. It also yields to the two above, so a provider is still one row.
+//               a send. It also yields to the two above, so a source is still one row.
 //
 // So `kind` now names the TIER as well as the copy, and the difference is enforced
 // rather than documented: `isEscalatingIntegration` below is the one gate,
@@ -81,7 +81,7 @@ import type { IntegrationId } from "./types";
 // (`getQuietStreamAttention`) that the badge / hero / digest never call.
 export interface AttentionIntegration {
   id: IntegrationId | null;
-  provider: string;
+  sourceName: string;
   detail: string | null;
   kind?: "failing" | "stale" | "quiet-stream";
 }
@@ -115,7 +115,7 @@ export interface AttentionInput {
   // as the digest). Each MAY carry the risk-layer "why this profile" reasons (issue
   // #656 item 4), computed by the gather so the flag item explains its elevation.
   flaggedBiomarkers: FlaggedBiomarkerInput[];
-  // Currently-failing integration providers.
+  // Currently-failing integration sources.
   integrations: AttentionIntegration[];
   // Count of unresolved review-inbox pairs (duplicates/conflicts).
   reviewCount: number;
@@ -185,20 +185,20 @@ export function integrationToItem(i: AttentionIntegration): UpcomingItem {
       ? "No recent data from this source."
       : "Reconnect to resume syncing.");
   return {
-    key: `integration:${i.id ?? i.provider}`,
+    key: `integration:${i.id ?? i.sourceName}`,
     domain: "integration",
     signalGroup: "review",
     title: stale
-      ? `${i.provider} sync has stopped`
-      : `${i.provider} sync needs attention`,
+      ? `${i.sourceName} sync has stopped`
+      : `${i.sourceName} sync needs attention`,
     detail,
     // The digest's named line asks for a CAUSE FRAGMENT (#1913 item 6). This producer's
     // detail already IS one — the recorded error text ("weather fetch failed (503)"), or
     // the observation behind a quiet stop — so the field is declared rather than derived,
     // and the rendered line is unchanged from what it printed before.
     because: detail,
-    // Match the CTA's promise: known, connectable providers go straight to their
-    // setup page. Unknown/planned providers safely fall back to Review.
+    // Match the CTA's promise: known, connectable sources go straight to their
+    // setup page. Unknown/planned sources safely fall back to Review.
     href: reconnectHref ?? dataSectionHref("review"),
     dueDate: null,
     dueText: stale ? "No recent data" : "Reconnect",

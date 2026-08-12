@@ -31,7 +31,7 @@ import { INTEGRATIONS, getIntegration } from "./registry";
 export interface SourceStream {
   sourceId: IntegrationId;
   // The source's display name, so a caller building copy needs no second lookup.
-  providerName: string;
+  sourceName: string;
   stream: ContinuousStreamDef;
 }
 
@@ -58,7 +58,7 @@ export function allContinuousStreams(): SourceStream[] {
   return INTEGRATIONS.flatMap((def) =>
     continuousStreamsFor(def).map((stream) => ({
       sourceId: def.id,
-      providerName: def.name,
+      sourceName: def.name,
       stream,
     }))
   );
@@ -72,7 +72,7 @@ export function continuousStream(
   const def = getIntegration(sourceId);
   const stream = continuousStreamsFor(def).find((s) => s.id === streamId);
   return def && stream
-    ? { sourceId: def.id, providerName: def.name, stream }
+    ? { sourceId: def.id, sourceName: def.name, stream }
     : null;
 }
 

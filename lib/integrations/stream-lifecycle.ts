@@ -267,10 +267,10 @@ export function streamOfferTarget(
 // switched off. Neither string ever instructs.
 
 export function streamOnboardTitle(
-  providerName: string,
+  sourceName: string,
   streamLabel: string
 ): string {
-  return `${providerName} started sending ${streamLabel} data`;
+  return `${sourceName} started sending ${streamLabel} data`;
 }
 
 export function streamOnboardBody(streamLabel: string): string {
@@ -289,12 +289,12 @@ export function streamOffboardTitle(): string {
 }
 
 export function streamOffboardBody(
-  providerName: string,
+  sourceName: string,
   streamLabel: string,
   quietDays: number
 ): string {
   return (
-    `No ${streamLabel} data has arrived from ${providerName} in ${quietDays} days, ` +
+    `No ${streamLabel} data has arrived from ${sourceName} in ${quietDays} days, ` +
     `so the bedtime reminder stopped sending. It starts again on its own if data ` +
     `starts arriving — nothing here has changed your setting.`
   );
@@ -312,12 +312,12 @@ export const STREAM_OFFBOARD_KEEP = "Keep them ready";
  * shipped for the mood check-in's auto-pause.
  */
 export function streamReminderPausedNote(
-  providerName: string,
+  sourceName: string,
   streamLabel: string,
   quietDays: number
 ): string {
   return (
-    `Paused — no ${streamLabel} data from ${providerName} for ${quietDays} ` +
+    `Paused — no ${streamLabel} data from ${sourceName} for ${quietDays} ` +
     `${quietDays === 1 ? "day" : "days"}. It resumes on its own when data arrives.`
   );
 }

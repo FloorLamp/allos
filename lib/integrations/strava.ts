@@ -1,5 +1,5 @@
 import {
-  canonicalizeProviderClock,
+  canonicalizeSourceClock,
   clockAtMinute,
   type ClockReading,
 } from "@/lib/clock-skew";
@@ -243,7 +243,7 @@ export function mapStravaActivity(
     : null;
   const canonical =
     tz && instantAt
-      ? canonicalizeProviderClock({
+      ? canonicalizeSourceClock({
           reported: reportedReading(reported),
           instant: { at: instantAt, tz },
         })

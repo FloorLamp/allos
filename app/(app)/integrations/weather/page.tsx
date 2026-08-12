@@ -36,10 +36,10 @@ export default async function WeatherPage(props: {
     ? (ERROR_MESSAGES[searchParams.error] ?? "Something went wrong. Try again.")
     : null;
 
-  // THE per-provider state (#1772): one computation behind this page, Review's
+  // THE per-source state (#1772): one computation behind this page, Review's
   // inbox, and the Integrations grid. Weather speaks the CACHE vocabulary — its
   // counts are revised forecast cells, not user records — which the shared
-  // formatter derives from the provider kind.
+  // formatter derives from the source kind.
   const state = getIntegrationState(
     profile.id,
     "weather",
@@ -100,7 +100,7 @@ export default async function WeatherPage(props: {
                 isAdmin={login.role === "admin"}
                 controls={
                   <>
-                    <SyncNowButton provider="weather" />
+                    <SyncNowButton sourceId="weather" />
                     <form action={disconnectWeatherAction}>
                       <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">
                         Disable

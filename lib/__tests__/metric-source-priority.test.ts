@@ -23,7 +23,7 @@ import {
   sourcePreference,
   withMetricSource,
 } from "@/lib/metric-source-priority";
-import { PROVIDER_PREFERENCE } from "@/lib/metric-providers";
+import { SOURCE_PREFERENCE } from "@/lib/metric-sources";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 
 describe("parseMetricSourcePriority", () => {
@@ -119,21 +119,21 @@ describe("sourcePreference", () => {
   });
 
   it("is the plain default list when unset (single-source passthrough)", () => {
-    expect(sourcePreference("steps", {}, PROVIDER_PREFERENCE)).toEqual(
-      PROVIDER_PREFERENCE
+    expect(sourcePreference("steps", {}, SOURCE_PREFERENCE)).toEqual(
+      SOURCE_PREFERENCE
     );
   });
 
   it("ranks fitbit-takeout below health-connect, and LISTS it at all", () => {
-    // Listed: pickOneProviderPerDay falls back to "largest single-source total"
-    // for an unlisted provider, which for sleep would systematically pick the
+    // Listed: pickOneSourcePerDay falls back to "largest single-source total"
+    // for an unlisted source, which for sleep would systematically pick the
     // archive purely because it reports a longer session than the live push.
-    expect(PROVIDER_PREFERENCE).toContain("fitbit-takeout");
+    expect(SOURCE_PREFERENCE).toContain("fitbit-takeout");
     // Below health-connect: importing an archive must never silently rewrite days
     // the live stream already covered. Preferring the archive is a deliberate
     // per-profile choice, not a default.
-    expect(PROVIDER_PREFERENCE.indexOf("fitbit-takeout")).toBeGreaterThan(
-      PROVIDER_PREFERENCE.indexOf("health-connect")
+    expect(SOURCE_PREFERENCE.indexOf("fitbit-takeout")).toBeGreaterThan(
+      SOURCE_PREFERENCE.indexOf("health-connect")
     );
   });
 
@@ -142,7 +142,7 @@ describe("sourcePreference", () => {
       sourcePreference(
         "sleep_min",
         { sleep_min: { source: "fitbit-takeout", strict: false } },
-        PROVIDER_PREFERENCE
+        SOURCE_PREFERENCE
       )[0]
     ).toBe("fitbit-takeout");
   });
@@ -213,7 +213,7 @@ describe("comparable metric allowlist + source colors", () => {
   it("gives fitbit-takeout its OWN color, not the unknown fallback", () => {
     // It is routinely plotted AGAINST health-connect on the compare-sources
     // overlay (both describe the same nights), so sharing the generic fallback
-    // would make two first-class providers indistinguishable there.
+    // would make two first-class sources indistinguishable there.
     expect(sourceColor("fitbit-takeout")).toBe(SOURCE_COLORS["fitbit-takeout"]);
     expect(sourceColor("fitbit-takeout")).not.toBe(SOURCE_FALLBACK_COLOR);
     const used = Object.values(SOURCE_COLORS);
@@ -224,7 +224,7 @@ describe("comparable metric allowlist + source colors", () => {
   });
 
   it("every default-preference source has a fixed color assigned", () => {
-    for (const source of PROVIDER_PREFERENCE) {
+    for (const source of SOURCE_PREFERENCE) {
       expect(SOURCE_COLORS[source], source).toBeTruthy();
     }
   });
@@ -329,7 +329,7 @@ describe("sourceMatchesSelector (issue #1640)", () => {
 });
 
 describe("sourceGroupKey (issue #1640)", () => {
-  const withClass = [DOCUMENTS_SOURCE_CLASS, ...PROVIDER_PREFERENCE];
+  const withClass = [DOCUMENTS_SOURCE_CLASS, ...SOURCE_PREFERENCE];
 
   it("collapses every document onto the class when the class is in play", () => {
     expect(sourceGroupKey("document:5", withClass)).toBe(
@@ -344,14 +344,14 @@ describe("sourceGroupKey (issue #1640)", () => {
   });
 
   it("keeps two documents DISTINCT when no class is selected (#533 intact)", () => {
-    expect(sourceGroupKey("document:5", PROVIDER_PREFERENCE)).toBe(
+    expect(sourceGroupKey("document:5", SOURCE_PREFERENCE)).toBe(
       "document:5"
     );
-    expect(sourceGroupKey("document:7", PROVIDER_PREFERENCE)).toBe(
+    expect(sourceGroupKey("document:7", SOURCE_PREFERENCE)).toBe(
       "document:7"
     );
     // And when ONE document is the explicit pick, the sibling stays separate.
-    const onePicked = ["document:5", ...PROVIDER_PREFERENCE];
+    const onePicked = ["document:5", ...SOURCE_PREFERENCE];
     expect(sourceGroupKey("document:7", onePicked)).toBe("document:7");
   });
 });
@@ -474,10 +474,10 @@ describe("resolveMetricSources (issue #1642)", () => {
       resolveMetricSources(
         "weight",
         { weight: { source: "documents", strict: false } },
-        PROVIDER_PREFERENCE
+        SOURCE_PREFERENCE
       )
     ).toEqual({
-      order: ["documents", ...PROVIDER_PREFERENCE],
+      order: ["documents", ...SOURCE_PREFERENCE],
       strict: false,
     });
   });
@@ -487,14 +487,14 @@ describe("resolveMetricSources (issue #1642)", () => {
       resolveMetricSources(
         "weight",
         { weight: { source: "documents", strict: true } },
-        PROVIDER_PREFERENCE
+        SOURCE_PREFERENCE
       )
     ).toEqual({ order: ["documents"], strict: true });
   });
 
   it("unset is the plain default list in preference mode (today's behavior)", () => {
-    expect(resolveMetricSources("weight", {}, PROVIDER_PREFERENCE)).toEqual({
-      order: [...PROVIDER_PREFERENCE],
+    expect(resolveMetricSources("weight", {}, SOURCE_PREFERENCE)).toEqual({
+      order: [...SOURCE_PREFERENCE],
       strict: false,
     });
   });

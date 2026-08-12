@@ -35,7 +35,7 @@ import {
   recordsRecencyDedupeKey,
   recordsRecencyVerdict,
 } from "../../records-recency";
-import { archiveRefreshProviders } from "../../integrations/archive-refresh";
+import { archiveRefreshSources } from "../../integrations/archive-refresh";
 import { integrationDetailHref, dataSectionHref } from "../../hrefs";
 import { profileAgeMonths } from "../../settings";
 
@@ -62,22 +62,22 @@ const METRIC_SAMPLE_FRONTIER = hoistedStatement(
 
 function streamFrontier(
   profileId: number,
-  provider: string,
+  sourceId: string,
   selector: ArchiveStreamSelector
 ): string | null {
   const row =
     selector.table === "body_metrics"
-      ? (BODY_METRIC_FRONTIER[selector.column].get(profileId, provider) as {
+      ? (BODY_METRIC_FRONTIER[selector.column].get(profileId, sourceId) as {
           d: string | null;
         })
-      : (METRIC_SAMPLE_FRONTIER.get(profileId, provider, selector.metric) as {
+      : (METRIC_SAMPLE_FRONTIER.get(profileId, sourceId, selector.metric) as {
           d: string | null;
         });
   return row.d ?? null;
 }
 
 /**
- * The newest date any of a provider's ARCHIVE-EXCLUSIVE streams carries, plus the
+ * The newest date any of a source's ARCHIVE-EXCLUSIVE streams carries, plus the
  * labels of the streams that have actually delivered something.
  *
  * MAX across the streams, not MIN, and deliberately: the question is "how fresh is the
@@ -89,13 +89,13 @@ function streamFrontier(
  */
 export function archiveExclusiveFrontier(
   profileId: number,
-  provider: string,
+  sourceId: string,
   selectors: readonly { label: string; selector: ArchiveStreamSelector }[]
 ): { frontier: string | null; labels: string[] } {
   let frontier: string | null = null;
   const labels: string[] = [];
   for (const s of selectors) {
-    const d = streamFrontier(profileId, provider, s.selector);
+    const d = streamFrontier(profileId, sourceId, s.selector);
     if (!d) continue;
     labels.push(s.label);
     if (!frontier || d > frontier) frontier = d;
@@ -151,11 +151,11 @@ export function portalOwnsRecordsAsk(profileId: number): boolean {
 // ── The items ────────────────────────────────────────────────────────────────
 
 /**
- * The archive refresh ask (#2164) — one item per archive provider that declares
+ * The archive refresh ask (#2164) — one item per archive source that declares
  * exclusive streams and whose newest such data has aged past the declared horizon.
  *
  * No `ownedElsewhere` input: nothing else in the app can bring these streams in, which
- * is the entire premise of the facet. A provider the profile has never imported has no
+ * is the entire premise of the facet. A source the profile has never imported has no
  * frontier and is exempt by the shared `no-frontier` guard.
  */
 export function archiveRefreshItems(
@@ -163,10 +163,10 @@ export function archiveRefreshItems(
   today: string
 ): UpcomingItem[] {
   const items: UpcomingItem[] = [];
-  for (const p of archiveRefreshProviders()) {
+  for (const p of archiveRefreshSources()) {
     const { frontier, labels } = archiveExclusiveFrontier(
       profileId,
-      p.provider,
+      p.sourceId,
       p.facet.streams
     );
     const verdict = recordsRecencyVerdict({
@@ -177,16 +177,16 @@ export function archiveRefreshItems(
     });
     if (!verdict.due || labels.length === 0) continue;
     const copy = archiveRefreshCopy({
-      providerName: p.providerName,
+      sourceName: p.sourceName,
       streamLabels: labels,
       frontier: verdict.frontier,
       daysBehind: verdict.daysBehind,
     });
-    const href = integrationDetailHref(p.provider);
+    const href = integrationDetailHref(p.sourceId);
     if (!href) continue;
     items.push({
       key: recordsRecencyDedupeKey(
-        archiveRecencySource(p.provider),
+        archiveRecencySource(p.sourceId),
         verdict.frontier
       ),
       domain: "records-recency",

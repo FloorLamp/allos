@@ -1,13 +1,13 @@
-// DB INTEGRATION TIER — failing-provider detection is per-provider, not window-capped
+// DB INTEGRATION TIER — failing-source detection is per-source, not window-capped
 // (issue #304).
 //
-// The badge / hero / Review-issues path used to answer "is any provider currently
-// failing?" from the 100 NEWEST events across ALL providers. With one chatty provider
-// (e.g. Health Connect checking in hourly) a second provider's last event — a FAILURE
+// The badge / hero / Review-issues path used to answer "is any source currently
+// failing?" from the 100 NEWEST events across ALL sources. With one chatty source
+// (e.g. Health Connect checking in hourly) a second source's last event — a FAILURE
 // — could fall past that global window, so the badge under-reported a genuinely broken
-// integration while its own grid card (an uncapped per-provider read) still showed the
-// error. This proves the fix: getLatestSyncEventPerProvider is uncapped per provider,
-// so getImportIssues / getImportReviewCount catch a broken provider buried behind a
+// integration while its own grid card (an uncapped per-source read) still showed the
+// error. This proves the fix: getLatestSyncEventPerSource is uncapped per source,
+// so getImportIssues / getImportReviewCount catch a broken source buried behind a
 // flood of newer successes — including one flipped to needs_reauth (#326).
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -20,7 +20,7 @@ import {
 import {
   getImportIssues,
   getImportReviewCount,
-  getLatestSyncEventPerProvider,
+  getLatestSyncEventPerSource,
 } from "@/lib/queries";
 
 let profileId: number;
@@ -41,7 +41,7 @@ beforeAll(() => {
   });
   markConnectionNeedsReauth(profileId, "strava");
 
-  // Now bury it: a chatty push provider checks in successfully many times, more than
+  // Now bury it: a chatty push source checks in successfully many times, more than
   // the old 100-row global cap.
   for (let i = 0; i < CHATTY_EVENTS; i++) {
     recordSyncEvent(profileId, "health-connect", {
@@ -63,28 +63,28 @@ describe("failing-provider detection is per-provider (issue #304)", () => {
           ORDER BY at DESC, id DESC
           LIMIT 100`
       )
-      .all(profileId) as { provider: string; ok: number }[];
+      .all(profileId) as { sourceId: string; ok: number }[];
     expect(naiveWindow.length).toBe(100);
     // The strava failure is NOT in the window — the old badge/hero would miss it.
-    expect(naiveWindow.some((e) => e.provider === "strava")).toBe(false);
+    expect(naiveWindow.some((e) => e.sourceId === "strava")).toBe(false);
   });
 
   it("getLatestSyncEventPerProvider returns one row per provider, uncapped", () => {
-    const latest = getLatestSyncEventPerProvider(profileId);
-    const byProvider = new Map(latest.map((e) => [e.provider, e]));
-    // Exactly one row per provider that has history.
-    expect(latest.length).toBe(byProvider.size);
-    expect(new Set(latest.map((e) => e.provider))).toEqual(
+    const latest = getLatestSyncEventPerSource(profileId);
+    const bySource = new Map(latest.map((e) => [e.sourceId, e]));
+    // Exactly one row per source that has history.
+    expect(latest.length).toBe(bySource.size);
+    expect(new Set(latest.map((e) => e.sourceId))).toEqual(
       new Set(["strava", "health-connect"])
     );
-    // Each is that provider's true latest event, matching what the grid card shows.
-    expect(byProvider.get("strava")!.ok).toBe(0);
-    expect(byProvider.get("health-connect")!.ok).toBe(1);
+    // Each is that source's true latest event, matching what the grid card shows.
+    expect(bySource.get("strava")!.ok).toBe(0);
+    expect(bySource.get("health-connect")!.ok).toBe(1);
   });
 
   it("getImportIssues detects the buried broken provider", () => {
     const issues = getImportIssues(profileId);
-    expect(issues.map((e) => e.provider)).toEqual(["strava"]);
+    expect(issues.map((e) => e.sourceId)).toEqual(["strava"]);
     expect(issues[0].ok).toBe(0);
     // Sanity: the connection really is in the needs_reauth terminal state (#326).
     expect(getConnection(profileId, "strava")?.status).toBe("needs_reauth");
@@ -92,13 +92,13 @@ describe("failing-provider detection is per-provider (issue #304)", () => {
 
   it("getImportReviewCount counts the buried failing provider", () => {
     // No duplicate/conflict pairs for this fresh profile, so the count is purely the
-    // one currently-failing provider.
+    // one currently-failing source.
     expect(getImportReviewCount(profileId)).toBe(1);
   });
 
   it("a later successful strava sync self-clears the failure", () => {
     recordSyncEvent(profileId, "strava", { ok: true, received: 0, written: 0 });
-    expect(getImportIssues(profileId).map((e) => e.provider)).toEqual([]);
+    expect(getImportIssues(profileId).map((e) => e.sourceId)).toEqual([]);
     expect(getImportReviewCount(profileId)).toBe(0);
   });
 });

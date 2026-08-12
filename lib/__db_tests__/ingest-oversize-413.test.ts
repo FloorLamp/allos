@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { POST } from "@/app/api/integrations/health-connect/ingest/route";
-import { getLatestSyncEventPerProvider } from "@/lib/queries";
+import { getLatestSyncEventPerSource } from "@/lib/queries";
 import { hashShareToken } from "@/lib/share-token";
 
 let profileId: number;
@@ -63,11 +63,11 @@ describe("health-connect ingest — over-size 413 (issue #604 / #1064)", () => {
     expect(body.ok).toBe(false);
     expect(body.error).toMatch(/too large/i);
 
-    // The rejection surfaces as a failing provider in the Review inbox feed, now with
+    // The rejection surfaces as a failing source in the Review inbox feed, now with
     // an ACTIONABLE line (#1064): it names the remedy and the env override, not just
     // the byte count.
-    const latest = getLatestSyncEventPerProvider(profileId);
-    const hc = latest.find((e) => e.provider === "health-connect");
+    const latest = getLatestSyncEventPerSource(profileId);
+    const hc = latest.find((e) => e.sourceId === "health-connect");
     expect(hc).toBeTruthy();
     expect(hc?.ok).toBe(0);
     expect(String(hc?.error ?? "")).toMatch(/too large/i);

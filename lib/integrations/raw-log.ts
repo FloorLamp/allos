@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createLogger } from "@/lib/log";
-import { capPayload, isSafeRawRef, KEEP_PER_PROVIDER } from "./raw-log-format";
+import { capPayload, isSafeRawRef, KEEP_PER_SOURCE } from "./raw-log-format";
 
 const log = createLogger("integration-raw");
 
@@ -31,7 +31,7 @@ function profileDir(profileId: number): string {
   return path.join(RAW_PAYLOAD_ROOT, String(profileId));
 }
 
-// Retain only the newest KEEP_PER_PROVIDER payloads for this (profile, source),
+// Retain only the newest KEEP_PER_SOURCE payloads for this (profile, source),
 // unlinking older ones. Files are named `<source>-<uuid>.json`, so the source
 // prefix lets retention prune per source by directory listing. Best-effort.
 function pruneOld(dir: string, sourceId: string) {
@@ -40,7 +40,7 @@ function pruneOld(dir: string, sourceId: string) {
     const entries = fs
       .readdirSync(dir)
       .filter((f) => f.startsWith(prefix) && f.endsWith(".json"));
-    if (entries.length <= KEEP_PER_PROVIDER) return;
+    if (entries.length <= KEEP_PER_SOURCE) return;
     const withTime = entries.map((f) => {
       let mtime = 0;
       try {
@@ -51,7 +51,7 @@ function pruneOld(dir: string, sourceId: string) {
       return { f, mtime };
     });
     withTime.sort((a, b) => b.mtime - a.mtime); // newest first
-    for (const { f } of withTime.slice(KEEP_PER_PROVIDER)) {
+    for (const { f } of withTime.slice(KEEP_PER_SOURCE)) {
       try {
         fs.unlinkSync(path.join(dir, f));
       } catch {
@@ -73,15 +73,15 @@ export function writeRawPayload(
   if (typeof payload !== "string") return null;
   // source comes from our own registry ids ('health-connect' | 'strava'), but
   // sanitize defensively so it can't influence the filename/prefix.
-  const safeProvider = sourceId.replace(/[^\w-]/g, "");
-  if (!safeProvider) return null;
+  const safeSourceId = sourceId.replace(/[^\w-]/g, "");
+  if (!safeSourceId) return null;
   try {
     const dir = profileDir(profileId);
     fs.mkdirSync(dir, { recursive: true });
-    const ref = `${safeProvider}-${crypto.randomUUID()}.json`;
+    const ref = `${safeSourceId}-${crypto.randomUUID()}.json`;
     if (!isSafeRawRef(ref)) return null; // belt-and-suspenders: prefix+uuid is always safe
     fs.writeFileSync(path.join(dir, ref), capPayload(payload));
-    pruneOld(dir, safeProvider);
+    pruneOld(dir, safeSourceId);
     return ref;
   } catch (err) {
     log.error("failed to write integration raw payload", {

@@ -57,8 +57,8 @@ export default async function StravaPage(props: {
     ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;
 
-  // THE per-provider state (#1772) — the same computation Review's inbox and the
-  // Integrations grid read, so the three can no longer describe this provider
+  // THE per-source state (#1772) — the same computation Review's inbox and the
+  // Integrations grid read, so the three can no longer describe this source
   // differently. The raw `last_sync_summary` key:value echo this page used to render
   // (a third accounting, with no formatter) is retired in favour of it.
   const state = getIntegrationState(profile.id, "strava", SETUP_HISTORY_LIMIT)!;
@@ -106,7 +106,7 @@ export default async function StravaPage(props: {
               watchBackfills
               controls={
                 <>
-                  <SyncNowButton provider="strava" />
+                  <SyncNowButton sourceId="strava" />
                   <StravaBackfillButton missing={missingRideDetails} />
                   <form action={disconnectStravaAction}>
                     <button className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950">

@@ -28,7 +28,7 @@ import { INTEGRATIONS, getIntegration } from "./registry";
 export interface ArchiveRefreshSource {
   sourceId: IntegrationId;
   /** The source's display name, so a caller building copy needs no second lookup. */
-  providerName: string;
+  sourceName: string;
   facet: IntegrationArchiveRefreshFacet;
 }
 
@@ -51,7 +51,7 @@ export function archiveRefreshSources(): ArchiveRefreshSource[] {
   return INTEGRATIONS.flatMap((def) => {
     const facet = archiveRefreshFacet(def);
     return facet && def.status === "available"
-      ? [{ sourceId: def.id, providerName: def.name, facet }]
+      ? [{ sourceId: def.id, sourceName: def.name, facet }]
       : [];
   });
 }
@@ -63,7 +63,7 @@ export function archiveRefreshFor(
   const def = getIntegration(sourceId);
   const facet = archiveRefreshFacet(def);
   return def && facet
-    ? { sourceId: def.id, providerName: def.name, facet }
+    ? { sourceId: def.id, sourceName: def.name, facet }
     : null;
 }
 

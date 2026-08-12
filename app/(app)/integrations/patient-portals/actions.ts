@@ -5,7 +5,7 @@
 // AUTH TIERS. There are three, and they differ because the things being written differ:
 //
 //   requireAdmin()                  — the REGISTRIES. A portal and its logins are
-//     instance-scoped vocabulary a household shares (like the `providers` registry):
+//     instance-scoped vocabulary a household shares (like the `sources` registry):
 //     one "Ochsner MyChart", one "Mom". They name no profile, so no per-profile grant
 //     could stand in for the gate.
 //

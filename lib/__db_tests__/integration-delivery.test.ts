@@ -1,11 +1,11 @@
 // DB INTEGRATION TIER — #2301: the state model answers the question its DELIVERY
 // family actually poses.
 //
-// `ProviderStanding` was one flat vocabulary of seven states, every one describing a
-// LIVE CONNECTION allos depends on, applied to four providers that have none. These
+// `SourceStanding` was one flat vocabulary of seven states, every one describing a
+// LIVE CONNECTION allos depends on, applied to four sources that have none. These
 // are the four shapes found on the prod snapshot the issue was opened on, as fixtures,
-// read through the real query path (getIntegrationState → resolveProviderFacts →
-// providerStanding) rather than the pure derivation alone — because the defect was
+// read through the real query path (getIntegrationState → resolveSourceFacts →
+// sourceStanding) rather than the pure derivation alone — because the defect was
 // visible only once the registry's kind, the connection row and the recorded events
 // were composed together.
 
@@ -40,21 +40,21 @@ function newProfile(name: string): number {
 
 function connect(
   profileId: number,
-  provider: string,
+  sourceId: string,
   status = "connected"
 ): void {
   db.prepare(
     `INSERT INTO integration_connections (profile_id, provider, status)
      VALUES (?, ?, ?)
      ON CONFLICT (profile_id, provider) DO UPDATE SET status = excluded.status`
-  ).run(profileId, provider, status);
+  ).run(profileId, sourceId, status);
 }
 
 // An event `daysAgo` days back from the app's own now, on the ledger's canonical
 // UTC+`Z` convention (migration 163).
 function syncEvent(
   profileId: number,
-  provider: string,
+  sourceId: string,
   daysAgo: number,
   ok: number,
   error: string | null = null
@@ -66,7 +66,7 @@ function syncEvent(
     `INSERT INTO integration_sync_events
        (profile_id, provider, at, ok, inserted, updated, unchanged, error)
      VALUES (?, ?, ?, ?, ?, 0, 0, ?)`
-  ).run(profileId, provider, at, ok, ok ? 3 : null, error);
+  ).run(profileId, sourceId, at, ok, ok ? 3 : null, error);
 }
 
 describe("an ARCHIVE import is not a connection (#2301)", () => {
@@ -168,7 +168,7 @@ describe("an ATTENDED tool is read by its LAST ATTEMPT (#2301)", () => {
   it("never reads `intermittent`, whatever its failure mix", () => {
     // The prod row: patient-portals with 6 recorded runs, 3 of them failed, the
     // newest fine. The connection model called that "Intermittent" — and the
-    // standing's own contract ("a successful run landed inside the provider's
+    // standing's own contract ("a successful run landed inside the source's
     // silence tolerance") is vacuous, because that tolerance is null.
     const p = newProfile("PortalsMixed");
     connect(p, PORTALS);
@@ -191,10 +191,10 @@ describe("an ATTENDED tool is read by its LAST ATTEMPT (#2301)", () => {
 
 describe("the attended family reaches Review at all (#2301)", () => {
   // THE LIVE CONSEQUENCE the issue names. The Imports feed enumerated the attended
-  // family in SQL by naming ONE of its two members (`provider = 'fitbit-takeout'`),
+  // family in SQL by naming ONE of its two members (`source = 'fitbit-takeout'`),
   // so a portal run appeared on NO Review surface: Connected sources excludes the
-  // kind, the feed excluded the provider, and getImportIssues cannot reach it because
-  // an attended provider is exempt from the silence rule and can never be `failing`.
+  // kind, the feed excluded the source, and getImportIssues cannot reach it because
+  // an attended source is exempt from the silence rule and can never be `failing`.
   it("puts a portal run — failures included — in the chronological Imports feed", () => {
     const p = newProfile("PortalsFeed");
     connect(p, PORTALS);
@@ -205,7 +205,7 @@ describe("the attended family reaches Review at all (#2301)", () => {
       (e) => e.stream === "sync"
     );
     expect(syncs).toHaveLength(2);
-    expect(syncs.map((e) => e.stream === "sync" && e.event.provider)).toEqual([
+    expect(syncs.map((e) => e.stream === "sync" && e.event.sourceId)).toEqual([
       PORTALS,
       PORTALS,
     ]);
@@ -224,11 +224,11 @@ describe("the attended family reaches Review at all (#2301)", () => {
     syncEvent(p, PORTALS, 3, 1);
     syncEvent(p, TAKEOUT, 2, 1);
 
-    const providers = getImportDocumentsFeed(p, 100)
+    const sourceIds = getImportDocumentsFeed(p, 100)
       .filter((e) => e.stream === "sync")
-      .map((e) => (e.stream === "sync" ? e.event.provider : ""))
+      .map((e) => (e.stream === "sync" ? e.event.sourceId : ""))
       .sort();
-    expect(providers).toEqual([TAKEOUT, PORTALS].sort());
+    expect(sourceIds).toEqual([TAKEOUT, PORTALS].sort());
   });
 
   it("still contributes nothing to getImportIssues or Connected sources", () => {
@@ -259,7 +259,7 @@ describe("the scheduled family is untouched (#2301)", () => {
     expect(getIntegrationState(p, "weather")!.standing).toBe("healthy");
     expect(standingBadge("healthy").tone).toBe("good");
 
-    // …and the Connected-sources set is still exactly the scheduled providers.
+    // …and the Connected-sources set is still exactly the scheduled sources.
     for (const source of getConnectedSources(p)) {
       expect(source.delivery, source.id).toBe("scheduled");
     }

@@ -205,7 +205,7 @@ export function getLatestSyncEventPerSource(
   // source, ordered newest-first overall.
   const sourceIds = db
     .prepare(
-      // #2487 boundary: the column is still named `provider`; TS calls it a source id.
+      // #2487 boundary: the column is still named `source`; TS calls it a source id.
       `SELECT DISTINCT provider AS source_id FROM integration_sync_events
         WHERE profile_id = ?`
     )
@@ -713,7 +713,7 @@ function getIntegrationAttentionUncached(
     const integration = getIntegration(ev.sourceId as IntegrationId);
     return {
       id: integration?.id ?? null,
-      sourceId: integration?.name ?? ev.sourceId,
+      sourceName: integration?.name ?? ev.sourceId,
       detail: ev.error ?? "Reconnect to resume syncing.",
       kind: isStaleSyncEvent(ev) ? ("stale" as const) : ("failing" as const),
     };

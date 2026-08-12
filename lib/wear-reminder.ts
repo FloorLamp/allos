@@ -34,7 +34,7 @@
 //   > the declared continuous stream's FRONTIER has not moved across the last N
 //   > successful pushes, and it is older than the declared floor.
 //
-// THE FIRST CLAUSE IS THE DECISION (#2341). It used to be "the provider kept syncing
+// THE FIRST CLAUSE IS THE DECISION (#2341). It used to be "the source kept syncing
 // ok in that window", and that clause discriminated the CONNECTION, never the wrist: a
 // push that is merely late is still a successful push, so it was true both on the
 // night a watch sat on a charger and on the night this pipeline simply ran behind.
@@ -71,7 +71,7 @@
 //
 // No escalation, no repeat, no second send if ignored. A missed reminder is answered by
 // #2146's calm morning row, not by another interruption. It also YIELDS: when the
-// provider is failing or stale, a reconnect item already owns the contact and "put your
+// source is failing or stale, a reconnect item already owns the contact and "put your
 // watch on" would be false advice while the pipeline is down.
 //
 // Hourly grain is accepted, not hidden: the check runs at the slot minute, so a charger
@@ -96,10 +96,10 @@ export interface BedtimeWearSignals {
    */
   expectedActive: boolean;
   /**
-   * Is the provider in ordinary standing? False when it is failing or stale — the
+   * Is the source in ordinary standing? False when it is failing or stale — the
    * yields-to-bigger-problems rule.
    */
-  providerHealthy: boolean;
+  sourceHealthy: boolean;
   /**
    * The FRONTIER'S OWN AGE in minutes — `now − MAX(stream.ts)` — or null when the
    * stream has never delivered anything for this profile.
@@ -110,7 +110,7 @@ export interface BedtimeWearSignals {
   frontierAgeMin: number | null;
   /**
    * How many successful pushes have landed WITHOUT advancing the frontier, or null
-   * when no push has ever been observed against it (a fresh deploy, a provider
+   * when no push has ever been observed against it (a fresh deploy, a source
    * connected minutes ago). THIS is what separates "the watch is off" from "the
    * pipeline is late" — see lib/stream-frontier.ts.
    */
@@ -170,7 +170,7 @@ export function bedtimeWearVerdict(
   if (!signals.enabled) return { send: false, skip: "disabled" };
   if (!signals.expectedActive)
     return { send: false, skip: "not-expected-active" };
-  if (!signals.providerHealthy)
+  if (!signals.sourceHealthy)
     return { send: false, skip: "provider-unhealthy" };
   if (signals.frontierAgeMin == null) return { send: false, skip: "no-stream" };
   if (signals.frontierAgeMin < signals.floorMin)

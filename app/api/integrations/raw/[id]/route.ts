@@ -2,8 +2,8 @@ import { getCurrentSession } from "@/lib/auth";
 import { getSyncEventRawRef } from "@/lib/queries";
 import { readRawPayload } from "@/lib/integrations/raw-log";
 
-// Admin-only raw provider payload viewer for a sync event (issue #9). Serves the
-// exact request/response body a sync exchanged with the provider, so "why did/
+// Admin-only raw source payload viewer for a sync event (issue #9). Serves the
+// exact request/response body a sync exchanged with the source, so "why did/
 // didn't this change" is debuggable from the UI. Node runtime (reads fs).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +41,7 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  // Pretty-print when it parses as JSON (the payloads are provider JSON); fall back
+  // Pretty-print when it parses as JSON (the payloads are source JSON); fall back
   // to the stored text (e.g. a truncated/invalid body from a parse-failure event).
   let body = raw;
   try {

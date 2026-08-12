@@ -41,12 +41,12 @@ import type {
 //     fully (#1880 item 2): chip, reason, consequence in user terms, and all its
 //     actions together. The alert IS the card — nothing below restates it. Synthetic
 //     issues with no source card behind them (an expired Health Connect token, an
-//     unregistered provider id) render here too, as plain rows.
-// (a2) "A device stopped sending" (<QuietStreams>, #2146) — a provider syncing green
+//     unregistered source id) render here too, as plain rows.
+// (a2) "A device stopped sending" (<QuietStreams>, #2146) — a source syncing green
 //     while one of its declared CONTINUOUS streams has gone quiet (a watch off the
 //     wrist while the phone keeps pushing aggregates). Slate, not rose, because
 //     nothing is broken: it is a coaching-tier observation, it never sends, and it
-//     yields to (a) so a provider is still one row.
+//     yields to (a) so a source is still one row.
 // (b) DETECTED duplicate/conflict pairs (issue #10, Phase 2) + unit mislabels.
 // (c) "Connected sources" (<ConnectedSources>) — the calm rest of the recurring
 //     streams: partial/not-connected expanded, flapping stated as an amber one-liner,
@@ -58,11 +58,11 @@ import type {
 //     one line at the BOTTOM (#1880 item 6); the ?fix= deep-link still opens it.
 // Server component — the page reads everything via lib/queries.
 
-function providerName(id: string): string {
+function sourceName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
 }
 
-// Only providers with a real setup page are linkable (/integrations/<id>).
+// Only sources with a real setup page are linkable (/integrations/<id>).
 function providerHref(id: string): AppRoute | null {
   return integrationDetailHref(id as IntegrationId);
 }
@@ -83,11 +83,11 @@ export default function ReviewInbox({
   isAdmin = false,
 }: {
   issues: IntegrationSyncEvent[];
-  // Providers that are syncing fine while one of their continuous data streams has
+  // Sources that are syncing fine while one of their continuous data streams has
   // gone quiet (#2146) — a calm, coaching-tier observation, deliberately NOT part of
   // the rose "Needs attention" card and deliberately not counted by the review badge.
   quietStreams?: QuietStreamRow[];
-  // The recurring per-provider streams for the "Connected sources" section.
+  // The recurring per-source streams for the "Connected sources" section.
   sources: ConnectedSource[];
   // The one-off "Imports" feed (documents + paste jobs), newest-first.
   feed: FeedEntry[];
@@ -108,18 +108,18 @@ export default function ReviewInbox({
   // Pre-selected field from a contextual "Fix a range…" link (?fix=), or null.
   initialCorrectionField?: CorrectionFieldId | null;
   units: UnitPrefs;
-  // Admins can inspect the raw provider payload captured per sync (issue #9). The
+  // Admins can inspect the raw source payload captured per sync (issue #9). The
   // "View raw" affordance is only rendered for admins on events that carry a
   // raw_ref; the route it hits is itself admin-gated + profile-scoped.
   isAdmin?: boolean;
 }) {
   // A source needing attention renders ONCE (#1880 item 2): the escalated sources
   // render their full card in "Needs attention", and only issues with NO source card
-  // behind them (expired Health Connect token, an unregistered provider id) fall back
+  // behind them (expired Health Connect token, an unregistered source id) fall back
   // to a plain row there.
   const escalated = sources.filter(isEscalatedSource);
   const escalatedIds = new Set(escalated.map((s) => s.id as string));
-  const leftoverIssues = issues.filter((ev) => !escalatedIds.has(ev.provider));
+  const leftoverIssues = issues.filter((ev) => !escalatedIds.has(ev.sourceId));
 
   return (
     <div className="space-y-6" data-testid="review-inbox">
@@ -143,7 +143,7 @@ export default function ReviewInbox({
               className={escalated.length > 0 ? "mt-3 space-y-3" : "space-y-3"}
             >
               {leftoverIssues.map((ev) => {
-                const href = providerHref(ev.provider);
+                const href = providerHref(ev.sourceId);
                 // The silent-stop signal (#1685) is a synthetic issue with no recorded
                 // failure behind it, so "sync failed" would be a claim we can't support:
                 // nothing failed, nothing arrived. Say what we actually observed. Its `at`
@@ -151,15 +151,15 @@ export default function ReviewInbox({
                 const stale = isStaleSyncEvent(ev);
                 return (
                   <li
-                    // Synthetic issues share a sentinel id across providers, so the row key
-                    // must include the provider or two stopped sources would collide.
-                    key={`${ev.provider}:${ev.id}`}
-                    data-testid={`import-issue-${ev.provider}`}
+                    // Synthetic issues share a sentinel id across sources, so the row key
+                    // must include the source or two stopped sources would collide.
+                    key={`${ev.sourceId}:${ev.id}`}
+                    data-testid={`import-issue-${ev.sourceId}`}
                     className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-900/50 dark:bg-rose-950/20"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium text-slate-800 dark:text-slate-100">
-                        {providerName(ev.provider)}{" "}
+                        {sourceName(ev.sourceId)}{" "}
                         {stale ? "sync has stopped" : "sync failed"}
                       </span>
                       <RelativeTime
@@ -177,7 +177,7 @@ export default function ReviewInbox({
                         href={href}
                         className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
                       >
-                        Check {providerName(ev.provider)} settings →
+                        Check {sourceName(ev.sourceId)} settings →
                       </Link>
                     )}
                     {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
@@ -189,10 +189,10 @@ export default function ReviewInbox({
         </div>
       )}
 
-      {/* A device that stopped delivering while its provider keeps syncing green
+      {/* A device that stopped delivering while its source keeps syncing green
           (#2146). It sits BELOW the escalated card and above the detected pairs: it is
           an observation, not a fault, and #2146 constraint 7 already guarantees a
-          provider represented above is not repeated here. */}
+          source represented above is not repeated here. */}
       <QuietStreams rows={quietStreams} />
 
       <DuplicateReview

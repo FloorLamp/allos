@@ -1,8 +1,8 @@
 // The INGEST-PATH half of the stream frontier (#2341). The state transition itself is
 // pure and lives in lib/stream-frontier.ts; nothing here re-derives it.
 //
-// One call, at the end of a SUCCESSFUL ingest, for each continuous stream the provider
-// declares: read the frontier, fold the observation in, persist it. A provider that
+// One call, at the end of a SUCCESSFUL ingest, for each continuous stream the source
+// declares: read the frontier, fold the observation in, persist it. A source that
 // declares no continuous stream (weather, the calendar feed, the Fitbit Takeout
 // archive — the app's other `hr_minutes` writer) is exempt BY CONSTRUCTION: the loop
 // below has nothing to iterate.
@@ -44,22 +44,22 @@ import {
 import { observeFrontier, type StreamFrontierState } from "./stream-frontier";
 
 /**
- * Record what this push did to every continuous stream the provider declares.
+ * Record what this push did to every continuous stream the source declares.
  *
  * Returns the folded state per stream id, so the caller — and the DB tier's tests —
- * can assert what was observed without re-reading. A provider that is unknown or
+ * can assert what was observed without re-reading. A source that is unknown or
  * declares no stream observes nothing and returns an empty record.
  */
 export function observeStreamFrontiers(
   profileId: number,
-  provider: string,
+  sourceId: string,
   at: string = instantNow()
 ): Record<string, StreamFrontierState> {
   // The ingest path carries its source as a plain string (it is also the value written
   // into the rows' `source` column), so the registry is matched rather than indexed —
   // an unregistered source simply declares no stream and observes nothing.
   const streams = continuousStreamsFor(
-    INTEGRATIONS.find((def) => def.id === provider)
+    INTEGRATIONS.find((def) => def.id === sourceId)
   );
   if (streams.length === 0) return {};
   return writeTx(() => {
@@ -78,15 +78,15 @@ export function observeStreamFrontiers(
     for (const stream of streams) {
       // Read INSIDE the transaction: this value is what the stored frontier claims,
       // so the two must not be able to come from different moments.
-      const frontier = latestStreamInstant(profileId, stream.table, provider);
+      const frontier = latestStreamInstant(profileId, stream.table, sourceId);
       const next = observeFrontier(
-        readStreamFrontier(profileId, provider, stream.id),
+        readStreamFrontier(profileId, sourceId, stream.id),
         frontier,
         at
       );
       upsert.run(
         profileId,
-        provider,
+        sourceId,
         stream.id,
         next.frontierAt,
         next.advancedAt,

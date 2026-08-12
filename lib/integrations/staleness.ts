@@ -211,14 +211,14 @@ export function staleSyncs(
 //
 // Duration-aware since #2263: a 14-hour silence is now escalatable, so the sentence
 // has to be able to say "14 hours" as well as "4 days".
-export function staleSyncDetail(providerName: string, s: StaleSync): string {
-  return `No data since ${s.since} — ${providerName} hasn't synced successfully in ${formatSilence(s.minutes)}. Check the connection.`;
+export function staleSyncDetail(sourceName: string, s: StaleSync): string {
+  return `No data since ${s.since} — ${sourceName} hasn't synced successfully in ${formatSilence(s.minutes)}. Check the connection.`;
 }
 
 // The attention item's title for a stale connection. Says what is true (it stopped)
 // without asserting why.
-export function staleSyncTitle(providerName: string): string {
-  return `${providerName} sync has stopped`;
+export function staleSyncTitle(sourceName: string): string {
+  return `${sourceName} sync has stopped`;
 }
 
 // The sentinel id every SYNTHETIC stale-sync issue carries, mirroring the

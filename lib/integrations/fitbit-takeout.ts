@@ -739,7 +739,7 @@ export function finalizeDailySums(
 // ON THE FEW NIGHTS BOTH SOURCES COVER, the reader AVERAGES them rather than picking
 // one: skin_temp_delta_c is an AVERAGED_METRICS kind, and getMetricDailyTotals takes
 // the mean across sources for those unless the profile has pinned a primary source.
-// (PROVIDER_PREFERENCE's one-source-per-day pick governs ADDITIVE metrics, where
+// (SOURCE_PREFERENCE's one-source-per-day pick governs ADDITIVE metrics, where
 // summing two sources would double-count — a distinction easy to get backwards.)
 // That is the intended semantics for a point metric: two sources measuring the same
 // quantity should agree, and here they nearly do. It does mean the chart can show a

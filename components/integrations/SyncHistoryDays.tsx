@@ -150,12 +150,12 @@ function RunLine({
 function RangeLine({
   entry,
   isAdmin,
-  providerId,
+  sourceId,
   timeZone,
 }: {
   entry: Extract<SyncDayEntryView, { kind: "range" }>;
   isAdmin: boolean;
-  providerId: IntegrationId;
+  sourceId: IntegrationId;
   timeZone: string;
 }) {
   const [runs, setRuns] = useState<SyncRunView[] | null>(null);
@@ -166,7 +166,7 @@ function RangeLine({
     setLoading(true);
     setFailed(false);
     try {
-      setRuns(await loadSyncHistoryRuns(providerId, entry.runIds));
+      setRuns(await loadSyncHistoryRuns(sourceId, entry.runIds));
     } catch {
       setFailed(true);
     } finally {
@@ -220,12 +220,12 @@ function RangeLine({
 function FailureRunLine({
   entry,
   isAdmin,
-  providerId,
+  sourceId,
   timeZone,
 }: {
   entry: Extract<SyncDayEntryView, { kind: "failure-run" }>;
   isAdmin: boolean;
-  providerId: IntegrationId;
+  sourceId: IntegrationId;
   timeZone: string;
 }) {
   const [runs, setRuns] = useState<SyncRunView[] | null>(null);
@@ -236,7 +236,7 @@ function FailureRunLine({
     setLoading(true);
     setFailed(false);
     try {
-      setRuns(await loadSyncHistoryRuns(providerId, entry.runIds));
+      setRuns(await loadSyncHistoryRuns(sourceId, entry.runIds));
     } catch {
       setFailed(true);
     } finally {
@@ -301,14 +301,14 @@ function FailureRunLine({
 export default function SyncHistoryDays({
   days,
   today,
-  providerId,
+  sourceId,
   initialCursor,
   timeZone,
   isAdmin = false,
 }: {
   days: SyncDayView[];
   today: string;
-  providerId: IntegrationId;
+  sourceId: IntegrationId;
   initialCursor: string | null;
   timeZone: string;
   isAdmin?: boolean;
@@ -337,7 +337,7 @@ export default function SyncHistoryDays({
     setLoadingOlder(true);
     setLoadFailed(false);
     try {
-      const page = await loadSyncHistoryPage(providerId, cursor);
+      const page = await loadSyncHistoryPage(sourceId, cursor);
       setOlderDays((current) => {
         const seen = new Set(current.map((day) => day.day));
         return [...current, ...page.days.filter((day) => !seen.has(day.day))];
@@ -422,7 +422,7 @@ export default function SyncHistoryDays({
                         key={`failures-${entry.runIds[0]}`}
                         entry={entry}
                         isAdmin={isAdmin}
-                        providerId={providerId}
+                        sourceId={sourceId}
                         timeZone={timeZone}
                       />
                     );
@@ -432,7 +432,7 @@ export default function SyncHistoryDays({
                       key={`range-${day.day}-${i}`}
                       entry={entry}
                       isAdmin={isAdmin}
-                      providerId={providerId}
+                      sourceId={sourceId}
                       timeZone={timeZone}
                     />
                   );

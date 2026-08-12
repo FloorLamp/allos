@@ -29,7 +29,7 @@ import { reconcileProduced, feedProducedDetail } from "./produced-count";
 // fields, which structural typing accepts on assignment.
 export interface FeedSyncEvent {
   id: number;
-  provider: string;
+  sourceId: string;
   at: string;
   ok: number; // 1 = success, 0 = failure
   window_start: string | null;
@@ -96,14 +96,14 @@ export interface FeedJob {
 // patient-name provenance flag, a sync's admin raw payload).
 export type FeedEntry =
   | { stream: "sync"; at: string; sortId: number; event: FeedSyncEvent }
-  // A collapsed run of consecutive no-op syncs for ONE provider (issue #137):
+  // A collapsed run of consecutive no-op syncs for ONE source (issue #137):
   // `count` such syncs found nothing new, the newest at `latest` (which is also the
   // entry's sort time) and the oldest at `oldest`.
   | {
       stream: "sync-quiet";
       at: string;
       sortId: number;
-      provider: string;
+      sourceId: string;
       count: number;
       oldest: string;
       latest: string;
@@ -116,7 +116,7 @@ export function syncEntry(event: FeedSyncEvent): FeedEntry {
 }
 
 // Collapse a run of consecutive no-op syncs (newest-first, non-empty, all the same
-// provider) into one summary entry pinned at the newest event's time/id. Pure.
+// source) into one summary entry pinned at the newest event's time/id. Pure.
 export function syncQuietEntry(runNewestFirst: FeedSyncEvent[]): FeedEntry {
   const latest = runNewestFirst[0];
   const oldest = runNewestFirst[runNewestFirst.length - 1];
@@ -124,31 +124,31 @@ export function syncQuietEntry(runNewestFirst: FeedSyncEvent[]): FeedEntry {
     stream: "sync-quiet",
     at: latest.at,
     sortId: latest.id,
-    provider: latest.provider,
+    sourceId: latest.sourceId,
     count: runNewestFirst.length,
     oldest: oldest.at,
     latest: latest.at,
   };
 }
 
-// Fold a profile's raw sync events (newest-first, providers interleaved) into feed
-// entries, collapsing each maximal run of CONSECUTIVE no-op syncs PER PROVIDER into
+// Fold a profile's raw sync events (newest-first, sources interleaved) into feed
+// entries, collapsing each maximal run of CONSECUTIVE no-op syncs PER SOURCE into
 // a single "no new data" summary. A meaningful sync (something inserted/updated) or
 // a failure renders as its own entry, so a currently-broken integration and its
 // recovery history stay fully visible; only the hourly "nothing new" noise (#137) is
-// summarized. Grouping is per-provider so two devices both checking in hourly each
+// summarized. Grouping is per-source so two devices both checking in hourly each
 // collapse their own run instead of breaking each other's. Pure → unit-testable.
 export function collapseQuietSyncs(
   eventsNewestFirst: FeedSyncEvent[]
 ): FeedEntry[] {
-  const byProvider = new Map<string, FeedSyncEvent[]>();
+  const bySource = new Map<string, FeedSyncEvent[]>();
   for (const ev of eventsNewestFirst) {
-    const list = byProvider.get(ev.provider);
+    const list = bySource.get(ev.sourceId);
     if (list) list.push(ev);
-    else byProvider.set(ev.provider, [ev]);
+    else bySource.set(ev.sourceId, [ev]);
   }
   const out: FeedEntry[] = [];
-  for (const evs of byProvider.values()) {
+  for (const evs of bySource.values()) {
     let i = 0;
     while (i < evs.length) {
       if (!isNoOpSyncEvent(evs[i])) {
@@ -199,7 +199,7 @@ export type FeedTone = "ok" | "error" | "pending" | "neutral";
 export interface FeedItemView {
   key: string;
   tone: FeedTone;
-  // The row's headline — a provider name, a document filename, or a job title.
+  // The row's headline — a source name, a document filename, or a job title.
   title: string;
   // Where the title links, or null for an unlinked row (integration syncs).
   href: AppRoute | null;
@@ -308,11 +308,11 @@ function jobDetail(job: FeedJob): { detail: string; muted: boolean } {
 }
 
 // Reduce one feed entry to the display-ready shape the row component renders.
-// `providerName` resolves an integration id to its display label (passed in so
+// `sourceName` resolves an integration id to its display label (passed in so
 // this module doesn't reach into the registry / DB). Pure → unit-testable.
 export function feedItemView(
   entry: FeedEntry,
-  providerName: (id: string) => string
+  sourceName: (id: string) => string
 ): FeedItemView {
   if (entry.stream === "sync") {
     const ev = entry.event;
@@ -322,7 +322,7 @@ export function feedItemView(
     return {
       key: `sync:${ev.id}`,
       tone: ev.ok ? "ok" : "error",
-      title: providerName(ev.provider),
+      title: sourceName(ev.sourceId),
       href: null,
       // An archive write can fail after earlier chunks committed. Keep "failed" as
       // the headline while retaining the completed split so Review tells the truth
@@ -342,9 +342,9 @@ export function feedItemView(
   }
   if (entry.stream === "sync-quiet") {
     return {
-      key: `sync-quiet:${entry.provider}:${entry.sortId}`,
+      key: `sync-quiet:${entry.sourceId}:${entry.sortId}`,
       tone: "neutral",
-      title: providerName(entry.provider),
+      title: sourceName(entry.sourceId),
       href: null,
       detail:
         entry.count === 1

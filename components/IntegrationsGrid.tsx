@@ -18,11 +18,11 @@ import SyncTimestamp from "./integrations/SyncTimestamp";
 
 // The connect-card grid on Data → Import. It reads the SAME state model as the
 // setup pages and Review's inbox (#1772) — one badge vocabulary, one timestamp
-// treatment — so the three surfaces can never disagree about a provider's health.
+// treatment — so the three surfaces can never disagree about a source's health.
 //
 // Since #1880 (items 7 + 8) a card has TWO states matching its two jobs:
 //   • a CONNECTED card's job is status — name, standing chip, one fact, Manage →.
-//     Its owner already knows what the provider does; the blurb and sixteen
+//     Its owner already knows what the source does; the blurb and sixteen
 //     data-type chips it used to show forever were a pitch aimed at someone who
 //     already bought.
 //   • an UNCONNECTED card keeps the pitch — short blurb, a few representative
@@ -38,7 +38,7 @@ const PITCH_CHIP_CAP = 4;
 
 interface GridEntry {
   def: IntegrationDef;
-  state: IntegrationState | null; // null for planned providers
+  state: IntegrationState | null; // null for planned sources
 }
 
 // The ONE fact a connected card states, per standing: the thing its owner would
@@ -65,7 +65,7 @@ function StatusFact({ state }: { state: IntegrationState }) {
       </p>
     );
   }
-  // An attended provider with nothing in yet says so in its BADGE ("Nothing imported
+  // An attended source with nothing in yet says so in its BADGE ("Nothing imported
   // yet"), so there is no second sentence to write — and "No syncs yet" would be the
   // wrong word for it anyway.
   if (state.delivery === "attended" && !latest) return null;
@@ -110,7 +110,7 @@ function StatusFact({ state }: { state: IntegrationState }) {
   );
 }
 
-// A CONNECTED provider's compact status card. `attention` adds the red border and
+// A CONNECTED source's compact status card. `attention` adds the red border and
 // the Reconnect CTA (#1880 item 8).
 function StatusCard({
   def,
@@ -144,7 +144,7 @@ function StatusCard({
   );
 }
 
-// An UNCONNECTED (or planned) provider's pitch card: what it brings, in brief.
+// An UNCONNECTED (or planned) source's pitch card: what it brings, in brief.
 function PitchCard({ def }: { def: IntegrationDef }) {
   const planned = def.status === "planned";
   return (
@@ -188,7 +188,7 @@ function PitchCard({ def }: { def: IntegrationDef }) {
   );
 }
 
-// Wrap a card in its setup-page link where one exists (planned providers have none).
+// Wrap a card in its setup-page link where one exists (planned sources have none).
 function LinkedCard({
   def,
   children,
@@ -206,9 +206,9 @@ function LinkedCard({
   );
 }
 
-// Is this provider's card a compact STATUS card? Anything set up and still linked:
+// Is this source's card a compact STATUS card? Anything set up and still linked:
 // escalated, flapping, partial, healthy, waiting on its first run, or — for the
-// families allos does not drive — imported, failed, or publishing. A provider that was
+// families allos does not drive — imported, failed, or publishing. A source that was
 // never set up or was later removed gets the pitch again; `standingUnconfigured` owns
 // that decision across all three delivery families (#2301), so this component no
 // longer names `not-connected` and misses its attended and outbound twins.

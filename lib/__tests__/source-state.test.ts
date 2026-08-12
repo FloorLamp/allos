@@ -25,7 +25,7 @@ import {
   needsAttention,
   observedSuccessCadenceMinutes,
   pluralRunNoun,
-  providerStanding,
+  sourceStanding,
   runWindowNorm,
   standingBadge,
   standingEscalates,
@@ -37,7 +37,7 @@ import {
   STANDING_RUN_WINDOW,
   type AttendedStanding,
   type OutboundStanding,
-  type ProviderStanding,
+  type SourceStanding,
   type SyncEventFacts,
   type SyncRunNoun,
 } from "@/lib/integrations/source-state";
@@ -68,7 +68,7 @@ function ev(over: Partial<SyncEventFacts> = {}): SyncEventFacts {
 
 describe("syncVocabularyForKind", () => {
   it("gives the cache dialect to the keyless public kind, records to everything else", () => {
-    // Keyed on the KIND, never a provider id — a future shared-cache provider gets
+    // Keyed on the KIND, never a source id — a future shared-cache source gets
     // the right words without a new branch.
     expect(syncVocabularyForKind("public")).toBe("forecast");
     for (const kind of ALL_KINDS) {
@@ -95,8 +95,8 @@ describe("KIND_DELIVERY — who moves the data", () => {
 
   it("classifies the scheduled family exactly as the retired RECURRING_SOURCE_KINDS did", () => {
     // THE REGRESSION PIN for the refactor: `RECURRING_SOURCE_KINDS` was a hand-written
-    // `Set<string>` of these four members, and it decided which providers reach Data →
-    // Review's "Connected sources". This refactor must not move a single provider
+    // `Set<string>` of these four members, and it decided which sources reach Data →
+    // Review's "Connected sources". This refactor must not move a single source
     // across that line. (Its own comment recorded that hand-enumeration failing once
     // already: `public` was missing, #1614.)
     const RETIRED_RECURRING_SOURCE_KINDS = ["push", "oauth", "token", "public"];
@@ -159,14 +159,14 @@ function runs(fails: number, oks: number): SyncEventFacts[] {
   return out;
 }
 
-// A connected provider's standing over a window, with the freshness facts a real
-// caller (getIntegrationState) supplies. Defaults: an hourly provider on the 12-hour
+// A connected source's standing over a window, with the freshness facts a real
+// caller (getIntegrationState) supplies. Defaults: an hourly source on the 12-hour
 // silence tolerance, last success well inside it.
 function standingOf(
   window: SyncEventFacts[],
-  over: Partial<Parameters<typeof providerStanding>[0]> = {}
+  over: Partial<Parameters<typeof sourceStanding>[0]> = {}
 ) {
-  return providerStanding({
+  return sourceStanding({
     delivery: "scheduled",
     connected: true,
     needsReauth: false,
@@ -182,7 +182,7 @@ function standingOf(
 describe("providerStanding + standingBadge", () => {
   it("puts a dead credential ahead of everything else", () => {
     expect(
-      providerStanding({
+      sourceStanding({
         delivery: "scheduled",
         connected: false,
         needsReauth: true,
@@ -197,7 +197,7 @@ describe("providerStanding + standingBadge", () => {
 
   it("distinguishes a removed source from a broken one (#294 vs #326)", () => {
     expect(
-      providerStanding({
+      sourceStanding({
         delivery: "scheduled",
         connected: false,
         needsReauth: false,
@@ -209,7 +209,7 @@ describe("providerStanding + standingBadge", () => {
 
   it("reads the run window for a connected provider", () => {
     expect(
-      providerStanding({
+      sourceStanding({
         delivery: "scheduled",
         connected: true,
         needsReauth: false,
@@ -223,18 +223,18 @@ describe("providerStanding + standingBadge", () => {
   });
 
   // THE #2263 headline: escalation is decided by SILENCE, not by a run count. A run
-  // count is not a measure of whether data is arriving, and for an hourly provider
-  // three runs is three hours — below that provider's own p90 gap between successes.
+  // count is not a measure of whether data is arriving, and for an hourly source
+  // three runs is three hours — below that source's own p90 gap between successes.
   it("never escalates on a consecutive-failure streak while a success sits inside the tolerance", () => {
     for (const failures of [1, 2, 3, 6, 10]) {
       expect(standingOf(runs(failures, 5))).toBe("intermittent");
     }
-    // THE case this issue is about, stated exactly: an hourly provider with a success
+    // THE case this issue is about, stated exactly: an hourly source with a success
     // 2 h ago and six recorded failures since is intermittent …
     expect(
       standingOf(runs(6, 4), { lastSuccessAt: minutesBefore(2 * HOUR) })
     ).toBe("intermittent");
-    // … and the same provider whose last success is 13 h ago is failing, whatever the
+    // … and the same source whose last success is 13 h ago is failing, whatever the
     // failure pattern beneath it.
     expect(
       standingOf(runs(6, 4), { lastSuccessAt: minutesBefore(13 * HOUR) })
@@ -258,7 +258,7 @@ describe("providerStanding + standingBadge", () => {
   });
 
   // The SAME failure pattern escalates or not purely on whether a success landed
-  // inside the provider's tolerance. One rule, one axis.
+  // inside the source's tolerance. One rule, one axis.
   it("escalates a flap once the last success falls outside the tolerance", () => {
     const window = runs(1, 5);
     expect(
@@ -276,7 +276,7 @@ describe("providerStanding + standingBadge", () => {
     expect(standingOf(quiet, { lastSuccessAt: minutesBefore(20 * HOUR) })).toBe(
       "failing"
     );
-    // An exempt provider (null tolerance) is never silent, however long the gap.
+    // An exempt source (null tolerance) is never silent, however long the gap.
     expect(
       standingOf(quiet, {
         lastSuccessAt: minutesBefore(20 * HOUR),
@@ -287,7 +287,7 @@ describe("providerStanding + standingBadge", () => {
 
   it("stays calm for a provider that has NEVER succeeded, however many runs failed", () => {
     // No success EVER: the tolerance rule cannot fire (its never-succeeded
-    // exemption), and there is no other escalation path. The provider's own page
+    // exemption), and there is no other escalation path. The source's own page
     // shows the failures — this is a setup problem, not a stopped connection, and
     // flagging it would flag every freshly-created connection before its first tick.
     for (const failures of [2, 3, 10]) {
@@ -316,7 +316,7 @@ describe("providerStanding + standingBadge", () => {
     expect(needsAttention("intermittent")).toBe(false);
     expect(needsAttention("partial")).toBe(true);
     expect(needsAttention("not-connected")).toBe(true);
-    // Healthy providers collapse to one line; a just-enabled one is working as
+    // Healthy sources collapse to one line; a just-enabled one is working as
     // designed and is the staleness detector's problem if it never starts (#1685).
     expect(needsAttention("healthy")).toBe(false);
     expect(needsAttention("never-synced")).toBe(false);
@@ -352,7 +352,7 @@ describe("flap + escalation copy (#1880)", () => {
     expect(escalationPolicyLabel(3 * DAY)).toContain(
       "after 3 days without a successful sync"
     );
-    // An EXEMPT provider has no policy to promise, so the page states none rather
+    // An EXEMPT source has no policy to promise, so the page states none rather
     // than inventing a sentence.
     expect(escalationPolicyLabel(null)).toBeNull();
   });
@@ -541,7 +541,7 @@ describe("one question, one computation", () => {
 //
 // The point of splitting the union is not that there are more words. It is that
 // certain answers become UNREPRESENTABLE at the producer: no fact about an attended
-// or outbound source can make `providerStanding` return a connection verdict, so no
+// or outbound source can make `sourceStanding` return a connection verdict, so no
 // future code path can put "Sync failing" on a file the user hands us. These iterate
 // the unions rather than naming members, so a state added later is covered by
 // construction.
@@ -554,7 +554,7 @@ const ATTENDED_STANDINGS: AttendedStanding[] = [
   "not-set-up",
 ];
 const OUTBOUND_STANDINGS: OutboundStanding[] = ["feed-enabled", "feed-off"];
-const SCHEDULED_STANDINGS: ProviderStanding[] = [
+const SCHEDULED_STANDINGS: SourceStanding[] = [
   "healthy",
   "partial",
   "intermittent",
@@ -564,14 +564,14 @@ const SCHEDULED_STANDINGS: ProviderStanding[] = [
   "never-synced",
 ];
 
-// An attended provider's facts. The freshness fields are supplied on purpose — an
+// An attended source's facts. The freshness fields are supplied on purpose — an
 // attended source is EXEMPT from them, and the test is that supplying them changes
 // nothing.
 function attendedStandingOf(
   window: SyncEventFacts[],
-  over: Partial<Parameters<typeof providerStanding>[0]> = {}
+  over: Partial<Parameters<typeof sourceStanding>[0]> = {}
 ) {
-  return providerStanding({
+  return sourceStanding({
     delivery: "attended",
     connected: true,
     needsReauth: false,
@@ -589,7 +589,7 @@ describe("attended standing (#2301) — a source allos does not drive", () => {
     // The prod shape this issue was opened on: patient-portals, 6 recorded runs,
     // 3 of them failed, the newest one fine. The connection model called that
     // "Intermittent" — a flapping-CONNECTION word for a tool a person runs by hand,
-    // whose own contract ("a successful run landed inside the provider's silence
+    // whose own contract ("a successful run landed inside the source's silence
     // tolerance") is vacuous because the tolerance is null.
     const window = [ev({ inserted: 2 }), ...runs(3, 2)];
     expect(attendedStandingOf(window)).toBe("imported");
@@ -651,7 +651,7 @@ describe("outbound standing (#2301) — allos publishes, nothing arrives", () =>
     // Prod: a connected calendar-feed row with ZERO events rendered "Connected",
     // green, plus a permanent "No syncs yet". Nothing will ever sync in.
     const out = (connected: boolean) =>
-      providerStanding({
+      sourceStanding({
         delivery: "outbound",
         connected,
         needsReauth: false,
@@ -730,7 +730,7 @@ describe("the badge/attention tables over the whole union", () => {
   });
 
   it("treats the three never-set-up states as one question", () => {
-    // The Import grid shows a pitch card for a provider nobody set up, whatever its
+    // The Import grid shows a pitch card for a source nobody set up, whatever its
     // delivery family. One decision, not three member lists.
     expect(standingUnconfigured("not-connected")).toBe(true);
     expect(standingUnconfigured("not-set-up")).toBe(true);
@@ -742,7 +742,7 @@ describe("the badge/attention tables over the whole union", () => {
       "attempt-failed",
       "never-imported",
       "feed-enabled",
-    ] as ProviderStanding[]) {
+    ] as SourceStanding[]) {
       expect(standingUnconfigured(standing), standing).toBe(false);
     }
   });

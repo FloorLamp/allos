@@ -32,9 +32,9 @@ export interface SyncNowResult {
   message: string;
 }
 
-// Read-only pagination for the provider-owned ledger. The cursor is a complete,
+// Read-only pagination for the source-owned ledger. The cursor is a complete,
 // exclusive profile-local day, so a page boundary can never split a day's totals or
-// hide one of its anomalies. Provider/profile are both revalidated server-side.
+// hide one of its anomalies. Source/profile are both revalidated server-side.
 export async function loadSyncHistoryPage(
   id: IntegrationId,
   beforeDay: string
@@ -73,7 +73,7 @@ export async function loadSyncHistoryPage(
 }
 
 // Collapsed ranges retain ids only. Resolve their full rows on demand, bounded and
-// profile/provider scoped, so opening one range cannot become an arbitrary event
+// profile/source scoped, so opening one range cannot become an arbitrary event
 // reader and a closed range costs almost nothing on the client.
 export async function loadSyncHistoryRuns(
   id: IntegrationId,
@@ -98,10 +98,10 @@ export async function loadSyncHistoryRuns(
 }
 
 // THE "Sync now" action (#208, unified in #1772, made generic in #2040). There used
-// to be four of these — one per provider — with an identical skeleton: authorize,
+// to be four of these — one per source — with an identical skeleton: authorize,
 // run, map "not connected" to a sentence, fan out revalidatePath over a hand-written
 // list, then assemble a parts[] message. Only the last of those was ever
-// provider-specific, and it now lives beside the provider's runner
+// source-specific, and it now lives beside the source's runner
 // (lib/integrations/pull-runners.ts); the routes a run feeds are declared in the
 // registry's pull facet.
 //
@@ -125,13 +125,13 @@ export async function syncNow(id: IntegrationId): Promise<SyncNowResult> {
         res.error === "not connected"
           ? `Connect ${def.name} first, then sync.`
           : `Sync failed: ${res.error}`;
-      log.error("sync-now failed", { provider: id, error: res.error });
+      log.error("sync-now failed", { sourceId: id, error: res.error });
       return { status: "error", message };
     }
     revalidateRoute(def.pull.revalidates);
     return { status: "done", message: runner.describe(res) };
   } catch (err) {
-    log.error("sync-now threw", { provider: id, err: String(err) });
+    log.error("sync-now threw", { sourceId: id, err: String(err) });
     return { status: "error", message: "Couldn't sync. Try again." };
   }
 }

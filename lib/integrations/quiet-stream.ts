@@ -230,10 +230,10 @@ export function quietStreamDedupeKey(s: {
  * the connection is fine, which is why nothing else reported this.
  */
 export function quietStreamTitle(
-  providerName: string,
+  sourceName: string,
   streamLabel: string
 ): string {
-  return `${providerName} is syncing, but ${streamLabel} data has stopped`;
+  return `${sourceName} is syncing, but ${streamLabel} data has stopped`;
 }
 
 /**

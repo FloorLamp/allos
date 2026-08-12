@@ -20,39 +20,39 @@ import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
 
 // Data → Review, "Connected sources" — an INBOX (#1772), not a second copy of every
-// provider's page.
+// source's page.
 //
 // #208 created this as the recurring-streams half of Review; #1212 then made it the
 // ONE place sync history rendered and #1614 routed Weather in. What neither covered is
-// that a provider's status and controls were still rendered twice in two visual
+// that a source's status and controls were still rendered twice in two visual
 // languages — here and on its own setup page — with different badges, different
 // timestamp formats, and (with the setup pages' raw `last_sync_summary` echo) a third
 // accounting. The state model is now one computation (lib/integrations/source-state
 // over getIntegrationState) and the surfaces have deliberate, different ROLES:
 //
-//   • the setup page is the provider's HOME — status header, controls, full history;
+//   • the setup page is the source's HOME — status header, controls, full history;
 //   • Review's "Needs attention" card IS the alert for a genuinely-broken source
 //     (#1880 item 2) — EscalatedSources below, rendered by ReviewInbox: standing
 //     chip, reason, consequence in user terms, and ALL the actions, once;
-//   • this card is the calm rest — a provider with something unfinished (partial /
+//   • this card is the calm rest — a source with something unfinished (partial /
 //     not-connected) expands with its reason, a flapping one states its pattern as
 //     an amber one-liner, and a healthy one collapses to a single line linking home.
 //
 // History renders in exactly ONE place still (#1212's rule holds): it moved home.
 // Server component — the page reads the sources via lib/queries (getConnectedSources).
 
-// The way back to a provider's own page. `integrationDetailHref` only returns null
+// The way back to a source's own page. `integrationDetailHref` only returns null
 // for the planned Garmin, which never appears here.
 function homeHref(source: ConnectedSource) {
   return integrationDetailHref(source.id as IntegrationId);
 }
 
-// The action a provider in the inbox offers. A pull source that is connected can be
+// The action a source in the inbox offers. A pull source that is connected can be
 // pulled on demand; one that was removed (#294) or whose token died (#326) gets a way
-// back to reconnect; a push-only provider explains why there is no button.
+// back to reconnect; a push-only source explains why there is no button.
 function SourceAction({ source }: { source: ConnectedSource }) {
   const href = homeHref(source);
-  // Push FIRST: a push-only provider (Health Connect) has nothing to pull and nothing
+  // Push FIRST: a push-only source (Health Connect) has nothing to pull and nothing
   // to "reconnect" from here — the phone exporter drives it, and its token lives on
   // its own page — so it explains itself whatever its connection row says.
   if (source.kind === "push") {
@@ -64,7 +64,7 @@ function SourceAction({ source }: { source: ConnectedSource }) {
     );
   }
   if (source.connected && source.canSyncNow) {
-    return <SyncNowButton provider={source.id} />;
+    return <SyncNowButton sourceId={source.id} />;
   }
   if (!source.connected && href) {
     return (
@@ -86,7 +86,7 @@ function SourceAction({ source }: { source: ConnectedSource }) {
   ) : null;
 }
 
-// A provider that needs attention: the full shared status header (the same component
+// A source that needs attention: the full shared status header (the same component
 // its own page leads with), its action, and a link to the full history. `consequence`
 // adds the user-terms cost of the breakage on the escalated card (#1880 item 2).
 function AttentionCard({
@@ -141,7 +141,7 @@ function AttentionCard({
 // The escalated sources — standing `failing` or `needs-reauth` — rendered ONCE,
 // fully, inside Review's "Needs attention" card (#1880 item 2). The alert IS the
 // card: chip, reason, consequence, and every action together; nothing about these
-// providers renders a second time further down the page.
+// sources renders a second time further down the page.
 export function EscalatedSources({
   sources,
   isAdmin = false,
@@ -170,7 +170,7 @@ export function isEscalatedSource(source: ConnectedSource): boolean {
   return standingEscalates(source.standing);
 }
 
-// A healthy or flapping provider: one line. Nothing here needs doing, so the inbox
+// A healthy or flapping source: one line. Nothing here needs doing, so the inbox
 // states it and gets out of the way — the same badge, the same outcome sentence, and
 // the same timestamp treatment as everywhere else, just compact. A flapping source
 // (#1880 item 1) states the honest pattern instead of its latest event's verdict:

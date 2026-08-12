@@ -27,7 +27,7 @@ export default async function FitbitTakeoutPage() {
   const conn = getConnection(profile.id, "fitbit-takeout");
   const lastImport = getLastSuccessfulSyncAt(profile.id, "fitbit-takeout");
   // The escalation policy, stated where the reader is (#1880 item 1, #2301). Every
-  // scheduled provider page states its own rule under the sync history; this page has
+  // scheduled source page states its own rule under the sync history; this page has
   // no history table, so the one thing an attended source's owner needs to know — that
   // allos will never mark it late, because only they can start it — had no surface at
   // all. Sourced exactly as `SyncHistoryTable` sources it, and DERIVED FROM THE KIND
