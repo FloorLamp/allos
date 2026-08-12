@@ -6,6 +6,7 @@ import { IconBuildingHospital } from "@tabler/icons-react";
 import EncounterForm from "./EncounterForm";
 import { updateEncounter, deleteEncounter } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -162,6 +163,7 @@ export default function EncounterList({
   multiView?: ListMultiView;
 }) {
   const fmt = useFormatPrefs();
+  const undoable = useUndoableDelete();
   // Canonical-kind filter (#1233): "show ED visits" and friends, keyed on the ONE
   // encounterKind() identity function. Only the kinds actually present appear as
   // chips (in the canonical order), so a list with a single kind shows no filter.
@@ -224,13 +226,19 @@ export default function EncounterList({
         )}
         confirmDelete={(e) => ({
           title: "Delete visit",
-          message: `Delete the ${dateLabel(e, fmt)} visit? This can’t be undone.`,
+          // What the delete actually costs, now that the visit itself comes back
+          // (#1847): the detached back-links do NOT. Naming them is the whole point of
+          // the confirm — "this can’t be undone" was both frightening and, since the
+          // capture landed, untrue.
+          message: `Delete the ${dateLabel(e, fmt)} visit? Anything recorded at it keeps its link to the visit cleared.`,
         })}
         onDelete={async (e) => {
           const fd = new FormData();
           fd.set("id", String(e.id));
           if (multiView) fd.set("profile_id", String(e.subject.profileId));
-          await deleteEncounter(fd);
+          await undoable(deleteEncounter, fd, {
+            deletedMessage: "Visit deleted.",
+          });
         }}
       />
     </>

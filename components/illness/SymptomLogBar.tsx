@@ -19,6 +19,8 @@ import {
 import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
+import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
+import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import NotesText from "@/components/NotesText";
 import { round, fmtTemp } from "@/lib/units";
@@ -468,6 +470,45 @@ export default function SymptomLogBar({
     }
   }
 
+  // The × is a one-tap delete that used to reach OFF-DB — it unlinked the day's photo
+  // FILES — with no confirm and nothing to take it back (#2124). It stays one tap,
+  // deliberately: for a symptom chip a confirm on every clear is the wrong tax, and
+  // undo-after-the-fact is the calmer contract. So the capture the action now returns
+  // gets a toast whose Undo restores the row, its photo rows and their files, and puts
+  // the chip back where it was.
+  //
+  // No token means nothing was deleted (the day was already clear) — a plain
+  // confirmation then, never an Undo that would restore nothing.
+  function offerUndo(
+    key: string,
+    undoId: number | null,
+    prevSeverity: number,
+    prevNote: string
+  ) {
+    if (undoId == null) return;
+    toast("Symptom removed.", {
+      duration: UNDO_TOAST_MS,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          void (async () => {
+            const { ok } = await undoDelete(undoId);
+            if (!ok) {
+              toast("Couldn’t undo — it may have expired.", { tone: "error" });
+              return;
+            }
+            // Put the chip back at the severity the row was restored with, and its
+            // note with it — the restore re-inserted the captured row verbatim, so the
+            // local state that named it is exactly right again.
+            setSeverity(key, prevSeverity);
+            if (prevNote) setNote(key, prevNote);
+            toast("Restored.");
+          })();
+        },
+      },
+    });
+  }
+
   async function clear(key: string) {
     const prev = severities[key] ?? 0;
     const prevNote = notes[key] ?? "";
@@ -490,7 +531,10 @@ export default function SymptomLogBar({
       settle: (res) => {
         // The × has no authoritative number to adopt — the row is gone — so the
         // optimistic zero stands and only a refusal puts the day back.
-        if (res.ok) return { kind: "keep" };
+        if (res.ok) {
+          offerUndo(key, res.undoId ?? null, prev, prevNote);
+          return { kind: "keep" };
+        }
         restoreNote();
         toast(res.error || "Couldn't remove that symptom.", { tone: "error" });
         return { kind: "rollback" };
