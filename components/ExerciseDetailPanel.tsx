@@ -128,9 +128,18 @@ export default function ExerciseDetailPanel({
   // computation (no more flat-ratio second model that could disagree by a tier).
   // Hidden entirely when sex or bodyweight is unset, or the lift isn't covered.
   // Gated on showLevel so it doesn't double up with the Analyze Benchmarks card.
+  // Scored from freeWeightE1rmKg (#2326): a lift backed entirely by machine sets
+  // gets no badge and no coaching line — "untested against the standard", which is
+  // honest, rather than the wrong claim a barbell-table placing would make. The
+  // panel's own e1RM readout is unchanged; the machine set is a real set.
   const standing =
     showLevel && sex && bodyweightKg
-      ? strengthStanding(stat.exercise, stat.e1rmKg, sex, bodyweightKg)
+      ? strengthStanding(
+          stat.exercise,
+          stat.freeWeightE1rmKg,
+          sex,
+          bodyweightKg
+        )
       : null;
   const badge = standing
     ? {

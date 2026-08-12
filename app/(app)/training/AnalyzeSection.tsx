@@ -659,10 +659,13 @@ function strengthView({
   );
   const newest = [...sessions].sort(newestFirst);
   const chartMetric = STRENGTH_METRICS.find((m) => m.id === activeMetric)!;
+  // The Benchmarks card is a placing against the barbell population table, so it
+  // reads freeWeightE1rmKg (#2326) — a lift with no free-weight set behind it shows
+  // no card at all, exactly as an explicitly machine-NAMED variant already does.
   const benchmark = benchmarkState(
     stat.exercise,
     sex,
-    stat.e1rmKg,
+    stat.freeWeightE1rmKg,
     bodyweightKg
   );
   return {

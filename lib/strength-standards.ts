@@ -113,6 +113,17 @@ export interface StrengthStanding {
 // Resolve an exercise name to its standards table. A barbell or bare-base variant
 // of Bench Press / Overhead Press maps onto that base (mirrors lib/strength
 // .standardFor); dumbbell/cable/machine variants have no barbell standard.
+//
+// THE BARE-BASE DECISION, stated rather than implied (#2326). `equipment === null`
+// — a bare `Bench Press` with no implement in the NAME — is accepted as barbell
+// because that is how most people log the barbell lift, and refusing it would leave
+// the majority of real lifters with no standing at all. It is a default about the
+// NAME, and a name is the weakest evidence on the row: the SET carries an
+// `equipment_id`, and when that says Machine the default is simply wrong. This
+// function is not where that is caught — it is only ever handed a name — so the
+// equipment axis is resolved upstream, in the aggregate the standings path consumes
+// (`ExerciseStat.freeWeightE1rmKg`), and a lift whose free-weight history is empty
+// arrives here with no e1RM and gets no standing.
 function tableFor(exercise: string): { name: string; t: LiftStandards } | null {
   const key = exercise.trim();
   const direct = LIFTS[key];
