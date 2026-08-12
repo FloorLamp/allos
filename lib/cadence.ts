@@ -127,7 +127,7 @@ export const CADENCE_SCOPES: Record<FrequencyScopeKind, CadenceScopeSpec> = {
 // activity instead of a window. It exists because a surface that congratulates a
 // session must not read the week's rollup as if the session had produced it: the
 // post-workout recap did exactly that, and a 1.4 km walk reported a Chest target a
-// barbell session had advanced two days earlier (#2439).
+// barbell session had advanced earlier in the week (#2503).
 //
 // The facts are the two the workout gathers actually key on — the activity's own type
 // plus its components' types (`activity-type`), and the regions its logged sets map to

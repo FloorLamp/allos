@@ -487,7 +487,7 @@ export function getCadenceLedger(
   });
 }
 
-// The cadence facts ONE activity carries (#2439) — the session-level twin of the two
+// The cadence facts ONE activity carries (#2503) — the session-level twin of the two
 // workout gathers above, reading the SAME two sources they do: the activity's own type
 // plus its components' types (`activity-type`), and the regions its logged sets map to
 // (`exercise-sets`). A missing or cross-profile row answers with empty facts, which
