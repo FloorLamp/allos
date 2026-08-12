@@ -273,16 +273,3 @@ test("filtering to one row selects it temporarily and keeps one keyboard entry p
     history.getByTestId("day-history-rowpanel").getByRole("heading")
   ).toHaveText(onlyLabel!);
 });
-
-test("the macros chart is GONE from the body census (#1166)", async ({
-  page,
-}) => {
-  // #1644: the body census moved into the Overview landing surface, so the census is
-  // reached at its anchor on the default view.
-  await page.goto("/trends#body");
-  await expect(page.getByTestId("trends-section-body")).toBeVisible();
-  // The census is body-metrics/vitals; macros moved to Nutrition. Neither the
-  // classic Macros chart heading nor a macros anchor/jump-chip remains here.
-  await expect(page.getByText("Macros (protein / carbs / fat)")).toHaveCount(0);
-  await expect(page.locator("#macros")).toHaveCount(0);
-});

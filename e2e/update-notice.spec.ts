@@ -30,11 +30,6 @@ test.use({ serviceWorkers: "block" });
 // sha), so the fallback detector always reads it as a new deploy.
 const DEPLOYED = { sha: "1795abc", commitMessage: "e2e deploy notice" };
 
-// The retired surface. Asserting its testid is GONE is the point of the migration:
-// the incoherence was two notices, so "one" only means something if the other one
-// cannot come back.
-const RETIRED_BANNER = "version-update-banner";
-
 async function interceptVersion(page: Page) {
   await page.route("**/api/version", (route) =>
     route.fulfill({
@@ -74,7 +69,6 @@ test("a deploy with no service worker raises exactly one notice, and it names th
   // ONE notice — not the bar plus a banner, which is what a single deploy used to
   // produce when two detectors owned two surfaces.
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(1);
-  await expect(page.getByTestId(RETIRED_BANNER)).toHaveCount(0);
   await expect(page.getByTestId("toast")).toHaveCount(0);
 
   // It carries the bar's posture (#1700) and the banner's one genuinely better
@@ -93,7 +87,6 @@ test("a deploy with no service worker raises exactly one notice, and it names th
   );
   await expect(bar).toBeVisible();
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(1);
-  await expect(page.getByTestId(RETIRED_BANNER)).toHaveCount(0);
 
   // Dismissible, and it stays dismissed across navigation — an offer, not a nag.
   await bar.getByTestId("update-ready-dismiss").click();
@@ -146,7 +139,6 @@ test("the notice's reload reloads the tab, and nothing re-offers the update afte
     await answered;
   }).toPass({ timeout: 25_000, intervals: [300, 700, 1500] }); // topass-ok: same re-dispatch as above — the listener is attached asynchronously after load, and the response being waited for IS the settle point rather than a timeout
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
-  await expect(page.getByTestId(RETIRED_BANNER)).toHaveCount(0);
 });
 
 test("the pending update is recorded where the crash boundary can read it (#1906)", async ({

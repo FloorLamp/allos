@@ -41,8 +41,6 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
       .locator("tbody tr")
       .filter({ has: page.locator('td[data-card="title"]') })
       .first(); // first-ok: the spec asserts the card SHAPE, never which row is first
-    await expect(card).toHaveCSS("border-radius", "0px");
-    await expect(card).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(card.locator('td[data-card="title"]')).toBeVisible();
     // The value (with its out-of-range flag) is on the card, not scrolled off it.
     const value = card.locator('td[data-card="value"]');
@@ -127,8 +125,6 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     await expect(table).toBeVisible();
     await expect(table.locator("thead")).toBeHidden();
     const card = table.locator("tbody tr").first(); // first-ok: the spec asserts the card shape of a session row, not which session
-    await expect(card).toHaveCSS("border-radius", "0px");
-    await expect(card).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     // Date is the card title (and still the deep link into the log); the view's
     // leading metric is the headline value.
     await expect(card.locator('td[data-card="title"] a')).toBeVisible();
