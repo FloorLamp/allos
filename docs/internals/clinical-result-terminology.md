@@ -109,9 +109,10 @@ curated instrument score (`instrument` category, canonical `PHQ-9` / `GAD-7` /
 `EPDS`), banded and crisis-aware. `lib/instrument-recognize.ts` asks that question
 at the import door and `lib/instrument-import.ts` folds a recognised set into one
 score row plus `instrument_responses` (#2321). A set that is not recognised — or is
-recognised but attributed to another subject, or only partly answered — stays as
-`assessment` rows and is refused a score, with a reported drop. Identity is granted
-to the SCORE, never to a question.
+recognised but attributed to another subject, or unattributable in a document naming
+more than one patient (#2558), or only partly answered — stays as `assessment` rows
+and is refused a score, with a reported drop. Identity is granted to the SCORE, never
+to a question.
 
 ### `QualitativeResult`
 

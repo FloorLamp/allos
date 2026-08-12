@@ -23,9 +23,19 @@
 //     is administered to a PARENT and routinely filed in the CHILD's chart, which is
 //     where the rows that opened #2321 came from. Attributing a caregiver's depression
 //     score to the child would be wrong clinically, wrong under this app's profile
-//     model, and would put a crisis-escalating score on the wrong person — so the
-//     document must SAY the subject is its own patient. Silence is not consent here:
-//     an unstated subject refuses exactly like a stated other one.
+//     model, and would put a crisis-escalating score on the wrong person — so a STATED
+//     other subject refuses, unconditionally and forever.
+//
+//     SILENCE is the case #2558 re-decided. #2321 shipped it as a refusal too, and the
+//     cost of that was invisible: an ordinary CCD is single-patient by construction and
+//     establishes its patient ONCE in the header, so most documents restate no subject
+//     on the observation. Under the strict rule those documents never scored at all,
+//     while their per-question rows imported happily — a user saw ten PHQ-9 questions
+//     and no PHQ-9. So silence is now read against the DOCUMENT: where the document
+//     names exactly one patient there is nobody else the score could be about, and it
+//     scores; where it names more than one, an unattributable score still refuses.
+//     That second clause is the entire point — the multi-patient chart is where a
+//     guess does the harm, and it is the one place the strict rule still stands.
 //
 // Neither refusal deletes anything. The item observations keep the #2318 `assessment`
 // treatment — stored, dated, viewable on their document, carrying no biomarker
@@ -50,6 +60,38 @@ export interface InstrumentItemCandidate {
 // subject with a `<subject><relatedSubject>` participation), never guessed here.
 export type InstrumentSubject = "patient" | "other" | "unstated";
 
+// How many people the DOCUMENT is about — a different question from the one above, and
+// the one that decides what silence means (#2558). Read off the header by the caller
+// (C-CDA: `recordTarget/patientRole`), never guessed here.
+export type DocumentSubjectScope =
+  // The document names exactly one patient. Nothing it states can be about a second
+  // one, so an observation that restates no subject is about that patient.
+  | "single-patient"
+  // The document names more than one patient — or names none at all, which is the same
+  // ignorance wearing a different hat. Silence here is unattributable.
+  | "multiple-subjects";
+
+// The two facts a score's attribution rests on, carried together so neither can be
+// consulted without the other.
+export interface InstrumentAttribution {
+  // What THIS screening's observations state.
+  stated: InstrumentSubject;
+  // What the document as a whole is about.
+  scope: DocumentSubjectScope;
+}
+
+// THE attribution decision, pure and on its own so it can be read in one sitting: may a
+// recognised score be filed as this chart patient's?
+//
+//   stated "other"    → never, whatever the document is (#2321).
+//   stated "patient"  → always; the document said so.
+//   stated "unstated" → only in a single-patient document (#2558).
+export function attributesToPatient(a: InstrumentAttribution): boolean {
+  if (a.stated === "other") return false;
+  if (a.stated === "patient") return true;
+  return a.scope === "single-patient";
+}
+
 export interface RecognizedInstrument {
   instrument: Instrument;
   total: number;
@@ -68,7 +110,16 @@ export type InstrumentRefusal =
       answered: number;
       items: number;
     }
-  | { why: "subject"; instrument: Instrument; subject: InstrumentSubject };
+  // The score could not be attributed to the chart's patient. Both halves of the
+  // decision are carried, because "the document said it is the mother's" and "the
+  // document said nothing and there are two patients in it" are different facts about
+  // the same refusal, and a reader of the drop deserves to know which one happened.
+  | {
+      why: "subject";
+      instrument: Instrument;
+      subject: InstrumentSubject;
+      scope: DocumentSubjectScope;
+    };
 
 export type InstrumentRecognition =
   // Nothing here spells out an instrument this app knows — the caller does exactly
@@ -147,11 +198,12 @@ function nominate(candidates: readonly InstrumentItemCandidate[]): {
   return best;
 }
 
-// THE recognition. `subject` is the caller's reading of whose score the document says
-// this is; see the header on why `unstated` refuses.
+// THE recognition. `attribution` is the caller's reading of the document: what this
+// screening's observations STATE about their subject, and how many patients the
+// document as a whole is about. See the header on what silence means.
 export function recognizeInstrument(
   candidates: readonly InstrumentItemCandidate[],
-  subject: InstrumentSubject
+  attribution: InstrumentAttribution
 ): InstrumentRecognition {
   const nominated = nominate(candidates);
   if (!nominated) return { kind: "none" };
@@ -161,8 +213,14 @@ export function recognizeInstrument(
   // The subject question is asked BEFORE the answers are read: whose score this is
   // does not depend on how it scored, and refusing early keeps a wrong-subject total
   // from ever existing as a number.
-  if (subject !== "patient")
-    return { kind: "refused", why: "subject", instrument, subject };
+  if (!attributesToPatient(attribution))
+    return {
+      kind: "refused",
+      why: "subject",
+      instrument,
+      subject: attribution.stated,
+      scope: attribution.scope,
+    };
 
   const answers: { itemIndex: number; answer: number }[] = [];
   const consumed: number[] = [];
