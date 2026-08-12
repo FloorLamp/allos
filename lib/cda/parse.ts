@@ -432,6 +432,7 @@ export function extractFromCcda(
   // a real content section that happens to be titled "… Notes" can never be
   // double-processed as a note.
   const claimedSections = new Set<CdaSection>();
+  const extractorDrops: ImportDrop[] = [];
   // The date undated entries anchor to (see SectionExtractor.contextDate): the
   // header visit's date when present — a per-visit document's effectiveTime is its
   // GENERATION timestamp, possibly days after the visit — else the document date.
@@ -441,6 +442,9 @@ export function extractFromCcda(
     if (!ex) continue;
     claimedSections.add(section);
     const part = ex.extract(section, contextDate);
+    // Refusals the EXTRACTOR classified (#2321) — the ones no raw node can be asked
+    // about after the fact, because they are facts about a SET of observations.
+    if (part.drops) extractorDrops.push(...part.drops);
     if (part.immunizations) immunizations.push(...part.immunizations);
     if (part.records) records.push(...part.records);
     if (part.providers) providers.push(...part.providers);
@@ -584,6 +588,7 @@ export function extractFromCcda(
     contextDate
   );
   drops.push(
+    ...extractorDrops,
     ...dedupeDrops(
       records,
       (r) => recordDropKind(r.category),

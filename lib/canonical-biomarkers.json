@@ -2705,6 +2705,18 @@
       "panel": "biological-age"
     },
     {
+      "name": "EPDS",
+      "category": "instrument",
+      "unit": null,
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Edinburgh Postnatal Depression Scale total score (0–30), a validated screening instrument for perinatal depression. Bands: 0–9 minimal, 10–12 possible depression, 13–19 probable depression, 20–30 severe. Items 1, 2 and 4 score 0→3; items 3 and 5–10 are reverse-scored. Screening only, NOT a diagnosis. Item 10 asks about thoughts of self-harm. Public domain (Cox, Holden, Sagovsky; Br J Psychiatry 1987;150:782-6).",
+      "panel": "mental-health"
+    },
+    {
       "name": "PhenoAge",
       "category": "derived",
       "unit": "years",

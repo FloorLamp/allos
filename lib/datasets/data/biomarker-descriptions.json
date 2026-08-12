@@ -1255,6 +1255,12 @@
       "description": "A validated 7-item questionnaire that scores anxiety severity from 0 to 21, banded minimal / mild / moderate / severe. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
     },
     {
+      "name": "EPDS",
+      "abbreviation": "EPDS",
+      "full_name": "Edinburgh Postnatal Depression Scale",
+      "description": "A validated 10-item questionnaire that scores perinatal depression symptoms from 0 to 30, banded minimal / possible / probable / severe against the published cut-offs of 10 and 13. Seven of its items are reverse-scored, and item 10 asks about thoughts of self-harm. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
+    },
+    {
       "name": "AUDIT-C",
       "abbreviation": "AUDIT-C",
       "full_name": "Alcohol Use Disorders Identification Test - Consumption",

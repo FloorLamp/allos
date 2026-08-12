@@ -30,6 +30,8 @@ export type DropReason =
   | "non_analyte" // an administrative/structural observation (specimen date, "Approved By", accession #) — not a measurement (#681/#693)
   | "derived_percentile" // a derived anthropometric percentile (BMI/weight-for-length/head-circ) the app recomputes itself, not a raw measurement (#684/#722/#693)
   | "negated" // a negated / retracted / entered-in-error assertion
+  | "other_subject" // a screening instrument the document says is somebody ELSE's — or does not say whose (#2321). Post-natal screening is administered to a parent and filed in the child's chart; a misattributed crisis-escalating score is worse than an unimported one, so silence refuses too
+  | "incomplete_instrument" // a recognised screening instrument that is only PARTIALLY answered (#2321). A partial total is not a smaller total, it is a different measurement — it cannot be banded against cut-offs derived from the whole
   | "unrecognized_section" // a whole section / resource type no extractor consumes
   | "other"; // anything else (e.g. no usable date)
 
@@ -436,6 +438,8 @@ const REASON_LABELS: Record<DropReason, string> = {
   non_analyte: "Non-analyte / administrative",
   derived_percentile: "Derived percentile (recomputed)",
   negated: "Negated / retracted",
+  other_subject: "Screening for another subject",
+  incomplete_instrument: "Screening only partly answered",
   unrecognized_section: "Section not consumed",
   other: "Other",
 };
@@ -453,6 +457,8 @@ const REASON_ORDER: DropReason[] = [
   "unparsable_value",
   "non_analyte",
   "derived_percentile",
+  "incomplete_instrument",
+  "other_subject",
   "negated",
   "deduped",
   "unrecognized_section",
