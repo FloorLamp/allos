@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  proteinGaugeMarker,
   proteinIntake,
   proteinTarget,
   proteinTodayNudgeParts,
@@ -133,5 +134,59 @@ describe("gauge/nudge share one figure (#221)", () => {
     // Both the gauge (reads t.todayGrams) and the nudge line render the same number.
     expect(t.todayGrams).toBe(42);
     expect(proteinTodayNudgeLine(t)).toContain("42 g");
+  });
+});
+
+// ---- The gauge's average marker (#2328) -----------------------------------
+//
+// One decision, in the model: WHICH average the gauge's single marker line holds,
+// and therefore what it may be called. The renderer only prints what it is handed.
+describe("proteinGaugeMarker (#2328)", () => {
+  it("prefers this week's average and labels it as the week's", () => {
+    const m = proteinGaugeMarker(
+      makeToday({ weeklyAverageGrams: 110, trailing: { grams: 95, dayOne: false } })
+    );
+    expect(m).toEqual({
+      kind: "week-to-date",
+      grams: 110,
+      label: "This week",
+      ariaPhrase: "this week 110 grams a day",
+    });
+  });
+
+  it("falls back to the trailing average when the week has no figure yet", () => {
+    // A week-start morning for an established logger: nothing logged today, so the
+    // week-to-date window is empty — but the trailing seven days are not, and that
+    // is a true thing the gauge can say instead of standing empty.
+    const m = proteinGaugeMarker(
+      makeToday({ weeklyAverageGrams: null, trailing: { grams: 95, dayOne: false } })
+    );
+    expect(m?.kind).toBe("trailing");
+    expect(m?.grams).toBe(95);
+    // #1917's rule survives the fallback: the trailing figure never wears the
+    // week's label, and the week's figure never wears "7-day".
+    expect(m?.label).toBe("7-day avg");
+    expect(m?.ariaPhrase).toContain("7-day average");
+  });
+
+  it("never borrows the other window's label", () => {
+    const week = proteinGaugeMarker(makeToday({ weeklyAverageGrams: 110 }));
+    const trailing = proteinGaugeMarker(
+      makeToday({ trailing: { grams: 95, dayOne: false } })
+    );
+    expect(week!.label).not.toContain("7-day");
+    expect(trailing!.label).not.toMatch(/week/i);
+  });
+
+  it("declines a day-one trailing figure — that number is today's own bar", () => {
+    // `dayOne` means the helper handed back TODAY's intake for want of any complete
+    // day. The gauge already draws today; marking it against itself says nothing.
+    expect(
+      proteinGaugeMarker(makeToday({ trailing: { grams: 84, dayOne: true } }))
+    ).toBeNull();
+  });
+
+  it("no marker at all when neither window holds a figure", () => {
+    expect(proteinGaugeMarker(makeToday({}))).toBeNull();
   });
 });
