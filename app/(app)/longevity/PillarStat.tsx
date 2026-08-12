@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Pillar } from "@/lib/longevity-pillars";
 import {
   PILLAR_TONE_CLASS,
@@ -10,7 +11,21 @@ import {
 // styled through the SAME exported tone/trend atoms so the two formatters can't
 // drift. Not a link: on the page the pillar sits inside the section that expands
 // it (the widget's card links here).
-export default function PillarStat({ pillar }: { pillar: Pillar }) {
+//
+// `linkLabel` is the exception, and it is the SECTION's call rather than this
+// component's (#1921): a pillar whose evidence does NOT live on this page — the
+// strength pillar, whose href is the Analyze panel for the lift it names — offers one
+// onward link, the same shape SleepSection already puts in its own header. Given, the
+// stat renders `pillar.href`; omitted, it stays the plain read-only stat every other
+// pillar is. Deliberately not derived from "the href leaves /longevity", which would
+// also fire for sleep-regularity and duplicate that section's existing header link.
+export default function PillarStat({
+  pillar,
+  linkLabel,
+}: {
+  pillar: Pillar;
+  linkLabel?: string;
+}) {
   return (
     <div
       className="flex flex-col rounded-lg border border-black/10 p-2.5 dark:border-white/10"
@@ -33,6 +48,15 @@ export default function PillarStat({ pillar }: { pillar: Pillar }) {
       <span className="mt-1">
         <TrendArrow pillar={pillar} />
       </span>
+      {linkLabel && (
+        <Link
+          href={pillar.href}
+          className="mt-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          data-testid={`longevity-pillar-${pillar.key}-link`}
+        >
+          {linkLabel}
+        </Link>
+      )}
     </div>
   );
 }

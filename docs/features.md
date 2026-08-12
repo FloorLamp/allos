@@ -330,6 +330,14 @@ absent pillars simply not rendering. Its **#protocols** section absorbed the
 former Protocols page (the old `/protocols` hub URL was removed in #1635 and
 404s).
 
+The **strength** pillar is the exception to "deep-links to its section", because
+it is the one pillar that names a specific thing: "Advanced · Bench Press — for
+your bodyweight & sex". Its card, and the fitness section's onward link, go to
+**Training → Analyze for that lift**, where the level badge and the standards
+table highlighted at your row are the evidence for exactly that claim. The link
+carries the lift you logged, not the standards table's base name, so it lands on
+your own history rather than on whichever lift the panel would otherwise pick.
+
 The biomarker pillar states **how many markers** its ratio describes and **how
 current they are**, because "8 of 10 optimal" says nothing on its own about a
 two-analyte stub versus a forty-marker draw, or about results from last month
