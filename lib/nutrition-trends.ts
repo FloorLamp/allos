@@ -15,9 +15,13 @@
 //     (lib/day-history.ts) over food servings + confirmed doses — each day
 //     linking INTO the Timeline. Nutrition-scoped, never a chronological
 //     all-domain feed.
+//   - orderNutritionSections: the lens's render order (Part 4, #2399) — a
+//     rank-core table whose only rule is a data-present FLOOR, so a section with
+//     content always leads the setup prompts.
 
 import type { HabitWeekCell } from "./food-habit-trend";
 import { proteinIntake } from "./protein";
+import { defineRankTable, itemsFromLayout, rankedIds } from "./rank-core";
 import type { LensWeekCaps } from "./trends";
 
 // ---- Part 1: macros + fiber daily series ----------------------------------
@@ -185,3 +189,53 @@ export const NUTRITION_HISTORY_WEEK_CAPS: LensWeekCaps = {
   minWeeks: 4,
   maxWeeks: 13,
 };
+
+// ---- Part 4: the lens's section order (issue #2399) -----------------------
+
+// The Nutrition lens's four sections, by id.
+export type NutritionSectionId =
+  "intake-history" | "dose-history" | "macros" | "adherence";
+
+// THE READING ORDER a profile with everything sees. Intake history leads (#1166:
+// what was actually logged is the tab's headline), then doses, then the two cards.
+// With every section populated the ranker returns this array unchanged — the
+// rank-core identity property.
+export const NUTRITION_SECTION_LAYOUT: readonly NutritionSectionId[] = [
+  "intake-history",
+  "dose-history",
+  "macros",
+  "adherence",
+];
+
+// A SECTION WITH DATA OUTRANKS AN INVITATION (#2399). Half this lens was empty
+// states, and both of them sat ABOVE the only section with content — so a reader
+// scrolled past two features they cannot use, which are precisely the two requiring
+// setup they have not done, to reach the one that works. The reader's own data leads.
+//
+// A hard FLOOR, not a boost: no future signal may quietly rank a setup prompt above
+// real content. It is also the ONLY rule here — the arranged-page posture that keeps
+// `trends-card-rank` free of value-driven jitter applies just as much to this lens, so
+// nothing but presence, which changes on the scale of "the profile started logging",
+// is allowed to move a section.
+const NUTRITION_SECTION_RANK = defineRankTable<
+  NutritionSectionId,
+  { populated: ReadonlySet<NutritionSectionId> }
+>({
+  tenant: "trends-nutrition-sections",
+  signals: [],
+  floors: [
+    { key: "data-present", holds: (item, ctx) => ctx.populated.has(item.id) },
+  ],
+});
+
+// The lens's sections in render order: populated first, each group keeping the
+// declared reading order.
+export function orderNutritionSections(
+  populated: Iterable<NutritionSectionId>
+): NutritionSectionId[] {
+  return rankedIds(
+    itemsFromLayout(NUTRITION_SECTION_LAYOUT),
+    NUTRITION_SECTION_RANK,
+    { populated: new Set(populated) }
+  );
+}

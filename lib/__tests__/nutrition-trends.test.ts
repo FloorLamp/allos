@@ -3,8 +3,47 @@ import {
   buildMacroFiberSeries,
   mergeProteinSources,
   aggregateFoodAdherenceByWeek,
+  orderNutritionSections,
+  NUTRITION_SECTION_LAYOUT,
 } from "../nutrition-trends";
 import type { HabitWeekCell } from "../food-habit-trend";
+
+describe("orderNutritionSections (#2399)", () => {
+  it("returns the declared reading order when every section has data", () => {
+    expect(orderNutritionSections(NUTRITION_SECTION_LAYOUT)).toEqual([
+      ...NUTRITION_SECTION_LAYOUT,
+    ]);
+  });
+
+  it("sinks the setup prompts below the sections that carry content", () => {
+    // The reported shape: the two empty cards sat ABOVE the only populated section.
+    expect(orderNutritionSections(["intake-history"])).toEqual([
+      "intake-history",
+      "dose-history",
+      "macros",
+      "adherence",
+    ]);
+    expect(orderNutritionSections(["macros"])).toEqual([
+      "macros",
+      "intake-history",
+      "dose-history",
+      "adherence",
+    ]);
+  });
+
+  it("keeps the declared order inside each group", () => {
+    expect(orderNutritionSections(["adherence", "dose-history"])).toEqual([
+      "dose-history",
+      "adherence",
+      "intake-history",
+      "macros",
+    ]);
+  });
+
+  it("falls back to the declared order for a profile with nothing at all", () => {
+    expect(orderNutritionSections([])).toEqual([...NUTRITION_SECTION_LAYOUT]);
+  });
+});
 
 describe("mergeProteinSources (#2414)", () => {
   it("lets a tracked reading override the same day's hand-logged grams", () => {

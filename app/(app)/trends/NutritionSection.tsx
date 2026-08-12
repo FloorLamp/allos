@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
@@ -16,8 +17,10 @@ import { chartSeries } from "@/lib/chart-colors";
 import { doseLedgerHref, DOSE_LEDGER_ALL_KINDS } from "@/lib/hrefs";
 import {
   aggregateFoodAdherenceByWeek,
+  orderNutritionSections,
   NUTRITION_HISTORY_WEEK_CAPS,
   type AdherenceWeek,
+  type NutritionSectionId,
 } from "@/lib/nutrition-trends";
 import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
 import { FOOD_GROUPS, foodGroupShortName } from "@/lib/food-groups";
@@ -47,6 +50,13 @@ function adherenceCellClass(w: AdherenceWeek): string {
 }
 
 const DIVIDER = "border-black/5 dark:border-white/10";
+
+// The sections that render as page-level surfaces rather than cards, so their grids
+// can run edge to edge on phones — the ones a divider has to close off.
+const CARD_LESS_SECTIONS: ReadonlySet<NutritionSectionId> = new Set([
+  "intake-history",
+  "dose-history",
+]);
 
 export default async function NutritionSection({
   range,
@@ -138,11 +148,22 @@ export default async function NutritionSection({
     getFoodHabitTrends(profile.id, formatPrefs)
   );
 
-  return (
-    <div className="space-y-6">
-      {/* Part 1: intake history — day-history calendar (coverage) + group×day
-          matrix (composition), one shared group filter, days linking INTO the
-          Timeline. */}
+  // THE RENDER ORDER (#2399). The reader's own data outranks an invitation: a
+  // section with content leads, a setup prompt sinks. Presence is the ONLY input —
+  // see the data-present floor in lib/nutrition-trends.
+  const order = orderNutritionSections(
+    [
+      foodValues.length > 0 && "intake-history",
+      doseValues.length > 0 && "dose-history",
+      macroFiber.length > 0 && "macros",
+      adherence.length > 0 && "adherence",
+    ].filter((id): id is NutritionSectionId => id !== false)
+  );
+
+  const blocks: Record<NutritionSectionId, ReactNode> = {
+    // Intake history — day-history calendar (coverage) + group×day matrix
+    // (composition), one shared group filter, days linking INTO the Timeline.
+    "intake-history": (
       <section data-testid="intake-history">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -159,7 +180,11 @@ export default async function NutritionSection({
           {DAY_HISTORY_DOMAINS.food.helperText}
         </p>
         {foodValues.length === 0 ? (
-          <EmptyState message="No food logged in this range. Widen the date range or log on the Nutrition page." />
+          <EmptyState
+            compact
+            message="No food logged in this range. Widen the date range, or log what you ate."
+            action={{ href: "/nutrition?tab=food", label: "Log food" }}
+          />
         ) : (
           <DayHistory
             domain="food"
@@ -175,11 +200,11 @@ export default async function NutritionSection({
           />
         )}
       </section>
+    ),
 
-      <hr className={DIVIDER} />
-
-      {/* Part 2: dose history — confirmed supplement/med doses as their own
-          day-history (one row per item). */}
+    // Dose history — confirmed supplement/med doses as their own day-history
+    // (one row per item).
+    "dose-history": (
       <section id="dose-history" data-testid="dose-history">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -200,7 +225,14 @@ export default async function NutritionSection({
           {DAY_HISTORY_DOMAINS.dose.helperText}
         </p>
         {doseValues.length === 0 ? (
-          <EmptyState message="No confirmed doses in this range. Doses confirmed on Nutrition → Supplements or Medications will show up here." />
+          <EmptyState
+            compact
+            message="No confirmed doses in this range. Doses you confirm show up here."
+            action={{
+              href: "/nutrition?tab=supplements",
+              label: "Supplements",
+            }}
+          />
         ) : (
           <DayHistory
             domain="dose"
@@ -216,13 +248,12 @@ export default async function NutritionSection({
           />
         )}
       </section>
+    ),
 
-      <hr className={DIVIDER} />
-
-      {/* Part 3: macros + fiber over time */}
-      {/* Macros are a COMPOSITE series with no single-metric kind of its own, so its
-          full depth is the Nutrition page — where the per-day food entries behind
-          each bar live and are editable. */}
+    // Macros + fiber over time. A COMPOSITE series with no single-metric kind of its
+    // own, so its full depth is the Nutrition page — where the per-day food entries
+    // behind each bar live and are editable.
+    macros: (
       <ChartCard
         testid="nutrition-macros-chart"
         title="Macros & fiber"
@@ -253,8 +284,10 @@ export default async function NutritionSection({
           />
         )}
       </ChartCard>
+    ),
 
-      {/* Part 4: food-goal adherence trend */}
+    // Food-goal adherence trend.
+    adherence: (
       <div className="card" data-testid="food-adherence-trend">
         <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
           Food-goal adherence
@@ -264,7 +297,11 @@ export default async function NutritionSection({
           week.
         </p>
         {adherence.length === 0 ? (
-          <EmptyState message="No food-group habits tracked yet. Set one on Nutrition → Weekly habits to see your consistency here." />
+          <EmptyState
+            compact
+            message="No food-group habits tracked yet. Set one to see your consistency here."
+            action={{ href: "/nutrition?tab=food", label: "Weekly habits" }}
+          />
         ) : (
           <div className="flex flex-wrap items-end gap-1.5">
             {adherence.map((w) => (
@@ -296,6 +333,22 @@ export default async function NutritionSection({
           </div>
         )}
       </div>
+    ),
+  };
+
+  return (
+    <div className="space-y-6">
+      {order.map((id, i) => (
+        <Fragment key={id}>
+          {blocks[id]}
+          {/* The two histories are deliberately CARD-LESS page-level surfaces, so
+              each needs a rule to close it off from whatever the order puts next.
+              A card carries its own edge, and the last block needs no divider. */}
+          {CARD_LESS_SECTIONS.has(id) && i < order.length - 1 && (
+            <hr className={DIVIDER} />
+          )}
+        </Fragment>
+      ))}
     </div>
   );
 }
