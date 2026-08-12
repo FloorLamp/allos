@@ -25,6 +25,7 @@ import {
 } from "@/lib/instrument-records";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 import { setProfileSetting } from "@/lib/settings";
+import { INSTRUMENTS } from "@/lib/mental-health";
 
 // A profile with a stored age, already acting. 15 → isMinor true (no birthdate
 // needed); omit the age for the unknown-age/adult side of each pair.
@@ -137,8 +138,12 @@ describe("the gate sits in the core, so a new caller inherits it (#2107)", () =>
     expect(adultOnlyRefusal(minor.id, "AUDIT")).toBe(true);
     expect(adultOnlyRefusal(minor.id, "DAST-10")).toBe(true);
     // Mental-health instruments are NOT adult-only content — the gate must never
-    // spread to them, or a teenager loses their own PHQ-9.
-    expect(adultOnlyRefusal(minor.id, "PHQ-9")).toBe(false);
+    // spread to them, or a teenager loses their own PHQ-9. The gate DERIVES this
+    // from `isInstrument` rather than enumerating, so EPDS (#2321, added after the
+    // gate) inherits the right answer without being named anywhere here.
+    for (const mh of INSTRUMENTS)
+      expect(adultOnlyRefusal(minor.id, mh)).toBe(false);
+    expect(INSTRUMENTS).toContain("EPDS");
     expect(adultOnlyRefusal(adult.id, "AUDIT")).toBe(false);
     // Unknown age passes: lib/life-stage's documented "hide only on a positive
     // under-age match" policy, the same line the surface and #1279 use.
