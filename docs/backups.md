@@ -196,6 +196,26 @@ the container unhealthy:
   last found **corruption**. The endpoint only reads this cached verdict; it
   never runs the expensive `integrity_check` itself, so it stays cheap enough
   for a frequent uptime poll.
+- **`disk-low`** — the data volume is running out of room. `write-failed` above
+  only fires once writes already fail, which is too late; this is the same
+  volume one step earlier. Two independent clauses, either of which flips it:
+  - **free share** — free space is under **5%** of the volume. Override with
+    the `ALLOS_DISK_FREE_FLOOR_PERCENT` env var (clamped to 0–50); **`0`
+    disables this clause**, which is the escape hatch for a very large volume
+    where 5% is hundreds of gigabytes.
+  - **snapshot headroom** — free space is under **1.2×** the live database
+    size, checked only when backups are **enabled**. This is the clause that
+    matters for Allos specifically: the nightly snapshot is a `VACUUM INTO`,
+    which writes a whole copy of the database, so on a filling volume the
+    **backup is the first thing to fail** — silently, while the app itself
+    still writes fine. A 50 GB volume with 20% free and a 9 GB database looks
+    healthy by percentage and cannot take a snapshot. The factor is not
+    configurable: it is a property of what `VACUUM INTO` does.
+
+  Unlike the backup alarms below, this one is **transient** — free space and it
+  goes green on the next poll. Nothing about the free bytes, the volume size, or
+  the database size reaches the response; only the word `disk-low` does.
+
 - **`backup-stale`** — backups are enabled and the newest snapshot is older than
   the staleness threshold (**48h** by default; the **Stale alarm** field on the
   Automated backups card, stored as the `backup_staleness_hours` global

@@ -21,6 +21,19 @@ describe("audit action naming", () => {
     expect(new Set(values).size).toBe(values.length);
   });
 
+  // #1843. The pair is deliberately in the `login` domain rather than a new
+  // `session` one: the viewer's action filter groups on the domain, and
+  // `login.logout` is already a session-ending event, so a `session.*` spelling
+  // would split "a session ended" across two filter groups.
+  it("session revocation lives in the login domain, beside logout", () => {
+    expect(AUDIT_ACTIONS.sessionRevoke).toBe("login.session-revoke");
+    expect(AUDIT_ACTIONS.sessionRevokeAll).toBe("login.session-revoke-all");
+    expect(actionDomain(AUDIT_ACTIONS.sessionRevoke)).toBe(
+      actionDomain(AUDIT_ACTIONS.logout)
+    );
+    expect(actionDomain(AUDIT_ACTIONS.sessionRevokeAll)).toBe("login");
+  });
+
   it("actionDomain returns the segment before the first dot", () => {
     expect(actionDomain("login.success")).toBe("login");
     expect(actionDomain("medical-file.view")).toBe("medical-file");

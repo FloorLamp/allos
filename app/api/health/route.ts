@@ -72,7 +72,10 @@ function probeWrite(): boolean {
 function probeDiskSpace(): { freeBytes: number; totalBytes: number } | null {
   try {
     const st = fs.statfsSync(path.join(process.cwd(), "data"));
-    return { freeBytes: st.bavail * st.bsize, totalBytes: st.blocks * st.bsize };
+    return {
+      freeBytes: st.bavail * st.bsize,
+      totalBytes: st.blocks * st.bsize,
+    };
   } catch (err) {
     // statfs is unavailable on some filesystems/platforms. An unrunnable probe is
     // not a failure — log it and leave the disk clause unevaluated.
