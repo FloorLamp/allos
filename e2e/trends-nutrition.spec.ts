@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+  settledBoxes,
+} from "./helpers";
 
 // Trends → Nutrition is the OVER-TIME nutrition view (issue #1166): the macros+fiber
 // daily chart (re-homed off Trends → Overview → body census and gaining fiber), a food-goal adherence
@@ -75,17 +80,19 @@ test("food and dose histories stay contained and stack details on a phone", asyn
       .getByRole("button", { name: /View occurrences for/ })
       .first(); // first-ok: every domain row shares the same responsive detail-panel contract
     if ((await rowButton.getAttribute("aria-pressed")) !== "true") {
-      await rowButton.click();
+      // First interaction after the goto, on a client toggle: a bare click here
+      // can be swallowed pre-hydration, and the ONLY thing waiting for its
+      // effect below is `boundingBox()`, which does not retry — so a lost click
+      // burnt the whole 30 s test timeout instead of failing at five (shard 7 of
+      // #2559's run).
+      await hydratedClick(page, rowButton);
     }
 
-    const [calendarBox, rowBox] = await Promise.all([
-      section.getByTestId("day-history-calendar-panel").boundingBox(),
-      section.getByTestId("day-history-rowpanel").boundingBox(),
+    const [calendarBox, rowBox] = await settledBoxes([
+      section.getByTestId("day-history-calendar-panel"),
+      section.getByTestId("day-history-rowpanel"),
     ]);
-    expect(rowBox).not.toBeNull();
-    expect(rowBox!.y).toBeGreaterThanOrEqual(
-      calendarBox!.y + calendarBox!.height
-    );
+    expect(rowBox.y).toBeGreaterThanOrEqual(calendarBox.y + calendarBox.height);
   }
 
   await expectNoClippedContent(page);
