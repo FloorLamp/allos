@@ -68,6 +68,9 @@ import {
   ownProfileForLogin,
 } from "@/lib/auth";
 import { writeSubjectName } from "@/lib/own-profile";
+import { currentFoodSlot } from "@/lib/queries/nutrition";
+import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
+import { foodGroupBySlug } from "@/lib/datasets/food-groups";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -704,6 +707,47 @@ export default async function Dashboard() {
     ? getProteinToday(profile.id)
     : null;
 
+  // THE COMPOSED MORNING ONE-TAP (#2458) — the food half of the "your usual <window>"
+  // offer plus the doses this profile DECLARED for that window and still owes today.
+  //
+  // Relevance is TRANSIENT and computed here, like the other `available` gates: it is a
+  // pure function of today's state, so it collapses the moment everything it names is
+  // logged and comes back if the servings are undone. Nothing about it is persisted and
+  // it never reaches the hidden set.
+  //
+  // The window is `currentFoodSlot` — the FOOD-slot clock, deliberately not
+  // `currentTimeBucket` (the divergence is documented at lib/food-slot.ts:11): this
+  // offer is food-anchored, so it takes the food side. `getUsualRoutineOffer` evaluates
+  // that half first and returns before touching intake at all when it does not stand,
+  // so the dashboard pays the dose reads only on the mornings the control renders.
+  //
+  // Read-only access renders no control at all. The action gates on
+  // `requireWriteAccess` regardless, so this is presentation rather than security —
+  // but offering a caregiver-view a button that can only refuse is worse than offering
+  // nothing.
+  const routineWindow =
+    has("nutrition-today") && access === "write"
+      ? currentFoodSlot(profile.id)
+      : null;
+  const routineOffer =
+    routineWindow != null
+      ? getUsualRoutineOffer(profile.id, routineWindow, on)
+      : null;
+  // The label names every write, in display names: a slug is not a promise anybody can
+  // read. The subject line follows writeSubjectName so a caregiver acting on another
+  // profile is never ambiguous about whose morning this logs (#1013).
+  const routineControl = routineOffer
+    ? {
+        window: routineOffer.window,
+        food: routineOffer.groups.map((slug) => ({
+          slug,
+          name: foodGroupBySlug(slug)?.name ?? slug,
+        })),
+        doses: routineOffer.doses.map((d) => ({ id: d.doseId, name: d.name })),
+        subjectName: actingSubjectName,
+      }
+    : null;
+
   // steps-today (#1221): today's steps vs the prior 7 days, a formatter over
   // summarizeStepsToday fed by the deduped one-source-per-day steps series (#14/#221).
   // Empty series → the data-aware CTA (connect a source).
@@ -851,7 +895,10 @@ export default async function Dashboard() {
     emptyIds.add("weight-trend");
   if (has("healthspan-pillars") && pillars.length === 0)
     emptyIds.add("healthspan-pillars");
-  if (has("nutrition-today") && proteinToday == null)
+  // The card is empty only when it has NEITHER number nor offer: the morning tap can
+  // legitimately stand for a profile with no protein target, and swapping it for a
+  // "log food" CTA would replace the fast path with a link to it.
+  if (has("nutrition-today") && proteinToday == null && routineControl == null)
     emptyIds.add("nutrition-today");
   if (has("steps-today") && stepsSummary == null) emptyIds.add("steps-today");
   if (has("vitals-latest") && vitalsModel == null)
@@ -1029,8 +1076,8 @@ export default async function Dashboard() {
           <WeeklyRecapWidget recap={weeklyRecap} formatPrefs={formatPrefs} />
         ) : null;
       case "nutrition-today":
-        return proteinToday ? (
-          <NutritionTodayWidget today={proteinToday} />
+        return proteinToday || routineControl ? (
+          <NutritionTodayWidget today={proteinToday} routine={routineControl} />
         ) : null;
       case "steps-today":
         return stepsSummary ? (

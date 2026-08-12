@@ -467,7 +467,43 @@ left the episode outstanding — though not one that found the dose already
 resolved, which is reassurance rather than refusal). Deliberately not everywhere: a modal costs a dismissal,
 and spending one on "Logged ✅" or on a food quick-log is how the one that
 matters stops being read, so the coaching tier keeps its toasts. The predicate
-governs DELIVERY only — the wording was already honest. Pure
+governs DELIVERY only — the wording was already honest.
+
+**A tap answers as soon as the OUTCOME is known (#2418) — the latency half of the
+same rule.** Telegram spins the tapped button until `answerCallbackQuery` lands, so
+a handler that edits the message first makes the user wait one Bot API round-trip
+for news that was already decided. The ordering, now uniform across
+`telegram-quick-log.ts`, `telegram-callbacks.ts` and the correction handlers:
+
+- **pure keyboard edits** (offer expand/collapse, ⚙️ Tune expand/collapse, food
+  show-more/less, the symptom severity picker, the 🕐 picker's `open`/`back`) write
+  NOTHING, so validate the token → `answerCallbackQuery` → edit;
+- **writing taps** perform the local write first — SQLite, synchronous, fast — then
+  answer WITH the outcome text, then edit. The toast rides the ack and must stay
+  accurate, so it may never move ahead of the write that produced it.
+
+The ack may move ahead of the edit; the **pointer sync may not**. `rebuildMessage`,
+`closeMessage` and `updateMessageKeyboard` write `notify_messages` only after a
+SUCCESSFUL Bot API call (#2443), so a failed edit never leaves the pointer claiming a
+keyboard the chat never received — which is the staleness that machinery exists to
+remove. Reordering a handler means moving the `answerCallbackQuery` call, never
+anything inside those three chokepoints.
+
+**A dose logged from the digest's offer list gets the same 🕐 chips a reminder's does
+(#2418 part 2).** The `prn:` taps `expandedOfferActions` builds used to carry no
+correction row anywhere, so stating WHEN was impossible for exactly the taps most
+likely to be late — a `may` item logged from a digest hours after the fact. The
+rebuilt keyboard now carries the chips for the tap that just landed, assembled from
+the SAME `getDoseCorrectionBursts` read the reminder ride-along uses, and collapsing
+on use through the existing `dosetime`/`dosetimeat` reconcile families. Two things
+make it possible: the offer-list log stamps `notify_message_id` (`logAdministration`
+takes it exactly as `markDoseTaken` does), so its burst is BOUND to the digest rather
+than riding the newest live `dose` message in the chat (#2264); and the keyboard
+cannot supply the dose or the day, so — the `doseAnchor` lesson from #2443 — the
+ledger does. The rebuild is scoped by the keyboard's own collapse token: a `/dose`
+message shares the `prn:` prefix and keeps its buttons untouched.
+
+Pure
 parse/decide lives in `lib/notifications/callback-data.ts` (unit-tested); the
 handler flows in `telegram-callbacks.ts`. **Channel chokepoint (#454):** every outbound Telegram
 write — the tick's channel send, escalation's explicit-chat send, and the

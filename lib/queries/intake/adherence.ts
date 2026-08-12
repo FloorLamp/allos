@@ -471,21 +471,24 @@ function logAdministrationTx(
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: null
+  expectedRedoseAdministrationId: null,
+  notifyMessageId?: number | null
 ): AdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: number
+  expectedRedoseAdministrationId: number,
+  notifyMessageId?: number | null
 ): RedoseWindowAdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: number | null
+  expectedRedoseAdministrationId: number | null,
+  notifyMessageId?: number | null
 ): RedoseWindowAdministrationOutcome {
   // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
   // the profile through the parent item. A PRN med always has at least one dose row
@@ -529,9 +532,17 @@ function logAdministrationTx(
     { id: number } | undefined;
   if (!dup) {
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at)
-       VALUES (?,?,?,?,?)`
-    ).run(dose.dose_id, itemId, date, dose.amount, recordedAtStr);
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, amount, recorded_at, notify_message_id)
+       VALUES (?,?,?,?,?,?)`
+    ).run(
+      dose.dose_id,
+      itemId,
+      date,
+      dose.amount,
+      recordedAtStr,
+      notifyMessageId ?? null
+    );
     decrementSupply(profileId, itemId);
   }
   const summary = db
@@ -563,7 +574,14 @@ function logAdministrationTx(
 export function logAdministration(
   profileId: number,
   itemId: number,
-  recordedAt?: Date
+  recordedAt?: Date,
+  // Which message's tap this is (#2264) — Telegram handlers only, exactly as
+  // markDoseTaken takes it. Without it a chat-logged administration produces an
+  // UNATTRIBUTED correction burst, which may then ride the newest live dose message in
+  // the chat rather than the message it came from (#2418 part 2): the digest's offer
+  // list is not a dose reminder, so its taps have to say where they happened or their
+  // 🕐 chips surface on an unrelated reminder.
+  notifyMessageId?: number | null
 ): AdministrationOutcome {
   const tz = getTimezone(profileId);
   const when = recordedAt ?? clockNow();
@@ -574,7 +592,14 @@ export function logAdministration(
   const date = dateStrInTz(tz, when);
   const recordedAtStr = utcSqlString(when);
   return writeTx(() =>
-    logAdministrationTx(profileId, itemId, date, recordedAtStr, null)
+    logAdministrationTx(
+      profileId,
+      itemId,
+      date,
+      recordedAtStr,
+      null,
+      notifyMessageId
+    )
   );
 }
 

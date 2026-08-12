@@ -131,6 +131,9 @@ export const OFFLINE_QUEUE_COVERAGE = {
   "food-usual": arguedExclusion(
     "Declared idempotent, and still excluded for the period-lifecycle reason (#2380): the offer is rendered from server state — the habitual set MINUS what that window already holds — and its write core re-derives that set to refuse a stale tap. Offline neither half is available: the capture would be a list of group keys whose justification expired, and the underlying food_log counter is ADDITIVE, so replaying it against a window logged from another device or the Telegram button double-logs a breakfast with no offer ever having stood. The single-serving taps underneath it queue as they always did, so nothing is unreachable offline — only the shortcut is."
   ),
+  "routine-usual": arguedExclusion(
+    "Declared idempotent, excluded for `food-usual`'s reason and one MORE (#2458): the bundle's justification is server state on both axes, and its dose half CONFIRMS DOSES — an expired replay would double-log a meal window AND mis-decrement on-hand supply for three items, which is stock arithmetic against a total that moved (the excluded `medication-refill` class). The single-serving taps and the single-dose confirms underneath it queue exactly as they always did, so nothing is unreachable offline — only the shortcut is."
+  ),
   "period-lifecycle": arguedExclusion(
     "A lifecycle write rendered from server state (#1892): the offer's verb is only valid against the state that produced it, and the write core's typed refusals need fresh state to refuse honestly. Replaying start/end against state that moved is the destructive-overwrite class the queue's scope comment excludes."
   ),

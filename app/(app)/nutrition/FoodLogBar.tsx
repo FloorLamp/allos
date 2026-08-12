@@ -30,6 +30,9 @@ import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import { useToast } from "@/components/Toast";
+// The list-naming phrase is shared with the dashboard's composed control (#2458), so
+// the Food tab and the dashboard can never name a write differently.
+import { namesPhrase } from "@/lib/usual-routine";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
@@ -79,16 +82,6 @@ type FoodPlacement = Extract<FoodEventEditResult, { ok: true }>["from"];
 // triggers would otherwise reorder the list under the user's finger — jarring right
 // where they just tapped. Tapping a row's label expands the (normally truncated) serving detail so it's
 // readable on a narrow phone without leaving the page.
-
-// "Berries", "Berries and Fermented foods", "Berries, Eggs and Fermented foods" — the
-// group names a "log my usual" control names OUT LOUD, in its label and in the toast
-// that answers it (#2380). Plain English on purpose: the label has to be readable as a
-// promise of what the tap writes, which is also why the two never diverge — the button
-// and its answer format the same list.
-function namesPhrase(names: readonly string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
 
 const TIER_ORDER: FoodGroupTier[] = ["encourage", "neutral", "limit"];
 const TIER_LABEL: Record<FoodGroupTier, string> = {
