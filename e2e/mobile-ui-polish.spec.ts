@@ -124,7 +124,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     const details = patternRow.getByTestId("supplement-row-details");
     const doseBrand = patternRow.getByTestId("supplement-dose-brand");
     const actions = patternRow.getByRole("button", {
-      name: "IntakeItem actions",
+      name: "Supplement actions",
     });
     await expect(doseBrand).toContainText("500 mg");
     await expect(details.getByTestId("adherence-summary")).toBeVisible();
@@ -146,7 +146,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 test.describe("nutrition food-log controls stay in the viewport on mobile", () => {
   test.use({ viewport: PHONE });
 
-  test("Food and IntakeItem controls scroll with their tab context", async ({
+  test("Food and supplement controls scroll with their tab context", async ({
     page,
   }) => {
     for (const surface of [
@@ -282,7 +282,7 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
 
     // Clean up so the fixture is left as found.
     const row = page.locator("div.card").filter({ hasText: NAME });
-    await row.getByRole("button", { name: "IntakeItem actions" }).click();
+    await row.getByRole("button", { name: "Supplement actions" }).click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(

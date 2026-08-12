@@ -83,7 +83,7 @@ test("a pause link holds the item while its situation is active, then resumes", 
 
   // ── Clean up: delete the supplement this spec created ───────────────────────
   const row = page.locator("div.card").filter({ hasText: SUPP }).first(); // first-ok: the card for SUPP, a supplement THIS spec created (unique name)
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
     page,

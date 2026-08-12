@@ -44,6 +44,12 @@ export interface TimelineEvent {
   id: string;
   date: string;
   category: TimelineCategory;
+  // What the card's badge SAYS, when the event's own name for itself is
+  // narrower than its category's label (#2610). The category still owns the
+  // filter pill, the icon and the badge COLOUR — this overrides the words only.
+  // Absent on nearly every event: the category label is the right word, and a
+  // badge that disagrees with the pill it filters under has to earn it.
+  badgeLabel?: string;
   title: string;
   subtitle?: string | null;
   detail?: string | null;
