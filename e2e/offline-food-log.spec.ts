@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 
 // #1596: the food quick-adds — a one-tap food-group serving and the protein-grams
@@ -105,6 +105,19 @@ test("protein grams added offline queue, then sync exactly once on reconnect (#1
     `${before + 30}g today`
   );
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
+
+  // Undo, so this leaves the SHARED profile as it found it — the same rule
+  // protein-quickadd.spec follows on its own isolated fixture, and for the same
+  // reason: tracked grams flip the adequacy card from the ESTIMATED basis to
+  // COMBINED, which is exactly what protein-adequacy.spec asserts about profile 1.
+  // The delta assertions above are already shared-seed safe; the RESIDUE was not,
+  // and a leftover row breaks any neighbour on this worker rather than this test.
+  // It only surfaced when duration-balanced sharding (#2590) put the two specs in
+  // one shard — the collision was always here, waiting on a grouping to reveal it.
+  await settledClick(page, page.getByTestId("protein-quickadd-undo"));
+  await expect(page.getByTestId("protein-quickadd-total")).toHaveText(
+    `${before}g today`
+  );
 });
 
 // The ledger's high-water mark, so a test can address the row IT created without
