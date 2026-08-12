@@ -100,6 +100,34 @@ and in-flight agent call. Everything here was learned by losing work to it.
   note that the script itself lives in the REPO, not in scratch: the first
   version was written to `$SCRATCH` and would have died in the next restart,
   which is the same mistake one level up.
+- **A restart detector must be SILENT when nothing is wrong**, and that is a
+  harder property than detecting the restart. The first working version flagged
+  every live agent's worktree as `DIRTY: RESCUE BEFORE ANYTHING ELSE` — an agent
+  mid-task has uncommitted work by definition — and every merged branch as
+  `NO REMOTE BRANCH`, because branches are deleted on merge. Three of six rows
+  screamed on two consecutive check-ins with nothing wrong. That is the canary's
+  failure a second time: not absent, but **ignorable**. A monitor nobody reads is
+  a monitor nobody has. The missing input was already on disk — `$SCRATCH/.roster`
+  says which branches have a live agent, and the same facts mean opposite things
+  on either side of that line (dirty + live = work in progress; dirty + no agent
+  = nobody is coming back for it).
+- **`merge-base --is-ancestor HEAD origin/main` cannot answer "was this merged"
+  here.** Everything is SQUASH-merged, so the merged commit is a new object with
+  an unrelated parent and the branch head is never an ancestor. The predicate
+  reads perfectly and can only ever answer "no" — the #2444 shape, a guard that
+  covers nothing while still looking like a guard. Used as the sole test it
+  flagged all three finished worktrees as unpushed **on the very run that fixed
+  the previous false alarm**, i.e. one false alarm traded for another. The signal
+  that separates the cases is whether the branch was ever PUSHED: tracking config
+  survives the upstream branch's deletion, so upstream-configured plus remote-gone
+  is the merged-and-tidied shape, while no upstream and no remote is work that
+  exists nowhere else. Keep `--is-ancestor` only as a second sufficient witness,
+  for the non-squash case.
+- **Prove the alarm can still fire.** After any change that makes a monitor
+  quieter, create a worktree that genuinely deserves the alarm, confirm it fires,
+  then delete it. Silence that has never been tested against a true positive is
+  indistinguishable from a broken detector — this section's own lesson, applied
+  to the fix rather than to the original.
 - **Agents commit AND push after every meaningful step** — in every dispatch. A
   restart then costs at most one uncommitted edit set. Worktrees survive
   restarts; uncommitted gate-run state does not.

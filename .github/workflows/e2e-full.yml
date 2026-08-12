@@ -84,3 +84,21 @@ jobs:
           name: e2e-full-report-shard-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7
+
+      # The raw JSON report, kept so this census can refresh the sharding
+      # manifest: download all four, then
+      #   npx tsx scripts/gen-e2e-durations.ts e2e-results-*.json
+      # and commit e2e/spec-durations.json. This dispatch is the natural place to
+      # regenerate from — it is the only workflow that runs every spec, so it is
+      # the only one whose reports cover the whole suite in one go.
+      #
+      # repeat-each inflates every file by the same factor, and the planner only
+      # compares files to each other, so a census run's numbers plan the same
+      # split as a single pass.
+      - name: Upload raw JSON report (sharding manifest source)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results-shard-${{ matrix.shard }}
+          path: test-results/e2e-results.json
+          retention-days: 7

@@ -65,25 +65,80 @@ else
 fi
 echo
 
-# 2. Worktrees: dirty ones are rescue targets, unpushed ones are the near miss.
+# 2. Worktrees.
+#
+# THE ALARM ONLY WORKS IF IT IS SILENT WHEN NOTHING IS WRONG. The first version
+# flagged every LIVE agent's worktree as "DIRTY: RESCUE BEFORE ANYTHING ELSE" —
+# an agent mid-task has uncommitted work by definition — and every merged branch
+# as "NO REMOTE BRANCH", because a branch is deleted on merge. Three of six rows
+# screamed on two consecutive check-ins with nothing wrong. That is the canary's
+# failure a second time: not absent, but IGNORABLE. A monitor nobody reads is a
+# monitor nobody has.
+#
+# The missing input was already on disk. $ROSTER says which branches have a LIVE
+# agent, and the same facts mean opposite things on either side of that line:
+#
+#   LIVE  (branch is on the roster) — dirty is EXPECTED, that is work in
+#         progress; an absent remote is EXPECTED, it has not pushed yet.
+#         Nothing here is actionable while the agent is running.
+#   DONE  (not on the roster) — dirty is a RESCUE TARGET: nobody is coming back
+#         for it. An absent remote is fine IF the branch WAS pushed and has since
+#         been deleted upstream (merged), and ALARMING otherwise: unpushed work
+#         whose author has exited.
+#
+# "Was it merged?" is NOT `merge-base --is-ancestor HEAD origin/main`. Everything
+# here is SQUASH-merged, so the merged commit is a brand-new object with an
+# unrelated parent and the branch head is never an ancestor of main. That test
+# reads perfectly and can only ever answer "no" — the #2444 shape, a guard that
+# covers nothing while still looking like a guard. Used as the sole test it
+# flagged all three finished worktrees as unpushed on the very run that fixed the
+# previous false alarm, trading one false alarm for another.
+#
+# The signal that separates the cases is whether the branch was ever PUSHED:
+# tracking config survives the upstream branch's deletion, so upstream-configured
+# plus remote-gone is the merged-and-tidied shape, while no upstream and no remote
+# is work that exists nowhere else. `--is-ancestor` is kept only as a second
+# sufficient witness, for the non-squash case.
+#
+# The roster's own "(done: ...)" trailer is not a live entry, so live matching is
+# anchored to lines beginning "Cluster".
 echo "--- worktrees ---"
 shopt -s nullglob
+git -C "$REPO" fetch origin main -q 2>/dev/null
+live_branches=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}')
 found=0
+alarms=0
 for d in "$STATE_DIR"/wt-*; do
   [ -d "$d" ] || continue
   found=1
   b=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)
-  h=$(git -C "$d" rev-parse HEAD 2>/dev/null | cut -c1-7)
+  h=$(git -C "$d" rev-parse HEAD 2>/dev/null)
   dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
   r=$(git -C "$REPO" ls-remote --heads origin "$b" 2>/dev/null | cut -c1-7)
-  flag=""
-  [ "$dirty" != "0" ] && flag="$flag  <<< DIRTY: RESCUE BEFORE ANYTHING ELSE"
-  [ -n "$r" ] && [ "$h" != "$r" ] && flag="$flag  <<< LOCAL AHEAD OF REMOTE: PUSH"
-  [ -z "$r" ] && flag="$flag  <<< NO REMOTE BRANCH"
-  printf "  %-16s %-32s local=%s remote=%-8s dirty=%s%s\n" \
-    "$(basename "$d")" "$b" "$h" "${r:-ABSENT}" "$dirty" "$flag"
+  live=0
+  printf '%s\n' "$live_branches" | grep -qx -- "$b" && live=1
+  pushed=0
+  git -C "$d" rev-parse --abbrev-ref --symbolic-full-name "$b@{upstream}" >/dev/null 2>&1 && pushed=1
+  git -C "$REPO" merge-base --is-ancestor "$h" origin/main 2>/dev/null && pushed=1
+
+  state="LIVE"; flag=""
+  if [ "$live" = "0" ]; then
+    if [ "$dirty" = "0" ] && [ "$pushed" = "1" ]; then
+      state="banked"
+    else
+      state="DONE"
+      [ "$dirty" != "0" ] && { flag="$flag  <<< DIRTY AND NO AGENT: RESCUE NOW"; alarms=1; }
+      [ "$pushed" = "0" ] && { flag="$flag  <<< NEVER PUSHED, NO AGENT: PUSH NOW"; alarms=1; }
+    fi
+  fi
+  # An unpushed commit under a live agent is the near miss, not the accident:
+  # worth saying, not worth shouting.
+  [ -n "$r" ] && [ "${h:0:7}" != "$r" ] && flag="$flag  (local ahead of remote)"
+  printf "  %-16s %-32s %-6s local=%s remote=%-8s dirty=%s%s\n" \
+    "$(basename "$d")" "$b" "$state" "${h:0:7}" "${r:-ABSENT}" "$dirty" "$flag"
 done
 [ "$found" = "0" ] && echo "  (none)"
+[ "$found" = "1" ] && [ "$alarms" = "0" ] && echo "  (no rescue targets — every dirty tree belongs to a live agent)"
 echo
 
 # 3. The roster the orchestrator's own memory cannot be trusted to hold.
