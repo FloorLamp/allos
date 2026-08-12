@@ -1,6 +1,7 @@
 # Food regularity
 
-Status: **shipped** (#2380)
+Status: **shipped** (#2380 — the window measure and its one-tap offer; #2397 — the
+same measure over a period, stated once by the monthly recap)
 
 Real logging is far more regular than the app assumed. On a 22-day ledger one
 profile's morning window held **two food groups and nothing else** — the same
