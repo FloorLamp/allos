@@ -133,7 +133,12 @@ test.describe("an unjudged Reference cell", () => {
               canonical_name, reference_range)
            VALUES (1, ?, 'lab', ?, '5', 5, 'units/L', ?, ?)`
         )
-        .run(UNJUDGED_DATE, UNJUDGED_ANALYTE, UNJUDGED_ANALYTE, UNJUDGED_PRINTED)
+        .run(
+          UNJUDGED_DATE,
+          UNJUDGED_ANALYTE,
+          UNJUDGED_ANALYTE,
+          UNJUDGED_PRINTED
+        )
     );
   });
 
@@ -144,7 +149,9 @@ test.describe("an unjudged Reference cell", () => {
   }) => {
     // A `q` filter narrows the index, and a narrowed index arrives with every group
     // expanded (#1651), so the row is on the page without a disclosure tap.
-    await page.goto(`/results/readings?q=${encodeURIComponent(UNJUDGED_ANALYTE)}`);
+    await page.goto(
+      `/results/readings?q=${encodeURIComponent(UNJUDGED_ANALYTE)}`
+    );
     const table = page.getByTestId("biomarkers-table");
     await expect(table).toBeVisible();
 
@@ -171,7 +178,9 @@ test.describe("an unjudged Reference cell", () => {
       .getByTestId("biomarker-reference");
     await expect(judged).toHaveText(/^ref /);
 
-    await page.goto(`/results/readings?q=${encodeURIComponent(UNJUDGED_ANALYTE)}`);
+    await page.goto(
+      `/results/readings?q=${encodeURIComponent(UNJUDGED_ANALYTE)}`
+    );
     const unjudged = page
       .getByTestId("biomarkers-table")
       .getByRole("row")

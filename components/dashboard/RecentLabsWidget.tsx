@@ -1,10 +1,7 @@
 import Link from "next/link";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { MedicalValue } from "@/components/ui";
-import {
-  RECENT_LAB_STALE_LABEL,
-  type RecentLabRow,
-} from "@/lib/recent-labs";
+import { RECENT_LAB_STALE_LABEL, type RecentLabRow } from "@/lib/recent-labs";
 import { glanceAgeToken } from "@/lib/glance-age";
 
 // One latest lab/biomarker reading, flattened for display by the page. The shape
