@@ -2262,6 +2262,14 @@ BOTH surfaces.
   re-asks at any distance. Bands would re-ask on a two-minute wobble across a
   boundary — the ratchet has none. Changing the configured time is a NEW decision
   about exactly this setting and correctly re-arms.
+- **And the ratchet is where repeat dismissal accumulates** (#2543). The key is
+  `digest-time:<configured>:<proposed>` and the declared family is
+  `digest-time:<configured>`, so two stored keys under one stem mean the person
+  declined this at one proposal and declined it again at a proposal at least 30 minutes
+  later — a genuinely separate raising, which is exactly what the ratchet was built to
+  guarantee. At that point the **in-digest line stops rendering** and the Settings row
+  is unaffected: the question moves to the surface the user opens, and never stops
+  being answerable.
 - **Three exits, each ONE write, none of which trusts its button.**
   `applyDigestTimeSuggestion` writes only `notify_digest_hour` (via `setDigestMinute`),
   `switchDigestToDynamic` only `digest_mode` (via `setDigestMode`), and
@@ -2469,6 +2477,53 @@ sleeper.
 content, `—` attaches a clause that qualifies the statement before it, and `·`
 joins peers on one line (`,` joins peers within one group). It is no longer a rule
 a line follows by hand — see below.
+
+## Repeat dismissal reaches the digest (#2543)
+
+`lib/dismissal-fatigue.ts` (#2386) turns declined raisings into a prominence, and #2538
+applied it to the dashboard only. The digest half is applied in
+`lib/notifications/digest-data.ts`, as the third strict reduction in a row beside the
+preventive-toggle filter and the never-recorded-rule filter, and for the same reason
+each of those is allowed: dropping a line from a message that was sending anyway is a
+reduction in contact, which §2 of the doctrine lets the system make unilaterally.
+
+- **Only a line that DECLARED an episode family can be reached.** Three do —
+  `portal-sync`, `records-recency` and the digest time suggestion — and all three are
+  coaching-tier ride-alongs with a go-looking twin (Upcoming, Data → Review, the
+  Settings mirror) that keeps rendering. The care-tier lines cannot be reached at all:
+  `dose:<id>`, `refill:<id>` and `screening:<rule>` name their SUBJECT, so one key is
+  all there can ever be and the count cannot reach the threshold.
+- **The safety floor is consulted before any count.** `findingProminence` asks
+  `isHiddenUnderPolicy` first, so a signal whose dismissals the bus already refuses to
+  honour answers `routine` here without being counted.
+- **It costs nothing when there is nothing to count.** The filter is gated on a
+  `some(i => i.episodeFamily)` scan, so a profile with no anchored item pays one array
+  pass and no suppression read.
+- **Nothing is written and nothing is hidden.** `collectUpcoming` is untouched; the row
+  the digest stopped naming is exactly where it was, undismissed, on the page.
+
+## One-tap Stop on an unconfirmed imported medication (#2574)
+
+A medication imported from a clinical document, never logged in its life, reminds every
+morning at `must` forever — the document said Active with no end date and nothing
+downstream ever revisits it. The reminder's dose row grows a **🏁 Stop** button beside
+Take and Skip while `getUnconfirmedMedicationIds` flags the item, on the same
+ride-the-nag argument the ⤓ May button (#1505) has: the send exists already, the offer
+decorates it, and the exit lands on the very message doing the interrupting.
+
+- **Detection suggests; the tap writes.** `handleMedStopTap` re-derives candidacy from
+  the live detector before it writes, so a stale button on an item that has since been
+  taken, skipped or stopped elsewhere answers `withdrawn` and changes nothing.
+- **One write path.** `stopMedicationCourses` — the same core the web Stop dialog calls.
+  The typed outcome is rendered rather than an unconditional success, the consumed dose
+  ROW is dropped from the keyboard, and Restart on /medications is the undo.
+- **The message's words never name the button** (#1718). Web Push and the Home Assistant
+  webhook strip `actions`; the dose list is the message and this is a shortcut on it.
+- Token namespace `medstop:` — its own, never a variant of `demote:`, and registered in
+  `NON_DISMISSAL_PREFIXES` because it silences nothing and writes no suppression row.
+
+See [supplements](supplements.md) for the detector's gates and the disjointness
+argument against the demotion flag.
 
 ## The message-line grammar (#2391)
 

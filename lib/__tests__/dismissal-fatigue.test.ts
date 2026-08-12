@@ -33,6 +33,15 @@ import {
   staleExerciseSignalKey,
 } from "../training-observations";
 import { digestDedupeKey } from "../findings";
+import { syncRequestDedupeKey, syncRequestFamily } from "../sync-requests";
+import {
+  recordsRecencyDedupeKey,
+  recordsRecencyFamily,
+} from "../records-recency";
+import {
+  digestTimeEpisodeKey,
+  digestTimeFamily,
+} from "../digest-time-suggestion";
 
 const DAY = "2026-08-12";
 
@@ -143,6 +152,134 @@ describe("findingEpisodeFamily", () => {
         supersedes: "right-size:1",
       })
     ).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The DECLARED family (#2543) — the digest half's missing half.
+// ---------------------------------------------------------------------------
+//
+// #2543 read the symptom right and the cause wrong: it concluded that no digest line
+// "has a family to accumulate against". Three do, and always did — the anchors are in
+// the keys. What none of them had was a way to SAY so, because `supersedes` means "my
+// pre-anchor legacy key" and these three never had one. These tests pin the declaration
+// and, more importantly, pin that declaring cannot widen.
+
+describe("findingEpisodeFamily: a declared family (#2543)", () => {
+  it("reads a stem stated outright, with no legacy key involved", () => {
+    expect(
+      findingEpisodeFamily({
+        dedupeKey: syncRequestDedupeKey(
+          "mychart",
+          "main",
+          "2026-08-01 07:00:00"
+        ),
+        episodeFamily: syncRequestFamily("mychart", "main"),
+      })
+    ).toBe("portal-sync:mychart/main");
+  });
+
+  it("refuses a declaration that is not a prefix of the key it rides on", () => {
+    // The whole safety property of the explicit field: a producer can only name a stem
+    // its own key grew out of. Naming a broader namespace to accumulate faster — the
+    // over-broad-stem failure mode #2538's metrics analysis names — is rejected here
+    // rather than caught in review.
+    expect(
+      findingEpisodeFamily({
+        dedupeKey: "records-recency:fitbit-archive:2026-01-04",
+        episodeFamily: "portal-sync:mychart/main",
+      })
+    ).toBeNull();
+  });
+
+  it("refuses a declaration that omits the separator", () => {
+    expect(
+      findingEpisodeFamily({
+        dedupeKey: "digest-time:4200:480",
+        episodeFamily: "digest-time:420",
+      })
+    ).toBeNull();
+  });
+
+  it("prefers the declaration when a finding somehow carries both", () => {
+    expect(
+      findingEpisodeFamily({
+        dedupeKey: "a:b:c",
+        episodeFamily: "a:b",
+        supersedes: "a",
+      })
+    ).toBe("a:b");
+  });
+});
+
+describe("the three digest families mint their stem from their own key (#2543)", () => {
+  it("portal-sync: the key is the family plus the request's day", () => {
+    const family = syncRequestFamily("mychart", "second-login");
+    const key = syncRequestDedupeKey(
+      "mychart",
+      "second-login",
+      "2026-08-01 07:00:00"
+    );
+    expect(key).toBe(`${family}:2026-08-01`);
+    expect(
+      findingEpisodeFamily({ dedupeKey: key, episodeFamily: family })
+    ).toBe(family);
+  });
+
+  it("portal-sync: two logins on one portal are two families, never one", () => {
+    expect(syncRequestFamily("mychart", "main")).not.toBe(
+      syncRequestFamily("mychart", "other")
+    );
+  });
+
+  it("records-recency: the key is the family plus the frontier", () => {
+    const family = recordsRecencyFamily("clinical-records");
+    const key = recordsRecencyDedupeKey("clinical-records", "2026-02-14");
+    expect(key).toBe(`${family}:2026-02-14`);
+    expect(
+      findingEpisodeFamily({ dedupeKey: key, episodeFamily: family })
+    ).toBe(family);
+  });
+
+  it("records-recency: an archive source and the manual leg never share a family", () => {
+    expect(recordsRecencyFamily("fitbit-archive")).not.toBe(
+      recordsRecencyFamily("clinical-records")
+    );
+    expect(
+      dismissedRaisings(recordsRecencyFamily("clinical-records"), [
+        recordsRecencyDedupeKey("fitbit-archive", "2026-01-04"),
+        recordsRecencyDedupeKey("fitbit-archive", "2026-04-04"),
+      ])
+    ).toBe(0);
+  });
+
+  it("digest-time: the key is the family plus the proposal", () => {
+    const family = digestTimeFamily(420);
+    expect(digestTimeEpisodeKey(420, 480)).toBe(`${family}:480`);
+    // The configured minute is the topic; changing it re-arms into a NEW family whose
+    // count starts at zero — the ratchet's own rule, now also the counting rule.
+    expect(
+      dismissedRaisings(digestTimeFamily(480), [
+        digestTimeEpisodeKey(420, 480),
+        digestTimeEpisodeKey(420, 520),
+      ])
+    ).toBe(0);
+  });
+
+  it("digest-time: two declined proposals under one configured time reach quiet", () => {
+    const keys = [
+      digestTimeEpisodeKey(420, 480),
+      digestTimeEpisodeKey(420, 520),
+    ];
+    expect(
+      findingProminence(
+        {
+          dedupeKey: digestTimeEpisodeKey(420, 560),
+          episodeFamily: digestTimeFamily(420),
+        },
+        keys
+      )
+    ).toBe("quiet");
   });
 });
 

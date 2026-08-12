@@ -245,7 +245,27 @@ export function recordsRecencyDedupeKey(
   source: string,
   frontier: string
 ): string {
-  return `${RECORDS_RECENCY_PREFIX}${source}:${frontier}`;
+  return `${recordsRecencyFamily(source)}:${frontier}`;
+}
+
+/**
+ * The TOPIC the key above is an episode of — "records from THIS source are behind" —
+ * declared for the repeat-dismissal family lookup (#2543/#2386). Minted by the key
+ * itself from the same component, so the stem cannot drift wider than the identity it
+ * belongs to.
+ *
+ * The stem is the SOURCE and never the namespace: an archive export nobody downloads and
+ * a lab result nobody photographs are two different errands, and folding them into one
+ * family would let declines of the easy one quiet the ask about the other. That is the
+ * over-broad-stem failure mode this mechanism invites, refused here at the declaration.
+ *
+ * Counting under this stem counts genuinely SEPARATE staleness episodes, because the
+ * frontier only moves when the source actually delivered something newer. A user who
+ * never uploads keeps ONE key and never accumulates — which is right: that is one ask
+ * still standing, not a pattern of declining.
+ */
+export function recordsRecencyFamily(source: string): string {
+  return `${RECORDS_RECENCY_PREFIX}${source}`;
 }
 
 // ── Copy ─────────────────────────────────────────────────────────────────────

@@ -1205,10 +1205,18 @@ import {
 } from "../settings";
 import type {
   DemoteCallback,
+  MedStopCallback,
   OfferTailCallback,
   TuneCallback,
 } from "./callback-data";
 import { demoteIntakeObligation } from "../intake-obligation-write";
+import { stopMedicationCourses } from "../queries/intake/medications";
+import { getUnconfirmedMedicationIds } from "../intake-history";
+import {
+  UNCONFIRMED_STOP_REASON,
+  UNCONFIRMED_STOP_TEXT,
+  type UnconfirmedStopOutcome,
+} from "../medication-unconfirmed";
 import { DEMOTION_OUTCOME_TEXT } from "../supplement-demotion";
 import { collectRightSizeCandidates } from "../rule-findings";
 import { lowerFrequencyTargetFloor } from "../target-rightsize-write";
@@ -1309,6 +1317,7 @@ import {
   parseTempReplyMarker,
   parseWeightReplyMarker,
   removeButton,
+  removeRowContaining,
   replacementWithTitle,
   resolveTapProfile,
   SYMPTOM_SEVERITY_LABELS,
@@ -1468,6 +1477,80 @@ export async function handleDemoteTap(
     chatId,
     messageId,
     removeButton(rows, cq.data as string)
+  );
+}
+
+// A Stop tap on an unconfirmed imported medication's dose reminder (#2574).
+//
+// The write this button performs is the STOP, not a deep link to it and not a demotion.
+// The complaint it answers is "stop asking me about a medication I finished months
+// ago", and a link to the Stop dialog is the same two-step journey the person could
+// already make from /medications — it answers the record-keeping question and leaves
+// the actual complaint standing for another day.
+//
+// It goes through `stopMedicationCourses`, the SAME core the web Stop dialog calls, so
+// a Telegram stop and a web stop cannot come to mean different things: the open course
+// closes and `active` clears, in one transaction. No second write path.
+//
+// It deliberately does NOT copy the web action's eager refill-marker clear. That clear
+// (`leftRefillTrackedSet`, app/(app)/medications/actions.ts) lives in the ACTION rather
+// than the core and is an optimisation so a SAME-SESSION Stop→Restart re-fires at once;
+// the authoritative drop is `planRefillNudges`' self-healing sweep (#325, declared in
+// SEND_MARKER_REGISTRY), which clears any marker whose item is no longer a tracked low
+// candidate on the next tick, whichever transition removed it. Copying the eager half
+// here would be a second definition of a rule the tick already enforces.
+//
+// IT RE-DERIVES THE OFFER BEFORE IT WRITES. The token carries an item id and nothing
+// else, and the live detector — not the button — decides whether this item is still one
+// nobody has ever engaged with. A message that sat in a chat while its dose was taken
+// or skipped refuses, which is what makes the gate ("never on a medication with any
+// engagement history") true of the tap and not merely of the render. Reading the offer
+// off the button would make every stale message a loaded one.
+//
+// The tapped ROW is consumed on success — take, skip and stop are all meaningless for
+// an item that is no longer active — while the rest of the session's buttons survive.
+// Restart, on /medications, remains the undo: it opens a NEW course dated today rather
+// than reopening the old one, so a mis-tap costs one tap and rewrites no history.
+export async function handleMedStopTap(
+  cq: TelegramCallbackQuery,
+  token: MedStopCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome: UnconfirmedStopOutcome = getUnconfirmedMedicationIds(
+    profileId,
+    today(profileId)
+  ).has(token.itemId)
+    ? stopMedicationCourses(profileId, token.itemId, {
+        // TODAY, never the reminder's date: closing a course is a decision made now,
+        // and back-dating it to the day a week-old message was sent would rewrite the
+        // period the ledger says the medication was live.
+        date: today(profileId),
+        reason: UNCONFIRMED_STOP_REASON,
+      })
+    : "withdrawn";
+  await answerCallbackQuery(cq.id, UNCONFIRMED_STOP_TEXT[outcome]);
+  if (
+    (outcome !== "stopped" && outcome !== "synced") ||
+    chatId == null ||
+    messageId == null
+  )
+    return;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (rows.length === 0) return;
+  await updateMessageKeyboard(
+    profileId,
+    chatId,
+    messageId,
+    removeRowContaining(rows, cq.data as string)
   );
 }
 

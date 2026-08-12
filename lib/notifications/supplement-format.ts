@@ -32,6 +32,7 @@ import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
+import { MED_STOP_PREFIX } from "./callback-data";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
@@ -152,6 +153,19 @@ export interface WindowDose {
   // rule. It is also why the escape hatch reaches a tap-only user at all — the person
   // most likely to be ignoring the item is the one who never opens the app.
   demotable?: boolean;
+  // This item is an UNCONFIRMED IMPORTED MEDICATION (#2574) — created by a document
+  // import, never logged in its life, and due often enough to have been noticed. When
+  // true the dose's button row grows a Stop button beside Take and Skip.
+  //
+  // DISJOINT FROM `demotable` BY CONSTRUCTION, not by coordination: the demotion
+  // detector refuses medications outright and this one requires one, so a row can gain
+  // at most one extra button and never two. lib/__tests__/medication-unconfirmed.test.ts
+  // asserts it rather than assuming it.
+  //
+  // Same ride-the-nag argument as `demotable`, one step sharper: the person being
+  // interrupted every morning by a course that ended months ago needs the exit on the
+  // interruption itself, not on a screen they have to go find.
+  stoppable?: boolean;
   // The declared food timing checked against the FOOD LEDGER, as of the gather (#2022).
   // Informational only — it decides nothing about whether this dose is due, reminded or
   // escalated; a dose reminder is a safety signal, so the ledger may inform its text and
@@ -338,7 +352,7 @@ function doseSessionActions(
       data: `all:${profileId}:${slot}:${date}`,
     });
   }
-  for (const { dose, supp, demotable } of pending) {
+  for (const { dose, supp, demotable, stoppable } of pending) {
     const row = `dose:${dose.id}`;
     actions.push({
       label: `${GLYPH.done} ${supp.name}`,
@@ -359,6 +373,23 @@ function doseSessionActions(
       actions.push({
         label: "⤓ May",
         data: `demote:${profileId}:${supp.id}:${date}`,
+        row,
+      });
+    }
+    // Take / Skip / STOP (#2574), the medication twin of the button above and never
+    // beside it — the two detectors are complements on `kind`. Present only while the
+    // item is import-provenanced with no log of any kind in its life, and it disappears
+    // the moment either of the two buttons to its left is used.
+    //
+    // The reminder's WORDS say nothing about it, deliberately (#1718). Web Push and the
+    // Home Assistant webhook strip `actions`, so a body that referred to this button
+    // would be telling those readers to tap something that is not there; the dose list
+    // is the message, this is a shortcut on it, and /medications is the complete
+    // user-initiated surface for everyone else.
+    if (stoppable) {
+      actions.push({
+        label: `${GLYPH.finish} Stop`,
+        data: `${MED_STOP_PREFIX}:${profileId}:${supp.id}:${date}`,
         row,
       });
     }

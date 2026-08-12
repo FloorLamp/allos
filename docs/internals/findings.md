@@ -1541,9 +1541,10 @@ and no user configuration. `lib/dismissal-fatigue.ts` is the decision;
 **Count distinct raisings, not rows.** The store carries a unique
 `(profile_id, signal_key)`, so several dismissals inside one appearance are already
 one row. What separates raisings is the #436 **episode anchor**: a behavioural
-finding's `dedupeKey` is `<topic stem>:<episode anchor>` and it carries the stem as
-`supersedes`. Two stored rows under two anchors of one stem are two raisings of one
-topic, both declined. The family is therefore a fact the ENGINE declared, not a
+finding's `dedupeKey` is `<topic stem>:<episode anchor>` and it DECLARES the stem —
+as `supersedes` for an engine that had a pre-anchor key, or as `episodeFamily` for one
+whose key was born anchored (#2543). Two stored rows under two anchors of one stem are
+two raisings of one topic, both declined. The family is therefore a fact the ENGINE declared, not a
 per-namespace rule this module invented — and `supersedes` is only read as a stem
 when it is a strict prefix of the key, so the trajectory finding's cross-finding
 acknowledgment (#564, `biomarker-flag:<family>`) yields no family and no fatigue.
@@ -1578,6 +1579,42 @@ refused before any count is consulted; an overdue care follow-up declares
 pure test enumerates `LIFECYCLE_SUPPRESSION_POLICIES`, so a new tier must be
 classified before it ships.
 
+### Where it applies — the dashboard, and the digest (#2543)
+
+#2538 shipped the dashboard half: `routineOrder` reranks so a fatigued finding stops
+leading, and leaves the surface at four declines. The digest half sat unshipped on the
+reading that no digest line had a family to accumulate against, and that reading was
+wrong in a specific and fixable way: **the anchors were already there and the
+declaration was missing.** `supersedes` means "my pre-anchor legacy key", so an engine
+whose key was BORN anchored had nowhere to say what its stem was and answered "no
+family" while carrying exactly the right key shape.
+
+`Finding.episodeFamily` (and its `UpcomingItem` twin) is that declaration. Three digest
+lines make it, each minting the stem from the same components as its own key so the two
+cannot drift:
+
+| Line              | Key                                    | Declared stem                    | What an episode is                |
+| ----------------- | -------------------------------------- | -------------------------------- | --------------------------------- |
+| `portal-sync`     | `portal-sync:<portal>/<account>:<day>` | `portal-sync:<portal>/<account>` | one ask, on the day it was raised |
+| `records-recency` | `records-recency:<source>:<frontier>`  | `records-recency:<source>`       | one staleness episode             |
+| `digest-time`     | `digest-time:<configured>:<proposed>`  | `digest-time:<configured>`       | one proposal past the ratchet     |
+
+The digest then drops anything not `routine` (`lib/notifications/digest-data.ts`,
+beside the two existing strict reductions), and the row stays on Upcoming / Data →
+Review / the Settings mirror. That is a §2 reduction: fewer words on a message that
+was sending anyway, nothing written, nothing hidden from the surfaces the user opens.
+
+**No re-keying happened, and none should.** #2543's option 1 — "give the relevant
+digest families an episode anchor" — would have been a re-keying exercise that orphans
+dismissals; declaring the anchors that already exist orphans nothing. Its option 2 —
+"decide the digest is out of scope" — is retired for these three and **stands for
+everything else**: `dose:<id>`, `refill:<id>`, `screening:<rule>` and their siblings
+name their SUBJECT rather than an episode of it, so one key is all there can ever be,
+the count cannot reach the threshold, and that is an answer rather than a gap. The
+declaration is validated as a strict prefix of the key it rides on, which is what stops
+a producer widening a stem to accumulate faster — the failure mode any
+"declines avoided" measure rewards.
+
 ### Its declared falsification
 
 **What would show it working.** New dismissal rows stop accumulating in the
@@ -1609,26 +1646,30 @@ A second-order version worth naming because the mechanism invites it: widening w
 counts as one family makes counts accumulate faster and quiets more, so any measure
 of "declines avoided" rewards over-broad stems — which is the mechanism silencing
 distinct concerns under one topic. That is why the family is read off the engine's
-own declared episode anchor and never widened here.
+own declared episode anchor and never widened here, and why the #2543 explicit
+declaration is honoured only when it is a strict PREFIX of the key that carries it:
+a producer can name a stem its own key grew out of, and nothing broader.
 
 ## Where each rule is enforced
 
-| Rule                                                         | Enforced by                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Obligation decides push; kind decides clinical identity      | `isPushedIntake` / `accruesMisses` / `escalatesOnMiss` (`lib/intake-schedule.ts`)                                                                                                                                                                                                                                                                                                              |
-| Safety engines are obligation-blind                          | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                                                                                                                                                                                                                                                                                                         |
-| Conservative direction per aggregate (5a)                    | `lib/__tests__/dri.test.ts` + `lib/__tests__/intake-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions                                                                                                                                                                                            |
-| Suggest-never-write                                          | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                                                                                                                                                                                                       |
-| Reconciliation only ever REDUCES a message's claims          | `lib/notifications/reconcile-core.ts` emits close/strip only; predicates read the ledger and never the suppression bus (`lib/__db_tests__/message-reconcile.test.ts`)                                                                                                                                                                                                                          |
-| Preference filters never override safety floors (8)          | `flagged` ⇒ notable in `applyRecentChangeDemotion`, so a tuned-down `labs` still delivers its flagged result; `lib/__tests__/digest-tune.test.ts` + `lib/__db_tests__/digest-tune.test.ts`                                                                                                                                                                                                     |
-| Recovery clears a suggestion                                 | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                                                                                                                                                                                                           |
-| Window nesting                                               | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                                                                                                                                                                                                        |
-| Reach tier per finding namespace                             | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                                                                                                                                                                                                                |
-| A quiet-stream observation renders and never sends (#2146)   | `isEscalatingIntegration` (`lib/attention.ts`) filters the kind inside `buildAttentionModel` and the digest's integration section; `getQuietStreamAttention` is a separate entry point the badge / hero / digest never call                                                                                                                                                                    |
-| A stream lifecycle offer renders and never sends (#2162)     | `getStreamLifecycleOffers` (`lib/queries/stream-lifecycle.ts`) is its own entry point returning its own shape — nothing it produces is an `AttentionIntegration`, so there is no escalation list, and therefore no digest section, for it to reach                                                                                                                                             |
-| Repeat dismissal never reaches a safety signal (10)          | `mayQuietOnDismissal` (`lib/dismissal-fatigue.ts`) derives the gate from `isHiddenUnderPolicy`, so quieting is available only where a plain dismiss is already honoured; `lib/__tests__/dismissal-fatigue.test.ts` enumerates `LIFECYCLE_SUPPRESSION_POLICIES` and `lib/__db_tests__/dismissal-fatigue.test.ts` pins the crisis item and a care-persistent follow-up against twelve dismissals |
-| Quieting de-prioritises and never silences (10)              | `routineOrder` reranks; the origin tabs and `collectCoachingFindings` are untouched, and no suppression row is written (`lib/__db_tests__/dismissal-fatigue.test.ts`)                                                                                                                                                                                                                          |
-| Only a tap writes the bedtime-reminder consent (#2161/#2162) | `setProfileWearReminder` is called from exactly two places, both Server Actions bound to a user's button (`app/(app)/stream-lifecycle-actions.ts`, `app/(app)/settings/profile/actions.ts`); the lifecycle gather only ever READS it (`lib/__action_tests__/stream-lifecycle.actions.test.ts`)                                                                                                 |
+| Rule                                                                                     | Enforced by                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Obligation decides push; kind decides clinical identity                                  | `isPushedIntake` / `accruesMisses` / `escalatesOnMiss` (`lib/intake-schedule.ts`)                                                                                                                                                                                                                                                                                                              |
+| Safety engines are obligation-blind                                                      | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                                                                                                                                                                                                                                                                                                         |
+| Conservative direction per aggregate (5a)                                                | `lib/__tests__/dri.test.ts` + `lib/__tests__/intake-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions                                                                                                                                                                                            |
+| Suggest-never-write                                                                      | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                                                                                                                                                                                                       |
+| Reconciliation only ever REDUCES a message's claims                                      | `lib/notifications/reconcile-core.ts` emits close/strip only; predicates read the ledger and never the suppression bus (`lib/__db_tests__/message-reconcile.test.ts`)                                                                                                                                                                                                                          |
+| Preference filters never override safety floors (8)                                      | `flagged` ⇒ notable in `applyRecentChangeDemotion`, so a tuned-down `labs` still delivers its flagged result; `lib/__tests__/digest-tune.test.ts` + `lib/__db_tests__/digest-tune.test.ts`                                                                                                                                                                                                     |
+| Recovery clears a suggestion                                                             | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                                                                                                                                                                                                           |
+| Window nesting                                                                           | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                                                                                                                                                                                                        |
+| Reach tier per finding namespace                                                         | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                                                                                                                                                                                                                |
+| A quiet-stream observation renders and never sends (#2146)                               | `isEscalatingIntegration` (`lib/attention.ts`) filters the kind inside `buildAttentionModel` and the digest's integration section; `getQuietStreamAttention` is a separate entry point the badge / hero / digest never call                                                                                                                                                                    |
+| A stream lifecycle offer renders and never sends (#2162)                                 | `getStreamLifecycleOffers` (`lib/queries/stream-lifecycle.ts`) is its own entry point returning its own shape — nothing it produces is an `AttentionIntegration`, so there is no escalation list, and therefore no digest section, for it to reach                                                                                                                                             |
+| Repeat dismissal never reaches a safety signal (10)                                      | `mayQuietOnDismissal` (`lib/dismissal-fatigue.ts`) derives the gate from `isHiddenUnderPolicy`, so quieting is available only where a plain dismiss is already honoured; `lib/__tests__/dismissal-fatigue.test.ts` enumerates `LIFECYCLE_SUPPRESSION_POLICIES` and `lib/__db_tests__/dismissal-fatigue.test.ts` pins the crisis item and a care-persistent follow-up against twelve dismissals |
+| Quieting de-prioritises and never silences (10)                                          | `routineOrder` reranks; the origin tabs and `collectCoachingFindings` are untouched, and no suppression row is written (`lib/__db_tests__/dismissal-fatigue.test.ts`)                                                                                                                                                                                                                          |
+| A declared episode family can never widen a stem (#2543)                                 | `findingEpisodeFamily` validates the declaration as a strict prefix of the finding's own `dedupeKey`, so a producer can only name a stem its key grew out of; `lib/__tests__/dismissal-fatigue.test.ts` rejects a cross-namespace and a separator-less declaration, and `lib/__db_tests__/digest-dismissal-fatigue.test.ts` proves an unanchored digest line is untouched by ten stored keys   |
+| An unconfirmed imported medication may be stopped, never demoted or auto-stopped (#2574) | `detectUnconfirmedMedication` (`lib/medication-unconfirmed.ts`) requires `kind = medication` + import provenance + ZERO lifetime logs; `handleMedStopTap` re-derives candidacy before it writes and calls `stopMedicationCourses`, the same core the web dialog uses (`lib/__tests__/medication-unconfirmed.test.ts`, `lib/__db_tests__/medication-unconfirmed.test.ts`)                       |
+| Only a tap writes the bedtime-reminder consent (#2161/#2162)                             | `setProfileWearReminder` is called from exactly two places, both Server Actions bound to a user's button (`app/(app)/stream-lifecycle-actions.ts`, `app/(app)/settings/profile/actions.ts`); the lifecycle gather only ever READS it (`lib/__action_tests__/stream-lifecycle.actions.test.ts`)                                                                                                 |
 
 ## 3c. A named waiting state says what the DATA is doing (#2097)
 
