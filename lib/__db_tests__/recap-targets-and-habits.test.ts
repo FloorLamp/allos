@@ -155,7 +155,8 @@ describe("the recap reports the closed week's target verdicts (#2395)", () => {
     // floor vocabulary never touches it (#998).
     const pid = trainingProfile("recap-verdict-cap");
     makeTarget(pid, "substance", "alcohol", 7);
-    for (const back of [1, 2, 3]) logFood(pid, dayBack(pid, back), "alcohol", 4);
+    for (const back of [1, 2, 3])
+      logFood(pid, dayBack(pid, back), "alcohol", 4);
 
     const recap = buildRecap(gatherRecapInput(pid, "kg", "week", true));
     const line = recap.lines.find((l) => l.key === "targets")!;
@@ -170,7 +171,9 @@ describe("the recap reports the closed week's target verdicts (#2395)", () => {
         .body
     );
     expect(body).toContain("over the Alcohol cap");
-    expect(body).not.toMatch(/to go|left|behind on Alcohol|Alcohol \(weekly cap\)/);
+    expect(body).not.toMatch(
+      /to go|left|behind on Alcohol|Alcohol \(weekly cap\)/
+    );
   });
 
   it("states a held cap for a profile whose only targets are caps", () => {
@@ -187,11 +190,13 @@ describe("the recap reports the closed week's target verdicts (#2395)", () => {
   it("mentions a range target's weekly maximum only when it was PASSED", () => {
     const pid = newProfile("recap-verdict-ceiling");
     makeTarget(pid, "type", "cardio", 2, { perWeekMax: 3 });
-    for (const back of [1, 2, 3]) logActivity(pid, dayBack(pid, back), "cardio");
+    for (const back of [1, 2, 3])
+      logActivity(pid, dayBack(pid, back), "cardio");
     const atCeiling = buildRecap(gatherRecapInput(pid, "kg", "week", true));
     // Reaching the maximum is the calm "that's plenty" state, not a fact to report.
-    expect(recapLineAnnotation(atCeiling.lines.find((l) => l.key === "targets")!))
-      .toBeUndefined();
+    expect(
+      recapLineAnnotation(atCeiling.lines.find((l) => l.key === "targets")!)
+    ).toBeUndefined();
 
     logActivity(pid, dayBack(pid, 4), "cardio");
     const passed = buildRecap(gatherRecapInput(pid, "kg", "week", true));
@@ -214,7 +219,9 @@ describe("the monthly recap observes food habits and declared caps (#2397)", () 
   // that is recognisable and a drinking pattern that is not the app's to narrate.
   function eatingProfile(name: string): number {
     const pid = newProfile(name);
-    const days = Array.from({ length: 14 }, (_, i) => shiftDateStr("2026-06-01", i));
+    const days = Array.from({ length: 14 }, (_, i) =>
+      shiftDateStr("2026-06-01", i)
+    );
     days.forEach((date, i) => {
       logFood(pid, date, "whole_grains");
       if (i % 2 === 0) logFood(pid, date, "fatty_fish");
@@ -297,7 +304,8 @@ describe("the monthly recap observes food habits and declared caps (#2397)", () 
     // whole weeks fit inside June 1–17; the cap was passed in one of them.
     const pid = newProfile("recap-caps-declared");
     makeTarget(pid, "substance", "alcohol", 7);
-    for (const back of [1, 2, 3]) logFood(pid, dayBack(pid, back), "alcohol", 4);
+    for (const back of [1, 2, 3])
+      logFood(pid, dayBack(pid, back), "alcohol", 4);
     logFood(pid, dayBack(pid, 9), "alcohol", 2);
 
     const recap = buildRecap(gatherRecapInput(pid, "kg", "month"));

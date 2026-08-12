@@ -332,7 +332,8 @@ export interface CadenceTargetVerdict {
 // produces "the Alcohol (weekly cap) cap". One place decides, so no message builder has
 // to strip a suffix.
 export function cadenceScopeNoun(kind: string, value: string): string {
-  if (kind === "substance" && isSubstance(value)) return substanceDef(value).label;
+  if (kind === "substance" && isSubstance(value))
+    return substanceDef(value).label;
   return frequencyScopeLabel(kind, value);
 }
 
@@ -384,7 +385,9 @@ export function cadenceWeekVerdictLine(
         )} held`;
 
   const notes = [
-    short.length > 0 ? `short on ${namedList(short.map((e) => e.label))}` : null,
+    short.length > 0
+      ? `short on ${namedList(short.map((e) => e.label))}`
+      : null,
     overCeiling.length > 0
       ? `past the weekly maximum on ${namedList(
           overCeiling.map((e) => e.label)

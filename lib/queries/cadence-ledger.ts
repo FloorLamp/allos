@@ -47,6 +47,11 @@ import { weekWindowStartOn } from "./profile-week";
 //   getSubstanceWeekState            → weeks 1, includeCurrent, direction cap
 //   getSubstanceWeeklyTrend          → weeks N, includeCurrent, direction cap
 //
+// The periodic recap's two reads joined them (#2395/#2397), at the bottom of this file:
+//
+//   getCadenceWeekVerdicts           → weeks 1, includeCurrent, BOTH directions
+//   getCadenceCapWeeks               → weeks N, includeCurrent, direction cap
+//
 // Load-bearing properties carried over unchanged from those readers:
 //
 //   • The weeks are the PROFILE'S OWN weekly windows (calendar mode resetting on
@@ -598,7 +603,10 @@ export function getCadenceWeekVerdicts(
       if (!week) continue;
       const ceiling = entry.target.per_week_max;
       out.push({
-        label: cadenceScopeNoun(entry.target.scope_kind, entry.target.scope_value),
+        label: cadenceScopeNoun(
+          entry.target.scope_kind,
+          entry.target.scope_value
+        ),
         direction,
         verdict: week.verdict,
         // The RANGE ceiling of a floor target (#1259), exceeded strictly — reaching it
@@ -645,7 +653,10 @@ export function getCadenceCapWeeks(
     const weeks = entry.weeks.filter((w) => w.start >= declaredOn);
     if (weeks.length < CAP_PERIOD_MIN_WEEKS) continue;
     out.push({
-      label: cadenceScopeNoun(entry.target.scope_kind, entry.target.scope_value),
+      label: cadenceScopeNoun(
+        entry.target.scope_kind,
+        entry.target.scope_value
+      ),
       overWeeks: weeks.filter((w) => w.verdict === "over-cap").length,
       weeks: weeks.length,
     });

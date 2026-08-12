@@ -343,9 +343,9 @@ describe("cadenceWeekVerdictLine (#2395)", () => {
   });
 
   it("counts at-ceiling as met — the range model's most complete state", () => {
-    expect(cadenceWeekVerdictLine([floor("Mobility", "at-ceiling")])?.value).toBe(
-      "1 of 1 target met"
-    );
+    expect(
+      cadenceWeekVerdictLine([floor("Mobility", "at-ceiling")])?.value
+    ).toBe("1 of 1 target met");
   });
 
   it("counts the overflow of a long shortfall list rather than listing it", () => {
@@ -376,19 +376,23 @@ describe("cadenceWeekVerdictLine (#2395)", () => {
     // Rolling caps into "targets met" would state a floor's success condition over a
     // scope that has no floor.
     expect(
-      cadenceWeekVerdictLine([cap("Alcohol", "under-cap"), cap("Nicotine", "at-cap")])
+      cadenceWeekVerdictLine([
+        cap("Alcohol", "under-cap"),
+        cap("Nicotine", "at-cap"),
+      ])
     ).toEqual({ value: "2 of 2 weekly caps held", notes: [] });
-    expect(
-      cadenceWeekVerdictLine([cap("Alcohol", "over-cap")])
-    ).toEqual({ value: "0 of 1 weekly cap held", notes: ["over the Alcohol cap"] });
+    expect(cadenceWeekVerdictLine([cap("Alcohol", "over-cap")])).toEqual({
+      value: "0 of 1 weekly cap held",
+      notes: ["over the Alcohol cap"],
+    });
   });
 
   it("reports a floor-plus-ceiling target's FLOOR verdict, mentioning the ceiling only when passed", () => {
     // #2395's ruling for a target carrying both. Reaching the weekly maximum is the calm
     // "that's plenty" state (`at-ceiling` is a MET verdict); only passing it is a fact.
-    expect(cadenceWeekVerdictLine([floor("Sauna", "at-ceiling")])?.notes).toEqual(
-      []
-    );
+    expect(
+      cadenceWeekVerdictLine([floor("Sauna", "at-ceiling")])?.notes
+    ).toEqual([]);
     expect(cadenceWeekVerdictLine([floor("Sauna", "met", true)])).toEqual({
       value: "1 of 1 target met",
       notes: ["past the weekly maximum on Sauna"],
@@ -422,9 +426,14 @@ describe("cadenceCapWeeksSentence (#2397)", () => {
   });
 
   it("carries no pace, no to-go and no comparative in either branch", () => {
-    const nudging = /to go|left|remaining|behind|on pace|more of|keep going|streak|in a row/i;
+    const nudging =
+      /to go|left|remaining|behind|on pace|more of|keep going|streak|in a row/i;
     for (const overWeeks of [0, 1, 4]) {
-      const s = cadenceCapWeeksSentence({ label: "Alcohol", overWeeks, weeks: 4 });
+      const s = cadenceCapWeeksSentence({
+        label: "Alcohol",
+        overWeeks,
+        weeks: 4,
+      });
       expect(s, s).not.toMatch(nudging);
     }
   });

@@ -243,8 +243,7 @@ export function periodFoodHabits(
   if (!period) return [];
   const excluded = opts.excluded;
   return period.groups.filter(
-    (g) =>
-      g.share >= FOOD_PERIOD_HABIT_MIN_SHARE && !excluded?.has(g.groupKey)
+    (g) => g.share >= FOOD_PERIOD_HABIT_MIN_SHARE && !excluded?.has(g.groupKey)
   );
 }
 

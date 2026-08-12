@@ -77,9 +77,35 @@ Every former reader is a thin adapter over it:
 | `getFrequencyTargetWeeklyHistory` | `weeks: N, includeCurrent: false, direction: "floor"` |
 | `getSubstanceWeekState`           | `weeks: 1, includeCurrent: true, direction: "cap"`    |
 | `getSubstanceWeeklyTrend`         | `weeks: N, includeCurrent: true, direction: "cap"`    |
+| `getCadenceWeekVerdicts`          | `weeks: 1, includeCurrent: true`, **both** directions |
+| `getCadenceCapWeeks`              | `weeks: N, includeCurrent: true, direction: "cap"`    |
 
 `getPracticeTrends` and `getProtocolAdherence` were already formatters over the
 first two and keep working unchanged — which is the proof the layering holds.
+
+The last two rows are the periodic recap's reads (#2395/#2397). The daily digest
+reported a weekly target's PACE while the message that CLOSES the week never
+mentioned the targets that week is defined over; the recap reads the verdict here
+rather than computing one, and `cadenceWeekVerdictLine` (`lib/cadence.ts`) words it
+in the same rollup grammar `weeklyTargetPaceLine` words pace in.
+
+Two things about them are worth copying rather than re-deciding:
+
+- **They anchor on the period's LAST DAY.** A caller that already knows which week it
+  means passes that week's end date and reads the anchor's own window — the calendar
+  week containing it, or the trailing seven days ending on it. Stepping the anchor
+  forward to "the day after the week" instead would shift a rolling profile's whole
+  window by a day.
+- **A read that wants both directions asks twice, by name.**
+  `getCadenceWeekVerdicts` reads floors and caps in two calls and keeps the answers
+  distinguishable all the way into the sentence. That is what lets a cap tenant reach
+  the recap line at all without the floor vocabulary ever touching it: reported as
+  within or over, never with a figure to go.
+
+Both apply the cold-start exclusion — a target the user declared part-way through a
+week is left out rather than scored (#1670) — and `getCadenceCapWeeks` applies it per
+week, so a cap declared mid-period is reported over the weeks it actually existed for
+and stays silent below `CAP_PERIOD_MIN_WEEKS`.
 
 ## Substance is a tenant, not a fork
 

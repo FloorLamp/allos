@@ -103,7 +103,9 @@ describe("the observation and its sentence (#2397)", () => {
       ])
     );
     const sentence = foodHabitSentence(observations[0]);
-    expect(sentence).not.toMatch(/in a row|straight|streak|consecutive|day \d+/i);
+    expect(sentence).not.toMatch(
+      /in a row|straight|streak|consecutive|day \d+/i
+    );
     expect(Object.keys(observations[0]).sort()).toEqual([
       "days",
       "groupKey",
@@ -134,9 +136,9 @@ describe("the observation and its sentence (#2397)", () => {
   });
 
   it("states nothing for a period under the measure's gate", () => {
-    expect(foodHabitObservations(period(dayEvents("fatty_fish", [0, 1])))).toEqual(
-      []
-    );
+    expect(
+      foodHabitObservations(period(dayEvents("fatty_fish", [0, 1])))
+    ).toEqual([]);
     expect(foodHabitObservations(null)).toEqual([]);
   });
 
