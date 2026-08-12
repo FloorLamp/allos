@@ -273,7 +273,7 @@ undeclared temporal column fails CI and the published index
 (`docs/internals/time-columns.md`, `npm run gen:time-columns`) cannot rot.
 `lib/row-instants.ts` asks the question over it: `eventInstant`, `recordInstant`,
 `bestKnownInstant`, `rowLocalDay`. Never hand-roll `COALESCE(recorded_at, taken_at)`
-or `eaten_at ?? logged_at` again — a ledger in
+or `occurred_at ?? recorded_at` again — a ledger in
 `lib/__tests__/time-columns.test.ts` freezes the ones that remain.
 `eventInstant` NEVER falls back to the record instant: a row that states no event
 time returns an explicit absence with a reason, because answering it with the tap

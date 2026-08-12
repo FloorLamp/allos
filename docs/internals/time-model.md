@@ -3,9 +3,15 @@
 Status: partial (phases 0, 1 and 3 shipped — the ingest boundary, storage, the writer
 chokepoint, the declared column index and the row-level readers. Phase 2, the
 column-name vocabulary, is open: wave 1 landed `occurred_at` on the three observation
-stores (migration 165) and wave 2 renamed `intake_item_logs.given_at` → `recorded_at`
-(migration 173); the food columns (`eaten_at` / `logged_at`), `food_log_events.time_source`
-and the remaining bare-instant conversions are still to come.)
+stores (migration 165), wave 2 renamed `intake_item_logs.given_at` → `recorded_at`
+(migration 173), and wave 3 — the food wave — renamed
+`food_log_events.logged_at` → `recorded_at` and `eaten_at` → `occurred_at`
+(migration 183). `food_log_events.time_source` is KEPT, by owner ruling on #2205
+(2026-08-08): it distinguishes "nobody stated a time" from "someone stated one and the
+write path refused it", which `occurred_at IS NULL` collapses. Still to come:
+`substance_log.logged_at`, `practice_logs.time`, the window columns
+(`start_time`/`end_time` on event tables), the ledger stamps (`at`, `ts`,
+`snapshot_at`), and the remaining bare-instant conversions.)
 
 Two questions look the same and are not:
 
@@ -114,7 +120,8 @@ Known gaps, stated rather than implied:
 `lib/date.ts` answers a question about a VALUE. The question a surface actually asks is
 about a ROW — "when did this dose happen", "which day does this serving count for" — and
 until phase 3 nothing owned it, so `COALESCE(recorded_at, taken_at)` was hand-rolled in six
-places and food paired `eaten_at ?? logged_at` in four more.
+places and food paired `occurred_at ?? recorded_at` (then spelled
+`eaten_at ?? logged_at`) in four more.
 
 `lib/time-columns.ts` declares what every temporal column MEANS, and `lib/row-instants.ts`
 asks the row-level question over that declaration: `eventInstant`, `recordInstant`,
