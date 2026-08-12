@@ -1782,7 +1782,17 @@ batch-links records sharing the visit's date (a matching provider reads
 _strong_; two visits on one day become a **picker**, never a guess) — and where
 a source health record carries the reference outright (a FHIR
 `MedicationRequest.encounter`, an `Observation.encounter`, a visit diagnosis)
-the link is set deterministically at import. A linked medication's detail page
+the link is set deterministically at import. A visit's **diagnosis names are
+normalized once at the import seam** (#2589): a source system that welds the
+diagnosis RANK into the display name ("… - Primary") states one finding, and the
+byte-equality join stored it as two, rendering the pair as two separate
+full-width chips. `lib/visit-diagnoses.ts` reads that suffix back off as a rank
+signal, dedups case-insensitively on what remains, and expresses the recovered
+rank as ORDER (primary first) rather than as part of a name. The qualifier list
+is CLOSED (`- Primary` / `- Secondary`, any casing) and deliberately not a
+trailing-hyphen guess, so a name carrying a real hyphenated clause ("Type 2
+diabetes mellitus - uncontrolled") is untouched. A name-keyed migration heals
+the summaries already stored through the same pure function. A linked medication's detail page
 shows **Prescribed at:** that visit (resolved through its source prescription
 record when the med itself carries no direct visit link). A medication also
 links to its **prescriber** (an individual in the shared providers registry —
@@ -2098,8 +2108,18 @@ the form, the quick actions, and any future import path share them:
   verdict within a 7-day threshold, and a length trend chart) answers "is it
   regular / changing." The **phase stays retrospective**: the luteal phase is
   only assigned once the following period is logged, because a phase says what
-  the body did, not what it will do. It also feeds cycle-phase-aware biomarker
-  reference ranges (the phase on a lab's collection date). Informational only, not medical advice or
+  the body did, not what it will do — and for the same reason there is **no
+  phase at all after today** (#2613). The derivation takes the profile-local
+  current day and refuses any date past it: the Timeline's default view leaves
+  its upper bound open so future-dated events stay visible, and a goal target
+  date months out used to arrive carrying a bare "Follicular" chip in the same
+  factual voice as today's. Several periods will happen in between, so that
+  phase is not merely uncertain, it is unknowable — the refusal is an ABSENCE
+  (no chip), never a hedged label, and the Cycle page's confidence-framed
+  forecast stays the only thing that says anything about the future. It also
+  feeds cycle-phase-aware biomarker
+  reference ranges (the phase on a lab's collection date, which is now itself
+  refused when a record is dated ahead of today). Informational only, not medical advice or
   diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
   always keeps it visible — data wins, including for trans or unset-sex profiles —
   else it shows for a female profile that is premenopausal (explicit reproductive

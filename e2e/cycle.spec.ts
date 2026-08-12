@@ -1,8 +1,14 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
-import { E2E_LOGIN_CYCLE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { workerDbPath, frozenNow } from "./worker-env";
+import {
+  CYCLE_PROFILE,
+  E2E_LOGIN_CYCLE,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 
 // Menstrual cycle tracking (issue #714): the Cycle surface (derived phase + cycle-length /
 // variability trend), one-tap period logging, and the Timeline day-header phase/period
@@ -32,6 +38,54 @@ async function fillPeriodDate(
     await expect(hidden).toHaveValue(iso, { timeout: 2_000 });
   }).toPass({ timeout: 10_000, intervals: [200, 500, 1000] }); // topass-ok: hydration gate for a DateField whose display reformats a valid ISO, so a same-field value assertion can't express the wait (the #794 precedent)
   await input.press("Escape");
+}
+
+// A goal target date far enough out that it is unambiguously future in ANY timezone the
+// profile might be in, planted so the Timeline opens a day group for it (#2613). A goal's
+// `target_date` is a DAY column (grain "day", convention "n/a" in lib/time-columns) and
+// the feed keys the group on it verbatim, so a bare date string is the right shape here —
+// there is no instant to build.
+const FUTURE_GOAL_TITLE = "E2E future phase goal 1";
+const FUTURE_DATE = (() => {
+  const d = new Date(frozenNow());
+  d.setUTCDate(d.getUTCDate() + 120);
+  return d.toISOString().slice(0, 10);
+})();
+
+function withDb<T>(fn: (handle: Database.Database) => T): T {
+  const handle = new Database(workerDbPath());
+  try {
+    return fn(handle);
+  } finally {
+    handle.close();
+  }
+}
+
+// This spec's precondition is an ABSENCE (no goal on that day yet), so it establishes
+// that itself rather than trusting the seed — a --repeat-each pass, or a neighbour
+// sharing the worker DB, may legitimately have left one behind.
+function clearFutureGoal(): void {
+  withDb((handle) => {
+    handle
+      .prepare("DELETE FROM goals WHERE title = ?")
+      .run(FUTURE_GOAL_TITLE);
+  });
+}
+
+function seedFutureGoal(): void {
+  clearFutureGoal();
+  withDb((handle) => {
+    const profile = handle
+      .prepare("SELECT id FROM profiles WHERE name = ?")
+      .get(CYCLE_PROFILE) as { id: number } | undefined;
+    if (!profile) throw new Error(`missing fixture profile ${CYCLE_PROFILE}`);
+    handle
+      .prepare(
+        `INSERT INTO goals (profile_id, title, target_date, status)
+         VALUES (?, ?, ?, 'active')`
+      )
+      .run(profile.id, FUTURE_GOAL_TITLE, FUTURE_DATE);
+  });
 }
 
 test.describe("menstrual cycle (#714)", () => {
@@ -187,5 +241,28 @@ test.describe("menstrual cycle (#714)", () => {
   test("Timeline day header shows the cycle phase/period chip", async () => {
     await page.goto("/timeline");
     await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible(); // first-ok: asserts a cycle phase chip renders — order-agnostic presence
+  });
+
+  // #2613 — the Timeline's default view leaves its upper bound open so future-dated
+  // events are visible, and a goal target date months out opens a day group of its own.
+  // That group used to carry a bare "Follicular" chip in exactly the factual voice
+  // today's uses: cyclePhaseOnDate's open-cycle branch answered with total confidence
+  // about a day nobody has lived. The phase there is not uncertain, it is unknowable, so
+  // the honest answer is an ABSENCE — no chip at all, not a hedged one.
+  test("a future day group carries no phase chip while a lived-through one still does", async () => {
+    seedFutureGoal();
+    try {
+      await page.goto("/timeline");
+      // Both halves in one assertion set: the fixture's chips are still rendering
+      // (otherwise "no chip on the future day" would pass for the wrong reason)…
+      await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible(); // first-ok: asserts chips still render at all — order-agnostic presence
+      // …and the future day group exists, carries this spec's own goal, and has none.
+      const futureDay = page.locator(`#timeline-day-${FUTURE_DATE}`);
+      await expect(futureDay).toBeVisible();
+      await expect(futureDay.getByText(FUTURE_GOAL_TITLE)).toBeVisible();
+      await expect(futureDay.getByTestId("cycle-phase-chip")).toHaveCount(0);
+    } finally {
+      clearFutureGoal();
+    }
   });
 });
