@@ -226,6 +226,31 @@ describe("readingClockWithRelativeAge", () => {
       })
     ).toBe("5:00 PM (2 hrs ago)");
   });
+
+  // #2522: the cockpit's Reading time is a user-owned input, so a morning reading
+  // logged in the evening — or the seeded 08:00 temperature read at 01:10 — hands
+  // this a FUTURE instant. It used to answer "(just now)", which on a safety-tier
+  // card tells a caregiver a dose was just given. The clock still shows; the
+  // parenthetical now says which way it points.
+  it("says a stated time is ahead instead of claiming it just happened", () => {
+    expect(
+      readingClockWithRelativeAge("2026-06-04", "08:00", {
+        timeZone: "UTC",
+        timeFormat: "24h",
+        now: new Date("2026-06-04T01:10:00Z"),
+      })
+    ).toBe("08:00 (in 7 hrs)");
+  });
+
+  it("keeps the skew tolerance, so a seconds-ahead reading is still 'just now'", () => {
+    expect(
+      readingClockWithRelativeAge("2026-06-04", "01:10", {
+        timeZone: "UTC",
+        timeFormat: "24h",
+        now: new Date("2026-06-04T01:09:40Z"),
+      })
+    ).toBe("01:10 (just now)");
+  });
 });
 
 // A PRN med with administration points (date/time/amount), for the last-dose clause.

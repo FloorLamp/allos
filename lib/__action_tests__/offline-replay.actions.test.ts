@@ -334,6 +334,40 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     ).toBe(11);
   });
 
+  // #2312: WHICH clock the captured stamp is judged against. The guard used to read
+  // real time, on the reasoning that a client capture and the server are two
+  // independent clocks — the same reasoning #2287 overturned for food. Freezing the
+  // app's clock AHEAD of real time separates the two: under real time the capture
+  // below is hours in the future and the guard refuses it (the log falls back to the
+  // server's own stamp and the tap's minute is silently lost); under the seam it is a
+  // minute old and lands verbatim. Production is unaffected — with the override unset
+  // the seam IS real time, so a genuinely fast device is still refused.
+  it("judges the captured tap time against the APP's now, not real time (#2312)", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`SeamTakenAt ${uniqueKey()}`);
+    actAs(admin, profile);
+    const itemId = seedItem(profile.id);
+    const doseId = seedDose(itemId);
+
+    const frozen = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const previous = process.env.ALLOS_TEST_NOW;
+    process.env.ALLOS_TEST_NOW = utcInstant(frozen);
+    try {
+      const tapped = new Date(frozen.getTime() - 60_000);
+      // The tap's own profile-local day — the day the log is attributed to, and what
+      // the guard's second rule compares against (#94 attribution, untouched here).
+      const date = zonedDateParts(getTimezone(profile.id), tapped).date;
+      const { body } = await replay([
+        doseIntent(doseId, profile.id, date, tapped.toISOString()),
+      ]);
+      expect(body.results?.[0].status).toBe("done");
+      expect(logFor(doseId, date)?.recorded_at).toBe(utcSqlString(tapped));
+    } finally {
+      if (previous === undefined) delete process.env.ALLOS_TEST_NOW;
+      else process.env.ALLOS_TEST_NOW = previous;
+    }
+  });
+
   it("surfaces the PAUSED-item refusal instead of silently confirming", async () => {
     const admin = createLogin();
     const profile = createProfile(`Paused ${uniqueKey()}`);

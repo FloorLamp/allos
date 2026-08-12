@@ -465,6 +465,15 @@ export function insertWaistCirc(
 // ignored counter — a submitted check-in re-arms the auto-paused reminder — done
 // here so every write path re-arms identically. Returns false on a rejected
 // payload (bad date / out-of-range scale), true on a successful upsert.
+//
+// NO CAPTURED INSTANT, deliberately (#2312's inventory, answered rather than left
+// to inference). A check-in is a DAY's answer: `MoodPayload` carries no instant,
+// the queue's captured `date` is the whole of its time model (#94 day attribution,
+// untouched by the instant work), and a replay at dinner still lands on the day the
+// user tapped. The one clock read here is `updated_at = datetime('now')`, a pure
+// audit "last modified" stamp — nothing keys a day off it — which by the #1534 rule
+// correctly keeps SQL's real clock. So there is nothing here to route through the
+// seam; a captured instant is what the other three flows had.
 export function upsertMoodLog(
   profileId: number,
   date: string,
@@ -649,10 +658,17 @@ function applySetIntent(
   // making the row read as the completed session it is (isCompletedSessionRow).
   // A payload that already carries an end time or a positive duration is left
   // untouched; a start-less capture is already completed and needs nothing.
+  //
+  // The ceiling this capture is judged against is the app's own now (`clockNow()`,
+  // #2312), never a bare `new Date()` — the same correction #2287/#2310 made for
+  // food, on the flow that fix did not reach. A session closed at 18:05 and
+  // replayed at 21:00 must end at 18:05, and under the e2e freeze the capture and
+  // the seam read one clock, so a real-time ceiling would rewrite the close moment
+  // into the reconnect moment. Inert in production, where the seam IS real time.
   const durationField = Number(fd.get("duration_min"));
   const hasDuration = Number.isFinite(durationField) && durationField > 0;
   if (fd.get("start_time") && !fd.get("end_time") && !hasDuration) {
-    const closedAt = new Date(resolveCapturedInstant(capturedAt));
+    const closedAt = new Date(resolveCapturedInstant(capturedAt, clockNow()));
     fd.set("end_time", zonedDateParts(getTimezone(profileId), closedAt).hhmm);
   }
   // Canonical-unit fallbacks only: the capture always stamps the units each value

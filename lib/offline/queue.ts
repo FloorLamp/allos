@@ -689,9 +689,22 @@ export function classifySetReplay(outcome: SaveActivityOutcome): {
 // lib/__tests__/instant-writer-scan.test.ts and the shape comes from lib/date.ts. The
 // queued payload's own `capturedAt` is untouched: it is a CLIENT wire value that has
 // already been written to devices, and narrowing it happens here, at the door.
+//
+// `now` IS REQUIRED (#2312), with no `new Date()` default, and that requirement is
+// most of the fix. This module is in the BROWSER bundle, so it cannot read
+// lib/clock.ts's `process.env` seam itself — which is why the default existed, and
+// exactly why it was wrong: a server-side replay call site then judged a captured
+// instant against a SECOND, independent clock without ever naming which one, and
+// only the food path (#2310) had been converted off it. Under the e2e freeze the
+// browser and the server share ONE frozen instant, so a real-time ceiling silently
+// rewrites a seconds-old capture into the replay moment. Required-and-injected is
+// the ONE shape every flow now takes: the seam is passed in from the server, the
+// browser passes its own clock, and neither is ever substituted for the other by
+// default. The same discipline `resolveQueuedTakenAt` / `isGivenAtAccepted` take
+// (lib/dose-log-window.ts, #2031).
 export function resolveCapturedInstant(
   capturedAt: unknown,
-  now: Date = new Date()
+  now: Date
 ): string {
   if (typeof capturedAt === "string") {
     const t = new Date(capturedAt);
