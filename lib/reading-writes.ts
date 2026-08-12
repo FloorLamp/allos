@@ -662,9 +662,20 @@ export function updateReadingAt(
           .prepare(
             `UPDATE medical_records
                 SET value = ?, value_num = ?,
-                    -- Same #133 lock the record editor applies: an imported reading
-                    -- corrected here must survive the next rolling window.
-                    edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
+                    -- The #133 lock, armed UNCONDITIONALLY (#2364). This used to read
+                    -- CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END,
+                    -- which asked WHICH IMPORT PATH produced the row rather than
+                    -- whether a human changed a value this app derived — and
+                    -- external_id is NULL for every AI-extracted row by construction
+                    -- (extractionToPersistInput sets it so), which is the majority of
+                    -- readings in the app. The lock was therefore not merely unset on
+                    -- them, it was UNSETTABLE, and edited protected against
+                    -- integration sync while the likeliest overwrite of a
+                    -- document-derived reading is the document's own reprocess.
+                    -- lib/unit-mislabel-correction.ts already sets it unconditionally
+                    -- on this table for the same act; the two correction writers agree
+                    -- now instead of depending on which field you corrected.
+                    edited = 1
               WHERE id = ? AND profile_id = ?
                 AND biomarker_family(canonical_name) = biomarker_family(?) COLLATE NOCASE`
           )

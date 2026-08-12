@@ -290,7 +290,7 @@ describe("the migrated writers produce the rows they produced before", () => {
         spo2: "97",
         systolic: "",
         diastolic: "",
-      })
+      }).wrote
     ).toBe(true);
     const row = db
       .prepare(
