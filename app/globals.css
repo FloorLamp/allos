@@ -444,14 +444,35 @@
   /* The plot box inside `components/ChartCard.tsx` (issue #1488). The CARD owns the
      plot height — square below `sm`, `plotHeightClass` (default h-64) above — and
      this rule is what makes that ownership real: whatever the caller renders into
-     the slot (the chart, its lazy-loading placeholder, its offline/error fallback,
-     an EmptyState) fills the box instead of carrying its own `h-32`/`h-40`/`h-64`.
-     A class selector plus an element selector outranks the utility's single class,
-     so it wins over the chart's own height without `!important` — and a call site
-     therefore cannot silently reintroduce a per-chart height vocabulary. */
+     the slot (the chart, its lazy-loading placeholder, its offline/error fallback)
+     fills the box instead of carrying its own `h-32`/`h-40`/`h-64`. A class selector
+     plus an element selector outranks the utility's single class, so it wins over
+     the chart's own height without `!important` — and a call site therefore cannot
+     silently reintroduce a per-chart height vocabulary. */
   & > * {
     height: 100%;
     width: 100%;
+  }
+
+  /* THE EMPTY PATH (#2399). An ABSENCE is not a plot. The card kept reserving the
+     whole chart footprint for the one sentence saying there is no chart, so on a
+     lens a profile has not set up, roughly half the page was ~400px empty states
+     stacked above the only card with content. An empty state collapses to its own
+     content plus padding instead.
+
+     This is still the CARD deciding, not the call site: the trigger is the
+     `data-empty-state` marker `EmptyState` stamps on itself, so the height
+     vocabulary #1488 removed stays removed and no caller can opt a real chart out.
+     `:has()` on a direct child only — an empty state nested INSIDE a populated
+     chart's subtree is not this card's emptiness. Specificity (0,2,0) beats the
+     `aspect-square` / `sm:h-64` utilities without `!important`. */
+  &:has(> [data-empty-state]) {
+    aspect-ratio: auto;
+    height: auto;
+  }
+
+  &:has(> [data-empty-state]) > * {
+    height: auto;
   }
 }
 

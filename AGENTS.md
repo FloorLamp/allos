@@ -199,7 +199,11 @@ Identity runs on the CODE and on the NAME, and a guard on one axis is not a guar
 (#2318 was exactly that: `functionalStatusExtractor` nulled the assessment LOINC
 and the same rows coined canonical names anyway). An attribute of another entity —
 a vaccine's lot number and expiry — is not an observation at all; the entity that
-owns it already stores it.
+owns it already stores it. Storage category, catalog browsability and identity are
+three DIFFERENT axes and quantitation is none of them — a urine dipstick result
+states no number and carries full identity, a questionnaire ITEM answer is numeric
+and carries none — so `carriesResultIdentity()` is named for what it gates and
+`docs/internals/clinical-result-terminology.md` is the map.
 
 ### Weekly cadence
 

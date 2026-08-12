@@ -13,7 +13,7 @@ import { captureDelete } from "@/lib/undo-delete-db";
 import { isRealIsoDate } from "@/lib/date";
 import {
   MEDICAL_CATEGORIES,
-  BIOMARKER_CATEGORIES,
+  RESULTS_CATALOG_CATEGORIES,
   MEDICAL_FLAGS,
 } from "@/lib/medical-categories";
 import {
@@ -59,11 +59,11 @@ export async function addResult(formData: FormData): Promise<FormResult> {
   // field (String(null) === "null") or a crafted/stale POST would otherwise flow
   // straight into the CHECK (category IN (...)) and 500 (#385, the #323 class:
   // a state writable in TS but forbidden by the CHECK). The add form only offers
-  // BIOMARKER_CATEGORIES (no 'prescription' — meds live on the document view /
+  // RESULTS_CATALOG_CATEGORIES (no 'prescription' — meds live on the document view /
   // Supplements & Meds), so enforce that same set here and fall back to 'lab',
   // closing the client-only prescription gate the page's option list can't.
   const categoryRaw = String(formData.get("category") ?? "");
-  const category = (BIOMARKER_CATEGORIES as readonly string[]).includes(
+  const category = (RESULTS_CATALOG_CATEGORIES as readonly string[]).includes(
     categoryRaw
   )
     ? categoryRaw

@@ -18,7 +18,7 @@
 import { getClinicalObservations } from "@/lib/queries/medical";
 import { biomarkerFamily } from "@/lib/canonical-name";
 import { OTHER_PANEL, panelForCanonicalName } from "@/lib/biomarker-panels";
-import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { NON_RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import { tableNameKey } from "@/lib/derived-table";
 import type { PanelId } from "@/lib/biomarker-panels";
 
@@ -54,7 +54,7 @@ export function getPanelSiblings(
       getClinicalObservations(profileId, {
         panel: panelId,
         current: true,
-        excludeCategories: NON_BIOMARKER_CATEGORIES,
+        excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
       })
         .map((r) => tableNameKey(r))
         .filter((n) => biomarkerFamily(n).toLowerCase() !== ownFamily)

@@ -127,7 +127,7 @@ export function getUnitMislabelReviews(
     (
       db
         .prepare("SELECT * FROM canonical_biomarkers")
-        .all() as CanonicalBiomarker[]
+        .all() as CanonicalResultDefinition[]
     ).map((c) => [c.name.toLowerCase(), c])
   );
   // Alias-aware, like the flag path: a stored row under a legacy/abbreviation name
@@ -177,5 +177,5 @@ import {
   getProfileReproductiveStatus,
   getProfileSex,
 } from "../../settings";
-import type { CanonicalBiomarker } from "../../types";
+import type { CanonicalResultDefinition } from "../../types";
 import { getCanonicalBiomarker } from "./canonical";

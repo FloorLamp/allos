@@ -84,7 +84,7 @@ import type {
   ToothSystem,
 } from "./types/medical";
 import { isRealIsoDate } from "./date";
-import { carriesBiomarkerIdentity } from "./medical-categories";
+import { carriesResultIdentity } from "./medical-categories";
 import {
   bodyMetricsFromExtraction,
   bodyMetricsFromReadings,
@@ -1136,7 +1136,7 @@ export function extractionToPersistInput(
     // categories that carry a biomarker identity at all (#2318) — an `assessment`
     // row names a questionnaire item or a qualifier, never an analyte.
     canonicalNamesToRegister: records
-      .filter((r) => carriesBiomarkerIdentity(r.category))
+      .filter((r) => carriesResultIdentity(r.category))
       .map((r) => r.canonical),
     providers,
   };

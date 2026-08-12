@@ -22,7 +22,7 @@ import {
   prepareMultiViewTableObservations,
   type WithProfile,
 } from "@/lib/derived-table";
-import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { NON_RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import type { ClinicalObservation } from "@/lib/types";
 
 let male: number;
@@ -62,13 +62,13 @@ function mergedTable(
 ): WithProfile<ClinicalObservation>[] {
   const stored = ids.flatMap((id) =>
     getClinicalObservations(id, {
-      excludeCategories: NON_BIOMARKER_CATEGORIES,
+      excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
       current: opts.current,
     }).map((r) => ({ ...r, profileId: id }))
   );
   const derived = ids.flatMap((id) =>
     filterDerivedForTable(getDerivedBiomarkerReadings(id), {
-      excludeCategories: NON_BIOMARKER_CATEGORIES,
+      excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
     }).map((r) => ({ ...r, profileId: id }))
   );
   return prepareMultiViewTableObservations(stored, derived, {
@@ -143,7 +143,7 @@ describe("multi-view Biomarkers table — per-member partitions (#1331)", () => 
   it("a single-member view yields exactly that member's rows (byte-identical basis)", () => {
     const single = mergedTable([male]);
     const direct = getClinicalObservations(male, {
-      excludeCategories: NON_BIOMARKER_CATEGORIES,
+      excludeCategories: NON_RESULTS_CATALOG_CATEGORIES,
     });
     // Same stored readings, same is_latest marks — the multi-view merge over one
     // member is the per-profile reader's own result.

@@ -26,7 +26,7 @@ import {
 import { groupContiguous } from "@/lib/table-sort";
 import { isBiomarkerStale } from "@/lib/reference-range";
 import { DATE_AGE_SEPARATOR, readingDateLine } from "@/lib/reading-date-line";
-import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import { readingDetailHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
@@ -388,7 +388,7 @@ function BiomarkerRow({
             observation={r}
             action={updateResult}
             onDone={() => setEditing(false)}
-            categories={BIOMARKER_CATEGORIES}
+            categories={RESULTS_CATALOG_CATEGORIES}
             writeProfileId={writeProfileId}
           />
         </Td>

@@ -6,7 +6,7 @@ import {
   isImmunizationAttributeLabel,
   isNonAnalyteObservation,
 } from "@/lib/non-analyte-observations";
-import { carriesBiomarkerIdentity } from "@/lib/medical-categories";
+import { carriesResultIdentity } from "@/lib/medical-categories";
 
 // PURE TIER — issue #2318: the NAME-axis guard that says an observation is not a
 // measurement, and the mapper refusals built on it.
@@ -312,7 +312,7 @@ describe("the CCD mapper's refusals and routing (#2318)", () => {
   it("every emitted `assessment` is declared identity-less", () => {
     for (const r of parsed.records) {
       if (r.category !== "assessment") continue;
-      expect(carriesBiomarkerIdentity(r.category)).toBe(false);
+      expect(carriesResultIdentity(r.category)).toBe(false);
     }
   });
 });
