@@ -242,9 +242,7 @@ export function getBodyMetricsPage(
   const size = Math.max(1, Math.trunc(pageSize));
   const total = (
     db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?"
-      )
+      .prepare("SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?")
       .get(profileId) as { n: number }
   ).n;
   const clamped = Math.min(clampPage(page), pageCount(total, size));
@@ -261,7 +259,12 @@ export function getBodyMetricsPage(
         LIMIT ? OFFSET ?`
     )
     .all(profileId, size, pageOffset(clamped, size)) as BodyMetricSourceRow[];
-  return { rows: rows.map(withSourceLabel), total, page: clamped, pageSize: size };
+  return {
+    rows: rows.map(withSourceLabel),
+    total,
+    page: clamped,
+    pageSize: size,
+  };
 }
 
 // The body-metrics rows recorded FOR one day. A different question from a page of

@@ -885,7 +885,6 @@ describe("a retroactive un-mark never re-arms an escalation", () => {
   });
 });
 
-
 // ── The ledger's READ BOUND (#2445) ──────────────────────────────────────────
 //
 // The dose-history surface offers an explicit "All time" range, which passes the ISO
@@ -925,7 +924,14 @@ describe("getIntakeDoseLedgerPage — the surface's bound (#2445)", () => {
     const { itemId, doseId } = seedSupplement(profileId, { onHand: null });
     for (let i = 1; i <= days; i++) {
       const day = shiftDateStr(today(profileId), -i);
-      logHistoricalDose(profileId, itemId, doseId, at(day, "08:00"), null, false);
+      logHistoricalDose(
+        profileId,
+        itemId,
+        doseId,
+        at(day, "08:00"),
+        null,
+        false
+      );
     }
     return itemId;
   }
@@ -940,7 +946,9 @@ describe("getIntakeDoseLedgerPage — the surface's bound (#2445)", () => {
     // Newest first, exactly as the unpaged reader orders — the page is a window on
     // the SAME ledger, not a second answer.
     const all = getIntakeDoseHistoryAll(p, "0001-01-01");
-    expect(page.rows.map((r) => r.id)).toEqual(all.slice(0, 10).map((r) => r.id));
+    expect(page.rows.map((r) => r.id)).toEqual(
+      all.slice(0, 10).map((r) => r.id)
+    );
   });
 
   it("pages disjointly and completely, and clamps past the end", () => {
@@ -977,9 +985,7 @@ describe("getIntakeDoseLedgerPage — the surface's bound (#2445)", () => {
     // A window narrows both halves the same way.
     const since = shiftDateStr(today(p), -5);
     const recent = getIntakeDoseLedgerPage(p, since, {}, 1, 10);
-    expect(recent.total).toBe(
-      getIntakeDoseHistoryAll(p, since).length
-    );
+    expect(recent.total).toBe(getIntakeDoseHistoryAll(p, since).length);
   });
 
   it("never reaches another profile's ledger", () => {
@@ -999,7 +1005,13 @@ describe("getIntakeDoseLedgerPage — the surface's bound (#2445)", () => {
     const page = getIntakeDoseLedgerPage(mine, "0001-01-01", {}, 1, 10);
     expect(page.total).toBe(3);
     expect(
-      getIntakeDoseLedgerPage(mine, "0001-01-01", { itemId: other.itemId }, 1, 10)
+      getIntakeDoseLedgerPage(
+        mine,
+        "0001-01-01",
+        { itemId: other.itemId },
+        1,
+        10
+      )
     ).toMatchObject({ total: 0, rows: [] });
   });
 });

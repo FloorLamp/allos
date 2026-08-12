@@ -199,7 +199,6 @@ describe("external links", () => {
   });
 });
 
-
 // ── The page's bound (#2528) ─────────────────────────────────────────────────
 //
 // The notes file is append-only by design, so /whats-new was a surface guaranteed to
@@ -216,9 +215,17 @@ describe("releaseNotesPage", () => {
   // Three days of 3/1/4 entries, newest first once parsed.
   const notes = parseReleaseNotes({
     days: [
-      { date: "2026-08-03", entries: entries(3, 100), operatorNotes: ["run X"] },
+      {
+        date: "2026-08-03",
+        entries: entries(3, 100),
+        operatorNotes: ["run X"],
+      },
       { date: "2026-08-02", entries: entries(1, 200), operatorNotes: [] },
-      { date: "2026-08-01", entries: entries(4, 300), operatorNotes: ["run Y"] },
+      {
+        date: "2026-08-01",
+        entries: entries(4, 300),
+        operatorNotes: ["run Y"],
+      },
     ],
   });
 
@@ -234,7 +241,9 @@ describe("releaseNotesPage", () => {
   });
 
   it("pages disjointly and completely, in newest-first reading order", () => {
-    const seen = [1, 2, 3].flatMap((n) => prs(releaseNotesPage(notes, n, 3).days));
+    const seen = [1, 2, 3].flatMap((n) =>
+      prs(releaseNotesPage(notes, n, 3).days)
+    );
     expect(seen).toEqual([100, 101, 102, 200, 300, 301, 302, 303]);
   });
 

@@ -71,7 +71,9 @@ describe("getBodyMetricsPage (#2530)", () => {
   it("pages disjointly and completely over the ledger", () => {
     const seen: number[] = [];
     for (let page = 1; page <= 3; page++) {
-      seen.push(...getBodyMetricsPage(profileId, page, 10).rows.map((r) => r.id));
+      seen.push(
+        ...getBodyMetricsPage(profileId, page, 10).rows.map((r) => r.id)
+      );
     }
     expect(seen).toHaveLength(ROWS); // 10 + 10 + 5, no gaps and no repeats
     expect(new Set(seen).size).toBe(ROWS);

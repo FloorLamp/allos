@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { followLink } from "./helpers";
+import { hydratedClick } from "./helpers";
 import {
   E2E_LOGIN_LONG_RANGE,
   E2E_MEMBER_PASSWORD,
@@ -48,12 +48,17 @@ test("the body history table pages instead of rendering every row (#2530)", asyn
       await rows.nth(0).getByTestId("body-history-date").innerText()
     ).trim();
     await expect(
-      rows.nth(0).getByRole("button", { name: `Delete entry from ${firstDate}` })
+      rows
+        .nth(0)
+        .getByRole("button", { name: `Delete entry from ${firstDate}` })
     ).toBeVisible();
 
     // Next is a real navigation: the page rides the URL, so what it turns is the
     // read, and the rows that come back are the NEXT ten.
-    await followLink(page, pager.getByRole("link", { name: "Next" }), /bpage=2/);
+    // hydratedClick, not followLink: a pager's Next is a RELATIVE navigation, so a
+    // retried click would walk to page 3 instead of re-asserting page 2.
+    await hydratedClick(page, pager.getByRole("link", { name: "Next" }));
+    await page.waitForURL(/bpage=2/);
     const pageTwo = page
       .getByTestId("body-history-table")
       .getByTestId("body-history-row");

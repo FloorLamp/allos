@@ -34,7 +34,13 @@ const sample = (
   value: number,
   start: string,
   end: string
-): NormMetricSample => ({ metric, date, start_time: start, end_time: end, value });
+): NormMetricSample => ({
+  metric,
+  date,
+  start_time: start,
+  end_time: end,
+  value,
+});
 
 // The raw stage-row scan inside getSleepStageDailyTotals — the read the window is
 // supposed to bound. Wrap the prepared statement's `.all` so we see how many rows it

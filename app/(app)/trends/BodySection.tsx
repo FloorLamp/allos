@@ -1787,123 +1787,127 @@ export default async function BodySection({
                 <EmptyState message="No body metrics yet. Log one with “+ Log” above to see the trend." />
               ) : (
                 <>
-                <ScrollFade>
-                  <table className="w-full" data-testid="body-history-table">
-                    <thead>
-                      <tr className="border-b border-black/5 dark:border-white/10">
-                        <th className="th">Date</th>
-                        {/* Numeric columns are right-aligned tabular figures, the
+                  <ScrollFade>
+                    <table className="w-full" data-testid="body-history-table">
+                      <thead>
+                        <tr className="border-b border-black/5 dark:border-white/10">
+                          <th className="th">Date</th>
+                          {/* Numeric columns are right-aligned tabular figures, the
                         convention every other numeric table in the app follows —
                         the digits lining up down the column IS the column. */}
-                        <th className="th text-right">Weight</th>
-                        {bodyFatShown && (
-                          <th className="th text-right">Body fat</th>
-                        )}
-                        {/* The resting-HR COLUMN stays (#1486): this table is the
+                          <th className="th text-right">Weight</th>
+                          {bodyFatShown && (
+                            <th className="th text-right">Body fat</th>
+                          )}
+                          {/* The resting-HR COLUMN stays (#1486): this table is the
                         record EDITOR, not a second chart of the metric. */}
-                        <th className="th text-right">Resting HR</th>
-                        <th className="th">Source</th>
-                        <th className="th">Notes</th>
-                        <th className="th text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.rows.map((w) => (
-                        <tr
-                          key={w.id}
-                          data-testid="body-history-row"
-                          className="border-b border-black/5 dark:border-white/10"
-                        >
-                          {/* The short date shape the rest of Trends uses: the
+                          <th className="th text-right">Resting HR</th>
+                          <th className="th">Source</th>
+                          <th className="th">Notes</th>
+                          <th className="th text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.rows.map((w) => (
+                          <tr
+                            key={w.id}
+                            data-testid="body-history-row"
+                            className="border-b border-black/5 dark:border-white/10"
+                          >
+                            {/* The short date shape the rest of Trends uses: the
                           weekday is noise in a weigh-in ledger, and it was spending
                           the widest column in the table. */}
-                          <td
-                            className="td whitespace-nowrap"
-                            data-testid="body-history-date"
-                          >
-                            {formatMonthDay(w.date, formatPrefs)}
-                          </td>
-                          <td
-                            className="td text-right font-medium tabular-nums"
-                            data-testid="body-weight-cell"
-                          >
-                            {fmtWeight(w.weight_kg, wu)}
-                          </td>
-                          {bodyFatShown && (
-                            <td className="td text-right tabular-nums">
-                              {/* One decimal, the precision the day's vitals strip
+                            <td
+                              className="td whitespace-nowrap"
+                              data-testid="body-history-date"
+                            >
+                              {formatMonthDay(w.date, formatPrefs)}
+                            </td>
+                            <td
+                              className="td text-right font-medium tabular-nums"
+                              data-testid="body-weight-cell"
+                            >
+                              {fmtWeight(w.weight_kg, wu)}
+                            </td>
+                            {bodyFatShown && (
+                              <td className="td text-right tabular-nums">
+                                {/* One decimal, the precision the day's vitals strip
                               declares for this metric — the raw stored number put
                               "17%" and "17.2%" in one column. */}
-                              {w.body_fat_pct != null
-                                ? `${round(w.body_fat_pct, 1)}%`
+                                {w.body_fat_pct != null
+                                  ? `${round(w.body_fat_pct, 1)}%`
+                                  : "—"}
+                              </td>
+                            )}
+                            {/* Resting HR carries its unit, as every other heart-rate
+                          reading in the app does. */}
+                            <td className="td text-right tabular-nums">
+                              {w.resting_hr != null
+                                ? `${w.resting_hr} bpm`
                                 : "—"}
                             </td>
-                          )}
-                          {/* Resting HR carries its unit, as every other heart-rate
-                          reading in the app does. */}
-                          <td className="td text-right tabular-nums">
-                            {w.resting_hr != null ? `${w.resting_hr} bpm` : "—"}
-                          </td>
-                          <td className="td whitespace-nowrap">
-                            {w.document_id != null ? (
-                              <Link
-                                href={`/import/${w.document_id}`}
-                                className="text-brand-700 hover:underline dark:text-brand-400"
-                              >
-                                {w.source_label}
-                              </Link>
-                            ) : (
-                              <span className="text-slate-500 dark:text-slate-400">
-                                {w.source_label}
-                              </span>
-                            )}
-                            {/* Edit-lock badge + resume affordance for a hand-edited
+                            <td className="td whitespace-nowrap">
+                              {w.document_id != null ? (
+                                <Link
+                                  href={`/import/${w.document_id}`}
+                                  className="text-brand-700 hover:underline dark:text-brand-400"
+                                >
+                                  {w.source_label}
+                                </Link>
+                              ) : (
+                                <span className="text-slate-500 dark:text-slate-400">
+                                  {w.source_label}
+                                </span>
+                              )}
+                              {/* Edit-lock badge + resume affordance for a hand-edited
                             integration row (#659): only integration-owned rows carry
                             the lock (manual/document rows can't be re-synced). */}
-                            {!!w.edited &&
-                              w.document_id == null &&
-                              !!w.source &&
-                              w.source !== "manual" && (
-                                <EditLockNotice
-                                  table="body_metrics"
-                                  id={w.id}
-                                  className="mt-1"
-                                />
-                              )}
-                          </td>
-                          <td className="td text-slate-500 dark:text-slate-400">
-                            <NotesText notes={w.notes} />
-                          </td>
-                          <td className="td text-right">
-                            <DeleteBodyMetricButton
-                              id={w.id}
-                              label={formatMonthDay(w.date, formatPrefs)}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </ScrollFade>
-                {/* The pager is the table's bound, and it is a LINK pager: the page
+                              {!!w.edited &&
+                                w.document_id == null &&
+                                !!w.source &&
+                                w.source !== "manual" && (
+                                  <EditLockNotice
+                                    table="body_metrics"
+                                    id={w.id}
+                                    className="mt-1"
+                                  />
+                                )}
+                            </td>
+                            <td className="td text-slate-500 dark:text-slate-400">
+                              <NotesText notes={w.notes} />
+                            </td>
+                            <td className="td text-right">
+                              <DeleteBodyMetricButton
+                                id={w.id}
+                                label={formatMonthDay(w.date, formatPrefs)}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </ScrollFade>
+                  {/* The pager is the table's bound, and it is a LINK pager: the page
                     rides the URL, so the read below it is one page's worth of rows
                     rather than the whole ledger (#2530). */}
-                <PaginationControls
-                  page={history.page}
-                  pageCount={historyPages}
-                  pageSize={HISTORY_PAGE_SIZE}
-                  total={history.total}
-                  visibleCount={history.rows.length}
-                  prevHref={
-                    history.page > 1 ? historyPageHref(history.page - 1) : null
-                  }
-                  nextHref={
-                    history.page < historyPages
-                      ? historyPageHref(history.page + 1)
-                      : null
-                  }
-                  testId="body-history-pagination"
-                />
+                  <PaginationControls
+                    page={history.page}
+                    pageCount={historyPages}
+                    pageSize={HISTORY_PAGE_SIZE}
+                    total={history.total}
+                    visibleCount={history.rows.length}
+                    prevHref={
+                      history.page > 1
+                        ? historyPageHref(history.page - 1)
+                        : null
+                    }
+                    nextHref={
+                      history.page < historyPages
+                        ? historyPageHref(history.page + 1)
+                        : null
+                    }
+                    testId="body-history-pagination"
+                  />
                 </>
               )}
             </div>

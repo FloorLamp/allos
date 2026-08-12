@@ -290,8 +290,6 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
   ).toHaveCount(1);
 });
 
-
-
 // Issue #2445 — the ledger's "All time" range is a FILTER, not a bound.
 //
 // The range control offers an explicit "All time", which reads from the ISO floor;
@@ -370,7 +368,10 @@ test("the ledger pages its rows, even on All time", async ({
 
   // The pager turns the READ: page 2 carries the remainder, and the filter it was
   // narrowed to rides along.
-  await followLink(page, pager.getByRole("link", { name: "Next" }), /page=2/);
+  // hydratedClick, not followLink: a pager's Next is a RELATIVE navigation, so a
+  // retried click would walk to page 3 instead of re-asserting page 2.
+  await hydratedClick(page, pager.getByRole("link", { name: "Next" }));
+  await page.waitForURL(/page=2/);
   await expect(page.getByTestId("dose-ledger-row")).toHaveCount(
     logged - HISTORY_PAGE_SIZE
   );

@@ -152,7 +152,9 @@ export default async function TrendsPage(props: {
   // and carried through the range control + tab navigation so a chosen layout
   // survives a window change.
   const bodyView = parseBodyView(firstParam(searchParams.view));
-  const bodyHistoryPage = clampPage(Number(firstParam(searchParams.bpage)) || 1);
+  const bodyHistoryPage = clampPage(
+    Number(firstParam(searchParams.bpage)) || 1
+  );
   // The "1D" pill (#1466), injected through the shared control's extra-ranges slot.
   // It followed the vitals to Body (#1486) and follows the census here: 1D is only
   // meaningful where the surface swaps to genuinely intraday content (the census's

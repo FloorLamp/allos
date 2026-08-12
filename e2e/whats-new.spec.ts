@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 import { E2E_LOGIN_WHATSNEW, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import {
   WHATS_NEW_PAGE_ENTRIES,
@@ -89,11 +89,10 @@ test.describe("in-app release notes (#1421)", () => {
       const pager = page.getByTestId("whats-new-pagination");
       await expect(pager).toContainText(`of ${first.total}`);
       if (first.pageCount > 1) {
-        await followLink(
-          page,
-          pager.getByRole("link", { name: "Next" }),
-          /\/whats-new\?page=2$/
-        );
+        // hydratedClick, not followLink: a pager's Next is a RELATIVE navigation, so
+        // a retried click would walk to page 3 instead of re-asserting page 2.
+        await hydratedClick(page, pager.getByRole("link", { name: "Next" }));
+        await page.waitForURL(/\/whats-new\?page=2$/);
         const second = releaseNotesPage(NOTES, 2);
         await expect(page.getByTestId("whats-new-entry")).toHaveCount(
           second.shown
