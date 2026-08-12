@@ -121,3 +121,20 @@ export const FOOD_PIN_PROFILE = "Food Pin Split (e2e)";
 // The protocol's food-group scope — the group the deep link pins, and (deliberately) one
 // that sits after the protein entry in the curated order.
 export const FOOD_PIN_GROUP = "red_meat";
+
+// The COMPOSED morning one-tap (#2458). A dedicated adult profile whose ledger holds
+// the #2458 shape in all three food windows at once — the same two groups (fermented +
+// berries) logged every day for three weeks in EACH window, today empty — plus three
+// `should` supplements each carrying a dose row in every window bucket, and one `may`
+// supplement doing the same.
+//
+// Why all three windows: the composed control renders for the profile's CURRENT food
+// slot, and the run's frozen clock can land in any of them. Seeding every window makes
+// the offer's contents identical whichever one it is, so the spec can assert the exact
+// label instead of branching on the hour.
+//
+// Dedicated + spec-owned: the spec taps the offer, which writes today's servings AND
+// confirms three doses. On a shared profile that would change a rollup and race a
+// neighbour, and the dose half also moves on-hand supply.
+export const E2E_LOGIN_ROUTINEUSUAL = "e2e_routineusual";
+export const ROUTINE_USUAL_PROFILE = "Routine Usual (e2e)";
