@@ -11,6 +11,9 @@ import {
   recentPRs,
   speedKmh,
   recentCardioPRs,
+  cardioRecordVerdicts,
+  cardioNoiseFloor,
+  CARDIO_COVERAGE_FLOOR,
   recommendCoaching,
   restRecommendation,
   restReasons,
@@ -857,8 +860,11 @@ describe("speedKmh", () => {
 
 describe("recentCardioPRs", () => {
   const today = "2026-06-29";
+  // Default evidence: every session measured everything, and each record cleared its
+  // runner-up by a wide margin — the case where a record IS earned. A test about the
+  // #2393 gates overrides the one measurement it is about.
   function cardio(over: Partial<CardioSummary> = {}): CardioSummary {
-    return {
+    const m = {
       activity: "Running",
       sessions: 3,
       hasDistance: true,
@@ -869,6 +875,18 @@ describe("recentCardioPRs", () => {
       longestDurationMin: 60,
       longestDurationDate: "2026-06-20",
       ...over,
+    };
+    const measured = (best: number, margin: number) => ({
+      measured: best > 0 ? m.sessions : 0,
+      priorBest: Math.max(0, best - margin),
+    });
+    return {
+      ...m,
+      evidence: over.evidence ?? {
+        distance: measured(m.longestDistanceKm, 2),
+        speed: measured(m.fastestKmh, 2),
+        duration: measured(m.longestDurationMin, 10),
+      },
     };
   }
 
@@ -887,6 +905,8 @@ describe("recentCardioPRs", () => {
         cardio({
           activity: "HIIT",
           hasDistance: false,
+          longestDistanceKm: 0,
+          fastestKmh: 0,
           longestDurationDate: "2026-06-28",
         }),
       ],
@@ -900,6 +920,138 @@ describe("recentCardioPRs", () => {
   it("excludes first-ever sessions and out-of-window records", () => {
     expect(recentCardioPRs([cardio({ sessions: 1 })], today, 30)).toEqual([]);
     expect(recentCardioPRs([cardio()], today, 1)).toEqual([]); // nearest record is 2 days ago
+  });
+});
+
+// #2393 — a record is a claim about ALL history, judged against the population that
+// actually carries its own measurement and against that measurement's own error.
+describe("cardio record materiality (#2393)", () => {
+  const today = "2026-06-29";
+  function walks(over: Partial<CardioSummary> = {}): CardioSummary {
+    return {
+      activity: "Walking",
+      sessions: 14,
+      hasDistance: true,
+      longestDistanceKm: 5,
+      longestDistanceDate: "2026-06-28",
+      fastestKmh: 0,
+      fastestKmhDate: "2026-06-28",
+      longestDurationMin: 0,
+      longestDurationDate: "2026-06-28",
+      evidence: {
+        // Four of fourteen walks carried a distance — including the longest by time,
+        // which carried none.
+        distance: { measured: 4, priorBest: 4.6 },
+        speed: { measured: 0, priorBest: 0 },
+        duration: { measured: 0, priorBest: 0 },
+      },
+      ...over,
+    };
+  }
+
+  it("withholds a distance record the measurement covers a minority of", () => {
+    expect(recentCardioPRs([walks()], today, 30)).toEqual([]);
+    const [v] = cardioRecordVerdicts([walks()], today, 30);
+    expect(v).toMatchObject({
+      state: "withheld",
+      kind: "distance",
+      reason: "sparse-measurement",
+    });
+  });
+
+  it("gates each kind on the sessions carrying ITS OWN measurement", () => {
+    // Distance is measured on every session but one — the old gate asked whether the
+    // ACTIVITY had two sessions, which fourteen walks trivially pass.
+    const one = walks({
+      sessions: 14,
+      evidence: {
+        distance: { measured: 1, priorBest: 0 },
+        speed: { measured: 0, priorBest: 0 },
+        duration: { measured: 0, priorBest: 0 },
+      },
+    });
+    expect(cardioRecordVerdicts([one], today, 30)[0]).toMatchObject({
+      reason: "no-measured-history",
+    });
+  });
+
+  it("withholds a record inside the measurement's own noise floor", () => {
+    // Two walks three metres apart. 3 m is far inside GPS error.
+    const noise = walks({
+      sessions: 4,
+      evidence: {
+        distance: { measured: 4, priorBest: 5 - 0.003 },
+        speed: { measured: 0, priorBest: 0 },
+        duration: { measured: 0, priorBest: 0 },
+      },
+    });
+    expect(cardioRecordVerdicts([noise], today, 30)[0]).toMatchObject({
+      state: "withheld",
+      reason: "within-noise",
+    });
+    // The same walk, a material distance further, IS a record.
+    const real = walks({
+      sessions: 4,
+      evidence: {
+        distance: { measured: 4, priorBest: 4.5 },
+        speed: { measured: 0, priorBest: 0 },
+        duration: { measured: 0, priorBest: 0 },
+      },
+    });
+    expect(recentCardioPRs([real], today, 30)).toHaveLength(1);
+  });
+
+  it("awards a record on a SHORT history that is completely measured", () => {
+    // Coverage, not count: an activity tracked from its first session qualifies.
+    const tracked = walks({
+      activity: "Rowing",
+      sessions: 2,
+      longestDurationMin: 40,
+      evidence: {
+        distance: { measured: 2, priorBest: 4 },
+        speed: { measured: 0, priorBest: 0 },
+        duration: { measured: 2, priorBest: 25 },
+      },
+    });
+    expect(recentCardioPRs([tracked], today, 30).map((p) => p.kind)).toEqual([
+      "distance",
+      "duration",
+    ]);
+  });
+
+  it("a tie is never a record", () => {
+    const tie = walks({
+      sessions: 4,
+      evidence: {
+        distance: { measured: 4, priorBest: 5 },
+        speed: { measured: 0, priorBest: 0 },
+        duration: { measured: 0, priorBest: 0 },
+      },
+    });
+    expect(cardioRecordVerdicts([tie], today, 30)[0]).toMatchObject({
+      state: "withheld",
+      reason: "within-noise",
+    });
+  });
+
+  it("raises no claim at all for a measurement with nothing in the window", () => {
+    // Out of window is not a withheld claim — nothing happened there.
+    expect(
+      cardioRecordVerdicts(
+        [walks({ longestDistanceDate: "2026-05-01" })],
+        today,
+        30
+      )
+    ).toEqual([]);
+  });
+
+  it("declares a per-measurement floor, speed's scaling with the value", () => {
+    expect(cardioNoiseFloor("distance", 5)).toBe(0.01);
+    expect(cardioNoiseFloor("duration", 60)).toBe(1);
+    // Derived speed compounds both, so its floor is relative to the prior best.
+    expect(cardioNoiseFloor("speed", 12)).toBeCloseTo(0.12, 10);
+    expect(cardioNoiseFloor("speed", 24)).toBeCloseTo(0.24, 10);
+    expect(CARDIO_COVERAGE_FLOOR).toBeGreaterThan(0);
   });
 });
 
