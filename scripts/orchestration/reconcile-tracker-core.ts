@@ -15,26 +15,47 @@
 //
 // ── WHAT THIS CAN AND CANNOT SEE ────────────────────────────────────────────
 //
-// Six drift classes were measured on this tracker on 2026-08-12. They are not
-// equally reachable and pretending otherwise is how a routine becomes theatre:
+// Every detector below asks ONE question: does the thing this issue cites still
+// exist, and is it still where the issue says? That question is a fact about the
+// FILESYSTEM, so a dead path, an unqualified basename, a `file.ts:NNN` whose
+// co-located anchor symbol has moved, and a dependency on a closed issue are all
+// mechanically checkable.
 //
-//   REACHABLE — a citation is a fact about the FILESYSTEM, so the check is
-//   mechanical: a dead path, an unqualified basename, a `file.ts:NNN` whose
-//   co-located anchor symbol has moved, a dependency on an issue that closed.
+// THE APPARATUS POINTS ONE WAY DOWN A ROAD WITH TRAFFIC IN BOTH. On 2026-08-12
+// an independent triage agent read code across ~40 open issues and found seven
+// that were not clean. This module would have flagged nothing on any of them.
+// Six of the seven fail in the INVERSE direction to everything here: they are
+// wrong because something the issue says does NOT exist now DOES. A dead-path
+// check cannot see a path that is alive; a moved-line check cannot see a module
+// that was born. #2487's `provider` identifier was gone, #1677's six rankers had
+// all shipped, #2556's "missing" write paths all existed.
 //
-//   NOT REACHABLE — a claim about BEHAVIOUR. "Decline the window's first tick"
-//   cannot work at an hourly tick; a premise that requires a manual sleep row
-//   to be a session is impossible because `upsertManualSample` writes
-//   `start_time = end_time`; "not modelled at all" was modelled two months
-//   earlier. Each of those needs the code to be READ. This module cannot read
-//   code. What it can do is put the reader in front of the right lines: every
-//   behavioural claim in this corpus sits next to a citation, so a verified
-//   citation set is the agent half's reading list, and an issue whose citations
-//   all check out is exactly the issue whose PROSE still has to be judged.
+// THE IDENTIFIED NEXT CLASS is therefore inverse existence, named here because
+// "needs judgment" reads as unbounded and this part is not: parse the ABSENCE
+// claims an issue makes — "there is no X anywhere", "not modelled at all", "to
+// build", an unticked box naming a symbol — and test each against main exactly
+// as a citation is tested. It would have caught #1677 and #2556, the two most
+// expensive of the seven. It is not built, and it is not free: an absence claim
+// in a feature issue is usually a correct description of unbuilt work, so the
+// class INHERITS `symbolConfidence`'s tiering problem rather than escaping it.
+// That is the difference between a class worth building carefully and one that
+// would generate noise on every open feature request.
 //
-// So the honest framing: this is a triage instrument, not a verifier. It shrinks
-// the corpus a human (or the skill's agent half) must read, and it publishes how
-// much it could not decide.
+// The rest is behavioural and needs the code READ — a prescribed fix that cannot
+// work at the real tick rate, a premise made impossible by what the write path
+// stores, a framing that names the wrong half of the code as the gap. This
+// module cannot read code. What it can do is put the reader in front of the
+// right lines: every behavioural claim in this corpus sits next to a citation,
+// so a verified citation set is the agent half's reading list, and an issue
+// whose citations all check out is exactly the issue whose PROSE still has to be
+// judged.
+//
+// So the honest framing: this is a triage instrument, not a verifier, and the
+// two passes are near-complementary rather than redundant — the human sweep
+// checked premises and no citations; this found 14 moved line citations, 9 dead
+// paths and 17 docs citing absent modules that the sweep never attempted, in
+// seconds against its ~19 minutes. Cheap mechanical pass first, judgment pass on
+// what survives it. See docs/internals/tracker-reconciliation.md.
 //
 // ── #2385: how this learns it should stop ───────────────────────────────────
 //
@@ -52,14 +73,25 @@
 // skim. The second is common enough that proposals are tiered out by default
 // rather than filtered by cleverness (see `symbolConfidence`).
 //
-// DECEPTIVE SUCCESS: **an empty report.** A healthy tracker and a script that
-// has silently stopped resolving anything produce the same clean summary, and
-// the clean one is the one nobody investigates. There is no way to tell them
-// apart from the findings, so the report never leads with findings: it leads
-// with DENOMINATORS (`ReconcileTotals`) — citations parsed, paths resolved,
-// anchors testable, references followed. Zero findings out of 223 citations is
-// a healthy tracker. Zero findings out of zero citations is a broken script,
-// and it says so on its own front page.
+// DECEPTIVE SUCCESS, FIRST SHAPE: **an empty report.** A healthy tracker and a
+// script that has silently stopped resolving anything produce the same clean
+// summary, and the clean one is the one nobody investigates. There is no way to
+// tell them apart from the findings, so the report never leads with findings: it
+// leads with DENOMINATORS (`ReconcileTotals`) — citations parsed, paths
+// resolved, anchors testable, references followed. Zero findings out of 224
+// citations is a healthy tracker. Zero findings out of zero citations is a
+// broken script, and it says so on its own front page.
+//
+// DECEPTIVE SUCCESS, SECOND SHAPE: **the authoring habit lapsing.** A
+// DEPENDENCY, not an observation, and the more insidious of the two because the
+// denominators do NOT catch it. `checkLineCitation` works only because this
+// tracker's authors name what is on the line, in backticks, in the same
+// sentence; a bare line number is unfalsifiable, and a length check finds
+// nothing (zero of 72 resolvable citations pointed past EOF). If the habit
+// lapses, `pathCitations` and `lineCitations` both stay high and only
+// `lineCitationsTestable` sags — into a clean report rather than an error. Watch
+// the TESTABLE-TO-CITED RATIO, not the totals: 46 of 103 today, and a run
+// approaching zero is a detector that has lost its grip, not a tidy tracker.
 
 /**
  * How the run was configured, derived from the environment and the command
