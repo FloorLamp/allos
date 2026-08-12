@@ -596,12 +596,12 @@ export default function FoodLogBar({
     // off its own day.
     const draftHhmm = statedHhmm(draft.when.statedAt, tz) || null;
     if (draftHhmm === null) {
-      if (editing.eatenAt !== null) fd.set("eaten_at", "none");
+      if (editing.eatenAt !== null) fd.set("occurred_at", "none");
     } else if (
       draftHhmm !== editing.eatenAt ||
       draft.when.date !== editing.date
     ) {
-      fd.set("eaten_at", draftHhmm);
+      fd.set("occurred_at", draftHhmm);
     }
     let outcome: FoodEventEditResult;
     try {
@@ -823,7 +823,7 @@ export default function FoodLogBar({
         // "now". Only an add states a time — an undo removes a serving and asserts
         // nothing about when anything was eaten.
         if (statedChoice && delta === 1)
-          fd.set("eaten_at", eatingTimeChoiceValue(statedChoice));
+          fd.set("occurred_at", eatingTimeChoiceValue(statedChoice));
         return {
           kind: "wrote",
           outcome:

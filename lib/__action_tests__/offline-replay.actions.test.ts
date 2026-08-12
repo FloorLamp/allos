@@ -795,7 +795,10 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
       )
       .all(profile.id, date) as { recorded_at: string; meal_slot: string }[];
     expect(events).toHaveLength(2);
-    expect(events[0].recorded_at).toBe(capturedAt);
+    // The captured instant, NARROWED to the canonical stored shape at the door
+    // (#2370): the millisecond spelling the browser captured in is a third
+    // serialization, and `recorded_at` holds exactly one.
+    expect(events[0].recorded_at).toBe(capturedAt.replace(".000Z", "Z"));
     expect(events[0].meal_slot).toBe("Morning");
   });
 
