@@ -424,7 +424,7 @@ manually entered **care-plan items** with a planned date — e.g. an imported
 **Mark done** that completes the item), **preventive well-visits & screenings**
 (age/sex-appropriate checkups and screenings from curated general guidelines —
 the adult screening set is the USPSTF grade A/B core baked into
-`lib/screenings.json` (blood pressure, cholesterol, colorectal, diabetes/A1c,
+`lib/datasets/data/screenings.json` (blood pressure, cholesterol, colorectal, diabetes/A1c,
 **depression**, **anxiety**, **HIV**, hepatitis C, cervical, mammography,
 osteoporosis, plus the risk-gated hepatitis-B/lung/AAA rules), regenerated with
 `npm run gen:screenings`; **informational only, not medical advice** — mark one
@@ -1251,7 +1251,7 @@ Route: `/nutrition`.
 Nutrition is a food-group serving log at the **habit tier**, deliberately _not_
 a calorie counter. A curated ~24-group catalog (fatty fish, leafy greens,
 legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
-…; `lib/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
+…; `lib/datasets/data/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
 as **servings, one tap each** (undo decrements), each row badged by whether the
 guidance is to eat _more_, _balance_, or _less_. The **six quick rows are the head
 of one ranking** — recency-decayed frequency plus how near to this meal window you
@@ -1349,7 +1349,7 @@ intermediate standard for men at your bodyweight — 12 kg to advanced").
 Thresholds are **derived, not scraped** (no proprietary tables): the project's
 own anchor ratios scaled by bodyweight^(2/3) — the cross-sectional-area law
 (Lietzke 1956) — and interpolated between bodyweight bands, baked into
-`lib/strength-standards.json` (regenerated with
+`lib/datasets/data/strength-standards.json` (regenerated with
 `npm run gen:strength-standards`). Covers the main barbell lifts (back/front
 squat, bench, incline bench, overhead press, deadlift) and the weighted
 pull-up/chin-up; shown only when sex and a bodyweight are on file, informational
@@ -1833,7 +1833,7 @@ reading radiologist), so a manually-entered record can be attributed to a
 clinician and shows up in that provider's activity — nullable per record, never
 nagged. When you enter a **condition** by its everyday name without a code,
 Allos suggests a matching **ICD-10-CM** diagnosis code from a baked
-common-conditions map (`lib/icd10-common.json`, regenerated with
+common-conditions map (`lib/datasets/data/icd10-common.json`, regenerated with
 `npm run gen:icd10`) that you confirm with one tap — public-domain ICD-10-CM
 only (SNOMED deliberately avoided), so the code travels with the record into the
 FHIR export and sharpens cross-document de-duplication.
@@ -2408,7 +2408,7 @@ mg"), respecting whether each UL is defined over _supplemental_ intake
 D, calcium, iron). It's informational ("discuss with your clinician", never
 prescriptive) and the same warning surfaces as a dismissible **Upcoming**
 finding. Reference values are a baked, public-domain dataset from the NIH Office
-of Dietary Supplements / National Academies DRI tables (`lib/dri.json`,
+of Dietary Supplements / National Academies DRI tables (`lib/datasets/data/dri.json`,
 regenerated with `npm run gen:dri`). The same data drives a calm
 **RDA-adequacy** read alongside the UL warnings — for a nutrient your stack
 supplements _below_ its NIH **Recommended Dietary Allowance**, it notes the
@@ -2462,7 +2462,7 @@ avoid grapefruit juice — it raises statin blood levels"), the same notice when
 you **add or edit** a matching item, and a food note folded into the
 dose-reminder message. These are also **informational, never prescriptive**,
 from a curated, cited, hand-maintained public-domain dataset
-(`lib/food-drug-interactions.json`, keyed on RxNorm ingredient CUIs with a
+(`lib/datasets/data/food-drug-interactions.json`, keyed on RxNorm ingredient CUIs with a
 name/synonym fallback).
 
 ### Scheduling and adherence patterns
