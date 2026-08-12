@@ -335,7 +335,7 @@ export default async function BodySection({
   const pins = getBodyCardPins(profile.id);
   const cardOrder = bodyCardOrder(
     buildTrendsSubjectContext(profile.id, todayStr),
-    getBodyCardPins(profile.id)
+    pins
   );
 
   // WHERE THE ★ LIVES ON THIS TAB (#1643). Nowhere new — and that is the decision,
@@ -361,15 +361,36 @@ export default async function BodySection({
   // Height + head-circumference series (canonical cm, from metric_samples — the same
   // store the growth charts read). Read the WHOLE series (ALL_ROWS) before windowing
   // (issue #399): the default 180-row cap hides an older window entirely.
-  const heightAll = getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map(
-    (r) => ({ date: r.date, value: round(r.value, 1) })
-  );
+  //
+  // ONE read per series per render (#2117). ALL_ROWS means no LIMIT, so each of these
+  // is a full metric_samples scan + GROUP BY date; they used to be issued three times
+  // over (the census charts here, the growth percentile card's inputs, and the BMI
+  // pairing further down) for identical rows. The raw points are kept beside the
+  // display-rounded ones because the consumers genuinely differ: the charts plot to
+  // one decimal, the growth/BMI derivations want the unrounded value.
+  const heightRows = getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS);
+  const heightPoints = heightRows.map((r) => ({
+    date: r.date,
+    value: r.value,
+  }));
+  const heightAll = heightRows.map((r) => ({
+    date: r.date,
+    value: round(r.value, 1),
+  }));
   const heightChart = filterSeriesByRange(heightAll, range);
-  const headCircAll = getMetricDailyTotals(
+  const headCircRows = getMetricDailyTotals(
     profile.id,
     "head_circumference_cm",
     ALL_ROWS
-  ).map((r) => ({ date: r.date, value: round(r.value, 1) }));
+  );
+  const headCircPoints = headCircRows.map((r) => ({
+    date: r.date,
+    value: r.value,
+  }));
+  const headCircAll = headCircRows.map((r) => ({
+    date: r.date,
+    value: round(r.value, 1),
+  }));
   const headCircChart = filterSeriesByRange(headCircAll, range);
 
   // Event annotations (medication start/stop, appointments, situation changes)
@@ -874,17 +895,11 @@ export default async function BodySection({
   // months ago on a daily-synced child (#399). weightSeries already uses ALL_ROWS.
   const growthPresentation = buildGrowthTrendPresentation({
     sex: getProfileSex(profile.id),
-    birthdate: getProfileBirthdate(profile.id),
+    birthdate,
     today: todayStr,
-    heights: getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map(
-      (r) => ({ date: r.date, value: r.value })
-    ),
+    heights: heightPoints,
     weights: weightSeries.map((w) => ({ date: w.date, value: w.value })),
-    headCircs: getMetricDailyTotals(
-      profile.id,
-      "head_circumference_cm",
-      ALL_ROWS
-    ).map((r) => ({ date: r.date, value: r.value })),
+    headCircs: headCircPoints,
     weightUnit: wu,
     range,
   });
@@ -968,10 +983,7 @@ export default async function BodySection({
   // the two BMI charts on a child's body census can't disagree (issue #407).
   const bmiAll = bmiSeriesDatePaired(
     weightSeries.map((w) => ({ date: w.date, value: w.value })),
-    getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map((r) => ({
-      date: r.date,
-      value: r.value,
-    }))
+    heightPoints
   ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
   const bmiChart = filterSeriesByRange(bmiAll, range);
   // Check-in trends (#992, completed by #1408): the daily wellbeing check-ins as
