@@ -9,6 +9,7 @@ import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { isStaleActionError } from "@/lib/sw-update";
+import { reportStaleBuild } from "@/components/update-reload-channel";
 import { useLatestRef } from "@/components/useLatestRef";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a
@@ -199,6 +200,12 @@ export function useActivityAutosave({
         // event. The form renders the reload banner off the flag; the local draft
         // (#1699) is what makes "kept on this device" true.
         const stale = isStaleActionError(err);
+        // Trigger A of the self-reloading deploy (#2471). Reported to the root
+        // registrar, which is mounted above every provider this editor lives under,
+        // so the tab can converge on the new build without the user tapping
+        // anything — and without waiting for the `/api/version` detector, which this
+        // signal is deliberately independent of.
+        if (stale) reportStaleBuild();
         if (mountedRef.current) {
           if (stale) setStaleBuild(true);
           setStatus("error");

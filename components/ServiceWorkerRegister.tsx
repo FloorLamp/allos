@@ -11,6 +11,7 @@ import {
   resolveUpdateState,
   shouldOfferUpdate,
   shouldReloadOnControllerChange,
+  showsManualUpdateNotice,
   SW_RELOAD_FALLBACK_MS,
   SW_SKIP_WAITING,
   UPDATE_PENDING_KEY,
@@ -21,6 +22,8 @@ import {
   hasUnsavedWork,
   subscribeUnsavedWork,
 } from "@/lib/offline/unsaved-work";
+import { useAutoUpdateReload } from "./useAutoUpdateReload";
+import { requestUpdateReload } from "./update-reload-channel";
 
 // Registers the hand-rolled service worker (public/sw.js) — Next's App Router has no
 // first-party SW story, so we register it ourselves from the root layout. The worker
@@ -334,14 +337,37 @@ export default function ServiceWorkerRegister({ sha }: { sha: string | null }) {
     }, SW_RELOAD_FALLBACK_MS);
   }, []);
 
-  // The bar renders only when the plan is to OFFER: `wait` holds it for the single
-  // sha read the decision above turns on (otherwise it would flash on every first
-  // load after a deploy), and `activate-silently` never shows it at all — not even
-  // for the paint between the read settling and the effect consuming the worker.
+  // THE TAB TAKES THE DEPLOY ITSELF (#2471). The offer above is no longer the first
+  // answer to a pending update — converging on the new build is, at the first moment
+  // that is provably safe. Everything the gate decides is `autoReloadPlan`; this call
+  // supplies the two triggers and the one reload path, and answers with the verdict
+  // the bar below renders off.
+  //
+  // `pending && plan === "offer"` is deliberately what trigger B is fed: `wait` means
+  // the single sha read has not settled, and `activate-silently` means this document
+  // already IS the new build (#1905) — reloading for either would be reloading for
+  // nothing. Trigger A needs no such narrowing and takes none: a save that failed
+  // with the stale-action signature is proof enough on its own, which is what keeps
+  // recovery alive in a tab whose detector has latched off (#2447's failure mode).
+  const verdict = useAutoUpdateReload({
+    pending: pending && plan === "offer",
+    targetSha: deployed.sha,
+    commitMessage,
+    machineryReload: reload,
+  });
+
+  // The bar survives only as the rationed-failure fallback: the automatic attempt is
+  // spent and this tab is still stale, or work on screen would not survive a reload.
+  // A tab merely WAITING for a quiet moment shows nothing — a bar during a two-second
+  // scroll pause would be the ask-before consent gate this issue removes.
   if (!pending || dismissed || plan !== "offer") return null;
+  if (!showsManualUpdateNotice(verdict)) return null;
   return (
     <UpdateReadyBar
-      onReload={reload}
+      // The shared path (#2471), not the bare machinery reload: a manual tap must
+      // flush every recoverable draft and leave the resume marker too, so even the
+      // fallback reload comes back where the user was.
+      onReload={() => void requestUpdateReload()}
       onDismiss={() => setDismissed(true)}
       unsavedWork={unsaved || hasUnsavedWork()}
       commitMessage={commitMessage}
