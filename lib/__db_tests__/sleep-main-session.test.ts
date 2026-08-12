@@ -34,7 +34,7 @@ import {
 } from "@/lib/queries";
 import { recommendCoaching, DEFAULT_COACHING_THRESHOLDS } from "@/lib/coaching";
 import { measureRoughNight } from "@/lib/derived-situations";
-import { setTimezone } from "@/lib/settings";
+import { setMetricSourcePriorityEntry, setTimezone } from "@/lib/settings";
 
 let profileId: number;
 // getSleepSignal answers only for a night actually just woken from (isLastNight),
@@ -538,6 +538,179 @@ describe("one wake-day, two sources, two real sessions (#2552)", () => {
       getDailySleepSessionsSince(dupId, before).map((row) => row.source)
     ).toEqual(["health-connect"]);
     expect(getNapHistory(dupId).history).toEqual([]);
+  });
+});
+
+// The SAME two-syncing-sources shape one grain up (#2603). `readSleepSessions` elects
+// one source STREAM for the whole read and, with no profile primary source set, falls
+// back to "the source of the newest session" — a probe over a single row. An afternoon
+// nap is the newest session most afternoons, so the phone's 45 minutes elected the
+// phone and the ring's entire session history left the read with it: the hero, the
+// SRI, the consistency strip, the typical wake time and the digest's sleep line all
+// then described the nap.
+//
+// The bucket is NOT the fix here, and that is the difference from #2552 above. Stream
+// election has its own #14 rationale — SRI needs ONE continuous session stream across
+// its window, which is exactly why `getDailySleepSessionsSince` exists separately for
+// date-keyed display — and that rationale is untouched. What was wrong is the probe:
+// recency of ANY session, so one nap outranks a hundred nights. It now asks for the
+// newest OVERNIGHT, and only falls back to the newest session at all when the profile
+// records no overnight anywhere.
+describe("two syncing sources, one nap: the stream election (#2603)", () => {
+  const NIGHTS = 10;
+
+  // A ring reporting `NIGHTS` consecutive overnights, plus one phone nap this
+  // afternoon — the newest session in the profile by end_time.
+  const napFlipProfile = (name: string): { id: number; wakeDay: string } => {
+    const id = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+        .lastInsertRowid
+    );
+    setTimezone(id, "UTC");
+    const wakeDay = today(id);
+    const nights: NormMetricSample[] = [];
+    for (let offset = NIGHTS - 1; offset >= 0; offset--) {
+      const day = shiftDateStr(wakeDay, -offset);
+      nights.push(
+        session(
+          "sleep_min",
+          day,
+          420,
+          `${shiftDateStr(day, -1)}T23:00:00Z`,
+          `${day}T06:00:00Z`
+        )
+      );
+    }
+    upsertMetricSamples(id, nights, "oura");
+    upsertMetricSamples(
+      id,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          45,
+          `${wakeDay}T13:00:00Z`,
+          `${wakeDay}T13:45:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+    return { id, wakeDay };
+  };
+
+  it("keeps the ring's whole history when the newest session is the phone's nap", () => {
+    const { id } = napFlipProfile("SleepStreamNap");
+    const sessions = getSleepSessions(id);
+    expect(sessions).toHaveLength(NIGHTS);
+    expect(sessions.every((row) => row.source === "oura")).toBe(true);
+  });
+
+  it("reads the hero off the night, not the nap", () => {
+    const { id, wakeDay } = napFlipProfile("SleepStreamNapHero");
+    expect(getLastNightSummary(id)).toMatchObject({
+      wakeDay,
+      durationMin: 420,
+      bedMinutes: 23 * 60,
+      wakeMinutes: 6 * 60,
+    });
+  });
+
+  it("still lets a NEW wearable take the stream over on its first night", () => {
+    // The recency the fallback is FOR, and the case a "most sessions wins" fix would
+    // have broken: the ring stops, the phone starts, and last night is the phone's.
+    // It must elect the phone immediately rather than pinning the read to the
+    // abandoned ring until it out-counts it.
+    const id = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('SleepStreamSwitch')")
+        .run().lastInsertRowid
+    );
+    setTimezone(id, "UTC");
+    const wakeDay = today(id);
+    const oldNights: NormMetricSample[] = [];
+    for (let offset = NIGHTS; offset >= 2; offset--) {
+      const day = shiftDateStr(wakeDay, -offset);
+      oldNights.push(
+        session(
+          "sleep_min",
+          day,
+          420,
+          `${shiftDateStr(day, -1)}T23:00:00Z`,
+          `${day}T06:00:00Z`
+        )
+      );
+    }
+    upsertMetricSamples(id, oldNights, "oura");
+    upsertMetricSamples(
+      id,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          400,
+          `${shiftDateStr(wakeDay, -1)}T23:30:00Z`,
+          `${wakeDay}T06:10:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+
+    const sessions = getSleepSessions(id);
+    expect(sessions.every((row) => row.source === "health-connect")).toBe(true);
+    expect(getLastNightSummary(id)).toMatchObject({
+      wakeDay,
+      durationMin: 400,
+    });
+  });
+
+  it("still elects SOMEBODY when no session anywhere reaches an overnight", () => {
+    // A nap-only profile on two sources: the overnight probe finds nothing, so the
+    // read falls back to the newest session exactly as it always did rather than
+    // electing nobody and returning an empty history.
+    const id = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('SleepStreamNapsOnly')")
+        .run().lastInsertRowid
+    );
+    setTimezone(id, "UTC");
+    const wakeDay = today(id);
+    upsertMetricSamples(
+      id,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          40,
+          `${wakeDay}T10:00:00Z`,
+          `${wakeDay}T10:40:00Z`
+        ),
+      ],
+      "oura"
+    );
+    upsertMetricSamples(
+      id,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          50,
+          `${wakeDay}T15:00:00Z`,
+          `${wakeDay}T15:50:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+    expect(getSleepSessions(id).map((row) => row.source)).toEqual([
+      "health-connect",
+    ]);
+  });
+
+  it("leaves an explicit primary source in charge", () => {
+    // The profile's own #14 pick is decided before the fallback is ever reached, so
+    // nothing here can override it — including when the pick is the nap's source.
+    const { id } = napFlipProfile("SleepStreamNapPicked");
+    setMetricSourcePriorityEntry(id, "sleep_min", "health-connect");
+    expect(getSleepSessions(id).map((row) => row.value)).toEqual([45]);
   });
 });
 
