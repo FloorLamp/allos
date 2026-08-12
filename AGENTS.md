@@ -102,8 +102,12 @@ npx vitest run -t "estimate1RM"
 CI runs formatting, lint, type checking, PHI scanning, a non-blocking full
 dependency audit plus a blocking high-severity audit gate, both coverage-gated
 test tiers, changed Playwright specs repeated three times at zero retries, and
-the full browser suite in twelve shards. Documentation-only changes skip the
-browser matrix. `.github/workflows/e2e-full.yml` provides the manually
+the full browser suite in twelve shards. A change with NO RUNTIME SURFACE skips
+the browser matrix — prose, plus the orchestration tooling under
+`scripts/orchestration/`, which nothing in the app or the e2e harness imports.
+The rest of `scripts/` is not exempt: `seed.ts`, `notify.ts` and the `gen-*.ts`
+generators feed the app and its fixtures. Grow that set only against the
+question "what imports this". `.github/workflows/e2e-full.yml` provides the manually
 dispatched full-suite census. Pre-commit runs Prettier through lint-staged and
 `phi-scan --staged`.
 

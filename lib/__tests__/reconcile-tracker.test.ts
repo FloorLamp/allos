@@ -435,6 +435,89 @@ describe("gatherEvidence", () => {
     ).toBe("lib/queries/metrics.ts:3");
   });
 
+  it("keeps the line span when it qualifies an unrooted path", () => {
+    // Qualifying the path used to return the FILE, dropping the span: a
+    // citation reading `metrics.ts:600` became a whole-module reference, and
+    // the reader lost the one thing that pointed at the code being discussed.
+    const evidence = gatherEvidence(
+      {
+        issues: [
+          issue({
+            number: 1,
+            // Line 3 is where readSleepSessions lives, so the span still holds
+            // and only the path needs repairing.
+            body: "`RecordTable.tsx:12` renders it.",
+          }),
+        ],
+        mergedPrs: [],
+        issueStates: new Map(),
+      },
+      index,
+      watermark
+    );
+    expect(
+      evidence.findings.find((f) => f.kind === "unqualified-path")?.correction
+    ).toBe("components/RecordTable.tsx:12");
+  });
+
+  it("emits ONE correction for a citation that is both unqualified and stale", () => {
+    // Two patches sharing an anchor is not two edits. The first consumes the
+    // anchor and the second refuses, so whichever ran first decided which half
+    // of the citation got repaired — silently.
+    const evidence = gatherEvidence(
+      {
+        issues: [
+          issue({
+            number: 1,
+            body: "`readSleepSessions` sits at `metrics.ts:600`.",
+          }),
+        ],
+        mergedPrs: [],
+        issueStates: new Map(),
+      },
+      index,
+      watermark
+    );
+    const corrections = evidence.findings
+      .filter((f) => f.correction !== undefined)
+      .map((f) => f.correction);
+    // Both fixes, once: the qualified path AND the corrected line.
+    expect(corrections).toEqual(["lib/queries/metrics.ts:3"]);
+  });
+
+  it("reports a repeated anchor without guessing which occurrence was meant", () => {
+    // Measured on the real tracker, nearest-of-two was wrong three times in
+    // seven: a citation about the code AROUND a symbol gets dragged onto the
+    // symbol's own line. The occurrences are still reported — only the guess
+    // is withheld.
+    const twice = repo({
+      "lib/twice.ts": [
+        "import { Widget } from './w';", // 1
+        ...Array.from({ length: 30 }, () => "// filler"),
+        "  <Widget />", // 32
+      ].join("\n"),
+    });
+    const evidence = gatherEvidence(
+      {
+        issues: [
+          issue({
+            number: 1,
+            body: "`Widget` is wired at `lib/twice.ts:900`.",
+          }),
+        ],
+        mergedPrs: [],
+        issueStates: new Map(),
+      },
+      twice,
+      watermark
+    );
+    const moved = evidence.findings.find((f) => f.kind === "moved-line");
+    expect(moved?.correction).toBeUndefined();
+    expect(moved?.bucket).toBe("unverifiable");
+    // The evidence a human needs is still on the record.
+    expect(moved?.detail).toContain("line 1, 32");
+  });
+
   it("puts an unrooted dead citation in the unverifiable bucket", () => {
     // `hr_minutes.ts` is a SQL table written like a module; `metrics.json` is
     // an operator's file. Neither is a claim that this checkout contains it.

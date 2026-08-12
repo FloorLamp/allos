@@ -102,13 +102,30 @@ echo
 #
 # The roster's own "(done: ...)" trailer is not a live entry, so live matching is
 # anchored to lines beginning "Cluster".
+#
+# WHERE the worktrees are is not this script's business to guess. The first version
+# globbed "$STATE_DIR"/wt-* — the path every dispatch brief names — and on
+# 2026-08-12 two live agents built theirs somewhere else entirely (under the
+# harness scratchpad, because `$SCRATCH` was not set in their shell and their own
+# instructions point temp work at that directory instead). Both were invisible
+# here: the roster listed them, the worktree section did not, and a restart would
+# have run the preserve-first drill over a list that silently omitted the two trees
+# holding uncommitted work. A monitor that can only see the places you expected is
+# the canary again — it reports confidently and its silence means nothing.
+#
+# `git worktree list` cannot have that failure. Git already knows every worktree
+# attached to this checkout, wherever it sits, because it wrote the administrative
+# file itself. Ask the authority rather than re-deriving its answer from a path
+# convention that the next dispatch is free to ignore. The main checkout is skipped
+# by path, not by name — it is the one entry that is not an agent's.
 echo "--- worktrees ---"
-shopt -s nullglob
 git -C "$REPO" fetch origin main -q 2>/dev/null
 live_branches=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}')
 found=0
 alarms=0
-for d in "$STATE_DIR"/wt-*; do
+while read -r d; do
+  [ -n "$d" ] || continue
+  [ "$d" = "$REPO" ] && continue
   [ -d "$d" ] || continue
   found=1
   b=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)
@@ -151,9 +168,12 @@ for d in "$STATE_DIR"/wt-*; do
   # An unpushed commit under a live agent is the near miss, not the accident:
   # worth saying, not worth shouting.
   [ -n "$r" ] && [ "${h:0:7}" != "$r" ] && flag="$flag  (local ahead of remote)"
+  # A tree outside $STATE_DIR is findable HERE (git enumerates it) but not by
+  # anything that globs the documented path — say where it actually is.
+  case "$d" in "$STATE_DIR"/*) ;; *) flag="$flag  (outside \$SCRATCH: $d)" ;; esac
   printf "  %-16s %-32s %-6s local=%s remote=%-8s dirty=%s%s\n" \
     "$(basename "$d")" "$b" "$state" "${h:0:7}" "${r:-ABSENT}" "$dirty" "$flag"
-done
+done < <(git -C "$REPO" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
 [ "$found" = "0" ] && echo "  (none)"
 [ "$found" = "1" ] && [ "$alarms" = "0" ] && echo "  (no rescue targets — every dirty tree belongs to a live agent)"
 echo
@@ -163,7 +183,51 @@ echo "--- in-flight roster (written at dispatch; the only copy that outlives you
 if [ -s "$ROSTER" ]; then sed 's/^/  /' "$ROSTER"; else echo "  (empty)"; fi
 echo
 
-# 4. Cheap environment facts a restart can change.
+# 4. THE WAKE. Is anything scheduled to wake this session in the FUTURE?
+#
+# This is the gap that let the session go silent for 35 minutes on 2026-08-12
+# and needed a human to notice. The runbook already required "send_later PLUS a
+# backup background sleep, re-arm the pair before ending the turn" — the rule
+# was right and got walked past, which is what prose does.
+#
+# The two are NOT redundancy, and reading them as redundancy is what made
+# dropping one feel survivable:
+#   • send_later is a SERVER-SIDE routine. It survives a container restart.
+#   • a background `sleep` is IN-PROCESS. It dies with the container, exactly
+#     like the canary and for exactly the same reason.
+# So the sleep covers a send_later that silently fails (2026-08-01, 52 min),
+# and send_later covers a restart. Drop send_later and the dominant failure
+# mode — restart — has no wake mechanism at all, which is what happened.
+#
+# Detect by STATE, one level up from the boot-id: when you arm send_later,
+# write its fire time here. This asks the only question that matters — is a
+# wake scheduled in the future — and every answer is actionable:
+#   absent  -> nothing will wake you. Arm one.
+#   past    -> nothing FUTURE will wake you (you are awake handling it). Re-arm.
+#   future  -> silent.
+# If you armed but forgot to record it, this over-reports and you arm a second
+# one. An extra check-in is the safe direction; silence is not.
+echo "--- wake ---"
+WAKE_FILE="$STATE_DIR/.wake"
+if [ ! -s "$WAKE_FILE" ]; then
+  echo "  *** NO DURABLE WAKE ARMED — arm send_later NOW and record it: ***"
+  echo "      echo '<fire_at ISO> <trigger_id>' > $WAKE_FILE"
+  alarms=1
+else
+  wake_at=$(awk '{print $1}' "$WAKE_FILE")
+  wake_id=$(awk '{print $2}' "$WAKE_FILE")
+  now_s=$(date -u +%s)
+  wake_s=$(date -u -d "$wake_at" +%s 2>/dev/null || echo 0)
+  if [ "$wake_s" -gt "$now_s" ]; then
+    printf "  next: %s (in %dm) %s\n" "$wake_at" $(((wake_s - now_s) / 60)) "$wake_id"
+  else
+    echo "  *** WAKE IS IN THE PAST ($wake_at) — nothing future is armed. Re-arm send_later NOW. ***"
+    alarms=1
+  fi
+fi
+echo
+
+# 5. Cheap environment facts a restart can change.
 echo "--- environment ---"
 df -h / | awk 'NR==2 {print "  disk: " $4 " free (" $5 " used)"}'
 shared=$(find /tmp -maxdepth 1 -type d -name 'allos-db-shared-*' 2>/dev/null | wc -l | tr -d ' ')
