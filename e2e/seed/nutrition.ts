@@ -36,6 +36,8 @@ import {
   FOOD_SLOT_PROFILE,
   E2E_LOGIN_FOODUSUAL,
   FOOD_USUAL_PROFILE,
+  E2E_LOGIN_ROUTINEUSUAL,
+  ROUTINE_USUAL_PROFILE,
   E2E_LOGIN_FOODPIN,
   FOOD_PIN_PROFILE,
   FOOD_PIN_GROUP,
@@ -481,6 +483,98 @@ export function seedFoodUsual(): void {
   seedMemberLogin(E2E_LOGIN_FOODUSUAL, usualId, "write");
   console.log(
     `e2e: seeded food-regularity shortcut fixture — profile ${usualId} (${FOOD_USUAL_PROFILE}) (#2380)`
+  );
+}
+
+// ── The composed morning one-tap: food half + the doses declared in that window ──
+export function seedRoutineUsual(): void {
+  // ── The composed "your usual <window>" bundle (#2458) ────────────────────────
+  // The #2380 ledger shape, widened to every window so the run's frozen clock cannot
+  // decide whether the fixture has a habit: the same two groups every day for three
+  // weeks in Morning, Midday AND Evening, with today deliberately empty so the offer
+  // stands on arrival.
+  //
+  // Beside it, the stack that goes in the same glass: three `should` supplements, each
+  // carrying one dose row per window bucket, so exactly three doses are pending in
+  // whichever window the control renders for — and one `may` supplement doing exactly
+  // the same, which must NEVER appear. A `may` item has no dueness (#1505/#2419), and
+  // that is the predicate the exclusion rides; nothing in the offer reads obligation.
+  //
+  // UTC with the default 11:00/15:00 boundaries, so 08:00Z is Morning, 12:00Z Midday and
+  // 19:00Z Evening. Idempotent: every fixture-owned row is cleared first.
+  const routineId = fixtureProfileId(ROUTINE_USUAL_PROFILE);
+  setFixtureTimezone(db, routineId, "routine-usual", "UTC");
+  const routineAnchor = today(routineId);
+  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(routineId);
+  db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(routineId);
+  db.prepare(
+    `DELETE FROM intake_item_logs WHERE dose_id IN
+       (SELECT d.id FROM intake_item_doses d
+          JOIN intake_items s ON s.id = d.item_id WHERE s.profile_id = ?)`
+  ).run(routineId);
+  db.prepare(
+    `DELETE FROM intake_item_doses WHERE item_id IN
+       (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(routineId);
+  db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(routineId);
+  {
+    const fLog = db.prepare(
+      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+       ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
+    );
+    const fEvent = db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+       VALUES (?, ?, ?, ?)`
+    );
+    // Every event instant is built from the PROFILE-LOCAL wall time through the
+    // profile's own timezone (#1417), so the window each tap derives to is the window
+    // the fixture names — a morning feature is exactly where a naive string bites.
+    const routineTz = getTimezone(routineId);
+    const log = (date: string, group: string, hhmm: string) => {
+      fLog.run(routineId, date, group);
+      fEvent.run(
+        routineId,
+        group,
+        date,
+        zonedWallTimeToUtc(routineTz, date, hhmm)!.toISOString()
+      );
+    };
+    for (let d = 21; d >= 1; d--) {
+      const date = shiftDateStr(routineAnchor, -d);
+      // One habitual pair in EVERY window, so the offer's contents do not depend on
+      // which slot the run's frozen clock lands in.
+      for (const hhmm of ["08:00", "12:00", "19:00"]) {
+        log(date, "fermented", hhmm);
+        log(date, "berries", hhmm);
+      }
+    }
+    const item = db.prepare(
+      `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+       VALUES (?, ?, 'supplement', 1, ?, 'daily')`
+    );
+    const dose = db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, ?, ?, 'any', ?)`
+    );
+    const stack: [string, string, string][] = [
+      ["Creatine", "5 g", "should"],
+      ["Collagen", "10 g", "should"],
+      ["B-complex", "1 cap", "should"],
+      // Declared for every window and NEVER offered: no dueness, no membership.
+      ["Magnesium", "200 mg", "may"],
+    ];
+    for (const [name, amount, obligation] of stack) {
+      const itemId = Number(
+        item.run(routineId, name, obligation).lastInsertRowid
+      );
+      ["morning", "midday", "evening"].forEach((slot, i) =>
+        dose.run(itemId, amount, slot, i)
+      );
+    }
+  }
+  seedMemberLogin(E2E_LOGIN_ROUTINEUSUAL, routineId, "write");
+  console.log(
+    `e2e: seeded composed morning one-tap fixture — profile ${routineId} (${ROUTINE_USUAL_PROFILE}) (#2458)`
   );
 }
 

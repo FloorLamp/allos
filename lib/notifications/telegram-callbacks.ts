@@ -1322,8 +1322,10 @@ async function handleFoodExpand(
   const rebuilt = buildFoodNudge(profileId, token.window, token.date, next, {
     ref: { chatId, messageId },
   });
-  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+  // Show more / show less writes nothing: the clamp above IS the outcome, so the ack
+  // goes before the redraw (#2418).
   await answerCallbackQuery(cq.id);
+  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
 }
 
 // Handle the first-connection food opt-in prompt (#682): flip the per-profile

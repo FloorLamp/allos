@@ -5,6 +5,9 @@ import {
   proteinBasisPhrase,
   proteinTargetSummary,
 } from "@/lib/protein";
+import UsualRoutineControl, {
+  type UsualRoutineControlProps,
+} from "@/components/dashboard/UsualRoutineControl";
 
 // Dashboard "Nutrition today" tile (issue #1221): today's protein against the goal
 // band, plus the trailing 7-day average — a thin FORMATTER over the SAME ProteinToday
@@ -24,11 +27,33 @@ import {
 // history the helper offers today's intake, which this card already shows two lines
 // up as its headline. Repeating it under an average's line would add a number and no
 // information.
+// THE COMPOSED MORNING ONE-TAP RIDES THIS CARD (#2458). No new widget id and no
+// layout migration: the offer is transient — a pure function of today's state, gone
+// the moment everything it names is logged — and a widget whose whole existence
+// flickers with the clock would be an unplaceable row in everyone's saved layout.
+// It sits ABOVE the protein readout because it is the thing you came to do.
+//
+// `today` is nullable for the same reason: the morning offer can stand for a profile
+// with no protein target at all (no body weight declared), and refusing to show the
+// tap because a NUMBER is unavailable would be the card's furniture outranking its
+// purpose. The page's empty-CTA gate reads the same pair.
 export default function NutritionTodayWidget({
   today,
+  routine,
 }: {
-  today: ProteinToday;
+  today: ProteinToday | null;
+  routine?: UsualRoutineControlProps | null;
 }) {
+  return (
+    <div className="card" data-testid="nutrition-today-widget">
+      <WidgetHeader title="Nutrition today" href="/nutrition" />
+      {routine ? <UsualRoutineControl {...routine} /> : null}
+      {today ? <ProteinReadout today={today} /> : null}
+    </div>
+  );
+}
+
+function ProteinReadout({ today }: { today: ProteinToday }) {
   const grams = Math.round(today.todayGrams);
   const isFloor = today.todayIntake
     ? today.todayIntake.basis !== "tracked"
@@ -37,42 +62,39 @@ export default function NutritionTodayWidget({
     ? proteinBasisPhrase(today.todayIntake.basis)
     : "logged foods";
   return (
-    <div className="card" data-testid="nutrition-today-widget">
-      <WidgetHeader title="Nutrition today" href="/nutrition" />
-      <div className="flex items-start gap-3">
-        <IconSalad
-          className="mt-1 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
-          stroke={1.75}
-          aria-hidden="true"
-        />
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <span
-              className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
-              data-testid="nutrition-today-protein"
-            >
-              {isFloor ? "≥ " : ""}
-              {grams} g
-            </span>
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              protein today
-            </span>
+    <div className="flex items-start gap-3">
+      <IconSalad
+        className="mt-1 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+        stroke={1.75}
+        aria-hidden="true"
+      />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span
+            className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
+            data-testid="nutrition-today-protein"
+          >
+            {isFloor ? "≥ " : ""}
+            {grams} g
+          </span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">
+            protein today
+          </span>
+        </div>
+        <div className="text-sm text-slate-600 dark:text-slate-300">
+          Goal {proteinTargetSummary(today.target)}
+        </div>
+        {today.trailing.grams != null && !today.trailing.dayOne && (
+          <div
+            className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+            data-testid="nutrition-trailing-average"
+          >
+            7-day average · {Math.round(today.trailing.grams)} g/day
           </div>
-          <div className="text-sm text-slate-600 dark:text-slate-300">
-            Goal {proteinTargetSummary(today.target)}
-          </div>
-          {today.trailing.grams != null && !today.trailing.dayOne && (
-            <div
-              className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="nutrition-trailing-average"
-            >
-              7-day average · {Math.round(today.trailing.grams)} g/day
-            </div>
-          )}
-          <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            From {basis}
-            {isFloor ? " — a floor, actual likely higher" : ""}.
-          </div>
+        )}
+        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          From {basis}
+          {isFloor ? " — a floor, actual likely higher" : ""}.
         </div>
       </div>
     </div>

@@ -93,6 +93,24 @@ export async function handleDoseCommand(
 // from the typed AdministrationOutcome — never an unconditional "Logged" (the
 // markDoseTaken contract) — and deliberately leaves the /dose message + buttons in
 // place so the user can log again later (a PRN med is given multiple times a day).
+//
+// ── WHEN THE TAP CAME FROM THE DIGEST'S OFFER LIST (#2418 part 2) ────────────
+//
+// A dose confirmed from a REMINDER gets the 🕐 correction chips; one logged through the
+// expanded "Log other" list got none anywhere — so stating WHEN was impossible for
+// exactly the taps most likely to be late, a `may` item logged from a digest hours
+// after the fact. The chips are keyboard assembly over a ledger read that already
+// exists, so this rebuilds the offer list WITH the correction row for the tap that just
+// landed, and collapses it on use exactly as the reminder flow does.
+//
+// TWO THINGS MAKE THAT POSSIBLE, and both are #2443's:
+//
+//   • the log now stamps `notify_message_id`, so its burst is BOUND to this message.
+//     Unattributed it could have ridden the newest live `dose` message in the chat
+//     instead — the digest is not one, so the chips would have surfaced on an unrelated
+//     reminder (#2264);
+//   • the ack goes out BEFORE the redraw, per the same issue's ordering rule: the write
+//     is done, so the outcome text is real, and the keyboard edit is cosmetic.
 export async function handlePrnLogTap(
   cq: TelegramCallbackQuery,
   token: PrnLogCallback
@@ -126,7 +144,18 @@ export async function handlePrnLogTap(
     }
     return;
   }
-  const outcome = logAdministration(profileId, token.itemId);
+  // The originating message (#2264): the pointer row for the keyboard this tap came
+  // from, or null for a message the pointer store no longer knows.
+  const notifyMessageId =
+    chatId != null && messageId != null
+      ? messagePointerIdAt(profileId, chatId, messageId)
+      : null;
+  const outcome = logAdministration(
+    profileId,
+    token.itemId,
+    undefined,
+    notifyMessageId
+  );
   const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
   // The answer states the verdict that now stands (#1717), read back from POST-write
   // state through the same classification the card shows — so an at-max tap says
@@ -145,6 +174,71 @@ export async function handlePrnLogTap(
       med ? prnQuickLogRedoseStatus(med, clockNow()) : null,
       med?.familyMemberCount ?? 1
     )
+  );
+  // The keyboard edit follows the ack and only for the offer list — a `/dose` message
+  // keeps its buttons untouched, as it always has.
+  if (logged && chatId != null && messageId != null) {
+    await rebuildOfferListWithChips(profileId, chatId, messageId, cq);
+  }
+}
+
+// Redraw the digest's EXPANDED offer list after one of its items was logged, carrying
+// the correction chips for the tap that just landed.
+//
+// It is a no-op unless the live keyboard really is that list: `prn:` is shared with
+// `/dose`, and the durable evidence of which one this is sits in the keyboard itself —
+// an expanded offer list is the only keyboard that carries a collapse token. A message
+// the pointer store no longer knows, or one whose burst the ledger will not attribute
+// here, renders the list back without chips rather than borrowing someone else's.
+async function rebuildOfferListWithChips(
+  profileId: number,
+  chatId: number | string,
+  messageId: number,
+  cq: TelegramCallbackQuery
+): Promise<void> {
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  const isOfferList = rows.some((row) =>
+    row.some(
+      (btn) =>
+        typeof btn.callback_data === "string" &&
+        btn.callback_data.startsWith(`${OFFER_COLLAPSE_PREFIX}:`)
+    )
+  );
+  if (!isOfferList) return;
+  const date = today(profileId);
+  const now = clockNow();
+  const tz = getTimezone(profileId);
+  const nowHhmm = zonedDateParts(tz, now).hhmm;
+  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
+  // Nothing left on offer in this slot: fall back to the collapsed control, which is
+  // what a re-expand would show anyway.
+  const actions = offered.length
+    ? expandedOfferActions(profileId, date, offered, prnLogToken)
+    : [collapsedOfferAction(profileId, date, nowHhmm, 0)];
+  // The chips, from the SAME ledger read and the SAME binding the reminder flow uses —
+  // `doseAnchor`'s lookup one level up (#2443): the keyboard cannot supply the dose or
+  // the day, so the ledger does.
+  const bursts = getDoseCorrectionBursts(
+    profileId,
+    now,
+    correctionMessageBinding(
+      profileId,
+      messagePointerKindAt(profileId, chatId, messageId) ?? "digest",
+      { chatId, messageId }
+    )
+  );
+  await updateMessageKeyboard(
+    profileId,
+    chatId,
+    messageId,
+    messageKeyboard({
+      title: "",
+      body: "",
+      actions: [
+        ...actions,
+        ...correctionActions(DOSE_TIME_PREFIXES, profileId, bursts, tz, now),
+      ],
+    })
   );
 }
 
@@ -344,13 +438,15 @@ export async function handleSymptomPick(
     data: `symsev:${profileId}:${sev}:${token.slug}`,
     row: "sev",
   }));
+  // A pure keyboard edit — the severity picker replaces the grid and nothing is
+  // written — so the ack goes first (#2418).
+  await answerCallbackQuery(cq.id);
   await rebuildMessage(profileId, chatId, messageId, {
     title: `${GLYPH.illness} Log a symptom: ${label}`,
     body: "How bad is it?",
     actions,
     kind: "symptom",
   });
-  await answerCallbackQuery(cq.id);
 }
 
 // A severity button tap: log the symptom-day and answer from the typed outcome (never
@@ -1088,7 +1184,13 @@ export async function handleSymptomTextIntake(
 // handler's keyboard-rebuild discipline: only act when the message actually had
 // buttons, so an absent keyboard can't overwrite the text.
 import crypto from "node:crypto";
-import { collapsedOfferAction, expandedOfferActions } from "./offer-tail";
+import {
+  collapsedOfferAction,
+  expandedOfferActions,
+  OFFER_COLLAPSE_PREFIX,
+} from "./offer-tail";
+import { getDoseCorrectionBursts } from "../queries";
+import { correctionActions, DOSE_TIME_PREFIXES } from "./correction-rows";
 import {
   collapsedTuneAction,
   expandedTuneActions,
@@ -1114,7 +1216,11 @@ import { RIGHTSIZE_OUTCOME_TEXT } from "../target-rightsize";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { messageKeyboard } from "./telegram-render";
 import { zonedDateParts } from "../date";
-import { messagePointerKindAt } from "./message-pointers";
+import {
+  correctionMessageBinding,
+  messagePointerIdAt,
+  messagePointerKindAt,
+} from "./message-pointers";
 
 import {
   getCustomSymptomNames,
@@ -1271,9 +1377,18 @@ export async function handleOfferTailTap(
   const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
 
   if (token.action === "collapse") {
+    // THE OUTCOME IS ALREADY KNOWN, so the spinner stops HERE (#2418). A collapse
+    // writes nothing: the moment the token validated, everything the user is waiting
+    // to hear had been decided, and making them watch a spinner through a Bot API
+    // round-trip was a latency cost with nothing behind it.
+    await answerCallbackQuery(cq.id);
     // Collapsing restores the digest's WHOLE collapsed keyboard, not just this
     // control: the ⚙️ Tune button (#1714) shares the message and would otherwise be
     // destroyed by the first expand/collapse round-trip.
+    //
+    // The ack moved ahead of the edit; the POINTER SYNC did not (#2443). It lives
+    // inside `updateMessageKeyboard`, after a SUCCESSFUL Bot API call, so a failed
+    // edit still leaves `notify_messages` describing what the chat really shows.
     await updateMessageKeyboard(
       profileId,
       chatId,
@@ -1289,7 +1404,6 @@ export async function handleOfferTailTap(
         ],
       })
     );
-    await answerCallbackQuery(cq.id);
     return;
   }
 
@@ -1302,6 +1416,9 @@ export async function handleOfferTailTap(
     );
     return;
   }
+  // Same rule for the expand: nothing is written, so the ack does not wait on the
+  // keyboard redraw.
+  await answerCallbackQuery(cq.id);
   await updateMessageKeyboard(
     profileId,
     chatId,
@@ -1312,7 +1429,6 @@ export async function handleOfferTailTap(
       actions: expandedOfferActions(profileId, date, offered, prnLogToken),
     })
   );
-  await answerCallbackQuery(cq.id);
 }
 
 // A ⤓ May tap on a dose reminder (#1505 part 2): accept the demotion suggestion for
@@ -1457,6 +1573,8 @@ export async function handleTuneTap(
   }
 
   if (token.action === "collapse") {
+    // Pure keyboard edit, so the ack goes first (#2418).
+    await answerCallbackQuery(cq.id);
     const nowHhmm = zonedDateParts(getTimezone(profileId), clockNow()).hhmm;
     const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
     await updateMessageKeyboard(
@@ -1474,7 +1592,6 @@ export async function handleTuneTap(
         ],
       })
     );
-    await answerCallbackQuery(cq.id);
     return;
   }
 
@@ -1497,6 +1614,10 @@ export async function handleTuneTap(
     );
     return;
   }
+  // The WRITE happened above, so the outcome text is real: ack with it, THEN redraw
+  // (#2418). The ordering rule's writing half — the toast rides the ack and must stay
+  // accurate, so it may never move ahead of the write that produced it.
+  await answerCallbackQuery(cq.id, answer);
   await updateMessageKeyboard(
     profileId,
     chatId,
@@ -1512,7 +1633,6 @@ export async function handleTuneTap(
       ),
     })
   );
-  await answerCallbackQuery(cq.id, answer);
 }
 
 // The digest time suggestion's three exits (#2217), tapped from the digest itself.
