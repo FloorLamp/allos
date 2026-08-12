@@ -15,13 +15,12 @@
 // (getEncounters, summarizeEpisodesForProfile) it introduces no un-scoped SQL, so the
 // profile-scoping rule holds without a new allowlist entry.
 
-import { today } from "./db";
 import { daysBetweenDateStr } from "./date";
 import { getEncounters } from "./queries/medical";
 import { summarizeEpisodesForProfile } from "./illness-episode-summary";
 import {
-  getEpisodeRowForDate,
-  mostRecentClosedEpisodeRow,
+  episodeStateForProfile,
+  type ProfileEpisodeState,
 } from "./illness-episode-store";
 import type { EpisodeIndexEntry } from "./illness-episode-summary";
 import type { Encounter } from "./types";
@@ -163,22 +162,41 @@ export function isRecentlySickOn(
 // is currently sick (an episode row covers that profile's today) or recently recovered
 // (its most-recently-closed episode ended within the window). Reuses the SAME episode
 // rows every illness surface reads — never a second "who's sick" derivation. Each
-// profile's "today" is resolved in its own timezone via today(pid).
+// profile's "today" is resolved in its own timezone by episodeStateForProfile.
 export function isHouseholdRecentlySick(
   profileIds: number[],
   windowDays: number = HOUSEHOLD_RECENTLY_SICK_DAYS
 ): boolean {
   for (const pid of profileIds) {
-    const day = today(pid);
-    const hasOpenToday = getEpisodeRowForDate(pid, day) != null;
-    const closed = mostRecentClosedEpisodeRow(pid);
-    if (
-      isRecentlySickOn(hasOpenToday, closed?.end_date ?? null, day, windowDays)
-    ) {
+    if (isRecentlySickFromState(episodeStateForProfile(pid), windowDays)) {
       return true;
     }
   }
   return false;
+}
+
+// The same verdict over ALREADY-GATHERED states (issue #2115). The dashboard reads
+// each profile's two episode rows ONCE and derives the illness accordion, the reopen
+// line and this promo from that one gather — the reuse the page's comment used to
+// only claim. Pure: no read of its own, so it cannot drift onto a different day or a
+// different row than the surfaces it sits beside.
+export function isHouseholdRecentlySickFromStates(
+  states: readonly ProfileEpisodeState[],
+  windowDays: number = HOUSEHOLD_RECENTLY_SICK_DAYS
+): boolean {
+  return states.some((s) => isRecentlySickFromState(s, windowDays));
+}
+
+function isRecentlySickFromState(
+  state: ProfileEpisodeState,
+  windowDays: number
+): boolean {
+  return isRecentlySickOn(
+    state.todayRow != null,
+    state.mostRecentClosed?.end_date ?? null,
+    state.today,
+    windowDays
+  );
 }
 
 // ── Ask 3: episode-page household-context computation ─────────────────────────

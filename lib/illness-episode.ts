@@ -36,6 +36,7 @@ import {
   getEpisodeRow,
   getEpisodeRowForDate,
   listEpisodeRows,
+  type ProfileEpisodeState,
 } from "./illness-episode-store";
 import type {
   AssembledEpisode,
@@ -339,7 +340,29 @@ export function currentEpisodeForProfile(
   profileId: number
 ): AssembledEpisode | null {
   const ep = episodeForProfileDate(profileId, today(profileId));
-  if (!ep) return null;
+  return ep ? assembleCurrentEpisode(profileId, ep) : null;
+}
+
+// The same answer from an ALREADY-GATHERED state row (issue #2115) — the dashboard
+// reads every accessible profile's today-row once (episodeStatesForProfiles) and
+// derives the accordion, the reopen line and the recently-sick promo from that one
+// gather instead of re-issuing the same SELECT per derivation. Identical output to
+// currentEpisodeForProfile by construction: both funnel through assembleCurrentEpisode.
+export function currentEpisodeFromState(
+  state: ProfileEpisodeState
+): AssembledEpisode | null {
+  return state.todayRow
+    ? assembleCurrentEpisode(state.profileId, episodeRowToDerived(state.todayRow))
+    : null;
+}
+
+// The signal gate shared by both: an assembled episode counts as the profile's
+// CURRENT one only while it reads as open (isOpenEpisode), so a not-yet-symptomatic
+// member stays off the household list.
+function assembleCurrentEpisode(
+  profileId: number,
+  ep: IllnessEpisode
+): AssembledEpisode | null {
   const assembled = assembleIllnessEpisode(profileId, ep);
   return isOpenEpisode(assembled) ? assembled : null;
 }
@@ -358,6 +381,16 @@ export function openEpisodeForProfile(
   const ep = episodeForProfileDate(profileId, today(profileId));
   if (!ep || ep.end != null) return null;
   return assembleIllnessEpisode(profileId, ep);
+}
+
+// openEpisodeForProfile over an already-gathered state row (#2115), for the acting
+// profile's own hero cockpit — same ungated rule, no second SELECT.
+export function openEpisodeFromState(
+  state: ProfileEpisodeState
+): AssembledEpisode | null {
+  const row = state.todayRow;
+  if (!row || row.end_date != null) return null;
+  return assembleIllnessEpisode(state.profileId, episodeRowToDerived(row));
 }
 
 // All of a profile's illness episodes, most-recent first — what the timeline lists a
