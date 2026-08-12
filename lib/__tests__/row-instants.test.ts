@@ -102,18 +102,18 @@ describe("pattern 1 — the event/record pair", () => {
   });
 
   // food_log_events solved the same problem OPPOSITELY: it REFUSES to infer an eating
-  // time and leaves `eaten_at` null. This is the null-event case the issue names.
-  it("food's undeclared eaten_at is an absence, never the log stamp", () => {
+  // time and leaves `occurred_at` null. This is the null-event case the issue names.
+  it("food's undeclared occurred_at is an absence, never the log stamp", () => {
     const backfilled = {
       date: "2026-03-10",
-      eaten_at: null,
-      logged_at: "2026-03-10T18:00:00Z",
+      occurred_at: null,
+      recorded_at: "2026-03-10T18:00:00Z",
       time_source: null,
     };
     expect(eventInstant("food_log_events", backfilled)).toEqual({
       known: false,
       why: "not-recorded",
-      column: "eaten_at",
+      column: "occurred_at",
     });
     // The record instant is still perfectly readable — the point is that it is not
     // handed back as an answer to the other question.
@@ -130,13 +130,13 @@ describe("pattern 1 — the event/record pair", () => {
   it("a stated eating time wins over the log stamp", () => {
     const stated = {
       date: "2026-03-10",
-      eaten_at: "2026-03-10T12:50:00Z",
-      logged_at: "2026-03-10T18:00:00Z",
+      occurred_at: "2026-03-10T12:50:00Z",
+      recorded_at: "2026-03-10T18:00:00Z",
       time_source: "stated",
     };
     expect(eventInstant("food_log_events", stated)).toMatchObject({
       at: "2026-03-10T12:50:00Z",
-      column: "eaten_at",
+      column: "occurred_at",
     });
     expect(bestKnownInstant("food_log_events", stated)).toMatchObject({
       semantic: "event",
@@ -318,7 +318,7 @@ describe("rowLocalDay", () => {
     expect(
       rowLocalDay(
         "food_log_events",
-        { date: "2026-03-09", eaten_at: "2026-03-10T20:00:00Z" },
+        { date: "2026-03-09", occurred_at: "2026-03-10T20:00:00Z" },
         NY
       )
     ).toEqual({

@@ -1628,7 +1628,7 @@ export default function FoodLogBar({
               {/* The day + eating-time PAIR, owned together by the shared control
                   (#2227/#2236): hour grain (the data's own precision), correct mode
                   ("Not stated" is first and clears), bounded to the same recent days
-                  the retired Day dropdown offered. `logged_at` is deliberately not
+                  the retired Day dropdown offered. `recorded_at` is deliberately not
                   here — the tap instant is audit history, never editable. */}
               <WhenControl
                 mode="correct"

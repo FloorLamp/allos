@@ -68,7 +68,7 @@ function tap(
   ).run(profileId, date, group);
   db.prepare(
     `INSERT INTO food_log_events
-       (profile_id, group_key, date, logged_at, meal_slot, eaten_at)
+       (profile_id, group_key, date, recorded_at, meal_slot, occurred_at)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     profileId,
@@ -169,7 +169,7 @@ describe("getFoodRegularity (#2380)", () => {
     for (let d = 1; d <= 10; d++) {
       const date = shiftDateStr(anchor, -d);
       db.prepare(
-        `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+        `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
          VALUES (?, '__protein__', ?, ?)`
       ).run(profileId, date, `${date}T08:00:00Z`);
     }

@@ -9,7 +9,7 @@
 //
 //   2. A SOURCE SCAN over the fallbacks the row readers exist to replace. A dozen
 //      surfaces hand-roll `COALESCE(recorded_at, taken_at)` and four more pair
-//      `eaten_at ?? logged_at`. Both are declared fallbacks now — the first WITHIN the
+//      `occurred_at ?? recorded_at`. Both are declared fallbacks now — the first WITHIN the
 //      record question (the owner's #2205 ruling made recorded_at a record instant), the
 //      second ACROSS questions, which is the one that has to stay visible. Each is
 //      frozen at its current count with a reason; a NEW one fails, and converting one
@@ -238,7 +238,7 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   },
   "lib/queries/nutrition.ts": {
     count: 3,
-    why: "the EATING-TIME reads: the eating-minute distribution and the recent-serving lookup, each pairing `eaten_at` with `logged_at` (the meal-event projection stopped collapsing them in #2227 — it now carries both facts so the correction sheet can say which one it shows). This is the sharpest instance of the substitution in the repo — an eating-time distribution that quietly includes tap times for every serving nobody stated a time for — and the module's own comments already say so. Converting the rest is a product decision about what those charts should show when the instant is undeclared, not a mechanical swap, so #2205 phase 3 declares it and leaves the answer to its own change.",
+    why: "the EATING-TIME reads: the eating-minute distribution and the recent-serving lookup, each pairing `occurred_at` with `recorded_at` (the meal-event projection stopped collapsing them in #2227 — it now carries both facts so the correction sheet can say which one it shows). This is the sharpest instance of the substitution in the repo — an eating-time distribution that quietly includes tap times for every serving nobody stated a time for — and the module's own comments already say so. Converting the rest is a product decision about what those charts should show when the instant is undeclared, not a mechanical swap, so #2205 phase 3 declares it and leaves the answer to its own change.",
   },
   "lib/queries/search.ts": {
     count: 1,
@@ -303,7 +303,7 @@ function pairPatterns(): PairPattern[] {
   for (const table of Object.keys(TIME_COLUMNS) as TemporalTable[]) {
     // The table's declared FALLBACK ORDER: its event column, then its record chain.
     // Any ordered pair drawn from it is a substitution a reader can hand-roll —
-    // whether it crosses the event/record line (`eaten_at ?? logged_at`) or stays
+    // whether it crosses the event/record line (`occurred_at ?? recorded_at`) or stays
     // inside the record question (`COALESCE(recorded_at, taken_at)`). Both belong to
     // lib/row-instants.ts now, so both are counted here.
     const chain = [

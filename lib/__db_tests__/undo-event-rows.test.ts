@@ -302,7 +302,7 @@ describe("one food serving: delete → undo (#2038)", () => {
     const [only] = eventIds(profileId, date, "whole_grains");
     const before = db
       .prepare(
-        `SELECT group_key, date, meal_slot, eaten_at, time_source, logged_at
+        `SELECT group_key, date, meal_slot, occurred_at, time_source, recorded_at
            FROM food_log_events WHERE id = ?`
       )
       .get(only);
@@ -314,7 +314,7 @@ describe("one food serving: delete → undo (#2038)", () => {
 
     const after = db
       .prepare(
-        `SELECT group_key, date, meal_slot, eaten_at, time_source, logged_at
+        `SELECT group_key, date, meal_slot, occurred_at, time_source, recorded_at
            FROM food_log_events WHERE profile_id = ? AND group_key = 'whole_grains'`
       )
       .get(profileId);

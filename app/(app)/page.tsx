@@ -1110,7 +1110,7 @@ export default async function Dashboard() {
     null
   );
   // The existing mealtime-shaped anchors: the profile's intake reminder slots.
-  // NOT the food log — `food_log_events.logged_at` is TAP time, documented as
+  // NOT the food log — `food_log_events.recorded_at` is TAP time, documented as
   // explicitly not eating time, so deriving a meal distribution from it would be
   // the new engine this issue's scope guard forbids.
   const nowSlots = getNotifySchedule(profile.id).supplementMinutes;

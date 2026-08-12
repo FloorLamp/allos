@@ -58,7 +58,7 @@ export function foodSlotForProfileInstant(
 }
 
 // The window one ledger event sits in. See `foodEventWindow` (lib/food-slot-count.ts)
-// for the precedence and why `logged_at` is now the LAST resort rather than the
+// for the precedence and why `recorded_at` is now the LAST resort rather than the
 // derivation (#2019).
 export function foodSlotForProfileEvent(
   profileId: number,

@@ -401,7 +401,7 @@ export function seedFoodSlots(): void {
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
     );
     const fEvent = db.prepare(
-      `INSERT INTO food_log_events (profile_id, group_key, date, logged_at) VALUES (?, ?, ?, ?)`
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at) VALUES (?, ?, ?, ?)`
     );
     const log = (date: string, group: string, n: number, hourZ: string) => {
       fLog.run(foodSlotId, date, group, n);
@@ -462,7 +462,7 @@ export function seedFoodUsual(): void {
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
     );
     const fEvent = db.prepare(
-      `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+      `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
        VALUES (?, ?, ?, ?)`
     );
     const log = (date: string, group: string, hourZ: string) => {

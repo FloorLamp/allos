@@ -7,7 +7,7 @@
 // one to a profile-local day (`localDayOf`, in lib/local-day-window.ts). What no
 // module owned was the question one level up — "when did THIS ROW happen?" — so every
 // surface answered it itself, and the answers diverged. `COALESCE(recorded_at, taken_at)`
-// is hand-rolled a dozen times; food pairs `eaten_at ?? logged_at` in four more;
+// is hand-rolled a dozen times; food pairs `occurred_at ?? recorded_at` in four more;
 // practice reads a bare `time` that is not an instant at all. Two of those hand-rolls
 // are what produced the wrong analyses this issue exists to prevent.
 //
@@ -31,7 +31,7 @@
 //
 // ── WHY "NO EVENT INSTANT" IS A STATE AND NOT A NULL ─────────────────────────
 //
-// A food serving logged from the web bar has NO `eaten_at`: nobody said when they ate,
+// A food serving logged from the web bar has NO `occurred_at`: nobody said when they ate,
 // and #2019 refuses to invent it. A quick-path practice tick has no `time`. Those rows
 // do not have an unknown event instant that happens to be missing — they have no event
 // instant, and the app knows it. Returning the RECORD instant there is precisely the
@@ -257,7 +257,7 @@ export type BestInstant =
 //
 // Not to be confused with a record CHAIN (see `read` above): falling from `recorded_at` to
 // `taken_at` stays inside `recordInstant`, because both answer "when did this enter the
-// app". Falling from `eaten_at` to `logged_at` crosses questions, and that is the fall
+// app". Falling from `occurred_at` to `recorded_at` crosses questions, and that is the fall
 // this function exists to make visible.
 export function bestKnownInstant(
   table: TemporalTable,

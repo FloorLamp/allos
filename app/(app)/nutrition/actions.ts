@@ -325,7 +325,7 @@ export type FoodEventDeleteResult =
   | { ok: false; error: string };
 
 // Remove ONE named logged serving (issue #1963). The bar's "−" is group-scoped and pops
-// the newest tap in the window by `logged_at`; since #1934 a corrected serving keeps its
+// the newest tap in the window by `recorded_at`; since #1934 a corrected serving keeps its
 // original tap instant, so it is not necessarily the newest thing in the window it was
 // moved into and the group control could take a neighbour. The ⋯ menu already asserts a
 // per-row identity — this is the removal that honours it. `undoFoodServing` is unchanged.

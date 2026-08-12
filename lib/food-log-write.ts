@@ -40,7 +40,7 @@ import { captureDelete } from "./undo-delete-db";
 export type FoodTimeSource = "tap" | "stated";
 
 // The eating-time half of a serving write. Optional throughout: a caller with no
-// statement to make omits it and the row keeps a NULL `eaten_at`, because defaulting a
+// statement to make omits it and the row keeps a NULL `occurred_at`, because defaulting a
 // backfill to now would reintroduce the guess under a more authoritative name.
 export interface FoodEatingTime {
   // ISO-8601 UTC instant the serving was eaten.
@@ -90,21 +90,21 @@ function mealServingCount(
 ): number {
   const events = db
     .prepare(
-      `SELECT logged_at, meal_slot, eaten_at FROM food_log_events
+      `SELECT recorded_at, meal_slot, occurred_at FROM food_log_events
         WHERE profile_id = ? AND date = ? AND group_key = ?`
     )
     .all(profileId, date, slug) as {
-    logged_at: string;
+    recorded_at: string;
     meal_slot: FoodSlot | null;
-    eaten_at: string | null;
+    occurred_at: string | null;
   }[];
   return events.filter(
     (event) =>
       foodSlotForProfileEvent(
         profileId,
-        event.logged_at,
+        event.recorded_at,
         event.meal_slot,
-        event.eaten_at
+        event.occurred_at
       ) === mealSlot
   ).length;
 }
@@ -162,7 +162,7 @@ export function logFoodServingCore(
     // byte-identical to the pre-ledger write.
     db.prepare(
       `INSERT INTO food_log_events
-         (profile_id, group_key, date, logged_at, meal_slot, eaten_at, time_source,
+         (profile_id, group_key, date, recorded_at, meal_slot, occurred_at, time_source,
           notify_message_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
@@ -212,24 +212,24 @@ export function undoFoodServingCore(
 
     const candidates = db
       .prepare(
-        `SELECT id, logged_at, meal_slot, eaten_at FROM food_log_events
+        `SELECT id, recorded_at, meal_slot, occurred_at FROM food_log_events
           WHERE profile_id = ? AND date = ? AND group_key = ?
-          ORDER BY logged_at DESC, id DESC`
+          ORDER BY recorded_at DESC, id DESC`
       )
       .all(profileId, date, slug) as {
       id: number;
-      logged_at: string;
+      recorded_at: string;
       meal_slot: FoodSlot | null;
-      eaten_at: string | null;
+      occurred_at: string | null;
     }[];
     const event = mealSlot
       ? candidates.find(
           (candidate) =>
             foodSlotForProfileEvent(
               profileId,
-              candidate.logged_at,
+              candidate.recorded_at,
               candidate.meal_slot,
-              candidate.eaten_at
+              candidate.occurred_at
             ) === mealSlot
         )
       : candidates[0];
@@ -260,9 +260,9 @@ export function undoFoodServingCore(
       mealSlot && event
         ? foodSlotForProfileEvent(
             profileId,
-            event.logged_at,
+            event.recorded_at,
             event.meal_slot,
-            event.eaten_at
+            event.occurred_at
           )
         : undefined;
     return {
@@ -354,9 +354,9 @@ function placementOf(
 // derived reads (slot tallies, the day's counts, the weekly frequency-target progress)
 // all recompute live off these two tables, so a move can never double-count.
 //
-// `logged_at` is deliberately NOT edited: it is the audit/tap instant, and the MEANINGFUL
+// `recorded_at` is deliberately NOT edited: it is the audit/tap instant, and the MEANINGFUL
 // grain is the window, which `meal_slot` asserts explicitly. An event left without an
-// explicit window keeps its NULL and therefore keeps deriving from `logged_at` — a
+// explicit window keeps its NULL and therefore keeps deriving from `recorded_at` — a
 // correction never silently freezes a legacy row's window.
 export function updateFoodLogEventCore(
   profileId: number,
@@ -367,7 +367,7 @@ export function updateFoodLogEventCore(
     mealSlot?: FoodSlot;
     // The eating instant (#2227), with THREE states: ABSENT leaves the row's alone
     // (the house convention — an omitted patch field is not a change), NULL clears it
-    // back to "nobody said" (`eaten_at` NULL + `time_source` NULL), and a Date states
+    // back to "nobody said" (`occurred_at` NULL + `time_source` NULL), and a Date states
     // it (`time_source` = 'stated'). Validated against the FINAL date of the patch —
     // an instant off the row's own day answers `invalid-eaten-at` and writes nothing.
     eatenAt?: Date | null;
@@ -376,7 +376,7 @@ export function updateFoodLogEventCore(
   return writeTx(() => {
     const row = db
       .prepare(
-        `SELECT group_key, date, logged_at, meal_slot, eaten_at, time_source
+        `SELECT group_key, date, recorded_at, meal_slot, occurred_at, time_source
            FROM food_log_events
           WHERE id = ? AND profile_id = ?`
       )
@@ -384,9 +384,9 @@ export function updateFoodLogEventCore(
       | {
           group_key: string;
           date: string;
-          logged_at: string;
+          recorded_at: string;
           meal_slot: FoodSlot | null;
-          eaten_at: string | null;
+          occurred_at: string | null;
           time_source: FoodTimeSource | null;
         }
       | undefined;
@@ -406,7 +406,7 @@ export function updateFoodLogEventCore(
     if (!isRealIsoDate(nextDate)) return { kind: "invalid-date" as const };
     const nextSlot = patch.mealSlot ?? row.meal_slot;
 
-    // A STATED instant must satisfy the same judgeEatenAt rule every other eaten_at
+    // A STATED instant must satisfy the same judgeEatenAt rule every other occurred_at
     // write goes through — judged against the FINAL date, so a patch that moves the day
     // and states an hour is checked against the day the row will actually sit on. What
     // a refusal costs stays the caller's posture: the correction action surfaces it as
@@ -428,7 +428,7 @@ export function updateFoodLogEventCore(
     // keeps whatever contract wrote it — a Telegram 'tap' stays a tap).
     const nextEatenAt =
       patch.eatenAt === undefined
-        ? row.eaten_at
+        ? row.occurred_at
         : patch.eatenAt === null
           ? null
           : utcInstant(patch.eatenAt);
@@ -441,16 +441,16 @@ export function updateFoodLogEventCore(
 
     const fromSlot = foodSlotForProfileEvent(
       profileId,
-      row.logged_at,
+      row.recorded_at,
       row.meal_slot,
-      row.eaten_at
+      row.occurred_at
     );
     // Derived from the NEXT eating instant, not the one being replaced: the returned
     // `to` placement is what the bar adopts for its counts, so a patch that sets
     // `eatenAt` without `mealSlot` must answer with the window the NEW instant lands in.
     const toSlot = foodSlotForProfileEvent(
       profileId,
-      row.logged_at,
+      row.recorded_at,
       nextSlot,
       nextEatenAt
     );
@@ -465,7 +465,7 @@ export function updateFoodLogEventCore(
     }
     db.prepare(
       `UPDATE food_log_events
-          SET group_key = ?, date = ?, meal_slot = ?, eaten_at = ?, time_source = ?
+          SET group_key = ?, date = ?, meal_slot = ?, occurred_at = ?, time_source = ?
         WHERE id = ? AND profile_id = ?`
     ).run(
       nextGroup,
@@ -515,7 +515,7 @@ export type FoodEventDeleteOutcome =
 
 // Remove one ALREADY-NAMED logged serving (issue #1963).
 //
-// The group-scoped undo (undoFoodServingCore) picks its victim by `logged_at DESC` — the
+// The group-scoped undo (undoFoodServingCore) picks its victim by `recorded_at DESC` — the
 // newest tap in the meal. That was coherent while servings within a (day, group, window)
 // were fungible, and #1934 ended it: a correction gives a row a user-asserted `meal_slot`
 // while deliberately PRESERVING its tap instant, so a serving moved INTO a window is not
@@ -541,7 +541,7 @@ export function deleteFoodLogEventCore(
   return writeTx(() => {
     const row = db
       .prepare(
-        `SELECT group_key, date, logged_at, meal_slot, eaten_at
+        `SELECT group_key, date, recorded_at, meal_slot, occurred_at
            FROM food_log_events
           WHERE id = ? AND profile_id = ?`
       )
@@ -549,9 +549,9 @@ export function deleteFoodLogEventCore(
       | {
           group_key: string;
           date: string;
-          logged_at: string;
+          recorded_at: string;
           meal_slot: FoodSlot | null;
-          eaten_at: string | null;
+          occurred_at: string | null;
         }
       | undefined;
     if (!row) return { kind: "not-found" as const };
@@ -562,9 +562,9 @@ export function deleteFoodLogEventCore(
     // vacated placement has to name the coordinate the tallies actually lose.
     const slot = foodSlotForProfileEvent(
       profileId,
-      row.logged_at,
+      row.recorded_at,
       row.meal_slot,
-      row.eaten_at
+      row.occurred_at
     );
 
     // The captured event's own stored key drives the counter decrement (never a
@@ -615,7 +615,7 @@ export type FoodRestampOutcome =
 // returns one absolute instant for the burst, which is the correct shape there — the user
 // answered for the meal, not per serving. Returning null REFUSES the whole write.
 //
-// REPEAT TAPS COMPOSE (#2206). The chip resolver counts back from `eaten_at`, so a second
+// REPEAT TAPS COMPOSE (#2206). The chip resolver counts back from `occurred_at`, so a second
 // −1h means two hours back rather than landing on the same instant — the row now SHOWS
 // its result, and "tap again to go further" is the only reading a visibly-moving value
 // supports. The compose is race-safe without any versioning of its own: every tap reads
@@ -623,7 +623,7 @@ export type FoodRestampOutcome =
 // same burst reads what the first one committed. What used to be idempotence is now the
 // resolver's floor — see `chipTarget`.
 //
-// CROSS-MIDNIGHT RE-DATING FALLS OUT. `eaten_at` decides the row's calendar day, so a
+// CROSS-MIDNIGHT RE-DATING FALLS OUT. `occurred_at` decides the row's calendar day, so a
 // correction that crosses local midnight moves the event's `date` AND the `food_log`
 // counter it belongs to, in the SAME IMMEDIATE transaction — the ledger row and the day
 // counter are one fact in two shapes (the updateFoodLogEventCore discipline), so exactly
@@ -648,24 +648,24 @@ export function restampFoodEventsCore(
     // some earlier keyboard rendered.
     const rows = db
       .prepare(
-        `SELECT id, group_key, date, logged_at, eaten_at FROM food_log_events
+        `SELECT id, group_key, date, recorded_at, occurred_at FROM food_log_events
           WHERE profile_id = ? AND id >= ?
-          ORDER BY logged_at, id
+          ORDER BY recorded_at, id
           LIMIT 200`
       )
       .all(profileId, fromEventId) as {
       id: number;
       group_key: string;
       date: string;
-      logged_at: string;
-      eaten_at: string | null;
+      recorded_at: string;
+      occurred_at: string | null;
     }[];
     const byId = new Map(rows.map((r) => [r.id, r]));
     const burst = burstFrom(
       rows.map((r) => ({
         id: r.id,
-        tapAt: r.logged_at,
-        statedAt: r.eaten_at,
+        tapAt: r.recorded_at,
+        statedAt: r.occurred_at,
         label: r.group_key,
       })),
       fromEventId
@@ -678,7 +678,7 @@ export function restampFoodEventsCore(
     for (const id of burst.ids) {
       const row = byId.get(id);
       if (!row) continue;
-      const instant = resolve({ tapAt: row.logged_at, statedAt: row.eaten_at });
+      const instant = resolve({ tapAt: row.recorded_at, statedAt: row.occurred_at });
       if (!instant) return { kind: "out-of-range" as const };
       targets.set(id, instant);
     }
@@ -701,7 +701,7 @@ export function restampFoodEventsCore(
       }
       db.prepare(
         `UPDATE food_log_events
-            SET eaten_at = ?, time_source = 'stated', date = ?
+            SET occurred_at = ?, time_source = 'stated', date = ?
           WHERE id = ? AND profile_id = ?`
       ).run(eatenAt, reDate ? nextDate : row.date, id, profileId);
     }

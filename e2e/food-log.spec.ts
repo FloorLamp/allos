@@ -640,16 +640,16 @@ async function newlyLoggedId(page: Page, before: string[]): Promise<string> {
 }
 
 function eatingTimeOf(eventId: string): {
-  eaten_at: string | null;
+  occurred_at: string | null;
   time_source: string | null;
 } {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
     return db
-      .prepare("SELECT eaten_at, time_source FROM food_log_events WHERE id = ?")
+      .prepare("SELECT occurred_at, time_source FROM food_log_events WHERE id = ?")
       .get(Number(eventId)) as {
-      eaten_at: string | null;
+      occurred_at: string | null;
       time_source: string | null;
     };
   } finally {
@@ -686,8 +686,8 @@ test("a serving logged with no stated time records no eating time (#2053)", asyn
 
   const eventId = await newlyLoggedId(page, before);
   // NULL, not "now": defaulting a web log to the tap instant would reintroduce the
-  // guess `eaten_at` exists to end, under a more authoritative name.
-  expect(eatingTimeOf(eventId)).toEqual({ eaten_at: null, time_source: null });
+  // guess `occurred_at` exists to end, under a more authoritative name.
+  expect(eatingTimeOf(eventId)).toEqual({ occurred_at: null, time_source: null });
 
   await removeLoggedServing(page, eventId);
 });
@@ -717,9 +717,9 @@ test("the Now chip stamps servings as eaten now, stated (#2053)", async ({
   // 'stated', never 'tap': the web "+" declares no contract of its own, so the source of
   // the instant is the person who pressed the chip.
   expect(stamped.time_source).toBe("stated");
-  expect(stamped.eaten_at).not.toBeNull();
+  expect(stamped.occurred_at).not.toBeNull();
   expect(
-    Math.abs(new Date(stamped.eaten_at!).getTime() - frozenNow().getTime())
+    Math.abs(new Date(stamped.occurred_at!).getTime() - frozenNow().getTime())
   ).toBeLessThan(10 * 60_000);
 
   // Pressing it again withdraws the statement — the chips are toggles, so there is no
@@ -775,8 +775,8 @@ test("Earlier… states an absolute hour, and it is what lands (#2053)", async (
   // The stated wall time is what the row carries — resolved server-side in the profile's
   // timezone, so the browser never converted it.
   await expect(page.getByTestId(`food-logged-${eventId}`)).toBeVisible();
-  expect(stamped.eaten_at).not.toBeNull();
-  expect(new Date(stamped.eaten_at!).getTime()).toBeLessThan(
+  expect(stamped.occurred_at).not.toBeNull();
+  expect(new Date(stamped.occurred_at!).getTime()).toBeLessThan(
     frozenNow().getTime()
   );
   // AND THE ROW STATES IT (#2206). The web half of "a surface must not go on showing the

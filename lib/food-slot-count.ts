@@ -33,9 +33,9 @@ import {
 export interface FoodLedgerEvent {
   name: string; // group_key
   date: string; // YYYY-MM-DD (the logged day)
-  logged_at: string; // ISO-8601 UTC instant of the tap
+  recorded_at: string; // ISO-8601 UTC instant of the tap
   meal_slot?: FoodSlot | null; // explicit consumed window; null on legacy/tap-only rows
-  eaten_at?: string | null; // captured EATING instant (#2019); null when nobody said
+  occurred_at?: string | null; // captured EATING instant (#2019); null when nobody said
 }
 
 // The event's food window, in strict precedence:
@@ -44,9 +44,9 @@ export interface FoodLedgerEvent {
 //      (the correction sheet's hand-set Meal). Never an echo: since #2269 the log
 //      path stores no slot beside a stated eating time, so a row carries one only
 //      when the user actually asserted a meal;
-//   2. `eaten_at` — a captured or stated eating instant (#2019/#2269), so a serving
+//   2. `occurred_at` — a captured or stated eating instant (#2019/#2269), so a serving
 //      lands in the window it was actually eaten in, and a corrected one MOVES there;
-//   3. `logged_at` — LEGACY ONLY, and the reason #2019 exists. The tap stamp is not
+//   3. `recorded_at` — LEGACY ONLY, and the reason #2019 exists. The tap stamp is not
 //      eating time (migration 056 says so in as many words); it is all a pre-#2019 row
 //      has, so a historical event keeps deriving from it rather than losing its meal.
 //
