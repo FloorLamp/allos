@@ -240,6 +240,16 @@ vi.mock("@/lib/auth", async () => {
         .get(session.login.id, profileId);
       return row != null;
     },
+    // The instance-wide admin census. Faithful: a real COUNT over the temp DB's
+    // logins, using the SAME sql text lib/auth uses, so deleteLogin's last-admin
+    // guard is exercised against genuine rows — and issue #2108's assertion that
+    // the count is read INSIDE the write transaction can observe the statement.
+    adminLoginCount: () =>
+      (
+        dbMod.db
+          .prepare("SELECT COUNT(*) AS c FROM logins WHERE role = 'admin'")
+          .get() as { c: number }
+      ).c,
     // Own-profile association (issue #1013). Faithful to the real core: the reader
     // returns the stored id from the REAL temp DB; the setter enforces the same
     // accessibility constraint (admins reach every profile, members only granted)
