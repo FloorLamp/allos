@@ -18,9 +18,10 @@ import { EPISODES_HREF } from "@/lib/hrefs";
 // two can't drift into different copy or different destinations.
 //
 // UNCHANGED by that move, deliberately: the predicate that decides whether it appears
-// at all (`accessible.length > 1 && isHouseholdRecentlySick(...)`, still evaluated on
-// the page), the 14-day window, the href, and its no-dismiss / no-dedupeKey / not-a-
-// finding nature. It appears because it's useful and disappears on its own.
+// at all (`accessible.length > 1 && isHouseholdRecentlySickFromStates(...)`, still
+// evaluated on the page), the 14-day window, the href, and its no-dismiss /
+// no-dedupeKey / not-a-finding nature. It appears because it's useful and disappears
+// on its own.
 //
 // The `household-history-promo` testid is stable across both homes: a caller asserts
 // WHERE it landed by which container it sits in, never by a different hook.

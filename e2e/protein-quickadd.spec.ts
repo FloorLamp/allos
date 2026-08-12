@@ -82,6 +82,42 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
       .count();
     expect(await rowsAbove(quickLog)).toBeLessThan(rows);
 
+    // The grams reach the one long-range nutrition chart too (#2414). This profile has
+    // NO tracked protein_g, so Trends → Nutrition → Macros & fiber used to render its
+    // empty state at a profile that logs protein — the chart was blind to the app's own
+    // logging. With today's grams logged it draws the series instead.
+    await page.goto("/trends?tab=nutrition");
+    const macros = page.getByTestId("nutrition-macros-chart");
+    await expect(macros).toBeVisible();
+    await expect(page.getByTestId("nutrition-macros-empty")).toHaveCount(0);
+    await expect(macros.getByText("Protein", { exact: true })).toBeVisible();
+
+    // …and now that it HAS content it leads the sections that do not (#2399). This
+    // profile confirms no doses, so the dose history is a setup prompt — which used
+    // to sit above the chart by declared order alone, making the reader scroll past
+    // a feature they have not set up to reach one that works.
+    const sections = await page
+      .locator(
+        '[data-testid="intake-history"], [data-testid="dose-history"], [data-testid="nutrition-macros-chart"], [data-testid="food-adherence-trend"]'
+      )
+      .evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")));
+    expect(sections).toEqual([
+      "intake-history",
+      "nutrition-macros-chart",
+      "dose-history",
+      "food-adherence-trend",
+    ]);
+
+    // A sunk section still OFFERS: the empty state keeps a one-line prompt naming
+    // where to act, rather than a card-shaped placeholder holding a plot's height.
+    const doses = page.getByTestId("dose-history");
+    await expect(
+      doses.getByRole("link", { name: /Supplements/ })
+    ).toBeVisible();
+
+    await page.goto("/nutrition");
+    await expect(total).toHaveText(/30g today/);
+
     // Undo removes the grams from the same day's total → back to the estimated basis.
     await settledClick(page, page.getByTestId("protein-quickadd-undo"));
     await expect(total).toHaveText(/0g today/);

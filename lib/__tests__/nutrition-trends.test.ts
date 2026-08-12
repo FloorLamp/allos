@@ -1,9 +1,99 @@
 import { describe, it, expect } from "vitest";
 import {
   buildMacroFiberSeries,
+  mergeProteinSources,
   aggregateFoodAdherenceByWeek,
+  orderNutritionSections,
+  NUTRITION_SECTION_LAYOUT,
 } from "../nutrition-trends";
 import type { HabitWeekCell } from "../food-habit-trend";
+
+describe("orderNutritionSections (#2399)", () => {
+  it("returns the declared reading order when every section has data", () => {
+    expect(orderNutritionSections(NUTRITION_SECTION_LAYOUT)).toEqual([
+      ...NUTRITION_SECTION_LAYOUT,
+    ]);
+  });
+
+  it("sinks the setup prompts below the sections that carry content", () => {
+    // The reported shape: the two empty cards sat ABOVE the only populated section.
+    expect(orderNutritionSections(["intake-history"])).toEqual([
+      "intake-history",
+      "dose-history",
+      "macros",
+      "adherence",
+    ]);
+    expect(orderNutritionSections(["macros"])).toEqual([
+      "macros",
+      "intake-history",
+      "dose-history",
+      "adherence",
+    ]);
+  });
+
+  it("keeps the declared order inside each group", () => {
+    expect(orderNutritionSections(["adherence", "dose-history"])).toEqual([
+      "dose-history",
+      "adherence",
+      "intake-history",
+      "macros",
+    ]);
+  });
+
+  it("falls back to the declared order for a profile with nothing at all", () => {
+    expect(orderNutritionSections([])).toEqual([...NUTRITION_SECTION_LAYOUT]);
+  });
+});
+
+describe("mergeProteinSources (#2414)", () => {
+  it("lets a tracked reading override the same day's hand-logged grams", () => {
+    const out = mergeProteinSources(
+      [{ date: "2026-01-02", value: 140 }],
+      [{ date: "2026-01-02", value: 30 }]
+    );
+    // Never 170: a day carrying both sources would double-count the same meals.
+    expect(out).toEqual([{ date: "2026-01-02", value: 140 }]);
+  });
+
+  it("fills the days no tracked reading covers with the logged grams", () => {
+    const out = mergeProteinSources(
+      [{ date: "2026-01-02", value: 140 }],
+      [
+        { date: "2026-01-01", value: 30 },
+        { date: "2026-01-02", value: 30 },
+        { date: "2026-01-03", value: 55 },
+      ]
+    );
+    expect(out).toEqual([
+      { date: "2026-01-01", value: 30 },
+      { date: "2026-01-02", value: 140 },
+      { date: "2026-01-03", value: 55 },
+    ]);
+  });
+
+  it("passes a tracked-only profile through unchanged, oldest first", () => {
+    const out = mergeProteinSources(
+      [
+        { date: "2026-01-02", value: 140 },
+        { date: "2026-01-01", value: 120 },
+      ],
+      []
+    );
+    expect(out).toEqual([
+      { date: "2026-01-01", value: 120 },
+      { date: "2026-01-02", value: 140 },
+    ]);
+  });
+
+  it("omits a day neither source has, rather than charting a zero", () => {
+    // The gap-fill (#2258) decides how an unlogged day draws; the merge must not
+    // pre-empt it with a zero-gram row asserting a fast nobody recorded.
+    expect(mergeProteinSources([], [])).toEqual([]);
+    expect(mergeProteinSources([{ date: "2026-01-01", value: 0 }], [])).toEqual(
+      []
+    );
+  });
+});
 
 describe("buildMacroFiberSeries (#1166 Part 1)", () => {
   it("merges the four tracked series into one dated, ascending row set", () => {
