@@ -87,26 +87,64 @@ if (!prNumber || !token) {
   process.exit(2);
 }
 
-function gh(pathname) {
-  const out = execFileSync(
-    "curl",
-    [
-      "-sS",
-      "-H",
-      `Authorization: Bearer ${token}`,
-      "-H",
-      "Accept: application/vnd.github+json",
-      `https://api.github.com/repos/FloorLamp/allos/${pathname}`,
-    ],
-    { encoding: "utf8", timeout: 30_000 }
+// A GUARD MUST NOT FAIL INTO ITS PERMISSIVE ANSWER. `--check` exits 1 for "not
+// high-stakes", which is the code a caller reads as "skip the lane" — so any
+// failure that also exits 1 is indistinguishable from a clean no, and the lane
+// silently stops covering the diffs it exists for. That is the #2444 shape this
+// whole script was written against: a guard that looks like a guard and answers
+// no when it cannot answer at all.
+//
+// So every way this can fail to KNOW exits 2, joining the missing-token case
+// above: a curl that cannot run, a body that is not JSON, an error object where
+// a list belongs (a deleted or mistyped PR number returns `{"message":"Not
+// Found"}`, on which `.map` throws). Unreachable, unparseable and unauthorized
+// are all "ask again", never "carry on".
+function fail(what) {
+  console.error(
+    `adversarial-review-brief: ${what} — cannot decide, so not deciding.`
   );
-  return JSON.parse(out);
+  process.exit(2);
+}
+
+function gh(pathname) {
+  let out;
+  try {
+    out = execFileSync(
+      "curl",
+      [
+        "-sS",
+        "-H",
+        `Authorization: Bearer ${token}`,
+        "-H",
+        "Accept: application/vnd.github+json",
+        `https://api.github.com/repos/FloorLamp/allos/${pathname}`,
+      ],
+      { encoding: "utf8", timeout: 30_000 }
+    );
+  } catch (err) {
+    fail(`GET ${pathname} failed (${err.message})`);
+  }
+  try {
+    return JSON.parse(out);
+  } catch {
+    fail(`GET ${pathname} returned a non-JSON body`);
+  }
 }
 
 const pr = gh(`pulls/${prNumber}`);
+if (!pr || typeof pr.number !== "number") {
+  fail(
+    `PR #${prNumber} did not resolve (${pr?.message ?? "no number in the response"})`
+  );
+}
 const files = [];
 for (let page = 1; page <= 10; page++) {
   const batch = gh(`pulls/${prNumber}/files?per_page=100&page=${page}`);
+  if (!Array.isArray(batch)) {
+    fail(
+      `the file list for PR #${prNumber} came back as ${batch?.message ?? typeof batch}`
+    );
+  }
   files.push(...batch.map((f) => f.filename));
   if (batch.length < 100) break;
 }
