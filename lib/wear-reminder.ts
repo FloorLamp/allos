@@ -170,8 +170,7 @@ export function bedtimeWearVerdict(
   if (!signals.enabled) return { send: false, skip: "disabled" };
   if (!signals.expectedActive)
     return { send: false, skip: "not-expected-active" };
-  if (!signals.sourceHealthy)
-    return { send: false, skip: "source-unhealthy" };
+  if (!signals.sourceHealthy) return { send: false, skip: "source-unhealthy" };
   if (signals.frontierAgeMin == null) return { send: false, skip: "no-stream" };
   if (signals.frontierAgeMin < signals.floorMin)
     return { send: false, skip: "stream-live" };

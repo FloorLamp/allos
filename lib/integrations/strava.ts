@@ -459,7 +459,9 @@ function int(v: unknown): number | null {
   return n == null ? null : Math.round(n);
 }
 
-function sourceId(value: unknown): string | null {
+// Strava's own id for a lap/segment/effort — an EXTERNAL id, not an integration
+// source id (#2487 reserves `sourceId` for the latter).
+function externalIdOf(value: unknown): string | null {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return str(value);
 }
@@ -533,7 +535,8 @@ export function mapStravaCyclingArtifacts(
     (value, index): NormActivityLap[] => {
       if (!value || typeof value !== "object") return [];
       const lap = value as Record<string, unknown>;
-      const externalId = sourceId(lap.id) ?? `${activityId}:lap:${index + 1}`;
+      const externalId =
+        externalIdOf(lap.id) ?? `${activityId}:lap:${index + 1}`;
       return [
         {
           external_id: parentExternalId,
@@ -570,8 +573,8 @@ export function mapStravaCyclingArtifacts(
       {
         external_id: parentExternalId,
         effort_external_id:
-          sourceId(effort.id) ?? `${activityId}:segment:${index + 1}`,
-        segment_id: sourceId(segment.id),
+          externalIdOf(effort.id) ?? `${activityId}:segment:${index + 1}`,
+        segment_id: externalIdOf(segment.id),
         name: str(effort.name) ?? str(segment.name) ?? `Segment ${index + 1}`,
         distance_m: num(effort.distance, segment.distance),
         moving_time_sec: int(effort.moving_time),

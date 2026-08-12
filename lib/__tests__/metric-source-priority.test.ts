@@ -344,12 +344,8 @@ describe("sourceGroupKey (issue #1640)", () => {
   });
 
   it("keeps two documents DISTINCT when no class is selected (#533 intact)", () => {
-    expect(sourceGroupKey("document:5", SOURCE_PREFERENCE)).toBe(
-      "document:5"
-    );
-    expect(sourceGroupKey("document:7", SOURCE_PREFERENCE)).toBe(
-      "document:7"
-    );
+    expect(sourceGroupKey("document:5", SOURCE_PREFERENCE)).toBe("document:5");
+    expect(sourceGroupKey("document:7", SOURCE_PREFERENCE)).toBe("document:7");
     // And when ONE document is the explicit pick, the sibling stays separate.
     const onePicked = ["document:5", ...SOURCE_PREFERENCE];
     expect(sourceGroupKey("document:7", onePicked)).toBe("document:7");

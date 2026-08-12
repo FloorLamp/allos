@@ -69,9 +69,10 @@ describe("bedtimeWearVerdict (#2161)", () => {
   it("yields to a failing or stale provider — a reconnect item owns that contact", () => {
     // "Still on the charger?" is false advice while the pipeline is down, and #1685's
     // one-row rule means the two must not both report one outage.
-    expect(
-      bedtimeWearVerdict({ ...OFF_WRIST, sourceHealthy: false })
-    ).toEqual({ send: false, skip: "source-unhealthy" });
+    expect(bedtimeWearVerdict({ ...OFF_WRIST, sourceHealthy: false })).toEqual({
+      send: false,
+      skip: "source-unhealthy",
+    });
   });
 
   it("says nothing when the stream has never delivered anything", () => {

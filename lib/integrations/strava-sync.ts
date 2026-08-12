@@ -449,9 +449,10 @@ export async function runStravaDetailsBackfill(
       reportProgress();
       continue;
     }
-    const sourceId = match[1];
+    // Strava's own activity id, not an integration source id (#2487).
+    const stravaActivityId = match[1];
     const detailRes = await stravaGet(
-      `/activities/${sourceId}`,
+      `/activities/${stravaActivityId}`,
       token,
       budget
     );
@@ -466,7 +467,7 @@ export async function runStravaDetailsBackfill(
     }
     const keys = STRAVA_STREAM_KEYS.join(",");
     const streamRes = await stravaGet(
-      `/activities/${sourceId}/streams?keys=${keys}&key_by_type=true`,
+      `/activities/${stravaActivityId}/streams?keys=${keys}&key_by_type=true`,
       token,
       budget
     );
@@ -480,7 +481,7 @@ export async function runStravaDetailsBackfill(
       continue;
     }
     const artifacts = mapStravaCyclingArtifacts(
-      sourceId,
+      stravaActivityId,
       detailRes.json,
       streamRes.json,
       athlete,
