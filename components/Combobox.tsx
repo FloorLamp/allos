@@ -28,6 +28,7 @@ export default function Combobox({
   iconFor,
   labelFor,
   searchTermsFor,
+  usedOptions,
   groupFor,
   allowFreeText = false,
   emptyLabel = "No matches",
@@ -63,6 +64,14 @@ export default function Combobox({
   // Hidden aliases for matching while keeping the option's visible label stable.
   // Used by the protocol outcome picker so "A1c" finds "Hemoglobin A1c".
   searchTermsFor?: (option: string) => readonly string[];
+  // Lowercased option names this profile has ACTUALLY used (#2384). Without it the
+  // caller's careful ranking — recency-decayed frequency, today's routine slots,
+  // owned equipment, draft companions — survives only as an exact-score tiebreak
+  // and is therefore discarded on the first keystroke. The caller answers "does
+  // this profile use this?"; lib/fuzzy owns what that is worth (USAGE_BONUS), so
+  // no surface invents a sort. Declared evidence only: a picker that merely HAS an
+  // order must not pass one.
+  usedOptions?: ReadonlySet<string>;
   // Group headers for the EMPTY-QUERY list only (#1675). An empty query is the
   // relevance view — the caller hands options in ranked order and names each row's
   // bucket here, so "Due or flagged" leads and the header says why. Typing is
@@ -106,8 +115,11 @@ export default function Combobox({
   // Fuzzy subsequence match + ranking (see lib/fuzzy): "bpr" finds "Bench
   // Press". An empty query keeps the first 8 options in their original order.
   const filtered = searchTermsFor
-    ? fuzzyFilterWithTerms(options, filterValue, searchTermsFor, 8)
-    : fuzzyFilter(options, filterValue, 8);
+    ? fuzzyFilterWithTerms(options, filterValue, searchTermsFor, {
+        limit: 8,
+        used: usedOptions,
+      })
+    : fuzzyFilter(options, filterValue, { limit: 8, used: usedOptions });
   // Headers only in the relevance view (see `groupFor`).
   const showGroups = groupFor != null && q === "";
   const showUse =

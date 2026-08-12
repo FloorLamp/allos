@@ -1052,6 +1052,33 @@ stage buckets read off the SAME `assessSchedule` status engine the schedule grid
 draws, fed by `lib/queries/immunization-options.ts`) — so an adult's vaccine
 picker no longer opens on an infant's first year.
 
+**A ranked source only survives the EMPTY query unless it declares usage
+(#2384).** The model above — "an empty query keeps source order, so the source
+array's first 8 entries are the picker" — is true only for the empty query.
+`fuzzyFilter` sorts on `b.s - a.s || a.i - b.i`, so the caller's order is kept
+only as an exact-score TIEBREAK, and the score carries a fractional length term
+that makes exact ties essentially never occur. One keystroke therefore replaced
+every ranker above with string geometry: a never-logged "Squash" outranked five
+logged squats on `sqa`, purely because its `s` sits at index 0.
+
+The fix keeps the split the rankers already have. The CALLER answers "does this
+profile actually use this?" — it is the domain question, and these rankers
+already resolve it — and passes the answer as `usedOptions`, a `ReadonlySet` of
+lowercased option names. `lib/fuzzy.ts` owns what that is worth: one app-wide
+`USAGE_BONUS` (1.5), bounded so it overturns the +1 first-character bonus and
+the length tiebreak but never a word boundary (+2) or a contiguity run (+3), and
+BINARY rather than graded, per the same #1490 discipline these rankers follow.
+It de-ranks, never hides. Omitting `usedOptions` is byte-for-byte the old
+behavior, which is the right default: a picker earns the bonus by declaring real
+evidence, never by merely having an order — a position-derived bonus over an
+alphabetical list would just favour names beginning with "A".
+
+The activity picker is the first consumer (`ActivitySuggestions.logged`, built
+from the three usage tallies `getActivitySuggestions` already gathers).
+Medications, supplements, providers, specialties and immunizations should pass
+`usedOptions` as each ranked source lands, or their rank will keep evaporating
+on the first keystroke.
+
 ## Biomarker → supplement: the curated engine, and the AI route as fallback (#2378)
 
 Biomarker → **food** has been deterministic since #577: `lib/food-suggest.ts`

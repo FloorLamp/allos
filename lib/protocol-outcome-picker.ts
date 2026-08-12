@@ -3,7 +3,7 @@
 // which aliases should match a query, and which clinical panels are most relevant
 // to the intervention currently being described.
 
-import { canonicalAliases, normalizeCanonicalKey } from "./canonical-name";
+import { biomarkerSearchTerms } from "./canonical-name";
 import { tablePanelId } from "./derived-table";
 import type { PanelId } from "./biomarker-panels";
 import { fuzzyScore } from "./fuzzy";
@@ -25,20 +25,15 @@ export interface OutcomeOption {
   };
 }
 
-function unique(values: readonly string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean)));
-}
-
 // Search aliases come from the SAME canonical-name registry used during ingest.
 // This makes "A1c" find "Hemoglobin A1c" without growing a second synonym list in
 // the picker. The visible canonical label is kept separate from these hidden terms.
+//
+// One source since #2382 (`biomarkerSearchTerms`), so this picker also gained the
+// trailing acronym as a search key — "psa" reaching "Prostate-Specific Antigen
+// (PSA)" is the same question here as on every other biomarker picker (#221).
 export function outcomeSearchTerms(label: string): string[] {
-  const key = normalizeCanonicalKey(label);
-  return unique(
-    canonicalAliases()
-      .filter(([, canonical]) => normalizeCanonicalKey(canonical) === key)
-      .map(([alias]) => alias)
-  );
+  return [...biomarkerSearchTerms(label)];
 }
 
 export function biomarkerOutcomeOption(name: string): OutcomeOption {

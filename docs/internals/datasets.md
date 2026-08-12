@@ -436,6 +436,27 @@ those entries took the long form. A parenthetical containing a **space** is not
 treated as an acronym (`looksLikeAbbreviation`), so the thyroid fractions and the
 ANA screen keep load-bearing curated routes.
 
+That convention also has a SEARCH consequence, fixed in #2382. The app-wide
+combobox matcher (`lib/fuzzy.ts`) is a greedy leftmost subsequence walk that
+never backtracks, so `Long Name (ABBR)` puts the abbreviation exactly where the
+matcher is structurally incapable of seeing it: for `Prostate-Specific Antigen
+(PSA)` the query `psa` is consumed scattered inside "Prostate-Specific" and the
+literal `(PSA)` at the end is never reached — the entry was offered at NO
+position. Searching the abbreviation as its own key is therefore not a nicety.
+`biomarkerSearchTerms(name)` is that one source — `acronymNameForms` plus the
+`CANONICAL_ALIASES` routes that point at the analyte, reverse-indexed once — and
+every biomarker picker passes it as the Combobox's `searchTermsFor` (#1675,
+#221). It is also why `A1c` → `Hemoglobin A1c`, in the vocabulary all along,
+used to contribute nothing to search.
+
+A curated alias is a real search key, so a long WORD alias can add a low-scoring
+row to a short query's results (`Glycated Hemoglobin` carries the subsequence
+l…d…l). That is the same spurious-subsequence noise #2382 measured; its remedy,
+a match-density floor, is deliberately NOT in that change, because applied
+before abbreviation coverage grows it deletes legitimate word-initial acronym
+queries outright (`tc` → Total Cholesterol, `tsat` → Transferrin Saturation).
+Ranking, not membership, is what the abbreviation key fixes.
+
 **Migration 177** carries the 20 renamed entries, reusing #2306's
 `applyCanonicalRename` rather than duplicating its checklist of what a canonical
 name is keyed by. It also **deletes** the retired vocabulary rows, which #2306's

@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
+import { openCombobox, settledFill } from "./helpers";
 
 // Pick an activity in the editor's exercise combobox. The option button's text
 // varies with the input state: a partial filter lists options as the name plus a
@@ -1078,4 +1079,36 @@ test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async
   await expect(page.getByText(/Restored \d+ rows?\./)).toBeVisible();
   await page.goto("/data?section=manage");
   await expect(card.locator("h2 span").first()).toHaveText(original!); // first-ok: the same count span in the scoped card's heading — order-agnostic
+});
+
+// #2384. The exercise picker's option list is carefully ordered — recency-decayed
+// frequency over the profile's own sets (#195), today's routine slots floated to the
+// front (#1115), lifts whose implement kind the profile doesn't own de-ranked (#345),
+// companions of the draft's other lifts hoisted (#195) — and `allOptions` concatenates
+// lifts before cardio before sports. Then the matcher sorted on string shape alone and
+// kept the caller's order only as an exact-score tiebreak, so ONE keystroke discarded
+// all four: a never-logged "Squash" beat every squat on `sqa`, purely because its `s`
+// sits at index 0 and its name is shorter.
+//
+// The evidence, not a count: the base seed trains Back Squat on every Leg day (the PPL
+// plan other training specs already address by name), and nothing in the app or the
+// suite ever logs Squash. The assertion is a RELATIVE order plus a presence — no exact
+// array and no seed-row count (#2353).
+test("typing keeps the lifts you log ahead of a sport you never have (#2384)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.getByRole("button", { name: "New activity" }).click();
+
+  const field = page.getByPlaceholder(/What did you do/);
+  const listbox = await openCombobox(page, field);
+  await settledFill(page, field, "sqa");
+
+  // A squat leads. Option rows carry a muscle badge beside the name, so the row is
+  // matched by substring rather than by an exact accessible name.
+  const leadOption = listbox.getByTestId("combobox-option").first(); // first-ok: the LEADING option is the assertion
+  await expect(leadOption).toHaveText(/Squat/);
+  // De-rank, not hide (#345): the sport is still offered, so a first squash session
+  // is exactly as reachable as it was.
+  await expect(listbox.getByRole("button", { name: /^Squash/ })).toBeVisible();
 });
