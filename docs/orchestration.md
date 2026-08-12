@@ -472,6 +472,23 @@ row poisoning the next repeat; a live-mode finish seam remounting the form).
   orchestrator owns FULL suites; it never excused an author from its one new
   spec. #1066 and #1115 both shipped brand-new specs that failed on first push
   because nobody ran them. An unrun spec is a guaranteed CI round-trip.
+- **NEVER brief "write the spec, do not run it, I will run it."** This is the
+  orchestrator's own failure mode, not an agent's, and it produced red CI both
+  times it was issued: #2562 (8 failures) and #2584 (3/3 on the one new spec).
+  It fails for a structural reason — a spec's author is the only party holding
+  the feature's state in mind at the moment the spec is written, and the split
+  defers discovery of a spec bug past review, past the CI round, to the point
+  where the orchestrator has to reconstruct that state from a job log. Both
+  failures were spec bugs an author's first local run would have caught in
+  seconds (#2584: two taps of the same food row share ONE ledger key, so the
+  second is absorbed by `POST_SUCCESS_COOLDOWN_MS` and never reaches the
+  server; the repo already reloads between repeated taps in `food-log.spec.ts`
+  and `wellness-practices.spec.ts` for exactly this).
+  The e2e cap is a cap on CONCURRENT LOCAL RUNNERS, so a cluster that turns out
+  to need a browser spec has exactly two honest resolutions: **give it a slot**
+  (wait for one, or take one back from a cluster that has stopped running e2e),
+  or **brief it with no browser spec at all** — "prove this in the pure and DB
+  tiers; if it cannot be proven there, say so and stop." Never the split.
 - **A new nav entry breaks `TOP_LEVEL_ORDER`** in
   `e2e/nav-consolidation.spec.ts` (#1042) — say so in any brief that may add one.
 - **The merge bar:** CI fully green on the exact head. No separate local
