@@ -48,6 +48,7 @@ import {
 import { decideImportedConditionStatus } from "../clinical-parse";
 import { asArray, effTime, hl7Time, parser, textOf } from "./normalize";
 import { sourceDay } from "../source-time";
+import type { DocumentSubjectScope } from "../instrument-recognize";
 
 // Detect a CCD/CDA XML string (vs a SMART Health Card / other).
 export function looksLikeCda(text: string): boolean {
@@ -129,6 +130,48 @@ function mapDemographics(cd: any): ImportDemographics | null {
   return { sex, birthdate, name, postalCode };
 }
 
+// ── How many people is this document about? (#2558) ─────────────────────────
+//
+// A different question from "whose is this observation" (which lives beside the
+// screening recogniser, in extractors/observations.ts). It is answered off the HEADER:
+// a C-CDA's `recordTarget` is 1..*, and each one names a patientRole. An ordinary CCD
+// names exactly one and establishes it once, which is precisely why so many of its
+// observations restate no subject at all.
+//
+// Deliberately narrow. The count is over the header's own record targets and NOT over
+// the `relatedSubject` participations scattered through the body, because the ordinary
+// Family History section is built out of those (an affected relative is a subject the
+// document names, and there is nothing multi-patient about a CCD that lists one). The
+// per-observation subject axis already refuses a stated other subject wherever it
+// appears, unconditionally, so it is not what this count is for.
+//
+// Two record targets naming the SAME patient (a duplicated header — one exporter's
+// idea of listing an alias) is one patient; identity is the patientRole `id`, else the
+// printed name plus birth date.
+function patientIdentity(patientRole: any): string {
+  const ids = asArray(patientRole?.id)
+    .map((id: any) =>
+      [id?.["@_root"], id?.["@_extension"]]
+        .filter((p) => p != null && String(p).trim() !== "")
+        .join("|")
+    )
+    .filter((s: string) => s !== "")
+    .sort();
+  if (ids.length) return `id:${ids.join(",")}`;
+  const patient = patientRole?.patient;
+  return `who:${cdaName(patient) ?? ""}|${patient?.birthTime?.["@_value"] ?? ""}`;
+}
+
+function documentSubjectScope(cd: any): DocumentSubjectScope {
+  const identities = new Set(
+    asArray(cd?.recordTarget)
+      .map((rt: any) => rt?.patientRole)
+      .filter((pr: any) => pr?.patient)
+      .map(patientIdentity)
+  );
+  return identities.size === 1 ? "single-patient" : "multiple-subjects";
+}
+
 // The XML parser coerces a bare numeric <postalCode> (e.g. 62704) to a NUMBER,
 // which also strips a leading zero from a north-eastern ZIP (07001 → 7001). Coerce
 // back to a string and re-pad a short all-digit value to the 5-digit ZIP form so the
@@ -159,6 +202,9 @@ export function parseCcdaDocument(xml: string): {
   // Header-level care team (documentationOf/serviceEvent performers) — e.g. the
   // patient's PCP on an eCW document. Unioned into the import's providers.
   serviceEventProviders: ImportedProvider[];
+  // How many people the document is about (#2558) — see documentSubjectScope. Decides
+  // what an observation that restates NO subject means for a screening instrument.
+  subjectScope: DocumentSubjectScope;
 } {
   // Reject a hostile internal DTD subset (#135 item 5) before parsing — no
   // legitimate C-CDA declares custom entities, so a `<!ENTITY>` is an attack shape.
@@ -201,6 +247,7 @@ export function parseCcdaDocument(xml: string): {
     documentDate: sourceDay(effTime(cd?.effectiveTime)),
     encompassingEncounter: encompassingEncounterInfo(cd),
     serviceEventProviders: serviceEventProviders(cd),
+    subjectScope: documentSubjectScope(cd),
   };
 }
 
@@ -415,6 +462,7 @@ export function extractFromCcda(
     documentDate,
     encompassingEncounter,
     serviceEventProviders: headerProviders,
+    subjectScope,
   } = parseCcdaDocument(xml);
   const immunizations: ImportedImmunization[] = [];
   const records: ImportedRecord[] = [];
@@ -441,7 +489,7 @@ export function extractFromCcda(
     const ex = extractors.find((e) => e.matches(section));
     if (!ex) continue;
     claimedSections.add(section);
-    const part = ex.extract(section, contextDate);
+    const part = ex.extract(section, contextDate, { subjectScope });
     // Refusals the EXTRACTOR classified (#2321) — the ones no raw node can be asked
     // about after the fact, because they are facts about a SET of observations.
     if (part.drops) extractorDrops.push(...part.drops);

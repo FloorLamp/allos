@@ -12,6 +12,10 @@
 // parser fussiness: a screening the document attributes to somebody else, and a
 // half-answered one. Neither may produce a score, and neither may be silent.
 //
+// #2558 added the third case and its boundary: an observation that restates NO subject
+// scores in a single-patient document (the ordinary CCD, where the patient is
+// established once in the header) and still refuses in a document naming two.
+//
 // SYNTHETIC ONLY: invented patients, fictional dates, published public-domain item
 // wording. No PHI.
 
@@ -53,17 +57,37 @@ function itemEntries(scores: (number | null)[]): string {
     .join("\n");
 }
 
-// `subject` is the literal <subject> block the section's entries carry, if any.
-function ccda(scores: (number | null)[], subject: string): string {
+const WREN = `<recordTarget><patientRole>
+    <id root="2.16.840.1.113883.19.5" extension="SAMPLE-1"/>
+    <patient>
+      <name><given>Wren</given><family>Placeholder</family></name>
+      <administrativeGenderCode code="F"/>
+      <birthTime value="19950101"/>
+    </patient>
+  </patientRole></recordTarget>`;
+
+// A SECOND person in the same document — the shape that keeps silence unattributable.
+const ROWAN = `<recordTarget><patientRole>
+    <id root="2.16.840.1.113883.19.5" extension="SAMPLE-2"/>
+    <patient>
+      <name><given>Rowan</given><family>Placeholder</family></name>
+      <administrativeGenderCode code="F"/>
+      <birthTime value="20250210"/>
+    </patient>
+  </patientRole></recordTarget>`;
+
+// `subject` is the literal <subject> block the section's entries carry, if any;
+// `targets` is the header's recordTarget block(s), one patient unless a test says so.
+function ccda(
+  scores: (number | null)[],
+  subject: string,
+  targets: string = WREN
+): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <id root="1.2.3.4" extension="20260304001"/>
   <effectiveTime value="20260304"/>
-  <recordTarget><patientRole><patient>
-    <name><given>Wren</given><family>Placeholder</family></name>
-    <administrativeGenderCode code="F"/>
-    <birthTime value="19950101"/>
-  </patient></patientRole></recordTarget>
+  ${targets}
   <component><structuredBody>
     <component><section>
       <templateId root="2.16.840.1.113883.10.20.22.2.14"/>
@@ -78,13 +102,19 @@ ${itemEntries(scores)}
 
 const OWN_PATIENT = `<subject><relatedSubject classCode="PAT"/></subject>`;
 const THE_MOTHER = `<subject><relatedSubject classCode="PRS"><code code="MTH" displayName="Mother"/></relatedSubject></subject>`;
+// The ordinary CCD's observations: no <subject> block at all (#2558).
+const UNSTATED = ``;
 
-async function importOnce(scores: (number | null)[], subject: string) {
+async function importOnce(
+  scores: (number | null)[],
+  subject: string,
+  targets: string = WREN
+) {
   const { login, profile } = seedActor();
   await ingestMedicalUpload(
     login.id,
     profile.id,
-    new File([Buffer.from(ccda(scores, subject))], "screening.xml", {
+    new File([Buffer.from(ccda(scores, subject, targets))], "screening.xml", {
       type: "application/xml",
     })
   );
@@ -176,6 +206,70 @@ describe("a CCD screening instrument imports as a score (#2321)", () => {
     expect(report.drops).toContainEqual(
       expect.objectContaining({ label: "EPDS", reason: "other_subject" })
     );
+  });
+
+  it("scores a single-patient CCD whose observations state NO subject (#2558)", async () => {
+    const profile = await importOnce(NON_SEVERE_WITH_SELF_HARM, UNSTATED);
+    const state = getInstrumentStates(profile.id).find(
+      (s) => s.instrument === "EPDS"
+    )!;
+    expect(state.latest?.total).toBe(9);
+    expect(state.latest?.band.label).toBe("Minimal");
+    // The per-item answers land exactly as they do for a stated subject — the whole
+    // substrate, not a lesser import.
+    expect(
+      Object.keys(getInstrumentResponses(profile.id, state.latest!.id))
+    ).toHaveLength(10);
+    // And the question rows are consumed into it, not left behind as assessments.
+    const kept = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ? AND category = 'assessment'"
+      )
+      .get(profile.id) as { n: number };
+    expect(kept.n).toBe(0);
+    expect(
+      storedReport(profile.id)!.drops.some((d) => d.reason === "other_subject")
+    ).toBe(false);
+  });
+
+  it("still refuses an unstated subject when the document names TWO patients", async () => {
+    const profile = await importOnce(
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      UNSTATED,
+      `${WREN}\n${ROWAN}`
+    );
+    const scores = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ? AND category = 'instrument'"
+      )
+      .get(profile.id) as { n: number };
+    expect(scores.n).toBe(0);
+    // Nothing is lost, and the refusal is REPORTED under the #2544 vocabulary rather
+    // than the score being quietly absent.
+    const kept = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ? AND category = 'assessment'"
+      )
+      .get(profile.id) as { n: number };
+    expect(kept.n).toBe(10);
+    expect(storedReport(profile.id)!.drops).toContainEqual(
+      expect.objectContaining({ label: "EPDS", reason: "other_subject" })
+    );
+  });
+
+  it("refuses a stated OTHER subject even in a single-patient document", async () => {
+    // #2558 loosened silence, not attribution: a document that says whose score this
+    // is is believed, and this one says it is the mother's.
+    const profile = await importOnce(
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      THE_MOTHER
+    );
+    const scores = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ? AND category = 'instrument'"
+      )
+      .get(profile.id) as { n: number };
+    expect(scores.n).toBe(0);
   });
 
   it("refuses a partly answered screening under its own reason", async () => {
