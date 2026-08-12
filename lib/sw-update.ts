@@ -562,7 +562,8 @@ export function autoReloadRationSpent({
 }): boolean {
   const live = liveGuard(guard, now);
   if (!live) return false;
-  if (live.targets.includes(target)) return true;
+  const forThisTarget = live.targets.filter((t) => t === target).length;
+  if (forThisTarget >= AUTO_RELOAD_MAX_ATTEMPTS) return true;
   return live.targets.length >= AUTO_RELOAD_MAX_TARGETS;
 }
 
