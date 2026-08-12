@@ -54,6 +54,16 @@ import {
   DEFAULT_FORMAT_PREFS,
   type DisplayFormatPrefs,
 } from "./format-date";
+import {
+  cadenceCapWeeksSentence,
+  cadenceWeekVerdictLine,
+  type CadenceCapWeeks,
+  type CadenceTargetVerdict,
+} from "./cadence";
+import {
+  foodHabitSentence,
+  type FoodHabitObservation,
+} from "./food-habit-observation";
 import { median, robustEndpoints } from "./robust-stats";
 import { fmtWeight, kgTo } from "./units";
 import { weekWindow } from "./week-window";

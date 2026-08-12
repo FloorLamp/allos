@@ -150,6 +150,104 @@ export function foodRegularity(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// The same measure at DAY grain, over a longer period (#2397)
+// ---------------------------------------------------------------------------
+//
+// "You've eaten fatty fish 12 of the past 30 days" is this module's question asked of a
+// whole day instead of one meal window, over a period instead of the fixed 21-day span.
+// Same denominator decision, same gate, same silence: a group's days over the days FOOD
+// WAS LOGGED AT ALL, and nothing at all under the gate.
+//
+// It is a SHARE, NEVER A RUN. #1955 retired the run-shaped streak family across four
+// surfaces — a run measures continuity of app-logged behaviour, has a cliff where a
+// rate degrades gracefully, and punishes exactly what this app accommodates (a trip, an
+// illness episode, a deliberate skip). Nothing here counts consecutive anything, and
+// the shape that survived — "12 of 26" — is the one this returns.
+//
+// WHY DAY GRAIN AND NOT THE THREE WINDOWS. A meal-window habit is a rhythm ("fermented,
+// most mornings"); a period habit is a diet ("fatty fish about twice a week"). Summing
+// three window measures answers neither, because a group eaten at lunch on Monday and
+// at dinner on Tuesday is two days of one habit, not two half-habits. The grain is the
+// question; the arithmetic is deliberately the same.
+
+// The share of observed days a group must reach before a PERIOD reports it. 0.25 —
+// roughly weekly across the period, which is where "this is part of how I eat" starts.
+// Deliberately lower than `FOOD_REGULARITY_HABITUAL_SHARE`, and for a stated reason:
+// that constant gates an OFFER to write food on one tap, so it must clear "most days,
+// with room to miss" before the app pre-fills anything. This gates a sentence that only
+// reports back what the ledger already holds, and #2397's own example — fatty fish 12
+// of 30 days — is a real dietary pattern at a share of 0.4 that the offer threshold
+// would have called nothing.
+export const FOOD_PERIOD_HABIT_MIN_SHARE = 0.25;
+
+// One period's day-grain measure. Only ever built when the gate passed.
+export interface FoodPeriodRegularity {
+  /** Days in the period on which ANY catalog food group was logged — the denominator. */
+  observedDays: number;
+  /** Every group seen in the period, share-descending then days then key. */
+  groups: FoodGroupRegularity[];
+}
+
+// One food event at day grain: which group, which profile-local day. Structurally a
+// prefix of `FoodRegularityEvent`, so one gather feeds both measures.
+export interface FoodDayEvent {
+  groupKey: string;
+  date: string;
+}
+
+// The period's day-grain measure, or `null` under the gate. Null is SILENCE — no
+// expectation, never a habit broken — exactly as it is for a window.
+//
+// The gate is `FOOD_REGULARITY_MIN_WINDOW_DAYS`, unchanged and for its own reason: a
+// full week of observed days, so a pattern has had the chance to repeat across every
+// weekday at least once before the app is willing to call it one. That reason is about
+// the WEEK, not about the meal window, so it transfers whole.
+export function foodPeriodRegularity(
+  events: readonly FoodDayEvent[],
+  opts: { from: string; to: string }
+): FoodPeriodRegularity | null {
+  const observed = new Set<string>();
+  const byGroup = new Map<string, Set<string>>();
+  for (const event of events) {
+    if (event.date < opts.from || event.date > opts.to) continue;
+    observed.add(event.date);
+    const days = byGroup.get(event.groupKey) ?? new Set<string>();
+    days.add(event.date);
+    byGroup.set(event.groupKey, days);
+  }
+  const observedDays = observed.size;
+  if (observedDays < FOOD_REGULARITY_MIN_WINDOW_DAYS) return null;
+  const groups: FoodGroupRegularity[] = [...byGroup]
+    .map(([groupKey, days]) => ({
+      groupKey,
+      days: days.size,
+      share: days.size / observedDays,
+    }))
+    .sort(
+      (a, b) =>
+        b.share - a.share ||
+        b.days - a.days ||
+        a.groupKey.localeCompare(b.groupKey)
+    );
+  return { observedDays, groups };
+}
+
+// The groups a PERIOD's measure is willing to state, threshold and cap-direction
+// exclusion applied. `excluded` carries the same meaning it does for a window
+// (see `habitualFoodGroups` below) and is passed in for the same reason.
+export function periodFoodHabits(
+  period: FoodPeriodRegularity | null,
+  opts: { excluded?: ReadonlySet<string> } = {}
+): FoodGroupRegularity[] {
+  if (!period) return [];
+  const excluded = opts.excluded;
+  return period.groups.filter(
+    (g) =>
+      g.share >= FOOD_PERIOD_HABIT_MIN_SHARE && !excluded?.has(g.groupKey)
+  );
+}
+
 // The groups a window's measure says are HABITUAL — the presentable half.
 //
 // `excluded` is the CAP-DIRECTION exclusion (#2380's ruling, and #998's language one
