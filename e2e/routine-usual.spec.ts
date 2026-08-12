@@ -59,10 +59,13 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
 
     // Teardown through the product's own controls, which is also the both-directions
     // assertion: undo what made the control disappear and it comes back.
-    for (let i = 0; i < 3; i++) {
-      await settledClick(page, taken.first()); // first-ok: the three confirmed rows are interchangeable here — each pass clears one and the count is asserted after the loop
+    // One at a time, WAITING for each row to leave the set before the next click: the
+    // rows re-render under the tap, so a burst of clicks on the head of the set can
+    // land twice on the same element.
+    for (let left = 3; left > 0; left--) {
+      await settledClick(page, taken.first()); // first-ok: the confirmed rows are interchangeable here — each pass clears exactly one and the count is asserted immediately
+      await expect(taken).toHaveCount(left - 1);
     }
-    await expect(taken).toHaveCount(0);
     await page.goto("/nutrition");
     await settledClick(page, page.getByTestId("undo-berries"));
     await expect(page.getByTestId("count-berries")).toHaveText("0");
