@@ -43,6 +43,24 @@ What that means in practice:
 - **Strategic items wait for the owner** (integrations, mobile shell, IA
   decisions). Never start them unprompted; list them in status reports.
 
+## Tooling — run the script, don't re-derive the rule
+
+Every rule in this file that could become a script is one now. The lesson that
+forced this is recorded below more than once: prose rules get walked past —
+three times in one session, twice within ten minutes — and every documented
+drift incident in the dispatch template's history was a hand-fill error. When a
+rule here has a script, **running the script IS the rule**; if this prose and a
+script ever disagree, the script is fixed in the same change, never worked
+around.
+
+| Script                                     | What it replaces                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/orchestration/dispatch-brief.mjs` | Hand-pasting the dispatch template. `new --branch <b> [--issues 1,2] [--slot] [--e2e]` prints a complete brief with the node-24 path, canonical node_modules, E2E port range, and migration slot **computed**, and records the dispatch in a JSONL ledger (`$SCRATCH/allos-dispatch-ledger.jsonl`) that survives orchestrator restarts. It enforces the 2-agent e2e cap at dispatch time and warns about remote `claude/*` branches it never dispatched. `list` shows active dispatches with ages against the completed-median stall threshold; `done <branch>` frees the port range and slot reservation. |
+| `scripts/orchestration/ci-watch.mjs`       | Hand-rolled CI polls. Derives settlement (identical check set across two consecutive polls, zero pending) instead of hardcoding a count, refuses to run without a token (the unauthenticated-poll trap), and exits 3 immediately on a conflict-dirty PR. Exit 0 green / 1 red / 2 unsettled-re-invoke / 3 blocked.                                                                                                                                                                                                                                                                                         |
+| `scripts/orchestration/agent-gates.sh`     | The brief's gate-order lines. Runs lint → typecheck → pure tier → DB tier → e2e-hygiene (when `e2e/` changed) → phi-scan → format LAST, failing loud on the first red. Goes in every brief.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `scripts/orchestration/canary.sh`          | The hand-rolled boot-id stamp and canary loop. `stamp` / `check` / `start`; `check` opens every check-in.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `.github/workflows/ci-main.yml`            | Nothing testing main. Static analysis + both unit tiers now run on every push to main, so a two-green-PRs semantic conflict reds main directly instead of surfacing on the next innocent PR. See **CI tests the merge commit**.                                                                                                                                                                                                                                                                                                                                                                            |
+
 ## Environment facts (hard-won — trust these)
 
 | Thing             | Fact                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -58,7 +76,7 @@ What that means in practice:
 | Raw Playwright    | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | REST merge        | `PUT /pulls/N/merge` 403s through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash). The refusal is explicit: _"Merging into a protected base branch is not permitted for this session type."_ **The same asymmetry covers CI re-runs**: `POST /actions/runs/N/rerun-failed-jobs` 403s while `mcp__github__actions_run_trigger` with `method: "rerun_failed_jobs"` returns 201 (measured, #2390). So the rule is not "MCP is merge-only" — it is that **write operations against protected refs and Actions go through MCP; everything else uses REST** to spare the owner's rate limit.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | CI shape          | **RE-READ `.github/workflows/ci.yml` BEFORE TRUSTING THIS ROW** — it changed four times on 2026-08-10 alone (#2428 4→6 shards, #2429 split `check`, #2432, #2434 6→8). As of `f8a075f4`: **14 checks** — `check` (static analysis: audit, PHI scan, format, lint, typecheck), `test-unit`, `test-db` (the three that #2429 split out of the old single `check`), `e2e-changed` (the PR's changed specs at `--repeat-each=3 --retries=0`; skips when no spec changed — infra blast radius is the matrix's job), an **8-way** sharded `e2e` matrix (full suite, retries=0, fresh runner + fresh servers per shard), and `gitleaks` (which registers twice). The retry safety-net was deliberately dropped (#1160) so a flaky spec cannot hide — that is what makes the flake-exoneration protocol meaningful. Every push costs a full round: batch fixes before pushing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| CI watchers       | **Never hardcode the expected check count — DERIVE it, or the threshold rots into a false-green machine.** A watcher written when the count was 8 silently accepts a 14-check repo the moment 9 have registered. Prefer "zero pending AND zero failed", and treat a low registered count as _not yet settled_ rather than as green. A watcher MUST require the full check count registered (currently **14**, was 8 — see the CI shape row) before concluding GREEN — a fresh push registers `gitleaks` first and alone for a window, and a watcher sampling then declares a false green. And a CONFLICT-DIRTY PR starts NO CI at all (the `pull_request` runs need the merge ref GitHub can't build) — a watcher stuck at "1–2 runs registered" for many polls means check `mergeable` on the PR, not wait longer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| CI watchers       | **Use `scripts/orchestration/ci-watch.mjs`, which encodes this whole row; never hand-roll a watcher.** The rules it encodes: never hardcode the expected check count — DERIVE it, or the threshold rots into a false-green machine. A watcher written when the count was 8 silently accepts a 14-check repo the moment 9 have registered. Prefer "zero pending AND zero failed", and treat a low registered count as _not yet settled_ rather than as green. A watcher MUST require the full check count registered (currently **14**, was 8 — see the CI shape row) before concluding GREEN — a fresh push registers `gitleaks` first and alone for a window, and a watcher sampling then declares a false green. And a CONFLICT-DIRTY PR starts NO CI at all (the `pull_request` runs need the merge ref GitHub can't build) — a watcher stuck at "1–2 runs registered" for many polls means check `mergeable` on the PR, not wait longer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Issue auto-close  | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | gitleaks          | CI's gitleaks runs `git --log-opts="--all"` over the refs **in that job's checkout** — its own branch plus `main`. MEASURED (#2409): a finding on one feature branch left every other open PR's gitleaks GREEN. So the blast radius is one branch _until it merges_; the moment the blob reaches `main` it is in every checkout and reds the repo, and the only remaining fix is rewriting published `main` history. Treat it as urgent-before-merge, not as a fire in progress — and check the other PRs before telling anyone the repo is on fire. Either way the blob must STOP EXISTING on the pushed ref: rebase/amend it away + `--force-with-lease`; a clean commit on top is NOT enough. Triggers: an identifier `generic-api-key` recognizes, plus an entropy threshold, plus a word-shape filter — and **entropy alone does not predict it**. The identifier is not only `TOKEN`/`SECRET`/`PASSWORD`: a JSON field literally named `key` counts. Measured on the three sibling values in the same file: `omega3-anticoagulant` 3.522 **FIRED**, `fish-oil-anticoagulant` 3.573 clean, `dairy-levothyroxine` 3.722 clean. All three clear ~3.5; the two that read as plain words are filtered as prose and the one carrying a DIGIT is not. So the predictor is "does this look like a token rather than words", and a digit is what flips it. Fix by RENAMING the value (drop the digit; keep it word-shaped), never by adding a gitleaks allowlist — an allowlist is permanent and a rename costs nothing. Briefs still mandate low-entropy fixture values (`e2e-hc-token-test-value-1`, words+digits, never random hex). |
 
@@ -99,10 +117,11 @@ and in-flight agent call. Everything here was learned by losing work to it.
   disagrees, the container is the stale party — recover with `git fetch` +
   `git checkout -B <branch> <api-verified-sha>`, then re-verify any "completed"
   work the reverted task list claims is pending before redoing it.
-- **Detection:** a canary background task (`while true; do sleep 3600; done`)
-  whose death fires the harness notification, plus a **boot-id stamp**
-  (`/proc/sys/kernel/random/boot_id` → `$SCRATCH/.boot_id`) compared at EVERY
-  check-in. On mismatch: restamp, restart the canary, run the resume drill.
+- **Detection:** `scripts/orchestration/canary.sh` — `start` launches the
+  canary background task whose death fires the harness notification, `stamp`
+  records the kernel boot id to `$SCRATCH/.boot_id`, and `check` compares it at
+  EVERY check-in. On mismatch: restamp, restart the canary, run the resume
+  drill.
 
 ### Credential loss after a restart — and the one-call fix
 
@@ -232,8 +251,11 @@ working one's. The two signals that actually separate them:
    months; it was not enough, because an agent deep in a large change reads that
    as advice about restarts rather than a hard gate on its own progress.
 
-**The check-in rule.** At every check-in, for every running agent older than ~2×
-the session's observed median: `ls -d $SCRATCH/wt-*` and compare transcript
+**The check-in rule.** At every check-in, run
+`dispatch-brief.mjs list` — it prints every active dispatch's age against the
+ledger's completed-median stall threshold, so "the session's observed median"
+is measured instead of remembered. For every agent it flags (and any running
+agent older than ~2× the median): `ls -d $SCRATCH/wt-*` and compare transcript
 bytes. If a worktree is missing, or bytes have not grown since the last check-in,
 `SendMessage` a hard status request — what are you doing right now, what exists,
 what was refused, is anything worth preserving. Ask for the blocker verbatim;
@@ -304,66 +326,23 @@ internal jargon.
 
 ## Dispatch prompt template
 
-The fenced block below goes into every agent prompt VERBATIM. Keep it that way:
-it is instructions, not explanations. The incidents each line was bought with
-live in **Why those lines are there**, immediately after — read them before
-writing a brief, and never paste them to an agent.
+**The template lives in `scripts/orchestration/dispatch-brief.mjs` — generate
+it, never paste it.** `dispatch-brief.mjs new --branch <b> --issues <ns>
+[--slot] [--e2e]` emits the whole block with the volatile values (node-24 bin
+dir, canonical node_modules, E2E port base, migration slot line) computed at
+dispatch time, and records the dispatch in the ledger. This section used to
+carry the block inline for hand-pasting; the hand-filled values were the
+template's whole incident history (`PORT=` for `E2E_PORT=`, stale node paths,
+briefs silent on slots), so the script is now the single source. A line that
+needs to change is changed IN THE SCRIPT, in the same change as whatever taught
+the lesson — a copy edited here would fork the template.
 
-```
-- Worktree setup: git fetch origin main && git worktree add $SCRATCH/wt-<x> -b <branch> origin/main
-- cp -al <canonical node_modules — usually /home/user/allos/node_modules>/. $SCRATCH/wt-<x>/node_modules
-- export PATH=<node-24 bin dir>:$PATH in EVERY shell (verify better-sqlite3 loads)
-- npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts
-- FIRST ACTION is the worktree + node_modules link, BEFORE reading any source. If it
-  fails you must know before spending context.
-- If a tool call is DENIED by the permission system, or fails for an environment
-  reason you cannot fix in ONE retry, STOP AND REPORT IMMEDIATELY — quote what was
-  refused, verbatim. Do not sit on it. (An agent refused its first `git worktree add`
-  idled 12.9h having changed nothing; reporting in minute one costs nothing.)
-- COMMIT AND PUSH after every meaningful step — container restarts are frequent, and
-  your worktree is NOT backed up. This is a HARD GATE, not restart advice: if you
-  have touched more than ~10 files, or worked more than ~45 minutes, since your last
-  commit, COMMIT NOW even mid-task and even if gates have not run. Push a checkpoint
-  branch. (An agent held 50 finished files with zero commits for 13.7h.)
-- If the work turns out materially bigger than this brief implies, SAY SO and push a
-  checkpoint before continuing — do not silently absorb a 15-file footprint that was
-  briefed as a one-line registry edit.
-- Foreground ALL gates; never run_in_background for builds/tests; every wait is one
-  blocking Bash call, chunked under the 10-minute tool cap
-- FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST
-  (GET /repos/OWNER/REPO/issues/N and /issues/N/comments) — a comment overrides the
-  body when they conflict. Trust symbol names over line numbers.
-- Migration slot: <"your slot is N; M and M-1 are already on main" | "you have NONE —
-  if you conclude you need one, STOP and report rather than taking a number">
-- Immediately before opening the PR: git merge origin/main && npm run typecheck.
-  A signature that widened while you worked is not a textual conflict.
-- Checks: npm run lint && npm run typecheck && npm test && npm run test:db && npm run format
-  — format LAST (a late edit after formatting is a known CI breaker)
-- After ANY e2e spec edit — including one added after your gate run — re-run
-  `npx vitest run lib/__tests__/e2e-hygiene.test.ts` before pushing
-- Run YOUR changed e2e specs at CI parity on your assigned port range:
-  E2E_PORT=<base> ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
-  Do NOT run the full suite — the orchestrator owns full-suite runs.
-- Any e2e fixture whose feature groups by profile-LOCAL date/time MUST build instants
-  via zonedWallTimeToUtc(getTimezone(profileId), day, "HH:MM") — never naive
-  `${day}THH:MM` strings — the seed pins a ROTATING per-run instance timezone
-  (`e2e/pinned-timezone.ts`), so naive strings parse host-UTC (#1417)
-- npm run phi-scan before the final push — the pre-commit hook does NOT fire in worktrees
-- NO high-entropy random-looking string literals in tests/fixtures (synthetic tokens
-  included) — use low-entropy words+digits values
-- Use the GitHub token by its NAME — $GH_TOKEN (fallback $GITHUB_TOKEN) — in every curl;
-  never "search the environment for credentials"
-- Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit)
-- PR body: closing keywords each ON THEIR OWN LINE (Fixes #N — GitHub parses one per line)
-- Commit trailers EXACTLY (copy the Co-Authored-By line from your own environment's
-  commit instructions — the model name varies by session; do not hardcode one here):
-    Co-Authored-By: Claude <model> <noreply@anthropic.com>
-    Claude-Session: <session URL>
-- No model identifiers in commits/PR/code
-- Open the PR READY (not draft) via REST, base main
-- Return: PR number/URL, per-issue fix summary, VERBATIM gate results (say plainly if
-  something failed — never report a green you did not see), surprises
-```
+The gate-order lines the template used to spell out are now
+`scripts/orchestration/agent-gates.sh`, which every generated brief points at.
+
+The incidents each template line was bought with live in **Why those lines are
+there**, immediately after — read them before writing a brief, and never paste
+them to an agent.
 
 ### Why those lines are there
 
@@ -610,8 +589,15 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
 
 ## Migration slots
 
-One orchestrator owns a slot MAP. Everything about slots is here; do not
-re-derive it in a brief.
+The slot map lives in the dispatch ledger, not in the orchestrator's head:
+`dispatch-brief.mjs new --slot` computes the next free number from
+`origin/main`'s versions directory plus the ledger's active reservations,
+prints the full slot line (including the unhonorable-until-earlier-merges
+warning when reservations are stacked), and records the reservation so it
+survives the session that made it — the failure this fixes is a restarted or
+second orchestrator handing out a number a dead session's context still held.
+`done <branch>` releases it. Everything below is the mechanism the script
+encodes; do not re-derive it in a brief.
 
 **Reserving.** Check main's current max, reserve the next free number in the
 brief AND the task entry, and treat every reservation as TENTATIVE — whoever
@@ -668,9 +654,15 @@ the #1059/#1061/#1062 train). One at a time, each after the first renumbering:
 
 ## CI tests the merge commit, not your branch
 
-`ci.yml` is `on: pull_request` only — **main is never tested**. So a regression
-made by the interaction of two green PRs lands silently and surfaces on the NEXT
-PRs, pointing at branches that did nothing wrong. One fact, three faces, one fix:
+`ci.yml` is `on: pull_request` only, so every green check is a claim about a
+merge ref against the base that existed when it ran. Since `ci-main.yml`
+landed, **main itself is tested** on every push — static analysis plus both
+unit tiers, ~3.5 min — so a regression made by the interaction of two green PRs
+now reds main directly instead of surfacing on the NEXT PRs and pointing at
+branches that did nothing wrong. A red `CI (main)` run means: stop merging, fix
+main first (follow-up PR or revert), then resume. The browser tier is NOT in
+that net (deliberately — eight shards per merge at this merge rate), and a
+stale green on a sat branch is still a stale green, so the discipline stands:
 **re-merge main and re-verify at merge time, on anything that has sat.**
 
 - **A widening signature outruns a green run.** `zonedWallTimeToUtc` gaining a
@@ -724,6 +716,18 @@ Owner rulings, dated where they were made. These are directives, not preferences
 - **Sweep open issues every ~4 hours** (owner, 2026-08-01) — new filings, label
   changes, and comment-thread rulings on existing issues, not just the queue
   built at session start.
+- **Post-merge audit sweep, once per session-day.** Dispatch one review agent
+  over the last ~24 hours of merges to main — full diffs, prompted to REFUTE
+  each PR's claims rather than summarize them, with the review checklist below
+  as its lens. This is not ceremony: #2444 (a shipped migration whose FK-guard
+  was silently dead because it named a nonexistent table) was caught exactly
+  this way and by nothing else — not by the authoring agent, not by the
+  pre-merge review, not by CI. Pre-merge review verifies a diff against its
+  claims; the sweep verifies it against the main that actually landed. Each
+  finding is filed as an issue that names the introducing PR ("Found by a
+  scheduled review of the previous 24h of commits, covering #NNNN"), which
+  doubles as the defect-origin record — over time it says which dispatch
+  patterns produce defects, which nothing else measures.
 - **Dispatch continuously until no viable issue remains** (owner, 2026-08-01). An
   idle slot alongside a viable queue is an orchestration bug. "No viable issues"
   means everything left is blocked, owner-gated, or awaiting an in-flight
