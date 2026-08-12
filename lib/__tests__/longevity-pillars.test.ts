@@ -10,19 +10,19 @@ import {
 import { formatPercentile, type FitnessPercentile } from "@/lib/fitness-norms";
 import { bioAgeDelta, bioAgeDeltaPhrase } from "@/lib/bio-age";
 import { strengthLevelLabel } from "@/lib/strength-standards";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 
 // A minimal canonical row carrying just the fields rangeBadge reads (name/unit for
 // conversion, ref + optimal bands, direction). Cast through unknown so the fixture
 // stays small.
 function cb(
-  partial: Partial<CanonicalBiomarker> & {
+  partial: Partial<CanonicalResultDefinition> & {
     name: string;
     unit: string;
-    direction: CanonicalBiomarker["direction"];
+    direction: CanonicalResultDefinition["direction"];
   }
-): CanonicalBiomarker {
-  return partial as unknown as CanonicalBiomarker;
+): CanonicalResultDefinition {
+  return partial as unknown as CanonicalResultDefinition;
 }
 
 const totalChol = cb({

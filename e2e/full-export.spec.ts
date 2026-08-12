@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { test, expect } from "./fixtures";
 import { readZip } from "../lib/zip";
-import { followLink } from "./helpers";
+import { hydratedClick } from "./helpers";
 
 // Full-account export (issue #18): clicking "Export all my data" on the Data →
 // Manage & export surface downloads ONE non-empty zip that contains the manifest,
@@ -102,17 +102,26 @@ test.describe("Data manage pagination (#113)", () => {
     await expect(card.locator("tbody tr")).toHaveCount(25);
 
     // Next advances to page 2 and updates this dataset's URL param; the server
-    // re-reads the next page (rows 26–50). "Next" is a router.replace button, so a
-    // click landing in the pre-hydration window (this is the first interaction
-    // after the openManageTab goto) is swallowed and the URL never advances —
-    // followLink retries the click until this dataset's page param commits
-    // (#830/#889). The click is guarded by the destination match, so it stops the
-    // instant the URL shows page 2 and never double-advances to page 3.
-    await followLink(
-      page,
-      card.getByRole("button", { name: "Next" }),
-      /[?&]p_medical_records=2(?:&|$)/
-    );
+    // re-reads the next page (rows 26–50). "Next" is a router.replace button, so
+    // a click landing in the pre-hydration window (this is the first interaction
+    // after the openManageTab goto) is swallowed and the URL never advances
+    // (#830/#889) — but the fix for that CANNOT be a re-click loop here.
+    // PaginationControls calls `onPageChange(page + 1)`: the advance is RELATIVE,
+    // so a second click that lands moves to page 3, and a URL guard on page 2
+    // then never matches again. That is exactly what #2437 hit under two workers
+    // — followLink kept re-clicking a target it had already overshot and reported
+    // page 11 against a page-2 guard, 25 s later, as if the transition had been
+    // slow. hydratedClick waits for React to attach the handler and then clicks
+    // ONCE, so the swallow is closed without ever risking a second advance.
+    await hydratedClick(page, card.getByRole("button", { name: "Next" }));
+    // `router.replace` commits the URL only once the RSC payload for the new
+    // page has arrived, so this wait spans a server round-trip of /data. The
+    // ceiling is the budget followLink's loop already spent on the same wait
+    // (25 s), not a widening — with the re-clicking removed there is nothing
+    // left here to diagnose but that one round-trip.
+    await expect(page).toHaveURL(/[?&]p_medical_records=2(?:&|$)/, {
+      timeout: 20_000,
+    });
     await expect(card.getByText(/^Showing 26–50 of \d+$/)).toBeVisible();
     await expect(card.getByText(/^Page 2 of \d+$/)).toBeVisible();
     await expect(card.locator("tbody tr")).toHaveCount(25);

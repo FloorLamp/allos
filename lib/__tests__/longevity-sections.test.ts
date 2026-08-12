@@ -12,7 +12,7 @@ import {
 } from "@/lib/longevity-pillars";
 import { longevitySections, PROTOCOLS_ANCHOR } from "@/lib/longevity";
 import { bioAgeDelta } from "@/lib/bio-age";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 
 // The Longevity page is the EXPANDED formatter over the SAME pillar model the
 // dashboard widget compact-renders (#1042 phase 4, the #221 one-model-two-
@@ -113,13 +113,13 @@ describe("widget deep-links land on the page section that expands the pillar", (
 // ── Optimal-share breakdown reconciles with the pillar count ─────────────────
 
 function cb(
-  partial: Partial<CanonicalBiomarker> & {
+  partial: Partial<CanonicalResultDefinition> & {
     name: string;
     unit: string;
-    direction: CanonicalBiomarker["direction"];
+    direction: CanonicalResultDefinition["direction"];
   }
-): CanonicalBiomarker {
-  return partial as unknown as CanonicalBiomarker;
+): CanonicalResultDefinition {
+  return partial as unknown as CanonicalResultDefinition;
 }
 
 const totalChol = cb({

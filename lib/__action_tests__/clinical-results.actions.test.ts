@@ -118,7 +118,7 @@ describe("addResult", () => {
 
   it("does not let 'prescription' be created from the Biomarkers add path (#385)", async () => {
     const { profile } = seedActor();
-    // The add form only offers BIOMARKER_CATEGORIES (no 'prescription'); a crafted
+    // The add form only offers RESULTS_CATALOG_CATEGORIES (no 'prescription'); a crafted
     // POST is coerced to 'lab' so meds can't sneak into the biomarkers browser.
     await addResult(
       fd({

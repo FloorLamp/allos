@@ -1,7 +1,7 @@
 import type {
   AgeBandedRange,
   BiomarkerDirection,
-  CanonicalBiomarker,
+  CanonicalResultDefinition,
   CyclePhaseRanges,
   MedicalFlag,
   ReproductiveStatus,

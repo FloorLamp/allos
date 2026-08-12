@@ -19,7 +19,7 @@ import {
 } from "../bio-age";
 import { AGE_INPUT_KEY, type PhenoAgeInputEffect } from "../derived-biomarkers";
 import canonicalSeed from "../canonical-biomarkers.json";
-import type { CanonicalBiomarker } from "../types";
+import type { CanonicalResultDefinition } from "../types";
 
 describe("PhenoAge input catalogue", () => {
   it("carries the nine analytes the formula consumes", () => {
@@ -293,8 +293,10 @@ describe("isBioAgeHiddenForAge", () => {
 // be read as a claim about the person rather than about the model.
 describe("phenoAgeReferenceValue", () => {
   // Only the band fields matter; the rest of a curated entry is irrelevant here.
-  function entry(over: Partial<CanonicalBiomarker>): CanonicalBiomarker {
-    return { name: "X", category: "lab", ...over } as CanonicalBiomarker;
+  function entry(
+    over: Partial<CanonicalResultDefinition>
+  ): CanonicalResultDefinition {
+    return { name: "X", category: "lab", ...over } as CanonicalResultDefinition;
   }
 
   it("takes the OPTIMAL band's midpoint when the entry curates one", () => {
@@ -364,13 +366,13 @@ describe("phenoAgeReferenceValue", () => {
     const seed = (canonicalSeed as { biomarkers: { name: string }[] })
       .biomarkers;
     const byName = new Map(
-      seed.map((b) => [b.name, b as Partial<CanonicalBiomarker>])
+      seed.map((b) => [b.name, b as Partial<CanonicalResultDefinition>])
     );
     for (const name of PHENOAGE_INPUT_ACCEPTED_NAMES) {
       const cb = byName.get(name);
       expect(cb, name).toBeDefined();
       const r = phenoAgeReferenceValue(
-        cb as CanonicalBiomarker,
+        cb as CanonicalResultDefinition,
         "male",
         45,
         null

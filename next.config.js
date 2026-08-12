@@ -101,6 +101,30 @@ const nextConfig = {
   // 16 (was `experimental.typedRoutes`). This is what makes a dead route (a href
   // to a page.tsx that was removed in a consolidation) impossible by construction.
   typedRoutes: true,
+  // `next build` runs its own full `tsc` pass. That pass is REDUNDANT with the
+  // `check` job, which already runs `npm run typecheck` (`next typegen && tsc
+  // --noEmit`) over the same tsconfig — and over MORE files, since it also covers
+  // `e2e/` and the test tiers that never enter a build. Same config, same
+  // diagnostics, and `check` runs on every pull request, docs-only ones included.
+  //
+  // Redundant is cheap once and expensive eight times. The e2e matrix builds the
+  // app on EVERY shard (each shard is a fresh runner), so the same type check ran
+  // nine times per push — eight of them on the critical path, inside the ~179 s
+  // per-shard floor that the shard-count comment in ci.yml calls out as the thing
+  // to lower next. Measured locally at 12.9 s of a 31.6 s warm build.
+  //
+  // So the type GATE stays exactly where it is and the build stops re-running it,
+  // opt-in per environment: only `.github/actions/e2e-setup` sets this, so a local
+  // `npm run build` and the deploy image build both still type-check as before. A
+  // build that skips the check never becomes the only thing standing between a
+  // type error and main — `check` fails the PR either way.
+  //
+  // This does NOT affect `typedRoutes` above: route types are GENERATED, not
+  // checked, so they are still emitted here and `npm run typecheck` still runs
+  // `next typegen` for itself (#2293).
+  typescript: {
+    ignoreBuildErrors: process.env.NEXT_SKIP_TYPECHECK === "1",
+  },
   experimental: {
     // Tree-shake barrel imports: only the icon/chart pieces actually used are
     // pulled into each route's bundle (Next rewrites `import { X } from "pkg"`

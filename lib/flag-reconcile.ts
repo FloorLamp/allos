@@ -4,7 +4,7 @@ import { cyclePhaseOnDate, type CyclePeriod } from "./cycle";
 import type { ReproductiveStatus, Sex } from "./types";
 
 // The canonical-ranges shape reconciledFlag needs to judge a value. Kept loose so
-// both callers (queries/medical.ts with full CanonicalBiomarker rows, db.ts with a
+// both callers (queries/medical.ts with full CanonicalResultDefinition rows, db.ts with a
 // column-subset row) can pass their own map without a cast at the boundary.
 type CanonicalLike = Parameters<typeof reconciledFlag>[3];
 

@@ -7,7 +7,7 @@ import {
   optimalShareRows,
   type NamedBiomarkerReading,
 } from "@/lib/longevity-pillars";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 
 // Biomarker rows render the CANONICAL name, and lead with the value (#1501).
 //
@@ -125,8 +125,10 @@ describe("rangeBadgeFlag: the badge → MedicalValue flag translation", () => {
   });
 });
 
-function cb(partial: Partial<CanonicalBiomarker>): CanonicalBiomarker {
-  return partial as unknown as CanonicalBiomarker;
+function cb(
+  partial: Partial<CanonicalResultDefinition>
+): CanonicalResultDefinition {
+  return partial as unknown as CanonicalResultDefinition;
 }
 
 const totalChol = cb({
