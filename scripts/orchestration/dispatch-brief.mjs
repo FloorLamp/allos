@@ -58,6 +58,38 @@ function appendLedger(entry) {
   fs.appendFileSync(ledgerPath, JSON.stringify(entry) + "\n");
 }
 
+// $SCRATCH/.roster is what scripts/orchestrator-checkin.sh reads to tell a
+// LIVE agent's dirty worktree (expected) from an abandoned one (rescue NOW).
+// The ledger is history and measurement; the roster is the live view — both
+// are written here so they cannot fork. Live entries are lines beginning
+// "Cluster" whose THIRD field is the branch (the check-in script's contract).
+const rosterPath = path.join(
+  process.env.SCRATCH ?? "/home/user/scratch",
+  ".roster"
+);
+
+function rosterAdd(entry) {
+  if (!fs.existsSync(path.dirname(rosterPath))) return false;
+  fs.appendFileSync(
+    rosterPath,
+    `Cluster ${entry.worktree} ${entry.branch} issues=${entry.issues.join(",") || "-"} port=${entry.portBase}\n`
+  );
+  return true;
+}
+
+function rosterClose(branch) {
+  if (!fs.existsSync(rosterPath)) return;
+  const kept = fs
+    .readFileSync(rosterPath, "utf8")
+    .split("\n")
+    .filter(
+      (line) =>
+        !(line.startsWith("Cluster ") && line.split(/\s+/)[2] === branch)
+    );
+  kept.push(`(done: ${branch} ${new Date().toISOString()})`);
+  fs.writeFileSync(rosterPath, kept.filter(Boolean).join("\n") + "\n");
+}
+
 // Fold the append-only ledger into current state: a `done` row closes the
 // matching active dispatch.
 function activeDispatches(rows) {
@@ -342,7 +374,7 @@ function cmdNew(argv) {
   }
 
   const { brief, portBase, slot } = buildBrief(opts);
-  appendLedger({
+  const entry = {
     at: new Date().toISOString(),
     status: "active",
     branch: opts.branch,
@@ -352,7 +384,14 @@ function cmdNew(argv) {
     slot,
     portBase,
     e2e: opts.e2e,
-  });
+  };
+  appendLedger(entry);
+  const rostered = rosterAdd(entry);
+  if (!rostered) {
+    console.error(
+      `[ledger] WARNING: could not write ${rosterPath} — orchestrator-checkin.sh will not know this agent is live.`
+    );
+  }
 
   console.log(brief);
   console.error(
@@ -426,6 +465,7 @@ function cmdDone(argv) {
     process.exit(1);
   }
   appendLedger({ at: new Date().toISOString(), status: "done", branch });
+  rosterClose(branch);
   console.log(
     `closed ${branch} — freed port base ${entry.portBase}` +
       (entry.slot ? ` and slot reservation ${entry.slot}` : "")

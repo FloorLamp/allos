@@ -1537,6 +1537,110 @@ and the sharded CI matrix moved to `retries: 0` (see the telemetry note above).
 Keep it that way — a spec that can't hold at zero retries is a flake to fix, not
 a run to retry.
 
+## The known CI failure classes
+
+Every class here recurred at least once. Format: **tell** — mechanism — fix.
+This is the ONE home for the taxonomy (it moved here from the orchestration
+runbook so spec authors and the orchestrator diagnose from the same list; the
+runbook's "Diagnosing a red" section points here). The census table below
+tracks the individual recurring specs; this list is the general shapes.
+
+1. **`.first()` on a shared surface; a spec's count drifts.** All specs share
+   one seeded DB (#868). A spec must only act on rows it created; self-cleanup
+   in `beforeAll` AND `afterAll`. Non-DB state (`data/logs/*.jsonl`) is not
+   reset — seed with write, never append.
+2. **Cryptic `text.replace is not a function` from the selector generator.** A
+   page CONSOLIDATION made a neighbour spec's page-wide `getByRole` ambiguous
+   (the #1042 specialty fold). Scope selectors to a container; anchor cards on
+   their own heading. When gating a consolidation, re-run any spec that drove
+   the folded-in pages — it is the folding orchestrator's lane.
+3. **Autosave races** — wait for the Saved indicator before any reload.
+4. **Collapsed `<details>`** — click the summary before asserting contents.
+5. **Component variants** — a testid may cover several visual variants; target
+   the one under test via `data-variant`.
+6. **Cross-row pairing** — never pair two `.first()` locators and assert their
+   spatial relationship; scope both to one parent.
+7. **A fixture seeds a dead legacy write path.** When a PR moves where state
+   lives, a fixture still seeding the OLD mechanism silently stops feeding the
+   surface — a migration's legacy-copy acts at migration time and the e2e seed
+   runs after. Fixtures seed through the REAL write core
+   (`writeTx(setX(...))`), never by hand-writing storage. Reviewers: a PR
+   relocating state must grep `e2e/seed-events.ts` and `scripts/seed.ts`.
+8. **Red only in a wall-clock window** (rare since #1103). Base-comparison
+   identifies it; the two root causes are a CLIENT relative-age off the
+   browser clock, which cannot see `ALLOS_TEST_NOW` (fix with #1028's server
+   `nowIso` thread), or a DB fixture deriving date and time from TWO instants.
+9. **Persisted channel config turns event-driven dispatches into marker
+   pollution.** The delivery-health marker is GLOBAL. A spec persisting
+   notification-channel config needs its OWN fixture profile (HA webhook) or
+   login/profile pair (Telegram chat id) — since #1025 leaked config turns any
+   crossing-temperature log elsewhere into a real failed send that overwrites
+   the fixture marker. Reviewers: a PR adding an event-driven send path must
+   grep the specs for persisted channel config on shared profiles.
+10. **Passes locally, red in CI, around a conditional branch.** `if (await
+x.isVisible().catch(() => false))` right after `goto` races the render. Wait
+    for a stable section anchor first; for accept-if-present flows also assert
+    the element UNMOUNTS (`toHaveCount(0)`) so the mutation committed.
+11. **A failure that worsens over months; deterministic on a slow container**
+    (#1392/#1412). A page rendering a row PER FIXTURE ENTITY degrades as every
+    spec adds a login — the real root cause behind the long #830/#1111
+    "createLoginViaFamily flake" census — `/settings/family` hit 91×91 ≈ 8,281
+    controls / 5.16 MB. Fixes in order: product (render O(entities) at rest),
+    then fixture budget (seed enrichment fixtures as PROFILES WITHOUT LOGINS).
+    Timeout bumps measurably did NOT help.
+12. **A run that STRADDLES real 00:00 UTC** (#1534) fails date-keyed specs —
+    SQL `date('now')` can't be frozen by the JS freeze. Check the run's
+    timestamps; retrigger clear of the boundary. If the rerun fails clear of
+    midnight the explanation is FALSIFIED and it gets a real root-cause (that
+    falsification found #13).
+13. **"Passed for weeks", then fails every run for a whole day.** Fixture
+    dates must be RELATIVE to today or DEEP-PAST (`2026-01-*`), never fixed
+    near-present: `scripts/seed.ts` writes ~3 weeks of rolling relative rows,
+    so a fixed near-present date gets landed on eventually. Corollary: an
+    assertion on a SHARED-WORLD AGGREGATE is the same violation one level up —
+    scope it to the spec's own rows.
+14. **`"/route" is not assignable to AppRoute` after merging main into a
+    worktree.** Next's typedRoutes `.d.ts` under `.next/` is stale, not the
+    code. Re-run `npm run typecheck` before believing it — since #2293 that
+    regenerates the route types itself (`next typegen`, ~1s). Never widen the
+    type.
+15. **Where fixtures live (post-#1511).** Per-domain modules —
+    `e2e/seed/<domain>.ts` + `e2e/logins/<domain>.ts` — composed by the thin
+    entrypoints (`seed-events.ts` / `fixture-logins.ts`), whose CALL ORDER is
+    load-bearing (row ids follow insertion order). Agents add to the domain
+    module, never the composer.
+16. **A count/dueness flip, red only in late-UTC-evening runs** (#1577). A
+    fixture row falling to SQL's `datetime('now')` DEFAULT anchors on REAL UTC
+    while every consumer reads the FROZEN clock; they agree except in the
+    ~30-min band where #1464's nudge puts frozen date at D+1. Fix at the
+    fixture (stamp from the frozen clock). Grep vector: intake/dose/metric
+    INSERTs in `e2e/seed/**` omitting `created_at`.
+17. **One test dropping to a default-5s expectation under shard load** (#1556 —
+    the dominant residual class). A Server-Action write + RSC refresh
+    round-trip loses the default budget. Fix: a DECLARED 15–30s budget on the
+    SERVER-TRUTH signal (the row that only renders after the write committed),
+    with a comment citing the measured overrun; at retries=0 a budget masks
+    nothing. On dashboard-class surfaces with bystander POST traffic
+    `settledClick` is the WRONG tool (its any-POST wait resolves on a
+    bystander) — widen the server-truth window. Watch for BUDGET ASYMMETRY
+    inside one spec. Every new one-off goes on the #1556 census.
+
+**Two spec-authoring hazards worth their own note.**
+
+- **Adding a new spec FILE reshuffles the shard split** and surfaces LATENT
+  interference in specs that previously happened to shard apart. Confirm it is
+  pre-existing by running the accused specs TOGETHER on the PR branch AND on
+  clean main; if both fail, harden the fragile specs to own their fixtures —
+  it is not the new spec's doing.
+- **The controlled-input pre-hydration fill-revert** (#1188). A `.fill()`
+  before React hydrates a CONTROLLED input sets the DOM (a naive `toHaveValue`
+  passes) but never fires `onChange`, so hydration reverts the field and a
+  Save persists the empty value SILENTLY. Use `settledFill` / `settledCheck`.
+  Related self-race (#1400): a retry loop that bare-clicks a write-bearing
+  control then immediately reloads ABORTS its own Server-Action POST, so the
+  loop spins while the DB never changes. Settle write-bearing taps before any
+  reload inside a retry loop; client-only toggles stay bare clicks.
+
 ## Recurring-failure census
 
 CI failures at `--retries=0` that recurred on diffs that could not have caused
