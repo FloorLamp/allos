@@ -900,6 +900,22 @@ async function pagesJourney(browser) {
               `BLIND SPOT ${route} (${tag}): no closed ${exp.label} to expand — expanded shot skipped`
             );
           } else {
+            // Expanded content can still hide below an INTERNAL fold — the
+            // readings table caps itself at 70vh and scrolls inside the card,
+            // and a fullPage screenshot only sees a scroller's visible part.
+            // Uncap every internal scroller for this capture; the default shot
+            // is already on disk, so the page's real presentation is untouched.
+            await page.evaluate(() => {
+              for (const el of document.querySelectorAll("*")) {
+                if (
+                  el instanceof HTMLElement &&
+                  el.scrollHeight > el.clientHeight + 8
+                ) {
+                  el.style.maxHeight = "none";
+                  el.style.overflow = "visible";
+                }
+              }
+            });
             await page.waitForTimeout(400);
             await shot(page, `page-${tag}-${slug}-expanded`);
           }
