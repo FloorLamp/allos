@@ -8,7 +8,6 @@
 
 import {
   getIntakeItems,
-  getMedications,
   getIntakeDoses,
   getRetiredDoses,
   getTakenDoseTimes,
@@ -151,6 +150,20 @@ export interface MedCardData {
   takenDoseTimes: Record<number, string>;
 }
 
+// The adherence inputs that do not depend on the WINDOW being scored — the workout-day
+// set and the situation-history resolver. The 14-day strip on every card and the
+// detail page's 35-day month calendar need exactly these, so the board gather resolves
+// them ONCE and the calendar reads them back (#2114) instead of re-running
+// getActivityDates + getActiveSituations + getSituationEvents on the same request.
+//
+// SERVER-ONLY: `situationsOn` is a closure, so this field must never cross a client
+// boundary. Nothing forwards `MedicationsData` wholesale to a client component — the
+// client rows take `MedCardData` — and this stays true by that convention.
+export interface MedicationAdherenceInputs {
+  workoutDays: Set<string>;
+  situationsOn: (date: string) => Set<string>;
+}
+
 export interface MedicationsData {
   todayStr: string;
   tz: string;
@@ -197,6 +210,9 @@ export interface MedicationsData {
   dormantPrn: DormantPrnSuggestion[];
   dismissedDormantPrn: DormantPrnSuggestion[];
   byId: Map<number, MedCardData>;
+  // Window-independent adherence inputs, shared with getMedicationAdherenceCalendar
+  // below (#2114). Server-only — see MedicationAdherenceInputs.
+  adherenceInputs: MedicationAdherenceInputs;
 }
 
 // Load everything the Medications surfaces render, computed once for the profile.
@@ -585,6 +601,7 @@ export function loadMedicationsData(
     dormantPrn,
     dismissedDormantPrn,
     byId,
+    adherenceInputs: { workoutDays, situationsOn },
   };
 }
 
@@ -628,36 +645,33 @@ export const ADHERENCE_MONTH_DAYS = 35;
 // intakeAdherenceStrip computation the 14-day strip uses, over a longer window,
 // laid out on a Sun→Sat grid by the pure buildAdherenceCalendar. No new model. Returns
 // an empty grid for an unknown/foreign id.
+//
+// Takes the board gather the page already ran (#2114, the #2060 shape): the med row,
+// its doses, its courses, the profile's today/timezone, the workout-day set and the
+// situation-history resolver are ALL in `data` — re-reading them here meant the detail
+// page paid for six of loadMedicationsData's reads twice on every view. The ONE input
+// that is genuinely this function's own is the intake ledger over ITS window: the strip
+// scores 14 days, this scores 35, and widening the board's read to 35 would make the
+// list page pay for a window only the detail page renders.
 export function getMedicationAdherenceCalendar(
   profileId: number,
+  data: MedicationsData,
   itemId: number,
   days: number = ADHERENCE_MONTH_DAYS
 ): AdherenceCalendarModel {
-  const med = getMedications(profileId).find((item) => item.id === itemId);
-  if (!med) return buildAdherenceCalendar([]);
-  const medDoses = getIntakeDoses(profileId).filter(
-    (d) => d.item_id === itemId
-  );
-  const todayStr = today(profileId);
-  const dates = lastNDates(todayStr, days);
-  const workoutDays = new Set(getActivityDates(profileId));
-  const situationsOn = situationHistoryResolver(
-    new Set(getActiveSituations(profileId)),
-    getSituationEvents(profileId)
-  );
+  const card = data.byId.get(itemId);
+  if (!card) return buildAdherenceCalendar([]);
+  const dates = lastNDates(data.todayStr, days);
   const takenByDose = indexTakenByDose(getIntakeLogsInRange(profileId, days));
   const strip = intakeAdherenceStrip(
-    med,
-    medDoses,
+    card.med,
+    card.doses,
     dates,
-    workoutDays,
-    situationsOn,
+    data.adherenceInputs.workoutDays,
+    data.adherenceInputs.situationsOn,
     takenByDose,
-    getTimezone(profileId)
+    data.tz
   );
-  const courses = getMedicationCourses(profileId).filter(
-    (course) => course.item_id === itemId
-  );
-  const startedOn = medicationStartDate(courses, med.created_at);
+  const startedOn = medicationStartDate(card.courses, card.med.created_at);
   return buildAdherenceCalendar(strip, startedOn);
 }

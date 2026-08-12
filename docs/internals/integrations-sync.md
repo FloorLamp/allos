@@ -950,7 +950,11 @@ computation (`lib/uv-dose.ts` `computeUvDose`, #221) that the read layer
 `lib/sun.ts` elevation ceiling) → minutes-only; every surface (the sun-exposure
 protocol, the DaylightChip UV badge, the overexposure care finding
 `uvOverexposureItems`) formats its result. `sun.ts` stays the offline core and
-is never replaced — its #570 offline guarantee is preserved.
+is never replaced — its #570 offline guarantee is preserved. A surface asking about
+MANY days (the Timeline's per-day chip) calls `getUvDoseForDays` (#2113), which
+resolves home location / timezone / skin type once and widens both the activities and
+the cached-UV reads over the whole date set; `getUvDoseForDay` is its one-date adapter,
+so both run the same per-day assembly and cannot drift.
 
 **The DAILY half (#1726).** The same provider gained a second grain:
 `fetchDaily` pulls the daily aggregates the weather-derived situations,

@@ -14,6 +14,7 @@ import { useFormDraft } from "./useFormDraft";
 import { useAddEntryModalClose } from "./AddEntryPanel";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import { BIOMARKER_GROUP_LABELS } from "@/lib/biomarker-rank";
+import { biomarkerSearchTerms } from "@/lib/canonical-name";
 import {
   RESULT_STATUSES,
   RESULT_STATUS_LABELS,
@@ -251,6 +252,10 @@ export default function ResultForm({
           onChange={setCanonical}
           options={canonicalNames}
           groupFor={(option) => canonicalGroups.get(option) ?? null}
+          // #2382: the analyte's own acronym and its curated aliases are searched
+          // as their own keys, so "psa" reaches Prostate-Specific Antigen (PSA) —
+          // which the greedy subsequence walk over the long name never could.
+          searchTermsFor={biomarkerSearchTerms}
           allowFreeText
           placeholder="defaults to name"
         />

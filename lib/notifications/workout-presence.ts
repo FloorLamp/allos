@@ -46,6 +46,8 @@ import {
   type ImportedSessionFacts,
 } from "./workout-recap-format";
 import { getFrequencyTargetProgress } from "../queries";
+import { getSessionCadenceFacts } from "../queries/cadence-ledger";
+import type { ActivityType } from "../types/training";
 import { collectWindowDoses } from "./supplements";
 import {
   notifiableWindowDoses,
@@ -176,7 +178,9 @@ interface FinishRow {
   max_hr: number | null;
   relative_effort: number | null;
   title: string;
-  type: string;
+  // The column's CHECK enum, which is the declared tuple (#2272) — carried as the type
+  // so the ask's `unclassified` test and the title map read the same vocabulary.
+  type: ActivityType;
   source: string | null;
 }
 
@@ -276,8 +280,15 @@ export async function runPostWorkoutForActivity(
   // SAME weekly rollup the reminder reads (#221). It rides WITH the recap line (the
   // congratulatory moment) — omitted when there's no recap line to lead it, no targets,
   // or the message is dose-only.
+  //
+  // The rollup is profile-wide, so the facts of THIS session go with it (#2439): without
+  // them the line led with the closest-to-done target anywhere, and a walk's recap
+  // reported a chest target a barbell session had advanced days earlier.
   const weeklyLine = recapLine
-    ? weeklyRemainingLine(getFrequencyTargetProgress(profileId))
+    ? weeklyRemainingLine(
+        getFrequencyTargetProgress(profileId),
+        getSessionCadenceFacts(profileId, activityId)
+      )
     : null;
   const leadLine =
     recapLine && weeklyLine ? `${recapLine}\n${weeklyLine}` : recapLine;
@@ -293,7 +304,12 @@ export async function runPostWorkoutForActivity(
           actions: activityTypeAskActions(profileId, activityId),
         }
       : null;
-  const msg = composeFinishNudge(leadLine, doseMsg, ask);
+  const msg = composeFinishNudge(
+    leadLine,
+    doseMsg,
+    ask,
+    finishRow?.type ?? null
+  );
   if (!msg) return { failed: false }; // nothing to send — don't burn the one-shot
 
   // ATTRIBUTION (#1721). "🏋️ Post-workout — 2 doses" / "🏋️ Workout complete" name

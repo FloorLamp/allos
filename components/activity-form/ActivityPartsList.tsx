@@ -63,6 +63,7 @@ export default function ActivityPartsList({
   onSaveBodyweight,
   // Combobox ordering + name classification.
   equipmentRankedOptions,
+  usedActivityNames,
   enteredLiftBases,
   liftCompanions,
   isKnown,
@@ -113,6 +114,10 @@ export default function ActivityPartsList({
   onBwInput: (v: string) => void;
   onSaveBodyweight: () => void;
   equipmentRankedOptions: string[];
+  // Lowercased names this profile has actually logged (#2384) — passed to the
+  // exercise combobox so a keystroke ranks a lift you train above a sport you have
+  // never played, instead of discarding every ranker for string geometry.
+  usedActivityNames: ReadonlySet<string>;
   enteredLiftBases: string[];
   liftCompanions: CompanionMap;
   isKnown: (name: string) => boolean;
@@ -231,6 +236,7 @@ export default function ActivityPartsList({
                       )
                     }
                     options={biasedOptions}
+                    usedOptions={usedActivityNames}
                     placeholder={
                       pi === 0
                         ? "What did you do? e.g. Bench Press, Running, Tennis"
