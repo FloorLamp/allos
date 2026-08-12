@@ -26,7 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
 import { persistDocumentImport } from "@/lib/import-persist";
-import { cleanupOrphanBiomarkerKeyedState } from "@/lib/queries";
+import { cleanupOrphanBiomarkerKeyedState, saveBiomarker } from "@/lib/queries";
 import {
   biomarkerDismissalKey,
   biomarkerFlagDismissalKey,
@@ -113,10 +113,12 @@ function newDocument(
   );
 }
 
+// Stars through the PRODUCT path, not a raw insert: saveBiomarker stamps
+// `backed` from whether a reading stands behind the star at that moment, and
+// that stamp is what tells a de-orphaned star from a never-measured watch. A raw
+// insert leaves backed = 0, i.e. "watch", which is not what these cases mean.
 function starOf(profileId: number, name: string): void {
-  db.prepare(
-    "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
-  ).run(profileId, name);
+  saveBiomarker(profileId, name);
 }
 
 function dismiss(profileId: number, signalKey: string): void {
@@ -162,8 +164,17 @@ describe("cleanupOrphanBiomarkerKeyedState (the shared wrapper)", () => {
     starOf(p, "Glucose");
     dismiss(p, biomarkerDismissalKey("Glucose"));
     dismiss(p, biomarkerFlagDismissalKey("Glucose"));
-    // Orphaned side-state — must be SWEPT.
+    // Orphaned side-state — must be SWEPT. Built the way it actually arises:
+    // a reading existed when the star was placed, and then went away. Starring a
+    // never-measured name is a WATCH and is deliberately not swept.
+    db.prepare(
+      `INSERT INTO medical_records (profile_id, category, name, canonical_name, value, date)
+       VALUES (?, 'lab', 'LDL', 'LDL', '120', ?)`
+    ).run(p, DATE);
     starOf(p, "LDL");
+    db.prepare(
+      "DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'LDL'"
+    ).run(p);
     dismiss(p, biomarkerDismissalKey("LDL"));
     dismiss(p, biomarkerFlagDismissalKey("LDL"));
 

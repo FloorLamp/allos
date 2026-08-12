@@ -57,6 +57,15 @@ function addReading(
   );
 }
 
+// Drop every reading whose canonical name matches, which is what a record or
+// document delete leaves behind before the sweep runs.
+function deleteReadings(profileId: number, canonical: string): void {
+  db.prepare(
+    `DELETE FROM medical_records
+      WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE`
+  ).run(profileId, canonical);
+}
+
 function savedKeys(profileId: number): string[] {
   return (
     db
@@ -156,11 +165,41 @@ describe("name-keyed lifecycle (#203)", () => {
     const p = newProfile("Orphan Sweep");
     addReading(p, "ApoB");
     saveBiomarker(p, "ApoB");
-    saveBiomarker(p, "Ferritin"); // never had a reading
+
+    // The star was backed when it was placed, so losing every reading IS
+    // orphanhood — the #203/#283 case, where the reusable name would otherwise
+    // re-attach this save to whatever later recycles it.
+    deleteReadings(p, "ApoB");
+    cleanupOrphanSavedBiomarkers(p);
+
+    expect(savedKeys(p)).toEqual([]);
+  });
+
+  // The WATCH star: placed on a marker nobody has measured yet ("star it now,
+  // measure it later" on a coverage gap). The sweep's `NOT IN (readings)` test is
+  // equally true of this and of a real orphan, so it used to delete it — silently,
+  // on the next unrelated record delete anywhere in the profile. A star is a tap,
+  // and the system does not get to un-tap it.
+  it("the orphan sweep keeps a save that has never had a reading", () => {
+    const p = newProfile("Watch Star");
+    saveBiomarker(p, "Ferritin"); // never measured — a watch, not an orphan
 
     cleanupOrphanSavedBiomarkers(p);
 
-    expect(savedKeys(p)).toEqual(["ApoB"]);
+    expect(savedKeys(p)).toEqual(["Ferritin"]);
+  });
+
+  it("a watch that gains then loses a reading becomes sweepable", () => {
+    const p = newProfile("Watch Promoted");
+    saveBiomarker(p, "Ferritin"); // watch first...
+    addReading(p, "Ferritin"); // ...then measured
+    cleanupOrphanSavedBiomarkers(p); // promotes it to backed
+    expect(savedKeys(p)).toEqual(["Ferritin"]);
+
+    // Now its readings ARE gone, which is genuine orphanhood.
+    deleteReadings(p, "Ferritin");
+    cleanupOrphanSavedBiomarkers(p);
+    expect(savedKeys(p)).toEqual([]);
   });
 
   it("the orphan sweep keeps a save backed by ANY family member's reading", () => {

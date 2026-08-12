@@ -23,6 +23,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { toKg } from "@/lib/units";
 import { db } from "@/lib/db";
+import { saveBiomarker } from "@/lib/queries";
 import {
   persistDocumentImport,
   clearImportedDocumentRows,
@@ -517,9 +518,11 @@ describe("deleteMedicalDocument (full action path)", () => {
     persistDocumentImport(profile.id, docId, makeInput());
     // Star Glucose — its only record is in this document, so the delete's
     // starred-biomarker cleanup should drop the star too.
-    db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Glucose')"
-    ).run(profile.id);
+    // Through the product path: saveBiomarker stamps `backed` from the reading
+    // this document just imported, which is what makes the star sweepable once
+    // the document (and its only reading) is gone. A raw insert would read as a
+    // never-measured watch and correctly survive.
+    saveBiomarker(profile.id, "Glucose");
 
     // Sanity: the extracted med + document + star all exist first.
     expect(
