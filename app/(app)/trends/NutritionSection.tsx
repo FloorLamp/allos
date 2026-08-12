@@ -2,20 +2,19 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
-  getMetricDailyTotals,
   getFoodHabitTrends,
   getFoodDailyServingTotals,
   getConfirmedIntakeDosesInRange,
+  getMacroFiberDays,
 } from "@/lib/queries";
 import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
 import type { DateRange } from "@/lib/timeline-format";
 import { dayFillWindow } from "@/lib/day-fill";
-import { filterSeriesByRange, lensWindow } from "@/lib/trends";
+import { lensWindow } from "@/lib/trends";
 import { MACROS_SERIES_KEY } from "@/lib/trend-sparkline";
 import { chartSeries } from "@/lib/chart-colors";
 import { doseLedgerHref, DOSE_LEDGER_ALL_KINDS } from "@/lib/hrefs";
 import {
-  buildMacroFiberSeries,
   aggregateFoodAdherenceByWeek,
   NUTRITION_HISTORY_WEEK_CAPS,
   type AdherenceWeek,
@@ -126,19 +125,12 @@ export default async function NutritionSection({
       };
     });
 
-  // Part 3 — macros + fiber daily series (tracked totals; fiber the uncharted signal).
-  // WINDOWED like every sibling chart (#2258 §4): this was the one Trends chart that
-  // ignored the selected range outright, which also left it with no window to
-  // densify against. Filtering is the precondition of the fill, not a separate fix.
-  const macroFiber = filterSeriesByRange(
-    buildMacroFiberSeries({
-      protein: getMetricDailyTotals(profile.id, "protein_g"),
-      carbs: getMetricDailyTotals(profile.id, "carbs_g"),
-      fat: getMetricDailyTotals(profile.id, "fat_g"),
-      fiber: getMetricDailyTotals(profile.id, "fiber_g"),
-    }),
-    range
-  );
+  // Part 3 — macros + fiber daily series (fiber the uncharted signal), already
+  // windowed to the shared range by the gather (#2258 §4 — filtering is the
+  // precondition of the chart's day-fill). Protein arrives merged from BOTH of its
+  // sources (#2414): reading only the tracked metric left this chart blind to the
+  // app's own protein logging.
+  const macroFiber = getMacroFiberDays(profile.id, range);
 
   // Part 4 — food-goal adherence trend: the per-habit #954 consistency cells rolled up
   // into a weekly overall hit-rate (reused gather, no second engine).
@@ -236,10 +228,13 @@ export default async function NutritionSection({
         title="Macros & fiber"
         detailHref="/nutrition"
         detailTitle="macros"
-        note="Tracked protein, carbs, fat, and fiber per day. Informational — the intake trend, not a prescription."
+        note="Protein, carbs, fat, and fiber per day. Informational — the intake trend, not a prescription."
       >
         {macroFiber.length === 0 ? (
-          <EmptyState message="No tracked macros or fiber yet. Connect a nutrition source (Health Connect) or log foods to build this chart." />
+          <EmptyState
+            testId="nutrition-macros-empty"
+            message="No macros or fiber in this range. Connect a nutrition source (Health Connect), or log protein grams on the Nutrition page, to build this chart."
+          />
         ) : (
           <StackedBarCard
             data={macroFiber}

@@ -82,6 +82,18 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
       .count();
     expect(await rowsAbove(quickLog)).toBeLessThan(rows);
 
+    // The grams reach the one long-range nutrition chart too (#2414). This profile has
+    // NO tracked protein_g, so Trends → Nutrition → Macros & fiber used to render its
+    // empty state at a profile that logs protein — the chart was blind to the app's own
+    // logging. With today's grams logged it draws the series instead.
+    await page.goto("/trends?tab=nutrition");
+    const macros = page.getByTestId("nutrition-macros-chart");
+    await expect(macros).toBeVisible();
+    await expect(page.getByTestId("nutrition-macros-empty")).toHaveCount(0);
+    await expect(macros.getByText("Protein", { exact: true })).toBeVisible();
+    await page.goto("/nutrition");
+    await expect(total).toHaveText(/30g today/);
+
     // Undo removes the grams from the same day's total → back to the estimated basis.
     await settledClick(page, page.getByTestId("protein-quickadd-undo"));
     await expect(total).toHaveText(/0g today/);

@@ -4,6 +4,8 @@
 //   - buildMacroFiberSeries: merges the tracked macro/fiber daily totals
 //     (getMetricDailyTotals for protein_g/carbs_g/fat_g/fiber_g) into one dated series
 //     for the stacked chart the tab inherits from Trends → Overview → body census (Part 1).
+//     Its protein input arrives through mergeProteinSources, so the chart answers the
+//     same "what is this day's protein" question the rest of the app does (#2414).
 //   - aggregateFoodAdherenceByWeek: rolls the per-habit #954 consistency cells
 //     (getFoodHabitTrends) up into an OVERALL weekly hit-rate — "am I consistently
 //     hitting my food-group goals," the trend the point-in-time AdherenceFindings on
@@ -15,6 +17,7 @@
 //     all-domain feed.
 
 import type { HabitWeekCell } from "./food-habit-trend";
+import { proteinIntake } from "./protein";
 import type { LensWeekCaps } from "./trends";
 
 // ---- Part 1: macros + fiber daily series ----------------------------------
@@ -43,6 +46,41 @@ function byDate(rows: DatedValue[]): Map<string, number> {
 }
 
 const g = (n: number): number => Math.round(n);
+
+// The chart's protein series, composed from BOTH places a day's protein can come from
+// (#2414). The chart used to read only `protein_g` metric samples, so a profile that
+// logs protein through the Food tab's quick-add (`protein_log`, #824) saw the empty
+// state at the app's only long-range nutrition chart — blind to the app's own logging.
+//
+// The precedence is not a new rule: it is #824's, applied PER DAY. `proteinIntake` is
+// that rule's one computation, so this delegates to it rather than restating it — a
+// measured `tracked` reading OVERRIDES, hand-logged grams stand otherwise, and the two
+// are NEVER summed (a day carrying both would double-count the same meals).
+//
+// The #824 estimated-floor component (servings × the catalog's per-serving grams) stays
+// out deliberately: it is a modeled average, not a per-day logged datum, and charting it
+// would draw data nobody recorded. Passing `dailyEstimated: 0` is what says so.
+//
+// A day present in neither source is ABSENT from the result, not zero — the gap-fill
+// (#2258) is what decides how the chart draws a day nobody logged.
+export function mergeProteinSources(
+  tracked: DatedValue[],
+  logged: DatedValue[]
+): DatedValue[] {
+  const byTracked = byDate(tracked);
+  const byLogged = byDate(logged);
+  const dates = [...new Set([...byTracked.keys(), ...byLogged.keys()])].sort();
+  const out: DatedValue[] = [];
+  for (const date of dates) {
+    const intake = proteinIntake({
+      dailyTracked: byTracked.get(date) ?? null,
+      dailyLogged: byLogged.get(date) ?? null,
+      dailyEstimated: 0,
+    });
+    if (intake) out.push({ date, value: intake.grams });
+  }
+  return out;
+}
 
 // Merge the four tracked daily series into one dated row per day that carries ANY of
 // them (a day with only protein logged still renders, its carbs/fat/fiber 0). Sorted
