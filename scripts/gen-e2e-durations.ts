@@ -8,11 +8,14 @@
 // spec FILE (a file is the sharding atom). Several reports merge additively, so
 // the twelve per-shard reports from one CI run regenerate the whole manifest.
 //
-// ONLY RELATIVE WEIGHT MATTERS. The planner balances buckets against each other,
-// so a manifest measured on a developer's machine plans the same split as one
-// measured on a runner — the absolute seconds differ by a constant factor and
-// every bucket scales with it. Refresh it when the SHAPE changes (a heavy spec
-// added, split, or deleted), not to chase runner drift.
+// MEASURE ON A RUNNER, not a laptop. "Only relative weight matters" holds for a
+// constant factor, and a different machine is not one: the same suite is 1518s
+// locally and 2978s in CI, and that ratio is NOT uniform per file, because specs
+// are bound by different things and those scale apart. Measured — plan CI's work
+// with laptop weights and the buckets come out predicted-equal while CI runs
+// 127-183s (max/mean 1.16 against an independent run); with runner weights, 1.05.
+// Refresh from `e2e-results-shard-*` artifacts when the SHAPE changes (a heavy
+// spec added, split, or deleted), not to chase drift.
 //
 // A stale manifest degrades balance, never correctness: an unlisted file is still
 // planned (estimated, see UNKNOWN_WEIGHT_FACTOR) and the planner refuses any plan

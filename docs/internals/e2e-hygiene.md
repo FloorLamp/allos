@@ -1311,18 +1311,34 @@ Two failure modes it is deliberately built to survive:
   coverage — a manifest that has rotted says so in the job log instead of quietly
   unbalancing the matrix.
 
-The manifest holds seconds per spec file, and ONLY RELATIVE WEIGHT MATTERS: it
-plans the same split whether measured on a runner or a developer's box, since a
-constant factor scales every bucket alike. Refresh it when the SHAPE changes (a
-heavy spec added, split, or deleted), not to chase drift:
+The manifest holds seconds per spec file. **Measure it on a RUNNER, not on a
+laptop** — the first version of this was measured locally on the claim that only
+relative weight matters, and that claim is wrong at the precision this needs:
+
+| manifest measured on | predicted | ACTUAL spread on an independent CI run |
+| -------------------- | --------- | -------------------------------------- |
+| a developer's box    | equal     | 160–288s, max/mean **1.16**            |
+| a CI runner          | equal     | 222–262s, max/mean **1.05**            |
+
+A constant factor would indeed cancel; the runner is not a constant factor. The
+same suite is 1518s locally and 2978s on a runner, and the ratio is not uniform
+per file — different specs are bound by different things (CPU, disk, the app's
+own render), and those scale apart. Planning CI's work with laptop weights left
+most of the imbalance in place: the buckets came out predicted-equal and CI ran
+127–183s.
+
+Refresh when the SHAPE changes (a heavy spec added, split, or deleted), not to
+chase drift, and refresh from CI artifacts:
 
 ```
-npx tsx scripts/gen-e2e-durations.ts <playwright-report.json> [...]
+gh run download <run-id> -p 'e2e-results-shard-*'
+npx tsx scripts/gen-e2e-durations.ts e2e-results-shard-*/e2e-results.json
 ```
 
-`e2e-full.yml` uploads each shard's raw JSON report as `e2e-results-shard-N` for
-exactly this — it is the only workflow that runs every spec, so its four reports
-regenerate the whole manifest in one go.
+Both `ci.yml`'s matrix and `e2e-full.yml` upload each shard's raw JSON report as
+`e2e-results-shard-N` for exactly this. Twelve of ci.yml's cover the whole suite;
+`e2e-full.yml` is the alternative when you want a census run's numbers (its
+`repeat-each` inflates every file by the same factor, which DOES cancel).
 
 ## Fix (f) — DB-per-worker isolation (#1538)
 
