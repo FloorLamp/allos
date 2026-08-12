@@ -140,23 +140,10 @@ export function rowsToPrune(total: number, maxRows: number): number {
 }
 
 // ---- Pagination ----
+//
+// The audit viewer's PAGE SIZE, which is this domain's own policy (identifier-only
+// rows, 50 to a screen). The arithmetic it rides on — clampPage / pageOffset /
+// pageCount — moved to lib/pagination.ts when a third and fourth surface needed it
+// (#2530/#2445); import it from there.
 
 export const AUDIT_PAGE_SIZE = 50;
-
-// Coerce an arbitrary (possibly user-supplied) page value to a 1-based integer.
-export function clampPage(page: number): number {
-  if (!Number.isFinite(page) || page < 1) return 1;
-  return Math.floor(page);
-}
-
-// The SQL OFFSET for a 1-based page of `pageSize` rows.
-export function pageOffset(page: number, pageSize: number): number {
-  return (clampPage(page) - 1) * pageSize;
-}
-
-// Total number of pages for `total` rows at `pageSize` (at least 1, so an empty
-// table still reads as "page 1 of 1").
-export function pageCount(total: number, pageSize: number): number {
-  if (pageSize <= 0) return 1;
-  return Math.max(1, Math.ceil(total / pageSize));
-}
