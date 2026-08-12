@@ -16,11 +16,11 @@ import {
   getDashboardStats,
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
-  getClinicalObservations,
+  countClinicalObservations,
   getIntakeItems,
   getIntakeDoses,
   getTakenDoseIds,
-  getBodyMetricDailySeries,
+  getLatestBodyMetricDailyPoints,
   getWorkoutPresence,
   collectHouseholdRollup,
   getFindingSuppressions,
@@ -112,11 +112,15 @@ export default async function HouseholdPage() {
     // Current weight = the primary-source-aware value the dashboard QuickStats
     // shows (getLatestBodyMetricDated, #302/#396) — never a raw newest row, which
     // can disagree with every other "current weight" surface. The trend arrow
-    // compares the two newest DAYS of the deduped one-source-per-day series
-    // (getBodyMetricDailySeries, #14) so it measures change over time, not two
-    // devices reporting the same day.
+    // compares the two newest DAYS of the deduped one-source-per-day series so it
+    // measures change over time, not two devices reporting the same day.
+    //
+    // Two points is all the arrow reads, so it asks for two (#1367,
+    // getLatestBodyMetricDailyPoints — the bound the dashboard has used since it hit
+    // this exact cost). The full series defaults to 365 raw rows, and this loop runs
+    // once per accessible profile.
     const latestWeight = stats.latestWeight;
-    const dailyWeights = getBodyMetricDailySeries(pid, "weight");
+    const dailyWeights = getLatestBodyMetricDailyPoints(pid, "weight");
     const dwLen = dailyWeights.length;
     const trend = weightTrend(
       dailyWeights[dwLen - 1]?.value,
@@ -124,10 +128,12 @@ export default async function HouseholdPage() {
     );
 
     // Biomarkers whose current (latest) reading is out of the lab reference range.
-    const oorBiomarkers = getClinicalObservations(pid, {
+    // A COUNT over the same DEDUP+LATEST pass (#2116): the badge renders a number, and
+    // hydrating every flagged row's every column to take `.length` is the whole read.
+    const oorBiomarkers = countClinicalObservations(pid, {
       current: true,
       range: "oor",
-    }).length;
+    });
 
     const goals = getOutcomeGoals(pid);
     const goalProgress = getOutcomeGoalProgressMap(pid, goals);

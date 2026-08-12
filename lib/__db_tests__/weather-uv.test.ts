@@ -5,7 +5,7 @@
 // activity, the UV-dose crossing (getUvDoseForDay), and the overexposure care finding
 // firing only past the skin-type threshold + staying silent without a skin type.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { setHomeLocation, setTimezone, setSkinType } from "@/lib/settings";
 import {
@@ -19,7 +19,7 @@ import type {
   DailyWeatherRow,
 } from "@/lib/integrations/open-meteo";
 import { getUvHoursForDay } from "@/lib/integrations/weather-cache";
-import { getUvDoseForDay } from "@/lib/queries/weather";
+import { getUvDoseForDay, getUvDoseForDays } from "@/lib/queries/weather";
 import { decideUvOverexposure } from "@/lib/uv-overexposure";
 import { collectUpcoming } from "@/lib/queries";
 
@@ -76,6 +76,27 @@ function uvRow(hourTs: string, uvIndex: number): HourlyUvRow {
 }
 
 const DATE = "2026-06-15";
+
+// Statement counting (the #885 shape, as lib/__db_tests__/tick-scoped-gathers.test.ts
+// uses it): the query layer prepares its statements inline on every call, so counting
+// prepares of a signature counts evaluations of the read that owns it. One spy for
+// every signature — vi.spyOn returns the SAME spy for an already-spied method, so two
+// independent spies would leave the second calling through to itself.
+function countPrepareSet(...signatures: RegExp[]): { calls: () => number }[] {
+  const counts = signatures.map(() => 0);
+  const real = db.prepare.bind(db);
+  vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+    signatures.forEach((s, i) => {
+      if (s.test(sql)) counts[i]++;
+    });
+    return real(sql);
+  }) as typeof db.prepare);
+  return signatures.map((_, i) => ({ calls: () => counts[i] }));
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
   it("inserts on first sync and reports unchanged on re-sync (dedup on location+hour)", async () => {
@@ -309,6 +330,69 @@ describe("getUvDoseForDay — the ONE crossing, with historical backfill", () =>
     expect(dose).not.toBeNull();
     expect(dose!.uvSource).toBe("clear-sky");
     expect(dose!.outdoorMinutes).toBe(120);
+  });
+});
+
+// #2113: the Timeline renders a UV chip per day and used to ask the single-date
+// accessor inside that loop — home location, timezone, skin type, the day's activities
+// and the day's cached UV hours, re-read once per rendered day. The widened read must
+// answer IDENTICALLY (that is the whole bar for a read-path consolidation) in a fixed
+// number of statements.
+describe("getUvDoseForDays — one widened read, identical answers (#2113)", () => {
+  const DAYS = ["2026-06-10", "2026-06-11", "2026-06-12", "2026-06-13"];
+
+  async function seedFeed(name: string): Promise<number> {
+    const p = newProfile(name);
+    setSkinType(p, 2);
+    // Two days with outdoor time and cached live UV, one with outdoor time but no
+    // cached UV (the clear-sky rung), one with neither (the zero-minute dose).
+    seedOutdoorActivity(p, DAYS[0], "10:00", "12:00");
+    seedOutdoorActivity(p, DAYS[1], "09:00", "10:00");
+    seedOutdoorActivity(p, DAYS[2], "11:00", "13:00");
+    await runWeatherSync(
+      p,
+      fixtureSource([
+        uvRow(`${DAYS[0]}T10:00`, 6),
+        uvRow(`${DAYS[0]}T11:00`, 7),
+        uvRow(`${DAYS[1]}T09:00`, 4),
+      ])
+    );
+    return p;
+  }
+
+  it("matches the per-day accessor on every date, including the empty one", async () => {
+    const p = await seedFeed("weather-batch");
+    const batched = getUvDoseForDays(p, DAYS);
+    expect([...batched.keys()].sort()).toEqual([...DAYS].sort());
+    for (const date of DAYS) {
+      expect(batched.get(date)).toEqual(getUvDoseForDay(p, date));
+    }
+    // The fixture is real: two live days, one degraded, one with no outdoor time.
+    expect(batched.get(DAYS[0])!.uvSource).toBe("live");
+    expect(batched.get(DAYS[0])!.outdoorMinutes).toBe(120);
+    expect(batched.get(DAYS[2])!.outdoorMinutes).toBe(120);
+    expect(batched.get(DAYS[3])!.outdoorMinutes).toBe(0);
+  });
+
+  it("issues one activities read and one UV-hours read for the whole set", async () => {
+    const p = await seedFeed("weather-batch-count");
+    const [activities, uvHours] = countPrepareSet(
+      /FROM activities a\s+WHERE a\.profile_id/,
+      /FROM weather_uv_hours/
+    );
+    getUvDoseForDays(p, DAYS);
+    expect(activities.calls()).toBe(1);
+    expect(uvHours.calls()).toBe(1);
+  });
+
+  it("returns an empty map without a home location, and for an empty date set", () => {
+    const id = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('no-home-batch')").run()
+        .lastInsertRowid
+    );
+    expect(getUvDoseForDays(id, DAYS).size).toBe(0);
+    const p = newProfile("weather-batch-empty");
+    expect(getUvDoseForDays(p, []).size).toBe(0);
   });
 });
 
