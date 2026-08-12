@@ -390,7 +390,7 @@ export function getQuietStreamAttention(
     if (!declared?.stream.quiet) continue;
     rows.push({
       id: q.sourceId,
-      sourceId: declared.providerName,
+      sourceName: declared.sourceName,
       detail: quietStreamDetail({
         streamLabel: declared.stream.label,
         sinceClock: formatClockValue(q.sinceLocalHhmm, prefs.timeFormat),
@@ -432,7 +432,7 @@ export function getQuietStreamRows(
       {
         ...row,
         title: quietStreamTitle(
-          row.sourceId,
+          row.sourceName,
           labels.get(`${q.sourceId}:${q.streamId}`) ?? "stream"
         ),
         href: integrationDetailHref(q.sourceId),

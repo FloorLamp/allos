@@ -109,11 +109,11 @@ describe("pruneSyncEvents equals planSyncEventPrune (#388)", () => {
   it("keeps the newest event per (profile, provider) — dormant broken provider stays visible", () => {
     // After the sweep, strava/A's failure (120 days old, its newest) is still there.
     const latestA = getLatestSyncEventPerSource(pA);
-    const strava = latestA.find((e) => e.sourceId === "strava");
+    const strava = latestA.find((e) => e.source_id === "strava");
     expect(strava).toBeDefined();
     expect(strava!.ok).toBe(0);
     // One row per source that had history, both sources still represented.
-    expect(new Set(latestA.map((e) => e.sourceId))).toEqual(
+    expect(new Set(latestA.map((e) => e.source_id))).toEqual(
       new Set(["health-connect", "strava"])
     );
   });
@@ -129,7 +129,7 @@ describe("pruneSyncEvents equals planSyncEventPrune (#388)", () => {
     );
     insertAged(p, "strava", 900); // ancient, but the only strava event for p
     expect(pruneSyncEvents()).toBe(0);
-    expect(getLatestSyncEventPerSource(p).map((e) => e.sourceId)).toEqual([
+    expect(getLatestSyncEventPerSource(p).map((e) => e.source_id)).toEqual([
       "strava",
     ]);
   });

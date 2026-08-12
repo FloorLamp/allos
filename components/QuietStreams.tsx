@@ -41,7 +41,7 @@ export default function QuietStreams({ rows }: { rows: QuietStreamRow[] }) {
             // The date-scoped identity from the pure model (quietStreamDedupeKey), so
             // the rendered key and any future suppression entry are the same string.
             key={row.key}
-            data-testid={`quiet-stream-${row.id ?? row.sourceId}`}
+            data-testid={`quiet-stream-${row.id ?? row.sourceName}`}
             className="rounded-lg border border-black/10 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-slate-900/40"
           >
             <p className="font-medium text-slate-800 dark:text-slate-100">
@@ -57,7 +57,7 @@ export default function QuietStreams({ rows }: { rows: QuietStreamRow[] }) {
                 href={row.href}
                 className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
               >
-                {row.sourceId} sync history →
+                {row.sourceName} sync history →
               </Link>
             )}
           </li>

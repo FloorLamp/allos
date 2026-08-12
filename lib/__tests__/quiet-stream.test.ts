@@ -202,13 +202,13 @@ describe("quietStreams — one row per provider", () => {
 describe("the reach boundary — quiet-stream never escalates (constraint 4)", () => {
   const quiet: AttentionIntegration = {
     id: "health-connect",
-    sourceId: "Google Health Connect",
+    sourceName: "Google Health Connect",
     detail: "No heart-rate data has arrived since 9:05 PM.",
     kind: "quiet-stream",
   };
   const stale: AttentionIntegration = {
     id: "strava",
-    sourceId: "Strava",
+    sourceName: "Strava",
     detail: "No data since 2026-07-10.",
     kind: "stale",
   };

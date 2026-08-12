@@ -119,7 +119,7 @@ export default function ReviewInbox({
   // to a plain row there.
   const escalated = sources.filter(isEscalatedSource);
   const escalatedIds = new Set(escalated.map((s) => s.id as string));
-  const leftoverIssues = issues.filter((ev) => !escalatedIds.has(ev.sourceId));
+  const leftoverIssues = issues.filter((ev) => !escalatedIds.has(ev.source_id));
 
   return (
     <div className="space-y-6" data-testid="review-inbox">
@@ -143,7 +143,7 @@ export default function ReviewInbox({
               className={escalated.length > 0 ? "mt-3 space-y-3" : "space-y-3"}
             >
               {leftoverIssues.map((ev) => {
-                const href = providerHref(ev.sourceId);
+                const href = providerHref(ev.source_id);
                 // The silent-stop signal (#1685) is a synthetic issue with no recorded
                 // failure behind it, so "sync failed" would be a claim we can't support:
                 // nothing failed, nothing arrived. Say what we actually observed. Its `at`
@@ -153,13 +153,13 @@ export default function ReviewInbox({
                   <li
                     // Synthetic issues share a sentinel id across sources, so the row key
                     // must include the source or two stopped sources would collide.
-                    key={`${ev.sourceId}:${ev.id}`}
-                    data-testid={`import-issue-${ev.sourceId}`}
+                    key={`${ev.source_id}:${ev.id}`}
+                    data-testid={`import-issue-${ev.source_id}`}
                     className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-900/50 dark:bg-rose-950/20"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium text-slate-800 dark:text-slate-100">
-                        {sourceName(ev.sourceId)}{" "}
+                        {sourceName(ev.source_id)}{" "}
                         {stale ? "sync has stopped" : "sync failed"}
                       </span>
                       <RelativeTime
@@ -177,7 +177,7 @@ export default function ReviewInbox({
                         href={href}
                         className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
                       >
-                        Check {sourceName(ev.sourceId)} settings →
+                        Check {sourceName(ev.source_id)} settings →
                       </Link>
                     )}
                     {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}

@@ -67,7 +67,7 @@ describe("health-connect ingest — over-size 413 (issue #604 / #1064)", () => {
     // an ACTIONABLE line (#1064): it names the remedy and the env override, not just
     // the byte count.
     const latest = getLatestSyncEventPerSource(profileId);
-    const hc = latest.find((e) => e.sourceId === "health-connect");
+    const hc = latest.find((e) => e.source_id === "health-connect");
     expect(hc).toBeTruthy();
     expect(hc?.ok).toBe(0);
     expect(String(hc?.error ?? "")).toMatch(/too large/i);

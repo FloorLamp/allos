@@ -18,7 +18,7 @@ import {
   type NormActivityLap,
   type NormCyclingTelemetry,
   type NormSegmentEffort,
-  type SourceStream,
+  type TelemetryStream,
 } from "./cycling-telemetry";
 
 // Maps Strava activities (https://developers.strava.com/docs/reference/) into the
@@ -473,7 +473,7 @@ function mapStreamSet(value: unknown): CyclingStreams {
     if (!stream || typeof stream !== "object") continue;
     const rec = stream as Record<string, unknown>;
     if (!Array.isArray(rec.data)) continue;
-    const normalized: SourceStream = { data: rec.data };
+    const normalized: TelemetryStream = { data: rec.data };
     const originalSize = int(rec.original_size);
     const resolution = str(rec.resolution);
     const seriesType = str(rec.series_type);

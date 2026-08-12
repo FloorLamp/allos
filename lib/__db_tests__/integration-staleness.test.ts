@@ -81,7 +81,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
 
     const stale = staleIssues(p);
     expect(stale).toHaveLength(1);
-    expect(stale[0].sourceId).toBe("strava");
+    expect(stale[0].source_id).toBe("strava");
     // The distinct copy: what we observed, and a date — never "Reconnect", which would
     // assert a cause this signal has no evidence for.
     expect(stale[0].error).toContain("No data since");
@@ -120,7 +120,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
 
     const issues = getImportIssues(p);
     // Exactly ONE row for the source: the recorded failure, which names the cause.
-    expect(issues.filter((e) => e.sourceId === "withings")).toHaveLength(1);
+    expect(issues.filter((e) => e.source_id === "withings")).toHaveLength(1);
     expect(staleIssues(p)).toEqual([]);
     expect(issues[0].error).toContain("401");
   });

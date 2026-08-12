@@ -76,17 +76,17 @@ describe("integration_sync_events: profile + provider scoping", () => {
     const hcA = getIntegrationSyncEvents(profileA, "health-connect");
     expect(hcA.length).toBe(2);
     expect(hcA.every((e) => e.profile_id === profileA)).toBe(true);
-    expect(hcA.every((e) => e.sourceId === "health-connect")).toBe(true);
+    expect(hcA.every((e) => e.source_id === "health-connect")).toBe(true);
     // B's row (received 999) never leaks in.
     expect(hcA.some((e) => e.received === 999)).toBe(false);
   });
 
   it("filters by provider — the Strava event is not in the HC list", () => {
     const hcA = getIntegrationSyncEvents(profileA, "health-connect");
-    expect(hcA.some((e) => e.sourceId === "strava")).toBe(false);
+    expect(hcA.some((e) => e.source_id === "strava")).toBe(false);
     const stravaA = getIntegrationSyncEvents(profileA, "strava");
     expect(stravaA.length).toBe(1);
-    expect(stravaA[0].sourceId).toBe("strava");
+    expect(stravaA[0].source_id).toBe("strava");
   });
 
   it("returns B's own events and nothing of A's", () => {

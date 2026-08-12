@@ -58,23 +58,24 @@ describe("failing-provider detection is per-provider (issue #304)", () => {
     // Reproduce the OLD detector's feed to show the failure genuinely fell off it.
     const naiveWindow = db
       .prepare(
-        `SELECT provider, ok FROM integration_sync_events
+        // #2487 boundary: the column is still named `provider`.
+        `SELECT provider AS source_id, ok FROM integration_sync_events
           WHERE profile_id = ?
           ORDER BY at DESC, id DESC
           LIMIT 100`
       )
-      .all(profileId) as { sourceId: string; ok: number }[];
+      .all(profileId) as { source_id: string; ok: number }[];
     expect(naiveWindow.length).toBe(100);
     // The strava failure is NOT in the window — the old badge/hero would miss it.
-    expect(naiveWindow.some((e) => e.sourceId === "strava")).toBe(false);
+    expect(naiveWindow.some((e) => e.source_id === "strava")).toBe(false);
   });
 
-  it("getLatestSyncEventPerProvider returns one row per provider, uncapped", () => {
+  it("getLatestSyncEventPerSource returns one row per source, uncapped", () => {
     const latest = getLatestSyncEventPerSource(profileId);
-    const bySource = new Map(latest.map((e) => [e.sourceId, e]));
+    const bySource = new Map(latest.map((e) => [e.source_id, e]));
     // Exactly one row per source that has history.
     expect(latest.length).toBe(bySource.size);
-    expect(new Set(latest.map((e) => e.sourceId))).toEqual(
+    expect(new Set(latest.map((e) => e.source_id))).toEqual(
       new Set(["strava", "health-connect"])
     );
     // Each is that source's true latest event, matching what the grid card shows.
@@ -84,7 +85,7 @@ describe("failing-provider detection is per-provider (issue #304)", () => {
 
   it("getImportIssues detects the buried broken provider", () => {
     const issues = getImportIssues(profileId);
-    expect(issues.map((e) => e.sourceId)).toEqual(["strava"]);
+    expect(issues.map((e) => e.source_id)).toEqual(["strava"]);
     expect(issues[0].ok).toBe(0);
     // Sanity: the connection really is in the needs_reauth terminal state (#326).
     expect(getConnection(profileId, "strava")?.status).toBe("needs_reauth");
@@ -98,7 +99,7 @@ describe("failing-provider detection is per-provider (issue #304)", () => {
 
   it("a later successful strava sync self-clears the failure", () => {
     recordSyncEvent(profileId, "strava", { ok: true, received: 0, written: 0 });
-    expect(getImportIssues(profileId).map((e) => e.sourceId)).toEqual([]);
+    expect(getImportIssues(profileId).map((e) => e.source_id)).toEqual([]);
     expect(getImportReviewCount(profileId)).toBe(0);
   });
 });

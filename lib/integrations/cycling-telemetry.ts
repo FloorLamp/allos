@@ -26,14 +26,14 @@ export const STRAVA_STREAM_KEYS = [
 
 export type CyclingStreamKey = (typeof STRAVA_STREAM_KEYS)[number];
 
-export interface SourceStream {
+export interface TelemetryStream {
   data: unknown[];
   original_size?: number;
   resolution?: string;
   series_type?: string;
 }
 
-export type CyclingStreams = Partial<Record<CyclingStreamKey, SourceStream>>;
+export type CyclingStreams = Partial<Record<CyclingStreamKey, TelemetryStream>>;
 
 export interface NormCyclingTelemetry {
   external_id: string;

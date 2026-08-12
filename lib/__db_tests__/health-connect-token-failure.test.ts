@@ -25,7 +25,7 @@ let profileId: number;
 
 function hcIssue() {
   return getImportIssues(profileId).find(
-    (e) => e.sourceId === "health-connect"
+    (e) => e.source_id === "health-connect"
   );
 }
 function failureEventCount(): number {

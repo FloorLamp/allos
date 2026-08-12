@@ -251,7 +251,7 @@ function expiredHealthConnectIssue(
   return {
     id: -1,
     profile_id: profileId,
-    sourceId: HEALTH_CONNECT_ID,
+    source_id: HEALTH_CONNECT_ID,
     // The synthetic row is SORTED against real events, so it must carry their
     // convention (#2205). integration_connections.updated_at is still on SQLite's
     // bare shape, hence the re-serialization rather than a raw copy.
@@ -373,7 +373,7 @@ function syntheticStaleIssue(
   return {
     id: STALE_SYNC_EVENT_ID,
     profile_id: profileId,
-    sourceId,
+    source_id: sourceId,
     at: s.sinceAt,
     ok: 0,
     window_start: null,
@@ -631,7 +631,7 @@ export function getReviewPairCount(profileId: number): number {
 export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
   const failing: IntegrationSyncEvent[] = [];
   for (const latest of getLatestSyncEventPerSource(profileId)) {
-    const def = getIntegration(latest.sourceId as IntegrationId);
+    const def = getIntegration(latest.source_id as IntegrationId);
     if (!def) {
       // An unregistered source id (hand-inserted or retired) has no registry
       // standing, so the latest-event rule keeps covering it rather than silently
@@ -653,7 +653,7 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
   // Fold in the expired-Health-Connect-token signal (#607), but only when a real HC
   // failure event isn't already representing the source (a rotated-token push
   // records its own via recordUnmatchedHealthConnectPush) — so HC appears at most once.
-  if (!failing.some((e) => e.sourceId === HEALTH_CONNECT_ID)) {
+  if (!failing.some((e) => e.source_id === HEALTH_CONNECT_ID)) {
     const expired = expiredHealthConnectIssue(profileId);
     if (expired) failing.push(expired);
   }
@@ -710,10 +710,10 @@ function getIntegrationAttentionUncached(
   profileId: number
 ): AttentionIntegration[] {
   return getImportIssues(profileId).map((ev) => {
-    const integration = getIntegration(ev.sourceId as IntegrationId);
+    const integration = getIntegration(ev.source_id as IntegrationId);
     return {
       id: integration?.id ?? null,
-      sourceName: integration?.name ?? ev.sourceId,
+      sourceName: integration?.name ?? ev.source_id,
       detail: ev.error ?? "Reconnect to resume syncing.",
       kind: isStaleSyncEvent(ev) ? ("stale" as const) : ("failing" as const),
     };

@@ -122,7 +122,7 @@ describe("a flapping provider is intermittent, never escalated (#1880/#2263)", (
     const state = getIntegrationState(p, "weather")!;
     expect(state.standing).toBe("failing");
     const issues = getImportIssues(p);
-    expect(issues.map((e) => e.sourceId)).toEqual(["weather"]);
+    expect(issues.map((e) => e.source_id)).toEqual(["weather"]);
     // The issue row is the REAL latest failure, naming its cause.
     expect(issues[0].ok).toBe(0);
     expect(issues[0].error).toBe(ERR);
@@ -162,7 +162,7 @@ describe("a flapping provider is intermittent, never escalated (#1880/#2263)", (
     // Nothing recorded a cause, so the synthetic quiet-stop row states the
     // observation — one row per source either way.
     const issues = getImportIssues(p);
-    expect(issues.map((e) => e.sourceId)).toEqual(["weather"]);
+    expect(issues.map((e) => e.source_id)).toEqual(["weather"]);
     expect(issues[0].error).toContain("No data since");
     expect(issues[0].error).toContain("5 days");
   });
