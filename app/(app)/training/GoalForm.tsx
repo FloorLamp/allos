@@ -21,6 +21,7 @@ import {
 import { kgTo, round } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/outcome-goals";
+import { biomarkerSearchTerms } from "@/lib/canonical-name";
 import ActivityCombobox from "@/components/ActivityCombobox";
 import Combobox from "@/components/Combobox";
 import DateField from "@/components/DateField";
@@ -633,6 +634,10 @@ export default function GoalForm({
               }}
               options={biomarkerOptions.map((o) => o.label)}
               groupFor={(label) => optionByLabel.get(label)?.group ?? null}
+              // The SAME search keys as every other biomarker picker (#2382): the
+              // analyte's own acronym and its curated aliases, so "a1c" and "psa"
+              // reach their entries rather than walking a long name's letters.
+              searchTermsFor={biomarkerSearchTerms}
               ariaLabel="Lab or vital"
               placeholder="e.g. LDL Cholesterol, Hemoglobin A1c"
             />

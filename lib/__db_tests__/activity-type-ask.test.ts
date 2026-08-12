@@ -95,7 +95,9 @@ function tap(data: string, chatId = CHAT) {
     message: {
       message_id: 4242,
       chat: { id: chatId },
-      text: "🏋️ Workout complete",
+      // The title an `unclassified` finish now carries (#2439): the generic training
+      // marker and a discipline-free word, because the ask below it is the question.
+      text: "🏋️ Session complete",
       reply_markup: { inline_keyboard: lastKeyboard() },
     },
   });

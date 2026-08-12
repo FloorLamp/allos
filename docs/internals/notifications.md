@@ -1221,12 +1221,12 @@ comes from the ONE server-side `getSessionRecap` gather
 card and the live "Session complete" step render, so the three surfaces can't
 drift (#221). Everything still routes through the Telegram chokepoint with the
 usual delivery accounting. **Weekly-remaining line (#981 §3, corrected by
-\#1122):** the recap line gains a forward-looking, pace-framed status leading
-with the target the session just advanced ("Legs — 1 of 2 this week, one more to
-go"; calm all-met line when every workout target is met; omitted otherwise),
-computed by `weeklyRemainingLine` as a **workout-scoped FORMATTER** over the
-SAME `getFrequencyTargetProgress` rollup (#221). Two #1122 fixes over the
-original "N of M met" tally: it (1) SCOPES to workout-affectable targets
+\#1122 and #2439):** the recap line gains a forward-looking, pace-framed status
+leading with the target the session just advanced ("Legs — 1 of 2 this week, one
+more to go"; calm all-met line when every workout target is met; omitted
+otherwise), computed by `weeklyRemainingLine` as a **workout-scoped FORMATTER**
+over the SAME `getFrequencyTargetProgress` rollup (#221). Two #1122 fixes over
+the original "N of M met" tally: it (1) SCOPES to workout-affectable targets
 (`region`/`group`/`type` only — `food_group`/`mobility_region` dropped, since a
 barbell session can't move veg-servings or mobility days, which is how it read
 "0 of 4"), and (2) reports PACE via each target's `count`, not the
@@ -1235,6 +1235,44 @@ still reads as progress. It rides WITH the recap line inside the congratulatory
 message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
+
+**And it is about THIS session (#2439).** Both fixes above were written but only
+the first was implemented: the rollup is profile-wide and nothing tied it to the
+finishing activity, so the line led with the closest-to-done target ANYWHERE —
+"Chest — 1 of 2 this week, one more to go" printed under "Afternoon Walk done ·
+33 min · 1.42 km", crediting a walk with a barbell session two days earlier and
+then nudging toward a chest day it had not touched. `weeklyRemainingLine` now
+takes the finishing session's own `SessionCadenceFacts` and a target it did not
+advance is not eligible to lead. The membership rule is ONE computation:
+`sessionAdvancesScope` (`lib/cadence.ts`) is the same rule `cadenceCounts`
+counts by, asked of a single activity — a region its logged sets map to, the
+union of a group's regions, its own type or a component's — and it is declared
+per scope kind as a rule or an explicit `null` ("unanswerable from an activity
+row": mobility reads a recovery session's MOVES, food and practice count their
+own ledgers, and a cap is never advanced at all). The recap's workout-affectable
+narrowing is DERIVED from those rules rather than hand-listed, so the two cannot
+drift. `getSessionCadenceFacts` (`lib/queries/cadence-ledger.ts`) is the gather,
+reading the same two sources; a missing or cross-profile row answers with empty
+facts, which advance nothing. A session that advanced no target gets no weekly
+line — including the all-met line, which is true of the week but is not this
+session's to claim.
+
+**The title names what actually finished (#2439).** It was one hardcoded
+`🏋️ Workout complete`, from #924 when only a manual strength session with logged
+sets could produce a recap line at all. #2272 opened the same message to every
+import, correctly, and the barbell came with it — a 33-minute, 1.42 km walk
+arrived announced as a workout. `finishNudgeTitle` is an exhaustive
+`Record<ActivityType, string>` over the declared tuple: strength keeps
+`🏋️ Workout complete`; cardio and sport take the per-discipline glyphs the
+vocabulary already declared (`🏃 Cardio complete`, `⚽ Sport complete`);
+`recovery` takes the new `mobility` glyph (`🤸 Mobility complete`) rather than
+the training marker, because announcing mobility work under a barbell says it
+counted as training load, which is the #840/#482 distinction the app keeps
+everywhere else; and `unclassified` takes the GENERIC training marker with a
+discipline-free `Session complete`, since a source that did not say (#2272) must
+not be answered by the title of the message carrying the ask. A COMBINED message
+keeps the dose message's own title: "Post-workout" there is the name of the dose
+`condition`, not a claim about the session.
 
 **An IMPORTED finish gets a recap of its own, and is asked what it was (#2272).**
 The recap-line gate above ("real strength working sets") meant a SOURCED row —

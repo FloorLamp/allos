@@ -18,7 +18,13 @@ import type { NotificationAction, NotificationMessage } from "./types";
 import { joinBody } from "./rich-text";
 import { formatRecapLine, type Recap } from "../session-recap";
 import { frequencyScopeLabel } from "../frequency-targets";
+import {
+  SESSION_ADVANCEABLE_SCOPE_KINDS,
+  sessionAdvancesScope,
+  type SessionCadenceFacts,
+} from "../cadence";
 import { fmtDistance } from "../units";
+import type { ActivityType } from "../types/training";
 import { activityTypeAskCallback } from "./callback-data";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
@@ -29,12 +35,14 @@ import { GLYPH } from "./glyphs";
 // barbell session structurally can't move veg-servings or mobility days, so grading
 // them here is what made the old line read "0 of 4" ("your workout didn't count").
 // `substance` (a weekly cap, #998) is already excluded upstream by
-// `getFrequencyTargetProgress`; listing only the floors keeps this positive.
-const WORKOUT_RECAP_SCOPE_KINDS: ReadonlySet<string> = new Set([
-  "region",
-  "group",
-  "type",
-]);
+// `getFrequencyTargetProgress`.
+//
+// DERIVED from the advance rules (#2439) rather than hand-listed: a scope is
+// workout-affectable exactly when a session's own facts can advance it, so the
+// narrowing and the per-session test are one declaration and cannot drift.
+const WORKOUT_RECAP_SCOPE_KINDS: ReadonlySet<string> = new Set(
+  SESSION_ADVANCEABLE_SCOPE_KINDS
+);
 
 // The minimal shape the recap line reads from a `getFrequencyTargetProgress` row —
 // scope identity (to filter + label), the paced count, and the met flag. Structurally
@@ -46,9 +54,9 @@ export interface WeeklyRecapTarget {
   met: boolean;
 }
 
-// The weekly-status line the recap message gains (issue #981 §3, corrected by #1122):
-// riding INSIDE the congratulatory finish message where its tone is natural. Two fixes
-// over the original "N of M met" tally:
+// The weekly-status line the recap message gains (issue #981 §3, corrected by #1122 and
+// #2439): riding INSIDE the congratulatory finish message where its tone is natural.
+// Three fixes over the original "N of M met" tally:
 //   1. SCOPE to workout-affectable targets — a workout recap never grades food/mobility
 //      habits a lifting session can't move (that's how it showed "0 of 4").
 //   2. PACE, not met-count — lead with the target this session ADVANCED but hasn't yet
@@ -56,20 +64,42 @@ export interface WeeklyRecapTarget {
 //      rather than the all-or-nothing `met`, so a session that rarely *completes* a
 //      2–4×/week goal still reads as progress. Acknowledge the session; don't tally
 //      unfinished weekly goals.
+//   3. ABOUT THIS SESSION (#2439). Points 1 and 2 were written but not implemented: the
+//      rollup is profile-wide and nothing tied it to the finishing activity, so the line
+//      led with the closest-to-done target ANYWHERE — "Chest — 1 of 2 this week" printed
+//      under "Afternoon Walk done · 33 min · 1.42 km", crediting a walk with a barbell
+//      session two days earlier and then nudging toward a chest day it had not touched.
+//      A target this session did not advance is now not eligible to lead, which is what
+//      the comment claimed all along.
 // The underlying rollup stays the ONE computation (`getFrequencyTargetProgress`, #221);
-// this is a workout-scoped FORMATTER over it. Null when there are no workout targets, or
-// when the session didn't measurably advance one and none are met (stay quiet rather than
-// revert to the misleading "0 of N").
+// this is a workout-scoped FORMATTER over it, and `sessionAdvancesScope` is the ONE
+// membership rule (`lib/cadence.ts`), the same one `cadenceCounts` counts by. Null when
+// there are no workout targets, when this session advanced none of them, or when the one
+// it advanced is neither in progress nor part of a fully met week.
 export function weeklyRemainingLine(
-  routine: readonly WeeklyRecapTarget[]
+  routine: readonly WeeklyRecapTarget[],
+  session: SessionCadenceFacts
 ): string | null {
   const workout = routine.filter((t) =>
     WORKOUT_RECAP_SCOPE_KINDS.has(t.target.scope_kind)
   );
   if (workout.length === 0) return null;
 
+  // What THIS session put on the board. A session that advanced nothing gets no weekly
+  // line at all — its recap line stands alone rather than borrowing another session's
+  // progress for a congratulation.
+  const advanced = workout.filter((t) =>
+    sessionAdvancesScope(
+      { kind: t.target.scope_kind, value: t.target.scope_value },
+      session
+    )
+  );
+  if (advanced.length === 0) return null;
+
   // Lead with the closest-to-done target the session advanced but hasn't completed.
-  const inProgress = workout
+  // `count >= 1` still earns its place: a session dated outside the current window
+  // (a late-night import landing in last week) advances the scope but not this week.
+  const inProgress = advanced
     .filter((t) => !t.met && t.count >= 1)
     .sort((a, b) => a.per_week - a.count - (b.per_week - b.count));
   if (inProgress.length > 0) {
@@ -87,7 +117,10 @@ export function weeklyRemainingLine(
   }
 
   // Nothing in progress: a calm celebratory line when every workout target is met,
-  // else silence (don't tally the untouched goals as "0 of N").
+  // else silence (don't tally the untouched goals as "0 of N"). The claim is about the
+  // WEEK, so it reads every workout target rather than only the advanced ones — but it
+  // is still reachable only from a session that advanced one, so it lands as a
+  // consequence of what just happened rather than as a bulletin about someone's week.
   if (workout.every((t) => t.met)) return "All weekly targets met — nice work.";
   return null;
 }
@@ -162,6 +195,41 @@ export function importedRecapLine(facts: ImportedSessionFacts): string | null {
   return [`${lead} done`, ...segs].join(" · ");
 }
 
+// ---- The finish message's own title (#2439) ----
+
+// WHAT FINISHED, named by the row's own type. The title was one hardcoded string —
+// `🏋️ Workout complete` — from #924, when only a manual strength session with logged
+// sets could ever produce a recap line. #2272 opened the same message to every import,
+// correctly, and the barbell came along: a 33-minute, 1.42 km walk arrived titled
+// "🏋️ Workout complete". The glyph vocabulary already had the per-discipline markers
+// this needed.
+//
+// Two rules the map keeps:
+//   • It states only what the row states. `unclassified` means the source did not say
+//     (#2272), so it gets the generic training marker and a discipline-free word — the
+//     same restraint `pickActivityIconKey` shows, and the message is carrying the ask
+//     that fixes it.
+//   • `recovery` is a session, not a workout, and it gets its own face rather than the
+//     training marker: naming it one would tell a person their mobility work counted as
+//     training load, which is the #840/#482 distinction the app keeps everywhere else.
+//     "Mobility" is the app's own word for that surface.
+// Exhaustive over `ActivityType` by the #2272 tuple discipline: a sixth type must
+// answer here before it compiles.
+const FINISH_TITLE: Record<ActivityType, string> = {
+  strength: `${GLYPH.training} Workout complete`,
+  cardio: `${GLYPH.cardio} Cardio complete`,
+  sport: `${GLYPH.sport} Sport complete`,
+  recovery: `${GLYPH.mobility} Mobility complete`,
+  unclassified: `${GLYPH.training} Session complete`,
+};
+
+// The finish nudge's title for a row of this type. `null` — the row could not be read —
+// takes the same generic answer as the stated absence: both mean "a session finished and
+// nothing here knows which kind".
+export function finishNudgeTitle(type: ActivityType | null): string {
+  return type ? FINISH_TITLE[type] : FINISH_TITLE.unclassified;
+}
+
 // ---- The type ask (#2272) ----
 
 // The three answers the ask offers. Deliberately NOT the full ActivityType set:
@@ -206,8 +274,10 @@ export interface FinishTypeAsk {
 // post-workout supplement section (the existing dose message) follows. Returns
 // null when both are absent so the caller sends nothing (and doesn't burn the
 // one-shot). The combined message keeps the dose message's kind ("dose") so its
-// SAFETY-tier routing/actions are preserved; a recap-only message is classified
-// "workout-recap" for structured-channel routing.
+// SAFETY-tier routing/actions are preserved AND its title, which names the dose
+// condition rather than the session; a recap-only message is classified
+// "workout-recap" for structured-channel routing and titled by `type` — what
+// actually finished (#2439).
 //
 // It also carries the type ask (#2272) when the finishing session is `unclassified`
 // — a LINE and BUTTONS on a message that was already going out, never a send of its
@@ -216,7 +286,8 @@ export interface FinishTypeAsk {
 export function composeFinishNudge(
   recapLine: string | null,
   doseMessage: NotificationMessage | null,
-  ask: FinishTypeAsk | null = null
+  ask: FinishTypeAsk | null = null,
+  type: ActivityType | null = null
 ): NotificationMessage | null {
   if (!recapLine && !doseMessage) return null;
   if (doseMessage) {
@@ -235,7 +306,7 @@ export function composeFinishNudge(
     };
   }
   return {
-    title: `${GLYPH.training} Workout complete`,
+    title: finishNudgeTitle(type),
     body: ask ? joinBody([recapLine!, ask.prompt], "\n\n") : recapLine!,
     ...(ask ? { actions: ask.actions } : {}),
     kind: "workout-recap",

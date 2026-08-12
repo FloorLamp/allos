@@ -9,10 +9,17 @@ import {
   cadenceVerdict,
   cadenceWeekMet,
   isCadenceScopeKind,
+  sessionAdvancesScope,
   verdictDirection,
+  SESSION_ADVANCEABLE_SCOPE_KINDS,
+  SESSION_ADVANCE_RULES,
   type CadenceVerdict,
+  type SessionCadenceFacts,
 } from "../cadence";
-import { FREQUENCY_SCOPE_KINDS } from "../frequency-targets";
+import {
+  FREQUENCY_SCOPE_KINDS,
+  type FrequencyScopeKind,
+} from "../frequency-targets";
 import { frequencyRangeState } from "../practice";
 import { substanceCapStatus } from "../substance-use";
 import { practiceWeekVerdict } from "../trends-practices";
@@ -192,5 +199,102 @@ describe("the anti-nudge pin", () => {
     expect(cadenceWeekMet("under-cap")).toBe(true);
     expect(cadenceWeekMet("at-cap")).toBe(true);
     expect(cadenceWeekMet("over-cap")).toBe(false);
+  });
+});
+
+// ── What ONE session advances (#2439) ───────────────────────────────────────────
+//
+// The ledger's membership rule asked of a single activity. It exists because the
+// post-workout recap read the profile-wide weekly rollup as if the finishing session
+// had produced it, and a walk was congratulated for a chest target a barbell session
+// had advanced days earlier.
+
+describe("sessionAdvancesScope", () => {
+  const legDay: SessionCadenceFacts = {
+    types: ["strength"],
+    regions: ["Legs"],
+  };
+  const walk: SessionCadenceFacts = { types: ["cardio"], regions: [] };
+
+  it("is TOTAL over FrequencyScopeKind — a new scope must answer", () => {
+    expect(Object.keys(SESSION_ADVANCE_RULES).sort()).toEqual(
+      [...FREQUENCY_SCOPE_KINDS].sort()
+    );
+  });
+
+  it("matches a region the session's sets actually mapped to", () => {
+    expect(
+      sessionAdvancesScope({ kind: "region", value: "Legs" }, legDay)
+    ).toBe(true);
+    expect(
+      sessionAdvancesScope({ kind: "region", value: "Chest" }, legDay)
+    ).toBe(false);
+    // A session with no sets at all maps to no region — the walk's whole problem.
+    expect(sessionAdvancesScope({ kind: "region", value: "Chest" }, walk)).toBe(
+      false
+    );
+  });
+
+  it("takes a group as the union of its regions, the way the ledger counts it", () => {
+    expect(
+      sessionAdvancesScope({ kind: "group", value: "Lower" }, legDay)
+    ).toBe(true);
+    expect(
+      sessionAdvancesScope({ kind: "group", value: "Upper" }, legDay)
+    ).toBe(false);
+    expect(sessionAdvancesScope({ kind: "group", value: "Full" }, legDay)).toBe(
+      true
+    );
+  });
+
+  it("reads the activity's own type and its components' types", () => {
+    expect(sessionAdvancesScope({ kind: "type", value: "cardio" }, walk)).toBe(
+      true
+    );
+    expect(
+      sessionAdvancesScope({ kind: "type", value: "strength" }, walk)
+    ).toBe(false);
+    expect(
+      sessionAdvancesScope(
+        { kind: "type", value: "cardio" },
+        { types: ["strength", "cardio"], regions: ["Chest"] }
+      )
+    ).toBe(true);
+  });
+
+  it("declines the scopes an activity row cannot answer for", () => {
+    // Null is "unanswerable here", not "no": the mobility ledger reads a recovery
+    // session's MOVES (#840), and food/practice count their own ledgers. A cap is never
+    // advanced at all (#998) — asking would be asking for a to-go number on alcohol.
+    for (const kind of [
+      "mobility_region",
+      "food_group",
+      "practice",
+      "substance",
+    ])
+      expect(
+        SESSION_ADVANCE_RULES[kind as FrequencyScopeKind],
+        kind
+      ).toBeNull();
+    expect(
+      sessionAdvancesScope({ kind: "substance", value: "alcohol" }, walk)
+    ).toBe(false);
+    expect(
+      sessionAdvancesScope({ kind: "mobility_region", value: "Legs" }, legDay)
+    ).toBe(false);
+    // An unregistered kind is not a yes either.
+    expect(sessionAdvancesScope({ kind: "invented", value: "x" }, legDay)).toBe(
+      false
+    );
+  });
+
+  it("derives the workout-affectable kinds from the rules themselves", () => {
+    // The recap's #1122 narrowing reads this rather than keeping its own list, so the
+    // two cannot drift apart.
+    expect([...SESSION_ADVANCEABLE_SCOPE_KINDS].sort()).toEqual([
+      "group",
+      "region",
+      "type",
+    ]);
   });
 });

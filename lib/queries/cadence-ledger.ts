@@ -6,6 +6,7 @@ import {
   type CadenceDirection,
   type CadenceSource,
   type CadenceVerdict,
+  type SessionCadenceFacts,
 } from "../cadence";
 import { daysBetweenDateStr, shiftDateStr } from "../date";
 import type { FrequencyScopeKind } from "../frequency-targets";
@@ -484,6 +485,44 @@ export function getCadenceLedger(
       existedWholeWindow: t.created_at.slice(0, 10) <= windows[0].start,
     };
   });
+}
+
+// The cadence facts ONE activity carries (#2439) — the session-level twin of the two
+// workout gathers above, reading the SAME two sources they do: the activity's own type
+// plus its components' types (`activity-type`), and the regions its logged sets map to
+// (`exercise-sets`). A missing or cross-profile row answers with empty facts, which
+// `sessionAdvancesScope` then reads as "advanced nothing" — the honest answer for a row
+// this profile does not have.
+export function getSessionCadenceFacts(
+  profileId: number,
+  activityId: number
+): SessionCadenceFacts {
+  const row = db
+    .prepare(
+      `SELECT type, components FROM activities WHERE id = ? AND profile_id = ?`
+    )
+    .get(activityId, profileId) as
+    { type: string; components: string | null } | undefined;
+  if (!row) return { types: [], regions: [] };
+
+  const types = new Set<string>([row.type]);
+  for (const c of parseComponents(row.components))
+    if (c?.type) types.add(c.type);
+
+  // Scoped through the parent activity, which the id+profile check above already
+  // pinned to this profile.
+  const regions = new Set<string>();
+  for (const s of db
+    .prepare(
+      `SELECT DISTINCT s.exercise AS exercise
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE s.activity_id = ? AND a.profile_id = ?`
+    )
+    .all(activityId, profileId) as { exercise: string }[]) {
+    const region = regionForExercise(s.exercise);
+    if (region) regions.add(region);
+  }
+  return { types: [...types], regions: [...regions] };
 }
 
 // Per-week counts for ONE scope with no target row required — the seam substance

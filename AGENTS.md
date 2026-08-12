@@ -643,7 +643,16 @@ See `docs/internals/e2e-hygiene.md`.
 - `lib/` write cores are auth-blind. They take `profileId` first and never import
   `lib/auth`; the Server Action performs authorization and validation.
 - Server Action records pass serializable data only. Do not return a
-  `better-sqlite3` row proxy to a client component.
+  `better-sqlite3` row proxy to a client component. That is a TYPE now, not
+  review: `Serializable<T>` (`lib/serializable.ts`) is a structural mirror of
+  what React's serializer accepts, and every `"use server"` module under `app/`
+  is asserted against it as one census in
+  `lib/__tests__/serializable-action-returns.test.ts`. A module whose action
+  grows a function, a class instance or a statement handle in its resolved value
+  fails on its own row, so the compiler names it. A new action module joins the
+  census; the scan in the same file fails one that does not. Annotate a
+  hand-written return type with `AssertSerializable<…>` when you want the error
+  at the signature rather than at the census.
 - Never call `router.refresh()` after awaiting a Server Action that revalidates:
   any `revalidatePath`/`revalidateTag` makes the action response carry a freshly
   rendered current page, so the refresh is a second full fetch. A refresh is only

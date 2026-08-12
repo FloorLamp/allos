@@ -35,6 +35,7 @@ import {
   FREQUENCY_SCOPE_KINDS,
   type FrequencyScopeKind,
 } from "./frequency-targets";
+import { regionsForGroup, type BodyGroup } from "./lifts";
 import { frequencyRangeState } from "./practice";
 import { substanceCapStatus } from "./substance-use";
 
@@ -116,6 +117,76 @@ export const CADENCE_SCOPES: Record<FrequencyScopeKind, CadenceScopeSpec> = {
     note: "the week's units (standard drinks / uses) from the substance's own ledger, read as a CAP (#998) — under it is the success state",
   },
 };
+
+// ---------------------------------------------------------------------------
+// What ONE session advances
+// ---------------------------------------------------------------------------
+
+// The ledger answers "how many this week"; this answers "did THIS session put one of
+// them on the board" — the same membership rule as `cadenceCounts`, asked of a single
+// activity instead of a window. It exists because a surface that congratulates a
+// session must not read the week's rollup as if the session had produced it: the
+// post-workout recap did exactly that, and a 1.4 km walk reported a Chest target a
+// barbell session had advanced two days earlier (#2439).
+//
+// The facts are the two the workout gathers actually key on — the activity's own type
+// plus its components' types (`activity-type`), and the regions its logged sets map to
+// (`exercise-sets`). Nothing about the WEEK is in here.
+export interface SessionCadenceFacts {
+  /** The activity's `type`, plus every component type it logged. */
+  readonly types: readonly string[];
+  /** The `MuscleRegion`s this session's logged sets map to. */
+  readonly regions: readonly string[];
+}
+
+type SessionAdvanceRule = (
+  value: string,
+  facts: SessionCadenceFacts
+) => boolean;
+
+// Per scope kind: how a single session advances it, or NULL for a scope no activity
+// row can advance from these facts. Null is a declaration, not a "no" — it says the
+// question is unanswerable here, which is why `sessionAdvancesScope` and the recap's
+// scope filter both read it rather than each keeping their own list of kinds. Total
+// over `FrequencyScopeKind`, so an eighth scope must answer before it compiles.
+export const SESSION_ADVANCE_RULES: Record<
+  FrequencyScopeKind,
+  SessionAdvanceRule | null
+> = {
+  region: (value, facts) => facts.regions.includes(value),
+  // A day counts once for the group however many of its regions it hit — the same
+  // union `cadenceCounts` takes, one session wide.
+  group: (value, facts) =>
+    regionsForGroup(value as BodyGroup).some((r) => facts.regions.includes(r)),
+  type: (value, facts) => facts.types.includes(value),
+  // The mobility ledger reads a recovery session's MOVES (#840), which these facts do
+  // not carry: a `null` says so rather than answering a confident `false` that a future
+  // recovery-recap author would inherit as a silent wrong answer.
+  mobility_region: null,
+  // Nutrition and practice scopes count their own ledgers; no activity row advances
+  // one, which is the #1122 exclusion stated as a rule instead of a remembered list.
+  food_group: null,
+  practice: null,
+  // A CAP is never "advanced" (#998). Asking would be asking for a to-go number on
+  // alcohol, which is the one answer this vocabulary refuses to have.
+  substance: null,
+};
+
+// Whether one session put a mark on this scope's board. False for a scope whose rule
+// is null — an unanswerable question is not a yes.
+export function sessionAdvancesScope(
+  scope: { kind: string; value: string },
+  facts: SessionCadenceFacts
+): boolean {
+  const rule = SESSION_ADVANCE_RULES[scope.kind as FrequencyScopeKind] ?? null;
+  return rule ? rule(scope.value, facts) : false;
+}
+
+// The scope kinds a training session can advance at all — derived from the rules above
+// rather than hand-listed, so the recap's #1122 narrowing and the advance rule cannot
+// drift apart.
+export const SESSION_ADVANCEABLE_SCOPE_KINDS: readonly FrequencyScopeKind[] =
+  FREQUENCY_SCOPE_KINDS.filter((k) => SESSION_ADVANCE_RULES[k] != null);
 
 // The direction a scope kind is read in, or null for a kind that is not a registered
 // cadence scope. Named rather than subtracted: every reader that used to filter
