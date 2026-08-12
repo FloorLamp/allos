@@ -41,7 +41,17 @@ describe("profile-owned API vocabulary (#2481)", () => {
       "getProfileAgeOn",
       "profileAgeResolver",
     ]) {
-      expect(source, name).toMatch(new RegExp(`export function ${name}\\b`));
+      // Either declaration form satisfies the #2481 rule, which is about the
+      // NAME: a plain `export function`, or the request-scoped
+      // `export const X = cache(function X(...))` that a repeated read declares
+      // (getProfileBirthdate — see the hoisting/cache() rule in AGENTS.md). The
+      // cached form must repeat the same name on the inner function, so the
+      // vocabulary stays checkable and a stack frame still says what it is.
+      expect(source, name).toMatch(
+        new RegExp(
+          `export function ${name}\\b|export const ${name} = cache\\(function ${name}\\b`
+        )
+      );
     }
     expect(source).not.toMatch(/export function (?:get|set)User[A-Z]/);
   });

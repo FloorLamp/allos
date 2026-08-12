@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, hoistedStatement } from "../db";
 import { REPRESENTATIVE_SPECS, representativeIds } from "../representative-ids";
 import { getClinicalObservations } from "./medical";
 import {
@@ -213,15 +213,16 @@ export function getConditions(
 // tobacco-EXPOSURE statuses ("never smoker" is dropped), so the mere presence of
 // such a row means ever-smoked. Profile-scoped; the social-smoking namespace is
 // source-prefixed in external_id, hence the leading-% LIKE (mirrors import-persist).
+// Statement hoisted: an existence probe the smoking-history resolver asks on every
+// risk/coaching pass, so it ran 540 times on one /household render — three times
+// per member — and compiled its SQL each time.
+const IMPORTED_SMOKING_STMT = hoistedStatement(
+  `SELECT 1 FROM conditions
+     WHERE profile_id = ? AND external_id LIKE '%ccda:social-smoking:%'
+     LIMIT 1`
+);
 export function hasImportedSmokingHistory(profileId: number): boolean {
-  const row = db
-    .prepare(
-      `SELECT 1 FROM conditions
-         WHERE profile_id = ? AND external_id LIKE '%ccda:social-smoking:%'
-         LIMIT 1`
-    )
-    .get(profileId);
-  return row != null;
+  return IMPORTED_SMOKING_STMT.get(profileId) != null;
 }
 
 export function getCondition(
