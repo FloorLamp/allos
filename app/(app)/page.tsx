@@ -61,6 +61,7 @@ import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
 import { isGoalLive } from "@/lib/outcome-goals";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
+import { routineOrder } from "@/lib/dismissal-fatigue";
 import {
   requireSession,
   getAccessibleProfiles,
@@ -655,17 +656,30 @@ export default async function Dashboard() {
   // count/overflow are computed over what it actually renders. Hiding the Data
   // quality widget drops its family straight back into the rollup, so a hidden card
   // never silently costs a finding its dashboard reach.
+  //
+  // DISMISSAL FATIGUE (#2386). The dashboard is the ROUTINE surface for these — the
+  // place a finding leads without being asked for — so it is where repeat dismissal is
+  // read as an answer. `routineOrder` reranks the already-filtered set over the SAME
+  // suppression map: a topic the user has declined across two separate raisings drops
+  // behind everything unfatigued (it stops leading, and with a cap of 2 it usually
+  // stops occupying a lead slot at all), and a topic declined across four leaves this
+  // surface entirely. Nothing is silenced — every one of them still renders in full on
+  // its own tab, which is where the user goes looking, and the shared bus is untouched.
+  const coachingSuppressions = getFindingSuppressions(profile.id);
   const activeCoaching =
     has("coaching-observations") || has("data-quality")
-      ? activeFindings(
-          collectCoachingFindings(
-            profile.id,
-            on,
-            units.weightUnit,
-            formatPrefs
+      ? routineOrder(
+          activeFindings(
+            collectCoachingFindings(
+              profile.id,
+              on,
+              units.weightUnit,
+              formatPrefs
+            ),
+            coachingSuppressions,
+            on
           ),
-          getFindingSuppressions(profile.id),
-          on
+          coachingSuppressions
         )
       : [];
   const coachingObservations = has("coaching-observations")
