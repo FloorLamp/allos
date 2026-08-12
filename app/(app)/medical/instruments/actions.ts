@@ -106,6 +106,10 @@ export async function recordInstrumentAction(
     answers,
     notes,
   });
+  // The core's life-stage gate (#2107). Unreachable from here today — `isInstrument`
+  // above narrows this action to the mental-health family, which is never adult-only
+  // — but the typed outcome is rendered rather than assumed.
+  if (id == null) return { ok: false, error: "Couldn't save that score." };
   revalidateInstruments();
   return { ok: true, id };
 }

@@ -6,6 +6,7 @@
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
 import { db, today, writeTx } from "../../db";
+import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
   doseOnDay,
@@ -1193,22 +1194,23 @@ export type IntakeDoseLedgerRow = IntakeDoseHistoryRow & {
 // `getIntakeDoseHistory` returns for that item over the same window (asserted in
 // lib/__db_tests__/supplement-dose-history.test.ts), which is what lets the ledger
 // and the per-item panel be two views of one ledger instead of two answers.
-export function getIntakeDoseHistoryAll(
-  profileId: number,
-  sinceDate: string,
-  opts: {
-    kind?: IntakeItemKind;
-    itemId?: number;
-    // Inclusive last day of the window; omit for "up to the newest row".
-    untilDate?: string;
-  } = {}
-): IntakeDoseLedgerRow[] {
-  // The profile scope stays SPELLED OUT in the statement text — the optional filters
-  // are appended, never the scope predicate, so the profile-scoping guard can still
-  // read this query and so no future filter can accidentally replace the join
-  // condition that makes it this profile's ledger.
+export interface IntakeDoseLedgerFilters {
+  kind?: IntakeItemKind;
+  itemId?: number;
+  // Inclusive last day of the window; omit for "up to the newest row".
+  untilDate?: string;
+}
+
+// The optional narrowing clauses, in the order their params are bound. The profile
+// scope is NEVER built here — it stays spelled out in each statement's own text
+// below, so the profile-scoping guard can read the query and so no future filter can
+// accidentally replace the join condition that makes it this profile's ledger.
+function doseLedgerFilters(opts: IntakeDoseLedgerFilters): {
+  sql: string;
+  params: (string | number)[];
+} {
   const filters: string[] = [];
-  const params: (string | number)[] = [profileId, sinceDate];
+  const params: (string | number)[] = [];
   if (opts.untilDate) {
     filters.push(" AND l.date <= ?");
     params.push(opts.untilDate);
@@ -1221,6 +1223,15 @@ export function getIntakeDoseHistoryAll(
     filters.push(" AND l.item_id = ?");
     params.push(opts.itemId);
   }
+  return { sql: filters.join(""), params };
+}
+
+export function getIntakeDoseHistoryAll(
+  profileId: number,
+  sinceDate: string,
+  opts: IntakeDoseLedgerFilters = {}
+): IntakeDoseLedgerRow[] {
+  const filters = doseLedgerFilters(opts);
   return db
     .prepare(
       `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.recorded_at,
@@ -1228,12 +1239,71 @@ export function getIntakeDoseHistoryAll(
               s.name AS item_name, s.kind AS item_kind
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
-        WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.join(
-          ""
-        )}
+        WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.sql}
         ${DOSE_HISTORY_ORDER}`
     )
-    .all(...params) as IntakeDoseLedgerRow[];
+    .all(profileId, sinceDate, ...filters.params) as IntakeDoseLedgerRow[];
+}
+
+export interface IntakeDoseLedgerPage {
+  rows: IntakeDoseLedgerRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ONE page of that ledger, plus the total the pager needs.
+//
+// This is what the dose-history SURFACE reads (#2445). Its date range offers an
+// explicit "All time", which passes the ISO floor as `sinceDate` — a window with no
+// lower bound — and the reader above has no LIMIT, so a twice-daily medication kept
+// for years fetched and rendered thousands of rows on that tap. A range control is a
+// filter, not a bound: "all time" is a legitimate answer here (history outlives
+// retirement, and a dose taken years ago still happened), so the bound has to be the
+// page, and the page has to reach the SQL rather than only the DOM.
+//
+// The unpaged reader stays for callers that genuinely want the whole window in one
+// array — and as the row-for-row cross-check against the per-item panel — but nothing
+// that RENDERS the ledger should use it.
+export function getIntakeDoseLedgerPage(
+  profileId: number,
+  sinceDate: string,
+  opts: IntakeDoseLedgerFilters,
+  page: number,
+  pageSize: number
+): IntakeDoseLedgerPage {
+  const size = Math.max(1, Math.trunc(pageSize));
+  const filters = doseLedgerFilters(opts);
+  const total = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n
+           FROM intake_item_logs l
+           JOIN intake_items s ON s.id = l.item_id
+          WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.sql}`
+      )
+      .get(profileId, sinceDate, ...filters.params) as { n: number }
+  ).n;
+  const clamped = Math.min(clampPage(page), pageCount(total, size));
+  const rows = db
+    .prepare(
+      `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.recorded_at,
+              l.taken_at, l.amount, l.product,
+              s.name AS item_name, s.kind AS item_kind
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.sql}
+        ${DOSE_HISTORY_ORDER}
+        LIMIT ? OFFSET ?`
+    )
+    .all(
+      profileId,
+      sinceDate,
+      ...filters.params,
+      size,
+      pageOffset(clamped, size)
+    ) as IntakeDoseLedgerRow[];
+  return { rows, total, page: clamped, pageSize: size };
 }
 
 // ---- Undoable medication administration delete (issue #851 item 11) ----

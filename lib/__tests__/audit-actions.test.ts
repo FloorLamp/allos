@@ -5,9 +5,6 @@ import {
   matchesActionPrefix,
   retentionModifier,
   rowsToPrune,
-  clampPage,
-  pageOffset,
-  pageCount,
   DEFAULT_AUDIT_RETENTION_DAYS,
   AUDIT_PAGE_SIZE,
 } from "@/lib/audit-actions";
@@ -72,30 +69,9 @@ describe("retention math", () => {
   });
 });
 
-describe("pagination math", () => {
-  it("clampPage coerces to a 1-based integer", () => {
-    expect(clampPage(1)).toBe(1);
-    expect(clampPage(3)).toBe(3);
-    expect(clampPage(0)).toBe(1);
-    expect(clampPage(-5)).toBe(1);
-    expect(clampPage(2.7)).toBe(2);
-    expect(clampPage(NaN)).toBe(1);
-  });
-
-  it("pageOffset is (page-1)*pageSize on a clamped page", () => {
-    expect(pageOffset(1, 50)).toBe(0);
-    expect(pageOffset(2, 50)).toBe(50);
-    expect(pageOffset(3, 20)).toBe(40);
-    expect(pageOffset(0, 50)).toBe(0); // clamped to page 1
-  });
-
-  it("pageCount is a ceil, at least 1", () => {
-    expect(pageCount(0, 50)).toBe(1);
-    expect(pageCount(50, 50)).toBe(1);
-    expect(pageCount(51, 50)).toBe(2);
-    expect(pageCount(101, 50)).toBe(3);
-  });
-
+describe("pagination", () => {
+  // The arithmetic moved to lib/pagination.ts (lib/__tests__/pagination.test.ts);
+  // what stays here is this viewer's own page-size policy.
   it("default page size", () => {
     expect(AUDIT_PAGE_SIZE).toBe(50);
   });

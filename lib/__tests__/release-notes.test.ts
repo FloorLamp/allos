@@ -7,7 +7,9 @@ import {
   newestNoteDate,
   parseReleaseNotes,
   pullRequestUrl,
+  releaseNotesPage,
   RELEASE_NOTE_KINDS,
+  WHATS_NEW_PAGE_ENTRIES,
 } from "@/lib/release-notes";
 import shipped from "@/lib/release-notes.json";
 
@@ -194,5 +196,85 @@ describe("external links", () => {
     expect(issueUrl(1421)).toBe(
       "https://github.com/FloorLamp/allos/issues/1421"
     );
+  });
+});
+
+// ── The page's bound (#2528) ─────────────────────────────────────────────────
+//
+// The notes file is append-only by design, so /whats-new was a surface guaranteed to
+// grow forever: 20 days / 278 entries rendered 76,647 px tall on a phone. The bound
+// is counted in ENTRIES because a merge day here holds anywhere from 1 to 32 of them.
+describe("releaseNotesPage", () => {
+  const entries = (n: number, from: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      pr: from + i,
+      title: `T${from + i}`,
+      body: "B",
+      issues: [],
+    }));
+  // Three days of 3/1/4 entries, newest first once parsed.
+  const notes = parseReleaseNotes({
+    days: [
+      {
+        date: "2026-08-03",
+        entries: entries(3, 100),
+        operatorNotes: ["run X"],
+      },
+      { date: "2026-08-02", entries: entries(1, 200), operatorNotes: [] },
+      {
+        date: "2026-08-01",
+        entries: entries(4, 300),
+        operatorNotes: ["run Y"],
+      },
+    ],
+  });
+
+  const prs = (days: { entries: { pr: number }[] }[]) =>
+    days.flatMap((d) => d.entries.map((e) => e.pr));
+
+  it("caps a page at its entry count, whatever the day shapes are", () => {
+    const first = releaseNotesPage(notes, 1, 3);
+    expect(first.shown).toBe(3);
+    expect(first.total).toBe(8);
+    expect(first.pageCount).toBe(3);
+    expect(prs(first.days)).toEqual([100, 101, 102]);
+  });
+
+  it("pages disjointly and completely, in newest-first reading order", () => {
+    const seen = [1, 2, 3].flatMap((n) =>
+      prs(releaseNotesPage(notes, n, 3).days)
+    );
+    expect(seen).toEqual([100, 101, 102, 200, 300, 301, 302, 303]);
+  });
+
+  it("splits a day across the boundary and keeps its operator notes on BOTH pages", () => {
+    // Page 2 of 3 ends mid-2026-08-01; page 3 carries its remaining entries.
+    const second = releaseNotesPage(notes, 2, 3);
+    const third = releaseNotesPage(notes, 3, 3);
+    const splitOn = (p: typeof second) =>
+      p.days.find((d) => d.date === "2026-08-01");
+    expect(splitOn(second)?.entries.map((e) => e.pr)).toEqual([300, 301]);
+    expect(splitOn(third)?.entries.map((e) => e.pr)).toEqual([302, 303]);
+    // The one-time upgrade action is not hidden behind a page boundary.
+    expect(splitOn(second)?.operatorNotes).toEqual(["run Y"]);
+    expect(splitOn(third)?.operatorNotes).toEqual(["run Y"]);
+  });
+
+  it("clamps a page past the end, and answers an empty file as page 1 of 1", () => {
+    expect(releaseNotesPage(notes, 99, 3).page).toBe(3);
+    const empty = releaseNotesPage({ days: [] }, 4);
+    expect(empty).toMatchObject({ page: 1, pageCount: 1, total: 0, shown: 0 });
+    expect(empty.days).toEqual([]);
+  });
+
+  it("bounds the SHIPPED file — the page is a page, not the whole changelog", () => {
+    const shippedNotes = loadReleaseNotes();
+    const first = releaseNotesPage(shippedNotes, 1);
+    expect(first.shown).toBeLessThanOrEqual(WHATS_NEW_PAGE_ENTRIES);
+    expect(first.total).toBe(
+      shippedNotes.days.reduce((n, d) => n + d.entries.length, 0)
+    );
+    // The newest day leads page 1: "what did the image I just pulled bring me".
+    expect(first.days[0].date).toBe(shippedNotes.days[0].date);
   });
 });

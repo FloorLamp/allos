@@ -182,6 +182,7 @@ import { migration as m180 } from "./180-waist-circumference-metric";
 import { migration as m181 } from "./181-notify-message-receipt-keyboard";
 import { migration as m182 } from "./182-goal-achieved-at";
 import { migration as m183 } from "./183-food-event-occurred-at";
+import { migration as m184 } from "./184-care-plan-dangling-record-links";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -373,4 +374,5 @@ export const MIGRATIONS: Migration[] = [
   m181,
   m182,
   m183,
+  m184,
 ];

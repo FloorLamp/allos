@@ -14,6 +14,7 @@ import {
   type DateRange,
 } from "@/lib/timeline-format";
 import { rangeSummaryLabel } from "@/lib/trends";
+import { clampPage } from "@/lib/pagination";
 import { activeRangeLabel } from "@/lib/trends-context";
 import { PageHeader } from "@/components/ui";
 import { NavTabsStrip } from "@/components/NavTabs";
@@ -107,6 +108,10 @@ export default async function TrendsPage(props: {
     cmpB?: string | string[];
     cmpn?: string | string[];
     view?: string | string[];
+    // The body history table's 1-based page (#2530). Its own param because that
+    // table is deliberately all-time — it does NOT follow the hub's date range —
+    // so nothing else in the query string can bound it.
+    bpage?: string | string[];
   }>;
 }) {
   const searchParams = await props.searchParams;
@@ -147,6 +152,9 @@ export default async function TrendsPage(props: {
   // and carried through the range control + tab navigation so a chosen layout
   // survives a window change.
   const bodyView = parseBodyView(firstParam(searchParams.view));
+  const bodyHistoryPage = clampPage(
+    Number(firstParam(searchParams.bpage)) || 1
+  );
   // The "1D" pill (#1466), injected through the shared control's extra-ranges slot.
   // It followed the vitals to Body (#1486) and follows the census here: 1D is only
   // meaningful where the surface swaps to genuinely intraday content (the census's
@@ -170,6 +178,9 @@ export default async function TrendsPage(props: {
     cmpB?: string;
     cmpn?: boolean;
     view?: "tiles" | "all";
+    // The body history table's page. Dropped when it is page 1, so the ordinary
+    // hub links stay paramless.
+    bpage?: number;
     // An in-page anchor on the landing surface, so a control INSIDE the census
     // (the tiles/all toggle) doesn't bounce the reader back to the digest.
     section?: string;
@@ -185,6 +196,7 @@ export default async function TrendsPage(props: {
     if (params.cmpB) sp.set("cmpB", params.cmpB);
     if (params.cmpn) sp.set("cmpn", "1");
     if (params.view) sp.set("view", params.view);
+    if (params.bpage && params.bpage > 1) sp.set("bpage", String(params.bpage));
     const qs = sp.toString();
     const hash = params.section ? `#${params.section}` : "";
     return `${qs ? `/trends?${qs}` : "/trends"}${hash}` as AppRoute;
@@ -272,6 +284,7 @@ export default async function TrendsPage(props: {
                       allTime,
                       view: "tiles",
                       section: "body",
+                      bpage: bodyHistoryPage,
                     })}
                     allHref={trendsHref({
                       from: range.from,
@@ -279,7 +292,19 @@ export default async function TrendsPage(props: {
                       allTime,
                       view: "all",
                       section: "body",
+                      bpage: bodyHistoryPage,
                     })}
+                    historyPage={bodyHistoryPage}
+                    historyPageHref={(bpage) =>
+                      trendsHref({
+                        from: range.from,
+                        to: range.to,
+                        allTime,
+                        view: bodyView,
+                        section: "body",
+                        bpage,
+                      })
+                    }
                   />
                 </StreamedCensus>
               </Suspense>
