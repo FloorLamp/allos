@@ -147,6 +147,19 @@ For every schema change:
 - Add a new profile-owned table to `lib/owned-tables.ts`.
 - Null dangling links before rebuilding a table to enforce a foreign key.
 
+A one-shot row-move migration that DELETES rows declares the (table, column)
+child links that must block a delete, and probes each with `PRAGMA table_info`
+so it can run against every historical schema shape. That probe cannot tell "this
+database predates the table" from "this pair is a typo", so a misnamed entry drops
+out silently and the guard covers nothing while still reading like a guard —
+migration 180 shipped with three of four entries naming columns that have never
+existed, and deleted rows a live care-plan follow-up still referenced (#2444).
+A typo is only visible against the FINAL migrated schema, so that is where it is
+checked: `lib/__db_tests__/migration-child-links.test.ts` reads every migration's
+link literals, fails an unknown pair, and pins the non-cascading FK parents of
+`medical_records`. The frozen entries a hash-locked migration cannot un-name are
+allowlisted there with the corrective migration named beside them.
+
 The runner applies migrations in individual immediate transactions, guards
 against a newer database being opened by older code, and temporarily disables
 foreign-key enforcement for safe SQLite table rebuilds. Per-boot work such as
@@ -762,6 +775,22 @@ See `docs/internals/e2e-hygiene.md`.
   `substance_log`, `protein_log`); the undo path builds its ledger from the same
   `CounterSpec` the undo registry declares, so the write side and the undo side
   cannot drift.
+- **Adult-only content refuses at the CORE**, not only at the surface. #1174 hid
+  the substance-use surface from a known minor; #1279 re-checked in every one of
+  that surface's actions, because a Server Action is independently POST-callable
+  and a UI-only gate is theater. #2107 closed the last hole: the instrument write
+  cores are SHARED with the mental-health catalog and update/delete resolve their
+  instrument from the targeted ROW, so the calling surface's family was no evidence
+  at all about what was being written, and the mental-health twins reached the very
+  scores #1279 refuses to touch. `adultOnlyRefusal`
+  (`lib/instrument-records.ts`) is the one question each of those cores asks about
+  the instrument it resolved; a refused one answers exactly as an unknown row does
+  (`null` / `not-found`), mental-health instruments pass unconditionally, and an
+  unknown age still passes (`lib/life-stage`'s positive-match-only policy).
+  `ADULT_ONLY_WRITE_CORES` (`lib/adult-only-writes.ts`) registers the gated modules
+  and its scan fails a new mutating export there that skips the gate — the
+  exemption list is empty. Narrowing the known callers is the fix that leaves the
+  next caller to rediscover the hole.
 - Identity families use one canonical pure function everywhere (movement facts
   key on `exerciseHistoryKey`; load-sensitive strength facts on
   `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,

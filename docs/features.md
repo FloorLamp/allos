@@ -2244,6 +2244,14 @@ shown for adults + unknown-age profiles and hidden for a known minor, since
 AUDIT/DAST are adult-validated): the full **screen → track → support reduction**
 ladder, deliberately **without gamification**.
 
+The minor gate is not a surface decision. Hiding the page was #1174; #1279 added
+the same refusal to every substance-use Server Action, because an action is
+independently POST-callable; and #2107 moved it into the shared instrument write
+cores, which serve the mental-health catalog too and resolve their instrument from
+the targeted ROW — so the mental-health correction/removal actions had been able to
+edit substance scores the substance surface refuses to touch. A refused instrument
+now answers exactly as an unknown row does, whichever surface asked.
+
 **Screening**: **AUDIT-C** (alcohol, 3 items, per-item 0–4 options — public
 domain, Bush et al. 1998 / VA) and, since #1085, the **DAST-10** (drug use, 10
 yes/no items scored 0/1 — item text © Skinner 1982 / CAMH, reproduced with
