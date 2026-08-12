@@ -771,6 +771,25 @@ See `docs/internals/e2e-hygiene.md`.
   unilaterally, never increase it or rewrite user-owned state), which domains can
   carry an obligation at all, and the right-sizing family every "the system
   noticed X" suggestion belongs to.
+- The doctrine's other half is **how a feature would learn it should stop**
+  (#2385). A feature that claims to change BEHAVIOUR declares three things beside
+  its acceptance criteria: what would show it working, what would show it wrong,
+  and its **deceptive success** — the measure that improves while the feature does
+  harm (food coverage rising while servings-per-window falls). Local queries over
+  data the instance already holds; never telemetry, never a user-facing score,
+  never on a correctness feature, and never on a safety signal, whose
+  justification is not effectiveness. This is prose in the issue and in the module
+  header — do not build a registry, a scoring engine or a metrics pipeline for it.
+- Its first application is **repeat dismissal read as an answer** (#2386):
+  `lib/dismissal-fatigue.ts` counts distinct declined RAISINGS of one topic
+  (keyed on the #436 episode anchor a finding declares through `supersedes`, never
+  rows) and de-prioritises, then retires from the routine surface — never mutes,
+  never writes, never touches the suppression bus, and always still reachable
+  where the user goes looking. The safety floor is DERIVED, not listed:
+  `mayQuietOnDismissal` asks `isHiddenUnderPolicy`, so quieting can only ever
+  reach a finding a plain dismiss would already have silenced. A dose reminder, a
+  missed-dose escalation, the crisis finding and an overdue care follow-up are
+  refused before any count is read.
 
 ## Repository hygiene
 
