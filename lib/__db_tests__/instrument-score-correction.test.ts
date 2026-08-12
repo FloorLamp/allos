@@ -22,6 +22,7 @@ import {
   getInstrumentReadings,
   getInstrumentStates,
   getInstrumentScoreInstrument,
+  type RecordInstrumentInput,
 } from "@/lib/instrument-records";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
 
@@ -30,6 +31,16 @@ function newProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+}
+
+// recordInstrumentScore answers `null` when the life-stage gate refuses the instrument
+// (#2107). Every score in this file is a mental-health one, which is never adult-only,
+// so a null here is a genuine failure and should stop the test rather than be threaded
+// through every assertion.
+function recordScore(profileId: number, input: RecordInstrumentInput): number {
+  const id = recordInstrumentScore(profileId, input);
+  if (id == null) throw new Error("recordInstrumentScore unexpectedly refused");
+  return id;
 }
 
 function escalating(profileId: number): string[] {
@@ -43,7 +54,7 @@ describe("correcting a mis-entered score releases the crisis line", () => {
     const p = newProfile("gad-typo");
     const td = today(p);
     // 21 is GAD-7's maximum — the "typed 21, meant 12" case from the issue.
-    const id = recordInstrumentScore(p, {
+    const id = recordScore(p, {
       instrument: "GAD-7",
       date: td,
       total: 21,
@@ -64,7 +75,7 @@ describe("correcting a mis-entered score releases the crisis line", () => {
   it("removing the mis-entered score releases the banner too, and the reading is gone", () => {
     const p = newProfile("gad-delete");
     const td = today(p);
-    const id = recordInstrumentScore(p, {
+    const id = recordScore(p, {
       instrument: "GAD-7",
       date: td,
       total: 21,
@@ -79,12 +90,12 @@ describe("correcting a mis-entered score releases the crisis line", () => {
 
   it("an older severe score still escalates after the newest one is removed (latest-wins, not blanket-clear)", () => {
     const p = newProfile("gad-two");
-    const older = recordInstrumentScore(p, {
+    const older = recordScore(p, {
       instrument: "GAD-7",
       date: "2020-03-04",
       total: 19,
     });
-    const newer = recordInstrumentScore(p, {
+    const newer = recordScore(p, {
       instrument: "GAD-7",
       date: "2020-05-06",
       total: 3,
@@ -102,7 +113,7 @@ describe("editing an administered score", () => {
   it("refuses a TOTAL change on an item-by-item administration (the answers are the source of truth)", () => {
     const p = newProfile("phq-administered");
     const td = today(p);
-    const id = recordInstrumentScore(p, {
+    const id = recordScore(p, {
       instrument: "PHQ-9",
       date: td,
       total: 22,
@@ -120,7 +131,7 @@ describe("editing an administered score", () => {
   it("still allows a DATE-only correction on an administered score", () => {
     const p = newProfile("phq-date-only");
     const td = today(p);
-    const id = recordInstrumentScore(p, {
+    const id = recordScore(p, {
       instrument: "PHQ-9",
       date: td,
       total: 6,
@@ -138,7 +149,7 @@ describe("scoping and identity guards", () => {
     const owner = newProfile("owner");
     const other = newProfile("other");
     const td = today(owner);
-    const id = recordInstrumentScore(owner, {
+    const id = recordScore(owner, {
       instrument: "PHQ-9",
       date: td,
       total: 20,
@@ -175,7 +186,7 @@ describe("scoping and identity guards", () => {
     expect(
       getInstrumentScoreInstrument(
         p,
-        recordInstrumentScore(p, {
+        recordScore(p, {
           instrument: "AUDIT-C",
           date: "2020-06-07",
           total: 7,
@@ -196,7 +207,7 @@ describe("undo restores the score AND its item answers", () => {
       itemIndex: i,
       answer: a,
     }));
-    const id = recordInstrumentScore(p, {
+    const id = recordScore(p, {
       instrument: "PHQ-9",
       date: td,
       total: 2,

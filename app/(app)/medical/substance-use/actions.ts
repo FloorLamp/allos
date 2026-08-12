@@ -153,6 +153,10 @@ export async function recordSubstanceInstrumentAction(
     answers,
     notes,
   });
+  // The core now carries the same life-stage gate this action opened with (#2107),
+  // so the refusal is rendered rather than assumed away — the action's own check
+  // above is defense in depth over it, not the only copy.
+  if (id == null) return { ok: false, error: MINOR_REFUSAL };
   revalidateSubstanceUse();
   return { ok: true, id };
 }
