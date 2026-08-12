@@ -1,7 +1,7 @@
 import type {
   AgeBandedRange,
   BiomarkerDirection,
-  CanonicalBiomarker,
+  CanonicalResultDefinition,
   CyclePhaseRanges,
   MedicalFlag,
   ReproductiveStatus,
@@ -39,7 +39,7 @@ type CyclePhaseCarrier = { ranges_by_cycle_phase?: unknown };
 // The fields needed to resolve a biomarker's optimal band, including the
 // sex-specific overrides and the (optional) age-banded overrides.
 export type OptimalFields = Pick<
-  CanonicalBiomarker,
+  CanonicalResultDefinition,
   | "optimal_low"
   | "optimal_high"
   | "optimal_low_male"
@@ -52,10 +52,13 @@ export type OptimalFields = Pick<
 // The fields needed to resolve a biomarker's reference range. The generic
 // ref_low/high are always present; the sex-specific overrides are optional so
 // callers with a partial shape (e.g. tests) still type-check.
-export type ReferenceFields = Pick<CanonicalBiomarker, "ref_low" | "ref_high"> &
+export type ReferenceFields = Pick<
+  CanonicalResultDefinition,
+  "ref_low" | "ref_high"
+> &
   Partial<
     Pick<
-      CanonicalBiomarker,
+      CanonicalResultDefinition,
       "ref_low_male" | "ref_high_male" | "ref_low_female" | "ref_high_female"
     >
   > &
@@ -64,7 +67,7 @@ export type ReferenceFields = Pick<CanonicalBiomarker, "ref_low" | "ref_high"> &
   CyclePhaseCarrier;
 
 // Coerce the ranges_by_age field to an array. It arrives already parsed (typed
-// CanonicalBiomarker rows) or, straight from a raw SQLite SELECT, as a JSON string
+// CanonicalResultDefinition rows) or, straight from a raw SQLite SELECT, as a JSON string
 // (the column stores JSON text). Anything unrecognized → null, so callers simply
 // fall back to the adult fields.
 function coerceAgeBands(v: unknown): AgeBandedRange[] | null {
@@ -102,7 +105,7 @@ export function selectAgeBand(
 }
 
 // Coerce the ranges_by_status field to a status→range map. It arrives already
-// parsed (typed CanonicalBiomarker rows) or, from a raw SQLite SELECT, as a JSON
+// parsed (typed CanonicalResultDefinition rows) or, from a raw SQLite SELECT, as a JSON
 // string. Anything that isn't a plain object → null, so callers fall back to the
 // age band / adult fields.
 function coerceStatusRanges(v: unknown): ReproductiveStatusRanges | null {

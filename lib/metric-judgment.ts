@@ -492,7 +492,7 @@ export interface MetricJudgment {
 // The vocabulary entry this module needs, stated STRUCTURALLY so both shapes of
 // the same data satisfy it: the committed dataset row (`Biomarker`, which omits
 // the fields it never curates) and the `canonical_biomarkers` DB row
-// (`CanonicalBiomarker`, which carries every column). One judgement, two
+// (`CanonicalResultDefinition`, which carries every column). One judgement, two
 // vocabularies — never two judgements.
 export interface JudgmentEntry {
   name: string;

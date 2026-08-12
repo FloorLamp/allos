@@ -11,7 +11,7 @@ import {
   representativeCte,
 } from "../representative-ids";
 import type {
-  CanonicalBiomarker,
+  CanonicalResultDefinition,
   MedicalDocument,
   MedicalFlag,
   ClinicalObservation,
@@ -1057,7 +1057,7 @@ export interface SavedBiomarker {
   latest_notes: string | null;
   latest_reference_range: string | null;
   // Reference entry (ranges/direction) joined in so the chip needs no extra query.
-  canonical: CanonicalBiomarker | null;
+  canonical: CanonicalResultDefinition | null;
 }
 
 // Saved biomarkers with their latest reading and the canonical reference entry
@@ -1104,7 +1104,7 @@ export function getSavedBiomarkers(profileId: number): SavedBiomarker[] {
       `SELECT * FROM canonical_biomarkers
        WHERE name IN (${stars.map(() => "?").join(",")})`
     )
-    .all(...stars) as CanonicalBiomarker[];
+    .all(...stars) as CanonicalResultDefinition[];
   const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
 
   return stars.map((name) => {

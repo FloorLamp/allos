@@ -10,7 +10,7 @@ import {
   type BiomarkerReading,
   type NamedBiomarkerReading,
 } from "@/lib/longevity-pillars";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalResultDefinition } from "@/lib/types";
 
 // #2023 — the optimal-biomarker pillar's freshness and coverage context. The pillar keeps
 // its ratio and every marker's existing canonical judgment; what these tests pin is that
@@ -20,13 +20,13 @@ import type { CanonicalBiomarker } from "@/lib/types";
 const TODAY = "2026-08-05";
 
 function cb(
-  partial: Partial<CanonicalBiomarker> & {
+  partial: Partial<CanonicalResultDefinition> & {
     name: string;
     unit: string;
-    direction: CanonicalBiomarker["direction"];
+    direction: CanonicalResultDefinition["direction"];
   }
-): CanonicalBiomarker {
-  return partial as unknown as CanonicalBiomarker;
+): CanonicalResultDefinition {
+  return partial as unknown as CanonicalResultDefinition;
 }
 
 const totalChol = cb({

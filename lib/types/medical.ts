@@ -325,7 +325,18 @@ export interface AgeBandedRange {
   note?: string | null;
 }
 
-export interface CanonicalBiomarker {
+// One entry of the canonical registry — a `canonical_biomarkers` row: the
+// definition of a reportable clinical RESULT plus the knowledge needed to
+// interpret it (unit, reference and optimal bands with their sex / age / status /
+// cycle-phase overrides, direction, retest cadence). Named for what it defines
+// rather than for "biomarker" (#2479): 68 of the 324 curated entries are not lab,
+// 63 carry no unit and 98 no reference range — a blood group is a registered
+// result definition and is not a quantity. The TABLE keeps its shipped name (part
+// 1 makes no persisted change), so the accessors that read it still say
+// `canonical_biomarkers`. The three axes this type does NOT settle — storage
+// category, catalog browsability, identity — are mapped in
+// docs/internals/clinical-result-terminology.md.
+export interface CanonicalResultDefinition {
   name: string;
   category: string | null;
   unit: string | null;
