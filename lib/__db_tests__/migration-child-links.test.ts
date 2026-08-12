@@ -97,9 +97,9 @@ function linkLiterals(): LinkLiteral[] {
 function columnsOf(table: string): Set<string> {
   try {
     return new Set(
-      (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
-        (c) => c.name
-      )
+      (
+        db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+      ).map((c) => c.name)
     );
   } catch {
     return new Set();

@@ -710,8 +710,7 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
 
   if (outcome.kind === "not-found")
     return { ok: false, error: "Login not found." };
-  if (outcome.kind === "refused")
-    return { ok: false, error: outcome.reason };
+  if (outcome.kind === "refused") return { ok: false, error: outcome.reason };
 
   recordAudit({
     loginId: session.login.id,

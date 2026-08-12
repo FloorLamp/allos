@@ -38,10 +38,8 @@ function exportedFunctions(file: string): ExportedFn[] {
   const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true);
   const out: ExportedFn[] = [];
   const isExported = (node: ts.Node): boolean =>
-    ts
-      .getCombinedModifierFlags(node as ts.Declaration)
-      .valueOf() &
-      ts.ModifierFlags.Export.valueOf()
+    ts.getCombinedModifierFlags(node as ts.Declaration).valueOf() &
+    ts.ModifierFlags.Export.valueOf()
       ? true
       : false;
 
@@ -83,9 +81,7 @@ describe("adult-only write gate (issue #2107)", () => {
         // The gate is matched by NAME below, so a rename that misses the registry
         // would turn every check into a vacuous "nothing calls a function that does
         // not exist". Prove the name is real first.
-        expect(src).toMatch(
-          new RegExp(`function\\s+${core.gate}\\s*\\(`)
-        );
+        expect(src).toMatch(new RegExp(`function\\s+${core.gate}\\s*\\(`));
       });
 
       it("gates every exported function that mutates", () => {
@@ -113,10 +109,15 @@ describe("adult-only write gate (issue #2107)", () => {
       });
 
       it("reaps stale exemptions", () => {
-        const fns = new Map(exportedFunctions(core.file).map((f) => [f.name, f]));
+        const fns = new Map(
+          exportedFunctions(core.file).map((f) => [f.name, f])
+        );
         for (const e of core.exempt) {
           const fn = fns.get(e.fn);
-          expect(fn, `${core.file}: exempt ${e.fn} no longer exists`).toBeDefined();
+          expect(
+            fn,
+            `${core.file}: exempt ${e.fn} no longer exists`
+          ).toBeDefined();
           expect(
             fn && mutates(fn.body),
             `${core.file}: exempt ${e.fn} no longer mutates — drop the exemption`

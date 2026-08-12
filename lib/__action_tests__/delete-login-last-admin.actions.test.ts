@@ -20,9 +20,7 @@ import { createLogin, createProfile, actAs } from "./harness";
 const ADMIN_COUNT_SQL = "SELECT COUNT(*) AS c FROM logins WHERE role = 'admin'";
 
 function loginExists(id: number): boolean {
-  return (
-    db.prepare("SELECT 1 FROM logins WHERE id = ?").get(id) !== undefined
-  );
+  return db.prepare("SELECT 1 FROM logins WHERE id = ?").get(id) !== undefined;
 }
 
 function deleteForm(id: number): FormData {
