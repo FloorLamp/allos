@@ -40,7 +40,10 @@ Rules:
   NOT a measurement — a functional-status finding, one questionnaire/screening ITEM's
   answer, a qualifier such as the body site a temperature was taken at, a bare
   result-status word; "instrument" for a scored screening TOTAL (a PHQ-9 sum), which IS
-  a measurement and must never be "assessment"; "biomarker" only if nothing else fits.
+  a measurement and must never be "assessment"; "reference" for an immutable identity
+  fact (ABO blood group, Rh type). There is NO catch-all category: every result gets
+  one of these. When a measurement genuinely fits none of the narrower classes, use
+  "lab" if it was measured from a specimen and "vitals" if it was measured on the body.
 - value: the result as shown. Keep qualitative values verbatim ("NEGATIVE", "YELLOW",
   "Pattern A", "RH(D) POSITIVE"). value_num: the same value as a number ONLY when it is
   purely numeric; otherwise null. For "<0.10" or "<10", set value as the string and

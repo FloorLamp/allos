@@ -284,7 +284,7 @@ function activityMetricValues(r: NormActivity): (number | string | null)[] {
   return ACTIVITY_METRIC_COLS.map((c) => r[c] ?? null);
 }
 
-// A clinical vital / biomarker reading → medical_records. canonical groups it with
+// A clinical vital / lab reading → medical_records. canonical groups it with
 // the same analyte from manual entry / documents; external_id dedups re-syncs.
 export interface NormVital {
   external_id: string; // 'health-connect:<canonical>:<time>'
@@ -297,7 +297,11 @@ export interface NormVital {
   // (Fitbit Takeout's daily SpO₂/respiratory files): a vendor day-summary has no
   // event instant, and NULL is the honest day-grain answer.
   occurred_at?: string | null;
-  category: "vitals" | "lab" | "biomarker";
+  // #2479 part 2: `biomarker` is GONE from this union, not merely unused. It was the
+  // legacy catch-all, and a source writing it (VO2 Max did, from Health Connect and
+  // Withings) refilled the very bucket migration 185 empties. The narrowing is the
+  // guard: a parser that reaches for it no longer compiles.
+  category: "vitals" | "lab";
   name: string;
   canonical: string;
   value_num: number;
