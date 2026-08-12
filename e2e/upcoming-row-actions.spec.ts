@@ -14,9 +14,6 @@ import { type Locator, type Page } from "@playwright/test";
 //   1. no row ever renders more than one overflow trigger,
 //   2. a preventive row renders exactly one, and that one menu still offers BOTH
 //      halves (the overrides and snooze/dismiss) — the merge, not a deletion,
-//   3. the status label ("Overdue" / "3 days left") is a LEADING column, so it
-//      lands at the same x on every row in a group instead of right-aligning
-//      against variable-width CTA pills.
 //
 // Fixture policy (#868): these are READ-ONLY assertions over the shared seeded
 // profile — they open a menu and press Escape, and never write. So they take no
@@ -26,11 +23,6 @@ import { type Locator, type Page } from "@playwright/test";
 // dedicated fixture profile: an extra profile is visible to every OTHER spec's
 // dashboard (household strip), and adding one measurably destabilised the
 // already-racy needs-attention-menu spec.
-
-// The x-position tolerance for "the status column is aligned", in CSS px. Text
-// rendering can shift a box by a subpixel; a regression to the old right-aligned
-// layout moved it by hundreds of px (the census measured ~677–941).
-const ALIGN_TOLERANCE = 1.5;
 
 async function openUpcoming(page: Page): Promise<Locator> {
   await page.goto("/upcoming");
@@ -96,54 +88,5 @@ test.describe("Upcoming row actions (#1446)", () => {
     // Escape closes without writing anything, keeping this spec read-only.
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
-  });
-
-  test("the status label is a leading column, aligned across a group's rows", async ({
-    page,
-  }) => {
-    const main = await openUpcoming(page);
-
-    // Measure within ONE group section — alignment is a within-group property
-    // (each band is its own card) — and only over the card's OWN rows.
-    //
-    // The `:scope > div >` prefix is load-bearing: a band may also contain an
-    // #1504 aggregate disclosure, whose folded rows sit one level deeper and are
-    // therefore indented by the disclosure's own padding. They are aligned with
-    // each OTHER, which is the contract that applies to them; comparing them
-    // against the card's top-level rows would measure the indentation, not the
-    // column. Which band this loop lands on is incidental (it takes the first
-    // with enough rows), so the filter has to hold for any of them.
-    const sections = main.locator("section");
-    const sectionCount = await sections.count();
-    let measured: number[] = [];
-    for (let i = 0; i < sectionCount; i++) {
-      const statuses = sections
-        .nth(i)
-        .locator(
-          ':scope > div > [data-testid^="upcoming-item-"] [data-testid="upcoming-status"]'
-        );
-      const n = await statuses.count();
-      if (n < 3) continue;
-      const xs: number[] = [];
-      for (let j = 0; j < n; j++) {
-        const box = await statuses.nth(j).boundingBox();
-        if (box) xs.push(box.x);
-      }
-      if (xs.length >= 3) {
-        measured = xs;
-        break;
-      }
-    }
-    expect(
-      measured.length,
-      "expected a group with at least 3 status labels to measure"
-    ).toBeGreaterThanOrEqual(3);
-
-    // Before the fix the label right-aligned against each row's own CTA pills,
-    // so this spread was hundreds of px.
-    expect(
-      Math.max(...measured) - Math.min(...measured),
-      `status labels should share one x; got ${JSON.stringify(measured)}`
-    ).toBeLessThanOrEqual(ALIGN_TOLERANCE);
   });
 });

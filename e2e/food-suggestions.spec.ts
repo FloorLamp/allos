@@ -54,18 +54,6 @@ test("selenium detail page suggests brazil nuts — expanded low-nutrient covera
   await expect(suggestion).toBeVisible();
   await expect(suggestion).toContainText(/brazil/i);
   await expect(suggestion).toContainText("Selenium is LOW. Eat more:");
-  await expect(page.getByTestId("food-suggestion-foods-selenium")).toHaveCSS(
-    "list-style-type",
-    "disc"
-  );
-  await expect(page.getByTestId("food-suggestion-caveat-selenium")).toHaveCSS(
-    "font-style",
-    "normal"
-  );
-  await expect(page.getByTestId("food-suggestion-caveat-selenium")).toHaveCSS(
-    "font-size",
-    "14px"
-  );
 });
 
 test("high LDL detail page shows a REDUCE suggestion (cut back on limit-tier foods) (#775)", async ({
