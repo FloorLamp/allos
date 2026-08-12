@@ -5,7 +5,7 @@
 // Adherence / dose-log reads and writes: taken/skipped dose sets, the idempotent
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
-import { db, today, writeTx } from "../../db";
+import { db, hoistedStatement, today, writeTx } from "../../db";
 import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
@@ -120,15 +120,19 @@ export function getIntakeLogsForDate(
 // Dose ids TAKEN on `date` (per-dose view for the schedule check-offs), scoped to
 // the profile through the dose's parent supplement. Skipped doses are NOT taken —
 // getSkippedDoseIds surfaces those separately for the tri-state (issue #232).
+// Hoisted: adherence is asked per member on every cross-profile surface (360
+// executions on one /household render). NOT cache()-wrapped — markDoseTaken writes
+// this table and the same request re-reads it to render the new state.
+const TAKEN_DOSE_IDS_STMT = hoistedStatement(
+  `SELECT l.dose_id FROM intake_item_logs l
+     JOIN intake_item_doses d ON d.id = l.dose_id
+     JOIN intake_items s ON s.id = d.item_id
+    WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
+);
 export function getTakenDoseIds(profileId: number, date: string): Set<number> {
-  const rows = db
-    .prepare(
-      `SELECT l.dose_id FROM intake_item_logs l
-         JOIN intake_item_doses d ON d.id = l.dose_id
-         JOIN intake_items s ON s.id = d.item_id
-        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
-    )
-    .all(profileId, date) as { dose_id: number }[];
+  const rows = TAKEN_DOSE_IDS_STMT.all(profileId, date) as {
+    dose_id: number;
+  }[];
   return new Set(rows.map((r) => r.dose_id));
 }
 
@@ -471,21 +475,24 @@ function logAdministrationTx(
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: null
+  expectedRedoseAdministrationId: null,
+  notifyMessageId?: number | null
 ): AdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: number
+  expectedRedoseAdministrationId: number,
+  notifyMessageId?: number | null
 ): RedoseWindowAdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: number | null
+  expectedRedoseAdministrationId: number | null,
+  notifyMessageId?: number | null
 ): RedoseWindowAdministrationOutcome {
   // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
   // the profile through the parent item. A PRN med always has at least one dose row
@@ -529,9 +536,17 @@ function logAdministrationTx(
     { id: number } | undefined;
   if (!dup) {
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at)
-       VALUES (?,?,?,?,?)`
-    ).run(dose.dose_id, itemId, date, dose.amount, recordedAtStr);
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, amount, recorded_at, notify_message_id)
+       VALUES (?,?,?,?,?,?)`
+    ).run(
+      dose.dose_id,
+      itemId,
+      date,
+      dose.amount,
+      recordedAtStr,
+      notifyMessageId ?? null
+    );
     decrementSupply(profileId, itemId);
   }
   const summary = db
@@ -563,7 +578,14 @@ function logAdministrationTx(
 export function logAdministration(
   profileId: number,
   itemId: number,
-  recordedAt?: Date
+  recordedAt?: Date,
+  // Which message's tap this is (#2264) — Telegram handlers only, exactly as
+  // markDoseTaken takes it. Without it a chat-logged administration produces an
+  // UNATTRIBUTED correction burst, which may then ride the newest live dose message in
+  // the chat rather than the message it came from (#2418 part 2): the digest's offer
+  // list is not a dose reminder, so its taps have to say where they happened or their
+  // 🕐 chips surface on an unrelated reminder.
+  notifyMessageId?: number | null
 ): AdministrationOutcome {
   const tz = getTimezone(profileId);
   const when = recordedAt ?? clockNow();
@@ -574,7 +596,14 @@ export function logAdministration(
   const date = dateStrInTz(tz, when);
   const recordedAtStr = utcSqlString(when);
   return writeTx(() =>
-    logAdministrationTx(profileId, itemId, date, recordedAtStr, null)
+    logAdministrationTx(
+      profileId,
+      itemId,
+      date,
+      recordedAtStr,
+      null,
+      notifyMessageId
+    )
   );
 }
 

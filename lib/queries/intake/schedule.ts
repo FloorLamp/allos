@@ -9,7 +9,7 @@ import {
   type DoseScheduleVersion,
   type ItemCadence,
 } from "../../intake-cadence";
-import { db } from "../../db";
+import { db, hoistedStatement } from "../../db";
 import type { IntakeItem, IntakeDose, SupplementSuggestion } from "../../types";
 
 // Whether this profile has ANY intake item (supplement or medication). Drives the
@@ -38,15 +38,13 @@ export function getIntakeItemNames(profileId: number): Map<number, string> {
 }
 
 // ---- Intake items ----
-export function getIntakeItems(profileId: number): IntakeItem[] {
-  // COALESCE(situations.name, intake_items.situation): a situational item's
-  // displayed situation follows its linked ROW (issue #560), so a rename re-keys it
-  // (and it stays in lockstep with getActiveSituations, which reads the same table);
-  // the free-text column is the fallback for legacy/unlinked rows. The `AS situation`
-  // alias comes last, so it wins over intake_items.* on the duplicate column name.
-  return db
-    .prepare(
-      `SELECT intake_items.*,
+// Statement hoisted: the widest read in this module (seven correlated subselects)
+// and one of the most-executed anywhere — getSupplements and getMedications are
+// filters over it, so a surface that wants both runs it twice, and a cross-profile
+// surface multiplies that by every member (1094 executions on one /household
+// render). Compiling this SQL each time cost more than running it.
+const INTAKE_ITEMS_STMT = hoistedStatement(
+  `SELECT intake_items.*,
               COALESCE(situations.name, intake_items.situation) AS situation,
               pause_situations.name AS pause_situation,
               (SELECT p.name FROM providers p WHERE p.id = intake_items.provider_id)
@@ -66,8 +64,14 @@ export function getIntakeItems(profileId: number): IntakeItem[] {
                 ON pause_situations.id = intake_items.pause_situation_id
                AND pause_situations.profile_id = intake_items.profile_id
         WHERE intake_items.profile_id = ? ORDER BY active DESC, name`
-    )
-    .all(profileId) as IntakeItem[];
+);
+// COALESCE(situations.name, intake_items.situation): a situational item's
+// displayed situation follows its linked ROW (issue #560), so a rename re-keys it
+// (and it stays in lockstep with getActiveSituations, which reads the same table);
+// the free-text column is the fallback for legacy/unlinked rows. The `AS situation`
+// alias comes last, so it wins over intake_items.* on the duplicate column name.
+export function getIntakeItems(profileId: number): IntakeItem[] {
+  return INTAKE_ITEMS_STMT.all(profileId) as IntakeItem[];
 }
 
 // Kind-specific adapters are intentionally named after the subset they return.
@@ -138,17 +142,16 @@ export function resolveMedicationAcrossProfiles(
 // adherence logs) are excluded — every "current schedule" consumer (the page,
 // reminders, refill math, digests) reads through here; history reads join
 // intake_item_doses directly and still see retired rows.
+const INTAKE_DOSES_STMT = hoistedStatement(
+  `SELECT d.* FROM intake_item_doses d
+     JOIN intake_items s ON s.id = d.item_id
+    WHERE s.profile_id = ? AND d.retired = 0
+    ORDER BY d.item_id, d.sort, d.id`
+);
 export function getIntakeDoses(profileId: number): IntakeDose[] {
   return withScheduleVersions(
     profileId,
-    db
-      .prepare(
-        `SELECT d.* FROM intake_item_doses d
-         JOIN intake_items s ON s.id = d.item_id
-        WHERE s.profile_id = ? AND d.retired = 0
-        ORDER BY d.item_id, d.sort, d.id`
-      )
-      .all(profileId) as IntakeDose[]
+    INTAKE_DOSES_STMT.all(profileId) as IntakeDose[]
   );
 }
 
