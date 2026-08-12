@@ -2,6 +2,10 @@ import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
+import { plateauSignalKey } from "@/lib/training-observations";
+
+// The dedicated plateaued lift seeded for this spec (e2e/seed/findings.ts).
+const DISMISS_PRESS = "E2E Dismiss Press";
 
 // Issue #449 — the four #45 observational domains (training balance/plateau,
 // body-metric hygiene, goal pacing, adherence patterns) render only on their own
@@ -80,4 +84,76 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
       .getByTestId("coaching-observations-item")
       .filter({ hasText: "E2E Dismiss Press" })
   ).toHaveCount(0);
+});
+
+// Issue #2386 — repeat dismissal is read as an ANSWER. A topic the user has declined
+// across separate raisings stops leading on the dashboard (the routine surface), and a
+// sustained pattern retires it from that surface while leaving it fully rendered on its
+// own tab, which is where the user goes looking. The rows below stand in for past
+// raisings of the SAME plateau at other working weights — plateaus at other load
+// buckets, each raised at the time and each declined.
+//
+// Uses the dedicated "E2E Dismiss Press" lift, the one this spec owns precisely because
+// it mutates the shared suppression store; the Skullcrusher plateau rule-findings.spec
+// asserts is untouched. Every row this test writes is one it created and removes.
+// e1RM level buckets far from the live plateau's own anchor (30 kg × 10 ≈ 40 kg e1RM,
+// bucket 8), so every row here is unambiguously a PAST raising and never the current
+// key — otherwise the test would be measuring plain suppression, not fatigue.
+const PAST_LOAD_BUCKETS = ["2", "3", "18", "19"] as const;
+
+function declinePastRaisings(n: number): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const ins = db.prepare(
+      `INSERT OR REPLACE INTO upcoming_dismissals
+         (profile_id, signal_key, snooze_until, dismissed_at)
+       VALUES (1, ?, NULL, datetime('now'))`
+    );
+    for (const bucket of PAST_LOAD_BUCKETS.slice(0, n))
+      ins.run(plateauSignalKey(DISMISS_PRESS, bucket));
+  } finally {
+    db.close();
+  }
+}
+
+test("repeat dismissal de-prioritises, then retires, a coaching topic (#2386)", async ({
+  page,
+}) => {
+  resetCoachingObservationDismissals();
+
+  const rollup = page.getByRole("main").getByTestId("coaching-observations");
+  const lead = rollup.getByTestId("coaching-observations-item");
+
+  // Never declined: it is raised routinely, in the lead slice.
+  await page.goto("/");
+  await expect(rollup).toBeVisible();
+  await expect(lead.filter({ hasText: DISMISS_PRESS })).toHaveCount(1);
+
+  // Two separate raisings declined → it stops LEADING: still rendered, behind every
+  // topic the user has not answered.
+  declinePastRaisings(2);
+  await page.goto("/");
+  await expect(rollup).toContainText(DISMISS_PRESS);
+  await expect(lead.filter({ hasText: DISMISS_PRESS })).toHaveCount(0);
+  await expect(
+    rollup
+      .getByTestId("coaching-observations-more-item")
+      .filter({ hasText: DISMISS_PRESS })
+  ).toHaveCount(1);
+
+  // Four → retired from the routine surface altogether.
+  declinePastRaisings(4);
+  await page.goto("/");
+  await expect(rollup).toBeVisible();
+  await expect(rollup).not.toContainText(DISMISS_PRESS);
+
+  // …and still reachable where the user goes looking. Nothing was silenced: the
+  // finding renders in full on Training → Overview, its own tab.
+  await page.goto("/training?tab=overview");
+  await expect(
+    page.getByRole("main").getByTestId("training-findings")
+  ).toContainText(DISMISS_PRESS);
+
+  resetCoachingObservationDismissals();
 });
