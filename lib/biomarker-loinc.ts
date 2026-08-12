@@ -175,7 +175,11 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "2986-8": "Testosterone, Total", // Testosterone [Mass/volume] in Serum/Plasma (ng/dL)
   "2991-8": "Testosterone, Free", // Testosterone Free [Mass/volume] in Serum/Plasma (pg/mL)
   "2243-4": "Estradiol", // Estradiol (E2) [Mass/volume] in Serum/Plasma (pg/mL)
-  "2143-6": "Cortisol", // Cortisol [Mass/volume] in Serum/Plasma (ug/dL) — no stated timing
+  // The generic code states no draw time, so it lands on the unqualified, band-less
+  // entry (#2526).
+  "2143-6": "Cortisol", // Cortisol [Mass/volume] in Serum/Plasma (ug/dL)
+  // The frame is IN the code, so a document coding this one states the morning draw
+  // and the reading lands on the entry that carries the 6-18 ug/dL band.
   "2147-7": "Cortisol, Morning", // Cortisol [Mass/volume] in Serum/Plasma --8 AM (ug/dL)
   "15067-2": "Follicle Stimulating Hormone (FSH)", // Follitropin [Units/volume] (mIU/mL)
   "10501-5": "Luteinizing Hormone (LH)", // Lutropin [Units/volume] (mIU/mL)
