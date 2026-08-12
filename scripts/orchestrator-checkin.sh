@@ -102,13 +102,30 @@ echo
 #
 # The roster's own "(done: ...)" trailer is not a live entry, so live matching is
 # anchored to lines beginning "Cluster".
+#
+# WHERE the worktrees are is not this script's business to guess. The first version
+# globbed "$STATE_DIR"/wt-* — the path every dispatch brief names — and on
+# 2026-08-12 two live agents built theirs somewhere else entirely (under the
+# harness scratchpad, because `$SCRATCH` was not set in their shell and their own
+# instructions point temp work at that directory instead). Both were invisible
+# here: the roster listed them, the worktree section did not, and a restart would
+# have run the preserve-first drill over a list that silently omitted the two trees
+# holding uncommitted work. A monitor that can only see the places you expected is
+# the canary again — it reports confidently and its silence means nothing.
+#
+# `git worktree list` cannot have that failure. Git already knows every worktree
+# attached to this checkout, wherever it sits, because it wrote the administrative
+# file itself. Ask the authority rather than re-deriving its answer from a path
+# convention that the next dispatch is free to ignore. The main checkout is skipped
+# by path, not by name — it is the one entry that is not an agent's.
 echo "--- worktrees ---"
-shopt -s nullglob
 git -C "$REPO" fetch origin main -q 2>/dev/null
 live_branches=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}')
 found=0
 alarms=0
-for d in "$STATE_DIR"/wt-*; do
+while read -r d; do
+  [ -n "$d" ] || continue
+  [ "$d" = "$REPO" ] && continue
   [ -d "$d" ] || continue
   found=1
   b=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)
@@ -151,9 +168,12 @@ for d in "$STATE_DIR"/wt-*; do
   # An unpushed commit under a live agent is the near miss, not the accident:
   # worth saying, not worth shouting.
   [ -n "$r" ] && [ "${h:0:7}" != "$r" ] && flag="$flag  (local ahead of remote)"
+  # A tree outside $STATE_DIR is findable HERE (git enumerates it) but not by
+  # anything that globs the documented path — say where it actually is.
+  case "$d" in "$STATE_DIR"/*) ;; *) flag="$flag  (outside \$SCRATCH: $d)" ;; esac
   printf "  %-16s %-32s %-6s local=%s remote=%-8s dirty=%s%s\n" \
     "$(basename "$d")" "$b" "$state" "${h:0:7}" "${r:-ABSENT}" "$dirty" "$flag"
-done
+done < <(git -C "$REPO" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
 [ "$found" = "0" ] && echo "  (none)"
 [ "$found" = "1" ] && [ "$alarms" = "0" ] && echo "  (no rescue targets — every dirty tree belongs to a live agent)"
 echo
