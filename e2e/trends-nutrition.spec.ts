@@ -134,7 +134,7 @@ test("a dose day panel links into the dose ledger for that day", async ({
   );
 
   const day = doses.getByTestId("day-history-day").first(); // first-ok: read-only, any populated dose day proves the interaction
-  await day.click();
+  await hydratedClick(page, day);
   const panel = doses.getByTestId("day-history-daypanel");
   await expect(panel).toBeVisible();
   const link = panel.getByTestId("day-history-day-link");
@@ -148,7 +148,7 @@ test("a dose day panel links into the dose ledger for that day", async ({
   // The food section's panel has no such link — the declaration is per domain.
   await page.goto("/trends?tab=nutrition");
   const history = page.getByTestId("intake-history");
-  await history.getByTestId("day-history-day").first().click(); // first-ok: read-only, any populated food day proves the absence
+  await hydratedClick(page, history.getByTestId("day-history-day").first()); // first-ok: read-only, any populated food day proves the absence
   await expect(
     history
       .getByTestId("day-history-daypanel")
