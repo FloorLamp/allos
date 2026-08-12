@@ -4,7 +4,9 @@ import {
   pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
+  pickRowsOneSourcePerWindow,
   SOURCE_PREFERENCE,
+  type SourceSelection,
 } from "@/lib/metric-sources";
 
 describe("pickRowsOneOriginPerSourceDay", () => {
@@ -359,5 +361,120 @@ describe("strict mode in the day resolvers (issue #1642)", () => {
         SOURCE_PREFERENCE
       )
     ).toEqual([{ date: "2026-01-11", value: 5 }]);
+  });
+});
+
+// The bucket is the whole question (#2552). Two sources on one wake-day are a
+// duplicate when they describe the same window and two events when they do not, and
+// only the overlap can tell those apart — the calendar day sees "two sources on
+// 2026-07-15" either way and drops one of them whole.
+describe("pickRowsOneSourcePerWindow", () => {
+  interface Row {
+    source: string | null;
+    start: string;
+    end: string;
+    v: number;
+  }
+  const pick = (rows: Row[], selection: SourceSelection = SOURCE_PREFERENCE) =>
+    pickRowsOneSourcePerWindow(
+      rows,
+      selection,
+      (r) => r.start,
+      (r) => r.end,
+      (r) => r.source,
+      (r) => r.v
+    );
+
+  const night: Row = {
+    source: "oura",
+    start: "2026-07-14T23:00:00Z",
+    end: "2026-07-15T06:00:00Z",
+    v: 420,
+  };
+  const nap: Row = {
+    source: "health-connect",
+    start: "2026-07-15T13:00:00Z",
+    end: "2026-07-15T13:45:00Z",
+    v: 45,
+  };
+
+  it("keeps BOTH when the windows do not overlap, whatever the preference says", () => {
+    // health-connect outranks oura, and the day-grained election would have taken
+    // the 7h overnight out of the read on the strength of a 45-minute nap.
+    expect(pick([night, nap])).toEqual([night, nap]);
+  });
+
+  it("elects one source when the windows DO overlap", () => {
+    const duplicate: Row = {
+      source: "health-connect",
+      start: "2026-07-14T22:50:00Z",
+      end: "2026-07-15T05:40:00Z",
+      v: 410,
+    };
+    expect(pick([night, duplicate])).toEqual([duplicate]);
+  });
+
+  it("elects per cluster, so one duplicated night does not decide the other events", () => {
+    const duplicateNight: Row = {
+      source: "health-connect",
+      start: "2026-07-14T22:50:00Z",
+      end: "2026-07-15T05:40:00Z",
+      v: 410,
+    };
+    const ouraNap: Row = {
+      source: "oura",
+      start: "2026-07-15T16:00:00Z",
+      end: "2026-07-15T16:30:00Z",
+      v: 30,
+    };
+    // The night collapses to health-connect; the oura nap it does not overlap is
+    // untouched, even though oura just lost the cluster next to it.
+    expect(pick([night, duplicateNight, ouraNap])).toEqual([
+      duplicateNight,
+      ouraNap,
+    ]);
+  });
+
+  it("touching endpoints are not an overlap — a session that starts when another ends is a second event", () => {
+    const first: Row = {
+      source: "oura",
+      start: "2026-07-15T01:00:00Z",
+      end: "2026-07-15T04:00:00Z",
+      v: 180,
+    };
+    const second: Row = {
+      source: "health-connect",
+      start: "2026-07-15T04:00:00Z",
+      end: "2026-07-15T06:00:00Z",
+      v: 120,
+    };
+    expect(pick([first, second])).toEqual([first, second]);
+  });
+
+  it("falls back to the heaviest source in a cluster of unlisted sources", () => {
+    const a: Row = {
+      source: "vendor-a",
+      start: "2026-07-15T01:00:00Z",
+      end: "2026-07-15T05:00:00Z",
+      v: 240,
+    };
+    const b: Row = {
+      source: "vendor-b",
+      start: "2026-07-15T02:00:00Z",
+      end: "2026-07-15T04:00:00Z",
+      v: 120,
+    };
+    expect(pick([a, b])).toEqual([a]);
+  });
+
+  it("STRICT keeps no rows in a cluster the selector never covers (#1642)", () => {
+    expect(pick([night, nap], { order: ["oura"], strict: true })).toEqual([
+      night,
+    ]);
+  });
+
+  it("keeps a row whose window will not parse — this filter de-duplicates, it does not validate", () => {
+    const broken: Row = { source: "withings", start: "", end: "", v: 0 };
+    expect(pick([night, broken, nap])).toEqual([night, broken, nap]);
   });
 });

@@ -143,6 +143,22 @@ export function hasSleepData(profileId: number): boolean {
   return getMetricDailyTotals(profileId, "sleep_min", 1).length > 0;
 }
 
+// The stage window "last night" needs (#2551). `lastNightSummary` reads exactly ONE
+// key out of the map below — the latest wake-day — so the read that fills it was
+// answering about one night by attributing half a year of stage rows, on the two
+// most-visited pages in the app (the dashboard tile and the /sleep hero), uncached,
+// on every render. This is the fifth instance of #2520's class and takes its fix:
+// the window reaches the READ, as the stage-day scan's SQL LIMIT.
+//
+// A WEEK, not a day, and the reason is the one getSleepStageComposition already
+// states: the newest STAGE day is not necessarily the newest MAIN night. A nap-only
+// day carries stage rows too, and a stage day whose elected main session is missing
+// contributes no row at all — so a one-day read can answer "no stages" for a night
+// that has them. A week is ~28 rows on a Health Connect profile against the 180-day
+// default's thousands, and it covers any run of those days a night is realistically
+// sitting behind.
+export const LAST_NIGHT_STAGE_DAYS = 7;
+
 // The "last night" summary — the MAIN overnight session (#1118) reduced to the
 // hero/tile facts, over the trailing-30-night baseline. The /sleep hero AND the
 // dashboard tile read THIS, so the two surfaces agree ("one question, one
@@ -152,7 +168,7 @@ export function getLastNightSummary(
   profileId: number
 ): LastNightSummary | null {
   const stagesByDay = new Map<string, SleepStageMinutes>();
-  for (const r of getSleepStageDailyTotals(profileId)) {
+  for (const r of getSleepStageDailyTotals(profileId, LAST_NIGHT_STAGE_DAYS)) {
     stagesByDay.set(r.date, {
       deep: r.deep,
       rem: r.rem,
@@ -658,6 +674,36 @@ export function getSyncedSleepWakeDays(
   ).map((r) => r.date);
 }
 
+// WHICH SOURCES are recording this profile's sleep, over the same lookback and the
+// same rows as the wake-days above (#2192). "Is the sleep source healthy?" is a
+// question about a SOURCE, and the only honest answer to which source that is comes
+// from the data: this is the same resolution `latestSleepSyncAt` already makes when
+// it names the source whose sync time the "hasn't synced" line quotes, one step
+// wider so a two-source profile is fully covered.
+//
+// Deliberately NOT a registry capability list. A hard-coded "sleep-capable" set
+// (Oura / Health Connect / Fitbit) would be a second declaration to keep in step
+// with lib/integrations/registry.ts, and it would still answer wrong for the case
+// that matters — a ring the profile connected but does not wear to bed is
+// sleep-capable and is not the source anyone is waiting for.
+export function getSyncedSleepSources(
+  profileId: number,
+  todayStr: string,
+  lookbackNights = SLEEP_TRACKING_WINDOW_NIGHTS
+): string[] {
+  const since = shiftDateStr(todayStr, -lookbackNights);
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT source FROM metric_samples
+          WHERE profile_id = ? AND metric = 'sleep_min' AND source <> 'manual'
+            AND date >= ? AND date <= ?
+          ORDER BY source`
+      )
+      .all(profileId, since, todayStr) as { source: string }[]
+  ).map((r) => r.source);
+}
+
 // How long after a night ENDS its row actually lands, in minutes — the one genuinely
 // new measurement this feature needs. Joins each inserted `sleep_min` row to the
 // sync-row provenance that wrote it (#1333) and takes the median.
@@ -720,7 +766,17 @@ export function getSleepWaitingState(
     todayStr
   );
   if (!tracking) return null;
-  const attention = getIntegrationAttention(profileId);
+  // Only THIS profile's sleep sources decide the health gate (#2192). The attention
+  // list is account-wide — every connected source's failing/stale standing — so an
+  // expired Strava token used to suppress "Waiting for last night's sleep" on a
+  // profile whose ring was syncing perfectly, dropping it back to the stale
+  // old-night headline #2097 exists to remove. Match the way `integrationToItem`
+  // identifies a row's source: the registry id, or the raw source id for a source
+  // the registry does not know.
+  const sleepSources = new Set(getSyncedSleepSources(profileId, todayStr));
+  const attention = getIntegrationAttention(profileId).filter((entry) =>
+    sleepSources.has(entry.id ?? entry.sourceName)
+  );
   return sleepWaitingState({
     hasLastNight,
     minutesOfDay,

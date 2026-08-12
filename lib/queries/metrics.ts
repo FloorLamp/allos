@@ -7,6 +7,7 @@ import {
   pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
+  pickRowsOneSourcePerWindow,
   type SourceSelection,
 } from "../metric-sources";
 import {
@@ -470,10 +471,15 @@ export function getSleepStageDailyTotals(
     value: number;
   }[];
 
-  // Elect the sleep_min source/origin PER DAY exactly as the additive duration
-  // chart does. The SRI session read has a different, stream-wide fallback (the
-  // newest source), so routing this chart through it could make the duration point
-  // Health Connect while its stages came from Oura.
+  // Elect the sleep_min source/origin with the SAME resolution the additive
+  // duration chart uses. The SRI session read has a different, stream-wide fallback
+  // (the newest source), so routing this chart through it could make the duration
+  // point Health Connect while its stages came from Oura.
+  //
+  // Per overlapping WINDOW, not per day (#2552): a manual nap on the same wake-day
+  // used to win the whole day, leaving `mainSleepPeriod` to elect that nap as the
+  // night — and no stage row matches a manual session's source, so the night's
+  // entire stage stack disappeared from the chart.
   const rawSessions = db
     .prepare(
       `SELECT date, start_time AS start, end_time AS end, source, origin, value
@@ -482,7 +488,7 @@ export function getSleepStageDailyTotals(
           AND julianday(end_time) > julianday(start_time)`
     )
     .all(profileId, cutoff) as SelectedSleepSessionRow[];
-  const sessions = pickRowsOneSourcePerDay(
+  const sessions = pickRowsOneSourcePerWindow(
     pickRowsOneOriginPerSourceDay(
       rawSessions,
       (row) => row.date,
@@ -491,7 +497,8 @@ export function getSleepStageDailyTotals(
       (row) => row.value
     ),
     resolutionFor(profileId, "sleep_min"),
-    (row) => row.date,
+    (row) => row.start,
+    (row) => row.end,
     (row) => row.source,
     (row) => row.value
   );
@@ -742,11 +749,19 @@ export function getSleepSessionsSince(
   return readSleepSessions(profileId, { since });
 }
 
-// Valid sleep windows on or after a calendar cutoff, electing one source per
-// wake-day with the SAME resolution used by the additive sleep_min chart. This
-// is deliberately separate from getSleepSessionsSince: SRI needs one continuous
-// source stream across its whole window, while date-keyed display history must
-// not lose older days when a profile changes wearables.
+// Valid sleep windows on or after a calendar cutoff, de-duplicated across sources
+// with the SAME resolution used by the additive sleep_min chart. This is
+// deliberately separate from getSleepSessionsSince: SRI needs one continuous source
+// stream across its whole window, while date-keyed display history must not lose
+// older days when a profile changes wearables.
+//
+// The election is PER OVERLAPPING WINDOW, not per day (#2552). One wake-day can
+// legitimately carry sessions from two sources that are NOT the same session — a
+// wearable's overnight plus a hand-logged afternoon nap — and the day-grained
+// election dropped every row from the losing source, which for a manual nap (first
+// in SOURCE_PREFERENCE) meant the whole overnight vanished and the nap was then
+// classified as that night's main sleep. A duplicate account of one night still
+// collapses to a single source, because a duplicate overlaps.
 export function getDailySleepSessionsSince(
   profileId: number,
   since: string
@@ -760,7 +775,7 @@ export function getDailySleepSessionsSince(
         ORDER BY end_time DESC`
     )
     .all(profileId, since) as SelectedSleepSessionRow[];
-  return pickRowsOneSourcePerDay(
+  return pickRowsOneSourcePerWindow(
     pickRowsOneOriginPerSourceDay(
       rows,
       (row) => row.date,
@@ -769,7 +784,8 @@ export function getDailySleepSessionsSince(
       (row) => row.value
     ),
     resolutionFor(profileId, "sleep_min"),
-    (row) => row.date,
+    (row) => row.start,
+    (row) => row.end,
     (row) => row.source,
     (row) => row.value
   ).map(({ date, start, end, value, source }) => ({
