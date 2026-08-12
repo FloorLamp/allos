@@ -25,8 +25,17 @@
 // `done` closes a dispatch, freeing its port range and slot reservation.
 //
 // Ledger location: $ALLOS_DISPATCH_LEDGER, else $SCRATCH/allos-dispatch-ledger.jsonl,
-// else /tmp/allos-dispatch-ledger.jsonl. The ledger is orchestration state,
-// never checked in.
+// else <STATE_DIR>/allos-dispatch-ledger.jsonl. The ledger is orchestration
+// state, never checked in.
+//
+// The ledger and the roster MUST default to the same directory, and that
+// directory must be the durable one. `$SCRATCH` is UNSET in the live
+// orchestration container (measured), so a `/tmp` fallback here would have put
+// the restart-proof ledger in the least durable place on the box — the one
+// swept for stale `allos-db-shared-*` dirs — while the roster it must stay in
+// sync with landed in /home/user/scratch. Two defaults that disagree is the
+// same defect shape as the two boot-id paths this PR already removed, so both
+// now read one constant.
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
@@ -39,11 +48,14 @@ const repoRoot = path.resolve(
   ".."
 );
 
+// The one state directory both files live in. Matches
+// scripts/orchestrator-checkin.sh's `STATE_DIR=${SCRATCH:-/home/user/scratch}`
+// exactly — if you change one, change the other.
+const STATE_DIR = process.env.SCRATCH ?? "/home/user/scratch";
+
 const ledgerPath =
   process.env.ALLOS_DISPATCH_LEDGER ??
-  (process.env.SCRATCH
-    ? path.join(process.env.SCRATCH, "allos-dispatch-ledger.jsonl")
-    : "/tmp/allos-dispatch-ledger.jsonl");
+  path.join(STATE_DIR, "allos-dispatch-ledger.jsonl");
 
 function readLedger() {
   if (!fs.existsSync(ledgerPath)) return [];
@@ -63,10 +75,7 @@ function appendLedger(entry) {
 // The ledger is history and measurement; the roster is the live view — both
 // are written here so they cannot fork. Live entries are lines beginning
 // "Cluster" whose THIRD field is the branch (the check-in script's contract).
-const rosterPath = path.join(
-  process.env.SCRATCH ?? "/home/user/scratch",
-  ".roster"
-);
+const rosterPath = path.join(STATE_DIR, ".roster");
 
 function rosterAdd(entry) {
   if (!fs.existsSync(path.dirname(rosterPath))) return false;
