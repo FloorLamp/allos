@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
+import { settledClick } from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { shiftDateStr } from "@/lib/date";
@@ -119,7 +120,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
     const count = page.getByTestId(`count-${GROUP}`);
     const before = Number((await count.textContent())?.trim() || "0");
 
-    await page.getByTestId(`log-${GROUP}`).click();
+    await settledClick(page, page.getByTestId(`log-${GROUP}`));
 
     // The write is what matters and it happened: the note is a NOTE, never a gate.
     await expect(count).toHaveText(String(before + 1));
@@ -143,14 +144,24 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
     // per day. The second tap logs and says nothing.
     await toast.getByRole("button", { name: "Dismiss" }).click();
     await expect(toast).toHaveCount(0);
-    await page.getByTestId(`log-${GROUP}`).click();
+    // The reload is load-bearing twice over. It clears the #2007 post-success cooldown,
+    // without which a second tap of the SAME write key is absorbed as an accidental
+    // double and never reaches the server at all; and it proves the once-a-day gate is
+    // the server's (`servings - 1`), not a client flag a fresh mount would re-arm.
+    await page.reload();
+    await revealFoodGroup(page, GROUP);
+    await settledClick(page, page.getByTestId(`log-${GROUP}`));
     await expect(count).toHaveText(String(before + 2));
     await expect(toast).toHaveCount(0);
 
-    // Restore the two owned servings.
-    await page.getByTestId(`undo-${GROUP}`).click();
+    // Restore the two owned servings. An undo is a DIFFERENT write from the log above
+    // it, so the first is never absorbed by that tap's cooldown — but the second undo
+    // shares a key with the first and needs the window cleared again.
+    await settledClick(page, page.getByTestId(`undo-${GROUP}`));
     await expect(count).toHaveText(String(before + 1));
-    await page.getByTestId(`undo-${GROUP}`).click();
+    await page.reload();
+    await revealFoodGroup(page, GROUP);
+    await settledClick(page, page.getByTestId(`undo-${GROUP}`));
     await expect(count).toHaveText(String(before));
   });
 });
