@@ -103,6 +103,17 @@ export type UpcomingDomain =
   | "med-monitor"
   | "goal"
   | "training"
+  // A weekly FOOD-GROUP serving target running under its floor (#579/#580). It rides
+  // `frequency_targets` exactly as a training target does, but the scope is what the
+  // row is about: "Berries" is nutrition, and rendering it as a training target with a
+  // barbell and a /training link was #2578's second defect. Same tier as `training` —
+  // calm, coaching, dismissible, banded to This week.
+  | "nutrition-target"
+  // A weekly MOBILITY-REGION habit running under its floor (#840). Its home is the
+  // Training hub's mobility card, so it shares that destination — but mobilizing a
+  // region is not training it, which is the whole reason the scope exists beside
+  // `region` (#482), and the row now says so.
+  | "mobility-target"
   // A wellness-practice weekly target running behind its floor (#1259) — the calm,
   // coaching-tier twin of the pace-aware Telegram nudge, alongside the training target.
   | "practice"
@@ -192,6 +203,11 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   "med-monitor": 11.5,
   goal: 12,
   training: 13,
+  // The other two weekly-floor-target identities (#2578). They are the SAME kind of
+  // calm weekly pace row as `training`, so they sort with it, in the order the
+  // scopes read on the page: train, then feed, then mobilize.
+  "nutrition-target": 13.2,
+  "mobility-target": 13.4,
   // A wellness-practice weekly target behind its floor (#1259) — sort it alongside the
   // training target it mirrors (a calm, coaching-tier pace nudge).
   practice: 13.5,
@@ -484,6 +500,23 @@ export function compareWithinBand(
 ): number {
   return (
     sortDate(a, today).localeCompare(sortDate(b, today)) ||
+    compareAbsoluteOrder(a, b)
+  );
+}
+
+// The CLOCK-FREE half of that order: risk priority (#517) → domain → dose-day slot
+// (#297) → title. Every one of these is a fact about the ITEM alone, so it can be
+// asked of two items that do NOT share a `today` — which is exactly what the
+// cross-profile merge needs (lib/attention.ts's compareMerged). That comparator was
+// right to drop compareWithinBand's date fallback (a single `today` would evaluate one
+// member's item against another member's clock, the #1096 per-profile-context trap)
+// and wrong to drop these three with it: since #1096 the Upcoming page renders EVERY
+// view through the merge, so a band of doses came back ordered by raw key string
+// ("dose:104" < "dose:12") and the slot label #297 added to EXPLAIN the ordering
+// contradicted it (#2578). Split out rather than copied, so the two paths cannot drift
+// again: the merged order IS this function plus a date rule of its own.
+export function compareAbsoluteOrder(a: UpcomingItem, b: UpcomingItem): number {
+  return (
     // Clinical-importance ranking (issue #517): among items due the SAME day, the
     // higher-priority (risk-driven) item leads. Default 0, so ordinary items are
     // unaffected and the date-first order stands.

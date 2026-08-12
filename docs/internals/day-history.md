@@ -176,7 +176,14 @@ a quiet recent stretch is the live signal.
   their matrices retain quantity. Each ramp also declares its theme-aware label
   foreground, validated at 4.5:1 against every step. Today prints its day-of-month
   in the calendar cell; it adds no ring, matrix rail, fill, or second data color.
-- Calendar month/weekday labels remain compact overlays. The matrix has a REAL
+- Calendar axis labels sit in RESERVED gutters — a 16px header row for month
+  names, a 30px left column for all seven weekday names — never on the grid
+  (#2582). In a heatmap the cell's fill level IS the data, so anything translucent
+  on a cell makes a covered day read as a lower level than it has: a 16px month
+  chip hung 6px above the grid reached into the first row's cells, and a "Mon"
+  chip was wider than a 24px cell. All seven weekdays are labelled now — the old
+  alternating rows were an artifact of that collision, not a choice. The week
+  strip's month names ride the same reserved header. The matrix has a REAL
   reserved date header (`Jul 26`, `Aug 2`, …), including month names because it
   scrolls independently, plus an extra gap at each week boundary. A hovered or
   selected day prints its day-of-month inside the calendar cell and pins its
@@ -192,9 +199,11 @@ a quiet recent stretch is the live signal.
   tabular quantities.
 - Both scrollers bleed edge-to-edge on phones and open at the RECENT edge;
   calendar cells grow from 24px toward 34px when the window is short.
-- Sticky matrix row labels use padded, 70%-opaque surfaces that fade to
-  transparent at the cell edge; they remain readable over horizontal scroll
-  without ending in a hard rectangular slab. Hovering a row label drives the
+- Sticky matrix row labels use a padded, FULLY OPAQUE surface with a hairline
+  right rule. A frozen first column necessarily sits over cells at any scroll
+  offset past zero, and those cells stay reachable by scrolling — but the former
+  70%-opacity fade left them dimly visible, i.e. showing a level they do not have
+  (#2582). Hidden is honest; washed out is not. Hovering a row label drives the
   same row emphasis and detail text as hovering that row's cells. The label is
   a pointer-marked control: selecting it persists the row emphasis and opens a
   reading-width, vertically bounded, newest-first ledger of occurrence dates

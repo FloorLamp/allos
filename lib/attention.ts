@@ -39,6 +39,7 @@ import {
   type UrgencyBand,
   BAND_LABELS,
   bandForItem,
+  compareAbsoluteOrder,
   compareWithinBand,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
@@ -336,11 +337,21 @@ export interface MemberAttention {
 }
 
 // Absolute (context-free) within-band order for merged cross-profile items. We do
-// NOT reuse compareWithinBand here: it takes a single `today` and would evaluate one
-// member's item against another member's clock. Each member's banding is already
-// decided in its own context (below); within a merged band we only need a stable,
-// timezone-independent tiebreak — soonest due date, then risk priority, then a
-// stable id — so the merged list never reorders between renders.
+// NOT reuse compareWithinBand here: its FIRST key is the effective due date resolved
+// against a single `today`, which would evaluate one member's item against another
+// member's clock. Each member's banding is already decided in its own context
+// (below), so the merged order needs a date rule that carries no clock — the raw due
+// date, undated items last.
+//
+// Everything AFTER that date rule is the shared clock-free comparator
+// (compareAbsoluteOrder): risk priority (#517), then DOMAIN_ORDER, then the dose-day
+// sortHint (#297), then title. Those three were dropped along with the date fallback
+// when this comparator was written (#1096) even though none of them reads a clock,
+// and since #1096 the Upcoming page renders EVERY view — single profile included —
+// through this merge. The result was a dose fold ordered by raw key string
+// ("dose:104" before "dose:12"), reading Before sleep → Evening → Midday → Midday
+// while each row carried the slot label #297 added to explain the ordering (#2578).
+// profileId and key stay LAST, as the stability tiebreak they always were.
 function compareMerged(
   a: ProfiledUpcomingItem,
   b: ProfiledUpcomingItem
@@ -348,9 +359,8 @@ function compareMerged(
   const ad = a.dueDate ?? "9999-12-31";
   const bd = b.dueDate ?? "9999-12-31";
   if (ad !== bd) return ad < bd ? -1 : 1;
-  const ap = a.priority ?? 0;
-  const bp = b.priority ?? 0;
-  if (ap !== bp) return bp - ap; // higher priority first
+  const absolute = compareAbsoluteOrder(a, b);
+  if (absolute !== 0) return absolute;
   if (a.profileId !== b.profileId) return a.profileId - b.profileId;
   return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 }
