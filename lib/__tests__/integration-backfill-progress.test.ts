@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  backfillFailureLabel,
   formatBackfillTime,
   integrationBackfillView,
 } from "@/lib/integrations/backfill-progress";
@@ -36,6 +37,21 @@ describe("integration backfill progress", () => {
         retry_after_at: null,
       }).etaSeconds
     ).toBeNull();
+  });
+
+  it("promises a retry only where one is coming (#2196)", () => {
+    // A finished job's leftovers cannot be retryable — a retryable failure keeps
+    // `remaining > 0`, which ends the run `failed` — so "retrying" was a promise the
+    // permanently-unfetchable ride would never keep.
+    expect(backfillFailureLabel("completed", 2)).toBe("2 unavailable");
+    expect(backfillFailureLabel("failed", 2)).toBe("2 retrying");
+    expect(backfillFailureLabel("paused", 1)).toBe("1 retrying");
+    expect(backfillFailureLabel("running", 1)).toBe("1 retrying");
+  });
+
+  it("says nothing about leftovers when there are none", () => {
+    expect(backfillFailureLabel("completed", 0)).toBeNull();
+    expect(backfillFailureLabel("failed", 0)).toBeNull();
   });
 
   it("formats reader-friendly ETA intervals", () => {

@@ -8,8 +8,16 @@ import {
 import { getIntegration } from "./registry";
 
 export interface IntegrationBackfillProgress {
+  // Candidates still worth asking the source about. A runner that can reach a FINAL
+  // answer for an item excludes it here even when its own missing-row query still
+  // matches the row, which is what lets a job finish (#2196).
   remaining: number;
+  // Items this run could not complete but a retry might.
   failed: number;
+  // Items the source gave a final answer for: refused, gone, or answered with no
+  // payload. Never folded into `failed` on the way up — a retry cannot move them, so
+  // the two must stay separable for the job to decide `completed` vs `failed`.
+  unavailable: number;
   requests: number;
 }
 
@@ -45,6 +53,7 @@ const RUNNERS: IntegrationBackfillRunner[] = [
         completed: typed.backfilled,
         remaining: typed.remaining,
         failed: typed.failed,
+        unavailable: typed.unavailable,
         requests: typed.requests,
         paused: typed.paused,
         retryAfterAt: typed.retryAfterAt,
