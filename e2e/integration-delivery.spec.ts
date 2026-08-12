@@ -17,7 +17,7 @@ import { workerDbPath, frozenSyncInstant } from "./worker-env";
 // spec's own — nothing in the shared seed writes either — and afterAll removes them.
 // The Fitbit Takeout card is only asserted NEGATIVELY (no green "Connected" chip),
 // which holds for every attended state, so it never depends on which other spec has
-// touched that provider's history.
+// touched that source's history.
 //
 // ONE SHARED-SEED DEPENDENCE, named so it is not a mystery the day it goes red: the
 // six portal rows are this spec's own, but their VISIBILITY rests on
@@ -138,10 +138,10 @@ test("an attended provider's runs — failures included — reach Review's Impor
   await page.goto("/data?section=review");
   const main = page.getByRole("main");
 
-  // Before #2301 this feed said `provider = 'fitbit-takeout'` — one of the attended
+  // Before #2301 this feed said `source = 'fitbit-takeout'` — one of the attended
   // family's two members — so these runs appeared NOWHERE: not here, not under
   // Connected sources (the kind is excluded), and not under Needs attention (an
-  // attended provider is exempt from the silence rule, so it can never be `failing`).
+  // attended source is exempt from the silence rule, so it can never be `failing`).
   const feed = main.getByTestId("import-feed");
   await expect(feed).toBeVisible();
   const rows = feed
@@ -163,7 +163,7 @@ test("an attended provider's runs — failures included — reach Review's Impor
 test("an attended provider's page states the escalation policy's attended inverse", async ({
   page,
 }) => {
-  // Every scheduled provider page states its escalation rule under its sync history.
+  // Every scheduled source page states its escalation rule under its sync history.
   // The archive page has no history table, so until now the attended sentence had no
   // caller at all — implemented, unit-tested and unreachable. This is that caller.
   await page.goto(`/integrations/${TAKEOUT}`);

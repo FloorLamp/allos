@@ -11,7 +11,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ ok: false, error: "auth" }, { status: 401 });
   }
-  const sourceId = new URL(request.url).searchParams.get("provider");
+  const sourceId = new URL(request.url).searchParams.get("source");
   if (sourceId && !getIntegration(sourceId as IntegrationId)) {
     return Response.json(
       { ok: false, error: "Unknown integration." },

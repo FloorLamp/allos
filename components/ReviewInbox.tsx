@@ -63,7 +63,7 @@ function sourceName(id: string): string {
 }
 
 // Only sources with a real setup page are linkable (/integrations/<id>).
-function providerHref(id: string): AppRoute | null {
+function sourceHref(id: string): AppRoute | null {
   return integrationDetailHref(id as IntegrationId);
 }
 
@@ -143,7 +143,7 @@ export default function ReviewInbox({
               className={escalated.length > 0 ? "mt-3 space-y-3" : "space-y-3"}
             >
               {leftoverIssues.map((ev) => {
-                const href = providerHref(ev.source_id);
+                const href = sourceHref(ev.source_id);
                 // The silent-stop signal (#1685) is a synthetic issue with no recorded
                 // failure behind it, so "sync failed" would be a claim we can't support:
                 // nothing failed, nothing arrived. Say what we actually observed. Its `at`

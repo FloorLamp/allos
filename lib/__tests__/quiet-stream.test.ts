@@ -136,14 +136,14 @@ describe("quietStreamVerdict (#2146)", () => {
     // Checked FIRST, before anything about the data: one row names the cause.
     expect(quietStreamVerdict(offWrist({ sourceHealthy: false }))).toEqual({
       quiet: false,
-      skip: "provider-unhealthy",
+      skip: "source-unhealthy",
     });
     // And it wins even when every other signal screams.
     expect(
       quietStreamVerdict(
         offWrist({ sourceHealthy: false, minutesSinceStream: 40 * HOUR })
       )
-    ).toEqual({ quiet: false, skip: "provider-unhealthy" });
+    ).toEqual({ quiet: false, skip: "source-unhealthy" });
   });
 
   it("does NOT fire for a stream that was not delivering to begin with", () => {

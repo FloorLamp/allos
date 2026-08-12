@@ -1,3 +1,7 @@
+// THE #2487 BOUNDARY for this module: TypeScript names an integration source
+// `sourceId`, and the persisted column is still named `provider` — the column rename
+// is deferred to its own forward migration (see docs/internals/integrations-sync.md).
+// Reads alias `provider AS source_id`; writes bind the TS value into the old column.
 import { db, writeTx } from "@/lib/db";
 import { toUtcInstant, utcInstant } from "@/lib/date";
 import { createLogger } from "@/lib/log";
@@ -229,15 +233,15 @@ export async function resumeDueIntegrationBackfills(
 ): Promise<void> {
   const due = db
     .prepare(
-      `SELECT provider, kind FROM integration_backfill_jobs
+      `SELECT provider AS source_id, kind FROM integration_backfill_jobs
         WHERE profile_id = ?
           AND (status = 'queued' OR (
             status = 'paused' AND retry_after_at IS NOT NULL AND retry_after_at <= ?
           ))
         ORDER BY updated_at`
     )
-    .all(profileId, utcInstant(at)) as { sourceId: string; kind: string }[];
+    .all(profileId, utcInstant(at)) as { source_id: string; kind: string }[];
   for (const job of due) {
-    await runIntegrationBackfillJob(profileId, job.sourceId, job.kind);
+    await runIntegrationBackfillJob(profileId, job.source_id, job.kind);
   }
 }

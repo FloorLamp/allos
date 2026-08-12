@@ -105,7 +105,7 @@ export interface QuietStreamSignals {
 
 export type QuietStreamSkip =
   /** A reconnect/stopped row already owns this source (#1685, constraint 7). */
-  | "provider-unhealthy"
+  | "source-unhealthy"
   /** This stream was not delivering to begin with — nothing was interrupted. */
   | "not-expected-active"
   /** Nothing has ever arrived on the stream: no baseline to be quiet against. */
@@ -139,7 +139,7 @@ export type QuietStreamVerdict =
  * minute, so waiting one more minute means waiting until tomorrow.
  */
 export function quietStreamVerdict(s: QuietStreamSignals): QuietStreamVerdict {
-  if (!s.sourceHealthy) return { quiet: false, skip: "provider-unhealthy" };
+  if (!s.sourceHealthy) return { quiet: false, skip: "source-unhealthy" };
   if (!s.expectedActive) return { quiet: false, skip: "not-expected-active" };
   if (s.minutesSinceStream == null) return { quiet: false, skip: "no-stream" };
   if (s.minutesSinceStream <= s.toleranceMin)

@@ -224,6 +224,7 @@ export function readStreamFrontier(
 ): StreamFrontierState | null {
   const row = db
     .prepare(
+      // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
       `SELECT frontier_at, advanced_at, observed_at, syncs_since_advance
          FROM stream_frontiers
         WHERE profile_id = ? AND provider = ? AND stream = ?`

@@ -149,7 +149,8 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
   // one question over a table that is only ever appended to.
   const rows = db
     .prepare(
-      `SELECT e.provider AS provider,
+      // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
+      `SELECT e.provider AS source_id,
               r.target_table AS target_table,
               s.metric AS metric,
               SUM(CASE WHEN e.at > ? THEN 1 ELSE 0 END) AS n_new,
@@ -166,7 +167,7 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
         ORDER BY n_new DESC, e.provider, r.target_table`
     )
     .all(sinceTs, sinceTs, profileId) as {
-    sourceId: string;
+    source_id: string;
     target_table: string;
     metric: string | null;
     n_new: number;
@@ -179,11 +180,11 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
     (
       db
         .prepare(
-          `SELECT DISTINCT provider FROM integration_sync_events
+          `SELECT DISTINCT provider AS source_id FROM integration_sync_events
             WHERE profile_id = ? AND ok = 1 AND at <= ?`
         )
-        .all(profileId, sinceTs) as { sourceId: string }[]
-    ).map((r) => r.sourceId)
+        .all(profileId, sinceTs) as { source_id: string }[]
+    ).map((r) => r.source_id)
   );
 
   // Which KINDS this profile has ever received before, across every source — the

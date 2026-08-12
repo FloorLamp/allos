@@ -28,7 +28,7 @@ export default function IntegrationBackfillProgress({
   const poll = useCallback(async () => {
     try {
       const response = await fetch(
-        `/api/jobs/integration-backfills?provider=${encodeURIComponent(sourceId)}`,
+        `/api/jobs/integration-backfills?source=${encodeURIComponent(sourceId)}`,
         { cache: "no-store" }
       );
       if (!response.ok) return;

@@ -118,7 +118,8 @@ export const OWNED_TABLES = [
   "integration_connections",
   "integration_sync_events",
   "integration_backfill_jobs",
-  // The continuous-stream watermark (#2341): one row per (profile, provider, stream)
+  // The continuous-stream watermark (#2341): one row per (profile, source, stream)
+  // — the column is still named `provider` (#2487 phase 1 renamed types only)
   // holding the frontier and whether the last pushes advanced it.
   "stream_frontiers",
   "profile_share_links",

@@ -31,7 +31,7 @@ import { PROFILE_ID, ins, fixtureProfileId, seedMemberLogin } from "./common";
 // ── Integration sync events, per-row provenance, connection states ──
 export function seedIntegrationSyncEvents(): void {
   // Mark Strava CONNECTED so the Data → Review "Connected sources" card shows the
-  // per-provider "Sync now" affordance (issue #208) rather than a "Connect" link.
+  // per-source "Sync now" affordance (issue #208) rather than a "Connect" link.
   // Synthetic config only — the e2e never taps Sync now (it would hit the network), it
   // only asserts the button renders. Health Connect stays unconnected → its card shows
   // the push-only explainer.
@@ -40,8 +40,8 @@ export function seedIntegrationSyncEvents(): void {
     config: { clientId: "e2e-client", accessToken: "e2e-token" },
   });
 
-  // Durable provider-neutral backfill progress: the connected Strava page and
-  // Data → Review render this same paused checkpoint, including provider wait + ETA.
+  // Durable source-neutral backfill progress: the connected Strava page and
+  // Data → Review render this same paused checkpoint, including source wait + ETA.
   const backfillNow = clockNow();
   const retryAfter = new Date(backfillNow.getTime() + 30 * 60 * 1000);
   db.prepare(
@@ -89,7 +89,7 @@ export function seedIntegrationSyncEvents(): void {
   //
   // NOTE: these timestamps are deliberately fixed past dates, NOT relative to today.
   // Nothing compares them against `now`/`today()` — the feed sorts them purely by
-  // string and "currently failing" is decided by per-provider ordering within this
+  // string and "currently failing" is decided by per-source ordering within this
   // block — so they can't drift or collide with a relative fixture the way a
   // hardcoded date in a table that ALSO has daysAgo() rows can. The only invariant
   // is that the failure sorts newest among Strava and the no-ops stay consecutive.
@@ -242,7 +242,7 @@ export function seedIntegrationSyncEvents(): void {
   }
 
   // Issue #1614: a pull run a page cap / rate limit cut short. It SUCCEEDED as far as
-  // it got — ok=1, rows landed — but the provider still had data, so the event carries
+  // it got — ok=1, rows landed — but the source still had data, so the event carries
   // the durable `truncated` marker and its Review line, and the Connected-sources card
   // must badge it "partial" instead of a clean green success. Dated between the no-ops
   // and the failure, so it lands in Strava's expandable history and leaves the
@@ -305,7 +305,7 @@ export function seedIntegrationSyncEvents(): void {
   // historical logs under "Connected sources" — as a "Not connected" card with a
   // Reconnect link — instead of vanishing. Oura models that removed-but-historical
   // case: mark it disconnected but seed one past successful sync so its card renders
-  // with the Reconnect affordance. (A provider with NEITHER a connection nor any sync
+  // with the Reconnect affordance. (A source with NEITHER a connection nor any sync
   // history — the never-set-up case — is filtered out entirely, which is the behavior
   // the issue asked for; that decision is unit-tested in sync-log.test.ts.) The
   // disconnected + ok=1 shape keeps this off the "currently failing" surface, so the
@@ -334,7 +334,7 @@ export function seedIntegrationSyncEvents(): void {
     null
   );
 
-  // Issue #326: a provider whose token DIED (dead/revoked refresh token) flips to the
+  // Issue #326: a source whose token DIED (dead/revoked refresh token) flips to the
   // terminal `needs_reauth` state — the hourly tick then auto-syncs `connected` rows
   // ONLY, so it stops retrying forever. Withings models that: mark it needs_reauth with
   // a preserved config, plus one past failed sync event so the card has history and
@@ -427,7 +427,7 @@ export function seedSyncHistoryDay(): void {
     );
   }
 
-  // Eight quiet older days exercise the provider page's seven-complete-day cursor.
+  // Eight quiet older days exercise the source page's seven-complete-day cursor.
   // They stay one run each so the dense-day assertions remain about TODAY's stream.
   for (let daysBack = SYNC_HISTORY_OLDER_DAYS; daysBack >= 1; daysBack--) {
     ins.run(

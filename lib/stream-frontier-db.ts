@@ -63,6 +63,7 @@ export function observeStreamFrontiers(
   );
   if (streams.length === 0) return {};
   return writeTx(() => {
+    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     const upsert = db.prepare(
       `INSERT INTO stream_frontiers
          (profile_id, provider, stream, frontier_at, advanced_at, observed_at,

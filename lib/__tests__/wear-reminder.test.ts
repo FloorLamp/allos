@@ -71,7 +71,7 @@ describe("bedtimeWearVerdict (#2161)", () => {
     // one-row rule means the two must not both report one outage.
     expect(
       bedtimeWearVerdict({ ...OFF_WRIST, sourceHealthy: false })
-    ).toEqual({ send: false, skip: "provider-unhealthy" });
+    ).toEqual({ send: false, skip: "source-unhealthy" });
   });
 
   it("says nothing when the stream has never delivered anything", () => {

@@ -29,7 +29,9 @@ import { reconcileProduced, feedProducedDetail } from "./produced-count";
 // fields, which structural typing accepts on assignment.
 export interface FeedSyncEvent {
   id: number;
-  sourceId: string;
+  // #2487 boundary: the persisted column is still named `provider`; the query layer
+  // selects `provider AS source_id`. See IntegrationConnection.source_id.
+  source_id: string;
   at: string;
   ok: number; // 1 = success, 0 = failure
   window_start: string | null;
@@ -124,7 +126,7 @@ export function syncQuietEntry(runNewestFirst: FeedSyncEvent[]): FeedEntry {
     stream: "sync-quiet",
     at: latest.at,
     sortId: latest.id,
-    sourceId: latest.sourceId,
+    source_id: latest.source_id,
     count: runNewestFirst.length,
     oldest: oldest.at,
     latest: latest.at,
@@ -143,9 +145,9 @@ export function collapseQuietSyncs(
 ): FeedEntry[] {
   const bySource = new Map<string, FeedSyncEvent[]>();
   for (const ev of eventsNewestFirst) {
-    const list = bySource.get(ev.sourceId);
+    const list = bySource.get(ev.source_id);
     if (list) list.push(ev);
-    else bySource.set(ev.sourceId, [ev]);
+    else bySource.set(ev.source_id, [ev]);
   }
   const out: FeedEntry[] = [];
   for (const evs of bySource.values()) {
@@ -322,7 +324,7 @@ export function feedItemView(
     return {
       key: `sync:${ev.id}`,
       tone: ev.ok ? "ok" : "error",
-      title: sourceName(ev.sourceId),
+      title: sourceName(ev.source_id),
       href: null,
       // An archive write can fail after earlier chunks committed. Keep "failed" as
       // the headline while retaining the completed split so Review tells the truth
@@ -342,9 +344,9 @@ export function feedItemView(
   }
   if (entry.stream === "sync-quiet") {
     return {
-      key: `sync-quiet:${entry.sourceId}:${entry.sortId}`,
+      key: `sync-quiet:${entry.source_id}:${entry.sortId}`,
       tone: "neutral",
-      title: sourceName(entry.sourceId),
+      title: sourceName(entry.source_id),
       href: null,
       detail:
         entry.count === 1

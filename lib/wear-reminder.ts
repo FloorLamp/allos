@@ -131,7 +131,7 @@ export type BedtimeWearSkip =
   /** This profile does not wear a device to sleep. */
   | "not-expected-active"
   /** A reconnect item already owns the contact (#1685). */
-  | "provider-unhealthy"
+  | "source-unhealthy"
   /** Nothing has ever arrived on the stream — there is no baseline to be quiet against. */
   | "no-stream"
   /** The frontier is younger than the declared floor — too soon to say anything. */
@@ -171,7 +171,7 @@ export function bedtimeWearVerdict(
   if (!signals.expectedActive)
     return { send: false, skip: "not-expected-active" };
   if (!signals.sourceHealthy)
-    return { send: false, skip: "provider-unhealthy" };
+    return { send: false, skip: "source-unhealthy" };
   if (signals.frontierAgeMin == null) return { send: false, skip: "no-stream" };
   if (signals.frontierAgeMin < signals.floorMin)
     return { send: false, skip: "stream-live" };

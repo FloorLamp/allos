@@ -326,7 +326,7 @@ export function importTakeoutArchive(
   // a skip count reads as data loss.
   if (parsed.roundTripSkipped > 0)
     warnings.push(
-      `${parsed.roundTripSkipped} rows already synced through Health Connect were left to that provider.`
+      `${parsed.roundTripSkipped} rows already synced through Health Connect were left to that source.`
     );
 
   const tally = summarizeSplit(counts, parsed.skipped);
