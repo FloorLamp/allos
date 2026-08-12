@@ -38,7 +38,7 @@ What dispatch used to encode as branches is now declared:
    The same move `trailingAverage` made for #1909 with `basis`.
 3. **Whether the in-progress week is included** — a reader option, not a scope fact.
 
-## What ONE session advances (#2439)
+## What ONE session advances (#2503)
 
 The ledger answers "how many this week". `sessionAdvancesScope(scope, facts)`
 answers "did THIS session put one of them on the board" — the same membership rule
@@ -57,7 +57,7 @@ rules, so a consumer's narrowing cannot drift from the rule.
 It exists because a surface that congratulates a session must not read the week's
 rollup as if the session had produced it. The post-workout recap did exactly that:
 a 1.42 km walk was told "Chest — 1 of 2 this week, one more to go" about a barbell
-session two days earlier. `getSessionCadenceFacts(profileId, activityId)` is the
+session earlier in the week. `getSessionCadenceFacts(profileId, activityId)` is the
 gather (a missing or cross-profile row answers empty, which advances nothing).
 
 ## The reader (`lib/queries/cadence-ledger.ts`)
