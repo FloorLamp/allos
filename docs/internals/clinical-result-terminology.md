@@ -1,7 +1,7 @@
 # Clinical-result terminology
 
-Status: partial (#2479 part 1 shipped — the vocabulary, the type and predicate
-renames; part 2, the persisted `"biomarker"` catch-all retirement, is still open)
+Status: shipped (#2479 part 1 — the vocabulary and the type and predicate renames;
+part 2 — the persisted `"biomarker"` catch-all retirement, migration 185)
 
 One word, "biomarker", used to name four unrelated things: the canonical
 definition registry, the identity a dated reading is keyed on, the flat catalog
@@ -149,6 +149,8 @@ substance or property being measured. Unchanged.
 | `listedInResultsCatalog(row)`    | catalog  | the per-analyte `vitals` refinement (#2365) on top of the category answer   |
 | `NON_IDENTITY_CATEGORIES`        | identity | the classes denied a canonical name, Coverage candidacy and a series        |
 | `carriesResultIdentity(cat)`     | identity | its predicate — pure; SQL reads the array directly                          |
+| `RETIRED_MEDICAL_CATEGORIES`     | time     | the values nothing may be FILED under any more (see part 2 below)           |
+| `ASSIGNABLE_MEDICAL_CATEGORIES`  | time     | the **derived** complement — what a write may pick                          |
 
 Category membership does **not** settle catalog browsability on its own: within
 `vitals`, `listedInResultsCatalog` drops an analyte whose quantity already owns a
@@ -176,16 +178,94 @@ the real registry and the real predicates, one representative concept per class.
   and the rest of the genuinely-biomarker surface (see above).
 - **`ClinicalObservation` and `Analyte`** — already correct, already shipped.
 
+## The retired catch-all (part 2)
+
+`biomarker` was never a class of clinical thing. It is the pre-#1076 bucket, and it
+meant **"this is a result and nothing narrower was picked"** — which is why the flat
+catalog excludes it (nothing browsable can be defined by the absence of a decision),
+why the retest clock reached it only by falling through the `biomarkerRetestStatus`
+exemptions, and why several SQL sites still read it as a synonym for `lab`.
+
+It is now a **fourth question** this vocabulary answers, and the only one about TIME
+rather than about a row:
+
+| name                            | question                                       |
+| ------------------------------- | ---------------------------------------------- |
+| `RETIRED_MEDICAL_CATEGORIES`    | may anything still be FILED under this?        |
+| `ASSIGNABLE_MEDICAL_CATEGORIES` | the derived complement — what a write may pick |
+
+The retirement is deliberately **one-sided**. Reading, filtering and storing the value
+all stay legal, and `MEDICAL_CATEGORIES` still lists it; what no longer exists is a way
+to CREATE one.
+
+### The rows: migration 185
+
+`reclassifyLegacyBiomarkerCategory` (`lib/legacy-category-reclass-db.ts`) re-files each
+legacy row using the canonical registry's own `category`, matched on the row's identity
+— its `canonical_name`, else the printed `name` — by exact NOCASE name against
+`canonical_biomarkers`.
+
+That is **not a new policy**. It is the rule the AI ingest path has followed since
+#1076 (`lib/medical-extract/normalize.ts`: "the canonical dataset owns the
+classification … its category WINS over the model's guess"), applied retroactively to
+the rows that predate it, and it generalises migration 090's hand-list of seven names
+to the whole registry so the answer cannot drift from the vocabulary.
+
+Three properties make the pass small:
+
+- **Nothing is deleted and no id moves.** It is a single-column UPDATE, so the #2444
+  child-link hazard cannot arise — `care_plan_items.source_medical_record_id`,
+  `care_plan_items.resolved_by_medical_record_id` and `intake_items.source_record_id`
+  all keep pointing at the same rows. There is deliberately **no** `CHILD_LINKS`
+  registry in migration 185: a probe guarding a delete that cannot happen is exactly
+  the guard-that-covers-nothing #2444 is about.
+- **Identity is never removed.** Every target in `RECLASS_TARGET_CATEGORIES` carries
+  result identity, so a moved row keeps its registration, its place in
+  `getUsedCanonicalNames`, its ★, its dismissals, its coverage entry and its series —
+  and there is no side-state sweep to get right, unlike #2318's pass. `assessment` is
+  excluded from the targets for precisely that reason.
+- **Unclassifiable is a real answer.** A row whose identity the registry does not
+  recognise, or whose entry states no category (an ai-coined vocabulary row states
+  none), stays exactly where it is and is counted in the pass's `residue`. Nothing is
+  guessed, so the `medical_records` CHECK keeps admitting the value — a rebuild that
+  dropped it would only be honest if the pass were total, and it is not meant to be.
+
+What the move changes on purpose: the rows the registry calls `lab` / `vitals` /
+`genomics` / `scan` **enter the flat Results catalog**, which the bucket had been
+hiding them from; and a row re-filed as `vitals` / `instrument` / `derived` /
+`reference` stops carrying a lab retest clock it never earned. Nothing else — value,
+flag, name, canonical name, document link and provenance are untouched.
+
+### The writers
+
+A migration that moves rows without fixing the writers leaves the bucket refilling
+itself, so the same change closes every path:
+
+| path                                                     | closure                                                        |
+| -------------------------------------------------------- | -------------------------------------------------------------- |
+| the extraction prompt's "only if nothing else fits"      | clause deleted; an explicit no-catch-all rule replaces it      |
+| the extractor's tool enum and accept-list                | `ASSIGNABLE_MEDICAL_CATEGORIES`                                |
+| VO₂ Max from Health Connect, Withings, the fitness check | `vitals` — the registry's own category for it                  |
+| `NormVital.category`, `FitnessStore`'s vital arm         | the string is **out of the type**: a writer no longer compiles |
+| the manual category picker (`ResultForm`)                | offers the assignable set, plus the row's own retired value    |
+| `scripts/seed.ts`                                        | its three legacy analytes file as `lab`                        |
+
+The picker's exception matters: a residue row must keep its category through an
+unrelated edit, so the form unions in whatever the row already carries rather than
+silently re-filing it onto the first option.
+
+`lib/__tests__/retired-medical-category.test.ts` is the ratchet — a source scan for a
+category ASSIGNMENT of a retired value (reads and filters are deliberately not matched)
+plus the prompt and enum assertions. `lib/__db_tests__/migration-185-legacy-biomarker-category.test.ts`
+covers the pass.
+
 ## Still open (#2479)
 
-Part 2 is the persisted catch-all retirement, behind a forward migration, and is
-deliberately untouched here:
+Proposed by the issue and settled by neither part: `ReadingSource = "lab"` standing in
+for broadly clinical document provenance (`lib/reading-model.ts`).
 
-- the legacy `medical_records.category = "biomarker"` rows — the pre-#1076
-  catch-all, now emptied of real labs but still a legal category value;
-- the extraction prompt's "use `biomarker` when nothing else fits";
-- VO₂ Max being written as category `biomarker` by several integrations and
-  fitness paths.
-
-Also proposed by the issue and not settled by either part: `ReadingSource = "lab"`
-standing in for broadly clinical document provenance (`lib/reading-model.ts`).
+Deliberately NOT renamed by part 2, on the owner's ruling that `Biomarker` and
+`Analyte` are retained where clinically accurate: `biomarkerFamily()` and
+`getBiomarkerSeries()` are the #482 biomarker identity function and the series drawn
+over it. The `Reading` model delegating to them is the word being used correctly, not a
+misdescription — renaming them for uniformity would make the code say less.

@@ -12,7 +12,7 @@ import { useFocusFormOnParam } from "./useFocusFormOnParam";
 import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
 import { useAddEntryModalClose } from "./AddEntryPanel";
-import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
+import { ASSIGNABLE_MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import { BIOMARKER_GROUP_LABELS } from "@/lib/biomarker-rank";
 import { biomarkerSearchTerms } from "@/lib/canonical-name";
 import {
@@ -43,7 +43,7 @@ export default function ResultForm({
   mode,
   observation,
   onDone,
-  categories = MEDICAL_CATEGORIES,
+  categories = ASSIGNABLE_MEDICAL_CATEGORIES,
   defaultDate,
   defaultCategory,
   defaultName,
@@ -76,6 +76,20 @@ export default function ResultForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = mode === "edit";
   const uid = observation?.id ?? "new";
+  // The offered categories, plus the row's OWN category when it is one nothing may be
+  // filed under any more (#2479 part 2: the retired `biomarker` catch-all, on a row
+  // migration 185 could not classify). Without this the picker would silently
+  // re-file such a row onto whatever option happens to be first the next time anyone
+  // edits an unrelated field — the residue is meant to stay put until a human decides
+  // what it is, and this form is exactly where that decision gets made.
+  const current = observation?.category ?? null;
+  const categoryOptions = useMemo(
+    () =>
+      current && !categories.includes(current)
+        ? [current, ...categories]
+        : categories,
+    [categories, current]
+  );
   const [error, setError] = useState<string | null>(null);
   // The canonical-name field is a controlled Combobox (#1177), so form.reset() can't
   // clear it — the add path resets this state explicitly on a successful save.
@@ -187,7 +201,7 @@ export default function ResultForm({
           className="input capitalize"
           defaultValue={observation?.category ?? defaultCategory ?? "lab"}
         >
-          {categories.map((c) => (
+          {categoryOptions.map((c) => (
             <option key={c} value={c} className="capitalize">
               {c}
             </option>
