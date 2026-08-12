@@ -107,6 +107,13 @@ import type { Migration } from "../runner";
 // schema, and it is what keeps the NOT NULL honest for a statement that omits the column.
 // Every app writer binds instantNow()/utcInstant() explicitly, as the ratchet now requires.
 //
+// THE SCRATCH TABLE IS SPELLED `food_log_events__new`, the house convention for a
+// profile-OWNED rebuild (activities, illness_episodes, goals, frequency_targets all
+// use it): lib/__tests__/profile-scoping.test.ts derives OWNED_TABLES from every
+// `CREATE TABLE … profile_id` in migration source and skips names ending `_new`, so a
+// scratch table with a version suffix would be read as a real, unregistered
+// profile-owned table.
+//
 // AUTOINCREMENT high-water mark: event ids are external identity (the ⋯ row menu's
 // delete/undo token, the correction burst's anchors, the Telegram callback's captured
 // row), so they must never recycle — and a DROP discards the sqlite_sequence entry. The
@@ -199,7 +206,7 @@ export function up(db: Database.Database): void {
       .get() as { seq: number } | undefined;
 
     db.exec(`
-      CREATE TABLE food_log_events__new183 (
+      CREATE TABLE food_log_events__new (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         profile_id  INTEGER NOT NULL REFERENCES profiles(id),
         group_key   TEXT NOT NULL,
@@ -222,7 +229,7 @@ export function up(db: Database.Database): void {
         -- this column back unless its PRAGMA guard finds it.
         eaten_at    TEXT
       );
-      INSERT INTO food_log_events__new183
+      INSERT INTO food_log_events__new
         (id, profile_id, group_key, date, recorded_at, created_at, meal_slot,
          occurred_at, time_source, notify_message_id)
         SELECT id, profile_id, group_key, date,
@@ -232,7 +239,7 @@ export function up(db: Database.Database): void {
                time_source, notify_message_id
           FROM food_log_events;
       DROP TABLE food_log_events;
-      ALTER TABLE food_log_events__new183 RENAME TO food_log_events;
+      ALTER TABLE food_log_events__new RENAME TO food_log_events;
       -- Migration 056's two orderings, under their ORIGINAL names on the renamed
       -- column (see the header): a replay of 056 finds them and builds nothing.
       CREATE INDEX IF NOT EXISTS idx_food_log_events_profile

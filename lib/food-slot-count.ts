@@ -60,14 +60,14 @@ export interface FoodLedgerEvent {
 // freezes a label is a stored slot — which Telegram deliberately never writes, and
 // which the web log path since #2269 writes only for a declaration-only backfill.
 export function foodEventWindow(
-  loggedAt: string,
+  recordedAt: string,
   tz: string,
   boundaries: FoodSlotBoundaries,
   explicitSlot?: FoodSlot | null,
-  eatenAt?: string | null
+  occurredAt?: string | null
 ): FoodSlot {
   if (explicitSlot) return explicitSlot;
-  const { hhmm } = zonedDateParts(tz, new Date(eatenAt ?? loggedAt));
+  const { hhmm } = zonedDateParts(tz, new Date(occurredAt ?? recordedAt));
   return foodSlotForHhmm(hhmm, boundaries);
 }
 
