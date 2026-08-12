@@ -231,6 +231,14 @@ working one's. The two signals that actually separate them:
    The template has said "COMMIT AND PUSH after every meaningful step" for
    months; it was not enough, because an agent deep in a large change reads that
    as advice about restarts rather than a hard gate on its own progress.
+3. **Committed-and-unpushed**, the variant that survives every rewording of the
+   above. Agents on this repo commit reliably and then forget the push; three
+   separate agents needed a nudge in one session. The commit feels like the
+   banking step, so "commit and push" reads as one act that was performed. State
+   the gate as a property of the REMOTE — _your branch must exist on the remote
+   at your latest commit_ — because that is the thing a check-in can verify:
+   `git -C <wt> rev-parse HEAD` against `git ls-remote --heads origin <branch>`,
+   which is now part of the check-in rule below.
 
 **The check-in rule.** At every check-in, for every running agent older than ~2×
 the session's observed median: `ls -d $SCRATCH/wt-*` and compare transcript
@@ -326,16 +334,20 @@ writing a brief, and never paste them to an agent.
   reason you cannot fix in ONE retry, STOP AND REPORT IMMEDIATELY — quote what was
   refused, verbatim. Do not sit on it. (An agent refused its first `git worktree add`
   idled 12.9h having changed nothing; reporting in minute one costs nothing.)
-- COMMIT AND PUSH after every meaningful step — container restarts are frequent, and
-  your worktree is NOT backed up. This is a HARD GATE, not restart advice: if you
-  have touched more than ~10 files, or worked more than ~45 minutes, since your last
-  commit, COMMIT NOW even mid-task and even if gates have not run. Push a checkpoint
-  branch. (An agent held 50 finished files with zero commits for 13.7h.)
+- Your branch must EXIST ON THE REMOTE at your latest commit, at all times.
+  Committing is not enough — your worktree is NOT backed up and container restarts
+  are frequent. This is a HARD GATE, not restart advice: if you have touched more
+  than ~10 files, or worked more than ~45 minutes, since your last PUSH, commit and
+  push NOW, even mid-task and even if gates have not run. (An agent held 50 finished
+  files with zero commits for 13.7h.)
 - If the work turns out materially bigger than this brief implies, SAY SO and push a
   checkpoint before continuing — do not silently absorb a 15-file footprint that was
   briefed as a one-line registry edit.
 - Foreground ALL gates; never run_in_background for builds/tests; every wait is one
-  blocking Bash call, chunked under the 10-minute tool cap
+  blocking Bash call, chunked under the 10-minute tool cap. Pass an EXPLICIT
+  `timeout` (e.g. 600000) to `npm test`, `npm run test:db` and `npm run build` —
+  foreground Bash caps at ~2 minutes by default whatever the tool's stated maximum,
+  so a slow tier reports as a failure it did not have.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST
   (GET /repos/OWNER/REPO/issues/N and /issues/N/comments) — a comment overrides the
   body when they conflict. Trust symbol names over line numbers.
@@ -613,6 +625,27 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
   commit** — a green run is a claim about the base it ran on.
 - Flag owner-visible judgment calls in the review (tone unifications, behavior
   loosenings) so the owner can veto cheaply.
+- **Read the diffstat for a file git calls `Bin`.** A new `.ts` shipped as
+  `Bin 0 -> 7407 bytes` (#2547) because its key separator was three RAW NUL bytes
+  rather than an escape sequence. The runtime intent was correct, but a file
+  containing a NUL has no diff, no blame and no line comments — and this repo's
+  PHI and secret gates are TEXT scans, so a green `phi-scan` over a file it may
+  not have read as text is not the reassurance it looks like. The fix is the
+  escape sequence, which is byte-identical at runtime.
+- **A claimed count is a measurement with a timestamp.** At this merge rate the
+  numbers in an issue title drift before an agent reads them: #2528 said 274
+  entries and the agent's own base had 278. Ask for a re-count in the brief and
+  check the PR reports one.
+- **A curated dataset's diff must show only intended changes.** #2544 carried four
+  `1.0`→`1` edits in `canonical-biomarkers.json` from a `JSON.parse`/`stringify`
+  round-trip. Semantically nothing, and Prettier is NOT responsible (it leaves
+  JSON numbers alone — check before believing that story). It matters because a
+  regenerate is invisible whenever it happens to preserve key order and lose no
+  precision, so those four lines were the only evidence it occurred at all.
+- **Verify a PR's claims about pre-existing bugs, not just its code.** #2537's body
+  said the rename "caught two real bugs"; both were correct on main and broke only
+  transiently inside the branch. A bug a change introduces and then fixes is not a
+  bug it found, and a PR body is read back later as fact.
 
 ## Migration slots
 
