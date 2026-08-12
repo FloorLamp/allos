@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { IntegrationBackfillJob } from "@/lib/integrations/backfill-state";
 import {
+  backfillFailureLabel,
   formatBackfillTime,
   integrationBackfillView,
 } from "@/lib/integrations/backfill-progress";
@@ -83,6 +84,7 @@ export default function IntegrationBackfillProgress({
                 : job.status === "completed"
                   ? "Complete"
                   : "Failed";
+        const leftover = backfillFailureLabel(job.status, job.failed_items);
         const eta =
           view.etaSeconds == null
             ? "ETA available after the first completed item"
@@ -116,8 +118,7 @@ export default function IntegrationBackfillProgress({
             </div>
             <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
               {plural(job.completed_items, job.item_noun)} of {job.total_items}{" "}
-              · {view.percent}%
-              {job.failed_items > 0 ? ` · ${job.failed_items} retrying` : ""}
+              · {view.percent}%{leftover ? ` · ${leftover}` : ""}
             </p>
             {job.status === "paused" && view.resumesInSeconds != null ? (
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">

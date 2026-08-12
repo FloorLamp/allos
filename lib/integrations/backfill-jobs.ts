@@ -44,7 +44,33 @@ export function queueIntegrationBackfill(
       return { job: existing, shouldRun: false };
     }
     const missing = runner.count(profileId);
-    const resume = existing?.status === "paused";
+    // A RE-QUEUE RESUMES, it does not restart (#2195). `paused` and `failed` are both
+    // "this job stopped part-way and its imported rows are still on disk" — the only
+    // difference is whether the source asked us to wait. Treating `failed` as a fresh
+    // start threw away `completed_items`, `request_count` and `active_seconds` from
+    // work that had genuinely happened, so a manual retry after a mid-run network
+    // error showed "0 of 40" for a job that was 60 rides in, and the ETA restarted
+    // with no observed throughput to divide by.
+    //
+    // `completed` is deliberately NOT resumable: nothing stopped part-way, so a new
+    // queue over a changed candidate set is a new batch and starts at 0 of N.
+    //
+    // The arithmetic below is what keeps the resumed figures honest — `total` is
+    // re-derived as `completed + missing` (floored at the prior total, so a shrinking
+    // candidate set cannot make the bar go backwards) and `completed` is re-derived
+    // from it, so neither is carried forward unchecked from a run whose candidate set
+    // has since moved.
+    //
+    // #2385 — WORKING: a re-queue after a failed run reads "60 of 100", and the ETA
+    //   keeps the throughput the first run measured. WRONG: `completed_items` exceeds
+    //   `total_items`, a percentage moves backwards, or a job never returns to 0-of-N
+    //   after new rides arrive. DECEPTIVE SUCCESS: "progress bars stopped resetting" —
+    //   a bar that never resets is also what a resume branch taken too eagerly
+    //   produces, showing healthy progress against a total that no longer describes
+    //   the work; the figure to read is `total_items` still tracking
+    //   `completed_items + missing`, not the absence of resets.
+    const resume =
+      existing?.status === "paused" || existing?.status === "failed";
     const total = resume
       ? Math.max(existing.completed_items + missing, existing.total_items)
       : missing;
@@ -134,7 +160,13 @@ export async function runIntegrationBackfillJob(
           )
           .run(
             completed,
-            progress.failed,
+            // ONE stored column for two runner counts, on purpose (#2196). The job's
+            // own status already separates them: a retryable failure keeps
+            // `remaining > 0`, which ends the job `failed`, so a job that reaches
+            // `completed` with `failed_items > 0` can only be carrying unavailable
+            // ones. The progress surface derives the wording from that pair rather
+            // than from a second column (backfillFailureLabel).
+            progress.failed + progress.unavailable,
             baseRequests + progress.requests,
             activeSeconds,
             utcInstant(),
@@ -158,6 +190,10 @@ export async function runIntegrationBackfillJob(
     } else {
       const now = new Date();
       const completed = Math.max(initial.total_items - result.remaining, 0);
+      // `remaining` is "still worth asking about", not "still missing" (#2196): a
+      // runner subtracts the candidates the source gave a final answer for. Without
+      // that, one permanently-unfetchable row held the whole job in `failed` forever
+      // while the bar said "retrying" about work that could never succeed.
       const done = result.remaining === 0;
       const paused = !done && result.paused;
       const status: IntegrationBackfillStatus = done
@@ -169,7 +205,8 @@ export async function runIntegrationBackfillJob(
         ? (toUtcInstant(result.retryAfterAt) ??
           utcInstant(new Date(now.getTime() + FALLBACK_RETRY_MS)))
         : null;
-      const failedCount = Math.max(result.failed, result.remaining);
+      const notCompleted = result.failed + result.unavailable;
+      const failedCount = Math.max(notCompleted, result.remaining);
       const error =
         status === "failed"
           ? `${failedCount} ${initial.item_noun}${failedCount === 1 ? "" : "s"} could not be completed. Retry the backfill.`
@@ -186,7 +223,7 @@ export async function runIntegrationBackfillJob(
           .run(
             status,
             completed,
-            result.failed,
+            notCompleted,
             baseRequests + result.requests,
             baseSeconds + Math.max((Date.now() - batchStarted) / 1000, 0.001),
             retryAfter,
