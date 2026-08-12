@@ -702,6 +702,51 @@ hatch that ever reaches them. Accepting is the only write — `demoteIntakeOblig
 rather than assuming success. Recovery clears the candidate; demotion is
 downward-only, permanently (no promotion suggestions).
 
+**The unconfirmed imported MEDICATION escape hatch (#2574).** The demotion detector
+above exempts medications entirely, and correctly: poor med adherence is a missed-dose
+escalation concern, never an obligation question. The consequence was that a medication
+genuinely STOPPED became indistinguishable from one badly adhered to — a course
+prescribed during an acute illness, imported from a CCD that never marked it
+discontinued, reminds at `must` every morning forever.
+
+The signal that separates them is not adherence, it is **provenance plus silence**:
+
+> `kind = medication` AND `source = 'extracted'` AND **zero lifetime logs** AND ≥10
+> scheduled occurrences in the trailing 30 days.
+
+Pure detection in `lib/medication-unconfirmed.ts` over the SAME `getIntakeHistory`
+gather, plus one lifetime read (`getEverLoggedItemIds`) — the strip is windowed by
+construction and the claim is that nothing has _ever_ happened. It produces no
+`Finding`: no dedupe key, no suppression bus, no registry entry, no send. It sets a
+per-dose flag and puts a **🏁 Stop** button beside Take and Skip on the reminder that
+was already going out.
+
+- **Disjoint from `demotable` by construction** — that detector refuses medications and
+  this one requires one — so a row gains at most one extra button, asserted over the
+  cross product rather than assumed.
+- **One tap performs the STOP**, through `stopMedicationCourses`, the same core the web
+  Stop dialog calls. No second write path, no demotion to `may` (which would assert
+  "available, take when you want" about a course that ended), and no deep link (which
+  is the two-step journey the person could already make). The web action's eager
+  refill-marker clear is NOT copied: it lives in the action rather than the core and is
+  an optimisation for a same-session Stop→Restart, while `planRefillNudges`' #325
+  self-healing sweep is the authoritative drop on the next tick.
+- **The tap RE-DERIVES the offer before it writes.** A button that sat in a chat while
+  a dose was taken, skipped, or the med was stopped from the web answers `withdrawn`
+  and changes nothing. That is what makes "never on a medication with any engagement
+  history" true of the TAP and not merely of the render.
+- **Typed outcomes are rendered**, never an unconditional success
+  (`stopped` / `already-stopped` / `synced` / `not-found` / `withdrawn`).
+- **`stop_reason` is `other`** — the button collects none — and the reply says where to
+  name a real one. A callback answer is a plain-text toast, so the pointer is words
+  rather than a link; the reminder's own body never mentions the button, which is the
+  #1718 rule for Web Push and Home Assistant.
+- **Restart is the undo**, opening a new course dated today rather than reopening the
+  old one, so a mis-tap costs one tap and rewrites no history.
+
+A weekly medication never reaches the occurrence floor and never gets the button. That
+is the conservative direction and the only one a safety-adjacent offer may err in.
+
 **Digests report DELTAS, not a fraction (#1505 part 3).** `lib/intake-deltas.ts`
 classifies the must+should ledger into **notably missed** (a taken-streak of ≥3
 occurrences just broken) and **resumed** (taken again after a miss run of ≥2), over

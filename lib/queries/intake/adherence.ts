@@ -117,6 +117,32 @@ export function getIntakeLogsForDate(
   return new Set(rows.map((r) => r.item_id));
 }
 
+// Intake item ids with AT LEAST ONE LOG EVER, of either status (#2574) — the lifetime
+// counterpart of the windowed reads above, and the evidence behind "nobody has ever
+// engaged with this item".
+//
+// A skipped dose counts. That is the point rather than an oversight: a skip is a
+// decision on the record (#232), so an item somebody has skipped even once is an item
+// somebody is managing, and the unconfirmed-medication offer must not reach it.
+//
+// Scoped through the DOSE's parent rather than the nullable `l.item_id` — a log whose
+// denormalised item link was never written still belongs to its dose's item, and
+// reading that column would silently answer "never logged" for it. Retired doses are
+// included for the same reason: retiring a dose does not un-happen what was taken from
+// it.
+export function getEverLoggedItemIds(profileId: number): Set<number> {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT d.item_id AS item_id
+         FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ?`
+    )
+    .all(profileId) as { item_id: number }[];
+  return new Set(rows.map((r) => r.item_id));
+}
+
 // Dose ids TAKEN on `date` (per-dose view for the schedule check-offs), scoped to
 // the profile through the dose's parent supplement. Skipped doses are NOT taken —
 // getSkippedDoseIds surfaces those separately for the tri-state (issue #232).

@@ -111,7 +111,27 @@ export function digestTimeEpisodeKey(
   configuredMinute: number,
   proposedMinute: number
 ): string {
-  return `${DIGEST_TIME_PREFIX}${configuredMinute}:${proposedMinute}`;
+  return `${digestTimeFamily(configuredMinute)}:${proposedMinute}`;
+}
+
+/**
+ * The TOPIC the key above is an episode of — "your configured send time predates your
+ * data" — declared for the repeat-dismissal family lookup (#2543/#2386). Minted by the
+ * key itself, so the stem cannot drift wider than the identity it belongs to.
+ *
+ * The stem is the CONFIGURED minute and the episode is the proposal, which falls straight
+ * out of the ratchet above: "changing the CONFIGURED time is a new question and correctly
+ * re-arms", so a re-armed suggestion is a NEW family whose count starts at zero — the
+ * #203/#482 evidence-in-identity discipline, already in force here before anything
+ * counted it.
+ *
+ * Two stored keys under one stem therefore mean the person declined this at one proposal
+ * and declined it again at a proposal at least DIGEST_TIME_MATERIAL_MOVE_MIN later. The
+ * ratchet is what makes the second a genuinely separate raising rather than jitter, which
+ * is what makes the count worth reading at all.
+ */
+export function digestTimeFamily(configuredMinute: number): string {
+  return `${DIGEST_TIME_PREFIX}${configuredMinute}`;
 }
 
 /** The two minutes back out of a stored key, or null when it is not one of ours. */
@@ -342,6 +362,9 @@ export function digestTimeSuggestionFinding(s: DigestTimeSuggestion): Finding {
   return {
     domain: "digest-time",
     dedupeKey: s.dedupeKey,
+    // The topic this proposal is an episode of (#2543). Read only by the repeat-
+    // dismissal family lookup; the ratchet above still owns suppression.
+    episodeFamily: digestTimeFamily(s.configuredMinute),
     title: copy.headline,
     detail: copy.detail,
     evidence: copy.evidence,

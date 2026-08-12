@@ -33,6 +33,7 @@ import {
   clinicalRecencyHorizonDays,
   recencyIntervalPhrase,
   recordsRecencyDedupeKey,
+  recordsRecencyFamily,
   recordsRecencyVerdict,
 } from "../../records-recency";
 import { archiveRefreshSources } from "../../integrations/archive-refresh";
@@ -189,6 +190,10 @@ export function archiveRefreshItems(
         archiveRecencySource(p.sourceId),
         verdict.frontier
       ),
+      // The topic these frontier-anchored asks are episodes of (#2543): declines
+      // accumulate PER SOURCE, so a source whose refresh has been declined across
+      // separate staleness episodes leaves the digest and stays on Upcoming.
+      episodeFamily: recordsRecencyFamily(archiveRecencySource(p.sourceId)),
       domain: "records-recency",
       title: copy.title,
       detail: copy.detail,
@@ -232,6 +237,9 @@ export function clinicalRecencyItems(
   return [
     {
       key: recordsRecencyDedupeKey("clinical-records", verdict.frontier),
+      // As above (#2543) — the manual-upload leg is its own source and therefore its
+      // own family; declines of an archive refresh can never quiet this ask.
+      episodeFamily: recordsRecencyFamily("clinical-records"),
       domain: "records-recency",
       title: copy.title,
       detail: copy.detail,

@@ -86,6 +86,7 @@ import {
   parseTuneCallback,
   parseDigestTimeCallback,
   parseDemoteCallback,
+  parseMedStopCallback,
   parsePracticeDoneCallback,
   parsePracticeLogCallback,
   parseRightSizeLowerCallback,
@@ -174,6 +175,7 @@ import {
   handleTuneTap,
   handleDigestTimeTap,
   handleDemoteTap,
+  handleMedStopTap,
   handleSymptomPick,
   handleSymptomSeverity,
 } from "./telegram-quick-log";
@@ -333,6 +335,16 @@ export async function handleCallbackQuery(
   const demote = parseDemoteCallback(cq.data);
   if (demote) {
     await handleDemoteTap(cq, demote);
+    return;
+  }
+
+  // Stop (#2574): end an unconfirmed imported medication from the reminder that is
+  // interrupting about it. Its own token namespace, parsed beside the demotion tap
+  // because they ride the same row and are complements on `kind` — never both present,
+  // and never mistakable for one another.
+  const medStop = parseMedStopCallback(cq.data);
+  if (medStop) {
+    await handleMedStopTap(cq, medStop);
     return;
   }
 

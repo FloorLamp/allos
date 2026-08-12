@@ -17,11 +17,13 @@
 // key twice UPDATES one row — several dismissals inside one appearance are already one
 // row by construction, exactly as #2386 requires. What distinguishes separate raisings
 // is the EPISODE ANCHOR the behavioural engines grew in #436: a finding's dedupeKey is
-// `<topic stem>:<episode anchor>` and it carries the stem as `supersedes` for the
-// dual-read. So one stored row under `training-obs:stale:bench:2026-01` and another
-// under `training-obs:stale:bench:2026-05` are two separate raisings of one topic, both
-// declined — which is the signal. That makes the family a DECLARED fact of the finding
-// (the engine chose the anchor), not a rule this module invents per namespace.
+// `<topic stem>:<episode anchor>` and it DECLARES the stem — as `supersedes` for an
+// engine that had a pre-anchor key, or as `episodeFamily` for one whose key was born
+// anchored (#2543). So one stored row under `training-obs:stale:bench:2026-01` and
+// another under `training-obs:stale:bench:2026-05` are two separate raisings of one
+// topic, both declined — which is the signal. That makes the family a DECLARED fact of
+// the finding (the engine chose the anchor), not a rule this module invents per
+// namespace.
 //
 // A finding that declares NO episode anchor has no family, and therefore no fatigue: at
 // most one row can exist for it, so it can never reach a threshold. That is the right
@@ -30,6 +32,13 @@
 // discipline #2386 cites: a moved reading is a DIFFERENT signal, it lands under a
 // different key, its count starts at zero, and a newly flagged value speaks at full
 // prominence however often its predecessor was declined.
+//
+// ── Where the answer is APPLIED ──────────────────────────────────────────────
+// The dashboard reranks (`routineOrder`, #2538). The morning DIGEST drops (#2543): a
+// line whose topic has been declined across separate raisings leaves the message and
+// stays on the surface the user opens. Both are §2 reductions in contact, which the
+// system may make unilaterally; neither writes anything, and neither can reach a signal
+// whose dismissals the bus already refuses to honour — see the safety floor below.
 //
 // ── The safety floor ─────────────────────────────────────────────────────────
 // Quieting is STRICTLY WEAKER than the dismissal that produced it: it may only reduce
@@ -110,17 +119,35 @@ export function findingSuppressionPolicy(
 
 // The TOPIC a finding's raisings belong to, or null when it declares no episode anchor.
 //
-// A finding declares an anchor by carrying its own pre-anchor stem as `supersedes` (the
-// #436 dual-read), so the stem is a strict PREFIX of the dedupeKey with a separator
-// between them. The prefix test is what keeps this honest: `supersedes` is also used for
-// a cross-finding acknowledgment that is NOT a stem (the biomarker trajectory carries
+// TWO WAYS TO DECLARE ONE, and the SAME validation for both: the stem must be a strict
+// PREFIX of the dedupeKey with a separator between them.
+//
+//   1. `episodeFamily` — stated outright (#2543). The engines whose keys were BORN
+//      anchored use this: `portal-sync:<portal>/<account>:<day>`,
+//      `records-recency:<source>:<frontier>`, `digest-time:<configured>:<proposed>`.
+//      They have no pre-anchor key to carry in `supersedes` and so had no way to say
+//      what their stem was, which is why the digest half of #2386 found nothing to
+//      count despite the anchors already being there.
+//   2. `supersedes` — the #436 dual-read stem, which the behavioural engines already
+//      carry for suppression compatibility and which doubles as their declaration.
+//
+// The prefix test is what keeps BOTH honest. `supersedes` is also used for a
+// cross-finding acknowledgment that is NOT a stem (the biomarker trajectory carries
 // `biomarker-flag:<family>` so a flag dismiss silences it, #564), and such a key is not
-// a prefix of the finding's own, so it yields no family and no fatigue — correctly, since
-// those two keys are one topic seen twice, not one topic raised twice.
+// a prefix of the finding's own, so it yields no family and no fatigue — correctly,
+// since those two keys are one topic seen twice, not one topic raised twice. And it is
+// what stops the explicit field from being a widening lever: a producer can only name a
+// stem its own key already grew out of, never a broader namespace it does not sit under.
+//
+// WIDENING IS THE FAILURE MODE THIS MECHANISM INVITES (#2538's own metrics analysis, and
+// #2543 restates it): any "declines avoided" measure rewards over-broad stems, because a
+// broader family accumulates faster and quiets more. Nothing here widens a family, and
+// nothing here invents one per namespace — the declaration is the producing engine's,
+// made where its key is minted, from the same components.
 export function findingEpisodeFamily(
-  finding: Pick<Finding, "dedupeKey" | "supersedes">
+  finding: Pick<Finding, "dedupeKey" | "supersedes" | "episodeFamily">
 ): string | null {
-  const stem = finding.supersedes;
+  const stem = finding.episodeFamily ?? finding.supersedes;
   if (!stem) return null;
   if (!finding.dedupeKey.startsWith(`${stem}:`)) return null;
   return stem;
@@ -178,7 +205,10 @@ export function dismissalProminence(
 
 // One finding's prominence against the profile's dismissal keys.
 export function findingProminence(
-  finding: Pick<Finding, "dedupeKey" | "supersedes" | "suppressionPolicy">,
+  finding: Pick<
+    Finding,
+    "dedupeKey" | "supersedes" | "episodeFamily" | "suppressionPolicy"
+  >,
   dismissedKeys: readonly string[]
 ): FindingProminence {
   return dismissalProminence(
@@ -201,7 +231,10 @@ export interface RankedFindings<T> {
 // same `getFindingSuppressions` result the caller used for `activeFindings`, so this adds
 // no read and no new profile-scoping surface.
 export function rankByDismissalFatigue<
-  T extends Pick<Finding, "dedupeKey" | "supersedes" | "suppressionPolicy">,
+  T extends Pick<
+    Finding,
+    "dedupeKey" | "supersedes" | "episodeFamily" | "suppressionPolicy"
+  >,
 >(
   findings: readonly T[],
   map: ReadonlyMap<string, SuppressionRecord>
@@ -221,7 +254,10 @@ export function rankByDismissalFatigue<
 // findings behind them. The retired ones are dropped — a caller that wants them renders
 // `onDemand` in its go-looking area.
 export function routineOrder<
-  T extends Pick<Finding, "dedupeKey" | "supersedes" | "suppressionPolicy">,
+  T extends Pick<
+    Finding,
+    "dedupeKey" | "supersedes" | "episodeFamily" | "suppressionPolicy"
+  >,
 >(findings: readonly T[], map: ReadonlyMap<string, SuppressionRecord>): T[] {
   const ranked = rankByDismissalFatigue(findings, map);
   return [...ranked.routine, ...ranked.quiet];

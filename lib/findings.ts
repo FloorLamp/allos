@@ -78,6 +78,26 @@ export interface Finding {
   // future distinct episodes (it lacks the anchor to tell them apart); every
   // NEW dismissal is per-episode.
   supersedes?: string;
+  // The TOPIC STEM this finding's `dedupeKey` is an episode of — the #436 anchor, stated
+  // rather than inferred (#2543). Must be a strict prefix of `dedupeKey` with a
+  // separator between them; anything else is ignored rather than trusted, so a
+  // declaration can never widen a family beyond the key that carries it.
+  //
+  // Why it exists BESIDE `supersedes`. Repeat-dismissal fatigue (lib/dismissal-fatigue)
+  // reads the family off `supersedes`, because every behavioural engine that grew an
+  // anchor in #436 had a pre-anchor key to carry there and the stem fell out for free.
+  // The engines whose keys were BORN anchored — `portal-sync:<portal>/<account>:<day>`,
+  // `records-recency:<source>:<frontier>`, `digest-time:<configured>:<proposed>` — never
+  // had a legacy shape, so they had nowhere to say what their stem was and answered "no
+  // family" while carrying exactly the key shape the mechanism needs. That is the whole
+  // of #2543: the anchors were there, the DECLARATION was missing.
+  //
+  // It is NOT a second suppression key. `supersedes` is consulted by activeFindings for
+  // the dual-read; this is read by the family lookup and by nothing else. Overloading
+  // `supersedes` instead would have made a dismissal stored under the bare stem silence
+  // the finding — a suppression consequence nobody asked for, on keys that never had a
+  // pre-anchor era to be compatible with.
+  episodeFamily?: string;
   title: string;
   detail?: string | null;
   // Structured, first-class reasons (issue #656) carried ALONGSIDE `detail` — the
@@ -184,6 +204,10 @@ export function upcomingToFinding(item: UpcomingItem): Finding {
   return {
     domain: item.domain,
     dedupeKey: item.key,
+    // The item's DECLARED topic stem (#2543), carried across the bus for the same
+    // reason `suppressionPolicy` is: the envelope must not drop a fact the producer
+    // stated, or the finding answers a different question than the item it came from.
+    ...(item.episodeFamily ? { episodeFamily: item.episodeFamily } : {}),
     title: item.title,
     detail: item.detail ?? null,
     // Carry the structured reasons across the bus unchanged (issue #656), so a

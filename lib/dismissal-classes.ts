@@ -667,6 +667,10 @@ export const NON_DISMISSAL_PREFIXES: readonly {
     prefix: "dgtno",
     what: "Telegram callback-data namespace for the digest time suggestion's decline (lib/digest-time-suggestion); the DISMISSAL it writes is keyed `digest-time:`",
   },
+  {
+    prefix: "medstop",
+    what: "Telegram callback-data namespace for the unconfirmed-medication Stop button (#2574, lib/notifications/callback-data). It silences nothing and writes no suppression row: the tap closes the medication's course through stopMedicationCourses, which is a lifecycle write the user can undo with Restart",
+  },
 ];
 
 /** The registry entry whose namespace a stored dismissal key belongs to, or null. */

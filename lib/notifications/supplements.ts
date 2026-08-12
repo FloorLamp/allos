@@ -49,6 +49,7 @@ import { preWorkoutSlotMinute } from "./schedule";
 import type { NotificationMessage } from "./types";
 import { isOnDemand } from "../intake-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
+import { getUnconfirmedMedicationIds } from "../intake-history";
 import { collapsedOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { now as clockNow } from "../clock";
@@ -247,6 +248,16 @@ function gatherWindowDoses(
     today(profileId)
   );
 
+  // The unconfirmed imported MEDICATIONS for this profile (#2574) — the sibling flag,
+  // resolved once per gather for the same reason: it reads a 30-day window per item, so
+  // asking inside the loop would re-read one ledger per slot. Disjoint from the set
+  // above by construction (that detector refuses medications; this one requires one),
+  // so no dose row can ever gain both buttons.
+  const unconfirmedItemIds = getUnconfirmedMedicationIds(
+    profileId,
+    today(profileId)
+  );
+
   // The food ledger's answer to "has anything gone in lately", read ONCE per gather
   // (#2022) — it is one number for the profile, not a per-dose fact, and the loop below
   // only turns it into a per-dose clause through the pure predicate.
@@ -311,6 +322,11 @@ function gatherWindowDoses(
       // it — an in-app dismissal deliberately does NOT remove it, because for a
       // tap-only user this is the only escape hatch that ever reaches them.
       demotable: demotableItemIds.has(supp.id),
+      // Ride-the-nag again (#2574): a Stop button appears on this dose's row only while
+      // the item is a live unconfirmed-import candidate. Detection state alone governs
+      // it, and any log of either status clears the candidacy on the next gather — so
+      // the button cannot outlive the claim it is making.
+      stoppable: unconfirmedItemIds.has(supp.id),
       // The declared timing as a live check (#2022). Today only — see the read above.
       ...(isForToday
         ? { foodCheck: foodTimingCheck(dose.food_timing, minutesSinceFood) }

@@ -275,6 +275,15 @@ export const BAND_LABELS: Record<UrgencyBand, string> = {
 export interface UpcomingItem {
   // Stable React key / dedupe id (e.g. "dose:12", "biomarker:LDL").
   key: string;
+  // The TOPIC STEM `key` is an episode of, when this domain's key is episode-anchored
+  // (#436) — declared, validated as a strict prefix, and read only by the repeat-
+  // dismissal family lookup (#2543). See Finding.episodeFamily for the full contract.
+  //
+  // Most domains have none, and correctly never accumulate fatigue: `dose:<id>`,
+  // `refill:<id>` and `screening:<rule>` name their SUBJECT rather than an episode of
+  // it, so at most one suppression row can ever exist per key and there is nothing to
+  // count. Absence here is an answer, not a gap.
+  episodeFamily?: string;
   domain: UpcomingDomain;
   title: string;
   // Optional secondary context line (dosage, last-tested date, progress…).

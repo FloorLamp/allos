@@ -30,8 +30,12 @@ import {
 import { getDigestTimeSuggestion } from "../queries/digest-time-suggestion";
 import {
   digestTimeActions,
+  digestTimeSuggestionFinding,
   digestTimeSuggestionLine,
 } from "../digest-time-suggestion";
+import { getFindingSuppressions } from "../queries/upcoming/suppressions";
+import { upcomingToFinding } from "../findings";
+import { dismissedSignalKeys, findingProminence } from "../dismissal-fatigue";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { getOutdoorPlans } from "../queries/weather-training";
 import { trainingPaceLine } from "../queries/upcoming/plans";
@@ -362,6 +366,29 @@ export function gatherDigestInput(
   // hero's collapsed line), where the user goes looking. Dropping them here is a
   // strict REDUCTION in contact — the doctrine's one unilateral direction.
   upcoming = upcoming.filter((i) => i.signalGroup !== "setup");
+  // REPEAT DISMISSAL, READ AS AN ANSWER (#2386, digest half #2543). The third strict
+  // reduction in a row, and the same doctrine clause as the two above: an item whose
+  // TOPIC the profile has declined across separate raisings leaves this message and
+  // stays exactly where it was on the pull surfaces.
+  //
+  // Only an item that DECLARED an episode family can be here at all, which is the whole
+  // of the mechanism's restraint. `dose:<id>`, `refill:<id>` and `screening:<rule>` name
+  // their subject rather than an episode of it: one key, one possible suppression row, a
+  // count that can never reach the threshold. The three domains that do declare one —
+  // portal-sync, records-recency, and the digest time suggestion below — are all
+  // coaching-tier ride-alongs on a send that was happening anyway, all with a go-looking
+  // twin that keeps rendering. Nothing safety-class can reach this: `findingProminence`
+  // asks `isHiddenUnderPolicy` before it consults any count, so a signal the bus refuses
+  // to silence on a plain dismiss is answered "routine" here without being counted.
+  //
+  // Gated on a cheap `some` so the profiles with no anchored item — nearly all of them,
+  // nearly every morning — pay one array scan and no suppression read.
+  if (upcoming.some((i) => i.episodeFamily)) {
+    const declined = dismissedSignalKeys(getFindingSuppressions(profileId));
+    upcoming = upcoming.filter(
+      (i) => findingProminence(upcomingToFinding(i), declined) === "routine"
+    );
+  }
   // Broken syncs join the banded set (#1685) — the ONE place the digest learns about a
   // dead integration. They are built by the SAME integrationToItem the dashboard hero and
   // the Upcoming page render, from the SAME getIntegrationAttention list the Data → Review
@@ -671,7 +698,20 @@ export function gatherDigestInput(
     // morning, and null the moment the episode is dismissed.
     ...(() => {
       const timing = getDigestTimeSuggestion(profileId);
-      return timing
+      // …and dropped from THIS message once its topic has been declined across separate
+      // raisings (#2543). The family is the CONFIGURED minute, so the count only grows
+      // when the ratchet re-armed and the person said no to a materially later proposal
+      // a second time — at which point asking again on the morning message is the exact
+      // behaviour #2386 exists to stop. The Settings row is unaffected and keeps
+      // offering the same three exits: this reduces where the question is asked, never
+      // whether it can be answered.
+      const quieted =
+        timing != null &&
+        findingProminence(
+          digestTimeSuggestionFinding(timing),
+          dismissedSignalKeys(getFindingSuppressions(profileId))
+        ) !== "routine";
+      return timing && !quieted
         ? {
             timeSuggestionLine: digestTimeSuggestionLine(timing),
             timeActions: digestTimeActions(profileId, td, timing),

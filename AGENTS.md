@@ -927,14 +927,29 @@ See `docs/internals/e2e-hygiene.md`.
   header — do not build a registry, a scoring engine or a metrics pipeline for it.
 - Its first application is **repeat dismissal read as an answer** (#2386):
   `lib/dismissal-fatigue.ts` counts distinct declined RAISINGS of one topic
-  (keyed on the #436 episode anchor a finding declares through `supersedes`, never
-  rows) and de-prioritises, then retires from the routine surface — never mutes,
-  never writes, never touches the suppression bus, and always still reachable
-  where the user goes looking. The safety floor is DERIVED, not listed:
-  `mayQuietOnDismissal` asks `isHiddenUnderPolicy`, so quieting can only ever
-  reach a finding a plain dismiss would already have silenced. A dose reminder, a
-  missed-dose escalation, the crisis finding and an overdue care follow-up are
-  refused before any count is read.
+  (keyed on the #436 episode anchor, never rows) and de-prioritises, then retires
+  from the routine surface — never mutes, never writes, never touches the
+  suppression bus, and always still reachable where the user goes looking. The
+  safety floor is DERIVED, not listed: `mayQuietOnDismissal` asks
+  `isHiddenUnderPolicy`, so quieting can only ever reach a finding a plain dismiss
+  would already have silenced. A dose reminder, a missed-dose escalation, the
+  crisis finding and an overdue care follow-up are refused before any count is read.
+  A finding DECLARES its topic stem — as `supersedes` when it had a pre-anchor key,
+  as `episodeFamily` when its key was born anchored (#2543) — and the declaration is
+  only honoured when it is a strict PREFIX of the key, which is what stops a producer
+  widening a stem to accumulate faster. Three digest lines declare one (`portal-sync`,
+  `records-recency`, `digest-time`) and the digest drops anything not `routine`; every
+  care-tier line names its SUBJECT rather than an episode of it, has one possible key,
+  and is out of reach by construction rather than by exemption.
+- **An imported medication nobody has ever logged can be stopped from its own
+  reminder** (#2574). `lib/medication-unconfirmed.ts` is the pure detector —
+  `kind = medication` AND import provenance AND ZERO lifetime logs AND past the
+  occurrence floor — the exact complement of the demotion detector's medication
+  refusal, so a dose row gains at most one extra button. It produces no `Finding`, no
+  dedupe key and no send: a flag, and a 🏁 Stop beside Take and Skip on the nudge that
+  was already going out. The tap RE-DERIVES candidacy before writing, goes through
+  `stopMedicationCourses` (the one core the web dialog uses), and renders its typed
+  outcome. Detection suggests; the tap writes.
 
 ## Repository hygiene
 
