@@ -1,5 +1,6 @@
 // Folding a document's per-question rows into ONE instrument SCORE (#2321). PURE — no
-// DB/network, unit-tested in lib/__tests__/instrument-import.test.ts.
+// DB/network, unit-tested in lib/__tests__/instrument-recognize.test.ts alongside the
+// recognition it applies.
 //
 // `lib/instrument-recognize.ts` answers "do these questions spell out an instrument,
 // and what did it score?". This module applies that answer to what the clinical
@@ -90,7 +91,16 @@ export function foldInstrumentScores(
   // one in document order. A screening is administered in one sitting, so the items
   // share a date; taking the first keeps the score on the day the answers were given
   // rather than on the document's own generation day.
-  const first = records[[...consumed][0]];
+  //
+  // DOCUMENT order is the LOWEST RECORD INDEX, computed here rather than read off
+  // `recognized.consumed` (#2553). That array is built by walking the matched items in
+  // the INSTRUMENT's item order, so its first entry answers item 1 — which is the same
+  // row only for a document that happens to print the items in the instrument's
+  // numbering. A CCD is free to print them in any order, and then the old read dated
+  // and keyed the score off whichever row answered the lowest-numbered question. The
+  // answer must not depend on our catalog's numbering: the document's own order is the
+  // only order the source stated.
+  const first = records[Math.min(...consumed)];
   const score: ImportedRecord = {
     category: "instrument",
     name: def.title,

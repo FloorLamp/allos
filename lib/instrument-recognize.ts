@@ -99,6 +99,11 @@ export interface RecognizedInstrument {
   // Which candidates (by index into the input array) the score CONSUMED. The caller
   // removes exactly these — the answers now live in `instrument_responses`, and
   // leaving the per-question rows behind too would store one screening twice.
+  //
+  // A SET, written as an array: it is parallel to `answers` (both are walked in the
+  // instrument's ITEM order) and carries no statement about where those candidates sat
+  // in the document. A caller that needs document position reads it off its own input,
+  // never off this order (#2553).
   consumed: number[];
 }
 
