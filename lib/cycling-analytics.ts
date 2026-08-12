@@ -1,7 +1,7 @@
 import { decodePolyline, routeBounds, type LatLng } from "./polyline";
 import type {
   CyclingStreams,
-  ProviderStream,
+  TelemetryStream,
 } from "./integrations/cycling-telemetry";
 
 export type RideTraceKey =
@@ -152,7 +152,7 @@ export function parseCyclingStreams(value: string | null): CyclingStreams {
   }
 }
 
-function booleans(stream: ProviderStream | undefined): (boolean | null)[] {
+function booleans(stream: TelemetryStream | undefined): (boolean | null)[] {
   return (stream?.data ?? []).map((value) =>
     typeof value === "boolean" ? value : null
   );
@@ -406,7 +406,7 @@ export function distanceSplits(
   return splits;
 }
 
-function numeric(stream: ProviderStream | undefined): (number | null)[] {
+function numeric(stream: TelemetryStream | undefined): (number | null)[] {
   return (stream?.data ?? []).map((value) =>
     typeof value === "number" && Number.isFinite(value) ? value : null
   );

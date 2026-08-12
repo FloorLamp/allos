@@ -15,7 +15,7 @@ import type { SyncRowLink } from "@/lib/queries";
 // catch-up. Rendered ONLY for an event that actually RECORDED provenance (#1771):
 // the caller resolves that with one indexed existence check (eventsWithProvenance)
 // and omits the expander entirely otherwise, so there is no apologetic empty state
-// left to reach. That covers both a legitimately provenance-less provider — Weather
+// left to reach. That covers both a legitimately provenance-less source — Weather
 // writes cells of a GLOBAL location-keyed forecast cache, which name no user record
 // (#1212's scoping decision) — and genuine pre-#1333 legacy events. A chunked import
 // that failed after earlier chunks committed still drills in: those chunks recorded

@@ -1,6 +1,6 @@
 // THE state model for "what's the state of this integration" (#1772).
 //
-// One provider used to be described by four surfaces in three visual languages: the
+// One source used to be described by four surfaces in three visual languages: the
 // Integrations grid card, the setup page's status card (its own badge, a raw SQLite
 // UTC timestamp, and the `last_sync_summary` JSON echoed as `key: value` badges — a
 // THIRD accounting alongside formatSplitLabel and the legacy `written` fallback),
@@ -51,13 +51,13 @@ export interface SyncEventFacts {
 // the person reading it (#1772). Same computation, honest words.
 export type SyncVocabulary = "records" | "forecast";
 
-// Derived from the provider KIND, never from a provider id: `public` is the keyless
-// shared-cache kind, and any future provider of that kind gets the right dialect for
+// Derived from the source KIND, never from a source id: `public` is the keyless
+// shared-cache kind, and any future source of that kind gets the right dialect for
 // free.
 //
 // TYPED `IntegrationKind`, not `string` (#2301). The old signature is why `archive`
 // and `external-attended` fell into the polled dialect silently — the comment promised
-// that "a future provider of a known kind gets the right word for free", which was
+// that "a future source of a known kind gets the right word for free", which was
 // true only for the kinds the function happened to name, because a `string` parameter
 // has no exhaustiveness to fail. The two attended kinds resolve to `records`, which is
 // the value they already got: only the TYPING changes here. It is the guard, not a
@@ -76,10 +76,10 @@ export function syncVocabularyForKind(kind: IntegrationKind): SyncVocabulary {
   }
 }
 
-// What ONE RUN of this provider is called (#1991). The day-grouped history counts
+// What ONE RUN of this source is called (#1991). The day-grouped history counts
 // runs — "26 pushes today" — and a phone exporter pushing to us is not "syncing", nor
-// is a keyless forecast fetch. Derived from the provider KIND for the same reason the
-// vocabulary is: a future provider of a known kind gets the right word for free.
+// is a keyless forecast fetch. Derived from the source KIND for the same reason the
+// vocabulary is: a future source of a known kind gets the right word for free.
 //
 // `import` (archive) and `upload` (external-attended) joined in #2301 — the two
 // attended kinds had been silently taking the polled word.
@@ -117,15 +117,15 @@ export type StatusTone = "good" | "caution" | "bad" | "neutral";
 // live connection, and the model applied them to sources allos does not drive: a
 // ten-day-old Takeout file read "Connected", green; an outbound calendar feed read
 // "Connected" plus a permanent "No syncs yet"; a hand-run portal tool read
-// "Intermittent", whose own contract ("a successful run landed inside the provider's
+// "Intermittent", whose own contract ("a successful run landed inside the source's
 // silence tolerance") is vacuous when the tolerance is null. The green tone was the
 // sharpest part: `good` is a HEALTH verdict, the one claim allos cannot make about a
 // source it does not drive.
 //
-// So the union grew two families and `providerStanding` gained a DELIVERY, which it
+// So the union grew two families and `sourceStanding` gained a DELIVERY, which it
 // dispatches on. The producer is where illegal combinations become unrepresentable:
 // each private derivation returns its own subtype, so no future code path can hand an
-// attended provider `failing`. The consumers stay ONE function each — `standingBadge`,
+// attended source `failing`. The consumers stay ONE function each — `standingBadge`,
 // `standingHeadline`, `standingEscalates`, `needsAttention` — switching over the whole
 // union with no `default`, which is what makes growing the union a compile error at
 // every surface rather than a silent fall-through.
@@ -138,18 +138,18 @@ export type ScheduledStanding =
   // landed, more is upstream.
   | "partial"
   // Connected and FLAPPING (#1880): failures in the recent run window, but a
-  // successful run landed inside the provider's silence tolerance. Data IS still
-  // arriving (or nothing has ever arrived, which the provider's own page already
+  // successful run landed inside the source's silence tolerance. Data IS still
+  // arriving (or nothing has ever arrived, which the source's own page already
   // shows), so this is a calm amber fact — it NEVER enters Needs attention, the
   // review badge, or the digest's 🔌 lines. Crying wolf hourly during upstream
   // instability trains the user to ignore the one surface that must be trusted.
   //
-  // Since #2263 a provider that fails EVERY run stays here until its tolerance
+  // Since #2263 a source that fails EVERY run stays here until its tolerance
   // expires, rather than escalating after three. That is the point: it cannot be
   // called broken while its data is still landing, and if the data genuinely stops,
   // the tolerance is what catches it.
   | "intermittent"
-  // Connected and genuinely broken: NO successful run inside the provider's silence
+  // Connected and genuinely broken: NO successful run inside the source's silence
   // tolerance (#2263) — however that silence was recorded. The ONLY standing that
   // escalates besides needs-reauth.
   | "failing"
@@ -193,14 +193,14 @@ export type AttendedStanding =
 // nothing about runs at all.
 export type OutboundStanding = "feed-enabled" | "feed-off";
 
-// What kind of shape a provider is in, as one closed vocabulary every surface reads.
-export type ProviderStanding =
+// What kind of shape a source is in, as one closed vocabulary every surface reads.
+export type SourceStanding =
   ScheduledStanding | AttendedStanding | OutboundStanding;
 
 // How many recent runs the standing derivation looks at. Deliberately the same
 // depth every surface resolves (getIntegrationState reads this window regardless
 // of how much display history the caller asked for), so the grid card, the source
-// page, and Review can never disagree about whether a provider is flapping.
+// page, and Review can never disagree about whether a source is flapping.
 export const STANDING_RUN_WINDOW = 10;
 
 // Leading run of failures in a newest-first event list. It no longer ESCALATES
@@ -220,13 +220,13 @@ export function consecutiveLeadingFailures(
 }
 
 // The facts the standing is derived from. `recentRuns` is the newest-first standing
-// window (latest included), which decides only whether the provider is FLAPPING; the
+// window (latest included), which decides only whether the source is FLAPPING; the
 // three freshness fields compose the ONE escalation rule (isSyncStale — the same
 // derivation the silent-stop signal uses, not a duplicate of it).
-export interface ProviderStandingFacts {
+export interface SourceStandingFacts {
   // WHO MOVES THE DATA (#2301) — the axis that decides WHICH question is being asked,
   // and therefore which family of answers is even representable. Derived from the
-  // provider's kind (KIND_DELIVERY), never declared per provider.
+  // source's kind (KIND_DELIVERY), never declared per source.
   delivery: IntegrationDelivery;
   connected: boolean;
   needsReauth: boolean;
@@ -246,9 +246,9 @@ export interface ProviderStandingFacts {
 // (standingEscalates), both scheduled-only; `intermittent` stays a calm rendered fact.
 //
 // THE PRODUCER IS WHERE ILLEGAL COMBINATIONS BECOME UNREPRESENTABLE: each branch
-// returns its own subtype, so an attended provider cannot be handed a connection
+// returns its own subtype, so an attended source cannot be handed a connection
 // verdict by this or any future code path.
-export function providerStanding(s: ProviderStandingFacts): ProviderStanding {
+export function sourceStanding(s: SourceStandingFacts): SourceStanding {
   switch (s.delivery) {
     case "scheduled":
       return scheduledStanding(s);
@@ -262,9 +262,9 @@ export function providerStanding(s: ProviderStandingFacts): ProviderStanding {
 // A source allos does not drive, read by its LAST ATTEMPT. There is no run window to
 // consult and no flap to detect: "3 of the last 10 runs failed" describes a connection
 // misbehaving on its own, and nothing here happens on its own. The freshness fields
-// are ignored on purpose — an attended provider declares `silenceToleranceMinutes:
+// are ignored on purpose — an attended source declares `silenceToleranceMinutes:
 // null` because allos may never call it late.
-function attendedStanding(s: ProviderStandingFacts): AttendedStanding {
+function attendedStanding(s: SourceStandingFacts): AttendedStanding {
   if (s.latest) return s.latest.ok ? "imported" : "attempt-failed";
   // No attempt has ever been recorded, so the only question left is whether this was
   // ever set up. `needsReauth` is deliberately not consulted (see AttendedStanding).
@@ -272,27 +272,27 @@ function attendedStanding(s: ProviderStandingFacts): AttendedStanding {
 }
 
 // Allos publishes; nothing arrives. The only fact is whether the feed is live.
-function outboundStanding(s: ProviderStandingFacts): OutboundStanding {
+function outboundStanding(s: SourceStandingFacts): OutboundStanding {
   return s.connected ? "feed-enabled" : "feed-off";
 }
 
 // The original seven-state derivation, MOVED HERE VERBATIM: the #2263 silence rule,
-// `intermittent`, and the flap window are untouched for the providers they were
+// `intermittent`, and the flap window are untouched for the sources they were
 // written for. This refactor must not move a single scheduled verdict.
-function scheduledStanding(s: ProviderStandingFacts): ScheduledStanding {
+function scheduledStanding(s: SourceStandingFacts): ScheduledStanding {
   if (s.needsReauth) return "needs-reauth";
   if (!s.connected) return "not-connected";
   if (!s.latest) return "never-synced";
   const runs =
     s.recentRuns && s.recentRuns.length > 0 ? s.recentRuns : [s.latest];
-  // THE escalation rule, COMPOSED (not duplicated): a connected provider with no
+  // THE escalation rule, COMPOSED (not duplicated): a connected source with no
   // successful run inside its silence tolerance is broken, whether that silence was
   // recorded as failures, recorded as nothing, or a mix. Nothing else escalates —
   // counting consecutive failed RUNS measured the noise, not the signal, and for an
-  // hourly provider it sat below that provider's own operating variance.
+  // hourly source it sat below that source's own operating variance.
   //
   // `alreadyFailing` is false on purpose — this IS the failing derivation, so there
-  // is no other signal to defer to here (getImportIssues still reports each provider
+  // is no other signal to defer to here (getImportIssues still reports each source
   // once).
   const silent =
     s.lastSuccessAt !== undefined &&
@@ -300,7 +300,7 @@ function scheduledStanding(s: ProviderStandingFacts): ScheduledStanding {
     !!s.now &&
     isSyncStale(
       {
-        provider: "",
+        sourceId: "",
         lastSuccessAt: s.lastSuccessAt ?? null,
         toleranceMinutes: s.toleranceMinutes ?? null,
         alreadyFailing: false,
@@ -313,7 +313,7 @@ function scheduledStanding(s: ProviderStandingFacts): ScheduledStanding {
   return "healthy";
 }
 
-export interface ProviderBadge {
+export interface SourceBadge {
   label: string;
   tone: StatusTone;
 }
@@ -343,9 +343,9 @@ function attendedWord(noun: SyncRunNoun | null): {
 // `noun` selects the attended dialect (import / upload); the scheduled and outbound
 // labels ignore it.
 export function standingBadge(
-  standing: ProviderStanding,
+  standing: SourceStanding,
   noun: SyncRunNoun | null = null
-): ProviderBadge {
+): SourceBadge {
   const word = attendedWord(noun);
   switch (standing) {
     // ── scheduled: the connection verdicts, unchanged ──
@@ -386,7 +386,7 @@ export function standingBadge(
 // Which standings ESCALATE (#1880): Review's "Needs attention" card, the
 // profile-menu/Data badge, the dashboard hero item, and the digest's 🔌 lines all
 // gate on this. Everything else — including `intermittent` — is a rendered fact on
-// calm surfaces only; the reach of a flapping provider may only ever narrow.
+// calm surfaces only; the reach of a flapping source may only ever narrow.
 //
 // EXACTLY the two scheduled states, still — which since #2301 means NO attended or
 // outbound state can ever escalate, and that is the property that makes the split
@@ -394,14 +394,14 @@ export function standingBadge(
 // attended source is *still* broken: only the user knows whether they will run the
 // tool again, and a morning digest line about a portal tool last touched on someone's
 // laptop is the crying-wolf failure #1880 exists to prevent.
-export function standingEscalates(standing: ProviderStanding): boolean {
+export function standingEscalates(standing: SourceStanding): boolean {
   return standing === "failing" || standing === "needs-reauth";
 }
 
-// Does this provider render EXPANDED with its reason and its action, or collapse to
-// a single line? Review is an inbox (#1772): a provider is expanded because
+// Does this source render EXPANDED with its reason and its action, or collapse to
+// a single line? Review is an inbox (#1772): a source is expanded because
 // something is wrong or unfinished, not because it exists.
-// `never-synced` is deliberately NOT attention: a just-enabled provider waiting for
+// `never-synced` is deliberately NOT attention: a just-enabled source waiting for
 // the hourly tick is working as designed, and the staleness detector (#1685) is what
 // escalates one that never starts. `intermittent` is deliberately NOT attention
 // either (#1880): it collapses to a calm amber one-liner stating the pattern.
@@ -410,7 +410,7 @@ export function standingEscalates(standing: ProviderStanding): boolean {
 // Review, no badge, no digest 🔌 line. A reach reduction plus one calm rendered
 // surface, which the contact-consent rule permits. `not-set-up` and `feed-off` are
 // deliberately NOT attention — an integration nobody set up is not an unfinished task.
-export function needsAttention(standing: ProviderStanding): boolean {
+export function needsAttention(standing: SourceStanding): boolean {
   return (
     standingEscalates(standing) ||
     standing === "partial" ||
@@ -419,12 +419,12 @@ export function needsAttention(standing: ProviderStanding): boolean {
   );
 }
 
-// Has this provider been SET UP at all? Asked by the Import grid, which shows a
+// Has this source been SET UP at all? Asked by the Import grid, which shows a
 // compact STATUS card for anything set up and the original pitch card for anything
 // that is not — its owner either bought it or unbought it. ONE decision rather than a
 // member list per surface: `not-connected` is the scheduled "set up once, later
 // removed" (#294), `not-set-up` is its attended twin, `feed-off` its outbound one.
-export function standingUnconfigured(standing: ProviderStanding): boolean {
+export function standingUnconfigured(standing: SourceStanding): boolean {
   return (
     standing === "not-connected" ||
     standing === "not-set-up" ||
@@ -434,7 +434,7 @@ export function standingUnconfigured(standing: ProviderStanding): boolean {
 
 // ---- Flap + escalation copy (#1880) ---------------------------------------
 
-// The honest pattern statement for a flapping provider's one-liner and status
+// The honest pattern statement for a flapping source's one-liner and status
 // header: "3 of the last 10 runs failed".
 export function intermittentRunsLabel(failed: number, total: number): string {
   return `${failed} of the last ${total} ${total === 1 ? "run" : "runs"} failed`;
@@ -483,7 +483,7 @@ export function successCadenceLabel(minutes: number | null): string | null {
   return `succeeding about every ${days} ${days === 1 ? "day" : "days"}`;
 }
 
-// Why a flapping provider loses nothing, in the provider's own vocabulary — the
+// Why a flapping source loses nothing, in the source's own vocabulary — the
 // question a person reading an amber chip actually has.
 export function intermittentReassurance(vocabulary: SyncVocabulary): string {
   return vocabulary === "forecast"
@@ -501,7 +501,7 @@ export const INTERMITTENT_HEADLINE = "Working, with interruptions";
 // its drill-in, or its raw link, all of which live in the history the same page
 // renders underneath. Two copies of one event on one screen was the defect.
 export function standingHeadline(
-  standing: ProviderStanding,
+  standing: SourceStanding,
   noun: SyncRunNoun | null = "sync"
 ): string {
   const word = attendedWord(noun);
@@ -551,7 +551,7 @@ export function periodActivityLabel(
   noun: SyncRunNoun | null = "sync",
   vocabulary: SyncVocabulary = "records"
 ): string | null {
-  // A provider with no run noun records no runs (the outbound `feed`), so there is no
+  // A source with no run noun records no runs (the outbound `feed`), so there is no
   // activity to aggregate — never a count in an invented word.
   if (!noun) return null;
   if (!day || !isToday || day.runs === 0) return null;
@@ -587,7 +587,7 @@ export function pluralRunNoun(noun: SyncRunNoun): string {
 
 // The escalation policy, stated visibly on the source page (#1880 item 1): the one
 // shared rule, so the page can promise what the badge and the digest will do. Null
-// for an EXEMPT SCHEDULED provider — it has no cadence to be late against, so there is
+// for an EXEMPT SCHEDULED source — it has no cadence to be late against, so there is
 // no policy to promise and an invented sentence would be worse than silence.
 //
 // THE ATTENDED INVERSE (#2301). Returning null there was honest silence, but the page
@@ -616,7 +616,7 @@ export function escalationPolicyLabel(
 }
 
 // The consequence of a broken source, in user terms (#1880 item 2): what stops
-// arriving, not which HTTP verb failed. Providers declare their own phrase in the
+// arriving, not which HTTP verb failed. Sources declare their own phrase in the
 // registry (`stoppedConsequence`); this is the fallback for one that doesn't.
 export function failureConsequence(
   name: string,
@@ -627,7 +627,7 @@ export function failureConsequence(
 
 // ---- Outcome ---------------------------------------------------------------
 
-// WHAT CHANGED in a successful run, in the vocabulary its provider speaks.
+// WHAT CHANGED in a successful run, in the vocabulary its source speaks.
 // `formatSplitLabel` (#674) stays THE record-language engine — this does not fork it,
 // it selects the dialect. The raw `last_sync_summary` key:value badges the setup pages
 // echoed (a third accounting, with no formatter, printing internal keys verbatim) are
@@ -637,7 +637,7 @@ export function formatSyncChange(
   vocabulary: SyncVocabulary = "records"
 ): { primary: string; muted: boolean } {
   if (vocabulary === "records") return formatSplitLabel(ev);
-  // Cache dialect. A forecast cell is not a record: it is a figure the provider
+  // Cache dialect. A forecast cell is not a record: it is a figure the source
   // republishes, so the only interesting number is how much of the cached window this
   // run REVISED, and an all-unchanged refetch is the normal, quiet case. Counting
   // revised forecast cells as "16 changed · 365 unchanged" was technically honest and
@@ -685,9 +685,9 @@ export function outcomeTone(ev: SyncEventFacts): StatusTone {
   return eventVerdict(ev).tone;
 }
 
-// The coverage line for a run, in the provider's own vocabulary. Weather's window is
+// The coverage line for a run, in the source's own vocabulary. Weather's window is
 // the forecast reach the run set out to cover (#1771), which is exactly the thing
-// worth naming for a cache; a record provider's window is the data window it pulled.
+// worth naming for a cache; a record source's window is the data window it pulled.
 export function formatCoverage(
   ev: SyncEventFacts,
   vocabulary: SyncVocabulary = "records"

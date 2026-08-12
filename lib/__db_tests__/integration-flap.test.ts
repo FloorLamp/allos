@@ -1,10 +1,10 @@
 // DB INTEGRATION TIER — #1880: flapping is not failing, and (#2263) what separates
 // them is SILENCE, not a failure count. The standing is derived by ONE computation
-// (providerStanding via getIntegrationState / resolveProviderFacts), and the
+// (sourceStanding via getIntegrationState / resolveSourceFacts), and the
 // escalation surfaces — the Review badge (getImportReviewCount), the Needs-attention
 // feed (getImportIssues), and the attention/digest gather (getIntegrationAttention) —
 // all read the same standingEscalates rule. This tier proves the real reads over real
-// rows: a provider whose runs keep failing stays OFF every escalation surface for as
+// rows: a source whose runs keep failing stays OFF every escalation surface for as
 // long as a success keeps landing inside its tolerance, and the moment the successes
 // stop for longer than that, every surface flips at once.
 
@@ -26,12 +26,12 @@ function newProfile(name: string): number {
   );
 }
 
-function connect(profileId: number, provider: string): void {
+function connect(profileId: number, sourceId: string): void {
   db.prepare(
     `INSERT INTO integration_connections (profile_id, provider, status)
      VALUES (?, ?, 'connected')
      ON CONFLICT (profile_id, provider) DO UPDATE SET status = excluded.status`
-  ).run(profileId, provider);
+  ).run(profileId, sourceId);
 }
 
 // A sync event `hoursAgo` hours back from the app's own now. Measured against the
@@ -39,7 +39,7 @@ function connect(profileId: number, provider: string): void {
 // a day-derived fixture would drift with the hour CI happens to run at.
 function syncEvent(
   profileId: number,
-  provider: string,
+  sourceId: string,
   hoursAgo: number,
   ok: number,
   error: string | null = null
@@ -50,7 +50,7 @@ function syncEvent(
        (profile_id, provider, at, ok, inserted, updated, unchanged, error)
      VALUES (?, ?, ?, ?, ?, 0, 0, ?)`
     // The ledger stores UTC with an explicit `Z` since migration 163 (#2205).
-  ).run(profileId, provider, at, ok, ok ? 1 : null, error);
+  ).run(profileId, sourceId, at, ok, ok ? 1 : null, error);
 }
 
 const ERR = "weather fetch failed (503)";
@@ -88,7 +88,7 @@ describe("a flapping provider is intermittent, never escalated (#1880/#2263)", (
   // THE #2263 boundary, and the reason the old one was wrong: a run COUNT is not a
   // measure of whether data is arriving. Six consecutive failures with a success two
   // hours ago are calm; the same six become an outage only once the last success falls
-  // outside the provider's tolerance.
+  // outside the source's tolerance.
   it("keeps a long failure streak calm while a success stays inside the tolerance", () => {
     const p = newProfile("FlapBoundary");
     connect(p, "weather");
@@ -122,7 +122,7 @@ describe("a flapping provider is intermittent, never escalated (#1880/#2263)", (
     const state = getIntegrationState(p, "weather")!;
     expect(state.standing).toBe("failing");
     const issues = getImportIssues(p);
-    expect(issues.map((e) => e.provider)).toEqual(["weather"]);
+    expect(issues.map((e) => e.source_id)).toEqual(["weather"]);
     // The issue row is the REAL latest failure, naming its cause.
     expect(issues[0].ok).toBe(0);
     expect(issues[0].error).toBe(ERR);
@@ -160,9 +160,9 @@ describe("a flapping provider is intermittent, never escalated (#1880/#2263)", (
     const state = getIntegrationState(p, "weather")!;
     expect(state.standing).toBe("failing");
     // Nothing recorded a cause, so the synthetic quiet-stop row states the
-    // observation — one row per provider either way.
+    // observation — one row per source either way.
     const issues = getImportIssues(p);
-    expect(issues.map((e) => e.provider)).toEqual(["weather"]);
+    expect(issues.map((e) => e.source_id)).toEqual(["weather"]);
     expect(issues[0].error).toContain("No data since");
     expect(issues[0].error).toContain("5 days");
   });

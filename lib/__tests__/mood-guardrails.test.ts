@@ -71,6 +71,15 @@ const MOOD_TABLE_ALLOWLIST = new Set([
   // `created_at` and an `updated_at` and what each one means. It reads no mood row,
   // computes nothing about mood, and is not a flag/retest/streak/import engine.
   "lib/time-columns.ts",
+  // The #2123 undo-kind registry and its dataset mapping — REGISTRIES in the same sense
+  // as lib/owned-tables.ts and lib/time-columns.ts above. They declare that `mood_logs`
+  // is an undoable root and which kind a bulk delete of it routes through. Neither reads
+  // a mood row, neither computes anything about mood, and neither is a
+  // flag/retest/streak/import engine. The capture and restore themselves name no table
+  // at all (the executor reads it off the registry), so this is the entire footprint of
+  // making a mis-deleted check-in — its note and factors included — recoverable.
+  "lib/undo-delete.ts",
+  "lib/dataset-undo.ts",
 ]);
 
 describe("mood guardrails (#992) — never flagged, never retested", () => {

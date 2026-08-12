@@ -6,7 +6,7 @@ import type { CalendarFeedDetail } from "@/lib/settings";
 // profile, rendered at the saved detail level. It's a faithful mirror: the rows
 // come from the SAME composition the live feed route uses (see the page), so what's
 // shown here is exactly what leaves the app across every enabled category —
-// including, at "full", the provider/reason PHI. Read-only; no client interactivity.
+// including, at "full", the source/reason PHI. Read-only; no client interactivity.
 const MAX_VISIBLE = 10;
 
 export default function CalendarFeedPreview({
@@ -34,7 +34,7 @@ export default function CalendarFeedPreview({
           ) : (
             <>
               At <strong>minimal</strong> detail each event shows only a neutral
-              label (e.g. “Medical appointment”) — no names, provider, or reason
+              label (e.g. “Medical appointment”) — no names, sourceId, or reason
               leave the app.
             </>
           )}

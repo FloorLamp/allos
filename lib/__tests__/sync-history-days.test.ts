@@ -18,7 +18,7 @@ import {
   syncRangeLabel,
 } from "@/lib/integrations/sync-history-days";
 import { truncatedSyncDetails } from "@/lib/integrations/sync-details";
-import type { SyncEventFacts } from "@/lib/integrations/provider-state";
+import type { SyncEventFacts } from "@/lib/integrations/source-state";
 
 let nextId = 1;
 

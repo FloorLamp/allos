@@ -176,7 +176,7 @@ export default async function CalendarFeedPage() {
             Keep this link private — anyone with it can see this profile&apos;s
             appointment schedule. Regenerate it at any time to revoke the old
             link. By default the feed shows only &ldquo;Medical
-            appointment&rdquo; with no provider or reason.
+            appointment&rdquo; with no sourceId or reason.
           </p>
         </div>
 

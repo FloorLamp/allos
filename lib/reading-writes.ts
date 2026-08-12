@@ -15,8 +15,8 @@
 //     SOURCE-OWNED re-push — never the user's own correction (see `recordReading`);
 //   • the inserted/updated/unchanged split is classified by `classifyUpsert` and bumped
 //     ONLY by `tallyUpsert`;
-//   • deletes of source-owned rows write the #507/#508 re-import tombstone, or go
-//     through `captureDelete`, which writes it and makes the delete undoable.
+//   • deletes go through `captureDelete`, which writes the #507/#508 re-import
+//     tombstone AND makes the delete undoable — one path, not two (#2123).
 //
 // NO SCHEMA CHANGE, and `medical_records` stays the clinical record: writes ROUTE to it,
 // nothing here restructures it. Phase 3 (the physical merge) is a separate, later
@@ -30,7 +30,6 @@ import {
   type UpsertCounts,
   type UpsertDisposition,
 } from "./integrations/sync-log";
-import { writeImportTombstoneForRow } from "./integrations/tombstones";
 import { captureDelete } from "./undo-delete-db";
 import { addCanonicalNames, reconcileFlags } from "./queries";
 import { placeReading, type ReadingTarget } from "./reading-placement";
@@ -654,12 +653,12 @@ export function updateReadingAt(
 }
 
 /**
- * Delete one reading by the row it IS. Where an undoable capture already exists for the
- * store's root (`body_metrics`, `medical_records`) it goes through `captureDelete`,
- * which writes the re-import tombstone and makes the delete restorable from the toast.
- * The stores with no undoable root delete directly, capturing their tombstone pre-image
- * FIRST — the #653 pattern, without which the next rolling-window sync would simply
- * re-insert the row the user just removed.
+ * Delete one reading by the row it IS. EVERY store goes through `captureDelete` (#2123),
+ * which writes the re-import tombstone and makes the delete restorable from the toast:
+ * one control on one row may not offer Undo for a weigh-in and permanent loss for an
+ * HRV sample. `body_metrics` is the one branch that can answer with no token, and not
+ * because of the store — a row there carries up to three measures, so removing one of
+ * several NULLs a column rather than deleting a row, and a column clear is not a capture.
  */
 export function deleteReadingAt(
   profileId: number,
@@ -702,23 +701,23 @@ export function deleteReadingAt(
       return { ok: undoId != null, undoId };
     }
     case "metric_samples": {
-      return writeTx(() => {
-        const row = db
-          .prepare(
-            `SELECT metric, source, origin, start_time FROM metric_samples
-              WHERE id = ? AND profile_id = ? AND metric = ?`
-          )
-          .get(target.id, profileId, target.metric) as
-          Record<string, unknown> | undefined;
-        if (!row) return { ok: false, undoId: null };
-        const info = db
-          .prepare(`DELETE FROM metric_samples WHERE id = ? AND profile_id = ?`)
-          .run(target.id, profileId);
-        // The pre-image was read BEFORE the delete — the row is gone now, and the
-        // tombstone is what stops the next sync from re-inserting it (#508/#653).
-        writeImportTombstoneForRow(profileId, "metric_samples", row);
-        return { ok: info.changes > 0, undoId: null };
-      });
+      // The row has to be this METRIC's before it is captured: captureDelete scopes by
+      // (id, profile_id) and knows nothing about the metric a target names, so without
+      // this probe a target carrying a valid id under the wrong metric would delete the
+      // row anyway — the guard the bare DELETE used to get from its own WHERE clause.
+      const owned = db
+        .prepare(
+          `SELECT 1 FROM metric_samples
+            WHERE id = ? AND profile_id = ? AND metric = ?`
+        )
+        .get(target.id, profileId, target.metric);
+      if (!owned) return { ok: false, undoId: null };
+      // captureDelete owns the tombstone write (metric_samples IS a TOMBSTONE_TABLES
+      // member), so the #508/#653 re-import protection this branch used to write by hand
+      // is preserved rather than duplicated — and unlike the hand-written one it is
+      // REMOVED again when the restore puts the row back.
+      const undoId = captureDelete("metric-sample", profileId, target.id);
+      return { ok: undoId != null, undoId };
     }
   }
 }

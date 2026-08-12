@@ -11,28 +11,28 @@ import { runWeatherSync, type WeatherSyncResult } from "./weather-sync";
 // functions that actually sync are bound here, keyed by the same registry ids.
 //
 // Everything above this file dispatches through it: the one generic "Sync now"
-// action and the hourly notify tick used to name four providers each, in four
+// action and the hourly notify tick used to name four sources each, in four
 // copy-pasted blocks. Adding Garmin is one registry facet plus one entry here.
 
 export interface PullRunnerResult {
-  // The provider's own count keys, for the outcome sentence.
+  // The source's own count keys, for the outcome sentence.
   [key: string]: unknown;
 }
 
 export interface PullRunner {
   id: IntegrationId;
-  // A precondition this provider states better than a generic failure would — the
+  // A precondition this source states better than a generic failure would — the
   // weather pull needs a home location, and "Set your home location first" is a
-  // different message from "Sync failed". Null when the provider is ready.
+  // different message from "Sync failed". Null when the source is ready.
   blockedReason?(profileId: number): string | null;
-  // The idempotent pull itself. Never throws for an ordinary provider/network
+  // The idempotent pull itself. Never throws for an ordinary source/network
   // problem; returns `{ error }` instead.
   run(profileId: number): Promise<PullRunnerResult | { error: string }>;
-  // The done-message for a completed run, in the provider's own vocabulary.
+  // The done-message for a completed run, in the source's own vocabulary.
   describe(result: PullRunnerResult): string;
 }
 
-// Bind one provider's typed run + describe into the erased shape above, so each
+// Bind one source's typed run + describe into the erased shape above, so each
 // entry keeps its own result type at the definition site.
 function runner<T extends object>(
   id: IntegrationId,
@@ -51,7 +51,7 @@ function runner<T extends object>(
   };
 }
 
-// "(more to come next sync)" — the shared suffix for a run the provider cut short.
+// "(more to come next sync)" — the shared suffix for a run the source cut short.
 function moreToCome(truncated: boolean | undefined): string {
   return truncated ? " (more to come next sync)" : "";
 }
@@ -118,7 +118,7 @@ export function getPullRunner(id: string): PullRunner | undefined {
   return RUNNERS.find((r) => r.id === id);
 }
 
-// Every registered pull provider, in registry order — what the hourly tick iterates.
+// Every registered pull source, in registry order — what the hourly tick iterates.
 // Sourced from the registry rather than from RUNNERS so a facet with no runner bound
 // fails loudly at startup instead of silently never syncing.
 export function pullRunners(): PullRunner[] {

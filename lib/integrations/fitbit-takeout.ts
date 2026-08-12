@@ -117,7 +117,7 @@ export const NO_DATA_SENTINEL = "no data";
 // `Unknown Health Connect`, `Life Fitness Health Connect`.
 //
 // Allos ALREADY has those rows, from the push ingest, under `health-connect`. Taking
-// them again under this provider would store the same measurement twice under two
+// them again under this source would store the same measurement twice under two
 // sources — surviving the #14 one-source-per-day pickers on the CHARTS but still
 // wrong in the record, and actively confusing in the source-comparison overlay.
 //
@@ -341,7 +341,7 @@ export interface TakeoutParsed {
   // instead of silently vanishing data (#419).
   skipped: number;
   // Rows dropped specifically because they round-tripped through Health Connect
-  // and Allos already owns them under that provider. Counted SEPARATELY from
+  // and Allos already owns them under that source. Counted SEPARATELY from
   // `skipped` so the sync event can say so — "we ignored N rows you already have"
   // is a very different message from "N rows were malformed".
   roundTripSkipped: number;
@@ -661,7 +661,7 @@ export function parseIntradaySumCsv(
   if (!parsed) return { perDay, skipped, roundTrip };
   for (const row of parsed.rows) {
     // Dropping these is what keeps the sum honest twice over: they are already held
-    // under the health-connect provider, AND the phone counts the same steps the
+    // under the health-connect source, AND the phone counts the same steps the
     // watch does, so summing both would inflate the day (~9 k phone rows against
     // ~11.5 k watch rows on a real archive).
     if (isHealthConnectRoundTrip(dataSource(row))) {
@@ -739,7 +739,7 @@ export function finalizeDailySums(
 // ON THE FEW NIGHTS BOTH SOURCES COVER, the reader AVERAGES them rather than picking
 // one: skin_temp_delta_c is an AVERAGED_METRICS kind, and getMetricDailyTotals takes
 // the mean across sources for those unless the profile has pinned a primary source.
-// (PROVIDER_PREFERENCE's one-source-per-day pick governs ADDITIVE metrics, where
+// (SOURCE_PREFERENCE's one-source-per-day pick governs ADDITIVE metrics, where
 // summing two sources would double-count — a distinction easy to get backwards.)
 // That is the intended semantics for a point metric: two sources measuring the same
 // quantity should agree, and here they nearly do. It does mean the chart can show a
@@ -934,14 +934,14 @@ export function parseSleepJson(text: string, tz: string): TakeoutParsed {
 //
 // One Fitbit exercise log → an activity. Unlike the Health Connect path there is no
 // numeric enum to decode: Takeout writes the human name ("Outdoor Bike", "Swim",
-// "Walk", "Spinning"). Provider aliases are canonicalized below, then the shared
+// "Walk", "Spinning"). Source aliases are canonicalized below, then the shared
 // activity taxonomy assigns cardio/sport/strength/recovery exactly as manual logs do.
 //
 // Distance carries its own UNIT and it is not metric — a real archive stamps
 // `"distance": 0.170877, "distanceUnit": "Mile"`. Storing that number as km would
 // under-report a swim by 60%, so the unit is honoured and an unrecognized one drops
 // the distance (never the session, matching the HC parser's field-level sanitizing).
-// Fitbit's exercise title is provider-owned display text, but components are the
+// Fitbit's exercise title is source-owned display text, but components are the
 // app's canonical grouping identity. Keep the raw title on the parent activity and
 // normalize the known Fitbit labels here, mirroring Strava/Oura's one-component
 // summaries. Unknown labels remain intact rather than being guessed.
@@ -994,7 +994,7 @@ export interface FitbitActivityIdentity {
 
 // Fitbit's broad lifting categories are session labels rather than individual lifts,
 // so they are explicit here. Everything else delegates to the app's one canonical
-// taxonomy; an unrecognized provider label remains intact and conservatively becomes
+// taxonomy; an unrecognized source label remains intact and conservatively becomes
 // a sport rather than being guessed into a health-specific category.
 export function fitbitActivityIdentity(
   activityName: string
@@ -1152,7 +1152,7 @@ export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
       // DERIVED from start + duration, not left null. The archive gives both, and the
       // end clock is what lets the import-review duplicate detector use its
       // high-confidence OVERLAPPING-WINDOW path: a Takeout export re-exports rides
-      // Strava also recorded, so the same session lands twice under two providers and
+      // Strava also recorded, so the same session lands twice under two sources and
       // double-counts in training totals. Without an end there is no window to
       // overlap, and detection falls back to the 10% duration/distance proximity
       // rule — which misses a ride whose distance one side didn't record at all

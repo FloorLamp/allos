@@ -14,7 +14,7 @@ import {
   syncRunNounForKind,
   type StatusTone,
   type SyncVocabulary,
-} from "./provider-state";
+} from "./source-state";
 import { originChoiceLabel, parseSyncEventDetails } from "./sync-details";
 
 // Plain client-safe views for the paged sync ledger. Collapsed ranges carry only

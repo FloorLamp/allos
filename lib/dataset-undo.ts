@@ -81,10 +81,27 @@ export const DATASET_UNDO_KIND = {
   // exactly N per-row deletes and the batch restores from one toast. Mapping them is
   // not optional here — they are deletable datasets AND undoable roots, which is the
   // decision this type forces. (`skin_lesions` is not a deletable dataset, so its kind
-  // needs no entry; encounters and medical_documents are not undoable roots yet.)
+  // needs no entry; medical_documents is not an undoable root yet.)
   allergies: "allergy",
   conditions: "condition",
   immunizations: "immunization",
+  // #1847's fifth clinical kind. Mapping it does more than make the bulk delete
+  // reversible: the visit's inbound `encounter_id` detach moved into captureDelete, so
+  // this is also the first time bulk-deleting a LINKED visit works at all (it used to
+  // throw on the FK — the identical hole the `conditions` mapping closed).
+  encounters: "visit",
+  // #2123: the readings table's other two stores. Both are single profile-owned rows
+  // with no children, so the bulk delete is N per-row deletes restorable from one toast
+  // — the same treatment the row menu now gives them.
+  metric_samples: "metric-sample",
+  mood_logs: "mood-log",
+  // #2124: one symptom-day. Its `photos` child is deleted EXPLICITLY only because SQLite
+  // carries no ON DELETE on that FK — the rows are selected by the ROOT's own id and
+  // remap to it on restore, so the delete still means exactly "this row and what hangs
+  // off it" (see the 1:1 rule in lib/__tests__/dataset-undo.test.ts). As with visits,
+  // mapping it also fixes the bulk path: a plain `DELETE FROM symptom_logs` threw on the
+  // photo FK whenever the day carried one.
+  symptom_logs: "symptom-day",
 } as const satisfies {
   [T in Exclude<DeletableUndoRoot, ExcludedUndoRoot>]: KindsRootedAt<T>;
 };

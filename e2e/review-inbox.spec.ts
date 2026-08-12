@@ -9,9 +9,9 @@ import { followLink, hydratedClick, openAllSyncDays } from "./helpers";
 // 200px below.
 //
 // Since #1772 "Connected sources" is an INBOX rendered through the shared state model
-// (lib/integrations/provider-state): a provider with something unfinished is expanded
+// (lib/integrations/source-state): a source with something unfinished is expanded
 // with the reason and the action, a healthy one collapses to a single line, and the
-// full per-provider history lives on the provider's own page (see the setup-page
+// full per-source history lives on the source's own page (see the setup-page
 // specs below and weather-uv.spec.ts).
 test.describe("Data → Review import inbox", () => {
   test("renders the failing source ONCE, fully, under Needs attention (#1880)", async ({
@@ -19,7 +19,7 @@ test.describe("Data → Review import inbox", () => {
   }) => {
     await page.goto("/data?section=review");
     // Scope to the review panel — the (hidden) Import tab also mentions the
-    // providers, so a page-wide text match would resolve to hidden nodes.
+    // sources, so a page-wide text match would resolve to hidden nodes.
     const review = page.getByTestId("review-inbox");
 
     // The Imports section header (renamed from "Recent imports").
@@ -61,7 +61,7 @@ test.describe("Data → Review import inbox", () => {
       review.getByTestId("connected-sources").getByTestId("source-strava")
     ).toHaveCount(0);
 
-    // "Connected sources": one card per recurring provider, collapsed to latest state.
+    // "Connected sources": one card per recurring source, collapsed to latest state.
     await expect(
       review.getByRole("heading", { name: "Connected sources" })
     ).toBeVisible();
@@ -83,7 +83,7 @@ test.describe("Data → Review import inbox", () => {
     // Admin-only raw payload viewer (#9): the seeded Health Connect sync carries a
     // raw_ref, so the admin (the seed logs in as admin) sees a "View raw"
     // affordance on the source card. Expanding it lazily fetches the admin-gated,
-    // profile-scoped raw route, which returns the captured provider JSON — now
+    // profile-scoped raw route, which returns the captured source JSON — now
     // rendered through the shared RawDataViewer as a collapsible tree (#1318), not
     // a flat <pre>.
     const viewRaw = hcCard.getByText("View raw");
@@ -105,7 +105,7 @@ test.describe("Data → Review import inbox", () => {
     await viewer.getByTestId("raw-expand-all").click();
     await expect(viewer.getByText(/"Steps"/)).toBeVisible();
 
-    // Saving the payload to a file. The captured provider payload is JSON, so the
+    // Saving the payload to a file. The captured source payload is JSON, so the
     // format-aware button offers JSON and names the file after the sync event it came
     // from (the XML counterpart is asserted in import-records-browser.spec.ts).
     const downloadBtn = viewer.getByTestId("raw-download");
@@ -161,7 +161,7 @@ test.describe("Data → Review import inbox", () => {
 
     // Oura was connected and later removed — it stays visible because it still has
     // historical logs, but as a "Not connected" card with a Reconnect link back to
-    // its setup page (instead of a live Sync now button). A provider with neither a
+    // its setup page (instead of a live Sync now button). A source with neither a
     // connection nor any sync history is filtered out entirely.
     const oura = review.getByTestId("source-oura");
     await expect(oura).toBeVisible();
@@ -175,11 +175,11 @@ test.describe("Data → Review import inbox", () => {
     await expect(oura.getByRole("button", { name: "Sync now" })).toHaveCount(0);
   });
 
-  // #1772 moved the per-provider history home to the provider's own page and made it
+  // #1772 moved the per-source history home to the source's own page and made it
   // a real table. These two assert the properties the redesign was FOR: a truncated
   // run still reads as partial rather than a clean success (#1614), and a failure row
   // that is no longer the latest still carries its reason.
-  test("the provider's own page owns the sync-history table (#1772)", async ({
+  test("the source's own page owns the sync-history table (#1772)", async ({
     page,
   }) => {
     await page.goto("/integrations/strava");

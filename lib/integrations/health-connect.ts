@@ -15,7 +15,7 @@ import type {
 // Parser for the native payload sent by the Health Connect Webhook app
 // (https://github.com/mcnaveen/health-connect-webhook): one JSON object with a
 // `timestamp`, `app_version`, and optional snake_case arrays per data type. We map
-// it into provider-agnostic normalized records (see normalize.ts). Parsing is
+// it into source-agnostic normalized records (see normalize.ts). Parsing is
 // tolerant: unknown keys and malformed records are skipped and counted, and field
 // names are matched defensively so a minor app version bump doesn't break ingest.
 

@@ -20,7 +20,7 @@ export interface IntegrationBackfillBatchResult extends IntegrationBackfillProgr
 }
 
 export interface IntegrationBackfillRunner {
-  provider: IntegrationId;
+  sourceId: IntegrationId;
   kind: string;
   count(profileId: number): number;
   run(
@@ -31,7 +31,7 @@ export interface IntegrationBackfillRunner {
 
 const RUNNERS: IntegrationBackfillRunner[] = [
   {
-    provider: "strava",
+    sourceId: "strava",
     kind: "ride-details",
     count: countMissingStravaRideDetails,
     async run(profileId, onProgress) {
@@ -54,23 +54,23 @@ const RUNNERS: IntegrationBackfillRunner[] = [
 ];
 
 for (const runner of RUNNERS) {
-  const declared = getIntegration(runner.provider)?.backfills?.some(
+  const declared = getIntegration(runner.sourceId)?.backfills?.some(
     (backfill) => backfill.id === runner.kind
   );
   if (!declared) {
     throw new Error(
-      `Backfill runner ${runner.provider}/${runner.kind} is not declared in the integration registry`
+      `Backfill runner ${runner.sourceId}/${runner.kind} is not declared in the integration registry`
     );
   }
 }
 
 export function getIntegrationBackfillRunner(
-  provider: string,
+  sourceId: string,
   kind: string
 ): IntegrationBackfillRunner | null {
   return (
     RUNNERS.find(
-      (runner) => runner.provider === provider && runner.kind === kind
+      (runner) => runner.sourceId === sourceId && runner.kind === kind
     ) ?? null
   );
 }

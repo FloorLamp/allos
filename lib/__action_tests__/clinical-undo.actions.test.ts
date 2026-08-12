@@ -4,7 +4,8 @@
 // there was no token, so no toast could offer Undo and Data → Trash had nothing to
 // list. Each of the four now answers `{ undoId, error? }` — the useUndoableDelete
 // shape — and, crucially, REFUSES with a typed error rather than reporting a delete it
-// did not perform (an id that isn't this profile's captures nothing).
+// did not perform (an id that isn't this profile's captures nothing). `deleteEncounter`
+// joined them as the fifth kind.
 //
 // The capture/restore fidelity itself is the DB tier (lib/__db_tests__/clinical-undo).
 
@@ -13,6 +14,7 @@ import { db } from "@/lib/db";
 import { deleteAllergy } from "@/app/(app)/records/problems/allergies/actions";
 import { deleteCondition } from "@/app/(app)/records/problems/conditions/actions";
 import { deleteImmunization } from "@/app/(app)/immunizations/actions";
+import { deleteEncounter } from "@/app/(app)/encounters/actions";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import { seedActor, createProfile, fd } from "./harness";
 
@@ -36,6 +38,13 @@ const newImmunization = (profileId: number, vaccine: string) =>
     `INSERT INTO immunizations (profile_id, date, vaccine) VALUES (?, '2026-02-10', ?)`,
     profileId,
     vaccine
+  );
+
+const newEncounter = (profileId: number, reason: string) =>
+  insert(
+    `INSERT INTO encounters (profile_id, date, reason) VALUES (?, '2026-02-11', ?)`,
+    profileId,
+    reason
   );
 
 const alive = (table: string, id: number) =>
@@ -160,5 +169,51 @@ describe("deleteImmunization (#1847)", () => {
     expect(res.undoId).toBeNull();
     expect(res.error).toBeTruthy();
     expect(alive("immunizations", id)).toBe(true);
+  });
+});
+
+describe("deleteEncounter (#1847)", () => {
+  it("returns an undo token even for a visit other rows still point at", async () => {
+    const { profile } = seedActor();
+    const id = newEncounter(profile.id, "Annual physical");
+    // An appointment kept as this visit: a REFERENCES with no ON DELETE, so before the
+    // detach moved into captureDelete this delete could only work from the one action —
+    // and the bulk path threw on the FK.
+    const apptId = insert(
+      `INSERT INTO appointments (profile_id, date, title, status, encounter_id)
+       VALUES (?, '2026-02-11', 'Annual physical', 'completed', ?)`,
+      profile.id,
+      id
+    );
+
+    const res = await deleteEncounter(fd({ id: String(id) }));
+    expect(res.error).toBeUndefined();
+    expect(typeof res.undoId).toBe("number");
+    expect(alive("encounters", id)).toBe(false);
+    // Detached, not destroyed — and its completion survives.
+    expect(
+      db
+        .prepare(`SELECT status, encounter_id FROM appointments WHERE id = ?`)
+        .get(apptId)
+    ).toEqual({ status: "completed", encounter_id: null });
+
+    expect(restoreDeletedRow(profile.id, res.undoId!)).toBe(true);
+    expect(
+      db
+        .prepare(
+          `SELECT reason FROM encounters WHERE profile_id = ? AND date = '2026-02-11'`
+        )
+        .get(profile.id)
+    ).toEqual({ reason: "Annual physical" });
+  });
+
+  it("refuses an id that isn't this profile's", async () => {
+    seedActor();
+    const other = createProfile("OTHER-ENCOUNTER");
+    const id = newEncounter(other.id, "Urgent care");
+    const res = await deleteEncounter(fd({ id: String(id) }));
+    expect(res.undoId).toBeNull();
+    expect(res.error).toBeTruthy();
+    expect(alive("encounters", id)).toBe(true);
   });
 });

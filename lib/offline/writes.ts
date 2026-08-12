@@ -28,6 +28,7 @@ import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
+import { captureDelete } from "@/lib/undo-delete-db";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
 import {
   MOOD_MAX,
@@ -574,11 +575,13 @@ export function clearMoodRating(
   return stmt.run(id, profileId).changes > 0;
 }
 
-export function deleteMoodLog(profileId: number, id: number): boolean {
-  const info = db
-    .prepare(`DELETE FROM mood_logs WHERE id = ? AND profile_id = ?`)
-    .run(id, profileId);
-  return info.changes > 0;
+// Delete a whole check-in — the row IS the day, so this takes valence, energy, anxiety,
+// factors and the note together. Returns the UNDO TOKEN (#2123) rather than a boolean:
+// the readings table's ⋯ → Delete offered Undo for a weigh-in and nothing for a mood row
+// out of the same menu, and a mis-tap here cost a note nobody could retype. `null` means
+// nothing was deleted (no such row, or not this profile's) — the boolean's `false`.
+export function deleteMoodLog(profileId: number, id: number): number | null {
+  return captureDelete("mood-log", profileId, id);
 }
 
 // ── workout session (#1596 — #28's "add set", landed) ──────────────────────────

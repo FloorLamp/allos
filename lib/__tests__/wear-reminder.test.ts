@@ -31,7 +31,7 @@ const FLOOR = reminderStream("bedtime-wear")!.stream.reminder.frontierFloorMin;
 const OFF_WRIST: BedtimeWearSignals = {
   enabled: true,
   expectedActive: true,
-  providerHealthy: true,
+  sourceHealthy: true,
   frontierAgeMin: 55,
   syncsSinceAdvance: 2,
   floorMin: FLOOR,
@@ -69,9 +69,10 @@ describe("bedtimeWearVerdict (#2161)", () => {
   it("yields to a failing or stale provider — a reconnect item owns that contact", () => {
     // "Still on the charger?" is false advice while the pipeline is down, and #1685's
     // one-row rule means the two must not both report one outage.
-    expect(
-      bedtimeWearVerdict({ ...OFF_WRIST, providerHealthy: false })
-    ).toEqual({ send: false, skip: "provider-unhealthy" });
+    expect(bedtimeWearVerdict({ ...OFF_WRIST, sourceHealthy: false })).toEqual({
+      send: false,
+      skip: "source-unhealthy",
+    });
   });
 
   it("says nothing when the stream has never delivered anything", () => {
@@ -133,7 +134,7 @@ describe("bedtimeWearVerdict (#2161)", () => {
       bedtimeWearVerdict({
         enabled: false,
         expectedActive: false,
-        providerHealthy: false,
+        sourceHealthy: false,
         frontierAgeMin: null,
         syncsSinceAdvance: null,
         floorMin: FLOOR,
@@ -146,7 +147,7 @@ describe("bedtimeWearVerdict (#2161)", () => {
 //
 // Replayed as SEQUENCES OF PUSHES through `observeFrontier` — the same fold the ingest
 // path applies — because "did the frontier move" cannot be expressed as a reading. Both
-// nights run the same pipeline, at the same lag, with the provider healthy throughout;
+// nights run the same pipeline, at the same lag, with the source healthy throughout;
 // the ONLY difference is whether the watch kept producing. The old predicate saw
 // 40–61 minutes of "silence" in both.
 

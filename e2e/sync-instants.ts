@@ -5,7 +5,7 @@ import { utcInstant } from "../lib/date";
  * WRITES those rows (e2e/seed/*, run standalone under tsx) and the specs that read
  * them back (which compare on the exact string).
  *
- * Sync freshness is minute-grain SILENCE since #2263 — a connected provider whose last
+ * Sync freshness is minute-grain SILENCE since #2263 — a connected source whose last
  * success is older than its declared tolerance reads "Sync failing" — so a fixture
  * stamped at a fixed time of day is healthy or broken depending on the hour CI happened
  * to start. Every seeded run is therefore placed relative to the run's frozen clock.
