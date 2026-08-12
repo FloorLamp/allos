@@ -61,6 +61,63 @@ prose still has to be judged.
 **A routine that only caught the first group would have caught none of the six
 defects found by hand that day.** Do not read a clean report as a clean tracker.
 
+### Measured against a human pass: zero of seven
+
+That was the prediction. It was then measured. On 2026-08-12 a read-only triage
+agent audited ~40 open non-parked issues against `main` by reading code, and
+found seven that were not clean:
+
+| #    | Verdict       | What was actually wrong                                                           |
+| ---- | ------------- | --------------------------------------------------------------------------------- |
+| 2487 | obsolete      | shipped by #2537; `registry.ts` has no `provider` identifier left                 |
+| 2110 | premise stale | the cost comment it complains about was already corrected; fan-out bounded at 12  |
+| 2149 | premise stale | items 1–3 shipped; only item 5 open                                               |
+| 2205 | premise stale | phases 1 and 3 shipped; only the phase-2 rename waves left                        |
+| 1847 | premise stale | #2215 made five of six kinds undoable; only documents remain                      |
+| 1677 | premise stale | all six rankers exist and are tested; 11 call sites still use the unranked getter |
+| 2556 | fix wrong     | the "missing" write paths all exist; this is affordance wiring, not a second core |
+
+**This script would have flagged nothing on any of the seven.**
+
+The reason is sharper than "behavioural claims need reading", and it is the
+single most useful sentence in this document. Six of the seven fail in the
+INVERSE DIRECTION to everything here. Every detector in this module asks _does
+the thing this issue cites still exist?_ These issues are wrong because
+**something the issue says does not exist now does**. A dead-path check cannot
+see a path that is alive. A moved-line check cannot see a module that was born.
+The whole apparatus is pointed one way down a road that has traffic in both.
+
+### The identified next class: inverse existence
+
+Naming it matters, because "needs judgment" reads as unbounded and this part is
+not. An inverse-existence detector is conceivable and bounded: parse the claims
+an issue makes about ABSENCE — "there is no X anywhere", "X is not modelled at
+all", "to build", "X does not exist yet", an unticked box whose text names a
+symbol — and test each against `main` the same way a citation is tested. It
+would have caught #1677 and #2556, the two most expensive on the list above.
+
+It is deliberately not built here, and it is not free: an absence claim in a
+feature issue is usually the correct description of work not yet done, which is
+the same tiering problem `symbolConfidence` already handles badly enough to
+warrant caution. But it is the next thing to build, and it is a bounded piece of
+work rather than "add judgment".
+
+### The two passes are complementary, not redundant
+
+The overlap runs near zero in both directions. The human sweep verified premises
+issue by issue and never systematically checked a citation; this script found
+14 moved `path:line` citations of 46 testable, 9 rooted dead paths, and 17 docs
+citing modules that no longer exist — none of which the sweep attempted.
+
+That is a better result for this routine than overlap would have been. The
+script does not approximate the judgment pass and is not trying to. It clears
+the mechanical layer so the judgment pass starts from citations known to
+resolve.
+
+The cost ratio is the argument for running both, in that order: the human sweep
+took roughly 19 minutes of agent time for 39 issues; this script takes seconds.
+Cheap mechanical pass first, judgment pass on what survives it.
+
 ## Signal quality
 
 Three decisions do most of the work of keeping the report readable, each of
@@ -128,14 +185,26 @@ guardrails and is therefore the finding most likely to be applied unexamined.
 Noise is the other: an issue flagged for a symbol that was never meant to exist
 yet trains the reader to skim, which costs the real findings too.
 
-**Deceptive success: an empty report.** A healthy tracker and a script that has
-silently stopped resolving anything produce the same clean summary, and the
-clean one is the one nobody investigates. Nothing in the findings can
-distinguish them, so the report leads with DENOMINATORS — citations parsed,
-paths resolved, anchors testable, references followed, docs examined. Zero
-findings across 224 citations is a healthy tracker. Zero findings across zero
-citations is a broken run. A sharp drop in the examined counts between runs is
-itself the finding.
+**Deceptive success, first shape: an empty report.** A healthy tracker and a
+script that has silently stopped resolving anything produce the same clean
+summary, and the clean one is the one nobody investigates. Nothing in the
+findings can distinguish them, so the report leads with DENOMINATORS — citations
+parsed, paths resolved, anchors testable, references followed, docs examined.
+Zero findings across 224 citations is a healthy tracker. Zero findings across
+zero citations is a broken run. A sharp drop in the examined counts between runs
+is itself the finding.
+
+**Deceptive success, second shape: an authoring habit lapsing.** This is a
+DEPENDENCY, not an observation, and it is the more insidious of the two because
+the denominators do not catch it. The line-citation check works only because
+this tracker's authors name what is on the line, in backticks, in the same
+sentence — a bare line number is unfalsifiable, and a length check finds nothing
+(zero of 72 resolvable citations pointed past EOF). If that habit lapses, the
+class becomes unreachable while `path citations parsed` stays high and
+`line citations` stays high; only `testable against an anchor` sags, and it
+sags into a clean report rather than an error. **Watch the testable-to-cited
+ratio, not just the totals**; today it is 46 of 103. A run where it approaches
+zero is not a tidy tracker, it is a detector that has quietly lost its grip.
 
 ## Scheduling
 
