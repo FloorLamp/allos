@@ -30,8 +30,13 @@ import {
   getSleepDurationTrend,
   getMoodLogs,
   getFoodDailyServingTotalsInRange,
+  getFoodPeriodHabits,
   getNutritionDay,
 } from "../queries";
+import {
+  getCadenceCapWeeks,
+  getCadenceWeekVerdicts,
+} from "../queries/cadence-ledger";
 import {
   NUTRIENT_KEYS,
   nutritionShortfalls,
@@ -391,6 +396,35 @@ export function gatherRecapInput(
     // line does not speak at, which is what keeps its per-day nutrient walk bounded at
     // seven days (RECAP_LINE_MODEL.food states the cost reason beside the meaning one).
     food: speaks("food") ? windowFood(profileId, win.start, win.end) : null,
+    // THE WEEK'S TARGET VERDICTS (#2395), from the cadence ledger's own read of the week
+    // ENDING on this period's last day — the one reader of "how did this target do in
+    // week W", asked with a declared option set rather than forked into a fifth model.
+    //
+    // Only for a CLOSED period: an in-progress week has no verdict, only pace, and pace
+    // is the morning digest's line. `completed` is the recap's existing name for that
+    // distinction, so nothing new decides it here.
+    targetVerdicts:
+      speaks("targets") && completed
+        ? getCadenceWeekVerdicts(profileId, win.end)
+        : [],
+    // THE PERIOD'S FOOD HABITS (#2397): a share of the days food was logged at all, with
+    // the curated nutrient rationale. One bounded rollup read over the period, skipped
+    // at every scale the line does not speak at.
+    foodHabits: speaks("food-habits")
+      ? getFoodPeriodHabits(profileId, win.start, win.end)
+      : [],
+    // HOW EACH DECLARED CAP FARED over the period's whole weeks (#2397). `weeks` counts
+    // only the complete 7-day windows the period holds, ending on its last day: a month
+    // is not a whole number of weeks, and claiming "4 weeks" over 31 days would be the
+    // arithmetic saying something the calendar does not.
+    capWeeks: speaks("caps")
+      ? getCadenceCapWeeks(profileId, {
+          asOf: win.end,
+          weeks: Math.floor(
+            ((daysBetweenDateStr(win.start, win.end) ?? 0) + 1) / 7
+          ),
+        })
+      : [],
     // The window's per-night MAIN sleep minutes and the previous window's (#2396) — the
     // duration half of the sleep story the SRI line never told. Naps are already dropped
     // by the shared main-session classifier behind getSleepDurationTrend, so a long

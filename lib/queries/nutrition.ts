@@ -42,13 +42,19 @@ import {
 import { foodSlotAnchors, FOOD_SLOTS, type FoodSlot } from "../food-slot";
 import {
   FOOD_REGULARITY_SPAN_DAYS,
+  foodPeriodRegularity,
   foodRegularity,
   foodRegularityWindowStart,
   habitualFoodGroups,
   usualFoodOffer,
+  type FoodDayEvent,
   type FoodRegularity,
   type FoodRegularityEvent,
 } from "../food-regularity";
+import {
+  foodHabitObservations,
+  type FoodHabitObservation,
+} from "../food-habit-observation";
 import { cadenceDirection } from "../cadence";
 import { ALCOHOL_FOOD_GROUP } from "../substance-use";
 import { FOOD_CHECK_LOOKBACK_MIN } from "../food-timing-check";
@@ -739,6 +745,38 @@ export function getHabitualFoodGroups(
       habitualFoodGroups(measure[window], { excluded }).map((g) => g.groupKey),
     ])
   ) as Record<FoodSlot, string[]>;
+}
+
+// The PERIOD's stateable food habits (#2397) — the same measure as `getFoodRegularity`
+// asked of a whole day over a whole period, and the same exclusion applied to it.
+//
+// ONE READ, day-grained: the daily rollup the recap's food line already loads for this
+// window, projected to (group, day) pairs. The window measure's per-event slot
+// derivation is deliberately NOT re-run here — a period habit is a DIET ("fatty fish
+// about twice a week"), not a rhythm ("fermented, most mornings"), so which meal a
+// group landed in is not part of the question and the cheaper day-grain read is the
+// honest one at ninety days.
+//
+// `__protein__` and any retired slug drop out: an observation names a catalog group to
+// the user, and a reserved key names nothing. Cap-direction groups drop out through the
+// SAME `getCapDirectionFoodGroups` the window measure uses — "you consistently consume
+// alcohol" is the sentence #2380 already refused in a shorter window, and a longer one
+// does not make it sayable (#998/#2397).
+//
+// Profile-scoped via the food_log filter inside the rollup read.
+export function getFoodPeriodHabits(
+  profileId: number,
+  from: string,
+  to: string
+): FoodHabitObservation[] {
+  const events: FoodDayEvent[] = [];
+  for (const row of getFoodDailyServingTotalsInRange(profileId, from, to)) {
+    if (!foodGroupBySlug(row.group_key)) continue;
+    events.push({ groupKey: row.group_key, date: row.date });
+  }
+  return foodHabitObservations(foodPeriodRegularity(events, { from, to }), {
+    excluded: getCapDirectionFoodGroups(profileId),
+  });
 }
 
 // WHAT A "log my usual" TAP WOULD WRITE right now, for one window on the profile's
