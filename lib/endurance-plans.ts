@@ -88,8 +88,10 @@ export function getEndurancePlan(
   return r ? rowToPlan(r) : undefined;
 }
 
-// Validated create/update input. The action parses raw form values; this shape is the
-// already-typed values (distance km canonical, time seconds).
+// Validated input for a CREATE. The action parses raw form values; this shape is the
+// already-typed values (distance km canonical, time seconds). On this shape an omitted
+// optional field means EMPTY — a new row states everything about itself.
+// `EndurancePlanPatch` below is the edit shape, where omitted means unchanged.
 export interface EndurancePlanInput {
   eventName?: string | null;
   discipline: EndurancePlanDiscipline;
@@ -98,6 +100,20 @@ export interface EndurancePlanInput {
   targetTimeSec?: number | null;
   notes?: string | null;
 }
+
+// The EDIT shape (#2573), the same two-types split #2359/#2571 established on the injury
+// core. An absent key means UNCHANGED; a present key is written, including a present
+// `null`, which clears. That is the whole difference from `EndurancePlanInput`, where
+// absent means empty.
+//
+// Ordinary edit forms are last-write-wins, and this still is — for the fields the caller
+// actually names. What it is no longer is whole-ROW. The injury form bought that property
+// by round-tripping the values it never edits as hidden inputs; the plan bar never did,
+// so `notes` — a column this module reads back and the plan card RENDERS — was written
+// null by every edit. Nothing has failed yet only because nothing has ever written a
+// non-null `notes`: the create action reads the same missing field. One importer, one
+// notes control or one second write path away from silent data loss.
+export type EndurancePlanPatch = Partial<EndurancePlanInput>;
 
 // A typed outcome so an action answers from what happened (never unconditionally confirm).
 // `duplicate` ⇒ an active plan already exists for the discipline (one-active-per-discipline).
@@ -181,22 +197,44 @@ export function createEndurancePlanCore(
   });
 }
 
-// Edit an existing plan in place (last-write-wins ordinary fields, #467). If the edit
-// changes discipline into one that already has another active plan, it's refused.
+// Merge a patch over the plan as it stands (#2573). `undefined` — the key absent from the
+// patch — takes the stored value; anything else, `null` included, is the caller stating a
+// new one. Done BEFORE `sanitize` on purpose, so the merged whole still passes every
+// cross-field rule the create path enforces (a real event date, a positive target
+// distance) rather than each field being validated against a row it no longer belongs to.
+function mergePatch(
+  existing: EndurancePlan,
+  patch: EndurancePlanPatch
+): EndurancePlanInput {
+  const take = <T>(v: T | undefined, stored: T): T =>
+    v === undefined ? stored : v;
+  return {
+    eventName: take(patch.eventName, existing.eventName),
+    discipline: take(patch.discipline, existing.discipline),
+    eventDate: take(patch.eventDate, existing.eventDate),
+    targetDistanceKm: take(patch.targetDistanceKm, existing.targetDistanceKm),
+    targetTimeSec: take(patch.targetTimeSec, existing.targetTimeSec),
+    notes: take(patch.notes, existing.notes),
+  };
+}
+
+// Edit an existing plan (last-write-wins for the fields the caller names, #467). PARTIAL
+// since #2573: a field absent from the patch is left exactly as stored, so a form is only
+// ever responsible for what it edits. If the edit changes discipline into one that already
+// has another active plan, it's refused. Profile-scoped; a no-such-row is `invalid`.
 export function updateEndurancePlanCore(
   profileId: number,
   id: number,
-  input: EndurancePlanInput
+  patch: EndurancePlanPatch
 ): EndurancePlanWriteOutcome {
-  const s = sanitize(input);
-  if (!s) return { kind: "invalid" };
   return writeTx(() => {
-    const existing = db
-      .prepare(
-        "SELECT status FROM endurance_plans WHERE id = ? AND profile_id = ?"
-      )
-      .get(id, profileId) as { status: EndurancePlanStatus } | undefined;
+    // Read the whole row, not just `status`: it is both the merge base and the existence
+    // check, and one read inside the transaction is what makes "unchanged" mean unchanged
+    // rather than "as it looked before we started".
+    const existing = getEndurancePlan(profileId, id);
     if (!existing) return { kind: "invalid" as const };
+    const s = sanitize(mergePatch(existing, patch));
+    if (!s) return { kind: "invalid" as const };
     // Only an active plan can collide on the one-active-per-discipline rule.
     if (
       existing.status === "active" &&
