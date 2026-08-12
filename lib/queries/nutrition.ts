@@ -58,6 +58,13 @@ import {
   profileFoodSlotBoundaries,
 } from "../profile-food-slot";
 import { blendFoodOrder, slotProximityOccurrences } from "../food-rank";
+import {
+  buildMacroFiberSeries,
+  mergeProteinSources,
+  type MacroFiberDay,
+} from "../nutrition-trends";
+import { filterSeriesByRange } from "../trends";
+import type { DateRange } from "../timeline-format";
 import { foodEventWindow, type FoodLedgerEvent } from "../food-slot-count";
 import { hhmmToMinutes } from "../date";
 import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../protein-nudge";
@@ -1016,6 +1023,36 @@ export function getProteinDailyTotals(
         ORDER BY date DESC`
     )
     .all(profileId, since) as { date: string; grams: number }[];
+}
+
+// ---- Trends → Nutrition → Macros & fiber (issues #1166, #2414) ----
+
+// The Macros & fiber chart's per-day series, windowed to the hub's shared range.
+//
+// The gather lives here rather than in the section so the composition is ONE thing the
+// DB tier can assert: protein is the #2414 merge of BOTH its sources (a tracked
+// `protein_g` total overrides, the Food tab's hand-logged `protein_log` grams fill the
+// days it does not cover), carbs/fat/fiber are their tracked daily totals. Windowing is
+// the #2258 §4 precondition of the chart's day-fill; "0000-01-01" is the open lower
+// bound of an all-time range.
+export function getMacroFiberDays(
+  profileId: number,
+  range: DateRange
+): MacroFiberDay[] {
+  return filterSeriesByRange(
+    buildMacroFiberSeries({
+      protein: mergeProteinSources(
+        getMetricDailyTotals(profileId, "protein_g"),
+        getProteinDailyTotals(profileId, range.from ?? "0000-01-01").map(
+          (r) => ({ date: r.date, value: r.grams })
+        )
+      ),
+      carbs: getMetricDailyTotals(profileId, "carbs_g"),
+      fat: getMetricDailyTotals(profileId, "fat_g"),
+      fiber: getMetricDailyTotals(profileId, "fiber_g"),
+    }),
+    range
+  );
 }
 
 // The profile's last-used quick-add amount (the repeated scoop size), or null when they
