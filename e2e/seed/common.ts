@@ -19,6 +19,30 @@ export const ins = db.prepare(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
+// The scrypt hash of the ONE password every e2e fixture login shares, computed at
+// most once per seed process.
+//
+// scrypt is deliberately expensive — that is the whole point of a KDF, and
+// `lib/password.ts` is tuned so a real login costs real work. A fixture whose
+// password is a constant committed in this repo buys nothing with that work, and
+// the e2e seed creates ~180 of them: profiling the template seed put **17.3 s of
+// its ~25 s inside `scryptSync`**, paid again on every shard, every push. Worse,
+// `seedMemberLogin` hashed BEFORE its `INSERT OR IGNORE`, so a login that already
+// existed paid in full for a row that was then discarded.
+//
+// Hashing once means every fixture login shares one salt. That is meaningless for
+// fixtures (they are not credentials, and the stored form is self-describing, so
+// `verifyPassword` reads them exactly as before) — and it is already the
+// established pattern: `sleep-page.spec.ts` copies `password_hash` off a template
+// login rather than re-hashing, for the same reason.
+//
+// This deliberately does NOT touch `lib/password.ts`. Production and bootstrap
+// hashing are unchanged by construction; the memo lives in e2e seed code only.
+let memberHash: string | undefined;
+export function memberPasswordHash(): string {
+  return (memberHash ??= hashPasswordSync(E2E_MEMBER_PASSWORD));
+}
+
 // Create a member login (username + scrypt hash) granted exactly ONE profile at the
 // given access level. INSERT OR IGNORE keeps it idempotent across a reused dev
 // server; the grant is re-asserted either way. Returns the login id.
@@ -29,7 +53,7 @@ export function seedMemberLogin(
 ): number {
   db.prepare(
     "INSERT OR IGNORE INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
-  ).run(username, hashPasswordSync(E2E_MEMBER_PASSWORD));
+  ).run(username, memberPasswordHash());
   const loginId = (
     db.prepare("SELECT id FROM logins WHERE username = ?").get(username) as {
       id: number;
