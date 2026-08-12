@@ -704,6 +704,24 @@ See `docs/internals/e2e-hygiene.md`.
 - An icon-only button carries both `aria-label` (specific accessible name) and
   `title` (short hover tooltip); `lib/__tests__/icon-button-tooltip-scan.test.ts`
   enforces it.
+- A one-line mutually-exclusive selector is `<SegmentedControl>`, in whichever of
+  its **two bindings** fits: `onChange` when the selection is client state
+  (`<button>` + `aria-pressed`), an `href` per option when it lives in the URL
+  (`<Link>` + `aria-current`). One primitive, two bindings, for the same reason
+  `PaginationControls` has them (#2546/#2535) — and the link half exists because
+  its absence was an a11y DEFECT, not untidiness: four hand-rolled URL selectors
+  all marked the selection with `aria-pressed` on a link, which `role="link"` does
+  not support, so no assistive technology announced any selection at all.
+  `lib/__tests__/link-aria-pressed-scan.test.ts` fails that combination outright.
+  A segment is a plain `<Link>`, not `PendingNavLink` — the nav-row rule above is
+  about the sidebar, and a segment has no icon slot to give up to a spinner.
+- The "nothing here yet" panel is `<EmptyState>`, never a hand-rolled dashed box.
+  Its `data-empty-state` marker is load-bearing (#2531/#2399: an absent chart must
+  not reserve the chart's height) and a copy carries no marker. When the copy names
+  a destination, pass `action`/`actions` instead of leaving the reader to navigate
+  by hand. Padding is exactly two values — the default and `compact`.
+  `lib/__tests__/empty-state-panel-scan.test.ts` fails a class carrying both
+  `border-dashed` and `text-center`; a surface it cannot serve declares a reason.
 - Pages that cap width use `<PageContainer>` and its named widths — never a
   hand-written `mx-auto max-w-*` and never a `max-w-*` smuggled through its
   `className`; `lib/__tests__/page-width-scan.test.ts` enforces it and reads

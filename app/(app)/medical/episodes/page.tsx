@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SegmentedControl from "@/components/SegmentedControl";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -83,18 +84,34 @@ export default async function EpisodesIndexPage(props: {
     <PageContainer width="reading">
       <PageHeader title="Illness episodes" subtitle={subtitle} />
 
-      {/* The two-state content toggle (URL-driven; default illness). */}
-      <div
-        className="mb-4 flex flex-wrap gap-2"
-        data-testid="care-trail-kind-toggle"
-      >
-        <KindTab kind="illness" active={kind === "illness"} label="Illness" />
-        <KindTab
-          kind="illness+visits"
-          active={kind === "illness+visits"}
-          label="Illness + visits"
-        />
-      </div>
+      {/* The two-state content toggle (URL-driven; default illness). The shared
+          SegmentedControl in its LINK binding (#2535) — these were loose pills with
+          no track at all, and marked the selection with `aria-pressed` on a <Link>,
+          which a link does not support. */}
+      <SegmentedControl<CareTrailKind>
+        className="mb-4"
+        testId="care-trail-kind-toggle"
+        ariaLabel="Care trail contents"
+        value={kind}
+        options={[
+          {
+            value: "illness",
+            label: "Illness",
+            href: episodesKindHref("illness"),
+            testId: "care-trail-kind-illness",
+            dataAttributes: { "data-active": String(kind === "illness") },
+          },
+          {
+            value: "illness+visits",
+            label: "Illness + visits",
+            href: episodesKindHref("illness+visits"),
+            testId: "care-trail-kind-visits",
+            dataAttributes: {
+              "data-active": String(kind === "illness+visits"),
+            },
+          },
+        ]}
+      />
 
       {swimlane.hasData && (
         <div className="mb-5">
@@ -146,31 +163,5 @@ export default async function EpisodesIndexPage(props: {
         </div>
       )}
     </PageContainer>
-  );
-}
-
-function KindTab({
-  kind,
-  active,
-  label,
-}: {
-  kind: CareTrailKind;
-  active: boolean;
-  label: string;
-}) {
-  return (
-    <Link
-      href={episodesKindHref(kind)}
-      data-testid={`care-trail-kind-${kind === "illness" ? "illness" : "visits"}`}
-      data-active={active}
-      aria-pressed={active}
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-sm transition ${
-        active
-          ? "border-sky-500 bg-sky-50 font-medium text-sky-700 dark:border-sky-400 dark:bg-sky-950 dark:text-sky-300"
-          : "border-black/10 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-      }`}
-    >
-      {label}
-    </Link>
   );
 }

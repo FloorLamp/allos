@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
+import { EmptyState } from "@/components/ui";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 
 type SlotSelection = "all" | TimeBucket;
@@ -197,22 +198,20 @@ export default function SupplementSchedule({
                 .map((bucket) => bucket.content)}
             </div>
           ) : (
-            <div
-              data-testid="supplement-day-empty"
-              className="rounded-xl border border-dashed border-black/10 px-4 py-8 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
-            >
-              Nothing scheduled for {activeDayPhrase}.
-            </div>
+            <EmptyState
+              compact
+              testId="supplement-day-empty"
+              message={`Nothing scheduled for ${activeDayPhrase}.`}
+            />
           )
         ) : selected && selected.count > 0 ? (
           selected.content
         ) : (
-          <div
-            data-testid="supplement-slot-empty"
-            className="rounded-xl border border-dashed border-black/10 px-4 py-8 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
-          >
-            Nothing scheduled for {TIME_BUCKET_LABELS[slot]}.
-          </div>
+          <EmptyState
+            compact
+            testId="supplement-slot-empty"
+            message={`Nothing scheduled for ${TIME_BUCKET_LABELS[slot]}.`}
+          />
         )}
       </div>
 

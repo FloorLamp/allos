@@ -293,6 +293,21 @@ test.describe("Sleep page (#1066)", () => {
       }
       precedingObservationCount = observationCount;
     }
+    // The BUTTON binding of SegmentedControl states its selection with
+    // `aria-pressed` — the correct attribute on a real <button>, and the half of
+    // the contract that was always right (#2535). The LINK binding's counterpart,
+    // `aria-current`, is asserted on the body census's Tiles / All charts in
+    // e2e/trends-body-mobile.spec.ts. One segment selected, the others not.
+    // (Which range is selected depends on how much history this profile has, so
+    // assert the invariant rather than a specific segment.)
+    await expect(
+      main.locator('[data-testid^="sleep-trend-range-"][aria-pressed="true"]')
+    ).toHaveCount(1);
+    await expect(
+      main.locator(
+        'button[data-testid^="sleep-trend-range-"][aria-pressed="true"]'
+      )
+    ).toHaveCount(1);
     // Duration has one canonical chart. The relationship section reuses those
     // values for a correlation readout instead of plotting the same line again.
     await expect(
