@@ -678,7 +678,10 @@ export function restampFoodEventsCore(
     for (const id of burst.ids) {
       const row = byId.get(id);
       if (!row) continue;
-      const instant = resolve({ tapAt: row.recorded_at, statedAt: row.occurred_at });
+      const instant = resolve({
+        tapAt: row.recorded_at,
+        statedAt: row.occurred_at,
+      });
       if (!instant) return { kind: "out-of-range" as const };
       targets.set(id, instant);
     }

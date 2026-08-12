@@ -320,7 +320,12 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
 
     // The tab still says Morning; the user answered "now" (21:30 → Evening).
     const res = await logFoodServing(
-      fd({ group_key: "berries", date, meal_slot: "Morning", occurred_at: "now" })
+      fd({
+        group_key: "berries",
+        date,
+        meal_slot: "Morning",
+        occurred_at: "now",
+      })
     );
     expect(res.ok).toBe(true);
     const [row] = events(profile.id);

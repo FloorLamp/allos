@@ -67,5 +67,8 @@ export function foodSlotForProfileEvent(
   occurredAt?: string | null
 ): FoodSlot {
   if (explicitSlot) return explicitSlot;
-  return foodSlotForProfileInstant(profileId, new Date(occurredAt ?? recordedAt));
+  return foodSlotForProfileInstant(
+    profileId,
+    new Date(occurredAt ?? recordedAt)
+  );
 }

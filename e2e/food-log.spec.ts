@@ -647,7 +647,9 @@ function eatingTimeOf(eventId: string): {
   try {
     db.pragma("busy_timeout = 5000");
     return db
-      .prepare("SELECT occurred_at, time_source FROM food_log_events WHERE id = ?")
+      .prepare(
+        "SELECT occurred_at, time_source FROM food_log_events WHERE id = ?"
+      )
       .get(Number(eventId)) as {
       occurred_at: string | null;
       time_source: string | null;
@@ -687,7 +689,10 @@ test("a serving logged with no stated time records no eating time (#2053)", asyn
   const eventId = await newlyLoggedId(page, before);
   // NULL, not "now": defaulting a web log to the tap instant would reintroduce the
   // guess `occurred_at` exists to end, under a more authoritative name.
-  expect(eatingTimeOf(eventId)).toEqual({ occurred_at: null, time_source: null });
+  expect(eatingTimeOf(eventId)).toEqual({
+    occurred_at: null,
+    time_source: null,
+  });
 
   await removeLoggedServing(page, eventId);
 });
