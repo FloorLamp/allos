@@ -318,6 +318,18 @@ export function moveImportedDocumentRows(
       `UPDATE ${t.table} SET profile_id = ? WHERE ${t.key} = ? AND ${footprintScope(t)}`
     ).run(destProfileId, footprintKeyValue(t, docId, source), srcProfileId);
   }
+  // A folded screening score's per-item answers (#2321) are CHILDREN of a
+  // medical_records row, not a footprint table of their own — the delete path gets
+  // them through ON DELETE CASCADE, but a reassign moves the parent's profile_id and
+  // would strand them under the source profile. Move them with the score they belong
+  // to, matched through the parent that just landed in the destination.
+  db.prepare(
+    `UPDATE instrument_responses SET profile_id = ?
+       WHERE profile_id = ?
+         AND medical_record_id IN (
+           SELECT id FROM medical_records WHERE document_id = ? AND profile_id = ?
+         )`
+  ).run(destProfileId, srcProfileId, docId, destProfileId);
   // Row-ops side-state (#288): the appointment → encounter link must never cross
   // profiles. A reassign can move an encounter (or a linking appointment) but not
   // its counterpart — e.g. a MANUAL appointment stays in the source while its
@@ -865,6 +877,16 @@ function insertImportRows(
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
 
+  // The per-item answers behind a folded screening-instrument score (#2321). Keyed on
+  // the score's row id, so the upsert is what makes a REPROCESS idempotent: the score
+  // row is re-created by the delete-set + INSERT OR IGNORE above, and its answers are
+  // re-written here rather than accumulating.
+  const insInstrumentAnswer = db.prepare(
+    `INSERT INTO instrument_responses (profile_id, medical_record_id, item_index, answer)
+     VALUES (?,?,?,?)
+     ON CONFLICT(medical_record_id, item_index) DO UPDATE SET answer = excluded.answer`
+  );
+
   // Allergies + problem-list conditions. Own tables, same idempotency
   // as the records path: a per-document delete-set clears this document's prior rows
   // (below), then INSERT OR IGNORE dedups within the document via the per-profile
@@ -1162,7 +1184,17 @@ function insertImportRows(
     );
     if (info.changes > 0) {
       recCount++;
-      insertedRecordIds.push(Number(info.lastInsertRowid));
+      const recordId = Number(info.lastInsertRowid);
+      insertedRecordIds.push(recordId);
+      // A folded screening-instrument SCORE (#2321) brings its per-item answers with
+      // it. They go into the SAME `instrument_responses` table the in-app tap-through
+      // writes, so item 9 / item 10 drives the crisis decision for an imported score
+      // exactly as it does for an administered one. The rows are children of the score
+      // (ON DELETE CASCADE), so the document's delete-set clears them with it and
+      // nothing extra joins the import footprint.
+      for (const a of r.instrumentAnswers ?? []) {
+        insInstrumentAnswer.run(profileId, recordId, a.itemIndex, a.answer);
+      }
     }
   }
   for (const a of input.allergies) {

@@ -137,9 +137,15 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // nothing is re-pointed, because a reading that does not state a fasting frame is not
 // ours to re-file under one (#2338). FLAG_LOGIC_VERSION is deliberately NOT bumped:
 // the derivation LOGIC is unchanged (the #2300/#2337/#2335 reasoning).
+// Updated for #2321: EPDS joins the instrument entries beside PHQ-9 and GAD-7. Like
+// them it is a RANGELESS instrument score — no ref/optimal bounds, so it contributes no
+// flag of its own and the severity band remains the only on-screen signal — but a new
+// entry moves the signature by construction, so the boot reconcile runs once and
+// changes no stored flag. FLAG_LOGIC_VERSION is deliberately NOT bumped: the derivation
+// LOGIC is unchanged (the #2300/#2337/#2335 reasoning).
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "0e39628bffcf242be13412139bcd41b4ecf728638a93359cc61300bdd66b4c8f"; // phi-scan-ok
+  "af7dcb2ae42f865c05666b2ae6524d2cc98ab99d22147786124f2b5b34bfe2ff"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

@@ -22,9 +22,9 @@
 //
 // These instruments are public domain (PHQ-9, GAD-7), so the item wording lives here.
 
-// The two supported instruments. Kept as a runtime const array so the set is enumerable
+// The supported instruments. Kept as a runtime const array so the set is enumerable
 // (dropdowns, the seed, and the exemption guard all read it).
-export const INSTRUMENTS = ["PHQ-9", "GAD-7"] as const;
+export const INSTRUMENTS = ["PHQ-9", "GAD-7", "EPDS"] as const;
 export type Instrument = (typeof INSTRUMENTS)[number];
 
 export function isInstrument(v: unknown): v is Instrument {
@@ -33,14 +33,20 @@ export function isInstrument(v: unknown): v is Instrument {
   );
 }
 
-// The shared 4-point response scale for both instruments ("Over the last 2 weeks, how
-// often have you been bothered by …"). Value 0..3.
-export const INSTRUMENT_OPTIONS = [
+// One answerable option: the score it contributes and the published wording.
+export interface InstrumentOption {
+  value: number;
+  label: string;
+}
+
+// The shared 4-point response scale PHQ-9 and GAD-7 use for every item ("Over the last
+// 2 weeks, how often have you been bothered by …"). Value 0..3.
+export const INSTRUMENT_OPTIONS: readonly InstrumentOption[] = [
   { value: 0, label: "Not at all" },
   { value: 1, label: "Several days" },
   { value: 2, label: "More than half the days" },
   { value: 3, label: "Nearly every day" },
-] as const;
+];
 
 // One ordinal severity band. `level` is a monotonic 0-based rank (higher = worse) so a
 // surface can compare/sort without parsing labels; `label` is the published band name.
@@ -59,8 +65,19 @@ export interface InstrumentDef {
   // Human title + what it screens.
   title: string;
   measures: string;
-  // The public-domain item prompts (in order). Answered on INSTRUMENT_OPTIONS (0..3).
+  // The lead-in the published instrument prints above its items ("Over the last 2
+  // weeks, how often have you been bothered by the following?"). Per instrument
+  // because the recall window and the framing are part of the instrument, not chrome.
+  prompt: string;
+  // The public-domain item prompts (in order).
   items: readonly string[];
+  // Per-item answer options, when the instrument does NOT use one shared scale for
+  // every item. EPDS is the case that forces this: its options are worded per item AND
+  // seven of its ten items are REVERSE-scored, so "which option is worth 3" is an
+  // item-level fact. Omitted → every item answers on INSTRUMENT_OPTIONS. Read through
+  // `instrumentItemOptions`, never directly, so no surface has to know which shape a
+  // given instrument uses.
+  itemOptions?: readonly (readonly InstrumentOption[])[];
   // The maximum possible total (items.length * 3), for the coverage/progress display.
   maxTotal: number;
   // The preventive screening this instrument's score satisfies (lib/datasets screenings).
@@ -79,6 +96,8 @@ const PHQ9: InstrumentDef = {
   canonicalName: "PHQ-9",
   title: "PHQ-9",
   measures: "depression",
+  prompt:
+    "Over the last 2 weeks, how often have you been bothered by the following?",
   items: [
     "Little interest or pleasure in doing things",
     "Feeling down, depressed, or hopeless",
@@ -108,6 +127,8 @@ const GAD7: InstrumentDef = {
   canonicalName: "GAD-7",
   title: "GAD-7",
   measures: "anxiety",
+  prompt:
+    "Over the last 2 weeks, how often have you been bothered by the following?",
   items: [
     "Feeling nervous, anxious, or on edge",
     "Not being able to stop or control worrying",
@@ -128,10 +149,142 @@ const GAD7: InstrumentDef = {
   selfHarmItemIndex: null,
 };
 
+// EPDS (Edinburgh Postnatal Depression Scale). Public domain: Cox JL, Holden JM,
+// Sagovsky R, "Detection of postnatal depression: development of the 10-item Edinburgh
+// Postnatal Depression Scale", Br J Psychiatry 1987;150:782-6. The authors permit
+// reproduction provided the scale is quoted with their names, the title and the
+// source, which is what this comment does.
+//
+// Two things about EPDS that PHQ-9 and GAD-7 do not have, and that this definition must
+// get exactly right (#2321):
+//
+//   • ORIENTATION. Items 1, 2 and 4 are scored 0→3 down the printed list; items 3 and
+//     5-10 are REVERSE-scored, 3→0. An inverted item is a silent, plausible-looking
+//     scoring error — the total still lands in a band, it is just the wrong band — so
+//     every item's orientation is unit-tested individually rather than as a total.
+//   • SELF-HARM. Item 10 ("The thought of harming myself has occurred to me") plays
+//     exactly the role PHQ-9 item 9 plays, so it is DECLARED below. Leaving
+//     selfHarmItemIndex null would still import and still score, and a positive
+//     self-harm answer on a non-severe total would silently fail to escalate.
+//
+// Bands are anchored on the two published cut-offs, ≥10 (possible depression) and ≥13
+// (probable depression, the screen-positive threshold in the original validation), with
+// ≥20 as the severe band perinatal guidance uses. Screening only, never a diagnosis.
+const EPDS: InstrumentDef = {
+  key: "EPDS",
+  canonicalName: "EPDS",
+  title: "EPDS",
+  measures: "perinatal depression",
+  prompt:
+    "In the past 7 days — not just how you feel today — which answer comes closest to how you have felt?",
+  items: [
+    "I have been able to laugh and see the funny side of things",
+    "I have looked forward with enjoyment to things",
+    "I have blamed myself unnecessarily when things went wrong",
+    "I have been anxious or worried for no good reason",
+    "I have felt scared or panicky for no very good reason",
+    "Things have been getting on top of me",
+    "I have been so unhappy that I have had difficulty sleeping",
+    "I have felt sad or miserable",
+    "I have been so unhappy that I have been crying",
+    "The thought of harming myself has occurred to me",
+  ],
+  // Printed order per item, with the published score each option carries. Items 1, 2
+  // and 4 (indexes 0, 1, 3) run 0→3; the other seven run 3→0.
+  itemOptions: [
+    [
+      { value: 0, label: "As much as I always could" },
+      { value: 1, label: "Not quite so much now" },
+      { value: 2, label: "Definitely not so much now" },
+      { value: 3, label: "Not at all" },
+    ],
+    [
+      { value: 0, label: "As much as I ever did" },
+      { value: 1, label: "Rather less than I used to" },
+      { value: 2, label: "Definitely less than I used to" },
+      { value: 3, label: "Hardly at all" },
+    ],
+    [
+      { value: 3, label: "Yes, most of the time" },
+      { value: 2, label: "Yes, some of the time" },
+      { value: 1, label: "Not very often" },
+      { value: 0, label: "No, never" },
+    ],
+    [
+      { value: 0, label: "No, not at all" },
+      { value: 1, label: "Hardly ever" },
+      { value: 2, label: "Yes, sometimes" },
+      { value: 3, label: "Yes, very often" },
+    ],
+    [
+      { value: 3, label: "Yes, quite a lot" },
+      { value: 2, label: "Yes, sometimes" },
+      { value: 1, label: "No, not much" },
+      { value: 0, label: "No, not at all" },
+    ],
+    [
+      {
+        value: 3,
+        label: "Yes, most of the time I haven't been able to cope at all",
+      },
+      {
+        value: 2,
+        label: "Yes, sometimes I haven't been coping as well as usual",
+      },
+      { value: 1, label: "No, most of the time I have coped quite well" },
+      { value: 0, label: "No, I have been coping as well as ever" },
+    ],
+    [
+      { value: 3, label: "Yes, most of the time" },
+      { value: 2, label: "Yes, sometimes" },
+      { value: 1, label: "Not very often" },
+      { value: 0, label: "No, not at all" },
+    ],
+    [
+      { value: 3, label: "Yes, most of the time" },
+      { value: 2, label: "Yes, quite often" },
+      { value: 1, label: "Not very often" },
+      { value: 0, label: "No, not at all" },
+    ],
+    [
+      { value: 3, label: "Yes, most of the time" },
+      { value: 2, label: "Yes, quite often" },
+      { value: 1, label: "Only occasionally" },
+      { value: 0, label: "No, never" },
+    ],
+    [
+      { value: 3, label: "Yes, quite often" },
+      { value: 2, label: "Sometimes" },
+      { value: 1, label: "Hardly ever" },
+      { value: 0, label: "Never" },
+    ],
+  ],
+  maxTotal: 30,
+  satisfiesScreening: "depression_screening",
+  bands: [
+    { level: 0, label: "Minimal", min: 0, max: 9 },
+    { level: 1, label: "Possible depression", min: 10, max: 12 },
+    { level: 2, label: "Probable depression", min: 13, max: 19 },
+    { level: 3, label: "Severe", min: 20, max: null },
+  ],
+  selfHarmItemIndex: 9,
+};
+
 const DEFS: Record<Instrument, InstrumentDef> = {
   "PHQ-9": PHQ9,
   "GAD-7": GAD7,
+  EPDS: EPDS,
 };
+
+// The options ONE item answers on. The single place a surface asks — an instrument
+// with one shared scale and one with per-item scales answer the same question here, so
+// no caller has to know which kind it is holding.
+export function instrumentItemOptions(
+  instrument: Instrument,
+  itemIndex: number
+): readonly InstrumentOption[] {
+  return DEFS[instrument].itemOptions?.[itemIndex] ?? INSTRUMENT_OPTIONS;
+}
 
 export function instrumentDef(instrument: Instrument): InstrumentDef {
   return DEFS[instrument];
