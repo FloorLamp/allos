@@ -67,9 +67,16 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       ]);
       await expect(groups(listbox)).toHaveText([RELEVANT_GROUP, YOUR_GROUP]);
 
-      // Typing is the app-wide fuzzy search, flat: a header over one match is noise.
+      // Typing is the app-wide fuzzy search, FLAT — a header over one match is noise
+      // — and the best match leads. That is the assertion, not the exact result set:
+      // what else a short query matches is a property of the VOCABULARY, not of this
+      // picker, and pinning the array over a shared seed is the #2353 shape. Since
+      // #2382 an analyte's curated alias spellings are search keys of their own, so
+      // "Glycated Hemoglobin" also carries the subsequence l…d…l and trails far
+      // behind at 2.81 to LDL Cholesterol's 11.85.
       await settledFill(page, field, "ldl");
-      await expect(options(listbox)).toHaveText([BIOMARKER_PICKER_FLAGGED]);
+      const ldlLead = options(listbox).first(); // first-ok: the LEADING option is the assertion
+      await expect(ldlLead).toHaveText(BIOMARKER_PICKER_FLAGGED);
       await expect(groups(listbox)).toHaveCount(0);
 
       // Picking + Star writes through the SAME toggleSavedItem the ★ uses anywhere
@@ -176,6 +183,17 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
           exact: true,
         })
       ).toBeVisible();
+
+      // …and it reaches an analyte by its own ABBREVIATION (#2382). The matcher is a
+      // greedy leftmost subsequence walk that never backtracks, so `psa` was consumed
+      // scattered inside "Prostate-Specific" and the literal "(PSA)" at the end was
+      // never reached: the entry appeared at NO position. The abbreviation is a search
+      // key of its own now, so it leads.
+      //
+      // Deliberately not an exact-array pin (#2353): what else `psa` matches is a
+      // property of the dataset, not of this picker. The lead row is the claim.
+      await settledFill(page, field, "psa");
+      await expect(leadOption).toHaveText("Prostate-Specific Antigen (PSA)");
     } finally {
       await page.context().close();
     }

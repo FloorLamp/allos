@@ -52,6 +52,18 @@ export interface ActivitySuggestions {
   // Per-lift co-occurrence: base-name (lowercased) -> top co-logged lifts, used
   // to bias the combobox toward companions of the draft's exercises (issue #195).
   liftCompanions: CompanionMap;
+  // Lowercased names this profile has ACTUALLY logged inside the recent window —
+  // the base-collapsed lifts plus the cardio and sport component names, from the
+  // three usage tallies already gathered here. It is what lets the picker's
+  // ranking survive a keystroke (#2384): the fuzzy matcher sorts on string shape
+  // and keeps the caller's order only as an exact-score tiebreak, so without a
+  // usage signal a never-logged "Squash" outranks five logged squats for "sqa".
+  //
+  // Deliberately NOT the other three biases: today's routine slots (#1115) and the
+  // draft's companions (#195) are claims about which head to show on an empty
+  // query, not evidence that the person does the movement. Only logged usage earns
+  // the bonus.
+  logged: string[];
 }
 
 // The base-collapsed exercise names prescribed by TODAY'S resolved routine day (#1115
@@ -145,17 +157,27 @@ export const getActivitySuggestions = cache(function getActivitySuggestions(
   // Cardio/sport names come from the structured component names ("Running"), not
   // the freeform activity title ("Morning run"), so the picker suggests real
   // activity names rather than one-off session labels.
+  const cardioCounts = effortNameCounts(profileId, "cardio");
+  const sportCounts = effortNameCounts(profileId, "sport");
   return {
     lifts: prioritizeRoutineSlots(
       rankByFrequency(LIFT_OPTIONS, liftRows),
       routineSlotNames
     ),
-    cardio: rankByFrequency(
-      CARDIO_ACTIVITIES,
-      effortNameCounts(profileId, "cardio")
-    ),
-    sports: rankByFrequency(SPORTS, effortNameCounts(profileId, "sport")),
+    cardio: rankByFrequency(CARDIO_ACTIVITIES, cardioCounts),
+    sports: rankByFrequency(SPORTS, sportCounts),
     liftCompanions: buildCompanionMap(companionRows, t),
+    // The same three tallies the rankings above are built from, flattened to the
+    // bare "has this been logged" question the matcher can carry (#2384). No new
+    // query, and profile- and window-scoped by construction because the tallies
+    // are. `liftCounts` is already keyed by the lowercased base name.
+    logged: [
+      ...new Set([
+        ...liftCounts.keys(),
+        ...cardioCounts.map((r) => r.name.toLowerCase()),
+        ...sportCounts.map((r) => r.name.toLowerCase()),
+      ]),
+    ],
   };
 });
 
