@@ -18,6 +18,10 @@ import {
   sanitizeSpecimen,
 } from "./lab-result-lifecycle";
 import { evictPreviewsForDocument } from "./reprocess-preview-cache";
+import {
+  captureDocumentCorrections,
+  reapplyDocumentCorrections,
+} from "./import-corrections";
 import { clinicalKeyForInput } from "./clinical-content-key";
 export {
   applyImportFollowups,
@@ -550,6 +554,14 @@ export function persistDocumentImport(
     // backing dose a re-extraction drops (#602). Empty on a first import (the doc has
     // no prior immunization rows), so the sweep no-ops there.
     const priorVaccines = documentImmunizationVaccines(profileId, docId);
+    // Capture the user's HAND CORRECTIONS to this document's readings BEFORE the
+    // clear — same reason and same shape as the visit-link decisions re-applied
+    // below (#1050/#1053): a reprocess deletes and re-inserts the footprint under
+    // new ids, and a corrected VALUE is a durable user decision, not import data.
+    // Until #2364 the delete-set simply discarded it: no warning, no "3 corrections
+    // will be lost", on the overwrite path most likely to hit a document-derived
+    // reading. Empty on a first import.
+    const priorCorrections = captureDocumentCorrections(profileId, docId);
     // Replace this document's prior rows (a no-op on first import; on reprocess
     // it clears the old set) across every table an import writes — including the
     // previously auto-structured meds, cleared here before the existing-meds set
@@ -600,6 +612,17 @@ export function persistDocumentImport(
     // decision swept). Tier-1 FHIR links already self-healed above at insert.
     reapplyVisitLinkDecisions(profileId);
 
+    // Re-state the user's hand corrections onto the readings this insert produced
+    // (#2364), matched on #482 identity + day + unit rather than on row id — the
+    // ids are new. A correction the fresh extraction has no counterpart for is
+    // ORPHANED: it rides out as a drop on the report below instead of being
+    // resurrected as a row the document no longer claims.
+    const orphanedCorrections = reapplyDocumentCorrections(
+      profileId,
+      docId,
+      priorCorrections
+    );
+
     // The toast + Review feed report ONE "N items imported" number. Tally it off
     // the footprint tables here — after every insert loop — so it counts every
     // clinical kind an import wrote, not just the immunizations + records the old
@@ -642,7 +665,16 @@ export function persistDocumentImport(
       // its old hand-maintained sum silently omitted medications, imaging, optical,
       // dental, genomics, and appointments. `considered` follows as
       // footprint + row drops.
-      reconcileStoredReportCounts(input.meta.importReport, extractedCount),
+      //
+      // The orphaned corrections join it here because this is the only step that
+      // can know them (#2364) — the parse cannot see what the previous import's
+      // rows had been corrected to. They do not move `considered`: a lost
+      // correction was never a candidate this document offered.
+      reconcileStoredReportCounts(
+        input.meta.importReport,
+        extractedCount,
+        orphanedCorrections
+      ),
       // The CLINICAL identity of this document (#1780): a digest of the source-minted
       // entry ids it just imported. Stamped HERE, at the one 'done' transition every
       // extract/import/reprocess path funnels through, and computed from the SAME

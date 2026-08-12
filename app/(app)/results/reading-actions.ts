@@ -195,10 +195,16 @@ export async function updateResult(formData: FormData): Promise<FormResult> {
            reference_range = ?, flag = ?, panel = ?, notes = ?, canonical_name = ?,
            provider_id = ?, ordering_provider_id = ?,
            result_status = ?, fasting = ?, specimen = ?,
-           -- Lock integration-imported rows (external_id set) against re-ingest so a
-           -- hand-corrected vital isn't silently reverted by the next rolling window
-           -- (issue #133). No-op for manual/document rows (external_id NULL).
-           edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
+           -- THE record editor's #133 lock, armed unconditionally (#2364). It used
+           -- to read CASE WHEN external_id IS NOT NULL, which locked an
+           -- integration row against the next rolling window and did NOTHING for a
+           -- document-extracted one — and external_id is NULL for every AI-extracted
+           -- row by construction, i.e. for the majority of readings in the app. So
+           -- this, the main path by which a person corrects an extracted lab, could
+           -- not set the lock at all, while the likeliest overwrite of that reading
+           -- is the document's own reprocess. The question is "did a human change a
+           -- value this app derived", not "which import path produced it".
+           edited = 1
      WHERE id = ? AND profile_id = ?`
   ).run(
     date,

@@ -263,6 +263,35 @@ describe("formatRelativeTime", () => {
     expect(formatRelativeTime("2026-06-30 12:00:10", now)).toBe("just now"); // future skew
   });
 
+  // #2522: the future tolerance was unbounded — a negative age always won the
+  // "just now" branch — so a reading stated for later today claimed to have just
+  // happened. The 10-second skew case above still holds; everything past it says
+  // what it is.
+  it("bounds the future tolerance and labels a real future instant forward", () => {
+    expect(formatRelativeTime("2026-06-30 12:00:44", now)).toBe("just now");
+    expect(formatRelativeTime("2026-06-30 12:01:00", now)).toBe("in 1 minute");
+    expect(formatRelativeTime("2026-06-30 12:20:00", now)).toBe(
+      "in 20 minutes"
+    );
+    expect(formatRelativeTime("2026-06-30 13:00:00", now)).toBe("in 1 hour");
+    // The reported symptom: an 08:00 stated reading read at 01:10 the same day.
+    expect(formatRelativeTime("2026-06-30 19:00:00", now)).toBe("in 7 hours");
+    expect(formatRelativeTime("2026-07-01 12:00:00", now)).toBe("Tomorrow");
+    expect(formatRelativeTime("2026-07-03 12:00:00", now)).toBe("in 3 days");
+    expect(formatRelativeTime("2026-07-14 12:00:00", now)).toBe("in 2 weeks");
+    expect(formatRelativeTime("2026-08-29 12:00:00", now)).toBe("in 2 months");
+    expect(formatRelativeTime("2028-06-30 12:00:00", now)).toBe("in 2 years");
+  });
+
+  it("never claims an age for an instant the clock has not reached", () => {
+    for (const ahead of [60, 60 * 7, 3600, 3600 * 7, 86400, 86400 * 40]) {
+      const at = new Date(now.getTime() + ahead * 1000).toISOString();
+      const label = formatRelativeTime(at, now);
+      expect(label).not.toContain("ago");
+      expect(label).not.toBe("just now");
+    }
+  });
+
   it("labels minutes and hours, singularizing one", () => {
     expect(formatRelativeTime("2026-06-30 11:58:00", now)).toBe(
       "2 minutes ago"
@@ -300,6 +329,23 @@ describe("formatCompactRelativeTime", () => {
     );
     expect(formatCompactRelativeTime("2026-06-29T12:00:00Z", now)).toBe(
       "Yesterday"
+    );
+  });
+
+  // #2522: the forward labels abbreviate on the same rule, so the illness card's
+  // parenthetical reads "08:00 (in 7 hrs)" rather than claiming an age.
+  it("shortens the forward minute and hour units too", () => {
+    expect(formatCompactRelativeTime("2026-06-30T12:02:00Z", now)).toBe(
+      "in 2 mins"
+    );
+    expect(formatCompactRelativeTime("2026-06-30T12:01:00Z", now)).toBe(
+      "in 1 min"
+    );
+    expect(formatCompactRelativeTime("2026-06-30T14:00:00Z", now)).toBe(
+      "in 2 hrs"
+    );
+    expect(formatCompactRelativeTime("2026-07-01T12:00:00Z", now)).toBe(
+      "Tomorrow"
     );
   });
 });

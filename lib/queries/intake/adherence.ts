@@ -325,8 +325,18 @@ function applyDoseStatusCore(
             opts.takenAt,
             getTimezone(profileId),
             date,
-            // Real time on purpose: a clock-skew comparison, not a date derivation.
-            new Date()
+            // The APP's now (#2312), not a bare `new Date()`. This used to read
+            // real time on the reasoning that a client capture and the server's
+            // clock are two independent REAL clocks — the same reasoning the food
+            // path carried until #2287 overturned it. The guard's OTHER half
+            // already compares against `date`, which came from `today()`, i.e.
+            // from this seam: a predicate whose two halves read two different
+            // clocks is not one predicate. And under the e2e freeze the capture
+            // and the seam are the same frozen instant, so real time refuses a
+            // seconds-old stamp as hours in the future and the dose silently
+            // loses its captured minute. Inert in production, where the seam IS
+            // real time, so a genuinely fast device is still refused.
+            clockNow()
           )
         : null;
       db.prepare(

@@ -97,9 +97,9 @@ function peakFlowRows(profileId: number) {
 describe("the home half — a blow through the measurements quick-add", () => {
   it("lands in metric_samples under the registered stream key, not a new table", () => {
     const profileId = makeProfile("peak-flow-quick-add");
-    expect(insertVitals(profileId, "2026-04-02", { peakFlow: "540" })).toBe(
-      true
-    );
+    expect(
+      insertVitals(profileId, "2026-04-02", { peakFlow: "540" }).wrote
+    ).toBe(true);
 
     const rows = peakFlowRows(profileId);
     expect(rows).toHaveLength(1);
@@ -152,9 +152,9 @@ describe("the home half — a blow through the measurements quick-add", () => {
     const profileId = makeProfile("peak-flow-bounds");
     // The core runs the same `peakFlowRangeError` the client form pre-validates
     // with, so a crafted or replayed request can never store a 5000.
-    expect(insertVitals(profileId, "2026-04-05", { peakFlow: "5000" })).toBe(
-      false
-    );
+    expect(
+      insertVitals(profileId, "2026-04-05", { peakFlow: "5000" }).wrote
+    ).toBe(false);
     expect(peakFlowRows(profileId)).toHaveLength(0);
   });
 

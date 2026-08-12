@@ -162,7 +162,12 @@ export function updateTemperatureCore(
     db.prepare(
       `UPDATE medical_records
           SET date = ?, occurred_at = ?, value = ?, value_num = ?, unit = ?,
-              edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
+              -- The #133 lock, armed unconditionally (#2364): a human just stated
+              -- this reading's value. Conditioning it on external_id asked which
+              -- import path produced the row, and a document-extracted temperature
+              -- carries none — so the correction was unlockable, and the document's
+              -- own reprocess would take it back.
+              edited = 1
         WHERE id = ? AND profile_id = ? AND canonical_name = ?`
     ).run(
       date,

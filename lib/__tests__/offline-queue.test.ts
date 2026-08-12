@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   FLOW_KINDS,
   buildIntent,
@@ -464,6 +467,48 @@ describe("resolveCapturedInstant (#1596)", () => {
     expect(resolveCapturedInstant("2026-07-15T21:00:00.000Z", now)).toBe(
       nowCanonical
     );
+  });
+});
+
+// #2312 — THE RATCHET. Every replay flow's "now" must come from the clock seam
+// (lib/clock.ts): a write captured at 09:00 and replayed at 14:00 is judged as of
+// 09:00. The failure it guards is silent by construction — production is
+// byte-identical either way (with ALLOS_TEST_NOW unset the seam IS real time), so
+// only a frozen-clock run disagrees, and it disagrees by refusing a seconds-old
+// capture as hours in the future and dropping the minute the user stated.
+//
+// `resolveCapturedInstant`'s `now` is REQUIRED, which forces the choice to be named
+// at every server-side call site; this scan is the other half — the server-side
+// replay core may not reach for the wall clock at all.
+describe("offline replay judges captured instants on the clock seam (#2312)", () => {
+  const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+  const read = (rel: string) =>
+    // Strip comments so the prose EXPLAINING the rule ("not a bare `new Date()`")
+    // cannot trip the scan for it.
+    fs
+      .readFileSync(path.join(REPO, rel), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  it("the replay write core reads its now from the seam, never the wall clock", () => {
+    const src = read("lib/offline/writes.ts");
+    expect(src).toContain("clockNow");
+    expect(
+      src.match(/new Date\(\s*\)/g) ?? [],
+      `lib/offline/writes.ts must take "now" from lib/clock's seam (clockNow), ` +
+        `never a bare new Date(): a replayed write is judged as of its CAPTURE ` +
+        `instant, and real time silently refuses one under a frozen clock (#2312).`
+    ).toEqual([]);
+  });
+
+  it("resolveCapturedInstant requires its now rather than defaulting to real time", () => {
+    const signature = /export function resolveCapturedInstant\([^)]*\)/.exec(
+      read("lib/offline/queue.ts")
+    );
+    expect(signature).not.toBeNull();
+    // The browser bundle cannot read the seam itself, so the ONE shape every flow
+    // takes is an injected `now`; a default here would restore the silent drift.
+    expect(signature![0]).not.toContain("new Date");
   });
 });
 
