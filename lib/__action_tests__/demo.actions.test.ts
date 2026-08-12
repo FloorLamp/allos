@@ -23,6 +23,7 @@ import {
   signOutOtherSessions,
 } from "@/app/(app)/settings/actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import { ACTION_TEST_PASSWORD } from "./password-fixture";
 
 function rowsFor(profileId: number) {
   return db
@@ -104,7 +105,7 @@ describe("demo mode login-scoped guard (#278)", () => {
     await expect(
       changeOwnPassword(
         fd({
-          current_password: "pw-" + login.username,
+          current_password: ACTION_TEST_PASSWORD,
           new_password: "correct-Horse-battery-9",
         })
       )
