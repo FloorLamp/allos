@@ -8,7 +8,8 @@ name: Cache seed
 # push to main (i.e. every merge) and saves:
 #
 #   - node_modules  (key: .nvmrc + exact lockfile — identical to ci.yml's key)
-#   - ~/.cache/ms-playwright  (key: lockfile — identical to ci.yml's key)
+#   - ~/.cache/ms-playwright  (key: lockfile, `-shell` prefixed — identical to
+#                    e2e-setup's key, and the same --only-shell install)
 #   - .next/cache   (key: lockfile + source hash, matching ci.yml's restore-keys
 #                    prefix, so a source-only PR warms from main's last build)
 #
@@ -39,16 +40,20 @@ jobs:
       - run: npm ci
         if: steps.modules.outputs.cache-hit != 'true'
 
+      # Key and flags MUST match .github/actions/e2e-setup exactly (both the
+      # `-shell` prefix and `--only-shell`). A seed that installs a different set of
+      # binaries, or saves under a different key, does not fail — it just stops
+      # being restorable, and every PR silently pays a cold browser install again.
       - name: Cache Playwright Chromium
         id: playwright
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright Chromium
         if: steps.playwright.outputs.cache-hit != 'true'
-        run: npx playwright install chromium
+        run: npx playwright install --only-shell chromium
 
       - name: Cache Next.js build
         id: next
