@@ -38,6 +38,28 @@ What dispatch used to encode as branches is now declared:
    The same move `trailingAverage` made for #1909 with `basis`.
 3. **Whether the in-progress week is included** — a reader option, not a scope fact.
 
+## What ONE session advances (#2439)
+
+The ledger answers "how many this week". `sessionAdvancesScope(scope, facts)`
+answers "did THIS session put one of them on the board" — the same membership rule
+as `cadenceCounts`, asked of a single activity instead of a window, over the two
+facts an activity row carries: its own `type` plus its components' types, and the
+regions its logged sets map to.
+
+`SESSION_ADVANCE_RULES` is `Record<FrequencyScopeKind, rule | null>`, total by the
+same construction as `CADENCE_SCOPES`. A `null` is a DECLARATION, not a "no": it
+says the question is unanswerable from an activity row — mobility reads a recovery
+session's moves (#840), food and practice count their own ledgers, and a `cap` is
+never advanced at all (#998; asking would be asking for a to-go number on alcohol).
+`SESSION_ADVANCEABLE_SCOPE_KINDS` derives the workout-affectable set from those
+rules, so a consumer's narrowing cannot drift from the rule.
+
+It exists because a surface that congratulates a session must not read the week's
+rollup as if the session had produced it. The post-workout recap did exactly that:
+a 1.42 km walk was told "Chest — 1 of 2 this week, one more to go" about a barbell
+session two days earlier. `getSessionCadenceFacts(profileId, activityId)` is the
+gather (a missing or cross-profile row answers empty, which advances nothing).
+
 ## The reader (`lib/queries/cadence-ledger.ts`)
 
 `getCadenceLedger(profileId, { weeks, includeCurrent, direction, asOf? })` returns
