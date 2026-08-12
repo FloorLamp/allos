@@ -526,15 +526,26 @@ export function seedRoutineUsual(): void {
       `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
        VALUES (?, ?, ?, ?)`
     );
-    const log = (date: string, group: string, hourZ: string) => {
+    // Every event instant is built from the PROFILE-LOCAL wall time through the
+    // profile's own timezone (#1417), so the window each tap derives to is the window
+    // the fixture names — a morning feature is exactly where a naive string bites.
+    const routineTz = getTimezone(routineId);
+    const log = (date: string, group: string, hhmm: string) => {
       fLog.run(routineId, date, group);
-      fEvent.run(routineId, group, date, `${date}T${hourZ}Z`);
+      fEvent.run(
+        routineId,
+        group,
+        date,
+        zonedWallTimeToUtc(routineTz, date, hhmm)!.toISOString()
+      );
     };
     for (let d = 21; d >= 1; d--) {
       const date = shiftDateStr(routineAnchor, -d);
-      for (const hour of ["08:00:00", "12:00:00", "19:00:00"]) {
-        log(date, "fermented", hour);
-        log(date, "berries", hour.replace(":00:00", ":00:02"));
+      // One habitual pair in EVERY window, so the offer's contents do not depend on
+      // which slot the run's frozen clock lands in.
+      for (const hhmm of ["08:00", "12:00", "19:00"]) {
+        log(date, "fermented", hhmm);
+        log(date, "berries", hhmm);
       }
     }
     const item = db.prepare(

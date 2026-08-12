@@ -240,14 +240,16 @@ export async function handleFoodTimeAt(
 ): Promise<void> {
   const r = await resolve(cq, token, getRecentFoodTaps);
   if (!r) return;
+  // `open` and `back` WRITE NOTHING — they swap the picker in and out — so the ack
+  // precedes the edit (#2418's ordering rule, the same one the offer tail follows).
   if (token.step.kind === "open") {
-    await rebuildFood(r, r.burst);
     await answerCallbackQuery(cq.id);
+    await rebuildFood(r, r.burst);
     return;
   }
   if (token.step.kind === "back") {
-    await rebuildFood(r);
     await answerCallbackQuery(cq.id);
+    await rebuildFood(r);
     return;
   }
   const hhmm = token.step.hhmm;
@@ -443,14 +445,15 @@ export async function handleDoseTimeAt(
 ): Promise<void> {
   const r = await resolve(cq, token, getRecentDoseTaps, true);
   if (!r) return;
+  // Pure keyboard edits, ack first (#2418).
   if (token.step.kind === "open") {
-    await rebuildDose(r, doseAnchor(r.profileId, token.fromId, r.now), r.burst);
     await answerCallbackQuery(cq.id);
+    await rebuildDose(r, doseAnchor(r.profileId, token.fromId, r.now), r.burst);
     return;
   }
   if (token.step.kind === "back") {
-    await rebuildDose(r, doseAnchor(r.profileId, token.fromId, r.now));
     await answerCallbackQuery(cq.id);
+    await rebuildDose(r, doseAnchor(r.profileId, token.fromId, r.now));
     return;
   }
   const hhmm = token.step.hhmm;
