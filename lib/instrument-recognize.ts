@@ -132,7 +132,10 @@ function nominate(candidates: readonly InstrumentItemCandidate[]): {
   for (const instrument of INSTRUMENTS) {
     const matched = new Map<number, number>();
     for (let i = 0; i < candidates.length; i++) {
-      const idx = itemIndexFor(instrument, foldInstrumentText(candidates[i].name));
+      const idx = itemIndexFor(
+        instrument,
+        foldInstrumentText(candidates[i].name)
+      );
       // First match wins for a repeated item — a document that prints the same
       // question twice is not two answers.
       if (idx >= 0 && !matched.has(idx)) matched.set(idx, i);

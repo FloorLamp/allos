@@ -102,6 +102,17 @@ questionnaire item answer is numeric and is stored `assessment` precisely so it
 cannot coin a name; a urine dipstick result is non-numeric and is fully
 identity-bearing.
 
+Nor does it mean "nothing more can be understood here". A questionnaire item is
+`assessment` because it is not an analyte, but a whole SET of them may be a
+recognisable screening **instrument**, and that has an identity of its own — the
+curated instrument score (`instrument` category, canonical `PHQ-9` / `GAD-7` /
+`EPDS`), banded and crisis-aware. `lib/instrument-recognize.ts` asks that question
+at the import door and `lib/instrument-import.ts` folds a recognised set into one
+score row plus `instrument_responses` (#2321). A set that is not recognised — or is
+recognised but attributed to another subject, or only partly answered — stays as
+`assessment` rows and is refused a score, with a reported drop. Identity is granted
+to the SCORE, never to a question.
+
 ### `QualitativeResult`
 
 **Axis: quantitation (a property, not a selector).** A property of a
