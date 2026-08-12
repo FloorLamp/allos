@@ -65,3 +65,22 @@ jobs:
       - name: Build
         if: steps.next.outputs.cache-hit != 'true'
         run: npm run build
+
+      # Lint/format incremental caches, warmed from main so a PR's `check` job
+      # restores them instead of paying ~200s of cold `eslint .` + `prettier
+      # --check .` (see the cache step in ci.yml for why the content strategy is
+      # what makes this work on a fresh checkout). Runs unconditionally: unlike the
+      # build above there is no cache-hit flag to gate on, and re-running the two
+      # tools against a warm cache is seconds.
+      - name: Cache lint/format results
+        uses: actions/cache@v6
+        with:
+          path: .cache
+          key: lintfmt-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.mjs', '.prettierrc') }}-${{ github.sha }}
+          restore-keys: |
+            lintfmt-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.mjs', '.prettierrc') }}-
+
+      - name: Warm lint/format caches
+        run: |
+          npm run format:check
+          npm run lint
