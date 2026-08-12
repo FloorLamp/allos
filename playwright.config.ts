@@ -93,14 +93,27 @@ export default defineConfig({
   // that means the Playwright default (half the cores) instead of the old
   // `--workers=1` pin; override with `--workers=N` or PW_WORKERS.
   //
-  // CI stays at ONE worker per shard for now — the 4-way shard matrix already
-  // spends the runner's cores, and a GitHub runner (2 cores) has no headroom for
-  // several `next start` processes. The isolation makes raising it a measurement,
-  // not a redesign; see docs/internals/e2e-hygiene.md.
+  // CI runs TWO workers per shard. The old `1` rested on a 2-core-runner premise
+  // that is stale — `ubuntu-latest` gives public repos 4 cores — and the repo's
+  // own back-to-back measurement on a 4-core container (the 48-spec slice in
+  // docs/internals/e2e-hygiene.md) reads 11.1 min at one worker, 8.3 at two,
+  // 9.1–10.1 at four: two `next start` processes + two browsers fit four cores,
+  // four of each do not, so the curve turns over at two. Isolation is not the
+  // constraint — DB-and-server-per-worker (#1538) is exactly what makes N>1
+  // honest.
+  //
+  // The first attempt (#2437) was parked because the suite went red at two, and
+  // the reds read as contention latency. They were not: each one was a spec or
+  // helper that only LOOKED settled at one worker — followLink re-clicking a
+  // relative pager control it had already overshot, and a relative layout
+  // assertion built from four independent boundingBox reads. Both are fixed at
+  // their root (e2e/helpers.ts: the departure guard in followLink, settledBoxes),
+  // which is why this is a re-measurement rather than a re-run. PW_WORKERS still
+  // overrides.
   workers: process.env.PW_WORKERS
     ? Number(process.env.PW_WORKERS)
     : process.env.CI
-      ? 1
+      ? 2
       : undefined,
   // The "github" reporter emits one workflow annotation per failure, so a red CI
   // run names its failing tests in the check-run annotations (readable via API)

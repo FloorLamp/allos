@@ -10,7 +10,7 @@ import {
   E2E_MEMBER_PASSWORD,
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import { expectNoClippedContent, settledBoxes, settledClick } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 
@@ -232,33 +232,33 @@ test.describe("Sleep page (#1066)", () => {
     // Consistency strip + stage composition render on the seeded fixture.
     const consistency = main.getByTestId("sleep-consistency");
     await expect(consistency).toBeVisible();
+    // One settled snapshot, not four independent reads: these are RELATIVE
+    // assertions, so every box has to come from the same layout (see
+    // settledBoxes — the cards' charts size themselves after mount, and a gap
+    // computed across that growth belongs to no layout that ever existed).
     const [durationBox, stagesBox, regularityBox, consistencyBox] =
-      await Promise.all([
-        main.getByTestId("sleep-duration-trend").boundingBox(),
-        main.getByTestId("sleep-stages").boundingBox(),
-        main.getByTestId("sleep-regularity").boundingBox(),
-        consistency.boundingBox(),
+      await settledBoxes([
+        main.getByTestId("sleep-duration-trend"),
+        main.getByTestId("sleep-stages"),
+        main.getByTestId("sleep-regularity"),
+        consistency,
       ]);
-    expect(durationBox).not.toBeNull();
-    expect(stagesBox).not.toBeNull();
-    expect(regularityBox).not.toBeNull();
-    expect(consistencyBox).not.toBeNull();
     // The four core cards use independent desktop stacks. Each lower card starts
     // one normal gap after the card above it instead of waiting for the taller
     // card in the neighboring column (the old row-grid dead space).
-    expect(Math.abs(durationBox!.x - regularityBox!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(stagesBox!.x - consistencyBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(durationBox.x - regularityBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(stagesBox.x - consistencyBox.x)).toBeLessThanOrEqual(1);
     expect(
-      regularityBox!.y - (durationBox!.y + durationBox!.height)
+      regularityBox.y - (durationBox.y + durationBox.height)
     ).toBeGreaterThanOrEqual(20);
     expect(
-      regularityBox!.y - (durationBox!.y + durationBox!.height)
+      regularityBox.y - (durationBox.y + durationBox.height)
     ).toBeLessThanOrEqual(28);
     expect(
-      consistencyBox!.y - (stagesBox!.y + stagesBox!.height)
+      consistencyBox.y - (stagesBox.y + stagesBox.height)
     ).toBeGreaterThanOrEqual(20);
     expect(
-      consistencyBox!.y - (stagesBox!.y + stagesBox!.height)
+      consistencyBox.y - (stagesBox.y + stagesBox.height)
     ).toBeLessThanOrEqual(28);
     // The high-signal default is 14 nights; the full history stays one tap away.
     await expect(
