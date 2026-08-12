@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { setHomeLocation, setTimezone, setSkinType } from "@/lib/settings";
 import {
   runWeatherSync,
+  weatherPartialWarning,
   WEATHER_FORECAST_DAYS,
   type WeatherSyncResult,
 } from "@/lib/integrations/weather-sync";
@@ -19,9 +20,15 @@ import type {
   DailyWeatherRow,
 } from "@/lib/integrations/open-meteo";
 import { getUvHoursForDay } from "@/lib/integrations/weather-cache";
+import {
+  isTruncatedSyncEvent,
+  parseSyncEventDetails,
+} from "@/lib/integrations/sync-details";
+import { eventVerdict } from "@/lib/integrations/source-state";
 import { getUvDoseForDay, getUvDoseForDays } from "@/lib/queries/weather";
 import { decideUvOverexposure } from "@/lib/uv-overexposure";
 import { collectUpcoming } from "@/lib/queries";
+import type { IntegrationSyncEvent } from "@/lib/types";
 
 function newProfile(name: string): number {
   const id = Number(
@@ -284,6 +291,117 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     expect(success).toBeTruthy();
     expect(failure!.window_end).toBe(success!.window_end);
     expect(failure!.window_start).toBe(success!.window_start);
+  });
+
+  // ── #2567 item 2: a run whose daily half failed recorded as a clean success ──
+  //
+  // `partial` was computed, folded into the returned summary and logged — and the
+  // event was then written WITHOUT it: `ok: true`, no details, no error, nothing
+  // anywhere saying the run was degraded. The only trace was `received` dropping from
+  // 381 to 360, which is how two silently-degraded runs among eighty were eventually
+  // found. There was no test here, which is why it shipped invisible.
+  describe("a half-failed run records as PARTIAL, not as a clean success", () => {
+    function dailyFails(reason: string): WeatherSource {
+      return {
+        id: "fixture",
+        async fetchHourly() {
+          return { ok: true, rows: [uvRow(`${DATE}T10:00`, 5)] };
+        },
+        async fetchDaily() {
+          return { ok: false, rows: [], status: 503, error: reason };
+        },
+      };
+    }
+
+    function latestEvent(profileId: number) {
+      return db
+        .prepare(
+          `SELECT * FROM integration_sync_events
+            WHERE profile_id = ? AND provider = 'weather' ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileId) as IntegrationSyncEvent;
+    }
+
+    it("marks the event partial through the SHARED reader every surface already uses", async () => {
+      const p = newProfile("weather-partial");
+      const res = await runWeatherSync(
+        p,
+        dailyFails("air quality unavailable")
+      );
+      // The run still SUCCEEDED — the hourly UV series is cached and the whole weather
+      // family degrades rather than breaking. That was never in doubt; what was
+      // missing is that anything said so.
+      expect(res).not.toHaveProperty("error");
+      expect((res as WeatherSyncResult).partial).toBeTruthy();
+
+      const ev = latestEvent(p);
+      expect(ev.ok).toBe(1);
+      // `isTruncatedSyncEvent` is the canonical reader — Strava, Oura and Withings
+      // already write this exact marker, and `scheduledStanding` turns it into
+      // "partial". Nothing new renders; the run simply stops lying.
+      expect(isTruncatedSyncEvent(ev)).toBe(true);
+      expect(eventVerdict(ev)).toEqual({ label: "Partial", tone: "caution" });
+      // The Review line names the half that failed and carries the upstream reason,
+      // rather than the shared default's page-cap/rate-limit sentence, which would be
+      // false here.
+      const warnings = parseSyncEventDetails(ev.details ?? null)!.warnings;
+      expect(warnings).toEqual([
+        weatherPartialWarning("air quality unavailable"),
+      ]);
+      expect(warnings[0]).not.toMatch(/page cap|rate limit/i);
+    });
+
+    it("leaves a whole run clean — the marker is absent, not false", async () => {
+      const p = newProfile("weather-whole");
+      await runWeatherSync(
+        p,
+        fixtureSource(
+          [uvRow(`${DATE}T10:00`, 5)],
+          [
+            {
+              date: DATE,
+              tempMaxC: 24,
+              tempMinC: 14,
+              pressureMslHpa: 1015,
+              precipitationMm: 0,
+              weatherCode: 1,
+              uvIndexMax: 6,
+              aqi: 30,
+              pollenTree: 1,
+              pollenGrass: 1,
+              pollenWeed: 1,
+            },
+          ]
+        )
+      );
+      const ev = latestEvent(p);
+      expect(ev.ok).toBe(1);
+      expect(ev.details ?? null).toBeNull();
+      expect(isTruncatedSyncEvent(ev)).toBe(false);
+      // Both halves landed, so the run's `received` carries both — the count whose
+      // silent drop was the only evidence these degraded runs left.
+      expect(ev.received).toBe(2);
+    });
+
+    it("marks a daily half that failed in the WRITE, not the fetch", async () => {
+      const p = newProfile("weather-partial-write");
+      const badDaily: WeatherSource = {
+        id: "fixture",
+        async fetchHourly() {
+          return { ok: true, rows: [uvRow(`${DATE}T10:00`, 5)] };
+        },
+        async fetchDaily() {
+          // A day row the cache upsert refuses — the try/catch branch that also sets
+          // `partial`, and which was equally invisible.
+          return {
+            ok: true,
+            rows: [{ date: null as unknown as string } as DailyWeatherRow],
+          };
+        },
+      };
+      await runWeatherSync(p, badDaily);
+      expect(isTruncatedSyncEvent(latestEvent(p))).toBe(true);
+    });
   });
 });
 

@@ -1102,7 +1102,45 @@ every post_workout dose already logged sends nothing and does NOT burn the
 one-shot). `isPostWorkoutReady` stays the dueness truth — this changes DELIVERY
 timing only, and the scheduled slot remains the fallback when a finish was never
 observed. The 60-min finished window guarantees even an hourly tick observes every
-finish exactly once. **`runStaleWorkoutSuggest`** sends ONE gentle "Still
+finish exactly once.
+
+**ONE SESSION IS NOT ONE ROW (#2570).** The one-shot above is keyed on an
+activity **id**, and one workout can be several. Health Connect is a hub: three
+apps mirrored a single bike ride into it, one of them wrote it twice 32 seconds
+apart, and activity identity is the exact start instant — so the ride landed as
+two rows, then four when the direct provider sync ran. Three notifications went
+out for one ride. The third was not a failure to suppress: **auto-merge caused
+it**, because `autoMergeKeeperId` prefers the richer sourced row, so a provider
+arriving LAST wins the keeper slot as a brand-new id carrying no marker. That the
+send usually fired once per session at all was an emergent property of merge
+TIMING — a freshly-imported duplicate was normally merged away inside its own
+60-second dispatch window, so its timer found no row — declared nowhere, and
+**arrival-order dependent**: the same two providers in the other order produced
+one contact, in this order three.
+
+One-contact-per-session is now a stated property, in two halves that cover
+disjoint cases:
+
+1. **The fold carries the announcement.** `writeActivityFold`
+   (`lib/merge-activity.ts`) already carries sets, routes, telemetry, laps,
+   videos, tombstones and pair decisions onto a merge keeper; it now also carries
+   the marker (`carryPostWorkoutMarker`,
+   `lib/notifications/post-workout-marker.ts` — a leaf module precisely so a
+   merge does not import the notification stack). This closes the case where the
+   merge itself manufactures an unmarked id, on every merge path at once.
+2. **The dispatch declines a twin that already spoke.** At fire time
+   `runPostWorkoutForActivity` asks `announcedActivityTwin`: is there a row a
+   **high-confidence** duplicate detection calls the same session, already
+   carrying its marker? Item 1 cannot cover this, because in the same-source case
+   **no merge happens at all** — `autoMergeCluster`'s cross-source gate declines
+   every same-source group by design — so there is no fold to carry anything
+   through. It also covers a pair still waiting for a human in Data → Review.
+
+HIGH confidence only, and `undecidedPairs` only. A `medium` pair is a proximity
+guess, and a recorded `kept-both` is the user stating the pair is two real
+sessions — the second must then be announced. Two workouts on one day whose clock
+windows do not overlap are not a duplicate at any confidence and both still speak.
+Both halves only ever REDUCE contact. **`runStaleWorkoutSuggest`** sends ONE gentle "Still
 working out? Finish or discard" note when an `active` session's draft has gone
 quiet past `STALE_MIN` (45 min) — suggest-only (#560), never auto-ends, one-shot
 per activity id (`notify_stale_workout_<activityId>`), waking-gated (a soft
@@ -1388,10 +1426,24 @@ the watch was recording continuously, and the push carrying those minutes landed
 five minutes after the message. Raising the number is not available either: allow
 for a 60-minute lag and the motivating incident (charger at 21:05, slot at 22:00,
 ~55 minutes) becomes undetectable, at both attempts of the slot. A watch on a
-wrist behind a slow pipeline ADVANCES the frontier on every push; a watch on a
+wrist behind a slow pipeline ADVANCES the frontier across pushes; a watch on a
 charger leaves it frozen while pushes keep landing — see
 `docs/internals/integrations-sync.md` for the watermark (`stream_frontiers`,
 migration 179) and `lib/stream-frontier.ts` for the fold.
+
+**#2560: that frontier test still contained a lag term, and it sent again.** On
+2026-08-11 the reminder fired at the 23:00 attempt of the 22:00 slot on a night
+`hr_minutes` shows 60/60 minutes in every hour from 22:00 through 05:24. The
+frontier quantity is better than the elapsed one, but it is not lag-free: the
+watch batches into phone Health Connect _independently_ of the exporter's push, so
+consecutive healthy pushes carry nothing new while the watch records every minute.
+The evidence bar N moved from 2 to **4** and out of `lib/stream-frontier.ts` into
+the stream's own registry declaration (`frozenEvidence`), with the measurement
+beside it — every clean false positive in 28 days was `k = 2`, every true detection
+`k >= 5`. The 40-minute floor is now dominated by the bar and is kept only because
+it still states the intent. Details, including the ceiling this does not raise (a
+backlog draining _through_ a real wear gap resets the counter mid-gap and is silent
+at every N), in `docs/internals/integrations-sync.md`.
 
 Disjointness from #1685 survives unchanged, restated: with the phone off no push
 lands, so nothing is ever observed frozen, and the connection outage stays the

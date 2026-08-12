@@ -41,6 +41,11 @@ import {
 } from "@/lib/queries/continuous-streams";
 import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { quietStreamDedupeKey } from "@/lib/integrations/quiet-stream";
+import { continuousStream } from "@/lib/integrations/continuous-streams";
+
+/** The evidence bar the REGISTRY declares for this stream (#2560) — read, not restated. */
+const EVIDENCE = continuousStream("health-connect", "heart-rate")!.stream
+  .frozenEvidence.syncs;
 
 const PROVIDER = "health-connect";
 const TZ = "America/New_York";
@@ -120,7 +125,15 @@ function seedPriorDays(days = 3): void {
   }
 }
 
-/** The measured incident, whole. */
+/**
+ * The measured incident, whole.
+ *
+ * The first push DELIVERED the 21:05 minutes (this pipeline's own lag); every push
+ * after it finds the frontier exactly where it was. There are four of those since
+ * #2560 rather than two, because two is also what one pending watch → Health Connect
+ * batch looks like — and a watch on a charger all night accumulates evidence without
+ * bound, so the case this detector exists for is unaffected.
+ */
 function seedOffWristNight(): void {
   connect();
   seedPriorDays();
@@ -128,6 +141,7 @@ function seedOffWristNight(): void {
   sync(YESTERDAY, "21:20");
   sync(YESTERDAY, "21:48");
   sync(YESTERDAY, "22:15");
+  sync(YESTERDAY, "23:04");
   sync(DAY, "07:12");
 }
 
@@ -276,18 +290,27 @@ describe("quiet-stream detection (#2146)", () => {
     expect(frontier.syncsSinceAdvance).toBe(0);
   });
 
-  it("needs TWO quiet pushes, not one — a single quiet push is jitter (#2341)", () => {
+  it("needs the DECLARED number of quiet pushes, not fewer (#2341/#2560)", () => {
     connect();
     seedPriorDays();
     stream(YESTERDAY, "21:05");
     sync(YESTERDAY, "21:20");
-    sync(YESTERDAY, "21:48");
-    // One push has landed against this frontier. That is not yet evidence.
+    // Quiet pushes accumulate one at a time; none of them is evidence until the
+    // stream's own declared bar is reached. The bar is a property of THIS source's
+    // delivery chain — the watch batches into Health Connect independently of the
+    // exporter, and single pushes have delivered 164–324 minutes of heart rate at once.
+    const quietAt = ["21:48", "22:15", "23:04", "23:41", "23:52"];
+    for (let k = 1; k < EVIDENCE; k++) {
+      sync(YESTERDAY, quietAt[k - 1]);
+      expect(
+        readStreamFrontier(profileId, PROVIDER, "heart-rate")!.syncsSinceAdvance
+      ).toBe(k);
+      expect(getQuietStreams(profileId)).toEqual([]);
+    }
+    sync(DAY, "07:12");
     expect(
       readStreamFrontier(profileId, PROVIDER, "heart-rate")!.syncsSinceAdvance
-    ).toBe(1);
-    expect(getQuietStreams(profileId)).toEqual([]);
-    sync(DAY, "07:12");
+    ).toBe(EVIDENCE);
     expect(getQuietStreams(profileId)).toHaveLength(1);
   });
 

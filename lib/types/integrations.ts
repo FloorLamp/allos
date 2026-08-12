@@ -199,6 +199,33 @@ export interface ContinuousStreamReminderFacet {
   because: string;
 }
 
+// How much evidence a FROZEN frontier needs before it means anything, declared per
+// stream (#2560).
+//
+// It used to be one shared constant in lib/stream-frontier.ts, defended there as "a
+// property of what a push MEANS, not of any one stream's wear pattern". That argument
+// was made against a measurement taken on the wrong leg. There are TWO batching stages
+// on the Health Connect pipeline —
+//
+//     watch --(Bluetooth, batches coarsely)--> phone Health Connect
+//           --(exporter, ~15 min)-----------> allos
+//
+// — and #2422 measured only the second. While a watch's own batch is pending, healthy
+// pushes land carrying nothing new for the stream and the frontier is frozen with the
+// watch on the wrist the whole time. How many pushes it takes for the SOURCE's state to
+// be reflected is therefore a property of THAT source's delivery chain: a device
+// writing straight into its vendor cloud would need 1. That is exactly the kind of fact
+// `dipToleranceMin` and `frontierFloorMin` already live here to carry, and #2341 item 2
+// moved the last constant that got this wrong for the same reason.
+export interface ContinuousStreamFrozenEvidence {
+  // N — successive successful pushes that must land WITHOUT advancing the frontier
+  // before it may be called frozen.
+  syncs: number;
+  // The evidence behind the number, carried as data exactly as `quiet.because` is, so
+  // it is impossible to move the bar without restating why.
+  because: string;
+}
+
 export interface ContinuousStreamDef {
   id: ContinuousStreamId;
   // What the user calls this stream, lowercase, for mid-sentence use
@@ -210,6 +237,9 @@ export interface ContinuousStreamDef {
   // means a 2.5-hour tolerance is ~150 missing rows, not a rounding error.
   rowsPerHour: number;
   expectedActive: ContinuousStreamActivityWindow;
+  // The DECISION's evidence bar (#2560). Required, so a new stream cannot inherit an
+  // accidental default from the module that owns the fold.
+  frozenEvidence: ContinuousStreamFrozenEvidence;
   // The #2146 detection facet. Absent = this stream is enumerated (so #2162 can
   // offer it) but never reported quiet.
   quiet?: ContinuousStreamQuietFacet;

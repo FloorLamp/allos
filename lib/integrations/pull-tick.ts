@@ -5,9 +5,11 @@ import { getIntegration } from "./registry";
 import { pullRunners } from "./pull-runners";
 import {
   pullCadenceMinutes,
+  pullOffsetMinutes,
   shouldPollNow,
   type PollDecision,
 } from "./pull-cadence";
+import { getSetting } from "@/lib/settings/kv";
 import type { IntegrationId } from "@/lib/types";
 import { resumeDueIntegrationBackfills } from "./backfill-jobs";
 
@@ -57,6 +59,37 @@ export function lastPullAttemptAt(
   return row?.at ?? null;
 }
 
+// THE WINDOW OFFSET SEED (#2567), resolved here because the pure decision cannot read
+// a database.
+//
+// Three ingredients, each doing one job. `install_first_boot_at` — a global settings
+// key `seedInstallMarker` already stamps once and never rewrites, so no new setting and
+// no migration — is what de-herds ACROSS installs: without it, profile 1 + weather
+// would hash to the same minute on every allos in the world, which is the herd the
+// offset exists to leave. The profile and source ids spread an instance's own sources
+// across the window rather than moving them together.
+//
+// A missing marker (a partial-schema harness, a database predating the boot task)
+// degrades to a still-deterministic seed rather than to randomness: the offset must be
+// STABLE above all, since an offset that moves is a window boundary that moves.
+function pullOffsetSeed(profileId: number, sourceId: string): string {
+  return `${getSetting("install_first_boot_at") ?? ""}|${profileId}|${sourceId}`;
+}
+
+// This (profile, source)'s window offset in whole minutes. Exported for the same
+// reason `pullDecision` is: an operator surface — or a fixture that needs to place a
+// second tick inside the SAME window — must be able to ask where this source's window
+// boundary sits without re-deriving the seed.
+export function pullOffsetFor(
+  profileId: number,
+  sourceId: IntegrationId
+): number {
+  return pullOffsetMinutes(
+    pullOffsetSeed(profileId, sourceId),
+    pullCadenceMinutes(getIntegration(sourceId))
+  );
+}
+
 // Whether this source may be polled for this profile now — the registry-declared
 // cadence met with the recorded last attempt. Exported so an operator surface (or a
 // test) can ask the question without running the pass.
@@ -65,10 +98,15 @@ export function pullDecision(
   sourceId: IntegrationId,
   now: Date
 ): PollDecision {
+  const cadenceMinutes = pullCadenceMinutes(getIntegration(sourceId));
   return shouldPollNow({
     lastAttemptAt: lastPullAttemptAt(profileId, sourceId),
     now,
-    cadenceMinutes: pullCadenceMinutes(getIntegration(sourceId)),
+    cadenceMinutes,
+    // Shifts the WINDOW BOUNDARY off the epoch-aligned one, so the poll stops landing
+    // on the first tick of the hour (#2567). Not a wait inside the window: the
+    // once-per-window bound is untouched.
+    offsetMinutes: pullOffsetFor(profileId, sourceId),
   });
 }
 

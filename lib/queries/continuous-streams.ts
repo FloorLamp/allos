@@ -347,6 +347,9 @@ export const getQuietStreams = cache(function getQuietStreams(
       minutesSinceStream,
       syncsSinceAdvance: frontier?.syncsSinceAdvance ?? null,
       toleranceMin: quiet.dipToleranceMin,
+      // DECLARED on the stream (#2560), never a module constant: how many quiet pushes
+      // this source's own delivery chain takes before silence means anything.
+      frozenSyncs: stream.frozenEvidence.syncs,
       sinceAt,
       sinceLocalHhmm: sinceAt != null ? localHhmm(tz, sinceAt) : null,
       today: todayStr,

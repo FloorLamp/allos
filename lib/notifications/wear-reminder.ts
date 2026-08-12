@@ -99,9 +99,12 @@ export function bedtimeWearReminderState(
         frontierAgeMin: null,
         syncsSinceAdvance: null,
         // Never read: `enabled` is false here by construction, and it is checked
-        // first. There is no floor to state because there is no stream to state it
-        // for — the declaration lives on the stream, and this path has none.
+        // first. There is no floor and no evidence bar to state because there is no
+        // stream to state them for — both declarations live on the stream, and this
+        // path has none. `frozenSyncs` is stated as Infinity rather than 0 so that if
+        // this branch ever WERE reached, the unreachable answer is silence.
         floorMin: 0,
+        frozenSyncs: Number.POSITIVE_INFINITY,
       }),
       lastSeenLocalHhmm: null,
     };
@@ -154,6 +157,10 @@ export function bedtimeWearReminderState(
       // point of #2341 item 2. A stream carrying the `bedtime-wear` adapter carries
       // its floor with it, so this cannot silently fall back to a module constant.
       floorMin: watched.stream.reminder.frontierFloorMin,
+      // DECLARED on the stream too, since #2560 — how many quiet pushes this source's
+      // delivery chain takes before a frozen frontier means the wrist and not the
+      // watch's own Bluetooth batch.
+      frozenSyncs: watched.stream.frozenEvidence.syncs,
     }),
     // The stored instant PROJECTED to the profile's own wall clock — "since 21:05"
     // must be the hour the user saw, not the UTC one.

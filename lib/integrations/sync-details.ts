@@ -87,11 +87,22 @@ export function isTruncatedSyncEvent(ev: { details?: string | null }): boolean {
 export const TRUNCATED_SYNC_WARNING =
   "Partial sync — a page cap or rate limit stopped this run early. The next sync picks up where it left off.";
 
-// The serialized `details` payload for a truncated pull run. ONE shape for Strava,
-// Oura, and Withings so their partial runs can't describe themselves differently.
-export function truncatedSyncDetails(): string {
+// The serialized `details` payload for a PARTIAL run. ONE shape for Strava, Oura,
+// Withings and — since #2567 — Weather, so their partial runs can't describe
+// themselves differently.
+//
+// `warning` overrides the human Review LINE only, never the durable marker: every
+// caller writes the same `truncated: true` that `isTruncatedSyncEvent` reads and
+// `scheduledStanding` turns into `"partial"`. Weather passes its own line because the
+// default names a cause it does not have — no page cap and no rate limit stopped it,
+// its air-quality half simply failed — and a marker whose sentence is false is worse
+// than no sentence at all. Bounded here rather than trusted: a partial reason can be
+// an arbitrary upstream error string.
+export function truncatedSyncDetails(
+  warning: string = TRUNCATED_SYNC_WARNING
+): string {
   return JSON.stringify({
-    warnings: [TRUNCATED_SYNC_WARNING],
+    warnings: [warning.slice(0, 500)],
     origins: [],
     truncated: true,
   } satisfies SyncEventDetails);

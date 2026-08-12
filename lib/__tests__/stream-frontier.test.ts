@@ -13,9 +13,17 @@ import {
   classifyFrontier,
   frontierEvidence,
   observeFrontier,
-  FROZEN_SYNC_EVIDENCE,
   type StreamFrontierState,
 } from "@/lib/stream-frontier";
+import { continuousStream } from "@/lib/integrations/continuous-streams";
+
+/**
+ * The bar is DECLARED per stream since #2560 and `frontierEvidence` has no default, so
+ * this file reads one rather than restating a number. Health Connect's heart-rate
+ * stream is the only declaration today and is the one both consumers ask about.
+ */
+const DECLARED = continuousStream("health-connect", "heart-rate")!.stream
+  .frozenEvidence.syncs;
 
 const T = (hhmm: string) => `2026-08-08T${hhmm}:00Z`;
 
@@ -99,29 +107,48 @@ describe("observeFrontier", () => {
 
 describe("frontierEvidence", () => {
   it("treats a never-observed stream as no evidence, not as silence", () => {
-    expect(frontierEvidence(null)).toEqual({
+    expect(frontierEvidence(null, DECLARED)).toEqual({
       frozen: false,
       why: "no-recent-sync",
     });
   });
 
   it("names an advance as an advance", () => {
-    expect(frontierEvidence(0)).toEqual({ frozen: false, why: "advanced" });
+    expect(frontierEvidence(0, DECLARED)).toEqual({
+      frozen: false,
+      why: "advanced",
+    });
   });
 
-  it("needs the declared number of quiet pushes, and it is two", () => {
-    expect(FROZEN_SYNC_EVIDENCE).toBe(2);
-    expect(frontierEvidence(1)).toEqual({
+  it("needs the bar its CALLER declares — there is no default (#2560)", () => {
+    // The bar used to live here as FROZEN_SYNC_EVIDENCE = 2, shared by every stream.
+    // It counts pushes against one source's delivery chain, so it moved to the stream
+    // declaration and this parameter lost its default: a default is precisely how a
+    // stream inherits another pipeline's batching behaviour.
+    expect(frontierEvidence(DECLARED - 1, DECLARED)).toEqual({
       frozen: false,
       why: "no-recent-sync",
     });
-    expect(frontierEvidence(2)).toEqual({ frozen: true, syncs: 2 });
-    expect(frontierEvidence(9)).toEqual({ frozen: true, syncs: 9 });
+    expect(frontierEvidence(DECLARED, DECLARED)).toEqual({
+      frozen: true,
+      syncs: DECLARED,
+    });
+    expect(frontierEvidence(DECLARED + 7, DECLARED)).toEqual({
+      frozen: true,
+      syncs: DECLARED + 7,
+    });
   });
 
-  it("takes the bar from its caller when one is declared", () => {
+  it("answers a different bar differently for the same observation", () => {
+    // The whole point of the declaration: one push is enough for a source that writes
+    // straight into its own cloud, and nowhere near enough for one behind two batching
+    // stages. Same stored counter, two honest answers.
     expect(frontierEvidence(1, 1)).toEqual({ frozen: true, syncs: 1 });
     expect(frontierEvidence(2, 3)).toEqual({
+      frozen: false,
+      why: "no-recent-sync",
+    });
+    expect(frontierEvidence(3, 4)).toEqual({
       frozen: false,
       why: "no-recent-sync",
     });
