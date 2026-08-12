@@ -225,4 +225,3 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
     ).toHaveCount(0);
   });
 });
-

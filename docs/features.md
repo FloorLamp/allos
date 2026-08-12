@@ -2555,18 +2555,40 @@ session**, or **logged food serving** offers a one-tap **Undo** toast; the row
 (and its children) is held and restored intact if you undo, then purged.
 
 **Your medical records are covered too** (#1847). Deleting an **allergy**, a
-**condition**, an **immunization dose** or a **skin-lesion observation** offers
-the same toast and lands in the same trash — and each one brings back what a
-re-typed row could not: an allergy's graded reactions (which is why it starts
-warning about your medications again the moment you undo), a condition's
-hand-made correction, a lesion's whole photo series. Links whose target has since
-been deleted — the source document, the visit, the clinician — come back cleared
-rather than pointing at nothing.
+**condition**, an **immunization dose**, a **skin-lesion observation** or a
+**visit** offers the same toast and lands in the same trash — and each one brings
+back what a re-typed row could not: an allergy's graded reactions (which is why
+it starts warning about your medications again the moment you undo), a
+condition's hand-made correction, a lesion's whole photo series. Links whose
+target has since been deleted — the source document, the visit, the clinician —
+come back cleared rather than pointing at nothing. Deleting a visit detaches
+everything recorded at it rather than destroying it: the readings, medications
+and the completed appointment all survive, and undoing brings the visit back with
+those links left honestly cleared. (An uploaded **document** is still permanent —
+a document is its file plus every row extracted from it, which needs more than a
+toast.)
+
+**Every row of a metric's readings table is covered** (#2123). Deleting a
+reading from the ⋯ menu on a metric page used to offer Undo for weight, body fat
+and the vitals while HRV, height, steps, waist, lean mass, calories and a mood
+check-in vanished for good — one menu, two different promises. They all offer it
+now, and deleting a **mood check-in** brings the whole day back: the note and the
+factors, not just the rating you tapped. (Clearing one optional rating off a
+check-in, or one measure off a day that holds several, still just clears that
+value — the day itself stays, so there is nothing to undo.)
+
+**Clearing a symptom for the day is reversible** (#2124). The × on a symptom
+chip took the day's **photos and their files** with it, instantly and for good.
+It is still one tap — a confirmation on every symptom clear would be a tax you
+pay dozens of times to prevent something rare — but it now offers Undo, and
+undoing brings back the severity, the note and the whole photo series still
+attached to that day.
 
 The same contract holds at the bulk surface (#2125): selecting rows of an
 undoable kind on **Data → Manage** — activities, body metrics, biomarker
 records, supplements/medications, practice sessions, substance history,
-allergies, conditions, immunizations — captures each row and offers one
+allergies, conditions, immunizations, visits, device/manual measurements, mood
+check-ins and symptom days — captures each row and offers one
 "Deleted N · Undo" toast, so the row menu and the bulk checkbox never disagree
 about whether a delete is reversible. ("Delete all" on a dataset stays
 deliberately permanent, and says so.)
@@ -2577,7 +2599,7 @@ many related rows came with it, and when it expires — with **Restore** (the sa
 one-tap restore the toast performs) and **Delete permanently**, plus **Empty
 trash** for the lot. An admin sets the retention window in **Settings → Server →
 Trash retention** (30 days by default, 1–365). The window holds the deleted
-row's full content and any video clips or lesion photos captured with it, so a
+row's full content and any video clips or lesion/symptom photos captured with it, so a
 longer window keeps deleted health data on the server longer; "Delete
 permanently" removes a row and its media immediately. Every "remove one logged event" path behaves the same way — removing one
 session of a practice is as recoverable as removing the whole practice, and

@@ -204,7 +204,12 @@ export function setSymptomNoteCore(
 // `undoId` is null exactly when nothing was deleted, so a caller renders the plain
 // confirmation rather than an Undo that would restore nothing.
 export type SymptomRemoveOutcome =
-  | { kind: "removed"; symptom: string; existed: boolean; undoId: number | null }
+  | {
+      kind: "removed";
+      symptom: string;
+      existed: boolean;
+      undoId: number | null;
+    }
   | { kind: "invalid" };
 
 export function removeSymptomCore(
