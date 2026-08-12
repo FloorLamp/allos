@@ -22,7 +22,11 @@ import {
   type AdherenceWeek,
   type NutritionSectionId,
 } from "@/lib/nutrition-trends";
-import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
+import {
+  DAY_HISTORY_DOMAINS,
+  dayHistoryStart,
+  dayHistoryWindow,
+} from "@/lib/day-history";
 import { FOOD_GROUPS, foodGroupShortName } from "@/lib/food-groups";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
@@ -69,10 +73,19 @@ export default async function NutritionSection({
 
   // Parts 1+2 — the day histories. The window is the hub's shared range clamped
   // to this lens's week caps and aligned to the profile's week start, so the
-  // calendar's columns and the matrix's day list cover identical days.
+  // calendar's columns and the matrix's bucket list cover identical days.
   const win = lensWindow(range, todayStr, NUTRITION_HISTORY_WEEK_CAPS);
   const weekStart = getWeekStart(profile.id);
-  const gridFrom = dayHistoryStart(win.to, win.weeks, weekStart);
+  // A year-scale request outgrows the day cap, so it re-grains to weeks rather
+  // than being clamped back to the most recent quarter (#2413). The decision
+  // reads the range's UNCLAMPED span; `win.weeks` has already been clamped.
+  const history = dayHistoryWindow({
+    from: range.from ?? null,
+    to: win.to,
+    weeks: win.weeks,
+    weekStart,
+  });
+  const gridFrom = dayHistoryStart(win.to, history.weeks, weekStart);
   const foodEntries = getFoodDailyServingTotals(profile.id, gridFrom).filter(
     (e) => e.date <= win.to
   );
@@ -192,8 +205,9 @@ export default async function NutritionSection({
             values={foodValues}
             groups={foodGroupsMeta}
             end={win.to}
-            weeks={win.weeks}
+            weeks={history.weeks}
             weekStart={weekStart}
+            grain={history.grain}
             today={todayStr}
             formatPrefs={formatPrefs}
             testId="intake-day-history"
@@ -240,8 +254,9 @@ export default async function NutritionSection({
             values={doseValues}
             groups={doseGroups}
             end={win.to}
-            weeks={win.weeks}
+            weeks={history.weeks}
             weekStart={weekStart}
+            grain={history.grain}
             today={todayStr}
             formatPrefs={formatPrefs}
             testId="dose-day-history"
