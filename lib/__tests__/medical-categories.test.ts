@@ -116,8 +116,11 @@ describe("medical-categories: importers do not re-declare the enums", () => {
 
   it("the AI extractor imports the shared constants", () => {
     const src = read(EXTRACT);
+    // ASSIGNABLE_MEDICAL_CATEGORIES since #2479 part 2 — still the shared source, but
+    // the set a NEW row may be filed under, so the model can no longer emit the
+    // retired `biomarker` catch-all.
     expect(src).toMatch(
-      /import\s*\{[^}]*\bMEDICAL_CATEGORIES\b[^}]*\bMEDICAL_FLAGS\b[^}]*\}\s*from\s*["']\.\.\/medical-categories["']/s
+      /import\s*\{[^}]*\bASSIGNABLE_MEDICAL_CATEGORIES\b[^}]*\bMEDICAL_FLAGS\b[^}]*\}\s*from\s*["']\.\.\/medical-categories["']/s
     );
     // The extractor may alias to local CATEGORIES/FLAGS names, but must not
     // build them from a fresh array literal.

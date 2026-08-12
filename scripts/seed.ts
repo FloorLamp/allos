@@ -555,7 +555,9 @@ db.prepare(
 // optimal range, so trends render and the optimal-band ("non-optimal") flagging
 // is demoable. Flags are derived from the canonical ranges via reconcileFlags
 // below (not hand-set), so high/low/non-optimal stay consistent with the data.
-type MedCategory = "lab" | "biomarker" | "vitals" | "scan";
+// No `biomarker`: the pre-#1076 catch-all is retired (#2479 part 2), and the seed
+// filing three real lab analytes under it was one of the paths keeping it alive.
+type MedCategory = "lab" | "vitals" | "scan";
 interface Panel {
   category: MedCategory;
   name: string; // display name (also the canonical name unless noted)
@@ -571,7 +573,7 @@ const LAB_DATES = [1080, 870, 660, 450, 240, 30];
 // The lab each draw was sent to, parallel to LAB_DATES. Because every reading of
 // a biomarker inherits its draw's lab, the same biomarker shows varying panels
 // over time — mirroring a patient whose bloodwork moved between providers. Only
-// applied to lab/biomarker draws; vitals and scans aren't lab work.
+// applied to lab draws; vitals and scans aren't lab work.
 const LAB_PANELS = [
   "Quest Diagnostics",
   "LabCorp",
@@ -582,7 +584,7 @@ const LAB_PANELS = [
 ];
 
 function panelFor(category: MedCategory, i: number): string | null {
-  if (category === "lab" || category === "biomarker") return LAB_PANELS[i];
+  if (category === "lab") return LAB_PANELS[i];
   if (category === "vitals") return "Home Monitor";
   return null; // scans carry no panel
 }
@@ -677,7 +679,7 @@ const PANELS: Panel[] = [
   },
   // Inflammation / liver.
   {
-    category: "biomarker",
+    category: "lab",
     name: "hs-CRP",
     canonical: "High-Sensitivity C-Reactive Protein (hs-CRP)",
     unit: "mg/L",
@@ -711,7 +713,7 @@ const PANELS: Panel[] = [
     values: [1.02, 1.0, 0.99, 0.97, 0.96, 0.94],
   },
   {
-    category: "biomarker",
+    category: "lab",
     name: "Homocysteine",
     canonical: "Homocysteine",
     unit: "umol/L",
@@ -829,7 +831,7 @@ const PANELS: Panel[] = [
     values: [4.6, 4.9, 5.2, 5.4, 5.6, 5.8],
   },
   {
-    category: "biomarker",
+    category: "lab",
     name: "Omega-6/Omega-3 Ratio",
     canonical: "Omega-6/Omega-3 Ratio",
     unit: "ratio",
@@ -2845,7 +2847,7 @@ const docId = Number(
 const linkedRows = db
   .prepare(
     `UPDATE medical_records SET document_id = ?, source = 'extracted'
-       WHERE profile_id = 1 AND date = ? AND category IN ('lab','biomarker')`
+       WHERE profile_id = 1 AND date = ? AND category = 'lab'`
   )
   .run(docId, daysAgo(30));
 db.prepare(

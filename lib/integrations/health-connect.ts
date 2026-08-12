@@ -880,11 +880,11 @@ export function parseHealthConnectPayload(
   // (Skin temperature is emitted AFTER the sleep block below — it is a per-NIGHT
   // reading and has to borrow the session's wake-day attribution.)
 
-  // --- vitals & biomarkers → medical_records (reference-range flagged) ---
+  // --- vitals & lab readings → medical_records (reference-range flagged) ---
   const vital = (
     key: string,
     canonical: string,
-    category: "vitals" | "lab" | "biomarker",
+    category: "vitals" | "lab",
     unit: string,
     valueOf: (rec: Record<string, unknown>) => number | null
   ) => {
@@ -967,7 +967,10 @@ export function parseHealthConnectPayload(
   vital("respiratory_rate", "Respiratory Rate", "vitals", "breaths/min", (r) =>
     num(r.rate, r.value)
   );
-  vital("vo2_max", "VO2 Max", "biomarker", "mL/kg/min", (r) =>
+  // VO2 Max files as `vitals` — the canonical registry's own classification for it
+  // (#2479 part 2). It used to write the legacy `biomarker` catch-all, which gave a
+  // watch estimate a LAB retest clock it never earned.
+  vital("vo2_max", "VO2 Max", "vitals", "mL/kg/min", (r) =>
     num(r.ml_per_kg_per_min, r.value)
   );
 

@@ -102,7 +102,7 @@ npx vitest run -t "estimate1RM"
 CI runs formatting, lint, type checking, PHI scanning, a non-blocking full
 dependency audit plus a blocking high-severity audit gate, both coverage-gated
 test tiers, changed Playwright specs repeated three times at zero retries, and
-the full browser suite in eight shards. Documentation-only changes skip the
+the full browser suite in twelve shards. Documentation-only changes skip the
 browser matrix. `.github/workflows/e2e-full.yml` provides the manually
 dispatched full-suite census. Pre-commit runs Prettier through lint-staged and
 `phi-scan --staged`.
@@ -198,6 +198,19 @@ contract: edit and delete route by a `ReadingTarget` taken from the row, not by
 the surface's own key. A surface names a quantity or a row; it does not name a
 table. Neither phase changes schema — the physical merge is a separate, later
 decision. See `docs/internals/reading-model.md`.
+
+The `biomarker` storage category is RETIRED (#2479 part 2). It was the pre-#1076
+catch-all — "a result, and nothing narrower was picked" — and migration 185 re-files
+the rows the canonical registry can classify, applying retroactively the rule ingest
+has followed since #1076 (a resolved canonical name's registry category wins). A row
+the registry cannot classify STAYS and is reported, never guessed, which is why the
+value is still legal in the CHECK and still filterable. What no longer exists is a way
+to create one: `ASSIGNABLE_MEDICAL_CATEGORIES` is the derived complement of
+`RETIRED_MEDICAL_CATEGORIES` and is what the extractor's enum, its accept-list and the
+category picker offer, while `NormVital.category` and `FitnessStore` drop the string
+from the TYPE so a writer does not compile. The pass deletes nothing and moves no id,
+so it declares no `CHILD_LINKS` — a probe guarding a delete that cannot happen is the
+#2444 defect, not a guard against it.
 
 Not every dated observation a document carries IS a quantity. A functional-status
 finding, the body site a temperature was taken at, one screening question's answer
@@ -917,3 +930,13 @@ the host is a manual or scheduled `docker compose pull && docker compose up -d`.
 Persistent data lives under `/app/data`, bind-mounted from `DATA_DIR`. Keep that
 directory outside the checkout. See README **Quick start with Docker** for the
 operator setup.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
