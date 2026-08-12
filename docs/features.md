@@ -238,7 +238,10 @@ An episode page presents that range as a story:
 
 - symptom-severity series and the temperature curve;
 - as-needed doses and the next safe dose window;
-- visits, appointments, documents, and medication courses during the range;
+- visits, appointments, documents, and medication courses during the range — a
+  **cancelled** appointment is shown as cancelled rather than dropped (#2136),
+  because the visit that fell through is real history and is often why a gap in
+  care exists, but it may not read as care that happened;
 - linked visits across the whole care trail;
 - a note, outcome, editable start/end dates, and comparison with prior episodes.
 
@@ -329,6 +332,14 @@ card deep-links to its section), pillars and never a composite score, with
 absent pillars simply not rendering. Its **#protocols** section absorbed the
 former Protocols page (the old `/protocols` hub URL was removed in #1635 and
 404s).
+
+The **strength** pillar is the exception to "deep-links to its section", because
+it is the one pillar that names a specific thing: "Advanced · Bench Press — for
+your bodyweight & sex". Its card, and the fitness section's onward link, go to
+**Training → Analyze for that lift**, where the level badge and the standards
+table highlighted at your row are the evidence for exactly that claim. The link
+carries the lift you logged, not the standards table's base name, so it lands on
+your own history rather than on whichever lift the panel would otherwise pick.
 
 The biomarker pillar states **how many markers** its ratio describes and **how
 current they are**, because "8 of 10 optimal" says nothing on its own about a
@@ -2219,13 +2230,20 @@ recognises the set, maps each printed answer onto that item's own published
 option, and writes ONE score row plus its `instrument_responses`. No question
 text ever coins a canonical name. Two cases **refuse and say so** in the import
 report rather than guessing, both safety decisions: a screening the document
-attributes to **another subject** — or to nobody, since post-natal screening is
-administered to a _parent_ and routinely filed in the _child's_ chart, and a
-misattributed crisis-escalating score is worse than an unimported one — and a
-**partly answered** one, since a partial total is not a smaller total but a
-different measurement that cannot be banded against whole-instrument cut-offs.
-Neither refusal loses anything: the answers stay on the document as assessment
-rows, and the SCORE is what appears in the Dropped list.
+attributes to **another subject** — post-natal screening is administered to a
+_parent_ and routinely filed in the _child's_ chart, and a misattributed
+crisis-escalating score is worse than an unimported one — and a **partly
+answered** one, since a partial total is not a smaller total but a different
+measurement that cannot be banded against whole-instrument cut-offs. Neither
+refusal loses anything: the answers stay on the document as assessment rows, and
+the SCORE is what appears in the Dropped list.
+
+An observation that states **no subject at all** is read against the document
+(#2558). An ordinary CCD is single-patient by construction and establishes its
+patient once in the header, so most of them never restate it — those score. A
+document naming **more than one patient** still refuses an unattributed score,
+because that is the chart where a guess does the harm. A stated other subject
+refuses either way.
 
 A recorded score can be **corrected or removed** from the History list on both
 instrument surfaces (Mental health and Substance use). This is a safety

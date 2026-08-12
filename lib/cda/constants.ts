@@ -3,6 +3,7 @@ import type { ImportDrop } from "../import-report";
 // The care-plan CATEGORY vocabulary is owned by the care-plan domain module (#1676)
 // so the importer and the entry form can never disagree about the bucket names.
 import type { CarePlanCategory } from "../care-plan-upcoming";
+import type { DocumentSubjectScope } from "../instrument-recognize";
 
 export class CdaError extends Error {}
 
@@ -336,10 +337,22 @@ export interface SectionExtractor {
   // effectiveTime-stamped — possibly days after the visit it describes; anchoring
   // to the visit keeps the med's record date/stop date clinically honest and its
   // date-keyed rx external_id stable across re-downloads of the same visit.
+  // `doc` carries the header facts an extractor can only learn from the DOCUMENT.
+  // Optional so a test can drive one extractor directly; an absent value is read as
+  // the strict `multiple-subjects` scope, because "nobody told me" is not evidence
+  // that a document is single-patient (#2558).
   extract: (
     section: CdaSection,
-    contextDate?: string | null
+    contextDate?: string | null,
+    doc?: CdaDocumentFacts
   ) => SectionExtractorOutput;
+}
+
+// What an extractor knows about the whole document it is a section of.
+export interface CdaDocumentFacts {
+  // How many people the document is about — see documentSubjectScope in
+  // lib/cda/parse.ts. Only the screening-instrument fold consumes it.
+  subjectScope: DocumentSubjectScope;
 }
 
 // What an extractor hands back: the rows it produced, PLUS the candidates it itself

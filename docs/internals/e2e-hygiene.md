@@ -1223,6 +1223,60 @@ pain they replace):
     pass-on-retry tests through the same script, and at the default `retries: 0`
     it reports an accurate empty.
 
+## Shards plan themselves by DURATION, not test count
+
+`--shard` splits the suite by test COUNT, and count is a bad proxy for cost here:
+`patient-portals-setup` is 17 tests / 54s, `food-log` is 21 tests / 13s, and
+`profile-switch-toasts` is ONE test that takes 21s. The result is a stable skew,
+not noise — shards 7 and 10 were the two slowest in every 12-way CI run sampled,
+at 1.22–1.32× the mean. Since the browser matrix is the whole critical path, the
+slowest shard IS the wait, so that skew is paid on every push. Going 8→12 shards
+diluted it without dissolving it, because the skew is a property of the split
+rather than of N.
+
+Each shard now plans its own bucket:
+
+```
+ARGS=$(npx tsx scripts/e2e-shard-plan.ts "$SHARD" "$TOTAL")
+npm run test:e2e -- $ARGS
+```
+
+The plan is a pure, deterministic function of (spec list, `e2e/spec-durations.json`,
+shard count) — greedy longest-processing-time, ties broken on filename — so all
+twelve runners compute the SAME twelve buckets and each takes its own. No planning
+job, nothing serialized ahead of the matrix, no artifact passed between runners.
+Measured on the real 391-file suite: buckets of 126–127s, max/mean 1.00.
+
+**The safety property is the partition, not the balance.** An unbalanced suite is
+merely slow; a lossy one is green while running nothing. `planShards`
+(`lib/e2e-shard-plan.ts`) therefore validates the buckets it just built and throws
+rather than returning a plan that would drop or duplicate a spec, and the shard
+fails loudly on that. Its unit tests assert the partition, the determinism, and
+each way the plan can lie.
+
+Two failure modes it is deliberately built to survive:
+
+- **A missing manifest** is not fatal — the script emits `--shard=N/M` and the
+  matrix falls back to the count-based split it replaced.
+- **A stale manifest** degrades balance, never correctness. A spec absent from
+  the manifest is still planned, weighted at 1.25× the mean measured file (erring
+  high, so a new spec lands in a lighter bucket), and every run prints its
+  coverage — a manifest that has rotted says so in the job log instead of quietly
+  unbalancing the matrix.
+
+The manifest holds seconds per spec file, and ONLY RELATIVE WEIGHT MATTERS: it
+plans the same split whether measured on a runner or a developer's box, since a
+constant factor scales every bucket alike. Refresh it when the SHAPE changes (a
+heavy spec added, split, or deleted), not to chase drift:
+
+```
+npx tsx scripts/gen-e2e-durations.ts <playwright-report.json> [...]
+```
+
+`e2e-full.yml` uploads each shard's raw JSON report as `e2e-results-shard-N` for
+exactly this — it is the only workflow that runs every spec, so its four reports
+regenerate the whole manifest in one go.
+
 ## Fix (f) — DB-per-worker isolation (#1538)
 
 Until this landed, the suite booted ONE app server against ONE seeded SQLite

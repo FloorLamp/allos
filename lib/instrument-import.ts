@@ -27,7 +27,7 @@ import type { ImportDrop } from "./import-report";
 import { instrumentDef } from "./mental-health";
 import {
   recognizeInstrument,
-  type InstrumentSubject,
+  type InstrumentAttribution,
 } from "./instrument-recognize";
 
 export interface InstrumentFold {
@@ -43,12 +43,13 @@ function isCandidate(r: ImportedRecord): boolean {
   return r.category === "assessment" && (r.value ?? "").trim() !== "";
 }
 
-// Fold one section's records. `subject` is the document's own statement of whose
-// screening this is (see lib/instrument-recognize.ts on why silence refuses);
-// `section` names the originating section for the drop's context.
+// Fold one section's records. `attribution` is the document's own statement of whose
+// screening this is plus how many patients the document is about (see
+// lib/instrument-recognize.ts on what silence means); `section` names the originating
+// section for the drop's context.
 export function foldInstrumentScores(
   records: readonly ImportedRecord[],
-  subject: InstrumentSubject,
+  attribution: InstrumentAttribution,
   section: string
 ): InstrumentFold {
   const candidateIdx: number[] = [];
@@ -62,7 +63,7 @@ export function foldInstrumentScores(
       name: records[i].name,
       answerText: records[i].value,
     })),
-    subject
+    attribution
   );
   if (recognized.kind === "none") return { records: [...records], drops: [] };
 

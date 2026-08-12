@@ -30,7 +30,7 @@ export type DropReason =
   | "non_analyte" // an administrative/structural observation (specimen date, "Approved By", accession #) — not a measurement (#681/#693)
   | "derived_percentile" // a derived anthropometric percentile (BMI/weight-for-length/head-circ) the app recomputes itself, not a raw measurement (#684/#722/#693)
   | "negated" // a negated / retracted / entered-in-error assertion
-  | "other_subject" // a screening instrument the document says is somebody ELSE's — or does not say whose (#2321). Post-natal screening is administered to a parent and filed in the child's chart; a misattributed crisis-escalating score is worse than an unimported one, so silence refuses too
+  | "other_subject" // a screening instrument that could not be attributed to this chart's patient (#2321/#2558): the document says it is somebody ELSE's, or says nothing while naming more than one patient. Post-natal screening is administered to a parent and filed in the child's chart; a misattributed crisis-escalating score is worse than an unimported one. A single-patient document that restates no subject is NOT this case — nobody else is in it, so it scores
   | "incomplete_instrument" // a recognised screening instrument that is only PARTIALLY answered (#2321). A partial total is not a smaller total, it is a different measurement — it cannot be banded against cut-offs derived from the whole
   | "correction_orphaned" // a HAND CORRECTION this reprocess could not carry over (#2364) — the one reason here that is not about a candidate the document offered. A reprocess deletes and re-inserts the footprint, so a user's corrected value is captured and re-applied by identity (lib/import-corrections.ts); when the new extraction produces no counterpart, the correction has lost its subject. Reported rather than resurrected: putting the row back would keep something the document stopped claiming, and dropping it in silence is the defect
   | "unrecognized_section" // a whole section / resource type no extractor consumes
@@ -464,7 +464,9 @@ const REASON_LABELS: Record<DropReason, string> = {
   non_analyte: "Non-analyte / administrative",
   derived_percentile: "Derived percentile (recomputed)",
   negated: "Negated / retracted",
-  other_subject: "Screening for another subject",
+  // Not "for another subject": that is only half of what lands here since #2558, and
+  // the other half is a screening the document declined to attribute at all.
+  other_subject: "Screening not attributable to this patient",
   incomplete_instrument: "Screening only partly answered",
   unrecognized_section: "Section not consumed",
   other: "Other",

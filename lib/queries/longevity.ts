@@ -103,7 +103,15 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
       )
       .filter((s): s is NonNullable<typeof s> => s != null);
     const best = bestStanding(standings);
-    if (best) inputs.strength = { level: best.level, lift: best.lift };
+    // `lift` is the standards row the claim is judged against ("Bench Press"); `exercise`
+    // is the logged lift that produced it ("Barbell Bench Press"), which is what the
+    // pillar's deep link has to address (#1921).
+    if (best)
+      inputs.strength = {
+        level: best.level,
+        lift: best.lift,
+        exercise: best.exercise,
+      };
   }
 
   // Sleep regularity (#160, SRI).

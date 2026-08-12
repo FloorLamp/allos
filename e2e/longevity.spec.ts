@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { followLink } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -11,7 +12,9 @@ import {
 //      panel, a VO2 Max reading, nightly sleep sessions, labs with curated
 //      ranges, and two guided fitness checks) — including the absorbed
 //      #protocols hub (collapsed add form).
-//   2. The dashboard widget's pillar cards deep-link to /longevity#<anchor>.
+//   2. The dashboard widget's pillar cards deep-link to /longevity#<anchor> —
+//      except the strength pillar, whose destination is DATA (#1921): it names a
+//      lift, so its tap lands on the Analyze panel for THAT lift.
 //   3. Absent pillars don't render: the activity-free EMPTY_TRAINING fixture
 //      (#809 — nothing logged at all) gets NO pillar sections, only the
 //      always-present interventions section. Read-only on that fixture, so it
@@ -55,6 +58,21 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
   await expect(main.getByTestId("longevity-run-check")).toHaveAttribute(
     "href",
     "/training?tab=fitness"
+  );
+  // #1921 — the strength pillar names the lift it judges you on, so this section
+  // links onward to THAT lift's evidence. The vo2max pillar beside it is expanded
+  // here and carries no such link.
+  const strength = fitness.getByTestId("longevity-pillar-strength");
+  await expect(strength).toBeVisible();
+  await expect(strength).toContainText("Deadlift"); // the lift the claim names
+  await expect(
+    fitness.getByTestId("longevity-pillar-strength-link")
+  ).toHaveAttribute(
+    "href",
+    "/training?tab=analyze&kind=strength&item=Deadlift"
+  );
+  await expect(fitness.getByTestId("longevity-pillar-vo2max-link")).toHaveCount(
+    0
   );
   // The seeded guided checks give per-domain percentile bars.
   await expect(
@@ -103,6 +121,49 @@ test("dashboard pillar cards deep-link to the Longevity anchors", async ({
     "href",
     "/longevity#biomarkers"
   );
+});
+
+// #1921 — the strength pillar is the one whose destination is DATA: it names a lift, and
+// the tap has to produce the EVIDENCE for that claim rather than the pillar's own
+// explainer anchor. Landing on a generic index the reader then searches would be the
+// defect restated, so this drives the whole hop and asserts what arrives.
+test("the strength pillar card lands on the panel for the lift it names", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const card = page
+    .getByRole("main")
+    .getByTestId("healthspan-pillars-widget")
+    .getByTestId("pillar-strength");
+  await expect(card).toBeVisible();
+  // The claim: a level, for a named lift. Both come off one computation.
+  await expect(card).toContainText("Intermediate");
+  await expect(card).toContainText("Deadlift");
+  await expect(card).toHaveAttribute(
+    "href",
+    "/training?tab=analyze&kind=strength&item=Deadlift"
+  );
+
+  // followLink, not hydratedClick: this click NAVIGATES, and the two helpers guard
+  // different races. hydratedClick waits for React's markers on the node and clicks
+  // ONCE, which is exactly right for a toggle a retry would undo — a link has no such
+  // hazard and a different one instead. Playwright reports a click on a link a prior
+  // attempt already navigated away from as "detached", and a click that lands before
+  // the router is ready leaves the URL assertion to time out with no trace of why.
+  // followLink is the blessed helper for that, and it asserts the destination as it
+  // goes, so the separate toHaveURL is redundant.
+  await followLink(
+    page,
+    card,
+    /\/training\?tab=analyze&kind=strength&item=Deadlift$/
+  );
+  const main = page.getByRole("main");
+  // The Benchmarks ladder for THAT lift, at the level the pillar claimed.
+  await expect(main.getByText("Benchmarks", { exact: true })).toBeVisible();
+  await expect(
+    main.getByText("Deadlift estimated 1RM progression", { exact: false })
+  ).toBeVisible();
+  await expect(main.getByText("Intermediate").first()).toBeVisible(); // first-ok: the level appears on the ladder and in its header — either proves the standing arrived
 });
 
 test("absent pillars drop their sections; the interventions section always renders", async ({

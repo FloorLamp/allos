@@ -94,6 +94,12 @@ export function strengthLevelColor(level: StrengthLevel): string {
 // A resolved standing for a lift at the lifter's sex + bodyweight.
 export interface StrengthStanding {
   lift: string; // the canonical lift the standing is for (base name)
+  // The LOGGED exercise this standing was computed from — "Barbell Bench Press" where
+  // `lift` is the "Bench Press" standards row it placed against. The two differ whenever
+  // the lifter names an implement, and only this one identifies a row in the profile's own
+  // history: a surface that wants to show the EVIDENCE behind the standing (#1921) must
+  // link on this, because the base name matches nothing the lifter ever logged.
+  exercise: string;
   bodyweightKg: number;
   e1rmKg: number;
   bodyweightLift: boolean;
@@ -246,6 +252,7 @@ export function strengthStanding(
   const placed = placeOnLevels(sn.levels, values, e1rmKg);
   return {
     lift: resolved.name,
+    exercise,
     bodyweightKg,
     e1rmKg,
     bodyweightLift: resolved.t.bodyweight,

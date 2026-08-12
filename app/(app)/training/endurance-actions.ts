@@ -8,6 +8,7 @@ import {
   updateEndurancePlanCore,
   setEndurancePlanStatusCore,
   deleteEndurancePlanCore,
+  type EndurancePlanPatch,
 } from "@/lib/endurance-plans";
 import { isEnduranceDiscipline } from "@/lib/endurance-plan";
 import { toKm } from "@/lib/units";
@@ -84,7 +85,13 @@ export async function createEndurancePlan(
   return formOk();
 }
 
-// Edit an existing plan in place.
+// Edit an existing plan in place. Sends a PATCH (#2573): a field the submitted form does
+// not CARRY is absent from the patch and left exactly as stored, so this action is only
+// ever responsible for what its caller actually edits. `has()` — not a `?? ""` fallback —
+// is the test, so a control that is present but blank still means "clear this", while a
+// control that does not exist means nothing at all. `notes` is the field that made this
+// necessary: no surface has ever carried it, and the old whole-row write turned that
+// silence into `notes = null` on every save.
 export async function updateEndurancePlan(
   formData: FormData
 ): Promise<FormResult> {
@@ -95,19 +102,23 @@ export async function updateEndurancePlan(
   if (!isEnduranceDiscipline(discipline))
     return formError("Pick a discipline (run, ride, or swim).");
   const unit = getUnitPrefs(login.id).distanceUnit;
-  const out = updateEndurancePlanCore(profile.id, id, {
-    eventName: String(formData.get("event_name") ?? ""),
-    discipline,
-    eventDate: String(formData.get("event_date") ?? "").trim(),
-    targetDistanceKm: parseDistanceKm(
-      String(formData.get("target_distance") ?? ""),
+  // Discipline is validated above and always named — it is what the duplicate check reads.
+  const patch: EndurancePlanPatch = { discipline };
+  if (formData.has("event_name"))
+    patch.eventName = String(formData.get("event_name"));
+  if (formData.has("event_date"))
+    patch.eventDate = String(formData.get("event_date")).trim();
+  if (formData.has("target_distance"))
+    patch.targetDistanceKm = parseDistanceKm(
+      String(formData.get("target_distance")),
       unit
-    ),
-    targetTimeSec: parseTargetTimeSec(
-      String(formData.get("target_time") ?? "")
-    ),
-    notes: String(formData.get("notes") ?? ""),
-  });
+    );
+  if (formData.has("target_time"))
+    patch.targetTimeSec = parseTargetTimeSec(
+      String(formData.get("target_time"))
+    );
+  if (formData.has("notes")) patch.notes = String(formData.get("notes"));
+  const out = updateEndurancePlanCore(profile.id, id, patch);
   if (out.kind === "duplicate")
     return formError(`You already have another active ${discipline} plan.`);
   if (out.kind !== "ok")

@@ -3,14 +3,15 @@
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { requireWriteAccess } from "@/lib/auth";
-import { getActiveSituations, setActiveSituations } from "@/lib/settings";
+import {
+  activateSituation,
+  deactivateSituation,
+  endProtocolCore,
+  resumeProtocolCore,
+} from "@/lib/protocol-lifecycle";
 import { isRealIsoDate } from "@/lib/date";
 import { normalizeOutcomeKeys } from "@/lib/protocol-metrics";
-import {
-  getFrequencyTargets,
-  getProtocol,
-  situationUsedByOtherProtocol,
-} from "@/lib/queries";
+import { getFrequencyTargets, getProtocol } from "@/lib/queries";
 import { getEquipmentById } from "@/lib/equipment";
 import { parseScopedPractice } from "@/lib/protocol-practice";
 import { findPracticeTarget } from "@/lib/queries/wellness";
@@ -39,29 +40,6 @@ function revalidateProtocols(id?: number) {
 
 function str(formData: FormData, key: string): string | null {
   return String(formData.get(key) ?? "").trim() || null;
-}
-
-// Add a situation label to the profile's active set (idempotent), reusing the
-// existing situations wiring so a started protocol surfaces its situational
-// supplements exactly like a manual toggle.
-function activateSituation(profileId: number, situation: string) {
-  const next = new Set(getActiveSituations(profileId));
-  next.add(situation);
-  setActiveSituations(profileId, [...next]);
-}
-
-// Remove a situation label from the active set UNLESS another still-ongoing
-// protocol declares it (row-side-state rule: a protocol's end/delete inverts the
-// activation it caused, but must not clobber a situation a sibling protocol needs).
-function deactivateSituation(
-  profileId: number,
-  situation: string,
-  exceptProtocolId: number
-) {
-  if (situationUsedByOtherProtocol(profileId, situation, exceptProtocolId))
-    return;
-  const next = new Set(getActiveSituations(profileId));
-  if (next.delete(situation)) setActiveSituations(profileId, [...next]);
 }
 
 // Resolve the optional recovery-gear reference: the submitted equipment id, but
@@ -375,62 +353,46 @@ export async function updateProtocolOutcomes(
   return formOk();
 }
 
+// The two one-tap lifecycle transitions. Everything interesting — the in-transaction
+// re-read, the compare-and-swap, the situation inversion and the typed refusals — is
+// the registered core's (#2135); the action authorizes, maps the outcome to the user's
+// words, and revalidates. It deliberately does NOT pre-check the row: reading it here
+// would only re-open the window the core exists to close.
 export async function endProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
-  const existing = getProtocol(profile.id, id);
-  if (!existing) return formError("Couldn't find that protocol.");
-  if (existing.end_date != null)
-    return formError("That protocol has already ended.");
-  const end = today(profile.id);
-  // The row write and the situation inversion are ONE transition (see resume for
-  // the same pairing): a protocol that reads "ended" while its situation is still
-  // active would keep firing situational supplements and nudges for a block the
-  // user has stopped.
-  writeTx(() => {
-    db.prepare(
-      "UPDATE protocols SET end_date = ? WHERE id = ? AND profile_id = ?"
-    ).run(end, id, profile.id);
-    // Ending the protocol inverts its situation activation.
-    if (existing.situation)
-      deactivateSituation(profile.id, existing.situation, id);
-  });
-  revalidateProtocols(id);
-  return formOk();
+  const outcome = endProtocolCore(profile.id, id, today(profile.id));
+  switch (outcome.kind) {
+    case "not-found":
+      return formError("Couldn't find that protocol.");
+    case "already-ended":
+      return formError("That protocol has already ended.");
+    case "ended":
+      revalidateProtocols(id);
+      return formOk();
+  }
 }
 
 export async function resumeProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
-  const existing = getProtocol(profile.id, id);
-  if (!existing) return formError("Couldn't find that protocol.");
-  const eligibility = protocolReopenEligibility(
-    existing.end_date,
-    today(profile.id)
-  );
-  if (eligibility.kind !== "eligible") {
-    return formError(
-      eligibility.kind === "expired"
-        ? "This protocol is outside the resume window. Run it again instead."
-        : "This protocol can't be resumed."
-    );
+  const outcome = resumeProtocolCore(profile.id, id, today(profile.id));
+  switch (outcome.kind) {
+    case "not-found":
+      return formError("Couldn't find that protocol.");
+    case "expired":
+      return formError(
+        "This protocol is outside the resume window. Run it again instead."
+      );
+    case "already-ongoing":
+    case "invalid":
+      return formError("This protocol can't be resumed.");
+    case "resumed":
+      revalidateProtocols(id);
+      return formOk();
   }
-
-  // Reopening the row and reactivating its situation are ONE transition, so they
-  // go in ONE writeTx like create/run-again do. Split, a failure between them
-  // commits a protocol that reads "Ongoing" while its situational supplements and
-  // nudges stay off — and the user cannot self-correct, because an already-active
-  // protocol is no longer resume-eligible.
-  writeTx(() => {
-    db.prepare(
-      "UPDATE protocols SET end_date = NULL WHERE id = ? AND profile_id = ?"
-    ).run(id, profile.id);
-    if (existing.situation) activateSituation(profile.id, existing.situation);
-  });
-  revalidateProtocols(id);
-  return formOk();
 }
 
 export async function runProtocolAgain(
