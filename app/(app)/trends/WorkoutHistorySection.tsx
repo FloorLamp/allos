@@ -34,10 +34,8 @@ export default async function WorkoutHistorySection({
   const weekStart = getWeekStart(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const history = dayHistoryWindow({
-    from: window.from,
-    to: end,
+    days: window.days,
     weeks: fitnessWindowWeeks(window.days),
-    weekStart,
   });
   const since = dayHistoryStart(end, history.weeks, weekStart);
   const activityDays = getWorkoutActivityDays(profile.id, since, end);

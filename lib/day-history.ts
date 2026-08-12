@@ -127,30 +127,33 @@ export interface DayHistoryWindow {
   weeks: number;
 }
 
+// How many week columns a span of days WANTS, before any cap. Deliberately the
+// same arithmetic `clampLensWeeks` performs — `Math.ceil(days / 7)` — minus the
+// clamp, and NOT the week-ALIGNED `weekSpan`: the decision below compares this
+// against the day cap, and a measure that disagreed with the lens's own by an
+// alignment week would flip the 90D default to week grain (ceil(90/7) = 13, but
+// a Wednesday-anchored 90 days touches 14 calendar weeks).
+export function desiredHistoryWeeks(days: number | null): number | null {
+  return days == null ? null : Math.max(1, Math.ceil(days / 7));
+}
+
 // The grain decision (#2413). Its input is the UNCLAMPED span: `lensWindow`
 // has already clamped its `weeks` to the lens's day-grain cap, and asking the
-// clamped number whether it exceeded the cap can only ever answer "no". So the
-// desired span is re-derived here from the range's own bounds, week-aligned
-// through the shared `weekSpan`.
+// clamped number whether it exceeded the cap can only ever answer "no" — which
+// is exactly why a 1Y range rendered a quarter.
 //
 // At day grain the lens's clamped column count passes through UNCHANGED — a
 // 90D window renders exactly what it rendered before this existed.
 export function dayHistoryWindow(opts: {
-  /** The range's own first day, or null for a window open at the start. */
-  from: string | null;
-  /** The window's anchor (`lensWindow`'s `to` — never in the future). */
-  to: string;
+  /** The window's length in inclusive days (`lensWindow`'s `days`), or null. */
+  days: number | null;
   /** The lens's already-clamped day-grain column count. */
   weeks: number;
   /** Day-grain cap. Defaults to the substrate's `MAX_HISTORY_DAY_WEEKS`. */
   maxDayWeeks?: number;
-  weekStart?: number;
 }): DayHistoryWindow {
   const maxDayWeeks = opts.maxDayWeeks ?? MAX_HISTORY_DAY_WEEKS;
-  const desired =
-    opts.from == null
-      ? null
-      : weekSpan(opts.from, opts.to, opts.weekStart ?? 0);
+  const desired = desiredHistoryWeeks(opts.days);
   // An unbounded ("All time") window always outgrows the cap; a bounded one
   // does so only STRICTLY above it, so a range that resolves to exactly the cap
   // keeps its day cells.

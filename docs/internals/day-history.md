@@ -43,10 +43,12 @@ to it.
 repo's grain discipline (`dayGrid` lays days on a 7×N grid; `lensWindow`
 resolves the hub's `DateRange` to one anchor; this resolves it to a grain):
 
-- its input is the **UNCLAMPED** span, re-derived from the range's own bounds
-  through the shared `weekSpan`. Asking `lensWindow`'s already-clamped `weeks`
-  whether the request exceeded the cap can only ever answer "no" — that IS the
-  defect;
+- its input is the **UNCLAMPED** span (`desiredHistoryWeeks`, the lens's own
+  `ceil(days / 7)` minus the clamp). Asking `lensWindow`'s already-clamped
+  `weeks` whether the request exceeded the cap can only ever answer "no" — that
+  IS the defect. It is deliberately NOT the week-ALIGNED `weekSpan`: a
+  Wednesday-anchored 90 days touches 14 calendar weeks, so an aligned measure
+  would read 14 > 13 and flip the hub's own 90D default to week grain;
 - **strictly above** `MAX_HISTORY_DAY_WEEKS` (13) → week grain, capped at
   `MAX_HISTORY_WEEK_COLUMNS` (53, the trailing-12-months convention). A range
   resolving to exactly the cap keeps its day cells;

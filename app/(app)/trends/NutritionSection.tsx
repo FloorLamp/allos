@@ -79,12 +79,7 @@ export default async function NutritionSection({
   // A year-scale request outgrows the day cap, so it re-grains to weeks rather
   // than being clamped back to the most recent quarter (#2413). The decision
   // reads the range's UNCLAMPED span; `win.weeks` has already been clamped.
-  const history = dayHistoryWindow({
-    from: range.from ?? null,
-    to: win.to,
-    weeks: win.weeks,
-    weekStart,
-  });
+  const history = dayHistoryWindow({ days: win.days, weeks: win.weeks });
   const gridFrom = dayHistoryStart(win.to, history.weeks, weekStart);
   const foodEntries = getFoodDailyServingTotals(profile.id, gridFrom).filter(
     (e) => e.date <= win.to

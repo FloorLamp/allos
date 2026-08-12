@@ -11,6 +11,7 @@ import {
   buildDayHistoryStrip,
   dayHistoryStart,
   dayHistoryWindow,
+  desiredHistoryWeeks,
   dayTotals,
   historyBucket,
   historyBucketCoverage,
@@ -444,69 +445,64 @@ describe("buildDayHistoryCalendar", () => {
 // bucketing, and the partial trailing week the decision creates.
 
 describe("dayHistoryWindow — the grain decision", () => {
-  // Sun 2026-01-04 … the anchor below is a Wednesday, so every case exercises
-  // the week alignment rather than landing on tidy boundaries.
-  const to = "2026-08-12";
-
   it("keeps day grain at and below the cap, passing the lens's own count through", () => {
-    // 90D ≈ 13 weeks, exactly the cap: the boundary case stays on day cells.
-    const at = dayHistoryWindow({ from: "2026-05-17", to, weeks: 13 });
-    expect(at.grain).toBe("day");
-    expect(at.weeks).toBe(13);
+    // 90D is the hub's default and resolves to 13 weeks — exactly the cap. The
+    // boundary case stays on day cells, and its column count is untouched.
+    const at = dayHistoryWindow({ days: 90, weeks: 13 });
+    expect(at).toEqual({ grain: "day", weeks: 13 });
 
-    const under = dayHistoryWindow({ from: "2026-07-20", to, weeks: 4 });
-    expect(under).toEqual({ grain: "day", weeks: 4 });
+    const under = dayHistoryWindow({ days: 30, weeks: 5 });
+    expect(under).toEqual({ grain: "day", weeks: 5 });
+  });
+
+  it("measures the span the way the lens does, not by calendar alignment", () => {
+    // The regression this pins: a Wednesday-anchored 90 days TOUCHES 14 calendar
+    // weeks, so a week-aligned measure reads 14 > 13 and flips the hub's own
+    // default to week grain. `clampLensWeeks` uses ceil(days / 7) = 13, and the
+    // cap comparison has to speak the same units or the two disagree.
+    expect(desiredHistoryWeeks(90)).toBe(13);
+    expect(dayHistoryWindow({ days: 90, weeks: 13 }).grain).toBe("day");
+    expect(desiredHistoryWeeks(null)).toBeNull();
+    expect(desiredHistoryWeeks(1)).toBe(1);
   });
 
   it("re-grains STRICTLY above the cap", () => {
-    const over = dayHistoryWindow({ from: "2026-05-10", to, weeks: 13 });
-    expect(over.grain).toBe("week");
-    expect(over.weeks).toBe(14);
+    expect(dayHistoryWindow({ days: 91, weeks: 13 }).grain).toBe("day");
+    const over = dayHistoryWindow({ days: 92, weeks: 13 });
+    expect(over).toEqual({ grain: "week", weeks: 14 });
   });
 
   it("reads the UNCLAMPED span, not the clamped week count", () => {
     // This is the whole defect: `weeks` arrives already clamped to 13 by
     // `lensWindow`, so asking IT whether the request exceeded 13 can only ever
-    // answer no — which is why 1Y rendered a quarter. The range's own bounds
-    // are what decide.
-    const year = dayHistoryWindow({ from: "2025-08-13", to, weeks: 13 });
+    // answer no — which is why 1Y rendered a quarter.
+    const year = dayHistoryWindow({ days: 365, weeks: 13 });
     expect(year.grain).toBe("week");
-    expect(year.weeks).toBeGreaterThan(50);
+    expect(year.weeks).toBe(53);
     expect(year.weeks).toBeLessThanOrEqual(MAX_HISTORY_WEEK_COLUMNS);
   });
 
   it("an all-time window takes week grain at the 53-week cap", () => {
-    expect(dayHistoryWindow({ from: null, to, weeks: 13 })).toEqual({
+    expect(dayHistoryWindow({ days: null, weeks: 13 })).toEqual({
       grain: "week",
       weeks: MAX_HISTORY_WEEK_COLUMNS,
     });
   });
 
   it("caps a multi-year window at 53 weeks rather than growing without bound", () => {
-    const decade = dayHistoryWindow({ from: "2016-01-01", to, weeks: 13 });
-    expect(decade.weeks).toBe(MAX_HISTORY_WEEK_COLUMNS);
+    expect(dayHistoryWindow({ days: 3650, weeks: 13 }).weeks).toBe(
+      MAX_HISTORY_WEEK_COLUMNS
+    );
   });
 
   it("honours a surface's own day cap when it declares one", () => {
-    const wide = dayHistoryWindow({
-      from: "2026-05-10",
-      to,
-      weeks: 14,
-      maxDayWeeks: 26,
-    });
-    expect(wide).toEqual({ grain: "day", weeks: 14 });
-    expect(MAX_HISTORY_DAY_WEEKS).toBe(13);
-  });
-
-  it("respects the profile's week start when measuring the span", () => {
-    // Sun-start and Mon-start disagree about how many weeks a span touches when
-    // it begins on a Sunday, and the grain must follow the profile's own weeks.
-    const sunday = "2026-05-10";
-    expect(
-      dayHistoryWindow({ from: sunday, to, weeks: 13, weekStart: 0 }).weeks
-    ).not.toBe(
-      dayHistoryWindow({ from: sunday, to, weeks: 13, weekStart: 1 }).weeks
+    expect(dayHistoryWindow({ days: 120, weeks: 18, maxDayWeeks: 26 })).toEqual(
+      {
+        grain: "day",
+        weeks: 18,
+      }
     );
+    expect(MAX_HISTORY_DAY_WEEKS).toBe(13);
   });
 });
 
