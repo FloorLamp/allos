@@ -3,9 +3,14 @@
 // Calls the Anthropic API once per category to produce structured reference +
 // longevity-optimal ranges for common biomarkers, then writes the merged result
 // to lib/canonical-biomarkers.json. The file is COMMITTED and meant to be
-// HUMAN-REVIEWED before it is trusted — the ranges are informational, not
-// medical advice, and can be wrong. No per-request cost at app runtime; this is
-// a one-off (re)generation step.
+// HUMAN-REVIEWED before it is trusted — the ranges can be wrong. No per-request
+// cost at app runtime; this is a one-off (re)generation step.
+//
+// The `note` this writes RENDERS to the user (the band-note clause on the reading
+// detail page), so this script — prompt and prose alike — is scanned by
+// lib/__tests__/disclaimers.test.ts and must carry no disclaimer phrasing: writing the
+// framing into the prompt is what taught the model to append it to 40 dataset rows
+// (#2342). The prompt states the prohibition; sanitizeGeneratedNote below enforces it.
 //
 //   ANTHROPIC_API_KEY=... npm run gen:biomarkers
 //
@@ -30,6 +35,7 @@ import {
   CURATED_LABS,
   curateBiomarkers,
 } from "@/lib/curated-biomarkers";
+import { stripDisclaimerSentences } from "@/lib/disclaimers";
 
 const MODEL = process.env.HEALTH_AI_MODEL || "claude-sonnet-5";
 const OUT = path.join(process.cwd(), "lib", "canonical-biomarkers.json");
@@ -190,14 +196,51 @@ reference and longevity-optimal ranges, for adults. For each biomarker emit one 
   optimal for adults (often tighter than, or absent from, the lab reference range). Null
   bounds allowed. Leave both null if there is no well-established optimal target.
 - direction: "lower_better", "higher_better", or "in_range" (for U-shaped/in-range optima).
-- note: a short caveat when relevant (e.g. "varies by sex/age"), else null.
+- note: a short caveat when relevant (e.g. "varies by sex/age"), else null. The note is
+  RENDERED to the user, so: state any CONDITION the bands are only valid under (fasting,
+  morning draw, supine, post-dose trough) — but if the bands are only valid under such a
+  condition, put the condition in the NAME as well ("Glucose, Fasting"), because an
+  unqualified name hands a consumer the bands without the condition. Do NOT restate the
+  numeric bands the row already carries in ref_*/optimal_* — two copies of one number
+  drift. Do NOT write a disclaimer sentence of any kind (see below).
 - conversions: when the analyte is commonly reported in another unit, include a map of
   that unit to a factor where value_in_alt * factor = value in the canonical unit (e.g.
   cholesterol mg/dL from mmol/L: {"mmol/L": 38.67}; glucose: {"mmol/L": 18.02}). These are
   analyte-specific (mass↔molar depends on molar mass) — only include well-established
   factors and omit affine conversions (e.g. HbA1c % ↔ mmol/mol) and anything uncertain.
-These are INFORMATIONAL, not medical advice. Be accurate and conservative; prefer null over
-a guessed number. Call save_biomarkers exactly once.`;
+NO DISCLAIMER SENTENCES. The app maintains ONE disclaimer, on one page, linked from the
+footer of every surface. Do not restate it, in whole or in part, in \`note\` or anywhere
+else — a row that carries a sentence of that kind has it removed before the file is
+written (#1049/#2342).
+
+Be accurate and conservative; prefer null over a guessed number. Call save_biomarkers
+exactly once.`;
+
+// Strip disclaimer boilerplate from a generated `note` before it is written. The prompt
+// above asks; this enforces, in the same "the model is not the authority on what gets
+// stored" tradition as clampAiDescription on the runtime path. Sentence-grained (see
+// stripDisclaimerSentences), and a note that was ENTIRELY boilerplate becomes null —
+// `note` is optional, and an empty string would render as a blank clause.
+export function sanitizeGeneratedNote(
+  note: string | null | undefined
+): string | null {
+  if (!note) return null;
+  const kept = stripDisclaimerSentences(note);
+  return kept === "" ? null : kept;
+}
+
+// Apply sanitizeGeneratedNote across a batch, reporting what it removed so a
+// regeneration run says out loud that the prompt was not obeyed.
+function sanitizeBatch(rows: Biomarker[]): Biomarker[] {
+  return rows.map((row) => {
+    const cleaned = sanitizeGeneratedNote(row.note);
+    if (cleaned !== (row.note ?? null))
+      console.warn(
+        `  note: stripped disclaimer copy from "${row.name}" (#2342)`
+      );
+    return cleaned === (row.note ?? null) ? row : { ...row, note: cleaned };
+  });
+}
 
 async function genCategory(
   client: Anthropic,
@@ -248,7 +291,7 @@ function writeDataset(map: Map<string, Biomarker>): void {
   );
   const out = {
     $comment:
-      "Canonical biomarker reference dataset. Committed and HUMAN-REVIEWABLE. Regenerate with `npm run gen:biomarkers`. INFORMATIONAL, NOT MEDICAL ADVICE.",
+      "Canonical biomarker reference dataset. Committed and HUMAN-REVIEWABLE. Regenerate with `npm run gen:biomarkers`. Ranges may be inaccurate and often vary by sex/age.",
     biomarkers,
   };
   fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + "\n");
@@ -333,7 +376,7 @@ async function main() {
   for (const batch of BATCHES) {
     process.stdout.write(`Generating ${batch.category}… `);
     try {
-      const rows = await genCategory(client, batch.prompt);
+      const rows = sanitizeBatch(await genCategory(client, batch.prompt));
       let added = 0;
       for (const b of rows) {
         if (!b?.name) continue;

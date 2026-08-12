@@ -2,7 +2,7 @@
   "$schema": "allos-dataset/v1",
   "id": "biomarker-descriptions",
   "title": "Plain-language biomarker descriptions",
-  "description": "Plain-language educational descriptions for every canonical biomarker in lib/canonical-biomarkers.json, identity-keyed by EXACT canonical name. Each entry carries an optional abbreviation, a full_name expansion, and a 1-3 sentence description of what the marker measures and why it generally matters. INFORMATIONAL, NOT MEDICAL ADVICE — general educational content, not personal interpretation, dosing, or diagnosis. A coverage test (lib/__tests__/biomarker-descriptions.test.ts) fails the build if a canonical biomarker is added without a description here.",
+  "description": "Plain-language educational descriptions for every canonical biomarker in lib/canonical-biomarkers.json, identity-keyed by EXACT canonical name. Each entry carries an optional abbreviation, a full_name expansion, and a 1-3 sentence description of what the marker measures and why it generally matters. General educational content, not personal interpretation. A coverage test (lib/__tests__/biomarker-descriptions.test.ts) fails the build if a canonical biomarker is added without a description here.",
   "citation": [
     {
       "source": "MedlinePlus Medical Encyclopedia (U.S. National Library of Medicine)",
@@ -12,7 +12,7 @@
     {
       "source": "Testing.com (formerly Lab Tests Online; ADLM / AACC)",
       "url": "https://www.testing.com",
-      "note": "General reference for lab-test explanations. Descriptions here are curated original plain-language summaries — informational, not medical advice."
+      "note": "General reference for lab-test explanations. Descriptions here are curated original plain-language summaries."
     }
   ],
   "identity": {
@@ -1246,49 +1246,49 @@
       "name": "PHQ-9",
       "abbreviation": "PHQ-9",
       "full_name": "Patient Health Questionnaire-9",
-      "description": "A validated 9-item questionnaire that scores depression severity from 0 to 27, banded minimal / mild / moderate / moderately severe / severe. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
+      "description": "A validated 9-item questionnaire that scores depression severity from 0 to 27, banded minimal / mild / moderate / moderately severe / severe. It is a screening instrument, and is tracked here as a numeric score over time."
     },
     {
       "name": "GAD-7",
       "abbreviation": "GAD-7",
       "full_name": "Generalized Anxiety Disorder-7",
-      "description": "A validated 7-item questionnaire that scores anxiety severity from 0 to 21, banded minimal / mild / moderate / severe. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
+      "description": "A validated 7-item questionnaire that scores anxiety severity from 0 to 21, banded minimal / mild / moderate / severe. It is a screening instrument, and is tracked here as a numeric score over time."
     },
     {
       "name": "EPDS",
       "abbreviation": "EPDS",
       "full_name": "Edinburgh Postnatal Depression Scale",
-      "description": "A validated 10-item questionnaire that scores perinatal depression symptoms from 0 to 30, banded minimal / possible / probable / severe against the published cut-offs of 10 and 13. Seven of its items are reverse-scored, and item 10 asks about thoughts of self-harm. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
+      "description": "A validated 10-item questionnaire that scores perinatal depression symptoms from 0 to 30, banded minimal / possible / probable / severe against the published cut-offs of 10 and 13. Seven of its items are reverse-scored, and item 10 asks about thoughts of self-harm. It is a screening instrument, and is tracked here as a numeric score over time."
     },
     {
       "name": "AUDIT-C",
       "abbreviation": "AUDIT-C",
       "full_name": "Alcohol Use Disorders Identification Test - Consumption",
-      "description": "A validated 3-item alcohol-use screen (the consumption items of the WHO AUDIT) scored 0 to 12, banded lower risk / increasing risk / higher risk / possible dependence. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
+      "description": "A validated 3-item alcohol-use screen (the consumption items of the WHO AUDIT) scored 0 to 12, banded lower risk / increasing risk / higher risk / possible dependence. It is a screening instrument, and is tracked here as a numeric score over time."
     },
     {
       "name": "AUDIT",
       "abbreviation": "AUDIT",
       "full_name": "Alcohol Use Disorders Identification Test",
-      "description": "The WHO 10-item alcohol-use screen scored 0 to 40, banded by the WHO risk zones: lower risk / increasing risk / higher risk / possible dependence. It is a screening instrument, not a diagnosis. Recorded as a total from an outside administration; informational, not medical advice."
+      "description": "The WHO 10-item alcohol-use screen scored 0 to 40, banded by the WHO risk zones: lower risk / increasing risk / higher risk / possible dependence. It is a screening instrument, recorded here as a total from an outside administration."
     },
     {
       "name": "DAST-10",
       "abbreviation": "DAST-10",
       "full_name": "Drug Abuse Screening Test-10",
-      "description": "A validated 10-item screen for non-alcohol drug use in the past 12 months, scored 0 to 10 and banded none reported / low / moderate / substantial / severe. It is a screening instrument, not a diagnosis. Recorded as a total from an outside administration; informational, not medical advice."
+      "description": "A validated 10-item screen for non-alcohol drug use in the past 12 months, scored 0 to 10 and banded none reported / low / moderate / substantial / severe. It is a screening instrument, recorded here as a total from an outside administration."
     },
     {
       "name": "Periodontal Probing Depth",
       "abbreviation": "PPD",
       "full_name": "Periodontal Probing Depth",
-      "description": "The depth of the gum sulcus or periodontal pocket around a tooth, measured in millimeters with a periodontal probe (usually the deepest or a representative site). A healthy sulcus is about 1-3 mm; readings of 4 mm and deeper indicate periodontal pocketing worth monitoring. Lower is better; this is informational, not a diagnosis."
+      "description": "The depth of the gum sulcus or periodontal pocket around a tooth, measured in millimeters with a periodontal probe (usually the deepest or a representative site). A healthy sulcus is about 1-3 mm; readings of 4 mm and deeper indicate periodontal pocketing worth monitoring. Lower is better."
     },
     {
       "name": "Bleeding on Probing",
       "abbreviation": "BOP",
       "full_name": "Bleeding on Probing",
-      "description": "The proportion of periodontal sites that bleed when gently probed, reported as a full-mouth percentage. A full-mouth score under about 10% is consistent with periodontal stability; higher percentages suggest active gum inflammation. Lower is better; informational, not a diagnosis."
+      "description": "The proportion of periodontal sites that bleed when gently probed, reported as a full-mouth percentage. A full-mouth score under about 10% is consistent with periodontal stability; higher percentages suggest active gum inflammation. Lower is better."
     },
     {
       "name": "Clinical Attachment Loss",
@@ -1299,89 +1299,89 @@
     {
       "name": "Hearing Threshold, Right Ear 250 Hz",
       "full_name": "Hearing Threshold, Right Ear 250 Hz",
-      "description": "The softest 250 Hz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 250 Hz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Right Ear 500 Hz",
       "full_name": "Hearing Threshold, Right Ear 500 Hz",
-      "description": "The softest 500 Hz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 500 Hz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Right Ear 1 kHz",
       "full_name": "Hearing Threshold, Right Ear 1 kHz",
-      "description": "The softest 1 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 1 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Right Ear 2 kHz",
       "full_name": "Hearing Threshold, Right Ear 2 kHz",
-      "description": "The softest 2 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 2 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Right Ear 4 kHz",
       "full_name": "Hearing Threshold, Right Ear 4 kHz",
-      "description": "The softest 4 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. 4 kHz is the classic noise-exposure 'notch' frequency. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 4 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. 4 kHz is the classic noise-exposure 'notch' frequency. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Right Ear 8 kHz",
       "full_name": "Hearing Threshold, Right Ear 8 kHz",
-      "description": "The softest 8 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 8 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Left Ear 250 Hz",
       "full_name": "Hearing Threshold, Left Ear 250 Hz",
-      "description": "The softest 250 Hz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 250 Hz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Left Ear 500 Hz",
       "full_name": "Hearing Threshold, Left Ear 500 Hz",
-      "description": "The softest 500 Hz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 500 Hz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Left Ear 1 kHz",
       "full_name": "Hearing Threshold, Left Ear 1 kHz",
-      "description": "The softest 1 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 1 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Left Ear 2 kHz",
       "full_name": "Hearing Threshold, Left Ear 2 kHz",
-      "description": "The softest 2 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 2 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Left Ear 4 kHz",
       "full_name": "Hearing Threshold, Left Ear 4 kHz",
-      "description": "The softest 4 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. 4 kHz is the classic noise-exposure 'notch' frequency. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 4 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. 4 kHz is the classic noise-exposure 'notch' frequency. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Hearing Threshold, Left Ear 8 kHz",
       "full_name": "Hearing Threshold, Left Ear 8 kHz",
-      "description": "The softest 8 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+      "description": "The softest 8 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better."
     },
     {
       "name": "Vitamin D2, 25-Hydroxy",
       "full_name": "25-Hydroxyvitamin D2 (Ergocalciferol)",
-      "description": "The D2 (ergocalciferol) fraction of stored vitamin D, from dietary or supplemental sources. It is one component of total 25-hydroxyvitamin D, which is what overall vitamin D status is judged on; a low D2 fraction alone is normal for anyone not taking ergocalciferol. Informational, not a diagnosis."
+      "description": "The D2 (ergocalciferol) fraction of stored vitamin D, from dietary or supplemental sources. It is one component of total 25-hydroxyvitamin D, which is what overall vitamin D status is judged on; a low D2 fraction alone is normal for anyone not taking ergocalciferol."
     },
     {
       "name": "Vitamin D3, 25-Hydroxy",
       "full_name": "25-Hydroxyvitamin D3 (Cholecalciferol)",
-      "description": "The D3 (cholecalciferol) fraction of stored vitamin D, made in skin from sunlight and the most common supplemental form. It is one component of total 25-hydroxyvitamin D, which is what overall vitamin D status is judged on. Informational, not a diagnosis."
+      "description": "The D3 (cholecalciferol) fraction of stored vitamin D, made in skin from sunlight and the most common supplemental form. It is one component of total 25-hydroxyvitamin D, which is what overall vitamin D status is judged on."
     },
     {
       "name": "Vitamin D, 1,25-Dihydroxy",
       "abbreviation": "Calcitriol",
       "full_name": "1,25-Dihydroxyvitamin D (Calcitriol)",
-      "description": "The active hormone form of vitamin D, converted mainly in the kidneys from the storage form. It is not used to check routine vitamin D status; it is ordered in specific workups such as hypercalcemia, sarcoidosis, or kidney disease. Informational, not a diagnosis."
+      "description": "The active hormone form of vitamin D, converted mainly in the kidneys from the storage form. It is not used to check routine vitamin D status; it is ordered in specific workups such as hypercalcemia, sarcoidosis, or kidney disease."
     },
     {
       "name": "C-Reactive Protein",
       "abbreviation": "CRP",
       "full_name": "C-Reactive Protein",
-      "description": "C-reactive protein is a marker the liver makes in response to inflammation or infection, measured with the standard assay. Higher levels point to active inflammation; it is a different test from the high-sensitivity hs-CRP used to gauge cardiovascular risk. Informational, not a diagnosis."
+      "description": "C-reactive protein is a marker the liver makes in response to inflammation or infection, measured with the standard assay. Higher levels point to active inflammation; it is a different test from the high-sensitivity hs-CRP used to gauge cardiovascular risk."
     },
     {
       "name": "Glucose, Fasting",
       "full_name": "Fasting Plasma Glucose",
-      "description": "Blood sugar measured after not eating for several hours, used to screen for and monitor prediabetes and diabetes. Normal is roughly 70-99 mg/dL, 100-125 indicates prediabetes, and 126 or higher (confirmed) indicates diabetes. Informational, not a diagnosis."
+      "description": "Blood sugar measured after not eating for several hours, used to screen for and monitor prediabetes and diabetes. The bands this entry carries are the fasting ones; a draw whose fasting state the report never stated is filed under the unqualified Glucose entry instead."
     },
     {
       "name": "Rapid Plasma Reagin (RPR)",
@@ -1513,19 +1513,19 @@
       "name": "Trisomy 21 Screen",
       "abbreviation": "T21",
       "full_name": "Trisomy 21 (Down Syndrome) Screen",
-      "description": "A prenatal cell-free-DNA screen estimating the risk of Down syndrome. A low- or high-risk result, not a diagnosis; high risk is confirmed by diagnostic testing."
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Down syndrome. It reports a low- or high-risk result; a high-risk result is confirmed by diagnostic testing."
     },
     {
       "name": "Trisomy 18 Screen",
       "abbreviation": "T18",
       "full_name": "Trisomy 18 (Edwards Syndrome) Screen",
-      "description": "A prenatal cell-free-DNA screen estimating the risk of Edwards syndrome. A low- or high-risk result, not a diagnosis."
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Edwards syndrome. It reports a low- or high-risk result."
     },
     {
       "name": "Trisomy 13 Screen",
       "abbreviation": "T13",
       "full_name": "Trisomy 13 (Patau Syndrome) Screen",
-      "description": "A prenatal cell-free-DNA screen estimating the risk of Patau syndrome. A low- or high-risk result, not a diagnosis."
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Patau syndrome. It reports a low- or high-risk result."
     },
     {
       "name": "Fetal Fraction",
@@ -1567,7 +1567,7 @@
       "name": "FEV1/FVC Ratio",
       "abbreviation": "FEV1/FVC",
       "full_name": "FEV1 to FVC Ratio",
-      "description": "The proportion of your total forced breath out that leaves in the first second, as a percentage. It is the one spirometry number with a universal cutoff: a value under about 70 percent after a bronchodilator is the standard criterion for persistent airflow obstruction. Informational and part of a clinical picture, not a diagnosis on its own."
+      "description": "The proportion of your total forced breath out that leaves in the first second, as a percentage. It is the one spirometry number with a universal cutoff: a value under about 70 percent after a bronchodilator is the standard criterion for persistent airflow obstruction. It is read as part of a clinical picture rather than on its own."
     },
     {
       "name": "Urine Color",

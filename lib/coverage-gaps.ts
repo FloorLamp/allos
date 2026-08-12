@@ -23,6 +23,7 @@ import {
   uncuratedAnalyte,
   type UncuratedAnalyte,
 } from "./canonical-name";
+import { stripDisclaimerSentences } from "./disclaimers";
 import { getMedicationInfo } from "./medication-info";
 import { bestIcd10Suggestion, hasIcd10Code } from "./icd10";
 
@@ -258,6 +259,9 @@ export const COVERAGE_ENRICH_SYSTEM = [
   "- Do NOT state a flag (high/low/abnormal) or how to interpret a specific value.",
   "- Do NOT state a retest cadence, dose, interaction, or interaction severity.",
   "- Do NOT give personal medical advice, diagnosis, or dosing.",
+  "- Do NOT append a disclaimer sentence. The app carries its own disclaimer on its",
+  "  own page; a sentence saying the description is informational, not advice, or",
+  "  not a diagnosis is duplicated copy and is stripped before storage (#2342).",
   "- End with a brief 'discuss with your provider' style pointer.",
   "If you cannot describe the item safely, return an empty description.",
 ].join("\n");
@@ -270,7 +274,22 @@ export function buildEnrichPrompt(
 }
 
 // Sanity clamp for a stored AI description (defense in depth against a runaway
-// model): trim and cap length. Descriptive text is short by construction.
+// model): strip disclaimer boilerplate, trim, and cap length. Descriptive text is
+// short by construction.
+//
+// The disclaimer strip is the RUNTIME half of #2342. Curated dataset prose is
+// checked by a scan at build time; an AI-written description never passes through a
+// source file at all — it is generated, stored in `coverage_gaps.ai_description` and
+// rendered — so no scan can ever reach it. This function is the one chokepoint every
+// stored AI description already goes through, which is why the check belongs here
+// rather than at the (single, today) call site. The prompt above also forbids the
+// sentence; a prompt is a request and this is the enforcement, in the "validate at
+// the boundary" tradition — the model is not the authority on what gets stored.
+//
+// Stripping rather than rejecting: a model that appends one boilerplate sentence to
+// three good ones has still written a usable description, and throwing it away would
+// spend an API call to store nothing. A description that was ENTIRELY boilerplate
+// clamps to "", which the caller already treats as an empty (failed) description.
 export function clampAiDescription(text: string): string {
-  return text.trim().slice(0, 1200);
+  return stripDisclaimerSentences(text).slice(0, 1200);
 }
