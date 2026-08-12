@@ -965,7 +965,12 @@ sees: any pool an accessible profile draws from, plus member-less orphans (they 
 nobody, and somebody has to be able to clear them). The page lists
 `listVisiblePoolViews(scope.ids)` and every door counts `countVisiblePools(scope.ids)`
 through the SAME predicate, so a door can never promise a bottle the page won't show.
-The count skips the pooled-projection build the list needs.
+The count skips the pooled-projection build the list needs, and since #2116 it reads
+membership for the whole cabinet in ONE query instead of one `poolMembers` call per
+bottle — the rule stays in `isPoolVisibleTo`, evaluated in JS over that one read, so
+there is still exactly one definition of "in the cabinet". `poolIdsForProfiles` (the
+pools an accessible SET draws from) is set-based for the same reason, which is why
+`lib/queries/intake/supply-pool.ts` is a registered `CROSS_PROFILE_SQL_MODULES` module.
 
 **The product-fact exchange (#1705).** A bottle carries `name`/`strength`/`form`;
 an item carries `name`, `product`/`brand` and its dose amounts — **there is no
