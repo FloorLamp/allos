@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import {
   HOUSEHOLD_FANOUT_LIMIT,
   householdFanoutProfiles,
+  householdFanoutWithActing,
 } from "../household-fanout";
 
 const profiles = (n: number) =>
@@ -48,9 +49,61 @@ describe("household fan-out bound", () => {
     expect(HOUSEHOLD_FANOUT_LIMIT).toBeGreaterThanOrEqual(8);
   });
 
+  it("drops exactly one member at the cap boundary", () => {
+    // The off-by-one #2446 asked for: a household of exactly the cap of OTHERS
+    // passes through whole, and cap+1 drops precisely the last one by id.
+    const atCap = householdFanoutProfiles(profiles(HOUSEHOLD_FANOUT_LIMIT + 1), 1);
+    expect(atCap).toHaveLength(HOUSEHOLD_FANOUT_LIMIT);
+    expect(atCap.at(-1)?.id).toBe(HOUSEHOLD_FANOUT_LIMIT + 1);
+
+    const overCap = householdFanoutProfiles(
+      profiles(HOUSEHOLD_FANOUT_LIMIT + 2),
+      1
+    );
+    expect(overCap).toHaveLength(HOUSEHOLD_FANOUT_LIMIT);
+    expect(overCap.map((p) => p.id)).toEqual(atCap.map((p) => p.id));
+    expect(overCap.some((p) => p.id === HOUSEHOLD_FANOUT_LIMIT + 2)).toBe(false);
+  });
+
   it("treats a nonsense limit as empty rather than negative-slicing", () => {
     // .slice(0, -1) would silently drop the LAST entry instead of returning
     // nothing, which is the kind of quiet wrong answer this guards against.
     expect(householdFanoutProfiles(profiles(5), 1, -3)).toEqual([]);
+  });
+});
+
+// The reopen band and the recently-sick promo are about the VIEWER too, so their
+// bound keeps the acting profile and caps the others (#2446).
+describe("household fan-out bound, viewer included", () => {
+  it("keeps the acting profile and bounds the others", () => {
+    const out = householdFanoutWithActing(profiles(180), 5);
+    expect(out).toHaveLength(HOUSEHOLD_FANOUT_LIMIT + 1);
+    expect(out.some((p) => p.id === 5)).toBe(true);
+  });
+
+  it("returns accessible order, not viewer-first", () => {
+    // The reopen band renders in this order, so it must not reshuffle when the
+    // bound landed. The viewer sits wherever its id sits.
+    const out = householdFanoutWithActing(profiles(6), 4, 3);
+    expect(out.map((p) => p.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("does not duplicate the viewer", () => {
+    const out = householdFanoutWithActing(profiles(4), 2);
+    expect(out.map((p) => p.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("is the viewer alone for a single-profile login", () => {
+    expect(householdFanoutWithActing(profiles(1), 1).map((p) => p.id)).toEqual([
+      1,
+    ]);
+  });
+
+  it("drops the viewer only when it is not in the accessible set", () => {
+    // Degenerate and not reachable through the auth boundary, but the helper must
+    // not invent a member: it filters `accessible`, never appends to it.
+    expect(householdFanoutWithActing(profiles(3), 99).map((p) => p.id)).toEqual([
+      1, 2, 3,
+    ]);
   });
 });
