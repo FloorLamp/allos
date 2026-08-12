@@ -1817,7 +1817,10 @@ export default async function BodySection({
                           {/* The short date shape the rest of Trends uses: the
                           weekday is noise in a weigh-in ledger, and it was spending
                           the widest column in the table. */}
-                          <td className="td whitespace-nowrap">
+                          <td
+                            className="td whitespace-nowrap"
+                            data-testid="body-history-date"
+                          >
                             {formatMonthDay(w.date, formatPrefs)}
                           </td>
                           <td
