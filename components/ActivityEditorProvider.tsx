@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -28,6 +29,7 @@ import {
   todayStr,
 } from "./activity-form/model";
 import { useTimezone } from "./TimezoneProvider";
+import { resumeContinuation } from "./resume-continuation";
 import type { PracticeType } from "@/lib/protocol-practice";
 
 // The training route hosts the inline docked editor (TrainingLogView registers a dock
@@ -217,6 +219,57 @@ export default function ActivityEditorProvider({
     setDocked(dockElRef.current != null);
     setOpen(true);
   }, [liveEditData, liveStartEpochMs]);
+
+  // REOPEN WHAT THE DEPLOY CLOSED (#2471). The tab reloaded ITSELF to take a new
+  // build, so the editor that was on screen a second ago is gone with the document —
+  // and unlike a user's own refresh, nobody asked for that. The one-shot marker
+  // written just before the reload names what to bring back; `useFormDraft` then
+  // applies the draft into it without a banner, because the tap that would have
+  // applied it already happened (see components/resume-continuation.ts).
+  //
+  // WHAT THIS DELIBERATELY DOES NOT DO. A marker naming a STORED row is consumed but
+  // not acted on here: this provider holds the live session's edit data and nothing
+  // else, so reopening an arbitrary activity would need a fetch it has no business
+  // making. That row's draft is untouched and still offered the moment the user opens
+  // it — the pre-#2471 behaviour, which is the honest fallback for a case that cannot
+  // be proven safe rather than a silent partial reopen.
+  const reopenedRef = useRef(false);
+  useEffect(() => {
+    if (reopenedRef.current) return;
+    const marker = resumeContinuation();
+    if (!marker || marker.formKey !== "activity") return;
+    reopenedRef.current = true;
+    if (marker.recordId != null) return;
+    if (!marker.live) {
+      setEditData(null);
+      setCreateDate(null);
+      setPrefill(null);
+      setLive(false);
+      setLiveStartEpoch(null);
+      setMinimized(false);
+      setDocked(dockElRef.current != null);
+      setOpen(true);
+      return;
+    }
+    // Live mode rides its existing rails: presence still decides that a session
+    // exists, and the marker only spares the user the "Resume workout" tap.
+    if (restricted) return;
+    if (liveEditData) {
+      resumeLive();
+      return;
+    }
+    // A live session the deploy caught before its first save has no server row to
+    // resume from — the create form in live mode IS the session, and its draft is
+    // the whole of it.
+    setEditData(null);
+    setCreateDate(null);
+    setPrefill(null);
+    setLive(true);
+    setLiveStartEpoch(Date.now());
+    setMinimized(false);
+    setDocked(false);
+    setOpen(true);
+  }, [liveEditData, resumeLive, restricted]);
 
   // A fresh-load active session: nothing is mounted in this client, but the
   // server-hydrated #921 presence says one is running and its draft is reopenable.
