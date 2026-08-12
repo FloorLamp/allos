@@ -5,6 +5,7 @@ import {
   expectNoClippedContent,
   followLink,
   hydratedClick,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import { openCommandPalette } from "./nav";
@@ -629,15 +630,17 @@ test("the cross-practice day-history renders a row per practice, on one day axis
     await expect(history).toContainText(
       "Calendar: days you practiced. Matrix: each day by practice."
     );
-    await rowA.getByRole("button", { name: /View occurrences for/ }).click();
-    const [calendarBox, rowBox] = await Promise.all([
-      history.getByTestId("day-history-calendar-panel").boundingBox(),
-      history.getByTestId("day-history-rowpanel").boundingBox(),
-    ]);
-    expect(rowBox).not.toBeNull();
-    expect(rowBox!.y).toBeGreaterThanOrEqual(
-      calendarBox!.y + calendarBox!.height
+    // Same shape as trends-nutrition's row panel, and the same hazard: a client
+    // toggle whose effect is only awaited by a non-retrying `boundingBox()`.
+    await hydratedClick(
+      page,
+      rowA.getByRole("button", { name: /View occurrences for/ })
     );
+    const [calendarBox, rowBox] = await settledBoxes([
+      history.getByTestId("day-history-calendar-panel"),
+      history.getByTestId("day-history-rowpanel"),
+    ]);
+    expect(rowBox.y).toBeGreaterThanOrEqual(calendarBox.y + calendarBox.height);
     await expectNoClippedContent(page);
   } finally {
     db.prepare(

@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink, settledClick } from "./helpers";
+import { followLink, hydratedClick, settledClick } from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
@@ -167,7 +167,15 @@ test.describe("Import detail: tabbed records browser", () => {
     await page.goto("/import/908");
     // Debug is behind a collapsed, self-hiding disclosure now (#1340) — open it
     // first, then the nested Raw extraction disclosure (both native <details>).
-    await page.locator('[data-testid="debug-disclosure"] > summary').click();
+    // The OUTER disclosure is the first interaction after the goto. Lose that
+    // click pre-hydration and "Raw extraction" never renders, so the click below
+    // retries against an element that is not visible and dies on its own
+    // timeout naming the INNER disclosure — which is not where the problem is
+    // (shard 3 of #2559's run).
+    await hydratedClick(
+      page,
+      page.locator('[data-testid="debug-disclosure"] > summary')
+    );
     await page.getByText("Raw extraction", { exact: true }).click();
     const viewer = page.getByTestId("raw-data-viewer");
     await expect(viewer).toBeVisible();
