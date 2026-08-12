@@ -119,6 +119,48 @@ export const DYNAMIC_ROUTES = [
   },
 ];
 
+// Disclosure-expansion registry (#2616). The census shoots every route in its
+// DEFAULT state, and on some surfaces that state is a set of collapsed groups —
+// the camera sees a "Vitamins 4" header and nothing inside it, so a whole defect
+// class (identity splits, label leaks, duplicate analytes) is structurally
+// invisible no matter how many seeds the sweep runs. The #2594 quirky-import
+// dial plants exactly such rows, and the first multi-seed sweep proved no
+// screenshot could show them.
+//
+// A registered surface gets a SECOND capture: after the normal shot and metrics
+// probe, the journey clicks every still-closed toggle (re-querying until none
+// match, so groups revealed by earlier clicks are included), optionally drains
+// per-group "load more" buttons, and saves `…-expanded.png` beside the default
+// shot. The default shot and its metrics row are untouched — `--baseline`
+// diffing compares default states only, so registering a surface here can never
+// flag it as a height regression. A registered route with nothing to expand
+// logs a BLIND SPOT line, same contract as DYNAMIC_ROUTES resolution: a blind
+// spot must be visible, never silent.
+//
+// lib/__tests__/ux-census-routes.test.ts pins each entry's route to a live
+// page.tsx and each selector's data-testid to source, so a renamed toggle fails
+// a cheap unit test instead of silently un-expanding the surface.
+/**
+ * @typedef {object} DisclosureExpansion
+ * @property {string} route        censused static route whose default state collapses content
+ * @property {string} label        human name for log lines
+ * @property {string} closedToggle selector matching every still-closed toggle (must not match open ones)
+ * @property {string} [loadMore]   selector for "load the rest" buttons revealed by expansion
+ */
+
+/** @type {DisclosureExpansion[]} */
+export const DISCLOSURE_EXPANSIONS = [
+  {
+    // The readings catalog: every panel group (Vitamins, Lipids, …) collapses by
+    // default, hiding the per-analyte rows where identity splits show.
+    route: "/results/readings",
+    label: "readings catalog panel groups",
+    closedToggle:
+      '[data-testid="biomarker-panel-toggle"][aria-expanded="false"]',
+    loadMore: '[data-testid="biomarker-panel-load-all"]',
+  },
+];
+
 // Stable, filesystem-safe capture/metrics key for a route pattern. Detail-page
 // shots and metrics.json rows are keyed by the PATTERN, never the resolved id —
 // ids differ run to run, and `--baseline` diffing needs a stable key.

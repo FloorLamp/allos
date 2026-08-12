@@ -71,6 +71,16 @@ to the shots for fast human review.
   tab's, not Overview's. Attribute metrics to the tab, name it when filing, and
   never rank a hub against plain pages without the caveat (#2566 tracks teaching
   the harness non-default tabs).
+- **Disclosure expansion (#2616)**: a surface whose default state collapses its
+  content (the readings catalog's panel groups) registers in
+  `DISCLOSURE_EXPANSIONS` (`scripts/ux-census-routes.mjs`) and gets a SECOND
+  capture, `…-expanded.png`, taken after every closed toggle is clicked open —
+  that shot is where identity splits and label leaks show. The default shot and
+  its metrics row are untouched, so `--baseline` diffs stay comparable; a
+  registered route with nothing to expand logs `BLIND SPOT`. Redirecting routes
+  record `landedOn` in their metrics row and an "Alias routes" table in
+  `audit.md`, so byte-identical shots are attributable. The registry test pins
+  routes and `data-testid`s, so a rename fails the unit tier, not the next run.
 - Screenshots land in `data/ux-shots/` (gitignored) unless `UX_SHOTS` overrides.
 - If Playwright can't find its browser build (version-pinned cache miss), set
   `UX_CHROMIUM` to a Chromium binary — in Claude Code's remote environment that
@@ -96,7 +106,8 @@ The proven workflow for an all-pages consistency audit:
 | sort -u | wc -l` — near-1 unique hashes means the pass ran unauthenticated
    (it once produced 58 identical /login screenshots that read as a completed
    census). The harness now aborts loudly on auth failure, but verify anyway;
-   duplicates should correspond only to known redirect routes.
+   duplicates should correspond only to the audit.md "Alias routes" table's
+   rows (routes recorded as landing on another path).
 2. **Dispatch 3–4 parallel reviewer subagents**, each owning ~15–20 shots (split
    desktop alphabetically; one agent takes a mobile sample). Give each: the
    exact file list, the house conventions to judge against (one PageHeader h1 +
