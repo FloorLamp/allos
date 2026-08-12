@@ -36,7 +36,6 @@ import {
   type DayHistoryGrain,
   type DayHistoryGroupMeta,
   type DayHistoryRow,
-  type DayHistoryStripCell,
   type DayHistoryValue,
 } from "@/lib/day-history";
 import type { FoodGroupTier } from "@/lib/food-groups";

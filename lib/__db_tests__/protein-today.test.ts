@@ -12,7 +12,9 @@ import {
   getProteinDailyGrams,
 } from "@/lib/queries";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, weekdayOfDateStr } from "@/lib/date";
+import { setWeekStart } from "@/lib/settings";
+import { proteinGaugeMarker } from "@/lib/protein";
 
 function newProfile(name: string): number {
   return Number(
@@ -218,5 +220,90 @@ describe("getProteinToday (#974)", () => {
     const anchor = today(p);
     seedWeight(p, anchor, 80);
     expect(getProteinToday(p)).toBeNull();
+  });
+});
+
+// ---- The week-start morning (#2328) ---------------------------------------
+//
+// No clock manipulation and no TZ trick: "today is the profile's week-start
+// day" is a fact the PROFILE owns, so the fixture sets `week_start` to today's
+// own weekday. The week-to-date window is then today alone on every run, which
+// is precisely the state the defect needed and previously could only be
+// reached one day in seven.
+function makeWeekStartToday(profileId: number): string {
+  const anchor = today(profileId);
+  setWeekStart(profileId, weekdayOfDateStr(anchor) as 0 | 1 | 2 | 3 | 4 | 5 | 6);
+  return anchor;
+}
+
+describe("the week-start morning (#2328)", () => {
+  it("an established logger with nothing logged YET still gets a gauge", () => {
+    // The defect: the guard tested `weeklyAverageGrams`, the WEEK-TO-DATE
+    // average, and week-to-date on the first day of the week is today alone.
+    // So months of history rendered as "this profile has no protein data" —
+    // every week, for the whole stretch before the first log.
+    const p = newProfile("weekstart-established");
+    const anchor = makeWeekStartToday(p);
+    seedWeight(p, anchor, 80);
+    for (const back of [1, 2, 3, 4, 5]) {
+      addProtein(p, shiftDateStr(anchor, -back), 120);
+    }
+
+    const t = getProteinToday(p);
+    expect(t).not.toBeNull();
+    // The gauge renders honestly IN PROGRESS: today really is 0 g so far.
+    expect(t!.todayGrams).toBe(0);
+    // …and the week genuinely has no figure yet. That absence is kept, not
+    // papered over with the trailing number under the week's name (#1917).
+    expect(t!.weeklyAverageGrams).toBeNull();
+    expect(t!.trailing).toEqual({ grams: 120, dayOne: false });
+  });
+
+  it("the marker says SEVEN-DAY, because that is the number it holds", () => {
+    const p = newProfile("weekstart-marker");
+    const anchor = makeWeekStartToday(p);
+    seedWeight(p, anchor, 80);
+    for (const back of [1, 2, 3]) addProtein(p, shiftDateStr(anchor, -back), 90);
+
+    const marker = proteinGaugeMarker(getProteinToday(p)!);
+    expect(marker).toMatchObject({ kind: "trailing", grams: 90 });
+    expect(marker!.label).toBe("7-day avg");
+    expect(marker!.label).not.toMatch(/week/i);
+  });
+
+  it("still suppresses a profile that has genuinely never logged", () => {
+    // The comment's own intent, now actually tested by the code: an EXISTENCE
+    // question, not a window. A bodyweight-only profile gets no bare 0 g gauge.
+    const p = newProfile("weekstart-never");
+    makeWeekStartToday(p);
+    seedWeight(p, today(p), 80);
+    expect(getProteinToday(p)).toBeNull();
+  });
+
+  it("food servings alone count as protein data — the estimate is built from them", () => {
+    const p = newProfile("weekstart-foodonly");
+    const anchor = makeWeekStartToday(p);
+    seedWeight(p, anchor, 80);
+    logFood(p, shiftDateStr(anchor, -2), "poultry", 2);
+
+    expect(getProteinToday(p)).not.toBeNull();
+  });
+
+  it("an EIGHT-day gap reproduces nothing — the guard is not a longer window", () => {
+    // The near miss the issue ranked first: suppressing on the trailing window
+    // would have moved the same defect to a longer horizon instead of removing
+    // it. A logger whose last entry is outside every window still has data.
+    const p = newProfile("weekstart-gap");
+    const anchor = makeWeekStartToday(p);
+    seedWeight(p, anchor, 80);
+    addProtein(p, shiftDateStr(anchor, -30), 140);
+
+    const t = getProteinToday(p);
+    expect(t).not.toBeNull();
+    expect(t!.weeklyAverageGrams).toBeNull();
+    expect(t!.trailing).toEqual({ grams: null, dayOne: false });
+    // Neither window holds a figure, so the gauge draws NO marker rather than
+    // labelling a 30-day-old reading as an average of anything.
+    expect(proteinGaugeMarker(t!)).toBeNull();
   });
 });
