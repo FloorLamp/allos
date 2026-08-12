@@ -182,6 +182,22 @@ model judgment that over-qualified the name. Nothing is lost either way:
 the report said about the draw. A document that genuinely prints the condition
 ("FBG (Glucose Fasting)") still lands on `Glucose, Fasting`.
 
+The reading's **category** is held to the same standard, and there is **no
+catch-all** (#2479 part 2). The prompt used to end its category list with
+`"biomarker" only if nothing else fits` — a licence to make no decision, filing a
+row in the pre-#1076 bucket that the flat Results catalog excludes and the retest
+clock reaches only by falling through. That clause is gone; the prompt now names
+`reference` for an immutable identity fact and states explicitly that when a
+measurement fits none of the narrower classes it is `lab` if it came from a
+specimen and `vitals` if it was measured on the body. The tool enum and the
+normalizer's accept-list are both `ASSIGNABLE_MEDICAL_CATEGORIES`
+(`lib/medical-categories.ts`) — the full enum minus the retired values — so the
+model cannot emit the retired one at all, and a stray string falls through the
+existing unknown-category default (`lab`). The model's answer is in any case only
+a fallback: since #1076 a resolved canonical name's registry category **wins** over
+it, which is the rule migration 185 applies retroactively to the rows that predate
+it. See `docs/internals/clinical-result-terminology.md`.
+
 Every extracted row also carries the extractor's own **confidence** — a coarse
 `high` / `medium` / `low` plus a short reason for a non-high row (a smudged
 figure, an ambiguous unit, a date read from context, a hedged diagnosis). It is

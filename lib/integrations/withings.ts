@@ -267,7 +267,11 @@ export function mapWithingsMeasureGroup(
   // a scale/watch estimate lands with the lab/manual readings of the same quantity.
   // `vitals` is the canonical registry's own classification (#2479 part 2); this used
   // to write the legacy `biomarker` catch-all.
-  pushVital("VO2 Max", "mL/kg/min", boundedOrNull("VO2 Max", byType.get(MEAS_VO2MAX) ?? null));
+  pushVital(
+    "VO2 Max",
+    "mL/kg/min",
+    boundedOrNull("VO2 Max", byType.get(MEAS_VO2MAX) ?? null)
+  );
 
   if (!bodyMetric && vitals.length === 0 && samples.length === 0) return null;
   return { bodyMetric, vitals, samples };

@@ -199,6 +199,19 @@ the surface's own key. A surface names a quantity or a row; it does not name a
 table. Neither phase changes schema — the physical merge is a separate, later
 decision. See `docs/internals/reading-model.md`.
 
+The `biomarker` storage category is RETIRED (#2479 part 2). It was the pre-#1076
+catch-all — "a result, and nothing narrower was picked" — and migration 185 re-files
+the rows the canonical registry can classify, applying retroactively the rule ingest
+has followed since #1076 (a resolved canonical name's registry category wins). A row
+the registry cannot classify STAYS and is reported, never guessed, which is why the
+value is still legal in the CHECK and still filterable. What no longer exists is a way
+to create one: `ASSIGNABLE_MEDICAL_CATEGORIES` is the derived complement of
+`RETIRED_MEDICAL_CATEGORIES` and is what the extractor's enum, its accept-list and the
+category picker offer, while `NormVital.category` and `FitnessStore` drop the string
+from the TYPE so a writer does not compile. The pass deletes nothing and moves no id,
+so it declares no `CHILD_LINKS` — a probe guarding a delete that cannot happen is the
+#2444 defect, not a guard against it.
+
 Not every dated observation a document carries IS a quantity. A functional-status
 finding, the body site a temperature was taken at, one screening question's answer
 and a bare result-status word are observations that state no measurement, and a
