@@ -45,9 +45,35 @@ else
 fi
 
 run_gate "phi-scan" npm run phi-scan
+
+# ASK PRETTIER, don't infer from the tree.
+#
+# The first cluster to use this script (#2622) hit a false positive: the note
+# fired on a run where Prettier rewrote nothing — every file logged
+# `(unchanged)` — because a bare `git diff --quiet` tests the WHOLE working
+# tree, and an agent running gates mid-task always has uncommitted work. It
+# fired on the normal case and stayed silent only on the rare clean one, which
+# is exactly backwards. A note that fires when nothing happened teaches its
+# reader to skip it, and this one guards the known CI breaker.
+#
+# Snapshotting `git status --porcelain` around the format step does NOT fix it,
+# which I found by testing the fix rather than shipping it: porcelain reports
+# status CODES, not content. A tracked file already ` M` that Prettier rewrites
+# again produces a byte-identical line, and an untracked file stays `??`
+# whatever happens to it — so the snapshot misses both the common case and the
+# new-file case.
+#
+# `format:check` answers the actual question and cannot drift from `format`,
+# because both run the same Prettier over the same file set. Cost is one extra
+# scan, seconds, and only when the tree is already going to be formatted.
+if npm run --silent format:check >/dev/null 2>&1; then
+  prettier_would_rewrite=0
+else
+  prettier_would_rewrite=1
+fi
 run_gate "format (LAST)" npm run format
 
-if ! git diff --quiet; then
+if [ "$prettier_would_rewrite" = "1" ]; then
   echo
   echo "NOTE: Prettier rewrote files after the test gates. Commit them NOW and do not"
   echo "edit anything afterwards — an edit after format is the known CI breaker this"
