@@ -78,11 +78,12 @@ export default function StrengthExplorer({
       cellClassName: "font-medium",
       cell: (e) => {
         // The lifter's standing for an exercise — the SINGLE strength-level
-        // model. Null (⇒ no badge) when the lift isn't covered or
-        // sex/bodyweight is unset.
+        // model. Null (⇒ no badge) when the lift isn't covered, sex/bodyweight
+        // is unset, or (#2326) no free-weight set backs it: the Est. 1RM column
+        // beside this one still shows every set's best, machine included.
         const standing = strengthStanding(
           e.exercise,
-          e.e1rmKg,
+          e.freeWeightE1rmKg,
           sex,
           bodyweightKg
         );

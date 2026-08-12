@@ -26,6 +26,7 @@ import {
 } from "../../lifts";
 import type { WeightUnit } from "../../settings";
 import { estimate1RM } from "../../strength";
+import { contradictsFreeWeightStandard } from "../../equipment-availability";
 import { cache, loadWeightsAsc, recentWindowStart } from "./common";
 
 export interface RecentSession {
@@ -801,6 +802,23 @@ export interface ExerciseStat {
   totalSets: number;
   topWeightKg: number;
   e1rmKg: number;
+  // The best e1RM among sets whose equipment does not CONTRADICT a free-weight
+  // population standard (#2326) — 0 when every backing set was logged on a machine.
+  //
+  // This is the aggregate the strength-STANDING path consumes, and only that path.
+  // `e1rmKg` above answers "what is this lifter's best e1RM?" and every set counts
+  // toward it, machine included: a machine press is a real set and a real PR. This
+  // one answers the different question "what can be scored against a barbell
+  // population table?", which a fixed-path machine's mechanical advantage
+  // disqualifies a set from. A bare base name like `Overhead Press` used to reach
+  // the barbell table on the strength of the NAME while the row's own equipment link
+  // said Machine — the guard existed, the evidence existed, and they never met.
+  //
+  // Mixed history scores from the free-weight sets alone, so genuine barbell work
+  // keeps its standing rather than being suppressed by machine sets logged under the
+  // same name. Nothing else reads this: PRs, progression seeds and volume are
+  // unchanged, and nothing is filtered out of storage.
+  freeWeightE1rmKg: number;
   bestWeightKg: number;
   bestReps: number;
   bestDate: string;
@@ -852,6 +870,10 @@ interface StrengthSetRow {
   rpe: number | null;
   equipmentId: number | null;
   equipment: string | null;
+  // The implement's registry CATEGORY (#2326) — the axis that decides whether a set
+  // can be scored against a free-weight population table. NULL for a set with no
+  // equipment row, which is not a contradiction (see contradictsFreeWeightStandard).
+  equipmentCategory: string | null;
 }
 
 // THE all-history strength scan — the single unbounded read every strength aggregate
@@ -875,7 +897,9 @@ export const strengthSetRows = cache(function strengthSetRows(
               -- context, so the forward-looking seed below can't blend two machines
               -- that were both logged under the same exact exercise name — and the
               -- grouping lane itself when byLoadContext is asked for.
-              s.equipment_id AS equipmentId, eq.name AS equipment
+              s.equipment_id AS equipmentId, eq.name AS equipment,
+              -- …and its category, the axis the free-weight standing reads (#2326).
+              eq.category AS equipmentCategory
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        LEFT JOIN equipment eq ON eq.id = s.equipment_id
        -- Any set with reps, weighted OR bodyweight (bodyweight sets store a
@@ -935,6 +959,11 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     topWeightKg: number;
     topWeightDate: string;
     e1rmKg: number;
+    // #2326: the same max, restricted to sets whose equipment doesn't contradict a
+    // free-weight standard. No sentinel — 0 is the honest answer for "no free-weight
+    // set has ever backed this lift", and it is exactly the value strengthStanding
+    // already declines to place.
+    freeWeightE1rmKg: number;
     bestWeightKg: number;
     bestReps: number;
     bestDate: string;
@@ -981,6 +1010,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         // Sentinel so the first set always seeds the "best" fields, even for
         // bodyweight lifts where every set's estimated 1RM is 0.
         e1rmKg: -1,
+        freeWeightE1rmKg: 0,
         bestWeightKg: 0,
         bestReps: 0,
         bestDate: r.date,
@@ -1030,6 +1060,10 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
       });
     let setVol = 0;
     let setReps = 0;
+    // Does THIS set's own implement rule it out of a free-weight comparison (#2326)?
+    // Asked per set, not per group: a name's history routinely mixes implements, and
+    // the whole point is that the row knows something the name does not.
+    const freeWeight = !contradictsFreeWeightStandard(r.equipmentCategory);
     for (const side of sides) {
       // Strict compare (not Math.max) so topWeightDate records when the heaviest
       // load was *first* reached.
@@ -1048,6 +1082,8 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         cur.bestReps = side.reps;
         cur.bestDate = r.date;
       }
+      if (freeWeight && e1rm > cur.freeWeightE1rmKg)
+        cur.freeWeightE1rmKg = e1rm;
       setVol += side.weight * side.reps;
       setReps += side.reps;
     }
@@ -1092,6 +1128,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         topWeightKg: c.topWeightKg,
         topWeightDate: c.topWeightDate,
         e1rmKg: Math.max(0, c.e1rmKg),
+        freeWeightE1rmKg: Math.max(0, c.freeWeightE1rmKg),
         bestWeightKg: c.bestWeightKg,
         bestReps: c.bestReps,
         bestDate: c.bestDate,
