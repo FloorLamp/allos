@@ -340,6 +340,13 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["GAD 7", "GAD-7"],
   ["Generalized Anxiety Disorder-7", "GAD-7"],
   ["Generalized Anxiety Disorder 7", "GAD-7"],
+  // EPDS (#2321) — the perinatal-depression screen, a THIRD distinct identity, never
+  // folded onto PHQ-9: different items, a different range and different cut-offs, so
+  // one score may not stand in for the other.
+  ["EPDS-10", "EPDS"],
+  ["Edinburgh Postnatal Depression Scale", "EPDS"],
+  ["Edinburgh Postnatal Depression Score", "EPDS"],
+  ["Edinburgh Depression Scale", "EPDS"],
   // Respiratory function (#1850) — the spellings a peak-flow meter's leaflet and a
   // spirometry report actually print, routed onto the curated entries so an extracted
   // reading joins the series it belongs to instead of coining a fourth "PEFR".
