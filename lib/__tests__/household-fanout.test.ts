@@ -52,7 +52,10 @@ describe("household fan-out bound", () => {
   it("drops exactly one member at the cap boundary", () => {
     // The off-by-one #2446 asked for: a household of exactly the cap of OTHERS
     // passes through whole, and cap+1 drops precisely the last one by id.
-    const atCap = householdFanoutProfiles(profiles(HOUSEHOLD_FANOUT_LIMIT + 1), 1);
+    const atCap = householdFanoutProfiles(
+      profiles(HOUSEHOLD_FANOUT_LIMIT + 1),
+      1
+    );
     expect(atCap).toHaveLength(HOUSEHOLD_FANOUT_LIMIT);
     expect(atCap.at(-1)?.id).toBe(HOUSEHOLD_FANOUT_LIMIT + 1);
 
@@ -62,7 +65,9 @@ describe("household fan-out bound", () => {
     );
     expect(overCap).toHaveLength(HOUSEHOLD_FANOUT_LIMIT);
     expect(overCap.map((p) => p.id)).toEqual(atCap.map((p) => p.id));
-    expect(overCap.some((p) => p.id === HOUSEHOLD_FANOUT_LIMIT + 2)).toBe(false);
+    expect(overCap.some((p) => p.id === HOUSEHOLD_FANOUT_LIMIT + 2)).toBe(
+      false
+    );
   });
 
   it("treats a nonsense limit as empty rather than negative-slicing", () => {
@@ -102,8 +107,8 @@ describe("household fan-out bound, viewer included", () => {
   it("drops the viewer only when it is not in the accessible set", () => {
     // Degenerate and not reachable through the auth boundary, but the helper must
     // not invent a member: it filters `accessible`, never appends to it.
-    expect(householdFanoutWithActing(profiles(3), 99).map((p) => p.id)).toEqual([
-      1, 2, 3,
-    ]);
+    expect(householdFanoutWithActing(profiles(3), 99).map((p) => p.id)).toEqual(
+      [1, 2, 3]
+    );
   });
 });

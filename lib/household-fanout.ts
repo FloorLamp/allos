@@ -62,7 +62,5 @@ export function householdFanoutWithActing<T extends { id: number }>(
   const others = new Set(
     householdFanoutProfiles(accessible, actingProfileId, limit).map((p) => p.id)
   );
-  return accessible.filter(
-    (p) => p.id === actingProfileId || others.has(p.id)
-  );
+  return accessible.filter((p) => p.id === actingProfileId || others.has(p.id));
 }

@@ -352,7 +352,10 @@ export function currentEpisodeFromState(
   state: ProfileEpisodeState
 ): AssembledEpisode | null {
   return state.todayRow
-    ? assembleCurrentEpisode(state.profileId, episodeRowToDerived(state.todayRow))
+    ? assembleCurrentEpisode(
+        state.profileId,
+        episodeRowToDerived(state.todayRow)
+      )
     : null;
 }
 

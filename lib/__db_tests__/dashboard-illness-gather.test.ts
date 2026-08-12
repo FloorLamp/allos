@@ -41,9 +41,11 @@ import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 // The three illness_episodes reads the dashboard path can issue, by signature. The
 // today-row and closed-row queries are distinguishable in their WHERE clauses, which
 // is what lets the pin say WHICH read collapsed rather than just "fewer of them".
-const TODAY_ROW = /FROM illness_episodes[\s\S]*start_date IS NULL OR start_date <= \?/;
+const TODAY_ROW =
+  /FROM illness_episodes[\s\S]*start_date IS NULL OR start_date <= \?/;
 const CLOSED_ROW = /FROM illness_episodes[\s\S]*end_date IS NOT NULL/;
-const OPEN_BY_SITUATION = /FROM illness_episodes[\s\S]*COLLATE NOCASE AND end_date IS NULL/;
+const OPEN_BY_SITUATION =
+  /FROM illness_episodes[\s\S]*COLLATE NOCASE AND end_date IS NULL/;
 
 // One spy fanned out over several signatures — vi.spyOn returns the SAME spy for an
 // already-spied method, so two independent spies would leave the second calling
@@ -126,7 +128,12 @@ describe("dashboard illness gather — one read per fact, per profile", () => {
     addEpisode(pSick, "Illness", shiftDateStr(now, -2), null);
     addSymptom(pSick, shiftDateStr(now, -1), "headache", 2);
     // Just resolved: closed three days ago, inside the 7-day reopen window.
-    addEpisode(pReopen, "Illness", shiftDateStr(now, -9), shiftDateStr(now, -3));
+    addEpisode(
+      pReopen,
+      "Illness",
+      shiftDateStr(now, -9),
+      shiftDateStr(now, -3)
+    );
     // Resolved AND opened again under the same name — in the reopen window by date,
     // but not offered a reopen line because that situation is live.
     addEpisode(
@@ -171,14 +178,18 @@ describe("dashboard illness gather — one read per fact, per profile", () => {
   it("names the right subject in each state", () => {
     // The states are only useful if the fixture actually spans them, so pin what
     // each one answers rather than only that old and new agree.
-    expect(currentEpisodeFromState(episodeStateForProfile(pSick))).not.toBeNull();
+    expect(
+      currentEpisodeFromState(episodeStateForProfile(pSick))
+    ).not.toBeNull();
     expect(reopenEligibleFromState(episodeStateForProfile(pSick))).toBeNull();
 
     expect(
       reopenEligibleFromState(episodeStateForProfile(pReopen))?.situation
     ).toBe("Illness");
     // Same situation open again → a cockpit, not a reopen prompt.
-    expect(reopenEligibleFromState(episodeStateForProfile(pReopened))).toBeNull();
+    expect(
+      reopenEligibleFromState(episodeStateForProfile(pReopened))
+    ).toBeNull();
 
     expect(reopenEligibleFromState(episodeStateForProfile(pOld))).toBeNull();
     expect(reopenEligibleFromState(episodeStateForProfile(pNever))).toBeNull();

@@ -36,7 +36,8 @@ import {
 // The two statements this change is about: the retired now-read, and the heavy
 // DEDUP+LATEST pass the window feeds.
 const NOW_READ = /datetime\('now'/;
-const FLAGGED_CTE = /WITH[\s\S]*FROM medical_records[\s\S]*flag NOT IN \('normal', 'immune'\)/;
+const FLAGGED_CTE =
+  /WITH[\s\S]*FROM medical_records[\s\S]*flag NOT IN \('normal', 'immune'\)/;
 
 function countPrepareSet(...signatures: RegExp[]): { calls: () => number }[] {
   const counts = signatures.map(() => 0);
