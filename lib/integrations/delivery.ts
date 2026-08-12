@@ -1,9 +1,9 @@
 // THE delivery axis (#2301): WHO MOVES THE DATA.
 //
-// `ProviderStanding` (#1772) was one flat vocabulary of seven states, every one of
+// `SourceStanding` (#1772) was one flat vocabulary of seven states, every one of
 // which describes a LIVE CONNECTION allos depends on — healthy, partial, intermittent,
 // failing, needs-reauth, not-connected, never-synced. Four of the nine registered
-// providers have no such connection: a Takeout archive is a file the user hands us,
+// sources have no such connection: a Takeout archive is a file the user hands us,
 // patient portals is a companion tool a person runs by hand on their own machine, the
 // calendar feed is outbound, and Garmin is planned. Asked "is the connection working?"
 // about any of them, the model answered anyway — a ten-day-old file import rendered
@@ -26,7 +26,7 @@
 //     the polled dialect silently: there was no exhaustiveness to fail.
 //
 // DERIVED FROM KIND, NOT DECLARED PER PROVIDER. The kind already encodes it and two
-// providers of one kind cannot differ, so a per-provider field would be a second
+// sources of one kind cannot differ, so a per-source field would be a second
 // source of truth for a fact the kind already states. The `Record<IntegrationKind, …>`
 // below IS the enforcement — a new kind is a build error until it declares its
 // delivery — the same idiom as `FAMILIES: Record<ReconcileFamily, …>`.
@@ -70,7 +70,7 @@ export function deliveryForKind(kind: IntegrationKind): IntegrationDelivery {
 }
 
 // Is this the one family for which a CONNECTION verdict is meaningful? This replaced
-// `RECURRING_SOURCE_KINDS` — the hand-enumerated Set that decided which providers
+// `RECURRING_SOURCE_KINDS` — the hand-enumerated Set that decided which sources
 // reach Data → Review's "Connected sources".
 export function isScheduledKind(kind: IntegrationKind): boolean {
   return KIND_DELIVERY[kind] === "scheduled";

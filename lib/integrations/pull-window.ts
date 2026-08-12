@@ -8,17 +8,17 @@
 // entry would have been a fourth.
 //
 // So the rules live HERE, once, with no I/O: the runner (lib/integrations/pull-sync)
-// applies them and the provider modules supply only the genuinely per-provider part
+// applies them and the source modules supply only the genuinely per-source part
 // (endpoint shapes, `next_token` vs `offset/more` vs `page`, row mapping).
 
 // ---- The rate-limit / truncate rule ---------------------------------------
 
-// HTTP 429. Every provider we pull speaks it; a few speak a second dialect too
+// HTTP 429. Every source we pull speaks it; a few speak a second dialect too
 // (Withings signals over-quota as envelope status 601 with HTTP 200).
 export const RATE_LIMIT_STATUS = 429;
 
-// Is this failing status the provider saying "slow down" rather than "you're broken"?
-// `alsoRateLimited` carries a provider's extra dialect (Withings' 601).
+// Is this failing status the source saying "slow down" rather than "you're broken"?
+// `alsoRateLimited` carries a source's extra dialect (Withings' 601).
 export function isPullRateLimited(
   status: number,
   alsoRateLimited: readonly number[] = []
@@ -110,7 +110,7 @@ export function pullDayWindow(
 
 export const DAY_SECONDS = 86_400;
 
-// The same rule in epoch seconds, for a provider whose cursor is a server timestamp
+// The same rule in epoch seconds, for a source whose cursor is a server timestamp
 // rather than a day (Withings' `lastupdate`). Never returns a negative instant.
 export function pullSecondsWindow(
   cursor: number,

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DOCUMENTS_SOURCE_CLASS } from "@/lib/metric-source-priority";
 import {
-  pickOneProviderPerDay,
+  pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
-  PROVIDER_PREFERENCE,
-} from "@/lib/metric-providers";
+  SOURCE_PREFERENCE,
+} from "@/lib/metric-sources";
 
 describe("pickRowsOneOriginPerSourceDay", () => {
   const pick = (
@@ -71,53 +71,53 @@ describe("pickRowsOneOriginPerSourceDay", () => {
 describe("pickOneProviderPerDay", () => {
   it("keeps a single provider per day instead of summing across sources", () => {
     // A day with both Health Connect and Strava active calories must not sum.
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [
         { date: "2026-06-15", source: "strava", value: 300 },
         { date: "2026-06-15", source: "health-connect", value: 500 },
       ],
-      PROVIDER_PREFERENCE
+      SOURCE_PREFERENCE
     );
     expect(out).toEqual([{ date: "2026-06-15", value: 500 }]);
   });
 
   it("falls back to Strava when Health Connect is absent", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [{ date: "2026-06-15", source: "strava", value: 300 }],
-      PROVIDER_PREFERENCE
+      SOURCE_PREFERENCE
     );
     expect(out).toEqual([{ date: "2026-06-15", value: 300 }]);
   });
 
   it("sums multiple rows from the same chosen provider on a day", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [
         { date: "2026-06-15", source: "strava", value: 300 },
         { date: "2026-06-15", source: "strava", value: 150 },
       ],
-      PROVIDER_PREFERENCE
+      SOURCE_PREFERENCE
     );
     expect(out).toEqual([{ date: "2026-06-15", value: 450 }]);
   });
 
   it("picks the largest single source when no preferred provider is present", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [
         { date: "2026-06-15", source: "other-a", value: 100 },
         { date: "2026-06-15", source: "other-b", value: 250 },
       ],
-      PROVIDER_PREFERENCE
+      SOURCE_PREFERENCE
     );
     expect(out).toEqual([{ date: "2026-06-15", value: 250 }]);
   });
 
   it("handles independent days", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [
         { date: "2026-06-15", source: "health-connect", value: 500 },
         { date: "2026-06-16", source: "strava", value: 200 },
       ],
-      PROVIDER_PREFERENCE
+      SOURCE_PREFERENCE
     ).sort((a, b) => a.date.localeCompare(b.date));
     expect(out).toEqual([
       { date: "2026-06-15", value: 500 },
@@ -128,38 +128,38 @@ describe("pickOneProviderPerDay", () => {
 
 describe("default provider preference", () => {
   it("prefers health-connect over strava", () => {
-    expect(PROVIDER_PREFERENCE.indexOf("health-connect")).toBeLessThan(
-      PROVIDER_PREFERENCE.indexOf("strava")
+    expect(SOURCE_PREFERENCE.indexOf("health-connect")).toBeLessThan(
+      SOURCE_PREFERENCE.indexOf("strava")
     );
   });
 
   it("prefers a manual entry over any provider, and health-connect over oura", () => {
-    expect(PROVIDER_PREFERENCE.indexOf("manual")).toBe(0);
-    expect(PROVIDER_PREFERENCE.indexOf("health-connect")).toBeLessThan(
-      PROVIDER_PREFERENCE.indexOf("oura")
+    expect(SOURCE_PREFERENCE.indexOf("manual")).toBe(0);
+    expect(SOURCE_PREFERENCE.indexOf("health-connect")).toBeLessThan(
+      SOURCE_PREFERENCE.indexOf("oura")
     );
   });
 });
 
 describe("pickOneProviderPerDay — issue #14 additions", () => {
   it("a per-profile primary source prepended to the preference wins the day", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [
         { date: "2026-06-15", source: "oura", value: 300 },
         { date: "2026-06-15", source: "health-connect", value: 500 },
       ],
-      ["oura", ...PROVIDER_PREFERENCE]
+      ["oura", ...SOURCE_PREFERENCE]
     );
     expect(out).toEqual([{ date: "2026-06-15", value: 300 }]);
   });
 
   it("treats a NULL source as manual (which the defaults prefer)", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [
         { date: "2026-06-15", source: null, value: 410 },
         { date: "2026-06-15", source: "health-connect", value: 500 },
       ],
-      PROVIDER_PREFERENCE
+      SOURCE_PREFERENCE
     );
     expect(out).toEqual([{ date: "2026-06-15", value: 410 }]);
   });
@@ -182,7 +182,7 @@ describe("pickRowsOneSourcePerDay", () => {
       { date: "2026-06-16", source: "oura", v: 4 },
     ];
     expect(
-      pickRowsOneSourcePerDay(rows, PROVIDER_PREFERENCE, dateOf, sourceOf)
+      pickRowsOneSourcePerDay(rows, SOURCE_PREFERENCE, dateOf, sourceOf)
     ).toEqual([
       { date: "2026-06-15", source: "health-connect", v: 2 },
       { date: "2026-06-15", source: "health-connect", v: 3 },
@@ -197,7 +197,7 @@ describe("pickRowsOneSourcePerDay", () => {
       { date: "2026-06-15", source: "vendor-b", v: 1 },
     ];
     expect(
-      pickRowsOneSourcePerDay(rows, PROVIDER_PREFERENCE, dateOf, sourceOf)
+      pickRowsOneSourcePerDay(rows, SOURCE_PREFERENCE, dateOf, sourceOf)
     ).toEqual([
       { date: "2026-06-15", source: "vendor-b", v: 1 },
       { date: "2026-06-15", source: "vendor-b", v: 1 },
@@ -206,7 +206,7 @@ describe("pickRowsOneSourcePerDay", () => {
     expect(
       pickRowsOneSourcePerDay(
         rows,
-        PROVIDER_PREFERENCE,
+        SOURCE_PREFERENCE,
         dateOf,
         sourceOf,
         (r) => r.v
@@ -220,7 +220,7 @@ describe("pickRowsOneSourcePerDay", () => {
       { date: "2026-06-15", source: "vendor-a", v: 1 },
     ];
     expect(
-      pickRowsOneSourcePerDay(rows, PROVIDER_PREFERENCE, dateOf, sourceOf)
+      pickRowsOneSourcePerDay(rows, SOURCE_PREFERENCE, dateOf, sourceOf)
     ).toEqual([{ date: "2026-06-15", source: "vendor-a", v: 1 }]);
   });
 
@@ -231,7 +231,7 @@ describe("pickRowsOneSourcePerDay", () => {
       { date: "2026-06-16", source: "oura", v: 3 },
     ];
     expect(
-      pickRowsOneSourcePerDay(rows, PROVIDER_PREFERENCE, dateOf, sourceOf)
+      pickRowsOneSourcePerDay(rows, SOURCE_PREFERENCE, dateOf, sourceOf)
     ).toEqual([
       { date: "2026-06-15", source: "health-connect", v: 1 },
       { date: "2026-06-16", source: "oura", v: 3 },
@@ -241,12 +241,12 @@ describe("pickRowsOneSourcePerDay", () => {
 
 describe("the documents class in the day resolvers (issue #1640)", () => {
   const withClass = {
-    order: [DOCUMENTS_SOURCE_CLASS, ...PROVIDER_PREFERENCE],
+    order: [DOCUMENTS_SOURCE_CLASS, ...SOURCE_PREFERENCE],
     strict: false,
   };
 
   it("elects EVERY document — the day a scan exists is the scan's day", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [
         { date: "2026-01-10", source: "document:5", value: 21.4 },
         { date: "2026-01-10", source: "withings", value: 23.9 },
@@ -301,7 +301,7 @@ describe("the documents class in the day resolvers (issue #1640)", () => {
     expect(
       pickRowsOneSourcePerDay(
         rows,
-        PROVIDER_PREFERENCE,
+        SOURCE_PREFERENCE,
         (r) => r.date,
         (r) => r.source
       )
@@ -313,7 +313,7 @@ describe("strict mode in the day resolvers (issue #1642)", () => {
   const strictDocs = { order: [DOCUMENTS_SOURCE_CLASS], strict: true };
 
   it("drops the days the strict source didn't cover — honest gaps, not fallback", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [
         { date: "2026-01-10", source: "document:5", value: 21.4 },
         { date: "2026-01-10", source: "withings", value: 23.9 },
@@ -326,9 +326,9 @@ describe("strict mode in the day resolvers (issue #1642)", () => {
   });
 
   it("the same day in PREFERENCE mode keeps the fallback (the contrast)", () => {
-    const out = pickOneProviderPerDay(
+    const out = pickOneSourcePerDay(
       [{ date: "2026-01-11", source: "withings", value: 23.8 }],
-      { order: [DOCUMENTS_SOURCE_CLASS, ...PROVIDER_PREFERENCE], strict: false }
+      { order: [DOCUMENTS_SOURCE_CLASS, ...SOURCE_PREFERENCE], strict: false }
     );
     expect(out).toEqual([{ date: "2026-01-11", value: 23.8 }]);
   });
@@ -354,9 +354,9 @@ describe("strict mode in the day resolvers (issue #1642)", () => {
 
   it("a bare preference list is preference mode — passthrough is unchanged", () => {
     expect(
-      pickOneProviderPerDay(
+      pickOneSourcePerDay(
         [{ date: "2026-01-11", source: "vendor-x", value: 5 }],
-        PROVIDER_PREFERENCE
+        SOURCE_PREFERENCE
       )
     ).toEqual([{ date: "2026-01-11", value: 5 }]);
   });

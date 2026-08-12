@@ -2,12 +2,12 @@ import { db } from "../db";
 import { cache } from "../request-cache";
 import { tickCached } from "../tick-cache";
 import {
-  PROVIDER_PREFERENCE,
-  pickOneProviderPerDay,
+  SOURCE_PREFERENCE,
+  pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
   type SourceSelection,
-} from "../metric-providers";
+} from "../metric-sources";
 import {
   DOCUMENTS_SOURCE_CLASS,
   resolveMetricSources,
@@ -52,7 +52,7 @@ function resolutionFor(profileId: number, metric: string): SourceResolution {
   return resolveMetricSources(
     metric,
     getMetricSourcePriority(profileId),
-    PROVIDER_PREFERENCE
+    SOURCE_PREFERENCE
   );
 }
 
@@ -208,7 +208,7 @@ export function getBodyMetricsWithSource(
 // Source handling (issue #14): an ADDITIVE metric is never summed across sources
 // — every SUM metric picks one source per day (the profile's primary source
 // first, else the default preference, else single-source passthrough), so two
-// providers reporting the same day can't double-count. A POINT (AVG) metric
+// sources reporting the same day can't double-count. A POINT (AVG) metric
 // keeps averaging every source's readings per day (they measure the same
 // quantity and a same-date manual + imported reading must agree, not sum);
 // an explicit primary source narrows it to that source's readings.
@@ -249,7 +249,7 @@ export function getMetricDailyTotals(
       .all(profileId, metric, limitDays) as { date: string; value: number }[];
     return rows.reverse();
   }
-  // Additive metric: one source per day. pickOneProviderPerDay must run in JS,
+  // Additive metric: one source per day. pickOneSourcePerDay must run in JS,
   // so we can't just LIMIT the aggregate; instead find the cutoff date of the
   // limitDays most-recent dates-with-data first, then aggregate only from there.
   // This is exact (the output is those same dates), while bounding both the SUM
@@ -275,7 +275,7 @@ export function getMetricDailyTotals(
     value: number;
   }[];
   return (
-    pickOneProviderPerDay(
+    pickOneSourcePerDay(
       pickRowsOneOriginPerSourceDay(
         rows,
         (r) => r.date,
@@ -283,7 +283,7 @@ export function getMetricDailyTotals(
         (r) => r.origin,
         (r) => r.value
       ),
-      resolveMetricSources(metric, priority, PROVIDER_PREFERENCE)
+      resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
     )
       .sort((a, b) => (a.date < b.date ? 1 : -1))
       // ALL_ROWS is -1 ("no limit" — that is what SQLite's `LIMIT -1` means, and the
@@ -644,7 +644,7 @@ export function getSleepSessionsSince(
 // Valid sleep windows on or after a calendar cutoff, electing one source per
 // wake-day with the SAME resolution used by the additive sleep_min chart. This
 // is deliberately separate from getSleepSessionsSince: SRI needs one continuous
-// provider stream across its whole window, while date-keyed display history must
+// source stream across its whole window, while date-keyed display history must
 // not lose older days when a profile changes wearables.
 export function getDailySleepSessionsSince(
   profileId: number,
@@ -1276,7 +1276,7 @@ export function getLatestBodyMetricDailyPoints(
 // ---- Per-source comparison series (issue #14) ----
 // The raw material for the "Compare sources" overlay: the SAME daily rollup the
 // single-series charts use, but grouped per source instead of collapsed to one.
-// Sources are ordered by the default provider preference (then alphabetically) so
+// Sources are ordered by the default source preference (then alphabetically) so
 // series colors/legends are stable.
 
 export interface MetricSourceSeries {
@@ -1286,8 +1286,8 @@ export interface MetricSourceSeries {
 
 function orderSources(sources: string[]): string[] {
   return sources.sort((a, b) => {
-    const ia = PROVIDER_PREFERENCE.indexOf(a);
-    const ib = PROVIDER_PREFERENCE.indexOf(b);
+    const ia = SOURCE_PREFERENCE.indexOf(a);
+    const ib = SOURCE_PREFERENCE.indexOf(b);
     if (ia !== -1 || ib !== -1) {
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
     }

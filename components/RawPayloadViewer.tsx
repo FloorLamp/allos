@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import RawDataViewer from "@/components/RawDataViewer";
 
-// Admin-only lazy viewer for a sync event's captured raw provider payload (issue
+// Admin-only lazy viewer for a sync event's captured raw source payload (issue
 // #9). Rendered behind a <details> so nothing is fetched until the admin expands
 // it; on first open it GETs the profile-scoped, admin-gated raw route and hands the
 // loaded body to the shared RawDataViewer (#1318) — a collapsible JSON/XML tree with

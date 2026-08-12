@@ -715,13 +715,13 @@ export function getSleepWaitingState(
     wakeMinutes: typicalWakeTime(profileId),
     tracking,
     arrivalLagMin: getSleepArrivalLagMinutes(profileId),
-    providerHealthy: attention.length === 0,
+    sourceHealthy: attention.length === 0,
     lastCheckedAt: latestSleepSyncAt(profileId),
   });
 }
 
-// The most recent sync ATTEMPT of whichever provider last wrote this profile's
-// sleep — "last checked 6:33 AM". Reuses the grid's own per-provider event read
+// The most recent sync ATTEMPT of whichever source last wrote this profile's
+// sleep — "last checked 6:33 AM". Reuses the grid's own per-source event read
 // rather than introducing a second notion of when a source was last contacted.
 export function latestSleepSyncAt(profileId: number): string | null {
   const row = db

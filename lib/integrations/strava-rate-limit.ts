@@ -79,7 +79,7 @@ export interface StravaRequestBudget {
   markRateLimited(): void;
 }
 
-// maxRequests is an Allos safety ceiling for one operation. The provider quota may
+// maxRequests is an Allos safety ceiling for one operation. The source quota may
 // stop it sooner; callers treat either condition as a resumable partial operation.
 export function createStravaRequestBudget(
   clientId: string,

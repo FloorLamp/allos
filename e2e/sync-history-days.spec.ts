@@ -60,7 +60,7 @@ test.describe("day-grouped sync history (#1991)", () => {
         "title",
         new RegExp(`, ${expectedProfileClock}$`)
       );
-      // It counts runs in the provider's own noun and carries the day's totals.
+      // It counts runs in the source's own noun and carries the day's totals.
       await expect(newestDay).toContainText("30 pushes");
       await expect(newestDay).toHaveText(/30 pushes · \d+ new · \d+ changed/);
       // …and the day's ONE anomaly is on that line, so you never have to hunt it.
@@ -93,7 +93,7 @@ test.describe("day-grouped sync history (#1991)", () => {
       await expect(secondDay).toHaveJSProperty("open", true);
       await expect(loadOlder).toHaveCount(0);
 
-      // The WINDOW column is gone: structurally constant for this provider, and the
+      // The WINDOW column is gone: structurally constant for this source, and the
       // rows never carried signal with it.
       await expect(
         history.getByRole("columnheader", { name: "Window" })

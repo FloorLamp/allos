@@ -12,7 +12,7 @@
 //
 //   • the ENUMERATION is `allContinuousStreams()` — #2146's registry declarations,
 //     which already carry the reminder adapter (`reminder: "bedtime-wear"`) and the
-//     expected-active window. A provider that declares no stream has no lifecycle,
+//     expected-active window. A source that declares no stream has no lifecycle,
 //     by construction, with no exemption list anywhere.
 //   • the ACTIVE/LAPSED boundary is `isStreamActive` (lib/stream-activity.ts) over
 //     that declared window — the same predicate the quiet row and the reminder ask.
@@ -79,9 +79,9 @@ export const STREAM_APPEARED_WITHIN_DAYS = 14;
 export const STREAM_ENDED_AFTER_DAYS = 14;
 
 /**
- * Where a (provider, stream) pair sits in its lifecycle, for ONE profile, right now.
+ * Where a (source, stream) pair sits in its lifecycle, for ONE profile, right now.
  *
- * `absent` is a real member rather than a null: a provider connected yesterday that
+ * `absent` is a real member rather than a null: a source connected yesterday that
  * has never delivered a single row is a genuine, nameable state, and it is NOT an
  * onboarding moment — there is nothing yet to offer a reminder about.
  */
@@ -179,7 +179,7 @@ export interface StreamOfferSignals {
   /**
    * The #2161 setting as the USER declared it — not a derived "will it fire tonight".
    * It is profile-scoped and there is exactly one of it, which is what satisfies the
-   * multi-provider rule: a second wearable delivering the same stream finds it already
+   * multi-source rule: a second wearable delivering the same stream finds it already
    * true and offers nothing, because the consent has been given and re-asking for it
    * would be noise.
    */
@@ -210,11 +210,11 @@ export function streamOfferKind(s: StreamOfferSignals): StreamOfferKind | null {
 // Their two shapes encode the two one-shot semantics the issue specifies.
 
 /**
- * ONE-SHOT PER (PROVIDER, STREAM), FOREVER. Both tails are fixed registry vocabulary,
+ * ONE-SHOT PER (SOURCE, STREAM), FOREVER. Both tails are fixed registry vocabulary,
  * so the key is `catalog`-class: "stop offering me this reminder for my Health Connect
  * heart rate" is a statement about the topic, and outliving any particular row is the
- * intended behaviour. A NEW provider or a NEW stream mints a different key, which is
- * the issue's "a new provider or stream is a new offer" holding structurally.
+ * intended behaviour. A NEW source or a NEW stream mints a different key, which is
+ * the issue's "a new source or stream is a new offer" holding structurally.
  */
 export const STREAM_ONBOARD_PREFIX = "stream-onboard:";
 
@@ -228,24 +228,24 @@ export const STREAM_ONBOARD_PREFIX = "stream-onboard:";
 export const STREAM_OFFBOARD_PREFIX = "stream-offboard:";
 
 export function streamOnboardKey(
-  provider: IntegrationId,
+  sourceId: IntegrationId,
   streamId: ContinuousStreamId
 ): string {
-  return `${STREAM_ONBOARD_PREFIX}${provider}:${streamId}`;
+  return `${STREAM_ONBOARD_PREFIX}${sourceId}:${streamId}`;
 }
 
 export function streamOffboardKey(
-  provider: IntegrationId,
+  sourceId: IntegrationId,
   streamId: ContinuousStreamId,
   episodeDay: string
 ): string {
-  return `${STREAM_OFFBOARD_PREFIX}${provider}:${streamId}:${episodeDay}`;
+  return `${STREAM_OFFBOARD_PREFIX}${sourceId}:${streamId}:${episodeDay}`;
 }
 
-/** The (provider, stream) a lifecycle offer key names, or null for a foreign key. */
+/** The (source, stream) a lifecycle offer key names, or null for a foreign key. */
 export function streamOfferTarget(
   key: string
-): { kind: StreamOfferKind; provider: string; streamId: string } | null {
+): { kind: StreamOfferKind; sourceId: string; streamId: string } | null {
   const kind: StreamOfferKind | null = key.startsWith(STREAM_ONBOARD_PREFIX)
     ? "onboard"
     : key.startsWith(STREAM_OFFBOARD_PREFIX)
@@ -254,9 +254,9 @@ export function streamOfferTarget(
   if (!kind) return null;
   const prefix =
     kind === "onboard" ? STREAM_ONBOARD_PREFIX : STREAM_OFFBOARD_PREFIX;
-  const [provider, streamId] = key.slice(prefix.length).split(":");
-  if (!provider || !streamId) return null;
-  return { kind, provider, streamId };
+  const [sourceId, streamId] = key.slice(prefix.length).split(":");
+  if (!sourceId || !streamId) return null;
+  return { kind, sourceId, streamId };
 }
 
 // ── The copy ─────────────────────────────────────────────────────────────────
@@ -267,10 +267,10 @@ export function streamOfferTarget(
 // switched off. Neither string ever instructs.
 
 export function streamOnboardTitle(
-  providerName: string,
+  sourceName: string,
   streamLabel: string
 ): string {
-  return `${providerName} started sending ${streamLabel} data`;
+  return `${sourceName} started sending ${streamLabel} data`;
 }
 
 export function streamOnboardBody(streamLabel: string): string {
@@ -289,12 +289,12 @@ export function streamOffboardTitle(): string {
 }
 
 export function streamOffboardBody(
-  providerName: string,
+  sourceName: string,
   streamLabel: string,
   quietDays: number
 ): string {
   return (
-    `No ${streamLabel} data has arrived from ${providerName} in ${quietDays} days, ` +
+    `No ${streamLabel} data has arrived from ${sourceName} in ${quietDays} days, ` +
     `so the bedtime reminder stopped sending. It starts again on its own if data ` +
     `starts arriving — nothing here has changed your setting.`
   );
@@ -312,12 +312,12 @@ export const STREAM_OFFBOARD_KEEP = "Keep them ready";
  * shipped for the mood check-in's auto-pause.
  */
 export function streamReminderPausedNote(
-  providerName: string,
+  sourceName: string,
   streamLabel: string,
   quietDays: number
 ): string {
   return (
-    `Paused — no ${streamLabel} data from ${providerName} for ${quietDays} ` +
+    `Paused — no ${streamLabel} data from ${sourceName} for ${quietDays} ` +
     `${quietDays === 1 ? "day" : "days"}. It resumes on its own when data arrives.`
   );
 }

@@ -56,7 +56,7 @@ export default function StreamLifecycleOfferRow({
 
   return (
     <li
-      data-testid={`stream-offer-${offer.kind}-${offer.provider}`}
+      data-testid={`stream-offer-${offer.kind}-${offer.sourceId}`}
       data-stream={offer.streamId}
       className="rounded-xl border border-black/10 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-ink-850/40"
     >
@@ -74,7 +74,7 @@ export default function StreamLifecycleOfferRow({
           data-testid={`stream-offer-accept-${offer.kind}`}
           title={
             onboarding
-              ? `Turn on the bedtime reminder for ${offer.providerName} ${offer.streamLabel} data`
+              ? `Turn on the bedtime reminder for ${offer.sourceName} ${offer.streamLabel} data`
               : "Turn the bedtime reminder off"
           }
           className="btn btn-sm"
@@ -100,7 +100,7 @@ export default function StreamLifecycleOfferRow({
             href={offer.href}
             className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
           >
-            {offer.providerName} sync history →
+            {offer.sourceName} sync history →
           </Link>
         )}
       </div>

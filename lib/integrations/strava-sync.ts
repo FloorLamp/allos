@@ -270,7 +270,7 @@ const stravaSpec: PullSpec<
         // A non-429 detail failure (e.g. a deleted/forbidden activity) imports
         // without calories rather than stalling all newer activities on one bad id.
         const detail = detailRes.ok ? detailRes.json : undefined;
-        // Keep the raw provider JSON for the raw viewer, whether or not it maps.
+        // Keep the raw source JSON for the raw viewer, whether or not it maps.
         raw.push(detail ?? summary);
 
         const mapped = mapStravaActivity(summary, detail, tz);
@@ -397,7 +397,7 @@ export interface StravaBackfillProgress {
 
 // Fill rich artifacts for Strava rides imported before cycling telemetry existed.
 // Successful rows disappear from the candidate query, so every invocation resumes
-// naturally and is safe to repeat after a quota pause or transient provider error.
+// naturally and is safe to repeat after a quota pause or transient source error.
 export async function runStravaDetailsBackfill(
   profileId: number,
   onProgress?: (progress: StravaBackfillProgress) => void
@@ -449,9 +449,10 @@ export async function runStravaDetailsBackfill(
       reportProgress();
       continue;
     }
-    const providerId = match[1];
+    // Strava's own activity id, not an integration source id (#2487).
+    const stravaActivityId = match[1];
     const detailRes = await stravaGet(
-      `/activities/${providerId}`,
+      `/activities/${stravaActivityId}`,
       token,
       budget
     );
@@ -466,7 +467,7 @@ export async function runStravaDetailsBackfill(
     }
     const keys = STRAVA_STREAM_KEYS.join(",");
     const streamRes = await stravaGet(
-      `/activities/${providerId}/streams?keys=${keys}&key_by_type=true`,
+      `/activities/${stravaActivityId}/streams?keys=${keys}&key_by_type=true`,
       token,
       budget
     );
@@ -480,7 +481,7 @@ export async function runStravaDetailsBackfill(
       continue;
     }
     const artifacts = mapStravaCyclingArtifacts(
-      providerId,
+      stravaActivityId,
       detailRes.json,
       streamRes.json,
       athlete,

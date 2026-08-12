@@ -1,5 +1,5 @@
 import {
-  canonicalizeProviderClock,
+  canonicalizeSourceClock,
   clockAtMinute,
   type ClockReading,
 } from "@/lib/clock-skew";
@@ -18,11 +18,11 @@ import {
   type NormActivityLap,
   type NormCyclingTelemetry,
   type NormSegmentEffort,
-  type ProviderStream,
+  type TelemetryStream,
 } from "./cycling-telemetry";
 
 // Maps Strava activities (https://developers.strava.com/docs/reference/) into the
-// provider-agnostic normalized records (see normalize.ts), so the shared upserts
+// source-agnostic normalized records (see normalize.ts), so the shared upserts
 // handle all of the DB mapping and idempotency. Mirrors the structure of the
 // Health Connect parser: tolerant field reads, a local-time helper, and a
 // substring-based sport classifier.
@@ -46,7 +46,7 @@ export const STRAVA_ID = "strava";
 // duplicate arrived an hour early. `start_date` is a TRUE INSTANT, so given the
 // profile's own timezone the local day and clock follow with nothing inferred: the
 // canonicalization primitive's branch A. We take it whenever both are available and
-// fall back to the provider's own wall clock otherwise, which is the pre-#2088
+// fall back to the source's own wall clock otherwise, which is the pre-#2088
 // behaviour exactly.
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -220,7 +220,7 @@ export function mapStravaActivity(
   a: unknown,
   detail?: unknown,
   // The PROFILE's timezone. Supplied by the sync runner; omitted by callers that
-  // have no profile context, which then get the provider's own wall clock verbatim.
+  // have no profile context, which then get the source's own wall clock verbatim.
   tz?: string
 ): {
   activity: NormActivity;
@@ -243,7 +243,7 @@ export function mapStravaActivity(
     : null;
   const canonical =
     tz && instantAt
-      ? canonicalizeProviderClock({
+      ? canonicalizeSourceClock({
           reported: reportedReading(reported),
           instant: { at: instantAt, tz },
         })
@@ -353,7 +353,7 @@ export function mapStravaActivity(
       : null,
     // Cadence for cycling (crank RPM) AND running. UNIT DECISION (#419): Strava
     // reports run cadence per-leg ("half-steps", ~85–95), NOT full steps/min — we
-    // store that provider-raw value unchanged, exactly like cycling RPM, rather than
+    // store that source-raw value unchanged, exactly like cycling RPM, rather than
     // doubling it. This keeps the shared avg_cadence/"rpm" column one consistent
     // "limb cycles per minute" quantity across sports (both ≈80–100) and within the
     // cadence_rpm 0–300 envelope; a run therefore shows its per-leg cadence.
@@ -383,7 +383,7 @@ export function mapStravaActivity(
   if (calories != null && elapsedSec != null) {
     // Wall-clock numerals as a stable, TZ-independent dedup key (consistent across
     // re-syncs); `date` is the activity's true local day. The KEY stays on the
-    // provider's REPORTED numerals even when the activity's clock is canonicalized
+    // source's REPORTED numerals even when the activity's clock is canonicalized
     // (#2088): it is an identity token, not a claim about an instant, and re-keying
     // it would make one already-imported calorie row look like a new one and double
     // the day. The `date` beside it does take the canonical answer, which an
@@ -459,7 +459,9 @@ function int(v: unknown): number | null {
   return n == null ? null : Math.round(n);
 }
 
-function providerId(value: unknown): string | null {
+// Strava's own id for a lap/segment/effort — an EXTERNAL id, not an integration
+// source id (#2487 reserves `sourceId` for the latter).
+function externalIdOf(value: unknown): string | null {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return str(value);
 }
@@ -473,7 +475,7 @@ function mapStreamSet(value: unknown): CyclingStreams {
     if (!stream || typeof stream !== "object") continue;
     const rec = stream as Record<string, unknown>;
     if (!Array.isArray(rec.data)) continue;
-    const normalized: ProviderStream = { data: rec.data };
+    const normalized: TelemetryStream = { data: rec.data };
     const originalSize = int(rec.original_size);
     const resolution = str(rec.resolution);
     const seriesType = str(rec.series_type);
@@ -533,7 +535,8 @@ export function mapStravaCyclingArtifacts(
     (value, index): NormActivityLap[] => {
       if (!value || typeof value !== "object") return [];
       const lap = value as Record<string, unknown>;
-      const externalId = providerId(lap.id) ?? `${activityId}:lap:${index + 1}`;
+      const externalId =
+        externalIdOf(lap.id) ?? `${activityId}:lap:${index + 1}`;
       return [
         {
           external_id: parentExternalId,
@@ -570,8 +573,8 @@ export function mapStravaCyclingArtifacts(
       {
         external_id: parentExternalId,
         effort_external_id:
-          providerId(effort.id) ?? `${activityId}:segment:${index + 1}`,
-        segment_id: providerId(segment.id),
+          externalIdOf(effort.id) ?? `${activityId}:segment:${index + 1}`,
+        segment_id: externalIdOf(segment.id),
         name: str(effort.name) ?? str(segment.name) ?? `Segment ${index + 1}`,
         distance_m: num(effort.distance, segment.distance),
         moving_time_sec: int(effort.moving_time),

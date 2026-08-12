@@ -2,7 +2,7 @@
 // lib/__tests__/metric-source-priority.test.ts.
 //
 // With more than one real metric source (Health Connect push + Oura pull +
-// Strava), the same metric can arrive from several providers. The profile picks
+// Strava), the same metric can arrive from several sources. The profile picks
 // ONE authoritative ("primary") source per metric; single-value surfaces and the
 // additive daily rollups read that source, while point metrics keep every
 // source's rows stored for comparison. The choice is stored per profile as ONE
@@ -81,7 +81,7 @@ export function sourceMatchesSelector(
 // A choice is a source (or class) id plus its MODE (issue #1642):
 //   • preference (strict: false) — the chosen source first, then the instance
 //     defaults, then single-source passthrough: a day it didn't cover shows
-//     whoever did, so a chart never goes blank when a provider lapses.
+//     whoever did, so a chart never goes blank when a source lapses.
 //   • strict (strict: true) — ONLY that source answers. Uncovered days are real
 //     gaps and a latest-value read with no reading is the honest empty state,
 //     never another source's number.
@@ -204,7 +204,7 @@ export function resolveMetricSources(
 
 // The source-preference list alone — the profile's explicit primary source first
 // (when set), then the instance defaults. Consumers hand the full resolution to
-// pickOneProviderPerDay / pickRowsOneSourcePerDay (lib/metric-providers), whose
+// pickOneSourcePerDay / pickRowsOneSourcePerDay (lib/metric-sources), whose
 // fallback for a day none of these sources covers is single-source passthrough
 // (preference mode) or nothing at all (strict) — so an unset priority degrades
 // to today's behavior.
@@ -216,7 +216,7 @@ export function sourcePreference(
   return resolveMetricSources(metric, priority, defaults).order;
 }
 
-// Normalize a picker argument: a plain preference list (the default provider
+// Normalize a picker argument: a plain preference list (the default source
 // order, and what the pure tests pass) or an already-resolved selection.
 export function asSourceResolution(
   selection: readonly string[] | SourceResolution
@@ -330,7 +330,7 @@ export const SOURCE_COLORS: Record<string, string> = {
   oura: "#7c3aed",
   strava: "#ea580c",
   withings: "#db2777",
-  // amber-600. A first-class provider needs its OWN color, not the shared unknown
+  // amber-600. A first-class source needs its OWN color, not the shared unknown
   // fallback (#531/#534: every distinct entity gets a stable color, never one family
   // color) — and this one especially, because the surface it matters on is the
   // compare-sources overlay, where a Takeout series is routinely plotted against the

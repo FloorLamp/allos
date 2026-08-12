@@ -119,13 +119,13 @@ export default async function DataPage(
     activeSection = (
       <ReviewInbox
         issues={importIssues}
-        // A provider syncing green while one of its continuous streams went quiet
+        // A source syncing green while one of its continuous streams went quiet
         // (#2146). Built only for the ACTIVE Review section — it is two indexed seeks
         // per declared stream, but nothing on the Import or Manage request needs it —
         // and deliberately absent from `reviewCount` above: a coaching-tier
         // observation must not inflate an escalation badge.
         quietStreams={getQuietStreamRows(profile.id, login.id)}
-        // The recurring per-provider streams for the "Connected sources" section.
+        // The recurring per-source streams for the "Connected sources" section.
         sources={getConnectedSources(profile.id)}
         // The one-off "Imports" feed (documents + archives + paste jobs) behind Review.
         feed={getImportDocumentsFeed(profile.id)}
@@ -195,7 +195,7 @@ export default async function DataPage(
 
         {/* Connect a device or service — the full integrations surface (the
             standalone /integrations page was folded in here; each card links to
-            its per-provider setup page under /integrations/<id>). */}
+            its per-source setup page under /integrations/<id>). */}
         <div id="integrations" className="card scroll-mt-4">
           <div className="mb-3">
             <h2 className="font-semibold text-slate-800 dark:text-slate-100">

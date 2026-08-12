@@ -8,7 +8,7 @@ import type {
 } from "./normalize";
 
 // Maps Oura API v2 responses (https://cloud.ouraring.com/v2/docs) into the
-// provider-agnostic normalized records (see normalize.ts), so the shared upserts
+// source-agnostic normalized records (see normalize.ts), so the shared upserts
 // handle all of the DB mapping and idempotency. Mirrors the Strava parser: tolerant
 // field reads, wall-clock helpers, and a substring-based sport classifier. This
 // module is PURE (no @/lib/db, no fetch) so it lives in the unit tier

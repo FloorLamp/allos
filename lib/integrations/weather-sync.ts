@@ -70,7 +70,7 @@ function mergeCounts(a: UpsertCounts, b: UpsertCounts): UpsertCounts {
 }
 
 // Sync the profile's home-location UV series. Returns a summary, or { error } for a
-// graceful failure (no home location, provider/network error) — never throws for those.
+// graceful failure (no home location, source/network error) — never throws for those.
 export async function runWeatherSync(
   profileId: number,
   source: WeatherSource = openMeteoSource
@@ -88,7 +88,7 @@ export async function runWeatherSync(
   // because it is also the run's stamped window: every event this run records —
   // success or failure — describes the window the RUN SET OUT TO COVER, not the half
   // that happened to finish (#1771). Stamping an hourly-fetch failure with the hourly
-  // half's shorter reach made interleaved events of one provider describe two
+  // half's shorter reach made interleaved events of one source describe two
   // different window shapes, which read in Review as if a failure had shrunk the
   // coverage target.
   const dailyEnd = shiftDate(today, WEATHER_FORECAST_DAYS);

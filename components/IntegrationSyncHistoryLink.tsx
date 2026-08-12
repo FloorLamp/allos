@@ -5,15 +5,15 @@ import SyncTimestamp from "./integrations/SyncTimestamp";
 // The link from a ONE-OFF archive importer's page (Fitbit Takeout) to its entries in
 // Data → Review's chronological Imports feed.
 //
-// It used to serve the recurring providers too, pointing at Review's Connected
+// It used to serve the recurring sources too, pointing at Review's Connected
 // sources — because #1212 had made Review the single home of sync history and the
-// setup pages kept only a link to it. #1772 inverted that: a recurring provider's page
+// setup pages kept only a link to it. #1772 inverted that: a recurring source's page
 // IS its home, so it renders the real history table (SyncHistoryTable) and Review
 // became an inbox that links back here. History still lives in exactly one place per
 // stream; it moved.
 //
 // An archive import is different in kind — a one-off event in a chronological feed,
-// not a recurring stream with a per-provider history — so its page still links out to
+// not a recurring stream with a per-source history — so its page still links out to
 // where that feed lives.
 export default function IntegrationSyncHistoryLink({
   lastSuccessAt,

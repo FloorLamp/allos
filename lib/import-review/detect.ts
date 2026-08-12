@@ -24,7 +24,7 @@
 
 import { daysBetweenDateStr } from "../date";
 import {
-  canonicalizeProviderClock,
+  canonicalizeSourceClock,
   clockAtMinute,
   formatOffset,
   minutesFromBase,
@@ -401,7 +401,7 @@ function classifyCrossSourcePair<T extends ActivityDupInput>(
   if (wa && wb) {
     if (windowsOverlap(wa, wb))
       return buildPair(a, b, "high", "Overlapping start/end times");
-    const verdict = canonicalizeProviderClock({
+    const verdict = canonicalizeSourceClock({
       reported: activityClockReading(a),
       evidence: [activityClockReading(b)].filter(
         (r): r is ClockReading => r != null

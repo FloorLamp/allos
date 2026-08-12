@@ -84,8 +84,8 @@ export const RECORDS_RECENCY_PREFIX = "records-recency:";
 // is `records-recency:<source>:<frontier>`, so a source id is part of a persisted
 // dismissal row and must not be renamed once shipped.
 //
-// `archive:<provider>` rather than a bare provider id, so the archive leg reads as one
-// family however many `kind: "archive"` providers the registry grows.
+// `archive:<source>` rather than a bare source id, so the archive leg reads as one
+// family however many `kind: "archive"` sources the registry grows.
 export const RECORDS_RECENCY_SOURCES = [
   // #2164 — the Fitbit (Google Takeout) archive's exclusive streams.
   "archive:fitbit-takeout",
@@ -95,9 +95,9 @@ export const RECORDS_RECENCY_SOURCES = [
 
 export type RecordsRecencySource = (typeof RECORDS_RECENCY_SOURCES)[number];
 
-/** `archive:<provider>` for a `kind: "archive"` provider's refresh ask. */
-export function archiveRecencySource(provider: string): string {
-  return `archive:${provider}`;
+/** `archive:<source>` for a `kind: "archive"` source's refresh ask. */
+export function archiveRecencySource(sourceId: string): string {
+  return `archive:${sourceId}`;
 }
 
 // ── The decision ─────────────────────────────────────────────────────────────
@@ -298,7 +298,7 @@ export interface RecordsRecencyCopy {
 
 /** The archive refresh ask (#2164). */
 export function archiveRefreshCopy(input: {
-  providerName: string;
+  sourceName: string;
   /** The exclusive streams that have actually delivered something, lowercase. */
   streamLabels: readonly string[];
   frontier: string;
@@ -307,9 +307,9 @@ export function archiveRefreshCopy(input: {
   const streams = joinStreamLabels(input.streamLabels);
   const behind = recencyIntervalPhrase(input.daysBehind);
   return {
-    title: `Import a fresh ${input.providerName} export`,
+    title: `Import a fresh ${input.sourceName} export`,
     detail:
-      `${streams} reach allos only through a ${input.providerName} export. ` +
+      `${streams} reach allos only through a ${input.sourceName} export. ` +
       `The last one carried data through ${input.frontier} — ${behind} behind. ` +
       `Download a fresh archive and import it to catch up.`,
     because: `${streams} ${input.streamLabels.length === 1 ? "is" : "are"} ${behind} behind`,

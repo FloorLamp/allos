@@ -4,12 +4,12 @@
 //
 // The question every refresh path asks on a non-OK response: is this a DEFINITIVE
 // auth failure — the refresh token / grant is dead or revoked and the user must
-// re-connect — or a TRANSIENT one (network blip, 429 rate-limit, provider 5xx) that
+// re-connect — or a TRANSIENT one (network blip, 429 rate-limit, source 5xx) that
 // will clear on its own and should just be retried on the next hourly tick? Only a
 // definitive auth failure may flip a connection out of `connected`; a transient one
 // must NOT, or a passing cloud hiccup would tear down a healthy connection.
 //
-// The signal is the same across providers even though they wrap it differently:
+// The signal is the same across sources even though they wrap it differently:
 //   • Strava returns the OAuth error over the HTTP status — 400 (invalid_grant on a
 //     refresh_token grant) or 401 (Unauthorized).
 //   • Withings rides an error in its `{ status, body }` envelope (HTTP 200), so the

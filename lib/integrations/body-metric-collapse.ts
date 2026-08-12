@@ -7,10 +7,10 @@ import type { NormBodyMetric } from "./normalize";
 // Connect parser guarantees that (it pre-aggregates per day); Withings pushes one row
 // per measure group and Oura one per long-sleep, both WITHOUT a per-date collapse or
 // chronological sort — so which same-day reading "won" depended on the order the
-// provider API happened to return them, and the 3-day re-scan flip-flopped the stored
+// source API happened to return them, and the 3-day re-scan flip-flopped the stored
 // value every sync ("N changed" churn for zero new data).
 //
-// The fix folds at the chokepoint so every current and future provider is covered
+// The fix folds at the chokepoint so every current and future source is covered
 // (one-question-one-computation): for each date, sort that date's readings by their
 // `measured_at` instant ASCENDING (a stable sort keeps input order for rows without
 // one — e.g. the pre-aggregated HC rows, which are already unique per date) and reduce
