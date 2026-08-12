@@ -153,7 +153,7 @@ const BIOMARKER_FAMILY_KEY = biomarkerFamilyKey();
 // identical family identity the readings do.
 const SAVED_FAMILY_KEY = familyKeyOfExpr("key");
 // "this row carries a biomarker identity" as SQL — the statement
-// carriesBiomarkerIdentity makes in TypeScript (#2318). Every read that decides
+// carriesResultIdentity makes in TypeScript (#2318). Every read that decides
 // whether a NAME is an analyte binds NON_IDENTITY_CATEGORIES through this, so a
 // category added to that list reaches all of them at once.
 const IDENTITY_CATEGORY_SQL = `category NOT IN (${NON_IDENTITY_CATEGORIES.map(

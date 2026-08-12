@@ -17,7 +17,7 @@ import AddEntryPanel from "@/components/AddEntryPanel";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
 import { addResult } from "@/app/(app)/results/reading-actions";
-import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import { reachablePanelIds } from "@/lib/biomarker-panel-reach";
 import { PHONE_STACK } from "@/lib/phone-fold";
 import { readingAddHref, dataSectionHref } from "@/lib/hrefs";
@@ -179,7 +179,7 @@ export default function ReadingsSection({
                   <ResultForm
                     mode="add"
                     action={addResult}
-                    categories={BIOMARKER_CATEGORIES}
+                    categories={RESULTS_CATALOG_CATEGORIES}
                     defaultDate={now}
                     defaultCategory={active ?? "lab"}
                     defaultName={searchParams.name?.trim() || undefined}
