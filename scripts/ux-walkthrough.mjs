@@ -233,6 +233,19 @@ function tapGesture() {
 // action (step-function damage — no percentage threshold, per #1510).
 function writeAuditArtifacts(baselineDir) {
   const out = [];
+  // The run's data shape (#2594): which census shape seeded it and which
+  // entropy seed shaped the data. Written beside metrics.json so a look is
+  // reproducible from its artifacts, and so --baseline can refuse to compare
+  // incomparable shapes below.
+  const runInfo = {
+    uxSeed: process.env.UX_SEED ?? null,
+    seedRng: process.env.SEED_RNG ?? null,
+  };
+  fs.writeFileSync(
+    path.join(SHOTS, "run.json"),
+    JSON.stringify(runInfo, null, 1)
+  );
+  out.push("run.json");
   if (metricsRows.length) {
     fs.writeFileSync(
       path.join(SHOTS, "metrics.json"),
@@ -256,7 +269,14 @@ function writeAuditArtifacts(baselineDir) {
       .sort((a, b) => b[key] - a[key])
       .slice(0, n);
   const row = (r, key) => `| ${r.route} | ${r[key]} |`;
-  const lines = ["# Mobile audit report", ""];
+  const lines = [
+    "# Mobile audit report",
+    "",
+    // Name the data shape up front (#2594): a finding filed from this run must
+    // say which look produced it, and a re-run needs both knobs.
+    `Data shape: UX_SEED=${runInfo.uxSeed ?? "unset (fresh)"} · SEED_RNG=${runInfo.seedRng ?? "unset (pinned baseline)"}`,
+    "",
+  ];
   // Render health first (#1544) — a route that rendered the error boundary or the
   // 404 boundary produced numbers, but they measure a broken page, so say so
   // before any ranking a reader might otherwise trust.
@@ -324,6 +344,22 @@ function writeAuditArtifacts(baselineDir) {
         return null;
       }
     };
+    // Refuse to pretend two different data shapes are comparable (#2594): a
+    // seed change moves firstData/height everywhere at once, and diffing that
+    // as "regressions" buries any real one. The diff still prints — the warning
+    // just outranks it. An old baseline with no run.json compares seed-blind,
+    // exactly as it did before run.json existed.
+    const oldRun = load("run.json");
+    if (
+      oldRun &&
+      ((oldRun.uxSeed ?? null) !== runInfo.uxSeed ||
+        (oldRun.seedRng ?? null) !== runInfo.seedRng)
+    ) {
+      lines.push(
+        `- **BASELINE SHAPE MISMATCH** — baseline ran UX_SEED=${oldRun.uxSeed ?? "unset"} SEED_RNG=${oldRun.seedRng ?? "unset"}, this run UX_SEED=${runInfo.uxSeed ?? "unset"} SEED_RNG=${runInfo.seedRng ?? "unset"}. The diffs below compare different data shapes; re-run with matching seeds before trusting them.`,
+        ""
+      );
+    }
     const oldMetrics = load("metrics.json");
     if (oldMetrics) {
       const key = (r) => `${r.viewport} ${r.route}`;
@@ -1562,7 +1598,7 @@ const picked = args.filter(
 if (!picked.length) {
   console.error(
     `usage: node scripts/ux-walkthrough.mjs [--serve] [--baseline <prior shots dir>] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
---serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first, UX_SEED=thin seeds then trims to the last ~7 days) and tears it down after.
+--serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first, UX_SEED=thin seeds then trims to the last ~7 days) and tears it down after. SEED_RNG=<int> (#2594) gives a seeded shape a distinct, reproducible scenario-dial look; unset = the pinned baseline.
 --baseline diffs a prior run's metrics.json/taps.json (pages/workflows journeys write them) into audit.md.`
   );
   process.exit(1);

@@ -123,6 +123,15 @@ The proven workflow for an all-pages consistency audit:
    | thin   | `UX_SEED=thin node scripts/ux-walkthrough.mjs --serve pages` | a phone's first week         |
    | seeded | `UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages`    | ~3 weeks, full tables/charts |
 
+   **Entropy (#2594)**: any seeded shape also takes `SEED_RNG=<int>` for a
+   distinct, REPRODUCIBLE look — a seeded PRNG samples five scenario dials
+   (past/active illness, import quirks, heavy goal volume, logging gaps, long
+   names), each mapped to a defect class the seeded baseline can't show. Unset
+   = the pinned baseline (what e2e and old baselines expect). The run's
+   `run.json` + the audit header record both knobs, and `--baseline` prints a
+   loud shape-mismatch warning instead of a wall of false regressions when
+   seeds differ. Sweep 2–3 seeds when hunting; keep one seed when diffing.
+
    `UX_SEED=thin` (#1544) runs `scripts/seed.ts` and then
    `scripts/ux-thin-data.ts`, which trims every dated observation store to the
    last ~7 days (`UX_THIN_DAYS` overrides). Seven days is the point where the
