@@ -392,7 +392,14 @@ describe("foldInstrumentScores", () => {
           ...row,
           date: day,
           occurred_at: `${day}T09:00:00Z`,
-          provider: `Clinic ${position + 1}`,
+          provider: {
+            name: `Riverbend Clinic ${position + 1}`,
+            type: "organization" as const,
+            npi: null,
+            identifier: null,
+            phone: null,
+            address: null,
+          },
           external_id: `${row.external_id}:${position}`,
         };
       });
@@ -405,7 +412,7 @@ describe("foldInstrumentScores", () => {
       value_num: 21,
       date: "2026-03-01",
       occurred_at: "2026-03-01T09:00:00Z",
-      provider: "Clinic 1",
+      provider: { name: "Riverbend Clinic 1" },
     });
   });
 
