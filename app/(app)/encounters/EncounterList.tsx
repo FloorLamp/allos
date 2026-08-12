@@ -17,6 +17,10 @@ import {
   ENCOUNTER_KIND_ORDER,
   type EncounterKind,
 } from "@/lib/encounter-kind";
+import {
+  normalizeVisitDiagnoses,
+  splitVisitDiagnosisSummary,
+} from "@/lib/visit-diagnoses";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Encounter } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
@@ -41,14 +45,15 @@ function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
   return start;
 }
 
-// Split the "; "-joined diagnoses summary into individual chips. Split on the
-// delimiter with any surrounding whitespace so it matches the "; " join exactly.
+// Split the "; "-joined diagnoses summary into individual chips, through the SAME
+// vocabulary the import seam joins it with (lib/visit-diagnoses.ts). The root fix for a
+// source-baked " - Primary" duplicate is that seam plus the healing migration (#2589);
+// re-asking the one rule here costs a line and means a row written before either — or by
+// hand — still cannot claim two findings where the source stated one.
 function diagnosisList(diagnoses: string | null): string[] {
-  if (!diagnoses) return [];
-  return diagnoses
-    .split(/\s*;\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return normalizeVisitDiagnoses(splitVisitDiagnosisSummary(diagnoses)).map(
+    (d) => d.name
+  );
 }
 
 const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [

@@ -342,3 +342,68 @@ test.describe("Visit detail — source document link placement (#211)", () => {
     expect(Math.abs(linkBox!.x - sourceBox!.x)).toBeLessThan(4);
   });
 });
+
+// Source-baked rank qualifier (#2589): a CCD whose source repeats one diagnosis with
+// " - Primary" welded onto the display name used to render TWO full-width amber chips
+// for one finding. The root fix is the import seam plus the healing migration; this
+// spec OWNS a throwaway encounter carrying the pre-fix stored summary — the shape a row
+// imported before the fix has on disk — and asserts the visit detail states the finding
+// once. Fictional names, reserved-style external id, removed afterwards.
+test.describe("Visit diagnoses — one finding, one chip (#2589)", () => {
+  const DX_EXTERNAL_ID = "e2e-2589-visit-dx";
+  const CARRIER_DX =
+    "Encounter of male for testing for genetic disease carrier status for procreative management";
+  const CLAUSE_DX = "Type 2 diabetes mellitus - uncontrolled";
+  let encounterId: number;
+
+  function cleanup() {
+    const handle = new Database(DB_PATH);
+    try {
+      handle
+        .prepare("DELETE FROM encounters WHERE external_id = ?")
+        .run(DX_EXTERNAL_ID);
+    } finally {
+      handle.close();
+    }
+  }
+
+  test.beforeAll(() => {
+    cleanup();
+    const handle = new Database(DB_PATH);
+    try {
+      const date = frozenNow().toISOString().slice(0, 10);
+      const row = handle
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, diagnoses, source, external_id)
+           VALUES (1, ?, 'E2E 2589 Visit', ?, 'extracted', ?)`
+        )
+        .run(
+          date,
+          `${CARRIER_DX}; ${CARRIER_DX} - Primary; ${CLAUSE_DX}`,
+          DX_EXTERNAL_ID
+        );
+      encounterId = Number(row.lastInsertRowid);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test.afterAll(cleanup);
+
+  test("the duplicated diagnosis renders once, and a hyphenated clause survives", async ({
+    page,
+  }) => {
+    await page.goto(`/encounters/${encounterId}`);
+    const chips = page
+      .getByRole("main")
+      .getByTestId("encounter-diagnoses")
+      .locator("span");
+
+    // Two findings, two chips — not three, and not one carrying the rank suffix.
+    await expect(chips).toHaveCount(2);
+    await expect(chips.filter({ hasText: CARRIER_DX })).toHaveCount(1);
+    await expect(chips.filter({ hasText: "- Primary" })).toHaveCount(0);
+    // The clause the closed qualifier list must never eat.
+    await expect(chips.filter({ hasText: CLAUSE_DX })).toHaveCount(1);
+  });
+});
