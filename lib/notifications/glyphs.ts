@@ -148,19 +148,19 @@ const VOCABULARY = {
     glyph: "🏋️",
     role: "topic",
     means:
-      "A training session — planned, in progress, or done. The GENERIC marker, which is what makes it the honest answer for a session whose type nobody stated (#2272/#2439); the per-type labels below name a discipline.",
+      "A training session — planned, in progress, or done. The GENERIC marker, which is what makes it the honest answer for a session whose type nobody stated (#2272/#2503); the per-type labels below name a discipline.",
   },
   cardio: {
     glyph: "🏃",
     role: "topic",
     means:
-      "A cardio session specifically — where a line names the discipline beside its siblings, and on a message ABOUT one such session (#2439: the finish nudge's title, which wore the barbell over a 1.4 km walk).",
+      "A cardio session specifically — where a line names the discipline beside its siblings, and on a message ABOUT one such session (#2503: the finish nudge's title, which wore the barbell over a 1.4 km walk).",
   },
   sport: {
     glyph: "⚽",
     role: "topic",
     means:
-      "A sport session specifically — where a line names the discipline beside its siblings, and on a message about one such session (#2439).",
+      "A sport session specifically — where a line names the discipline beside its siblings, and on a message about one such session (#2503).",
   },
   mobility: {
     glyph: "🤸",

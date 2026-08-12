@@ -274,6 +274,24 @@ Two things to carry forward when you fixture a rule/finding surface:
 - **Say which finding.** The spec asserts the fixture goal's own title, so a
   card that renders for some OTHER reason cannot pass it.
 
+## The value gate: test behavior people rely on
+
+An E2E assertion earns its runtime by protecting an observable capability or a
+meaningful product rule. Do not keep a browser guard for a retired selector,
+label, or route after its production definition is gone; an absence assertion
+against vocabulary no code can render is permanently green. Conditional absence
+is valuable only when the test creates or selects the state that could otherwise
+render the thing (permissions, age gates, empty data, successful deletion, and
+similar branches).
+
+Likewise, prefer semantic state and relationships over cosmetic implementation
+details. Navigation, persisted writes, accessible state, content order, usable
+overflow, and minimum touch targets can express things a person relies on. Exact
+font sizes, border widths, equal card dimensions, and sub-pixel coordinates
+usually pin a particular CSS implementation instead. Keep geometry only when it
+directly proves usability and no semantic assertion can do so; use the shared
+containment helper for clipped mobile content.
+
 ## Assertion integrity — the two ways an assertion lies (#1543 / #1545)
 
 A spec can be green for two opposite bad reasons: it asserts something that

@@ -7,8 +7,6 @@ import {
   prnTodayItem,
   prnAdministrations,
   prnAdministrationRows,
-  medicationOverview,
-  medicationGuidance,
   openMedDetailViaLink,
 } from "./med-card-helpers";
 
@@ -65,17 +63,6 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
     /\d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
   );
 
-  const overviewBox = await medicationOverview(detail).boundingBox();
-  const guidanceBox = await medicationGuidance(detail).boundingBox();
-  expect(overviewBox).not.toBeNull();
-  expect(guidanceBox).not.toBeNull();
-  expect(Math.abs(overviewBox!.y - guidanceBox!.y)).toBeLessThanOrEqual(2);
-  expect(Math.abs(overviewBox!.width - guidanceBox!.width)).toBeLessThanOrEqual(
-    2
-  );
-  expect(
-    Math.abs(overviewBox!.height - guidanceBox!.height)
-  ).toBeLessThanOrEqual(2);
   await expect(detail.getByTestId("dose-status")).toHaveCount(0);
 });
 

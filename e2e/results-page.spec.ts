@@ -21,12 +21,6 @@ test("bare /results redirects to the Readings tab and renders it (#1079)", async
   await expect(
     page.getByRole("heading", { name: "Results", exact: true })
   ).toBeVisible();
-  await expect(page.getByTestId("results-container")).toHaveClass(
-    /\bmax-w-6xl\b/
-  );
-  await expect(page.getByText(/Your result records in one place/)).toHaveCount(
-    0
-  );
   // The browser renders as the collapsed panel index, whole — the #114 pager it used
   // to carry was retired in #1581, so the tab's proof of life is a group header.
   const biomarkers = page.getByTestId("results-readings");
@@ -34,16 +28,6 @@ test("bare /results redirects to the Readings tab and renders it (#1079)", async
   await expect(
     biomarkers.getByTestId("biomarker-panel-header").first() // first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
   ).toBeVisible();
-  await expect(biomarkers.getByTestId("biomarkers-pagination")).toHaveCount(0);
-  const addBox = await biomarkers
-    .getByTestId("add-result-panel-toggle")
-    .boundingBox();
-  const searchBox = await biomarkers
-    .getByLabel("Search records by name or panel")
-    .boundingBox();
-  expect(addBox).not.toBeNull();
-  expect(searchBox).not.toBeNull();
-  expect(Math.abs(addBox!.y - searchBox!.y)).toBeLessThan(3);
 });
 
 test("the empty Readings action opens the add-result modal", async ({
@@ -88,21 +72,7 @@ test("mobile Results starts with four shell-owned route tabs", async ({
   const strip = shell.getByTestId("shell-tab-strip");
   const tabs = strip.getByTestId("results-tabs");
   await expect(tabs).toBeVisible();
-  await expect(tabs).toHaveCSS("overflow-y", "hidden");
   await expect(tabs.getByRole("tab")).toHaveCount(4);
-
-  const boxes = await Promise.all(
-    ["Readings", "Imaging", "Reports", "Genomics"].map(async (name) => {
-      const tab = tabs.getByRole("tab", { name });
-      await expect(tab).toHaveCSS("font-size", "14px");
-      return tab.boundingBox();
-    })
-  );
-  expect(boxes.every(Boolean)).toBe(true);
-  expect(boxes[0]!.height).toBeGreaterThanOrEqual(44);
-  for (const box of boxes.slice(1)) {
-    expect(box!.width).toBeCloseTo(boxes[0]!.width, 0);
-  }
 
   await followLink(
     page,

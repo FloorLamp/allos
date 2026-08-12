@@ -1220,7 +1220,7 @@ comes from the ONE server-side `getSessionRecap` gather
 card and the live "Session complete" step render, so the three surfaces can't
 drift (#221). Everything still routes through the Telegram chokepoint with the
 usual delivery accounting. **Weekly-remaining line (#981 §3, corrected by
-\#1122 and #2439):** the recap line gains a forward-looking, pace-framed status
+\#1122 and #2503):** the recap line gains a forward-looking, pace-framed status
 leading with the target the session just advanced ("Legs — 1 of 2 this week, one
 more to go"; calm all-met line when every workout target is met; omitted
 otherwise), computed by `weeklyRemainingLine` as a **workout-scoped FORMATTER**
@@ -1235,11 +1235,11 @@ message where its tone is natural — which is what makes #981's silent
 reminder-skip (rather than a softened second ping) correct: one moment, one
 message.
 
-**And it is about THIS session (#2439).** Both fixes above were written but only
+**And it is about THIS session (#2503).** Both fixes above were written but only
 the first was implemented: the rollup is profile-wide and nothing tied it to the
 finishing activity, so the line led with the closest-to-done target ANYWHERE —
 "Chest — 1 of 2 this week, one more to go" printed under "Afternoon Walk done ·
-33 min · 1.42 km", crediting a walk with a barbell session two days earlier and
+33 min · 1.42 km", crediting a walk with a barbell session earlier in the week and
 then nudging toward a chest day it had not touched. `weeklyRemainingLine` now
 takes the finishing session's own `SessionCadenceFacts` and a target it did not
 advance is not eligible to lead. The membership rule is ONE computation:
@@ -1256,7 +1256,7 @@ facts, which advance nothing. A session that advanced no target gets no weekly
 line — including the all-met line, which is true of the week but is not this
 session's to claim.
 
-**The title names what actually finished (#2439).** It was one hardcoded
+**The title names what actually finished (#2503).** It was one hardcoded
 `🏋️ Workout complete`, from #924 when only a manual strength session with logged
 sets could produce a recap line at all. #2272 opened the same message to every
 import, correctly, and the barbell came with it — a 33-minute, 1.42 km walk
