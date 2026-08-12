@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { settledClick } from "./helpers";
 import {
   settledTap,
   ensureUnlogged,
@@ -147,4 +148,41 @@ test("note affordance: a logged row opens a one-line note that persists", async 
 
   // Tidy up so repeat runs start clean.
   await ensureUnlogged(bar2, "body_aches", tap);
+});
+
+test("the one-tap × offers an Undo that brings the symptom-day back (#2124)", async ({
+  page,
+}) => {
+  // The × used to be a one-tap delete with no confirm and nothing to take it back —
+  // and it reached OFF-DB, unlinking the day's photo files. It stays one tap (a
+  // confirm on every symptom clear is the wrong tax); the safety net is the toast.
+  test.slow();
+  await page.goto("/");
+  const tap = settledTap(page);
+  const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
+  await expect(bar).toBeVisible();
+  await ensureUnlogged(bar, "nausea", tap);
+
+  await addFromPicker(bar, "nausea", tap);
+  await raiseSeverity(bar, "nausea", 3, tap);
+
+  // Clear it — the row leaves the bar, and the Undo affordance appears with it.
+  await settledClick(page, bar.getByTestId("symptom-nausea-clear"));
+  await expect(bar.getByTestId("symptom-nausea")).toHaveCount(0);
+  await expect(page.getByText("Symptom removed.")).toBeVisible();
+
+  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  await expect(page.getByText("Restored.")).toBeVisible();
+
+  // The day is genuinely back at the severity it was cleared at — asserted after a
+  // reload so this is the persisted row, not the optimistic chip.
+  await page.reload();
+  const bar2 = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
+  await expect(bar2.getByTestId("symptom-nausea-sev-3")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  // Tidy up so repeat runs start clean.
+  await ensureUnlogged(bar2, "nausea", tap);
 });
