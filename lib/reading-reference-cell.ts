@@ -92,7 +92,22 @@ export function referenceCell(input: ReferenceCellInput): ReferenceCell {
     }
   }
   // No canonical entry (or an entry with no numeric band): the printed string IS
-  // the deciding range here, so it shows exactly as before — relabelled, so the
-  // reader can tell the two cases apart.
-  return { label: "Lab reference", text: printed, title: null, judged: false };
+  // the deciding range here, so it shows as before — relabelled, and PREFIXED, so
+  // the reader can tell the two cases apart.
+  //
+  // The prefix is the #2344 half of the same requirement. `label` is the card-mode
+  // label: on the desktop table the column header is one `<th>` shared by every row,
+  // so it says "Reference" whatever the row is, and an unjudged row printed a bare
+  // `3.4-8.5` underneath it with nothing marking which case it was in. A reader could
+  // tell — a judged cell carries the word `ref` — but only by noticing the ABSENCE of
+  // a prefix, which is an inference, and #2315 exists to stop the reader inferring
+  // which range is deciding. `lab` is the same mechanism as `ref` and `optimal`
+  // rather than a new one, and it makes the cell true standing alone, which is what
+  // lets this stay a pure function with a testable answer.
+  return {
+    label: "Lab reference",
+    text: printed ? `lab ${printed}` : null,
+    title: null,
+    judged: false,
+  };
 }

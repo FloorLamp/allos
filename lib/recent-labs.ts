@@ -18,6 +18,11 @@ import {
 // on a glance dashboard is the dishonesty this closes.
 export const RECENT_LAB_STALE_DAYS = 365;
 
+// That interval said in words, for the hover sentence the glance cards share
+// (lib/glance-age). Kept beside the number so the copy and the floor it explains
+// cannot drift — the same pairing VITAL_PRESENTATION_FLOORS makes on the other card.
+export const RECENT_LAB_STALE_LABEL = "a year";
+
 // Which medical-record categories count as "labs" for the recent-labs surfaces:
 // `lab` ONLY (#1076). Vitals, screening instruments, derived composites, and
 // immutable facts each have their own home and must not appear in a recent-labs

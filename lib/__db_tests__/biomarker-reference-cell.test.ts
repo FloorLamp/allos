@@ -241,7 +241,9 @@ describe("no canonical entry — the printed string IS the deciding range", () =
     const row = rowsFor(profileId).get("Fictional Marker Nine");
     expect(row?.referenceCell?.judged).toBe(false);
     expect(row?.referenceCell?.label).toBe("Lab reference");
-    expect(row?.referenceCell?.text).toBe("2-6");
+    // Prefixed, so the cell says which case it is in without leaning on a column
+    // header the desktop table shares with every other row (#2344).
+    expect(row?.referenceCell?.text).toBe("lab 2-6");
     // Nothing to hover: the content already IS the lab's string.
     expect(row?.referenceCell?.title).toBeNull();
   });
