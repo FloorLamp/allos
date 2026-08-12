@@ -124,6 +124,10 @@ test("delete an activity, then Undo restores it (#30)", async ({ page }) => {
 // a date/value no seed uses, drives the row it created, and sweeps it plus any holding
 // row it minted — it never counts or mutates the shared HRV series.
 const HRV_PROBE_DATE = "2019-03-04";
+// The sample's instant, written out in full rather than interpolated from the date —
+// `${date}T07:00:00` is exactly the shape lib/__tests__/e2e-fixture-time.test.ts
+// ratchets against, and this fixture has no reason to build one.
+const HRV_PROBE_AT = "2019-03-04T07:00:00";
 const HRV_PROBE_VALUE = 137;
 
 function withProbeDb<T>(fn: (handle: Database.Database) => T): T {
@@ -163,12 +167,7 @@ test.describe("a metric_samples reading is undoable too (#2123)", () => {
         `INSERT INTO metric_samples
            (profile_id, source, metric, date, start_time, end_time, value)
          VALUES (1, 'manual', 'hrv_ms', ?, ?, ?, ?)`
-      ).run(
-        HRV_PROBE_DATE,
-        `${HRV_PROBE_DATE}T07:00:00`,
-        `${HRV_PROBE_DATE}T07:00:00`,
-        HRV_PROBE_VALUE
-      );
+      ).run(HRV_PROBE_DATE, HRV_PROBE_AT, HRV_PROBE_AT, HRV_PROBE_VALUE);
     });
 
     await page.goto("/trends/metric/hrv");
