@@ -12,6 +12,7 @@ export type HealthReason =
   | "db-failed"
   | "write-failed"
   | "integrity-failed"
+  | "disk-low"
   | "backup-stale"
   | "backups-never-ran"
   | "offsite-stale";
@@ -37,12 +38,89 @@ export const DEFAULT_BACKUP_STALENESS_HOURS = 48;
 // cron) — the disaster the old permanent never-backed-up exemption hid.
 export const DEFAULT_BACKUPS_NEVER_RAN_GRACE_HOURS = 72;
 
+// ---- Disk headroom (#1856) ----
+//
+// `write-failed` is an AFTER-THE-FACT alarm: the write probe writes a few bytes,
+// so it only fires once the volume is already full enough to refuse them. By then
+// the app is broken. `disk-low` is the same volume seen one step earlier, and it
+// exists because of a specific failure order: the nightly snapshot is a
+// `VACUUM INTO` (lib/backup.ts), which needs roughly a whole DB's worth of free
+// space to land — so on a filling volume the BACKUP is the first thing to fail,
+// silently, while the app itself still writes fine. Uploaded medical files grow in
+// ~100 MB video-clip steps, so a household instance gets there without warning.
+//
+// Two independent clauses, either of which flips it:
+//  1. FREE SHARE — free bytes under a percentage of the volume. The generic
+//     "this disk is nearly full" signal, independent of what Allos is doing.
+//  2. SNAPSHOT HEADROOM — free bytes under the live DB size times a factor,
+//     checked only when backups are ENABLED (VACUUM INTO only runs then, exactly
+//     as `offsite-stale` is gated on the same fact). This is the clause a
+//     percentage alone would miss: a 50 GB volume with 10% free and a 6 GB
+//     database has plenty of headroom by percentage and cannot take a snapshot.
+//
+// Unlike the backup alarms this one is TRANSIENT and self-clearing — free space
+// and it goes green on the next poll — which is what makes 503 the right answer
+// rather than a permanent complaint about how the operator set the box up.
+export const DEFAULT_DISK_FREE_FLOOR_PERCENT = 5;
+
+// A snapshot writes a full copy of the database; 1.2 is that copy plus slack for
+// the WAL and the verify sidecar. Not configurable — it is a property of what
+// VACUUM INTO does, not of the deployment.
+export const BACKUP_SNAPSHOT_HEADROOM_FACTOR = 1.2;
+
+// Clamp the operator's `ALLOS_DISK_FREE_FLOOR_PERCENT` override (read in the
+// route; parsed here so the rule is pure and unit-tested). Garbage falls back to
+// the default. 0 is legal and DISABLES the free-share clause — an operator on a
+// multi-terabyte volume where 5% is hundreds of gigabytes can turn it off and
+// keep the snapshot-headroom clause, which is the one about this app. Capped at
+// 50 so a typo cannot pin the endpoint at 503 forever.
+export function clampDiskFloorPercent(raw: string | undefined | null): number {
+  if (raw == null || raw.trim() === "") return DEFAULT_DISK_FREE_FLOOR_PERCENT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_DISK_FREE_FLOOR_PERCENT;
+  return Math.min(n, 50);
+}
+
+// The `disk-low` decision on its own, so both clauses are directly testable.
+// Unknown free space (statfs unsupported or throwing) answers FALSE: a probe we
+// could not run is not evidence of a problem, and must never invent a 503.
+export function isDiskLow(opts: {
+  diskFreeBytes?: number | null;
+  diskTotalBytes?: number | null;
+  dbSizeBytes?: number | null;
+  backupsEnabled?: boolean;
+  floorPercent?: number;
+}): boolean {
+  const free = opts.diskFreeBytes;
+  if (free == null || !Number.isFinite(free)) return false;
+
+  const floor = opts.floorPercent ?? DEFAULT_DISK_FREE_FLOOR_PERCENT;
+  const total = opts.diskTotalBytes;
+  if (floor > 0 && total != null && total > 0) {
+    if ((free / total) * 100 < floor) return true;
+  }
+
+  if (opts.backupsEnabled && opts.dbSizeBytes != null && opts.dbSizeBytes > 0) {
+    if (free < opts.dbSizeBytes * BACKUP_SNAPSHOT_HEADROOM_FACTOR) return true;
+  }
+
+  return false;
+}
+
 // Build the health response. A failed read probe (DB unreachable), failed write
 // probe (read-only / full disk), a cached failed live-integrity check, or a stale
 // backup each make the endpoint `degraded` + HTTP 503 so the container healthcheck
 // (which keys off response.ok) actually flips. Precedence, most to least severe:
-// db read → write → integrity → backup staleness. The body stays coarse: a status,
-// a coarse reason, and a coarse backup age — no paths, versions, or PHI.
+// db read → write → integrity → disk headroom → backup staleness. The body stays
+// coarse: a status, a coarse reason, and a coarse backup age — no paths, versions,
+// or PHI. `disk-low` keeps that contract by construction: it is one word, and the
+// free bytes, volume size, database size and configured floor that produced it are
+// all left behind in the route.
+//
+// Why disk-low sits where it does: below `integrity-failed` (corruption is worse
+// than a filling disk) and above the backup alarms (a disk that cannot take a
+// snapshot is the CAUSE the staleness alarms are about to report as an effect, and
+// naming the cause is more useful to the operator).
 //
 // Integrity: `liveIntegrityOk` is the cached outcome of the weekly PRAGMA
 // integrity_check (runLiveIntegrityCheck in the notify tick) — `false` means the
@@ -74,6 +152,14 @@ export function buildHealthStatus(opts: {
   // and item-1's recorded error surfaces the never-succeeded case on the card).
   offsiteConfigured?: boolean;
   lastOffsiteAt?: string | null;
+  // Disk headroom (#1856): free/total bytes of the data volume (one statfs in the
+  // route) and the live DB file size, plus the operator's clamped percentage floor.
+  // All optional — absent means the probe could not run, and isDiskLow answers
+  // false rather than inventing an alarm.
+  diskFreeBytes?: number | null;
+  diskTotalBytes?: number | null;
+  dbSizeBytes?: number | null;
+  diskFloorPercent?: number;
   now: Date;
 }): HealthResult {
   const lastBackupAgeHours = backupAgeHours(opts.lastBackupAt, opts.now);
@@ -88,6 +174,18 @@ export function buildHealthStatus(opts: {
   if (!opts.readOk) return degraded("db-failed");
   if (!opts.writeOk) return degraded("write-failed");
   if (opts.liveIntegrityOk === false) return degraded("integrity-failed");
+
+  if (
+    isDiskLow({
+      diskFreeBytes: opts.diskFreeBytes,
+      diskTotalBytes: opts.diskTotalBytes,
+      dbSizeBytes: opts.dbSizeBytes,
+      backupsEnabled: opts.backupsEnabled,
+      floorPercent: opts.diskFloorPercent,
+    })
+  ) {
+    return degraded("disk-low");
+  }
 
   const threshold =
     opts.stalenessThresholdHours ?? DEFAULT_BACKUP_STALENESS_HOURS;

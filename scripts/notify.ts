@@ -101,6 +101,8 @@ import { runScheduledBackup } from "../lib/backup";
 import { pruneAuditEvents } from "../lib/audit";
 import { sweepDeletedRows } from "../lib/undo-delete-db";
 import { sweepReplayedKeys } from "../lib/offline/writes";
+import { purgeExpiredSessions } from "../lib/auth";
+import { purgeExpiredTotpChallenges } from "../lib/two-factor";
 import { reapStuckExtractions } from "../lib/extraction-reaper";
 import {
   inferWorkoutSchedule,
@@ -1117,6 +1119,27 @@ async function tick() {
     if (prunedSync > 0) log.info("pruned sync events", { prunedSync });
   } catch (e) {
     log.error("sync-event prune failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
+  // Expired-session + TOTP-challenge sweep (#1843): global, once per tick. Both
+  // purges existed but were called ONLY from the login action, so "somebody signs
+  // in" was the sole trigger — and with 30-day SLIDING sessions, a family instance
+  // where nobody signs in for months accumulated dead `sessions` and
+  // `login_totp_challenges` rows unbounded. Purely a bookkeeping sweep: an expired
+  // row is already refused by every read path, so this deletes nothing a live
+  // session depends on. Best-effort, like its siblings; never affects the
+  // notification flow/exit code.
+  try {
+    const sweptSessions = purgeExpiredSessions();
+    if (sweptSessions > 0)
+      log.info("swept expired sessions", { sweptSessions });
+    const sweptChallenges = purgeExpiredTotpChallenges();
+    if (sweptChallenges > 0)
+      log.info("swept expired 2FA challenges", { sweptChallenges });
+  } catch (e) {
+    log.error("session sweep failed", {
       err: e instanceof Error ? e : String(e),
     });
   }
