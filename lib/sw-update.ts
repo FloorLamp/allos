@@ -446,3 +446,421 @@ export function skewRecoveryPlan({
   }
   return "hard-reload";
 }
+
+// ---------------------------------------------------------------------------
+// THE TAB TAKES THE DEPLOY ITSELF (issue #2471)
+//
+// Everything above answers a deploy by OFFERING: the bar waits for a tap, and the
+// stale-save banner waits for a tap. That was the right posture while a reload could
+// destroy work — the user is the only one who knows whether it is safe. #2471's
+// ruling is that the app should schedule it instead, and the ONLY thing that makes
+// that legitimate is turning "is it safe" from a guess into a derived property.
+//
+// So the decision below is not "did a deploy happen" (that is `resolveUpdateState`,
+// unchanged) but "may this tab throw its document away RIGHT NOW without losing a
+// keystroke". It is refusal-first: every answer other than a proven-safe one leaves
+// the tab exactly where it is, on today's manual affordances.
+//
+// WHAT IT IS ALLOWED TO ASSUME, and what it is not. Two registries report dirtiness
+// and they mean different things:
+//
+//   * a DRAFT-BACKED form (components/useFormDraft.ts) holds its content in
+//     IndexedDB. Its content survives a reload by construction, so the reload is
+//     lossless once the debounce has been flushed — which is a step in the reload
+//     SEQUENCE, not an input to this decision.
+//   * any other form holding unsaved input (components/DirtyFormRegistry.tsx, #1878,
+//     which sees every <form> in the app) has NO durable copy. Reloading over it is
+//     exactly the destruction the manual bar existed to prevent, so it is a refusal:
+//     `unrecoverableWork` holds the tab and renders the old affordance.
+//
+// That split is why this ships as a partial: a settings card mid-edit, a record form
+// mid-composition, a file upload in flight — none of them auto-reload, and none of
+// them need to, because the fallback they get is precisely today's behaviour.
+// ---------------------------------------------------------------------------
+
+/**
+ * The auto-reload ration, per tab, per WINDOW, per observed target build.
+ *
+ * Same shape and same reasoning as `SkewRecoveryGuard` above — an automatic reload
+ * that lands somewhere still broken must not try again forever — with one field
+ * added. `target` is the build this tab is trying to reach, and rationing per target
+ * is what makes a flapping `/api/version` harmless: two servers mid-rolling-deploy
+ * answering with different shas would otherwise ping-pong a tab between them, each
+ * answer looking like a fresh episode to a target-blind guard. A genuinely new deploy
+ * IS a new target and deserves its own attempt; the same target twice does not.
+ *
+ * Deliberately a SEPARATE key from `SKEW_RECOVERY_KEY`. The two rations bound
+ * different actions taken by different code on opposite sides of a crash, and the
+ * worst case that matters — a broken deploy under a dirty editor — is their SUM,
+ * which is bounded because neither ever refills the other.
+ */
+export const AUTO_RELOAD_KEY = "allos-auto-reload";
+export const AUTO_RELOAD_WINDOW_MS = 60_000;
+/** At most one automatic attempt per target build, per window. */
+export const AUTO_RELOAD_MAX_ATTEMPTS = 1;
+/**
+ * …and at most this many DISTINCT targets per window, whatever the server says.
+ *
+ * The per-target rule alone is not a bound. Two servers mid-rolling-deploy answering
+ * A, B, A, B each look like a fresh target to a guard that only remembers the last
+ * one, so the tab would reload forever while each individual target stayed within its
+ * ration. Remembering the SET is what closes that, and the total cap is what keeps
+ * three servers from doing the same thing more slowly. Two is generous: a genuine
+ * second deploy inside one 60s window, under one open tab, is not a thing that
+ * happens on a single-operator instance.
+ */
+export const AUTO_RELOAD_MAX_TARGETS = 2;
+
+/** The target name used when a trigger knows a deploy happened but not which build. */
+export const AUTO_RELOAD_UNNAMED_TARGET = "unnamed";
+
+export type AutoReloadGuard = {
+  /** The builds this tab has already tried to reach in this window. */
+  targets: string[];
+  /** When the window opened — the first attempt's timestamp, not the last. */
+  at: number;
+};
+
+/** Read the stored guard. Anything unparseable is "no guard", never a throw. */
+export function parseAutoReloadGuard(
+  raw: string | null | undefined
+): AutoReloadGuard | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const { targets, at } = parsed as Record<string, unknown>;
+    if (!Array.isArray(targets) || targets.length === 0) return null;
+    if (!targets.every((t) => typeof t === "string" && t !== "")) return null;
+    if (typeof at !== "number" || !Number.isFinite(at)) return null;
+    return { targets: targets as string[], at };
+  } catch {
+    return null;
+  }
+}
+
+/** The guard, or null when its window has aged out and it counts for nothing. */
+function liveGuard(
+  guard: AutoReloadGuard | null,
+  now: number
+): AutoReloadGuard | null {
+  if (!guard) return null;
+  const age = now - guard.at;
+  if (age < 0 || age > AUTO_RELOAD_WINDOW_MS) return null;
+  return guard;
+}
+
+/** Whether the automatic path has nothing left to spend on this target. */
+export function autoReloadRationSpent({
+  guard,
+  target,
+  now,
+}: {
+  guard: AutoReloadGuard | null;
+  target: string;
+  now: number;
+}): boolean {
+  const live = liveGuard(guard, now);
+  if (!live) return false;
+  const forThisTarget = live.targets.filter((t) => t === target).length;
+  if (forThisTarget >= AUTO_RELOAD_MAX_ATTEMPTS) return true;
+  return live.targets.length >= AUTO_RELOAD_MAX_TARGETS;
+}
+
+/** The guard to store when taking an attempt. An aged-out window opens a new one. */
+export function nextAutoReloadGuard(
+  guard: AutoReloadGuard | null,
+  target: string,
+  now: number
+): AutoReloadGuard {
+  const live = liveGuard(guard, now);
+  if (!live) return { targets: [target], at: now };
+  if (live.targets.includes(target)) return live;
+  return { targets: [...live.targets, target], at: live.at };
+}
+
+/**
+ * How long the page must see no pointer or key activity ANYWHERE before a reload
+ * counts as unobtrusive.
+ *
+ * Not "no activity inside a form": a reload mid-scroll, mid-drag or mid-picker is
+ * the disruption the bar was protecting against just as much as a reload mid-typing,
+ * and none of those touch a form field. Short, because a tab that never goes quiet
+ * simply stays on the old build — the cost of waiting is nothing, and #1906 already
+ * covers the stale navigation while it waits.
+ *
+ * IT IS MEASURED FROM WHEN WE STARTED WATCHING, not only from the last event. "No
+ * input has been seen" and "the page is quiet" are the same sentence everywhere
+ * except at the very start of a document, where the first is true because nothing
+ * has been observed YET. A tab that discovers a deploy in the first milliseconds of
+ * its life — the poll's mount read answers before a scroll can reach a listener that
+ * has only just attached — would otherwise reload out from under a user who is
+ * mid-gesture, which is exactly the harm the gate exists to prevent. So a freshly
+ * mounted tab must WATCH for the window before it may call the page quiet. The cost
+ * is that a clean tab converges three seconds later; the alternative is a gate that
+ * answers "quiet" from a position of having seen nothing at all.
+ */
+export const INPUT_QUIET_MS = 3_000;
+
+/**
+ * How long after ANY form submit the tab still counts as busy.
+ *
+ * A submit starts a write whose completion this module cannot see, and tearing the
+ * document down mid-POST is the one way an automatic reload could lose a write the
+ * user already committed to. Watching submits at the document level is the same
+ * completeness argument #1878 makes for the dirty-form registry: it covers every
+ * form in the app, present and future, with no per-form wiring to forget.
+ */
+export const SUBMIT_SETTLE_MS = 5_000;
+
+/**
+ * What the tab should do about the deploy it has noticed.
+ *
+ * `reload` — provably safe now. `wait` — safe eventually, nothing to show yet (this
+ * is the state a tab sits in while the user is mid-scroll). `hold` — the automatic
+ * path is off for this episode, so render the manual affordance that shipped before
+ * this issue. `none` — no deploy to answer.
+ *
+ * `hold` and `wait` are deliberately different answers rather than one "not now":
+ * only `hold` may raise a bar. A bar that appeared during a two-second scroll pause
+ * would re-create the ask-before posture this issue removes.
+ */
+export type AutoReloadVerdict =
+  | { action: "reload"; target: string }
+  | { action: "wait"; reason: "input" | "submit" }
+  | { action: "hold"; reason: "ration-spent" | "unrecoverable-work" }
+  | { action: "none" };
+
+/**
+ * THE "first safe moment" DECISION (#2471).
+ *
+ * Order matters and is the safety argument:
+ *
+ *   1. no trigger → nothing to do. `staleBuild` (a save that failed with the
+ *      stale-action signature) is deliberately its own trigger, independent of the
+ *      detector: it fires seconds after the deploy from the failure itself, so
+ *      recovery still works in a tab whose `/api/version` poll has latched off.
+ *   2. ration spent for this target → hold. A broken deploy degrades to the manual
+ *      bar, never to a loop.
+ *   3. work with no durable copy → hold. This is the refusal that keeps the feature
+ *      honest; see the header above.
+ *   4. a submit is still settling → wait, hidden or not. Safety outranks the
+ *      convenience of the hidden fast path.
+ *   5. hidden → reload. The user who "isn't looking" genuinely cannot be
+ *      interrupted, and no pointer or key event can arrive at a hidden document.
+ *   6. input-quiet — for `INPUT_QUIET_MS`, counted from the later of the last event
+ *      and `watchingSince` — reload; otherwise wait.
+ *
+ * `lastSubmitAt` is 0 for "never", which reads as long-ago rather than as just-now.
+ * `lastInputAt` has no such sentinel any more: silence is only quiet once we have
+ * been in a position to hear it, which is what `watchingSince` measures.
+ */
+export function autoReloadPlan({
+  staleBuild,
+  pending,
+  targetSha,
+  unrecoverableWork,
+  hidden,
+  watchingSince,
+  lastInputAt,
+  lastSubmitAt,
+  guard,
+  now,
+}: {
+  /** A save failed with the stale-action signature (trigger A). */
+  staleBuild: boolean;
+  /** `resolveUpdateState().pending` — the detector's answer (trigger B). */
+  pending: boolean;
+  /** The build the server named, when it named one. */
+  targetSha: string | null;
+  /** Any form holding unsaved input that no draft would restore. */
+  unrecoverableWork: boolean;
+  hidden: boolean;
+  /**
+   * Epoch ms from which input has actually been OBSERVED — when the listeners
+   * attached. Silence before this instant is ignorance, not quiet.
+   */
+  watchingSince: number;
+  /** Epoch ms of the last pointer/key event anywhere on the page; 0 for never. */
+  lastInputAt: number;
+  /** Epoch ms of the last form submit anywhere on the page; 0 for never. */
+  lastSubmitAt: number;
+  guard: AutoReloadGuard | null;
+  now: number;
+}): AutoReloadVerdict {
+  if (!staleBuild && !pending) return { action: "none" };
+  const target = targetSha ?? AUTO_RELOAD_UNNAMED_TARGET;
+  if (autoReloadRationSpent({ guard, target, now })) {
+    return { action: "hold", reason: "ration-spent" };
+  }
+  if (unrecoverableWork) {
+    return { action: "hold", reason: "unrecoverable-work" };
+  }
+  if (lastSubmitAt > 0 && now - lastSubmitAt < SUBMIT_SETTLE_MS) {
+    return { action: "wait", reason: "submit" };
+  }
+  if (hidden) return { action: "reload", target };
+  // The window runs from the LATER of the last event and the moment we started
+  // watching — see INPUT_QUIET_MS. A hidden tab short-circuits above and needs no
+  // observation period, because no input can reach a hidden document at all.
+  // Not watching yet (0) is the strongest form of "we have not heard silence": it
+  // means the listeners are not even attached, so nothing could have been heard.
+  if (watchingSince <= 0) return { action: "wait", reason: "input" };
+  const quietSince = Math.max(lastInputAt, watchingSince);
+  if (now - quietSince < INPUT_QUIET_MS) {
+    return { action: "wait", reason: "input" };
+  }
+  return { action: "reload", target };
+}
+
+/**
+ * Whether the manual affordance — the "Update ready" bar, and the editor's
+ * stale-save banner — may render.
+ *
+ * ONE deploy still gets ONE notice (#1795/#1806), and after this issue the notice is
+ * normally the after-the-fact toast rather than a bar. The bar survives only as the
+ * rationed-failure fallback: the automatic attempt has been spent and the tab is
+ * still stale, or the tab is holding because work on screen would not survive. A tab
+ * that is merely WAITING for a quiet moment shows nothing, because showing something
+ * would be the ask-before consent gate this issue removes.
+ */
+export function showsManualUpdateNotice(verdict: AutoReloadVerdict): boolean {
+  return verdict.action === "hold";
+}
+
+/**
+ * The one-shot pointer written across an update reload so the editor comes back.
+ *
+ * A POINTER ONLY — form identity, record identity, live-ness and a timestamp. No
+ * field content ever leaves IndexedDB (`lib/offline/drafts.ts`'s PHI rule), and
+ * sessionStorage is the deliberate home: per-tab, so only the tab that lost its build
+ * reopens its editor, and crash-scoped, so it cannot outlive the episode.
+ *
+ * `app/global-error.tsx` replaces the root layout, so nothing consumes this marker
+ * on the crash path — it must survive to the next healthy boot, and it is parsed as
+ * defensively as `parseSkewGuard` so a malformed one is ignored rather than thrown.
+ */
+export const RESUME_EDITOR_KEY = "allos-resume-editor";
+
+export type ResumeMarker = {
+  /** A `DraftFormKey`, kept as a string so this module stays free of the draft types. */
+  formKey: string;
+  /** The stored row being edited, or null for a create form. */
+  recordId: number | null;
+  /** The editor was in live-workout mode. */
+  live: boolean;
+  /** When the marker was written. */
+  at: number;
+};
+
+export function parseResumeMarker(
+  raw: string | null | undefined
+): ResumeMarker | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const { formKey, recordId, live, at } = parsed as Record<string, unknown>;
+    if (typeof formKey !== "string" || formKey === "") return null;
+    if (recordId !== null && typeof recordId !== "number") return null;
+    if (typeof recordId === "number" && !Number.isFinite(recordId)) return null;
+    if (typeof live !== "boolean") return null;
+    if (typeof at !== "number" || !Number.isFinite(at)) return null;
+    return { formKey, recordId, live, at };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How young a continuation must be for a draft to be applied without a tap.
+ *
+ * Minutes, not the draft TTL's seven days. The exception this gates is argued from
+ * "the tap already happened — the user typed this seconds ago in this same tab", and
+ * that argument expires quickly: a tab restored by the browser an hour later is a
+ * revisit, and a revisit gets the offer banner like everything else.
+ */
+export const RESUME_MARKER_MAX_AGE_MS = 5 * 60_000;
+
+/**
+ * Whether a stored draft may be applied WITHOUT the user's tap.
+ *
+ * `useFormDraft`'s never-apply-without-a-tap rule stays the rule; this is its one
+ * argued exception, and every leg is a way of checking that the tap really did
+ * happen. The marker must name this exact form and record, the marker and the draft
+ * must both be young, and the record must not have changed under us — if it did,
+ * applying would clobber a write from another tab or from Telegram, so the offer
+ * banner is the right answer and nothing is lost by falling back to it.
+ */
+export function shouldAutoApplyDraft({
+  marker,
+  formKey,
+  recordId,
+  savedAt,
+  conflicts,
+  now,
+}: {
+  marker: ResumeMarker | null;
+  formKey: string;
+  recordId: number | null;
+  /** The stored draft's `savedAt`. */
+  savedAt: number;
+  /** `draftConflictsWithInput` — the form on screen has moved off its seed. */
+  conflicts: boolean;
+  now: number;
+}): boolean {
+  if (!marker) return false;
+  if (marker.formKey !== formKey) return false;
+  if (marker.recordId !== recordId) return false;
+  if (conflicts) return false;
+  const markerAge = now - marker.at;
+  if (markerAge < 0 || markerAge > RESUME_MARKER_MAX_AGE_MS) return false;
+  const draftAge = now - savedAt;
+  if (draftAge < 0 || draftAge > RESUME_MARKER_MAX_AGE_MS) return false;
+  return true;
+}
+
+/**
+ * The second one-shot marker: what to TELL the user once the new build is up.
+ *
+ * The notice inverts with this issue — ask-before becomes tell-after — and the
+ * dedupe is the consumption itself. Written immediately before an update-machinery
+ * reload, read and removed on the next healthy boot, so a build taken twice (a
+ * second machinery reload, #2155's late controller swap) cannot toast twice, and a
+ * same-build waiting worker consumed silently (#2120) writes nothing and therefore
+ * says nothing.
+ */
+export const UPDATE_TAKEN_KEY = "allos-update-taken";
+
+export type UpdateTaken = {
+  /** The build the tab was heading for, when the server had named one. */
+  sha: string | null;
+  commitMessage: string | null;
+};
+
+export function parseUpdateTaken(
+  raw: string | null | undefined
+): UpdateTaken | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const { sha, commitMessage } = parsed as Record<string, unknown>;
+    if (sha !== null && typeof sha !== "string") return null;
+    if (commitMessage !== null && typeof commitMessage !== "string") {
+      return null;
+    }
+    return { sha: sha ?? null, commitMessage: commitMessage ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/** The toast's words. One place, so the e2e and the component cannot disagree. */
+export const UPDATE_TAKEN_MESSAGE = "The app has updated";
+
+export function updateTakenMessage(taken: UpdateTaken): string {
+  return taken.commitMessage
+    ? `${UPDATE_TAKEN_MESSAGE} — ${taken.commitMessage}`
+    : UPDATE_TAKEN_MESSAGE;
+}

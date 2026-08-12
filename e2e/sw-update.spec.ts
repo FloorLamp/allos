@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { spendAutoReloadRation } from "./helpers";
 import { UPDATE_PENDING_KEY } from "@/lib/sw-update";
 
 // Deferred service-worker activation (issue #1700), driven against the real worker.
@@ -16,6 +17,15 @@ import { UPDATE_PENDING_KEY } from "@/lib/sw-update";
 //
 // The e2e server runs `next start` (NODE_ENV=production), which is the only mode in
 // which the app registers a worker at all — see components/ServiceWorkerRegister.
+//
+// EVERY TEST HERE SPENDS THE #2471 RATION FIRST. Since that issue the bar is not the
+// first answer to a pending update — converging on the new build by itself is — so a
+// tab with the automatic attempt still available reloads rather than offering. What
+// these tests are about is unchanged and still real: the WORKER contract (installs
+// and waits, claims nobody, hands over on the handshake) and the DETECTION contract
+// (#2329's open controlled tab). Both are reached through the fallback bar, which is
+// the affordance a tab in that state genuinely renders. The automatic path's own
+// drive is e2e/update-notice.spec.ts and e2e/stale-build-save.spec.ts.
 
 // The app's own registration lands as ?v=<sha|dev>; the two #1700 specs below
 // register a DIFFERENT version against the same scope by hand.
@@ -106,6 +116,7 @@ test("a new build waits instead of taking over the open page (#1700)", async ({
     sessionStorage.setItem("swSpecLoads", String(n + 1));
   });
 
+  await spendAutoReloadRation(page);
   const deploy = await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
@@ -169,6 +180,7 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
       raised;
   }, UPDATE_PENDING_KEY);
 
+  await spendAutoReloadRation(page);
   const deploy = await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
@@ -308,6 +320,7 @@ test("a deploy under a controlled tab raises the bar, with no second worker (#23
   page,
 }) => {
   test.slow();
+  await spendAutoReloadRation(page);
   const deploy = await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
@@ -339,6 +352,7 @@ test("that bar's Reload loads the document, and nothing re-offers (#2329)", asyn
   page,
 }) => {
   test.slow();
+  await spendAutoReloadRation(page);
   const deploy = await interceptVersion(page);
   await page.goto("/training");
   await waitForController(page);
