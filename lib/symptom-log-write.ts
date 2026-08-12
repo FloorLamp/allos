@@ -22,7 +22,7 @@ import {
   openEpisodeIdForDate,
   episodeExistsForProfile,
 } from "./illness-episode-store";
-import { deletePhotosForSymptomLog } from "./symptom-photo-write";
+import { captureDelete } from "./undo-delete-db";
 
 // Typed result so a caller answers from what ACTUALLY happened (the markDoseTaken
 // contract, #232) rather than unconditionally confirming.
@@ -200,9 +200,12 @@ export function setSymptomNoteCore(
 }
 
 // Remove a symptom-day row. Idempotent — removing a symptom with nothing logged is a
-// no-op. Returns whether a row existed.
+// no-op. Returns whether a row existed, and the UNDO TOKEN when one was captured (#2124).
+// `undoId` is null exactly when nothing was deleted, so a caller renders the plain
+// confirmation rather than an Undo that would restore nothing.
 export type SymptomRemoveOutcome =
-  { kind: "removed"; symptom: string; existed: boolean } | { kind: "invalid" };
+  | { kind: "removed"; symptom: string; existed: boolean; undoId: number | null }
+  | { kind: "invalid" };
 
 export function removeSymptomCore(
   profileId: number,
@@ -211,30 +214,34 @@ export function removeSymptomCore(
 ): SymptomRemoveOutcome {
   const symptom = resolveSymptomKey(symptomInput);
   if (!symptom) return { kind: "invalid" };
-  return writeTx(() => {
-    // #1093 row-side-state: a deleted symptom log takes its photos (rows + files). Look
-    // up the row id first so its bound photos go before it (foreign_keys=ON would reject
-    // dropping a log a photo still references).
-    const row = db
-      .prepare(
-        `SELECT id FROM symptom_logs
-          WHERE profile_id = ? AND date = ? AND symptom = ?`
-      )
-      .get(profileId, date, symptom) as { id: number } | undefined;
-    if (row) deletePhotosForSymptomLog(profileId, row.id);
-    const info = db
-      .prepare(
-        `DELETE FROM symptom_logs
-          WHERE profile_id = ? AND date = ? AND symptom = ?`
-      )
-      .run(profileId, date, symptom);
-    return { kind: "removed" as const, symptom, existed: info.changes > 0 };
-  });
+  const row = db
+    .prepare(
+      `SELECT id FROM symptom_logs
+        WHERE profile_id = ? AND date = ? AND symptom = ?`
+    )
+    .get(profileId, date, symptom) as { id: number } | undefined;
+  if (!row) return { kind: "removed", symptom, existed: false, undoId: null };
+  // #2124: the one-tap × CAPTURES now. The `symptom-day` kind owns what this used to do
+  // by hand — it takes the row's photos with it (deleteExplicitly children, because
+  // symptom_photos.symptom_log_id carries no ON DELETE and foreign_keys=ON would reject
+  // dropping a log a photo still references) and restores them re-pointed at the row's
+  // new id, inside the same transaction as the capture.
+  //
+  // WHAT CHANGED ABOUT THE FILES: `deletePhotosForSymptomLog` used to unlink every bound
+  // photo and its thumbnail right here, which is what made a mis-tap unrecoverable
+  // off-DB. The files are content-named, so they now survive the trash window untouched
+  // (a restored row re-points at the same bytes) and the undo PURGE reclaims them — the
+  // skin-lesion / activity-clip posture, and the first thing to make the long-declared
+  // `symptom_photos` entry in PHOTO_FILE_TABLES reachable.
+  const undoId = captureDelete("symptom-day", profileId, row.id);
+  return { kind: "removed", symptom, existed: undoId != null, undoId };
 }
 
-// Typed result of a custom-symptom management op (#203 hygiene).
+// Typed result of a custom-symptom management op (#203 hygiene). `undoIds` is the #202
+// token batch a DELETE captured (one per removed day); a rename captures nothing and
+// carries none.
 export type CustomSymptomOutcome =
-  | { kind: "ok" }
+  | { kind: "ok"; undoIds?: number[] }
   | { kind: "not-custom" } // the target key is a curated slug — not user-managed
   | { kind: "invalid" };
 
@@ -312,6 +319,12 @@ export function renameCustomSymptomCore(
 
 // Delete a CUSTOM symptom entirely — removes every log row under its key (#203: cleaned,
 // not left as orphaned name-keyed state). Refuses a curated slug.
+//
+// Every day is captured (#2124), so the outcome carries a BATCH of tokens — the #202
+// shape `useUndoableDelete` already normalizes — and one Undo brings the whole custom
+// symptom's history back, photos and files included. Each day is its own capture rather
+// than one payload, because that is what makes the batch restorable a row at a time by
+// the same executor every other kind uses.
 export function deleteCustomSymptomCore(
   profileId: number,
   name: string
@@ -319,20 +332,18 @@ export function deleteCustomSymptomCore(
   const key = resolveSymptomKey(name);
   if (!key) return { kind: "invalid" };
   if (!isCustomSymptomKey(key)) return { kind: "not-custom" };
-  writeTx(() => {
-    // #1093 row-side-state: take each log row's photos (rows + files) before the logs go
-    // (foreign_keys=ON). Every row under this custom key is being removed.
-    const rows = db
-      .prepare(
-        `SELECT id FROM symptom_logs WHERE profile_id = ? AND symptom = ?`
-      )
-      .all(profileId, key) as { id: number }[];
-    for (const r of rows) deletePhotosForSymptomLog(profileId, r.id);
-    db.prepare(
-      `DELETE FROM symptom_logs WHERE profile_id = ? AND symptom = ?`
-    ).run(profileId, key);
-  });
-  return { kind: "ok" };
+  const rows = db
+    .prepare(`SELECT id FROM symptom_logs WHERE profile_id = ? AND symptom = ?`)
+    .all(profileId, key) as { id: number }[];
+  const undoIds: number[] = [];
+  for (const r of rows) {
+    // Per-day capture: each one takes that day's photo ROWS (leaving the files for the
+    // purge) and deletes the log row, in its own transaction. A row that vanished
+    // between the select and the capture returns null and is simply skipped.
+    const token = captureDelete("symptom-day", profileId, r.id);
+    if (token != null) undoIds.push(token);
+  }
+  return { kind: "ok", undoIds };
 }
 
 // Re-export so an action can normalize a custom label the same way the store does.

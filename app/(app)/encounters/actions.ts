@@ -2,14 +2,14 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidateRoute } from "@/lib/revalidate";
-import { db, writeTx } from "@/lib/db";
+import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
 } from "@/lib/providers-db";
-import { nullEncounterLinks } from "@/lib/queries";
+import { captureDelete } from "@/lib/undo-delete-db";
 
 // Visit / encounter writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -108,27 +108,21 @@ export async function updateEncounter(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-export async function deleteEncounter(formData: FormData): Promise<FormResult> {
+// Delete a visit — CAPTURED, so it is restorable from the toast for the trash window
+// (#1847). The row-ops side-state this used to do inline (the appointment back-link
+// #288, and every record/med/condition/procedure/imaging/immunization/episode
+// `encounter_id` #1050/#1053) moved INTO captureDelete beside the sibling clinical
+// null-outs, so the Data → Manage bulk delete inherits it too — before that, bulk
+// -deleting a linked visit threw on the FK. Those detaches are deliberately NOT
+// restored: the visit comes back, the other rows' "recorded at" links stay honestly
+// cleared, because a link is a statement about the OTHER row.
+export async function deleteEncounter(
+  formData: FormData
+): Promise<FormResult & { undoId?: number | null }> {
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that visit.");
-  writeTx(() => {
-    // Row-ops side-state (#288): an appointment may link this visit
-    // (appointments.encounter_id). encounters carries no ON DELETE action, so NULL
-    // the back-link FIRST — the appointment (and its completed status) is
-    // preserved, just unlinked — otherwise the FK would block the delete.
-    db.prepare(
-      "UPDATE appointments SET encounter_id = NULL WHERE encounter_id = ? AND profile_id = ?"
-    ).run(id, profileId);
-    // Row-ops side-state (#1050/#1053): NULL every record/med/condition/procedure/
-    // imaging/immunization/episode back-link to this visit before deleting it — those
-    // encounter_id FKs carry no ON DELETE, so the FK would otherwise block the delete.
-    nullEncounterLinks(profileId, id);
-    db.prepare("DELETE FROM encounters WHERE id = ? AND profile_id = ?").run(
-      id,
-      profileId
-    );
-  });
+  const undoId = captureDelete("visit", profileId, id);
   revalidateEncounters();
-  return formOk();
+  return { ...formOk(), undoId };
 }
