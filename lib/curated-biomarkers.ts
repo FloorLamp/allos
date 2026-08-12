@@ -231,6 +231,7 @@ export const RETEST_WORTHY: string[] = [
   "Glucose",
   "Glucose, Fasting",
   "Insulin",
+  "Insulin, Fasting",
   "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
   "C-Peptide",
   // Lipids

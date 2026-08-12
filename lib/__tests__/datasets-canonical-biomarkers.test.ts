@@ -126,9 +126,20 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // boot. FLAG_LOGIC_VERSION is deliberately NOT bumped: the derivation LOGIC is
 // unchanged and the dataset half of the signature already forces the re-reconcile on
 // its own (the #2300/#2337/#2335 reasoning).
+// Updated for #2371: the insulin twin of the #2337 glucose split. `Insulin, Fasting`
+// is coined carrying the bands the unqualified entry used to hold (ref ≤18.4, optimal
+// 2–5, lower_better) — they were always FASTING intervals, asserted by a one-word
+// "Fasting" note rather than by the name — and the unqualified `Insulin` gives them
+// up, because an insulin of unstated frame has no band the app can honestly apply and
+// the post-prandial spread is wider here than it is on glucose. A new entry plus four
+// fields going null legitimately moves the signature, and the boot reconcile runs
+// once: a stored bare `Insulin` reading loses a flag it should never have carried, and
+// nothing is re-pointed, because a reading that does not state a fasting frame is not
+// ours to re-file under one (#2338). FLAG_LOGIC_VERSION is deliberately NOT bumped:
+// the derivation LOGIC is unchanged (the #2300/#2337/#2335 reasoning).
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "d33f5288493fa580d832e338e4adf5671d117a42c116097ab5504aed1505e684"; // phi-scan-ok
+  "0e39628bffcf242be13412139bcd41b4ecf728638a93359cc61300bdd66b4c8f"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

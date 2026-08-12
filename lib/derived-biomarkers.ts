@@ -493,12 +493,22 @@ const DERIVED_DEFS: DerivedDef[] = [
     // below: Levine's model is a population mortality regression that merely PREFERS
     // the fasting analyte, whereas HOMA-IR's arithmetic is only that index on the
     // fasting frame, so the two lists differ on purpose.
+    //
+    // The INSULIN input requires the same frame, for the same reason (#2371). It could
+    // not until "Insulin, Fasting" was coined: the vocabulary held one unqualified
+    // "Insulin" entry carrying fasting BANDS and the bare note "Fasting", so the frame
+    // was asserted by a note rather than by the name and there was nothing here to
+    // require. That left the index half-guarded — declining on a glucose of unknown
+    // frame while computing on an insulin of unknown frame — and it was the weaker
+    // half that was left open: a post-prandial insulin runs several times its fasting
+    // value, a far larger multiplier on (glucose × insulin) ÷ 405 than a post-prandial
+    // glucose contributes. Both inputs now name the frame the label claims.
     inputs: [
       { canonical: ["Glucose, Fasting"], unit: "mg/dL", label: "Glucose" },
-      { canonical: "Insulin", unit: "uIU/mL", label: "Insulin" },
+      { canonical: ["Insulin, Fasting"], unit: "uIU/mL", label: "Insulin" },
     ],
     compute: (v) => {
-      const homa = (v["Glucose, Fasting"] * v["Insulin"]) / 405;
+      const homa = (v["Glucose, Fasting"] * v["Insulin, Fasting"]) / 405;
       return Number.isFinite(homa) ? homa : null;
     },
   },
@@ -727,31 +737,45 @@ export function derivedInputCanonicalNames(): string[] {
   return [...s];
 }
 
-// The input SLOTS of every derived index: each slot's key (its preferred canonical
-// name) and the canonical names it accepts. The query layer uses this to decide
-// whether a profile HAS an input — a slot is present when any accepted name is —
-// without re-deriving the preference rule.
+// The input SLOTS of ONE derived index: each slot's key (its preferred canonical
+// name) and the canonical names THAT INDEX accepts for it, in spec order. The query
+// layer uses this to decide whether a profile HAS an input — a slot is present when
+// any accepted name is — without re-deriving the preference rule.
 //
-// Slots are keyed ACROSS indices, so two indices sharing a key share a slot and its
-// `accepts` is their UNION. Since #2357 that is no longer hypothetical: HOMA-IR and
-// PhenoAge both key glucose on "Glucose, Fasting" while accepting different lists,
-// so the shared slot reads present for a profile holding only the unqualified entry
-// — true for PhenoAge, which computes from it, and NOT for HOMA-IR, which declines.
-// It is correct for the only consumer today (`presentInputs` is read by the bio-age
-// completeness checklist alone, and the union is exactly PhenoAge's own list). A
-// per-INDEX presence question needs `derivedInputCanonicalNamesFor`, not this.
-export function derivedInputSlots(): {
+// PER INDEX, and that is the whole point (#2372). This used to key slots ACROSS
+// indices and union their acceptance lists, which stayed a no-op only while no two
+// indices shared a key with different lists. #2357 ended that: HOMA-IR and PhenoAge
+// both key glucose on "Glucose, Fasting" while accepting different lists (PhenoAge
+// falls back to the unqualified entry, HOMA-IR declines on it), so the shared slot
+// reported PRESENT for a profile holding only "Glucose" — true for PhenoAge, false
+// for HOMA-IR, and one slot cannot be honest about both. It happened to be right for
+// the single consumer, which asks about PhenoAge and whose list the union therefore
+// was; #2371 adds a second frame-specific input to the same index, and "correct by
+// coincidence of there being one consumer" is not a property worth keeping.
+//
+// "Is this slot filled?" has no answer independent of WHICH index is asking, so the
+// index is now an argument rather than something the caller is trusted to remember.
+export function derivedInputSlots(name: DerivedName): {
   key: string;
   accepts: readonly string[];
 }[] {
-  const byKey = new Map<string, Set<string>>();
-  for (const d of DERIVED_DEFS)
-    for (const i of d.inputs) {
-      const set = byKey.get(inputKey(i)) ?? new Set<string>();
-      for (const n of inputAccepts(i)) set.add(n);
-      byKey.set(inputKey(i), set);
-    }
-  return [...byKey].map(([key, accepts]) => ({ key, accepts: [...accepts] }));
+  const def = DERIVED_DEFS_BY_NAME[name];
+  if (!def) return [];
+  return def.inputs.map((i) => ({ key: inputKey(i), accepts: inputAccepts(i) }));
+}
+
+// Which of ONE index's input slots a profile has a usable reading for, given a
+// predicate over canonical names. The presence RULE — a slot counts as filled when
+// any name that index accepts for it has a reading — lives here beside the specs
+// rather than at each call site.
+export function presentInputKeysFor(
+  name: DerivedName,
+  hasReading: (canonical: string) => boolean
+): Set<string> {
+  const present = new Set<string>();
+  for (const slot of derivedInputSlots(name))
+    if (slot.accepts.some(hasReading)) present.add(slot.key);
+  return present;
 }
 
 // The input KEYS of ONE derived index (preferred canonical name per input, in spec

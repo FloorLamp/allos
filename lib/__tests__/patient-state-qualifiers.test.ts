@@ -68,9 +68,14 @@ describe("patientStateQualifiersIn — what counts as a patient-state condition"
     }
   });
 
-  it("no seeded canonical entry is flagged except the deliberately state-qualified one", () => {
+  it("no seeded canonical entry is flagged except the deliberately state-qualified ones", () => {
+    // Two, since #2371 coined the insulin twin of #2337's glucose pair. Both exist so
+    // an index defined on a fasting measurement has a name to REQUIRE; both have the
+    // unqualified sibling the guard below demotes onto.
     const flagged = vocab.filter((n) => patientStateQualifiersIn(n).length);
-    expect(flagged).toEqual(["Glucose, Fasting"]);
+    expect(new Set(flagged)).toEqual(
+      new Set(["Glucose, Fasting", "Insulin, Fasting"])
+    );
   });
 
   it("every flagged seeded entry demotes onto a name the vocabulary already has", () => {

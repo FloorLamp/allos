@@ -168,11 +168,27 @@
       "category": "lab",
       "unit": "uIU/mL",
       "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Serum or plasma insulin drawn without a stated fasting state. Whether this draw was fasting is not recorded, and a post-prandial insulin runs several times the fasting value — a wider spread than the fasting/non-fasting split on glucose, not a narrower one. The value is shown but not flagged, because either frame would be a guess. A draw the document states as fasting belongs under Insulin, Fasting, which carries the published fasting band.",
+      "conversions": {
+        "pmol/L": 0.1439
+      },
+      "retest_days": 180,
+      "panel": "glycemic"
+    },
+    {
+      "name": "Insulin, Fasting",
+      "category": "lab",
+      "unit": "uIU/mL",
+      "ref_low": null,
       "ref_high": 18.4,
       "optimal_low": 2,
       "optimal_high": 5,
       "direction": "lower_better",
-      "note": "Fasting",
+      "note": "Fasting serum insulin — the frame every published insulin band, and the HOMA-IR index, is defined on. Distinct from an insulin of unstated frame (Insulin) and from a post-load insulin drawn during an OGTT.",
       "conversions": {
         "pmol/L": 0.1439
       },
