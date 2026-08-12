@@ -7,8 +7,11 @@ import {
   FOOD_REGULARITY_HABITUAL_SHARE,
   FOOD_REGULARITY_MIN_WINDOW_DAYS,
   FOOD_REGULARITY_SPAN_DAYS,
+  FOOD_PERIOD_HABIT_MIN_SHARE,
   FOOD_USUAL_MIN_GROUPS,
+  foodPeriodRegularity,
   foodRegularity,
+  periodFoodHabits,
   habitualFoodGroups,
   usualFoodOffer,
   type FoodRegularityEvent,
@@ -205,5 +208,104 @@ describe("usualFoodOffer", () => {
 
   it("has nothing to offer when there is no habit", () => {
     expect(usualFoodOffer([], new Set())).toEqual([]);
+  });
+});
+
+// ── The same measure at DAY grain, over a PERIOD (#2397) ────────────────────────
+//
+// "Fatty fish 12 of the past 30 days" is this module's question asked of a whole day
+// instead of one meal window. Everything that makes the window measure honest has to
+// survive the move: the denominator is the days FOOD WAS LOGGED AT ALL, the gate
+// produces silence rather than a hedge, and nothing anywhere counts a run.
+
+describe("foodPeriodRegularity (#2397)", () => {
+  const FROM = "2026-07-01";
+  const TO = "2026-07-30";
+  const on = (d: number) => shiftDateStr(FROM, d);
+  const dayEvents = (groupKey: string, days: readonly number[]) =>
+    days.map((d) => ({ groupKey, date: on(d) }));
+
+  it("measures a group's days over the days ANY food was logged", () => {
+    // Ten logged days; fish on four of them. The denominator is ten, not thirty — a day
+    // with nothing logged is evidence about logging, not about eating.
+    const period = foodPeriodRegularity(
+      [
+        ...dayEvents("oats", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        ...dayEvents("fatty_fish", [0, 3, 6, 9]),
+      ],
+      { from: FROM, to: TO }
+    );
+    expect(period?.observedDays).toBe(10);
+    expect(period?.groups).toEqual([
+      { groupKey: "oats", days: 10, share: 1 },
+      { groupKey: "fatty_fish", days: 4, share: 0.4 },
+    ]);
+  });
+
+  it("answers null under the SAME gate the window measure uses — silence, not a hedge", () => {
+    const period = foodPeriodRegularity(
+      dayEvents("oats", [0, 1, 2, 3, 4, 5]).slice(
+        0,
+        FOOD_REGULARITY_MIN_WINDOW_DAYS - 1
+      ),
+      { from: FROM, to: TO }
+    );
+    expect(period).toBeNull();
+    // Null is NO EXPECTATION, so nothing downstream may read it as a habit broken.
+    expect(periodFoodHabits(null)).toEqual([]);
+  });
+
+  it("ignores events outside the period at either end", () => {
+    const period = foodPeriodRegularity(
+      [
+        ...dayEvents("oats", [0, 1, 2, 3, 4, 5, 6]),
+        { groupKey: "oats", date: shiftDateStr(FROM, -1) },
+        { groupKey: "oats", date: shiftDateStr(TO, 1) },
+      ],
+      { from: FROM, to: TO }
+    );
+    expect(period?.observedDays).toBe(7);
+  });
+
+  it("counts a SHARE and never a run — scattered days beat consecutive ones", () => {
+    // #1955's shape rule. Four scattered days out of eight rank above three consecutive
+    // ones, because the measure has no notion of consecutiveness to reward.
+    const period = foodPeriodRegularity(
+      [
+        ...dayEvents("oats", [0, 1, 2, 3, 4, 5, 6, 7]),
+        ...dayEvents("fatty_fish", [0, 2, 4, 6]),
+        ...dayEvents("berries", [0, 1, 2]),
+      ],
+      { from: FROM, to: TO }
+    );
+    expect(period?.groups.map((g) => g.groupKey)).toEqual([
+      "oats",
+      "fatty_fish",
+      "berries",
+    ]);
+  });
+
+  it("states only the groups over the period threshold, cap-direction groups removed", () => {
+    const period = foodPeriodRegularity(
+      [
+        ...dayEvents("oats", [0, 1, 2, 3, 4, 5, 6, 7]),
+        ...dayEvents("fatty_fish", [0, 2, 4]),
+        ...dayEvents("alcohol", [0, 1, 2, 3, 4, 5]),
+        ...dayEvents("sweets", [0]),
+      ],
+      { from: FROM, to: TO }
+    );
+    expect(period!.groups.map((g) => g.groupKey)).toContain("sweets");
+    // 1 of 8 days is under the threshold; alcohol clears it easily and is excluded
+    // anyway — "you consistently consume alcohol" is the sentence a longer window does
+    // not make sayable (#998/#2380).
+    expect(
+      periodFoodHabits(period, { excluded: new Set(["alcohol"]) }).map(
+        (g) => g.groupKey
+      )
+    ).toEqual(["oats", "fatty_fish"]);
+    expect(FOOD_PERIOD_HABIT_MIN_SHARE).toBeLessThan(
+      FOOD_REGULARITY_HABITUAL_SHARE
+    );
   });
 });

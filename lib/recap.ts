@@ -54,6 +54,16 @@ import {
   DEFAULT_FORMAT_PREFS,
   type DisplayFormatPrefs,
 } from "./format-date";
+import {
+  cadenceCapWeeksSentence,
+  cadenceWeekVerdictLine,
+  type CadenceCapWeeks,
+  type CadenceTargetVerdict,
+} from "./cadence";
+import {
+  foodHabitSentence,
+  type FoodHabitObservation,
+} from "./food-habit-observation";
 import { median, robustEndpoints } from "./robust-stats";
 import { fmtWeight, kgTo } from "./units";
 import { weekWindow } from "./week-window";
@@ -296,6 +306,25 @@ export interface RecapInput {
   // days that could be positioned landed on target. Null/absent (or zero days) ⇒ the
   // line is omitted.
   food?: RecapFood | null;
+  // Each active frequency target's VERDICT for the period, read from the cadence ledger
+  // and never recomputed (#2395). Floors and caps arrive together and stay
+  // distinguishable by their declared `direction` all the way into the sentence, which
+  // is what keeps a cap out of the floor vocabulary. Only ever gathered for a CLOSED
+  // period — a week in progress is under its floor by construction, and the verdict of a
+  // week that has not ended is not a fact. Omitted/empty ⇒ no line, which is also the
+  // answer for a profile that declared no targets.
+  targetVerdicts?: readonly CadenceTargetVerdict[];
+  // The period's stateable food habits (#2397) — a group's days over the days food was
+  // logged at all, with the nutrient rationale the curated map already holds. A SHARE,
+  // never a run (#1955), and never a cap-direction group (#998/#2380). Carries no
+  // biomarker, no reading and no flag, so no renderer can pair a pattern with a result.
+  foodHabits?: readonly FoodHabitObservation[];
+  // How each DECLARED weekly cap fared across the period's completed weeks (#2397) — the
+  // ledger's own verdict on a target the user set, and the restructured replacement for
+  // the pattern-beside-a-biomarker shape the issue forbids. Empty for a profile with no
+  // cap declared, which is the only condition under which this app says anything at all
+  // about a capped scope's frequency.
+  capWeeks?: readonly CadenceCapWeeks[];
   // Per-night MAIN sleep minutes inside the window and the previous one (#2396). The
   // recap reported sleep CONSISTENCY (the SRI) and never how much was actually slept —
   // and a perfectly regular five hours a night scores well. The line states the week's
@@ -347,7 +376,10 @@ export type RecapLineKey =
   | "intake-deltas"
   | "adherence"
   | "adherence-pattern"
+  | "targets"
   | "food"
+  | "food-habits"
+  | "caps"
   | "weight"
   | "weight-trajectory"
   | "zone2"
@@ -394,12 +426,25 @@ export const RECAP_COMPARISON_KINDS: Record<RecapLineKey, RecapComparisonKind> =
     "intake-deltas": "none", // the shared line is ITSELF the week-over-week change
     adherence: "none", // a rate; its note carries the dose counts
     "adherence-pattern": "none", // a SHAPE; its note carries the drift, not a score
+    // THE WEEK'S VERDICT against the targets the user declared (#2395). Uncompared on
+    // purpose: "4 of 5 met, 3 of 5 last week" is a score to beat, and the recap's
+    // contract is a summary that is not one. The yardstick is the target, and it is
+    // already inside the value.
+    targets: "none",
     // COVERAGE, and deliberately uncompared. Days-logged is the one figure on this line
     // that a period-over-period delta would turn into the STREAK line #1935 cut: a count
     // of how often the app was opened, with a cliff, on a surface whose contract is "a
     // summary, never a score to beat". The variety and the nutrient days are notes for
     // the same reason. What the week ate is reported; how it ranks is not.
     food: "none",
+    // A SHARE of the period's logged days (#2397). A period-over-period comparison is
+    // the run-shaped streak #1955 retired, wearing a nutrient's clothes: it would turn
+    // "12 of 26 days" into a thing to keep up, with a cliff, over a behaviour the app
+    // exists to accommodate skipping.
+    "food-habits": "none",
+    // A cap's period record. #998 gives a cap no pace and nothing to go toward, and a
+    // comparison against last period would smuggle a trajectory in through the tail.
+    caps: "none",
     weight: "prior",
     "weight-trajectory": "prior", // the same net change, one period back
     zone2: "target", // measured against the weekly target, never against last week
@@ -463,9 +508,21 @@ export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
     scales: ["month", "quarter"],
     why: "The weekday/weekend split and the first-half/second-half drift need several weeks of days before either is signal rather than coincidence. This is the #2178 inclusion test working in the constructive direction: not the weekly line at a longer length, a DIFFERENT fact the longer length is the first to show.",
   },
+  targets: {
+    scales: ["week"],
+    why: "A weekly target's VERDICT is a week fact by definition (#2395). At day scale it does not exist — only pace does, which is what the morning digest reports — and at month scale it becomes a distribution of four or five verdicts, a different fact #2178 assigns to the tier that can show a distribution. There is exactly one scale at which 'did I hit it' is the natural question, and this is it.",
+  },
   food: {
     scales: ["week"],
     why: "Days logged and group variety are WEEK facts that do not exist at day scale, and they were the profile's most consistent logging behaviour with no line at all (#2396). Week ONLY, for two reasons: a month's coverage rate says nothing a week's did not, and the nutrient half is a per-day gather — bounded at seven days it rides beside the adherence walk, over ninety it would be a scan on the dashboard's own render path.",
+  },
+  "food-habits": {
+    scales: ["month"],
+    why: "A habit is a multi-week pattern by definition (#2397): seven days cannot evidence 'usually', and one week of a group's share is a handful of days. A month is the first window where a share is a diet rather than a coincidence. Withheld at quarter scale, where thirteen weeks average across the diet CHANGE a month would have shown, and the share stops describing how this person eats now.",
+  },
+  caps: {
+    scales: ["month"],
+    why: "How often a declared cap held is a count of WEEKS, so the first scale that can state it is one holding several (#2397). The single week's cap verdict already rides the `targets` line at week scale, and reporting the same fact twice at two lengths would be the re-total rule broken in the direction of nagging — the one direction a cap must never be nagged in (#998).",
   },
   weight: {
     scales: ["week"],
@@ -765,6 +822,31 @@ export function buildRecap(input: RecapInput): Recap {
     });
   }
 
+  // WEEKLY TARGETS: the verdict, right under the count (#2395). The count is the news
+  // and the verdict is the yardstick, and the recap carried only the first — it could
+  // report a cardio count while a cardio-per-week target the profile itself declared sat
+  // unmentioned. Nothing here re-totals or re-decides either: `cadenceWeekVerdictLine`
+  // words verdicts the cadence ledger already computed, in the same rollup grammar the
+  // morning digest words PACE in, so the two system-initiated messages share one
+  // vocabulary.
+  //
+  // A CLOSED PERIOD ONLY. The gather skips the read for an in-progress one, and this
+  // states the rule rather than trusting it to: a week still running is under its floor
+  // by construction, so a verdict on it would be an invented failure. The in-progress
+  // week already has a home for its pace (the Goals-and-habits widget, and the digest).
+  const targetLine = input.completed
+    ? cadenceWeekVerdictLine(input.targetVerdicts ?? [])
+    : null;
+  if (targetLine) {
+    push({
+      key: "targets",
+      label: "Targets",
+      value: targetLine.value,
+      comparison: NO_COMPARISON,
+      notes: targetLine.notes,
+    });
+  }
+
   // Training composition + rate (#2178) — the month/quarter answer to the same
   // question the weekly `workouts` line answers with a count. The count is
   // deliberately absent: "18 workouts" is four weekly lines summed and handed back
@@ -912,6 +994,46 @@ export function buildRecap(input: RecapInput): Recap {
             }`
         ),
       ],
+    });
+  }
+
+  // MONTHLY FOOD HABITS (#2397) — "Fatty fish 12 days, a source of Omega-3", over the
+  // days this period had any food logged at all.
+  //
+  // THE DENOMINATOR IS IN THE HEAD, AND IT SAYS "LOGGED". A habit line risks
+  // congratulating diligent record-keeping rather than eating, so the line states what
+  // it is a share OF: someone who eats fish without logging it is not being ranked below
+  // someone who logs everything, because the days they logged nothing are not in the
+  // denominator either. Each group is one note — the homogeneous repeating tail (#2391),
+  // the same shape the weekly food line's nutrients use.
+  //
+  // NOTHING ELSE IS ON THIS LINE. No biomarker, no flag, no result: the observation type
+  // has no field for one, which is what makes "your pattern, your lab value, draw your
+  // own conclusion" unavailable to this surface by construction rather than by wording.
+  const foodHabits = input.foodHabits ?? [];
+  if (foodHabits.length > 0) {
+    push({
+      key: "food-habits",
+      label: "Eating habits",
+      value: `over ${foodHabits[0].observedDays} logged days`,
+      comparison: NO_COMPARISON,
+      notes: foodHabits.map(foodHabitSentence),
+    });
+  }
+
+  // A DECLARED CAP's period record (#2397/#998). The cap vocabulary owns this scope:
+  // a statement of fact per cap, no to-go, no pace, no comparative, and no line at all
+  // for a profile that declared no cap. Under-cap weeks are the SUCCESS state, so a
+  // clean period says so plainly instead of going silent — silence would be
+  // indistinguishable from having set no cap.
+  const capWeeks = input.capWeeks ?? [];
+  if (capWeeks.length > 0) {
+    push({
+      key: "caps",
+      label: "Weekly caps",
+      value: cadenceCapWeeksSentence(capWeeks[0]),
+      comparison: NO_COMPARISON,
+      notes: capWeeks.slice(1).map(cadenceCapWeeksSentence),
     });
   }
 
@@ -1145,12 +1267,25 @@ export function buildRecap(input: RecapInput): Recap {
   // week empty — skipping its notification and showing the card's "log a workout or a
   // weigh-in" nudge — was the same training-shaped assumption that left food off the
   // line set in the first place.
+  //
+  // AND THE EVIDENCE HAS TO BE THE ONE THIS SCALE ACTUALLY GATHERS (#2397). The `food`
+  // line is week-only, so at month scale that clause is null by construction and a
+  // profile that logged its eating every day for a month was still called empty — the
+  // #2396 assumption, reintroduced one scale up by a declaration it could not see. The
+  // period's habits are the month's own food evidence, so they answer the same question
+  // the weekly coverage figure answers at week scale.
+  //
+  // TARGET VERDICTS AND CAPS ARE DELIBERATELY NOT EVIDENCE HERE. A period with nothing
+  // in it is one where "0 of 2 targets met" would be the entire message — a send whose
+  // only content is a failure, on a week the person may have spent ill, travelling or
+  // deliberately resting. The verdict is a yardstick for news, never the news.
   const isEmpty =
     illnessDays === 0 &&
     workoutCount === 0 &&
     (input.adherence == null || input.adherence.due === 0) &&
     input.weights.length === 0 &&
-    (food == null || food.daysLogged === 0);
+    (food == null || food.daysLogged === 0) &&
+    foodHabits.length === 0;
 
   // Headline: the two facts most worth leading with, else a quiet fallback. It obeys
   // the same declaration the lines do — a scale that does not speak the workout COUNT
