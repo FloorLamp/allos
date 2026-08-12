@@ -143,6 +143,15 @@ Category membership does **not** settle catalog browsability on its own: within
 `vitals`, `listedInResultsCatalog` drops an analyte whose quantity already owns a
 `/trends/metric/<slug>` home, and keeps the ones that would otherwise be stranded
 (audiogram thresholds, intraocular pressure, visual acuity, periodontal depth).
+Browsability is the **conjunction** of the two — the category class, then the
+per-analyte refinement — which is how both the row gather
+(`app/(app)/results/reading-index.ts`) and the panel facet
+(`lib/biomarker-panel-reach.ts`) compose it. Asked alone, the predicate answers
+`true` for a PHQ-9: it refines `vitals` and says nothing about a category the
+catalog already excludes.
+
+`lib/__tests__/clinical-result-terminology.test.ts` is this file's ratchet, over
+the real registry and the real predicates, one representative concept per class.
 
 ## Not renamed, on purpose
 

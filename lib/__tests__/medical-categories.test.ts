@@ -39,7 +39,7 @@ describe("medical-categories: single source of truth", () => {
   });
 
   it("RESULTS_CATALOG_CATEGORIES is the flat-catalog browsable set (#1076)", () => {
-    // The Biomarkers browser (/results/readings, a flat catalog) lists `lab` + the
+    // The flat Results catalog (/results/readings) lists `lab` + the
     // out-of-scope `genomics`/`scan` stores, and KEEPS `vitals` (the domain vitals —
     // audiogram/IOP/acuity — have no dedicated chart home, so removing them would
     // strand them). The re-homed classes with a home — instruments, derived bio-age,
@@ -64,9 +64,9 @@ describe("medical-categories: single source of truth", () => {
     }
   });
 
-  it("NON_IDENTITY_CATEGORIES withholds biomarker identity, and only from `assessment` (#2318)", () => {
+  it("NON_IDENTITY_CATEGORIES withholds result identity, and only from `assessment` (#2318)", () => {
     expect([...NON_IDENTITY_CATEGORIES]).toEqual(["assessment"]);
-    // Every entry must be a real category, and none may be a browsable biomarker
+    // Every entry must be a real category, and none may be a catalog-browsable
     // class — withholding identity from something the catalog lists would be a
     // contradiction, not a policy.
     for (const c of NON_IDENTITY_CATEGORIES) {
