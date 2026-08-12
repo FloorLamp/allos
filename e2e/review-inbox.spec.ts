@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink, openAllSyncDays } from "./helpers";
+import { followLink, hydratedClick, openAllSyncDays } from "./helpers";
 
 // Dogfoods the Data → Review import inbox (the feature that motivated this tier).
 // After issue #208 the surface is split into sections; since #1880 the inbox order
@@ -338,7 +338,11 @@ test.describe("Data → Review import inbox", () => {
     // unambiguously — the #1071 vocabulary names the whole family by what differs.
     const button = review.getByTestId("reprocess-all");
     await expect(button).toHaveText(/Re-run extraction on all documents/);
-    await button.click();
+    // Opens a confirm dialog from client state — no POST, no navigation — so a
+    // tap landing before React attaches the handler is simply lost and the
+    // dialog assertion below then waits out its whole timeout on a page that was
+    // never asked to open one. Decision-tree case 3: click ONCE, after hydration.
+    await hydratedClick(page, button);
 
     // The confirm dialog shows the deterministic/AI cost split computed before
     // running: the seed carries a health record (ccda → no AI) and a scan/PDF
