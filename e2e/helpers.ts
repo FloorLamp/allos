@@ -4,6 +4,7 @@ import {
   type Page,
   type Request,
 } from "@playwright/test";
+import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 
 // The blessed e2e interaction module (issue #868, fix b2).
 //
@@ -1419,4 +1420,40 @@ export async function settledPickOption(
     await option.click();
     await expect(field).toHaveValue(label, { timeout: 2_000 });
   }).toPass({ timeout });
+}
+
+// ── The #2471 automatic update reload, switched off for one page ──────────────
+//
+// Since #2471 a tab that notices a deploy converges on the new build by itself at
+// the first provably-safe moment, and the "Update ready" bar / stale-save banner
+// survive ONLY as the rationed-failure fallback: the automatic attempt has been
+// spent and the tab is still stale. Every spec that drives one of those affordances
+// therefore has to put the tab in that state first — otherwise it is asserting on a
+// surface the app is right not to render.
+//
+// This seeds the ration as already spent, for every target, and keeps refreshing it
+// so a long spec cannot age out of its 60s window mid-test. It simulates a state the
+// app genuinely reaches (one automatic attempt already made); it does not disable
+// anything the app would otherwise do.
+export async function spendAutoReloadRation(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ key, targets, refreshMs }) => {
+      // clock-ok: runs IN the page, whose clock the harness freezes for the whole run — the same clock the guard's own window is measured against
+      const write = () =>
+        sessionStorage.setItem(
+          key,
+          JSON.stringify({ targets, at: Date.now() })
+        ); // clock-ok: as above
+
+      write();
+      setInterval(write, refreshMs);
+    },
+    {
+      key: AUTO_RELOAD_KEY,
+      // Two distinct targets is the window total, so the ration reads as spent for
+      // any sha the spec's simulated deploy names.
+      targets: ["e2e-ration-spent-a", "e2e-ration-spent-b"],
+      refreshMs: 5_000,
+    }
+  );
 }

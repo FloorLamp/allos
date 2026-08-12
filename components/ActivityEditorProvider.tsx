@@ -239,8 +239,11 @@ export default function ActivityEditorProvider({
     const marker = resumeContinuation();
     if (!marker || marker.formKey !== "activity") return;
     reopenedRef.current = true;
-    if (marker.recordId != null) return;
+    // A stored row this provider has no edit data for cannot be reopened here — but
+    // a LIVE session always can, whatever its row id, because presence supplies it.
     if (marker.live && restricted) return;
+    if (!marker.live && marker.recordId != null) return;
+    if (marker.live && marker.recordId != null && !liveEditData) return;
     // Reopening is a response to state this document booted with, not a render this
     // one derives — queue it with the other post-commit work rather than cascading a
     // second render straight out of the effect body.

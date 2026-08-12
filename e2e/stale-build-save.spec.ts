@@ -1,51 +1,89 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledFill } from "./helpers";
+import { settledFill, spendAutoReloadRation } from "./helpers";
 import { workerDbPath } from "./worker-env";
+import { UPDATE_TAKEN_MESSAGE } from "@/lib/sw-update";
 
-// Deployment skew, the Server Action half (docs/internals/deploy-skew.md).
+// Deployment skew, the Server Action half, and the tab that fixes it by itself
+// (docs/internals/deploy-skew.md).
 //
-// A deploy invalidates every Server Action id an open tab holds: the server
-// answers each action POST with its not-found marker and the client throws
-// UnrecognizedActionError, so EVERY save from that tab fails until it reloads.
-// The reported loss was a live workout edited straight through a deploy —
-// auto-saves failing quietly, the offline queue declining (online, not a
-// TypeError), and the local draft inert in live mode — so the edits existed
-// nowhere at all. What must hold now:
+// A deploy invalidates every Server Action id an open tab holds: the server answers
+// each action POST with its not-found marker and the client throws
+// UnrecognizedActionError, so EVERY save from that tab fails until it reloads. The
+// reported loss was a live workout edited straight through a deploy — auto-saves
+// failing quietly, the offline queue declining (online, not a TypeError), and the
+// local draft inert in live mode — so the edits existed nowhere at all.
 //
-//   * the editor SAYS SO instead of a bare error glyph: a banner naming the
-//     cause and the remedy, with the reload one tap away;
-//   * the local draft (#1699) runs in LIVE mode too, so the failed edits are
-//     kept on the device;
-//   * after the reload the draft is offered — never silently applied — and
-//     resuming restores the edits, which then save cleanly;
-//   * a never-created session's close-path capture treats the stale signature
-//     like a dead connection (shouldQueueOffline) and queues, because the
-//     replay route (/api/offline-replay) is an ordinary route handler that no
-//     deploy re-keys.
+// #2471 changed the remedy, not the diagnosis. The tab used to say so and wait for a
+// tap; it now converges by itself at the first provably-safe moment, and what must
+// hold is:
 //
-// The deploy is simulated at the transport: answering action POSTs with Next's
-// own `x-nextjs-action-not-found: 1` marker makes the real client throw the
-// real error — the exact shape a post-deploy tab produces.
+//   * the failed save is a TRIGGER, not a message: the tab flushes the draft, leaves
+//     a one-shot pointer, reloads, reopens the editor and applies the draft — with
+//     ZERO user taps — and the save then lands on the new build;
+//   * that trigger is independent of the `/api/version` detector. The first test
+//     never arms the version route at all, which is the #2447 tab whose poll has
+//     latched off, and recovery still completes;
+//   * a form that can never even ATTEMPT a save still converges, on the detector
+//     alone, and is restored without a save being invented on the user's behalf;
+//   * a deploy that stays broken degrades to the old banner after ONE automatic
+//     attempt, never to a reload loop;
+//   * and the never-created session's close-path capture still queues, because the
+//     replay route is an ordinary route handler that no deploy re-keys.
 //
-// Fixture discipline (#868): every row this spec creates is deleted by value in
-// a finally, keyed on titles nothing else uses.
+// The deploy is simulated at the transport: answering action POSTs with Next's own
+// `x-nextjs-action-not-found: 1` marker makes the real client throw the real error —
+// the exact shape a post-deploy tab produces.
+//
+// Fixture discipline (#868): every row this spec creates is deleted by value in a
+// finally, keyed on titles nothing else uses.
 
 const DB_PATH = workerDbPath();
 const LIVE_TITLE = "Stalenet live";
 const QUEUED_TITLE = "Stalenet queued";
-// Debounced draft/auto-save writes plus action round-trips have no single UI
-// settle point. Named ceiling per the e2e-hygiene census.
-const STALE_SETTLE_MS = 20_000;
+const UNSAVEABLE_TITLE = "Stalenet unsaveable";
+const RATION_TITLE = "Stalenet rationed";
+// Debounced draft/auto-save writes, a document load and the quiet window have no
+// single UI settle point. Named ceiling per the e2e-hygiene census.
+const STALE_SETTLE_MS = 25_000;
+
+// A commit that can never be the running build's, so the detector reads it as a
+// deploy. Answered ONCE: the reloaded document must read the sha it was actually
+// served with, the way a tab that took a real update does.
+const DEPLOYED = { sha: "2471abc", commitMessage: "e2e self reload" };
+
+async function interceptVersionOnce(page: Page) {
+  let served = 0;
+  await page.route("**/api/version", (route) => {
+    if (served > 0) return route.continue();
+    served += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(DEPLOYED),
+    });
+  });
+}
 
 // Answer every server-action POST as a post-deploy server would: the not-found
-// marker and no flight payload. Reads and route handlers pass through — a
-// deploy does not re-key those.
-async function armStaleActions(page: Page) {
+// marker and no flight payload. Reads and route handlers pass through — a deploy
+// does not re-key those.
+//
+// `untilReload` models the deploy ENDING when the tab takes it: once the main frame
+// navigates, the interception stops, so the reloaded document is the new build whose
+// action ids work. Pass false for the broken-deploy case, where the point is that
+// reloading does not help.
+async function armStaleActions(page: Page, { untilReload = true } = {}) {
+  let armed = true;
+  if (untilReload) {
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) armed = false;
+    });
+  }
   await page.route("**/*", (route) => {
     const req = route.request();
-    if (req.method() === "POST" && req.headers()["next-action"]) {
+    if (armed && req.method() === "POST" && req.headers()["next-action"]) {
       return route.fulfill({
         status: 404,
         headers: { "x-nextjs-action-not-found": "1" },
@@ -54,6 +92,22 @@ async function armStaleActions(page: Page) {
     }
     return route.fallback();
   });
+}
+
+/** Count document loads in the page itself, so "reloaded once" is measurable. */
+async function countLoads(page: Page) {
+  await page.addInitScript(() => {
+    const n = Number(sessionStorage.getItem("staleSpecLoads") ?? "0");
+    sessionStorage.setItem("staleSpecLoads", String(n + 1));
+  });
+}
+
+async function loads(page: Page): Promise<string | null> {
+  try {
+    return await page.evaluate(() => sessionStorage.getItem("staleSpecLoads"));
+  } catch {
+    return null; // mid-navigation: the execution context is being replaced
+  }
 }
 
 type DraftRow = { key: string };
@@ -115,13 +169,16 @@ function activityCount(title: string): number {
   }
 }
 
-test("a live workout edited through a deploy keeps its edits on the device, and the banner's reload path restores them (#1699/#451)", async ({
+test("a live workout edited through a deploy reloads itself and comes back with the edits, with no taps (#2471)", async ({
   page,
 }) => {
   test.slow();
   try {
-    // A live session with one logged set, saved while the build is still good —
-    // the state the user is in when the deploy lands.
+    await countLoads(page);
+    // THE DETECTOR IS NEVER ARMED IN THIS TEST. /api/version answers honestly
+    // throughout, so `pending` stays false and trigger B never fires — this is the
+    // tab whose poll has latched off (#2447), and the failed save alone has to be
+    // enough. That independence is the property, not an accident of the fixture.
     await page.goto("/training");
     await page.getByRole("main").getByTestId("start-workout").click();
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
@@ -142,57 +199,152 @@ test("a live workout edited through a deploy keeps its edits on the device, and 
       page.getByRole("button", { name: "Delete", exact: true })
     ).toBeVisible({ timeout: STALE_SETTLE_MS });
 
-    // The deploy lands under the open tab. From here every action POST fails
-    // with the stale signature.
+    // The deploy lands under the open tab. From here every action POST fails with
+    // the stale signature — until the tab reloads, which is when the deploy is over.
     await armStaleActions(page);
 
-    // Mid-set edit — the thing that used to vanish.
+    // Mid-set edit — the thing that used to vanish, and then the thing that cost
+    // four taps to get back.
     await settledFill(page, page.getByTestId("set1-weight"), "123");
 
-    // The failed save is a STATE, not a glyph: the banner names the cause and
-    // the remedy…
-    const banner = page.getByTestId("stale-save-banner");
-    await expect(banner).toBeVisible({ timeout: STALE_SETTLE_MS });
-    await expect(banner).toContainText("kept on this device");
-
-    // …and the promise it makes is true: the draft holds the edit, in LIVE
-    // mode, where it used to be inert.
+    // The tab converges on its own. Nobody tapped anything.
     await expect
-      .poll(() => activityDraftCount(page), {
+      .poll(() => loads(page), {
         timeout: STALE_SETTLE_MS,
-        message: "the failed edit to reach the on-device draft",
+        message: "the tab to reload itself after the failed save",
       })
-      .toBe(1);
+      .toBe("2");
 
-    // The reload the banner offers. The deploy is over from here on — the
-    // reloaded page is the new build, whose action ids work.
-    await page.unroute("**/*");
-    await page.getByTestId("stale-save-reload").click();
+    // …and it comes back where it was: the live session reopened from presence, the
+    // draft applied into it with no banner to tap, and the edit intact.
+    await expect(page.getByTestId("live-workout-panel")).toBeVisible({
+      timeout: STALE_SETTLE_MS,
+    });
+    await expect(page.getByTestId("set1-weight")).toHaveValue("123", {
+      timeout: STALE_SETTLE_MS,
+    });
+    await expect(page.getByTestId("draft-restore-banner")).toHaveCount(0);
 
-    // The live session survives on the server (its pre-deploy content), so the
-    // training page offers it back inline (the dock is suppressed on /training);
-    // the draft is OFFERED on top, never silently applied. hydratedClick: this
-    // follows the reload, and a bare click swallowed pre-hydration would leave
-    // the editor closed (the #1556 class).
-    await hydratedClick(
-      page,
-      page.getByRole("button", { name: "Resume workout" })
-    );
-    const offer = page.getByTestId("draft-restore-banner");
-    await expect(offer).toBeVisible({ timeout: STALE_SETTLE_MS });
-    await offer.getByTestId("draft-restore-resume").click();
-    await expect(page.getByTestId("set1-weight")).toHaveValue("123");
-
-    // With the build fresh, the restored edit saves — and the draft is dropped
-    // the moment the server copy is current, so nothing re-offers it later.
+    // The autosave then does what it always does, on a build that can answer: the
+    // draft is dropped the moment the server copy is current.
     await expect
       .poll(() => activityDraftCount(page), {
         timeout: STALE_SETTLE_MS,
         message: "the restored edit to save and clear the draft",
       })
       .toBe(0);
+
+    // Tell-after, not ask-before — and no bar for the build this tab just took.
+    await expect(page.getByTestId("toast")).toContainText(
+      UPDATE_TAKEN_MESSAGE,
+      {
+        timeout: STALE_SETTLE_MS,
+      }
+    );
+    await expect(page.getByTestId("update-ready-bar")).toHaveCount(0);
   } finally {
     deleteActivitiesTitled(LIVE_TITLE);
+  }
+});
+
+test("a form that can never attempt a save still converges, and is restored without one being invented (#2471)", async ({
+  page,
+}) => {
+  test.slow();
+  try {
+    // THE CASE THAT PROVES THE TRIGGER CANNOT BE SCOPED TO FAILED SAVES. An activity
+    // with no exercise is not savable, so no POST is ever attempted and trigger A can
+    // never fire for it. The draft is already safe — useFormDraft captures raw field
+    // state on its debounce, validity-independent — but convergence needs the reload,
+    // and only the detector can ask for it.
+    await countLoads(page);
+    await interceptVersionOnce(page);
+    await page.goto("/training");
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "New activity" })
+      .click();
+    await expect(page.getByTestId("activity-form")).toBeVisible();
+    await settledFill(page, page.getByLabel("Activity name"), UNSAVEABLE_TITLE);
+
+    await expect
+      .poll(() => loads(page), {
+        timeout: STALE_SETTLE_MS,
+        message: "the tab to reload itself once it went quiet",
+      })
+      .toBe("2");
+
+    // Restored, incomplete, and NOT saved: restore never forces a write.
+    await expect(page.getByTestId("activity-form")).toBeVisible({
+      timeout: STALE_SETTLE_MS,
+    });
+    await expect(page.getByLabel("Activity name")).toHaveValue(
+      UNSAVEABLE_TITLE,
+      { timeout: STALE_SETTLE_MS }
+    );
+    await expect(page.getByTestId("draft-restore-banner")).toHaveCount(0);
+    expect(activityCount(UNSAVEABLE_TITLE)).toBe(0);
+
+    // Completing the form saves it on the new build, exactly as it would have done
+    // if no deploy had happened at all.
+    await page.getByPlaceholder(/What did you do/).fill("Running");
+    await page
+      .getByRole("listbox")
+      .getByRole("button", { name: "Running", exact: true })
+      .click();
+    await settledFill(page, page.getByTestId("cardio-duration"), "30");
+    await expect
+      .poll(() => activityCount(UNSAVEABLE_TITLE), {
+        timeout: STALE_SETTLE_MS,
+        message: "the completed activity to save on the new build",
+      })
+      .toBe(1);
+  } finally {
+    deleteActivitiesTitled(UNSAVEABLE_TITLE);
+  }
+});
+
+test("a deploy that stays broken gets ONE automatic attempt and then the banner (#2471)", async ({
+  page,
+}) => {
+  test.slow();
+  try {
+    await countLoads(page);
+    await page.goto("/training");
+    // Armed for good: reloading does not fix this one, which is the shape a reload
+    // loop would come from.
+    await armStaleActions(page, { untilReload: false });
+
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "New activity" })
+      .click();
+    await expect(page.getByTestId("activity-form")).toBeVisible();
+    await settledFill(page, page.getByLabel("Activity name"), RATION_TITLE);
+    await page.getByPlaceholder(/What did you do/).fill("Running");
+    await page
+      .getByRole("listbox")
+      .getByRole("button", { name: "Running", exact: true })
+      .click();
+    await settledFill(page, page.getByTestId("cardio-duration"), "30");
+
+    await expect
+      .poll(() => loads(page), {
+        timeout: STALE_SETTLE_MS,
+        message: "the one automatic attempt",
+      })
+      .toBe("2");
+
+    // The attempt is spent, the tab is still stale, and the honest remedy is handed
+    // back to the user — the pre-#2471 affordance, in the one state that reaches it.
+    await expect(page.getByTestId("stale-save-banner")).toBeVisible({
+      timeout: STALE_SETTLE_MS,
+    });
+    // …and no second automatic reload behind it.
+    expect(await loads(page)).toBe("2");
+    expect(activityCount(RATION_TITLE)).toBe(0);
+  } finally {
+    deleteActivitiesTitled(RATION_TITLE);
   }
 });
 
@@ -201,11 +353,16 @@ test("a never-created session closed under a stale build queues its capture, and
 }) => {
   test.slow();
   try {
+    // Driven with the automatic attempt already spent: the close-path capture is
+    // about what happens when the USER closes a form under a dead build, and #2471
+    // leaves that path untouched. Spending the ration is how the tab stays put long
+    // enough to exercise it.
+    await spendAutoReloadRation(page);
     await page.goto("/training");
     // The deploy lands BEFORE the first save, so the session never gets a
     // server row — the close-path capture's charter, now reachable via the
     // stale signature as well as a dead connection.
-    await armStaleActions(page);
+    await armStaleActions(page, { untilReload: false });
 
     await page
       .getByRole("main")
@@ -247,3 +404,9 @@ test("a never-created session closed under a stale build queues its capture, and
     deleteActivitiesTitled(QUEUED_TITLE);
   }
 });
+
+// The healthy-path complement — a live draft never outliving a successful save, and
+// the offer banner for a markerless (organic) revisit — stays in
+// e2e/form-drafts.spec.ts, deliberately unchanged by this issue: nothing about an
+// ordinary reopen is a continuation, so nothing about it may apply a draft without a
+// tap.
