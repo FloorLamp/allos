@@ -290,8 +290,18 @@ test.describe("Unified profile switcher (issue #1801)", () => {
     // THE NO-REFLOW PIN: an out-of-flow panel takes no space, so nothing below
     // the bar moves. `y` is the axis reflow acts on; a vertical scrollbar
     // appearing or leaving could legitimately move `x`.
-    expect((await boxOf(search)).y).toBe(searchBefore.y);
-    expect((await boxOf(dashboard)).y).toBe(dashboardBefore.y);
+    //
+    // Sub-pixel tolerance, not exact equality (#2505): `boundingBox()` returns
+    // fractional CSS pixels, and the sibling pin in workout-history red a shard
+    // at 16 vs 16.5 — a line-box rounding artifact, not a reflow. A real reflow
+    // moves these by whole pixels (measured 454 against this very assertion when
+    // the panel was forced back into flow), so `< 1` still fails the defect the
+    // pin exists for. `toBeCloseTo(y, 0)` would NOT do: its tolerance is < 0.5
+    // and the observed delta was exactly 0.5.
+    expect(Math.abs((await boxOf(search)).y - searchBefore.y)).toBeLessThan(1);
+    expect(
+      Math.abs((await boxOf(dashboard)).y - dashboardBefore.y)
+    ).toBeLessThan(1);
 
     // …and it is genuinely OVER them, not merely beside them: the panel's box
     // covers the band the search control still occupies.
@@ -326,7 +336,10 @@ test.describe("Unified profile switcher (issue #1801)", () => {
       "aria-expanded",
       "false"
     );
-    expect((await boxOf(dashboard)).y).toBe(dashboardBefore.y);
+    // Same no-reflow pin after the panel closes, same sub-pixel tolerance (#2505).
+    expect(
+      Math.abs((await boxOf(dashboard)).y - dashboardBefore.y)
+    ).toBeLessThan(1);
   });
 
   test("the retired sidebar profile menu and view strip are gone", async ({
