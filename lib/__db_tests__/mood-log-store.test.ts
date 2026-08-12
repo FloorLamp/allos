@@ -15,6 +15,7 @@ import {
   updateMoodRating,
 } from "@/lib/offline/writes";
 import { getMoodLogs, getMoodOnDate } from "@/lib/queries";
+import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import { getMoodReadings } from "@/lib/queries/mood";
 import { moodSeriesPoints } from "@/lib/mood";
 import {
@@ -162,9 +163,52 @@ describe("the check-in's three ratings as series (#1408)", () => {
     });
     // Already cleared → nothing to change.
     expect(clearMoodRating(p, row.id, "energy")).toBe(false);
-    // Valence IS the check-in, so removing it removes the day (unchanged, #1488).
-    expect(deleteMoodLog(p, row.id)).toBe(true);
+    // Valence IS the check-in, so removing it removes the day (unchanged, #1488) — and
+    // since #2123 that whole-row delete CAPTURES, answering with an undo token instead
+    // of a boolean. The asymmetry is the point: clearing one rating leaves the row
+    // standing and holds nothing, deleting the day takes the note and the factors with
+    // it and must be restorable.
+    const undoId = deleteMoodLog(p, row.id);
+    expect(undoId).toBeGreaterThan(0);
     expect(getMoodLogs(p)).toEqual([]);
+
+    // The whole check-in comes back — every facet, not just the valence the readings
+    // table named. A restore that returned a bare rating would have quietly destroyed
+    // the note the delete was supposed to be reversible about.
+    expect(restoreDeletedRow(p, undoId!)).toBe(true);
+    expect(getMoodOnDate(p, "2026-07-10")).toMatchObject({
+      valence: 4,
+      energy: null,
+      anxiety: 5,
+      notes: "long day",
+    });
+  });
+
+  it("a check-in re-logged for the same day is ADOPTED rather than aborting the undo", () => {
+    // mood_logs carries UNIQUE(profile_id, date), so "delete today's check-in, log a new
+    // one, tap Undo" is a natural-key collision the registry's `uniqueKey` resolves: the
+    // live row wins (it is the newer statement) and the restore completes instead of
+    // throwing the whole undo away on the index.
+    const p = newProfile("mood-undo-collide");
+    upsertMoodLog(p, "2026-07-11", { valence: 2, note: "rough" });
+    const [row] = getMoodReadings(p, 50);
+    const undoId = deleteMoodLog(p, row.id);
+    expect(undoId).toBeGreaterThan(0);
+    upsertMoodLog(p, "2026-07-11", { valence: 5, note: "better" });
+
+    expect(restoreDeletedRow(p, undoId!)).toBe(true);
+    expect(getMoodOnDate(p, "2026-07-11")).toMatchObject({
+      valence: 5,
+      notes: "better",
+    });
+    // One row for the day, still — the adoption did not mint a second check-in.
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM mood_logs WHERE profile_id = ? AND date = '2026-07-11'`
+        )
+        .get(p)
+    ).toEqual({ n: 1 });
   });
 
   it("scopes every per-rating write by profile", () => {

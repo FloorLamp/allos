@@ -35,6 +35,7 @@ import {
   updateReadingAt,
 } from "@/lib/reading-writes";
 import { getReadingSeries } from "@/lib/queries/readings";
+import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import { insertVitals } from "@/lib/offline/writes";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
 import { seedProfile, type SeededProfile } from "./fixtures";
@@ -576,12 +577,57 @@ describe("delete routes by the row too", () => {
     ).toBeUndefined();
   });
 
-  it("tombstones a deleted sample so a resync can't resurrect it", () => {
+  it("captures a deleted sample AND tombstones it, giving both back on undo", () => {
+    // #2123: the same ⋯ menu that offered Undo for a weigh-in deleted an HRV sample for
+    // good. It captures now — and the CAPTURE is what writes the #508/#653 tombstone, so
+    // routing through it preserves the re-import protection rather than dropping it, and
+    // the restore removes the tombstone again so the rolling window resumes ingesting.
     const id = Number(
       db
         .prepare(
           `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
            VALUES (?, 'oura', 'hrv_ms', '2026-05-03', '2026-05-03T00:00:00', '2026-05-03T00:00:00', 38)`
+        )
+        .run(p.profileId).lastInsertRowid
+    );
+    const outcome = deleteReadingAt(p.profileId, {
+      store: "metric_samples",
+      id,
+      metric: "hrv_ms",
+    });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.undoId).toBeGreaterThan(0);
+    const tombstones = db.prepare(
+      `SELECT COUNT(*) AS n FROM import_tombstones WHERE profile_id = ? AND target_table = 'metric_samples'`
+    );
+    expect(tombstones.get(p.profileId)).toEqual({ n: 1 });
+
+    expect(restoreDeletedRow(p.profileId, outcome.undoId!)).toBe(true);
+    expect(
+      db
+        .prepare(
+          `SELECT source, metric, date, value FROM metric_samples
+            WHERE profile_id = ? AND metric = 'hrv_ms' AND date = '2026-05-03'`
+        )
+        .get(p.profileId)
+    ).toEqual({
+      source: "oura",
+      metric: "hrv_ms",
+      date: "2026-05-03",
+      value: 38,
+    });
+    expect(tombstones.get(p.profileId)).toEqual({ n: 0 });
+  });
+
+  it("refuses a metric_samples target whose id belongs to a DIFFERENT metric", () => {
+    // captureDelete scopes by (id, profile_id) alone, so the metric guard the bare
+    // DELETE used to get from its own WHERE clause has to be kept explicitly — without
+    // it a target naming the wrong metric would delete the row anyway.
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+           VALUES (?, 'manual', 'steps', '2026-05-04', '2026-05-04T00:00:00', '2026-05-04T00:00:00', 900)`
         )
         .run(p.profileId).lastInsertRowid
     );
@@ -591,13 +637,9 @@ describe("delete routes by the row too", () => {
         id,
         metric: "hrv_ms",
       })
-    ).toEqual({ ok: true, undoId: null });
+    ).toEqual({ ok: false, undoId: null });
     expect(
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM import_tombstones WHERE profile_id = ? AND target_table = 'metric_samples'`
-        )
-        .get(p.profileId)
-    ).toEqual({ n: 1 });
+      db.prepare(`SELECT value FROM metric_samples WHERE id = ?`).get(id)
+    ).toEqual({ value: 900 });
   });
 });

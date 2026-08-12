@@ -116,13 +116,19 @@ export async function updateEncounter(formData: FormData): Promise<FormResult> {
 // -deleting a linked visit threw on the FK. Those detaches are deliberately NOT
 // restored: the visit comes back, the other rows' "recorded at" links stay honestly
 // cleared, because a link is a statement about the OTHER row.
+//
+// Answers in the useUndoableDelete contract (the sibling clinical deletes' shape), not
+// FormResult: the token IS the answer here, and a null one with an error is how "there
+// was no such visit" is said.
 export async function deleteEncounter(
   formData: FormData
-): Promise<FormResult & { undoId?: number | null }> {
+): Promise<{ undoId: number | null; error?: string }> {
   const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
-  if (!id) return formError("Couldn't find that visit.");
+  if (!id) return { undoId: null, error: "Couldn't find that visit." };
   const undoId = captureDelete("visit", profileId, id);
+  if (undoId == null)
+    return { undoId: null, error: "Couldn't find that visit." };
   revalidateEncounters();
-  return { ...formOk(), undoId };
+  return { undoId };
 }

@@ -19,23 +19,37 @@ describe("dataset table → undo kind mapping", () => {
     }
   });
 
-  it("each mapped kind is 1:1 — it captures only the selected row and its FK-cascade children", () => {
-    // A kind whose non-root entities are deleted EXPLICITLY (convention siblings,
-    // e.g. wellness-practice's whole session family) or moved as a COUNTER
-    // (food-serving's day-counter decrement) means something different from
-    // "delete this row" — routing a bulk delete through it would change the
-    // delete's semantics, not just make it reversible. Those kinds stay in
-    // lib/dataset-undo.ts's argued exclusions instead.
+  it("each mapped kind is 1:1 — every non-root entity is a child OF THE SELECTED ROW", () => {
+    // What disqualifies a kind from a bulk mapping is capturing something that is not
+    // the selected row's OWN — routing the bulk delete through it would change what the
+    // delete MEANS, not just make it reversible. Two shapes do that, and #2124 sharpened
+    // this assertion into naming them rather than proxying for them:
+    //
+    //  • a COUNTER (food-serving's day-counter decrement) — the row is one tick of a
+    //    total that other rows also feed;
+    //  • a convention SIBLING — an explicitly-deleted entity with NO fk to the root, so
+    //    it is selected by a shared natural key rather than by the root's id
+    //    (wellness-practice's whole session name-family, the alcohol day's tap events).
+    //
+    // `deleteExplicitly` ALONE does not disqualify, and reading it as if it did was a
+    // proxy that happened to hold while every explicit child was a sibling. A photo
+    // series (`symptom-day`, and `skin-lesion` if it ever becomes a dataset) is deleted
+    // explicitly for a purely physical reason — SQLite carries no ON DELETE on that FK,
+    // so captureDelete has to remove the rows itself — while being selected by
+    // `<fk> = <root id>` and remapped back onto the root on restore. That is a cascade
+    // child in all but the declaration, and excluding it would have left the
+    // symptom-day bulk delete permanent (and in fact broken: a plain DELETE threw on
+    // the photo FK whenever the day carried one).
     for (const [table, kind] of Object.entries(DATASET_UNDO_KIND)) {
+      const rootEntity = UNDO_KINDS[kind].entities[0].entity;
       for (const entity of UNDO_KINDS[kind].entities.slice(1)) {
+        const where = `${kind} (${table}) child ${entity.entity}`;
+        expect(entity.counter, where).toBeUndefined();
+        if (!entity.deleteExplicitly) continue;
         expect(
-          entity.deleteExplicitly ?? false,
-          `${kind} (${table}) child ${entity.entity}`
-        ).toBe(false);
-        expect(
-          entity.counter,
-          `${kind} (${table}) child ${entity.entity}`
-        ).toBeUndefined();
+          entity.fks.some((f) => f.ref === rootEntity),
+          `${where} is deleted explicitly with no FK to the root — a convention sibling, not this row's own child`
+        ).toBe(true);
       }
     }
   });
@@ -63,6 +77,16 @@ describe("dataset table → undo kind mapping", () => {
     expect(undoKindForTable("allergies")).toBe("allergy");
     expect(undoKindForTable("conditions")).toBe("condition");
     expect(undoKindForTable("immunizations")).toBe("immunization");
+    // #1847's fifth clinical kind, and the first mapping whose value the type guard
+    // could not have been satisfied without moving the visit's inbound `encounter_id`
+    // detach into captureDelete.
+    expect(undoKindForTable("encounters")).toBe("visit");
+    // #2123/#2124: the readings table's other two stores and the symptom-day. All three
+    // had a dedicated "returns null" life until now — the ⋯ menu offered Undo for a
+    // weigh-in and nothing for an HRV sample, a mood check-in or a symptom day.
+    expect(undoKindForTable("metric_samples")).toBe("metric-sample");
+    expect(undoKindForTable("mood_logs")).toBe("mood-log");
+    expect(undoKindForTable("symptom_logs")).toBe("symptom-day");
     // Not a deletable dataset, so its undoable kind is reachable only from the row
     // menu — no mapping, and none required by the type guard.
     expect(undoKindForTable("skin_lesions")).toBeNull();
