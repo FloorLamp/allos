@@ -3,7 +3,12 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getWorkoutActivityDays } from "@/lib/queries";
 import { getDisplayFormatPrefs, getWeekStart } from "@/lib/settings";
-import { DAY_HISTORY_DOMAINS, dayHistoryStart } from "@/lib/day-history";
+import {
+  DAY_HISTORY_DOMAINS,
+  dayHistoryStart,
+  dayHistoryWindow,
+} from "@/lib/day-history";
+import { fitnessWindowWeeks, type FitnessWindow } from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
 import DayHistory from "@/components/DayHistory";
 
@@ -14,17 +19,25 @@ import DayHistory from "@/components/DayHistory";
 // activityHistoryKey of the normalized title, so a PPL routine reads as its
 // own rows: Push Day / Pull Day / Legs, with the tail folded). Card-less, a
 // page-level section, so the grids run edge to edge on phones.
+//
+// It takes the lens WINDOW rather than the lens's shared week count: above a
+// quarter this history re-grains to weeks (#2413), and that is a decision about
+// a 7×N grid of day cells, not about the weekly bar charts the shared count
+// feeds. The tab's other builders keep their own week count untouched.
 export default async function WorkoutHistorySection({
-  weeks,
-  end,
+  window,
 }: {
-  weeks: number;
-  end: string;
+  window: FitnessWindow;
 }) {
   const { login, profile } = await requireSession();
+  const end = window.to;
   const weekStart = getWeekStart(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
-  const since = dayHistoryStart(end, weeks, weekStart);
+  const history = dayHistoryWindow({
+    days: window.days,
+    weeks: fitnessWindowWeeks(window.days),
+  });
+  const since = dayHistoryStart(end, history.weeks, weekStart);
   const activityDays = getWorkoutActivityDays(profile.id, since, end);
 
   const values = activityDays.map((d) => ({
@@ -79,8 +92,9 @@ export default async function WorkoutHistorySection({
           values={values}
           groups={groups}
           end={end}
-          weeks={weeks}
+          weeks={history.weeks}
           weekStart={weekStart}
+          grain={history.grain}
           today={today(profile.id)}
           formatPrefs={formatPrefs}
           testId="workout-day-history"

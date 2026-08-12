@@ -1240,6 +1240,30 @@ function hasProteinSignalBefore(profileId: number, date: string): boolean {
   return row != null;
 }
 
+// Whether the profile has EVER carried a protein signal — logged grams, a tracked
+// reading, or the food servings the estimate is built from (#2328). The unbounded
+// twin of the probe above, and deliberately NOT a window: "does this profile have
+// protein data" is an existence question, and every window-shaped answer to it is
+// wrong on the mornings before that window has been fed anything. Same three
+// indexed probes, so the two can never disagree about what counts as a signal.
+// Profile-scoped.
+function hasAnyProteinSignal(profileId: number): boolean {
+  const row = db
+    .prepare(
+      `SELECT 1 AS hit FROM food_log
+         WHERE profile_id = ? AND servings > 0
+       UNION ALL
+       SELECT 1 AS hit FROM protein_log
+         WHERE profile_id = ? AND grams > 0
+       UNION ALL
+       SELECT 1 AS hit FROM metric_samples
+         WHERE profile_id = ? AND metric = 'protein_g'
+       LIMIT 1`
+    )
+    .get(profileId, profileId, profileId) as { hit: number } | undefined;
+  return row != null;
+}
+
 // The protein target as of a calendar day. The recent-day picker needs historical
 // estimates to use weight available on that day rather than leaking a later weigh-in
 // backward. Lean mass remains the profile's latest preferred target basis, matching the
@@ -1317,9 +1341,21 @@ export function getProteinToday(profileId: number): ProteinToday | null {
 
   if (onDate) return { ...onDate, weeklyAverageGrams, trailing };
 
-  // Suppress when there's no protein data at all (a bodyweight-only profile that has
-  // never logged) — never a bare "0 g" nudge or empty gauge.
-  if (weeklyAverageGrams == null || weeklyAverageGrams <= 0) return null;
+  // Nothing logged TODAY yet. Suppress only for a profile that has no protein data
+  // AT ALL (a bodyweight-only profile that has never logged) — never a bare "0 g"
+  // nudge or empty gauge for them.
+  //
+  // #2328: this used to test `weeklyAverageGrams`, which is the WEEK-TO-DATE average
+  // — and week-to-date on the first day of the week is TODAY ALONE. So an established
+  // logger with months of history got no gauge at all every week-start morning until
+  // their first log, and the aggregate claimed "this profile has no protein data",
+  // which was false. The evidence for the question the comment asks is an EXISTENCE
+  // check, not a window: `hasAnyProteinSignal`. The trailing window (#1917) was the
+  // near miss — it does not reset at the week boundary, but it is still a window, so
+  // a logger with an eight-day gap would reproduce the same defect at a longer
+  // horizon. (Its `dayOne` marker cannot stand in either: `dayOne` is only ever set
+  // alongside a non-null `grams`, so "grams == null && dayOne" is unsatisfiable.)
+  if (!hasAnyProteinSignal(profileId)) return null;
   const target = proteinTargetOnDate(profileId, t);
   if (!target) return null;
 

@@ -289,6 +289,15 @@ export function timelineDayHref(
     : `/timeline?from=${date}&to=${date}#timeline-day-${date}`;
 }
 
+// The Timeline over a SPAN of days (#2413). The day link above scrolls to one
+// day's anchor; a span has no single anchor to scroll to, so this filters the
+// feed and stops there rather than inventing one. The week-grain day-history
+// panel is its caller: a week cell selects a week, and "show me that week"
+// means the whole week's feed.
+export function timelineRangeHref(from: string, to: string): AppRoute {
+  return `/timeline?from=${from}&to=${to}`;
+}
+
 // The Training Log's date anchor. Workout-day surfaces land in the domain
 // ledger rather than routing through Timeline; the log owns activity review
 // and editing, while Timeline remains the cross-domain destination.
