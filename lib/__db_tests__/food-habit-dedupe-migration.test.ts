@@ -10,7 +10,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up038 } from "@/lib/migrations/versions/038-food-habit-unique";
 
 function applyThrough(maxId: number): Database.Database {
@@ -19,7 +19,7 @@ function applyThrough(maxId: number): Database.Database {
   // cascade-wipe) — mirror that so a duplicate + a dangling re-point behave as in prod.
   db.pragma("foreign_keys = OFF");
   db.pragma("busy_timeout = 10000");
-  for (const m of MIGRATIONS) {
+  for (const m of NUMBERED_MIGRATIONS) {
     if (m.id > maxId) break;
     m.up(db);
   }

@@ -12,7 +12,7 @@
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { runMigrations, readVersion } from "@/lib/migrations/runner";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 
 const V162 = 162;
 
@@ -33,7 +33,7 @@ function columnNames(db: Database.Database, table: string): string[] {
 // a deployment running the previous release has on disk.
 function preDb(): Database.Database {
   const db = newDb();
-  for (const m of MIGRATIONS.filter((m) => m.id < V162)) m.up(db);
+  for (const m of NUMBERED_MIGRATIONS.filter((m) => m.id < V162)) m.up(db);
   db.pragma(`user_version = ${V162 - 1}`);
   return db;
 }

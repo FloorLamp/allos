@@ -20,7 +20,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { bootTasks } from "@/lib/migrations/boot-tasks";
 import {
   up,
@@ -68,7 +68,7 @@ beforeEach(() => {
   // bare→enforced convergence (rather than migrate() applying 006 for us). Apply with
   // foreign_keys off, exactly as the runner does.
   db.pragma("foreign_keys = OFF");
-  for (const m of MIGRATIONS) if (m.id < m006.id) m.up(db);
+  for (const m of NUMBERED_MIGRATIONS) if (m.id < m006.id!) m.up(db); // 006 is numbered-era: its id is frozen in the shipped file
   db.pragma("foreign_keys = ON");
   bootTasks(db);
 });

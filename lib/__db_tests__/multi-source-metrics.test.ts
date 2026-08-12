@@ -16,7 +16,7 @@ import Database from "better-sqlite3";
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { toKg } from "@/lib/units";
 import { db } from "@/lib/db";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import {
   upsertBodyMetrics,
   upsertHrMinutes,
@@ -65,7 +65,7 @@ describe("migration 014 — source joins the hr_minutes primary key", () => {
     const mem = new Database(":memory:");
     mem.pragma("foreign_keys = OFF");
     // Build the pre-013 schema (migrations 1..12), then plant legacy rows.
-    for (const m of MIGRATIONS) {
+    for (const m of NUMBERED_MIGRATIONS) {
       if (m.id >= 13) break;
       m.up(mem);
     }

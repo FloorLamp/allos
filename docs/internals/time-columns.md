@@ -349,6 +349,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `routines` | `started_date` | window-start | day | n/a |  |
 | `routines` | `created_at` | bookkeeping | instant | bare |  |
 | `saved_items` | `created_at` | record | instant | bare |  |
+| `schema_migrations` | `applied_at` | record | instant | canonical | The migration runner's applied-set ledger (name-keyed migrations; lib/migrations/runner.ts is the only writer, bound to instantNow()). BORN canonical. For rows backfilled from a pre-ledger user_version stamp this is when the backfill ran, not when the migration originally applied — the name is the fact, the timestamp is provenance. |
 | `sessions` | `created_at` | bookkeeping | instant | bare |  |
 | `sessions` | `expires_at` | planned | instant | bare |  |
 | `sessions` | `last_used_at` | lifecycle | instant | bare |  |

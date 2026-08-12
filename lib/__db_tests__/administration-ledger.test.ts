@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { db, today } from "@/lib/db";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { lastNDates } from "@/lib/date";
 import { indexTakenByDose, intakeAdherenceStrip } from "@/lib/intake-adherence";
 import {
@@ -46,7 +46,7 @@ const ANCHOR = "2026-07-15"; // arbitrary strip anchor; the strip is pure over d
 function schemaAt(maxId: number): Database.Database {
   const mem = new Database(":memory:");
   mem.pragma("foreign_keys = OFF");
-  for (const m of MIGRATIONS) {
+  for (const m of NUMBERED_MIGRATIONS) {
     if (m.id <= maxId) m.up(mem);
   }
   return mem;

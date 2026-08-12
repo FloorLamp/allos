@@ -29,7 +29,7 @@
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up114 } from "@/lib/migrations/versions/114-standard-metric-seeds";
 import {
   STANDARD_TREND_METRIC_IDS,
@@ -413,7 +413,7 @@ describe("#1487 migration 114 — seeding the installed base", () => {
   function preSeedDb(): Database.Database {
     const fresh = new Database(":memory:");
     fresh.pragma("foreign_keys = OFF");
-    for (const m of MIGRATIONS) {
+    for (const m of NUMBERED_MIGRATIONS) {
       if (m.id >= SEEDS_MIGRATION) break;
       m.up(fresh);
     }

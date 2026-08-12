@@ -152,15 +152,25 @@ dashboard widget id `healthspan-pillars`.
 ### Database and migrations
 
 `createDb()` runs `runMigrations(db)` and then `bootTasks(db)`. Migrations in
-`lib/migrations/versions/` are ordered, append-only, and keyed by
-`PRAGMA user_version`. Migration 001 is the frozen clean baseline from the
-runner's introduction; a fresh database reaches the current schema by applying
-that baseline and every later migration. The hash manifest makes shipped
-migrations immutable.
+`lib/migrations/versions/` are ordered, append-only, and **name-keyed**: the
+applied set lives in the `schema_migrations` ledger (created by the runner
+itself), and the `MIGRATIONS` array in `versions/index.ts` is the single
+ordering authority. Migrations 001–185 are the CLOSED numbered era — their ids
+are frozen and `PRAGMA user_version` survives only as a monotonic applied-count
+tripwire (it makes pre-ledger builds refuse a newer database, and feeds the
+backup/restore version gate). Migration 001 is the frozen clean baseline from
+the runner's introduction; a fresh database reaches the current schema by
+applying that baseline and every later migration. The hash manifest makes
+shipped migrations immutable.
 
 For every schema change:
 
-- Add a new table or column with a new migration.
+- Add a new table or column with a new migration: a `YYYYMMDD-slug.ts` file
+  exporting `{ name: "YYYYMMDD-slug", up }` (no `id` — the runner refuses a
+  numbered migration after the name-keyed era began), appended LAST to the
+  `MIGRATIONS` array, with its sha256 added to `manifest.json`. Two branches
+  adding migrations conflict only in `index.ts`, and the resolution is keeping
+  both sides — the merge order becomes the order.
 - Grow a `CHECK` enum or add a foreign key with a rebuild migration.
 - Put one-shot data moves in a migration, not a settings flag.
 - Never edit `001-baseline.ts` or another shipped migration.

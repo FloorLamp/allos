@@ -6,7 +6,7 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up123 } from "@/lib/migrations/versions/123-practice-target-unique";
 import { practiceIdentity, practiceSignalKey } from "@/lib/practice";
 
@@ -14,7 +14,7 @@ function applyThrough(maxId: number): Database.Database {
   const db = new Database(":memory:");
   db.pragma("foreign_keys = OFF");
   db.pragma("busy_timeout = 10000");
-  for (const migration of MIGRATIONS) {
+  for (const migration of NUMBERED_MIGRATIONS) {
     if (migration.id > maxId) break;
     migration.up(db);
   }

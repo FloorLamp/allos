@@ -1454,6 +1454,15 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  schema_migrations: [
+    {
+      column: "applied_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "canonical",
+      note: "The migration runner's applied-set ledger (name-keyed migrations; lib/migrations/runner.ts is the only writer, bound to instantNow()). BORN canonical. For rows backfilled from a pre-ledger user_version stamp this is when the backfill ran, not when the migration originally applied — the name is the fact, the timestamp is provenance.",
+    },
+  ],
   sessions: [
     {
       column: "created_at",

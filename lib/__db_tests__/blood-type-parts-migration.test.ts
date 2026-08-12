@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { migration as m052 } from "@/lib/migrations/versions/052-blood-type-parts";
 
 let db: Database.Database;
@@ -32,7 +32,7 @@ beforeEach(() => {
   db.pragma("foreign_keys = OFF");
   // Build the schema through everything BEFORE 052, so this test drives up() itself
   // and observes the legacy→split convergence.
-  for (const m of MIGRATIONS) if (m.id < m052.id) m.up(db);
+  for (const m of NUMBERED_MIGRATIONS) if (m.id < m052.id!) m.up(db); // 052 is numbered-era: its id is frozen in the shipped file
   db.pragma("foreign_keys = ON");
 });
 

@@ -19,12 +19,15 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const VERSIONS_DIR = path.join(REPO, "lib/migrations/versions");
 const MANIFEST = path.join(REPO, "lib/migrations/manifest.json");
 
-// The numbered migration files (001-baseline.ts, 002-*.ts, …). index.ts is NOT
-// frozen — it is edited to append each new migration — so it is excluded.
+// Every migration file: the closed numbered era (001-baseline.ts … 185-*.ts) and
+// the name-keyed era after it (YYYYMMDD-slug.ts). index.ts is NOT frozen — it is
+// edited to append each new migration — so it is excluded.
+const LEGACY_FILE_RE = /^\d{3}-[a-z0-9-]+\.ts$/;
+const NAMED_FILE_RE = /^\d{8}-[a-z0-9-]+\.ts$/;
 function migrationFiles(): string[] {
   return fs
     .readdirSync(VERSIONS_DIR)
-    .filter((f) => /^\d{3}-.*\.ts$/.test(f))
+    .filter((f) => f.endsWith(".ts") && f !== "index.ts")
     .sort();
 }
 
@@ -60,5 +63,21 @@ describe("migration immutability — hash manifest", () => {
 
   it("manifest and versions/ are in exact correspondence (no stale or missing entries)", () => {
     expect(Object.keys(manifest).sort()).toEqual(files);
+  });
+
+  it("every migration file uses one of the two era naming shapes", () => {
+    // The numbered era is CLOSED at 185 (lib/migrations/runner.ts assertRegistry
+    // refuses an id after a name-keyed migration); a new migration is
+    // versions/YYYYMMDD-slug.ts with a unique slug and no number. A file matching
+    // neither shape would be invisible to review conventions and ambiguous in the
+    // ledger — refuse it here, at the cheapest tier.
+    for (const f of files) {
+      expect(
+        LEGACY_FILE_RE.test(f) || NAMED_FILE_RE.test(f),
+        `${f} matches neither the closed numbered era (NNN-slug.ts) nor the ` +
+          `name-keyed era (YYYYMMDD-slug.ts). New migrations are date-slug ` +
+          `named — see lib/migrations/runner.ts.`
+      ).toBe(true);
+    }
   });
 });

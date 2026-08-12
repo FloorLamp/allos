@@ -10,7 +10,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { MIGRATIONS } from "@/lib/migrations/versions";
+import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up142 } from "@/lib/migrations/versions/142-trend-views-cleanup";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
@@ -22,7 +22,7 @@ const CLEANUP_MIGRATION = 142;
 function preCleanupDb(): Database.Database {
   const db = new Database(":memory:");
   db.pragma("foreign_keys = OFF");
-  for (const m of MIGRATIONS) {
+  for (const m of NUMBERED_MIGRATIONS) {
     if (m.id >= CLEANUP_MIGRATION) break;
     m.up(db);
   }
