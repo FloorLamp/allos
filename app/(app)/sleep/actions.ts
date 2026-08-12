@@ -53,11 +53,14 @@ export async function saveSleepMoodEntry(
     if (hasSleep && !canEditManualSleepOnDate(profile.id, date)) {
       return "Synced sleep entries cannot be edited here.";
     }
+    // The sleep form states no event time — it posts hours for a night, not a
+    // clock — so this core has no statement to judge and can never answer a
+    // refusal here (#2363). `wrote` is the whole of its answer.
     if (
       hasSleep &&
       !insertVitals(profile.id, date, {
         sleepHours,
-      })
+      }).wrote
     ) {
       throw new Error("Validated sleep entry was not written");
     }

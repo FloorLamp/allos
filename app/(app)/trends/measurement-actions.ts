@@ -34,15 +34,18 @@ import type { StatedTimeRefusal } from "@/lib/stated-time";
 // rejects an invalid/empty payload (returning false), and the action revalidates
 // only when at least one of them actually persisted something.
 
-// What the submission did with the sitting's stated time (#2311). The measurements
-// ALWAYS land — that posture is #2296's, unchanged — so this is a NOTICE the form
-// says out loud, never an error and never a reason to fail the write. Absent
-// whenever nobody stated a time, which is the common case and nothing to report.
+// What the submission did with the sitting's stated time (#2311, completed by
+// #2363). The measurements ALWAYS land — that posture is #2296's, unchanged — so
+// this is a NOTICE the form says out loud, never an error and never a reason to
+// fail the write. Absent whenever nobody stated a time, the common case.
 //
-// Reported off the BODY half only, honestly and on purpose: `insertVitals` still
-// answers `boolean`, so a vitals-only submission whose statement was refused stays
-// silent. That is #2311's named audit survivor (see `resolveStatedOccurredAt`), not
-// a claim this action makes about the whole sitting.
+// It is the SITTING'S answer now, not the body half's. It used to be reported off
+// `insertBodyMetric` alone because `insertVitals` answered a bare `boolean` and had
+// nowhere to put a verdict, so "log only a BP with a refused Time" saved in silence
+// while "log a weight AND a BP" reported — an asymmetry that turned on which fields
+// the user happened to fill. Both halves resolve ONE statement through ONE gate
+// (`resolveStatedOccurredAt`), so their verdicts agree by construction and taking
+// whichever answered is not a choice between two opinions.
 export interface MeasurementsSaveResult {
   statedTimeRefused?: StatedTimeRefusal;
 }
@@ -116,40 +119,44 @@ export async function addMeasurements(
     // nothing is trusted here. An observation row is always a fresh insert, so
     // "no statement" and "no time" both land as honest NULL on it.
     const occurredAtRaw = formData.get("occurred_at");
-    wrote =
-      insertVitals(
-        profile.id,
-        date,
-        {
-          systolic: str("systolic"),
-          diastolic: str("diastolic"),
-          glucose: str("glucose"),
-          glucoseUnit: str("glucose_unit"),
-          spo2: str("spo2"),
-          temperature: str("temperature"),
-          tempUnit: str("temp_unit"),
-          sleepHours: str("sleep_hours"),
-          hrv: str("hrv"),
-          // Peak expiratory flow (#1850) — a vital like the rest, carried by the
-          // same form and the same core. Its clock time is the sitting statement
-          // below, so a second blow the same day lands as a second reading.
-          peakFlow: str("peak_flow"),
-          // LEGACY (#2154 fold): the live form no longer renders per-measure time
-          // inputs, but a stale pre-fold tab still posts these — passing them
-          // through keeps its stated times instead of silently dropping them.
-          temperatureTime: str("temp_time"),
-          peakFlowTime: str("peak_flow_time"),
-          // The three #158 functional-fitness markers (grip / chair stand /
-          // single-leg balance) are DELIBERATELY absent: they are
-          // assessment-cadence measures and moved to the guided Fitness check on
-          // /training (#1275). Their canonical storage is unchanged — the same
-          // medical_records vitals rows under the same canonical names — only the
-          // entry surface moved, so nothing here needs to know about them.
-        },
-        occurredAtRaw === null
-          ? undefined
-          : String(occurredAtRaw).trim() || null
-      ) || wrote;
+    const vitals = insertVitals(
+      profile.id,
+      date,
+      {
+        systolic: str("systolic"),
+        diastolic: str("diastolic"),
+        glucose: str("glucose"),
+        glucoseUnit: str("glucose_unit"),
+        spo2: str("spo2"),
+        temperature: str("temperature"),
+        tempUnit: str("temp_unit"),
+        sleepHours: str("sleep_hours"),
+        hrv: str("hrv"),
+        // Peak expiratory flow (#1850) — a vital like the rest, carried by the
+        // same form and the same core. Its clock time is the sitting statement
+        // below, so a second blow the same day lands as a second reading.
+        peakFlow: str("peak_flow"),
+        // LEGACY (#2154 fold): the live form no longer renders per-measure time
+        // inputs, but a stale pre-fold tab still posts these — passing them
+        // through keeps its stated times instead of silently dropping them.
+        temperatureTime: str("temp_time"),
+        peakFlowTime: str("peak_flow_time"),
+        // The three #158 functional-fitness markers (grip / chair stand /
+        // single-leg balance) are DELIBERATELY absent: they are
+        // assessment-cadence measures and moved to the guided Fitness check on
+        // /training (#1275). Their canonical storage is unchanged — the same
+        // medical_records vitals rows under the same canonical names — only the
+        // entry surface moved, so nothing here needs to know about them.
+      },
+      occurredAtRaw === null ? undefined : String(occurredAtRaw).trim() || null
+    );
+    wrote = vitals.wrote || wrote;
+    // The sitting's verdict, from whichever half was submitted (#2363). The body
+    // half above set it from the same one statement, so this cannot contradict it;
+    // a vitals-only sitting is the case that used to have no voice at all.
+    if (vitals.wrote && vitals.statedTimeRefused) {
+      statedTimeRefused = vitals.statedTimeRefused;
+    }
   }
 
   // 3. Growth (metric_samples), life-stage-gated in the form: only a minor's form
