@@ -818,6 +818,56 @@ const KIND_SPECS = {
     ],
   },
 
+  // ONE recorded VISIT (#1847, the fifth clinical kind). An encounter is a single
+  // profile-owned row with no children of its own — what makes it interesting is how
+  // much points AT it. Appointments, readings, medications, conditions, procedures,
+  // imaging studies, immunizations, episodes and the episode↔visit link table all carry
+  // an `encounter_id` REFERENCES with no ON DELETE, so the delete has to detach every
+  // one of them before the row can go. Those null-outs live in captureDelete (beside the
+  // conditions/skin_lesions ones) so BOTH delete paths — the visit list's row menu and
+  // the Data → Manage bulk delete — inherit them; before this kind only the action ran
+  // them, so a bulk delete of a linked visit threw on the FK exactly as the condition
+  // case did.
+  //
+  // Like every sibling null-out they are NOT restored: the visit comes back, the other
+  // rows' "recorded at" links stay honestly cleared. Restoring them would mean this undo
+  // re-attaching rows the user may have since re-filed elsewhere, and a link is a
+  // statement about the OTHER row.
+  //
+  // Both provider links are GLOBAL (`providers` has no profile_id): `provider_id` is the
+  // clinician seen, `location_provider_id` the facility. `document_id` is profile-owned.
+  visit: {
+    kind: "visit",
+    ownedTable: "encounters",
+    entities: [
+      {
+        entity: "encounter",
+        table: "encounters",
+        fks: [],
+        externalRefs: [
+          {
+            column: "document_id",
+            table: "medical_documents",
+            onMissing: "null",
+          },
+          {
+            column: "provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
+          {
+            column: "location_provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
+        ],
+        uniqueKey: ["external_id"],
+      },
+    ],
+  },
+
   // ONE skin-lesion observation AND ITS PHOTO SERIES. `lesion_photos.lesion_id` is a
   // plain REFERENCES with no ON DELETE, so the photos must go first for the lesion
   // DELETE to land at all — which is why they are `deleteExplicitly` children rather
@@ -920,6 +970,113 @@ const KIND_SPECS = {
         childWhere:
           "profile_id = (SELECT profile_id FROM food_log_events WHERE id = ?) AND date = (SELECT date FROM food_log_events WHERE id = ?) AND group_key = (SELECT group_key FROM food_log_events WHERE id = ?)",
         childBinds: 3,
+      },
+    ],
+  },
+
+  // ── The readings table's OTHER two stores (#2123) ────────────────────────────
+  // `deleteReadingAt` is the ONE editability contract (#1997 phase 2) and it deletes by
+  // STORE. Two of its four stores captured and two deleted outright, so the identical
+  // ⋯ → Delete row offered Undo for weight and blood pressure and nothing at all for
+  // HRV, height, steps or a mood check-in — one function, one control, two contracts.
+  // Both roots are single profile-owned rows that nothing FKs into, i.e. the plainest
+  // shape in this registry (`substance-history`), which is what made the split read as
+  // accidental rather than decided.
+
+  // ONE device/manual sample. `metric_samples` IS tombstone-tracked (it dedups on
+  // (metric, source, origin, start_time) — TOMBSTONE_TABLES), and captureDelete owns
+  // that write, so routing here PRESERVES the #508/#653 re-import protection the bare
+  // delete had rather than duplicating it: the tombstone goes down with the capture and
+  // comes back up with the restore. It also means a resync can never have re-taken the
+  // natural key, so the #509 `liveRowIdForCapturedRoot` adoption — which already knows
+  // this table — is the collision path and no `uniqueKey` is needed.
+  "metric-sample": {
+    kind: "metric-sample",
+    ownedTable: "metric_samples",
+    entities: [{ entity: "sample", table: "metric_samples", fks: [] }],
+  },
+
+  // ONE mood check-in. The row is the whole day's check-in — valence, energy, anxiety,
+  // factors and the note — which is exactly why this kind exists: deleting the VALENCE
+  // reading from the readings table drops the row, so a mis-tap on a mood row took the
+  // day's note and factors with it and nothing came back. (Deleting an energy or calm
+  // reading only NULLs that column and leaves the row standing — the body_metrics
+  // partial-clear precedent, not a delete, and correctly not a capture.)
+  //
+  // `uniqueKey: ["date"]` is the UNIQUE(profile_id, date) index: delete today's check-in,
+  // log a new one, then tap Undo and a verbatim re-insert would abort the whole restore.
+  // The live row is adopted instead — the day already has a check-in and this undo does
+  // not overwrite it. No tombstone: there is no mood importer to resurrect a deleted
+  // check-in, so captureDelete's tombstone write is a no-op here (mood_logs is not a
+  // TOMBSTONE_TABLES member), which is what the bare delete relied on too.
+  "mood-log": {
+    kind: "mood-log",
+    ownedTable: "mood_logs",
+    entities: [
+      {
+        entity: "checkin",
+        table: "mood_logs",
+        fks: [],
+        uniqueKey: ["date"],
+      },
+    ],
+  },
+
+  // ONE symptom-day AND ITS PHOTOS (#2124). The symptom bar's × was a one-tap delete
+  // with no confirm and no undo that reached OFF-DB: `deletePhotosForSymptomLog` unlinked
+  // every bound photo file before the row went. The files are what made this the sharpest
+  // case in the #2038 class — a mis-tap destroyed a rash photo series a caregiver took to
+  // show a doctor, and no part of it was recoverable.
+  //
+  // `symptom_photos.symptom_log_id` is a plain REFERENCES with no ON DELETE, so the
+  // photos must go before the log row for the DELETE to land at all — the `skin-lesion`
+  // shape exactly, and for the same reason they are `deleteExplicitly` children rather
+  // than a cascade. And exactly as there, THE FILES ARE NOT UNLINKED BY THE DELETE any
+  // more: they are content-named, they survive the window untouched so a restored row
+  // re-points at the same bytes, and the purge is where they are finally reclaimed —
+  // which is what finally makes PHOTO_FILE_TABLES' `symptom_photos` entry reachable
+  // (it was declared for a future kind; this is that kind).
+  //
+  // NOT captured: `symptom_videos`. A clip binds to the DAY (profile, date, symptom) and
+  // carries no symptom_log_id, so the live delete has never taken one and this capture
+  // must not either — capturing it would mean DELETING it, widening what the × destroys
+  // in the name of making the × reversible. VIDEO_FILE_TABLES' `symptom` branch therefore
+  // stays unreachable, honestly, until a kind actually deletes a symptom clip.
+  //
+  // `uniqueKey: ["date", "symptom"]` is the UNIQUE(profile_id, date, symptom) index: clear
+  // a symptom, re-tap it the same day, then Undo — the live row is adopted (its severity
+  // stands, it is the newer statement) and the captured photos re-point at it, instead of
+  // the whole restore aborting on the index.
+  "symptom-day": {
+    kind: "symptom-day",
+    ownedTable: "symptom_logs",
+    entities: [
+      {
+        entity: "log",
+        table: "symptom_logs",
+        fks: [],
+        // episode_id → illness_episodes is a real nullable FK (migration 111) pointing
+        // OUTSIDE this capture. Deleting the episode NULLs only LIVE symptom rows
+        // (deleteEpisodeRow), so a captured copy can still hold a since-deleted
+        // episode_id and a verbatim re-insert would abort the undo (#202/#598 class).
+        // Restore with the link NULLed: the symptom-day comes back unattached.
+        externalRefs: [
+          {
+            column: "episode_id",
+            table: "illness_episodes",
+            onMissing: "null",
+          },
+        ],
+        uniqueKey: ["date", "symptom"],
+      },
+      {
+        entity: "photos",
+        table: "symptom_photos",
+        fks: [{ column: "symptom_log_id", ref: "log" }],
+        childWhere:
+          "symptom_log_id = ? AND profile_id = (SELECT profile_id FROM symptom_logs WHERE id = ?)",
+        childBinds: 2,
+        deleteExplicitly: true,
       },
     ],
   },

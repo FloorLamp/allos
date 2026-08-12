@@ -34,6 +34,7 @@ import {
   SYMPTOM_PHOTO_DIR,
 } from "@/lib/symptom-photo-write";
 import { getEpisodeSymptomLogs } from "@/lib/queries";
+import { restoreDeletedRow, sweepDeletedRows } from "@/lib/undo-delete-db";
 import {
   createEpisodeRow,
   deleteEpisodeRow,
@@ -279,8 +280,10 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     expect(files.every((f) => fs.existsSync(f))).toBe(true);
 
     const out = removeSymptomCore(p, "rash", date);
-    expect(out.kind).toBe("removed");
-    // Log gone, photo rows gone, files unlinked.
+    expect(out).toMatchObject({ kind: "removed", existed: true });
+    // Log gone, photo rows gone — but THE FILES STAY (#2124). They are content-named,
+    // the capture holds their rows, and unlinking here is exactly what made a mis-tapped
+    // × unrecoverable off-DB. The purge reclaims them if no undo ever comes.
     expect(getSymptomPhotosForLog(p, rashLog)).toHaveLength(0);
     expect(
       db
@@ -289,7 +292,53 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
         )
         .get(p)
     ).toEqual({ n: 0 });
-    expect(files.some((f) => fs.existsSync(f))).toBe(false);
+    expect(files.every((f) => fs.existsSync(f))).toBe(true);
+
+    // …and the undo brings back the day AND its whole photo series, re-pointed at the
+    // restored log row, with the same files still readable underneath.
+    const undoId = out.kind === "removed" ? out.undoId : null;
+    expect(undoId).toBeGreaterThan(0);
+    expect(restoreDeletedRow(p, undoId!)).toBe(true);
+    const restoredLog = logId(p, date, "rash");
+    expect(getSymptomPhotosForLog(p, restoredLog)).toHaveLength(2);
+    expect(files.every((f) => fs.existsSync(f))).toBe(true);
+    expect(
+      db
+        .prepare(
+          `SELECT severity FROM symptom_logs WHERE id = ? AND profile_id = ?`
+        )
+        .get(restoredLog, p)
+    ).toEqual({ severity: 2 });
+  });
+
+  it("the PURGE — not the delete — is what finally unlinks a symptom day's photo files", () => {
+    // The half #2124 called the smoking gun: PHOTO_FILE_TABLES declared `symptom_photos`
+    // for "a future kind" and no kind captured it, so nothing ever reached the symptom
+    // branch of the purge sweep. This is that kind, and this is that branch.
+    const p = newProfile("Log Purge Photos");
+    const date = "2026-07-05";
+    logSymptomCore(p, "rash", 3, date);
+    attachSymptomPhotoCore(p, date, processedFixture("purge-1"), "rash");
+    const stored = (
+      db
+        .prepare(`SELECT stored_path FROM symptom_photos WHERE profile_id = ?`)
+        .get(p) as { stored_path: string }
+    ).stored_path;
+    const file = path.resolve(process.cwd(), stored);
+    expect(fs.existsSync(file)).toBe(true);
+
+    const out = removeSymptomCore(p, "rash", date);
+    const undoId = out.kind === "removed" ? out.undoId : null;
+    expect(undoId).toBeGreaterThan(0);
+    expect(fs.existsSync(file)).toBe(true);
+
+    // Age the capture past the window and sweep: the row can no longer be restored, so
+    // the file has lost its last justification.
+    db.prepare(
+      `UPDATE deleted_rows SET deleted_at = datetime('now', '-90 days') WHERE id = ?`
+    ).run(undoId);
+    expect(sweepDeletedRows(30)).toBeGreaterThan(0);
+    expect(fs.existsSync(file)).toBe(false);
   });
 
   it("deleting a custom symptom removes its photos; renaming preserves them", () => {
@@ -316,9 +365,46 @@ describe("#203 row-side-state under foreign_keys=ON", () => {
     expect(afterRename).toHaveLength(1);
     expect(afterRename[0].symptom).toBe("odd tingling arm");
 
-    // Delete the custom symptom entirely: its photos go too.
-    expect(deleteCustomSymptomCore(p, "odd tingling arm").kind).toBe("ok");
+    // Delete the custom symptom entirely: its photos go too — and every removed day
+    // comes back with the #202 token BATCH, so one Undo restores the whole custom
+    // symptom's history rather than nothing at all (#2124).
+    const wipe = deleteCustomSymptomCore(p, "odd tingling arm");
+    expect(wipe.kind).toBe("ok");
     expect(getSymptomPhotosForLog(p, renamedLog)).toHaveLength(0);
+    const tokens = wipe.kind === "ok" ? (wipe.undoIds ?? []) : [];
+    expect(tokens).toHaveLength(1);
+    for (const t of tokens) expect(restoreDeletedRow(p, t)).toBe(true);
+    const backLog = logId(p, date, "odd tingling arm");
+    expect(getSymptomPhotosForLog(p, backLog)).toHaveLength(1);
+  });
+
+  it("a symptom re-tapped the same day is ADOPTED rather than aborting the undo", () => {
+    // symptom_logs carries UNIQUE(profile_id, date, symptom): clear a symptom, tap it
+    // again the same day, then Undo. The live row is the newer statement and wins; the
+    // captured photos re-point at it instead of the whole restore dying on the index.
+    const p = newProfile("Symptom Undo Collide");
+    const date = "2026-07-07";
+    logSymptomCore(p, "cough", 2, date);
+    attachSymptomPhotoCore(p, date, processedFixture("collide-1"), "cough");
+    const out = removeSymptomCore(p, "cough", date);
+    const undoId = out.kind === "removed" ? out.undoId : null;
+    expect(undoId).toBeGreaterThan(0);
+
+    logSymptomCore(p, "cough", 4, date);
+    expect(restoreDeletedRow(p, undoId!)).toBe(true);
+    const live = logId(p, date, "cough");
+    expect(
+      db.prepare(`SELECT severity FROM symptom_logs WHERE id = ?`).get(live)
+    ).toEqual({ severity: 4 });
+    expect(getSymptomPhotosForLog(p, live)).toHaveLength(1);
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM symptom_logs
+            WHERE profile_id = ? AND date = ? AND symptom = 'cough'`
+        )
+        .get(p, date)
+    ).toEqual({ n: 1 });
   });
 });
 

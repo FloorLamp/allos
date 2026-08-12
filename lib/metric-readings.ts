@@ -381,8 +381,15 @@ export function deleteMetricRow(
   // ratings plus a note and factors, so removing a mis-tapped energy must NOT take that
   // day's mood with it — the optional rating is nulled and the row stays. Valence is the
   // check-in itself (NOT NULL), so removing it removes the day, exactly as it always has.
+  //
+  // Which is why valence is the branch that CAPTURES (#2123): it deletes a whole row —
+  // note and factors included — so it answers with an undo token like every other
+  // whole-row delete in this contract. Clearing an energy or calm rating stays tokenless
+  // for the reason the body_metrics partial clear does: nulling one column of a row that
+  // stays is not a delete, so there is nothing to hold.
   if (target.series === "valence") {
-    return { ok: deleteMoodLog(profileId, target.id), undoId: null };
+    const undoId = deleteMoodLog(profileId, target.id);
+    return { ok: undoId != null, undoId };
   }
   return {
     ok: clearMoodRating(
