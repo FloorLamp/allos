@@ -232,7 +232,10 @@ describe("getProteinToday (#974)", () => {
 // reached one day in seven.
 function makeWeekStartToday(profileId: number): string {
   const anchor = today(profileId);
-  setWeekStart(profileId, weekdayOfDateStr(anchor) as 0 | 1 | 2 | 3 | 4 | 5 | 6);
+  setWeekStart(
+    profileId,
+    weekdayOfDateStr(anchor) as 0 | 1 | 2 | 3 | 4 | 5 | 6
+  );
   return anchor;
 }
 
@@ -263,7 +266,8 @@ describe("the week-start morning (#2328)", () => {
     const p = newProfile("weekstart-marker");
     const anchor = makeWeekStartToday(p);
     seedWeight(p, anchor, 80);
-    for (const back of [1, 2, 3]) addProtein(p, shiftDateStr(anchor, -back), 90);
+    for (const back of [1, 2, 3])
+      addProtein(p, shiftDateStr(anchor, -back), 90);
 
     const marker = proteinGaugeMarker(getProteinToday(p)!);
     expect(marker).toMatchObject({ kind: "trailing", grams: 90 });

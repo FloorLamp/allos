@@ -144,7 +144,10 @@ describe("gauge/nudge share one figure (#221)", () => {
 describe("proteinGaugeMarker (#2328)", () => {
   it("prefers this week's average and labels it as the week's", () => {
     const m = proteinGaugeMarker(
-      makeToday({ weeklyAverageGrams: 110, trailing: { grams: 95, dayOne: false } })
+      makeToday({
+        weeklyAverageGrams: 110,
+        trailing: { grams: 95, dayOne: false },
+      })
     );
     expect(m).toEqual({
       kind: "week-to-date",
@@ -159,7 +162,10 @@ describe("proteinGaugeMarker (#2328)", () => {
     // week-to-date window is empty — but the trailing seven days are not, and that
     // is a true thing the gauge can say instead of standing empty.
     const m = proteinGaugeMarker(
-      makeToday({ weeklyAverageGrams: null, trailing: { grams: 95, dayOne: false } })
+      makeToday({
+        weeklyAverageGrams: null,
+        trailing: { grams: 95, dayOne: false },
+      })
     );
     expect(m?.kind).toBe("trailing");
     expect(m?.grams).toBe(95);

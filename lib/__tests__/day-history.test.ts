@@ -637,9 +637,7 @@ describe("week-grain bucketing through the builders", () => {
   });
 
   it("dayTotals buckets to weeks when asked, and to days otherwise", () => {
-    expect(
-      dayTotals(values, null, { grain: "week", weekStart })
-    ).toEqual(
+    expect(dayTotals(values, null, { grain: "week", weekStart })).toEqual(
       new Map([
         ["2026-07-26", 4],
         ["2026-08-02", 3],

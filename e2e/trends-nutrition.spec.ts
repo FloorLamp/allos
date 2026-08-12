@@ -5,6 +5,7 @@ import {
   hydratedClick,
   settledBoxes,
 } from "./helpers";
+import { frozenNow } from "./worker-env";
 
 // Trends → Nutrition is the OVER-TIME nutrition view (issue #1166): the macros+fiber
 // daily chart (re-homed off Trends → Overview → body census and gaining fiber), a food-goal adherence
@@ -279,4 +280,86 @@ test("filtering to one row selects it temporarily and keeps one keyboard entry p
   await expect(
     history.getByTestId("day-history-rowpanel").getByRole("heading")
   ).toHaveText(onlyLabel!);
+});
+
+// ---- The grain follows the window (#2413) ----------------------------------
+//
+// The histories used to CLAMP a year-scale request back to their 13-week day
+// cap, so 1Y and All-time silently rendered the most recent quarter and the
+// range pill did nothing above it. Above the cap the SAME history now renders
+// at week grain — no toggle, because the range picker already asked.
+const YEAR_AGO = new Date(frozenNow().getTime() - 364 * 24 * 3600 * 1000)
+  .toISOString()
+  .slice(0, 10);
+
+test("a year-scale range re-grains the intake history to weeks (#2413)", async ({
+  page,
+}) => {
+  // The 90D default is untouched: day cells, no strip.
+  await page.goto("/trends?tab=nutrition");
+  const history = page.getByTestId("intake-history");
+  await expect(history.getByTestId("day-history-calendar")).toBeVisible();
+  await expect(history.getByTestId("day-history-day")).not.toHaveCount(0);
+  await expect(history.getByTestId("day-history-strip")).toHaveCount(0);
+
+  // The range pill now visibly re-windows it. Direct navigation, not a
+  // relative advance — the range lives in the URL.
+  await page.goto(`/trends?tab=nutrition&from=${YEAR_AGO}`);
+  await expect(page).toHaveURL(/from=/);
+
+  // The 7-row calendar is replaced by the single-row week strip.
+  const strip = history.getByTestId("day-history-strip");
+  await expect(strip).toBeVisible();
+  await expect(history.getByTestId("day-history-calendar")).toHaveCount(0);
+  await expect(history.getByTestId("day-history-day")).toHaveCount(0);
+
+  // Week cells, capped at the trailing-12-months convention.
+  const weeks = history.getByTestId("day-history-week");
+  await expect(weeks).not.toHaveCount(0);
+  expect(await weeks.count()).toBeLessThanOrEqual(53);
+
+  // The heading counts WEEKS, not days.
+  await expect(history.getByTestId("day-history-calendar-panel")).toHaveCount(
+    0
+  );
+  await expect(history.getByTestId("day-history-strip-panel")).toContainText(
+    "Weeks logged"
+  );
+
+  // The dose history re-grains with it — one decision, both sections.
+  await expect(
+    page.getByTestId("dose-history").getByTestId("day-history-strip")
+  ).toBeVisible();
+});
+
+test("selecting a week opens the WEEK panel, and the live week says how far it got (#2413)", async ({
+  page,
+}) => {
+  await page.goto(`/trends?tab=nutrition&from=${YEAR_AGO}`);
+  const history = page.getByTestId("intake-history");
+  const weeks = history.getByTestId("day-history-week");
+  await expect(weeks.first()).toBeVisible(); // first-ok: read-only presence before selecting
+
+  await hydratedClick(page, weeks.last());
+  const panel = history.getByTestId("day-history-daypanel");
+  await expect(panel).toBeVisible();
+  // A week cell names its week, never its Sunday alone.
+  await expect(panel.getByTestId("day-history-panel-title")).toContainText(
+    "Week of"
+  );
+
+  // "Log for this day" seeds a DATE into a writer; a week is not a date, so
+  // the offer is withheld rather than filing the entry on a day nobody picked.
+  await expect(panel.getByTestId("day-history-add-link")).toHaveCount(0);
+
+  // The Timeline link spans the week rather than pointing at one day.
+  const timeline = panel.getByRole("link", { name: "Timeline →" });
+  const href = await timeline.getAttribute("href");
+  const match = href!.match(/from=(\d{4}-\d{2}-\d{2})&to=(\d{4}-\d{2}-\d{2})/);
+  expect(match).not.toBeNull();
+  expect(match![2] > match![1]).toBe(true);
+
+  // The trailing week is PARTIAL — kept (it is the live week) and declared, so
+  // its smaller total never reads as a decline.
+  await expect(weeks.last()).toHaveAttribute("data-partial", "true");
 });

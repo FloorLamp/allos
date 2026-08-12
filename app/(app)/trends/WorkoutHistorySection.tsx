@@ -8,10 +8,7 @@ import {
   dayHistoryStart,
   dayHistoryWindow,
 } from "@/lib/day-history";
-import {
-  fitnessWindowWeeks,
-  type FitnessWindow,
-} from "@/lib/trends-fitness";
+import { fitnessWindowWeeks, type FitnessWindow } from "@/lib/trends-fitness";
 import { EmptyState } from "@/components/ui";
 import DayHistory from "@/components/DayHistory";
 

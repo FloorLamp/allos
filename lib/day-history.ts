@@ -148,7 +148,9 @@ export function dayHistoryWindow(opts: {
 }): DayHistoryWindow {
   const maxDayWeeks = opts.maxDayWeeks ?? MAX_HISTORY_DAY_WEEKS;
   const desired =
-    opts.from == null ? null : weekSpan(opts.from, opts.to, opts.weekStart ?? 0);
+    opts.from == null
+      ? null
+      : weekSpan(opts.from, opts.to, opts.weekStart ?? 0);
   // An unbounded ("All time") window always outgrows the cap; a bounded one
   // does so only STRICTLY above it, so a range that resolves to exactly the cap
   // keeps its day cells.

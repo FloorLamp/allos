@@ -517,7 +517,9 @@ export default function DayHistory({
   const partialSuffix = (bucket: string): string => {
     if (!week) return "";
     const coverage = historyBucketCoverage(bucket, "week", end);
-    return coverage.partial ? ` · ${plural(coverage.days, "day", "days")} so far` : "";
+    return coverage.partial
+      ? ` · ${plural(coverage.days, "day", "days")} so far`
+      : "";
   };
 
   const matrixCellSummary = (row: DayHistoryRow, ci: number): string => {
@@ -1474,7 +1476,9 @@ export default function DayHistory({
                         transform: `translateX(calc(-50% + ${MTX_CELL_W / 2}px))`,
                       }}
                     >
-                      {week ? `Wk ${formatMonthDay(date, formatPrefs)}` : formatMonthDay(date, formatPrefs)}
+                      {week
+                        ? `Wk ${formatMonthDay(date, formatPrefs)}`
+                        : formatMonthDay(date, formatPrefs)}
                     </span>
                   );
                 })}
