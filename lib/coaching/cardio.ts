@@ -172,7 +172,12 @@ export function cardioRecordVerdict(
     return withheld("sparse-measurement");
   if (value - ev.priorBest <= cardioNoiseFloor(kind, ev.priorBest))
     return withheld("within-noise");
-  return { state: "record", activity, kind, pr: prOf(activity, kind, date, value) };
+  return {
+    state: "record",
+    activity,
+    kind,
+    pr: prOf(activity, kind, date, value),
+  };
 }
 
 // Every cardio record CLAIM an activity's history raises inside the window, each
@@ -186,20 +191,23 @@ export function cardioRecordVerdicts(
 ): CardioRecordVerdict[] {
   const out: CardioRecordVerdict[] = [];
   for (const s of stats) {
-    const candidates: { kind: CardioRecordKind; value: number; date: string }[] =
-      [
-        {
-          kind: "distance",
-          value: s.longestDistanceKm,
-          date: s.longestDistanceDate,
-        },
-        { kind: "speed", value: s.fastestKmh, date: s.fastestKmhDate },
-        {
-          kind: "duration",
-          value: s.longestDurationMin,
-          date: s.longestDurationDate,
-        },
-      ];
+    const candidates: {
+      kind: CardioRecordKind;
+      value: number;
+      date: string;
+    }[] = [
+      {
+        kind: "distance",
+        value: s.longestDistanceKm,
+        date: s.longestDistanceDate,
+      },
+      { kind: "speed", value: s.fastestKmh, date: s.fastestKmhDate },
+      {
+        kind: "duration",
+        value: s.longestDurationMin,
+        date: s.longestDurationDate,
+      },
+    ];
     for (const c of candidates) {
       if (!(c.value > 0)) continue;
       if (!within(c.date, today, withinDays)) continue;

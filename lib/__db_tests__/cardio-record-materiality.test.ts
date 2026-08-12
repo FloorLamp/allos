@@ -100,9 +100,11 @@ describe("cardio records are judged against their own measurement (#2393)", () =
   });
 
   it("still awards a record on a short, completely measured history", () => {
-    const kinds = recentCardioPRs(getCardioByActivity(tracked, "km"), t, 30).map(
-      (p) => p.kind
-    );
+    const kinds = recentCardioPRs(
+      getCardioByActivity(tracked, "km"),
+      t,
+      30
+    ).map((p) => p.kind);
     expect(kinds).toContain("distance");
     expect(kinds).toContain("duration");
   });
