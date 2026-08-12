@@ -426,6 +426,17 @@ preferences.
   2026-08-01 — it silently failed once for 52 minutes). On every wake: run
   `orchestrator-checkin.sh` first, then re-arm the next pair before ending the
   turn. Never poll with foreground sleep.
+  **They are not redundancy, and reading them as redundancy is what kills the
+  session** (_incidents: §The wake that wasn't_). `send_later` is a SERVER-SIDE
+  routine and survives a container restart; a background `sleep` is IN-PROCESS
+  and dies with the container, exactly like the canary and for exactly the same
+  reason. The sleep covers a `send_later` that silently fails; `send_later`
+  covers a restart. Drop it and the DOMINANT failure mode has no wake mechanism
+  at all. **`send_later` is primary — arm it FIRST, before any other work on a
+  wake, not last.** Record its fire time in `$SCRATCH/.wake` (`<ISO> <trigger
+id>`); `orchestrator-checkin.sh` reads it and alarms when nothing future is
+  armed, which is the only reason the rule is now enforced rather than merely
+  written down.
 - **Every check-in posts a status pulse** (owner, 2026-08-01): in flight,
   merged, queued, parked-awaiting-owner. Silence reads as a stall.
 - **Sweep open issues every ~4 hours** (owner, 2026-08-01) — new filings,
