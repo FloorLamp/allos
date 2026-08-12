@@ -960,16 +960,38 @@ export function findObservationsByContentIdentity(
 // `assessment` never charts, so a star backed only by one points at nothing just as
 // surely as a star with no rows at all.
 export function cleanupOrphanSavedBiomarkers(profileId: number): void {
-  db.prepare(
-    `DELETE FROM saved_items
-     WHERE profile_id = ?
-       AND kind = 'biomarker'
-       AND ${SAVED_FAMILY_KEY} NOT IN (
-         SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
-         WHERE profile_id = ? AND canonical_name IS NOT NULL
-           AND ${IDENTITY_CATEGORY_SQL}
-       )`
-  ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
+  writeTx(() => {
+    // PROMOTE first: a watch-star that has since gained a reading is no longer a
+    // watch, so from here on its absence would be real orphanhood. Doing this
+    // before the delete is what lets a star cross from watch to backed without
+    // any write path having to notice the reading arrive.
+    db.prepare(
+      `UPDATE saved_items
+          SET backed = 1
+        WHERE profile_id = ?
+          AND kind = 'biomarker'
+          AND backed = 0
+          AND ${SAVED_FAMILY_KEY} IN (
+            SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
+            WHERE profile_id = ? AND canonical_name IS NOT NULL
+              AND ${IDENTITY_CATEGORY_SQL}
+          )`
+    ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
+    // Then de-orphan ONLY what a reading once stood behind. `backed = 0` is a
+    // star waiting for its first reading — deleting that is not de-orphaning, it
+    // is discarding a tap.
+    db.prepare(
+      `DELETE FROM saved_items
+       WHERE profile_id = ?
+         AND kind = 'biomarker'
+         AND backed = 1
+         AND ${SAVED_FAMILY_KEY} NOT IN (
+           SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
+           WHERE profile_id = ? AND canonical_name IS NOT NULL
+             AND ${IDENTITY_CATEGORY_SQL}
+         )`
+    ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
+  });
 }
 
 // True when THIS biomarker — or any sibling in its #482 family — is saved, so
@@ -995,9 +1017,23 @@ export function isBiomarkerSaved(
 // (isBiomarkerSaved / getSavedBiomarkers), so the stored row stays a real analyte
 // name that a rename can re-key (#203) and a human can read in an export.
 export function saveBiomarker(profileId: number, canonical: string): void {
+  // `backed` records whether a reading has EVER stood behind this star, which is
+  // what lets the de-orphan sweep tell "its readings were deleted" from "nobody
+  // has measured it yet". Stamped at save time from what is true now; the sweep
+  // promotes 0 -> 1 later if a reading arrives (see cleanupOrphanSavedBiomarkers).
+  // It never returns to 0 — the question is about the past, and the past does not
+  // un-happen.
   db.prepare(
-    `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
-  ).run(profileId, canonical);
+    `INSERT OR IGNORE INTO saved_items (profile_id, kind, key, backed)
+     VALUES (?, 'biomarker', ?, (
+       SELECT EXISTS (
+         SELECT 1 FROM medical_records
+          WHERE profile_id = ? AND canonical_name IS NOT NULL
+            AND ${IDENTITY_CATEGORY_SQL}
+            AND ${BIOMARKER_FAMILY_KEY} = ${familyKeyOfExpr("?")} COLLATE NOCASE
+       )
+     ))`
+  ).run(profileId, canonical, profileId, ...NON_IDENTITY_CATEGORIES, canonical);
 }
 
 // Remove every saved biomarker in a #482 family (the unsave half of the toggle):
