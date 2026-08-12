@@ -772,30 +772,58 @@ export function gatherEvidence(
         continue;
       }
       totals.pathsResolved++;
+      // The line half is decided FIRST, because a citation that is both
+      // unqualified AND stale must yield ONE correction carrying both fixes.
+      // Two patches sharing an anchor is not two edits: the first consumes the
+      // anchor and the second refuses, so whichever ran first silently decided
+      // which half of the citation got repaired.
+      const verdict =
+        citation.startLine === null
+          ? null
+          : checkLineCitation(index, resolved.file, citation, body);
+      // Only a SINGLE-occurrence anchor pins a line well enough to rewrite one.
+      // MAX_ANCHOR_OCCURRENCES already refuses a diffuse token as "a coin flip
+      // dressed as a correction"; measured against this tracker, nearest-of-two
+      // was wrong three times in seven — a citation about the code AROUND a
+      // symbol gets dragged onto the symbol's own line, and the reader lands
+      // somewhere the issue never meant. A repeated anchor still REPORTS every
+      // occurrence, so a human keeps the evidence and loses only the guess.
+      const pinned =
+        verdict !== null && verdict.kind === "moved" && verdict.at.length === 1;
+      // What follows the path in the citation as written: ":702-707", or "".
+      const citedSuffix = citation.raw.slice(citation.path.length);
+      const correctedSuffix = pinned ? `:${verdict.nearest}` : citedSuffix;
       if (resolved.kind === "suffix") {
         findings.push({
           kind: "unqualified-path",
           bucket: "changed",
           issue: issue.number,
           anchor: citation.raw,
+          // The line span is carried over verbatim when it still holds, and
+          // corrected when it does not. Qualifying the path used to DROP it,
+          // so `family/actions.ts:702-707` became a whole-file reference.
           detail: `\`${citation.path}\` is not repo-relative`,
-          correction: resolved.file,
+          correction: `${resolved.file}${correctedSuffix}`,
         });
       }
       if (citation.startLine === null) continue;
       totals.lineCitations++;
-      const verdict = checkLineCitation(index, resolved.file, citation, body);
+      if (verdict === null) continue;
       if (verdict.kind === "current" || verdict.kind === "moved") {
         totals.lineCitationsTestable++;
       }
       if (verdict.kind === "moved") {
         findings.push({
           kind: "moved-line",
-          bucket: "changed",
+          bucket: pinned ? "changed" : "unverifiable",
           issue: issue.number,
           anchor: citation.raw,
           detail: `anchor \`${verdict.anchor}\` is now at line ${verdict.at.join(", ")} of ${resolved.file}`,
-          correction: `${resolved.file}:${verdict.nearest}`,
+          // No second correction when the unqualified-path finding above
+          // already carries one for this same anchor.
+          ...(pinned && resolved.kind !== "suffix"
+            ? { correction: `${resolved.file}:${verdict.nearest}` }
+            : {}),
         });
       }
     }
