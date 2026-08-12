@@ -761,7 +761,10 @@ export function derivedInputSlots(name: DerivedName): {
 }[] {
   const def = DERIVED_DEFS_BY_NAME[name];
   if (!def) return [];
-  return def.inputs.map((i) => ({ key: inputKey(i), accepts: inputAccepts(i) }));
+  return def.inputs.map((i) => ({
+    key: inputKey(i),
+    accepts: inputAccepts(i),
+  }));
 }
 
 // Which of ONE index's input slots a profile has a usable reading for, given a
