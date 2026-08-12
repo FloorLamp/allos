@@ -31,11 +31,21 @@ What that means in practice:
 - **Every PR gets a real review** before merge: full diff read (or focused reads
   - test-surface verification for >1,500-line refactors), posted as a COMMENT
     review via REST (APPROVE is rejected for this session type).
-- **Merges are yours**, squash only, via `mcp__github__merge_pull_request`. MCP
-  rides the owner's account rate limit — briefs point agents at curl REST for
-  issue reads so a fleet can't drain the quota. On a rate-limit rejection, wait
-  out the reset and batch; never retry in a loop. Draft→ready goes through MCP
-  `update_pull_request` (REST PATCH can't flip draft; GraphQL is proxy-blocked).
+- **Merges are yours**, squash only, via `mcp__github__merge_pull_request`.
+  Draft→ready goes through MCP `update_pull_request` (REST PATCH can't flip
+  draft). On a rate-limit rejection, wait out the reset and batch; never retry
+  in a loop.
+- **GraphQL is the scarce bucket, not REST** (measured 2026-08-12). "Prefer
+  REST over MCP" is right but names the wrong limit: MCP _writes_ — reviews,
+  merges, issue edits, issue comments — are GraphQL, and that pool is **5,000**
+  against REST core's **15,000**. A review POST failed mid-session at
+  `graphql 0/5000` while `core` sat untouched at `15000/15000`; roughly twenty
+  merges plus one sweep's ten issue comments drained it inside an hour. So:
+  REST reads are effectively free and agents should use them (briefs already
+  do); GraphQL writes are rationed, and a merge run plus bulk issue commenting
+  is what exhausts them. Check with
+  `curl -sS -H "Authorization: Bearer $TOKEN" https://api.github.com/rate_limit`
+  and read the `graphql` resource, not `core` — `core` will look fine.
 - **Strategic items wait for the owner** (integrations, mobile shell, IA
   decisions). Never start them unprompted; list them in status reports.
 - **An idle pipeline with work available is an ERROR, and dispatch is the

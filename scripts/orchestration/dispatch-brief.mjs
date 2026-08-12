@@ -25,8 +25,17 @@
 // `done` closes a dispatch, freeing its port range and slot reservation.
 //
 // Ledger location: $ALLOS_DISPATCH_LEDGER, else $SCRATCH/allos-dispatch-ledger.jsonl,
-// else /tmp/allos-dispatch-ledger.jsonl. The ledger is orchestration state,
-// never checked in.
+// else <STATE_DIR>/allos-dispatch-ledger.jsonl. The ledger is orchestration
+// state, never checked in.
+//
+// The ledger and the roster MUST default to the same directory, and that
+// directory must be the durable one. `$SCRATCH` is UNSET in the live
+// orchestration container (measured), so a `/tmp` fallback here would have put
+// the restart-proof ledger in the least durable place on the box — the one
+// swept for stale `allos-db-shared-*` dirs — while the roster it must stay in
+// sync with landed in /home/user/scratch. Two defaults that disagree is the
+// same defect shape as the two boot-id paths this PR already removed, so both
+// now read one constant.
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
@@ -39,11 +48,14 @@ const repoRoot = path.resolve(
   ".."
 );
 
+// The one state directory both files live in. Matches
+// scripts/orchestrator-checkin.sh's `STATE_DIR=${SCRATCH:-/home/user/scratch}`
+// exactly — if you change one, change the other.
+const STATE_DIR = process.env.SCRATCH ?? "/home/user/scratch";
+
 const ledgerPath =
   process.env.ALLOS_DISPATCH_LEDGER ??
-  (process.env.SCRATCH
-    ? path.join(process.env.SCRATCH, "allos-dispatch-ledger.jsonl")
-    : "/tmp/allos-dispatch-ledger.jsonl");
+  path.join(STATE_DIR, "allos-dispatch-ledger.jsonl");
 
 function readLedger() {
   if (!fs.existsSync(ledgerPath)) return [];
@@ -63,10 +75,7 @@ function appendLedger(entry) {
 // The ledger is history and measurement; the roster is the live view — both
 // are written here so they cannot fork. Live entries are lines beginning
 // "Cluster" whose THIRD field is the branch (the check-in script's contract).
-const rosterPath = path.join(
-  process.env.SCRATCH ?? "/home/user/scratch",
-  ".roster"
-);
+const rosterPath = path.join(STATE_DIR, ".roster");
 
 function rosterAdd(entry) {
   if (!fs.existsSync(path.dirname(rosterPath))) return false;
@@ -416,10 +425,31 @@ function cmdNew(argv) {
 function cmdList() {
   const rows = readLedger();
   const active = activeDispatches(rows);
-  const durations = completedDurationsMs(rows).sort((a, b) => a - b);
-  const median = durations.length
-    ? durations[Math.floor(durations.length / 2)]
-    : null;
+  // A stall threshold derived from a degenerate sample is a FALSE ALARM
+  // GENERATOR, which is worse than no threshold — the whole point of the
+  // check-in tooling is that its alarms are worth reading.
+  //
+  // Observed live: backfilling three in-flight clusters into a fresh ledger
+  // (dispatch, then `done`, then re-dispatch with the right worktree names)
+  // left five "completed" entries lasting about a minute each. Median 1m,
+  // threshold 3m, and both real clusters — 23 minutes into work that routinely
+  // runs an hour — were immediately branded STALL. Every row shouting is how
+  // the previous restart detector failed.
+  //
+  // Two guards, because the sample can be degenerate in two different ways:
+  // too FEW completions to be a distribution at all, and completions too SHORT
+  // to be real dispatches (a backfill, an aborted probe, a `done` typo). A
+  // dispatch that finished in under MIN_REAL_DISPATCH_MS did not do a cluster's
+  // work, so it says nothing about how long a cluster takes.
+  const MIN_COMPLETIONS_FOR_MEDIAN = 3;
+  const MIN_REAL_DISPATCH_MS = 5 * 60_000;
+  const allDurations = completedDurationsMs(rows).sort((a, b) => a - b);
+  const durations = allDurations.filter((d) => d >= MIN_REAL_DISPATCH_MS);
+  const median =
+    durations.length >= MIN_COMPLETIONS_FOR_MEDIAN
+      ? durations[Math.floor(durations.length / 2)]
+      : null;
+  const discarded = allDurations.length - durations.length;
   const fmt = (ms) =>
     `${Math.floor(ms / 3_600_000)}h${String(Math.floor(ms / 60_000) % 60).padStart(2, "0")}m`;
 
@@ -439,13 +469,19 @@ function cmdList() {
       );
     }
   }
+  const note = discarded
+    ? ` (${discarded} completion(s) under ${MIN_REAL_DISPATCH_MS / 60_000}m ignored as not-real-work)`
+    : "";
   if (median !== null) {
     console.log(
-      `Completed: ${durations.length}, median ${fmt(median)} (stall threshold ${fmt(3 * median)}).`
+      `Completed: ${durations.length}, median ${fmt(median)} (stall threshold ${fmt(3 * median)})${note}.`
     );
   } else {
+    // Say WHY it is unavailable — "no completions yet" was reported even when
+    // five existed and were all discarded, which reads as a broken ledger.
     console.log(
-      "No completed dispatches yet — stall threshold unavailable until one closes."
+      `Stall threshold unavailable: ${durations.length} real completion(s), need ` +
+        `${MIN_COMPLETIONS_FOR_MEDIAN}${note}. Ages above are informational only.`
     );
   }
 }

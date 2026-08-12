@@ -18,6 +18,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check . --cache --cache-strategy content --cache-location .cache/prettier",
     "phi-scan": "tsx scripts/phi-scan.ts",
+    "reconcile": "tsx scripts/orchestration/reconcile-tracker.ts",
+    "reconcile:apply": "tsx scripts/orchestration/reconcile-apply.ts",
     "schema:dump": "tsx scripts/schema-dump.ts",
     "seed": "tsx scripts/seed.ts",
     "demo-reset": "tsx scripts/demo-reset.ts",
