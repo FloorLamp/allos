@@ -66,6 +66,11 @@ to the shots for fast human review.
   lands in the "Unreached dynamic routes" table in `audit.md`; it is never
   silently dropped. `lib/__tests__/ux-census-routes.test.ts` fails the unit tier
   when a new dynamic route ships without a registry entry.
+- **Tab-hub blind spot**: `pages` shoots each route at its DEFAULT tab only, so a
+  `?tab=` hub's metrics describe that one tab — /training's firstData is the Log
+  tab's, not Overview's. Attribute metrics to the tab, name it when filing, and
+  never rank a hub against plain pages without the caveat (#2566 tracks teaching
+  the harness non-default tabs).
 - Screenshots land in `data/ux-shots/` (gitignored) unless `UX_SHOTS` overrides.
 - If Playwright can't find its browser build (version-pinned cache miss), set
   `UX_CHROMIUM` to a Chromium binary — in Claude Code's remote environment that
@@ -129,6 +134,56 @@ The proven workflow for an all-pages consistency audit:
    document import, and keeping it lets the detail-page census still resolve ids
    on this shape. Use a scratch `ALLOS_DB_PATH` per shape, or delete the DB
    between runs — the seed refuses a non-empty database.
+
+### Live screenshots outrank the census
+
+The census's data is clean by construction, and a whole class of defect only
+exists in a lived-in profile: cross-domain interference (a recent illness
+putting Fever atop the Cycle page's symptom picker via frecency), import
+quirks (a MyChart CCD repeating a diagnosis with " - Primary" baked into the
+name), identity-family display leaks ("Family:vitamin-d-25-hydroxy" as a
+label), and ordering regressions that need enough same-band rows to show. When
+the owner posts a screenshot of their real app, treat it as a first-class
+audit input — the 2026-08 sweep's highest-value bugs all came from two such
+shots, none from the seeded census.
+
+### Trace every symptom to its mechanism before filing
+
+The first plausible mechanism is often wrong, in both directions:
+
+- A jumbled dose order read as "bucket sort is alphabetical" — every #297
+  layer was correct, and the real cause was the multi-profile merge comparator
+  dropping ALL of `compareWithinBand`'s absolute tiebreaks (it sorted by raw
+  key string). Filing the first hypothesis would have sent the fix to the
+  wrong module.
+- "Fever on the Cycle page" read as a category error — it is deliberate (the
+  bar is the day's one symptom ledger; hiding a logged fever would lie), and
+  the honest fix was a framing line, not a filter. Check whether the "bug" is
+  a documented design before filing; the fix for those is copy.
+
+Both directions end the same way: name the file:line mechanism in the issue,
+or don't file yet.
+
+## From findings to filings
+
+The loop that survived owner contact, for anything bigger than a point bug:
+
+1. Verify each visible defect in code (above), separating defects from design
+   choices from owner calls.
+2. Ship a **compact clickable prototype** of the redesigned surface — a
+   single-theme artifact in the app's own dark look, with real `<details>`
+   disclosures so fold behavior is demonstrable. Owner feedback was explicit:
+   prototypes over design essays ("artifact is tldr"). Long-form rationale
+   docs are for the record, not the pitch.
+3. Before proposing a structural change (merging surfaces, retiring a tab),
+   search closed/open issues for standing owner rulings — several surfaces
+   are pinned by decision, not by code, and a proposal that re-litigates one
+   burns the review.
+4. File **self-contained issues**: artifact URLs are private-by-default, so
+   the issue body must carry the full diagnosis and fix direction on its own.
+   Bugs and redesigns file separately (bugs are shippable independently and
+   often gate the redesign); resolved owner calls are recorded as resolved,
+   open ones listed with a recommendation.
 
 ## Mobile audit (metrics + tap costs, #1510)
 
