@@ -486,7 +486,14 @@ Two changes close it:
   transition that commits then unwinds) leave the page on the source URL, so both
   stay covered. A third URL means the click LANDED and went elsewhere, which no
   re-click can walk back — it stops clicking, keeps waiting, and if it never
-  arrives it fails naming both URLs and pointing at this rule.
+  arrives it fails naming both URLs and pointing at this rule. Two things narrow
+  it, each paid for by a real failure: the guard arms on the FIRST CLICK, not at
+  call time (a page can move its own url at hydration — `RangeFilterSelect`
+  restores a `range` param from sessionStorage in a mount effect), and departure
+  is judged WITHOUT the fragment (a hash-only move is not a navigation: same
+  document, same tree, swallow race still live — `/training` writes itself to
+  `/training#day-…`, which cost a shard on this change's first CI run). A pager
+  moves the search and a route change moves the pathname, so both still register.
 - **A relative control uses `hydratedClick` + a URL assertion.** That closes the
   pre-hydration window without a loop, which is the only shape a non-idempotent
   control can accept.

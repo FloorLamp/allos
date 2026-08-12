@@ -436,13 +436,26 @@ export async function followLink(
   // before that lands would read as a departure the helper never caused, and
   // refuse to click at all. The guard is about "did MY click move the page", so
   // it may only arm once a click has actually been issued.
+  //
+  // "Departed" is judged WITHOUT the fragment. A hash-only move is not a
+  // navigation at all: same document, same tree, and the pre-hydration swallow
+  // this helper exists for is still live, so re-clicking is still both safe and
+  // necessary. Pages here write their own hash — `/training` lands on
+  // `/training#day-2026-08-09` — and comparing whole URLs treated that as a
+  // departure and refused to click a ride link that had never been clicked
+  // (shard 5, e2e (5), the first CI run of this change). A pager step moves the
+  // SEARCH and a route change moves the PATHNAME, so both still register; only
+  // the one case where nothing navigated is forgiven. (A stepper that advances
+  // purely in the fragment would slip through this — none exists here, and it
+  // would be a strange thing to build.)
   let source = page.url();
   let clicked = false;
   let departedTo: string | undefined;
+  const withoutHash = (url: string): string => url.split("#")[0];
   try {
     await expect(async () => {
       if (!destination.test(page.url())) {
-        if (clicked && page.url() !== source) {
+        if (clicked && withoutHash(page.url()) !== withoutHash(source)) {
           // Left the source for a third URL: stop clicking, keep waiting. A
           // redirect chain or a slow multi-hop transition still converges on its
           // own; anything else fails at the ceiling with both URLs named below.
