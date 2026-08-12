@@ -594,7 +594,10 @@ the first moment it can prove is safe, and says so afterwards. `autoReloadPlan`
 is that proof and its ORDER is the safety argument: ration spent → hold; work
 with no durable copy on the page → hold; a form submit still settling → wait;
 hidden → reload; input-quiet (pointer/key/wheel/touch/scroll, watched at the
-DOCUMENT, not just inside forms) → reload, else wait. `wait` and `hold` are
+DOCUMENT, not just inside forms) → reload, else wait. Quiet is counted from the
+LATER of the last event and `watchingSince`: "nothing has been heard" is not
+"the page is quiet" in the first milliseconds of a document, and a tab that
+reloads there has taken the page out from under someone mid-gesture. `wait` and `hold` are
 different answers because only `hold` may render a bar; a bar during a
 two-second scroll pause would be the ask-before gate this removed. The reload is
 LOSSLESS BY SEQUENCE, never by hope: every draft is flushed and settled, then the

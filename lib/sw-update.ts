@@ -588,6 +588,17 @@ export function nextAutoReloadGuard(
  * and none of those touch a form field. Short, because a tab that never goes quiet
  * simply stays on the old build — the cost of waiting is nothing, and #1906 already
  * covers the stale navigation while it waits.
+ *
+ * IT IS MEASURED FROM WHEN WE STARTED WATCHING, not only from the last event. "No
+ * input has been seen" and "the page is quiet" are the same sentence everywhere
+ * except at the very start of a document, where the first is true because nothing
+ * has been observed YET. A tab that discovers a deploy in the first milliseconds of
+ * its life — the poll's mount read answers before a scroll can reach a listener that
+ * has only just attached — would otherwise reload out from under a user who is
+ * mid-gesture, which is exactly the harm the gate exists to prevent. So a freshly
+ * mounted tab must WATCH for the window before it may call the page quiet. The cost
+ * is that a clean tab converges three seconds later; the alternative is a gate that
+ * answers "quiet" from a position of having seen nothing at all.
  */
 export const INPUT_QUIET_MS = 3_000;
 
@@ -637,10 +648,12 @@ export type AutoReloadVerdict =
  *      convenience of the hidden fast path.
  *   5. hidden → reload. The user who "isn't looking" genuinely cannot be
  *      interrupted, and no pointer or key event can arrive at a hidden document.
- *   6. input-quiet → reload; otherwise wait.
+ *   6. input-quiet — for `INPUT_QUIET_MS`, counted from the later of the last event
+ *      and `watchingSince` — reload; otherwise wait.
  *
- * `lastInputAt`/`lastSubmitAt` are 0 for "never", which reads as long-ago rather
- * than as just-now — a freshly-loaded tab that has been touched by nobody is quiet.
+ * `lastSubmitAt` is 0 for "never", which reads as long-ago rather than as just-now.
+ * `lastInputAt` has no such sentinel any more: silence is only quiet once we have
+ * been in a position to hear it, which is what `watchingSince` measures.
  */
 export function autoReloadPlan({
   staleBuild,
@@ -648,6 +661,7 @@ export function autoReloadPlan({
   targetSha,
   unrecoverableWork,
   hidden,
+  watchingSince,
   lastInputAt,
   lastSubmitAt,
   guard,
@@ -662,6 +676,11 @@ export function autoReloadPlan({
   /** Any form holding unsaved input that no draft would restore. */
   unrecoverableWork: boolean;
   hidden: boolean;
+  /**
+   * Epoch ms from which input has actually been OBSERVED — when the listeners
+   * attached. Silence before this instant is ignorance, not quiet.
+   */
+  watchingSince: number;
   /** Epoch ms of the last pointer/key event anywhere on the page; 0 for never. */
   lastInputAt: number;
   /** Epoch ms of the last form submit anywhere on the page; 0 for never. */
@@ -681,7 +700,14 @@ export function autoReloadPlan({
     return { action: "wait", reason: "submit" };
   }
   if (hidden) return { action: "reload", target };
-  if (lastInputAt > 0 && now - lastInputAt < INPUT_QUIET_MS) {
+  // The window runs from the LATER of the last event and the moment we started
+  // watching — see INPUT_QUIET_MS. A hidden tab short-circuits above and needs no
+  // observation period, because no input can reach a hidden document at all.
+  // Not watching yet (0) is the strongest form of "we have not heard silence": it
+  // means the listeners are not even attached, so nothing could have been heard.
+  if (watchingSince <= 0) return { action: "wait", reason: "input" };
+  const quietSince = Math.max(lastInputAt, watchingSince);
+  if (now - quietSince < INPUT_QUIET_MS) {
     return { action: "wait", reason: "input" };
   }
   return { action: "reload", target };

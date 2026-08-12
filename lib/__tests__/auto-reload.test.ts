@@ -43,6 +43,9 @@ const CLEAR = {
   targetSha: SHA,
   unrecoverableWork: false,
   hidden: false,
+  // Watching since long enough ago that the observation floor is satisfied; the
+  // tests that care about the floor override it.
+  watchingSince: T0 - INPUT_QUIET_MS - 1,
   lastInputAt: 0,
   lastSubmitAt: 0,
   guard: null as AutoReloadGuard | null,
@@ -120,11 +123,41 @@ describe("autoReloadPlan — when a tab may take a deploy by itself", () => {
     ).toEqual({ action: "reload", target: SHA });
   });
 
-  it("treats 'never touched' as quiet, not as just-now", () => {
-    // 0 is the sentinel for never, and a freshly-loaded tab nobody has touched is the
+  it("treats a long-untouched tab as quiet, not as just-now", () => {
+    // A tab nobody has touched for the whole time we have been listening is the
     // quietest tab there is — reading it as "input one moment ago" would strand it.
     expect(
       autoReloadPlan({ ...CLEAR, lastInputAt: 0, lastSubmitAt: 0 })
+    ).toEqual({ action: "reload", target: SHA });
+  });
+
+  it("must WATCH for the window before it may call a fresh page quiet", () => {
+    // THE DEFECT THIS PINS, found end to end. "No input has been seen" and "the page
+    // is quiet" are the same sentence everywhere except at the very start of a
+    // document, where the first is true only because nothing has been observed yet.
+    // The poll's mount read can answer within milliseconds of the listeners
+    // attaching, and a tab that reloads then has taken the document away from a user
+    // who was mid-gesture — the exact harm the gate exists to prevent.
+    expect(
+      autoReloadPlan({ ...CLEAR, watchingSince: T0 - INPUT_QUIET_MS + 1 })
+    ).toEqual({ action: "wait", reason: "input" });
+    expect(
+      autoReloadPlan({ ...CLEAR, watchingSince: T0 - INPUT_QUIET_MS - 1 })
+    ).toEqual({ action: "reload", target: SHA });
+  });
+
+  it("is never quiet while the listeners are not even attached", () => {
+    expect(autoReloadPlan({ ...CLEAR, watchingSince: 0 })).toEqual({
+      action: "wait",
+      reason: "input",
+    });
+  });
+
+  it("still reloads a HIDDEN tab immediately, with no observation period", () => {
+    // Nothing can reach a hidden document, so there is no silence to establish —
+    // and this is the case the issue names as the one that should be instant.
+    expect(
+      autoReloadPlan({ ...CLEAR, hidden: true, watchingSince: 0 })
     ).toEqual({ action: "reload", target: SHA });
   });
 

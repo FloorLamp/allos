@@ -99,6 +99,10 @@ export function useAutoUpdateReload({
   // durable, so this tab never auto-reloads again this episode — it holds, and the
   // manual affordance is the honest remedy.
   const [captureRefused, setCaptureRefused] = useState(false);
+  // When the input listeners attached. Silence before this is ignorance, not quiet —
+  // see INPUT_QUIET_MS. 0 until the effect below runs, which the gate reads as "not
+  // watching yet" and therefore never as quiet.
+  const watchingSinceRef = useRef(0);
   const lastInputRef = useRef(0);
   const lastSubmitRef = useRef(0);
   // The evaluation tick and the reload routine both outlive any one render, so they
@@ -124,6 +128,7 @@ export function useAutoUpdateReload({
       });
     }
     document.addEventListener("submit", submitted, true);
+    watchingSinceRef.current = Date.now();
     return () => {
       for (const type of INPUT_EVENTS) {
         document.removeEventListener(type, touched, true);
@@ -216,6 +221,7 @@ export function useAutoUpdateReload({
           typeof document !== "undefined"
             ? document.visibilityState === "hidden"
             : false,
+        watchingSince: watchingSinceRef.current,
         lastInputAt: lastInputRef.current,
         lastSubmitAt: lastSubmitRef.current,
         guard: readGuard(targetShaRef.current ?? AUTO_RELOAD_UNNAMED_TARGET),

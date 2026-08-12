@@ -53,10 +53,11 @@ const STALE_SETTLE_MS = 25_000;
 // served with, the way a tab that took a real update does.
 const DEPLOYED = { sha: "2471abc", commitMessage: "e2e self reload" };
 
-async function interceptVersionOnce(page: Page) {
+async function installVersionDeploy(page: Page): Promise<{ arm: () => void }> {
+  let armed = false;
   let served = 0;
   await page.route("**/api/version", (route) => {
-    if (served > 0) return route.continue();
+    if (!armed || served > 0) return route.continue();
     served += 1;
     return route.fulfill({
       status: 200,
@@ -64,21 +65,51 @@ async function interceptVersionOnce(page: Page) {
       body: JSON.stringify(DEPLOYED),
     });
   });
+  return {
+    arm: () => {
+      armed = true;
+    },
+  };
 }
 
 // Answer every server-action POST as a post-deploy server would: the not-found
 // marker and no flight payload. Reads and route handlers pass through — a deploy
 // does not re-key those.
 //
+// INSTALLED BEFORE goto, ARMED LATER — both halves load-bearing, for exactly the
+// reasons e2e/sw-update.spec.ts records. Installed before navigation because a
+// `page.route` registered into a page ALREADY CONTROLLED by a service worker
+// sometimes never applies to it, permanently, at ~8-13% per cold-started browser
+// (this spec does not block workers, and it arms deep into a long setup, so it sat
+// squarely in that window: the route missed, no action POST ever failed, the
+// stale-build trigger never fired and the tab correctly did nothing). Armed later
+// because the deploy has to land UNDER an editor that is already open, which is the
+// scenario.
+//
 // `untilReload` models the deploy ENDING when the tab takes it: once the main frame
 // navigates, the interception stops, so the reloaded document is the new build whose
 // action ids work. Pass false for the broken-deploy case, where the point is that
 // reloading does not help.
-async function armStaleActions(page: Page, { untilReload = true } = {}) {
-  let armed = true;
+async function installStaleActions(
+  page: Page,
+  { untilReload = true } = {}
+): Promise<{ arm: () => void }> {
+  let armed = false;
+  // The deploy is over the moment a NEW DOCUMENT loads: that document is the reloaded
+  // build, and its action ids work. Keyed on the page's `load` event, which is the
+  // only signal that is both precise and reachable here. The two obvious
+  // alternatives are each wrong in a way that cost a debugging round:
+  // `framenavigated` also fires for the App Router's same-document history rewrites,
+  // and a disarm on one of those lets the very save under test succeed; and counting
+  // document REQUESTS in the route handler misses entirely, because a navigation
+  // fetched by the service worker never reaches `page.route` at all — this spec does
+  // not block workers, so the reload's document went unseen, the interception stayed
+  // armed across the reload, and the restored edit never saved.
+  // `page.goto` resolves ON `load`, so the initial navigation's event lands before
+  // `arm()` is ever called and cannot disarm anything prematurely.
   if (untilReload) {
-    page.on("framenavigated", (frame) => {
-      if (frame === page.mainFrame()) armed = false;
+    page.on("load", () => {
+      armed = false;
     });
   }
   await page.route("**/*", (route) => {
@@ -92,6 +123,11 @@ async function armStaleActions(page: Page, { untilReload = true } = {}) {
     }
     return route.fallback();
   });
+  return {
+    arm: () => {
+      armed = true;
+    },
+  };
 }
 
 /** Count document loads in the page itself, so "reloaded once" is measurable. */
@@ -179,6 +215,7 @@ test("a live workout edited through a deploy reloads itself and comes back with 
     // throughout, so `pending` stays false and trigger B never fires — this is the
     // tab whose poll has latched off (#2447), and the failed save alone has to be
     // enough. That independence is the property, not an accident of the fixture.
+    const stale = await installStaleActions(page);
     await page.goto("/training");
     await page.getByRole("main").getByTestId("start-workout").click();
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
@@ -201,7 +238,7 @@ test("a live workout edited through a deploy reloads itself and comes back with 
 
     // The deploy lands under the open tab. From here every action POST fails with
     // the stale signature — until the tab reloads, which is when the deploy is over.
-    await armStaleActions(page);
+    stale.arm();
 
     // Mid-set edit — the thing that used to vanish, and then the thing that cost
     // four taps to get back.
@@ -215,9 +252,13 @@ test("a live workout edited through a deploy reloads itself and comes back with 
       })
       .toBe("2");
 
-    // …and it comes back where it was: the live session reopened from presence, the
-    // draft applied into it with no banner to tap, and the edit intact.
-    await expect(page.getByTestId("live-workout-panel")).toBeVisible({
+    // …and it comes back where it was: the session reopened from presence through
+    // the existing `resumeLive()` path, with the draft applied into it and no banner
+    // to tap. A resumed session arrives as `editData`, so #340's create-only live
+    // PRESENTATION collapses to the plain editor — that is the pre-existing #451/#921
+    // rehydration shape, unchanged here, and what this issue is about is that the
+    // edit is back at all.
+    await expect(page.getByTestId("activity-form")).toBeVisible({
       timeout: STALE_SETTLE_MS,
     });
     await expect(page.getByTestId("set1-weight")).toHaveValue("123", {
@@ -258,7 +299,7 @@ test("a form that can never attempt a save still converges, and is restored with
     // state on its debounce, validity-independent — but convergence needs the reload,
     // and only the detector can ask for it.
     await countLoads(page);
-    await interceptVersionOnce(page);
+    const deploy = await installVersionDeploy(page);
     await page.goto("/training");
     await page
       .getByRole("main")
@@ -266,6 +307,23 @@ test("a form that can never attempt a save still converges, and is restored with
       .click();
     await expect(page.getByTestId("activity-form")).toBeVisible();
     await settledFill(page, page.getByLabel("Activity name"), UNSAVEABLE_TITLE);
+
+    // Only NOW does the deploy land — under an editor that is already open and
+    // holding state no save will ever be attempted for. Arming before the editor
+    // existed would be testing the clean-tab case with extra steps.
+    deploy.arm();
+    // …and the detector has to be asked. Its mount read already happened, honestly,
+    // and a read that finds no mismatch does not latch — so the next scheduled one is
+    // a full interval away. The visibility hook is the app's own "ask again now", and
+    // this drives it from inside the page until the document goes away with the
+    // reload. It is not input: `visibilitychange` is not in the quiet gate's event
+    // set, so this cannot hold the tab awake either.
+    await page.evaluate(() => {
+      window.setInterval(
+        () => document.dispatchEvent(new Event("visibilitychange")),
+        500
+      );
+    });
 
     await expect
       .poll(() => loads(page), {
@@ -310,10 +368,11 @@ test("a deploy that stays broken gets ONE automatic attempt and then the banner 
   test.slow();
   try {
     await countLoads(page);
+    const stale = await installStaleActions(page, { untilReload: false });
     await page.goto("/training");
     // Armed for good: reloading does not fix this one, which is the shape a reload
     // loop would come from.
-    await armStaleActions(page, { untilReload: false });
+    stale.arm();
 
     await page
       .getByRole("main")
@@ -358,11 +417,12 @@ test("a never-created session closed under a stale build queues its capture, and
     // leaves that path untouched. Spending the ration is how the tab stays put long
     // enough to exercise it.
     await spendAutoReloadRation(page);
+    const stale = await installStaleActions(page, { untilReload: false });
     await page.goto("/training");
     // The deploy lands BEFORE the first save, so the session never gets a
     // server row — the close-path capture's charter, now reachable via the
     // stale signature as well as a dead connection.
-    await armStaleActions(page, { untilReload: false });
+    stale.arm();
 
     await page
       .getByRole("main")

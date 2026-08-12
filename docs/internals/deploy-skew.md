@@ -78,6 +78,19 @@ safety argument:
 | `document.hidden`                 | `reload`                              |
 | input-quiet for `INPUT_QUIET_MS`  | `reload`, else `wait`                 |
 
+**Quiet is measured from when we started WATCHING, not only from the last event.** "No
+input has been seen" and "the page is quiet" are the same sentence everywhere except at
+the very start of a document, where the first is true only because nothing has been
+observed yet. The poll's mount read can answer within milliseconds of the listeners
+attaching, and a tab that reloads then has taken the document away from someone
+mid-gesture — the exact harm the gate exists to prevent. It was not theoretical: the
+end-to-end drive for "a tab that is never quiet" caught it, reloading after a single
+dispatched keystroke. So `watchingSince` is an input to the decision, silence before it
+counts for nothing, and a fresh tab must watch out the window before it may call the
+page quiet. The cost is that a clean tab converges three seconds later. A HIDDEN tab
+short-circuits above and needs no observation period, because nothing can reach a
+hidden document at all.
+
 `wait` and `hold` are different answers because **only `hold` may raise a bar**. A bar
 that appeared during a two-second scroll pause would be the ask-before consent gate
 this issue removes. A tab that never goes quiet simply stays on the old build; #1906
@@ -495,7 +508,14 @@ registering a second worker. Both of those tests fail on the pre-#2329 tree at t
 bar never appearing. `e2e/update-notice.spec.ts` drives the no-worker context and pins
 the pending marker being written, and kept across a dismissal.
 `e2e/stale-build-save.spec.ts` drives the Server Action half with the real client
-error (action POSTs answered with the not-found marker): a live editor recovering
+error (action POSTs answered with the not-found marker). Two harness facts it records,
+both of which cost a debugging round and both of which bite any spec that intercepts
+under a service worker: a `page.route` installed into an already-CONTROLLED page can
+miss permanently (so the interception is installed before `goto` and armed later, as
+`e2e/sw-update.spec.ts` already found), and a navigation fetched BY the service worker
+never reaches `page.route` at all (so "the deploy is over" is keyed on the page's
+`load` event, not on counting document requests — and not on `framenavigated`, which
+the App Router's same-document history rewrites also fire). What it drives: a live editor recovering
 with ZERO taps from the failed save alone — with the version route never armed, which
 is the detector-down tab — the unsaveable form converging on the detector alone and
 being restored without a save being invented, a broken deploy stopping at exactly one
