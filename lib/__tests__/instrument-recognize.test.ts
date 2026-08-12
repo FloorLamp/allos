@@ -12,9 +12,13 @@
 import { describe, expect, it } from "vitest";
 import {
   answerValueFor,
+  attributesToPatient,
   foldInstrumentText,
   recognizeInstrument,
+  type DocumentSubjectScope,
+  type InstrumentAttribution,
   type InstrumentItemCandidate,
+  type InstrumentSubject,
 } from "@/lib/instrument-recognize";
 import { foldInstrumentScores } from "@/lib/instrument-import";
 import {
@@ -26,6 +30,17 @@ import {
 import type { ImportedRecord } from "@/lib/health-import";
 
 const EPDS = instrumentDef("EPDS");
+
+// The two attribution facts, spelled at each call site so a test never leaves the
+// document scope implicit. `OWN` is the ordinary single-patient CCD that states its
+// subject; `SILENT` is the same document restating nothing (#2558's case).
+function attr(
+  stated: InstrumentSubject,
+  scope: DocumentSubjectScope = "single-patient"
+): InstrumentAttribution {
+  return { stated, scope };
+}
+const OWN = attr("patient");
 
 // The full instrument as a document would print it: every question with a chosen
 // answer. `pick` maps an item index to the position of the option in its PRINTED list,
@@ -118,12 +133,43 @@ describe("the self-harm item does the work, not the total (#2321)", () => {
   });
 });
 
+// The attribution decision on its own, as a truth table over both axes. It is three
+// lines of code guarding a mental-health score's owner, so every cell is pinned rather
+// than sampled through the recogniser.
+describe("attributesToPatient (#2321 / #2558)", () => {
+  const cells: [InstrumentSubject, DocumentSubjectScope, boolean][] = [
+    ["patient", "single-patient", true],
+    ["patient", "multiple-subjects", true],
+    ["unstated", "single-patient", true],
+    ["unstated", "multiple-subjects", false],
+    ["other", "single-patient", false],
+    ["other", "multiple-subjects", false],
+  ];
+  for (const [stated, scope, expected] of cells) {
+    it(`${stated} subject in a ${scope} document → ${expected}`, () => {
+      expect(attributesToPatient({ stated, scope })).toBe(expected);
+    });
+  }
+
+  it("never lets the document scope rescue a STATED other subject", () => {
+    // The invariant #2558 must not weaken, asserted as an invariant rather than as two
+    // of the rows above: whatever a future scope value means, "somebody else's" wins.
+    const scopes: DocumentSubjectScope[] = [
+      "single-patient",
+      "multiple-subjects",
+    ];
+    for (const scope of scopes) {
+      expect(attributesToPatient({ stated: "other", scope })).toBe(false);
+    }
+  });
+});
+
 describe("recognizeInstrument", () => {
   it("scores a complete instrument for the chart's own patient", () => {
     // Every item answered with its second printed option.
     const got = recognizeInstrument(
       epdsCandidates(() => 1),
-      "patient"
+      OWN
     );
     expect(got.kind).toBe("scored");
     if (got.kind !== "scored") return;
@@ -136,7 +182,7 @@ describe("recognizeInstrument", () => {
   it("refuses when the document names another subject", () => {
     const got = recognizeInstrument(
       epdsCandidates(() => 0),
-      "other"
+      attr("other")
     );
     expect(got).toMatchObject({
       kind: "refused",
@@ -145,19 +191,46 @@ describe("recognizeInstrument", () => {
     });
   });
 
-  it("refuses when the document names NO subject — silence is not consent", () => {
+  it("scores an unstated subject in a SINGLE-patient document (#2558)", () => {
+    // The ordinary CCD: the patient is established once in the header and the
+    // observations never restate it. There is nobody else in the document, so the
+    // score is this patient's.
     const got = recognizeInstrument(
       epdsCandidates(() => 0),
-      "unstated"
+      attr("unstated", "single-patient")
     );
-    expect(got).toMatchObject({ kind: "refused", why: "subject" });
+    expect(got.kind).toBe("scored");
+  });
+
+  it("still refuses an unstated subject when the document names MORE THAN ONE patient", () => {
+    // The case the strict rule exists for, and the one #2558 deliberately kept: an
+    // unattributable mental-health score in a chart that holds two people would be
+    // filed against a coin flip.
+    const got = recognizeInstrument(
+      epdsCandidates(() => 0),
+      attr("unstated", "multiple-subjects")
+    );
+    expect(got).toMatchObject({
+      kind: "refused",
+      why: "subject",
+      subject: "unstated",
+      scope: "multiple-subjects",
+    });
+  });
+
+  it("refuses a STATED other subject even in a single-patient document", () => {
+    // A positive statement about somebody else is not silence, and no amount of
+    // single-patient-ness makes the mother's EPDS the infant's.
+    expect(
+      recognizeInstrument(
+        epdsCandidates(() => 0),
+        attr("other", "single-patient")
+      )
+    ).toMatchObject({ kind: "refused", why: "subject", subject: "other" });
   });
 
   it("refuses a partly answered instrument instead of banding a short total", () => {
-    const got = recognizeInstrument(
-      epdsCandidates(() => 0).slice(0, 9),
-      "patient"
-    );
+    const got = recognizeInstrument(epdsCandidates(() => 0).slice(0, 9), OWN);
     expect(got).toMatchObject({
       kind: "refused",
       why: "partial",
@@ -169,7 +242,7 @@ describe("recognizeInstrument", () => {
   it("counts an unreadable answer as unanswered, so the instrument refuses", () => {
     const candidates = epdsCandidates(() => 0);
     candidates[4] = { ...candidates[4], answerText: "Declined to answer" };
-    expect(recognizeInstrument(candidates, "patient")).toMatchObject({
+    expect(recognizeInstrument(candidates, OWN)).toMatchObject({
       kind: "refused",
       why: "partial",
       answered: 9,
@@ -183,7 +256,7 @@ describe("recognizeInstrument", () => {
           { name: "Ambulates independently", answerText: "Yes" },
           { name: "Temperature site", answerText: "Oral" },
         ],
-        "patient"
+        OWN
       )
     ).toEqual({ kind: "none" });
   });
@@ -196,14 +269,14 @@ describe("recognizeInstrument", () => {
       ...c,
       name: `${i + 1}. ${c.name}`,
     }));
-    expect(recognizeInstrument(numbered, "patient").kind).toBe("scored");
+    expect(recognizeInstrument(numbered, OWN).kind).toBe("scored");
   });
 
   it("keeps PHQ-9 and EPDS distinct — one score never stands in for the other", () => {
     const phq = instrumentDef("PHQ-9");
     const got = recognizeInstrument(
       phq.items.map((item) => ({ name: item, answerText: "Not at all" })),
-      "patient"
+      OWN
     );
     expect(got).toMatchObject({
       kind: "scored",
@@ -238,7 +311,7 @@ describe("foldInstrumentScores", () => {
   it("replaces the question rows with ONE score under the curated canonical name", () => {
     const folded = foldInstrumentScores(
       epdsRows(() => 0),
-      "patient",
+      OWN,
       "Results"
     );
     expect(folded.drops).toEqual([]);
@@ -264,12 +337,12 @@ describe("foldInstrumentScores", () => {
   it("keys the score on the instrument and the day, not on the total", () => {
     const a = foldInstrumentScores(
       epdsRows(() => 0),
-      "patient",
+      OWN,
       "Results"
     );
     const b = foldInstrumentScores(
       epdsRows(() => 1),
-      "patient",
+      OWN,
       "Results"
     );
     expect(a.records[0].external_id).toBe(b.records[0].external_id);
@@ -277,7 +350,7 @@ describe("foldInstrumentScores", () => {
 
   it("leaves the rows alone and reports the SCORE as a reasoned drop when refused", () => {
     const rows = epdsRows(() => 0);
-    const folded = foldInstrumentScores(rows, "other", "Results");
+    const folded = foldInstrumentScores(rows, attr("other"), "Results");
     expect(folded.records).toHaveLength(rows.length);
     expect(folded.records.every((r) => r.category === "assessment")).toBe(true);
     expect(folded.drops).toEqual([
@@ -293,7 +366,7 @@ describe("foldInstrumentScores", () => {
   it("reports a partly answered instrument under its own reason", () => {
     const folded = foldInstrumentScores(
       epdsRows(() => 0).slice(0, 9),
-      "patient",
+      OWN,
       "Functional Status"
     );
     expect(folded.drops[0]).toMatchObject({
@@ -316,7 +389,7 @@ describe("foldInstrumentScores", () => {
     };
     const folded = foldInstrumentScores(
       [lab, ...epdsRows(() => 0)],
-      "patient",
+      OWN,
       "Results"
     );
     expect(folded.records).toContainEqual(lab);

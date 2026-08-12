@@ -24,7 +24,11 @@ import type { CanonicalResultDefinition } from "@/lib/types";
 // A full-coverage fixture: every pillar present.
 const FULL_INPUTS: PillarInputs = {
   vo2: { percentile: { percentile: 62, clamped: null }, fitnessAge: null },
-  strength: { level: "advanced", lift: "Back Squat" },
+  strength: {
+    level: "advanced",
+    lift: "Back Squat",
+    exercise: "Barbell Back Squat",
+  },
   sleep: { sri: 84 },
   bioAge: { delta: bioAgeDelta(45, 50) },
   optimal: bareOptimalHitRate(31, 38),
@@ -74,19 +78,45 @@ describe("longevitySections is a pure regrouping of the widget's pillar model", 
 });
 
 describe("widget deep-links land on the page section that expands the pillar", () => {
-  it("every pillar href is /longevity#<its section anchor> (except sleep → /sleep, #1066)", () => {
+  it("every pillar href is /longevity#<its section anchor> (except sleep → /sleep, #1066; strength → its lift, #1921)", () => {
     const pillars = buildPillars(FULL_INPUTS);
     expect(pillars.length).toBeGreaterThan(0);
     for (const p of pillars) {
       // Sleep regularity's expanded home moved to the dedicated /sleep page
-      // (#1066); every other pillar still deep-links to its Longevity section.
+      // (#1066); the strength pillar's destination is DATA — the Analyze panel for
+      // the very lift it names (#1921), which no static key→route map can express.
+      // Every other pillar still deep-links to its Longevity section.
       if (p.key === "sleep-regularity") {
         expect(p.href).toBe("/sleep");
+        expect(p.href).toBe(pillarHref(p.key));
+      } else if (p.key === "strength") {
+        expect(p.href).toBe(
+          "/training?tab=analyze&kind=strength&item=Barbell%20Back%20Squat"
+        );
       } else {
         expect(p.href).toBe(`/longevity#${PILLAR_ANCHOR[p.key]}`);
+        expect(p.href).toBe(pillarHref(p.key));
       }
-      expect(p.href).toBe(pillarHref(p.key));
     }
+  });
+
+  // #1921 — the claim's evidence, not a generic index. The fixture's `lift` is the
+  // STANDARDS row ("Back Squat"); the Analyze panel selects by exact match against the
+  // lifter's own history, so linking on the base name would land on whatever lift
+  // happened to be first. The href must carry the LOGGED name.
+  it("the strength pillar links on the logged exercise, not the standards base name", () => {
+    const [pillar] = buildPillars({
+      strength: {
+        level: "advanced",
+        lift: "Bench Press",
+        exercise: "Barbell Bench Press",
+      },
+    });
+    expect(pillar.detail).toContain("Bench Press");
+    expect(pillar.href).toBe(
+      "/training?tab=analyze&kind=strength&item=Barbell%20Bench%20Press"
+    );
+    expect(pillar.href).not.toBe(pillarHref("strength"));
   });
 
   it("every anchor a pillar points at is a section longevitySections can emit", () => {

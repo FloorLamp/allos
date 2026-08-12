@@ -48,6 +48,8 @@ import {
   type NutrientPosition,
 } from "../nutrition-day";
 import { shortfallFoodPhrase } from "../nutrition-food-suggestion";
+import { foodLimitDigestHead } from "../food-limit-note";
+import { getFoodLimitDayObservations } from "../queries/food-limit";
 import { groupUpcoming } from "../upcoming";
 import { integrationToItem, isEscalatingIntegration } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
@@ -544,6 +546,14 @@ export function gatherDigestInput(
   // day, and today's eating is the food nudge's question, not this one.
   const nutrition = gatherDigestNutrition(profileId, yd, demoted);
 
+  // Yesterday's log × the profile's live curated food limits (#2377), on the same `yd`.
+  // Gathered here and GATED IN `buildDigest`, which appends it only to a Yesterday
+  // section that already has content: the ride-along rule belongs with the assembly that
+  // knows whether the section exists, so this line can never be why a message is sent.
+  const foodLimitHead = foodLimitDigestHead(
+    getFoodLimitDayObservations(profileId, yd)
+  );
+
   return {
     profileName,
     openEpisodeLine,
@@ -613,6 +623,7 @@ export function gatherDigestInput(
     // Null on a day that met its targets, a day with nothing logged, and a profile whose
     // target does not resolve — three different facts, all of them silence.
     nutritionLine: nutrition.line,
+    foodLimitHead,
     newFlaggedBiomarkers,
     newDocuments,
     // What else changed in the last 24 hours (#1713), from the ONE shared collector the

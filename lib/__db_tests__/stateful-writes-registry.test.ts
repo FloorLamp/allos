@@ -52,6 +52,10 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "intake_items",
       // #2132: the open-course ⇔ active invariant's single write core.
       "medication_courses",
+      // #2135: end_date's three-state machine (ongoing / resumable / expired) — the
+      // pure eligibility was already shared with the control; the WRITE half is now a
+      // core with an in-transaction re-read and typed refusals.
+      "protocols",
       // #2140: the single-active training routine — activation's sibling-deactivate
       // and the derived-target replacement live in one core.
       "routines",

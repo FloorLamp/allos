@@ -116,6 +116,13 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     why: "#2131: `retired` decides whether a dose's child ledger rows are still SCHEDULED — the child table (intake_item_logs) was gated (#2074) while this parent flag was raw SQL in a Server Action with no typed outcome and no reopen. dose-lifecycle.ts owns both transitions: retire-or-delete for removed doses (retire keeps the row precisely because deleting would CASCADE away its taken history) and the guarded un-retire (only a retired dose with no conflicting live slot reopens), each bounding dueness through appended schedule versions (#1973) so neither transition ever re-judges a past day. Column-narrowed: amount/time/window edits on a live dose are ordinary form writes (the edit UPDATE's `retired = 0` guard predicate is allowlisted in the scan).",
   },
   {
+    table: "protocols",
+    columns: ["end_date"],
+    cores: ["lib/protocol-lifecycle.ts"],
+    offerState: "protocolReopenEligibility",
+    why: "#2135: `end_date` is a THREE-state machine — NULL is ongoing, a recent date is resumable, an old one is expired and the honest move is a new run — and the states were already named once in the pure protocolReopenEligibility, which ProtocolControls renders its Resume/Run again offer from. The WRITE half was the gap: end and resume read the row with getProtocol OUTSIDE the writeTx they then wrote in, swapped with a bare `id = ? AND profile_id = ?` UPDATE that could not refuse, and answered in English strings. lib/protocol-lifecycle.ts now owns both transitions on the cycles shape — in-transaction re-read, CAS on the expected prior end date, typed already-ended / already-ongoing / expired / invalid / not-found — and inverts the protocol's SITUATION activation inside the same transaction, because a protocol reading \"ended\" while its situation stays active keeps firing situational supplements for a block the user has stopped. Column-narrowed: name/notes/outcome/equipment/practice-link edits are ordinary last-write-wins form writes, and DELETE is not a state transition (deleteProtocol carries its own side-state under the row-ops rule). The create INSERT, the run-again INSERT and the edit form's absolute window write are allowlisted in the scan with their justifications.",
+  },
+  {
     table: "routines",
     columns: ["active"],
     cores: ["lib/routines.ts"],

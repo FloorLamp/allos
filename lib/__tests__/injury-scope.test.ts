@@ -343,6 +343,100 @@ describe("exercise disclosures name only what actually changed", () => {
     const d = exerciseDisclosures([curl], ["Curl", "Barbell Curl"]);
     expect(d.excluded.length).toBe(1);
   });
+
+  // #2193 — the de-duplication the function always claimed. Its `finer` gate asked only
+  // WHETHER a finer constraint covered the lift and then folded in the labels of EVERY
+  // covering constraint, so an unrelated finer injury re-admitted the region-scoped label
+  // the region line already carried. What is pinned here is the boundary: the region line
+  // that NAMES its injury de-duplicates, the one that does not name it must not.
+  describe("a per-exercise line never repeats what the region line already said", () => {
+    // Active, region-scoped, covering every Chest lift — the one with a blanket line.
+    const shoulder = regionInjuryConstraint({
+      id: 10,
+      label: "right shoulder",
+      status: "active",
+      regions: ["Chest"],
+    });
+    // Unrelated, finer, and happens to also cover Bench Press.
+    const wrist: InjuryConstraint = {
+      ...regionInjuryConstraint({
+        id: 11,
+        label: "left wrist",
+        status: "active",
+        regions: ["Arms"],
+      }),
+      scope: "exercise",
+      exercises: [exerciseHistoryKey("Bench Press")],
+    };
+
+    it("names only the finer injury, while the region line keeps naming the region one", () => {
+      const d = exerciseDisclosures([shoulder, wrist], ["Bench Press"]);
+      expect(d.excluded).toHaveLength(1);
+      expect(d.excluded[0].injuryLabels).toEqual(["left wrist"]);
+      // The shoulder is still disclosed — once, where it was declared.
+      expect(excludedRegionDisclosures([shoulder, wrist])).toEqual([
+        { region: "Chest", injuryLabels: ["right shoulder"] },
+      ]);
+    });
+
+    it("drops the line entirely when the region line is the only thing it would say", () => {
+      // The finer constraint is RECOVERING, so it contributes no label to an excluded
+      // verdict: everything true about Bench Press is already on the card at region level.
+      const easingWrist: InjuryConstraint = { ...wrist, status: "recovering" };
+      const d = exerciseDisclosures([shoulder, easingWrist], ["Bench Press"]);
+      expect(d.excluded).toEqual([]);
+      // …and it is NOT downgraded to a tempered line: the lift is excluded, not eased.
+      expect(d.tempered).toEqual([]);
+    });
+
+    it("keeps a RECOVERING region-scoped label, whose region line names no injury", () => {
+      // "Easing back on Chest — lighter targets while you recover" states neither the
+      // injury nor the fraction, so this per-exercise line is the only place either is
+      // said. De-duplicating it would disclose less, not less twice.
+      const easingShoulder: InjuryConstraint = {
+        ...shoulder,
+        status: "recovering",
+        loadFactor: 0.4,
+      };
+      const easingWrist: InjuryConstraint = {
+        ...wrist,
+        status: "recovering",
+        loadFactor: 0.8,
+      };
+      const d = exerciseDisclosures(
+        [easingShoulder, easingWrist],
+        ["Bench Press"]
+      );
+      expect(d.tempered).toHaveLength(1);
+      expect(d.tempered[0].injuryLabels).toEqual([
+        "right shoulder",
+        "left wrist",
+      ]);
+      // The quoted fraction is the one the engine applies — the tightest across BOTH.
+      expect(d.tempered[0].factor).toBe(0.4);
+      expect(excludedRegionDisclosures([easingShoulder, easingWrist])).toEqual(
+        []
+      );
+    });
+
+    it("still names a finer injury on a lift outside the excluded region", () => {
+      // Nothing about the shoulder reaches Barbell Curl, so the wrist line is untouched.
+      const curlWrist: InjuryConstraint = {
+        ...wrist,
+        exercises: [exerciseHistoryKey("Barbell Curl")],
+      };
+      const d = exerciseDisclosures([shoulder, curlWrist], ["Barbell Curl"]);
+      expect(d.excluded).toHaveLength(1);
+      expect(d.excluded[0].injuryLabels).toEqual(["left wrist"]);
+    });
+
+    it("keeps the laterality limitation of a constraint the line still names", () => {
+      const sidedWrist: InjuryConstraint = { ...wrist, laterality: "left" };
+      const d = exerciseDisclosures([shoulder, sidedWrist], ["Bench Press"]);
+      expect(d.excluded[0].limitations).toHaveLength(1);
+      expect(d.excluded[0].limitations[0]).toContain("left-side");
+    });
+  });
 });
 
 describe("region tempering still works for region-scoped constraints", () => {

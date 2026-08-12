@@ -620,6 +620,41 @@ export function temperedExerciseLabel(d: TemperedExerciseDisclosure): string {
   )}`;
 }
 
+// WHAT MAKES TWO DISCLOSURES ONE DISCLOSURE (#2193). Not "the same injury appears twice"
+// — the same injury legitimately shapes several lines. It is: this card ALREADY NAMES this
+// constraint as the reason this exercise is off the table. That is true of exactly one
+// thing, and it is checkable in the model rather than in the copy:
+// `excludedRegionDisclosures` carries `injuryLabels`, and an ACTIVE REGION-scoped
+// constraint that covers an exercise necessarily has a line there — coverage at region
+// scope MEANS `regionForExercise(exercise) ∈ c.regions`, and that region is emitted with
+// this constraint's label. "Avoiding Bench Press (shoulder injury)" under "Avoiding Chest
+// (shoulder injury)" adds no fact; it is strictly entailed by the line above it.
+//
+// Nothing else qualifies, and the boundary matters more than the rule. The tempered-region
+// line names NEITHER the injury nor the fraction ("Easing back on Chest — lighter targets
+// while you recover"), so a RECOVERING region-scoped constraint is named in the
+// per-exercise line or nowhere; suppressing it there would disclose less, not less twice.
+// So the filter is deliberately narrow: an ACTIVE region-scoped constraint contributes
+// nothing to a per-exercise line, and every other constraint contributes exactly what it
+// always did.
+//
+// A suppressed constraint takes its LATERALITY LIMITATION with it, decided rather than
+// overlooked. That note is about honoring a side on a lift the recommendation might still
+// offer — and this constraint has excluded the lift's whole region, so there is no
+// suggestion left for it to qualify. It was never a per-exercise disclosure by design
+// either: it surfaced only for the lifts an unrelated finer constraint happened to also
+// cover, and stayed silent for every other lift in the same excluded region.
+function namedByItsRegionLine(
+  c: InjuryConstraint,
+  exerciseName: string
+): boolean {
+  return (
+    c.scope === "region" &&
+    c.status === "active" &&
+    constraintCoversExercise(c, exerciseName)
+  );
+}
+
 // The exclusion / tempering disclosures for a set of CANDIDATE exercises — the lifts a
 // recommendation considered. Only exercises an active constraint actually removed appear
 // as exclusions, so an unrelated lift is never listed as "avoided".
@@ -637,26 +672,42 @@ export function exerciseDisclosures(
     const key = exerciseHistoryKey(exercise);
     if (seen.has(key)) continue;
     seen.add(key);
-    const v = exerciseInjuryVerdict(constraints, exercise);
+    const covering = constraints.filter((c) =>
+      constraintCoversExercise(c, exercise)
+    );
     // Region-scoped constraints keep their existing region-level disclosure; listing them
     // again per exercise would double every line on the card.
-    const finer = constraints.some(
-      (c) => c.scope !== "region" && constraintCoversExercise(c, exercise)
+    if (!covering.some((c) => c.scope !== "region")) continue;
+    // The VERDICT stays derived from every covering constraint: it is what the engine
+    // actually did to this lift, and the kind and the factor must say so. Re-deriving it
+    // from the finer constraints alone would offer "easing back to 60%" for a lift an
+    // active region exclusion had already taken away, and would quote a fraction the
+    // tightest (possibly region-scoped) preference did not set. Only the ATTRIBUTION is
+    // filtered — which constraints this line NAMES.
+    const v = exerciseInjuryVerdict(constraints, exercise);
+    const attributed = covering.filter(
+      (c) => !namedByItsRegionLine(c, exercise)
     );
-    if (!finer) continue;
+    const attributedLabels = new Set(attributed.map((c) => c.label));
+    const injuryLabels = v.labels.filter((l) => attributedLabels.has(l));
+    // Nothing left to attribute ⇒ everything this line would say about the lift is
+    // already on the card at region level, and the finer constraint's own effect is
+    // subsumed by that exclusion. The line would be the pure double the rule forbids.
+    if (injuryLabels.length === 0) continue;
+    const limitations: string[] = [];
+    for (const c of attributed) {
+      const note = lateralityLimitation(c, exercise);
+      if (note && !limitations.includes(note)) limitations.push(note);
+    }
     if (v.kind === "excluded")
-      excluded.push({
-        exercise,
-        injuryLabels: v.labels,
-        limitations: v.limitations,
-      });
+      excluded.push({ exercise, injuryLabels, limitations });
     else if (v.kind === "tempered")
       tempered.push({
         exercise,
-        injuryLabels: v.labels,
+        injuryLabels,
         factor: v.factor,
         fallback: v.fallback,
-        limitations: v.limitations,
+        limitations,
       });
   }
   return { excluded, tempered };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { IllnessTimelineEvent } from "@/lib/illness-episode-format";
 import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import {
+  appointmentTimelineLine,
   groupIllnessTimelineEvents,
   illnessCareTimelineEvents,
 } from "@/lib/illness-timeline-view";
@@ -21,6 +22,7 @@ const care: EpisodeInRangeEvents = {
       date: "2026-07-16",
       timeOfDay: "10:30",
       title: "Follow-up",
+      status: "scheduled",
     },
   ],
   courses: [
@@ -37,6 +39,39 @@ const care: EpisodeInRangeEvents = {
   total: 4,
 };
 
+// #2136: the line an appointment contributes names its STATUS. The row is not hidden
+// — a cancelled visit inside an illness window is real history, and often the reason a
+// gap in care exists — but it may not read as care that happened.
+describe("appointmentTimelineLine (#2136)", () => {
+  it("labels a cancelled appointment as cancelled, titled or not", () => {
+    expect(
+      appointmentTimelineLine({ title: "Follow-up", status: "cancelled" })
+    ).toEqual({ label: "Appointment cancelled", detail: "Follow-up" });
+    expect(
+      appointmentTimelineLine({ title: null, status: "cancelled" })
+    ).toEqual({
+      label: "Appointment cancelled",
+      detail: "This visit did not happen",
+    });
+  });
+
+  it("never says 'scheduled' about a visit that is not scheduled", () => {
+    // The exact defect: the fallback detail read "Appointment scheduled" for every
+    // status, so a cancelled booking asserted a booking that stood.
+    for (const status of ["completed", "cancelled"] as const) {
+      const line = appointmentTimelineLine({ title: null, status });
+      expect(line.detail).not.toContain("scheduled");
+      expect(line.label).not.toContain("scheduled");
+    }
+  });
+
+  it("leaves a scheduled appointment exactly as it read before", () => {
+    expect(
+      appointmentTimelineLine({ title: null, status: "scheduled" })
+    ).toEqual({ label: "Appointment", detail: "Appointment scheduled" });
+  });
+});
+
 describe("authenticated illness timeline composition", () => {
   it("normalizes care events without adding them to the public assembly", () => {
     expect(illnessCareTimelineEvents(care)).toMatchObject([
@@ -51,6 +86,7 @@ describe("authenticated illness timeline composition", () => {
         kind: "appointment",
         date: "2026-07-16",
         time: "10:30",
+        label: "Appointment",
         detail: "Follow-up",
         href: "/appointments",
       },

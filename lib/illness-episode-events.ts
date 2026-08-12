@@ -11,6 +11,7 @@
 // there is no second range engine. profileId-first, auth-blind, every statement scoped.
 
 import { db } from "./db";
+import type { AppointmentStatus } from "./types";
 
 export interface EpisodeEncounterRef {
   id: number;
@@ -23,6 +24,9 @@ export interface EpisodeAppointmentRef {
   date: string; // YYYY-MM-DD (the appointments.date column, #2234)
   timeOfDay: string | null; // "HH:MM" wall clock; null for a day-only booking
   title: string | null;
+  // The row's lifecycle state (#2136). Carried, never filtered on here: a cancelled
+  // visit is part of what happened during an illness — see the header.
+  status: AppointmentStatus;
 }
 export interface EpisodeCourseRef {
   id: number;
@@ -71,9 +75,23 @@ export function getEpisodeInRangeEvents(
     )
     .all(profileId, from, to) as EpisodeEncounterRef[];
 
+  // A CANCELLED appointment is SELECTED, and rendered as cancelled (#2136).
+  //
+  // The two other consumers of this table exclude it, correctly and for reasons that
+  // do not transfer. Upcoming (getScheduledAppointments) asks "what is still ahead",
+  // and a cancelled booking is not. The portal post-visit nudge asks "did a visit
+  // happen whose records we should fetch", and nothing was published because nothing
+  // happened. This gather asks a THIRD question — what does the record of this illness
+  // consist of — and there the cancelled visit is a real event with real meaning: the
+  // appointment on day 4 that fell through is why the fever ran to day 9 unseen.
+  //
+  // What was wrong was never that the row appeared, but that it appeared UNLABELLED,
+  // as "Appointment · «title» scheduled" — care the timeline asserted and the user
+  // did not receive. So the fix is the claim, not the hiding (the hasNoCurrentReading
+  // posture, lib/freshness.ts): the status rides along and the view names it.
   const appointments = db
     .prepare(
-      `SELECT id, date, time_of_day AS timeOfDay, title FROM appointments
+      `SELECT id, date, time_of_day AS timeOfDay, title, status FROM appointments
         WHERE profile_id = ? AND date >= ? AND date <= ?
         ORDER BY date ASC, time_of_day ASC, id ASC`
     )

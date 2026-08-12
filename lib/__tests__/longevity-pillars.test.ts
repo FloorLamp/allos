@@ -113,7 +113,11 @@ describe("buildPillars availability", () => {
 
   it("includes the strength pillar when a standing is present", () => {
     const pillars = buildPillars({
-      strength: { level: "advanced", lift: "Back Squat" },
+      strength: {
+        level: "advanced",
+        lift: "Back Squat",
+        exercise: "Barbell Back Squat",
+      },
     });
     expect(pillars.map((p) => p.key)).toEqual(["strength"]);
     expect(pillars[0].detail).toContain("Back Squat");
@@ -155,7 +159,11 @@ describe("buildPillars value equals its source computation (#224)", () => {
 
   it("strength pillar value is the label of the source level", () => {
     const [pillar] = buildPillars({
-      strength: { level: "intermediate", lift: "Deadlift" },
+      strength: {
+        level: "intermediate",
+        lift: "Deadlift",
+        exercise: "Deadlift",
+      },
     });
     expect(pillar.value).toBe(strengthLevelLabel("intermediate"));
     expect(pillar.tone).toBe("warn"); // intermediate

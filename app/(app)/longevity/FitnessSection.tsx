@@ -48,7 +48,15 @@ export default async function FitnessSection({
 
       <div className="grid gap-2 sm:grid-cols-2">
         {section.pillars.map((p) => (
-          <PillarStat key={p.key} pillar={p} />
+          <PillarStat
+            key={p.key}
+            pillar={p}
+            // #1921 — the strength pillar names the lift it judges you on, and the
+            // evidence for that claim (the level badge, the standards table highlighted
+            // at your row) is on the Analyze panel for THAT lift, not in this section.
+            // The vo2max pillar beside it IS expanded here, so it stays a plain stat.
+            linkLabel={p.key === "strength" ? "See the standards" : undefined}
+          />
         ))}
       </div>
 

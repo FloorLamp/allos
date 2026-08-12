@@ -308,8 +308,18 @@ jobs:
         # shard 7 has run 289s of work against a 222s mean in every run sampled
         # (289/240/238 vs a 178s fastest). The critical path is the MAX, not the
         # mean, and raising N splits that heavy cluster across more runners — 342s
-        # observed at eight, ~249s predicted at twelve, a bigger win than
-        # duration-balancing the eight (~278s) and with no manifest to maintain.
+        # observed at eight, ~249s predicted at twelve.
+        #
+        # Twelve did NOT dissolve that cluster, it only diluted it: measured over
+        # three all-green 12-way runs, shards 7 and 10 are still the two slowest
+        # EVERY time (182/182, 197/185, 183/194) at 1.22–1.32x the mean, because
+        # the skew is a property of the split rather than of N. Test count is
+        # simply the wrong weight — patient-portals-setup is 17 tests / 54s,
+        # food-log is 21 tests / 13s, and profile-switch-toasts is ONE test that
+        # takes 21s. So the shards now plan themselves by measured DURATION
+        # (scripts/e2e-shard-plan.ts), which is the "manifest to maintain" this
+        # comment previously traded away — see that script for why the manifest
+        # rots safely.
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
@@ -339,9 +349,33 @@ jobs:
       - uses: ./.github/actions/e2e-setup
         if: steps.changes.outputs.code == 'true'
 
+      # The plan is a pure function of (spec list, e2e/spec-durations.json, shard
+      # count), so every shard computes the SAME twelve buckets and takes its own
+      # — no planning job, nothing serialized ahead of the matrix, no artifact
+      # passed between runners. It prints its bucket's file list, or
+      # `--shard=N/M` if the manifest is missing, so a deleted manifest degrades
+      # to the old count-based split rather than breaking the command line.
+      #
+      # It EXITS NON-ZERO if the twelve buckets are not an exact partition of the
+      # suite. That is the failure worth being loud about: a spec in no bucket is
+      # run by no shard, and the matrix still goes green.
       - name: E2E (Playwright, shard ${{ matrix.shard }}/${{ strategy.job-total }})
         if: steps.changes.outputs.code == 'true'
-        run: npm run test:e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+        run: |
+          set -euo pipefail
+          # Read into an ARRAY rather than letting the shell split an unquoted
+          # $PLAN: word splitting is bash-only (zsh does not do it), so the
+          # unquoted form runs here and silently passes ONE long argument when a
+          # developer reproduces it locally, and it would be glob-expanded too.
+          # The command substitution is what enforces the plan's exit code —
+          # `set -e` aborts here, whereas piping the script into mapfile would
+          # swallow a non-zero exit and leave ARGS empty.
+          PLAN=$(npx tsx scripts/e2e-shard-plan.ts ${{ matrix.shard }} ${{ strategy.job-total }})
+          # Empty would mean NO file filter, i.e. run the whole suite on every
+          # shard. The planner never emits it; refuse rather than trust that.
+          [ -n "$PLAN" ] || { echo "::error::empty shard plan"; exit 1; }
+          mapfile -t ARGS <<< "$PLAN"
+          npm run test:e2e -- "${ARGS[@]}"
 
       # Flake telemetry (retained). The sharded matrix now runs at zero retries
       # (playwright.config.ts, #1159), so there is no "flaky" status here and this
