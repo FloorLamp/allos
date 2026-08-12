@@ -56,6 +56,10 @@ import {
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
 import DraftRestoreBanner from "./DraftRestoreBanner";
 import { useFormDraft } from "./useFormDraft";
+import {
+  requestUpdateReload,
+  useManualUpdateFallback,
+} from "./update-reload-channel";
 import type { PartEntry } from "@/lib/activity-form-model";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
@@ -285,6 +289,11 @@ export default function ActivityForm({
   // "Finish workout" can collapse it back to the plain form. `restStartKey` bumps
   // on every set check-off to auto-start the rest timer.
   const [liveMode, setLiveMode] = useState(live && !isEdit);
+  // The editor's root element, marked `data-draft-backed` by the draft hook (#2471).
+  const formElRef = useRef<HTMLFormElement>(null);
+  // Whether the automatic update reload has given up on this episode (#2471). The
+  // stale-save banner is that fallback, not the first answer any more.
+  const manualFallback = useManualUpdateFallback();
   const [restStartKey, setRestStartKey] = useState(0);
   // The shared haptic adapter (#1422) — the set-logged tick below goes through it.
   const haptic = useHaptics();
@@ -752,6 +761,13 @@ export default function ActivityForm({
   type ActivityDraft = typeof draftExtra;
   const draft = useFormDraft<ActivityDraft>({
     formKey: "activity",
+    // This editor keeps everything in `extra`, so its <form> is not the captured
+    // element — but its input is durable all the same, and the #1878 registry has to
+    // know that or an automatic update reload would refuse to cross the very editor
+    // #2471 is about (#2471).
+    scopeRef: formElRef,
+    // Carried on the resume pointer so the tab reopens the mode it was in.
+    live: liveMode,
     // Once auto-save has created the row, the draft belongs to THAT row — so a
     // later blank create form can't restore it into a duplicate activity, and
     // reopening the row still offers the edits that never reached the server.
@@ -1007,6 +1023,7 @@ export default function ActivityForm({
 
   return (
     <form
+      ref={formElRef}
       data-testid="activity-form"
       // The form never submits on Enter — the debounced auto-save handles
       // persistence, so a stray Enter (e.g. right after picking from the
@@ -1055,8 +1072,15 @@ export default function ActivityForm({
               every save fails until the tab reloads. Unlike an ordinary failed
               save, retrying cannot help — say so, name the remedy, and make it
               one tap. "Kept on this device" is the draft's promise (#1699), which
-              runs in live mode too for exactly this state. */}
-          {staleBuild && (
+              runs in live mode too for exactly this state.
+
+              Since #2471 the tab normally fixes this itself, so this banner is the
+              RATIONED-FAILURE fallback: it renders only once the registrar has said
+              the automatic attempt is spent (or is refused because work on screen
+              would not survive). Its Reload goes through the same shared path the
+              automatic one does, so a manual tap flushes the draft and leaves the
+              resume marker too. */}
+          {staleBuild && manualFallback && (
             <Notice
               tone="rose"
               icon
@@ -1065,7 +1089,7 @@ export default function ActivityForm({
               action={
                 <button
                   type="button"
-                  onClick={() => window.location.reload()}
+                  onClick={() => void requestUpdateReload()}
                   className="font-medium underline-offset-2 hover:underline"
                   data-testid="stale-save-reload"
                 >

@@ -21,6 +21,7 @@ import {
   type DirtyFormState,
   type TrackedField,
 } from "@/lib/dirty-forms";
+import { markUnrecoverableWork } from "@/lib/offline/unsaved-work";
 
 // The dirty-form registry (issue #1878) — the REACT/DOM half. Every decision it
 // makes lives in the pure lib/dirty-forms.ts; this file owns listeners, the field
@@ -47,6 +48,16 @@ import {
 // PHI DISCIPLINE. Field values are health data. They are read, compared in
 // memory, and dropped; nothing here persists, transmits or logs a value, and the
 // observability marker below exposes COUNTS only, never content.
+//
+// THE SECOND READER (#2471). Once a deploy can reload the tab by itself, the
+// question this registry already answers — "does any form hold unsaved input?" —
+// becomes the safety gate for that reload, with one distinction added: a form inside
+// a `data-draft-backed` subtree keeps its content in IndexedDB (#1699) and survives a
+// reload, while every other dirty form does not. So each dirty record is reported to
+// `lib/offline/unsaved-work.ts` on the UNRECOVERABLE axis unless it is draft-backed,
+// and the automatic reload refuses while any of them exist. The refresh deferral
+// above is unchanged; this is a second consumer of the same computation, not a
+// second computation.
 
 const NON_INPUT_TYPES = new Set([
   "hidden",
@@ -156,6 +167,15 @@ function serverValue(field: TrackableElement): string {
   return field.defaultValue;
 }
 
+/**
+ * Whether this form's unsaved input is durably captured somewhere else — the
+ * `data-draft-backed` marker `components/useFormDraft.ts` stamps on the subtree it
+ * covers. `closest` includes the element itself, so a marked <form> matches.
+ */
+function isDraftBacked(form: HTMLFormElement): boolean {
+  return form.closest("[data-draft-backed]") != null;
+}
+
 export interface DirtyFormApi {
   /**
    * Repaint the current page on the CHROME's initiative — a background sync
@@ -254,10 +274,11 @@ export default function DirtyFormProvider({
     };
 
     const evaluate = (record: FormRecord) => {
-      dispatch({
-        type: recordIsDirty(record) ? "dirty" : "clean",
-        formId: record.id,
-      });
+      const dirty = recordIsDirty(record);
+      // A draft-backed form's content is durable, so it never blocks an automatic
+      // update reload; anything else holding unsaved input does (#2471).
+      markUnrecoverableWork(record.id, dirty && !isDraftBacked(record.form));
+      dispatch({ type: dirty ? "dirty" : "clean", formId: record.id });
     };
 
     // A form that unmounted mid-edit must not hold the app's refreshes hostage
@@ -266,6 +287,7 @@ export default function DirtyFormProvider({
       for (const [form, record] of records.current) {
         if (form.isConnected) continue;
         records.current.delete(form);
+        markUnrecoverableWork(record.id, false);
         dispatch({ type: "clean", formId: record.id });
       }
     };
@@ -274,6 +296,7 @@ export default function DirtyFormProvider({
       const record = records.current.get(form);
       if (!record) return;
       records.current.delete(form);
+      markUnrecoverableWork(record.id, false);
       dispatch({ type: "clean", formId: record.id }, { defer });
     };
 
@@ -337,7 +360,15 @@ export default function DirtyFormProvider({
     document.addEventListener("focusout", onFocusOut, true);
     document.addEventListener("submit", onSubmit, true);
     document.addEventListener("reset", onReset, true);
+    const tracked = records.current;
     return () => {
+      // The provider is going away (a logout, a tree swap). Nothing left here can
+      // ever release these keys, and a permanently-blocked reload gate is worse than
+      // a forgotten one.
+      for (const record of tracked.values()) {
+        markUnrecoverableWork(record.id, false);
+      }
+      tracked.clear();
       document.removeEventListener("focusin", onFocusIn, true);
       document.removeEventListener("input", onEdit, true);
       document.removeEventListener("change", onEdit, true);
@@ -355,6 +386,7 @@ export default function DirtyFormProvider({
       for (const [form, record] of records.current) {
         if (form.isConnected && recordIsDirty(record)) continue;
         records.current.delete(form);
+        markUnrecoverableWork(record.id, false);
         dispatch({ type: "clean", formId: record.id });
       }
     }, OWED_RECHECK_MS);
