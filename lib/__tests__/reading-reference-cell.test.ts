@@ -97,7 +97,7 @@ describe("the age band is named — the #150 safety half", () => {
 });
 
 describe("no canonical entry — the printed string IS the deciding range", () => {
-  it("shows it as before, relabelled", () => {
+  it("shows the printed digits, relabelled and prefixed (#2344)", () => {
     const cell = referenceCell({
       judgment: null,
       printed: "0.5-2.0",
@@ -105,12 +105,29 @@ describe("no canonical entry — the printed string IS the deciding range", () =
     });
     expect(cell.judged).toBe(false);
     expect(cell.label).toBe("Lab reference");
-    expect(cell.text).toBe("0.5-2.0");
+    expect(cell.text).toBe("lab 0.5-2.0");
     // Nothing to hover: the content already IS the lab's string.
     expect(cell.title).toBeNull();
   });
 
+  it("makes the cell self-describing, so the desktop table needs no second channel", () => {
+    // `label` is the CARD-mode label; on the wide table the column header is one
+    // `<th>` shared by every row and says "Reference" whatever the row is. So the
+    // distinction #2315 asked for has to be in the cell's own content, by the same
+    // prefix mechanism the judged case already uses — never by the reader noticing
+    // that a prefix is missing.
+    const judged = cellFor("Apolipoprotein B (ApoB)", "<90");
+    const unjudged = referenceCell({
+      judgment: null,
+      printed: "3.4-8.5",
+      unit: null,
+    });
+    expect(judged.text?.startsWith("ref ")).toBe(true);
+    expect(unjudged.text?.startsWith("lab ")).toBe(true);
+  });
+
   it("shows nothing when the document printed nothing either", () => {
+    // No digits, no prefix: a bare "lab" would name a range that does not exist.
     const cell = referenceCell({ judgment: null, printed: null, unit: null });
     expect(cell.text).toBeNull();
     expect(cell.label).toBe("Lab reference");

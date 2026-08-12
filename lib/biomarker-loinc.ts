@@ -114,6 +114,10 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "4549-2": "Hemoglobin A1c", // HbA1c in Blood by Electrophoresis (%)
   "20448-7": "Insulin", // Insulin [Units/volume] in Serum/Plasma (uIU/mL) — the
   // arbitrary-units form matching the canonical uIU/mL, NOT the molar pmol/L code.
+  // The code carries no fasting frame, so it lands on the unqualified entry (#2371).
+  "14771-0": "Insulin, Fasting", // Insulin [Units/volume] in Serum/Plasma --12 hours
+  // fasting (uIU/mL). The frame is IN the code, so a document coding this one states
+  // it and the reading lands on the entry that carries the fasting band.
   "1986-9": "C-Peptide", // C peptide [Mass/volume] in Serum/Plasma (ng/mL)
 
   // ── Thyroid ─────────────────────────────────────────────────────────────────

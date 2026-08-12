@@ -662,7 +662,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "Insulin, Fasting",
-    canonical: "Insulin",
+    canonical: "Insulin, Fasting",
     unit: "uIU/mL",
     ref: "<18.4",
     values: [9.5, 8.2, 7.1, 6.0, 5.2, 4.6],

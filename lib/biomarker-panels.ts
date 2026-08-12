@@ -230,6 +230,7 @@ export const BIOMARKER_PANELS: Record<
     "Glucose, Fasting",
     "Hemoglobin A1c",
     "Insulin",
+    "Insulin, Fasting",
     "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
     "C-Peptide",
     "Glucose, Gestational Screen (50 g)",
