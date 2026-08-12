@@ -1267,12 +1267,25 @@ export function buildRecap(input: RecapInput): Recap {
   // week empty — skipping its notification and showing the card's "log a workout or a
   // weigh-in" nudge — was the same training-shaped assumption that left food off the
   // line set in the first place.
+  //
+  // AND THE EVIDENCE HAS TO BE THE ONE THIS SCALE ACTUALLY GATHERS (#2397). The `food`
+  // line is week-only, so at month scale that clause is null by construction and a
+  // profile that logged its eating every day for a month was still called empty — the
+  // #2396 assumption, reintroduced one scale up by a declaration it could not see. The
+  // period's habits are the month's own food evidence, so they answer the same question
+  // the weekly coverage figure answers at week scale.
+  //
+  // TARGET VERDICTS AND CAPS ARE DELIBERATELY NOT EVIDENCE HERE. A period with nothing
+  // in it is one where "0 of 2 targets met" would be the entire message — a send whose
+  // only content is a failure, on a week the person may have spent ill, travelling or
+  // deliberately resting. The verdict is a yardstick for news, never the news.
   const isEmpty =
     illnessDays === 0 &&
     workoutCount === 0 &&
     (input.adherence == null || input.adherence.due === 0) &&
     input.weights.length === 0 &&
-    (food == null || food.daysLogged === 0);
+    (food == null || food.daysLogged === 0) &&
+    foodHabits.length === 0;
 
   // Headline: the two facts most worth leading with, else a quiet fallback. It obeys
   // the same declaration the lines do — a scale that does not speak the workout COUNT
