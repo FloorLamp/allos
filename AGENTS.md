@@ -578,17 +578,38 @@ exposing paths, versions, or health data. Keep status composition in
 
 A deploy leaves open tabs on a build the server no longer serves. The service
 worker installs and **waits** rather than taking over, one merged pending state
-raises one "Update ready" bar, only the tab that tapped ever reloads, and a
+answers the whole question, only the tab that asked ever reloads, and a
 waiting worker for the build the page already runs — found waiting at load, or
 installed by the page's own registration just after it — is consumed silently
 instead of re-offered. A tab that navigates while still stale hits a deleted chunk; the
 top-level error boundary recognises that signature and hard-reloads **once**,
 under a rationed `sessionStorage` guard, before rendering any card. A tab that
 keeps SAVING while stale fails every Server Action (the ids are build-keyed);
-`isStaleActionError` classifies that signature, `shouldQueueOffline` treats it
-like a dead connection so quick-log taps queue and replay through the
-build-stable replay route, and the activity editor keeps its local draft (live
-mode included) and banners the reload instead of erroring in place.
+`isStaleActionError` classifies that signature, and `shouldQueueOffline` treats
+it like a dead connection so quick-log taps queue and replay through the
+build-stable replay route.
+
+Since #2471 the tab does not ASK about any of that — it **takes** the deploy at
+the first moment it can prove is safe, and says so afterwards. `autoReloadPlan`
+is that proof and its ORDER is the safety argument: ration spent → hold; work
+with no durable copy on the page → hold; a form submit still settling → wait;
+hidden → reload; input-quiet (pointer/key/wheel/touch/scroll, watched at the
+DOCUMENT, not just inside forms) → reload, else wait. `wait` and `hold` are
+different answers because only `hold` may render a bar; a bar during a
+two-second scroll pause would be the ask-before gate this removed. The reload is
+LOSSLESS BY SEQUENCE, never by hope: every draft is flushed and settled, then the
+one-shot resume pointer and toast marker are written, then the ration is spent,
+and only then the existing machinery reload runs — any step that throws stops it
+and the old banner renders. `useFormDraft` applies the draft with no banner
+under that pointer and only under it (`shouldAutoApplyDraft`); everywhere else
+the never-apply-without-a-tap rule stands. The manual affordances survive ONLY as
+the rationed-failure fallback and call the same routine, so even a manual tap
+resumes. The refusal is the feature: a draft-backed form is recoverable, and
+anything else holding unsaved input (the #1878 registry's `markUnrecoverableWork`
+axis) is not, so settings cards, record forms and uploads keep today's behaviour
+rather than being reloaded over. Rations compose but never refill each other —
+the worst case of a broken deploy is bounded by the SUM of this ration and
+`global-error`'s.
 
 DETECTING a deploy and RESOLVING one are different jobs, and only one thing can
 do the first from an already-open tab: the `/api/version` sha read. `public/sw.js`

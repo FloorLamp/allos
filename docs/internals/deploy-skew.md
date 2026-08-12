@@ -3,19 +3,26 @@
 Status: shipped
 
 A deploy leaves open tabs running a build the server no longer serves. This is the
-whole of what the app does about that: how it notices, how it offers, how a refresh
-resolves it, and what happens to the tab that navigates while still stale.
+whole of what the app does about that: how it notices, how it **takes** the deploy on
+its own, what it refuses to take it over, how a refresh resolves it, and what happens
+to the tab that navigates or saves while still stale.
 
 The decisions are pure and live in `lib/sw-update.ts` (plus `lib/theme.ts` for the
 one colour question). The wiring is `components/ServiceWorkerRegister.tsx`,
-`components/useDeployedVersion.ts`, `app/global-error.tsx`, and `public/sw.js`.
+`components/useAutoUpdateReload.ts`, `components/useDeployedVersion.ts`,
+`components/update-reload-channel.ts`, `components/resume-continuation.ts`,
+`app/global-error.tsx`, and `public/sw.js`.
 
-## The posture: wait, then offer (#1700)
+## The posture: wait, then take it at the first safe moment (#1700 → #2471)
 
 A new worker installs and **waits**. Open clients keep running the build they loaded
 and keep the shell cache that build was compiled against. Nothing is taken over
-mid-form. The page raises one calm, dismissible "Update ready" bar, and the reload
-happens on the user's tap.
+mid-form — that half of #1700 is permanent, and everything below is built on it.
+
+What changed in #2471 is who schedules the reload. The bar used to ask; the tab now
+converges by itself at the first moment it can PROVE is safe, and says so afterwards.
+The bar survives only as the rationed-failure fallback. See
+[the tab takes the deploy itself](#the-tab-takes-the-deploy-itself-2471).
 
 Two signals, **one** pending state (#1795): a waiting worker, and the `/api/version`
 sha read. `resolveUpdateState()` merges them, so one deploy produces one notice.
@@ -34,6 +41,168 @@ possibly-stranded navigation with one dispatched under the new controller; it
 cannot loop, because `controllerchange` fires once per activation and a committed
 reload destroys the document that asked. The reloaded-once flag still guards the
 fallback timer itself.
+
+## The tab takes the deploy itself (#2471)
+
+Until this issue a deploy asked before it did anything: a bar, a tap, a reload; and
+under a dirty activity editor, four taps to get back where you already were (reload,
+navigate back, find the draft banner, Resume). The owner's ruling is that the app
+should schedule that, because the user is not better placed to. **The whole licence
+for taking that decision over is that "safe" became a derived property rather than a
+guess**, so the refusals below are the feature, not caveats on it.
+
+### The two triggers
+
+- **A — a save failed stale.** `isStaleActionError` on an autosave; the editor reports
+  it through `components/update-reload-channel.ts` and the registrar reads it.
+  Deliberately **independent of the detector**: it fires seconds after the deploy,
+  from the failure itself, so recovery still works in a tab whose `/api/version` poll
+  has latched off. That is #2329's lesson applied forward, and #2447's failure mode
+  answered structurally rather than by trusting the poller.
+- **B — the build is pending.** `resolveUpdateState().pending`, narrowed to
+  `plan === "offer"`. This is the only trigger that can reach a form which never
+  ATTEMPTS a save (an activity with a set missing its reps), and a clean tab with no
+  editor open at all.
+
+### The safe moment
+
+`autoReloadPlan()` (`lib/sw-update.ts`) is the whole decision, and its ORDER is the
+safety argument:
+
+| in order                          | answer                                |
+| --------------------------------- | ------------------------------------- |
+| no trigger                        | `none`                                |
+| ration spent for this target      | `hold` — render the manual affordance |
+| work with no durable copy on page | `hold` — the refusal, below           |
+| a form submit still settling      | `wait`                                |
+| `document.hidden`                 | `reload`                              |
+| input-quiet for `INPUT_QUIET_MS`  | `reload`, else `wait`                 |
+
+`wait` and `hold` are different answers because **only `hold` may raise a bar**. A bar
+that appeared during a two-second scroll pause would be the ask-before consent gate
+this issue removes. A tab that never goes quiet simply stays on the old build; #1906
+already covers the stale navigation while it waits, and trigger A covers the stale
+save.
+
+Input is watched at the DOCUMENT, in the capture phase, for pointer/key/wheel/touch/
+scroll — not "input inside a form". A reload mid-scroll, mid-drag or mid-picker is the
+disruption the bar was protecting against just as much as one mid-typing, and none of
+those touch a field. A `submit` anywhere starts a write whose completion nothing here
+can observe, so it settles for `SUBMIT_SETTLE_MS` first — even in a hidden tab, because
+safety outranks the hidden fast path. That listener is document-level for the same
+completeness reason #1878 gives: every form in the app, present and future, with no
+per-form wiring to forget.
+
+### What it refuses, and why that is the honest shape
+
+Two registries report dirtiness and they mean different things:
+
+- a **draft-backed** form (`components/useFormDraft.ts`) holds its content in
+  IndexedDB. A reload over it is lossless once the debounce has been flushed — which
+  is a step in the reload SEQUENCE, not an input to the decision.
+- **any other form holding unsaved input** — reported by the #1878 dirty-form
+  registry, which already sees every `<form>` in the app — has no durable copy at all.
+  `markUnrecoverableWork` is that axis, and `hold` is the answer.
+
+So this ships as a **partial, and deliberately**: a settings card mid-edit, a record
+form mid-composition, an in-flight upload — none of those auto-reload, and none of
+them need to, because what they fall back to is precisely the pre-#2471 behaviour. A
+form is recognised as draft-backed by the `data-draft-backed` marker `useFormDraft`
+stamps on the subtree it covers (`scopeRef` where the state lives in `extra` rather
+than in named fields, as in the activity editor).
+
+The other named refusal is in `ActivityEditorProvider`: a marker naming a STORED
+activity row is consumed but not acted on, because the provider holds the live
+session's edit data and nothing else. That row's draft is untouched and still offered
+the moment the user opens it.
+
+### The sequence, which is fixed
+
+1. the plan says `reload`;
+2. **every recoverable draft is flushed and settled** (`captureUnsavedWork`), never a
+   debounce still in flight;
+3. the resume marker and the toast marker are written;
+4. the ration is spent, recorded BEFORE the attempt, exactly as the crash path records
+   its own;
+5. the reload goes through the registrar's existing path — `requestedRef`,
+   `reloadPlanFor`, the `SW_RELOAD_FALLBACK_MS` timer — so the tab lands on the waiting
+   build and the #1806 only-the-asking-tab rule still holds.
+
+Any step that throws or refuses stops the sequence: nothing reloads, the manual
+affordance renders. **An automatic reload that can drop a keystroke is worse than the
+four taps it replaces**, so losslessness is the precondition and not the goal.
+
+The manual affordances that survive — the bar, and the editor's stale-save banner —
+call the SAME routine (`requestUpdateReload`). #2155 establishes that a second
+machinery reload can legitimately follow the first, and a marker written only at one
+call site would strand the editor the other one reloaded.
+
+### Rations compose
+
+Two automatic reloads now exist in the app, under two `sessionStorage` keys with the
+same guard shape: this one (`AUTO_RELOAD_KEY`) and #1906's crash recovery
+(`SKEW_RECOVERY_KEY`). Neither clears nor refills the other, and neither is cleared by
+a page that loads successfully, so the worst case of a genuinely broken deploy is
+their SUM — two automatic reloads, then the banner, then nothing. That bound is
+asserted directly, as a 25-pass simulation of the combined case, in
+`lib/__tests__/auto-reload.test.ts`.
+
+This ration is **per target build**, and specifically per the SET of targets attempted
+in the window. Per-target is what makes a flapping `/api/version` harmless: two
+servers mid-rolling-deploy answering A, B, A, B would otherwise look like four fresh
+episodes to a guard that remembers only the last target. `AUTO_RELOAD_MAX_TARGETS`
+caps the window total so three servers cannot do the same thing more slowly.
+
+### The continuation, and the one argued exception
+
+Immediately before any update-machinery reload, a one-shot `sessionStorage` marker
+(`RESUME_EDITOR_KEY`) records `{ formKey, recordId, live, at }` — **a pointer only**.
+No field content ever leaves IndexedDB; the PHI rule in `lib/offline/drafts.ts`
+stands. sessionStorage is deliberate: per-tab, so only the tab that lost its build
+reopens its editor, and crash-scoped.
+
+`components/resume-continuation.ts` consumes it exactly once per document — remove on
+read, before anything acts on it, so no later reload can replay it — and serves the
+parsed value to its two readers: `ActivityEditorProvider`, which reopens the editor
+(live mode through the existing `resumeLive()` presence path), and `useFormDraft`,
+which applies the draft **without a banner**.
+
+That auto-apply is the one argued exception to never-apply-without-a-tap, and every
+leg of `shouldAutoApplyDraft` is a way of checking the tap really happened: the marker
+names this exact form and record, the marker and the draft are both young (minutes,
+not the draft's 7-day TTL), and `draftConflictsWithInput` is clean. Any leg failing
+falls back to today's offer banner. An organic revisit — another tab, the next day, no
+marker — still gets the offer, which is what `e2e/form-drafts.spec.ts` pins,
+unchanged.
+
+**Restore never forces a save.** After the resume the autosave re-enters its normal
+contract: a valid dirty form saves on the next debounce, an invalid one sits restored
+and waits. The explicit-submission forms (`useFormDraft`'s other five) get the same
+restore and no write at all — their submit is still the user's.
+
+### The notice inverts
+
+A second one-shot marker (`UPDATE_TAKEN_KEY`, `{ sha, commitMessage }`) is written
+before the reload and consumed on the next healthy boot into a toast — "The app has
+updated", with the commit message when the server named one. Consumption IS the
+dedupe, so one deploy still gets one notice (#1795/#1806): a second machinery reload
+for the same build, a manual refresh afterwards, or a same-build waiting worker
+consumed silently (#2120, which writes no marker at all) can none of them toast twice.
+
+It is rendered by `components/UpdateTakenToast.tsx`, headless, INSIDE the root
+`ToastProvider` — the registrar sits above it and cannot call `useToast()`. It is a
+**rendered aggregate** in the attention doctrine's taxonomy, not a send: it reports
+something that already happened to this tab, asks for nothing, and is deliberately
+routed through the app's one toast system rather than anything in `lib/notifications/`.
+
+### The crash path stays ignorant of all this
+
+`app/global-error.tsx` replaces the root layout, so none of these components mount
+there: the resume and toast markers are simply not consumed on a crash and survive to
+the next healthy boot, which is the intended behaviour. Its reads of
+`UPDATE_PENDING_KEY` and `SKEW_RECOVERY_KEY` are untouched, and both new markers are
+parsed as defensively as `parseSkewGuard` — malformed means removed and ignored, never
+a throw.
 
 ## Detection and resolution are different jobs (#2329)
 
@@ -270,10 +439,15 @@ above. Two consumers:
   deploy re-keys — a queued tap lands from the stale tab itself (the sync/flush
   machinery) or from the reloaded one.
 - **The activity auto-save** (`components/activity-form/useActivityAutosave.ts`)
-  reports `staleBuild` — sticky across failures, cleared by a success — and the
-  editor renders a banner naming the cause and the remedy, with the reload one
-  tap away. The unmount toast says the same instead of "reopen the activity",
-  which would fail identically.
+  reports `staleBuild` — sticky across failures, cleared by a success. Since #2471
+  that report is a TRIGGER before it is a message: it goes to
+  `components/update-reload-channel.ts`, the tab flushes the draft, leaves a
+  continuation pointer and reloads itself, and the editor comes back with the edits
+  applied and no taps at all. The banner survives as the rationed-failure fallback —
+  it renders only once the registrar publishes that the automatic attempt is spent (or
+  is being refused) — and its Reload goes through the same shared routine, so even a
+  manual tap resumes. The unmount toast says the same instead of "reopen the
+  activity", which would fail identically.
 
 The banner can promise "kept on this device" because the local draft (#1699) now
 runs in **live mode** too. The #451 inertia — "a live session is server-backed,
@@ -284,6 +458,13 @@ form already had: while saves land, the draft is dropped the moment the server
 copy is current, so it only ever outlives a save that failed.
 
 ## Testing
+
+Pure (`lib/__tests__/auto-reload.test.ts`): the #2471 half — every leg of
+`autoReloadPlan` including the two refusals and the difference between `wait` and
+`hold`, the per-target-SET ration and the two-server flap it exists for, both markers'
+parse rules (malformed → ignored), each failing leg of the auto-apply gate falling
+back to the offer, and the **combined** broken-deploy simulation asserting the summed
+reload bound before both surfaces go quiet.
 
 Pure (`lib/__tests__/sw-update.test.ts`, `lib/__tests__/theme.test.ts`,
 `lib/__tests__/offline-queue.test.ts`): the waiting-worker decision matrix, both
@@ -314,11 +495,21 @@ registering a second worker. Both of those tests fail on the pre-#2329 tree at t
 bar never appearing. `e2e/update-notice.spec.ts` drives the no-worker context and pins
 the pending marker being written, and kept across a dismissal.
 `e2e/stale-build-save.spec.ts` drives the Server Action half with the real client
-error (action POSTs answered with the not-found marker): the live editor's stale
-banner, the draft surviving in live mode and restoring after the reload, and the
-never-created session's close-path capture queueing and replaying.
+error (action POSTs answered with the not-found marker): a live editor recovering
+with ZERO taps from the failed save alone — with the version route never armed, which
+is the detector-down tab — the unsaveable form converging on the detector alone and
+being restored without a save being invented, a broken deploy stopping at exactly one
+automatic attempt and handing back the banner, and the never-created session's
+close-path capture still queueing and replaying. `e2e/update-notice.spec.ts` drives
+the clean tab: it reloads itself, toasts once with the commit message, raises no bar,
+and a tab under continuous scripted input is left alone until it stops.
 `e2e/form-drafts.spec.ts` pins the healthy-path complement — a live draft never
-outlives a successful save.
+outlives a successful save, and an organic revisit still gets the OFFER.
+
+Every spec that asserts on the bar or the stale-save banner first calls
+`spendAutoReloadRation` (`e2e/helpers.ts`). That is not a switch-off: it puts the tab
+in the one state that genuinely renders those affordances — one automatic attempt
+already made — which is also the state a broken deploy produces.
 
 **What is not driven end to end, honestly.**
 

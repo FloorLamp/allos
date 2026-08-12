@@ -78,9 +78,10 @@ describe("autoReloadPlan — when a tab may take a deploy by itself", () => {
     // A settings card mid-edit, a record form mid-composition: no draft covers them,
     // so a reload destroys what a manual one would not. Holding renders the old bar,
     // which is the pre-#2471 behaviour and a correct outcome.
-    expect(
-      autoReloadPlan({ ...CLEAR, unrecoverableWork: true })
-    ).toEqual({ action: "hold", reason: "unrecoverable-work" });
+    expect(autoReloadPlan({ ...CLEAR, unrecoverableWork: true })).toEqual({
+      action: "hold",
+      reason: "unrecoverable-work",
+    });
   });
 
   it("waits — never holds — while the user is still touching the page", () => {
@@ -95,9 +96,9 @@ describe("autoReloadPlan — when a tab may take a deploy by itself", () => {
   });
 
   it("reloads immediately when the tab is hidden — nobody is looking", () => {
-    expect(
-      autoReloadPlan({ ...CLEAR, hidden: true, lastInputAt: T0 })
-    ).toEqual({ action: "reload", target: SHA });
+    expect(autoReloadPlan({ ...CLEAR, hidden: true, lastInputAt: T0 })).toEqual(
+      { action: "reload", target: SHA }
+    );
   });
 
   it("waits for a submit to settle even in a hidden tab — safety outranks the fast path", () => {
@@ -122,9 +123,9 @@ describe("autoReloadPlan — when a tab may take a deploy by itself", () => {
   it("treats 'never touched' as quiet, not as just-now", () => {
     // 0 is the sentinel for never, and a freshly-loaded tab nobody has touched is the
     // quietest tab there is — reading it as "input one moment ago" would strand it.
-    expect(autoReloadPlan({ ...CLEAR, lastInputAt: 0, lastSubmitAt: 0 })).toEqual(
-      { action: "reload", target: SHA }
-    );
+    expect(
+      autoReloadPlan({ ...CLEAR, lastInputAt: 0, lastSubmitAt: 0 })
+    ).toEqual({ action: "reload", target: SHA });
   });
 
   it("holds once the ration for this target is spent", () => {
@@ -252,7 +253,10 @@ describe("the combined worst case: a broken deploy under a dirty editor", () => 
     let autoGuard: AutoReloadGuard | null = null;
     let crashGuard: SkewRecoveryGuard | null = null;
     let reloads = 0;
-    const CHUNK = { name: "ChunkLoadError", message: "Loading chunk 42 failed" };
+    const CHUNK = {
+      name: "ChunkLoadError",
+      message: "Loading chunk 42 failed",
+    };
 
     for (let i = 0; i < 25; i += 1) {
       const now = T0 + i * 100;
@@ -301,13 +305,18 @@ describe("the resume marker", () => {
     expect(parseResumeMarker(null)).toBeNull();
     expect(parseResumeMarker("nope")).toBeNull();
     expect(parseResumeMarker("[]")).toBeNull();
-    expect(parseResumeMarker('{"formKey":"","recordId":null,"live":false,"at":1}'))
-      .toBeNull();
     expect(
-      parseResumeMarker('{"formKey":"activity","recordId":"7","live":false,"at":1}')
+      parseResumeMarker('{"formKey":"","recordId":null,"live":false,"at":1}')
     ).toBeNull();
     expect(
-      parseResumeMarker('{"formKey":"activity","recordId":null,"live":1,"at":1}')
+      parseResumeMarker(
+        '{"formKey":"activity","recordId":"7","live":false,"at":1}'
+      )
+    ).toBeNull();
+    expect(
+      parseResumeMarker(
+        '{"formKey":"activity","recordId":null,"live":1,"at":1}'
+      )
     ).toBeNull();
     expect(
       parseResumeMarker('{"formKey":"activity","recordId":null,"live":false}')
@@ -375,7 +384,10 @@ describe("shouldAutoApplyDraft — the one argued exception to never-apply-witho
     // is checked separately because a stale draft under a fresh marker is still a
     // draft the user did not just type.
     expect(
-      shouldAutoApplyDraft({ ...OK, savedAt: T0 - RESUME_MARKER_MAX_AGE_MS - 1 })
+      shouldAutoApplyDraft({
+        ...OK,
+        savedAt: T0 - RESUME_MARKER_MAX_AGE_MS - 1,
+      })
     ).toBe(false);
   });
 
@@ -406,9 +418,9 @@ describe("the update-taken marker and its words", () => {
   });
 
   it("names the build when the server named one, and says less when it did not", () => {
-    expect(updateTakenMessage({ sha: SHA, commitMessage: "Fix the thing" })).toBe(
-      `${UPDATE_TAKEN_MESSAGE} — Fix the thing`
-    );
+    expect(
+      updateTakenMessage({ sha: SHA, commitMessage: "Fix the thing" })
+    ).toBe(`${UPDATE_TAKEN_MESSAGE} — Fix the thing`);
     expect(updateTakenMessage({ sha: SHA, commitMessage: null })).toBe(
       UPDATE_TAKEN_MESSAGE
     );

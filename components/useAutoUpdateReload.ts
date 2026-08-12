@@ -90,8 +90,10 @@ export function useAutoUpdateReload({
   machineryReload: () => void;
 }): AutoReloadVerdict {
   const [verdict, setVerdict] = useState<AutoReloadVerdict>({ action: "none" });
-  // Set the moment the sequence commits, so a second tick cannot start another one
-  // while the navigation is being dispatched.
+  // Set the moment the sequence STARTS, not when it commits: the flush is awaited, so
+  // two evaluation ticks 500ms apart could otherwise both enter it and write two
+  // markers over each other. Cleared again only on a refusal, so a committed sequence
+  // stays closed while the navigation is dispatched.
   const takingRef = useRef(false);
   // A capture that refused (IndexedDB denied, a flush that threw). The work is not
   // durable, so this tab never auto-reloads again this episode — it holds, and the
@@ -116,7 +118,10 @@ export function useAutoUpdateReload({
       lastSubmitRef.current = Date.now();
     };
     for (const type of INPUT_EVENTS) {
-      document.addEventListener(type, touched, { capture: true, passive: true });
+      document.addEventListener(type, touched, {
+        capture: true,
+        passive: true,
+      });
     }
     document.addEventListener("submit", submitted, true);
     return () => {
@@ -132,18 +137,23 @@ export function useAutoUpdateReload({
    * user's tap on a surviving affordance — knows the tab is still where it was.
    */
   const takeUpdate = useCallback(async (): Promise<boolean> => {
-    if (takingRef.current) return true; // already committed; the navigation is coming
+    if (takingRef.current) return true; // already running; the navigation is coming
+    takingRef.current = true;
     const target = targetShaRef.current;
 
     // 2. Everything recoverable becomes durable first.
     const captured = await captureUnsavedWork();
     if (!captured.ok) {
+      takingRef.current = false;
       setCaptureRefused(true);
       return false;
     }
     // Re-check after the await: a flush is fast but not instant, and a form that
     // started holding unrecoverable input in the gap must still stop this.
-    if (hasUnrecoverableWork()) return false;
+    if (hasUnrecoverableWork()) {
+      takingRef.current = false;
+      return false;
+    }
 
     // 3. + 4. Both markers and the ration, all in one guarded write. Storage denied
     // means we cannot prove the reload is safe OR bound it, so we do not take it.
@@ -175,12 +185,12 @@ export function useAutoUpdateReload({
         )
       );
     } catch {
+      takingRef.current = false;
       setCaptureRefused(true);
       return false;
     }
 
     // 5. The one reload path.
-    takingRef.current = true;
     machineryReloadRef.current();
     return true;
   }, [targetShaRef, commitMessageRef, machineryReloadRef]);
@@ -227,7 +237,14 @@ export function useAutoUpdateReload({
       unsubscribeStale();
       document.removeEventListener("visibilitychange", evaluate);
     };
-  }, [pending, targetSha, captureRefused, takeUpdate, pendingRef, targetShaRef]);
+  }, [
+    pending,
+    targetSha,
+    captureRefused,
+    takeUpdate,
+    pendingRef,
+    targetShaRef,
+  ]);
 
   // The manual affordances render off ONE answer, wherever they are in the tree.
   const fallback = showsManualUpdateNotice(verdict);
@@ -251,7 +268,8 @@ function readGuard(target: string) {
 
 function sameVerdict(a: AutoReloadVerdict, b: AutoReloadVerdict): boolean {
   if (a.action !== b.action) return false;
-  if (a.action === "reload" && b.action === "reload") return a.target === b.target;
+  if (a.action === "reload" && b.action === "reload")
+    return a.target === b.target;
   if (a.action === "wait" && b.action === "wait") return a.reason === b.reason;
   if (a.action === "hold" && b.action === "hold") return a.reason === b.reason;
   return true;
