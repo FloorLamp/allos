@@ -23,7 +23,7 @@
 // both sides of that subtraction have to come off one clock. In production the seam
 // IS the real clock, so the values are byte-identical to what SQLite would write.
 
-import { db, writeTx, today } from "./db";
+import { db, writeTx } from "./db";
 import { sqlNow } from "./clock";
 import { parseComponents, type ActivityComponent } from "./types";
 import { canonicalMobilityMove, mobilityMoveName } from "./mobility-moves";
@@ -196,14 +196,4 @@ export function setMobilityDurationCore(
     ).run(dur, sqlNow(), row.id, profileId);
     return sessionOf(dayRow(profileId, date));
   });
-}
-
-// Convenience for tests/callers: the display names of a session's moves.
-export function mobilitySessionMoveNames(session: MobilitySession): string[] {
-  return session.moves.map(mobilityMoveName);
-}
-
-// The app-local "today" for a profile (re-export so callers don't double-import).
-export function mobilityToday(profileId: number): string {
-  return today(profileId);
 }

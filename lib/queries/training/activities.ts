@@ -319,6 +319,16 @@ export interface TrainingLogPage {
 // `null` on a field means "this filter is not active". An EMPTY preimage array
 // means "active, and nothing in the ledger can match" — the page is empty, which is
 // very different from absent; keep the two apart.
+//
+// That distinction is made by the SHAPE, not by a predicate over it: an empty
+// preimage builds a `WHERE … IN ()` that matches nothing, while a null field emits
+// no clause at all, so the two already answer differently one line further down.
+// `trainingLogFilterSpecActive` — a spec-level "is anything filtered" that shipped in
+// #2501 and never gained a caller — was deleted in #2527: the question is asked one
+// level EARLIER, on the UI-shaped filters, by `trainingLogFiltersActive`
+// (lib/training-log-filters.ts), which is what decides whether a spec gets resolved
+// at all (lib/training-log-feed.ts). Asking it again of the resolved spec would be a
+// second answer to a settled question.
 export interface TrainingLogFilterSpec {
   query: string | null; // free text (already trimmed), matched by LIKE
   type: ActivityType | null;
@@ -336,18 +346,6 @@ export const NO_TRAINING_LOG_FILTERS: TrainingLogFilterSpec = {
   tagExercises: null,
   faultIds: null,
 };
-
-export function trainingLogFilterSpecActive(
-  spec: TrainingLogFilterSpec
-): boolean {
-  return (
-    spec.query != null ||
-    spec.type != null ||
-    spec.source != null ||
-    spec.tagExercises != null ||
-    spec.faultIds != null
-  );
-}
 
 // The `source` half of the WHERE clause for a provenance KEY. Mirrors
 // activityProvenanceKey()'s collapse in SQL: 'manual' covers NULL and the literal

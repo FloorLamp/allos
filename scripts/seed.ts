@@ -2712,9 +2712,14 @@ for (const [startAgo, endAgo, flow, note] of seededCycles) {
 // ── Saved views: RETIRED, kept as legacy data ────────────────────────────────
 // The Trends overhaul removed the Views strip and #1653 removed the actions,
 // settings accessors and list math behind it. Nothing reads this key any more —
-// the rows stay ON PURPOSE, because an upgraded database still carries them and
-// e2e/trends-saved-views.spec.ts asserts that inert data cannot resurrect the
-// removed chrome. There is no cleanup migration; dead settings data is harmless.
+// the rows stay ON PURPOSE, because a database upgraded past #1653 but not yet
+// re-migrated still carries them, and an absence assertion is only worth anything
+// against a profile where the data it would render from EXISTS. Migration 142
+// purges the key, so these rows are written back after it runs — deliberately, to
+// keep that fixture. The surviving assertion is "range controls fill the row
+// without saved views" (e2e/trends-fold.mobile.spec.ts), which runs over this seed;
+// e2e/trends-saved-views.spec.ts, which this comment used to name, was deleted by
+// #2512 as a permanently-green absence test (#2524).
 // (The `trend_pins` KV this block used to seed was folded into `saved_items` by
 // migration 113 — see the saved-items seed below.)
 upsertProfileSetting.run(

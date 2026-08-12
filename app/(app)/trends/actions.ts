@@ -115,5 +115,19 @@ export async function dismissBodyHygiene(
 // still-POSTable Server Actions reading and writing a `trend_views` blob no surface
 // showed. The pure list math (lib/trend-views.ts) and the `getTrendViews` /
 // `setTrendViews` settings accessors went with them; the stored rows are simply
-// inert. e2e/trends-saved-views.spec.ts keeps the browser guard that neither those
-// rows nor anything else brings the strip back.
+// inert.
+//
+// #2524 re-read this file expecting to find one of those actions still shipping —
+// a "use server" export with no renderer, which would be a live request-boundary
+// surface rather than dead prose. It is not here: the four exports above are the
+// whole module, migration 142 purges the `trend_views` rows on upgrade, and the
+// only "saved-view" token left in `app/` is this paragraph. The census that filed
+// the issue matched the COMMENT. Nothing to delete; recorded so the next reader
+// does not go looking either.
+//
+// The browser guard moved: e2e/trends-saved-views.spec.ts was deleted by #2512 as
+// a permanently-green absence test, and the surviving assertion that the strip
+// cannot come back is "range controls fill the row without saved views" in
+// e2e/trends-fold.mobile.spec.ts, which runs over the shared seed — the profile
+// that still CARRIES inert `trend_views` rows (scripts/seed.ts seeds them back
+// after migration 142 exactly so an upgraded database is what the assertion sees).
