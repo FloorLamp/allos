@@ -127,4 +127,102 @@ test.describe("Symptom photo ↔ log link (#1093)", () => {
     await emptyTheStrip();
     await expect(tiles).toHaveCount(0);
   });
+  // #2124 — the same link, from the other end: what happens when the symptom-DAY the
+  // photo is bound to is removed. The bar's × was a one-tap delete with no confirm and
+  // no undo that unlinked the photo FILES on its way out, so a mis-tap destroyed a rash
+  // series a caregiver took to show a doctor. It is a capture now: the photo rows travel
+  // with the day and the files stay on disk until the trash window expires, so Undo puts
+  // the whole series back re-pointed at the restored log.
+  test("clearing a symptom-day takes its photos — and Undo brings the series back", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_SICK_PHOTO,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    await page.goto("/medical/episodes");
+    const episodeLink = page
+      .getByTestId("episode-index-row")
+      .filter({ hasText: /ongoing/i })
+      .first(); // first-ok: spec-owned fixture with a single ongoing episode — order-agnostic
+    await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
+
+    const strip = page.getByTestId("symptom-photo-strip");
+    await expect(strip).toBeVisible();
+    const tiles = strip.locator('[data-testid^="photo-gallery-item-"]');
+    const lightbox = page.getByTestId("photo-lightbox");
+
+    // OWN the strip state (the sibling test's discipline): empty it first, so the tile
+    // counts below are this test's own and the upload's content hash is free.
+    async function emptyTheStrip() {
+      for (let remaining = await tiles.count(); remaining > 0; remaining--) {
+        await tiles.first().click(); // first-ok: loop deletes EVERY photo on a spec-owned episode — order-agnostic
+        await expect(lightbox).toBeVisible();
+        await settledClick(
+          page,
+          lightbox.locator('[data-testid^="symptom-photo-delete-"]')
+        );
+        await expect(tiles).toHaveCount(remaining - 1, { timeout: 15_000 });
+      }
+    }
+    await emptyTheStrip();
+
+    // A photo bound to the cough symptom-day — the row the delete has to carry.
+    await settledSelect(
+      page,
+      strip.getByTestId("symptom-photo-symptom-select"),
+      "cough"
+    );
+    await settledFill(
+      page,
+      strip.getByLabel("Caption (optional)"),
+      `Undo probe ${randomBytes(4).toString("hex")}`
+    );
+    await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
+      name: `undo-${randomBytes(6).toString("hex")}.png`,
+      mimeType: "image/png",
+      buffer: PHOTO_PNG,
+    });
+    await expect(tiles).toHaveCount(1, { timeout: 15_000 });
+    await expect(strip.getByTestId("photo-gallery-series-cough")).toHaveText(
+      "Cough"
+    );
+
+    // Clear the symptom-day. The photo goes with it — and the Undo affordance appears,
+    // which the bar renders only when the action came back holding a capture token.
+    const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: spec-owned fixture's own symptom bar — order-agnostic
+    await settledClick(page, bar.getByTestId("symptom-cough-clear"));
+    await expect(page.getByText("Symptom removed.")).toBeVisible();
+    await expect(tiles).toHaveCount(0, { timeout: 15_000 });
+
+    await settledClick(page, page.getByRole("button", { name: "Undo" }));
+    await expect(page.getByText("Restored.")).toBeVisible();
+
+    // The payoff, after a reload so nothing here is an optimistic chip: the day is back,
+    // its photo is back, and the photo is bound to the RESTORED log (the series chip is
+    // derived from that link, so its presence is the link's presence — the row was
+    // re-pointed at the new id, and the file underneath was never unlinked).
+    await page.reload();
+    const stripAfter = page.getByTestId("symptom-photo-strip");
+    await expect(
+      stripAfter.locator('[data-testid^="photo-gallery-item-"]')
+    ).toHaveCount(1, { timeout: 15_000 });
+    await expect(
+      stripAfter.getByTestId("photo-gallery-series-cough")
+    ).toHaveText("Cough");
+    await expect(
+      page.getByTestId("symptom-log-bar").first() // first-ok: spec-owned fixture's own symptom bar — order-agnostic
+    ).toContainText("Cough");
+
+    // Clean up every photo we added so a re-run starts where it began.
+    await emptyTheStrip();
+    await expect(
+      page
+        .getByTestId("symptom-photo-strip")
+        .locator('[data-testid^="photo-gallery-item-"]')
+    ).toHaveCount(0);
+  });
 });
+
