@@ -1,5 +1,5 @@
-// THE RECAP SCALE AXIS (issue #2178) — "how did the last period go?" asked at three
-// lengths by ONE engine, with the length as DATA.
+// THE RECAP SCALE AXIS (issues #2178 / #2179) — "how did the last period go?" asked at
+// four lengths by ONE engine, with the length as DATA.
 //
 // The periodic review used to be a weekly-only feature: one window, one marker, one
 // message, and a module named after the seven days it happened to cover. #2166 left
@@ -51,17 +51,45 @@
 // contact REDUCTION, which is a user's to make freely. The system never moves the
 // setting itself.
 //
-// The annual retrospective (#2179) is deliberately NOT a fourth row here: a profile
-// whose only review arrives every twelve months has no review, and a year does not fit
-// in a message. It is a rendered surface with a pointer send, and because it would
-// STACK beside the chosen cadence it needs its own toggle. This registry owns the
-// review; it does not own the retrospective.
+// ── THE YEAR IS A SCALE, NOT A CADENCE (#2179) ───────────────────────────────────
+//
+// The annual retrospective is the fourth member of the SCALE axis and deliberately not
+// a fourth CADENCE: a profile whose only review arrives every twelve months has no
+// review, and a year does not fit in a message. So the two ideas — which used to be one
+// list — are now separate:
+//
+//   • `RecapScale` — the period-arithmetic + line-model axis. Four members.
+//   • `ReviewCadence` — the SENDABLE subset a profile may choose as its review rhythm,
+//     and the only thing `planRecapSend` ever considers. Three members.
+//
+// `RECAP_SCALES` carries both: every row declares `cadence`, and `REVIEW_CADENCES` is
+// the derived sendable list that every send-side and settings-side consumer iterates.
+// That is what makes "the year never lands in the recap slot" true BY CONSTRUCTION
+// rather than by a filter each caller has to remember — `recapScalesAtOrAbove` cannot
+// return it, `parseRecapScale` cannot parse it out of a stored setting, and the cadence
+// picker cannot offer it. The types say the same thing a second way: the slot planner,
+// the send marker builder and the cadence setting are all typed `ReviewCadence`, so a
+// year value does not compile there.
+//
+// What this registry gained for #2179 is the year's ARITHMETIC — calendar year, prior
+// calendar year as the comparison — because the retrospective is a READ. Its own send
+// (a once-a-year POINTER to the page, with its own toggle, because stacking beside the
+// chosen cadence is a contact increase) is deliberately not built here yet.
 
 import { shiftDateStr, weekdayOfDateStr, isoDate } from "./date";
 import type { WeekMode, WeekStart } from "./settings";
 
-/** The three lengths the periodic review speaks at. Ordered shortest → longest. */
-export type RecapScale = "week" | "month" | "quarter";
+/**
+ * The cadences a profile may choose for its periodic review — the SENDABLE subset of
+ * the scale axis. Ordered shortest → longest.
+ */
+export type ReviewCadence = "week" | "month" | "quarter";
+
+/**
+ * Every length the ONE recap engine speaks at, including the once-a-year retrospective
+ * (#2179) — rendered rather than sent, and therefore not a `ReviewCadence`.
+ */
+export type RecapScale = ReviewCadence | "year";
 
 /**
  * A completed (or in-progress) period and the immediately prior same-shaped period —
@@ -90,13 +118,25 @@ export interface RecapScaleEntry {
   scale: RecapScale;
   /** Precedence: the LONGEST applicable period wins the slot. Strictly increasing. */
   rank: number;
+  /**
+   * Is this scale a REVIEW CADENCE — something a profile may choose as its recap
+   * rhythm, and something `planRecapSend` may put in the one recap slot? False for the
+   * year (#2179): the annual retrospective is a rendered surface, and a review that
+   * arrives every twelve months is not a review. The flag is what `REVIEW_CADENCES`
+   * derives from, so there is one declaration and no second list to keep in step.
+   */
+  cadence: boolean;
   /** The period noun the copy speaks ("last week" / "last month"). */
   noun: string;
   /** The adjective form, for prose and narrative headings. */
   adjective: string;
   /** The card heading and the notification title. */
   label: string;
-  /** The stored `notify_recap_scale` value AND the `narratives.kind` value. */
+  /**
+   * The stored `notify_recap_scale` value AND the `narratives.kind` value — for a
+   * CADENCE row. A non-cadence scale is neither stored as a setting nor a narrative
+   * kind; it carries its own scale here so the registry stays one shape.
+   */
   value: RecapScale;
   /** Roughly how many days the period spans — a GATHER BOUND, never period math. */
   approxDays: number;
@@ -112,6 +152,7 @@ export const RECAP_SCALES: readonly RecapScaleEntry[] = [
   {
     scale: "week",
     rank: 1,
+    cadence: true,
     noun: "week",
     adjective: "weekly",
     label: "Weekly recap",
@@ -123,6 +164,7 @@ export const RECAP_SCALES: readonly RecapScaleEntry[] = [
   {
     scale: "month",
     rank: 2,
+    cadence: true,
     noun: "month",
     adjective: "monthly",
     label: "Monthly recap",
@@ -134,6 +176,7 @@ export const RECAP_SCALES: readonly RecapScaleEntry[] = [
   {
     scale: "quarter",
     rank: 3,
+    cadence: true,
     noun: "quarter",
     adjective: "quarterly",
     label: "Quarterly recap",
@@ -142,7 +185,34 @@ export const RECAP_SCALES: readonly RecapScaleEntry[] = [
     blurb:
       "A calendar quarter: the horizon goals and training blocks actually live on, where three months of drift becomes a direction.",
   },
+  {
+    scale: "year",
+    rank: 4,
+    // NOT a cadence (#2179). It is here for its period arithmetic and its line set; the
+    // one recap slot never sees it.
+    cadence: false,
+    noun: "year",
+    adjective: "annual",
+    label: "Year in review",
+    value: "year",
+    approxDays: 366,
+    blurb:
+      "A calendar year: the long arcs, and the counts a year is allowed to keep as a record — commemorative, never a verdict.",
+  },
 ];
+
+/**
+ * The rows a profile may choose between, and the ONLY rows the send path consults.
+ * Derived from the `cadence` flag, so adding a scale that is not a cadence cannot leak
+ * into the picker, the narrative kinds, or the slot planner.
+ */
+export const REVIEW_CADENCES: readonly RecapScaleEntry[] = RECAP_SCALES.filter(
+  (e) => e.cadence
+);
+
+/** The cadence values, as data — the runtime twin of the `ReviewCadence` union. */
+export const REVIEW_CADENCE_VALUES: readonly ReviewCadence[] =
+  REVIEW_CADENCES.map((e) => e.scale as ReviewCadence);
 
 const BY_SCALE = new Map(RECAP_SCALES.map((e) => [e.scale, e]));
 
@@ -158,19 +228,27 @@ export function recapScaleRank(scale: RecapScale): number {
 
 /**
  * Parse a stored/submitted cadence. Anything unrecognised — absent, empty, a value from
- * a build that offered a different set — reads as `week`, the default and the shortest:
- * an unreadable setting must never SILENCE a review the user turned on.
+ * a build that offered a different set, or a non-cadence SCALE such as `year` (#2179) —
+ * reads as `week`, the default and the shortest: an unreadable setting must never
+ * SILENCE a review the user turned on, and must never turn a rendered surface into a
+ * twelve-month send rhythm either.
  */
-export function parseRecapScale(raw: string | null | undefined): RecapScale {
-  return RECAP_SCALES.some((e) => e.value === raw)
-    ? (raw as RecapScale)
+export function parseRecapScale(raw: string | null | undefined): ReviewCadence {
+  return REVIEW_CADENCES.some((e) => e.value === raw)
+    ? (raw as ReviewCadence)
     : "week";
 }
 
-/** The scales at or above `floor` — the ones a profile on that cadence may hear from. */
-export function recapScalesAtOrAbove(floor: RecapScale): RecapScale[] {
+/**
+ * The cadences at or above `floor` — the ones a profile on that cadence may hear from.
+ * Non-cadence scales are absent by construction, which is why the year can never be
+ * planned into the recap slot.
+ */
+export function recapScalesAtOrAbove(floor: ReviewCadence): ReviewCadence[] {
   const min = recapScaleRank(floor);
-  return RECAP_SCALES.filter((e) => e.rank >= min).map((e) => e.scale);
+  return REVIEW_CADENCES.filter((e) => e.rank >= min).map(
+    (e) => e.scale as ReviewCadence
+  );
 }
 
 // ── Calendar arithmetic ──────────────────────────────────────────────────────────
@@ -213,14 +291,29 @@ function periodEndFrom(start: string, months: number): string {
   return shiftDateStr(shiftMonthStart(start, months), -1);
 }
 
-/** How many months one period of this scale spans; null for the week scale. */
-function monthSpan(scale: RecapScale): number | null {
-  return scale === "month" ? 1 : scale === "quarter" ? 3 : null;
+/** The first day of the calendar year containing `dateStr`. */
+export function yearStartOf(dateStr: string): string {
+  return isoDate(partsOf(dateStr).y, 0, 1);
 }
 
-/** The calendar-period start containing `dateStr`, for a month/quarter scale. */
+/** How many months one period of this scale spans; null for the week scale. */
+function monthSpan(scale: RecapScale): number | null {
+  return scale === "month"
+    ? 1
+    : scale === "quarter"
+      ? 3
+      : scale === "year"
+        ? 12
+        : null;
+}
+
+/** The calendar-period start containing `dateStr`, for a month/quarter/year scale. */
 function calendarStartOf(scale: RecapScale, dateStr: string): string {
-  return scale === "quarter" ? quarterStartOf(dateStr) : monthStartOf(dateStr);
+  return scale === "year"
+    ? yearStartOf(dateStr)
+    : scale === "quarter"
+      ? quarterStartOf(dateStr)
+      : monthStartOf(dateStr);
 }
 
 /**
@@ -322,7 +415,7 @@ export function recapPeriod(
 
 export interface RecapSlotContext {
   /** The profile's chosen cadence — the SHORTEST scale it may hear from. */
-  floor: RecapScale;
+  floor: ReviewCadence;
   /** The profile-local date of the slot being evaluated. */
   today: string;
   /** The configured recap weekday (0 = Sunday) — the one slot every scale arrives in. */
@@ -333,12 +426,12 @@ export interface RecapSlotContext {
    * Each scale's marker: the END DATE of the period it last spoke for, or null/absent
    * when it never has. Equality with the candidate period's end means "already spent".
    */
-  sentPeriodEnd: Partial<Record<RecapScale, string | null>>;
+  sentPeriodEnd: Partial<Record<ReviewCadence, string | null>>;
   resolveWeek: WeekWindowResolver;
 }
 
 export interface RecapCandidate {
-  scale: RecapScale;
+  scale: ReviewCadence;
   period: PeriodComparison;
 }
 
@@ -352,7 +445,7 @@ export interface RecapSendPlan {
    */
   spend: readonly RecapCandidate[];
   /** The applicable scales the winner outranked, longest first. Reported, not sent. */
-  superseded: readonly RecapScale[];
+  superseded: readonly ReviewCadence[];
 }
 
 /**

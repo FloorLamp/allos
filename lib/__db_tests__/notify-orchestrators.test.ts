@@ -44,7 +44,11 @@ import {
   buildRecap,
   lineSpeaksAt,
 } from "@/lib/recap";
-import { RECAP_SCALES, type RecapScale } from "@/lib/recap-scale";
+import {
+  REVIEW_CADENCES,
+  type RecapScale,
+  type ReviewCadence,
+} from "@/lib/recap-scale";
 import { recapMarkerKey } from "@/lib/notifications/send-markers";
 import { runRefills } from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
@@ -88,13 +92,16 @@ function periodOf(
 // Pre-spend the scales this test is not about, so the precedence rule cannot flip which
 // scale claims the slot (#2178's precedence rule is real behaviour, and these tests
 // exercise ONE scale at a time on purpose).
-function onlyScale(profileId: number, keep: RecapScale, td: string): void {
-  for (const e of RECAP_SCALES) {
+function onlyScale(profileId: number, keep: ReviewCadence, td: string): void {
+  // REVIEW_CADENCES, not every scale: the year (#2179) has no marker to pre-spend and
+  // can never claim the slot.
+  for (const e of REVIEW_CADENCES) {
     if (e.scale === keep) continue;
+    const cadence = e.scale as ReviewCadence;
     setProfileSetting(
       profileId,
-      recapMarkerKey(e.scale),
-      periodOf(profileId, e.scale, td, true).end
+      recapMarkerKey(cadence),
+      periodOf(profileId, cadence, td, true).end
     );
   }
 }
