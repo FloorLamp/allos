@@ -19,6 +19,7 @@
 // #1445 scaffold registry (components/chart-scaffold.tsx); this module owns only
 // "which one".
 
+import { daysBetweenDateStr } from "./date";
 import type { DayFillWindow, DayGapFill } from "./day-fill";
 import { fillDailyRows, fillDailySeries } from "./day-fill";
 
@@ -250,6 +251,227 @@ export function gapFillValue(gap: SeriesGap): DayGapFill | null {
 /** Whether the mark bridges a null hole (`connectNulls`). Only a LEVEL does. */
 export function gapBridgesNulls(gap: SeriesGap): boolean {
   return gap === "bridge";
+}
+
+// ── The DENSITY floor (issue #2653, state 5) ────────────────────────────────
+//
+// THE DEFECT. Three readings spread over three years plot as a confident 2px
+// stroke — the same stroke a series measured every morning gets. A line is an
+// assertion about the space BETWEEN its points, and at that spacing almost all of
+// the ink is assertion: the reader is looking at a drawing of two interpolations
+// and three facts, with nothing distinguishing them.
+//
+// THE DECISION, in the same shape as the gap above: one number per series, on the
+// same `metric:` / `bio:` vocabulary, because it is a property of the QUANTITY and
+// not of the surface drawing it. `CONTINUITY_DAYS` is the longest interval between
+// two consecutive readings across which this quantity's stroke is still a fair
+// interpolation. Past it, the presentation demotes (see chart-scaffold's
+// `chartSparse*`): the DOTS lead, the connecting stroke becomes a faint dashed
+// hint, and the plot carries a caption stating the raw count and span.
+//
+// WHY THE MEDIAN INTERVAL AND NOT A RATE. "Readings per year" cannot tell a sparse
+// series from a dense one with an outage: thirty daily weigh-ins followed by three
+// years of silence average out to the same rate as three readings evenly spread,
+// and only the second is sparse. The first is an OUTAGE, which day-fill's kept
+// trailing holes and the interior-gap treatment answer — a different state of this
+// issue, and it must not be relabelled as this one. The MEDIAN interval says so
+// directly: one enormous gap does not move it, and a genuinely thin series has
+// nothing but enormous gaps.
+//
+// WHY NOT REUSE THE PRESENTATION FLOOR. `TREND_METRIC_PRESENTATION_FLOORS` (#2671)
+// answers a different question — how old the LATEST reading may be before the
+// headline stops being a claim about now. This one is about the space between two
+// readings, wherever they sit. The two are related, and the relation is an
+// INVARIANT rather than an equality: a series may never be called sparse while its
+// own latest reading would still be presented as current, so every span here is at
+// or above that metric's floor. `lib/__tests__/sparse-series.test.ts` pins it, so
+// the two registries are provably consistent instead of merely coexisting.
+//
+// THE TIERS, named for how the reading ARRIVES — the same discipline the floors
+// registry uses, so 27 metrics declare a cadence rather than 27 loose integers.
+
+/** Arrives every day something is worn or a check-in is tapped. A fortnight
+ *  between two of them means the stream stopped, not that it moved smoothly. */
+const STREAM_CONTINUITY = 14;
+
+/** Taken because of a question being asked that day — a thermometer. A month
+ *  apart, the stroke draws a fever curve nobody measured. */
+const ACUTE_CONTINUITY = 30;
+
+/** A scale step-on or a tape measure: done when you think of it. Monthly-ish
+ *  with skipped months is an ordinary habit; two measurements a season apart
+ *  are two facts, not a trajectory. */
+const HABIT_CONTINUITY = 60;
+
+/** Picked up when there is a reason — a cuff before an appointment, an
+ *  oximeter while unwell. Months apart is the legitimate cadence; a year is
+ *  not a line. */
+const EPISODIC_CONTINUITY = 365;
+
+/** A body attribute that moves over seasons and years. */
+const SLOW_CONTINUITY = 730;
+
+/** A lab draw. An annual-to-semiannual panel is the ordinary cadence, so the
+ *  stroke is fair across it; past ~18 months it spans more unobserved time
+ *  than observed. Open vocabulary (`bio:<name>`), so one number for the
+ *  namespace rather than a row per analyte. */
+export const BIO_CONTINUITY_DAYS = 540;
+
+/**
+ * The continuity span per `metric:` id. EXHAUSTIVE over the same vocabulary as
+ * `METRIC_GAP` — `lib/__tests__/sparse-series.test.ts` fails a key that is in one
+ * registry and not the other, in both directions, so the two cannot drift apart.
+ */
+export const METRIC_CONTINUITY_DAYS: Readonly<Record<string, number>> = {
+  // ── levels ────────────────────────────────────────────────────────────────
+  weight: HABIT_CONTINUITY,
+  bodyfat: HABIT_CONTINUITY,
+  bmi: HABIT_CONTINUITY,
+  "lean-mass": HABIT_CONTINUITY,
+  "bone-mass": HABIT_CONTINUITY,
+  bmr: HABIT_CONTINUITY,
+  "waist-circ": HABIT_CONTINUITY,
+  hydration: STREAM_CONTINUITY,
+  resting_hr: STREAM_CONTINUITY,
+  hrv: STREAM_CONTINUITY,
+  "skin-temp": STREAM_CONTINUITY,
+  hr: STREAM_CONTINUITY,
+  "peak-flow": STREAM_CONTINUITY,
+  height: SLOW_CONTINUITY,
+  "head-circ": SLOW_CONTINUITY,
+  systolic: EPISODIC_CONTINUITY,
+  diastolic: EPISODIC_CONTINUITY,
+  spo2: EPISODIC_CONTINUITY,
+  "respiratory-rate": EPISODIC_CONTINUITY,
+  temperature: ACUTE_CONTINUITY,
+  mood: STREAM_CONTINUITY,
+  energy: STREAM_CONTINUITY,
+  calm: STREAM_CONTINUITY,
+
+  // ── per-day totals ────────────────────────────────────────────────────────
+  // A total arrives on the day it happened or not at all, so its cadence is the
+  // stream's. Training volume is drawn as BARS, which assert nothing between
+  // columns — it declares a span anyway so the registry stays total, and the
+  // demotion simply never reaches it.
+  volume: STREAM_CONTINUITY,
+  steps: STREAM_CONTINUITY,
+  "active-calories": STREAM_CONTINUITY,
+  sun: STREAM_CONTINUITY,
+  calories: STREAM_CONTINUITY,
+
+  // ── render-only series ────────────────────────────────────────────────────
+  "sleep-duration": STREAM_CONTINUITY,
+  "sleep-stages": STREAM_CONTINUITY,
+  "sleep-regularity": STREAM_CONTINUITY,
+  "oura-score": STREAM_CONTINUITY,
+  macros: STREAM_CONTINUITY,
+};
+
+/**
+ * The continuity span for any trend series, or null when the series declares
+ * none. Null is the SAFE answer and means "draw it exactly as before": an
+ * unregistered id and an unknown namespace both take it, because demoting a
+ * stroke whose grain we cannot name is how a per-event axis would acquire a
+ * caption about days it does not plot.
+ */
+export function continuityDaysForSeriesKey(key: string): number | null {
+  if (key.startsWith("bio:")) return BIO_CONTINUITY_DAYS;
+  const prefix = "metric:";
+  if (!key.startsWith(prefix)) return null;
+  return METRIC_CONTINUITY_DAYS[key.slice(prefix.length)] ?? null;
+}
+
+/**
+ * The median number of days between consecutive dated readings, or null when
+ * there are fewer than two datable ones. Dates need not arrive sorted. An even
+ * count takes the lower of the two middle intervals — a whole number of days
+ * reads better in the reason a test prints, and half a day never changes a
+ * verdict against spans measured in weeks.
+ */
+export function medianIntervalDays(dates: readonly string[]): number | null {
+  const sorted = [...dates].sort();
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const d = daysBetweenDateStr(sorted[i - 1], sorted[i]);
+    if (d == null) continue;
+    gaps.push(d);
+  }
+  if (gaps.length === 0) return null;
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor((gaps.length - 1) / 2)];
+}
+
+/** A series too thin for its stroke to be a fair interpolation. */
+export interface SparseSeriesVerdict {
+  /** REAL readings — never densified calendar days. */
+  readings: number;
+  /** Inclusive days from the first real reading to the last. */
+  spanDays: number;
+  /** The median interval that crossed the declared span. */
+  medianGapDays: number;
+  /** The series' declared continuity span, for the reason a caller may print. */
+  continuityDays: number;
+}
+
+/**
+ * Whether this series' stroke over-claims, and the facts a caption may state.
+ * Null means "draw it as before" — the default, and what every unrecognised
+ * series gets.
+ *
+ * Counted over NON-NULL values, on the series BEFORE densification: a filled
+ * calendar day is not a reading, and a `slot-zero` fill writes real zeros that
+ * would otherwise read as daily measurement.
+ *
+ * Fewer than two readings is not sparse: one reading draws no line at all (it
+ * has its own mark — `loneReading`), and none draws no chart.
+ */
+export function sparseSeriesVerdict(
+  seriesKey: string,
+  points: readonly { date: string; value: number | null }[]
+): SparseSeriesVerdict | null {
+  const continuityDays = continuityDaysForSeriesKey(seriesKey);
+  if (continuityDays == null) return null;
+  const dates = points.filter((p) => p.value != null).map((p) => p.date);
+  if (dates.length < 2) return null;
+  const medianGapDays = medianIntervalDays(dates);
+  if (medianGapDays == null || medianGapDays <= continuityDays) return null;
+  const sorted = [...dates].sort();
+  const span = daysBetweenDateStr(sorted[0], sorted[sorted.length - 1]);
+  if (span == null) return null;
+  return {
+    readings: dates.length,
+    spanDays: span + 1,
+    medianGapDays,
+    continuityDays,
+  };
+}
+
+// The caption's span phrase. Days below a couple of months, then months, then
+// years — the coarsest unit that still distinguishes this window from the next
+// one. Rounded on purpose: the caption exists to make a THIN series read as thin,
+// and "3 readings in 1,043 days" spends precision on the half of the sentence
+// that does not carry the point.
+function spanPhrase(spanDays: number): string {
+  if (spanDays < 60) return `${spanDays} day${spanDays === 1 ? "" : "s"}`;
+  if (spanDays < 545) {
+    const months = Math.max(2, Math.round(spanDays / 30.44));
+    return `${months} months`;
+  }
+  const years = Math.max(2, Math.round(spanDays / 365.25));
+  return `${years} years`;
+}
+
+/**
+ * The caption a demoted plot carries: "3 readings in 3 years".
+ *
+ * RAW FACTS ONLY — a count and a span, no adjective, no verdict word, no badge.
+ * The caption's job is to let a reader price the stroke they are looking at, and
+ * a chart that announces "sparse" in a tasteful chip reads as MORE considered
+ * than the confident line it replaced, which is precisely the failure this state
+ * is trying to avoid.
+ */
+export function sparseSeriesCaption(verdict: SparseSeriesVerdict): string {
+  return `${verdict.readings} readings in ${spanPhrase(verdict.spanDays)}`;
 }
 
 /**

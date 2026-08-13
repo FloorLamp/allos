@@ -352,6 +352,65 @@ pass `type="number" scale="time"`, so their x is already proportional to elapsed
 time and there is nothing to densify. Each day-grain call site that opts out
 carries a `// gap-exempt: <reason>` comment, which is what the scan below reads.
 
+### Density: a stroke earns its confidence (#2653 state 5)
+
+**A line asserts the space BETWEEN its points.** Three weigh-ins five hundred days
+apart got the same confident 2px stroke a series measured every morning gets, so
+almost every pixel on the plot was assertion and none of it said so. The fix is not
+to hide the line: it is to draw it at the confidence it earns.
+
+**The floor is a per-SERIES declaration, beside the gap.** `METRIC_CONTINUITY_DAYS`
+in `lib/trend-sparkline.ts` gives every series a **continuity span** — the longest
+interval between two consecutive readings across which that quantity's stroke is
+still a fair interpolation — on the same `metric:` / `bio:` vocabulary, in named
+tiers rather than 30 loose integers:
+
+| Tier     | Span | Series                                                                                                                                                                    |
+| -------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| stream   | 14d  | arrives daily when kept — HRV, skin-temp, daily HR, resting HR, peak flow, hydration, the 1–5 check-in ratings, every per-day total, the sleep and macro render-only keys |
+| acute    | 30d  | taken because of a question asked that day — temperature                                                                                                                  |
+| habit    | 60d  | a scale step-on or a tape — weight, body fat, BMI, lean/bone mass, BMR, waist circumference                                                                               |
+| episodic | 365d | picked up when there is a reason — blood pressure, SpO₂, respiratory rate                                                                                                 |
+| slow     | 730d | moves over seasons and years — height, head circumference                                                                                                                 |
+| lab      | 540d | the whole `bio:` namespace, one number for an open vocabulary                                                                                                             |
+
+**The measure is the MEDIAN interval, never a rate.** "Readings per year" cannot
+tell a sparse series from a dense one with an outage: ten daily weigh-ins followed
+by three years of silence average out past every threshold, and only the second
+shape is sparse. The first is an OUTAGE — day-fill's kept trailing holes are its
+treatment — and relabelling it would destroy the one distinction the reader most
+needs. One enormous gap does not move a median; a genuinely thin series has nothing
+but enormous gaps.
+
+**What the demotion is.** Past the span, `sparseSeriesVerdict` returns the facts and
+`LineChartCardInner` draws them: the dots go SOLID and lead (`chartSparseDot`), the
+stroke thins, dashes and fades (`chartSparseLineProps`), and the plot carries a
+caption stating the raw count and span — "3 readings in 3 years". Nothing is hidden,
+no point moves, and no reading is dropped.
+
+**The demotion must be a DEMOTION.** The failure mode of a state treatment is that
+the treated chart looks deliberate, and a reader therefore trusts the thin line MORE
+than before. So: the caption is raw facts only — a count and a span, no adjective, no
+verdict word, no chip, no colour — and the stroke's width and opacity are strictly
+below the normal line's on every axis. `lib/__tests__/sparse-series.test.ts` pins
+that as an inequality rather than as a pair of numbers, so a later tweak cannot
+quietly turn the hint back into a line.
+
+**Two floor registries, one invariant.** `TREND_METRIC_PRESENTATION_FLOORS` (#2671)
+answers a different question — how old the LATEST reading may be before the headline
+stops claiming now. The relation between them is an invariant, not an equality: a
+series may never be called sparse while its own latest reading would still be
+presented as current, so every continuity span sits at or above that metric's floor,
+and the test pins it.
+
+**Reach.** Only a `gapFill` caller is judged: the series key is what carries the
+declared span, and a `gap-exempt:` chart's x is not a calendar day, so "days between
+readings" is not a question that has an answer there. An aggregated plot (#1938) is
+dense by definition, so the two treatments never coincide. The biomarker DETAIL chart
+(`BiomarkerChartInner`) is deliberately NOT included yet: hollow already means
+"inexact bounded reading" on that chart, and the solid/hollow channel would have to be
+re-decided before a demoted mark can borrow it.
+
 ---
 
 ## 4. Identity is never color-alone

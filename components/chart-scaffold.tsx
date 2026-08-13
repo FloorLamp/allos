@@ -55,6 +55,10 @@ export const chartDash = {
   now: "4 4",
   /** The hover crosshair. */
   cursor: "3 3",
+  /** The faint hint joining readings too far apart for the stroke to assert
+   *  continuity (#2653 state 5). Finer and airier than every pattern above, so
+   *  it reads as less than a line rather than as another kind of line. */
+  sparse: "2 5",
 } as const;
 
 // ── grid + axes (Part 2: recessive scaffolding) ─────────────────────────────
@@ -253,6 +257,48 @@ export function chartLineDot(
  *  dots are off) so a dense line still has a hit target. */
 export function chartActiveDot(color: string) {
   return { r: 4, fill: color, stroke: color, strokeWidth: 1 } as const;
+}
+
+// ── the demoted stroke (#2653 state 5) ──────────────────────────────────────
+//
+// A series whose readings sit further apart than its declared continuity span
+// (lib/trend-sparkline.ts) is drawn with the DOTS leading and the stroke demoted
+// to a hint. Both halves matter: filled dots make the facts the heaviest ink on
+// the plot, and a thinner, dashed, part-transparent stroke makes the
+// interpolation visibly lighter than the facts it joins.
+//
+// THE DEMOTION MUST BE A DEMOTION. The failure mode of a state treatment is that
+// it makes the treated chart look deliberate, and therefore MORE trustworthy than
+// the confident line it replaced. Nothing here adds ink: the stroke's width and
+// opacity are strictly below the normal line's on every axis, and
+// `lib/__tests__/sparse-series.test.ts` pins that as an inequality rather than as
+// a pair of numbers, so a later tweak cannot quietly turn the hint back into a
+// line.
+
+/** The normal line's stroke weight — the thing the demotion is measured against. */
+export const CHART_LINE_STROKE_WIDTH = 2;
+/** The demoted stroke's weight. Strictly below `CHART_LINE_STROKE_WIDTH`. */
+export const CHART_SPARSE_STROKE_WIDTH = 1;
+/** The demoted stroke's opacity. Strictly below the normal line's implicit 1. */
+export const CHART_SPARSE_STROKE_OPACITY = 0.4;
+
+/** Spread onto a `<Line>` whose series is too thin for a confident stroke. */
+export function chartSparseLineProps() {
+  return {
+    strokeWidth: CHART_SPARSE_STROKE_WIDTH,
+    strokeDasharray: chartDash.sparse,
+    strokeOpacity: CHART_SPARSE_STROKE_OPACITY,
+  } as const;
+}
+
+/**
+ * The resting dot on a demoted line. FILLED, unlike `chartLineDot`'s hollow
+ * default: on a thin series the readings are the whole content, so they carry
+ * the series' colour solid while the stroke between them fades. Deliberately
+ * not larger than the hover dot, so hover still reads as a state change.
+ */
+export function chartSparseDot(color: string) {
+  return { r: 3, fill: color, stroke: color, strokeWidth: 1 } as const;
 }
 
 /** A `ReferenceLine` / `ReferenceArea` label, at or above the legibility floor. */
