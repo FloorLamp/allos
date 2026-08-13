@@ -122,8 +122,18 @@ export function judgeObservations<T extends JudgedObservation>(
     const entry = cbByName.get(name.toLowerCase());
     if (!entry) return null;
     const age = ageForRecord(ctx, r.date);
+    // The phase on THIS row's own collection date, against the profile-local today the
+    // shared context resolved (#2613) — a row dated after today derives none. `ctx.today`
+    // is checked alongside the log for the same reason its sibling in lib/flag-reconcile
+    // checks it: a horizon that went missing must produce NO phase, never a phase derived
+    // against nothing. cyclePhaseOnDate fails closed on its own too, so this is a second
+    // lock on a door that is already locked — kept because the two call sites are read as
+    // a pair, and a reader who finds the guard on one and not the other has to go and
+    // check which of them is the bug.
     const cyclePhase =
-      periods.length > 0 && r.date ? cyclePhaseOnDate(periods, r.date) : null;
+      periods.length > 0 && r.date && ctx.today
+        ? cyclePhaseOnDate(periods, r.date, ctx.today)
+        : null;
     const key = `${name.toLowerCase()}|${age ?? ""}|${cyclePhase ?? ""}`;
     const hit = cache.get(key);
     if (hit !== undefined) return hit;

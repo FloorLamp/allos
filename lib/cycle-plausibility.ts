@@ -105,12 +105,19 @@ export function canReopenLastPeriodOn(
 // cycleDayOnDate + cyclePhaseOnDate derivations every other surface reads (#221/#1221), so
 // the Cycle control and the dashboard tile can never disagree. Null before any recorded
 // period, where no state is derivable.
+//
+// `today` — not an arbitrary date. This line always describes NOW ("Day 6 · Follicular"
+// under a live quick-action control), so the subject and the #2613 horizon are the same
+// day by construction and the refusal legitimately cannot fire here. That is only sound
+// while the parameter really is today, which is why it is NAMED today: passing
+// `cyclePhaseOnDate(periods, date, date)` under a parameter called `date` reads like a
+// horizon check and is none — it can never refuse whatever it is handed.
 export function cycleStateLine(
   periods: CyclePeriod[],
-  date: string
+  today: string
 ): string | null {
-  const day = cycleDayOnDate(periods, date);
-  const phase = cyclePhaseOnDate(periods, date);
+  const day = cycleDayOnDate(periods, today, today);
+  const phase = cyclePhaseOnDate(periods, today, today);
   if (day == null || phase == null) return null;
   return `Day ${day} · ${CYCLE_PHASE_LABELS[phase]}`;
 }
@@ -132,18 +139,24 @@ export interface CycleControlState {
   canReopen: boolean;
 }
 
+// `today` is the PROFILE-LOCAL current day, and the name is the contract: every field
+// below is a statement about now — what is open now, what a tap now would mint, what the
+// state line reads now. All four call sites resolve it with `today(profileId)`. Naming
+// the parameter `date` (as it was until #2613) invited a caller to hand it an arbitrary
+// day, at which point the phase inside `cycleStateLine` would be answering about a day
+// nobody has lived — the very thing #2613 closed on the Timeline.
 export function cycleControlState(
   periods: CyclePeriod[],
-  date: string
+  today: string
 ): CycleControlState {
   const open = openPeriodIn(periods);
   return {
     openPeriodId: open?.id ?? null,
     openPeriodStart: open?.period_start ?? null,
-    staleOpenPeriod: open != null && isStaleOpenPeriod(open, date),
-    stateLine: cycleStateLine(periods, date),
-    canStart: canStartPeriodOn(periods, date),
-    canReopen: canReopenLastPeriodOn(periods, date),
+    staleOpenPeriod: open != null && isStaleOpenPeriod(open, today),
+    stateLine: cycleStateLine(periods, today),
+    canStart: canStartPeriodOn(periods, today),
+    canReopen: canReopenLastPeriodOn(periods, today),
   };
 }
 
