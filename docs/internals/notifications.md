@@ -176,6 +176,45 @@ duplicates of controls already on it:
   it is invisible to the matrix and unreachable by a sweep. Row-level select-all
   is deliberately absent: a row spans three cells and overlaps the per-kind
   enable.
+- **A column that cannot deliver renders dead** (`lib/notifications/matrix-liveness.ts`,
+  pure; #2565 part B). Until this the grid stated INTENT and was silent about
+  OUTCOME: on a fresh instance every box rendered at full ink under a header whose
+  only disclosure was small grey "not set up" text, so a preference that would be
+  sent and one that could not looked identical. A column now declares its state in
+  words in the same header slot whichever state it is in (`columnStateLabel` →
+  `set up` / `not set up`, mirrored on `data-column-state`), and each cell picks
+  one of three inks (`matrixCellInk` → `live` / `ghost` / `off`, mirrored on
+  `data-ink`):
+
+  > full tick = it goes out on this channel · **ghost tick = a KEPT preference,
+  > waiting on setup** · empty box = the user turned it off
+
+  `ghost ≠ off` is the load-bearing inequality — collapsing them would make a
+  stored consent read as a refusal. **Render-only, in both directions:** no key is
+  written by liveness, a dead column is never hidden and its boxes stay real,
+  enabled checkboxes (turning a consent on ahead of setting the channel up is a
+  legitimate order to do things in — the same reasoning the slot-gap note states),
+  and configuring the channel later brings every stored tick back live untouched.
+  The tri-state sweep is deliberately **not** disabled on a dead column, for that
+  same reason. `cellInkNote` puts the ghost state into the cell's accessible name,
+  because opacity is not in the accessibility tree.
+
+  It says `set up`, never `delivering`: whether messages are actually landing is a
+  `notify_lifecycle` question owned by `delivery-status.ts`, and a green light
+  meaning "configured, and nothing has been tried" is the lie that rule forbids.
+
+  **It also names WHOSE setup step is missing** — the mixed-tier page's own trap.
+  These four columns are owned by three tiers (Telegram/Push/Email each need
+  instance-wide SERVER config AND a LOGIN-tier target; Home Assistant is purely
+  the PROFILE's webhook), so one undifferentiated "not set up" meant three
+  different obligations. `columnLiveness` returns the blocking tier, server-first
+  (an absent bot token blocks a member's chat id, not the reverse), and
+  `deadColumnNotes` renders **one sentence per owner** in server → login → profile
+  order: the server sentence points an admin at Settings → Server and tells a
+  member whose step it is, the login sentence says "your login", the profile
+  sentence uses the profile's NAME. Copy only — Settings → Server keeps its own
+  `requireAdmin()`.
+
 - **The digest mirror is collapsed.** Its ten checkboxes were an acknowledged
   mirror of the message's ⚙️ Tune control, so they now sit behind a disclosure
   over `digestTuneSummary` — one line naming exactly what is turned down. The card

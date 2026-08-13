@@ -28,6 +28,16 @@ import {
   nextColumnBulkTarget,
   sweepableKinds,
 } from "@/lib/notifications/matrix-bulk";
+import {
+  cellInkNote,
+  columnLiveness,
+  columnStateLabel,
+  deadColumnNotes,
+  isColumnReady,
+  matrixCellInk,
+  type ChannelReadiness,
+  type CellInk,
+} from "@/lib/notifications/matrix-liveness";
 import { REVIEW_CADENCES } from "@/lib/recap-scale";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
 import { isEmailDeliverableKind } from "@/lib/notifications/email-core";
@@ -79,6 +89,16 @@ import {
 // lib/notifications/matrix-bulk.ts, including the rule that matters: SAFETY kinds are
 // never swept, so a column "turn off" leaves dose/escalation/redose exactly as the user
 // set them, individually. Row-level select-all is deliberately out.
+//
+// COLUMN LIVENESS (#2565 part B, render-only). Until now every cell rendered at full
+// ink whether or not its channel could carry anything, so the grid stated intent and
+// was silent about outcome. A column now declares whether it is SET UP, each cell picks
+// one of three inks — live / ghost / off — and the ghost is the load-bearing one: a
+// kept preference waiting on setup must never look like a preference the user turned
+// off. Storage is untouched in both directions; configuring the channel later brings
+// the same ticks back live. The decision (including WHO must act for a dead column, on
+// a page whose four columns are owned by three different tiers) is pure and lives in
+// lib/notifications/matrix-liveness.ts.
 
 type ChannelId = "telegram" | "push" | "ha" | "email";
 
@@ -88,6 +108,16 @@ type Column = {
   label: string;
   owner: string;
   configured: boolean;
+  liveness: ReturnType<typeof columnLiveness>;
+};
+
+// The recessed rendering of a ghosted tick. Opacity + a muted accent, so a kept
+// preference still shows its MARK (that is what separates it from an empty box) while
+// reading as unlit. Never `hidden` and never `disabled`: see the module header.
+const INK_CLASS: Record<CellInk, string> = {
+  live: "accent-brand-600",
+  ghost: "opacity-40 accent-slate-500 dark:accent-slate-400",
+  off: "accent-brand-600",
 };
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -359,10 +389,9 @@ export default function NotificationPrefs({
   pushDisabled,
   haDisabled,
   emailDisabled,
-  telegramConfigured,
-  pushConfigured,
-  haConfigured,
-  emailConfigured,
+  readiness,
+  isAdmin,
+  profileName,
 }: {
   schedule: NotifySchedule;
   workoutSummary: string;
@@ -407,10 +436,18 @@ export default function NotificationPrefs({
   pushDisabled: NotificationKind[];
   haDisabled: NotificationKind[];
   emailDisabled: NotificationKind[];
-  telegramConfigured: boolean;
-  pushConfigured: boolean;
-  haConfigured: boolean;
-  emailConfigured: boolean;
+  // #2565 part B. This replaced four `*Configured` booleans. `serverReady &&
+  // targetReady` is exactly the boolean each of those carried — nothing about which
+  // column counts as deliverable changed — but the two halves are now separate, so a
+  // dead column can say WHOSE setup step is missing instead of leaving a member to
+  // guess between their own chat id and an admin's bot token.
+  readiness: Record<ChannelId, ChannelReadiness>;
+  // For the server-tier sentence only: an admin is sent to Settings → Server, a member
+  // is told whose step it is. Copy, never a permission check.
+  isAdmin: boolean;
+  // The data subject's name, for the profile-tier sentence. The login-tier sentence
+  // says "your login": the two are deliberately worded so they cannot be confused.
+  profileName: string;
 }) {
   // ONE bag of form-field values keyed by the saveNotificationPrefs field name, so a
   // registry row renders and writes generically — adding a kind is a registry entry,
@@ -491,36 +528,31 @@ export default function NotificationPrefs({
     });
   }
 
-  const columns: Column[] = [
-    {
-      id: "telegram",
-      short: "Telegram",
-      label: "Telegram",
-      owner: "this login",
-      configured: telegramConfigured,
-    },
-    {
-      id: "push",
-      short: "Push",
-      label: "Web Push",
-      owner: "this login",
-      configured: pushConfigured,
-    },
-    {
-      id: "ha",
-      short: "HA",
-      label: "Home Assistant",
-      owner: "this profile",
-      configured: haConfigured,
-    },
-    {
-      id: "email",
-      short: "Email",
-      label: "Email",
-      owner: "this login",
-      configured: emailConfigured,
-    },
-  ];
+  const columns: Column[] = (
+    [
+      { id: "telegram", short: "Telegram", label: "Telegram" },
+      { id: "push", short: "Push", label: "Web Push" },
+      { id: "ha", short: "HA", label: "Home Assistant" },
+      { id: "email", short: "Email", label: "Email" },
+    ] as const
+  ).map((c) => {
+    const liveness = columnLiveness(readiness[c.id]);
+    return {
+      ...c,
+      // The tier that owns this column's TARGET, said in the same words the notes use
+      // — "your login" vs the profile's name — so the header tooltip and the setup
+      // sentence below cannot drift into two vocabularies for one distinction.
+      owner:
+        readiness[c.id].targetScope === "login"
+          ? "your login"
+          : `the ${profileName} profile`,
+      configured: isColumnReady(liveness),
+      liveness,
+    };
+  });
+
+  // One sentence per blocking OWNER, or none when everything is set up (#2565 part B).
+  const setupNotes = deadColumnNotes(columns, { isAdmin, profileName });
 
   const saver: Record<ChannelId, (fd: FormData) => Promise<unknown>> = {
     telegram: saveLoginTelegramNotifyKinds,
@@ -752,6 +784,28 @@ export default function NotificationPrefs({
           off everything except safety reminders, which keep their own boxes.
         </p>
 
+        {/* #2565 part B. The legend is the contract this grid now keeps: three inks,
+            three meanings, and the ghost is a KEPT preference rather than an off one.
+            It renders only when a column is actually dead — a page with nothing to
+            disclose says nothing. */}
+        {setupNotes.length > 0 && (
+          <div
+            className="rounded-md border border-black/10 bg-slate-50 p-3 text-xs text-slate-600 dark:border-white/10 dark:bg-slate-900/40 dark:text-slate-300"
+            data-testid="matrix-setup-notes"
+          >
+            <p>
+              A faded tick is a kept preference waiting on that channel&rsquo;s
+              setup — nothing is turned off, and it goes out as soon as the
+              channel is set up.
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              {setupNotes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
           <span>Kind</span>
           <span className="grid w-40 grid-cols-4 gap-1 text-center sm:w-52">
@@ -761,12 +815,25 @@ export default function NotificationPrefs({
               const label = columnBulkLabel(c.label, state);
               return (
                 <span key={c.id} className="block">
-                  <span title={`${c.label} — ${c.owner}`}>{c.short}</span>
-                  {!c.configured && (
-                    <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
-                      not set up
-                    </span>
-                  )}
+                  <span title={`${c.label} — follows ${c.owner}`}>
+                    {c.short}
+                  </span>
+                  {/* #2565 part B: the state is stated for EVERY column, in words, in
+                      the same slot — a disclosure that only appears on failure reads
+                      as an exception rather than as one of two states. "set up", not
+                      "delivering": whether messages are actually landing is a
+                      notify_lifecycle question this render does not ask. */}
+                  <span
+                    className={`block text-xs font-normal ${
+                      c.configured
+                        ? "text-slate-500 dark:text-slate-400"
+                        : "text-amber-700 dark:text-amber-400"
+                    }`}
+                    data-testid={`matrix-column-state-${c.id}`}
+                    data-column-state={c.liveness.state}
+                  >
+                    {columnStateLabel(c.liveness)}
+                  </span>
                   {/* The tri-state column sweep (#1868 §2). `indeterminate` is a DOM
                       property with no React attribute, so it is set through a ref. */}
                   <input
@@ -1005,16 +1072,32 @@ export default function NotificationPrefs({
                 <div className="grid w-40 shrink-0 grid-cols-4 gap-1 pt-1 text-center sm:w-52">
                   {columns.map((c) => {
                     const available = cellAvailable(c.id, e.kind);
+                    // #2565 part B. Ink is the only thing that changes: the box stays
+                    // a real, enabled checkbox writing the same key, because a kept
+                    // preference the user cannot edit is worse than one that looks
+                    // live — and turning a consent ON ahead of setting the channel up
+                    // is a legitimate order to do things in (the same reasoning the
+                    // slot-gap note above states for a missing slot time).
+                    const ink = matrixCellInk(
+                      c.configured,
+                      routes(c.id, e.kind)
+                    );
+                    const note = cellInkNote(ink);
                     return available ? (
                       <input
                         key={c.id}
                         type="checkbox"
-                        className="mx-auto h-4 w-4 accent-brand-600"
+                        className={`mx-auto h-4 w-4 ${INK_CLASS[ink]}`}
                         checked={routes(c.id, e.kind)}
                         disabled={routing}
                         onChange={() => toggleRoute(c.id, e.kind)}
                         data-testid={`matrix-cell-${c.id}-${e.kind}`}
-                        aria-label={`${e.label} to ${c.label}`}
+                        data-ink={ink}
+                        aria-label={
+                          note
+                            ? `${e.label} to ${c.label} — ${note}`
+                            : `${e.label} to ${c.label}`
+                        }
                       />
                     ) : (
                       <span

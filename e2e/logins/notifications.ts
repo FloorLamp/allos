@@ -38,6 +38,18 @@ export const EMAIL_NOTIFY_PROFILE = "Email Notify (e2e)";
 export const E2E_LOGIN_NOTIF_SWEEP = "e2e_notif_sweep";
 export const NOTIF_SWEEP_PROFILE = "Notif Sweep (e2e)";
 
+// A member with a dedicated adult profile for the matrix column-liveness spec
+// (#2565 part B). Isolated for both reasons at once: the spec drives the HOME ASSISTANT
+// column from not-set-up to set-up and back, and that config is PROFILE-scoped, while
+// the routing ticks it reads are LOGIN-scoped. It also needs a channel whose liveness
+// no other spec can move — Telegram, Push and Email liveness all depend on instance-wide
+// config that neighbouring specs configure and reset, so only a profile-owned channel
+// gives a stable dead→live transition. Same #1025 hazard as the HA config fixture: the
+// webhook it persists must never live on a profile any spec logs temperatures for, and
+// the spec leaves the channel DISABLED as it found it.
+export const E2E_LOGIN_MATRIX_INK = "e2e_matrix_ink";
+export const MATRIX_INK_PROFILE = "Matrix Ink (e2e)";
+
 // Two dedicated profiles for the persisted notify-tick log viewer (#2209). The spec
 // asserts on RUN ROWS grouped by (run, profile), so it must own every line it counts
 // — a shared profile would let another fixture's tick lines drift into its totals.

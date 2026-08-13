@@ -44,6 +44,7 @@ import {
   resolveEmailRecipients,
 } from "@/lib/notifications/email";
 import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
+import type { ChannelReadiness } from "@/lib/notifications/matrix-liveness";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import { notifyScopeForLogin } from "@/lib/notify-scope-db";
 import { notifyScopeCaption } from "@/lib/notify-scope";
@@ -158,18 +159,45 @@ export default async function NotificationsSettingsPage() {
   const notifyScope =
     login.role === "admin" ? notifyScopeForLogin(login.id) : null;
 
-  // The Telegram column is deliverable for THIS profile when at least one managing
-  // login (deduped by chat) has an enabled chat — the login-scoped fan-out (#1072).
-  const telegramConfigured =
-    botConfigured && resolveTelegramRecipients(profile.id).length > 0;
-  const pushConfigured =
-    isPushConfigured() && countPushSubscriptionsForLogin(login.id) > 0;
-  const haConfigured = ha.enabled && isValidWebhookUrl(ha.webhookUrl);
-  // The email column is deliverable for THIS profile when SMTP is configured and at
-  // least one managing login has the channel enabled with an address (#1855).
   const smtpConfigured = isEmailConfigured();
-  const emailConfigured =
-    smtpConfigured && resolveEmailRecipients(profile.id).length > 0;
+  // What each matrix column needs before it can carry anything (#2565 part B). This is
+  // the SAME deliverability test the four `*Configured` booleans carried — the AND of
+  // the two halves is unchanged — split into the instance-wide half and the
+  // per-recipient half, plus which TIER owns that recipient. The split is the point:
+  // this page is deliberately mixed-tier, and "not set up" meant three different
+  // obligations (an admin's, this login's, this profile's) with nothing on screen to
+  // tell them apart.
+  //
+  //   Telegram  server = the instance bot token; target = at least one managing login
+  //             (deduped by chat) with an enabled chat — the login-scoped fan-out (#1072)
+  //   Web Push  server = VAPID keys; target = a subscription from THIS browser
+  //   Email     server = SMTP; target = a managing login with the channel on and an
+  //             address (#1855)
+  //   Home Assistant — no server tier at all; the webhook is the PROFILE's
+  const readiness = {
+    telegram: {
+      serverReady: botConfigured,
+      targetReady: resolveTelegramRecipients(profile.id).length > 0,
+      targetScope: "login",
+    },
+    push: {
+      serverReady: isPushConfigured(),
+      targetReady: countPushSubscriptionsForLogin(login.id) > 0,
+      targetScope: "login",
+    },
+    ha: {
+      serverReady: true,
+      targetReady: ha.enabled && isValidWebhookUrl(ha.webhookUrl),
+      targetScope: "profile",
+    },
+    email: {
+      serverReady: smtpConfigured,
+      targetReady: resolveEmailRecipients(profile.id).length > 0,
+      targetScope: "login",
+    },
+  } as const satisfies Record<string, ChannelReadiness>;
+  const telegramConfigured =
+    readiness.telegram.serverReady && readiness.telegram.targetReady;
   const householdRound = getProfileHouseholdRound(profile.id);
 
   // UNROUTABLE (#2173) — said at the exact place someone would fix it. This profile
@@ -333,10 +361,12 @@ export default async function NotificationsSettingsPage() {
                 pushDisabled={getLoginPushDisabledKinds(login.id)}
                 haDisabled={ha.disabledKinds}
                 emailDisabled={getLoginEmailDisabledKinds(login.id)}
-                telegramConfigured={telegramConfigured}
-                pushConfigured={pushConfigured}
-                haConfigured={haConfigured}
-                emailConfigured={emailConfigured}
+                // #2565 part B: which columns can carry anything, and — when one
+                // cannot — whose setup step is missing. Render-only; no key on this
+                // page is written by it.
+                readiness={readiness}
+                isAdmin={login.role === "admin"}
+                profileName={profile.name}
               />
             </PageContainer>
           </Section>
