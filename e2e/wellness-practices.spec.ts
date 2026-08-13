@@ -20,15 +20,36 @@ async function openPracticeCreate(page: Page) {
   return form;
 }
 
+// Open one of these rows' ⋯ menus, then click an item in it (#2632).
+//
+// Both halves were missing, and each hid the other:
+//
+//  • The trigger is an OverflowMenu toggle whose `onClick` exists only once React
+//    has hydrated the card, so a raw `.click()` inside the #500/#830 window is
+//    SWALLOWED. That is decision-tree case 3's `hydratedClick` sub-case — the shape
+//    every other overflow-menu spec in this suite already uses. A retry loop is not
+//    available here: a second tap on a toggle closes what the first opened, which
+//    is the whole reason hydratedClick exists.
+//  • The item lives in a portal mounted only while the menu is OPEN, so waiting on
+//    the ITEM cannot distinguish "the menu never opened" from "the item is slow" —
+//    both read as one 30s `waiting for getByTestId(...)` with no actionability
+//    lines after it, which is exactly what CI reported. Waiting on the menu's open
+//    state first makes a swallowed toggle fail as a swallowed toggle.
+async function openRowMenu(page: Page, trigger: Locator) {
+  await hydratedClick(page, trigger);
+  // The panel is portaled to <body>, so it is reached from the page, not the row.
+  await expect(page.getByRole("menu")).toBeVisible();
+}
+
 async function choosePracticeAction(
   page: Page,
   card: Locator,
   actionTestId: string
 ) {
-  await card
-    .getByTestId("wellness-practice-actions")
-    .getByRole("button")
-    .click();
+  await openRowMenu(
+    page,
+    card.getByTestId("wellness-practice-actions").getByRole("button")
+  );
   await page.getByTestId(actionTestId).click();
 }
 
@@ -37,7 +58,7 @@ async function chooseSessionAction(
   row: Locator,
   actionTestId: string
 ) {
-  await row.getByRole("button", { name: "Session actions" }).click();
+  await openRowMenu(page, row.getByRole("button", { name: "Session actions" }));
   await page.getByTestId(actionTestId).click();
 }
 
