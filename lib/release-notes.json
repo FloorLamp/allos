@@ -51,6 +51,48 @@
       "date": "2026-08-12",
       "entries": [
         {
+          "pr": 2562,
+          "title": "A deploy reloads the tab itself at a safe moment, with dirty forms resuming in place",
+          "kind": "feature",
+          "issues": [2471]
+        },
+        {
+          "pr": 2571,
+          "title": "Three training surfaces stop making claims their data cannot support",
+          "kind": "fix",
+          "issues": [2393, 2326, 2359]
+        },
+        {
+          "pr": 2572,
+          "title": "The week-closing message reports your targets verdict, and food habits are observed over a month",
+          "kind": "feature",
+          "issues": [2395, 2397]
+        },
+        {
+          "pr": 2575,
+          "title": "Protein history grows a week grain, and Monday stops claiming you have no protein data",
+          "kind": "fix",
+          "issues": [2413, 2328]
+        },
+        {
+          "pr": 2580,
+          "title": "A whole morning is one tap from the dashboard, and two Telegram keyboard defects are fixed",
+          "kind": "feature",
+          "issues": [2458, 2418]
+        },
+        {
+          "pr": 2584,
+          "title": "A food group you are limiting says so at the log tap and in the digest",
+          "kind": "feature",
+          "issues": [2377]
+        },
+        {
+          "pr": 2586,
+          "title": "A training claim that names a lift now shows it, and an edit stops clearing a column you never touched",
+          "kind": "fix",
+          "issues": [1921, 2573, 2193]
+        },
+        {
           "pr": 2591,
           "title": "A clinical document with a single patient stops being screened as if its subject were unclear",
           "kind": "fix",
