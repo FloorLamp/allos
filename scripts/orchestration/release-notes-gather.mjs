@@ -124,7 +124,8 @@ if (newestDay && since === newestDay.date) {
 }
 console.log(
   `\nCuration stays yours (docs/orchestration.md, Release notes): at most two
-batches/day, a sentence or two of product language per entry, operator-facing
-notes in the body, internal merges omitted. The [internal?] marker is a guess —
-overrule it in both directions.`
+batches/day, ONE concise bullet per change (the title is the whole entry — the
+validator refuses bodies), upgrade actions in the day's operatorNotes, internal
+merges omitted. The [internal?] marker is a guess — overrule it in both
+directions.`
 );

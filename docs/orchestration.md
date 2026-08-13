@@ -243,8 +243,10 @@ merged since the newest entry so a batch starts from a skim, not fifty lookups.
 - **Orchestrator bookkeeping**: feature PRs never touch it, so it cannot become
   a merge magnet.
 - **At most TWO batches per day** — mid-run and wind-down, not per merge train.
-- **A sentence or two per entry**: what changed and why the user cares.
-  Purely-internal merges are omitted; operator-facing notes go in the body.
+- **One concise BULLET per change** (owner, 2026-08-13): the title is the whole
+  entry — the validator refuses a body and a title over 120 chars, so verbosity
+  cannot creep back. Purely-internal merges are omitted; upgrade actions go in
+  the day's operatorNotes.
 - The file stays APPEND-ONLY; `/whats-new` pages it (#2528), and a day split
   across a page boundary carries its `operatorNotes` onto both pages.
 
