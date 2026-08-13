@@ -44,7 +44,7 @@ describe("groupDiagnosisChips — the reported pair", () => {
     expect(g.kind).toBe("shared");
     if (g.kind !== "shared") return;
     expect(g.stem).toBe(Z_CODE);
-    expect(g.members.map((m) => m.tail)).toEqual(["", "- Primary"]);
+    expect(g.members.map((m) => m.tail)).toEqual(["", " - Primary"]);
   });
 
   it("keeps both names whole and recoverable", () => {
@@ -52,18 +52,19 @@ describe("groupDiagnosisChips — the reported pair", () => {
     const g = groups[0];
     if (g.kind !== "shared") return;
     for (const m of g.members) {
-      // stem + tail is the original, so the factored form shows every character
-      // of both strings rather than standing in for one of them.
-      expect(`${g.stem}${m.tail ? ` ${m.tail}` : ""}`).toBe(m.name);
+      // stem + tail is the original EXACTLY — no join character, no dropped
+      // separator. This identity is what makes printing the stem once a
+      // factoring rather than a truncation.
+      expect(`${g.stem}${m.tail}`).toBe(m.name);
     }
   });
 });
 
 describe("groupDiagnosisChips — what it refuses to touch", () => {
   it("leaves the short clinical pair as two plain chips", () => {
-    // The pair that refuted attempt 1. There is no wrapping to fix here, and
-    // factoring a 19-character stem would only invite reading two diseases as
-    // one. Nothing is grouped, nothing is changed.
+    // The pair that refuted attempt 1 — left alone because the names are SHORT,
+    // which is all the length gate knows. It is not a clinical discriminator: the
+    // long-etiology case below groups, deliberately.
     const names = ["Hyperparathyroidism", "Hyperparathyroidism - Secondary"];
     expect(groupDiagnosisChips(names)).toEqual([
       { kind: "single", name: "Hyperparathyroidism" },
@@ -104,7 +105,7 @@ describe("groupDiagnosisChips — what it refuses to touch", () => {
     // "…aged 1" is a raw common prefix, but 1 and 12 are one token, so the stem
     // stops at the last boundary both names agree on.
     expect(g.stem.endsWith("aged")).toBe(true);
-    expect(g.members.map((m) => m.tail)).toEqual(["1", "12"]);
+    expect(g.members.map((m) => m.tail)).toEqual([" 1", " 12"]);
   });
 
   it("refuses a group whose tails outweigh the stem", () => {
@@ -129,7 +130,87 @@ describe("groupDiagnosisChips — what it refuses to touch", () => {
   });
 });
 
+// The separator run between the stem and a tail is the character class this
+// nearly lost: an earlier version printed `slice(0, k)` MINUS its trailing
+// separators as the stem while the tail started at `k`, so " - " was rendered
+// nowhere and "…of breast" sat beside a bare "Left". One example could not catch
+// it (the "- Primary" case survives, because there the dash lands inside the
+// tail), so this is checked as a PROPERTY over generated pairs, and it is what
+// pins STEM_TRAILING: delete the trim and the stem ends with a dangling
+// separator; move the trim without moving the tail's start and reconstruction
+// breaks.
+describe("groupDiagnosisChips — reconstruction is exact (property)", () => {
+  const STEMS = [
+    "Malignant neoplasm of the upper outer quadrant of breast",
+    "Amyloidosis of the kidney with nephrotic syndrome",
+    "Encounter for antineoplastic chemotherapy and immunotherapy",
+    "Adrenal cortical insufficiency with electrolyte disturbance",
+  ];
+  const SEPARATORS = ["", " ", " - ", " – ", " — ", ", ", "; ", ": ", "/", "-"];
+  const TAILS = ["Left", "Right", "Primary", "Secondary", "1", "12"];
+
+  const pairs: [string, string][] = [];
+  for (const stem of STEMS) {
+    for (const sep of SEPARATORS) {
+      for (let i = 0; i < TAILS.length; i++) {
+        const j = (i + 1) % TAILS.length;
+        pairs.push([`${stem}${sep}${TAILS[i]}`, `${stem}${sep}${TAILS[j]}`]);
+      }
+    }
+  }
+
+  it("emits every name back, in order, with stem + tail === name", () => {
+    for (const pair of pairs) {
+      const groups = groupDiagnosisChips(pair);
+      expect(namesOut(groups), pair.join(" | ")).toEqual(pair);
+      for (const g of groups) {
+        if (g.kind !== "shared") continue;
+        for (const m of g.members) {
+          expect(`${g.stem}${m.tail}`, `${g.stem} + ${m.tail}`).toBe(m.name);
+        }
+      }
+    }
+  });
+
+  it("never prints a stem that ends in a separator", () => {
+    for (const pair of pairs) {
+      for (const g of groupDiagnosisChips(pair)) {
+        if (g.kind !== "shared") continue;
+        expect(/[\s\-–—,;:/]$/.test(g.stem), g.stem).toBe(false);
+      }
+    }
+  });
+
+  it("carries the separator on the tail rather than deleting it", () => {
+    const names = [
+      "Malignant neoplasm of the upper outer quadrant of breast - Left",
+      "Malignant neoplasm of the upper outer quadrant of breast - Right",
+    ];
+    const g = groupDiagnosisChips(names)[0];
+    expect(g.kind).toBe("shared");
+    if (g.kind !== "shared") return;
+    expect(g.stem).toBe(
+      "Malignant neoplasm of the upper outer quadrant of breast"
+    );
+    expect(g.members.map((m) => m.tail)).toEqual([" - Left", " - Right"]);
+  });
+});
+
 describe("groupDiagnosisChips — general long-diagnosis compaction", () => {
+  it("groups a long ETIOLOGY pair too — the length gate is about wrapping, not meaning", () => {
+    // Stated plainly because the PR body and module header now say so: real
+    // etiology pairs clear 40 characters and DO group. That is accepted here and
+    // nowhere else — both names print in full, in order, nothing is stored or
+    // deleted, and the renderer keeps them distinct from a source-stated rank.
+    const stem = "Amyloidosis of the kidney with nephrotic syndrome";
+    const names = [`${stem} - Primary`, `${stem} - Secondary`];
+    const g = groupDiagnosisChips(names)[0];
+    expect(g.kind).toBe("shared");
+    if (g.kind !== "shared") return;
+    expect(g.members.map((m) => m.name)).toEqual(names);
+    expect(g.members.map((m) => `${g.stem}${m.tail}`)).toEqual(names);
+  });
+
   it("groups three consecutive variants of one long stem", () => {
     const stem =
       "Encounter for antineoplastic chemotherapy and immunotherapy admission";
@@ -142,8 +223,8 @@ describe("groupDiagnosisChips — general long-diagnosis compaction", () => {
     // Both qualifiers survive as themselves — the compaction never decides that
     // "- Secondary" was a rank word, which is the judgment no string can make.
     expect(g.members.map((m) => m.tail)).toEqual([
-      "- Primary",
-      "- Secondary",
+      " - Primary",
+      " - Secondary",
       "",
     ]);
     expect(namesOut(groups)).toEqual(names);
@@ -155,6 +236,6 @@ describe("groupDiagnosisChips — general long-diagnosis compaction", () => {
     const g = groupDiagnosisChips(names)[0];
     expect(g.kind).toBe("shared");
     if (g.kind !== "shared") return;
-    expect(g.members.map((m) => m.tail)).toEqual(["disease", "failure"]);
+    expect(g.members.map((m) => m.tail)).toEqual([" disease", " failure"]);
   });
 });

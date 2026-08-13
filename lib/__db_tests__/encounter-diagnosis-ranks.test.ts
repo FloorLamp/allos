@@ -21,6 +21,8 @@ import { extractFromCcda } from "@/lib/cda";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
 import { persistDocumentImport } from "@/lib/import-persist";
 import { getEncounter, getEncounters } from "@/lib/queries";
+import { collectFhirExportInput } from "@/lib/export-full";
+import { buildFhirBundle, fhirBundleJson } from "@/lib/fhir-export";
 import { decodeDiagnosisRanks } from "@/lib/visit-diagnosis-rank";
 import { db } from "@/lib/db";
 
@@ -175,6 +177,35 @@ describe("encounters.diagnosis_ranks (#2589)", () => {
     // the second display name.
     expect(enc.diagnosis_ranks).toBeNull();
     expect(enc.diagnoses).toBe(`${Z_CODE}; ${Z_CODE} - Primary`);
+  });
+
+  it("survives a FHIR export → re-import round-trip", () => {
+    // Without this the structured half is silently downgraded by the act of
+    // exporting: the names come back and the rank does not, which is exactly the
+    // fidelity loss this work exists to close.
+    const bundle = buildFhirBundle(
+      collectFhirExportInput(fhirProfile, "Rank FHIR")
+    );
+    const exported = bundle.entry.find(
+      (e) => e.resource.resourceType === "Encounter"
+    );
+    expect(exported).toBeTruthy();
+    const diagnosis = (
+      exported!.resource as {
+        diagnosis?: { rank?: number; use?: unknown[] }[];
+      }
+    ).diagnosis;
+    expect(diagnosis?.[0]).toMatchObject({ rank: 1 });
+    expect(diagnosis?.[1]).toMatchObject({ rank: 2 });
+
+    const reimported = parseFhirBundle(
+      fhirBundleJson(collectFhirExportInput(fhirProfile, "Rank FHIR"))
+    );
+    const enc = reimported.encounters!.find((e) => e.date === "2026-05-04")!;
+    expect(enc.diagnosis_ranks).toEqual([
+      { name: "Acute bronchitis", rank: 1, use: ["dd"] },
+      { name: "Essential hypertension", rank: 2 },
+    ]);
   });
 
   it("is idempotent across a re-import of the same document", () => {

@@ -641,6 +641,126 @@ describe("FHIR Encounter → ImportedEncounter", () => {
     ]);
   });
 
+  it("keys the merge on the resolved Condition, not on the display name (#2589)", () => {
+    // Two DIFFERENT conditions — a SNOMED entry and an ICD-10 entry — that both
+    // display as "Anemia", stated at different ranks. A name-keyed merge folded
+    // them together and let the surviving chip claim Primary while discarding the
+    // other statement. They are two statements; the names still collapse to one
+    // chip (unchanged behaviour), and the badge is withheld rather than guessed.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-snomed",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-snomed",
+            code: {
+              text: "Anemia",
+              coding: [{ system: "http://snomed.info/sct", code: "271737000" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:cond-icd",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-icd",
+            code: {
+              text: "Anemia",
+              coding: [
+                { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "D64.9" },
+              ],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-two-anemias",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-two-anemias",
+            status: "finished",
+            period: { start: "2026-04-04" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-snomed" }, rank: 4 },
+              { condition: { reference: "urn:uuid:cond-icd" }, rank: 1 },
+            ],
+          },
+        },
+      ])
+    );
+    const e = r.encounters![0];
+    expect(e.diagnoses).toEqual(["Anemia"]);
+    expect(e.diagnosis_ranks).toEqual([]);
+  });
+
+  it("ignores a diagnosis-role code from another code system (#2589)", () => {
+    // "AD" in some local system is not HL7's admission role, and this is the one
+    // place an unvalidated source string would become a clinical-sounding English
+    // word on a card.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-local",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-local",
+            code: { text: "Acute bronchitis" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-local-use",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-local-use",
+            status: "finished",
+            period: { start: "2026-04-05" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-local" },
+                use: {
+                  coding: [
+                    { system: "http://example.org/local-codes", code: "AD" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnoses).toEqual(["Acute bronchitis"]);
+    expect(r.encounters![0].diagnosis_ranks).toEqual([]);
+  });
+
+  it("drops an out-of-range rank instead of badging it (#2589)", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-huge",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-huge",
+            code: { text: "Acute bronchitis" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-huge-rank",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-huge-rank",
+            status: "finished",
+            period: { start: "2026-04-06" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-huge" }, rank: 1e21 },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnoses).toEqual(["Acute bronchitis"]);
+    expect(r.encounters![0].diagnosis_ranks).toEqual([]);
+  });
+
   it("never infers a rank from a display name that carries one (#2589)", () => {
     const r = parseFhirBundle(
       bundleWithUrls([

@@ -1814,8 +1814,12 @@ etiology ("Hyperparathyroidism - Secondary"), the two are the same string shape,
 and Allos does not guess between them. What it does instead is **render them
 compactly**: consecutive diagnoses sharing a long stem print that stem once with
 each entry's tail after it, so one long Z-code listed twice stops costing four
-wrapped lines on a phone. Nothing is hidden — every character of every name stays
-on screen, and hovering or a screen reader gives the full names back untouched.
+wrapped lines on a phone. This is about wrapping and nothing else — it groups any
+long shared stem, including two genuinely different diagnoses, and it never claims
+they are one. Nothing is hidden: the stem plus each tail is exactly the stored
+name, and hovering or a screen reader gives every full name back with whatever
+rank the source stated. A source-stated rank and a fragment of a name are styled
+apart, because they are different claims.
 
 ### Providers
 

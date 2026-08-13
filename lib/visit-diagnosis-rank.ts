@@ -33,6 +33,21 @@ export interface VisitDiagnosisRank {
   use?: string[];
 }
 
+// The ONE code system a diagnosis role may come from. `AD` / `CC` / `CM` are
+// two-letter codes any source could mint locally meaning something else, and this
+// is the one place an unvalidated source string becomes a clinical-sounding word
+// on a card — so the system is checked on the way in (lib/fhir/resources.ts) and
+// re-stated on the way out (lib/fhir-export.ts).
+export const DIAGNOSIS_ROLE_SYSTEM =
+  "http://terminology.hl7.org/CodeSystem/diagnosis-role";
+
+// The largest rank this treats as a stated ranking. `Number.isInteger(1e21)` is
+// true and `positiveInt` has no upper bound in the wire format, so without a cap a
+// malformed source badges a diagnosis "#1e+21". A visit does not have a hundredth
+// diagnosis; beyond this the value is dropped, not clamped, because clamping would
+// invent a rank nobody wrote.
+export const MAX_DIAGNOSIS_RANK = 99;
+
 // diagnosis-role → the words a card shows. An unlisted code renders nothing
 // rather than being echoed raw, so a source's private code cannot leak into the
 // UI as though it meant something.
@@ -54,9 +69,14 @@ const USE_LABELS: Record<string, string> = {
 // spending the clinical word on the ordinal one is exactly the conflation that
 // sank the withdrawn work.
 export function diagnosisRankBadge(entry: VisitDiagnosisRank): string | null {
-  if (typeof entry.rank === "number" && Number.isInteger(entry.rank)) {
+  if (
+    typeof entry.rank === "number" &&
+    Number.isInteger(entry.rank) &&
+    entry.rank >= 1 &&
+    entry.rank <= MAX_DIAGNOSIS_RANK
+  ) {
     if (entry.rank === 1) return "Primary";
-    if (entry.rank > 1) return `#${entry.rank}`;
+    return `#${entry.rank}`;
   }
   for (const u of entry.use ?? []) {
     const label = USE_LABELS[u];
@@ -72,7 +92,12 @@ function normalizeEntry(raw: unknown): VisitDiagnosisRank | null {
   if (!name) return null;
   const out: VisitDiagnosisRank = { name };
   const rank = r.rank;
-  if (typeof rank === "number" && Number.isInteger(rank) && rank >= 1)
+  if (
+    typeof rank === "number" &&
+    Number.isInteger(rank) &&
+    rank >= 1 &&
+    rank <= MAX_DIAGNOSIS_RANK
+  )
     out.rank = rank;
   const use = Array.isArray(r.use)
     ? r.use
@@ -126,4 +151,22 @@ export function rankForDiagnosis(
 ): VisitDiagnosisRank | null {
   const key = name.trim().toLowerCase();
   return entries.find((e) => e.name.trim().toLowerCase() === key) ?? null;
+}
+
+// What assistive technology hears for one diagnosis: the name exactly as stored,
+// plus the source-stated rank when there is one.
+//
+// This exists because the factored chip (lib/diagnosis-chips.ts) hides its visual
+// pieces from the accessibility tree and speaks the names instead — so a badge
+// that lived only in the visual half would be readable by sighted users and
+// invisible to everyone else. Half 2 must not be able to delete half 1's output
+// from the accessible tree, which is what an earlier version of that component did
+// to every grouped chip.
+export function spokenDiagnosis(
+  name: string,
+  entries: readonly VisitDiagnosisRank[]
+): string {
+  const entry = rankForDiagnosis(entries, name);
+  const label = entry ? diagnosisRankBadge(entry) : null;
+  return label ? `${name} (${label})` : name;
 }

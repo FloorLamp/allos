@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_DIAGNOSIS_RANK,
   decodeDiagnosisRanks,
   diagnosisRankBadge,
   encodeDiagnosisRanks,
   rankForDiagnosis,
+  spokenDiagnosis,
 } from "../visit-diagnosis-rank";
 
 describe("diagnosisRankBadge", () => {
@@ -29,6 +31,21 @@ describe("diagnosisRankBadge", () => {
       diagnosisRankBadge({ name: "Anemia", use: ["zz-local"] })
     ).toBeNull();
     expect(diagnosisRankBadge({ name: "Anemia" })).toBeNull();
+  });
+
+  it("refuses a rank past the stated-ranking bound", () => {
+    // `Number.isInteger(1e21)` is true and positiveInt has no upper bound on the
+    // wire, so without this a malformed source badges a diagnosis "#1e+21".
+    expect(diagnosisRankBadge({ name: "Anemia", rank: 1e21 })).toBeNull();
+    expect(
+      diagnosisRankBadge({ name: "Anemia", rank: MAX_DIAGNOSIS_RANK + 1 })
+    ).toBeNull();
+    expect(
+      diagnosisRankBadge({ name: "Anemia", rank: MAX_DIAGNOSIS_RANK })
+    ).toBe(`#${MAX_DIAGNOSIS_RANK}`);
+    // Dropped rather than clamped — a clamp would invent a rank nobody wrote.
+    expect(encodeDiagnosisRanks([{ name: "Anemia", rank: 1e21 }])).toBeNull();
+    expect(decodeDiagnosisRanks('[{"name":"Anemia","rank":1e21}]')).toEqual([]);
   });
 
   it("prefers the rank over the role when both are stated", () => {
@@ -85,5 +102,30 @@ describe("rankForDiagnosis", () => {
     // captured for, so an edited diagnosis simply loses its badge.
     expect(rankForDiagnosis(entries, "Acute bronchitis, resolved")).toBeNull();
     expect(rankForDiagnosis([], "Acute bronchitis")).toBeNull();
+  });
+});
+
+describe("spokenDiagnosis", () => {
+  const entries = [
+    { name: "Acute bronchitis", rank: 1 },
+    { name: "Anemia", use: ["cm"] },
+  ];
+
+  it("carries the source-stated rank into the accessible text", () => {
+    // The grouped chip hides its visual pieces from assistive technology and
+    // speaks these strings instead. A badge that lived only in the visual half
+    // would be readable by sighted users and invisible to everyone else — half 2
+    // deleting half 1's entire output from the accessibility tree.
+    expect(spokenDiagnosis("Acute bronchitis", entries)).toBe(
+      "Acute bronchitis (Primary)"
+    );
+    expect(spokenDiagnosis("Anemia", entries)).toBe("Anemia (Comorbidity)");
+  });
+
+  it("speaks a rankless diagnosis as its bare name", () => {
+    expect(spokenDiagnosis("Hyperparathyroidism - Secondary", entries)).toBe(
+      "Hyperparathyroidism - Secondary"
+    );
+    expect(spokenDiagnosis("Acute bronchitis", [])).toBe("Acute bronchitis");
   });
 });

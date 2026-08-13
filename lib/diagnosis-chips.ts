@@ -14,12 +14,33 @@
 // re-files one, or reorders the list.
 //
 // WHAT IT IS. The filed harm is literal and it is about pixels: one long Z-code
-// diagnosis rendered as two full-width amber chips that differ only by a
-// suffix costs four wrapped lines on a phone card. When consecutive entries
-// share a long leading run of text, the shared stem is printed ONCE and each
-// entry's distinguishing tail after it. Every character of every name is still
-// on screen — this is factoring, not hiding — and the renderer additionally
-// carries the untouched full strings for assistive technology and hover.
+// diagnosis rendered as two full-width amber chips that differ only by a suffix
+// costs four wrapped lines on a phone card. When consecutive entries share a long
+// leading run of text, the shared stem is printed ONCE and each entry's
+// distinguishing tail after it, so the pair costs one chip instead of two.
+//
+// THE LENGTH GATE IS ABOUT WRAPPING, AND NOTHING ELSE. `MIN_SHARED_STEM` is not a
+// clinical discriminator and must never be described as one: plenty of real
+// etiology pairs clear it and DO group —
+//
+//   Amyloidosis of the kidney with nephrotic syndrome │ - Primary │ - Secondary
+//   Adrenal cortical insufficiency with electrolyte disturbance │ - Primary │ …
+//
+// — and that is accepted, because this layer never claims the two are one
+// diagnosis. It prints both names, in order, in full. The v1/v2 refuting inputs
+// stay as plain chips because their names are SHORT, not because anything here
+// can tell a rank from an etiology.
+//
+// So the invariants are what make it safe, and they are pinned by tests rather
+// than by the gate:
+//
+//   1. `stem + tail === name`, exactly, for every member — no character of any
+//      name is dropped between the two printed pieces. (The separator run trimmed
+//      off the stem is carried by the tail, not deleted; a version that deleted it
+//      printed "…of breast" + "Left" and lost the " - ".)
+//   2. Order is preserved and only CONSECUTIVE entries group.
+//   3. Nothing is removed: `members` carries every original string untouched, and
+//      the renderer speaks those to assistive technology and hover verbatim.
 //
 // The worst case if the grouping is ever "wrong" is a chip that looks slightly
 // odd. That is the whole point of doing it here instead of in storage.
@@ -36,9 +57,10 @@ export function diagnosisList(diagnoses: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-// One rendered chip: either a name on its own, or a run of consecutive names
-// that share a stem. `members[].name` is always the untouched original string
-// and `stem + gap + tail` reconstructs it, so a renderer can show either.
+// One rendered chip: either a name on its own, or a run of consecutive names that
+// share a stem. `members[].name` is always the untouched original string, and
+// `stem + tail` reconstructs it EXACTLY — that identity is what makes printing the
+// stem once a factoring rather than a truncation.
 export type DiagnosisChipGroup =
   | { kind: "single"; name: string }
   | {
@@ -47,16 +69,16 @@ export type DiagnosisChipGroup =
       members: { name: string; tail: string }[];
     };
 
-// The stem must be long enough that the pair genuinely wraps on a phone card —
-// that wrapping IS the reported harm, and a stem shorter than one line of a chip
-// costs nothing to repeat. It also keeps the compaction well away from short
-// clinical pairs ("Hyperparathyroidism" / "Hyperparathyroidism - Secondary"),
-// where there is no wrapping to fix and factoring would only invite the reader
-// to see one diagnosis where there are two.
+// The stem must be long enough that repeating it costs a wrapped line, since that
+// wrapping is the whole harm being fixed. It is a PIXEL threshold — see the header:
+// it says nothing about what the shared text means, and a long etiology pair
+// groups just like a long rank pair does.
 const MIN_SHARED_STEM = 40;
 
-// Trailing separator punctuation trimmed off the printed stem (the tail keeps
-// its own leading "- ", so the name still reads correctly when recombined).
+// Trailing separator punctuation not printed at the END of the stem — it reads as
+// a dangling "…of breast - ". The run is NOT dropped: each tail starts at
+// `stem.length`, so it carries those characters and `stem + tail` is still the
+// original name.
 const STEM_TRAILING = /[\s\-–—,;:/]+$/;
 
 function commonPrefixLength(a: string, b: string): number {
@@ -93,7 +115,10 @@ function groupOf(names: string[]): DiagnosisChipGroup | null {
   if (stem.length < MIN_SHARED_STEM) return null;
   const members = names.map((name) => ({
     name,
-    tail: name.slice(k).replace(/^\s+/, ""),
+    // From the end of the PRINTED stem, not from `k`: the separator run between
+    // them belongs to somebody, and dropping it silently is how the first version
+    // of this rendered "…of breast" beside a bare "Left".
+    tail: name.slice(stem.length),
   }));
   // The shared part must dominate what distinguishes the entries; otherwise the
   // chip is not meaningfully shorter and the factored form is harder to read
