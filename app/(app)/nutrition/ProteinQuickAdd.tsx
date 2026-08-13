@@ -7,6 +7,7 @@ import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
+import RollingNumber from "@/components/RollingNumber";
 import {
   addProteinGrams,
   undoProteinGrams,
@@ -156,7 +157,17 @@ export default function ProteinQuickAdd({
           data-testid="protein-quickadd-total"
           className="block truncate text-xs tabular-nums text-slate-500 dark:text-slate-400"
         >
-          {Math.round(total)}g today
+          {/* The grams ROLL to the new total (#2654, motion 3): the optimistic
+              paint above has already made the change, and this is what makes the
+              change visible AS a quantity moving rather than a label rewritten.
+              Under reduced motion the new number is simply there — the text is the
+              carrier either way, which is why an exact-text assertion on this line
+              stays honest. */}
+          <RollingNumber
+            value={Math.round(total)}
+            testId="protein-quickadd-grams"
+          />
+          g today
         </span>
       </div>
       <button

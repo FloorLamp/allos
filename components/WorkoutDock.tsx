@@ -3,14 +3,19 @@
 import { useEffect, useState } from "react";
 import { IconBarbell, IconChevronUp } from "@tabler/icons-react";
 import {
+  BOTTOM_EDGE_ABOVE_NAV,
   BOTTOM_EDGE_DOCK_LAYER,
   useBottomEdgeClaim,
 } from "@/components/overlay";
 
 // The app-wide minimized workout dock (issue #921): a full-width bottom bar that
 // keeps an in-progress session visible from every page (except the training log,
-// where the editor docks inline). It renders over the mobile bottom nav; the app
-// layout adds bottom padding while it's present so it never overlaps content.
+// where the editor docks inline). The app layout adds bottom padding while it's
+// present so it never overlaps content.
+//
+// It is bottom-edge LAYER 1 (components/overlay/tokens.ts): on a phone it sits
+// ABOVE the nav dock rather than over it, through the shared BOTTOM_EDGE_ABOVE_NAV
+// token, and it claims the edge so notices clear it in turn.
 //
 // Purely presentational — it shows the state derived server-side (elapsed from the
 // session's start) and ticks the minute counter locally. The whole bar is one tap
@@ -69,7 +74,7 @@ export default function WorkoutDock({
   return (
     <div
       ref={edgeRef}
-      className={`fixed inset-x-0 bottom-0 ${BOTTOM_EDGE_DOCK_LAYER} px-[max(0.5rem,env(safe-area-inset-left))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 print:hidden`}
+      className={`fixed inset-x-0 ${BOTTOM_EDGE_ABOVE_NAV} ${BOTTOM_EDGE_DOCK_LAYER} px-[max(0.5rem,env(safe-area-inset-left))] pt-2 pb-2 md:pb-[max(0.5rem,env(safe-area-inset-bottom))] print:hidden`}
       data-testid="workout-dock"
       // The session's start instant, exposed because it — not the rendered minute
       // count — is the invariant a resume must preserve (#1893). The elapsed text is

@@ -3,7 +3,9 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { hydratedClick, openMeasurementGroup, settledClick } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
+import type { QuickLogId } from "@/lib/quick-log";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_SHELL,
@@ -179,20 +181,17 @@ async function signIn(browser: Parameters<typeof loginAs>[0]): Promise<Page> {
   );
 }
 
-// Open the quick-log sheet and tap one of its rows. The caret is a pure CLIENT
-// toggle, so a pre-hydration tap is swallowed with no POST to settle on and no
-// other awaitable open signal — the visibility-guarded retry is the only honest
-// wait here (#500/#830).
-async function openQuickEntry(page: Page, itemId: string) {
-  const sheet = page.getByTestId("quick-log-sheet");
-  await expect(async () => {
-    if (!(await sheet.isVisible())) {
-      await page.getByTestId("quick-log-more").click();
-    }
-    await expect(sheet).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the caret past the pre-hydration swallow — a client toggle with no POST, visibility-guarded so a late tap can't re-close it
-
-  await sheet.getByTestId(`quick-log-${itemId}`).click();
+// Open the quick-log sheet, reveal the segment holding `itemId`, and tap the row.
+//
+// The extra step is #2651's segmented long tail: a row lives in the DOM only
+// while its own segment is selected. `showLogRow` asserts that precondition
+// rather than tolerating it (e2e/log-sheet-helpers.ts), so these tests still
+// fail if the sheet ever stops segmenting. What each test below is ABOUT — that
+// the row opens a real form in place and the write lands — is unchanged by it.
+async function openQuickEntry(page: Page, itemId: QuickLogId) {
+  const sheet = await openLogSheet(page);
+  const row = await showLogRow(sheet, itemId);
+  await row.click();
   await expect(sheet).toHaveCount(0);
   const overlay = page.getByTestId("quick-entry-sheet");
   await expect(overlay).toBeVisible();

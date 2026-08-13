@@ -1,4 +1,6 @@
 import MobileNav from "@/components/MobileNav";
+import MobileDock from "@/components/MobileDock";
+import MobileChromeProvider from "@/components/MobileChromeProvider";
 import SidebarContent from "@/components/SidebarContent";
 import CommandPalette from "@/components/CommandPalette";
 import ActivityEditorProvider from "@/components/ActivityEditorProvider";
@@ -254,52 +256,21 @@ export default async function AppLayout({
                       liveStartEpochMs={liveStartEpochMs}
                       subjectName={actingSubjectName}
                     >
-                      <div className="flex min-h-screen">
-                        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
-                          <SidebarContent
-                            activityDates={timelineDates}
-                            version={version}
-                            active={session.profile}
-                            username={login.username}
-                            // The scope's DISAMBIGUATED set (#534) — two accessible
-                            // profiles can share a name, and the bar/panel must name
-                            // a specific one.
-                            profiles={scope.profiles}
-                            viewIds={scope.viewIds}
-                            readOnlyIds={readOnlyIds}
-                            restricted={restricted}
-                            isAdmin={isAdmin}
-                            multiProfile={multiProfile}
-                            foodLoggingRelevant={foodLoggingRelevant}
-                            hasIntakeItems={hasIntakeItems}
-                            relevance={relevance}
-                            reviewCount={reviewCount}
-                            readOnly={readOnly}
-                            whatsNewUnseen={whatsNewUnseen}
-                          />
-                        </aside>
-                        {/* clip (not hidden) so it doesn't force overflow-y to auto, which
-            turns <main> into a scroll container and breaks position:sticky inside it.
-            min-w-0 lets this flex item shrink below its content's intrinsic width —
-            without it, wide tables/rows blow the whole page out horizontally. */}
-                        <main className="min-w-0 flex-1 overflow-x-clip">
-                          {/* The ONE sticky top chrome (issue #1416): the phone top
-                    bar hides on scroll-down and returns on scroll-up, so "whose
-                    data am I looking at?" stays answerable mid-scroll instead of
-                    scrolling away with the content. Since #1801 the identity bar
-                    IS that answer and rides inside the bar itself, so the
-                    separate view-banner slot the chrome used to carry is gone —
-                    one surface, not two. */}
-                          <ShellChrome
-                            disabledTabFirstPageIds={
-                              restricted ? ["training"] : undefined
-                            }
-                          >
-                            <MobileNav
+                      {/* The phone chrome's shared open/closed state (#2651):
+                      the drawer and the log sheet each have two triggers now —
+                      the top bar's hamburger and caret, and the dock's More slot
+                      and puck — and the two bars sit in different subtrees. */}
+                      <MobileChromeProvider>
+                        <div className="flex min-h-screen">
+                          <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
+                            <SidebarContent
                               activityDates={timelineDates}
                               version={version}
                               active={session.profile}
                               username={login.username}
+                              // The scope's DISAMBIGUATED set (#534) — two accessible
+                              // profiles can share a name, and the bar/panel must name
+                              // a specific one.
                               profiles={scope.profiles}
                               viewIds={scope.viewIds}
                               readOnlyIds={readOnlyIds}
@@ -313,31 +284,75 @@ export default async function AppLayout({
                               readOnly={readOnly}
                               whatsNewUnseen={whatsNewUnseen}
                             />
-                          </ShellChrome>
-                          {/* max(padding, safe-area inset) keeps content clear of the
+                          </aside>
+                          {/* clip (not hidden) so it doesn't force overflow-y to auto, which
+            turns <main> into a scroll container and breaks position:sticky inside it.
+            min-w-0 lets this flex item shrink below its content's intrinsic width —
+            without it, wide tables/rows blow the whole page out horizontally. */}
+                          <main className="min-w-0 flex-1 overflow-x-clip">
+                            {/* The ONE sticky top chrome (issue #1416): the phone top
+                    bar hides on scroll-down and returns on scroll-up, so "whose
+                    data am I looking at?" stays answerable mid-scroll instead of
+                    scrolling away with the content. Since #1801 the identity bar
+                    IS that answer and rides inside the bar itself, so the
+                    separate view-banner slot the chrome used to carry is gone —
+                    one surface, not two. */}
+                            <ShellChrome
+                              disabledTabFirstPageIds={
+                                restricted ? ["training"] : undefined
+                              }
+                            >
+                              <MobileNav
+                                activityDates={timelineDates}
+                                version={version}
+                                active={session.profile}
+                                username={login.username}
+                                profiles={scope.profiles}
+                                viewIds={scope.viewIds}
+                                readOnlyIds={readOnlyIds}
+                                restricted={restricted}
+                                isAdmin={isAdmin}
+                                multiProfile={multiProfile}
+                                foodLoggingRelevant={foodLoggingRelevant}
+                                hasIntakeItems={hasIntakeItems}
+                                relevance={relevance}
+                                reviewCount={reviewCount}
+                                readOnly={readOnly}
+                                whatsNewUnseen={whatsNewUnseen}
+                              />
+                            </ShellChrome>
+                            {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover).
               Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
               the unchanged pt-8 / 1.25rem from `md` up. The conditional variant
               this used to carry went with the view banner (#1801): the chrome no
               longer grows a second row, so the padding is unconditional again. */}
-                          <div
-                            data-testid="app-content-container"
-                            className="mx-auto pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-8 md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
-                          >
-                            {/* This slot is OnboardingReturnBanner's alone again
+                            <div
+                              data-testid="app-content-container"
+                              className="mx-auto pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-8 md:pb-[max(2rem,env(safe-area-inset-bottom))] md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
+                            >
+                              {/* This slot is OnboardingReturnBanner's alone again
                             (#1795). The deploy notice used to render here too, as a
                             second surface for the event the service worker's update
                             bar already owns — one deploy, two notices, two reload
                             buttons. There is one now, and it is the bar mounted by
                             ServiceWorkerRegister in the root layout. */}
-                            <OnboardingReturnBanner
-                              show={showOnboardingReturn}
-                            />
-                            {children}
-                          </div>
-                        </main>
-                      </div>
+                              <OnboardingReturnBanner
+                                show={showOnboardingReturn}
+                              />
+                              {children}
+                            </div>
+                          </main>
+                        </div>
+                        {/* The bottom dock (#2651) — mobile widths only, and a
+                      SIBLING of <main> rather than a child of <ShellChrome>: that
+                      wrapper transforms itself to hide on scroll, and a
+                      transformed ancestor re-parents `position: fixed` to itself,
+                      which would slide the dock off the bottom of the screen with
+                      the top bar. */}
+                        <MobileDock restricted={restricted} />
+                      </MobileChromeProvider>
                       <CommandPalette
                         profileName={session.profile.name}
                         weightUnit={units.weightUnit}

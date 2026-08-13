@@ -14,10 +14,12 @@ import {
   E2E_LOGIN_EMAIL_NOTIFY,
   E2E_LOGIN_HA_NOTIFY,
   E2E_LOGIN_NOTIF_SWEEP,
+  E2E_LOGIN_MATRIX_INK,
   E2E_LOGIN_NOTIFY_SCOPE,
   E2E_MEMBER_PASSWORD,
   EMAIL_NOTIFY_PROFILE,
   HA_NOTIFY_PROFILE,
+  MATRIX_INK_PROFILE,
   NOTIF_SWEEP_PROFILE,
   NOTIFY_LOG_BUSY_PROFILE,
   NOTIFY_LOG_QUIET_PROFILE,
@@ -120,6 +122,21 @@ export function seedNotifSweep(): void {
   seedMemberLogin(E2E_LOGIN_NOTIF_SWEEP, id, "write");
   console.log(
     `e2e: seeded notification column-sweep fixture — profile ${id} (${NOTIF_SWEEP_PROFILE})`
+  );
+}
+
+// ── Matrix column liveness (#2565 part B) ──
+export function seedMatrixInk(): void {
+  // A dedicated adult profile + login for matrix-column-liveness.spec.ts. The spec
+  // configures and un-configures the profile-scoped Home Assistant channel to move one
+  // matrix column from not-set-up to set-up, and reads the login-scoped routing ticks
+  // across that move — so it can share neither a profile nor a login. Its precondition
+  // is an ABSENCE (no HA webhook, so the column starts dead), which it owns: nothing
+  // else touches this profile. No health data needed.
+  const id = fixtureProfileId(MATRIX_INK_PROFILE);
+  seedMemberLogin(E2E_LOGIN_MATRIX_INK, id, "write");
+  console.log(
+    `e2e: seeded matrix column-liveness fixture — profile ${id} (${MATRIX_INK_PROFILE})`
   );
 }
 

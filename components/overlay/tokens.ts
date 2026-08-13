@@ -54,9 +54,9 @@ export const OVERLAY_DRAG_HANDLE_HIT =
 export const OVERLAY_DRAG_HANDLE_BAR =
   "h-1.5 w-10 rounded-full bg-slate-300 dark:bg-ink-700";
 
-// ── The bottom edge (issue #1520, part B) ────────────────────────────────────
+// ── The bottom edge (issue #1520, part B; #2651) ─────────────────────────────
 //
-// FOUR fixed surfaces converge on the phone's bottom edge and, before this,
+// FIVE fixed surfaces converge on the phone's bottom edge and, before #1520,
 // each one hand-wrote its own inset and picked its own z-index in isolation:
 // the workout dock (full-width, `z-40`), the offline-queue pill (bottom-left,
 // `z-100`), that queue's error panel (bottom-right, `z-101`) and the toast
@@ -65,24 +65,38 @@ export const OVERLAY_DRAG_HANDLE_BAR =
 // workout landed ON TOP of the dock — the notice covered the "still working
 // out?" bar it was competing with for the same 60px of screen.
 //
+// #2651 added the fifth and lowest of them, the phone's nav dock, and with it
+// the second instance of that same collision class — which is why THE ORDER IS
+// DECLARED HERE rather than each surface picking an offset that happens to
+// clear whatever it knows about.
+//
 // The convergence is deliberately NOT a slot manager. It is (a) documented
 // stacking ORDER, (b) shared class strings, and (c) ONE CSS custom property
 // naming how much of the bottom edge is already claimed:
 //
-//   LAYER 0 (base) — the workout dock. It OWNS the edge: full-width, flush to
-//     `bottom-0`, and it CLAIMS its height into `--bottom-edge-offset` while
-//     mounted (useBottomEdgeClaim). It is session state, not a notice, so it
-//     never moves out of another surface's way.
-//   LAYER 1 (notices) — transient things that stack ABOVE the dock rather than
-//     over it: the toast stack and the offline pill.
-//   LAYER 2 (alerts) — the offline error panel, which out-ranks a toast because
+//   LAYER 0 (navigation) — the phone nav dock (components/MobileDock). It is the
+//     floor: flush to `bottom-0`, below `md` only, and present on every route
+//     for the whole session. It CLAIMS the edge while mounted.
+//   LAYER 1 (session) — the workout dock. It is session state, not a notice, so
+//     it never moves out of a NOTICE's way — but it does sit above layer 0
+//     (BOTTOM_EDGE_ABOVE_NAV), because two permanent bars cannot share the same
+//     56px. It CLAIMS the edge too.
+//   LAYER 2 (notices) — transient things that stack ABOVE both docks rather than
+//     over them: the toast stack and the offline pill.
+//   LAYER 3 (alerts) — the offline error panel, which out-ranks a toast because
 //     it reports a write that did not land.
 //   (Modals/sheets/confirms sit above all of this — see BottomSheet's note.)
 //
-// The offset var defaults to `0px`, so with no dock present every one of these
-// surfaces resolves to EXACTLY the inset it had before. Only ONE claimant exists
-// (the dock); a second would need to sum or max them, which is the point at which
-// this stops being constants and starts being the slot manager #1520 rejected.
+// A claimant publishes how far its OWN TOP EDGE sits above the viewport bottom,
+// not merely its height (useBottomEdgeClaim), and the var carries the MAX over
+// claimants. That is what keeps this two constants instead of a slot manager: a
+// surface already lifted clear of the one below it reports a distance that
+// includes it, so composition is a max and never a sum, and no claimant needs to
+// know another exists.
+//
+// The offset var defaults to `0px`, so with no claimant present every one of
+// these surfaces resolves to EXACTLY the inset it had before — which is still
+// the case at `md` and up, where the nav dock does not render.
 //
 // Import path note: the toast stack and the offline queue live in the ROOT layout,
 // above the activity editor's tree, and they need only these constants — so they
@@ -104,3 +118,20 @@ export const BOTTOM_EDGE_GUTTER_LEFT =
 export const BOTTOM_EDGE_DOCK_LAYER = "z-40";
 export const BOTTOM_EDGE_NOTICE_LAYER = "z-100";
 export const BOTTOM_EDGE_ALERT_LAYER = "z-101";
+
+// LAYER 0 — the phone nav dock's own row height (issue #2651). The bar is this
+// tall plus the home-indicator inset; MobileDock applies it, and everything that
+// must clear the bar derives from the SAME pair below rather than restating a
+// number it read off the screen.
+export const BOTTOM_EDGE_NAV_ROW_HEIGHT = "h-14";
+// LAYER 1 — a session-layer surface that sits ABOVE the nav dock. At `md` and up
+// the nav dock does not render at all, so the surface drops back flush.
+//
+// A literal, not a var read at runtime: the nav dock's height is a design
+// constant, and resolving it from a custom property the dock publishes in an
+// effect would leave the workout dock flush to the bottom edge for the first
+// paint and then jump it. `lib/__tests__/bottom-edge-tokens.test.ts` pins this
+// `3.5rem` to BOTTOM_EDGE_NAV_ROW_HEIGHT's Tailwind scale value, so the pair
+// cannot drift.
+export const BOTTOM_EDGE_ABOVE_NAV =
+  "bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0";

@@ -118,6 +118,7 @@ import {
   seedDigestTune,
   seedEmailNotify,
   seedHaConfig,
+  seedMatrixInk,
   seedNotifSweep,
   seedNotifyScope,
   seedNotifyTickLog,
@@ -199,6 +200,7 @@ seedHaConfig();
 seedDigestTune();
 seedNotifSweep();
 seedEmailNotify();
+seedMatrixInk();
 seedDataQualityGaps();
 seedVisitLinking();
 seedToasterIsolation();
