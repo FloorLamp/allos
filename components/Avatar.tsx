@@ -10,6 +10,8 @@ export interface AvatarProfile {
   photo_version: number;
 }
 
+import { avatarInitials } from "@/lib/avatar-initials";
+
 // A small palette of (light, dark) background/text pairs. The profile id picks
 // one deterministically, so the same person always gets the same color.
 const PALETTE = [
@@ -25,15 +27,6 @@ const SIZES = {
   sm: "h-7 w-7 text-[0.65rem]",
   md: "h-12 w-12 text-base",
 } as const;
-
-// First letters of up to the first two words (e.g. "Jane Doe" → "JD",
-// "Jane" → "J"), uppercased. Falls back to "?" for an empty name.
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  const letters = parts.slice(0, 2).map((p) => p[0]);
-  return letters.join("").toUpperCase();
-}
 
 export default function Avatar({
   profile,
@@ -65,7 +58,7 @@ export default function Avatar({
       aria-hidden="true"
       className={`${base} ${color} font-semibold leading-none`}
     >
-      {initials(profile.name)}
+      {avatarInitials(profile.name)}
     </span>
   );
 }

@@ -319,7 +319,7 @@ export default function MedicationCard({
               <RxOtcBadge rx={s.rx} />
               {isOnDemand(s) && (
                 <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
-                  As Needed
+                  As needed
                 </span>
               )}
               {current ? (

@@ -9,7 +9,10 @@ export function goalItems(profileId: number): UpcomingItem[] {
       key: `goal:${g.id}`,
       domain: "goal" as const,
       title: g.title,
-      detail: g.categoryLabel ? `${g.categoryLabel} goal` : "Goal deadline",
+      // Named by the goal's own KIND, so an exercise-linked goal and a freeform one
+      // with the same title are told apart, and the band stops mixing "Goal
+      // deadline" with a raw user-cased word (#2615 item 4).
+      detail: goalUpcomingDetail(g),
       href: "/training?tab=goals",
       dueDate: g.target_date,
     }));
@@ -353,7 +356,7 @@ import {
 import { db, today, writeTx } from "../../db";
 import { casUpdate, readForUpdate } from "../../tx";
 import { getActiveEndurancePlans } from "../../endurance-plans";
-import { isGoalLive } from "../../outcome-goals";
+import { goalUpcomingDetail, isGoalLive } from "../../outcome-goals";
 import {
   frequencyScopeLabel,
   weeklyTargetPaceLine,

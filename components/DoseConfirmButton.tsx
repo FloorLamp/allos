@@ -23,6 +23,7 @@ export default function DoseConfirmButton({
   fields,
   className,
   testid,
+  ariaLabel,
   children,
 }: {
   action: (formData: FormData) => Promise<DoseConfirmResult>;
@@ -30,6 +31,12 @@ export default function DoseConfirmButton({
   fields: Record<string, string | number>;
   className?: string;
   testid?: string;
+  // An accessible name that says WHICH dose (#2615 item 2). The visible label is
+  // deliberately short ("Confirm — Mia"), which on a card listing a morning and an
+  // evening dose of the same supplement leaves two controls announcing the same
+  // words. Pass the row's own distinguishing attributes here; omitted, the visible
+  // label is the accessible name as before.
+  ariaLabel?: string;
   children: React.ReactNode;
 }) {
   const toast = useToast();
@@ -55,7 +62,12 @@ export default function DoseConfirmButton({
       {Object.entries(fields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-      <SubmitButton pendingLabel="…" data-testid={testid} className={className}>
+      <SubmitButton
+        pendingLabel="…"
+        data-testid={testid}
+        className={className}
+        aria-label={ariaLabel}
+      >
         {children}
       </SubmitButton>
     </form>
