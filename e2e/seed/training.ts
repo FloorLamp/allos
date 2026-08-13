@@ -35,11 +35,14 @@ import {
   LAB_GOAL_OVERDUE,
   LAB_GOAL_IN_RANGE,
   LAB_GOAL_TARGET,
+  E2E_LOGIN_WEEK_SPINE,
+  WEEK_SPINE_PROFILE,
 } from "../fixture-logins";
 import {
   getTimezone,
   setProfileBirthdate,
   setProfileSex,
+  setWeekMode,
 } from "../../lib/settings";
 import { reconcileFlags } from "../../lib/queries";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
@@ -812,5 +815,44 @@ export function seedLabValueGoal(): void {
     LAB_GOAL_TRACKED,
     shiftDateStr(anchor, 160),
     `${shiftDateStr(anchor, -200)} 09:00:00`
+  );
+}
+
+// ── The week spine (#2566, Viz 1) ─────────────────────────────────────────────
+export function seedWeekSpine(): void {
+  // See e2e/logins/training.ts for the shape this pins and why it is dedicated.
+  const profileId = fixtureProfileId(WEEK_SPINE_PROFILE);
+  setWeekMode(profileId, "rolling");
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:week-spine-%'`
+  ).run(profileId);
+  const insAct = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, source, external_id, edited)
+     VALUES (?, ?, ?, ?, 40, 'manual', ?, 0)`
+  );
+  const anchor = today(profileId);
+  const SESSIONS: [number, string, string][] = [
+    [-4, "sport", "Pickup game"],
+    [-3, "recovery", "Hip mobility"],
+    [-1, "cardio", "Easy run"],
+    [0, "strength", "Squat day"],
+    [0, "strength", "Evening accessories"],
+    // Out of window at BOTH ends — neither may reach the band or the caption.
+    [-8, "strength", "Last week's session"],
+    [1, "cardio", "Planned run"],
+  ];
+  SESSIONS.forEach(([day, type, title], i) => {
+    insAct.run(
+      profileId,
+      shiftDateStr(anchor, day),
+      type,
+      title,
+      `e2e:week-spine-${i}`
+    );
+  });
+  seedMemberLogin(E2E_LOGIN_WEEK_SPINE, profileId, "write");
+  console.log(
+    `e2e: seeded week-spine fixture — profile ${profileId} (${WEEK_SPINE_PROFILE}) (#2566)`
   );
 }

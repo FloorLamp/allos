@@ -238,26 +238,65 @@ export interface TrainingLogWeekSummary {
   volumeKg: number; // total weight × reps (both sides) in the profile's weekly window
 }
 
+// The week's activities tallied by (day, type) — the ONE row set the week's picture
+// and the week's numbers are both folded from (#2566/#221).
+//
+// Before the week spine, "how many sessions this week" and "which days did I train"
+// were two SQL aggregates here, and a band drawing the same week from a third query
+// would have been a fourth place the window, the profile scope and the date
+// comparison had to agree. They do not have to agree now: `getTrainingLogWeekSummary`
+// folds its `sessions`/`activeDays` out of exactly these rows, and `buildWeekSpine`
+// lays exactly these rows onto the seven-day band. `volumeKg` is a different question
+// (weight × reps over `exercise_sets`) and keeps its own aggregate.
+//
+// `activities.type` is CHECK-constrained to the `ACTIVITY_TYPES` tuple, so the cast is
+// the same one `getActivities` makes on the whole row.
+//
+// THE WINDOW IS NOW CLOSED AT BOTH ENDS. It used to be `date >= start` with no upper
+// bound, which counted a FUTURE-dated activity as part of "this week" — in rolling
+// mode, anything logged for tomorrow. Nobody noticed because nothing drew the week;
+// a band that draws seven days makes the disagreement visible immediately, and the
+// honest fix is the bound, not a second window for the picture. `start + 6` is the
+// window's last day in both week modes (a calendar week ends on its seventh day; a
+// rolling window ends on today).
+export interface TrainingWeekDayTypeRow {
+  date: string;
+  type: ActivityType;
+  count: number;
+}
+
+export interface TrainingWeekDayTypes {
+  /** Inclusive first day of the profile's own week window. */
+  start: string;
+  /** Inclusive last day of the same window — always `start + 6`. */
+  end: string;
+  rows: TrainingWeekDayTypeRow[];
+}
+
+export function getTrainingWeekDayTypes(
+  profileId: number
+): TrainingWeekDayTypes {
+  // "This week" per the profile's setting: the current calendar week (resetting
+  // on the week-start day) or a rolling 7-day window.
+  const start = weekWindowStart(profileId);
+  const end = shiftDateStr(start, 6);
+  const rows = db
+    .prepare(
+      `SELECT date, type, COUNT(*) count FROM activities
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+        GROUP BY date, type
+        ORDER BY date`
+    )
+    .all(profileId, start, end) as TrainingWeekDayTypeRow[];
+  return { start, end, rows };
+}
+
 export function getTrainingLogWeekSummary(
   profileId: number
 ): TrainingLogWeekSummary {
-  // "This week" per the profile's setting: the current calendar week (resetting
-  // on the week-start day) or a rolling 7-day window.
-  const since = weekWindowStart(profileId);
-  const sessions = (
-    db
-      .prepare(
-        `SELECT COUNT(*) c FROM activities WHERE profile_id = ? AND date >= ?`
-      )
-      .get(profileId, since) as { c: number }
-  ).c;
-  const activeDays = (
-    db
-      .prepare(
-        `SELECT COUNT(DISTINCT date) c FROM activities WHERE profile_id = ? AND date >= ?`
-      )
-      .get(profileId, since) as { c: number }
-  ).c;
+  const { start, end, rows } = getTrainingWeekDayTypes(profileId);
+  const sessions = rows.reduce((n, r) => n + r.count, 0);
+  const activeDays = new Set(rows.map((r) => r.date)).size;
   const volumeKg = (
     db
       .prepare(
@@ -265,9 +304,9 @@ export function getTrainingLogWeekSummary(
             COALESCE(s.weight_kg, 0) * COALESCE(s.reps, 0)
           + COALESCE(s.weight_kg_right, 0) * COALESCE(s.reps_right, 0)), 0) v
          FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
-         WHERE a.profile_id = ? AND a.date >= ?`
+         WHERE a.profile_id = ? AND a.date >= ? AND a.date <= ?`
       )
-      .get(profileId, since) as { v: number }
+      .get(profileId, start, end) as { v: number }
   ).v;
   return {
     sessions,

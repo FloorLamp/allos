@@ -87,3 +87,21 @@ export const LAB_GOAL_OVERDUE = "Hemoglobin A1c";
 export const LAB_GOAL_IN_RANGE = "Albumin";
 // The seeded goal's target, in the analyte's canonical unit.
 export const LAB_GOAL_TARGET = 100;
+
+// ── The week spine (#2566, Viz 1) ─────────────────────────────────────────────
+// A dedicated ADULT profile whose training week is a KNOWN, hand-pinned shape, so the
+// band's blocks can be asserted as literals rather than recomputed from the same code
+// that draws them. `week_mode` is forced to ROLLING, which makes the window always
+// [today − 6, today] whatever weekday the frozen clock lands on — the offsets below
+// are then the picture:
+//
+//   −6 nothing · −5 nothing · −4 sport ×1 · −3 mobility ×1 · −2 nothing
+//   −1 cardio ×1 · today strength ×2
+//
+// Two decoys sit deliberately OUTSIDE the window at both ends: a session eight days
+// back, and a run dated TOMORROW. Neither may appear in the band or in the caption's
+// counts. Dedicated on purpose (#868): the spec asserts exact per-day counts, which a
+// neighbour's ordinary training write on a shared profile would destroy. Every date is
+// relative, so the fixture never goes stale.
+export const E2E_LOGIN_WEEK_SPINE = "e2e_week_spine";
+export const WEEK_SPINE_PROFILE = "Week Spine (e2e)";
