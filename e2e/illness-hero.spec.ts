@@ -77,7 +77,8 @@ test("active profile's open episode renders a full cockpit at hero position, no 
   await expect(fullEpisode).toContainText("More details");
   await expect(fullEpisode).toHaveClass(/min-h-10/);
   await expect(fullEpisode).toHaveClass(/focus-visible:ring-2/);
-  await expect(fullEpisode).toHaveClass(/text-brand-600/);
+  // The unified inline-link treatment (#2719) — brand tone lives inside it.
+  await expect(fullEpisode).toHaveClass(/text-link/);
   await expect(fullEpisode).not.toHaveClass(/\bbadge\b/);
   await expect(fullEpisode.locator("svg")).toHaveCount(0);
   await expect(own.getByText("More details", { exact: true })).toHaveCount(1);
