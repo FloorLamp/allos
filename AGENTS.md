@@ -881,6 +881,19 @@ See `docs/internals/e2e-hygiene.md`.
   `0`, and whether the mark bridges it, is a per-SERIES declaration beside the
   mark decision in `lib/trend-sparkline.ts` (`metric:` / `bio:` keys); a surface
   passes `gapFill={{ seriesKey, from, to }}` and never a policy of its own.
+- A STROKE earns its confidence (#2653 state 5). Every series declares a
+  **continuity span** beside its gap — the longest interval between two readings
+  across which the line between them is still a fair interpolation. Past it,
+  `sparseSeriesVerdict` demotes the plot: solid dots lead, the stroke thins,
+  dashes and fades, and a caption states the raw count and span ("3 readings in 3
+  years"). The measure is the MEDIAN interval and never a rate, because a rate
+  cannot tell a thin series from a dense one with an OUTAGE, and those are
+  different states with different treatments. The demotion must be a demotion —
+  raw facts only, no verdict word, no chip, stroke strictly weaker on every axis
+  — or the treated chart reads as more considered and buys the thin line trust it
+  has not earned. A continuity span never sits below that metric's
+  `TREND_METRIC_PRESENTATION_FLOORS` day count: the two registries answer
+  different questions and are pinned consistent rather than merged.
 
 ### Routes and APIs
 
