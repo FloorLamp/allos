@@ -13,10 +13,13 @@ description: Node and node_modules, restored from cache when the lockfile is unc
 runs:
   using: composite
   steps:
+    # NO `cache: npm` — see .github/actions/e2e-setup for the measurement. The
+    # whole-node_modules cache below makes `npm ci` a no-op on the common path, so
+    # ~/.npm is restored (198 MB) and never read; and both keys derive from the same
+    # package-lock hash, so it cannot rescue the miss either.
     - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
-        cache: npm
 
     # Whole-node_modules cache: the single biggest step in every one of these jobs
     # is `npm ci` (~2 min, dominated by better-sqlite3's native compile). The key
