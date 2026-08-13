@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick, settledFill } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 import {
   E2E_LOGIN_TTC,
   E2E_LOGIN_CYCLE,
@@ -143,8 +143,56 @@ test.describe("forecast and TTC are absent without the evidence to carry them", 
     await page.goto("/medical/cycles");
     const ttc = page.getByTestId("ttc-section");
     await expect(ttc).toBeVisible();
-    await expect(ttc.getByTestId("ttc-declare")).toBeVisible();
+    // Since #2583 the not-active state is ONE LINE, not a standing card: the topic and
+    // its state are named (so someone looking for it still finds it) and nothing else
+    // is spent. The declare control is behind the fold — present, but not on screen and
+    // not in the tab order.
+    await expect(ttc).toHaveAttribute("data-open", "false");
+    await expect(ttc.getByTestId("ttc-off-toggle")).toContainText(
+      "Trying to conceive · off — tap to turn on tracking"
+    );
+    await expect(ttc.getByTestId("ttc-declare")).not.toBeVisible();
+    // The declared-only doctrine itself is unchanged: no content, at all, until asked.
     await expect(ttc.getByTestId("ttc-log-bar")).toHaveCount(0);
     await expect(ttc.getByTestId("ttc-window")).toHaveCount(0);
+  });
+
+  test("the off line expands to the declare control, and declaring renders the full section (#2583)", async () => {
+    // The fold may only ever cost a tap. Everything behind it is exactly today's
+    // not-active content, and the declaration still does the whole job.
+    await page.goto("/medical/cycles");
+    const ttc = page.getByTestId("ttc-section");
+
+    // Opening is a pure client toggle — no Server Action — so hydratedClick, which
+    // closes the pre-hydration window without a retry loop a toggle must not have.
+    await hydratedClick(page, ttc.getByTestId("ttc-off-toggle"));
+    await expect(ttc).toHaveAttribute("data-open", "true");
+    await expect(ttc).toContainText("Turn this on to record ovulation");
+    const declare = ttc.getByTestId("ttc-declare");
+    await expect(declare).toBeVisible();
+    await expect(declare.getByTestId("ttc-start-input")).toBeVisible();
+
+    try {
+      // Declaring is the ONE write that turns the surfaces on. The date field already
+      // holds today, so the tap alone is the declaration.
+      await settledClick(page, declare.getByTestId("ttc-start-save"));
+      // The full section now renders — no fold, and the declared content with it.
+      await expect(ttc.getByTestId("ttc-window")).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(ttc.getByTestId("ttc-log-bar")).toBeVisible();
+      await expect(ttc.getByTestId("ttc-off-toggle")).toHaveCount(0);
+      await expect(ttc.getByTestId("ttc-not-contraception")).toContainText(
+        "not a contraceptive method"
+      );
+    } finally {
+      // Restore the shared profile's undeclared state — this describe block's other
+      // test and cycle.spec.ts both read it. Stopping removes only the declaration.
+      await settledClick(page, ttc.getByTestId("ttc-stop"));
+    }
+    await expect(ttc).toHaveAttribute("data-open", "false", {
+      timeout: 20_000,
+    });
+    await expect(ttc.getByTestId("ttc-log-bar")).toHaveCount(0);
   });
 });

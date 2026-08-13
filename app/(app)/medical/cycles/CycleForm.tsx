@@ -9,6 +9,14 @@ import type { CycleCreateResult } from "./actions";
 
 // Add / edit a recorded period (issue #714). Explicit submit (records are NOT
 // autosave-on-blur — #794). Add mode: no `period`. Edit mode: pass the row + `onDone`.
+//
+// Since #2583 ADD mode renders inside the page's <AddEntryPanel> disclosure (the #1497
+// rare-cadence-entry rule), which already supplies the card frame AND the heading — so
+// add mode brings neither, and bringing them would draw a card inside a card under a
+// second title. EDIT mode still stands alone inside its history row and keeps its own
+// card. Nothing about the WRITE changes: the same explicit submit through the same
+// saveCycleAction, the same plausibility refusals rendered in the same place, and the
+// same `cycle-add-form` testid, so the existing specs keep naming the same form.
 export default function CycleForm({
   action,
   period,
@@ -50,14 +58,9 @@ export default function CycleForm({
     <form
       ref={formRef}
       action={handle}
-      className="card space-y-3"
+      className={editing ? "card space-y-3" : "space-y-3"}
       data-testid={editing ? `cycle-edit-form-${uid}` : "cycle-add-form"}
     >
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Log a period
-        </h2>
-      )}
       {editing && <input type="hidden" name="id" value={period!.id} />}
       <div className="grid grid-cols-2 gap-3">
         <div>

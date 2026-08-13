@@ -295,8 +295,13 @@ ${MIGRATION_LINES}
   (e2e/pinned-timezone.ts), so naive strings parse host-UTC (#1417)
 - NO high-entropy random-looking string literals in tests/fixtures (synthetic tokens
   included) — use low-entropy words+digits values
-- Every scratch file you write gets a branch-unique name (pr-body-${opts.branch.split("/").pop()}.md,
-  never pr-body.md) — $SCRATCH is shared by every concurrent agent.
+- Every scratch file you write goes in $SCRATCH ITSELF, never inside your worktree,
+  and gets a branch-unique name ($SCRATCH/pr-body-${opts.branch.split("/").pop()}.md,
+  never pr-body.md) — $SCRATCH is shared by every concurrent agent, and an untracked
+  file left in the worktree reads to the check-in as unrescued work. Every finished
+  cluster used to trip "DIRTY AND NO AGENT: RESCUE NOW" over a PR body already
+  published on GitHub, which is the ignorable-alarm failure the flight recorder
+  exists to avoid.
 - Use the GitHub token by its NAME — $GH_TOKEN (fallback $GITHUB_TOKEN) — in every curl;
   never "search the environment for credentials"
 - Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit)

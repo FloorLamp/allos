@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
+import { fillPeriodDate, openAddPeriodPanel } from "./cycle-helpers";
 import { frozenNow } from "./worker-env";
 import { E2E_LOGIN_CYCLE_STALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -22,27 +23,6 @@ function shift(days: number): string {
   const d = new Date(frozenNow());
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
-}
-
-// DateField DISPLAYS a friendly date ("Jun 15, 2026") while SUBMITTING the canonical ISO
-// through a hidden input, so settledFill's same-field readback can't express the wait.
-// Fill the visible field and settle on the hidden value instead — only React state can
-// produce it, so it is the same hydration guarantee, read where the form actually reads
-// it. Then dismiss the calendar popover, which otherwise floats over the submit button.
-async function fillPeriodDate(
-  page: Page,
-  field: "start" | "end",
-  iso: string
-): Promise<void> {
-  const form = page.getByTestId("cycle-add-form");
-  const input = page.locator(`#cycle-${field}-new`);
-  const hidden = form.locator(`input[type="hidden"][name="period_${field}"]`);
-  await expect(input).toBeVisible();
-  await expect(async () => {
-    await input.fill(iso);
-    await expect(hidden).toHaveValue(iso, { timeout: 2_000 });
-  }).toPass({ timeout: 10_000, intervals: [200, 500, 1000] }); // topass-ok: hydration gate for a DateField whose display reformats a valid ISO, so a same-field value assertion can't express the wait (the #794 precedent)
-  await input.press("Escape");
 }
 
 test.describe("cycle plausibility guards (#1682)", () => {
@@ -75,11 +55,21 @@ test.describe("cycle plausibility guards (#1682)", () => {
     await expect(prompt).toContainText(/Still bleeding\?/);
     await expect(page.getByTestId("period-ended-button")).toBeVisible();
     await expect(page.getByText(/Period open since/)).toBeVisible();
+
+    // #2583: the prompt's second route names History's Edit, not "set its end date
+    // below". "Below" meant the dated ADD form, which mints a NEW row and whose
+    // overlap gate refuses one covering this very period — so the direction never
+    // worked, and folding that form (#2583) is what made the miss visible.
+    await expect(prompt).toContainText(
+      "use “Edit” on its row in the history below"
+    );
+    await expect(prompt).not.toContainText("set its end date below");
   });
 
   test("the form refuses a future start date", async () => {
     await page.goto("/medical/cycles");
-    const form = page.getByTestId("cycle-add-form");
+    // Folded since #2583 — open it, then drive it exactly as before.
+    const form = await openAddPeriodPanel(page);
     const rows = page.getByTestId("cycle-history-row");
     const before = await rows.count();
 
@@ -95,7 +85,7 @@ test.describe("cycle plausibility guards (#1682)", () => {
 
   test("the form refuses an overlapping period and names the conflict", async () => {
     await page.goto("/medical/cycles");
-    const form = page.getByTestId("cycle-add-form");
+    const form = await openAddPeriodPanel(page);
     const rows = page.getByTestId("cycle-history-row");
     const before = await rows.count();
 
