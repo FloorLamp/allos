@@ -1502,9 +1502,8 @@ change is a co-residency change.**
 
 ### A manifest refresh re-rolls the WHOLE suite's co-residency
 
-Not "perturbs". `gen-e2e-durations.ts` now reports the share of specs that change
-bucket, and the reason it reports a share rather than a list is that there is no
-small case. Measured against the committed manifest at 12 shards:
+Not "perturbs". `gen-e2e-durations.ts` reports the share of specs that change bucket, and it
+reports a share rather than a list because there is no small case to list. Measured against the committed manifest at 12 shards:
 
 | manifest change                     | specs that change bucket |
 | ----------------------------------- | ------------------------ |

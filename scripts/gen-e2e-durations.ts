@@ -23,7 +23,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  diffBuckets,
   movedFiles,
   planShards,
   type DurationMap,
@@ -172,23 +171,6 @@ function reportReshuffle(
       `after this refresh every spec's neighbourhood is new, and a red shard is a ` +
       `co-residency suspect before it is a regression.`
   );
-  // Per-shard membership is behind --verbose because there is no small case to
-  // print it for: the table above is the whole distribution, and everything but an
-  // identical manifest moves ~half the suite. Four hundred lines that all say
-  // "everything moved" is how the one line that matters gets scrolled past. It
-  // stays available because when you ARE chasing a specific red shard, "what
-  // entered shard 7" is the question you have.
-  if (process.argv.includes("--verbose")) {
-    for (const { shard, entered, left } of diffBuckets(before, after)) {
-      const parts = [
-        ...entered.map((f) => `+${f}`),
-        ...left.map((f) => `-${f}`),
-      ];
-      console.log(`  shard ${String(shard).padStart(2)}: ${parts.join(" ")}`);
-    }
-  } else {
-    console.log(`  (per-shard membership: --verbose)`);
-  }
 }
 
 main();
