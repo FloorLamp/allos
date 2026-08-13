@@ -186,6 +186,7 @@ import { migration as m184 } from "./184-care-plan-dangling-record-links";
 import { migration as m185 } from "./185-legacy-biomarker-category";
 import { migration as mSavedBacked } from "./20260812-saved-biomarker-backed";
 import { migration as mEncounterDiagnosisRanks } from "./20260813-encounter-diagnosis-ranks";
+import { migration as mBmiDerived } from "./20260813-bmi-derived-rows";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -381,6 +382,7 @@ export const MIGRATIONS: Migration[] = [
   m185,
   mSavedBacked,
   mEncounterDiagnosisRanks,
+  mBmiDerived,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   METRIC_DOCUMENT_REACH,
+  derivedInputsMetricFor,
   trendMetricHomeFor,
   hasTrendMetricHome,
   listedInResultsCatalog,
@@ -495,5 +496,74 @@ describe("listedInResultsCatalog scopes the rule to `vitals`", () => {
         canonical_name: "   ",
       })
     ).toBe(false);
+  });
+});
+
+// #2646 — the `derived-inputs` arm, asked at the DOOR. Before this, it was the only
+// REACHING variant with no ingest consequence at all: `observations` keeps the row,
+// `observation-fold` keeps it, `import-projection` drops it via a `withoutCaptured*`
+// helper, and this one did nothing — so a printed BMI survived as a `medical_records`
+// row, coined an ai vocabulary name, and became a permanent Coverage candidate for a
+// quantity `/trends/metric/bmi` already charts.
+describe("derivedInputsMetricFor (#2646)", () => {
+  it("recognizes the derived quantity under every spelling the registry knows", () => {
+    // The registry TITLE, the acronym LABEL, and the "Full Name (ABBR)" print form —
+    // the same three sources `trendMetricHomeFor` derives from, so a document's
+    // spelling and the registry's are one quantity here too.
+    for (const spelling of [
+      "Body Mass Index",
+      "BMI",
+      "Body Mass Index (BMI)",
+      "body mass index",
+      "bmi",
+    ])
+      expect(derivedInputsMetricFor(spelling), spelling).toBe("bmi");
+  });
+
+  it("says nothing about a quantity whose reach is a different arm", () => {
+    // The point of deriving this from METRIC_DOCUMENT_REACH rather than a second
+    // list: a projected or folded quantity has its OWN ingest consequence, and must
+    // not acquire this one on top.
+    for (const other of [
+      "Waist Circumference", // import-projection — a `withoutCaptured*` helper owns it
+      "Body Fat Percentage", // observation-fold
+      "Blood Pressure Systolic", // observations — the row IS the chart point
+      "Heart Rate Variability", // reaches: false — the catalog is still its home
+      "LDL Cholesterol", // not a metric at all
+      "",
+    ])
+      expect(derivedInputsMetricFor(other), other || "(empty)").toBeNull();
+    expect(derivedInputsMetricFor(null)).toBeNull();
+    expect(derivedInputsMetricFor(undefined)).toBeNull();
+  });
+
+  it("does NOT claim the percentile that shares BMI's stem", () => {
+    // A BMI percentile is an age/sex score, not a BMI, and the app recomputes it from
+    // the growth curves. It is separated on the NAME axis for free — which is why the
+    // recognizer never reads LOINC, where 39156-5 and 59574-4 would need a negative
+    // list to stay apart.
+    for (const percentile of [
+      "Body Mass Index Percentile",
+      "BMI Percentile",
+      "BMI for Age Percentile",
+    ])
+      expect(derivedInputsMetricFor(percentile), percentile).toBeNull();
+  });
+
+  it("covers exactly the slugs whose declared reach is derived-inputs", () => {
+    // Derived, never hand-listed: a second `derived-inputs` slug gets the ingest arm
+    // with no edit at the door, and this cannot disagree with the declaration it
+    // implements.
+    const declared = TREND_METRIC_SLUGS.filter(
+      (slug) => METRIC_DOCUMENT_REACH[slug].reaches === "derived-inputs"
+    );
+    const recognized = TREND_METRIC_SLUGS.filter((slug) =>
+      [TREND_METRIC_META[slug].title, TREND_METRIC_META[slug].label].some(
+        (n) => derivedInputsMetricFor(n) === slug
+      )
+    );
+    expect(recognized).toEqual(declared);
+    // …and the arm is not empty, so the assertion above is not vacuous.
+    expect(declared).toEqual(["bmi"]);
   });
 });
