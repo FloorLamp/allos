@@ -200,6 +200,78 @@ for each m in MIGRATIONS where m.id > version:
   than a silent one. Where a new migration needs a table list or enum set, it
   inlines its own copy.
 
+### Deleting rows: two halves, and only one of them was written down
+
+Migrations apply with `foreign_keys = OFF` (issue #95). That is deliberate and
+stays: SQLite's own table-rebuild recipe (create → copy → drop → rename) fires
+`ON DELETE CASCADE` on the drop if enforcement is on, which would wipe the
+children of any table being rebuilt. The consequence nobody had written down
+(#2680) is that **a migration's `DELETE` triggers no foreign-key action at all**.
+
+So a row-deleting migration owes its neighbours two _different_ things:
+
+| Inbound link                     | Runtime does       | A migration must             |
+| -------------------------------- | ------------------ | ---------------------------- |
+| `ON DELETE NO ACTION` (default)  | refuses the delete | **block** — skip the row     |
+| `ON DELETE CASCADE` / `SET NULL` | removes / nulls it | **clean up** — do it by hand |
+
+- The **blocking** half is the `CHILD_LINKS` registry each row-deleting migration
+  declares: `{ table, column }` pairs probed with `PRAGMA table_info`, so a row a
+  child still references is skipped. A pair naming a column that has never
+  existed drops out of that probe silently and guards nothing — that is #2444,
+  and `lib/__db_tests__/migration-child-links.test.ts` checks every declared pair
+  against the final migrated schema. **`CHILD_LINKS` covers this half only.** Its
+  silence about the other one is not coverage.
+- The **cleanup** half is `lib/migrations/cascade-delete.ts`. Call
+  `deleteRowsWithCascade(db, table, ids)` instead of a bare `DELETE FROM table`
+  and the migration leaves the same graph behind that the app's own delete path
+  would. Its links are read out of `PRAGMA foreign_key_list` **at apply time**,
+  never transcribed: nothing is spelled twice so a #2444 typo is impossible, and
+  apply time is the correct moment — when migration N runs on a fresh database
+  the FK graph is the graph as of N, and the child tables a later migration adds
+  must not be considered. This does not breach the determinism rule above; the
+  helper reads only the database, which is exactly what that rule permits.
+
+The same test file pins the cascading children of `medical_records` beside the
+non-cascading parents, and fails a new migration that deletes from a table with
+cascading children without routing through the helper. Migrations 092, 101, 118,
+180 and `20260813-bmi-derived-rows` are frozen entries on that list, each with
+its reason; migration 118 is the one that got it right by hand, long before there
+was a helper. `20260813-cascade-orphan-sweep` clears the orphans the others left
+— every row whose CASCADE parent is missing. `SET NULL` links are deliberately
+not swept: nulling a column on a _surviving_ row rewrites live data
+(`intake_item_logs.notify_message_id` is provenance a feature reads), which is a
+bigger claim than removing a row the schema says cannot exist.
+
+A missing CASCADE parent is **not** the only state `PRAGMA foreign_key_check`
+reports. That pragma flags any dangling non-null reference whatever its
+`ON DELETE` clause, so the `SET NULL` danglers above are reported before the
+sweep and still reported after it. The sweep clears one _kind_ of violation, and
+a future integrity probe over that pragma has to reckon with the rest before it
+can mean anything — which is why turning `foreign_key_check` into a health-endpoint
+reason is a separate decision, not a corollary of this one.
+
+The sweep is a boot-time delete of health-record rows, taken with no backup
+beforehand and no undo, so it **logs what it removed**: one `migrate`-scoped line
+per run, `warn` with the per-link tally when rows went and `info` when none did.
+The empty line is not noise — "this ran and found nothing" is the other half of
+the forensic trail, and the migration runs exactly once per database.
+
+**What the ratchet does not see.** It reads `DELETE` statements. Per statement,
+not per file, and fail-closed: a `DELETE FROM` whose table it cannot resolve to a
+literal identifier is a violation rather than a skip, because a delete it cannot
+read is not a delete it may ignore. What it cannot see is the other way to lose
+rows — a table **rebuild** that copies a filtered subset into `<t>_new`, which
+orphans children identically with no `DELETE` token anywhere. That is out of
+scope here and left deliberately, for a reason worth stating rather than
+discovering: no lexical rule is complete over that class. Sniffing for a `WHERE`
+in the copying `SELECT` would catch two spellings and miss
+`INSERT INTO t_new SELECT * FROM t` followed by a filtering delete on the new
+table (which has no inbound foreign keys, so the `DELETE` guard is blind to it) —
+and a guard that catches some spellings while reading like a guard is the #2444
+defect, not a defence against it. The population is also one: of the 32 shipped
+migrations using the rebuild recipe, exactly one (083) filters rows.
+
 ### Downgrade guard
 
 If `user_version > MIGRATIONS.length` (a rolled-back image booting against a

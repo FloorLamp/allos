@@ -11,7 +11,9 @@ import type { CycleControlState } from "@/lib/cycle-plausibility";
 // period ends invited a tap that minted a back-to-back period and corrupted the
 // start-to-start cycle lengths. With no period open the control shows the derived cycle
 // state instead, and the start action returns only once a plausible gap has elapsed. The
-// dated form below owns the unusual case.
+// dated form below owns the unusual case — folded behind a disclosure since #2583, which
+// is why the sentences below still say "below" and are still true: what stands there now
+// is the disclosure's summary, visible on every visit and one tap from the form.
 //
 // The offer conditions are DECIDED on the server (lib/cycle-plausibility.cycleControlState)
 // and arrive here as data — this component computes nothing. Since #1892 the BUTTON is

@@ -1513,10 +1513,34 @@ database against `e2e/.data/template/app.db` to see what it actually left behind
 — that is what turned "some spec breaks this" into "`saved_items` went 9 → 7, and
 the two missing rows are ApoB and hs-CRP".
 
-A whole-suite `PW_WORKERS=1` run is the exhaustive form: it makes every spec
-co-resident with every other and finds every collision of this class in one pass.
-It is slow (no parallelism, the full suite serially) and worth it after a
-manifest refresh.
+A whole-suite `PW_WORKERS=1` run is a cheap FILTER, not a verdict. It makes every
+spec co-resident with every other, so nothing of this class hides from it — but it
+also manufactures co-residency sharding will never produce, and it reintroduces
+the cumulative degradation the matrix exists to avoid (the #1306 class `ci.yml`
+describes: "a spec fine when sharded, timing out deep into the single-worker
+crush"). Run it after a manifest refresh, then confirm every hit:
+
+```
+# 1. filter — over-approximates, on a CURRENT build
+PW_WORKERS=1 npx playwright test
+# 2. does the victim pass ALONE?        (if not, it is not co-residency)
+PW_WORKERS=1 npx playwright test e2e/<victim>.spec.ts
+# 3. does it fail in ITS OWN bucket?    (the only grouping CI can produce)
+PW_WORKERS=1 npx playwright test "${THAT_BUCKET[@]}"
+```
+
+Both controls are load-bearing, and skipping either invents a collision. The
+first sweep run of this kind reported three failures and **all three were
+artifacts**: one a single-worker-crush timeout that its own bucket cleared, and
+two from a STALE BUILD.
+
+That last one deserves naming, because it is the easiest mistake here and it
+looks exactly like a collision. `E2E_SKIP_BUILD=1` against a `main` that has
+moved runs new specs against an old app: the spec fails, passes in isolation
+once the app is rebuilt, and in between every group it appears in looks like the
+guilty neighbour. A bisect over such a spec converges on an arbitrary file,
+because its predicate ("did the victim fail") is true whatever the neighbours
+are. Rebuild before believing any of this.
 
 ## Fix (f) — DB-per-worker isolation (#1538)
 

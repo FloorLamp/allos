@@ -3,6 +3,8 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
+import { fillPeriodDate, openAddPeriodPanel } from "./cycle-helpers";
+import { addFromPicker, ensureUnlogged, settledTap } from "./symptom-helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 import {
   CYCLE_PROFILE,
@@ -19,26 +21,6 @@ import {
 // open period) plus one activity on a period day (so the Timeline renders a day + chip).
 // The log/end/delete test is self-contained: it records the starting row count, mutates,
 // then restores it, so --repeat-each stays clean. Interactions settle via settledClick.
-
-// DateField DISPLAYS a friendly date while SUBMITTING the canonical ISO through a
-// hidden input, so settledFill's same-field readback can't express the wait. Fill the
-// visible field and settle on the hidden value instead, then dismiss the calendar
-// popover (the cycle-guards precedent).
-async function fillPeriodDate(
-  page: Page,
-  field: "start" | "end",
-  iso: string
-): Promise<void> {
-  const form = page.getByTestId("cycle-add-form");
-  const input = page.locator(`#cycle-${field}-new`);
-  const hidden = form.locator(`input[type="hidden"][name="period_${field}"]`);
-  await expect(input).toBeVisible();
-  await expect(async () => {
-    await input.fill(iso);
-    await expect(hidden).toHaveValue(iso, { timeout: 2_000 });
-  }).toPass({ timeout: 10_000, intervals: [200, 500, 1000] }); // topass-ok: hydration gate for a DateField whose display reformats a valid ISO, so a same-field value assertion can't express the wait (the #794 precedent)
-  await input.press("Escape");
-}
 
 // A goal target date far enough out that it is unambiguously future in ANY timezone the
 // profile might be in, planted so the Timeline opens a day group for it (#2613). A goal's
@@ -206,7 +188,7 @@ test.describe("menstrual cycle (#714)", () => {
     // plausibility gate can't refuse it — marked with a unique note so this test
     // only ever targets its own fixture row.
     const note = `e2e undo period ${Date.now()}`; // clock-ok: unique-note suffix, never a stored timestamp
-    const form = page.getByTestId("cycle-add-form");
+    const form = await openAddPeriodPanel(page);
     await fillPeriodDate(page, "start", "2024-01-01");
     await fillPeriodDate(page, "end", "2024-01-05");
     await form.getByLabel("Note (optional)").fill(note);
@@ -234,6 +216,95 @@ test.describe("menstrual cycle (#714)", () => {
       rows.filter({ hasText: note }).getByTestId("cycle-delete-button")
     );
     await expect(rows).toHaveCount(before, { timeout: 20_000 });
+  });
+
+  // ── #2583: the two standing rare-cadence forms fold, and the symptom bar says
+  //    what it is. See also ttc.spec.ts for the TTC half.
+
+  test("the dated add form is folded on arrival and opens on tap (#2583)", async () => {
+    // #1497's rule, applied to the example it named: a ~monthly event's four-field
+    // dated form does not stand permanently open. What must NOT happen is the fold
+    // getting quiet — the named affordance is unconditional, so this asserts the
+    // button by its words, not just that something is collapsed.
+    await page.goto("/medical/cycles");
+    const panel = page.getByTestId("cycle-add-panel");
+    const toggle = page.getByTestId("cycle-add-panel-toggle");
+    await expect(panel).toHaveAttribute("data-open", "false");
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toContainText("Add a period with dates");
+
+    // Collapsed, the form's controls are out of reach — <Collapse> hides them from
+    // the tab order and the a11y tree, so a folded form is not a keyboard trap.
+    await expect(page.getByTestId("cycle-add-form")).not.toBeVisible();
+    // The qualifier rides the OPEN heading and is not rendered while collapsed.
+    await expect(page.getByText("for a past or corrected period")).toHaveCount(
+      0
+    );
+
+    // openAddPeriodPanel re-asserts the collapsed precondition, taps, and waits for
+    // the panel to report itself open with a visible form.
+    const form = await openAddPeriodPanel(page);
+    await expect(toggle).toContainText("for a past or corrected period");
+    await expect(page.locator("#cycle-start-new")).toBeVisible();
+    await expect(
+      form.getByRole("button", { name: "Add period" })
+    ).toBeVisible();
+  });
+
+  test("a period saved through the opened form lands in History (#2583)", async () => {
+    // The fold must cost nothing but a tap: the same explicit submit, through the
+    // same saveCycleAction, landing in the same list.
+    await page.goto("/medical/cycles");
+    const rows = page.getByTestId("cycle-history-row");
+    const before = await rows.count();
+
+    // Far enough in the past to clear the seeded recent history (so the #1682
+    // plausibility gate can't refuse it) and this file's other dated fixture row,
+    // with a unique note so the test only ever targets its own row.
+    const note = `e2e folded add ${Date.now()}`; // clock-ok: unique-note suffix, never a stored timestamp
+    const form = await openAddPeriodPanel(page);
+    await fillPeriodDate(page, "start", "2023-03-01");
+    await fillPeriodDate(page, "end", "2023-03-05");
+    await form.getByLabel("Note (optional)").fill(note);
+    await settledClick(page, form.getByRole("button", { name: "Add period" }));
+
+    const row = rows.filter({ hasText: note });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await expect(rows).toHaveCount(before + 1);
+
+    // Cleanup: this test owns the row it created, so it removes it and restores the
+    // seeded count for --repeat-each.
+    await settledClick(page, row.getByTestId("cycle-delete-button"));
+    await expect(rows).toHaveCount(before, { timeout: 20_000 });
+  });
+
+  test("the symptom bar says it is the whole day's ledger, and is not filtered by domain (#2583)", async () => {
+    // Three symptom-helper drives (clear, add, clear) each carry their own retry
+    // budget, so the default per-test ceiling is too tight for a slow worker.
+    test.slow();
+    await page.goto("/medical/cycles");
+    const section = page.getByTestId("cycle-symptoms");
+    await expect(section.getByTestId("cycle-symptoms-scope")).toContainText(
+      "whole symptom log for today"
+    );
+
+    // The claim the subtitle makes, PROVED — and the guard against "fixing" the
+    // readability complaint by filtering. An illness-domain symptom logged from this
+    // page renders in this page's bar: one store (#221), so hiding it would make
+    // "Symptoms today" lie. leadDomain orders the PICKER; it never subsets the log.
+    const bar = section.getByTestId("symptom-log-bar");
+    const tap = settledTap(page);
+    // This assertion's precondition is an ABSENCE (cough not already logged today on
+    // the shared cycle profile), so the spec establishes it rather than trusting the
+    // seed or a neighbour.
+    await ensureUnlogged(bar, "cough", tap);
+    try {
+      await addFromPicker(bar, "cough", tap);
+      await expect(bar.getByTestId("symptom-cough")).toBeVisible();
+    } finally {
+      // Restore the shared profile's day exactly as it was found.
+      await ensureUnlogged(bar, "cough", tap);
+    }
   });
 
   test("Timeline day header shows the cycle phase/period chip", async () => {

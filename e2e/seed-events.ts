@@ -36,6 +36,7 @@ import { seedMergeFixtures } from "./seed/merge";
 import {
   seedImportFeed,
   seedDropReport,
+  seedDerivedResultDrops,
   seedExtractionConfidence,
   seedTriageLinks,
   seedRecordsBrowser,
@@ -161,6 +162,7 @@ seedTrainingZones();
 seedRuleDomains();
 seedGoalPacing();
 seedDropReport();
+seedDerivedResultDrops();
 seedExtractionConfidence();
 seedTriageLinks();
 seedMedicationCards();
