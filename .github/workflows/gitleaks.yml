@@ -1,11 +1,14 @@
 name: gitleaks
 
-# Secret scanning for the repo's full git history. Runs on every PR and on
-# pushes to non-main branches (deploy.yml handles main). Fails the job if any
-# secret is detected. Self-contained: it downloads the gitleaks binary and runs
-# it directly, so it needs no marketplace action and no license key.
+# Secret scanning for the repo's full git history. Runs on every PR, on pushes
+# to non-main branches (deploy.yml handles main), and on merge-queue validation
+# commits — a required check must report on the merge_group event or the queue
+# stalls forever waiting for it. Fails the job if any secret is detected.
+# Self-contained: it downloads the gitleaks binary and runs it directly, so it
+# needs no marketplace action and no license key.
 on:
   pull_request:
+  merge_group:
   push:
     branches-ignore: [main]
 

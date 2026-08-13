@@ -562,10 +562,17 @@ function collectEvents(
         id: `intake:${l.kind}:${l.date}`,
         date: l.date,
         category: "medication",
+        // Supplements and medications share `intake_items`, and they share the
+        // `medication` timeline CATEGORY — the filter pill, the icon and the
+        // colour. The vocabulary has no supplement member and #2610 does not
+        // earn one: adding it would split one day's confirmed doses across two
+        // filter pills for a difference the reader is already told in words.
+        // What the reader SEES is the badge, so the badge follows the kind.
+        badgeLabel: l.kind === "medication" ? "Medication" : "Supplement",
         title:
           l.kind === "medication"
             ? "Medication doses confirmed"
-            : "IntakeItem doses confirmed",
+            : "Supplement doses confirmed",
         subtitle: `${l.count} dose${l.count === 1 ? "" : "s"}`,
         detail: compactList((l.names ?? "").split(","), 5),
         href: intakeHref(l.kind),

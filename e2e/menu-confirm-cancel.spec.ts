@@ -51,7 +51,7 @@ test("cancelling a confirm opened from an overflow menu leaves the page able to 
 
   const row = page.getByTestId("supplement-row").filter({ hasText: itemName });
   await expect(row).toHaveCount(1);
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const editDialog = page.getByRole("dialog", { name: `Edit ${itemName}` });
   const picker = editDialog.getByTestId("shared-supply-picker");

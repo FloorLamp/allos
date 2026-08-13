@@ -133,7 +133,7 @@ export default async function NutritionSection({
       const qualifier =
         item.product?.trim() ||
         item.brand?.trim() ||
-        (item.kind === "medication" ? "Medication" : "IntakeItem");
+        (item.kind === "medication" ? "Medication" : "Supplement");
       const base = duplicateName ? `${item.name} · ${qualifier}` : item.name;
       const occurrence = (labelCounts.get(base) ?? 0) + 1;
       labelCounts.set(base, occurrence);

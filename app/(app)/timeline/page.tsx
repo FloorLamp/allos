@@ -249,7 +249,7 @@ function EventCard({
               {title}
             </h3>
             <span className={`badge text-xs ${BADGE_CLASS[event.category]}`}>
-              {timelineCategoryLabel(event.category)}
+              {event.badgeLabel ?? timelineCategoryLabel(event.category)}
             </span>
             {canExpand && (
               <span

@@ -64,11 +64,22 @@ function authHeaders(): string[] {
   ];
 }
 
-function readBody(issue: string): string {
+/**
+ * The current body, and whether the issue is still open.
+ *
+ * State is read in the SAME request as the body for the same reason the body is
+ * re-read at all: the evidence is hours old and the tracker moves hourly. An
+ * issue can close between the gather and the apply — #2622 merged three minutes
+ * after one run's snapshot and closed two issues the plan still carried — and
+ * editing a closed issue's body is a write nobody asked for, onto a record
+ * somebody has already finished reading.
+ */
+function readIssue(issue: string): { body: string; open: boolean } {
   const one = curlJson(["-X", "GET", ...authHeaders(), issueUrl(issue)]) as {
     body: string | null;
+    state?: string;
   };
-  return one.body ?? "";
+  return { body: one.body ?? "", open: one.state !== "closed" };
 }
 
 /**
@@ -93,8 +104,16 @@ const plan = JSON.parse(fs.readFileSync(planFile, "utf8")) as Record<
 
 let applied = 0;
 let refused = 0;
+let skipped = 0;
 for (const [issue, patches] of Object.entries(plan)) {
-  const before = readBody(issue);
+  const { body: before, open } = readIssue(issue);
+  if (!open) {
+    skipped += patches.length;
+    console.log(
+      `#${issue}: SKIPPED (closed since the evidence was gathered) — ${patches.length} patches`
+    );
+    continue;
+  }
   const { body, entries } = applyPatchPlan(before, patches);
   for (const entry of entries) {
     if (entry.outcome.ok) {
@@ -112,4 +131,6 @@ for (const [issue, patches] of Object.entries(plan)) {
   else
     console.log(`#${issue}: ${entries.length} patches, dry run (no --apply)`);
 }
-console.log(`\napplied ${applied} · refused ${refused}`);
+console.log(
+  `\napplied ${applied} · refused ${refused}${skipped > 0 ? ` · skipped ${skipped} (closed)` : ""}`
+);

@@ -25,10 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # NO `cache: npm` — same reasoning as .github/actions/e2e-setup. This job is
+      # the one place `npm ci` genuinely runs (a lockfile change on main), and on
+      # exactly that run ~/.npm misses too, because both keys carry the same
+      # package-lock hash.
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          cache: npm
 
       - name: Cache node_modules
         id: modules

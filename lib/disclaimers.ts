@@ -74,3 +74,47 @@ export const DISCLAIMER_SECTIONS: { title: string; body: string }[] = [
 export const DISCLAIMER_FULL: string = DISCLAIMER_SECTIONS.map(
   (s) => `${s.title}. ${s.body}`
 ).join("\n\n");
+
+// ── The banned phrasings (#1049 guard vocabulary, widened by #2342) ───────────
+//
+// The disclaimer sentence, as it appears when someone hand-writes it instead of
+// referencing a constant above. High-signal by design: these do not occur in
+// ordinary UI copy or ordinary clinical prose, so a synthetic fixture or a constant
+// reference never trips them while every hand-written variant does.
+//
+// This list used to live inside lib/__tests__/disclaimers.test.ts, which reads SOURCE
+// under app/ and components/. #2342 found the same sentences arriving by two routes
+// that scan cannot see: curated dataset FIELDS under lib/ that render verbatim on a
+// domain page, and AI-written descriptions stored at RUNTIME, where no source scan can
+// ever reach. The rule is about rendered user-facing COPY, not about file type, so the
+// vocabulary moves here — the one module that already owns the app's disclaimer
+// posture — and the guard, the datasets scan, the generators and the runtime clamp all
+// read the SAME list rather than three drifting copies of it.
+export const DISCLAIMER_PHRASINGS: readonly RegExp[] = [
+  /not medical advice/i,
+  /informational[^.\n]*\badvice\b/i,
+  /not a diagnosis/i,
+  /never prescriptive/i,
+];
+
+// Whether a piece of copy hand-writes a disclaimer phrasing.
+export function hasDisclaimerPhrasing(
+  text: string | null | undefined
+): boolean {
+  return !!text && DISCLAIMER_PHRASINGS.some((re) => re.test(text));
+}
+
+// Remove whole SENTENCES that carry a disclaimer phrasing, leaving the rest of the
+// copy intact. Sentence-grained rather than phrase-grained on purpose: excising the
+// phrase alone leaves a mangled clause ("It is a screening instrument, ."), and the
+// sentences this fires on are pure boilerplate — the surrounding copy is what the
+// reader came for. Returns the remaining text, whitespace-collapsed; "" when every
+// sentence was boilerplate, which callers treat as "nothing worth storing".
+export function stripDisclaimerSentences(text: string): string {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !hasDisclaimerPhrasing(sentence))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}

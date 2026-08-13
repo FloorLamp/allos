@@ -143,9 +143,18 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // entry moves the signature by construction, so the boot reconcile runs once and
 // changes no stored flag. FLAG_LOGIC_VERSION is deliberately NOT bumped: the derivation
 // LOGIC is unchanged (the #2300/#2337/#2335 reasoning).
+// Updated for #2526: the cortisol twin of the same split, found by the audit #2518
+// asked for. `Cortisol, Morning` is coined carrying the 6-18 ug/dL band the unqualified
+// entry used to hold — it is a MORNING interval, asserted by the two-word note "Morning
+// draw" rather than by the name, and cortisol's diurnal swing is the widest of the three:
+// a value normal at 8 p.m. is low against the 8 a.m. band. The unqualified `Cortisol`
+// gives the band up. One new entry plus two fields going null moves the signature, and
+// the boot reconcile runs once: a stored bare `Cortisol` reading loses a flag it should
+// never have carried, and nothing is re-pointed (#2338/#2518). FLAG_LOGIC_VERSION is
+// deliberately NOT bumped: the derivation LOGIC is unchanged.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "af7dcb2ae42f865c05666b2ae6524d2cc98ab99d22147786124f2b5b34bfe2ff"; // phi-scan-ok
+  "9c0559837fc964e951dbc88106ead11c05ea0861ee6ad363759c1f34cc78f8b5"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

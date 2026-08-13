@@ -102,13 +102,30 @@ echo
 #
 # The roster's own "(done: ...)" trailer is not a live entry, so live matching is
 # anchored to lines beginning "Cluster".
+#
+# WHERE the worktrees are is not this script's business to guess. The first version
+# globbed "$STATE_DIR"/wt-* — the path every dispatch brief names — and on
+# 2026-08-12 two live agents built theirs somewhere else entirely (under the
+# harness scratchpad, because `$SCRATCH` was not set in their shell and their own
+# instructions point temp work at that directory instead). Both were invisible
+# here: the roster listed them, the worktree section did not, and a restart would
+# have run the preserve-first drill over a list that silently omitted the two trees
+# holding uncommitted work. A monitor that can only see the places you expected is
+# the canary again — it reports confidently and its silence means nothing.
+#
+# `git worktree list` cannot have that failure. Git already knows every worktree
+# attached to this checkout, wherever it sits, because it wrote the administrative
+# file itself. Ask the authority rather than re-deriving its answer from a path
+# convention that the next dispatch is free to ignore. The main checkout is skipped
+# by path, not by name — it is the one entry that is not an agent's.
 echo "--- worktrees ---"
-shopt -s nullglob
 git -C "$REPO" fetch origin main -q 2>/dev/null
 live_branches=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}')
 found=0
 alarms=0
-for d in "$STATE_DIR"/wt-*; do
+while read -r d; do
+  [ -n "$d" ] || continue
+  [ "$d" = "$REPO" ] && continue
   [ -d "$d" ] || continue
   found=1
   b=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)
@@ -117,6 +134,28 @@ for d in "$STATE_DIR"/wt-*; do
   r=$(git -C "$REPO" ls-remote --heads origin "$b" 2>/dev/null | cut -c1-7)
   live=0
   printf '%s\n' "$live_branches" | grep -qx -- "$b" && live=1
+
+  # THE READ-ONLY LANE IS NOT A RESCUE TARGET. The adversarial reviewer (#2626)
+  # works in a throwaway worktree checked out at a PR's MERGE ref — detached, on
+  # no branch, never pushed, deliberately disposable, and holding whatever scratch
+  # its attacks wrote. Classified as an agent's branch it reads DIRTY AND NO AGENT
+  # plus NEVER PUSHED, and the second of those is advice that cannot be followed:
+  # a detached HEAD has no branch to push. An alarm you cannot act on is the
+  # canary again, so name the lane instead of alarming on it.
+  #
+  # The exemption is the DECLARED lane only (`wt-refute-*`, detached). A detached
+  # worktree that is NOT the lane still gets said out loud, because commits made
+  # there belong to no branch and are one `worktree remove` from gone — a
+  # different problem from an unpushed branch, and not one to silence.
+  case "$(basename "$d")" in
+    wt-refute-*)
+      if [ "$b" = "HEAD" ]; then
+        printf "  %-16s %-32s %-6s local=%s  (read-only refuter lane — nothing to rescue)\n" \
+          "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
+        continue
+      fi
+      ;;
+  esac
   # "Was this branch ever pushed?" — read the tracking CONFIG, not @{upstream}.
   #
   # The two are not the same thing and the difference is a false alarm. The
@@ -145,15 +184,28 @@ for d in "$STATE_DIR"/wt-*; do
     else
       state="DONE"
       [ "$dirty" != "0" ] && { flag="$flag  <<< DIRTY AND NO AGENT: RESCUE NOW"; alarms=1; }
-      [ "$pushed" = "0" ] && { flag="$flag  <<< NEVER PUSHED, NO AGENT: PUSH NOW"; alarms=1; }
+      # Say the ACTIONABLE thing. On a branch, "push it". Detached, there is no
+      # branch to push and the rescue is `git branch -c` first — different advice,
+      # and the generic line would send you to a command that cannot work.
+      if [ "$pushed" = "0" ]; then
+        if [ "$b" = "HEAD" ]; then
+          flag="$flag  <<< DETACHED, NO AGENT: any commit here is on NO BRANCH — name one before removing this tree"
+        else
+          flag="$flag  <<< NEVER PUSHED, NO AGENT: PUSH NOW"
+        fi
+        alarms=1
+      fi
     fi
   fi
   # An unpushed commit under a live agent is the near miss, not the accident:
   # worth saying, not worth shouting.
   [ -n "$r" ] && [ "${h:0:7}" != "$r" ] && flag="$flag  (local ahead of remote)"
+  # A tree outside $STATE_DIR is findable HERE (git enumerates it) but not by
+  # anything that globs the documented path — say where it actually is.
+  case "$d" in "$STATE_DIR"/*) ;; *) flag="$flag  (outside \$SCRATCH: $d)" ;; esac
   printf "  %-16s %-32s %-6s local=%s remote=%-8s dirty=%s%s\n" \
     "$(basename "$d")" "$b" "$state" "${h:0:7}" "${r:-ABSENT}" "$dirty" "$flag"
-done
+done < <(git -C "$REPO" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
 [ "$found" = "0" ] && echo "  (none)"
 [ "$found" = "1" ] && [ "$alarms" = "0" ] && echo "  (no rescue targets — every dirty tree belongs to a live agent)"
 echo

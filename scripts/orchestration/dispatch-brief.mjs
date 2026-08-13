@@ -172,10 +172,24 @@ function canonicalNodeModules() {
 // Port ranges: 200 apart so each worktree has headroom for its worker count,
 // skipping 6000-6099 (Next refuses X11-reserved ports — an agent lost a round
 // discovering port 6000 won't boot).
+//
+// The skip lives in a PREDICATE, not only in the allocator's loop, because the
+// allocator is not the only way a port base is chosen: `--port-base` hands one
+// in directly, and it used to be taken on trust. It was mine that proved it —
+// I passed `--port-base 6000` by hand for one cluster and the guard three lines
+// above did nothing, because a caller who supplies the answer never asks the
+// question. The agent lost its worker-slot-0 runs to `Bad port: "6000" is
+// reserved for x11` and re-ran on 6001, which is the SECOND round lost to a
+// fact the script already knew.
+const RESERVED_PORT_REASON = (base) =>
+  base >= 6000 && base < 6100
+    ? `port base ${base} is inside 6000-6099, which Next refuses ("Bad port: reserved for x11")`
+    : null;
+
 function allocatePortBase(active) {
   const taken = new Set(active.map((d) => d.portBase).filter(Boolean));
   for (let base = 5400; base < 9000; base += 200) {
-    if (base >= 6000 && base < 6100) continue;
+    if (RESERVED_PORT_REASON(base)) continue;
     if (!taken.has(base)) return base;
   }
   throw new Error(
@@ -201,6 +215,15 @@ function buildBrief(opts) {
   const nm = canonicalNodeModules();
   const rows = readLedger();
   const active = activeDispatches(rows);
+  // A hand-supplied base is checked against the same rule the allocator obeys —
+  // refuse rather than warn, because a brief that has already been pasted into an
+  // agent is not going to be re-read.
+  const reserved = opts.portBase && RESERVED_PORT_REASON(opts.portBase);
+  if (reserved) {
+    throw new Error(
+      `${reserved}. Drop --port-base to let the allocator pick, or choose one outside that band.`
+    );
+  }
   const portBase = opts.portBase ?? allocatePortBase(active);
 
   const nodeLine = node24

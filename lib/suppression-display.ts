@@ -107,7 +107,7 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     part(t, 0) === "weight-loss-rate"
       ? "Weight-loss rate caution"
       : "Goal pacing note",
-  "adherence:": () => "IntakeItem adherence pattern",
+  "adherence:": () => "Supplement adherence pattern",
   // #1505: keyed on the ITEM id, so there is no name in the key to render — the
   // label names the decision instead ("you chose to keep the current priority").
   "demote-obligation:": () => "Obligation demotion suggestion",

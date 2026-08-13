@@ -25,6 +25,10 @@ const row = (r: Record<string, unknown>) =>
 describe("patientStateQualifiersIn — what counts as a patient-state condition", () => {
   it("recognizes the conditions a report either prints or does not", () => {
     expect(patientStateQualifiersIn("Glucose, Fasting")[0].key).toBe("fasting");
+    expect(patientStateQualifiersIn("Cortisol, Morning")[0].key).toBe(
+      "time-of-day"
+    );
+    expect(patientStateQualifiersIn("Cortisol, AM")[0].key).toBe("time-of-day");
     expect(patientStateQualifiersIn("FBG")[0].key).toBe("fasting");
     expect(patientStateQualifiersIn("Glucose, Post-Prandial")[0].key).toBe(
       "prandial"
@@ -69,12 +73,14 @@ describe("patientStateQualifiersIn — what counts as a patient-state condition"
   });
 
   it("no seeded canonical entry is flagged except the deliberately state-qualified ones", () => {
-    // Two, since #2371 coined the insulin twin of #2337's glucose pair. Both exist so
-    // an index defined on a fasting measurement has a name to REQUIRE; both have the
-    // unqualified sibling the guard below demotes onto.
+    // Three. #2371 coined the insulin twin of #2337's glucose pair so an index defined
+    // on a fasting measurement had a name to REQUIRE; #2526's audit of the same shape
+    // coined the cortisol one, where nothing but a two-word note ("Morning draw") said
+    // the band belonged to the top of a diurnal rhythm. Each has the unqualified
+    // sibling the guard below demotes onto.
     const flagged = vocab.filter((n) => patientStateQualifiersIn(n).length);
     expect(new Set(flagged)).toEqual(
-      new Set(["Glucose, Fasting", "Insulin, Fasting"])
+      new Set(["Glucose, Fasting", "Insulin, Fasting", "Cortisol, Morning"])
     );
   });
 
@@ -134,6 +140,22 @@ describe("stateAwareCanonical — an unprinted condition is dropped, a printed o
     );
     expect(guard("Creatinine, Urine", "CREATININE", "Urine Chemistry")).toBe(
       "Creatinine, Urine"
+    );
+  });
+
+  it("drops a morning qualifier the printed name never carried (#2526)", () => {
+    // The cortisol twin of the glucose case. A bare "CORTISOL" is a draw of unstated
+    // timing, and the morning band would flag a normal evening value as low.
+    expect(guard("Cortisol, Morning", "CORTISOL")).toBe("Cortisol");
+    expect(guard("Cortisol, Morning", "CORTISOL", "Adrenal Panel")).toBe(
+      "Cortisol"
+    );
+    // …and keeps it when the report prints the timing, in either spelling.
+    expect(guard("Cortisol, Morning", "CORTISOL, AM")).toBe(
+      "Cortisol, Morning"
+    );
+    expect(guard("Cortisol, Morning", "CORTISOL", "Morning Draw")).toBe(
+      "Cortisol, Morning"
     );
   });
 
@@ -266,6 +288,7 @@ describe("the extraction prompt states the rule", () => {
       "dose-timing",
       "posture",
       "exertion",
+      "time-of-day",
     ]);
     for (const phrase of [
       "fasting",
@@ -273,6 +296,7 @@ describe("the extraction prompt states the rule", () => {
       "pre-/post-dose",
       "supine/standing",
       "at-rest/post-exercise",
+      "morning/evening draw",
     ]) {
       expect(SYSTEM).toContain(phrase);
     }

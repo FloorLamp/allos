@@ -31,10 +31,11 @@ What that means in practice:
 - **Every PR gets a real review** before merge: full diff read (or focused reads
   - test-surface verification for >1,500-line refactors), posted as a COMMENT
     review via REST (APPROVE is rejected for this session type).
-- **Merges are yours**, squash only, via `mcp__github__merge_pull_request`.
-  Draft→ready goes through MCP `update_pull_request` (REST PATCH can't flip
-  draft). On a rate-limit rejection, wait out the reset and batch; never retry
-  in a loop.
+- **Merges are yours**, squash only, via `mcp__github__merge_pull_request` —
+  and once the merge-queue ruleset is applied, via the queue instead (see
+  **The merge queue**). Draft→ready goes through MCP `update_pull_request`
+  (REST PATCH can't flip draft). On a rate-limit rejection, wait out the reset
+  and batch; never retry in a loop.
 - **GraphQL is the scarce bucket, not REST** (measured 2026-08-12). "Prefer
   REST over MCP" is right but names the wrong limit: MCP _writes_ — reviews,
   merges, issue edits, issue comments — are GraphQL, and that pool is **5,000**
@@ -65,13 +66,15 @@ error. So every rule in this file that could become a script is one, and when a
 rule has a script, **running the script IS the rule**; if prose and script ever
 disagree, fix the script in the same change, never work around it.
 
-| Script                                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/orchestrator-checkin.sh`          | The check-in preamble and restart detector — by STATE, not liveness (a canary structurally cannot work; _incidents: §The canary that couldn't_). Compares the disk-persisted boot-id, classifies every worktree LIVE/banked/DONE against `$SCRATCH/.roster`, prints the roster and environment facts. Run it FIRST at every check-in and after any gap in activity.                                                        |
-| `scripts/orchestration/dispatch-brief.mjs` | `new --branch <b> [--issues 1,2] [--e2e]` prints a complete brief with the node-24 path, canonical node_modules, and E2E port range **computed** (plus the name-keyed migration convention block); records the dispatch in a JSONL ledger AND the `$SCRATCH/.roster` line the check-in script reads; enforces the 2-agent e2e cap. `list` shows ages against the completed-median stall threshold; `done <branch>` closes. |
-| `scripts/orchestration/ci-watch.mjs`       | The CI watcher. Derives settlement (identical check set across two consecutive polls, zero pending) instead of hardcoding a count, refuses to poll without a token, exits 3 immediately on a conflict-dirty PR. Exit 0 green / 1 settled red / 2 unsettled-re-invoke / 3 blocked.                                                                                                                                          |
-| `scripts/orchestration/agent-gates.sh`     | The gate sequence in the mandated order: lint → typecheck → pure tier → DB tier → e2e-hygiene (when `e2e/` changed) → phi-scan → format LAST. Goes in every brief.                                                                                                                                                                                                                                                         |
-| `.github/workflows/ci-main.yml`            | Tests main itself: static analysis + both unit tiers on every push, so a two-green-PRs semantic conflict reds main directly. See **CI tests the merge commit**.                                                                                                                                                                                                                                                            |
+| Script                                               | What it does                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/orchestrator-checkin.sh`                    | The check-in preamble and restart detector — by STATE, not liveness (a canary structurally cannot work; _incidents: §The canary that couldn't_). Compares the disk-persisted boot-id, classifies every worktree LIVE/banked/DONE against `$SCRATCH/.roster`, prints the roster and environment facts. Run it FIRST at every check-in and after any gap in activity.                                                        |
+| `scripts/orchestration/dispatch-brief.mjs`           | `new --branch <b> [--issues 1,2] [--e2e]` prints a complete brief with the node-24 path, canonical node_modules, and E2E port range **computed** (plus the name-keyed migration convention block); records the dispatch in a JSONL ledger AND the `$SCRATCH/.roster` line the check-in script reads; enforces the 2-agent e2e cap. `list` shows ages against the completed-median stall threshold; `done <branch>` closes. |
+| `scripts/orchestration/ci-watch.mjs`                 | The CI watcher. Derives settlement (identical check set across two consecutive polls, zero pending) instead of hardcoding a count, refuses to poll without a token, exits 3 immediately on a conflict-dirty PR. Exit 0 green / 1 settled red / 2 unsettled-re-invoke / 3 blocked.                                                                                                                                          |
+| `scripts/orchestration/agent-gates.sh`               | The gate sequence in the mandated order: lint → typecheck → pure tier → DB tier → e2e-hygiene (when `e2e/` changed) → phi-scan → format LAST. Goes in every brief.                                                                                                                                                                                                                                                         |
+| `.github/workflows/ci-main.yml`                      | Tests main itself: static analysis + both unit tiers on every push, so a two-green-PRs semantic conflict reds main directly. See **CI tests the merge commit**.                                                                                                                                                                                                                                                            |
+| `.github/merge-queue-ruleset.json`                   | The main merge-queue ruleset, owner-applied in one call (`gh api repos/FloorLamp/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`). Once active, the queue validates every merge's speculative commit against the three cheap tiers + gitleaks BEFORE it lands. See **The merge queue**.                                                                                                             |
+| `scripts/orchestration/adversarial-review-brief.mjs` | The second review lane for high-stakes diffs. `<pr> --check` answers "does this PR touch a path where a miss corrupts data, crosses the auth boundary, or silences a safety signal" (the path list is DECLARED in the script); without `--check` it emits the full refuter brief — a separate agent prompted to REFUTE the PR's claims with executed attacks. See **The adversarial review lane**.                         |
 
 ## Environment facts (verify before trusting; the volatile ones say so)
 
@@ -337,6 +340,9 @@ diagnosing any red; every class there recurred at least once.
 
 ## Review checklist
 
+First, route: `adversarial-review-brief.mjs <pr> --check` — MANDATORY sends
+the PR through **The adversarial review lane** too; the merge waits for both.
+
 - Does the fix match the issue's prescription **including comment-thread
   clarifications**, and are deviations argued? (Good agents deviate correctly —
   reward it, don't reflex-reject.)
@@ -365,6 +371,20 @@ diagnosing any red; every class there recurred at least once.
   regenerate is visible only through incidental edits (#2544).
 - **Verify a PR's claims about pre-existing bugs** — a bug a change introduces
   and then fixes is not a bug it found (#2537).
+
+## The adversarial review lane
+
+One review lane reviews a diff against the brief the same orchestrator wrote —
+and #2444 is what that misses (_incidents: §Assorted receipts_). So high-stakes
+diffs get a SECOND lane: `adversarial-review-brief.mjs <pr> --check` says
+whether it is MANDATORY (the path list and the reasoning live in the script:
+data-corrupting, auth-boundary, or safety-signal paths), and the full mode
+emits the refuter brief — a SEPARATE agent, prompted to construct and EXECUTE
+the input that would falsify each of the PR's claims, never to summarize.
+Disposition: the merge waits for the report; every REFUTED claim is fixed or
+overridden with a written reason in the thread; a fully-CONFIRMED report after
+honest attack is the lane working, not a wasted dispatch. The ordinary review
+and the post-merge sweep continue unchanged.
 
 ## Migrations are name-keyed — the slot system is retired
 
@@ -415,6 +435,25 @@ Standing consequences: every generated brief tells the agent to
 `git merge origin/main && npm run typecheck` immediately before opening its
 PR, and the orchestrator does that merge ITSELF before merging any PR that
 touches a shared signature and has sat.
+
+## The merge queue
+
+The structural fix for the class above: the queue validates every merge's
+SPECULATIVE commit — the exact bytes that will become main, in landing order —
+so a two-green-PRs interaction fails in the queue instead of on main.
+`ci.yml`/`gitleaks.yml` run on `merge_group` (cheap tiers + gitleaks only; two
+`if:` lines in `ci.yml` extend the bar to the browser tier). **Owner-applied,
+inert until then** — a session cannot mutate repo settings:
+`gh api repos/FloorLamp/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`
+(squash, ALLGREEN groups of ≤5, admin bypass for direct owner pushes, which
+`ci-main.yml` keeps covering).
+
+Once active: merging = `enable_pr_auto_merge` on a PR whose OWN CI is fully
+green (e2e is not re-validated in the queue — never queue a red-head PR), and
+three hand-serialization rules retire: "serialize merges", "defer the later
+rebase until the LAST conflicting merge lands", "re-check every open PR's
+mergeability after each merge" — the queue does that serialization itself and
+kicks out an entry whose validation fails.
 
 ## Cadence & lifecycle
 

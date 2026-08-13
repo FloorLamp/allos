@@ -557,6 +557,11 @@ more" clicks. A **Source** filter sits alongside them, offering exactly the
 providers your own history contains (Manual, Strava, Google Health Connect,
 Document, …) labelled the same way the cards' provenance chips are.
 
+"Can't be saved" is a question about the **activity editor** — which imported or
+legacy rows it couldn't re-save without dropping something. Mobility sessions are
+not in its population at all: a tapped move is a whole record on its own, its
+editor is the mobility bar, and it is never flagged.
+
 **When a tracker doesn't say what a session was.** Some providers record an hour
 of exercise and explicitly decline to categorize it — Health Connect's "a workout,
 unspecified" is the common one. Allos stores that as **Unspecified** rather than
@@ -1925,6 +1930,23 @@ value, no flag, and the reason it has none. PhenoAge is unaffected either way:
 it consumes the glucose _value_, not its band, and it does not read insulin at
 all.
 
+That shape — bands valid only under a **clinical frame**, with the frame stated in
+the entry's prose while the name stays unqualified — was audited across the whole
+curated vocabulary in #2526, and the audit is a standing one
+(`lib/__tests__/canonical-frame-audit.test.ts`): every entry whose note or
+description names a frame its name does not carry has a recorded verdict, and a new
+one fails the build until it gets one. The sweep found a third split of the same
+kind — **cortisol**, whose 6–18 µg/dL band was a MORNING band asserted by a two-word
+note, and whose diurnal swing is the widest of the three, so a normal evening draw
+was being flagged low. `Cortisol, Morning` now carries the band and the unqualified
+`Cortisol` carries none. The rest of the vocabulary came back clean, with the reasons
+recorded: triglycerides look frame-dependent but are not (one lipid threshold is
+applied to fasting and non-fasting panels alike, so there is no second band for a
+frame to select); the cycle hormones handle phase structurally through
+`ranges_by_cycle_phase`; and the remaining hits either have no band at all or state
+the frame in the name already. As with insulin, **nothing stored is re-pointed** — a
+bare reading states no frame and is not ours to re-file under one.
+
 A component your lab reported **beyond a detection limit** ("<0.2") is used at
 that limit — the same substitution the charts plot — and the derived value says
 so: it names the censored input, shows the reported `<` beside the value it
@@ -3095,3 +3117,22 @@ line on the mental-health screening instruments (a non-dismissible safety
 surface shown at the moment of need — it renders crisis _resources_, not a
 disclaimer), and the point-of-action "discuss with your prescriber / pharmacist
 / clinician" clause a medication-safety finding carries as its action framing.
+
+The rule is about **rendered user-facing copy, not about file type** (#2342). A
+source scan under `app/`/`components/` could not see the two other routes the
+sentence took to the same pages: 40 entries of curated JSON under `lib/` —
+`canonical-biomarkers.json`'s `note` and `biomarker-descriptions.json`'s
+`description`, both rendered verbatim on the reading detail page, one of them
+byte-identical to the `NOT_A_DIAGNOSIS` constant — and AI-written coverage
+descriptions, which are generated and stored at runtime and never pass through a
+source file at all. All three now read the same banned-phrasing list, which lives in
+`lib/disclaimers.ts` beside the copy it protects: the guard scans every curated
+dataset's entry payloads (file-level `$comment`/`citation`/provenance metadata is
+out of scope — no surface renders it), `clampAiDescription` strips a disclaimer
+sentence out of a stored AI description, and `scripts/gen-canonical-biomarkers.ts`
+both forbids the sentence in its prompt and strips one from a generated `note`. The
+prompt was the root cause: it used to tell the model "These are INFORMATIONAL, not
+medical advice", which is what taught it to append the framing to the rows it wrote.
+The same generator constraint now also forbids **restating a numeric band** the row
+already carries structurally — two copies of one threshold drift, and
+`COVERAGE_ENRICH_SYSTEM` had forbidden exactly that for AI-written copy all along.
