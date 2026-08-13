@@ -1,6 +1,6 @@
 import { requireScope, stampSubjects } from "@/lib/scope";
 import { listVisiblePoolViews } from "@/lib/queries";
-import { PageHeader } from "@/components/ui";
+import { EmptyState, PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import { addItemFromPoolHref, intakeHref, medicationHref } from "@/lib/hrefs";
 import { poolSurfaceKind } from "@/lib/supply-product";
@@ -114,18 +114,24 @@ export default async function SuppliesPage() {
       className="mx-auto"
       data-testid="supplies-page"
     >
+      {/* Sentence case, matching this route's own nav label and every cross-link to
+      it ("Medicine cabinet") — #2615 item 4. */}
       <PageHeader
-        title="Medicine Cabinet"
+        title="Medicine cabinet"
         subtitle="Shared bottles with pooled counts and refill estimates."
       />
       {cards.length === 0 ? (
-        <p
-          className="text-sm text-slate-500 dark:text-slate-400"
-          data-testid="supplies-empty"
-        >
-          No shared bottles yet. Open a supplement or medication, expand its
-          refill section, and link it to a new shared bottle.
-        </p>
+        // The shared "nothing here yet" panel, not a bare paragraph (#2536). The copy
+        // names a destination, so the panel carries the links rather than leaving the
+        // reader to find the refill section by hand.
+        <EmptyState
+          testId="supplies-empty"
+          message="No shared bottles yet. Open a supplement or medication, expand its refill section, and link it to a new shared bottle."
+          actions={[
+            { href: intakeHref("supplement"), label: "Supplements" },
+            { href: intakeHref("medication"), label: "Medications" },
+          ]}
+        />
       ) : (
         <div className="space-y-4">
           {cards.map((c) => (

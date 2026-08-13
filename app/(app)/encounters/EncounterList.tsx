@@ -8,6 +8,8 @@ import { updateEncounter, deleteEncounter } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import ProviderName from "@/components/ProviderName";
+import DiagnosisChips from "@/components/DiagnosisChips";
+import { diagnosisList } from "@/lib/diagnosis-chips";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
@@ -41,16 +43,6 @@ function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
   return start;
 }
 
-// Split the "; "-joined diagnoses summary into individual chips. Split on the
-// delimiter with any surrounding whitespace so it matches the "; " join exactly.
-function diagnosisList(diagnoses: string | null): string[] {
-  if (!diagnoses) return [];
-  return diagnoses
-    .split(/\s*;\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
   {
     header: "Date",
@@ -72,6 +64,10 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
   {
     header: "Chief complaint",
     cellClassName: "text-slate-600 dark:text-slate-300",
+    // The three placeholder columns of this table (#2588). On a phone an unfilled
+    // one used to read "CHIEF COMPLAINT —"; an Imaging visit with none of the three
+    // was a card of nothing but dashes.
+    empty: (e) => !e.reason,
     cell: (e) =>
       e.reason ? (
         <span className="wrap-break-word">{e.reason}</span>
@@ -83,28 +79,24 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Diagnoses",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden sm:table-cell",
-    cell: (e) => {
-      const diagnoses = diagnosisList(e.diagnoses);
-      return diagnoses.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {diagnoses.map((d, i) => (
-            <span
-              key={i}
-              className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-            >
-              {d}
-            </span>
-          ))}
-        </div>
+    empty: (e) => diagnosisList(e.diagnoses).length === 0,
+    // The desktop grid keeps its "—" so the columns stay aligned; the card drops
+    // the line entirely through `empty` above (#2588).
+    cell: (e) =>
+      diagnosisList(e.diagnoses).length > 0 ? (
+        <DiagnosisChips
+          diagnoses={e.diagnoses}
+          diagnosisRanks={e.diagnosis_ranks}
+        />
       ) : (
         <span className="text-slate-400">—</span>
-      );
-    },
+      ),
   },
   {
     header: "Provider",
     headerClassName: "hidden md:table-cell",
     cellClassName: "hidden whitespace-nowrap md:table-cell",
+    empty: (e) => !e.provider_name && !e.location_name,
     cell: (e) =>
       e.provider_name || e.location_name ? (
         <div

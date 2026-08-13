@@ -88,6 +88,38 @@ describe("formatMonthDay", () => {
       formatMonthDay("2024-08-03", { timeFormat: "24h", dateFormat: "iso" })
     ).toBe("2024-08-03");
   });
+
+  // #2579-B: a profile-clock surface asks the auto-year question in the PROFILE's
+  // today, not the process wall clock. Fake time is pinned to 2026 throughout this
+  // file, so each case below states an answer the wall clock alone cannot give.
+  describe("with an explicit reference day", () => {
+    it("suppresses the year for a date in the reference day's year", () => {
+      // Wall clock 2026, reference day 2024 → the 2024 date is "this year".
+      expect(
+        formatMonthDay("2024-08-03", DEFAULT_FORMAT_PREFS, {
+          today: "2024-01-15",
+        })
+      ).toBe("Aug 3");
+    });
+
+    it("appends the year for a date outside it", () => {
+      // Wall clock 2026, reference day 2027 → the 2026 date is a PAST year.
+      expect(
+        formatMonthDay("2026-08-03", DEFAULT_FORMAT_PREFS, {
+          today: "2027-01-15",
+        })
+      ).toBe("Aug 3, 2026");
+    });
+
+    it("falls back to the wall clock when the reference day is unusable", () => {
+      expect(
+        formatMonthDay("2026-08-03", DEFAULT_FORMAT_PREFS, { today: "nope" })
+      ).toBe("Aug 3");
+      expect(
+        formatMonthDay("2024-08-03", DEFAULT_FORMAT_PREFS, { today: "nope" })
+      ).toBe("Aug 3, 2024");
+    });
+  });
 });
 
 describe("formatWeekdayDate", () => {

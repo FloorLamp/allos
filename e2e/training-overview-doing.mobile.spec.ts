@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledClick } from "./helpers";
+import { followLink, settledBoxes, settledClick } from "./helpers";
 import {
   E2E_LOGIN_TRAINING_ROLLUP,
   E2E_MEMBER_PASSWORD,
@@ -67,14 +67,25 @@ test("Overview leads with today's session, then the week, then the findings roll
   // Muscle coverage follows the week (and the findings card, when one is firing).
   expect(weekTop).toBeLessThan(await topOf(page, "muscle-coverage"));
 
-  // #1937: the week tile is Sessions + Days. The "Streak" tile that used to sit
-  // beside them is gone — it restated the active-day count next to it, and did so
-  // less honestly (it counted ACTIVE days with a rest day of tolerance, so a
-  // Mon/Wed/Fri rhythm read as a five-day run across nine days).
+  // #2566: the week is the SPINE now — ONE card holding a seven-day band plus the
+  // weekly routine's chips, in place of the two-number tile ("Sessions 4 · Days 3")
+  // and the separate routine card beside it. The band survives a 390px phone as seven
+  // cells inside the card rather than overflowing it.
+  // (#1937's rule still holds inside it: no "Streak" figure restating the active-day
+  // count — it counted ACTIVE days with a rest day of tolerance, so a Mon/Wed/Fri
+  // rhythm read as a five-day run across nine days.)
   const week = page.getByTestId("training-week");
-  await expect(week.getByText("Sessions", { exact: true })).toBeVisible();
-  await expect(week.getByText("Days", { exact: true })).toBeVisible();
+  const cells = week.getByTestId("week-spine-day");
+  await expect(cells).toHaveCount(7);
+  await expect(week.getByTestId("week-spine-caption")).toContainText(
+    "this week"
+  );
+  await expect(week.getByText("Weekly routine", { exact: true })).toBeVisible();
   await expect(week.getByText("Streak", { exact: true })).toHaveCount(0);
+  const [cardBox, lastCellBox] = await settledBoxes([week, cells.nth(6)]);
+  expect(lastCellBox.x + lastCellBox.width).toBeLessThanOrEqual(
+    cardBox.x + cardBox.width + 1
+  );
 });
 
 test("a later deep-linked Training tab is brought into the visible tab row", async ({

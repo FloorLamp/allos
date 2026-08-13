@@ -270,6 +270,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/household/actions.ts",
+    fn: "undoConfirmDoseAction",
+    why: "the #2642 inverse of confirmDoseAction and exempt for the identical reason: it acts on the NON-active target profile the form names and gates via requireProfileWriteAccess(targetId), so a read-only caregiver can no more un-log a member's dose than log it",
+  },
+  {
+    file: "app/(app)/household/actions.ts",
     fn: "openMemberSetupAction",
     why: "navigation only (#2173): moves the session's active-profile pointer to the card's member and redirects to a route RE-DERIVED server-side from the check id, never posted; gated read-level on getAccessibleProfiles() before any of that member's facts are read, because a read-only caregiver must still be able to follow a setup CTA",
   },
@@ -451,6 +456,33 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/results/imaging/actions.ts",
     fn: "deleteImagingStudy",
     why: "multi-view (#1328): deletes the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  // --- The Specialty panes joined the same fan-out in #2557. Their lists used to be
+  // acting-profile-only, which is why the issue's title reads as a hazard rather than
+  // a live defect: nothing was listed that could not be edited. Converting them to
+  // multi-view is what CREATES that hazard, so the per-item gate lands in the same
+  // change. addDentalProcedure / addOpticalPrescription / trackDentalFollowUp keep
+  // their plain requireWriteAccess() — a new record, and the recheck follow-up, land
+  // on the acting profile by design. ---
+  {
+    file: "app/(app)/records/specialty/dental/actions.ts",
+    fn: "updateDentalProcedure",
+    why: "multi-view (#2557): edits the ITEM's dental record via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/records/specialty/dental/actions.ts",
+    fn: "deleteDentalProcedure",
+    why: "multi-view (#2557): deletes the ITEM's dental record — and unlinks its follow-ups on that same profile — via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/records/specialty/vision/actions.ts",
+    fn: "updateOpticalPrescription",
+    why: "multi-view (#2557): edits the ITEM's optical prescription via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/records/specialty/vision/actions.ts",
+    fn: "deleteOpticalPrescription",
+    why: "multi-view (#2557): deletes the ITEM's optical prescription via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
   // --- Multi-view Readings table edits/deletes (issue #1331). Each merged row
   // carries its OWN profileId, so an edit/delete on a non-acting member's reading

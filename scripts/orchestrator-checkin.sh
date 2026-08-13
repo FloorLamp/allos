@@ -132,8 +132,23 @@ while read -r d; do
   h=$(git -C "$d" rev-parse HEAD 2>/dev/null)
   dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
   r=$(git -C "$REPO" ls-remote --heads origin "$b" 2>/dev/null | cut -c1-7)
+  # A RESTART VOIDS THE ROSTER'S LIVENESS CLAIM. The roster records DISPATCH,
+  # not liveness — nothing writes to it when an agent dies, so "live" only ever
+  # meant "was dispatched and not marked done". That reading is harmless while
+  # the box is up and catastrophically wrong the one time it matters: a restart
+  # kills every agent at once, so after a boot-id change there is no live agent
+  # BY CONSTRUCTION, and every dirty tree is a rescue target.
+  #
+  # Observed 2026-08-13T04:38Z. The same run that printed *** RESTARTED *** and
+  # the preserve-first drill also printed "no rescue targets — every dirty tree
+  # belongs to a live agent", over two trees whose agents the restart had just
+  # killed. The header shouted and the verdict soothed, in one screen; the
+  # reassuring half is the one a tired reader believes. One tree held an
+  # uncommitted spec edit that existed nowhere else.
   live=0
-  printf '%s\n' "$live_branches" | grep -qx -- "$b" && live=1
+  if [ "$RESTARTED" = "0" ]; then
+    printf '%s\n' "$live_branches" | grep -qx -- "$b" && live=1
+  fi
 
   # THE READ-ONLY LANE IS NOT A RESCUE TARGET. The adversarial reviewer (#2626)
   # works in a throwaway worktree checked out at a PR's MERGE ref — detached, on
@@ -143,12 +158,20 @@ while read -r d; do
   # a detached HEAD has no branch to push. An alarm you cannot act on is the
   # canary again, so name the lane instead of alarming on it.
   #
-  # The exemption is the DECLARED lane only (`wt-refute-*`, detached). A detached
+  # The exemption is the DECLARED lane only (`wt-refute*`, detached). A detached
   # worktree that is NOT the lane still gets said out loud, because commits made
   # there belong to no branch and are one `worktree remove` from gone — a
   # different problem from an unpushed branch, and not one to silence.
+  #
+  # The glob has no hyphen after `refute` because the first version did, and the
+  # second refuter — a re-run on the same PR — got hand-named `wt-refute2-2634`,
+  # which the pattern missed by one character. So the alarm fired on the very lane
+  # it had just been taught to recognise. An exemption keyed on a name a human
+  # types will drift from the name that human types next time; matching the prefix
+  # rather than one spelling of it is the cheap half of the fix, and briefing the
+  # lane to use `wt-refute-<pr>` is the other.
   case "$(basename "$d")" in
-    wt-refute-*)
+    wt-refute*)
       if [ "$b" = "HEAD" ]; then
         printf "  %-16s %-32s %-6s local=%s  (read-only refuter lane — nothing to rescue)\n" \
           "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
@@ -207,7 +230,17 @@ while read -r d; do
     "$(basename "$d")" "$b" "$state" "${h:0:7}" "${r:-ABSENT}" "$dirty" "$flag"
 done < <(git -C "$REPO" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
 [ "$found" = "0" ] && echo "  (none)"
-[ "$found" = "1" ] && [ "$alarms" = "0" ] && echo "  (no rescue targets — every dirty tree belongs to a live agent)"
+if [ "$found" = "1" ] && [ "$alarms" = "0" ]; then
+  # Same distinction one level up: after a restart the all-clear cannot be
+  # "they belong to live agents", because there are none. It is the narrower
+  # (and still good) news that nothing was left uncommitted when they died.
+  if [ "$RESTARTED" = "1" ]; then
+    echo "  (nothing to rescue — every tree was clean and pushed when the restart killed its agent;"
+    echo "   the agents are still DEAD and must be relaunched)"
+  else
+    echo "  (no rescue targets — every dirty tree belongs to a live agent)"
+  fi
+fi
 echo
 
 # 3. The roster the orchestrator's own memory cannot be trusted to hold.

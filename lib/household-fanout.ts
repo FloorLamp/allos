@@ -23,6 +23,17 @@
 // multi-generational families and their carers with room to spare, while capping
 // the dashboard's cross-profile cost at roughly a tenth of a second.
 //
+// WHAT IS LEFT INSIDE THE BOUND (#2110): much of a member's gather was SQL
+// COMPILATION, not execution. Measured on a seeded sparse member (the shape a chip
+// usually has), one gather issued 91 prepares over 44 distinct texts — ~7.6ms of
+// compilation against ~1-2ms of execution — and paid it again for the next chip,
+// because a new profileId is a cache() miss and db.prepare compiles on every call.
+// The densest clusters are hoisted now (lib/queries/clinical.ts,
+// lib/queries/medical.ts with its immunizations/encounters siblings, the review-pair
+// loader): 33 prepares over 27 texts, ~1.9ms, and the same gather 12.1ms → 6.2ms.
+// The MODEL is untouched — the chip is still the number that member's own hero
+// shows, which is the only way to make it cheaper without changing what it CLAIMS.
+//
 // WHAT A LARGER SET SEES: the first twelve by profile id, which is the order
 // accessibleProfiles already returns (ORDER BY p.id) and therefore stable
 // between renders. Members past the bound are absent from these four surfaces

@@ -1,8 +1,157 @@
 {
   "days": [
     {
+      "date": "2026-08-13",
+      "entries": [
+        {
+          "pr": 2658,
+          "title": "Total hepatitis A antibody is a catalogued marker instead of an uncatalogued one",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2655,
+          "title": "An illness episode fits on a phone, and four surfaces stop clipping at 390px",
+          "kind": "fix",
+          "issues": [2612, 2614]
+        },
+        {
+          "pr": 2647,
+          "title": "Two things you log are compared for you, with both counts shown and no advice attached",
+          "kind": "feature",
+          "issues": [2177]
+        },
+        {
+          "pr": 2638,
+          "title": "A morning cortisol gets its own entry, and biomarker pages drop boilerplate that crept back in",
+          "kind": "fix",
+          "issues": [2526, 2342]
+        },
+        {
+          "pr": 2634,
+          "title": "No cycle phase, cycle day or period is claimed for a day that has not happened yet",
+          "kind": "fix",
+          "issues": [2613]
+        },
+        {
+          "pr": 2640,
+          "title": "Supplement doses are named as supplements, and one-tap mobility sessions stop being flagged broken",
+          "kind": "fix",
+          "issues": [2610, 2611]
+        },
+        {
+          "pr": 2639,
+          "title": "Empty card cells lose their labels, body rows become editable, and Specialty lists only what you can edit",
+          "kind": "fix",
+          "issues": [2588, 2556, 2557]
+        }
+      ]
+    },
+    {
       "date": "2026-08-12",
       "entries": [
+        {
+          "pr": 2509,
+          "title": "Timeline, medication detail and household stop re-running read work they already had",
+          "kind": "perf",
+          "issues": [2113, 2114, 2116]
+        },
+        {
+          "pr": 2519,
+          "title": "Household and Upcoming gather each member state once instead of once per surface",
+          "kind": "perf",
+          "issues": [2112, 2115, 2446, 2117]
+        },
+        {
+          "pr": 2577,
+          "title": "Results filed under a generic biomarker catch-all are re-filed under the category they belong to",
+          "kind": "fix",
+          "issues": [2479]
+        },
+        {
+          "pr": 2581,
+          "title": "Pages that repeat a query render faster, compiling each statement once instead of thousands of times",
+          "kind": "perf",
+          "issues": []
+        },
+        {
+          "pr": 2562,
+          "title": "A deploy reloads the tab itself at a safe moment, with dirty forms resuming in place",
+          "kind": "feature",
+          "issues": [2471]
+        },
+        {
+          "pr": 2571,
+          "title": "Three training surfaces stop making claims their data cannot support",
+          "kind": "fix",
+          "issues": [2393, 2326, 2359]
+        },
+        {
+          "pr": 2572,
+          "title": "The week-closing message reports your targets verdict, and food habits are observed over a month",
+          "kind": "feature",
+          "issues": [2395, 2397]
+        },
+        {
+          "pr": 2575,
+          "title": "Protein history grows a week grain, and Monday stops claiming you have no protein data",
+          "kind": "fix",
+          "issues": [2413, 2328]
+        },
+        {
+          "pr": 2580,
+          "title": "A whole morning is one tap from the dashboard, and two Telegram keyboard defects are fixed",
+          "kind": "feature",
+          "issues": [2458, 2418]
+        },
+        {
+          "pr": 2584,
+          "title": "A food group you are limiting says so at the log tap and in the digest",
+          "kind": "feature",
+          "issues": [2377]
+        },
+        {
+          "pr": 2586,
+          "title": "A training claim that names a lift now shows it, and an edit stops clearing a column you never touched",
+          "kind": "fix",
+          "issues": [1921, 2573, 2193]
+        },
+        {
+          "pr": 2591,
+          "title": "A clinical document with a single patient stops being screened as if its subject were unclear",
+          "kind": "fix",
+          "issues": [2558, 2136, 2135]
+        },
+        {
+          "pr": 2597,
+          "title": "Three things that fired at the wrong time now fire at the right one",
+          "kind": "fix",
+          "issues": [2570, 2567, 2560]
+        },
+        {
+          "pr": 2598,
+          "title": "Four rows stop stating something the page beside them contradicts",
+          "kind": "fix",
+          "issues": [2578, 2582]
+        },
+        {
+          "pr": 2602,
+          "title": "A ring overnight and a phone nap on the same day are two sleep records, not a duplicate",
+          "kind": "fix",
+          "issues": [2552, 2551, 2192]
+        },
+        {
+          "pr": 2617,
+          "title": "Digest lines you keep declining stop coming back, and an unlogged imported medication can be stopped from its nudge",
+          "kind": "fix",
+          "issues": [2543, 2574]
+        },
+        {
+          "pr": 2620,
+          "title": "A cancelled delete no longer leaves its menu stuck open, with two more interaction fixes",
+          "kind": "fix",
+          "issues": [2600, 2523, 2606]
+        },
         {
           "pr": 2549,
           "title": "Empty panels and view switchers look and read the same everywhere",
@@ -68,6 +217,30 @@
           "title": "A workout recap only claims the target the session actually advanced",
           "kind": "fix",
           "issues": []
+        },
+        {
+          "pr": 2628,
+          "title": "A nap no longer replaces your night-sleep history, and an imported score keeps its own date",
+          "kind": "fix",
+          "issues": [2603, 2553]
+        },
+        {
+          "pr": 2623,
+          "title": "A starred biomarker you have not measured yet stays starred",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2622,
+          "title": "A ride-detail backfill that cannot finish says so, and a retry resumes where it stopped",
+          "kind": "fix",
+          "issues": [2196, 2195]
+        },
+        {
+          "pr": 2630,
+          "title": "Signing a device out is audited, and the health endpoint reports a filling disk before writes fail",
+          "kind": "feature",
+          "issues": [1843, 1856]
         }
       ]
     },

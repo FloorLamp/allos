@@ -6,7 +6,7 @@ import {
   getDayLoadInputs,
   getFrequencyTargetProgress,
   getIllnessCoachingContext,
-  getTrainingLogWeekSummary,
+  getTrainingWeekDayTypes,
   getRecentDatedExercises,
   getReportedBurden,
   getRestAck,
@@ -71,6 +71,8 @@ import LogActivityButton from "@/components/LogActivityButton";
 import PrCard from "@/components/PrCard";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import TrainingFindings from "./TrainingFindings";
+import WeekSpine from "./WeekSpine";
+import { buildWeekSpine } from "@/lib/training-week-spine";
 
 const KIND_LABEL: Record<CardioPR["kind"], string> = {
   distance: "longest",
@@ -98,7 +100,8 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
 // Training → Overview: the DOING surface (#1496, the other half of #1492's rule —
 // analyze on Trends, do here). Order is deliberate and static, doing-first:
 //   1. Today's session (the daily payload leads)
-//   2. This week (stats + weekly routine state)
+//   2. This week — the WEEK SPINE (#2566): the seven-day band, captioned by the
+//      week's counts and the weekly routine's cadence chips, as ONE card
 //   3. Training watch — the coaching findings as ONE capped rollup card
 //   4. Muscle coverage + mobility
 //   5. Injuries / event plans (the descriptive copy renders only when they're live)
@@ -112,7 +115,16 @@ export default async function OverviewSection() {
   const du = units.distanceUnit;
   const todayStr = today(profile.id);
 
-  const summary = getTrainingLogWeekSummary(profile.id);
+  // The week's (day, type) tallies — ONE row set, folded twice (#2566/#221): into the
+  // spine's seven day cells, and into the caption's session/active-day counts. The
+  // same fold backs `getTrainingLogWeekSummary`, which is what the Training Log and
+  // History still read, so no surface can state a different week from this one.
+  const weekDays = getTrainingWeekDayTypes(profile.id);
+  const spine = buildWeekSpine({
+    start: weekDays.start,
+    today: todayStr,
+    rows: weekDays.rows,
+  });
   const targets = getFrequencyTargetProgress(profile.id);
   const strength = getStrengthByExercise(profile.id);
   // PRs read the LOAD-CONTEXT grouping (#1610) so no record blends two machines;
@@ -486,55 +498,52 @@ export default async function OverviewSection() {
         )}
       </div>
 
-      {/* 2. THIS WEEK — the week's tally next to the routine's state. */}
-      <div className="grid gap-6 lg:grid-cols-3" data-testid="training-week">
-        <div className="card">
-          <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-            This week
-          </h3>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-center">
-            <div>
-              <dt className="section-label">Sessions</dt>
-              <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                {summary.sessions}
-              </dd>
-            </div>
-            <div>
-              <dt className="section-label">Days</dt>
-              <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                {summary.activeDays}
-              </dd>
-            </div>
-          </dl>
-        </div>
+      {/* 2. THIS WEEK — the WEEK SPINE (#2566, Viz 1). One band, seven days on the
+          profile's own week window, logged sessions stacked as type-colored blocks,
+          today ringed. It replaces the two-number tile ("Sessions 4 · Days 3" — a
+          tally with no shape) and COMPOSES with the routine, which used to be a
+          separate card in a separate vocabulary: the cadence ledger's own chips are
+          this band's caption now, so which days / what kind / what the routine still
+          wants are one read instead of three.
 
-        <div className="card lg:col-span-2">
-          <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-            Weekly routine
-          </h3>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            Targets that still need work lead the row.
-          </p>
+          Nothing here recomputes anything. The band's day cells and the caption's
+          counts fold the SAME (day, type) rows (getTrainingWeekDayTypes → both
+          buildWeekSpine and getTrainingLogWeekSummary, #221), and the chips are the
+          unchanged getFrequencyTargetProgress result. No score, no verdict: an empty
+          day is empty, a day after today is "ahead", and neither is a miss. */}
+      <div className="card" data-testid="training-week">
+        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+          This week
+        </h3>
+        <WeekSpine spine={spine} />
+
+        <div className="mt-5 border-t border-black/10 pt-4 dark:border-white/10">
+          <h4 className="section-label">Weekly routine</h4>
           {targets.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               No weekly routine set yet.
             </p>
           ) : (
-            <div className="mt-4">
-              <WeeklyTargets
-                targets={targets.map((t) => ({
-                  id: t.target.id,
-                  label: frequencyScopeLabel(
-                    t.target.scope_kind,
-                    t.target.scope_value
-                  ),
-                  count: t.count,
-                  perWeek: t.per_week,
-                  met: t.met,
-                  pace: t.pace,
-                }))}
-              />
-            </div>
+            <>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Targets that still need work lead the row.
+              </p>
+              <div className="mt-3">
+                <WeeklyTargets
+                  targets={targets.map((t) => ({
+                    id: t.target.id,
+                    label: frequencyScopeLabel(
+                      t.target.scope_kind,
+                      t.target.scope_value
+                    ),
+                    count: t.count,
+                    perWeek: t.per_week,
+                    met: t.met,
+                    pace: t.pace,
+                  }))}
+                />
+              </div>
+            </>
           )}
         </div>
       </div>

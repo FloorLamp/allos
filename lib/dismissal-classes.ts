@@ -411,6 +411,15 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     shape: "`co:<monthAnchor>`",
   },
   {
+    // #2177. The head is a curated registry token (a `PAIRED_OBSERVATIONS.key`, never
+    // a user-typed name) and the tail is the month the observation was raised in, so a
+    // dismissal silences that pair for that month and a later month mints a new key.
+    // Nothing here recycles.
+    prefix: "paired-obs:",
+    keyClass: "anchored",
+    shape: "`<registryPairKey>:<monthAnchor>`",
+  },
+  {
     prefix: "sun-exposure:",
     keyClass: "anchored",
     shape: "`daylight:<date>`",

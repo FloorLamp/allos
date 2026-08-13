@@ -1188,6 +1188,12 @@
       "description": "CEA is a tumor marker used mainly to monitor colorectal and some other cancers over time. Mild elevations can also occur with smoking and some non-cancerous conditions."
     },
     {
+      "name": "Hepatitis A Antibody, Total",
+      "abbreviation": "Anti-HAV Total",
+      "full_name": "Hepatitis A Antibody, Total",
+      "description": "Total hepatitis A antibody shows whether you are protected against hepatitis A, usually from vaccination or an infection in the past. Unlike the hepatitis B and C tests reported alongside it, a reactive result here is good news. It does not tell you whether an infection is happening now — that is a separate IgM test."
+    },
+    {
       "name": "Hepatitis B Surface Antigen (HBsAg)",
       "abbreviation": "HBsAg",
       "full_name": "Hepatitis B Surface Antigen",

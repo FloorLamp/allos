@@ -115,6 +115,43 @@ mechanically-detectable settle anti-patterns per file and fails a NEW one:
   `topass-ok: <why>` comment on the line where `.toPass(` appears (usually the
   closing `}).toPass({...})`), mirroring `first-ok`. Existing offenders are
   frozen per-file, immutable-downward.
+- a branch on `process.env.CI` with no written reason — frozen at ZERO, no
+  allowlist. See "The runner is not a property of the app" below.
+
+### The runner is not a property of the app (`process.env.CI`, #2645/#2648)
+
+`process.env.CI` reads as _"is this a real run"_, and that reading is what made
+four sites in this suite the same category error: the variable standing in for
+**"is this a production build"**. It never was one. `e2e/fixtures.ts` spawns
+every worker's `next start` with `NODE_ENV: "production"` unconditionally, so
+since #1538 the non-CI arm has been unreachable and the CI arm has been the only
+thing that ever ran. "Both runs stay green" had quietly become "CI stays green",
+which is the silent, asymmetric kind of decay: an assertion that stops holding
+locally costs nothing visible, so it accumulates.
+
+What the four turned out to be:
+
+| site                       | gated                                         | verdict                                                                                                |
+| -------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `security-headers.spec.ts` | a loosened `/no-store\|no-cache/` alternative | production-ness → removed (#2645)                                                                      |
+| `illness-episode.spec.ts`  | the same loosened alternative                 | production-ness → removed (#2648)                                                                      |
+| `emergency-card.spec.ts`   | the whole genuine-offline block               | production-ness (a stale "local `next dev` unregisters the service worker" premise) → un-gated (#2648) |
+| `global-setup.ts`          | whether to run `npm run build`                | genuinely runner-only → kept, marked                                                                   |
+
+A cache header is a property of the RESPONSE. A live service worker is a
+property of the BUILD — and `ServiceWorkerRegister` only unregisters when
+`NODE_ENV !== "production"`, which the harness never is. Neither is a property
+of the runner, so neither may be gated on one.
+
+The rule the scan enforces: a spec (or any `e2e/*.ts`) may branch on
+`process.env.CI` only with a `ci-ok: <why>` comment **naming the runner-only
+fact** — an artifact path, a service only the runner has, who owns a build step.
+Unlike the other escape markers this one is accepted on the branch line or on
+either line touching it, because `if (process.env.CI) {` is too short to carry a
+reason worth reading and a reason crammed onto it becomes a rubber stamp. There
+is no per-file allowlist: the honest answer is a written reason or a deleted
+branch. Prose that merely names the variable — a comment recording why a branch
+was removed — is not a branch and is not counted.
 
 ### The bounded absence-of-effect wait (the one sanctioned `waitForTimeout`)
 
@@ -169,6 +206,22 @@ legitimate — mark that line with a same-line `first-ok: <why>` comment (the
 preferred fix when migrating an offender is an exact locator (testid, unique
 marker text the spec planted) or a dedicated fixture login
 (`e2e/fixture-logins.ts`), not a marker.
+
+**The axis a `first-ok` must argue is the PAGE, not the profile (#2631).**
+`followLink` RE-EVALUATES its locator on every retry, so a locator written as a
+bare name is evaluated against whatever page is loaded at that moment — and
+under contention that can be the DESTINATION, whose first click has landed but
+whose URL has not committed yet. `visit-links.spec.ts` handed it
+`getByRole("link", { name: /sinus infection/i }).first()` justified as _"the
+dedicated fixture profile owns the only sinus-infection episode"_ — true, and
+about the wrong thing. The episode cockpit it navigates TO renders the linked
+encounter as a timeline care event whose link text is the encounter's `reason`
+("Sinus infection"), pointing at `/encounters/<id>`; the retry resolved there
+and the test ended up two pages away, reported as a bare URL mismatch. Pin the
+locator to something that exists only on the page being clicked (here the row's
+`episode-index-row` testid) and write the note about how many elements match
+**on that page**. A justification about which profile owns the fixture answers a
+question no `.first()` was ever asking.
 
 ### The family-create freeze + `e2e/family-helpers.ts` (phase-2 create-member hardening)
 
@@ -538,25 +591,81 @@ comes from the same settled layout and none is null. Use it for any assertion
 whose subject is the RELATIONSHIP between elements; a single element's own size
 can still be read directly.
 
+## A retry cannot converge on a control that covers itself (2026-08-13, #2662)
+
+`document-capture.mobile` and `progress-photos` both waited for the native file
+chooser the same way: `page.waitForEvent("filechooser", { timeout: 1_000 })`
+armed **inside** an `expect(async () => …).toPass()` that also re-clicked the
+trigger. The shape looked like the repo's normal one — a short poll under a
+retry, not a bare sleep — and it took down two unrelated PRs within an hour.
+
+Three separate things were wrong, and only the third is new:
+
+1. **The subject is an EVENT.** A retry does not lengthen the window a listener
+   is armed for; it re-runs the same too-short window. So a 1s budget under a
+   20s ceiling is a 1s budget, and raising it to 5s would only make a failing run
+   slower.
+2. **The premise was false.** Both specs said "No getUserMedia in CI".
+   `navigator.mediaDevices.getUserMedia` EXISTS on a headless runner — localhost
+   is a secure context — and what is missing is the camera. Probed here:
+   `{"hasGUM":true,"gumResult":"NotFoundError","perm":"denied","isSecure":true}`.
+   So the tap did not take `PhotoCapture`'s one-tap `direct-picker` branch by
+   construction. It took it only if the mount effect's asynchronous
+   `navigator.permissions.query` had already resolved — a race, won on a quiet
+   machine and lost under contention.
+3. **The retry made a lost race permanent.** The losing branch opens
+   PhotoCapture's fallback modal, and `ModalShell`'s `fixed inset-0 z-60`
+   backdrop then intercepts pointer events on the trigger. Playwright's call log
+   from a forced reproduction says both halves plainly: the trigger is
+   `visible, enabled and stable`, and then the backdrop
+   `intercepts pointer events`. The control was interactive right up until the
+   loop's own first attempt covered it up. Every later attempt then blocks on
+   actionability while the listener armed a second earlier rejects with nobody
+   awaiting it, and the run dies on that rejection — reported against the ARMING
+   line, which is the CI signature exactly.
+
+The rule this leaves: **before adding a retry, ask whether the first attempt
+changes the state the next attempt depends on.** #2437 is the same question about
+a relative navigation (each retry advances one more); this is the same question
+about a modal (the first retry hides the target). Both answer with
+`hydratedClick`, which closes the pre-hydration window without a loop.
+
+And the fix's other half: **state a precondition, do not race it.**
+`primeCameraFallback(page)` stages the context as one with no camera API at all,
+in an init script, before the goto — the device class PhotoCapture's own header
+names first, and the same `Object.defineProperty(navigator, "mediaDevices", …)`
+staging `progress-photos` already used for its camera-present variants. It is
+decided synchronously at tap time with no async input anywhere, which the
+session-knowledge route to the same branch is not: that one's precondition
+arrives from a mount effect, and "that effect has flushed" is not something a tap
+can prove. Nothing is lost by staging it — `cameraStartDecision`'s full branch
+matrix is unit-covered in `lib/__tests__/camera-fallback.test.ts`, and the
+camera-API-present shapes keep their own browser test.
+
+No product change: a user who taps Camera inside that window gets the fallback
+dialog and reaches the picker in one more tap, which is #2182's design. The spec
+was asserting a stronger promise than the product makes.
+
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 
 ONE home for settled interactions. The file header carries the authoritative
 decision tree; the summary:
 
-| Situation                                                                                                            | Use                                                                                                                                                                |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — hydration-gated, clicks ONCE, then awaits an action POST that started AFTER that click and targets this page's route (#1952/#2599) |
-| …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                    | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858)                              |
-| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)                                        |
-| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                                                        |
-| …but the navigation is **relative** (a pager's Next/Prev, a stepper — the handler reads current state and moves one) | `hydratedClick(page, locator)` then assert the URL — a retry loop compounds a relative advance and can never converge back (#2437)                                 |
-| A **relative geometry** assertion over several elements (this card one gap below that, these columns share an x)     | `settledBoxes([...locators])` — one snapshot from one settled layout, so no gap is computed across two of them (#2437)                                             |
-| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                                               |
-| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard                                   |
-| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                                                    |
-| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration          | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)                                      |
-| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                               | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231)                              |
-| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                                                         |
+| Situation                                                                                                                   | Use                                                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                        | `settledClick(page, locator)` — hydration-gated, clicks ONCE, then awaits an action POST that started AFTER that click and targets this page's route (#1952/#2599)   |
+| …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                           | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858)                                |
+| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                       | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)                                          |
+| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow        | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                                                          |
+| …but the navigation is **relative** (a pager's Next/Prev, a stepper — the handler reads current state and moves one)        | `hydratedClick(page, locator)` then assert the URL — a retry loop compounds a relative advance and can never converge back (#2437)                                   |
+| A **relative geometry** assertion over several elements (this card one gap below that, these columns share an x)            | `settledBoxes([...locators])` — one snapshot from one settled layout, so no gap is computed across two of them (#2437)                                               |
+| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)            | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                                                 |
+| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion                    | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard                                     |
+| A **pure client** toggle / value settles in place / a toast appears                                                         | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                                                      |
+| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration                 | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)                                        |
+| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                                      | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231)                                |
+| The click must open the browser's **native file chooser** (a camera/upload trigger ending in a synchronous `input.click()`) | `primeCameraFallback(page)` before the goto, then `capturePhotoFile(page, trigger, file)` — one tap, listener armed in the same `Promise.all`, branch STATED (#2662) |
+| A genuinely non-atomic condition none of the above expresses                                                                | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                                                           |
 
 Why not networkidle: it waits for network SILENCE, not "my interaction landed" —
 it settles falsely on a page with a long-poll/SSE/streaming request and adds
@@ -568,6 +677,20 @@ a click that fires NO action (a client toggle, an `<a href>` nav) there is no
 POST to await and it times out — that's what `followLink`/`hydratedClick`/`expect`
 are for. Its timeout message says so explicitly, because that timeout almost
 always means the CALL SITE is wrong rather than the app being slow (#1952).
+
+**Opening a menu: wait on the MENU, not on the item (#2632).** `OverflowMenu`
+portals its panel to `<body>` and mounts it only while `open`, so an item inside
+it has no existence until the toggle lands. A helper that clicks the ⋯ trigger
+and then waits for the ITEM therefore cannot tell _"the menu never opened"_ from
+_"the item is slow"_ — both surface as one 30 s `waiting for getByTestId(...)`
+with **no actionability lines after it**, which is precisely how
+`wellness-practices.spec.ts` failed. (That absence is also the diagnosis: a
+covered element logs `intercepts pointer events`; an element that never resolved
+logs nothing. Read the call log before reaching for the `menu-confirm-cancel`
+backdrop bug.) Drive the trigger with `hydratedClick` — it is a toggle, so a
+retry loop would close what it opened — and then assert the menu's OPEN state
+(`page.getByRole("menu")`, reached from the page because the panel is portaled)
+before clicking the item.
 
 ### The pre-hydration ACTION-click swallow (`settledClick`, #2599)
 
@@ -1339,6 +1462,61 @@ Both `ci.yml`'s matrix and `e2e-full.yml` upload each shard's raw JSON report as
 `e2e-results-shard-N` for exactly this. Twelve of ci.yml's cover the whole suite;
 `e2e-full.yml` is the alternative when you want a census run's numbers (its
 `repeat-each` inflates every file by the same factor, which DOES cancel).
+
+## Co-residency: an ABSENCE is the precondition that sharding breaks
+
+Two specs sharing a worker share its database. That is fine for the fixture rule
+above — a spec owning its own rows is unaffected by a neighbour adding more. It
+is NOT fine when a spec's precondition is an **absence**, because a neighbour's
+perfectly ordinary write destroys it and neither spec is wrong on its own.
+
+Both instances so far had that exact shape:
+
+| victim asserts                                              | neighbour does                                                   | result               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------- | -------------------- |
+| profile 1 has NO tracked protein (`data-basis="estimated"`) | `offline-food-log` adds 30g and never removes it                 | `"combined"` (#2604) |
+| the seed's two never-measured stars keep their empty tiles  | `hearing.spec` deletes an audiogram, which runs the orphan sweep | stars gone (#2623)   |
+
+Neither was caused by the sharding. Duration-balanced buckets (#2590) put the
+pair on one database for the first time, and reshuffling the buckets — which a
+manifest refresh does — can expose another one at any time. **Assume a bucket
+change is a co-residency change.**
+
+The rule that prevents it is the fixture-ownership rule one step further: a spec
+that WRITES to the shared profile leaves it as it found it, and a spec that
+depends on something NOT being there says so where the state is created rather
+than trusting the seed to stay that way. `protein-quickadd.spec` has followed the
+first half for a long time ("Add→undo leaves the fixture as found"), on a
+dedicated fixture, for precisely this hazard.
+
+### Reproducing one — a green shard proves nothing
+
+DB-per-worker means a colliding pair only collides when Playwright puts both
+files on the SAME worker, which varies per run. So:
+
+- at `--workers=2` the shard can pass while CI fails, and passes again on the
+  re-run that was supposed to confirm it;
+- at `--workers=1` every spec in the bucket is co-resident, in order, and the
+  failure is deterministic.
+
+```
+# the shard's own composition — passes, proves nothing
+npx playwright test "${BUCKET[@]}"
+# every spec on one database — this is the test
+PW_WORKERS=1 npx playwright test "${BUCKET[@]}"
+```
+
+Both collisions above passed at two workers and failed at one, and the second was
+nearly filed as unreproducible on the strength of a green two-worker run. Bisect
+the bucket against the victim to name the neighbour, then diff the worker
+database against `e2e/.data/template/app.db` to see what it actually left behind
+— that is what turned "some spec breaks this" into "`saved_items` went 9 → 7, and
+the two missing rows are ApoB and hs-CRP".
+
+A whole-suite `PW_WORKERS=1` run is the exhaustive form: it makes every spec
+co-resident with every other and finds every collision of this class in one pass.
+It is slow (no parallelism, the full suite serially) and worth it after a
+manifest refresh.
 
 ## Fix (f) — DB-per-worker isolation (#1538)
 

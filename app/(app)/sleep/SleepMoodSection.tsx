@@ -2,11 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { IconPencil } from "@tabler/icons-react";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import PaginationControls from "@/components/PaginationControls";
 import { HISTORY_PAGE_SIZE, pageCount as countPages } from "@/lib/pagination";
 import ScatterChartCard from "@/components/ScatterChartCard";
 import ScrollFade from "@/components/ScrollFade";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import { chartSeries } from "@/lib/chart-colors";
 import {
   formatLongDate,
@@ -23,8 +29,10 @@ import {
   type SleepMoodPoint,
 } from "@/lib/sleep-summary";
 import { describeCorrelation, pearson } from "@/lib/trends-compare";
+import { readingTargetToken } from "@/lib/reading-placement";
 import SleepMoodEditDialog from "./SleepMoodEditDialog";
 import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
+import { deleteSleepMoodRow } from "./actions";
 import type { NapHistoryRow } from "@/lib/queries/sleep";
 
 // A two- or three-dot scatter plot exaggerates coincidence and produces an
@@ -97,6 +105,8 @@ export default function SleepMoodSection({
       bedtimeSupplements: null,
       sleepEditable: true,
       sleepEditHours: null,
+      sleepSampleId: null,
+      moodLogId: null,
     });
   }
   const newestFirst = [...historyByDate.values()].sort((a, b) =>
@@ -173,8 +183,15 @@ export default function SleepMoodSection({
         </p>
         <div className="card overflow-hidden p-0">
           <ScrollFade data-testid="sleep-history-scroll-fade">
-            <table
-              className={`w-full min-w-120 text-left text-sm ${
+            {/* The stacked-card presentation below `sm` (#1426's shared primitive,
+                adopted here by #2614). This table's phone form used to be a
+                480px-wide grid inside a ~358px card, so the four columns a phone
+                DOES show did not fit: MOOD — the whole point of the log — rendered
+                as "🙂 Good (4" against the card edge, readable only by swiping. The
+                `min-w-120` goes with it; the `sm:` minimums keep the wide desktop
+                grid (and its ScrollFade) exactly as they were. */}
+            <ResponsiveTable
+              className={`w-full text-left text-sm ${
                 hasSupplementContext ? "sm:min-w-272" : "sm:min-w-240"
               }`}
               data-testid="sleep-mood-history"
@@ -222,18 +239,19 @@ export default function SleepMoodSection({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pageRows.length === 0 ? (
                   <tr>
-                    <td
+                    <Td
+                      slot="full"
                       colSpan={
                         5 +
                         STAGE_COLUMNS.length +
                         (hasSupplementContext ? 1 : 0)
                       }
-                      className="td py-6 text-center text-slate-500 dark:text-slate-400"
+                      className="py-6 text-center text-slate-500 dark:text-slate-400"
                       data-testid="sleep-mood-history-empty"
                     >
                       No sleep, nap, stage, or mood entries in the past{" "}
                       {windowDays} days.
-                    </td>
+                    </Td>
                   </tr>
                 ) : (
                   pageRows.map((row) => (
@@ -244,7 +262,7 @@ export default function SleepMoodSection({
                       data-sleep-editable={row.sleepEditable ? "true" : "false"}
                       className="tabular-nums"
                     >
-                      <td className="td whitespace-nowrap">
+                      <Td slot="title" className="whitespace-nowrap">
                         <Link
                           href={timelineDayHref(row.date)}
                           className="font-medium text-brand-600 hover:underline dark:text-brand-400"
@@ -262,8 +280,14 @@ export default function SleepMoodSection({
                             {formatLongDate(row.date, formatPrefs)}
                           </span>
                         </Link>
-                      </td>
-                      <td className="td whitespace-nowrap text-slate-700 dark:text-slate-200">
+                      </Td>
+                      {/* Sleep duration is the card's headline; the bedtime
+                          supplement sub-line was already this cell's phone
+                          treatment and rides along with it. */}
+                      <Td
+                        slot="value"
+                        className="whitespace-nowrap text-slate-700 dark:text-slate-200"
+                      >
                         <span>
                           {row.sleepHours == null
                             ? "—"
@@ -279,9 +303,12 @@ export default function SleepMoodSection({
                             />
                           </div>
                         )}
-                      </td>
-                      <td
-                        className="td whitespace-nowrap text-slate-700 dark:text-slate-200"
+                      </Td>
+                      <Td
+                        slot="meta"
+                        label="Naps"
+                        empty={(napsByDate.get(row.date) ?? []).length === 0}
+                        className="whitespace-nowrap text-slate-700 dark:text-slate-200"
                         data-testid="sleep-history-naps"
                       >
                         {(napsByDate.get(row.date) ?? []).length === 0
@@ -298,8 +325,17 @@ export default function SleepMoodSection({
                                 · {formatHm(nap.durationMin)}
                               </div>
                             ))}
-                      </td>
-                      <td className="td whitespace-nowrap text-slate-700 dark:text-slate-200">
+                      </Td>
+                      {/* Mood is what the phone used to lose to the card edge —
+                          "🙂 Good (4" against a 480px grid in a 358px card. It is
+                          a labelled meta line now, so it wraps in place. */}
+                      <Td
+                        slot="meta"
+                        label="Mood"
+                        empty={row.valence == null}
+                        className="text-slate-700 sm:whitespace-nowrap dark:text-slate-200"
+                        data-testid="sleep-history-mood"
+                      >
                         {row.valence == null ? (
                           "—"
                         ) : (
@@ -308,7 +344,7 @@ export default function SleepMoodSection({
                             {moodLabel(row.valence)} ({row.valence}/5)
                           </>
                         )}
-                      </td>
+                      </Td>
                       {hasSupplementContext && (
                         <td className="td hidden whitespace-nowrap sm:table-cell">
                           {row.bedtimeSupplements ? (
@@ -339,27 +375,26 @@ export default function SleepMoodSection({
                             : formatHm(row.stages[column.key])}
                         </td>
                       ))}
-                      <td className="td whitespace-nowrap text-right">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                          onClick={() => setEditing(row)}
-                          aria-label={`Edit sleep and mood for ${formatLongDate(row.date, formatPrefs)}`}
-                          data-testid="sleep-mood-history-edit"
-                        >
-                          <IconPencil
-                            className="h-3.5 w-3.5"
-                            stroke={1.75}
-                            aria-hidden
-                          />
-                          Edit
-                        </button>
-                      </td>
+                      <Td
+                        slot="actions"
+                        className="whitespace-nowrap text-right"
+                      >
+                        {/* Edit AND delete on the shared ⋯ menu (#2556). The row is
+                            a UNION of up to two physical records, so each delete
+                            names the one it removes — and each is offered only when
+                            that record exists and this surface is allowed to remove
+                            it. */}
+                        <SleepMoodRowMenu
+                          row={row}
+                          dateLabel={formatLongDate(row.date, formatPrefs)}
+                          onEdit={() => setEditing(row)}
+                        />
+                      </Td>
                     </tr>
                   ))
                 )}
               </tbody>
-            </table>
+            </ResponsiveTable>
           </ScrollFade>
           <PaginationControls
             page={page}
@@ -381,6 +416,124 @@ export default function SleepMoodSection({
           onClose={() => setEditing(null)}
         />
       )}
+    </div>
+  );
+}
+
+// One log line's row actions. Edit opens the existing dialog; each Delete names the
+// physical record it removes and posts that row's own target token to the ONE
+// per-reading delete contract (#2032) through the sleep action's gate.
+//
+// RENDERED FROM STATE, per the stateful-affordance rule: a night with no manual
+// duration-only sample offers no sleep delete (an imported or windowed night is
+// read-only here exactly as it is in the edit dialog), and a day with no check-in
+// offers no mood delete. The menu therefore never presents a write that would refuse.
+function SleepMoodRowMenu({
+  row,
+  dateLabel,
+  onEdit,
+}: {
+  row: SleepMoodHistoryRow;
+  dateLabel: string;
+  onEdit: () => void;
+}) {
+  const confirm = useConfirm();
+  const undoable = useUndoableDelete();
+  const [open, setOpen] = useState(false);
+
+  async function remove(
+    target: string,
+    prompt: { title: string; message: string; deleted: string }
+  ) {
+    const ok = await confirm({
+      title: prompt.title,
+      message: prompt.message,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    const fd = new FormData();
+    fd.set("target", target);
+    await undoable(deleteSleepMoodRow, fd, { deletedMessage: prompt.deleted });
+  }
+
+  return (
+    <div className="flex items-center justify-end">
+      <OverflowMenu
+        label={`Actions for ${dateLabel}`}
+        open={open}
+        onOpenChange={setOpen}
+      >
+        {({ close }) => (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM}
+              data-testid="sleep-mood-history-edit"
+              onClick={() => {
+                onEdit();
+                close();
+              }}
+            >
+              Edit
+            </button>
+            {/* Close the menu BEFORE the confirm in every branch: a handler that
+                returns without close() leaves the click-away backdrop shielding the
+                whole page. */}
+            {row.sleepSampleId != null && (
+              <button
+                type="button"
+                role="menuitem"
+                className={MENU_ITEM_DANGER}
+                data-testid="sleep-history-delete-sleep"
+                onClick={() => {
+                  close();
+                  void remove(
+                    readingTargetToken({
+                      store: "metric_samples",
+                      id: row.sleepSampleId!,
+                      metric: "sleep_min",
+                    }),
+                    {
+                      title: "Delete sleep duration",
+                      message: `Delete the manual sleep duration logged for ${dateLabel}? You can undo this.`,
+                      deleted: "Sleep duration deleted.",
+                    }
+                  );
+                }}
+              >
+                Delete sleep duration
+              </button>
+            )}
+            {row.moodLogId != null && (
+              <button
+                type="button"
+                role="menuitem"
+                className={MENU_ITEM_DANGER}
+                data-testid="sleep-history-delete-mood"
+                onClick={() => {
+                  close();
+                  void remove(
+                    readingTargetToken({
+                      store: "mood",
+                      id: row.moodLogId!,
+                      series: "valence",
+                    }),
+                    {
+                      title: "Delete mood check-in",
+                      message: `Delete the mood check-in for ${dateLabel}? Its note and factors go with it. You can undo this.`,
+                      deleted: "Mood check-in deleted.",
+                    }
+                  );
+                }}
+              >
+                Delete mood check-in
+              </button>
+            )}
+          </>
+        )}
+      </OverflowMenu>
     </div>
   );
 }

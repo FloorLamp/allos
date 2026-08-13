@@ -92,6 +92,23 @@ A ramp is validated as a ramp (`validateCellRamp`): one hue, monotone lightness,
 end ≥ 3:1. The pale end is anchored to the ramp's own empty cell, not the card
 surface — in a grid, every cell's neighbour is another cell.
 
+### Categorical cell colors
+
+A cell grid whose question is _which kind_, not _how much_, is **categorical**
+and draws from `chartSeries`, never from a same-hue ladder.
+
+- `chartActivityTypeBlock` — one block color per `ActivityType`: violet
+  strength, rose cardio, sky sport (the hues the Training Log's own type badges
+  already use), brand mobility, and the declared **neutral** for
+  `unclassified`, which states that the source never said what the session was
+  (#2272) rather than naming a discipline. Exhaustive `Record<ActivityType, …>`,
+  so a sixth activity type must declare its block before the app compiles.
+  `WeekSpine` (the #2566 week spine).
+
+Each entry ships the class the DOM renders **and** the hex it equals, for the
+same reason a ramp does: the guard that scans for stray hex cannot see a
+Tailwind class.
+
 ---
 
 ## 2. Choosing a form
@@ -107,6 +124,7 @@ surface — in a grid, every cell's neighbour is another cell.
 | composition over time                            | stacked bars                              | `StackedBarCard`, `ZoneMinutesCard`                 |
 | a relationship between two variables             | scatter                                   | `ScatterChartCard`                                  |
 | consistency / "did I show up"                    | calendar heatmap                          | `ActiveDaysStrip`, `AdherenceCalendar`              |
+| one week's sessions, by day AND kind             | seven-day band of categorical blocks      | `WeekSpine` (over `lib/training-week-spine.ts`)     |
 | coverage + composition, per group per day        | day-history calendar + group×day matrix   | `DayHistory` (over `lib/day-history.ts`)            |
 | growth against reference percentiles             | percentile bands + trajectory             | `GrowthChart`                                       |
 | ONE day, every layer, on a clock axis            | hand-drawn SVG day chart (scrub + zoom)   | `IntradayChart` (via `IntradayPanel`)               |
@@ -204,6 +222,38 @@ Hiding axes is the MINI-TILE decision, not a global one: a full-size chart keeps
 the axis a reader traces a value along. `e2e/trends-sparkline.mobile.spec.ts`
 pins both halves at 390px — no axis inside a tile, axes still present (and ticks
 still ≥ 10px) on a full-size chart.
+
+### One reading is a mark, not a plot (#1485 G / #2615)
+
+**A line needs two points to describe a direction.** Given one, the sparkline
+variant draws nothing at all (its per-point dots are suppressed) and the
+full-size card draws a 30- or 90-day band, empty apart from a single dot
+half-clipped against the y-axis. Both read as a rendering failure rather than as
+the true statement: there is one reading here.
+
+So a one-reading series gets a deliberate mark — a dot on a fading rule with a
+caption naming what it is and when — drawn by `components/SingleReadingMark.tsx`
+and selected by one pure predicate, `loneReading` (`lib/trend-sparkline.ts`),
+counting NON-NULL points so a calendar-densified series (#2258 below) is not
+mistaken for a dense one. The tiles have degraded this way since #1485 G; the
+full chart cards joined them in #2615, over the same predicate and the same
+drawing, so a tile and the card it taps through to cannot render the identical
+situation two ways.
+
+The CAPTION's words stay per surface: "Single reading · Jul 13" inside the
+window, "Latest recorded · Jul 13" for a reading behind it. Those are different
+claims about the same drawing.
+
+### A headline is a claim about NOW (#2615)
+
+A chart card's header carries the latest plotted value in large type. That is
+current-shaped copy, and past the metric's **presentation floor** it may not be
+left unqualified — the freshness doctrine's rule, one surface over from the
+glance cards that already follow it. The value stays exactly where it is, at
+full prominence, and gains an as-of stamp naming the day it was read; the floor
+is per metric (`lib/trend-metric-freshness.ts`) and the stamp's colour and hover
+sentence are the shared glance-age treatment (`lib/glance-age.ts`, form
+`as-of`). See `docs/internals/freshness.md`.
 
 ### Long ranges aggregate (#1938)
 

@@ -104,15 +104,25 @@ export default function TimelineFilterLink({
   href,
   className,
   children,
+  testId,
+  // Disclosure state for the link-driven fold headers (#2657). `aria-expanded` IS
+  // supported on `role="link"` — unlike `aria-pressed`, which the #2535 scan bans
+  // outright — so a month card announces open/closed to assistive technology while
+  // staying a plain server-rendered link that works before hydration.
+  ariaExpanded,
 }: {
   href: AppRoute;
   className: string;
   children: ReactNode;
+  testId?: string;
+  ariaExpanded?: boolean;
 }) {
   return (
     <Link
       href={href}
       scroll={false}
+      data-testid={testId}
+      aria-expanded={ariaExpanded}
       onClick={() => {
         if (typeof window === "undefined") return;
         const controls = document.getElementById("timeline-controls");

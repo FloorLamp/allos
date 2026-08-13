@@ -15,9 +15,11 @@ import {
   formatCompactRelativeTime,
   type TimeFormat,
 } from "./format-date";
+import type { IntakeItemKind } from "./types/intake";
 import type { TemperatureUnit } from "./settings";
 import { fmtTemp } from "./units";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
+import { SUMMARY_NAME_LIMIT, summarizeNames } from "./summarize-names";
 
 // A single severity reading of one symptom on one day.
 export interface SymptomSeriesPoint {
@@ -86,6 +88,11 @@ export type IllnessTimelineEvent =
       label: string;
       detail: string;
       itemId: number;
+      // The parent item's clinical kind, carried onto the row so the History's
+      // Illness view can drop the routine supplement stack without dropping the
+      // medicine given for the illness (#2612). `kind` is already this union's own
+      // discriminant, hence the longer name. Absent ⇒ treated as a medication.
+      itemKind?: IntakeItemKind;
       amount: string | null;
     }
   | {
@@ -131,6 +138,7 @@ export function illnessTimelineEvents(
           formatMedicationDoseProduct(a.amount, a.product ?? m.product) ||
           "Amount not recorded",
         itemId: m.itemId,
+        itemKind: m.kind,
         amount: a.amount,
       }))
     ),
@@ -182,6 +190,15 @@ export interface EpisodeMedication {
   itemId: number;
   name: string;
   product?: string | null;
+  // The intake item's CLINICAL identity (#2612). The episode gather is already
+  // narrowed to `obligation = 'may'`, so within this set the split reads as "a PRN
+  // medication taken during the illness" against "the profile's routine supplement
+  // stack, which happens to be filed `may` too" — the distinction the History's
+  // Illness view needs, and the "kind-based" half of what #2612's fix direction
+  // named. It is NOT the fuller episode-relevance model that issue defers.
+  // Optional so a payload assembled before this field existed still types; a
+  // missing kind is treated as a medication, i.e. never hidden.
+  kind?: IntakeItemKind;
   count: number;
   administrations: AdministrationPoint[];
 }
@@ -305,6 +322,40 @@ export function feverTrendLabel(trend: FeverTrend): string | null {
 // A compact "3×" style count phrase for a med, or the med name with its count.
 function medCountPhrase(m: EpisodeMedication): string {
   return `${m.name.toLowerCase()} ${m.count}×`;
+}
+
+// ── The fever chart's dose-lane LEGEND (#2612) ───────────────────────────────
+//
+// A legend explains MARKS. The caption under the chart used to enumerate every
+// administration in the window — "◆ Ibuprofen · 200 mg · 19:03 · Aug 9" once per
+// dose, ~28 wrapped entries on a 4-day episode — which is a table wearing a
+// legend's clothes: the same rows, with the same name/amount/clock, already render
+// as the per-day History table directly beneath it (`illnessTimelineEvents` emits
+// one row per administration), so the page paid that height twice and both halves
+// grew linearly with doses × illness days.
+//
+// So the enumeration is DELETED rather than folded — folding a duplicate keeps the
+// duplicate — and what remains is what the marks actually need: which medications
+// the ◆ lane holds, and how many doses of each. Bounded by DISTINCT medication
+// (not by dose), and then by `summarizeNames`'s "and N more" tail on top of that,
+// so a week-long illness on a fuller stack costs one wrapped line instead of
+// several hundred px. Amount and clock are one glance below, in the table that
+// owns them.
+export function doseLaneRoster(
+  medications: readonly Pick<EpisodeMedication, "name" | "administrations">[],
+  limit: number = SUMMARY_NAME_LIMIT
+): string {
+  const named = medications
+    .filter((medication) => medication.administrations.length > 0)
+    .map((medication) => ({
+      name: medication.name,
+      count: medication.administrations.length,
+    }))
+    // Most-administered first, so the truncated tail drops the least-used items.
+    // The assembly already sorts this way; the legend does not depend on it having.
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .map((medication) => `${medication.name} ×${medication.count}`);
+  return summarizeNames(named, limit);
 }
 
 // The one-line episode headline shared by the timeline card and the episode header:
@@ -508,7 +559,17 @@ export function episodeLastDoseClause(
   if (!best) return null;
   const name = best.name.toLowerCase();
   const dose = formatMedicationDoseProduct(best.amount, best.product);
-  const medication = dose ? `${name} · ${dose}` : name;
+  // The dose is bound to the DRUG, and the clock is what follows the pair (#2615
+  // item 4). The clause used to read "last ibuprofen · 200 mg 17:33", which put its
+  // two part boundaries in the wrong places twice over: a separator split the drug
+  // from its own dose, and then the clock was concatenated onto the dose with no
+  // boundary at all. Worse, that separator was the SAME " · " the household line
+  // joins its clauses with, so "200 mg" read as a sibling of "sick day 3" — and
+  // `formatMedicationDoseProduct` can itself return a " · "-joined string
+  // ("160 mg · Chewable tablet"), which a third level of the same separator would
+  // have made unreadable. Parentheses close the dose off, and the no-dose clause
+  // ("last ibuprofen 4:02 PM") is unchanged.
+  const medication = dose ? `${name} (${dose})` : name;
   return best.time
     ? `last ${medication} ${formatClockValue(best.time, timeFormat)}`
     : `last ${medication}`;

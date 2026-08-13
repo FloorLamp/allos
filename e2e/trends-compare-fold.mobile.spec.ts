@@ -74,7 +74,7 @@ test.describe("A — the tab strip is four chips in frequency order", () => {
     }
   });
 
-  test("the one-row strip scrolls and brings a later selected tab into view", async ({
+  test("the one-row strip shows every tab beside the range trigger, and keeps its scroller for a set that would not fit", async ({
     page,
   }) => {
     await page.goto("/trends");
@@ -82,17 +82,21 @@ test.describe("A — the tab strip is four chips in frequency order", () => {
     await expect(strip.getByRole("tab")).toHaveCount(TAB_ORDER.length);
 
     // The range trigger owns the fixed right edge, leaving the primary tabs one
-    // stable horizontal scroller instead of hiding them inside that trigger.
-    const scrolls = await strip.evaluate(
-      (el) => el.scrollWidth > el.clientWidth
-    );
-    expect(scrolls).toBe(true);
+    // stable horizontal scroller instead of hiding them inside that trigger. #640
+    // gave the strip that scroller and it is still here — asserted as the PROPERTY
+    // (an overflow-x scroller) rather than as "there is something to scroll right
+    // now", because #2614 made the four-tab set actually FIT the column the trigger
+    // leaves it. A strip that needs no swipe is the better outcome, and it is what
+    // the clause below has always been about.
+    await expect(strip).toHaveCSS("overflow-x", "auto");
+    expect(
+      await strip.evaluate((el) => el.scrollWidth - el.clientWidth)
+    ).toBeLessThanOrEqual(1);
 
-    // The LAST chip is reachable inside that scroller — which is the clause this
-    // test owns (it was impossible when the strip clipped instead of scrolling) —
-    // and selecting it works.
+    // The LAST chip is reachable — the clause this test owns, impossible when the
+    // strip clipped instead of scrolling. Reachable with no swipe at all now: in
+    // the viewport as rendered, with nothing scrolled into view first.
     const insights = strip.getByRole("tab", { name: "Insights" });
-    await insights.scrollIntoViewIfNeeded();
     await expect(insights).toBeInViewport();
     await followLink(page, insights, /tab=insights/);
     await expect(strip.getByRole("tab", { name: "Insights" })).toHaveAttribute(

@@ -12,7 +12,8 @@ feature. Architecture and implementation invariants live in
   [Symptom log](#symptom-log), [Daily wellbeing](#daily-wellbeing-check),
   [Upcoming](#upcoming), and [Sleep](#sleep)
 - **Training and trends:** [Training](#training), [Equipment](#equipment),
-  [Trends](#trends), [Longevity](#longevity), [Goals](#goals),
+  [Trends](#trends), [Year in review](#year-in-review),
+  [Longevity](#longevity), [Goals](#goals),
   [Benchmarks](#benchmarks), [Progress photos](#progress-photos), and
   [Video clips](#video-clips)
 - **Nutrition and intake:** [Nutrition](#nutrition),
@@ -186,6 +187,20 @@ day's outdoor window also carries a **UV badge**, and your outdoor daylight time
 becomes a two-sided **UV dose** (enough for vitamin D/circadian light, with a
 burn-risk heads-up past your skin type's threshold) — degrading gracefully to a
 clear-sky estimate, then to plain minutes, offline.
+
+The feed is **windowed** rather than unrolled. Anything dated after today folds
+into one **Scheduled ahead** line at the top — expandable, never the opening
+content, so the page starts on your own recent history instead of on a goal
+target date months out. The last **14 days** stay event-grained, exactly as
+before: day groups with individual cards. Everything older collapses to one card
+per **calendar month** ("May 2026 · 47 events · 22 days"), expanding in place on
+tap. Nothing is removed — a closed card always states how much is inside it, and
+the **Oldest** jump opens whichever card holds its destination on the way. Which
+folds are open lives in the URL (`?open=2026-05`), so an expanded month is
+shareable, bookmarkable and reachable with the back button. A profile with
+nothing in the last fortnight arrives with its newest month already open. The
+category and date filters compose with all of this; a single-day view is never
+windowed, because a day is already the window.
 
 A brand-new account sees a Timeline empty state that names the next action —
 links to log an activity, add a body metric, or import a document, the three
@@ -1056,6 +1071,27 @@ units, source selection, and flags remain authoritative when AI is unavailable.
 Chart interaction and visual rules are documented in
 [the chart specification](internals/charts.md).
 
+## Year in review
+
+**Year in review** (`/retrospective`) is a once-a-year page rather than a
+message: the periodic review comes to you weekly, monthly or quarterly, and a
+year does not fit in a message, so this one you go and look at. Nothing is
+pushed, and there is nothing to dismiss.
+
+It is built from the same recap engine the weekly card and the periodic review
+use, at year scale — so a number here can never disagree with the number on your
+dashboard. A year picker moves between the years you have data for.
+
+The one deliberate difference is that a year is allowed to keep its **counts**.
+Elsewhere the review reports shapes, rates and directions rather than totals,
+because a total invites a verdict. A retrospective is commemorative, so
+"214 workouts, 12 PRs" is the point — **and no count is ever compared against
+another year's**. Trajectories (training mix, body-weight direction, typical
+night) carry the comparisons; counts just are.
+
+A year that has not finished, or one that began part-way through because that is
+when your data starts, says so above the numbers.
+
 ## Sleep
 
 Route: `/sleep`.
@@ -1802,6 +1838,32 @@ identities); nothing gates on the links — they are provenance and navigation
 only. The Passport summary carries the offline **Emergency Card** as its
 `#emergency` section.
 
+A visit's **diagnosis chips** show what the source recorded, exactly as it
+recorded it. Where a source states a rank as DATA — FHIR
+`Encounter.diagnosis.rank` / `.use` — the primary diagnosis carries a **Primary**
+badge (a lower-ranked one its number), stored beside the diagnosis summary rather
+than inside it. The badge names every part the source stated, so it also names
+its own scope: FHIR ranks a diagnosis _per role_, so a rank stated under the
+discharge role reads **Primary, Discharge** rather than an unqualified "Primary"
+that would claim more than the record does. A role stated with no rank shows its
+label alone (Admission, Discharge, Comorbidity, …), and where one condition is
+ranked differently under two roles the rank is withheld entirely and both roles
+are kept. Where a source states it as SPELLING — a C-CDA has no rank element, so
+some systems weld " - Primary" into the display name — the name is stored and
+shown verbatim: only clinical knowledge separates a rank ("… - Primary") from an
+etiology ("Hyperparathyroidism - Secondary"), the two are the same string shape,
+and Allos does not guess between them. What it does instead is **render them
+compactly**: consecutive diagnoses sharing a long stem print that stem once with
+each entry's tail after it, so one long Z-code listed twice stops costing four
+wrapped lines on a phone. This is about wrapping and nothing else — it groups any
+long shared stem, including two genuinely different diagnoses, and it never claims
+they are one. Nothing is hidden: the stem plus each tail is exactly the stored
+name, and a compacted chip carries every full name — each with whatever the source
+stated about it — as its hover text and as the text a screen reader reads instead
+of the fragments. (An uncompacted chip already prints its whole name, so it has no
+hover text of its own.) A source-stated rank and a fragment of a name are styled
+apart, because they are different claims.
+
 ### Providers
 
 The Providers tab (`/records/care/providers`) is the instance-wide directory of
@@ -2120,8 +2182,19 @@ the form, the quick actions, and any future import path share them:
   verdict within a 7-day threshold, and a length trend chart) answers "is it
   regular / changing." The **phase stays retrospective**: the luteal phase is
   only assigned once the following period is logged, because a phase says what
-  the body did, not what it will do. It also feeds cycle-phase-aware biomarker
-  reference ranges (the phase on a lab's collection date). Informational only, not medical advice or
+  the body did, not what it will do — and for the same reason there is **no
+  phase at all after today** (#2613). The derivation takes the profile-local
+  current day and refuses any date past it: the Timeline's window leaves its
+  upper bound open so future-dated events stay reachable (inside the Scheduled
+  ahead fold), and a goal target
+  date months out used to arrive carrying a bare "Follicular" chip in the same
+  factual voice as today's. Several periods will happen in between, so that
+  phase is not merely uncertain, it is unknowable — the refusal is an ABSENCE
+  (no chip), never a hedged label, and the Cycle page's confidence-framed
+  forecast stays the only thing that says anything about the future. It also
+  feeds cycle-phase-aware biomarker
+  reference ranges (the phase on a lab's collection date, which is now itself
+  refused when a record is dated ahead of today). Informational only, not medical advice or
   diagnosis. The **Cycle nav entry is relevance-gated** (#1042): any logged cycle
   always keeps it visible — data wins, including for trans or unset-sex profiles —
   else it shows for a female profile that is premenopausal (explicit reproductive

@@ -620,6 +620,11 @@ export interface Encounter {
   class_code: string | null;
   reason: string | null;
   diagnoses: string | null;
+  // The structured rank/role an import source STATED about those diagnoses
+  // (#2589), as the JSON payload lib/visit-diagnosis-rank.ts encodes — never a
+  // rank inferred from a name. Null on every row whose source stated none, which
+  // is every CDA-sourced, AI-extracted and hand-typed visit.
+  diagnosis_ranks: string | null;
   provider_id: number | null;
   provider_name: string | null;
   location_provider_id: number | null;

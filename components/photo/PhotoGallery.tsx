@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
+import { EmptyState } from "@/components/ui";
 import {
   dateGroups,
   filterBySeries,
@@ -81,13 +82,16 @@ export default function PhotoGallery({
   );
 
   if (!domain) {
+    // The shared "nothing here yet" panel rather than a bare line of grey text
+    // (#2536, #2615 item 4). `compact` because this sits under a page that already
+    // carries its own heading and capture control — the destination the copy would
+    // otherwise name is the button directly above it.
     return (
-      <p
-        className="text-sm text-slate-500 dark:text-slate-400"
-        data-testid="photo-gallery-empty"
-      >
-        No photos yet.
-      </p>
+      <EmptyState
+        compact
+        testId="photo-gallery-empty"
+        message="No photos yet."
+      />
     );
   }
 

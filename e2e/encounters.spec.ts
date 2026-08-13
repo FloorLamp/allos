@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import {
   expectNoClippedContent,
   followLink,
+  settledBoxes,
   settledClick,
   settledFill,
 } from "./helpers";
@@ -131,7 +132,25 @@ test.describe("Visit detail page", () => {
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
   });
 
-  test("mobile visit rows use a dedicated Chief complaint row and omit Source", async ({
+  // The card composition of a visit row: which cells claim a line, and where the
+  // identity line ends.
+  //
+  // This used to assert that the chief complaint sat below the VISIT link, and it
+  // passed for a reason that was never a guarantee. The title cell's `flex-1` gave it
+  // a flex-basis of 0, so line assignment ignored it and the metas packed onto the
+  // head line in order until one did not fit; for the seeded "Annual physical" row
+  // that boundary happened to fall between Visit and Chief complaint. That is a
+  // string-length accident, and precisely the nondeterminism #2588 reports — its own
+  // screenshot shows a row where BOTH packed up onto the date ("May 20, 2026VISIT
+  // Dental CHIEF COMPLAINT Checkup and cleaning").
+  //
+  // The guarantee #2588 actually establishes is the one worth pinning: the head line
+  // is the row's IDENTITY plus its actions and nothing else, so every meta — Visit and
+  // Chief complaint alike — begins below it. Metas then flow together into wrapped
+  // line(s), which is what `.table-cards` has always promised and the reason this does
+  // NOT demand a line per meta: on the viewport with the least room, a whole line
+  // spent on "CHIEF COMPLAINT Cough" is a line spent on nothing (#2316).
+  test("mobile visit rows keep every meta off the identity line, and omit Source", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -149,17 +168,18 @@ test.describe("Visit detail page", () => {
       row.getByText("Chief complaint", { exact: true })
     ).toBeVisible();
     await expect(row.getByText("Ambulatory", { exact: true })).toHaveCount(0);
+
+    const head = row.locator('td[data-card="title"]');
     const visit = row.getByRole("link", { name: "Office Visit" });
     const complaint = row.getByText("Annual physical", { exact: true });
-    const [visitBox, complaintBox] = await Promise.all([
-      visit.boundingBox(),
-      complaint.boundingBox(),
+    const [headBox, visitBox, complaintBox] = await settledBoxes([
+      head,
+      visit,
+      complaint,
     ]);
-    expect(visitBox).not.toBeNull();
-    expect(complaintBox).not.toBeNull();
-    expect(complaintBox!.y).toBeGreaterThanOrEqual(
-      visitBox!.y + visitBox!.height
-    );
+    const headBottom = headBox.y + headBox.height;
+    expect(visitBox.y).toBeGreaterThanOrEqual(headBottom);
+    expect(complaintBox.y).toBeGreaterThanOrEqual(headBottom);
   });
 });
 
@@ -340,5 +360,141 @@ test.describe("Visit detail — source document link placement (#211)", () => {
     expect(linkBox!.y).toBeGreaterThanOrEqual(sourceBox!.y + sourceBox!.height);
     // …and shares the label's left edge (same column), confirming the stack.
     expect(Math.abs(linkBox!.x - sourceBox!.x)).toBeLessThan(4);
+  });
+});
+
+// Issue #2589 R2: the visit-diagnosis rank badge, in the DOM that actually ships.
+//
+// Every DECISION behind these chips is pure and tested in lib/ — the grouping
+// (diagnosis-chips.test.ts), the badge vocabulary and the spoken strings
+// (visit-diagnosis-rank.test.ts). What no tier reached was whether
+// components/DiagnosisChips.tsx still CALLS any of it: deleting <RankBadge/> from
+// the single-chip branch — the dominant path, since grouping needs a 40-character
+// shared stem — left the whole suite byte-identical. This spec is the missing half
+// of the docs/internals/component-tests.md contract, so it asserts the rendered
+// STRINGS, not that "a badge exists".
+//
+// The fixture plants its own encounter (unique external_id, removed afterwards) so
+// it owns the state it depends on rather than trusting the seed, whose visits carry
+// no diagnosis_ranks at all.
+test.describe("Visit detail — source-stated diagnosis ranks (#2589)", () => {
+  const ENC_EXTERNAL_ID = "e2e-issue-2589-diagnosis-ranks";
+
+  // A name that groups with nobody (no shared stem with its neighbour) — the
+  // single-chip branch.
+  const SOLO = "Type 2 diabetes mellitus without complications";
+  // …and a consecutive pair sharing a 61-character stem, which is what the
+  // factored branch needs. `stem + tail` reconstructs each name exactly.
+  const STEM = "Chronic obstructive pulmonary disease with acute exacerbation";
+  const LEFT = `${STEM} - Left lower lobe`;
+  const RIGHT = `${STEM} - Right lower lobe`;
+
+  // The badges these produce, spelled out rather than derived: a spec that
+  // recomputed them from the same pure functions the component calls would pass
+  // with the component gutted.
+  const SOLO_BADGE = "Primary, Discharge"; // rank 1 + the discharge role
+  const LEFT_BADGE = "Admission, Comorbidity"; // roles only — EVERY known role, not the first
+  const RIGHT_BADGE = "#2, Admission"; // rank above 1 is an ordinal, never "Secondary"
+  // What the factored chip speaks: full names, each carrying its own badge.
+  const SPOKEN = [`${LEFT} (${LEFT_BADGE})`, `${RIGHT} (${RIGHT_BADGE})`];
+
+  let encounterId = 0;
+
+  test.beforeAll(() => {
+    const handle = new Database(DB_PATH);
+    try {
+      const ranks = JSON.stringify([
+        { name: SOLO, rank: 1, use: ["dd"] },
+        { name: LEFT, use: ["ad", "cm"] },
+        { name: RIGHT, rank: 2, use: ["ad"] },
+      ]);
+      const row = handle
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, source, external_id, diagnoses, diagnosis_ranks)
+           VALUES (1, ?, 'Office Visit', 'extracted', ?, ?, ?)`
+        )
+        .run(
+          frozenNow().toISOString().slice(0, 10),
+          ENC_EXTERNAL_ID,
+          [SOLO, LEFT, RIGHT].join("; "),
+          ranks
+        );
+      encounterId = Number(row.lastInsertRowid);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test.afterAll(() => {
+    const handle = new Database(DB_PATH);
+    try {
+      handle
+        .prepare("DELETE FROM encounters WHERE external_id = ?")
+        .run(ENC_EXTERNAL_ID);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test("an ungrouped chip carries the source's rank badge", async ({
+    page,
+  }) => {
+    await page.goto(`/encounters/${encounterId}`);
+    const chips = page.getByRole("main").getByTestId("encounter-diagnoses");
+    await expect(chips).toBeVisible();
+
+    // One plain chip and one factored chip — the fixture's whole point is that the
+    // dominant single-chip path is exercised beside the grouped one.
+    const single = chips.getByTestId("diagnosis-chip");
+    await expect(single).toHaveCount(1);
+    await expect(single).toContainText(SOLO);
+
+    // The badge, with its exact composed text: rank AND role, comma-joined. A bare
+    // "Primary" here would be the unqualified cross-role claim the badge refuses to
+    // make, and no badge at all is the mutation that used to pass.
+    const badge = single.getByTestId("diagnosis-rank-badge");
+    await expect(badge).toHaveCount(1);
+    await expect(badge).toHaveText(SOLO_BADGE);
+    // It is the SOURCE's claim, and says so on hover.
+    await expect(badge).toHaveAttribute("title", "Stated by the source record");
+  });
+
+  test("a factored chip badges each tail and speaks the full names", async ({
+    page,
+  }) => {
+    await page.goto(`/encounters/${encounterId}`);
+    const chips = page.getByRole("main").getByTestId("encounter-diagnoses");
+    const group = chips.getByTestId("diagnosis-chip-group");
+    await expect(group).toHaveCount(1);
+
+    // The stem is printed once and each name's tail after it…
+    const tails = group.getByTestId("diagnosis-chip-tail");
+    await expect(tails).toHaveCount(2);
+    await expect(tails.nth(0)).toContainText("- Left lower lobe");
+    await expect(tails.nth(1)).toContainText("- Right lower lobe");
+
+    // …and the badge rides the TAIL, beside the name it belongs to, so two members
+    // of one factored chip can carry different source claims.
+    await expect(tails.nth(0).getByTestId("diagnosis-rank-badge")).toHaveText(
+      LEFT_BADGE
+    );
+    await expect(tails.nth(1).getByTestId("diagnosis-rank-badge")).toHaveText(
+      RIGHT_BADGE
+    );
+
+    // The visual pieces are withheld from the accessibility tree — a screen reader
+    // that heard the fragments AND the full names would hear each diagnosis twice.
+    await expect(
+      group.locator('[aria-hidden="true"]', { hasText: STEM })
+    ).toHaveCount(1);
+    for (const tail of await tails.all()) {
+      await expect(tail).toHaveAttribute("aria-hidden", "true");
+    }
+
+    // What is spoken instead: the FULL names, each with its own badge. The strings
+    // start with the stem, which is what fails if the component ever speaks tails.
+    await expect(group.locator(".sr-only")).toHaveText(SPOKEN.join("; "));
+    // Hover recovers the same thing for a sighted reader.
+    await expect(group).toHaveAttribute("title", SPOKEN.join("\n"));
   });
 });

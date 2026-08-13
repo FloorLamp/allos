@@ -16,6 +16,7 @@
 
 import { round } from "./units";
 import { cleanMedicationName } from "./prescription-parse";
+import { encodeDiagnosisRanks } from "./visit-diagnosis-rank";
 import type { PersistInput, PersistRecord } from "./import-shape";
 
 // The entity kinds an import writes that the diff tracks. Kept in a fixed display
@@ -278,6 +279,10 @@ export interface EncounterFields {
   class_code: string | null;
   reason: string | null;
   diagnoses: string; // already joined ("A; B") for stored parity
+  // The encoded structured rank payload (#2589), already serialized for stored
+  // parity. In the diff so a reprocess that would ADD a source-stated rank — a
+  // change the visit card renders — cannot preview as "nothing to save".
+  diagnosis_ranks: string | null;
   external_id: string | null;
 }
 
@@ -296,6 +301,7 @@ export function encounterRow(f: EncounterFields): DiffRow {
       class_code: f.class_code,
       reason: f.reason,
       diagnoses: f.diagnoses,
+      diagnosis_ranks: f.diagnosis_ranks,
     }),
   };
 }
@@ -431,6 +437,7 @@ export function snapshotFromPersistInput(input: PersistInput): ImportSnapshot {
         class_code: e.class_code,
         reason: e.reason,
         diagnoses: e.diagnoses.length ? e.diagnoses.join("; ") : "",
+        diagnosis_ranks: encodeDiagnosisRanks(e.diagnosis_ranks),
         external_id: e.external_id,
       })
     ),

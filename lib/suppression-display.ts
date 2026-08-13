@@ -36,6 +36,7 @@ import {
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
 import { STEPS_PACE_PREFIX } from "./steps-target";
+import { pairedObservationEntry } from "./paired-observations";
 import { biomarkerKeyLabel, titleizeKeyTail } from "./biomarker-key-label";
 import { PR_CARDIO_PREFIX, PR_STRENGTH_PREFIX } from "./dismissal-keys";
 import { formatNotifyTime } from "./notifications/schedule";
@@ -157,6 +158,11 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
   "ttc-workup:": () => "Fertility conversation suggestion",
   "mood-obs:": () => "Mood observation",
   "sleep-mood:": () => "Sleep & mood observation",
+  // #2177: the head is a registry pair key, so the label is the pair's OWN declared
+  // title rather than a second copy of it here — a silenced observation reads in this
+  // list exactly as it read where it was dismissed.
+  "paired-obs:": (t) =>
+    pairedObservationEntry(part(t, 0))?.title ?? "Paired observation",
   "med-dup:": (t) => {
     const n = titleize(part(t, 0).replace(/[_-]/g, " "));
     return n ? `Duplicate ingredient — ${n}` : "Duplicate-ingredient note";

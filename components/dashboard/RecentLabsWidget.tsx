@@ -43,14 +43,27 @@ export default function RecentLabsWidget({
               floorLabel: RECENT_LAB_STALE_LABEL,
             });
             return (
-              <li key={r.name} className="flex items-center gap-3">
+              // The row WRAPS rather than sacrificing the label (#2614). The value
+              // column was `shrink-0 whitespace-nowrap`, so a long one — verbatim
+              // from the sweep, "68 mL/min/1.73m2 ▾ · Below optimal" — took the
+              // whole line and crushed the name to "Es…". The name IS the row's
+              // identity, so it is the wrong column to spend: `basis-40` makes the
+              // name claim a line's worth of width for LINE-BREAKING purposes,
+              // which pushes the value + age pair onto a second line (kept
+              // right-aligned by `ml-auto`) exactly when the three cannot share
+              // one. A short value still sits beside the name, unchanged.
+              <li
+                key={r.name}
+                data-testid="recent-lab-row"
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5"
+              >
                 <Link
                   href={r.href}
-                  className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 hover:text-brand-700 hover:underline dark:text-slate-200 dark:hover:text-brand-400"
+                  className="min-w-0 grow basis-40 truncate text-sm font-medium text-slate-700 hover:text-brand-700 hover:underline dark:text-slate-200 dark:hover:text-brand-400"
                 >
                   {r.name}
                 </Link>
-                <span className="shrink-0 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
+                <span className="ml-auto shrink-0 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
                   {/* #1220 fixed the color-only severity here, with a SECOND
                       visible label built beside the component. #2315 folds that
                       into MedicalValue itself, so one component owns "value +

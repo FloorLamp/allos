@@ -25,7 +25,9 @@ import {
 
 // The #1042 frequency order. Household appears for the admin session (it reaches
 // 2+ profiles); Longevity took over Protocols' slot in phase 4 (the Protocols
-// hub folded into /longevity#protocols).
+// hub folded into /longevity#protocols). "Year in review" (#2179) sits beside
+// Timeline and Trends — the same "what happened over time" cluster at the longest
+// horizon — and is ungated, so it is present for every session.
 //
 // UNCHANGED by #1522 on purpose: the medicine-cabinet row this repo just deleted was
 // a child of the Medical GROUP, not a top-level entry, so it never appeared in this
@@ -37,6 +39,7 @@ const TOP_LEVEL_ORDER: (string | RegExp)[] = [
   "Nutrition",
   "Timeline",
   "Trends",
+  "Year in review",
   "Sleep",
   "Upcoming",
   "Household",

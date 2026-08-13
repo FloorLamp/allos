@@ -381,6 +381,15 @@ adapter (its category grammar and #516/#548/#687 exemptions stay there);
 DECLARES its policy and a completeness test fails an undeclared one. Never
 re-derive staleness in a component, and never fold `not-applicable` into `due`.
 
+A PRESENTATION FLOOR is the other tenancy: not "should this be re-tested?" but
+"may this surface still call this reading your CURRENT value?". Three registries
+declare one — `RECENT_LAB_STALE_DAYS`, `VITAL_PRESENTATION_FLOORS`, and
+`TREND_METRIC_PRESENTATION_FLOORS` (a `Record` over `TrendMetricSlug`, so a new
+metric is a compile error) — and the three quantities two of them share are taken
+BY REFERENCE, never restated. A floor decides FRAMING, never visibility, and never
+mints a Finding, an Upcoming row or a send. How the resulting token READS is one
+shared treatment with a per-surface FORM (`lib/glance-age.ts`).
+
 An aggregate with nothing current may not render current-shaped copy
 (`hasNoCurrentReading`) — the Longevity optimal pillar goes neutral, the Fitness
 check counts fresh rather than measured. Both keep the stale values visible with
@@ -746,6 +755,14 @@ server, and freezes the run's clock. Specs import `test` and `expect` from
 Use stable test IDs and the settled interaction helpers in `e2e/helpers.ts`.
 Do not add `waitForTimeout`, `networkidle`, or an unmarked `.first()` on a shared
 surface. A test owns its fixture data and must not exact-count shared seed rows.
+A spec that WRITES to the shared profile also leaves it as it found it, and one
+whose precondition is an ABSENCE ("no tracked protein", "never measured") owns
+that state rather than trusting the seed to keep it: specs sharing a worker share
+its database, so a neighbour's ordinary write silently destroys an absence and
+neither spec is wrong alone. Duration-balanced shards decide who those neighbours
+are, so a manifest refresh is a co-residency change — and a colliding pair only
+collides when both land on the SAME worker, which means a green run at
+`--workers=2` proves nothing and `PW_WORKERS=1` is the reproduction.
 Do not write redundant assertions or defensive assert checks for conditions
 already proven by types or prior control flow.
 See `docs/internals/e2e-hygiene.md`.
@@ -930,6 +947,19 @@ See `docs/internals/e2e-hygiene.md`.
   guarantees no silent corruption; the audit upgrades refusals into good UX. Do
   not "upgrade" genuinely additive affordances (weight, food servings). See
   `docs/internals/stateful-affordances.md`.
+- **Act, then offer undo** — one lifecycle, not one per surface.
+  `components/useUndoableAction.ts` over the pure `lib/undo-offer.ts` owns the
+  window (`UNDO_TOAST_MS`), the "Undo" label and the refusal wording;
+  `useUndoableDelete` is its delete adapter and the dose confirm its second
+  tenant. A write may offer an undo only when its inverse is COMPLETE (children
+  and side-state included), LOCAL (nothing was sent, published or delivered) and
+  RE-DERIVED server-side — `undoDoseConfirm` proceeds only while the day's ledger
+  is still the single taken row the confirm wrote, because the one core's clear is
+  a `DELETE` by (dose, date). The gate is per OUTCOME, not per action: an
+  `already-taken` tap wrote nothing, so it gets no Undo. **Undo never replaces a
+  consequence-stating confirm** on a hard-to-reverse or outward-facing transition
+  — obligation demotion, retiring a dose with logs, ending an episode, stopping a
+  medication course. See `docs/internals/undo-contract.md`.
 - Findings have an explicit reach policy: care findings may reach Upcoming,
   attention surfaces, and notifications; coaching findings stay in calm,
   hideable surfaces. See `docs/internals/findings.md` — which also holds the **attention doctrine**:

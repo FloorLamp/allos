@@ -1,7 +1,8 @@
 import { chartBand, chartNeutral, chartSeries } from "@/lib/chart-colors";
-import type {
-  EpisodeMedication,
-  TemperaturePoint,
+import {
+  doseLaneRoster,
+  type EpisodeMedication,
+  type TemperaturePoint,
 } from "@/lib/illness-episode-format";
 import type { TemperatureUnit } from "@/lib/settings";
 import { fmtTemp } from "@/lib/units";
@@ -250,47 +251,33 @@ export default function FeverChart({
   return (
     <>
       {chart}
-      {/* The dose detail, in DOM text beneath the chart (#1512 D).
-          Each diamond's medication, amount and time lived only in an SVG
-          `<title>`, which a touch device never shows — so on a phone the dose
-          row was an unreadable line of shapes. Inline labels were the first
-          choice and do not fit: an episode spans several days across 274 user
-          units and doses cluster within hours of each other, so the labels would
-          smear (the #1573 failure). A caption line is the sanctioned fallback:
-          complete, legible at any width, and it prints with the chart. */}
-      <ul
+      {/* The dose lane's legend, in DOM text beneath the chart.
+          #1512 D put it here because each diamond's medication, amount and time
+          lived only in an SVG `<title>`, which a touch device never shows — so on
+          a phone the dose row was an unreadable line of shapes. Inline labels were
+          the first choice and do not fit: an episode spans several days across 274
+          user units and doses cluster within hours of each other, so the labels
+          would smear (the #1573 failure).
+          What #1512 D shipped, though, was one entry PER DOSE — ~28 timestamped
+          entries over 11 wrapped lines on a 4-day episode, restating verbatim the
+          per-day History table immediately below (#2612). That enumeration is gone
+          rather than folded: a fold would keep the duplicate and still pay for it
+          on every expand. `doseLaneRoster` is what a legend owes the marks — which
+          medications the ◆ lane holds and how many doses of each, bounded by
+          distinct medication and then by an "and N more" tail. Amount and clock
+          stay one glance below, in the table that owns them, and it still prints
+          with the chart. */}
+      <p
         data-testid="fever-chart-doses"
-        className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600 dark:text-slate-300"
+        className="mt-1 flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-300"
       >
-        {doses.map((dose, index) => {
-          const amount = formatMedicationDoseProduct(dose.amount, dose.product);
-          return (
-            <li
-              key={dose.id ?? `${dose.name}:${dose.date}:${index}`}
-              data-testid="fever-chart-dose"
-              className="flex min-w-0 items-center gap-1.5"
-            >
-              <span
-                aria-hidden="true"
-                className="h-2 w-2 shrink-0 rotate-45"
-                style={{ background: chartSeries.violet }}
-              />
-              <span className="truncate">
-                {[
-                  dose.name,
-                  amount || null,
-                  dose.time
-                    ? formatClockValue(dose.time, formatPrefs.timeFormat)
-                    : null,
-                  shortDate(dose.date, formatPrefs),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+        <span
+          aria-hidden="true"
+          className="mt-1 h-2 w-2 shrink-0 rotate-45"
+          style={{ background: chartSeries.violet }}
+        />
+        <span className="min-w-0">Doses: {doseLaneRoster(medications)}</span>
+      </p>
     </>
   );
 }

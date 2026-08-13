@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import {
+  capturePhotoFile,
+  hydratedClick,
+  primeCameraFallback,
+  settledClick,
+} from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // The phone shape of the medical-document upload (issue #1993).
@@ -93,22 +98,19 @@ test.describe("Document capture on a phone (issue #1993)", () => {
   test("a photographed page rides the one submit under the one file field", async ({
     page,
   }) => {
+    // The absent camera is a STATED precondition, not an assumed one (#2662).
+    // On a context with no camera API, #2182's promise is that ONE tap reaches
+    // the chooser directly with no dialog in between — which is what the
+    // photo-capture-fallback assertion below is then entitled to check.
+    await primeCameraFallback(page);
     await page.goto("/data?section=import");
 
-    // No getUserMedia in CI: one tap reaches the chooser directly (#2182).
     const fallback = page.getByTestId("photo-capture-file");
-    await expect(async () => {
-      const chooserPromise = page.waitForEvent("filechooser", {
-        timeout: 1_000,
-      });
-      await page.getByTestId("medical-upload-camera").click();
-      const chooser = await chooserPromise;
-      await chooser.setFiles({
-        name: `${PREFIX}snap.png`,
-        mimeType: "image/png",
-        buffer: PNG_1X1,
-      });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-drive the idempotent trigger until hydration delivers the one chooser activation
+    await capturePhotoFile(page, page.getByTestId("medical-upload-camera"), {
+      name: `${PREFIX}snap.png`,
+      mimeType: "image/png",
+      buffer: PNG_1X1,
+    });
 
     // The camera path stays IMAGE-ONLY and keeps `capture`, on an input that is not
     // the picker — the whole reason there are two inputs at all.

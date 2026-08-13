@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import SegmentedControl from "@/components/SegmentedControl";
 import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
@@ -87,7 +88,17 @@ import {
   timelineDateFromParam,
   timelineEntryAnchorId,
   TIMELINE_EMPTY_ACTIONS,
+  type TimelineDay,
 } from "@/lib/timeline-format";
+import {
+  foldKeyHiding,
+  parseTimelineOpen,
+  renderedTimelineDays,
+  timelineFoldCounts,
+  windowTimelineDays,
+  TIMELINE_OPEN_PARAM,
+  type TimelineFold,
+} from "@/lib/timeline-window";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import IntradayPanel from "@/components/IntradayPanel";
 import { formatLongDate, formatMonthDay } from "@/lib/format-date";
@@ -177,15 +188,37 @@ const RELATIVE_LABEL: Record<DayMark["relative"], string> = {
 function filterHref(
   category?: TimelineCategory,
   range: { from?: string; to?: string } = {},
-  show?: number
+  show?: number,
+  // The windowing folds that are open (#2657). Carried in the URL rather than in
+  // client state so an expanded month is shareable, bookmarkable and reachable with
+  // the back button — which is what keeps "the old entry is still findable" a
+  // property of the page rather than a hope.
+  open: readonly string[] = [],
+  anchor?: string
 ): AppRoute {
   const sp = new URLSearchParams();
   if (category) sp.set("category", category);
   if (range.from) sp.set("from", range.from);
   if (range.to) sp.set("to", range.to);
   if (show && show !== DEFAULT_SHOW) sp.set("show", String(show));
+  for (const key of open) sp.append(TIMELINE_OPEN_PARAM, key);
   const qs = sp.toString();
-  return qs ? `/timeline?${qs}` : "/timeline";
+  // Inlined literals rather than a `${base}` variable, so Next's typedRoutes can
+  // still infer the route from the literal prefix (the reason `timelineDayHref`
+  // spells its two forms out too).
+  const hash = anchor ? `#${anchor}` : "";
+  if (!qs) return anchor ? `/timeline#${anchor}` : "/timeline";
+  return `/timeline?${qs}${hash}`;
+}
+
+// The `?open=` set with one fold key flipped. Sorted so the same open set always
+// produces the same URL (a stable href is a cacheable href, and a stable one is what
+// makes "did this link change?" answerable in a test).
+function toggledOpen(open: ReadonlySet<string>, key: string): string[] {
+  const next = new Set(open);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return [...next].sort();
 }
 
 function parseShow(value: string | string[] | undefined): number {
@@ -427,6 +460,90 @@ function TimelineEventRow({
   );
 }
 
+// A windowing fold's header row (#2657): the future fold at the top of the feed, and
+// one card per older calendar month. The label names the period, the count line is
+// ALWAYS present (#1504 grammar — the vertical cost becomes opt-in, the amount never
+// hides), and the whole row is one link that toggles `?open=`.
+//
+// What it deliberately does NOT say: anything about how the period WENT. "12 workouts
+// · 2 PRs · adherence 91%" is the decided destination for this line, and it belongs to
+// the #2178 recap engine — a second summarizer here would be exactly the duplication
+// #924 forbids. Until that renderer exists the card states ledger structure only.
+function TimelineFoldCard({
+  fold,
+  href,
+}: {
+  fold: TimelineFold<TimelineDay>;
+  href: AppRoute;
+}) {
+  const testId = `timeline-fold-${fold.key}`;
+  return (
+    <section
+      id={`timeline-fold-${fold.key}`}
+      data-testid={testId}
+      data-fold-key={fold.key}
+      data-fold-open={fold.open ? "true" : "false"}
+      className="relative scroll-mt-[calc(13rem+env(safe-area-inset-top))] py-2 md:scroll-mt-44"
+    >
+      <TimelineFilterLink
+        href={href}
+        testId={`${testId}-toggle`}
+        ariaExpanded={fold.open}
+        className={`flex items-center gap-3 rounded-lg border px-4 py-3 shadow-xs transition hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`}
+      >
+        <span
+          className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition dark:text-slate-400 ${
+            fold.open ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        >
+          <IconChevronDown className="h-3.5 w-3.5" stroke={2} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium text-slate-900 dark:text-slate-100">
+            {fold.label}
+          </span>
+          <span
+            className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400"
+            data-testid={`${testId}-counts`}
+          >
+            {timelineFoldCounts(fold)}
+          </span>
+        </span>
+      </TimelineFilterLink>
+    </section>
+  );
+}
+
+// The Latest / Oldest jump chips. `openHref` is set only when the destination day is
+// inside a closed fold — then the chip is a real navigation that opens that fold and
+// lands on the day; otherwise it stays the bare in-page fragment it always was.
+const JUMP_CLASS =
+  "rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50";
+
+function JumpLink({
+  date,
+  openHref,
+  label,
+}: {
+  date: string;
+  openHref: AppRoute | null;
+  label: string;
+}) {
+  if (openHref) {
+    return (
+      <Link href={openHref} className={JUMP_CLASS}>
+        {label}
+      </Link>
+    );
+  }
+  return (
+    <a href={`#timeline-day-${date}`} className={JUMP_CLASS}>
+      {label}
+    </a>
+  );
+}
+
 export default async function TimelinePage(props: {
   searchParams: Promise<{
     category?: string | string[];
@@ -435,6 +552,7 @@ export default async function TimelinePage(props: {
     show?: string | string[];
     subject?: string | string[];
     group?: string | string[];
+    open?: string | string[];
   }>;
 }) {
   const searchParams = await props.searchParams;
@@ -520,6 +638,23 @@ export default async function TimelinePage(props: {
       });
   const days = groupTimelineDays(singlePage.events);
 
+  // WINDOWING (#2657). The scrolling single-subject feed folds: the future to one
+  // line, the last 14 days event-grained, everything older to one card per calendar
+  // month. Two views are deliberately NOT windowed:
+  //   • the single-day view — a day IS the window, and folding it would fold the
+  //     surface's whole content away,
+  //   • the multi-view merged / by-person feeds — their day groups carry divergent-day
+  //     marks and per-member sections, and windowing them is its own decision.
+  const openFolds = parseTimelineOpen(searchParams.open);
+  const windowed =
+    multiFeed || singleDaySelected
+      ? null
+      : windowTimelineDays(days, todayStr, openFolds);
+  // The days that will actually be PAINTED. Every per-day gather below keys on this
+  // rather than on `days`: a folded day renders no header, so reading its daylight,
+  // UV and weather context is work for a chip nobody sees.
+  const renderedDays = windowed ? renderedTimelineDays(windowed) : days;
+
   // Cross-profile gather (issue #1329): loop-composed per member, each bucketed in its
   // own timezone-local days. Subject identity resolved ONCE through stampSubjects (#534).
   const multiGather = multiFeed
@@ -555,7 +690,7 @@ export default async function TimelinePage(props: {
     !multiFeed && home
       ? getDaylightOutdoorMinutesByDay(
           daySubjectId,
-          days.map((d) => d.date)
+          renderedDays.map((d) => d.date)
         )
       : new Map<string, number>();
   // Timeline day CONTEXT (#1728): a compact conditions summary on days the weather was
@@ -565,8 +700,8 @@ export default async function TimelinePage(props: {
   // it reuses the SAME predicate set the dueness widening reads, so a day the Timeline
   // calls notable is exactly a day a situational item would have gone due.
   const notableByDay = new Map<string, string>();
-  if (!multiFeed && home && days.length > 0) {
-    const dates = days.map((d) => d.date).sort();
+  if (!multiFeed && home && renderedDays.length > 0) {
+    const dates = renderedDays.map((d) => d.date).sort();
     // One read spanning the feed, widened backwards so a spell's leading days are in
     // the series the predicates need to see the run.
     const series = getWeatherDaysForProfile(
@@ -637,6 +772,110 @@ export default async function TimelinePage(props: {
 
   const latestDay = (multiFeed ? mergedDays : days)[0]?.date;
   const oldestDay = (multiFeed ? mergedDays : days).at(-1)?.date;
+  // The Latest / Oldest jumps stay honest under windowing (#2657): a destination that
+  // is folded away is a link to nothing, so the jump OPENS the fold that hides it on
+  // the way. Nothing else about them changes — an in-view destination is still the
+  // same bare fragment it has always been.
+  const jumpHref = (date: string): AppRoute | null => {
+    const hiding = windowed ? foldKeyHiding(windowed, date) : null;
+    return hiding
+      ? filterHref(
+          category,
+          range,
+          show,
+          toggledOpen(openFolds, hiding),
+          `timeline-day-${date}`
+        )
+      : null;
+  };
+  // The href that toggles one fold open or closed. Every other filter the reader has
+  // set rides along, so expanding March inside "Medical · last year" stays inside it.
+  const foldHref = (key: string): AppRoute =>
+    filterHref(category, range, show, toggledOpen(openFolds, key));
+
+  // ONE day group, rendered identically wherever it sits — the recent band, an
+  // expanded month, or the unwindowed single-day feed. Extracted so the bands cannot
+  // drift into three copies of the same section.
+  const firstRenderedDay = renderedDays[0]?.date;
+  const renderDayGroup = (day: TimelineDay) => (
+    <section
+      key={day.date}
+      id={`timeline-day-${day.date}`}
+      data-testid="timeline-day"
+      className="relative grid scroll-mt-[calc(13rem+env(safe-area-inset-top))] gap-3 py-6 first:pt-0 md:grid-cols-[14rem_1fr] md:scroll-mt-44"
+    >
+      {day.date !== firstRenderedDay && (
+        <div
+          className="absolute left-0 right-0 top-0 h-px bg-black/10 dark:bg-white/10"
+          style={{
+            maskImage:
+              "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)",
+            WebkitMaskImage:
+              "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)",
+          }}
+        />
+      )}
+      <div className="md:sticky md:top-4 md:self-start">
+        <div className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <IconNotes
+            className="h-4 w-4 text-brand-600 dark:text-brand-400"
+            stroke={1.75}
+          />
+          {formatLongDate(day.date, formatPrefs)}
+        </div>
+        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {day.events.length} event
+          {day.events.length === 1 ? "" : "s"}
+        </div>
+        <DaylightChip
+          home={home}
+          date={day.date}
+          timezone={profileTimezone}
+          outdoorMinutes={daylightOutdoor.get(day.date) ?? 0}
+          uv={uvByDay.get(day.date) ?? null}
+        />
+        <CyclePhaseChip
+          phase={cyclePhaseOnDate(cyclePeriods, day.date, todayStr)}
+          period={periodOnDate(cyclePeriods, day.date, todayStr)}
+        />
+        {notableByDay.has(day.date) && (
+          <div
+            className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+            data-testid="timeline-weather-context"
+          >
+            {notableByDay.get(day.date)}
+          </div>
+        )}
+      </div>
+      <div className="space-y-3 pl-4">
+        {/* The intraday panel (#1068): the day rotated 90°, on the
+            SINGLE-day view only — the scrolling feed gets no per-day
+            chart. Null when nothing on the day is intraday, so an
+            ordinary day renders no empty frame. */}
+        {intraday && intraday.date === day.date && (
+          <IntradayPanel
+            model={intraday}
+            formatPrefs={formatPrefs}
+            profileId={daySubjectId}
+          />
+        )}
+        {day.events.map((event) => (
+          <div
+            key={event.id}
+            // Per-entry anchor (#1068) so an intraday tick can scroll
+            // the list to its entry. Offset for the sticky controls.
+            id={timelineEntryAnchorId(event.id)}
+            className="relative scroll-mt-[calc(13rem+env(safe-area-inset-top))] md:scroll-mt-44"
+          >
+            <span className="absolute left-0 top-7.5 h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
+            <span className="absolute left-0 top-6.25 h-2.5 w-2.5 -translate-x-5.25 rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
+            <EventCard event={event} defaultOpen={singleDaySelected} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
   const throughLabel =
     range.to === todayStr
       ? "Through today"
@@ -684,7 +923,9 @@ export default async function TimelinePage(props: {
                 range={range}
                 todayStr={todayStr}
                 hiddenParams={{ category }}
-                buildHref={(r) => filterHref(category, r)}
+                buildHref={(r) =>
+                  filterHref(category, r, undefined, [...openFolds])
+                }
                 LinkComponent={TimelineFilterLink}
                 idPrefix="timeline"
                 rightSlot={
@@ -694,18 +935,16 @@ export default async function TimelinePage(props: {
                     </span>
                     {latestDay && oldestDay && latestDay !== oldestDay && (
                       <>
-                        <a
-                          href={`#timeline-day-${latestDay}`}
-                          className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
-                        >
-                          Latest
-                        </a>
-                        <a
-                          href={`#timeline-day-${oldestDay}`}
-                          className="rounded-full px-3 py-1 font-medium text-brand-700 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/50"
-                        >
-                          Oldest
-                        </a>
+                        <JumpLink
+                          date={latestDay}
+                          openHref={jumpHref(latestDay)}
+                          label="Latest"
+                        />
+                        <JumpLink
+                          date={oldestDay}
+                          openHref={jumpHref(oldestDay)}
+                          label="Oldest"
+                        />
                       </>
                     )}
                   </>
@@ -714,7 +953,7 @@ export default async function TimelinePage(props: {
 
               <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
                 <TimelineFilterLink
-                  href={filterHref(undefined, range)}
+                  href={filterHref(undefined, range, undefined, [...openFolds])}
                   className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
                     !category
                       ? "bg-brand-500 text-white"
@@ -728,7 +967,7 @@ export default async function TimelinePage(props: {
                   return (
                     <TimelineFilterLink
                       key={c}
-                      href={filterHref(c, range)}
+                      href={filterHref(c, range, undefined, [...openFolds])}
                       className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
                         active
                           ? "bg-brand-500 text-white"
@@ -983,93 +1222,43 @@ export default async function TimelinePage(props: {
         <div id="timeline-feed" className="relative">
           <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-59 md:block dark:bg-white/10" />
           <div className="space-y-0">
-            {days.map((day, index) => (
-              <section
-                key={day.date}
-                id={`timeline-day-${day.date}`}
-                className="relative grid scroll-mt-[calc(13rem+env(safe-area-inset-top))] gap-3 py-6 first:pt-0 md:grid-cols-[14rem_1fr] md:scroll-mt-44"
-              >
-                {index > 0 && (
-                  <div
-                    className="absolute left-0 right-0 top-0 h-px bg-black/10 dark:bg-white/10"
-                    style={{
-                      maskImage:
-                        "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)",
-                      WebkitMaskImage:
-                        "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)",
-                    }}
-                  />
+            {windowed ? (
+              <>
+                {/* The future FOLDS (#2657). Everything after today is one line at the
+                    top of the feed — expandable, never the opening content. A page
+                    titled "a chronological view" used to open on December goal target
+                    dates, so the reader's entry point was speculative scheduling
+                    rather than their own recent history. */}
+                {windowed.ahead && (
+                  <>
+                    <TimelineFoldCard
+                      fold={windowed.ahead}
+                      href={foldHref(windowed.ahead.key)}
+                    />
+                    {windowed.ahead.open &&
+                      windowed.ahead.days.map((day) => renderDayGroup(day))}
+                  </>
                 )}
-                <div className="md:sticky md:top-4 md:self-start">
-                  <div className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    <IconNotes
-                      className="h-4 w-4 text-brand-600 dark:text-brand-400"
-                      stroke={1.75}
-                    />
-                    {formatLongDate(day.date, formatPrefs)}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {day.events.length} event
-                    {day.events.length === 1 ? "" : "s"}
-                  </div>
-                  <DaylightChip
-                    home={home}
-                    date={day.date}
-                    timezone={profileTimezone}
-                    outdoorMinutes={daylightOutdoor.get(day.date) ?? 0}
-                    uv={uvByDay.get(day.date) ?? null}
-                  />
-                  <CyclePhaseChip
-                    phase={cyclePhaseOnDate(cyclePeriods, day.date)}
-                    period={periodOnDate(cyclePeriods, day.date)}
-                  />
-                  {notableByDay.has(day.date) && (
-                    <div
-                      className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-                      data-testid="timeline-weather-context"
-                    >
-                      {notableByDay.get(day.date)}
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-3 pl-4">
-                  {/* The intraday panel (#1068): the day rotated 90°, on the
-                      SINGLE-day view only — the scrolling feed gets no per-day
-                      chart. Null when nothing on the day is intraday, so an
-                      ordinary day renders no empty frame. */}
-                  {intraday && intraday.date === day.date && (
-                    <IntradayPanel
-                      model={intraday}
-                      formatPrefs={formatPrefs}
-                      profileId={daySubjectId}
-                    />
-                  )}
-                  {day.events.map((event) => (
-                    <div
-                      key={event.id}
-                      // Per-entry anchor (#1068) so an intraday tick can scroll
-                      // the list to its entry. Offset for the sticky controls.
-                      id={timelineEntryAnchorId(event.id)}
-                      className="relative scroll-mt-[calc(13rem+env(safe-area-inset-top))] md:scroll-mt-44"
-                    >
-                      <span className="absolute left-0 top-7.5 h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
-                      <span className="absolute left-0 top-6.25 h-2.5 w-2.5 -translate-x-5.25 rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
-                      <EventCard
-                        event={event}
-                        defaultOpen={singleDaySelected}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
+                {windowed.recent.map((day) => renderDayGroup(day))}
+                {windowed.months.map((month) => (
+                  <Fragment key={month.key}>
+                    <TimelineFoldCard fold={month} href={foldHref(month.key)} />
+                    {month.open && month.days.map((day) => renderDayGroup(day))}
+                  </Fragment>
+                ))}
+              </>
+            ) : (
+              days.map((day) => renderDayGroup(day))
+            )}
           </div>
 
           {hasMore &&
             (show < MAX_SHOW ? (
               <div className="flex justify-center pb-2 pt-4">
                 <TimelineFilterLink
-                  href={filterHref(category, range, show + SHOW_STEP)}
+                  href={filterHref(category, range, show + SHOW_STEP, [
+                    ...openFolds,
+                  ])}
                   className="rounded-full border border-black/10 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200 dark:hover:bg-ink-850"
                 >
                   Load more

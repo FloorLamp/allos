@@ -135,18 +135,18 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
       .first(); // first-ok: the active (fresh) profile's hero-cockpit episode link (this spec owns the profile)
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
-    // 4b) #1512 D — the dose the chart plots is READABLE. Its medication, amount
-    // and time used to live only in the diamond's SVG `<title>`, which a touch
-    // device never shows, so on a phone the dose row was a line of shapes with no
-    // detail reachable at all. The caption beneath the chart carries it in DOM
-    // text (inline labels do not fit: an episode spans days across 274 user units
-    // and doses cluster within hours, which is the #1573 smear).
+    // 4b) #1512 D — what the chart's ◆ lane holds is READABLE in DOM text. The
+    // medication behind a diamond used to live only in an SVG `<title>`, which a
+    // touch device never shows, so on a phone the dose row was a line of shapes
+    // with nothing reachable at all (inline labels do not fit: an episode spans
+    // days across 274 user units and doses cluster within hours — the #1573
+    // smear). #2612 shrank the caption from one entry PER DOSE — which restated
+    // the per-day table below it verbatim — to the legend proper: one entry per
+    // MEDICATION with its dose count. The spec logged this episode's only dose
+    // above, so the count is its own fixture's, not a shared-seed surface's.
     const doseCaption = page.getByTestId("fever-chart-doses");
     await expect(doseCaption).toBeVisible();
-    // The spec logged the episode's only dose above, so the caption has exactly one
-    // row — a count on a spec-owned fixture, not a shared-seed surface.
-    await expect(doseCaption.getByTestId("fever-chart-dose")).toHaveCount(1);
-    await expect(doseCaption).toContainText("Ibuprofen");
+    await expect(doseCaption).toHaveText(/Doses:\s*Ibuprofen ×1$/);
 
     // 5) "Feeling better" opens the reconciliation checklist — ibuprofen is listed and
     // pre-checked (OTC PRN created during the illness). Confirm ends + closes it.

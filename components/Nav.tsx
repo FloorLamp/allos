@@ -10,6 +10,7 @@ import {
   IconTrendingUp,
   IconMoon,
   IconHourglass,
+  IconConfetti,
   IconCalendarClock,
   IconUsersGroup,
   IconBarbell,
@@ -190,6 +191,13 @@ const entries: Entry[] = [
   },
   { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
   { href: "/trends", label: "Trends", icon: IconTrendingUp },
+  // Year in review (#2179): the annual retrospective, beside Timeline and Trends
+  // because it is the same "what happened over time" cluster at the longest horizon.
+  // UNGATED and permanent, deliberately. It is a USER-INITIATED surface with no send
+  // behind it, so a nav row is the ONLY way it is reachable at all — a data gate here
+  // would hide the page in exactly the state (a first sparse year) where its empty
+  // state is the honest thing to show, and there is no notification to fail over to.
+  { href: "/retrospective", label: "Year in review", icon: IconConfetti },
   // Sleep (#1066): a data-gated READING surface between Trends and Upcoming — it
   // heads the reading cluster (a one-morning-glance page), and its adjacency to
   // Trends fails-soft the old muscle-memory path (sleep is being extracted FROM

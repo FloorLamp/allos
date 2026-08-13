@@ -40,10 +40,12 @@ import {
   upcomingDueText,
   type UpcomingItem,
 } from "@/lib/upcoming";
+import { type DisplayFormatPrefs } from "@/lib/format-date";
 import {
   snoozeAttention,
   dismissAttention,
   markAttentionDose,
+  undoAttentionDose,
 } from "@/app/(app)/actions";
 
 // The Tier-1 "Needs attention" hero (issue #171). Full-width, pinned first, NOT
@@ -97,10 +99,14 @@ function Row({
   item,
   now,
   tone,
+  formatPrefs,
 }: {
   item: UpcomingItem;
   now: string;
   tone: string;
+  // The viewer's date shape (#964) — the due text prints a calendar date at planning
+  // distance (#2579-B), and a rendered date follows the login's prefs.
+  formatPrefs: DisplayFormatPrefs;
 }) {
   const Icon = DOMAIN_ICON[item.domain] ?? IconAlertTriangle;
   return (
@@ -136,7 +142,7 @@ function Row({
         <div
           className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
         >
-          {upcomingDueText(item, now)}
+          {upcomingDueText(item, now, formatPrefs)}
         </div>
         {/* Rendered through the shared outcome-toast confirm (#2106): the hero is
         exactly the surface most likely to be stale — a dashboard tab open since
@@ -145,6 +151,11 @@ function Row({
         {item.doseId != null && (
           <DoseConfirmButton
             action={markAttentionDose}
+            // Act → toast → Undo (#2642). The hero is the surface most likely to be
+            // tapped by accident — it sits at the top of the dashboard — and the
+            // inverse here is complete and local: the row goes, the supply comes
+            // back, the dose is due again.
+            undoAction={undoAttentionDose}
             fields={{ dose_id: item.doseId }}
             testid="attention-mark-taken"
             className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -207,9 +218,11 @@ function Row({
 function SetupDisclosure({
   items,
   now,
+  formatPrefs,
 }: {
   items: UpcomingItem[];
   now: string;
+  formatPrefs: DisplayFormatPrefs;
 }) {
   if (items.length === 0) return null;
   return (
@@ -242,7 +255,7 @@ function SetupDisclosure({
                 {item.title}
               </span>
               <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                {upcomingDueText(item, now)}
+                {upcomingDueText(item, now, formatPrefs)}
               </span>
             </Link>
           );
@@ -255,11 +268,14 @@ function SetupDisclosure({
 export default function NeedsAttentionHero({
   items,
   today,
+  formatPrefs,
   preferCollapsed,
   saveCollapsed,
 }: {
   items: UpcomingItem[];
   today: string;
+  // The viewer's date shape (#964), passed down to the rows' due text (#2579-B).
+  formatPrefs: DisplayFormatPrefs;
   // The VIEWER's stored collapse preference (issue #1413, per-login). Only ever a
   // request: attentionHeroState ignores it for a safety-locked or empty hero.
   preferCollapsed: boolean;
@@ -316,7 +332,11 @@ export default function NeedsAttentionHero({
             {more > 0 ? `${more} scheduled later` : "View upcoming"}
           </Link>
         </section>
-        <SetupDisclosure items={setupItems} now={today} />
+        <SetupDisclosure
+          items={setupItems}
+          now={today}
+          formatPrefs={formatPrefs}
+        />
       </>
     );
   }
@@ -356,6 +376,7 @@ export default function NeedsAttentionHero({
                     item={item}
                     now={today}
                     tone={BAND_TONE[group.band]}
+                    formatPrefs={formatPrefs}
                   />
                 ))}
                 {/* Defensive global cap (issue #283): a pathological day (a giant
@@ -392,7 +413,11 @@ export default function NeedsAttentionHero({
           )}
         </div>
       </AttentionHeroCard>
-      <SetupDisclosure items={setupItems} now={today} />
+      <SetupDisclosure
+        items={setupItems}
+        now={today}
+        formatPrefs={formatPrefs}
+      />
     </>
   );
 }

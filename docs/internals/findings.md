@@ -65,11 +65,12 @@ widget puts its family straight back into the rollup. A new family with its own
 widget adds one registry line — it does not add another one-off filter.
 
 **The same contract governs the Upcoming page's display aggregation (#1504).**
-The planning page folds a band's scheduled `dose` rows into one disclosure, and
-its `interaction` + `pgx` rows into a second, with the count (and, for Today, the
-day's taken fraction) stated in BOTH states, no dismiss, and no persisted state —
-an aggregate is collapsed on every visit. `lib/upcoming-aggregate.ts` owns the
-decision (`planBandRender`); the page is a formatter over it.
+The planning page folds a band's scheduled `dose` rows into one disclosure, its
+`interaction` + `pgx` rows into a second, and its `goal` deadlines into a third
+(#2579-A), with the count — and the class's own second fact — stated in BOTH
+states, no dismiss, and no persisted state: an aggregate is collapsed on every
+visit. `lib/upcoming-aggregate.ts` owns the decision (`planBandRender`); the page
+is a formatter over it.
 
 Three properties are load-bearing:
 
@@ -82,15 +83,51 @@ Three properties are load-bearing:
   missed-dose escalation, the crisis finding) is never folded, and neither is a
   `prn-max` row — a count that has already been exceeded must not be summarised by
   another count. Both render individually and lead their band.
-- **The rollup's scope is closed**: `interaction` + `pgx` only. `allergy-med`
-  keeps its rank above them (#1029) and stays an individual row, as do the
-  singular care findings. `lib/__tests__/upcoming-aggregate.test.ts` reflects over
-  the whole `UpcomingDomain` union so a new domain must choose a side.
+- **Each rollup's scope is closed**: med-safety is `interaction` + `pgx` only, and
+  the goal fold is `goal` only. `allergy-med` keeps its rank above the med-safety
+  pair (#1029) and stays an individual row, as do the singular care findings.
+  `lib/__tests__/upcoming-aggregate.test.ts` reflects over the whole
+  `UpcomingDomain` union so a new domain must choose a side.
+
+**What a fold's headline states is per class**, because the question a collapsed
+class has to answer without being opened is per class. The dose fold prints the
+day's taken fraction ("5 doses left · 1 of 6 taken"); the goal fold prints the
+nearest deadline as a DATE ("12 goal deadlines · nearest Sep 26"), which is what
+stops a completeness-charter page from building a place things go to be
+forgotten. `AggregateSummaryFacts` carries both and each kind reads only its own —
+a fraction on a goal fold, or a "nearest" on a dose fold, would be a second clause
+that does not describe the rows behind it.
+
+**Which classes fold is the density rule, not a tier judgement.** A row earns full
+height on /upcoming only if this page is its PRIMARY HOME. A goal deadline's home
+is the Training hub's Goals tab; a screening to book, an appointment, a care-plan
+step and a refill have no other home, so they keep their space. Folding is
+deliberately NOT a reach change: a folded goal is still counted in the page total,
+still reachable, still individually snoozeable, and no finding moves across the
+care/coaching reach line to make a layout work.
+
+**Completeness beats compaction where they conflict.** `goalItems` deliberately
+has NO horizon: the fold keeps every dated goal present and counted, because the
+#524 subset invariant is this page's contract with the dashboard hero, and a
+90-day cutoff would both make the ledger lie and manufacture silent day-N arrivals.
 
 The fold is band-scoped (an overdue dose is never summarised together with a
 not-yet-due one), and it does not touch the engines, the bands,
 `compareWithinBand`, `collectUpcoming`, or the suppression bus — the digest, the
 dashboard hero and the calendar feed read the same model unchanged.
+
+**Due text is band-aware past the This-week boundary (#2579-B).** A countdown is a
+unit of urgency: inside the week "3 days overdue" / "tomorrow" / "6 days left"
+each name something the reader can act on. At planning distance it stops being one
+— "45 days left" is arithmetic standing where the only calendar-ready fact
+belongs. So `upcomingDueText`'s fallback prints the calendar date ("Sep 26") for a
+row in the **Later** band and keeps countdown grammar everywhere else. It is a
+DISPLAY decision in one function: an explicit `dueText` override still wins, the
+band asked for is the one the row is already rendered under (so the text can never
+disagree with its heading), and keys, banding and suppression identity are
+untouched. The date follows the viewer's `dateFormat` pref, and its auto-year is
+decided against the PROFILE's today rather than the process wall clock
+(`formatMonthDay(iso, prefs, { today })`).
 
 **The hero's contract is ALWAYS-PRESENT, not always-full (#1413).** The care
 tier's `non-hideable hero` guarantee was refined on exactly one axis: the hero
@@ -186,6 +223,73 @@ consequences worth knowing when touching identity code:
   as its `members` list. The retest cadence resolves through the analyte's
   retest identity, so every family member inherits the family's curated
   interval, tightest wins (#1394/#1395).
+
+---
+
+## Paired observations (coaching tier, #2177)
+
+`lib/paired-observations.ts` is a **declared registry of factor × outcome pairs**
+and the one pure engine that judges them; `lib/queries/paired-observations.ts`
+gathers, and `buildPairedObservationFindings` emits. It generalizes the vocabulary
+of the sleep↔mood bridge (#992) — fixed effect floors, a per-arm datapoint
+minimum, month-anchored episode keys, coaching reach, co-occurrence copy — to
+comparisons across two different streams. #992's own bridge is NOT an entry: its
+arms are two time WINDOWS of one stream gated on a separately detected low-mood
+window, while an entry's arms are two sets of days inside one window split by a
+logged factor. Calling "the date is recent" a factor is exactly what this registry
+forbids.
+
+**The registry IS the multiplicity control.** There is no miner and there must
+never be one: comparing every logged factor against every measured stream over a
+life's worth of days will produce a statement for any question you care to ask.
+`PAIRED_OBSERVATIONS` is fixed, short (≤6, pinned by test) and human-reviewable,
+and every entry carries a written `rationale` for why that comparison earns a
+slot. Adding a pair costs a paragraph of argument plus a reader binding, on
+purpose. The three shipped pairs are alcohol→overnight HRV, alcohol→next-morning
+resting HR, and trained-day→that night's main sleep.
+
+**The factor is always a row the user wrote**, never inferred behaviour. And
+absence of a log is not absence of the thing, so each entry declares a control
+rule: `logging-evidence` (the day must carry independent evidence that the
+factor's log surface was in use — the food-regularity discipline: a day with no
+food log is evidence about logging, not about eating) or `absence-is-a-state`
+(a day with no activity is a rest day everywhere else in Allos — bounded to the
+stretch after the log's first use in the window).
+
+**Gates are legible constants, never statistics.** Nights per arm
+(`PAIRED_MIN_NIGHTS_PER_ARM`) plus a fixed floor in the outcome's own unit
+(8 ms / 3 bpm / 30 min), and a recency gate so a stream that went quiet cannot
+keep producing fresh-sounding observations. No p-values, no confidence intervals,
+no significance language. **Both arms' n is always in the sentence** — a reader
+who cannot see the arm sizes cannot judge the claim.
+
+**Below the floor is SILENCE in v1** (#2177 constraint 4). This is a real cost —
+"we compared and found nothing" is useful and is not the same claim as saying
+nothing — and it is deferred, not denied: a no-association surface has its own
+copy problem and its own issue. The training→sleep pair is declared anyway so the
+null case is exercised end to end.
+
+**Reach.** Coaching tier, registered under `PAIRED_OBS_PREFIX`; joins
+`collectCoachingFindings` and renders on the calm, hideable dashboard rollup.
+Never Upcoming, never a notification, never the hero, never an obligation. Keys
+are `paired-obs:<pair>:<YYYY-MM>` and declare their stem as `episodeFamily`
+(#2543), so a dismissal is per-month and repeat declines are read as an answer
+(#2386). Substance-conditioned pairs declare `adultOnly` and are withheld from a
+known minor by `pairedObservationsFor()` — the one selection the builder and its
+tests both call, so a second caller cannot walk past the gate (#2107).
+
+**Confounding is acknowledged, not solved.** Drink evenings are also later, more
+social, more often weekends. Nothing adjusts for anything; the copy contract is
+the whole of the honesty.
+
+**#2385 triple.** Working: a firing pair is followed by the user opening the
+outcome's own surface, and the pair is not dismissed on its next raising. Wrong:
+the same pair re-fires after a dismissal with arm means that barely moved, or a
+pair fires for most profiles that have both streams (a pattern everyone has is a
+property of the streams, not of the person). **Deceptive success: observations
+surfaced per profile** — every pair added, every floor lowered, every arm minimum
+relaxed improves that number while making the average statement flimsier. The
+count is a cost, not a score.
 
 ---
 

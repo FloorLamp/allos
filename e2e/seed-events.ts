@@ -23,6 +23,7 @@ import {
   seedTrainingRollup,
   seedLabValueGoal,
   seedLoadContexts,
+  seedWeekSpine,
 } from "./seed/training";
 import {
   seedIntegrationSyncEvents,
@@ -134,6 +135,7 @@ import {
   seedMetricFold,
   seedLongRange,
   seedPeakFlow,
+  seedTrendsCurrency,
   seedWaistCircumference,
 } from "./seed/trends";
 
@@ -242,6 +244,9 @@ seedPortalHouseholds();
 // Appended LAST (#1675): a new profile plus its own lab rows, so every existing
 // fixture's row ids stay exactly where they were.
 seedBiomarkerPickerRank();
+// Appended LAST (#2566): a new profile plus its own activity rows, so every existing
+// fixture's row ids stay exactly where they were.
+seedWeekSpine();
 seedDayOneAverages();
 // Appended LAST (#2209): two new profiles plus a direct write of data/logs/
 // notify.jsonl, so every existing fixture's row ids stay exactly where they were.
@@ -249,3 +254,6 @@ seedNotifyTickLog();
 // Appended LAST (#2345): one admin login + two new profiles, so every existing
 // fixture's row ids stay exactly where they were.
 seedNotifyScope();
+// Appended LAST (#2615): one new profile plus its own body_metrics rows, so every
+// existing fixture's row ids stay exactly where they were.
+seedTrendsCurrency();

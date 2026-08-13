@@ -568,6 +568,13 @@ export interface SleepMoodHistoryRow {
   // vitals writer can safely update. Imported/windowed sleep stays read-only.
   sleepEditable: boolean;
   sleepEditHours: number | null;
+  // The physical rows this line is made of, for the ⋯ menu's per-store delete
+  // (#2556). Both are null when there is nothing of that kind to remove:
+  // `sleepSampleId` is set ONLY for the duration-only manual sample the same
+  // invariant already allows editing (an imported or windowed night stays
+  // read-only here as it is in the dialog), and `moodLogId` is the day's check-in.
+  sleepSampleId: number | null;
+  moodLogId: number | null;
 }
 
 // Date union for the factual history table. Unlike pairSleepMood, this retains a
@@ -576,6 +583,7 @@ export interface SleepMoodHistoryRow {
 export function buildSleepMoodHistory(
   nights: { date: string; value: number }[],
   moods: {
+    id?: number;
     date: string;
     valence: number;
     energy?: number | null;
@@ -596,6 +604,8 @@ export function buildSleepMoodHistory(
       bedtimeSupplements: null,
       sleepEditable: false,
       sleepEditHours: null,
+      sleepSampleId: null,
+      moodLogId: null,
     });
   }
   for (const mood of moods) {
@@ -614,6 +624,8 @@ export function buildSleepMoodHistory(
       bedtimeSupplements: row?.bedtimeSupplements ?? null,
       sleepEditable: row?.sleepEditable ?? false,
       sleepEditHours: row?.sleepEditHours ?? null,
+      sleepSampleId: row?.sleepSampleId ?? null,
+      moodLogId: mood.id ?? null,
     });
   }
   for (const stageRow of stageRows) {
@@ -632,6 +644,8 @@ export function buildSleepMoodHistory(
       bedtimeSupplements: row?.bedtimeSupplements ?? null,
       sleepEditable: row?.sleepEditable ?? false,
       sleepEditHours: row?.sleepEditHours ?? null,
+      sleepSampleId: row?.sleepSampleId ?? null,
+      moodLogId: row?.moodLogId ?? null,
     });
   }
   return [...byDate.values()].sort((a, b) =>
@@ -646,17 +660,20 @@ export function buildSleepMoodHistory(
 // make the displayed value disagree with the value being edited.
 export function attachEditableManualSleep(
   history: SleepMoodHistoryRow[],
-  manualRows: { date: string; value: number }[]
+  manualRows: { id?: number | null; date: string; value: number }[]
 ): SleepMoodHistoryRow[] {
-  const manualByDate = new Map(manualRows.map((row) => [row.date, row.value]));
+  const manualByDate = new Map(manualRows.map((row) => [row.date, row]));
   return history.map((row) => {
-    const manualMinutes = manualByDate.get(row.date);
-    const existingIsEditable = manualMinutes != null;
+    const manual = manualByDate.get(row.date);
+    const existingIsEditable = manual != null;
     return {
       ...row,
       sleepEditable: row.sleepHours == null || existingIsEditable,
-      sleepEditHours:
-        existingIsEditable && manualMinutes != null ? manualMinutes / 60 : null,
+      sleepEditHours: existingIsEditable ? manual.value / 60 : null,
+      // DELETABLE exactly where EDITABLE is (#2556): the same duration-only manual
+      // row, identified the same way. A night the dialog refuses to edit is not one
+      // this menu offers to remove.
+      sleepSampleId: existingIsEditable ? (manual.id ?? null) : null,
     };
   });
 }

@@ -41,7 +41,15 @@ import type { FreshnessState } from "./freshness";
 //     "3 days ago" is a downgrade; a stale one states its AGE, because "2022-03-08"
 //     does not read as "four years ago" at a glance, which is how that card came to
 //     look like a snapshot of "my vitals now" (#2303).
-export type GlanceAgeForm = "compact" | "long";
+//   "as-of"   — a qualifier tucked under a headline NUMBER (the Trends body chart
+//     cards, #2615 item 3). It states the DATE at every state, never the age: "2 weeks
+//     ago" sitting beside "99.2 °F" reads as a second quantity, and "as of" means a
+//     day. Two things are declared at that call site rather than here, because both are
+//     layout facts of a chart-card header and neither is a second opinion on staleness:
+//     the card renders the token ONLY when the claim needs withdrawing (it has one
+//     spare line, and a current reading's date is already the plot's right edge), and
+//     it passes `dateLabel` so the day reads in the login's own date format.
+export type GlanceAgeForm = "compact" | "long" | "as-of";
 
 export interface GlanceAgeToken {
   /** What the token reads. Never null: a dated reading always states something. */
@@ -75,21 +83,31 @@ export interface GlanceAgeInput {
    * do.
    */
   floorLabel: string;
+  /**
+   * The reading's day already rendered in the login's date format ("Jul 29"). Used by
+   * the forms that state a DATE rather than an age; omitted, the ISO day stands in,
+   * which is what the `long` form has always emitted for a current reading. Display
+   * prefs belong to the caller — this module stays pure and prefs-free.
+   */
+  dateLabel?: string;
 }
 
 export function glanceAgeToken(input: GlanceAgeInput): GlanceAgeToken {
   const stale = input.freshness === "due";
+  const day = input.dateLabel ?? input.date;
   const text =
-    input.form === "compact"
-      ? formatCompactAge(input.date, input.today)
-      : stale
-        ? formatRelativeDate(input.date, input.today)
-        : input.date;
+    input.form === "as-of"
+      ? `as of ${day}`
+      : input.form === "compact"
+        ? formatCompactAge(input.date, input.today)
+        : stale
+          ? formatRelativeDate(input.date, input.today)
+          : day;
   return {
     text,
     stale,
     className: stale ? AGE_CLASS_STALE : AGE_CLASS_CURRENT,
-    // ONE sentence for both cards. It says the two things a relative date cannot: which
+    // ONE sentence for every surface. It says the two things a bare date cannot: which
     // interval was crossed, and that this is still the latest reading — the card is
     // withdrawing a claim about currency, not hiding a value or reporting a gap.
     title: stale

@@ -1325,6 +1325,23 @@ export const CURATED_LABS: Biomarker[] = [
     note: "CEA is a tumor marker used mainly to monitor colorectal and some other cancers. Levels can also be mildly raised by smoking and some benign conditions. The reference cutoff is higher in smokers.",
   },
   {
+    // The hepatitis marker whose polarity is INVERTED relative to its neighbours:
+    // reactive total anti-HAV is immunity (vaccination or past infection), where a
+    // reactive HBsAg or anti-HCV is current infection or exposure. It reads like the
+    // MMR/varicella titers but is panelled with the hepatitis serology it arrives on,
+    // per the placement rule in lib/biomarker-panels.ts — which is the seam it fell
+    // through: curated as neither an infection marker nor an immunity titer.
+    name: "Hepatitis A Antibody, Total",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Total anti-HAV (IgG plus IgM) is an immunity marker: a reactive result usually reflects vaccination or past infection and is favorable, unlike the hepatitis B and C markers beside it, where reactive means current infection or exposure. It does not distinguish acute infection — that is the separate IgM-only assay. Reported qualitatively or as an assay-specific titer, with no universal numeric band.",
+  },
+  {
     name: "Hepatitis B Surface Antigen (HBsAg)",
     category: "lab",
     unit: null,

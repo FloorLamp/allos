@@ -53,11 +53,13 @@ const buildColumns = (
     headerClassName: "hidden sm:table-cell",
     cellClassName:
       "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
+    empty: (c) => !c.category,
     cell: (c) => (c.category ? titleCase(c.category) : "—"),
   },
   {
     header: "Planned",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
+    empty: (c) => !c.planned_date,
     cell: (c) => formatRecordDate(c.planned_date, "—", fmt),
   },
   {

@@ -47,6 +47,7 @@ import {
   getBodyCardPins,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
+import { bodyMetricMeasures } from "@/lib/body-metric-measures";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
@@ -126,7 +127,7 @@ import {
   stackContainerClass,
   type BodyView,
 } from "./body-view";
-import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
+import BodyMetricRowMenu from "./BodyMetricRowMenu";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
 
@@ -1011,7 +1012,10 @@ export default async function BodySection({
   // the two BMI charts on a child's body census can't disagree (issue #407).
   const bmiAll = bmiSeriesDatePaired(
     weightSeries.map((w) => ({ date: w.date, value: w.value })),
-    heightPoints
+    heightPoints,
+    // #2646: how stale the paired height may be is a life-stage question, so the
+    // derivation needs the birthdate this page already read.
+    birthdate
   ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
   const bmiChart = filterSeriesByRange(bmiAll, range);
   // Check-in trends (#992, completed by #1408): the daily wellbeing check-ins as
@@ -1712,6 +1716,9 @@ export default async function BodySection({
               annotations={annotations}
               windows={protocolWindows}
               gapWindow={dayFillWindow(range)}
+              // The profile-local day each card's headline is aged against
+              // (#2615 item 3), never the server's.
+              today={todayStr}
             />
           ) : (
             <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
@@ -1774,6 +1781,9 @@ export default async function BodySection({
                 annotations={annotations}
                 windows={protocolWindows}
                 gapWindow={dayFillWindow(range)}
+                // The profile-local day each card's headline is aged against
+                // (#2615 item 3), never the server's.
+                today={todayStr}
               />
             ) : (
               <EmptyState message="No body metrics yet. Add a reading with “+ Log” above to see the trend." />
@@ -1877,9 +1887,15 @@ export default async function BodySection({
                               <NotesText notes={w.notes} />
                             </td>
                             <td className="td text-right">
-                              <DeleteBodyMetricButton
+                              {/* Edit (per measure) + delete on the shared ⋯ menu
+                            (#2556). The row is WIDE — up to three readings — so
+                            each Edit names its own measure and writes it through
+                            the existing per-reading contract; the delete is
+                            unchanged and still removes the day's whole entry. */}
+                              <BodyMetricRowMenu
                                 id={w.id}
                                 label={formatMonthDay(w.date, formatPrefs)}
+                                measures={bodyMetricMeasures(w, wu)}
                               />
                             </td>
                           </tr>

@@ -6,7 +6,13 @@
 // measurement at the age it was taken, plus the current-age percentile for the
 // passport badge. REFERENCE CURVES — NOT MEDICAL ADVICE.
 
-import { ageInMonthsFromBirthdate, ageInMonthsExact } from "./date";
+import {
+  ageFromBirthdate,
+  ageInMonthsFromBirthdate,
+  ageInMonthsExact,
+} from "./date";
+import { freshnessAgeDays, freshnessState } from "./freshness";
+import { lifeStage, type LifeStage } from "./life-stage";
 import { kgTo } from "./units";
 import type { WeightUnit } from "./settings";
 import {
@@ -54,15 +60,77 @@ export interface GrowthProfile {
   metrics: GrowthMetricSeries[];
 }
 
-// The latest value on or before `date` from an ascending-by-date series (for
-// pairing a weight with the height in effect at that time when deriving BMI).
-function latestOnOrBefore(sorted: DatedValue[], date: string): number | null {
-  let out: number | null = null;
+// The latest measurement on or before `date` from an ascending-by-date series (for
+// pairing a weight with the height in effect at that time when deriving BMI). Returns
+// the whole point, because HOW OLD the paired height is decides whether it may be
+// used at all — see PAIRED_HEIGHT_INTERVAL_DAYS.
+function latestOnOrBefore(
+  sorted: DatedValue[],
+  date: string
+): DatedValue | null {
+  let out: DatedValue | null = null;
   for (const p of sorted) {
-    if (p.date <= date) out = p.value;
+    if (p.date <= date) out = p;
     else break;
   }
   return out;
+}
+
+// HOW STALE MAY THE PAIRED HEIGHT BE? (issue #2646)
+//
+// #407 pairs each weigh-in with the height in effect ON OR BEFORE it, deliberately,
+// so early history is not inflated by a recent height. That is right and stays. What
+// it does not say is how far back "in effect" may reach, and the answer is not the
+// same for everyone: for an adult, height is stable and a two-year-old measurement is
+// still the truth; for a growing child it is not, and BMI = kg/m² turns the missing
+// growth into apparent FATNESS — the error is roughly twice the relative height error
+// and it always points the same way, so a healthy child who grew reads as one who
+// gained.
+//
+// So the bound is resolved by LIFE STAGE (lib/life-stage.ts, the one age model),
+// declared per member so a new stage cannot silently inherit "unbounded":
+//
+//   • infant     — a quarter. Length changes fastest here (a couple of centimetres a
+//                  month), and well-child length checks in the first year are 2–3
+//                  months apart, so a length older than a quarter predates the last
+//                  scheduled measurement.
+//   • child      — six months. The pediatric growth-monitoring interval; beyond it a
+//                  height is a different child's height.
+//   • adolescent — six months, for the same reason: peak height velocity runs to
+//                  8–9 cm a year and does not announce itself.
+//   • adult / older-adult — NO clock. Height is stable, so pairing an old height is
+//                  not an error, and dropping those points would delete BMI history
+//                  for the population that has the most of it.
+//
+// The decision itself is `freshnessState` (lib/freshness.ts) rather than an inline
+// `age > interval` — the shared "is this dated reading still current?" question,
+// which also supplies the boundary rule (stale STRICTLY after the interval). A null
+// interval answers `not-applicable`, which is the ADULT case and must never fold into
+// `due`: no clock applies, so the pairing stands.
+export const PAIRED_HEIGHT_INTERVAL_DAYS: Record<LifeStage, number | null> = {
+  infant: 92,
+  child: 183,
+  adolescent: 183,
+  adult: null,
+  "older-adult": null,
+};
+
+// Whether a height measured on `heightDate` may be paired with a weigh-in on
+// `weighDate`. Age is resolved AS OF THE WEIGH-IN (#2090 — never today), and an
+// unknown birthdate leaves the pairing unbounded, following lib/life-stage.ts's
+// documented policy: restrict only on a POSITIVE under-age match, never on missing
+// data.
+function pairedHeightUsable(
+  heightDate: string,
+  weighDate: string,
+  birthdate: string | null
+): boolean {
+  const age = birthdate ? ageFromBirthdate(birthdate, weighDate) : null;
+  const stage = lifeStage(age);
+  const interval = stage ? PAIRED_HEIGHT_INTERVAL_DAYS[stage] : null;
+  return (
+    freshnessState(freshnessAgeDays(heightDate, weighDate), interval) !== "due"
+  );
 }
 
 function byDateAsc(a: DatedValue, b: DatedValue): number {
@@ -72,19 +140,29 @@ function byDateAsc(a: DatedValue, b: DatedValue): number {
 // The date-paired BMI series (issue #407): each weigh-in paired with the height in
 // effect ON OR BEFORE that date, so historical BMI reflects the child's height at
 // the time — not a single "most recent height" applied backward, which inflates
-// early history for a growing child. The ONE derivation shared by the growth card
-// AND the body census synced BMI chart, so the two can't disagree. A weigh-in with
-// no prior height is skipped (no BMI derivable). Adults degrade gracefully — height
-// rarely changes, so date-pairing ≈ latest height. Pure; sorts defensively.
+// early history for a growing child. The ONE derivation shared by the growth card,
+// the body census synced BMI chart and `/trends/metric/bmi`, so the three can't
+// disagree — and the ONLY BMI derivation there is (#2646 decision 3: no DerivedDef,
+// no second computation).
+//
+// A weigh-in with no usable prior height is SKIPPED — no BMI derivable, and no point
+// is better than a wrong one. "Usable" means both present and, for a growing profile,
+// recent enough: see PAIRED_HEIGHT_INTERVAL_DAYS above. `birthdate` is required
+// rather than optional so a caller must answer the age question instead of silently
+// inheriting the unbounded adult rule; null means unknown, which IS unbounded.
+// Pure; sorts defensively.
 export function bmiSeriesDatePaired(
   weights: DatedValue[],
-  heights: DatedValue[]
+  heights: DatedValue[],
+  birthdate: string | null
 ): DatedValue[] {
   const h = [...heights].sort(byDateAsc);
   const out: DatedValue[] = [];
   for (const w of [...weights].sort(byDateAsc)) {
     const height = latestOnOrBefore(h, w.date);
-    const bmi = bmiFrom(w.value, height);
+    if (!height) continue;
+    if (!pairedHeightUsable(height.date, w.date, birthdate)) continue;
+    const bmi = bmiFrom(w.value, height.value);
     if (bmi != null) out.push({ date: w.date, value: bmi });
   }
   return out;
@@ -177,8 +255,10 @@ export function buildGrowthProfile(input: {
   const headCircs = [...(input.headCircs ?? [])].sort(byDateAsc);
 
   // BMI trajectory: for each weigh-in, pair it with the height in effect that day
-  // (the shared date-paired derivation the body census BMI chart also uses).
-  const bmiRaw = bmiSeriesDatePaired(weights, heights);
+  // (the shared date-paired derivation the body census BMI chart also uses). The
+  // birthdate this function already required is what bounds how stale that height may
+  // be — on a growth chart, which is where this runs, the bound always applies.
+  const bmiRaw = bmiSeriesDatePaired(weights, heights, birthdate);
 
   const metrics: GrowthMetricSeries[] = [
     buildMetric("height", sex, birthdate, heights, step),

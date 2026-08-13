@@ -404,3 +404,19 @@ mood check-in and the weight quick-add are idempotent AND already single-flight
 through a form action or a transition, so a landed repeat is a no-op by
 construction. They are classified above; wiring them to the hook would add a
 window without closing a hazard.
+
+**A TOGGLE is not a log (#2641).** The ★ save (`components/StarButton.tsx`) is a
+tap-shaped write that paints optimistically, and it is deliberately outside this
+registry. `ONE_TAP_AFFORDANCES` is the census of one-tap **logging**, and its
+`repeat` vocabulary classifies what a second LOG means; a star's second tap is
+the UNDO of the first and is meant to land in full. Declaring it would need a
+fourth repeat class to stay honest, and the one thing the hook would buy it —
+the post-success cooldown that ABSORBS a second tap — is the behaviour a toggle
+must not have. It uses `useOptimistic` over the server's `saved` prop directly,
+which is what makes the revert structural: the displayed value is not state of
+its own, so a refused or thrown write cannot leave a star lit over a save that
+did not happen. It also answers `toggleSavedItem`'s typed `FormResult`, which
+the plain Server-Action form it replaced discarded. The pair is proven end to
+end in `e2e/star-optimistic.spec.ts` by HOLDING the action's response open, so
+the paint is shown not to depend on the round-trip rather than merely being
+fast.

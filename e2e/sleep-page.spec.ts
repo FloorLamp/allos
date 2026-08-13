@@ -10,7 +10,12 @@ import {
   E2E_MEMBER_PASSWORD,
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
-import { expectNoClippedContent, settledBoxes, settledClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 
@@ -30,7 +35,7 @@ interface SleepEditFixture {
 // copied into the per-test login.
 function createSleepEditFixture(
   testInfo: TestInfo,
-  purpose: "edit" | "add"
+  purpose: "edit" | "add" | "delete"
 ): SleepEditFixture {
   const handle = new Database(DB_PATH);
   handle.pragma("busy_timeout = 5000");
@@ -140,6 +145,17 @@ function destroySleepEditFixture(fixture: SleepEditFixture): void {
           .run(fixture.profileId);
         handle
           .prepare("DELETE FROM profile_settings WHERE profile_id = ?")
+          .run(fixture.profileId);
+        // The side-state the log's own deletes leave behind (#2556). A per-reading
+        // delete here routes through captureDelete, which writes BOTH the undo
+        // capture and the #507/#508 re-import tombstone; each carries a
+        // `profile_id REFERENCES profiles(id)` with no ON DELETE, so a spec that
+        // deletes a row and then drops its profile trips the FK on the way out.
+        handle
+          .prepare("DELETE FROM deleted_rows WHERE profile_id = ?")
+          .run(fixture.profileId);
+        handle
+          .prepare("DELETE FROM import_tombstones WHERE profile_id = ?")
           .run(fixture.profileId);
         // The profile row + whatever its CONSTRUCTOR seeded (the #1487 standard
         // metric saves) — deleting the row directly trips saved_items' FK.
@@ -750,17 +766,18 @@ test.describe("Sleep page (#1066)", () => {
           nodes.every((node) => getComputedStyle(node).display === "none")
         )
     ).toBe(true);
+    // #2614: the log stopped asking for a sideways swipe on a phone. It stacks as
+    // cards below `sm` (#1426's shared primitive), so its scroller has nothing left
+    // to scroll — and MOOD, which used to render "🙂 Good (4" against the card edge
+    // behind that swipe, is laid out inside the card instead. The wide desktop grid
+    // and its fade are unchanged above `sm`.
     const historyScroll = page.getByTestId("sleep-history-scroll-fade");
     expect(
       await historyScroll.evaluate(
-        (node) => node.scrollWidth > node.clientWidth
+        (node) => node.scrollWidth - node.clientWidth
       )
-    ).toBe(true);
-    await expect
-      .poll(() =>
-        historyScroll.evaluate((node) => getComputedStyle(node).maskImage)
-      )
-      .not.toBe("none");
+    ).toBeLessThanOrEqual(1);
+    await expect(history.locator("thead")).toBeHidden();
   });
 
   test("the Sleep page keeps a readable width on extra-wide screens", async ({
@@ -918,14 +935,22 @@ test.describe("Sleep and mood log historical editing", () => {
       await expect(manualRow).toContainText("7h");
       await expect(importedRow).toContainText("6h 30m");
 
-      await importedRow.getByTestId("sleep-mood-history-edit").click();
+      // Row actions live in the shared ⋯ menu since #2556, so each one is two
+      // taps: open the menu, then choose. The panel is portaled to <body>, so the
+      // item is looked up on the page rather than inside the row.
+      await hydratedClick(
+        page,
+        importedRow.getByTestId("overflow-menu-trigger")
+      );
+      await hydratedClick(page, page.getByTestId("sleep-mood-history-edit"));
       const importedDialog = page.getByTestId("sleep-mood-edit-dialog");
       await expect(
         importedDialog.getByTestId("sleep-history-edit-readonly")
       ).toBeVisible();
       await importedDialog.getByRole("button", { name: "Cancel" }).click();
 
-      await manualRow.getByTestId("sleep-mood-history-edit").click();
+      await hydratedClick(page, manualRow.getByTestId("overflow-menu-trigger"));
+      await hydratedClick(page, page.getByTestId("sleep-mood-history-edit"));
       const dialog = page.getByTestId("sleep-mood-edit-dialog");
       const hours = dialog.getByTestId("sleep-history-edit-hours");
       const minutes = dialog.getByTestId("sleep-history-edit-minutes");
@@ -968,6 +993,101 @@ test.describe("Sleep and mood log historical editing", () => {
             )
             .get(fixture.profileId)
         ).toEqual({ value: 525 });
+      } finally {
+        handle.close();
+      }
+    } finally {
+      if (page) await page.context().close();
+      destroySleepEditFixture(fixture);
+    }
+  });
+
+  // #2556: the log listed two physical records per line — a manual sleep duration
+  // and a mood check-in — and could remove neither. Both deletes go through the ONE
+  // per-reading contract, so both come back with an undo.
+  test("deletes a manual sleep duration and a mood check-in, offering neither on an imported night", async ({
+    browser,
+  }, testInfo) => {
+    const fixture = createSleepEditFixture(testInfo, "delete");
+    let page: Page | null = null;
+    try {
+      page = await loginAs(browser, {
+        username: fixture.username,
+        password: E2E_MEMBER_PASSWORD,
+      });
+      await page.goto("/sleep");
+      const { manualDate, importedDate } = fixture;
+      const manualRow = page.locator(
+        `[data-testid="sleep-mood-history-row"][data-date="${manualDate}"]`
+      );
+      const importedRow = page.locator(
+        `[data-testid="sleep-mood-history-row"][data-date="${importedDate}"]`
+      );
+      await expect(manualRow).toContainText("7h");
+      await expect(importedRow).toContainText("6h 30m");
+
+      // RENDERED FROM STATE. The imported night is read-only here exactly as it is
+      // in the edit dialog, so its menu offers Edit and nothing destructive — the
+      // affordance never presents a write that would be refused.
+      await hydratedClick(
+        page,
+        importedRow.getByTestId("overflow-menu-trigger")
+      );
+      await expect(page.getByTestId("sleep-mood-history-edit")).toBeVisible();
+      await expect(page.getByTestId("sleep-history-delete-sleep")).toHaveCount(
+        0
+      );
+      await expect(page.getByTestId("sleep-history-delete-mood")).toHaveCount(
+        0
+      );
+      await page.keyboard.press("Escape");
+
+      // The manual night carries both records, so it offers both deletes.
+      await hydratedClick(page, manualRow.getByTestId("overflow-menu-trigger"));
+      await hydratedClick(page, page.getByTestId("sleep-history-delete-mood"));
+      const confirmMood = page.getByTestId("confirm-dialog");
+      await expect(confirmMood).toContainText("note and factors go with it");
+      await settledClick(
+        page,
+        confirmMood.getByRole("button", { name: "Delete" })
+      );
+      await expect(manualRow).not.toContainText("(2/5)");
+
+      await hydratedClick(page, manualRow.getByTestId("overflow-menu-trigger"));
+      await hydratedClick(page, page.getByTestId("sleep-history-delete-sleep"));
+      await settledClick(
+        page,
+        page
+          .getByTestId("confirm-dialog")
+          .getByRole("button", { name: "Delete" })
+      );
+      // The line itself goes with its last record — nothing is left to list.
+      await expect(manualRow).toHaveCount(0);
+
+      const handle = new Database(DB_PATH, { readonly: true });
+      try {
+        expect(
+          handle
+            .prepare(
+              `SELECT COUNT(*) AS n FROM metric_samples
+                WHERE profile_id = ? AND metric = 'sleep_min' AND date = ?`
+            )
+            .get(fixture.profileId, manualDate)
+        ).toEqual({ n: 0 });
+        expect(
+          handle
+            .prepare("SELECT COUNT(*) AS n FROM mood_logs WHERE profile_id = ?")
+            .get(fixture.profileId)
+        ).toEqual({ n: 0 });
+        // The imported night is untouched — this menu could not reach it.
+        expect(
+          handle
+            .prepare(
+              `SELECT COUNT(*) AS n FROM metric_samples
+                WHERE profile_id = ? AND date = ?`
+            )
+            .get(fixture.profileId, importedDate)
+        ).toEqual({ n: 1 });
       } finally {
         handle.close();
       }

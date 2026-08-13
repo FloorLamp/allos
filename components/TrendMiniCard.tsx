@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { IconArrowDownRight, IconArrowUpRight } from "@tabler/icons-react";
 import LineChartCard from "./LineChartCard";
 import BarSparkline from "./BarSparkline";
+import { loneReading } from "@/lib/trend-sparkline";
 import type { DayFillSpec, SparklineShape } from "@/lib/trend-sparkline";
+import SingleReadingMark from "./SingleReadingMark";
 import { round } from "@/lib/units";
 import { robustSeriesSummary } from "@/lib/trends-digest";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
@@ -170,12 +172,18 @@ export default function TrendMiniCard({
   // and High. Sparse biomarkers had the same awkward empty lower half when their
   // latest reading sat outside the selected range. Give both honest value-only
   // states a deliberate single-marker treatment instead.
+  //
+  // `loneReading` is the shared predicate (#2615 item 3) — the SAME one the full
+  // chart cards now degrade on, so a tile and the card it taps through to cannot
+  // draw one reading two ways. Equivalent to the `values.length === 1` it replaces:
+  // both count non-null points.
+  const lone = loneReading(data);
   const showSingleReading =
     outsideWindow != null ||
-    (sparklineShape === "line" && values.length === 1 && !singleReadingAsChart);
+    (sparklineShape === "line" && lone != null && !singleReadingAsChart);
   const readingDate =
     outsideWindow?.date ??
-    (sparklineShape === "line" && data.length === 1 ? data[0].date : null);
+    (sparklineShape === "line" ? (lone?.date ?? null) : null);
   const footerTextClass =
     "text-xs tabular-nums text-slate-500 dark:text-slate-400";
 
@@ -315,27 +323,14 @@ export default function TrendMiniCard({
         {menu && <div className="shrink-0 px-2 py-1.5 sm:px-3">{menu}</div>}
       </div>
       {showSingleReading ? (
-        <div
-          className="mt-auto pt-2"
-          data-testid="trend-mini-single-reading"
-          data-reading-scope={outsideWindow ? "outside" : "inside"}
-        >
-          <div
-            className="flex h-20 items-center px-3"
-            data-testid="trend-mini-single-marker"
-            aria-hidden="true"
-          >
-            <span className="h-px flex-1 bg-linear-to-r from-transparent to-slate-300 dark:to-slate-600" />
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white shadow-xs ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15">
-              <span
-                className="h-2.5 w-2.5 rounded-full bg-brand-500"
-                style={color ? { backgroundColor: color } : undefined}
-              />
-            </span>
-            <span className="h-px flex-1 bg-linear-to-l from-transparent to-slate-300 dark:to-slate-600" />
-          </div>
-          <p className={`-mt-1 text-center ${footerTextClass}`}>
-            {readingDate && readingDateLabel ? (
+        <SingleReadingMark
+          color={color}
+          testid="trend-mini-single-reading"
+          markTestid="trend-mini-single-marker"
+          readingScope={outsideWindow ? "outside" : "inside"}
+          captionClassName={footerTextClass}
+          caption={
+            readingDate && readingDateLabel ? (
               <>
                 {outsideWindow ? "Latest recorded" : "Single reading"} ·{" "}
                 <time dateTime={readingDate}>{readingDateLabel}</time>
@@ -344,9 +339,9 @@ export default function TrendMiniCard({
               "Latest recorded value"
             ) : (
               "Single reading in this range"
-            )}
-          </p>
-        </div>
+            )
+          }
+        />
       ) : (
         data.length > 0 && (
           <div className="mt-auto pt-2" data-sparkline-shape={sparklineShape}>
