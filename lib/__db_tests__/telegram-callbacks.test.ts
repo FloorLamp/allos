@@ -6,7 +6,8 @@
 // honestly (the outcome-typed contract). The pure parse/decide half is covered in
 // lib/__tests__/callback-data.test.ts.
 
-import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 import { OUTDATED_MESSAGE_TEXT } from "@/lib/notifications/callback-data";
 
 // Stub the RAW Telegram Bot API transport (issue #454's guarded boundary), keeping
@@ -14,17 +15,6 @@ import { OUTDATED_MESSAGE_TEXT } from "@/lib/notifications/callback-data";
 // helpers (messageKeyboard, renderMessageHtml) REAL via importActual — so the
 // prefix/escaping the chokepoint applies is exercised and the edited wire text this
 // test asserts on is the genuine rendered output, only the network hop is faked.
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => {}),
-  };
-});
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -38,6 +28,12 @@ import {
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const editTextMock = vi.mocked(editMessageTextRaw);

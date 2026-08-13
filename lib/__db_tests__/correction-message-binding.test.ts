@@ -8,20 +8,16 @@
 // (migration 170's provenance link), the real callback dispatcher, the real builders
 // and the real sweep, with only the raw Telegram transport stubbed.
 
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  let nextMessageId = 8000;
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => nextMessageId++),
-  };
-});
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { setTelegramBotConfig, setTimezone } from "@/lib/settings";
@@ -48,6 +44,12 @@ import {
 } from "@/lib/queries/intake/adherence";
 import { getFoodCorrectionBursts } from "@/lib/queries";
 import { seedLoginTelegram } from "./fixtures";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 // One frozen day in Berlin (UTC+2 in August): the Morning send is 07:30 local
 // (05:30Z), the midday tap 12:42 local (10:42Z) — the screenshot's own clock.

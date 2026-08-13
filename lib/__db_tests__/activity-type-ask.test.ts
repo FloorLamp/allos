@@ -14,21 +14,19 @@
 //
 // Detection SUGGESTS, the user's tap WRITES (#1670). Nothing here classifies on its own.
 
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 import { seedLoginTelegram } from "./fixtures";
 
 // Stub the one network surface so the real dispatch + render path runs with no I/O.
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    sendMessageRaw: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    answerCallbackQuery: vi.fn(async () => {}),
-  };
-});
 
 import { db, today } from "@/lib/db";
 import { setSetting } from "@/lib/settings";
@@ -40,6 +38,12 @@ import {
   answerCallbackQuery,
 } from "@/lib/notifications/telegram-api";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const sendTelegram = vi.mocked(sendMessageRaw);
 const answerTap = vi.mocked(answerCallbackQuery);
@@ -102,6 +106,16 @@ function tap(data: string, chatId = CHAT) {
     },
   });
 }
+
+// The frozen clock is a GLOBAL, and this file used to have a module registry to
+// itself (its own `vi.mock` routed it to the isolated project), which hid the
+// leak. Under the shared registry it outlives the file: the next spec in the same
+// worker reads a clock stuck at NOW, so an auth token looks expired and a
+// timezone-derived instant comes out wrong — failures naming neither the clock
+// nor this file.
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.useFakeTimers();

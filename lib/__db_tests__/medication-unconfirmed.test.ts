@@ -23,19 +23,8 @@
 //
 // Every value is synthetic.
 
-import { vi, describe, it, expect, beforeEach } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => {}),
-  };
-});
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -52,6 +41,12 @@ import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
 import { GLYPH } from "@/lib/notifications/glyphs";
 import { seedLoginTelegram } from "./fixtures";
 import type { NotificationAction } from "@/lib/notifications/types";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const CHAT = "5550188";
