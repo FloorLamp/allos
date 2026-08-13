@@ -63,6 +63,22 @@ import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 //    advances). hydratedClick closes the pre-hydration window WITHOUT a retry
 //    loop, which is exactly what a non-idempotent control needs.
 //
+// 2c. The click must open the browser's NATIVE FILE CHOOSER (a camera/upload
+//    trigger whose handler ends in a synchronous `input.click()`):
+//        → primeCameraFallback(page) before the goto, then
+//          capturePhotoFile(page, trigger, file)
+//    Two rules meet here, and the second is the one #2662 was filed for. First,
+//    a chooser is an EVENT, so the listener is armed and the tap taken under one
+//    `Promise.all` — never armed with its own short timeout inside a retry loop,
+//    which does not lengthen the window, it just re-runs the same too-short one.
+//    Second, the branch that reaches the chooser at all must be a STATED
+//    precondition. PhotoCapture only opens the picker synchronously for a session
+//    that already knows the camera is unusable; otherwise the tap tries
+//    getUserMedia and opens a fallback MODAL — whose `fixed inset-0` backdrop
+//    then intercepts every later click on the trigger, so the loop's own first
+//    attempt is what makes the rest unreachable. Retrying a control that covers
+//    itself is worse than not retrying it.
+//
 // 3. Everything else — a pure client toggle, a value that settles in place, a
 //    toast that appears — needs NO settle on the network. Assert it with a plain
 //    auto-retrying `expect(locator).toBeVisible()` / `.toHaveText(...)`. Playwright
@@ -130,6 +146,42 @@ async function awaitAutosaveSettled(scope: Locator): Promise<void> {
       )
   );
   await expect(scope.getByLabel("Saving")).toHaveCount(0);
+}
+
+// Tap a <PhotoCapture> trigger and hand the native file chooser its bytes.
+//
+// ONE tap, no retry loop — and the reason is the whole of issue #2662.
+//
+// PhotoCapture's tap decision (`cameraStartDecision`) is not a constant, and an
+// unprimed page does not sit on the easy side of it by construction:
+// `navigator.mediaDevices.getUserMedia` EXISTS on this runner (localhost is a
+// secure context) — what is missing is the camera — so a tap with
+// `knowledge: "unknown"` takes `try-camera`, getUserMedia rejects, and the
+// FALLBACK DIALOG opens instead of the chooser. Hence primeCameraFallback below:
+// state the precondition before the goto instead of racing it.
+//
+// Re-driving this trigger is NOT free, which is what made the old
+// `toPass`-around-a-1s-`waitForEvent` loop worse than no loop at all. The losing
+// branch opens PhotoCapture's fallback MODAL, and ModalShell's `fixed inset-0`
+// backdrop then intercepts pointer events on the trigger — Playwright's call log
+// says so verbatim — so every later attempt is blocked on actionability, the
+// listener it armed one second earlier rejects with nobody awaiting it, and the
+// run dies on that unhandled rejection long before the loop's own 20s ceiling.
+// A retry cannot converge on a control whose first attempt covers it up. Nor
+// would a bigger per-attempt budget help: the branch that fails never opens a
+// chooser at all, at any budget. Decision-tree case 2b — a non-idempotent
+// control, so hydratedClick, which closes the pre-hydration window WITHOUT a
+// retry loop.
+export async function capturePhotoFile(
+  page: Page,
+  trigger: Locator,
+  file: { name: string; mimeType: string; buffer: Buffer }
+): Promise<void> {
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    hydratedClick(page, trigger),
+  ]);
+  await chooser.setFiles(file);
 }
 
 // The centre of an element, in viewport coordinates — the natural place for a
@@ -666,6 +718,45 @@ export async function openMeasurementGroup(
     form.getByTestId(`measurements-group-${group}-toggle`)
   );
   await expect(fields).toBeVisible();
+}
+
+// Stage this browsing context as one with NO camera API at all, BEFORE the page
+// loads — the precondition of #2182's one-tap native picker, and the device class
+// PhotoCapture's own header names first ("PWA-safe, CI, older devices").
+//
+// Two specs used to ASSUME this ("No getUserMedia in CI") and it was false:
+// `navigator.mediaDevices.getUserMedia` exists on a headless runner because
+// localhost is a secure context — what is missing is the camera. So an unprimed
+// tap took `try-camera`, getUserMedia rejected `NotFoundError`, and the fallback
+// DIALOG opened. That is correct product behaviour (you cannot skip trying a
+// camera you know nothing about); it is just not the state those specs assert.
+//
+// Why this fact and not the session-cache one: `cameraStartDecision` reads
+// `hasGetUserMedia` SYNCHRONOUSLY at tap time, from a value this init script has
+// already fixed before any document script ran, so the branch is decided with no
+// async input anywhere. The `knowledge: "failed"` route to the same branch is a
+// true statement about the runner too, but its precondition arrives from a mount
+// effect (a sessionStorage read, then a `navigator.permissions.query` promise),
+// and "that effect has flushed" is not something a tap can prove — which is the
+// class of assumption this whole issue is about. Staging the device removes the
+// question rather than narrowing it.
+//
+// Nothing is lost by staging it: `cameraStartDecision`'s full branch matrix,
+// knowledge cache included, is unit-covered in lib/__tests__/camera-fallback.ts,
+// and the camera-API-present shapes (denied → recovery guidance, present-but-no-
+// hardware → picker-only dialog) have their own browser test in
+// progress-photos.spec.ts, which stages `navigator.mediaDevices` the same way.
+//
+// Call it before the navigation that renders the capture surface — an init script
+// applies to every subsequent navigation on the page, not to the current
+// document. A spec that wants the OPPOSITE state simply does not call it.
+export async function primeCameraFallback(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: undefined,
+    });
+  });
 }
 
 // The identity bar's view-set readout (issue #1801).

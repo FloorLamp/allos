@@ -3,7 +3,12 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import sharp from "sharp";
 import { loginAs } from "./nav";
-import { settledClick, settledSelect } from "./helpers";
+import {
+  capturePhotoFile,
+  primeCameraFallback,
+  settledClick,
+  settledSelect,
+} from "./helpers";
 import {
   E2E_LOGIN_PHOTOS,
   E2E_MEMBER_PASSWORD,
@@ -78,19 +83,15 @@ async function addPhoto(
   bytes: Buffer,
   opts: { date: string; caption?: string }
 ): Promise<void> {
-  // CI has no getUserMedia, so one real tap must synchronously open the native
-  // chooser — no intermediate fallback dialog (#2182).
+  // One real tap must synchronously open the native chooser, with no
+  // intermediate fallback dialog (#2182) — which holds because the caller
+  // staged the no-camera-API precondition before its goto (#2662).
   const fileInput = page.getByTestId("photo-capture-file");
-  await expect(async () => {
-    const chooserPromise = page.waitForEvent("filechooser", { timeout: 1_000 });
-    await page.getByTestId("photo-capture-open").click();
-    const chooser = await chooserPromise;
-    await chooser.setFiles({
-      name: "capture.jpg",
-      mimeType: "image/jpeg",
-      buffer: bytes,
-    });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-drive the idempotent trigger until hydration delivers the one chooser activation
+  await capturePhotoFile(page, page.getByTestId("photo-capture-open"), {
+    name: "capture.jpg",
+    mimeType: "image/jpeg",
+    buffer: bytes,
+  });
   await expect(fileInput).toHaveClass(/sr-only/);
   await expect(page.getByTestId("photo-capture-fallback")).toHaveCount(0);
   await expect(page.getByTestId("photo-capture-preview")).toBeVisible();
@@ -110,6 +111,7 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     password: E2E_MEMBER_PASSWORD,
   });
   try {
+    await primeCameraFallback(page);
     // Photo-less profile: the data-gated nav entry is hidden, the page still
     // renders by URL (#1042 posture) with its empty state.
     await page.goto("/");
@@ -309,6 +311,7 @@ test("retagging a photo's pose moves it between comparison series, leaving the f
     password: E2E_MEMBER_PASSWORD,
   });
   try {
+    await primeCameraFallback(page);
     await page.goto("/progress");
     await expect(
       page.getByRole("heading", { name: "Progress photos" })
