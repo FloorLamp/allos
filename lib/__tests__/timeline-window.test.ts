@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  allTimelineMonths,
   foldKeyHiding,
   parseTimelineOpen,
   renderedTimelineDays,
   timelineFoldCounts,
   timelineMonthKey,
   timelineMonthLabel,
+  timelineYearKey,
+  toggledTimelineOpen,
   windowTimelineDays,
   TIMELINE_AHEAD_KEY,
   TIMELINE_OPEN_PARAM,
@@ -204,6 +207,190 @@ describe("windowTimelineDays", () => {
       "2026-07-30",
       "2026-07-02",
       "2026-05-04",
+    ]);
+  });
+
+  it("leaves the years empty for a feed that never leaves the current year", () => {
+    expect(windowTimelineDays(FEED, TODAY).years).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// YEARS ROLL UP (#2657 item 6). A month card costs ~70px; `?category=medical`
+// carried 54 of them, so the compression the fold bought back at day grain leaked
+// away again at month grain. A month outside the current calendar year compresses
+// once more into a year card.
+// ---------------------------------------------------------------------------
+
+// The same today, and a feed reaching back three calendar years. 2026 months stay
+// month cards; 2025 and 2024 roll up.
+const DEEP_FEED = [
+  day("2026-08-13", 1), // recent — today
+  day("2026-06-10", 2), // this year's month card
+  day("2026-02-04", 1), // this year's month card
+  day("2025-11-20", 3), // inside the 2025 year card
+  day("2025-11-02", 1), // same month
+  day("2025-04-17", 2), // inside the 2025 year card
+  day("2024-09-09", 5), // inside the 2024 year card
+];
+
+describe("timelineYearKey", () => {
+  it("keys a date and a month key alike by their calendar year", () => {
+    expect(timelineYearKey("2026-03-27")).toBe("2026");
+    expect(timelineYearKey("2025-12")).toBe("2025");
+  });
+});
+
+describe("years roll up", () => {
+  it("keeps this year's months as cards and folds earlier years into year cards", () => {
+    const w = windowTimelineDays(DEEP_FEED, TODAY);
+
+    expect(w.recent.map((d) => d.date)).toEqual(["2026-08-13"]);
+    expect(w.months.map((m) => m.key)).toEqual(["2026-06", "2026-02"]);
+
+    expect(w.years.map((y) => y.key)).toEqual(["2025", "2024"]);
+    expect(w.years.map((y) => y.label)).toEqual(["2025", "2024"]);
+    expect(w.years.map((y) => y.monthCount)).toEqual([2, 1]);
+    expect(w.years.map((y) => y.dayCount)).toEqual([3, 1]);
+    expect(w.years.map((y) => y.eventCount)).toEqual([6, 5]);
+    expect(w.years[0].months.map((m) => m.key)).toEqual(["2025-11", "2025-04"]);
+    expect(w.years[0].months.map((m) => m.label)).toEqual([
+      "November 2025",
+      "April 2025",
+    ]);
+  });
+
+  it("opens no year by default, so a five-year profile is a one-screen spine", () => {
+    const w = windowTimelineDays(DEEP_FEED, TODAY);
+    expect(w.years.map((y) => y.open)).toEqual([false, false]);
+    expect(renderedTimelineDays(w).map((d) => d.date)).toEqual(["2026-08-13"]);
+  });
+
+  it("an open year shows its month cards and still none of their days", () => {
+    const w = windowTimelineDays(DEEP_FEED, TODAY, new Set(["2025"]));
+    expect(w.years.map((y) => y.open)).toEqual([true, false]);
+    expect(w.years[0].months.map((m) => m.open)).toEqual([false, false]);
+    expect(renderedTimelineDays(w).map((d) => d.date)).toEqual(["2026-08-13"]);
+  });
+
+  it("a month key alone opens the month AND the year around it, so an old deep link still lands", () => {
+    const w = windowTimelineDays(DEEP_FEED, TODAY, new Set(["2025-04"]));
+    expect(w.years[0].open).toBe(true);
+    expect(w.years[0].months.map((m) => m.open)).toEqual([false, true]);
+    expect(renderedTimelineDays(w).map((d) => d.date)).toEqual([
+      "2026-08-13",
+      "2025-04-17",
+    ]);
+  });
+
+  it("names the month, not the year, as the fold hiding a buried date — one key is the whole answer", () => {
+    const w = windowTimelineDays(DEEP_FEED, TODAY);
+    expect(foldKeyHiding(w, "2024-09-09")).toBe("2024-09");
+    expect(foldKeyHiding(w, "2025-11-20")).toBe("2025-11");
+    expect(foldKeyHiding(w, "2026-06-10")).toBe("2026-06");
+
+    // …and that one key is sufficient: feeding it back renders the date.
+    const opened = windowTimelineDays(
+      DEEP_FEED,
+      TODAY,
+      new Set(toggledTimelineOpen(new Set(), "2024-09"))
+    );
+    expect(renderedTimelineDays(opened).map((d) => d.date)).toContain(
+      "2024-09-09"
+    );
+    expect(foldKeyHiding(opened, "2024-09-09")).toBe(null);
+  });
+
+  it("counts a year in MONTHS, because months are what a tap reveals", () => {
+    expect(
+      timelineFoldCounts({ eventCount: 180, dayCount: 62, monthCount: 3 })
+    ).toBe("180 events · 3 months");
+    expect(
+      timelineFoldCounts({ eventCount: 1, dayCount: 1, monthCount: 1 })
+    ).toBe("1 event · 1 month");
+  });
+
+  it("auto-opens the newest month even when it lives inside a year card", () => {
+    const dormant = [day("2025-04-17", 2), day("2024-09-09", 5)];
+    const w = windowTimelineDays(dormant, TODAY);
+    expect(w.months).toEqual([]);
+    expect(w.years.map((y) => y.open)).toEqual([true, false]);
+    expect(w.years[0].months.map((m) => m.open)).toEqual([true]);
+    expect(renderedTimelineDays(w).map((d) => d.date)).toEqual(["2025-04-17"]);
+  });
+
+  it("an explicitly opened YEAR suppresses the auto-open too", () => {
+    const dormant = [day("2025-04-17", 2), day("2024-09-09", 5)];
+    const w = windowTimelineDays(dormant, TODAY, new Set(["2024"]));
+    expect(w.years.map((y) => y.open)).toEqual([false, true]);
+    expect(w.years[0].months.map((m) => m.open)).toEqual([false]);
+    expect(renderedTimelineDays(w)).toEqual([]);
+  });
+
+  it("drops nothing: every day still lands in exactly one band", () => {
+    const w = windowTimelineDays(DEEP_FEED, TODAY);
+    const placed = [
+      ...(w.ahead?.days ?? []),
+      ...w.recent,
+      ...allTimelineMonths(w).flatMap((m) => m.days),
+    ].map((d) => d.date);
+    expect(placed).toEqual(DEEP_FEED.map((d) => d.date));
+  });
+});
+
+describe("toggledTimelineOpen", () => {
+  it("adds a key that is absent and removes one that is present, always sorted", () => {
+    expect(toggledTimelineOpen(new Set(["2026-05"]), "ahead")).toEqual([
+      "2026-05",
+      "ahead",
+    ]);
+    expect(
+      toggledTimelineOpen(new Set(["2026-05", "ahead"]), "2026-05")
+    ).toEqual(["ahead"]);
+  });
+
+  it("closing a year takes its months with it — otherwise the derivation re-opens it", () => {
+    const open = new Set(["2025", "2025-04", "2025-11", "2026-02"]);
+    expect(
+      toggledTimelineOpen(open, "2025", {
+        open: true,
+        descendants: ["2025-04", "2025-11"],
+      })
+    ).toEqual(["2026-02"]);
+  });
+
+  it("OPENING a year touches only the year — the months inside arrive collapsed", () => {
+    expect(
+      toggledTimelineOpen(new Set(), "2025", {
+        open: false,
+        descendants: ["2025-04"],
+      })
+    ).toEqual(["2025"]);
+  });
+
+  // The defect the `fold` argument exists for. A year opened BY ITS MONTH holds no key
+  // of its own, so a toggle reading set membership answers "closed" and ADDS one —
+  // leaving the reader's tap on a shut-looking control with the card still open.
+  it("shuts a year that was open only by derivation, rather than adding a key to it", () => {
+    const openedByMonth = windowTimelineDays(
+      DEEP_FEED,
+      TODAY,
+      new Set(["2025-04"])
+    );
+    const year = openedByMonth.years[0];
+    expect(year.open).toBe(true);
+    expect(openedByMonth.years[0].key).toBe("2025");
+
+    const next = toggledTimelineOpen(new Set(["2025-04"]), "2025", {
+      open: year.open,
+      descendants: year.months.map((m) => m.key),
+    });
+    expect(next).toEqual([]);
+
+    const reclosed = windowTimelineDays(DEEP_FEED, TODAY, new Set(next));
+    expect(reclosed.years[0].open).toBe(false);
+    expect(renderedTimelineDays(reclosed).map((d) => d.date)).toEqual([
+      "2026-08-13",
     ]);
   });
 });

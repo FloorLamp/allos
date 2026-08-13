@@ -95,6 +95,7 @@ import {
   parseTimelineOpen,
   renderedTimelineDays,
   timelineFoldCounts,
+  toggledTimelineOpen,
   windowTimelineDays,
   TIMELINE_OPEN_PARAM,
   type TimelineFold,
@@ -209,16 +210,6 @@ function filterHref(
   const hash = anchor ? `#${anchor}` : "";
   if (!qs) return anchor ? `/timeline#${anchor}` : "/timeline";
   return `/timeline?${qs}${hash}`;
-}
-
-// The `?open=` set with one fold key flipped. Sorted so the same open set always
-// produces the same URL (a stable href is a cacheable href, and a stable one is what
-// makes "did this link change?" answerable in a test).
-function toggledOpen(open: ReadonlySet<string>, key: string): string[] {
-  const next = new Set(open);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
-  return [...next].sort();
 }
 
 function parseShow(value: string | string[] | undefined): number {
@@ -460,10 +451,15 @@ function TimelineEventRow({
   );
 }
 
-// A windowing fold's header row (#2657): the future fold at the top of the feed, and
-// one card per older calendar month. The label names the period, the count line is
-// ALWAYS present (#1504 grammar — the vertical cost becomes opt-in, the amount never
-// hides), and the whole row is one link that toggles `?open=`.
+// A windowing fold's header row (#2657): the future fold at the top of the feed, one
+// card per older calendar month, and one card per earlier YEAR. The label names the
+// period, the count line is ALWAYS present (#1504 grammar — the vertical cost becomes
+// opt-in, the amount never hides), and the whole row is one link that toggles `?open=`.
+//
+// ONE component for all three levels, not three. They differ in exactly two things a
+// prop can carry — what the counts count, which `timelineFoldCounts` decides from the
+// fold itself, and the indent a month inside an open year takes — and a second copy
+// would be a second place for the count grammar to drift.
 //
 // What it deliberately does NOT say: anything about how the period WENT. "12 workouts
 // · 2 PRs · adherence 91%" is the decided destination for this line, and it belongs to
@@ -472,9 +468,11 @@ function TimelineEventRow({
 function TimelineFoldCard({
   fold,
   href,
+  nested = false,
 }: {
-  fold: TimelineFold<TimelineDay>;
+  fold: TimelineFold<TimelineDay> & { monthCount?: number };
   href: AppRoute;
+  nested?: boolean;
 }) {
   const testId = `timeline-fold-${fold.key}`;
   return (
@@ -483,7 +481,8 @@ function TimelineFoldCard({
       data-testid={testId}
       data-fold-key={fold.key}
       data-fold-open={fold.open ? "true" : "false"}
-      className="relative scroll-mt-[calc(13rem+env(safe-area-inset-top))] py-2 md:scroll-mt-44"
+      data-fold-nested={nested ? "true" : undefined}
+      className={`relative scroll-mt-[calc(13rem+env(safe-area-inset-top))] py-2 md:scroll-mt-44 ${nested ? "pl-4" : ""}`}
     >
       <TimelineFilterLink
         href={href}
@@ -783,15 +782,26 @@ export default async function TimelinePage(props: {
           category,
           range,
           show,
-          toggledOpen(openFolds, hiding),
+          toggledTimelineOpen(openFolds, hiding),
           `timeline-day-${date}`
         )
       : null;
   };
   // The href that toggles one fold open or closed. Every other filter the reader has
   // set rides along, so expanding March inside "Medical · last year" stays inside it.
-  const foldHref = (key: string): AppRoute =>
-    filterHref(category, range, show, toggledOpen(openFolds, key));
+  // The third argument is passed only for a YEAR, whose open state is DERIVED from its
+  // months: it needs the state actually rendered (a year opened by a month has no key
+  // of its own) and the months to drop alongside it.
+  const foldHref = (
+    key: string,
+    fold?: { open: boolean; descendants: readonly string[] }
+  ): AppRoute =>
+    filterHref(
+      category,
+      range,
+      show,
+      toggledTimelineOpen(openFolds, key, fold)
+    );
 
   // ONE day group, rendered identically wherever it sits — the recent band, an
   // expanded month, or the unwindowed single-day feed. Extracted so the bands cannot
@@ -1244,6 +1254,34 @@ export default async function TimelinePage(props: {
                   <Fragment key={month.key}>
                     <TimelineFoldCard fold={month} href={foldHref(month.key)} />
                     {month.open && month.days.map((day) => renderDayGroup(day))}
+                  </Fragment>
+                ))}
+                {/* YEARS roll up (#2657). A month card costs ~70px, so a profile deep
+                    enough to need windowing grows a spine of them — `?category=medical`
+                    carried 54. Everything outside the current year compresses once
+                    more, same grammar one level up, and a five-year profile stays a
+                    one-screen spine. */}
+                {windowed.years.map((year) => (
+                  <Fragment key={year.key}>
+                    <TimelineFoldCard
+                      fold={year}
+                      href={foldHref(year.key, {
+                        open: year.open,
+                        descendants: year.months.map((m) => m.key),
+                      })}
+                    />
+                    {year.open &&
+                      year.months.map((month) => (
+                        <Fragment key={month.key}>
+                          <TimelineFoldCard
+                            fold={month}
+                            href={foldHref(month.key)}
+                            nested
+                          />
+                          {month.open &&
+                            month.days.map((day) => renderDayGroup(day))}
+                        </Fragment>
+                      ))}
                   </Fragment>
                 ))}
               </>
