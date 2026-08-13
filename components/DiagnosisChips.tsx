@@ -30,7 +30,7 @@ function RankBadge({ entry }: { entry: VisitDiagnosisRank | null }) {
   if (!label) return null;
   return (
     <span
-      className="ml-1 rounded-full bg-amber-200/80 px-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+      className="ml-1 rounded-full bg-amber-200/80 px-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900 dark:text-amber-200"
       data-testid="diagnosis-rank-badge"
       title="Stated by the source record"
     >
