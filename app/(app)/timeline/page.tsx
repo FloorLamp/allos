@@ -100,6 +100,11 @@ import {
   TIMELINE_OPEN_PARAM,
   type TimelineFold,
 } from "@/lib/timeline-window";
+import {
+  showTimelineScrubber,
+  timelineScrubberTicks,
+} from "@/lib/timeline-scrubber";
+import TimelineScrubber, { type ScrubberStop } from "./TimelineScrubber";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import IntradayPanel from "@/components/IntradayPanel";
 import { formatLongDate, formatMonthDay } from "@/lib/format-date";
@@ -803,6 +808,32 @@ export default async function TimelinePage(props: {
       toggledTimelineOpen(openFolds, key, fold)
     );
 
+  // THE JUMP RAIL (#2657 item 4). The stops are derived from the WINDOWED feed, so
+  // they name exactly the periods this render put in the document — a month sealed
+  // inside a collapsed year card is not among them, because a tick for content no
+  // scroll can reach is a promise the rail cannot keep.
+  //
+  // A stop whose period is folded away carries the href that toggles it open and lands
+  // on it ("a tap jumps to that month and expands it on arrival"); a stop whose days
+  // are already rendered carries none, and the rail scrolls to the anchor instead. The
+  // href is built HERE, with the same `filterHref` every other control on the page
+  // uses, so a jump inside "Medical · last year" stays inside it.
+  const scrubberTicks = windowed ? timelineScrubberTicks(windowed) : [];
+  const scrubberStops: ScrubberStop[] = showTimelineScrubber(scrubberTicks)
+    ? scrubberTicks.map((tick) => ({
+        ...tick,
+        href: tick.openKey
+          ? filterHref(
+              category,
+              range,
+              show,
+              toggledTimelineOpen(openFolds, tick.openKey),
+              tick.anchorId
+            )
+          : null,
+      }))
+    : [];
+
   // ONE day group, rendered identically wherever it sits — the recent band, an
   // expanded month, or the unwindowed single-day feed. Extracted so the bands cannot
   // drift into three copies of the same section.
@@ -1229,7 +1260,18 @@ export default async function TimelinePage(props: {
             ))}
         </div>
       ) : (
-        <div id="timeline-feed" className="relative">
+        /* The rail's 44px hit strip is fixed to the viewport's right edge, and its
+           whole point is that the touch target is far wider than the ~5px visual. That
+           makes it overlap the feed's own right edge, where event-card links live — so
+           the feed gives up a gutter of exactly the rail's width whenever the rail
+           renders. The rail owns that column; it never squats on a tap target. */
+        <div
+          id="timeline-feed"
+          className={`relative ${scrubberStops.length > 0 ? "pr-11" : ""}`}
+        >
+          {scrubberStops.length > 0 && (
+            <TimelineScrubber stops={scrubberStops} />
+          )}
           <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-59 md:block dark:bg-white/10" />
           <div className="space-y-0">
             {windowed ? (

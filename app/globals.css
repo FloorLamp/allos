@@ -675,10 +675,12 @@
 
 /* ── SECTION: Micro-motion ── */
 /* Micro-motion (issue #2654) — the small moves that answer "did that work?".
-   Four of them, and their whole justification is that they carry INFORMATION: a
+   Five of them, and their whole justification is that they carry INFORMATION: a
    tap-shaped confirm visibly BECOMING its done state, a quantity visibly CHANGING
    rather than being replaced, a dismissed finding visibly TRAVELLING toward the fold
-   that catches it, and that fold visibly ANSWERING.
+   that catches it, that fold visibly ANSWERING, and the jump rail's bubble BEATING as
+   the finger crosses out of one month into the next (#2657 item 4 — the one tenant
+   that answers for a gesture rather than for a write).
 
    The numbers live in these custom properties and nowhere else. lib/micro-motion.ts
    mirrors them (its MICRO_MOTIONS table hands the same number to the counter's
@@ -706,6 +708,7 @@
   --motion-settle: 300ms;
   --motion-count: 250ms;
   --motion-slide: 300ms;
+  --motion-tick: 180ms;
   /* Band-exempt, see the note above. */
   --motion-fold: 500ms;
   /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
@@ -795,6 +798,31 @@
   animation: micro-fold var(--motion-fold) var(--motion-ease);
 }
 
+/* The jump rail's bubble crossing a month boundary (#2657 item 4). One beat, in
+   place: the bubble swells a hair and settles, and nothing around it moves because
+   the bubble is `position: fixed` over the feed.
+
+   This is the visual half of a two-channel cue whose other half is missing on most
+   of the devices that will use it — iOS ships no Vibration API, so the 8 ms haptic
+   simply never fires there. That is why the beat is not decoration: on an iPhone it
+   is the ONLY non-textual confirmation that the scrub moved into a new month. Its
+   text carrier is the bubble's own label, which is correct on every frame either
+   way. */
+@keyframes micro-tick {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.motion-tick {
+  animation: micro-tick var(--motion-tick) var(--motion-ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. `microMotionPlan()` already returns no class under the
      preference, so these are not applied at all — but a stylesheet that only works
@@ -805,6 +833,7 @@
   .motion-settle,
   .motion-count,
   .motion-slide,
+  .motion-tick,
   .motion-fold {
     animation: none;
   }
