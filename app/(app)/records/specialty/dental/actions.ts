@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -30,6 +31,14 @@ import {
 // Periodontal MEASUREMENTS are NOT written here — they are biomarker readings
 // (medical_records) captured on the Biomarkers surface, the #698 vision-analyte
 // precedent. This form captures the tooth-anchored procedure/finding narrative.
+//
+// MULTI-VIEW (#2557): the pane now LISTS several members, so the per-row writes gate
+// through gateItemProfile — the ROW's posted profile, re-authorized with
+// requireProfileWriteAccess, not the acting one. That is the half that makes the
+// listing honest: `ProfileScope` is data, never a write gate (AGENTS.md), so a row
+// being visible proves nothing about the caller's right to change it. `add` and the
+// recheck follow-up stay on the ACTING profile — they create, and the actor is the
+// subject they create for.
 
 function revalidateDental() {
   // Dental folded into Health record (#1042 final tail): the surface is now
@@ -91,7 +100,9 @@ export async function addDentalProcedure(
 export async function updateDentalProcedure(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#2557): gate + target the ROW's own profile; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that record.");
   const name = str(formData, "name");
@@ -121,7 +132,7 @@ export async function updateDentalProcedure(
     str(formData, "notes"),
     providerId,
     id,
-    profile.id
+    profileId
   );
   revalidateDental();
   return formOk();
@@ -130,17 +141,17 @@ export async function updateDentalProcedure(
 export async function deleteDentalProcedure(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that record.");
   // Row-ops side-state (#199-#203, #700): a follow-up may link this record as its
   // SOURCE finding, or a resolution may cite it as the resolving record — both carry
   // a REFERENCES FK with no ON DELETE. NULL those links FIRST so the delete can't
   // trip the care_plan_items FK.
-  unlinkFollowUpsForDentalProcedure(profile.id, id);
+  unlinkFollowUpsForDentalProcedure(profileId, id);
   db.prepare(
     "DELETE FROM dental_procedures WHERE id = ? AND profile_id = ?"
-  ).run(id, profile.id);
+  ).run(id, profileId);
   revalidateDental();
   return formOk();
 }

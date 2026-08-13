@@ -27,10 +27,14 @@ const TOOTH_SYSTEM_LABEL: Record<ToothSystem, string> = {
 export default function DentalProcedureForm({
   action,
   record,
+  profileId,
   onDone,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   record?: DentalProcedure;
+  // Multi-view (#2557): the row's OWN profile, posted so an edit on a non-acting
+  // member's row targets that member (gateItemProfile). Undefined in single view.
+  profileId?: number;
   onDone?: () => void;
 }) {
   const toast = useToast();
@@ -69,6 +73,9 @@ export default function DentalProcedureForm({
       data-testid="dental-procedure-form"
     >
       {editing && <input type="hidden" name="id" value={record!.id} />}
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       <div>
         <label className="label" htmlFor={`dp-name-${uid}`}>
           Procedure / finding
