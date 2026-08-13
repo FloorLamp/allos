@@ -198,7 +198,7 @@ export default function MobileDock({
             aria-expanded={logSheetOpen}
             data-testid="dock-log-puck"
             onClick={() => setLogSheetOpen(true)}
-            className="press absolute -top-5 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg ring-4 ring-white transition hover:bg-brand-700 dark:ring-ink-950"
+            className="press absolute -top-5 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-(--btn) text-(--btn-fg) shadow-lg ring-4 ring-(--nav) transition hover:bg-(--btn-hover)"
           >
             <IconPlus className="h-7 w-7" stroke={2} />
           </button>

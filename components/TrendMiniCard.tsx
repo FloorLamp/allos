@@ -201,7 +201,7 @@ export default function TrendMiniCard({
         >
           <span
             // Same breakpoint swap, same fix as the full variant's title below.
-            className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:wrap-anywhere sm:whitespace-normal dark:text-slate-400 dark:group-hover:text-brand-300"
+            className="truncate text-sm font-medium text-slate-500 group-hover:text-brand-700 group-hover:underline sm:wrap-break-word sm:whitespace-normal dark:text-slate-400 dark:group-hover:text-brand-300"
             title={title}
           >
             {mobileTitle && mobileTitle !== title ? (
@@ -226,7 +226,7 @@ export default function TrendMiniCard({
 
   const value =
     latest != null ? (
-      <span className="flex flex-wrap items-baseline gap-1.5 sm:shrink-0 sm:flex-nowrap sm:whitespace-nowrap">
+      <span className="flex flex-wrap items-baseline gap-1.5 sm:shrink-0">
         <span className="text-2xl font-semibold leading-tight tabular-nums text-slate-900 dark:text-slate-100">
           {headline ?? (
             <>
@@ -301,12 +301,16 @@ export default function TrendMiniCard({
             // truncation, it is a WRONG LABEL — and the box is narrowest on the
             // tiles carrying the most value+delta context, which is backwards.
             //
-            // `wrap-anywhere` (`overflow-wrap: anywhere`) gives an unbreakable
-            // token break opportunities, so the whole name renders across lines
-            // and nothing is lost; the ellipsis stays behind it for anything that
-            // still cannot fit. Below `sm:` this is inert — `white-space: nowrap`
-            // leaves nothing to wrap.
-            className="min-w-0 truncate group-hover:underline sm:flex-1 sm:wrap-anywhere sm:whitespace-normal sm:text-base sm:font-semibold"
+            // `wrap-break-word` gives an unbreakable token break opportunities,
+            // so the whole name renders across lines and nothing is lost; the
+            // ellipsis stays behind it for anything that still cannot fit. NOT
+            // `wrap-anywhere`: `anywhere` collapses the title's min-content
+            // width to ~one glyph, so a wide value squeezed the flex title to a
+            // sliver and shredded "Traini/ng/Volu/me" one syllable per line
+            // (#2719 walkthrough) — `break-word` keeps min-content at the
+            // longest word, so words wrap whole first. Below `sm:` this is
+            // inert — `white-space: nowrap` leaves nothing to wrap.
+            className="min-w-0 truncate group-hover:underline sm:flex-1 sm:wrap-break-word sm:whitespace-normal sm:text-base sm:font-semibold"
             title={title}
           >
             {mobileTitle && mobileTitle !== title ? (

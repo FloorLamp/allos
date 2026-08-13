@@ -127,7 +127,7 @@ export default function ImportClient({
                 onClick={() => pickType(t)}
                 className={`rounded-lg border px-3 py-2 text-sm font-medium capitalize transition ${
                   active
-                    ? "border-brand-500 bg-brand-500 text-white"
+                    ? "border-(--seg-active-bg) bg-(--seg-active-bg) text-(--seg-active-fg)"
                     : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
                 }`}
               >

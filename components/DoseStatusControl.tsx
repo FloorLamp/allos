@@ -272,7 +272,7 @@ export default function DoseStatusControl({
     variant === "circle"
       ? `flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
           isTaken
-            ? "cursor-default border-brand-600 bg-brand-600 text-white"
+            ? "cursor-default border-(--seg-active-bg) bg-(--seg-active-bg) text-(--seg-active-fg)"
             : isSkipped
               ? "border-black/5 bg-slate-50 text-slate-300 hover:text-brand-500 dark:border-white/5 dark:bg-ink-900/60 dark:text-slate-600 dark:hover:text-brand-400"
               : "border-black/10 text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-white/10 dark:text-slate-400 dark:hover:text-brand-400"

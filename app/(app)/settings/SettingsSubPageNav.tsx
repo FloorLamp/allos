@@ -31,7 +31,7 @@ export default function SettingsSubPageNav({
             aria-current={active ? "page" : undefined}
             className={`rounded-full px-3 py-1 text-sm font-medium ${
               active
-                ? "bg-brand-600 text-white"
+                ? "bg-(--accent-soft) text-brand-800 dark:text-brand-400"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-750 dark:text-slate-300 dark:hover:bg-ink-700"
             }`}
           >

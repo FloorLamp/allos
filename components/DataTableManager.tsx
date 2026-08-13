@@ -192,7 +192,7 @@ export default function DataTableManager({
                 onClick={toggleEdit}
                 className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-medium ${
                   editing
-                    ? "bg-brand-500 text-white hover:bg-brand-600"
+                    ? "bg-(--seg-active-bg) text-(--seg-active-fg)"
                     : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-800"
                 }`}
               >

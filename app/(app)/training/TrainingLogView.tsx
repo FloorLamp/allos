@@ -854,7 +854,7 @@ export default function TrainingLogView({
                 setFilters((f) => ({ ...f, query: e.target.value }))
               }
               placeholder="Search activities or exercises…"
-              className="input appearance-none bg-white pr-10 pl-9 [&::-webkit-search-cancel-button]:appearance-none dark:bg-ink-900"
+              className="input appearance-none pr-10 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
             />
             {filters.query && (
               <button
@@ -872,7 +872,7 @@ export default function TrainingLogView({
             <div
               role="group"
               aria-label="Activity type"
-              className="inline-flex overflow-hidden rounded-lg border border-black/10 bg-white divide-x divide-black/10 dark:border-white/10 dark:bg-ink-900 dark:divide-white/10"
+              className="inline-flex overflow-hidden rounded-lg border border-black/10 bg-field divide-x divide-black/10 dark:border-white/10 dark:divide-white/10"
             >
               {TYPE_FILTERS.map((f) => {
                 const active = (activeFilters.type ?? "all") === f.value;
@@ -889,7 +889,7 @@ export default function TrainingLogView({
                     aria-pressed={active}
                     className={`px-3 py-1.5 text-sm font-medium transition ${
                       active
-                        ? "bg-brand-500 text-white"
+                        ? "bg-(--seg-active-bg) text-(--seg-active-fg)"
                         : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-ink-800"
                     }`}
                   >

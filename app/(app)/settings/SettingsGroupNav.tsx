@@ -43,7 +43,7 @@ export default function SettingsGroupNav({
                 data-testid={`settings-nav-${g.id}`}
                 className={`block rounded-lg px-3 py-1.5 text-sm font-medium ${
                   active
-                    ? "bg-brand-600 text-white"
+                    ? "bg-(--accent-soft) text-brand-800 dark:text-brand-400"
                     : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
                 }`}
               >
