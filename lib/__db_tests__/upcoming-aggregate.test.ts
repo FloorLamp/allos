@@ -17,7 +17,15 @@ import {
   collectMultiProfileDoseProgress,
 } from "@/lib/queries";
 import { doseItems } from "@/lib/queries/upcoming/intake-safety";
-import { weekdayOfDateStr } from "@/lib/date";
+import { goalItems } from "@/lib/queries/upcoming/plans";
+import { collectUpcoming } from "@/lib/queries";
+import { groupUpcoming } from "@/lib/upcoming";
+import {
+  aggregateLabel,
+  aggregateNearestDueDate,
+  planBandRender,
+} from "@/lib/upcoming-aggregate";
+import { shiftDateStr, weekdayOfDateStr } from "@/lib/date";
 
 let seq = 0;
 
@@ -182,5 +190,150 @@ describe("collectMultiProfileDoseProgress (#1504 × #1096)", () => {
     // fraction over exactly the rows it renders.
     expect([...collectMultiProfileDoseProgress([b]).keys()]).toEqual([b]);
     expect(doseDayProgress(b, dayB)).toEqual({ scheduled: 1, taken: 0 });
+  });
+});
+
+// ── The goal fold, end to end (#2579-A) ──
+//
+// The pure tier proves planBandRender folds three `goal` rows. This proves the thing
+// the pure tier cannot: that the rows REACHING it from a real profile are goal rows
+// with real deadlines, that the fold is what the Later band actually renders, and
+// that a folded goal keeps the identity the suppression bus writes against — the
+// #1496 discipline (rendering aggregates; identity does not) asserted against the
+// store rather than against a literal.
+//
+// Fictional goal titles, no PHI.
+function mkGoal(profileId: number, title: string, targetDate: string): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO goals (profile_id, title, status, archived, target_date)
+         VALUES (?, ?, 'active', 0, ?)`
+      )
+      .run(profileId, title, targetDate).lastInsertRowid
+  );
+}
+
+describe("goal deadlines through the fold (#2579-A)", () => {
+  it("folds a real profile's Later goals and keeps every one present and counted", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    // Four deadlines, all past the This-week boundary (day 8+), deliberately NOT in
+    // date order so the nearest-date claim cannot pass by reading the first row.
+    const ids = [
+      mkGoal(
+        profileId,
+        "Aggregate goal — ride a century",
+        shiftDateStr(day, 200)
+      ),
+      mkGoal(
+        profileId,
+        "Aggregate goal — deadlift bodyweight",
+        shiftDateStr(day, 40)
+      ),
+      mkGoal(profileId, "Aggregate goal — swim a mile", shiftDateStr(day, 120)),
+      mkGoal(
+        profileId,
+        "Aggregate goal — hold a handstand",
+        shiftDateStr(day, 300)
+      ),
+    ];
+
+    const items = goalItems(profileId);
+    expect(items.map((i) => i.key).sort()).toEqual(
+      ids.map((id) => `goal:${id}`).sort()
+    );
+
+    const later = groupUpcoming(items, day).find((g) => g.band === "later");
+    expect(later).toBeDefined();
+    const nodes = planBandRender(later!.items);
+    // ONE disclosure, holding all four. Completeness is the charter: no horizon
+    // dropped a goal, and the fold hid none of them from the count.
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].node).toBe("aggregate");
+    if (nodes[0].node !== "aggregate") return;
+    expect(nodes[0].kind).toBe("goal");
+    expect(nodes[0].items).toHaveLength(4);
+
+    // The headline the collapsed row states, over the same four rows.
+    expect(aggregateNearestDueDate(nodes[0].items)).toBe(shiftDateStr(day, 40));
+    expect(
+      aggregateLabel("goal", nodes[0].items.length, { nearestLabel: "Sep 26" })
+    ).toBe("4 goal deadlines · nearest Sep 26");
+  });
+
+  it("keeps the suppression identity of every folded row", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    const keep = [
+      mkGoal(profileId, "Aggregate goal — walk daily", shiftDateStr(day, 60)),
+      mkGoal(profileId, "Aggregate goal — sleep by ten", shiftDateStr(day, 90)),
+      mkGoal(profileId, "Aggregate goal — read more", shiftDateStr(day, 150)),
+    ];
+    const dismissed = mkGoal(
+      profileId,
+      "Aggregate goal — learn to skate",
+      shiftDateStr(day, 45)
+    );
+
+    const before = collectUpcoming(profileId, day).filter(
+      (i) => i.domain === "goal"
+    );
+    expect(before).toHaveLength(4);
+
+    // Dismiss ONE folded row by its own key. The fold never re-keyed it, so the bus
+    // reaches it exactly as it would an unfolded row.
+    db.prepare(
+      `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
+         VALUES (?, ?, datetime('now'))`
+    ).run(profileId, `goal:${dismissed}`);
+
+    const after = collectUpcoming(profileId, day).filter(
+      (i) => i.domain === "goal"
+    );
+    expect(after.map((i) => i.key).sort()).toEqual(
+      keep.map((id) => `goal:${id}`).sort()
+    );
+
+    // …and the remaining three still fold: the dismissal changed the count, not the
+    // class. The nearest deadline moves with it, which is the whole reason the
+    // headline is recomputed from the items rather than cached.
+    const later = groupUpcoming(after, day).find((g) => g.band === "later");
+    const nodes = planBandRender(later!.items);
+    expect(nodes).toHaveLength(1);
+    if (nodes[0].node !== "aggregate") throw new Error("expected an aggregate");
+    expect(nodes[0].kind).toBe("goal");
+    expect(nodes[0].items).toHaveLength(3);
+    expect(aggregateNearestDueDate(nodes[0].items)).toBe(shiftDateStr(day, 60));
+  });
+
+  it("leaves an arranging errand at full height beside the fold", () => {
+    // The defect the fold exists to fix: a colonoscopy to book buried under goal
+    // deadlines. The appointment is a row; the goals are one line.
+    const profileId = mkProfile();
+    const day = today(profileId);
+    for (const [title, offset] of [
+      ["Aggregate goal — climb a 5.11", 30],
+      ["Aggregate goal — run a marathon", 75],
+      ["Aggregate goal — cut sugar", 110],
+    ] as const) {
+      mkGoal(profileId, title, shiftDateStr(day, offset));
+    }
+    const appointment = {
+      key: "appointment:9001",
+      domain: "appointment" as const,
+      title: "Aggregate appointment — colonoscopy",
+      href: "/upcoming" as const,
+      dueDate: shiftDateStr(day, 50),
+    };
+
+    const later = groupUpcoming(
+      [...goalItems(profileId), appointment],
+      day
+    ).find((g) => g.band === "later");
+    const kinds = planBandRender(later!.items).map((n) =>
+      n.node === "item" ? n.item.key : `aggregate:${n.kind}`
+    );
+    expect(kinds).toEqual(["aggregate:goal", "appointment:9001"]);
   });
 });

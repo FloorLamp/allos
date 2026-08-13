@@ -65,11 +65,12 @@ widget puts its family straight back into the rollup. A new family with its own
 widget adds one registry line — it does not add another one-off filter.
 
 **The same contract governs the Upcoming page's display aggregation (#1504).**
-The planning page folds a band's scheduled `dose` rows into one disclosure, and
-its `interaction` + `pgx` rows into a second, with the count (and, for Today, the
-day's taken fraction) stated in BOTH states, no dismiss, and no persisted state —
-an aggregate is collapsed on every visit. `lib/upcoming-aggregate.ts` owns the
-decision (`planBandRender`); the page is a formatter over it.
+The planning page folds a band's scheduled `dose` rows into one disclosure, its
+`interaction` + `pgx` rows into a second, and its `goal` deadlines into a third
+(#2579-A), with the count — and the class's own second fact — stated in BOTH
+states, no dismiss, and no persisted state: an aggregate is collapsed on every
+visit. `lib/upcoming-aggregate.ts` owns the decision (`planBandRender`); the page
+is a formatter over it.
 
 Three properties are load-bearing:
 
@@ -82,15 +83,51 @@ Three properties are load-bearing:
   missed-dose escalation, the crisis finding) is never folded, and neither is a
   `prn-max` row — a count that has already been exceeded must not be summarised by
   another count. Both render individually and lead their band.
-- **The rollup's scope is closed**: `interaction` + `pgx` only. `allergy-med`
-  keeps its rank above them (#1029) and stays an individual row, as do the
-  singular care findings. `lib/__tests__/upcoming-aggregate.test.ts` reflects over
-  the whole `UpcomingDomain` union so a new domain must choose a side.
+- **Each rollup's scope is closed**: med-safety is `interaction` + `pgx` only, and
+  the goal fold is `goal` only. `allergy-med` keeps its rank above the med-safety
+  pair (#1029) and stays an individual row, as do the singular care findings.
+  `lib/__tests__/upcoming-aggregate.test.ts` reflects over the whole
+  `UpcomingDomain` union so a new domain must choose a side.
+
+**What a fold's headline states is per class**, because the question a collapsed
+class has to answer without being opened is per class. The dose fold prints the
+day's taken fraction ("5 doses left · 1 of 6 taken"); the goal fold prints the
+nearest deadline as a DATE ("12 goal deadlines · nearest Sep 26"), which is what
+stops a completeness-charter page from building a place things go to be
+forgotten. `AggregateSummaryFacts` carries both and each kind reads only its own —
+a fraction on a goal fold, or a "nearest" on a dose fold, would be a second clause
+that does not describe the rows behind it.
+
+**Which classes fold is the density rule, not a tier judgement.** A row earns full
+height on /upcoming only if this page is its PRIMARY HOME. A goal deadline's home
+is the Training hub's Goals tab; a screening to book, an appointment, a care-plan
+step and a refill have no other home, so they keep their space. Folding is
+deliberately NOT a reach change: a folded goal is still counted in the page total,
+still reachable, still individually snoozeable, and no finding moves across the
+care/coaching reach line to make a layout work.
+
+**Completeness beats compaction where they conflict.** `goalItems` deliberately
+has NO horizon: the fold keeps every dated goal present and counted, because the
+#524 subset invariant is this page's contract with the dashboard hero, and a
+90-day cutoff would both make the ledger lie and manufacture silent day-N arrivals.
 
 The fold is band-scoped (an overdue dose is never summarised together with a
 not-yet-due one), and it does not touch the engines, the bands,
 `compareWithinBand`, `collectUpcoming`, or the suppression bus — the digest, the
 dashboard hero and the calendar feed read the same model unchanged.
+
+**Due text is band-aware past the This-week boundary (#2579-B).** A countdown is a
+unit of urgency: inside the week "3 days overdue" / "tomorrow" / "6 days left"
+each name something the reader can act on. At planning distance it stops being one
+— "45 days left" is arithmetic standing where the only calendar-ready fact
+belongs. So `upcomingDueText`'s fallback prints the calendar date ("Sep 26") for a
+row in the **Later** band and keeps countdown grammar everywhere else. It is a
+DISPLAY decision in one function: an explicit `dueText` override still wins, the
+band asked for is the one the row is already rendered under (so the text can never
+disagree with its heading), and keys, banding and suppression identity are
+untouched. The date follows the viewer's `dateFormat` pref, and its auto-year is
+decided against the PROFILE's today rather than the process wall clock
+(`formatMonthDay(iso, prefs, { today })`).
 
 **The hero's contract is ALWAYS-PRESENT, not always-full (#1413).** The care
 tier's `non-hideable hero` guarantee was refined on exactly one axis: the hero

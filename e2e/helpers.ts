@@ -214,16 +214,17 @@ export async function centerOf(
 
 // Open the Upcoming page's display aggregates (issue #1504).
 //
-// The planning page folds a band's scheduled doses into one disclosure, and its
-// interaction + PGx notes into another, collapsed on every visit. A spec that
-// asserts on an individual dose / interaction / PGx ROW has to open the fold
-// first — the rows are real and unchanged, they are just behind a <details>.
+// The planning page folds a band's scheduled doses into one disclosure, its
+// interaction + PGx notes into another, and its goal deadlines into a third
+// (#2579-A), collapsed on every visit. A spec that asserts on an individual dose /
+// interaction / PGx / goal ROW has to open the fold first — the rows are real and
+// unchanged, they are just behind a <details>.
 //
 // Native <details>, so this needs no hydration and no server round-trip; it is
 // idempotent (an already-open disclosure is skipped) and tolerant of a page with
 // no aggregate at all, so a spec may call it unconditionally after navigating.
 // Pass a `kind` to open only that class.
-export type UpcomingAggregateKind = "dose" | "med-safety";
+export type UpcomingAggregateKind = "dose" | "med-safety" | "goal";
 
 export async function expandUpcomingAggregates(
   scope: Page | Locator,
@@ -232,7 +233,9 @@ export async function expandUpcomingAggregates(
   // Exact testids, never a `^=` prefix: the summary INSIDE each disclosure is
   // `upcoming-aggregate-summary-<kind>`, which a prefix match would also select —
   // and a <summary> has no <summary> of its own, so the loop would hang on it.
-  const kinds: UpcomingAggregateKind[] = kind ? [kind] : ["dose", "med-safety"];
+  const kinds: UpcomingAggregateKind[] = kind
+    ? [kind]
+    : ["dose", "med-safety", "goal"];
   const selector = kinds
     .map((k) => `[data-testid="upcoming-aggregate-${k}"]`)
     .join(", ");
