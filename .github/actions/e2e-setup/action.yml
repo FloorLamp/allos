@@ -66,16 +66,10 @@ runs:
       run: npx playwright install --with-deps --only-shell chromium
       shell: bash
 
-    # Next's incremental compile cache, shared ACROSS RUNS (#61): keyed on the
-    # lockfile + source hash, with a lockfile-only restore key so a source-only
-    # change still warms from the previous build instead of compiling cold.
-    - name: Restore Next.js build cache
-      uses: actions/cache@v6
-      with:
-        path: .next/cache
-        key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'public/**', 'next.config.*') }}
-        restore-keys: |
-          nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+    # MEASUREMENT BRANCH — DO NOT MERGE. The .next/cache restore is removed so the
+    # Build step below reports a COLD build on a runner. Compared against main's
+    # `7.6s restore + 13.5s build`, that is the number that decides whether a 1 GB
+    # cache restored twelve times per run is paying for itself.
 
     # CI runs production-like: build once, then the Playwright webServer boots
     # `next start` against the built app (see playwright.config.ts).
