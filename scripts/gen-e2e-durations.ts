@@ -162,14 +162,16 @@ function reportReshuffle(
       `(docs/internals/e2e-hygiene.md).`
   );
   console.log(
-    `  Expect roughly half the suite or more: greedy LPT assigns in descending-` +
-      `weight order, so ANY weight change swaps two files in that order and ` +
-      `cascades through every later assignment. Measured on this manifest — one ` +
-      `spec +1%: 48%. One spec deleted: 56%. One spec added: 66%. A plain ` +
-      `re-measure with no shape change at all: 86%. So this number is not a ` +
-      `warning sign, it is the shape of the algorithm; what it tells you is that ` +
-      `after this refresh every spec's neighbourhood is new, and a red shard is a ` +
-      `co-residency suspect before it is a regression.`
+    `  Expect a large share: greedy LPT assigns in descending-weight order, so ANY ` +
+      `weight change swaps two files in that order and cascades through every ` +
+      `later assignment. Measured on this manifest at 12 shards — a plain ` +
+      `re-measure, no spec added or removed: 86%. A single spec +1% is anywhere ` +
+      `from 0% to 62% depending on WHERE that spec sits in the weight order ` +
+      `(median 22% across all 394), which is the same cascade seen from its ` +
+      `smallest end. So this number is not a warning sign, it is the shape of the ` +
+      `algorithm; what it tells you is that after this refresh every spec's ` +
+      `neighbourhood is new, and a red shard is a co-residency suspect before it ` +
+      `is a regression.`
   );
 }
 

@@ -1508,12 +1508,20 @@ reports a share rather than a list because there is no small case to list. Measu
 | manifest change                     | specs that change bucket |
 | ----------------------------------- | ------------------------ |
 | identical (control)                 | 0%                       |
-| one spec **+1%**                    | **48%**                  |
+| one spec **+1%**                    | **0–62%**, median 22%    |
 | one spec deleted                    | 56%                      |
 | one spec +10%                       | 60%                      |
 | one spec added                      | 66%                      |
 | a plain re-measure, no shape change | **86%**                  |
 | one heavy spec ×4                   | 90%                      |
+
+Read the single-spec rows as one draw each and the **+1% row as the
+distribution**, because that is the one that was measured exhaustively: perturbing
+each of the 394 specs in turn by +1% moves anywhere from 0% to 62% of the suite,
+median 22%, and WHICH spec decides it — a change to the heaviest file barely
+reorders anything (10%), while one in a dense part of the weight order swaps
+immediately and cascades. The two rows that matter for the conclusion are the
+control (0%) and the plain re-measure (86%), and both are stable.
 
 Greedy LPT assigns in descending-weight order, so ANY weight change swaps two
 files in that order and cascades through every later assignment. This is the
