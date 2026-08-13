@@ -1603,12 +1603,52 @@ worker (~0.2 s boot, ~190 MB RSS) against ONE shared production build.
   and the repo-root `data/` is never touched.
 - **No `auth.setup.ts` / no shared `e2e/.auth/state.json`.** A session is a row
   in ONE database, so a single shared storage state cannot authenticate N
-  databases; each worker signs itself in and keeps its own `auth.json`.
+  databases. Each worker gets its own `auth.json` — but it arrives with the
+  template rather than being earned by driving the login form (see below).
 - **The demo project has no second server.** `e2e/fixtures.ts` recognises the
   `demo` project by name and boots THAT worker's server with `ALLOS_DEMO_MODE=1`
   off the demo template, unauthenticated. The project sets
   `fullyParallel: false` so `demo.spec.ts` keeps running in one worker, in
   order.
+
+**The session is SEEDED, not signed in.** Every worker used to drive the login
+form once during setup. Measured in CI that was `auth=2039ms` against a
+`boot=1540ms` beside it — signing in cost more than starting the server — and it
+is paid per worker AND per worker GENERATION, because a Playwright worker is
+bound to one project, so a shard holding both chromium and mobile specs starts a
+second set partway through. Nearly all of it is one scrypt verification, which is
+the login form's whole job and cannot be made cheaper without making it worse.
+
+So `e2e/seed/session.ts` mints the session while it is seeding the template:
+`createSession` for the row, and the raw token written beside the database as a
+Playwright storageState. The per-worker copy lands it at exactly
+`workerAuthPath(idx)` — same basename (`AUTH_BASENAME`), so neither side
+hard-codes the other's filename — and every worker, and every later generation,
+starts already signed in for free. `fixtures.ts` only checks the file arrived,
+and throws if it did not: a fall back to signing in would still go green, just
+two seconds slower per worker, which is precisely the cost this removed.
+
+Two things that make it faithful rather than merely fast:
+
+- **It reproduces every effect of a successful login that outlives the request**,
+  from the same helpers `app/(auth)/login/actions.ts` uses: `createSession`,
+  both cookies, and `recordAudit(loginSuccess)`. The audit row is not
+  bookkeeping — `e2e/audit-log.spec.ts` asserts a `login.success` entry is
+  visible, and it existed only as a side effect of the worker signing in. Keep
+  the two paired: a fourth effect on that action belongs here too.
+- **It asks for the SERVER's cookie shape, not its own.** `SESSION_COOKIE` is
+  `__Host-` prefixed only when `NODE_ENV === "production"`. The worker servers
+  always are; the seed process is a plain `tsx` script and is not, so the
+  module-level constant it would inherit is the DEV name. That mismatch is
+  silent and total — the browser stores a valid `ht_session`, the server only
+  looks for `__Host-ht_session`, every request is anonymous, and nothing reports
+  a thing. `sessionCookieName(true)` / `slideMarkCookieName(true)` exist to make
+  the question askable.
+
+No coverage is lost: nine specs drive the real form on purpose (`smoke`,
+`dashboard`, `two-factor`, `email-auth`, `family-grants`, `household-rollup`,
+`household-history`, `emergency-card`, `demo`), so the flow is exercised
+deliberately instead of incidentally.
 
 **Worker directory vs slot port (why two indices).** Playwright retires a worker
 process after a failed test and starts a REPLACEMENT for the same slot, and the
