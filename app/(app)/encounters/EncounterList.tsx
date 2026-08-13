@@ -17,10 +17,6 @@ import {
   ENCOUNTER_KIND_ORDER,
   type EncounterKind,
 } from "@/lib/encounter-kind";
-import {
-  normalizeVisitDiagnoses,
-  splitVisitDiagnosisSummary,
-} from "@/lib/visit-diagnoses";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Encounter } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
@@ -45,15 +41,14 @@ function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
   return start;
 }
 
-// Split the "; "-joined diagnoses summary into individual chips, through the SAME
-// vocabulary the import seam joins it with (lib/visit-diagnoses.ts). The root fix for a
-// source-baked " - Primary" duplicate is that seam plus the healing migration (#2589);
-// re-asking the one rule here costs a line and means a row written before either — or by
-// hand — still cannot claim two findings where the source stated one.
+// Split the "; "-joined diagnoses summary into individual chips. Split on the
+// delimiter with any surrounding whitespace so it matches the "; " join exactly.
 function diagnosisList(diagnoses: string | null): string[] {
-  return normalizeVisitDiagnoses(splitVisitDiagnosisSummary(diagnoses)).map(
-    (d) => d.name
-  );
+  if (!diagnoses) return [];
+  return diagnoses
+    .split(/\s*;\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
@@ -77,6 +72,10 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
   {
     header: "Chief complaint",
     cellClassName: "text-slate-600 dark:text-slate-300",
+    // The three placeholder columns of this table (#2588). On a phone an unfilled
+    // one used to read "CHIEF COMPLAINT —"; an Imaging visit with none of the three
+    // was a card of nothing but dashes.
+    empty: (e) => !e.reason,
     cell: (e) =>
       e.reason ? (
         <span className="wrap-break-word">{e.reason}</span>
@@ -88,6 +87,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Diagnoses",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden sm:table-cell",
+    empty: (e) => diagnosisList(e.diagnoses).length === 0,
     cell: (e) => {
       const diagnoses = diagnosisList(e.diagnoses);
       return diagnoses.length > 0 ? (
@@ -110,6 +110,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Provider",
     headerClassName: "hidden md:table-cell",
     cellClassName: "hidden whitespace-nowrap md:table-cell",
+    empty: (e) => !e.provider_name && !e.location_name,
     cell: (e) =>
       e.provider_name || e.location_name ? (
         <div

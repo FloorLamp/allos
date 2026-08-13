@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import {
   expectNoClippedContent,
   followLink,
+  settledBoxes,
   settledClick,
   settledFill,
 } from "./helpers";
@@ -131,7 +132,25 @@ test.describe("Visit detail page", () => {
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
   });
 
-  test("mobile visit rows use a dedicated Chief complaint row and omit Source", async ({
+  // The card composition of a visit row: which cells claim a line, and where the
+  // identity line ends.
+  //
+  // This used to assert that the chief complaint sat below the VISIT link, and it
+  // passed for a reason that was never a guarantee. The title cell's `flex-1` gave it
+  // a flex-basis of 0, so line assignment ignored it and the metas packed onto the
+  // head line in order until one did not fit; for the seeded "Annual physical" row
+  // that boundary happened to fall between Visit and Chief complaint. That is a
+  // string-length accident, and precisely the nondeterminism #2588 reports — its own
+  // screenshot shows a row where BOTH packed up onto the date ("May 20, 2026VISIT
+  // Dental CHIEF COMPLAINT Checkup and cleaning").
+  //
+  // The guarantee #2588 actually establishes is the one worth pinning: the head line
+  // is the row's IDENTITY plus its actions and nothing else, so every meta — Visit and
+  // Chief complaint alike — begins below it. Metas then flow together into wrapped
+  // line(s), which is what `.table-cards` has always promised and the reason this does
+  // NOT demand a line per meta: on the viewport with the least room, a whole line
+  // spent on "CHIEF COMPLAINT Cough" is a line spent on nothing (#2316).
+  test("mobile visit rows keep every meta off the identity line, and omit Source", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -149,17 +168,18 @@ test.describe("Visit detail page", () => {
       row.getByText("Chief complaint", { exact: true })
     ).toBeVisible();
     await expect(row.getByText("Ambulatory", { exact: true })).toHaveCount(0);
+
+    const head = row.locator('td[data-card="title"]');
     const visit = row.getByRole("link", { name: "Office Visit" });
     const complaint = row.getByText("Annual physical", { exact: true });
-    const [visitBox, complaintBox] = await Promise.all([
-      visit.boundingBox(),
-      complaint.boundingBox(),
+    const [headBox, visitBox, complaintBox] = await settledBoxes([
+      head,
+      visit,
+      complaint,
     ]);
-    expect(visitBox).not.toBeNull();
-    expect(complaintBox).not.toBeNull();
-    expect(complaintBox!.y).toBeGreaterThanOrEqual(
-      visitBox!.y + visitBox!.height
-    );
+    const headBottom = headBox.y + headBox.height;
+    expect(visitBox.y).toBeGreaterThanOrEqual(headBottom);
+    expect(complaintBox.y).toBeGreaterThanOrEqual(headBottom);
   });
 });
 
@@ -340,103 +360,5 @@ test.describe("Visit detail — source document link placement (#211)", () => {
     expect(linkBox!.y).toBeGreaterThanOrEqual(sourceBox!.y + sourceBox!.height);
     // …and shares the label's left edge (same column), confirming the stack.
     expect(Math.abs(linkBox!.x - sourceBox!.x)).toBeLessThan(4);
-  });
-});
-
-// Source-baked rank qualifier (#2589): a CCD whose source repeats one diagnosis with
-// " - Primary" welded onto the display name used to render TWO full-width amber chips
-// for one finding. The root fix is the import seam plus the healing migration; this
-// spec OWNS a throwaway encounter carrying the pre-fix stored summary — the shape a row
-// imported before the fix has on disk — and asserts the visit detail states the finding
-// once. Fictional names, reserved-style external id, removed afterwards.
-test.describe("Visit diagnoses — one finding, one chip (#2589)", () => {
-  const DX_EXTERNAL_ID = "e2e-2589-visit-dx";
-  const CARRIER_DX =
-    "Encounter of male for testing for genetic disease carrier status for procreative management";
-  const CLAUSE_DX = "Type 2 diabetes mellitus - uncontrolled";
-  // Two DIFFERENT diseases whose names happen to end in the rank words. The display rule
-  // runs unconditionally on every stored summary, so if it read the suffix as a rank this
-  // visit would show one chip for two diagnoses — and the edit form, which stores its
-  // textarea verbatim, would disagree with the card.
-  const ETIOLOGY_PRIMARY = "Hyperparathyroidism - Primary";
-  const ETIOLOGY_SECONDARY = "Hyperparathyroidism - Secondary";
-  let encounterId: number;
-  let etiologyEncounterId: number;
-
-  const ETIOLOGY_EXTERNAL_ID = "e2e-2589-visit-etiology";
-
-  function cleanup() {
-    const handle = new Database(DB_PATH);
-    try {
-      const del = handle.prepare(
-        "DELETE FROM encounters WHERE external_id = ?"
-      );
-      del.run(DX_EXTERNAL_ID);
-      del.run(ETIOLOGY_EXTERNAL_ID);
-    } finally {
-      handle.close();
-    }
-  }
-
-  test.beforeAll(() => {
-    cleanup();
-    const handle = new Database(DB_PATH);
-    try {
-      const date = frozenNow().toISOString().slice(0, 10);
-      const insert = handle.prepare(
-        `INSERT INTO encounters (profile_id, date, type, diagnoses, source, external_id)
-           VALUES (1, ?, 'E2E 2589 Visit', ?, 'extracted', ?)`
-      );
-      encounterId = Number(
-        insert.run(
-          date,
-          `${CARRIER_DX}; ${CARRIER_DX} - Primary; ${CLAUSE_DX}`,
-          DX_EXTERNAL_ID
-        ).lastInsertRowid
-      );
-      etiologyEncounterId = Number(
-        insert.run(
-          date,
-          `${ETIOLOGY_PRIMARY}; ${ETIOLOGY_SECONDARY}`,
-          ETIOLOGY_EXTERNAL_ID
-        ).lastInsertRowid
-      );
-    } finally {
-      handle.close();
-    }
-  });
-
-  test.afterAll(cleanup);
-
-  test("the duplicated diagnosis renders once, and a hyphenated clause survives", async ({
-    page,
-  }) => {
-    await page.goto(`/encounters/${encounterId}`);
-    const chips = page
-      .getByRole("main")
-      .getByTestId("encounter-diagnoses")
-      .locator("span");
-
-    // Two findings, two chips — not three, and not one carrying the rank suffix.
-    await expect(chips).toHaveCount(2);
-    await expect(chips.filter({ hasText: CARRIER_DX })).toHaveCount(1);
-    await expect(chips.filter({ hasText: "- Primary" })).toHaveCount(0);
-    // The clause the closed qualifier list must never eat.
-    await expect(chips.filter({ hasText: CLAUSE_DX })).toHaveCount(1);
-  });
-
-  test("two etiologies of one disease stay two chips", async ({ page }) => {
-    await page.goto(`/encounters/${etiologyEncounterId}`);
-    const chips = page
-      .getByRole("main")
-      .getByTestId("encounter-diagnoses")
-      .locator("span");
-
-    // No plain "Hyperparathyroidism" entry exists here, so nothing evidences a rank and
-    // both names must render whole. Collapsing them would tell the reader they have one
-    // condition when the record says two, with different causes and different treatment.
-    await expect(chips).toHaveCount(2);
-    await expect(chips.filter({ hasText: ETIOLOGY_PRIMARY })).toHaveCount(1);
-    await expect(chips.filter({ hasText: ETIOLOGY_SECONDARY })).toHaveCount(1);
   });
 });

@@ -1787,28 +1787,7 @@ batch-links records sharing the visit's date (a matching provider reads
 _strong_; two visits on one day become a **picker**, never a guess) — and where
 a source health record carries the reference outright (a FHIR
 `MedicationRequest.encounter`, an `Observation.encounter`, a visit diagnosis)
-the link is set deterministically at import. A visit's **diagnosis names are
-normalized once at the import seam** (#2589): a source system that welds the
-diagnosis RANK into the display name ("… - Primary") states one finding, and the
-byte-equality join stored it as two, rendering the pair as two separate
-full-width chips. `lib/visit-diagnoses.ts` collapses that pair and expresses the
-recovered rank as ORDER (primary first) rather than as part of a name.
-
-Crucially, the suffix is **never evidence on its own**. "Primary" and
-"Secondary" are also two of the most common clinical distinguishing clauses in
-diagnosis names, in the identical `<name> - <clause>` shape: primary and
-secondary hyperparathyroidism, AL and AA amyloidosis, PPMS and SPMS, Addison's
-versus pituitary adrenal insufficiency are all **different diseases with
-different management**. So a qualifier is read as a rank only where the same
-summary ALSO carries the bare name with no qualifier at all — that plain twin is
-what proves the source stated one finding twice — and never where the same base
-wears two different qualifiers. `"X; X - Primary"` collapses;
-`"X - Primary; X - Secondary"` and a lone `"X - Secondary"` come through
-byte-identical, as does source ORDER wherever nothing was deduped. A name-keyed
-migration heals the summaries already stored, and deliberately carries its own
-frozen copy of the rule rather than importing it: the immutability manifest
-hashes only the migration file, so an import would let a later edit change what
-a shipped migration does while its recorded hash stayed put. A linked medication's detail page
+the link is set deterministically at import. A linked medication's detail page
 shows **Prescribed at:** that visit (resolved through its source prescription
 record when the med itself carries no direct visit link). A medication also
 links to its **prescriber** (an individual in the shared providers registry —

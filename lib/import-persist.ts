@@ -23,7 +23,6 @@ import {
   reapplyDocumentCorrections,
 } from "./import-corrections";
 import { clinicalKeyForInput } from "./clinical-content-key";
-import { joinVisitDiagnoses } from "./visit-diagnoses";
 export {
   applyImportFollowups,
   type ImportFollowupOptions,
@@ -1297,12 +1296,7 @@ function insertImportRows(
       e.code_system ?? null,
       e.class_code,
       e.reason,
-      // Normalized + deduped through the ONE rule (#2589): a source that repeats a
-      // diagnosis with a baked-in " - Primary" qualifier states one finding, not two,
-      // and the rank it expressed lands as ORDER (primary first) rather than as part of
-      // a name. Every reader of this column — the Visits chips, the export, the diff
-      // mirror below — sees the same summary.
-      joinVisitDiagnoses(e.diagnoses) || null,
+      e.diagnoses.length ? e.diagnoses.join("; ") : null,
       e.notes,
       providerIdFor(e.provider),
       providerIdFor(e.location),

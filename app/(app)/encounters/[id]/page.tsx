@@ -32,10 +32,6 @@ import VisitEpisodes, {
 } from "@/components/visit-links/VisitEpisodes";
 import { formatRecordDate, sourceLabel } from "@/lib/record-format";
 import { classLabel, encounterTypeDisplay } from "@/lib/encounter-kind";
-import {
-  normalizeVisitDiagnoses,
-  splitVisitDiagnosisSummary,
-} from "@/lib/visit-diagnoses";
 import type { VisitContext } from "@/lib/visit-context";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { PageHeader } from "@/components/ui";
@@ -69,13 +65,12 @@ function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
   return start;
 }
 
-// The visit's diagnoses as chips — the same one rule the Visits list and the import
-// seam read (lib/visit-diagnoses.ts, #2589), so a source-baked " - Primary" duplicate
-// cannot state two findings on either surface.
 function diagnosisList(diagnoses: string | null): string[] {
-  return normalizeVisitDiagnoses(splitVisitDiagnosisSummary(diagnoses)).map(
-    (d) => d.name
-  );
+  if (!diagnoses) return [];
+  return diagnoses
+    .split(/\s*;\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 // 1 → "1st", 2 → "2nd", 3 → "3rd", 4 → "4th" … (visit-context ordinals).

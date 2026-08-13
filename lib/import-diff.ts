@@ -16,7 +16,6 @@
 
 import { round } from "./units";
 import { cleanMedicationName } from "./prescription-parse";
-import { joinVisitDiagnoses } from "./visit-diagnoses";
 import type { PersistInput, PersistRecord } from "./import-shape";
 
 // The entity kinds an import writes that the diff tracks. Kept in a fixed display
@@ -431,10 +430,7 @@ export function snapshotFromPersistInput(input: PersistInput): ImportSnapshot {
         type: e.type,
         class_code: e.class_code,
         reason: e.reason,
-        // The SAME normalize/dedup the persist seam applies (#2589) — the diff compares
-        // against what will actually be STORED, so a re-import of a document whose
-        // source bakes " - Primary" into a name must not read as a change.
-        diagnoses: joinVisitDiagnoses(e.diagnoses),
+        diagnoses: e.diagnoses.length ? e.diagnoses.join("; ") : "",
         external_id: e.external_id,
       })
     ),
