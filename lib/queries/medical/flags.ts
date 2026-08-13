@@ -37,6 +37,13 @@ export function flagReconcileProfileContext(profileId: number) {
       age: getStoredAge(profileId),
       reproductiveStatus: getProfileReproductiveStatus(profileId),
       periods: listCyclePeriods(profileId),
+      // The profile-LOCAL day the cycle log is read against (#2613). The phase
+      // derivation refuses a date after it, so a record dated ahead of today —
+      // a typo, or a document whose collection date parsed wrong — derives no
+      // phase and falls back to the coarse status proxy, instead of being
+      // judged against a phase range nobody could have been in yet. Resolved
+      // from the profile's own timezone, never the host's UTC day.
+      today: today(profileId),
     },
   };
 }
@@ -198,7 +205,7 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
 }
 import { canonicalResolver } from "../../canonical-resolve";
 import { listCyclePeriods } from "../../cycle-store";
-import { db, writeTx } from "../../db";
+import { db, today, writeTx } from "../../db";
 import {
   computeFlagReconciliation,
   computeQualitativeFlagChanges,
