@@ -238,7 +238,9 @@ describe("habit-tier mobility sessions are out of the fault population", () => {
   it("passes with no session duration at all", () => {
     // The bar only writes duration when the user states one; the moves alone
     // are a complete session.
-    expect(storedActivityFault(mobility({ duration_min: null }), [])).toBeNull();
+    expect(
+      storedActivityFault(mobility({ duration_min: null }), [])
+    ).toBeNull();
   });
 
   it("passes the move-less, duration-only session", () => {
