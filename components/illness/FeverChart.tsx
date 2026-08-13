@@ -276,9 +276,7 @@ export default function FeverChart({
           className="mt-1 h-2 w-2 shrink-0 rotate-45"
           style={{ background: chartSeries.violet }}
         />
-        <span className="min-w-0">
-          Doses: {doseLaneRoster(medications)}
-        </span>
+        <span className="min-w-0">Doses: {doseLaneRoster(medications)}</span>
       </p>
     </>
   );

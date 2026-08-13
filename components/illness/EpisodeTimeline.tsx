@@ -724,9 +724,7 @@ export default function EpisodeTimeline({
                           <Fragment key={key}>
                             <tr
                               data-testid={`illness-event-${event.kind}`}
-                              data-filtered-out={
-                                filteredOut ? "true" : "false"
-                              }
+                              data-filtered-out={filteredOut ? "true" : "false"}
                               className={
                                 filteredOut
                                   ? "hidden border-b border-black/5 py-2 print:table-row dark:border-white/5"

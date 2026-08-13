@@ -88,12 +88,7 @@ export interface IllnessTimelineDayGroup {
 //   • it never leads when the strip is not rendered, because a default the reader
 //     cannot undo is a trap rather than a default.
 export type IllnessTimelineFilter =
-  | "all"
-  | "illness"
-  | "symptoms"
-  | "temperature"
-  | "medications"
-  | "care";
+  "all" | "illness" | "symptoms" | "temperature" | "medications" | "care";
 
 export const ILLNESS_TIMELINE_FILTERS: readonly {
   value: IllnessTimelineFilter;
@@ -155,7 +150,8 @@ export function defaultIllnessTimelineFilter(
   if (available.length < ILLNESS_TIMELINE_MIN_CHIPS) return "all";
   const events = groups.flatMap((group) => group.events);
   const count = (filter: IllnessTimelineFilter) =>
-    events.filter((event) => matchesIllnessTimelineFilter(event, filter)).length;
+    events.filter((event) => matchesIllnessTimelineFilter(event, filter))
+      .length;
   // The narrowest offered chip that still carries the whole illness signal.
   const lead: IllnessTimelineFilter | null = available.some(
     (option) => option.value === "illness"

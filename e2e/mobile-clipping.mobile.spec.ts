@@ -1,10 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
-import {
-  expectNoClippedContent,
-  hydratedClick,
-  settledBoxes,
-} from "./helpers";
+import { expectNoClippedContent, hydratedClick, settledBoxes } from "./helpers";
 
 // Content clipped inside its own container at 390px (issue #2614).
 //
@@ -21,10 +17,7 @@ import {
 
 // The right edge of `locator` against the right edge of the box that contains it,
 // with the container NOT scrolled. Positive means the content hangs past the edge.
-async function overhangWithin(
-  inner: Locator,
-  outer: Locator
-): Promise<number> {
+async function overhangWithin(inner: Locator, outer: Locator): Promise<number> {
   // `settledBoxes` and not two `boundingBox()` reads: a relative assertion built
   // from independent round-trips can describe a layout that never existed.
   const [innerBox, outerBox] = await settledBoxes([inner, outer]);
@@ -148,7 +141,9 @@ test.describe("mobile clipping batch (#2614)", () => {
         // `scrollWidth` is the untruncated text width; a name whose rendered box
         // shows less than half of it has been sacrificed to the value column.
         return box.width * 2 < link.scrollWidth
-          ? [`${link.textContent?.trim()} rendered at ${Math.round(box.width)}px`]
+          ? [
+              `${link.textContent?.trim()} rendered at ${Math.round(box.width)}px`,
+            ]
           : [];
       })
     );

@@ -99,7 +99,10 @@ function openEpisode(
         ORDER BY start_date IS NULL, start_date DESC, id DESC LIMIT 1`
     )
     .get(PROFILE) as { id: number; start_date: string | null } | undefined;
-  expect(row, "the seed gives profile 1 an ongoing illness episode").toBeTruthy();
+  expect(
+    row,
+    "the seed gives profile 1 an ongoing illness episode"
+  ).toBeTruthy();
   const today = localDay(tz, 0);
   const start = row!.start_date ?? today;
   // Walk the profile's own calendar rather than parsing a date string into an
@@ -141,8 +144,10 @@ function seedRoutineStack(
       // A STATED administration instant on the profile's own clock (#1417).
       const clock = `0${7 + index}`.slice(-2);
       const occurred = zonedWallTimeToUtc(tz, day, `${clock}:05`);
-      expect(occurred, "the fixture clock must resolve in the profile's zone")
-        .not.toBeNull();
+      expect(
+        occurred,
+        "the fixture clock must resolve in the profile's zone"
+      ).not.toBeNull();
       db.prepare(
         `INSERT INTO intake_item_logs (dose_id, item_id, date, occurred_at, status, amount)
          VALUES (?, ?, ?, ?, 'taken', '1 serving')`
@@ -209,10 +214,9 @@ test.describe("an active episode page on a phone (#2612)", () => {
       // routine stack outnumbers the symptom + temperature rows.
       const chips = page.getByTestId("illness-history-filters");
       await expect(chips).toBeVisible();
-      await expect(chips.getByRole("button", { name: "Illness" })).toHaveAttribute(
-        "aria-pressed",
-        "true"
-      );
+      await expect(
+        chips.getByRole("button", { name: "Illness" })
+      ).toHaveAttribute("aria-pressed", "true");
       await expect(chips.getByRole("button", { name: "All" })).toHaveAttribute(
         "aria-pressed",
         "false"
@@ -316,7 +320,9 @@ test.describe("an active episode page on a phone (#2612)", () => {
       // signal, and the strip never shows two chips selecting the same rows.
       const chips = page.getByTestId("illness-history-filters");
       await expect(chips).toBeVisible();
-      await expect(chips.getByRole("button", { name: "Illness" })).toHaveCount(0);
+      await expect(chips.getByRole("button", { name: "Illness" })).toHaveCount(
+        0
+      );
       await expect(
         chips.getByRole("button", { name: "Symptoms" })
       ).toHaveAttribute("aria-pressed", "true");
