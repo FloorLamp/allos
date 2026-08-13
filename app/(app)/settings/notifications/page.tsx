@@ -44,6 +44,7 @@ import {
   resolveEmailRecipients,
 } from "@/lib/notifications/email";
 import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
+import { channelReadiness } from "@/lib/notifications/matrix-liveness";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import { notifyScopeForLogin } from "@/lib/notify-scope-db";
 import { notifyScopeCaption } from "@/lib/notify-scope";
@@ -158,18 +159,37 @@ export default async function NotificationsSettingsPage() {
   const notifyScope =
     login.role === "admin" ? notifyScopeForLogin(login.id) : null;
 
-  // The Telegram column is deliverable for THIS profile when at least one managing
-  // login (deduped by chat) has an enabled chat — the login-scoped fan-out (#1072).
-  const telegramConfigured =
-    botConfigured && resolveTelegramRecipients(profile.id).length > 0;
-  const pushConfigured =
-    isPushConfigured() && countPushSubscriptionsForLogin(login.id) > 0;
-  const haConfigured = ha.enabled && isValidWebhookUrl(ha.webhookUrl);
-  // The email column is deliverable for THIS profile when SMTP is configured and at
-  // least one managing login has the channel enabled with an address (#1855).
   const smtpConfigured = isEmailConfigured();
-  const emailConfigured =
-    smtpConfigured && resolveEmailRecipients(profile.id).length > 0;
+  // What each matrix column needs before it can carry anything (#2565 part B). This is
+  // the SAME deliverability test the four `*Configured` booleans carried — the AND of
+  // the two halves is unchanged — split into the instance-wide half and the
+  // per-recipient half, plus which TIER owns that recipient. The split is the point:
+  // this page is deliberately mixed-tier, and "not set up" meant three different
+  // obligations (an admin's, this login's, this profile's) with nothing on screen to
+  // tell them apart.
+  //
+  // WHICH tier owns which column is declared in `channelReadiness`, not here — this
+  // page supplies FACTS only. Web Push in particular has NO admin step despite its
+  // instance-wide VAPID keypair (it is generated lazily on first use, and there is no
+  // control for it on Settings → Server), so `isPushConfigured()` is part of the
+  // LOGIN-tier fact rather than a server-tier one. See that module's header.
+  //
+  // TWO of these reads — the Telegram and Email recipient fan-outs — used to be skipped
+  // by a short-circuit when their server half was false, and now always run. Both are
+  // read-only settings/fan-out queries on a force-dynamic page that is not a hot path,
+  // and the fact shape is worth more than the skip. Push's own short-circuit survives
+  // verbatim inside `pushSubscribed`, which is byte-identical to main's `pushConfigured`.
+  const readiness = channelReadiness({
+    telegramBotConfigured: botConfigured,
+    telegramRecipient: resolveTelegramRecipients(profile.id).length > 0,
+    pushSubscribed:
+      isPushConfigured() && countPushSubscriptionsForLogin(login.id) > 0,
+    haWebhook: ha.enabled && isValidWebhookUrl(ha.webhookUrl),
+    smtpConfigured,
+    emailRecipient: resolveEmailRecipients(profile.id).length > 0,
+  });
+  const telegramConfigured =
+    readiness.telegram.serverReady && readiness.telegram.targetReady;
   const householdRound = getProfileHouseholdRound(profile.id);
 
   // UNROUTABLE (#2173) — said at the exact place someone would fix it. This profile
@@ -333,10 +353,12 @@ export default async function NotificationsSettingsPage() {
                 pushDisabled={getLoginPushDisabledKinds(login.id)}
                 haDisabled={ha.disabledKinds}
                 emailDisabled={getLoginEmailDisabledKinds(login.id)}
-                telegramConfigured={telegramConfigured}
-                pushConfigured={pushConfigured}
-                haConfigured={haConfigured}
-                emailConfigured={emailConfigured}
+                // #2565 part B: which columns can carry anything, and — when one
+                // cannot — whose setup step is missing. Render-only; no key on this
+                // page is written by it.
+                readiness={readiness}
+                isAdmin={login.role === "admin"}
+                profileName={profile.name}
               />
             </PageContainer>
           </Section>
