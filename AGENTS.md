@@ -746,6 +746,14 @@ server, and freezes the run's clock. Specs import `test` and `expect` from
 Use stable test IDs and the settled interaction helpers in `e2e/helpers.ts`.
 Do not add `waitForTimeout`, `networkidle`, or an unmarked `.first()` on a shared
 surface. A test owns its fixture data and must not exact-count shared seed rows.
+A spec that WRITES to the shared profile also leaves it as it found it, and one
+whose precondition is an ABSENCE ("no tracked protein", "never measured") owns
+that state rather than trusting the seed to keep it: specs sharing a worker share
+its database, so a neighbour's ordinary write silently destroys an absence and
+neither spec is wrong alone. Duration-balanced shards decide who those neighbours
+are, so a manifest refresh is a co-residency change — and a colliding pair only
+collides when both land on the SAME worker, which means a green run at
+`--workers=2` proves nothing and `PW_WORKERS=1` is the reproduction.
 Do not write redundant assertions or defensive assert checks for conditions
 already proven by types or prior control flow.
 See `docs/internals/e2e-hygiene.md`.
