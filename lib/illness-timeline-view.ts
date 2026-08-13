@@ -61,6 +61,115 @@ export interface IllnessTimelineDayGroup {
   events: IllnessTimelineDisplayEvent[];
 }
 
+// ── The History chips, and which one the page OPENS on (#2612) ───────────────
+//
+// The chips themselves are not new and nothing here removes one or hides a row.
+// What moved is the ENTRY POINT. `assembleIllnessEpisode` gathers every
+// `may`-obligation intake logged inside the window — deliberately, since that is
+// where PRN illness care lives — and on a profile whose routine stack is ALSO
+// filed `may` (creatine, whey, iron, a calcium tablet) that is 8–10 identically
+// shaped dose rows a day against 2–5 symptom and temperature rows. So the page
+// opened on the routine ledger and the illness story scrolled off the phone: an
+// active 4-day episode measured 4556px against 2631px for the same profile
+// resolved.
+//
+// The judgement made here is a PRESENTATION one, and only that. Distinguishing
+// "episode-relevant" intake from the routine stack in the DATA is a different,
+// owner-level question (it would change the chart lane, the headline and the share
+// payload); this file does not attempt it. The dose rows are not noise in general
+// — a fever episode's ibuprofen IS the care — so:
+//
+//   • `illness` is a UNION of two existing chips (symptoms + temperature), offered
+//     only when it is genuinely wider than either, so no episode gets two chips
+//     that select the same rows;
+//   • it leads ONLY when the dilution is real — the medication rows outnumber the
+//     illness rows they would be read against — and the page opens on "All"
+//     exactly as before otherwise;
+//   • it never leads when the strip is not rendered, because a default the reader
+//     cannot undo is a trap rather than a default.
+export type IllnessTimelineFilter =
+  | "all"
+  | "illness"
+  | "symptoms"
+  | "temperature"
+  | "medications"
+  | "care";
+
+export const ILLNESS_TIMELINE_FILTERS: readonly {
+  value: IllnessTimelineFilter;
+  label: string;
+}[] = [
+  { value: "all", label: "All" },
+  { value: "illness", label: "Illness" },
+  { value: "symptoms", label: "Symptoms" },
+  { value: "temperature", label: "Temperature" },
+  { value: "medications", label: "Meds" },
+  { value: "care", label: "Care" },
+];
+
+export function matchesIllnessTimelineFilter(
+  event: IllnessTimelineDisplayEvent,
+  filter: IllnessTimelineFilter
+): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "illness":
+      return event.kind === "symptom" || event.kind === "temperature";
+    case "symptoms":
+      return event.kind === "symptom";
+    case "temperature":
+      return event.kind === "temperature";
+    case "medications":
+      return event.kind === "medication" || event.kind === "course";
+    case "care":
+      return ["encounter", "appointment", "document"].includes(event.kind);
+  }
+}
+
+// The chips this episode's ledger can actually offer. "All" always; a narrowing
+// chip only when it selects something; `illness` only when BOTH of its halves are
+// present (otherwise the single chip already IS the illness view).
+export function availableIllnessTimelineFilters(
+  groups: readonly IllnessTimelineDayGroup[]
+): { value: IllnessTimelineFilter; label: string }[] {
+  const events = groups.flatMap((group) => group.events);
+  const has = (filter: IllnessTimelineFilter) =>
+    events.some((event) => matchesIllnessTimelineFilter(event, filter));
+  return ILLNESS_TIMELINE_FILTERS.filter(({ value }) => {
+    if (value === "all") return true;
+    if (value === "illness") return has("symptoms") && has("temperature");
+    return has(value);
+  }).map((option) => ({ ...option }));
+}
+
+// Below this many offered chips the strip does not render at all ("All" plus one
+// other chip select the same rows), so there would be no way back from a narrowed
+// default. Shared with the component so the two cannot disagree.
+export const ILLNESS_TIMELINE_MIN_CHIPS = 3;
+
+export function defaultIllnessTimelineFilter(
+  groups: readonly IllnessTimelineDayGroup[]
+): IllnessTimelineFilter {
+  const available = availableIllnessTimelineFilters(groups);
+  if (available.length < ILLNESS_TIMELINE_MIN_CHIPS) return "all";
+  const events = groups.flatMap((group) => group.events);
+  const count = (filter: IllnessTimelineFilter) =>
+    events.filter((event) => matchesIllnessTimelineFilter(event, filter)).length;
+  // The narrowest offered chip that still carries the whole illness signal.
+  const lead: IllnessTimelineFilter | null = available.some(
+    (option) => option.value === "illness"
+  )
+    ? "illness"
+    : count("symptoms") > 0
+      ? "symptoms"
+      : count("temperature") > 0
+        ? "temperature"
+        : null;
+  if (!lead) return "all";
+  return count("medications") > count(lead) ? lead : "all";
+}
+
 export function illnessCareTimelineEvents(
   care: EpisodeInRangeEvents
 ): IllnessCareTimelineEvent[] {

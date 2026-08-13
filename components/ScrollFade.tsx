@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
 
 // Horizontal scroll container that fades whichever edge has more content
 // scrolled past it, hinting there's more to see. The fade is a mask so it's
@@ -8,6 +15,73 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // when actually scrollable in that direction — no clipping when the content
 // fits or when scrolled fully to an end.
 const FADE = "1.75rem";
+
+export interface ScrollFadeEdges {
+  left: boolean;
+  right: boolean;
+}
+
+// The same fade as a HOOK, for a scroller that must BE the element rather than
+// live inside a wrapper (issue #2614). The Trends tab strip is the case: it owns
+// `role="tablist"`, its own ref and the scroll-the-selected-tab-into-view effect,
+// so wrapping it would separate the tablist from the box that scrolls. One
+// implementation, two hosts — never a second hand-rolled gradient.
+//
+// `data-fade-*` rides along with the mask so the affordance is ASSERTABLE: "this
+// row scrolls, and says so" is a measurable claim; a gradient in a screenshot is
+// not.
+export function useScrollFade(ref: RefObject<HTMLElement | null>): {
+  edges: ScrollFadeEdges;
+  update: () => void;
+  fadeProps: {
+    style: CSSProperties | undefined;
+    "data-fade-left": "true" | undefined;
+    "data-fade-right": "true" | undefined;
+  };
+} {
+  const [edges, setEdges] = useState<ScrollFadeEdges>({
+    left: false,
+    right: false,
+  });
+
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setEdges({ left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 });
+  }, [ref]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    update();
+    // Re-measure when the container or its content changes size (window
+    // resize, data reflow, late-loading fonts).
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [ref, update]);
+
+  const mask =
+    edges.left && edges.right
+      ? `linear-gradient(to right, transparent, #000 ${FADE}, #000 calc(100% - ${FADE}), transparent)`
+      : edges.left
+        ? `linear-gradient(to right, transparent, #000 ${FADE})`
+        : edges.right
+          ? `linear-gradient(to right, #000 calc(100% - ${FADE}), transparent)`
+          : undefined;
+
+  return {
+    edges,
+    update,
+    fadeProps: {
+      style: mask ? { WebkitMaskImage: mask, maskImage: mask } : undefined,
+      "data-fade-left": edges.left ? "true" : undefined,
+      "data-fade-right": edges.right ? "true" : undefined,
+    },
+  };
+}
 
 export default function ScrollFade({
   children,
@@ -21,35 +95,7 @@ export default function ScrollFade({
   "data-testid"?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState({ left: false, right: false });
-
-  const update = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    const max = el.scrollWidth - el.clientWidth;
-    setEdges({ left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 });
-  }, []);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    update();
-    // Re-measure when the container or its content changes size (window
-    // resize, data reflow, late-loading fonts).
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    if (el.firstElementChild) ro.observe(el.firstElementChild);
-    return () => ro.disconnect();
-  }, [update]);
-
-  const mask =
-    edges.left && edges.right
-      ? `linear-gradient(to right, transparent, #000 ${FADE}, #000 calc(100% - ${FADE}), transparent)`
-      : edges.left
-        ? `linear-gradient(to right, transparent, #000 ${FADE})`
-        : edges.right
-          ? `linear-gradient(to right, #000 calc(100% - ${FADE}), transparent)`
-          : undefined;
+  const { update, fadeProps } = useScrollFade(ref);
 
   return (
     <div
@@ -57,7 +103,7 @@ export default function ScrollFade({
       onScroll={update}
       data-testid={testId}
       className={`overflow-x-auto ${hideScrollbar ? "scrollbar-none [&::-webkit-scrollbar]:hidden" : ""} ${className ?? ""}`}
-      style={mask ? { WebkitMaskImage: mask, maskImage: mask } : undefined}
+      {...fadeProps}
     >
       {children}
     </div>

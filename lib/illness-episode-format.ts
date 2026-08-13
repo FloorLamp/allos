@@ -18,6 +18,7 @@ import {
 import type { TemperatureUnit } from "./settings";
 import { fmtTemp } from "./units";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
+import { SUMMARY_NAME_LIMIT, summarizeNames } from "./summarize-names";
 
 // A single severity reading of one symptom on one day.
 export interface SymptomSeriesPoint {
@@ -305,6 +306,40 @@ export function feverTrendLabel(trend: FeverTrend): string | null {
 // A compact "3×" style count phrase for a med, or the med name with its count.
 function medCountPhrase(m: EpisodeMedication): string {
   return `${m.name.toLowerCase()} ${m.count}×`;
+}
+
+// ── The fever chart's dose-lane LEGEND (#2612) ───────────────────────────────
+//
+// A legend explains MARKS. The caption under the chart used to enumerate every
+// administration in the window — "◆ Ibuprofen · 200 mg · 19:03 · Aug 9" once per
+// dose, ~28 wrapped entries on a 4-day episode — which is a table wearing a
+// legend's clothes: the same rows, with the same name/amount/clock, already render
+// as the per-day History table directly beneath it (`illnessTimelineEvents` emits
+// one row per administration), so the page paid that height twice and both halves
+// grew linearly with doses × illness days.
+//
+// So the enumeration is DELETED rather than folded — folding a duplicate keeps the
+// duplicate — and what remains is what the marks actually need: which medications
+// the ◆ lane holds, and how many doses of each. Bounded by DISTINCT medication
+// (not by dose), and then by `summarizeNames`'s "and N more" tail on top of that,
+// so a week-long illness on a fuller stack costs one wrapped line instead of
+// several hundred px. Amount and clock are one glance below, in the table that
+// owns them.
+export function doseLaneRoster(
+  medications: readonly Pick<EpisodeMedication, "name" | "administrations">[],
+  limit: number = SUMMARY_NAME_LIMIT
+): string {
+  const named = medications
+    .filter((medication) => medication.administrations.length > 0)
+    .map((medication) => ({
+      name: medication.name,
+      count: medication.administrations.length,
+    }))
+    // Most-administered first, so the truncated tail drops the least-used items.
+    // The assembly already sorts this way; the legend does not depend on it having.
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .map((medication) => `${medication.name} ×${medication.count}`);
+  return summarizeNames(named, limit);
 }
 
 // The one-line episode headline shared by the timeline card and the episode header:

@@ -750,17 +750,18 @@ test.describe("Sleep page (#1066)", () => {
           nodes.every((node) => getComputedStyle(node).display === "none")
         )
     ).toBe(true);
+    // #2614: the log stopped asking for a sideways swipe on a phone. It stacks as
+    // cards below `sm` (#1426's shared primitive), so its scroller has nothing left
+    // to scroll — and MOOD, which used to render "🙂 Good (4" against the card edge
+    // behind that swipe, is laid out inside the card instead. The wide desktop grid
+    // and its fade are unchanged above `sm`.
     const historyScroll = page.getByTestId("sleep-history-scroll-fade");
     expect(
       await historyScroll.evaluate(
-        (node) => node.scrollWidth > node.clientWidth
+        (node) => node.scrollWidth - node.clientWidth
       )
-    ).toBe(true);
-    await expect
-      .poll(() =>
-        historyScroll.evaluate((node) => getComputedStyle(node).maskImage)
-      )
-      .not.toBe("none");
+    ).toBeLessThanOrEqual(1);
+    await expect(history.locator("thead")).toBeHidden();
   });
 
   test("the Sleep page keeps a readable width on extra-wide screens", async ({

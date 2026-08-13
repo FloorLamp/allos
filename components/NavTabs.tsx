@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { currentPathHref, type AppRoute } from "@/lib/hrefs";
+import { useScrollFade } from "@/components/ScrollFade";
 
 type MobileTabColumns = 2 | 3 | 4;
 
@@ -53,7 +54,15 @@ function tabClassName({
   return `-mb-px ${sizing} whitespace-nowrap border-b-2 text-center transition ${
     prominentOnMobile
       ? mobileLayout === "scroll"
-        ? "px-4 py-3 text-sm font-semibold md:px-4 md:py-2 md:text-sm md:font-medium"
+        ? // Phone padding is `px-2.5`, not `px-4` (issue #2614). #640 gave this
+          // strip its own `overflow-x-auto` so an over-wide set scrolls rather
+          // than being clipped by `<main>`'s `overflow-x-clip`, and that fix is
+          // intact — but Trends later put the range control in the SAME row, and
+          // four tabs at `px-4` no longer fit the narrowed column, so "Insights"
+          // sat past the edge on first paint. 24px of chrome per tab is what buys
+          // the whole set back; the 44px touch height (`py-3`) is untouched, and
+          // `md:px-4` keeps the desktop strip exactly as it was.
+          "px-2.5 py-3 text-sm font-semibold md:px-4 md:py-2 md:text-sm md:font-medium"
         : mobileColumns === 2
           ? "px-4 py-3 text-base font-semibold md:px-4 md:py-2 md:text-sm md:font-medium"
           : "px-1 py-3 text-sm font-semibold md:px-4 md:py-2 md:font-medium"
@@ -121,6 +130,13 @@ export function NavTabsStrip({
     fromUrl && ids.includes(fromUrl) ? fromUrl : (activeId ?? tabs[0]?.id);
   const stripRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLAnchorElement>(null);
+  // The edge affordance (#2614). Tighter phone padding buys the four-tab Trends
+  // set back at 390px, but a longer set — or a bigger text size — can still
+  // overflow, and cut-off content with no affordance reads as broken layout
+  // rather than "scroll me" (#1485 D's finding on the range pills, one row up).
+  // The mask paints only on an edge that actually has content past it, so a strip
+  // that fits shows nothing.
+  const { update: updateFade, fadeProps } = useScrollFade(stripRef);
 
   // A direct link to a later tab (Goals, Routines, …) should not leave its
   // selected state off-screen in the phone's single-row strip.
@@ -155,6 +171,7 @@ export function NavTabsStrip({
       ref={stripRef}
       role="tablist"
       data-testid={testId}
+      onScroll={updateFade}
       className={stripClassName({
         prominentOnMobile,
         mobileColumns,
@@ -162,6 +179,7 @@ export function NavTabsStrip({
         className,
         flush,
       })}
+      {...fadeProps}
     >
       {tabs.map((t) => {
         const isActive = active === t.id;

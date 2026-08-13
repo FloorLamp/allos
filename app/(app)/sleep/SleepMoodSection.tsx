@@ -7,6 +7,7 @@ import PaginationControls from "@/components/PaginationControls";
 import { HISTORY_PAGE_SIZE, pageCount as countPages } from "@/lib/pagination";
 import ScatterChartCard from "@/components/ScatterChartCard";
 import ScrollFade from "@/components/ScrollFade";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import { chartSeries } from "@/lib/chart-colors";
 import {
   formatLongDate,
@@ -173,8 +174,15 @@ export default function SleepMoodSection({
         </p>
         <div className="card overflow-hidden p-0">
           <ScrollFade data-testid="sleep-history-scroll-fade">
-            <table
-              className={`w-full min-w-120 text-left text-sm ${
+            {/* The stacked-card presentation below `sm` (#1426's shared primitive,
+                adopted here by #2614). This table's phone form used to be a
+                480px-wide grid inside a ~358px card, so the four columns a phone
+                DOES show did not fit: MOOD — the whole point of the log — rendered
+                as "🙂 Good (4" against the card edge, readable only by swiping. The
+                `min-w-120` goes with it; the `sm:` minimums keep the wide desktop
+                grid (and its ScrollFade) exactly as they were. */}
+            <ResponsiveTable
+              className={`w-full text-left text-sm ${
                 hasSupplementContext ? "sm:min-w-272" : "sm:min-w-240"
               }`}
               data-testid="sleep-mood-history"
@@ -222,18 +230,19 @@ export default function SleepMoodSection({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pageRows.length === 0 ? (
                   <tr>
-                    <td
+                    <Td
+                      slot="full"
                       colSpan={
                         5 +
                         STAGE_COLUMNS.length +
                         (hasSupplementContext ? 1 : 0)
                       }
-                      className="td py-6 text-center text-slate-500 dark:text-slate-400"
+                      className="py-6 text-center text-slate-500 dark:text-slate-400"
                       data-testid="sleep-mood-history-empty"
                     >
                       No sleep, nap, stage, or mood entries in the past{" "}
                       {windowDays} days.
-                    </td>
+                    </Td>
                   </tr>
                 ) : (
                   pageRows.map((row) => (
@@ -244,7 +253,7 @@ export default function SleepMoodSection({
                       data-sleep-editable={row.sleepEditable ? "true" : "false"}
                       className="tabular-nums"
                     >
-                      <td className="td whitespace-nowrap">
+                      <Td slot="title" className="whitespace-nowrap">
                         <Link
                           href={timelineDayHref(row.date)}
                           className="font-medium text-brand-600 hover:underline dark:text-brand-400"
@@ -262,8 +271,14 @@ export default function SleepMoodSection({
                             {formatLongDate(row.date, formatPrefs)}
                           </span>
                         </Link>
-                      </td>
-                      <td className="td whitespace-nowrap text-slate-700 dark:text-slate-200">
+                      </Td>
+                      {/* Sleep duration is the card's headline; the bedtime
+                          supplement sub-line was already this cell's phone
+                          treatment and rides along with it. */}
+                      <Td
+                        slot="value"
+                        className="whitespace-nowrap text-slate-700 dark:text-slate-200"
+                      >
                         <span>
                           {row.sleepHours == null
                             ? "—"
@@ -279,9 +294,12 @@ export default function SleepMoodSection({
                             />
                           </div>
                         )}
-                      </td>
-                      <td
-                        className="td whitespace-nowrap text-slate-700 dark:text-slate-200"
+                      </Td>
+                      <Td
+                        slot="meta"
+                        label="Naps"
+                        empty={(napsByDate.get(row.date) ?? []).length === 0}
+                        className="whitespace-nowrap text-slate-700 dark:text-slate-200"
                         data-testid="sleep-history-naps"
                       >
                         {(napsByDate.get(row.date) ?? []).length === 0
@@ -298,8 +316,17 @@ export default function SleepMoodSection({
                                 · {formatHm(nap.durationMin)}
                               </div>
                             ))}
-                      </td>
-                      <td className="td whitespace-nowrap text-slate-700 dark:text-slate-200">
+                      </Td>
+                      {/* Mood is what the phone used to lose to the card edge —
+                          "🙂 Good (4" against a 480px grid in a 358px card. It is
+                          a labelled meta line now, so it wraps in place. */}
+                      <Td
+                        slot="meta"
+                        label="Mood"
+                        empty={row.valence == null}
+                        className="text-slate-700 sm:whitespace-nowrap dark:text-slate-200"
+                        data-testid="sleep-history-mood"
+                      >
                         {row.valence == null ? (
                           "—"
                         ) : (
@@ -308,7 +335,7 @@ export default function SleepMoodSection({
                             {moodLabel(row.valence)} ({row.valence}/5)
                           </>
                         )}
-                      </td>
+                      </Td>
                       {hasSupplementContext && (
                         <td className="td hidden whitespace-nowrap sm:table-cell">
                           {row.bedtimeSupplements ? (
@@ -339,7 +366,10 @@ export default function SleepMoodSection({
                             : formatHm(row.stages[column.key])}
                         </td>
                       ))}
-                      <td className="td whitespace-nowrap text-right">
+                      <Td
+                        slot="actions"
+                        className="whitespace-nowrap text-right"
+                      >
                         <button
                           type="button"
                           className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
@@ -354,12 +384,12 @@ export default function SleepMoodSection({
                           />
                           Edit
                         </button>
-                      </td>
+                      </Td>
                     </tr>
                   ))
                 )}
               </tbody>
-            </table>
+            </ResponsiveTable>
           </ScrollFade>
           <PaginationControls
             page={page}
