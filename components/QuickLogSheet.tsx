@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   IconBarbell,
@@ -290,15 +290,19 @@ function ContextChip({
 // degradation of an offer nobody could resolve is silence — never a chip that
 // can only refuse, and never a blocking error over a menu that still works.
 function useLogSheetContext(open: boolean): LogSheetContext | null {
-  const [context, setContext] = useState<LogSheetContext | null>(null);
+  // Keyed on `open`, so closing DISCARDS the answer during the next render
+  // rather than through a follow-up effect: a sheet reopened an hour later must
+  // never paint the offers it gathered the first time, and clearing that in an
+  // effect would both cascade a render and leave a frame where it had.
+  const [context, setContext] = useResettableState<LogSheetContext | null>(
+    null,
+    open
+  );
   // Ignore a response that lost its race — a close-then-reopen must not paint the
   // first open's answer into the second.
   const requestRef = useRef(0);
   useEffect(() => {
-    if (!open) {
-      setContext(null);
-      return;
-    }
+    if (!open) return;
     const token = ++requestRef.current;
     void loadLogSheetContext().then(
       (data) => {
@@ -308,6 +312,6 @@ function useLogSheetContext(open: boolean): LogSheetContext | null {
         if (requestRef.current === token) setContext(null);
       }
     );
-  }, [open]);
+  }, [open, setContext]);
   return context;
 }

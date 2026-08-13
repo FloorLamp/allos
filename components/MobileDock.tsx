@@ -69,8 +69,7 @@ const ICONS: Record<DockIcon, typeof IconPlus> = {
 const SLOT_CLASS =
   "tap-target press flex h-full min-w-0 flex-col items-center justify-center gap-0.5 text-slate-500 transition hover:text-slate-800 aria-[current=page]:text-brand-600 dark:text-slate-400 dark:hover:text-slate-100 dark:aria-[current=page]:text-brand-400";
 
-const CAPTION_CLASS =
-  "max-w-full truncate text-[11px] leading-none font-medium";
+const CAPTION_CLASS = "max-w-full truncate text-xs leading-none font-medium";
 
 export default function MobileDock({
   restricted = false,
