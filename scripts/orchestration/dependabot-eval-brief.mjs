@@ -3,12 +3,15 @@
 // The policy this encodes (owner, 2026-08-13): PARKED IS NOT A RESTING STATE
 // for a dependency bump. Minor/patch groups merge on green against current
 // main, same day, no evaluation needed. A MAJOR gets an evaluation agent
-// within a day of arrival, and its deliverable is a RECOMMENDATION the owner
-// can act on in one read: a comment on the PR with the evidence, plus
-// `recommend-adopt` or `recommend-hold`, plus `needs-human` with the owner
-// assigned. The rule exists because the alternative was measured: a
-// TypeScript 5.9→7.0 major sat `parked` for 35 days with no evaluation at
-// all — parked-without-a-recommendation is a decision deferred to nobody.
+// within a day of arrival, and its deliverable is a RECOMMENDATION with a
+// verdict that CLOSES ITS OWN LOOP (owner, same day): `recommend-hold` pairs
+// with `parked` and the revisit trigger lives in the eval comment;
+// `recommend-adopt` means the orchestrator reviews and merges it like any
+// green PR. Neither needs a human — `needs-human` + assignment is reserved
+// for an eval that cannot reach a verdict, stated as the specific question.
+// The rule exists because the alternative was measured: a TypeScript 5.9→7.0
+// major sat `parked` for 35 days with no evaluation at all —
+// parked-without-a-recommendation is a decision deferred to nobody.
 //
 // Usage:
 //   node scripts/orchestration/dependabot-eval-brief.mjs <pr-number>
@@ -106,12 +109,16 @@ THEN DELIVER, in this order:
   revisit trigger (an upstream fix, a repo change, a date). End the comment
   with the Claude Code attribution footer.
 - Apply the labels (REST: POST /repos/FloorLamp/allos/issues/${prNumber}/labels):
-  \`recommend-adopt\` or \`recommend-hold\`, plus \`needs-human\`.
-- Assign the owner (REST: POST /repos/FloorLamp/allos/issues/${prNumber}/assignees,
-  {"assignees":["FloorLamp"]}) — the assignment is what reaches their inbox;
-  the label is what makes the queue queryable.
+  \`recommend-adopt\`, or \`recommend-hold\` plus \`parked\`. NOT
+  \`needs-human\` and no assignment — a verdict closes its own loop (hold
+  parks with its revisit trigger in the comment; adopt means the orchestrator
+  merges it). Only if you genuinely CANNOT reach a verdict: state the specific
+  question in the comment, apply \`needs-human\`, and assign the owner (REST:
+  POST /repos/FloorLamp/allos/issues/${prNumber}/assignees,
+  {"assignees":["FloorLamp"]}).
 - Return to the orchestrator: the verdict, the one-line reason, and anything
   that surprised you.
 
-Do NOT merge, close, or push to the PR. A clean ADOPT still waits for the
-owner — the label is the recommendation, never the decision.`);
+Do NOT merge, close, or push to the PR yourself. On ADOPT the merge is the
+ORCHESTRATOR's, through its normal review-and-merge flow — your comment is the
+evidence it reads first.`);
