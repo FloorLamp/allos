@@ -4,13 +4,27 @@ name: CI
 # push to main (gated by `next build`), so without this nothing validates a PR.
 # Safe to run on pull_request: it touches no secrets and does no deploy.
 #
-# pull_request ONLY (no push trigger): with both, every push to a PR branch ran
-# the whole suite twice — identical jobs on the push event and the PR merge ref.
-# Branches without a PR aren't validated until their PR opens, which is when
-# validation matters. The concurrency group cancels superseded runs, so pushing a
-# fixup two minutes after a commit doesn't finish CI for the dead head.
+# pull_request ONLY among branch events (no push trigger): with both, every push
+# to a PR branch ran the whole suite twice — identical jobs on the push event and
+# the PR merge ref. Branches without a PR aren't validated until their PR opens,
+# which is when validation matters. The concurrency group cancels superseded
+# runs, so pushing a fixup two minutes after a commit doesn't finish CI for the
+# dead head.
+#
+# merge_group: the MERGE QUEUE's validation event. A queued PR is re-validated on
+# the speculative merge commit GitHub builds for its position in the queue — the
+# exact commit that will become main — which closes the "CI tests the merge
+# commit, not your branch" gap PRE-merge (docs/orchestration.md): a regression
+# made by the interaction of two green PRs now fails in the queue instead of
+# landing. Only the three cheap tiers run here (the browser jobs are gated to
+# pull_request below): the documented two-green-PRs breakage class is type/unit
+# (#1560/#1562, #2245), and 12 e2e shards per queue group at this merge rate
+# would dwarf the rest of CI. Flip the two `if:` gates below to extend the queue
+# bar to the browser tier. Inert until the main ruleset requires a merge queue —
+# see docs/orchestration.md "The merge queue".
 on:
   pull_request:
+  merge_group:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -200,6 +214,9 @@ jobs:
   # sharded, timing out deep into the single-worker crush). Dropped: the matrix
   # owns infra coverage; this lane owns changed-spec repeat-each.
   e2e-changed:
+    # pull_request only — see the merge_group note in the `on:` comment: the
+    # queue's bar is deliberately the three cheap tiers.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
@@ -270,6 +287,9 @@ jobs:
   # needs no job of its own — a separate job would pay a whole extra runner's
   # checkout + npm ci + `next build` (~4 min) to run ~25 s of tests.
   e2e:
+    # pull_request only — see the merge_group note in the `on:` comment: the
+    # queue's bar is deliberately the three cheap tiers.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

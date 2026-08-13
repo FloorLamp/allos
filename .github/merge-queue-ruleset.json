@@ -1,0 +1,45 @@
+{
+  "$comment": "The main merge-queue ruleset (docs/orchestration.md, 'The merge queue'). Owner-applied — sessions cannot mutate repo settings: gh api repos/FloorLamp/allos/rulesets --method POST --input .github/merge-queue-ruleset.json  (or Settings -> Rules -> Rulesets -> New branch ruleset, mirroring these values). The required checks are the three cheap tiers + gitleaks, matching what ci.yml runs on merge_group; requiring a check that never reports on merge_group stalls the queue forever. bypass_actors keeps repository admins able to push to main directly (the owner does, mid-session) — those pushes stay covered by ci-main.yml.",
+  "name": "main merge queue",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ],
+  "rules": [
+    {
+      "type": "merge_queue",
+      "parameters": {
+        "merge_method": "SQUASH",
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 5,
+        "max_entries_to_merge": 5,
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 1,
+        "check_response_timeout_minutes": 30
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          { "context": "check" },
+          { "context": "test-unit" },
+          { "context": "test-db" },
+          { "context": "gitleaks" }
+        ]
+      }
+    }
+  ]
+}
