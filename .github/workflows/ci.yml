@@ -366,13 +366,24 @@ jobs:
       #     become a script does, so these are a steady trickle of PRs; each one
       #     used to buy ~25 minutes of twelve-shard Playwright to exercise a UI it
       #     cannot have changed.
+      #   • .claude/skills/ — a skill is INSTRUCTIONS FOR A SESSION, read by
+      #     Claude Code when the owner invokes it. Nothing in app/, lib/ or e2e/
+      #     loads one, so no browser can exercise a change to one.
+      #     Note what DOES read them, because it is the argument FOR this entry
+      #     rather than against it: lib/__tests__/reconcile-tracker.test.ts:934
+      #     reads reconcile-tracker/SKILL.md to assert structurally that the
+      #     routine holds no issue-closing capability. That is the PURE tier,
+      #     which this gate never skips — so the tier that actually validates a
+      #     skill still runs, and only Playwright (which cannot see one) is
+      #     dropped. #2707 shipped a 147-line skill and bought a full
+      #     twelve-shard matrix with it.
       # The REST of scripts/ stays out: seed.ts, notify.ts and the gen-*.ts
       # generators feed the app and its fixtures — the e2e harness seeds from
       # seed.ts directly — so a change there must still drive the browser.
       - name: Detect changes with a runtime surface
         id: changes
         run: |
-          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
+          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
