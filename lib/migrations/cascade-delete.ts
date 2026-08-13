@@ -415,3 +415,133 @@ function allInboundCascades(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Issue #2703 — the shape a SOURCE SCAN cannot see.
+//
+// The #2680 ratchet in lib/__db_tests__/migration-child-links.test.ts reads
+// `DELETE FROM <table>` out of every migration's AST and fails one naming a table
+// with cascading children. A table REBUILD that copies a FILTERED subset of rows
+// into `<t>_new` and renames it into place drops the rest with no `DELETE` token
+// anywhere, and orphans identically:
+//
+//   INSERT INTO t_new SELECT * FROM t WHERE <keeps only some rows>;
+//   DROP TABLE t;  ALTER TABLE t_new RENAME TO t;
+//
+// NO LEXICAL RULE IS COMPLETE OVER THAT CLASS, and #2696 was right to decline one.
+// A `WHERE`-sniffing rule catches the shape above and still misses
+// `INSERT INTO t_new SELECT * FROM t` followed by a filtering DELETE on the NEW
+// table — which has no inbound foreign keys yet, so the DELETE guard is blind to it
+// too. A partial guard that reads like a total one is the #2444 defect one level up,
+// which is the whole reason #2680 exists.
+//
+// So this half is BEHAVIOURAL, and it asks the only thing that can answer
+// completely: the database, right after the migration ran. `PRAGMA
+// foreign_key_check` sees an orphan however it was made — a bare delete, a filtered
+// rebuild, a CTAS, a delete on the new table, or a shape nobody has thought of yet.
+// Nothing is spelled twice, so nothing can be misspelled.
+//
+// AND IT IS A DELTA, NOT AN ASSERTION OF CLEANLINESS. A healthy database can carry
+// findings this pragma reports and this project deliberately leaves alone: a
+// `SET NULL` dangler (`intake_item_logs.notify_message_id` → `notify_messages`) is
+// live provenance, and `sweepOrphanedCascadeRows` explains at length why it stays.
+// A boot that complained about those would be complaining about the default posture
+// forever, which is the standing-alarm shape AGENTS.md rules out for the health
+// endpoint and is no better here. Only what a migration ADDED is reported.
+//
+// COST, measured, because a check on the boot path has to earn its place. The
+// pragma is O(rows): 0.23ms on the empty migrated schema, ~1ms at 2.6k rows
+// (`npm run seed`), ~50ms at 500k. The two cases that matter are both cheap. A
+// FRESH install replays all 190 migrations against a database with no rows —
+// worst single check 0.45ms anywhere in the sequence, ~60ms for the whole boot. An
+// ESTABLISHED install has rows but applies only the migrations its release added,
+// so it pays one check per NEW migration. The pathological case is a long-dormant
+// install replaying many migrations over a large database, and it pays a few
+// seconds on a boot already spending minutes rewriting those same rows.
+
+/** `PRAGMA foreign_key_check`, tallied per inbound key so two links to the same
+ * parent stay distinct (`intake_item_pairs.a_id` and `.b_id` are not one link). */
+export type ForeignKeyViolationTally = ReadonlyMap<string, number>;
+
+interface ForeignKeyCheckRow {
+  table: string;
+  rowid: number | null;
+  parent: string;
+  fkid: number;
+}
+
+/**
+ * Every dangling reference the database currently carries, counted per
+ * (child table, foreign key). Cheap on a healthy database — the pragma walks the
+ * indexes and normally returns nothing.
+ *
+ * Never throws: this runs on the boot path, and a boot must not fail because an
+ * integrity PROBE could not be taken. (It does not throw anywhere in the current
+ * 190-migration sequence; the guard is for a shape a future migration invents —
+ * a foreign key to a table that does not exist yet, say.) An unreadable probe
+ * answers `null`, and the caller treats that as "no comparison available".
+ */
+export function foreignKeyViolationTally(
+  db: Database.Database
+): ForeignKeyViolationTally | null {
+  let rows: ForeignKeyCheckRow[];
+  try {
+    rows = db.pragma("foreign_key_check") as ForeignKeyCheckRow[];
+  } catch {
+    return null;
+  }
+  const tally = new Map<string, number>();
+  for (const r of rows) {
+    const key = `${r.table}#${r.fkid}#${r.parent}`;
+    tally.set(key, (tally.get(key) ?? 0) + 1);
+  }
+  return tally;
+}
+
+/** One inbound key that gained dangling rows, named for a log line. */
+export interface IntroducedViolation {
+  /** `child_table.col1+col2 → parent_table`, resolved from the schema. */
+  link: string;
+  /** How many MORE rows dangle than before. */
+  rows: number;
+}
+
+/**
+ * What `after` carries that `before` did not — the orphans one migration made.
+ * A key that shrank or held steady is not reported: a repair migration is allowed
+ * to clear violations, and a pre-existing one is not this migration's doing.
+ */
+export function introducedViolations(
+  db: Database.Database,
+  before: ForeignKeyViolationTally | null,
+  after: ForeignKeyViolationTally | null
+): IntroducedViolation[] {
+  if (before === null || after === null) return [];
+  const out: IntroducedViolation[] = [];
+  for (const [key, count] of after) {
+    const grew = count - (before.get(key) ?? 0);
+    if (grew > 0) out.push({ link: describeViolationKey(db, key), rows: grew });
+  }
+  return out.sort((a, b) => a.link.localeCompare(b.link));
+}
+
+/** Resolve a tally key back to the columns it is about. Only ever called when
+ * something IS wrong, so the extra pragma costs a healthy boot nothing. */
+function describeViolationKey(db: Database.Database, key: string): string {
+  const [table, fkid, parent] = key.split("#");
+  let columns: string[] = [];
+  try {
+    columns = (
+      db
+        .prepare(`PRAGMA foreign_key_list(${q(table)})`)
+        .all() as ForeignKeyRow[]
+    )
+      .filter((r) => String(r.id) === fkid)
+      .sort((a, b) => a.seq - b.seq)
+      .map((r) => r.from);
+  } catch {
+    /* the table may itself be gone; the key still names the link usefully */
+  }
+  const cols = columns.length > 0 ? `.${columns.join("+")}` : `#${fkid}`;
+  return `${table}${cols} → ${parent}`;
+}

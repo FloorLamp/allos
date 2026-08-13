@@ -262,15 +262,73 @@ not per file, and fail-closed: a `DELETE FROM` whose table it cannot resolve to 
 literal identifier is a violation rather than a skip, because a delete it cannot
 read is not a delete it may ignore. What it cannot see is the other way to lose
 rows — a table **rebuild** that copies a filtered subset into `<t>_new`, which
-orphans children identically with no `DELETE` token anywhere. That is out of
-scope here and left deliberately, for a reason worth stating rather than
-discovering: no lexical rule is complete over that class. Sniffing for a `WHERE`
-in the copying `SELECT` would catch two spellings and miss
-`INSERT INTO t_new SELECT * FROM t` followed by a filtering delete on the new
-table (which has no inbound foreign keys, so the `DELETE` guard is blind to it) —
-and a guard that catches some spellings while reading like a guard is the #2444
-defect, not a defence against it. The population is also one: of the 32 shipped
-migrations using the rebuild recipe, exactly one (083) filters rows.
+orphans children identically with no `DELETE` token anywhere. That stays out of
+scope here, for a reason worth stating rather than discovering: no lexical rule
+is complete over that class. Sniffing for a `WHERE` in the copying `SELECT` would
+catch two spellings and miss `INSERT INTO t_new SELECT * FROM t` followed by a
+filtering delete on the new table (which has no inbound foreign keys, so the
+`DELETE` guard is blind to it) — and a guard that catches some spellings while
+reading like a guard is the #2444 defect, not a defence against it. The
+population is also one: of the 32 shipped migrations using the rebuild recipe,
+exactly one (083) filters rows, and `metric_samples` has no cascading children,
+so the historical exposure is zero.
+
+### The other half of the ratchet is behavioural (#2703)
+
+A rule that cannot be written lexically can still be checked by running the
+thing. After each migration it applies, `runMigrations` takes
+`PRAGMA foreign_key_check`, compares it to the tally from before that migration,
+and logs a `warn` naming any migration that **added** a dangling reference —
+`reportOrphansIntroduced` in `lib/migrations/runner.ts`, over
+`foreignKeyViolationTally` / `introducedViolations` in
+`lib/migrations/cascade-delete.ts`. It sees the effect rather than the syntax, so
+a filtering rebuild, a CTAS, a delete on the new table and a plain
+`DELETE FROM parent` all answer the same way, and nothing is spelled twice so
+nothing can be misspelled.
+
+Three properties are the design, not details:
+
+- **A delta, not an assertion of cleanliness.** The pragma reports every dangling
+  non-null reference, including the `SET NULL` danglers this project keeps on
+  purpose. A probe that flagged those would be complaining about the default
+  posture on every boot forever — the standing-alarm shape ruled out for the
+  health endpoint, and no better here. Only growth is reported.
+- **A report, never a refusal.** The rows are dead weight, not corruption: every
+  current reader joins the parent. Refusing the boot would trade a quiet
+  inconsistency for an install that will not start, and it is the wrong moment
+  anyway — the migration's own transaction has already committed, so a throw
+  leaves the database half-upgraded instead of undoing anything. The repair is a
+  forward migration calling `sweepOrphanedCascadeRows()`, exactly as
+  `20260813-cascade-orphan-sweep` did for the #2680 orphans.
+- **It costs what the data costs.** `foreign_key_check` is O(rows): 0.23 ms on the
+  empty migrated schema, ~1 ms at 2.6k rows (`npm run seed`), ~50 ms at 500k. A
+  fresh install replays all 190 migrations against a database with no rows (worst
+  single check anywhere in the sequence: 0.45 ms; whole-boot cost inside
+  measurement noise). An established install applies only the migrations its
+  release added, so it pays one check per new migration on its real data. The
+  baseline is taken lazily, so a boot with nothing to apply pays nothing at all.
+
+The trade this accepts is that it does **not** fail CI: a fresh test database has
+no rows to orphan, which is exactly why this class needed a probe that lives
+outside CI in the first place. It fires wherever a migration meets data — an
+operator's install, and a developer's own seeded database, which is where a new
+migration is first run against rows. The per-statement source scan above is
+retained unchanged; the two guards overlap on `DELETE` and neither subsumes the
+other, one failing the build before the mistake ships and one catching the shapes
+no scanner can read.
+
+The alternative sketched in #2703 — a per-migration behavioural harness running
+each of the 190 migrations against a fixture carrying a cascading child — was
+measured and rejected. The fixture is the expensive part, not the run: 13 of 117
+tables have inbound cascade/`SET NULL` links, and seeding a parent-and-child pair
+for them means populating 48 tables with 149 no-default `NOT NULL` columns, 42
+`CHECK` constraints and 21 further FK parents — at each of 190 historical schema
+shapes, which the 32 rebuild migrations keep changing underneath it. A generic
+seeder would silently fail to insert most of that at most points in the sequence
+and the harness would then read as total while covering nothing, which is the
+#2444 defect the guard exists to avoid. Resident fixture rows would also collide
+with the data migrations that legitimately delete and re-home rows (177, 180,
+185), turning correct behaviour into failures.
 
 ### Downgrade guard
 

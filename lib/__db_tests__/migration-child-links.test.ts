@@ -39,7 +39,9 @@ import { describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
   deleteRowsWithCascade,
+  foreignKeyViolationTally,
   inboundDeleteLinks,
+  introducedViolations,
   sweepOrphanedCascadeRows,
 } from "@/lib/migrations/cascade-delete";
 import { runMigrations } from "@/lib/migrations/runner";
@@ -983,8 +985,14 @@ const FROZEN_UNGUARDED_DELETES: readonly {
 //
 // KNOWN BOUNDARY, stated so its silence does not read as coverage: this scan sees
 // DELETE statements. A table REBUILD that copies a filtered subset of rows into
-// `<t>_new` orphans children identically and is invisible here. See
-// docs/versioned-migrations-spec.md for why that is a separate guard.
+// `<t>_new` orphans children identically and is invisible here — and no lexical
+// rule is complete over that class, which is why it is not patched into this scan.
+// It is covered BEHAVIOURALLY instead: `runMigrations` compares
+// `PRAGMA foreign_key_check` across each migration it applies and names one that
+// ADDED a dangling reference, whatever shape produced it (#2703; the last suites in
+// this file). That probe runs where the DATA is and so cannot fail CI, while this
+// scan fails the build before the mistake ships — the two overlap on DELETE and
+// neither subsumes the other. See docs/versioned-migrations-spec.md.
 
 /** Stands in for SQL text the scan cannot read: an interpolation, a non-literal
  * concatenation operand, anything dynamic. A NUL cannot occur in SQL source, so a
@@ -1159,5 +1167,214 @@ describe("a row-deleting migration clears its cascading children (#2680)", () =>
       ).toBeGreaterThan(0);
       expect(f.why.length).toBeGreaterThan(30);
     }
+  });
+});
+
+// ---- #2703: the shape the scan above cannot see -------------------------------
+//
+// A table rebuild that copies a FILTERED subset of rows into `<t>_new` drops the
+// rest with no `DELETE` token anywhere, and orphans its cascading children exactly
+// as a bare delete does. The ratchet reads `DELETE FROM <table>`, so it sees
+// nothing — and no lexical rule is complete over the class (a `WHERE`-sniffing rule
+// still misses a filtering delete on the NEW table, which has no inbound foreign
+// keys yet). The guard is therefore BEHAVIOURAL and lives in the runner: it asks
+// the database what changed, which answers for every shape at once.
+//
+// SYNTHETIC ONLY: fictional profiles, deep-past dates, invented values. No PHI.
+
+// The 083 recipe — `INSERT INTO <t>_new … SELECT … WHERE <keeps only some rows>`,
+// drop, rename — over a parent with a cascading child.
+const FILTERING_REBUILD = `
+  CREATE TABLE medical_records_x_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    name TEXT
+  );
+  INSERT INTO medical_records_x_new (id, profile_id, date, name)
+  SELECT r.id, r.profile_id, r.date, r.name FROM medical_records AS r
+   WHERE NOT EXISTS (
+     SELECT 1 FROM medical_records AS newer
+      WHERE newer.profile_id = r.profile_id AND newer.id > r.id
+   );
+  DROP TABLE medical_records;
+  ALTER TABLE medical_records_x_new RENAME TO medical_records;
+`;
+
+interface ConsoleSpy {
+  mock: { calls: unknown[][] };
+}
+
+function warnings(spy: ConsoleSpy): string[] {
+  return spy.mock.calls.map((call) => call.map((a) => String(a)).join(" "));
+}
+
+describe("a rebuild that FILTERS rows is invisible to the source scan (#2703)", () => {
+  it("orphans a cascading child with no DELETE token to read", () => {
+    // The premise, stated rather than assumed: there is nothing here for a
+    // `DELETE FROM` scan to find.
+    expect(/\bDELETE\b/i.test(FILTERING_REBUILD)).toBe(false);
+
+    const mem = cascadeDb();
+    runMigrations(mem, [
+      {
+        name: "20990101-synthetic-filtering-rebuild",
+        up: (d) => d.exec(FILTERING_REBUILD),
+      },
+    ]);
+    // Record 4 is gone; its revision and that revision's note are not.
+    expect(counts(mem)).toEqual({ records: 1, revisions: 2, notes: 2 });
+    expect(fkViolations(mem)).not.toEqual([]);
+  });
+});
+
+describe("the runner names the migration that orphaned rows (#2703)", () => {
+  it("reports the filtering rebuild, naming the link and the count", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      runMigrations(cascadeDb(), [
+        {
+          name: "20990101-synthetic-filtering-rebuild",
+          up: (d) => d.exec(FILTERING_REBUILD),
+        },
+      ]);
+      const said = warnings(spy).join("\n");
+      expect(said).toContain("20990101-synthetic-filtering-rebuild");
+      expect(said).toContain("medical_record_revisions.record_id");
+      expect(said).toContain("medical_records");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("reports a bare DELETE too — the probe is about the effect, not the syntax", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      runMigrations(cascadeDb(), [
+        {
+          name: "20990101-synthetic-bare-delete-probe",
+          up: (d) => {
+            d.prepare("DELETE FROM medical_records WHERE id = ?").run(4);
+          },
+        },
+      ]);
+      expect(warnings(spy).join("\n")).toContain(
+        "20990101-synthetic-bare-delete-probe"
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("says nothing when the migration routes through the helper", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      runMigrations(cascadeDb(), [
+        {
+          name: "20990101-synthetic-cascade-delete-probe",
+          up: (d) => {
+            deleteRowsWithCascade(d, "medical_records", [4]);
+          },
+        },
+      ]);
+      expect(warnings(spy)).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not complain about a violation that was ALREADY there", () => {
+    // A `SET NULL` dangler is live provenance this project deliberately keeps
+    // (see sweepOrphanedCascadeRows). A probe that reported it would be
+    // complaining about the default posture on every boot forever.
+    const mem = cascadeDb();
+    mem.pragma("foreign_keys = OFF");
+    mem.exec(`
+      CREATE TABLE notify_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT);
+      CREATE TABLE tap_receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id INTEGER REFERENCES notify_messages(id) ON DELETE SET NULL
+      );
+      INSERT INTO tap_receipts (id, message_id) VALUES (1, 77);
+    `);
+    expect(fkViolations(mem)).not.toEqual([]);
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      runMigrations(mem, [
+        {
+          name: "20990101-synthetic-innocent-migration",
+          up: (d) => d.exec("ALTER TABLE medical_records ADD COLUMN note TEXT"),
+        },
+      ]);
+      expect(warnings(spy)).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("a repair migration that CLEARS orphans is not reported", () => {
+    const mem = cascadeDb();
+    runMigrations(mem, [
+      {
+        name: "20990101-synthetic-orphaning",
+        up: (d) => d.exec(FILTERING_REBUILD),
+      },
+    ]);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      runMigrations(mem, [
+        {
+          name: "20990101-synthetic-orphaning",
+          up: () => {
+            throw new Error("already applied");
+          },
+        },
+        {
+          name: "20990101-synthetic-repair",
+          up: (d) => {
+            sweepOrphanedCascadeRows(d);
+          },
+        },
+      ]);
+      expect(warnings(spy)).toEqual([]);
+      expect(fkViolations(mem)).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("the orphan probe's own arithmetic (#2703)", () => {
+  it("tallies per inbound key, so two links to one parent stay distinct", () => {
+    const mem = new Database(":memory:");
+    mem.pragma("foreign_keys = OFF");
+    mem.exec(`
+      CREATE TABLE intake_items (id INTEGER PRIMARY KEY AUTOINCREMENT);
+      CREATE TABLE intake_item_pairs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        a_id INTEGER REFERENCES intake_items(id) ON DELETE CASCADE,
+        b_id INTEGER REFERENCES intake_items(id) ON DELETE CASCADE
+      );
+      INSERT INTO intake_item_pairs (id, a_id, b_id) VALUES (1, 91, 92);
+    `);
+    const tally = foreignKeyViolationTally(mem);
+    expect(tally?.size).toBe(2);
+    expect(
+      introducedViolations(mem, new Map(), tally)
+        .map((v) => v.link)
+        .sort()
+    ).toEqual([
+      "intake_item_pairs.a_id → intake_items",
+      "intake_item_pairs.b_id → intake_items",
+    ]);
+  });
+
+  it("reports nothing when a probe could not be taken", () => {
+    const mem = new Database(":memory:");
+    expect(introducedViolations(mem, null, new Map([["x#0#y", 3]]))).toEqual(
+      []
+    );
+    expect(introducedViolations(mem, new Map(), null)).toEqual([]);
   });
 });
