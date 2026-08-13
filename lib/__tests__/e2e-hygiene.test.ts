@@ -402,7 +402,17 @@ const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
 // silently stop scanning the moved content. `name` is the path RELATIVE to e2e/
 // (posix), so a top-level file keeps its bare basename — every allowlist / skip-set
 // key above is unchanged — and a nested one reads as "seed/medical.ts".
+//
+// MEMOIZED for the file's lifetime. This walks the whole e2e tree and reads every
+// source into memory, and it used to run again for EVERY check in this file — a
+// couple of hundred file reads per run, growing with each check added. The suite's
+// sources cannot change while the suite is running, so the repeat reads bought
+// nothing but wall clock, and under the shared-registry tier's parallel load that
+// clock is charged against a 5 s per-test timeout: the #1392 login-budget check
+// (the heaviest reader here) started timing out when this file grew a 21st caller.
+let specFilesCache: { name: string; text: string }[] | undefined;
 function specFiles(): { name: string; text: string }[] {
+  if (specFilesCache) return specFilesCache;
   const out: { name: string; text: string }[] = [];
   const walk = (dir: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -419,7 +429,8 @@ function specFiles(): { name: string; text: string }[] {
     }
   };
   walk(E2E_DIR);
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+  specFilesCache = out.sort((a, b) => a.name.localeCompare(b.name));
+  return specFilesCache;
 }
 
 function countMatches(text: string, re: RegExp): number {
