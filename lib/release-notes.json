@@ -11,15 +11,9 @@
         },
         {
           "pr": 2638,
-          "title": "A morning cortisol has its own entry, so an evening draw is no longer flagged low",
+          "title": "A morning cortisol gets its own entry, and biomarker pages drop boilerplate that crept back in",
           "kind": "fix",
-          "issues": [2526]
-        },
-        {
-          "pr": 2638,
-          "title": "Biomarker pages drop the boilerplate disclaimer that had crept back in through curated data",
-          "kind": "fix",
-          "issues": [2342]
+          "issues": [2526, 2342]
         },
         {
           "pr": 2634,
@@ -29,33 +23,15 @@
         },
         {
           "pr": 2640,
-          "title": "Supplement doses are called supplements, not by an internal model name",
+          "title": "Supplement doses are named as supplements, and one-tap mobility sessions stop being flagged broken",
           "kind": "fix",
-          "issues": [2610]
-        },
-        {
-          "pr": 2640,
-          "title": "One-tap mobility sessions are no longer flagged red as impossible to save",
-          "kind": "fix",
-          "issues": [2611]
+          "issues": [2610, 2611]
         },
         {
           "pr": 2639,
-          "title": "Card rows drop the labelled dashes for cells that hold nothing",
+          "title": "Empty card cells lose their labels, body rows become editable, and Specialty lists only what you can edit",
           "kind": "fix",
-          "issues": [2588]
-        },
-        {
-          "pr": 2639,
-          "title": "Body measurements can be edited and sleep or mood rows deleted from the history list",
-          "kind": "feature",
-          "issues": [2556]
-        },
-        {
-          "pr": 2639,
-          "title": "Dental and Vision list only rows the current view can actually edit",
-          "kind": "fix",
-          "issues": [2557]
+          "issues": [2588, 2556, 2557]
         }
       ]
     },
@@ -130,15 +106,9 @@
         },
         {
           "pr": 2628,
-          "title": "One afternoon nap from a phone no longer replaces a whole night's sleep history",
+          "title": "A nap no longer replaces your night-sleep history, and an imported score keeps its own date",
           "kind": "fix",
-          "issues": [2603]
-        },
-        {
-          "pr": 2628,
-          "title": "An imported questionnaire score is dated by its own date, not by the document's row order",
-          "kind": "fix",
-          "issues": [2553]
+          "issues": [2603, 2553]
         },
         {
           "pr": 2623,
@@ -148,21 +118,15 @@
         },
         {
           "pr": 2622,
-          "title": "A ride-detail backfill that cannot finish now says so, and a retry resumes where it stopped",
+          "title": "A ride-detail backfill that cannot finish says so, and a retry resumes where it stopped",
           "kind": "fix",
           "issues": [2196, 2195]
         },
         {
           "pr": 2630,
-          "title": "Signing a device out is recorded in the audit log, by whoever did it",
+          "title": "Signing a device out is audited, and the health endpoint reports a filling disk before writes fail",
           "kind": "feature",
-          "issues": [1843]
-        },
-        {
-          "pr": 2630,
-          "title": "The health endpoint reports a filling disk before writes start failing",
-          "kind": "feature",
-          "issues": [1856]
+          "issues": [1843, 1856]
         }
       ]
     },
