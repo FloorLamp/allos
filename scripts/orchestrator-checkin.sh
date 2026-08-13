@@ -40,6 +40,7 @@ set -uo pipefail
 
 STATE_DIR=${SCRATCH:-/home/user/scratch}
 BOOT_FILE="$STATE_DIR/.boot_id"
+SESSION_FILE="$STATE_DIR/.session_id"
 ROSTER="$STATE_DIR/.roster"
 REPO=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
 
@@ -63,6 +64,63 @@ else
   echo "  >>> Commit each as 'WIP RESCUE - no gate has been run', push, THEN relaunch."
   RESTARTED=1
 fi
+
+# 1b. Session restart: the boot-id's blind spot, and it is the COMMON case.
+#
+# THE AGENTS DIE WITH THE SESSION, NOT WITH THE MACHINE. Every subagent is a
+# child of the one `claude` process, so replacing that process kills the whole
+# fleet — and the box never reboots, so the boot-id it is compared against is
+# unchanged and the machine's uptime keeps climbing. The detector above sees
+# nothing at all.
+#
+# Observed 2026-08-13T12:33Z, and this is the SECOND time the recorder soothed
+# over dead agents. The first (04:38Z) was a real reboot whose roster claim went
+# unvoided, fixed by gating liveness on RESTARTED. This run printed
+# "boot-id: UNCHANGED (up 482m)" and "no rescue targets — every dirty tree
+# belongs to a live agent" over two trees whose agents had been dead for six
+# minutes; one held 265 uncommitted lines of a fix that existed nowhere else.
+# The previous fix was right about the mechanism and wrong about the scope: it
+# asked whether the HOUSE had restarted when the question is whether the
+# PROCESS HOLDING THE AGENTS had.
+#
+# The identity is pid + start-time, never pid alone: pids are recycled, and a
+# recycled one would read as UNCHANGED — the reassuring direction again. Start
+# time is in clock ticks since boot, so the pair is unique for as long as the
+# comparison is meaningful. Walk up from this script rather than pattern-matching
+# `ps`, because the ancestor chain is the thing that is actually true; a `pgrep`
+# would find some other session's process just as happily.
+SESSION_NEW=0
+sid=""
+p=$$
+while [ -n "$p" ] && [ "$p" != "1" ]; do
+  [ -r "/proc/$p/stat" ] || break
+  if [ "$(cat "/proc/$p/comm" 2>/dev/null)" = "claude" ]; then
+    sid="$p:$(awk '{print $22}' "/proc/$p/stat" 2>/dev/null)"
+    break
+  fi
+  p=$(awk '{print $4}' "/proc/$p/stat" 2>/dev/null)
+done
+sid_stored=$(cat "$SESSION_FILE" 2>/dev/null || echo MISSING)
+if [ -z "$sid" ]; then
+  # Run from a plain shell with no claude ancestor. Say so — an unanswerable
+  # question must not be reported as a clean answer.
+  echo "session:  UNKNOWN (no claude ancestor — liveness below is unverified)"
+elif [ "$sid" = "$sid_stored" ]; then
+  echo "session:  UNCHANGED ($sid)"
+else
+  echo "session:  *** RESTARTED *** (was $sid_stored, now $sid)"
+  echo "  >>> Every subagent and every in-process timer died with the old session."
+  echo "  >>> The roster below records DISPATCH, not liveness — treat all of it as DEAD."
+  echo "  >>> PRESERVE-FIRST DRILL applies to every dirty worktree before relaunching."
+  SESSION_NEW=1
+fi
+
+# One flag for the one consequence. A machine reboot and a session restart differ
+# in what else they take down (tmp dirs, dev servers, the port map) but agree
+# completely on this: there is no live agent afterwards.
+AGENTS_DEAD=0
+[ "$RESTARTED" = "1" ] && AGENTS_DEAD=1
+[ "$SESSION_NEW" = "1" ] && AGENTS_DEAD=1
 echo
 
 # 2. Worktrees.
@@ -145,8 +203,12 @@ while read -r d; do
   # killed. The header shouted and the verdict soothed, in one screen; the
   # reassuring half is the one a tired reader believes. One tree held an
   # uncommitted spec edit that existed nowhere else.
+  #
+  # The gate is AGENTS_DEAD, not RESTARTED, because a session restart kills the
+  # fleet without touching the boot-id — see 1b. Gating on the machine let the
+  # same soothing line print again at 12:33Z with the header silent too.
   live=0
-  if [ "$RESTARTED" = "0" ]; then
+  if [ "$AGENTS_DEAD" = "0" ]; then
     printf '%s\n' "$live_branches" | grep -qx -- "$b" && live=1
   fi
 
@@ -234,7 +296,7 @@ if [ "$found" = "1" ] && [ "$alarms" = "0" ]; then
   # Same distinction one level up: after a restart the all-clear cannot be
   # "they belong to live agents", because there are none. It is the narrower
   # (and still good) news that nothing was left uncommitted when they died.
-  if [ "$RESTARTED" = "1" ]; then
+  if [ "$AGENTS_DEAD" = "1" ]; then
     echo "  (nothing to rescue — every tree was clean and pushed when the restart killed its agent;"
     echo "   the agents are still DEAD and must be relaunched)"
   else
@@ -312,4 +374,8 @@ echo
 if [ "$RESTARTED" = "1" ]; then
   echo "$CUR" > "$BOOT_FILE"
   echo "boot-id stamped. Timers and any canary are DEAD - re-arm them now."
+fi
+if [ -n "$sid" ] && [ "$SESSION_NEW" = "1" ]; then
+  echo "$sid" > "$SESSION_FILE"
+  echo "session stamped. Every subagent and in-process timer is DEAD - relaunch and re-arm now."
 fi
