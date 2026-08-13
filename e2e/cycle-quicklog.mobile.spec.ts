@@ -50,7 +50,8 @@ function clearCycles(profileName: string): void {
 // the verb the overlay offers, once the row is reached.
 async function sheetVerb(page: Page): Promise<string | null> {
   const sheet = await openLogSheet(page);
-  await (await showLogRow(sheet, "log-period")).click();
+  const row = await showLogRow(sheet, "log-period");
+  await row.click();
   const panel = page.getByTestId("quick-cycle-panel");
   await expect(panel).toBeVisible({ timeout: 20_000 });
   const offer = panel.getByTestId("period-offer-sheet").getByRole("button");
@@ -166,7 +167,9 @@ test.describe("the period row is relevance-gated (#1892/#1042)", () => {
     // which is what keeps this an absence proof. On a segmented sheet "the period
     // row is not in the DOM" is true of every unselected segment, so a bare
     // count-0 would now pass for a profile the row is perfectly visible to.
-    await expect(await showLogRow(sheet, "log-period")).toHaveCount(0);
-    await expect(await showLogRow(sheet, "log-measurements")).toBeVisible();
+    const period = await showLogRow(sheet, "log-period");
+    await expect(period).toHaveCount(0);
+    const measurements = await showLogRow(sheet, "log-measurements");
+    await expect(measurements).toBeVisible();
   });
 });

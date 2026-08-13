@@ -314,27 +314,27 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     //
     // The rows themselves are the unchanged registry: the ones this route did not
     // promote, vitals (which joined in #1467 and merged into "Log measurements"
-    // in #1486), a tracked wellness practice (#1633) and filing a document
-    // (#1525).
+    // in #1486 — ONE measurements row since), and the two non-weight-scale
+    // entries a phone also needs, a tracked wellness practice (#1633) and filing
+    // a document (#1525).
     const ids: QuickLogId[] = [
       "log-activity",
       "log-food",
       "log-dose",
-      // ONE measurements row since #1486/#1506 — weight + vitals are one form now.
       "log-measurements",
-      // The two non-weight-scale entries a phone also needs: a tracked wellness
-      // practice (#1633) and filing a document (#1525).
       "log-practice",
       "add-document",
     ];
     for (const id of ids) {
-      await expect(await showLogRow(sheet, id)).toBeVisible();
+      const row = await showLogRow(sheet, id);
+      await expect(row).toBeVisible();
     }
 
     // Tapping a row closes the sheet and opens the EXISTING form right here —
     // no new write path, and no navigation (that is the #1468 rule).
     const before = page.url();
-    await (await showLogRow(sheet, "log-measurements")).click();
+    const measurements = await showLogRow(sheet, "log-measurements");
+    await measurements.click();
     await expect(sheet).toHaveCount(0);
     const overlay = page.getByTestId("quick-entry-sheet");
     await expect(overlay).toBeVisible();

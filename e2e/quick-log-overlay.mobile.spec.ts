@@ -190,7 +190,8 @@ async function signIn(browser: Parameters<typeof loginAs>[0]): Promise<Page> {
 // the row opens a real form in place and the write lands — is unchanged by it.
 async function openQuickEntry(page: Page, itemId: QuickLogId) {
   const sheet = await openLogSheet(page);
-  await (await showLogRow(sheet, itemId)).click();
+  const row = await showLogRow(sheet, itemId);
+  await row.click();
   await expect(sheet).toHaveCount(0);
   const overlay = page.getByTestId("quick-entry-sheet");
   await expect(overlay).toBeVisible();
