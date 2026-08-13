@@ -222,19 +222,15 @@ export default function ExtractedObservations({
                       defaultSort="name"
                     />
                   )}
-                  <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                    Value
-                  </th>
+                  <th className="th sticky top-0 z-10 bg-surface">Value</th>
                   {analyte && (
-                    <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
+                    <th className="th sticky top-0 z-10 bg-surface">
                       Reference
                     </th>
                   )}
-                  <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                    Notes
-                  </th>
+                  <th className="th sticky top-0 z-10 bg-surface">Notes</th>
                   {analyte && (
-                    <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
+                    <th className="th sticky top-0 z-10 bg-surface">
                       Category
                     </th>
                   )}
@@ -245,9 +241,7 @@ export default function ExtractedObservations({
                     defaultDir="desc"
                   />
                   {analyte && (
-                    <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                      Actions
-                    </th>
+                    <th className="th sticky top-0 z-10 bg-surface">Actions</th>
                   )}
                 </tr>
               </thead>

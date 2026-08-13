@@ -948,6 +948,15 @@ See `docs/internals/e2e-hygiene.md`.
 
 ### Forms and UI
 
+- Theming is a PALETTE system (#2701): the base tokens in `app/globals.css` ARE
+  the Botanical palette, and `[data-palette="almanac"]` / `"floodlight"` are the
+  two selectable overrides, orthogonal to light/dark. Never hand a structural
+  primitive a literal surface color — the chokepoint tokens (`--surface`,
+  `--field`, `--field-bd`, `--btn`, `--radius-card`, …) and the `bg-surface` /
+  `bg-field` utilities are the vocabulary, `lib/theme.ts` owns the storage keys
+  and the `paletteAttribute` rule (base = NO attribute), and
+  `docs/internals/appearance-palettes.md` is the map. The IPF plate colors in
+  `PlateBuilderModal` are permanently exempt: physical objects never re-theme.
 - Settings autosave on blur/change through the existing save-status helpers.
   Record forms use explicit submission.
 - Free-text notes render through `<NotesText>`.

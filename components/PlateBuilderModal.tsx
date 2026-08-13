@@ -19,6 +19,8 @@ import { createEquipmentAction } from "@/app/(app)/equipment/actions";
 // select() sentinel for the "create a custom barbell" row at the bottom.
 const NEW_BAR = "__new__";
 
+// PALETTE-EXEMPT, permanently (#2701): these are the real-world IPF competition
+// plate colors — physical objects never re-theme, in any appearance palette.
 // Plate fill colors, following IPF/competition plate conventions so each
 // denomination is recognizable at a glance. Falls back to slate for any unknown.
 // A metallic sheen (url(#plateShade)) is layered on top at render time, so these

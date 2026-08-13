@@ -58,9 +58,7 @@ export default function CardioFields({
               data-testid="cardio-distance"
               value={p.distance}
               onChange={(e) => onDistance(stripNegative(e.target.value))}
-              className={`input bg-white dark:bg-ink-900 ${
-                fault === "content" ? blockedField : ""
-              }`}
+              className={`input ${fault === "content" ? blockedField : ""}`}
             />
           </div>
         )}
@@ -79,9 +77,7 @@ export default function CardioFields({
               overallDuration != null ? String(overallDuration) : undefined
             }
             onChange={(e) => onDurationMin(stripNegative(e.target.value))}
-            className={`input bg-white dark:bg-ink-900 ${
-              fault === "content" ? blockedField : ""
-            }`}
+            className={`input ${fault === "content" ? blockedField : ""}`}
           />
         </div>
       </div>

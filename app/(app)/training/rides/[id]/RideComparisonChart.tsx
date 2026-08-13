@@ -167,7 +167,7 @@ export default function RideComparisonChart({
                     className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 ${
                       point.current
                         ? "h-3.5 w-3.5 shadow-xs"
-                        : "h-2.5 w-2.5 bg-white dark:bg-ink-900"
+                        : "h-2.5 w-2.5 bg-surface"
                     }`}
                     style={{
                       left: `${position(point.value)}%`,

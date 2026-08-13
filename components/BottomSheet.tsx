@@ -182,7 +182,7 @@ export default function BottomSheet({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={`relative flex max-h-[85dvh] w-full flex-col overflow-y-auto border-t bg-white px-4 pt-1 outline-hidden sm:max-w-md sm:pb-4 dark:bg-ink-900 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${OVERLAY_SAFE_BOTTOM} ${
+        className={`relative flex max-h-[85dvh] w-full flex-col overflow-y-auto border-t bg-surface px-4 pt-1 outline-hidden sm:max-w-md sm:pb-4 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${OVERLAY_SAFE_BOTTOM} ${
           asDialog ? "md:max-h-[80dvh] md:border md:px-6 md:pt-5 md:pb-5" : ""
         } ${panelMotion}`}
       >

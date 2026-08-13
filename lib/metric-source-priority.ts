@@ -352,7 +352,7 @@ export function sourceColor(source: string | null | undefined): string {
 // validator (lightness band, chroma floor, CVD separation).
 export const DOCUMENT_SERIES_COLORS = [
   "#4f46e5", // indigo
-  "#d97706", // amber
+  "#d47506", // amber (re-stepped with chartSeries.amber, #2701)
   "#0891b2", // cyan
   "#c026d3", // fuchsia
   "#65a30d", // lime

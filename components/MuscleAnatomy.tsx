@@ -64,9 +64,10 @@ type MuscleAnatomyModeProps =
 
 export type MuscleAnatomyProps = AnatomyDisplayProps & MuscleAnatomyModeProps;
 
-// Default coverage ramp color — emerald-500, the same hue as the coverage
-// list's bars, readable on both themes.
-const RAMP_COLOR = "#10b981";
+// Default coverage ramp color — the palette's own accent (the same hue as the
+// coverage list's bars, which use bg-brand-600/80), via lib/chart-colors so the
+// anatomy ramp is validated with the rest of the chart palette (#2701).
+import { chartMuscleRamp } from "@/lib/chart-colors";
 
 // Theme-aware fills. The base/untrained tint and the exercise-mode emphases are
 // Tailwind fill classes (so they adapt to dark via the `dark:` variant); the
@@ -151,7 +152,7 @@ function renderPlan(props: MuscleAnatomyProps): Map<MuscleId, MuscleRender> {
             : // Default intensity ramp over the window's max set volume.
               {
                 state: "trained",
-                fill: RAMP_COLOR,
+                fill: chartMuscleRamp.fill,
                 fillOpacity:
                   0.3 + 0.7 * (maxSets > 0 ? entry.sets / maxSets : 0),
                 title,
@@ -201,8 +202,12 @@ function BodyView({
             data-state={r.state}
             aria-label={r.title}
             className={r.fillClass}
-            fill={r.fill}
-            fillOpacity={r.fillOpacity}
+            // style, not the fill attribute: the coverage ramp is a CSS
+            // var() reference (palette-aware), and var() is only reliable in
+            // the CSS `fill` property, not the presentation attribute.
+            style={
+              r.fill ? { fill: r.fill, fillOpacity: r.fillOpacity } : undefined
+            }
           >
             {/* Native hover/tap tooltip naming the muscle (never color-only). */}
             <title>{r.title}</title>

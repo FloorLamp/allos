@@ -30,9 +30,13 @@ they answer different questions:
 **Changing the palette means editing `lib/chart-colors.ts` and letting the
 validation test judge you.** `lib/chart-palette-validate.ts` is pure math —
 sRGB→OKLab/OKLCH, Machado CVD simulation at severity 1.0, WCAG contrast — and
-the test runs it over the real exports against both real chart surfaces
-(`#ffffff`, `#0f172a`). A failing edit prints the offending pair and its ΔE, not
-`expected true`.
+the test runs it over the real exports against the base palette's real chart
+surfaces (Botanical, `#f4f8f0` / `#101711`) — and, since #2701, over a
+3-palette × 2-mode matrix: the appearance palettes re-point the brand/slate/ink
+ramps under `[data-palette]`, so the SAME cell class paints a different hex per
+palette, and `PALETTES` in `lib/chart-colors.ts` is the token→hex map the
+validator reads (it must mirror `app/globals.css`'s ramp blocks). A failing
+edit prints the offending pair and its ΔE, not `expected true`.
 
 The checks and their thresholds:
 
@@ -56,7 +60,7 @@ have caught it. (#1445)
 ```
 brand   #16a34a   brand-600    primary green
 sky     #0284c7   sky-600      cool blue      (re-blessed for chart marks by #1445)
-amber   #d97706   amber-600    warm
+amber   #d47506   ~amber-600   warm (re-stepped for the Botanical surface, #2701)
 rose    #e11d48   rose-600     red/pink
 violet  #8b5cf6   violet-500   purple
 ```

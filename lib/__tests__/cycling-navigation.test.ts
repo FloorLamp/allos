@@ -44,7 +44,7 @@ describe("cycling navigation and metric presentation", () => {
 
   it("uses stable cycling colors across aggregate and ride-level consumers", () => {
     expect(CYCLING_METRICS.speed.color).not.toBe(CYCLING_METRICS.cadence.color);
-    expect(CYCLING_METRICS.power.color).toBe("#d97706");
+    expect(CYCLING_METRICS.power.color).toBe("#d47506");
     expect(CYCLING_METRICS.heart_rate.color).toBe("#e11d48");
   });
 });

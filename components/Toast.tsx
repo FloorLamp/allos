@@ -161,7 +161,7 @@ function ToastCard({
       aria-live="polite"
       data-testid="toast"
       data-toast-key={toast.key}
-      className={`flex w-72 items-start gap-3 rounded-xl border bg-white p-3.5 shadow-lg dark:bg-ink-900 ${
+      className={`flex w-72 items-start gap-3 rounded-xl border bg-surface p-3.5 shadow-lg ${
         success
           ? "border-emerald-200 dark:border-emerald-800"
           : "border-rose-200 dark:border-rose-800"

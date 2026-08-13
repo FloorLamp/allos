@@ -217,7 +217,7 @@ export default function ActivityPartsList({
                   it has always been. */}
               <div
                 data-testid="part-header"
-                className="sticky top-0 z-10 -mx-1 flex flex-col gap-1 bg-white/95 px-1 py-1 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-2 md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
+                className="sticky top-0 z-10 -mx-1 flex flex-col gap-1 bg-surface/95 px-1 py-1 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-2 md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:md:bg-transparent"
               >
                 <div className="min-w-0 sm:flex-1">
                   <ActivityCombobox
@@ -243,7 +243,7 @@ export default function ActivityPartsList({
                         : "Add another activity…"
                     }
                     autoFocus={pi === 0 && !isEdit}
-                    inputClassName="bg-white dark:bg-ink-900"
+                    inputClassName=""
                     // A committed custom part isn't "unrecognized" — its
                     // pending type shows as amber chips, not a red border.
                     invalid={p.name.trim() !== "" && !valid && !p.custom}

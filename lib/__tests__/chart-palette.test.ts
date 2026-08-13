@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  adherenceHexes,
+  APPEARANCE_PALETTES,
+  cellRampHexes,
   chartActivityRamp,
+  chartActivityRampTokens,
   chartAdherenceState,
   chartBand,
+  chartMuscleRamp,
   chartNeutral,
   chartObservationRamp,
+  chartObservationRampTokens,
   chartSeries,
+  paletteHex,
+  PALETTES,
 } from "@/lib/chart-colors";
 import {
   CHART_SURFACE,
@@ -327,4 +335,128 @@ describe("adherence state colors (issue #1445, Part 3a)", () => {
       ).toEqual([]);
     });
   }
+});
+
+// ── The 3-palette × 2-mode matrix (#2701) ────────────────────────────────────
+//
+// The appearance palettes re-point the brand/slate/ink ramps under
+// `[data-palette]`, so the SAME cell classes paint different hexes per palette.
+// The full one-hue rigor above pins the BASE palette (that is where the #1445
+// calibration happened); each selectable palette additionally asserts, on ITS
+// OWN surfaces:
+//   - every categorical series ≥ 3:1 (theme-neutral hexes, palette surfaces)
+//   - the band label stays legible
+//   - the muscle ramp's accent ≥ 3:1
+//   - each cell ramp still ORDERS (monotone lightness) with a separation floor
+//   - adherence states stay tellable apart
+// The separation floors for the selectable palettes are the RELIEF-band story:
+// the calendar surfaces carry mandatory secondary encoding (per-cell titles,
+// data-state, counted legends), and warm ramps (Floodlight's amber) compress
+// lightness in a way green does not — so the floors below are deliberately
+// looser than the base gate, never absent.
+const PALETTE_RAMP_MIN_DELTA_L = 0.035;
+const PALETTE_ADHERENCE_MIN_DELTA_E = 10;
+
+describe("appearance palette matrix (#2701)", () => {
+  const MODES = ["light", "dark"] as const;
+
+  for (const palette of APPEARANCE_PALETTES) {
+    for (const mode of MODES) {
+      const surface = PALETTES[palette].chartSurface[mode];
+
+      it(`keeps every series color at 3:1 on the ${palette} ${mode} surface`, () => {
+        for (const hex of Object.values(chartSeries)) {
+          const r = contrastRatio(hex, surface);
+          expect(
+            r,
+            `${hex} is ${r.toFixed(2)}:1 on ${palette}/${mode} (${surface})`
+          ).toBeGreaterThanOrEqual(CONTRAST_MIN);
+        }
+      });
+
+      it(`keeps the optimal band label legible on ${palette} ${mode}`, () => {
+        const r = contrastRatio(chartBand.optimal, surface);
+        expect(
+          r,
+          `chartBand.optimal is ${r.toFixed(2)}:1 on ${palette}/${mode}`
+        ).toBeGreaterThanOrEqual(CONTRAST_MIN);
+      });
+
+      it(`keeps the muscle ramp's accent at 3:1 on ${palette} ${mode}`, () => {
+        const hex = paletteHex(palette, chartMuscleRamp.token);
+        const r = contrastRatio(hex, surface);
+        expect(
+          r,
+          `muscle ramp ${hex} is ${r.toFixed(2)}:1 on ${palette}/${mode}`
+        ).toBeGreaterThanOrEqual(CONTRAST_MIN);
+      });
+
+      it(`keeps the cell ramps ordered and separated on ${palette} ${mode}`, () => {
+        for (const [name, tokens] of Object.entries({
+          activity: chartActivityRampTokens,
+          observation: chartObservationRampTokens,
+        })) {
+          const side = cellRampHexes(tokens, palette)[mode];
+          const ladder = [side.empty, ...side.steps].map((hex) => oklch(hex).l);
+          for (let i = 0; i < ladder.length - 1; i++) {
+            const gap =
+              mode === "light"
+                ? ladder[i] - ladder[i + 1]
+                : ladder[i + 1] - ladder[i];
+            expect(
+              gap,
+              `${name} ramp level ${i}→${i + 1} on ${palette}/${mode} moves ` +
+                `ΔL ${gap.toFixed(3)} — under the ${PALETTE_RAMP_MIN_DELTA_L} ` +
+                `floor (or the wrong direction: a ramp must stay monotone).`
+            ).toBeGreaterThanOrEqual(PALETTE_RAMP_MIN_DELTA_L);
+          }
+        }
+      });
+
+      it(`keeps adherence states tellable apart on ${palette} ${mode}`, () => {
+        const states = adherenceHexes(palette);
+        const NAMES = ["taken", "partial", "skipped", "missed"] as const;
+        for (let i = 0; i < NAMES.length; i++) {
+          for (let j = i + 1; j < NAMES.length; j++) {
+            const a = states[NAMES[i]][mode];
+            const b = states[NAMES[j]][mode];
+            const d = deltaE(a, b);
+            expect(
+              d,
+              `${NAMES[i]} (${a}) vs ${NAMES[j]} (${b}) is ΔE ${d.toFixed(1)} ` +
+                `on ${palette}/${mode} — under the ${PALETTE_ADHERENCE_MIN_DELTA_E} floor.`
+            ).toBeGreaterThanOrEqual(PALETTE_ADHERENCE_MIN_DELTA_E);
+          }
+        }
+      });
+    }
+  }
+
+  it("keeps the base tables derived from the botanical token column", () => {
+    // The exported base hex tables are BUILT from PALETTES.botanical, so this is
+    // a tripwire against someone re-literalizing them and letting the map drift.
+    expect(chartActivityRamp.light).toEqual(
+      cellRampHexes(chartActivityRampTokens, "botanical").light
+    );
+    expect(chartObservationRamp.dark).toEqual(
+      cellRampHexes(chartObservationRampTokens, "botanical").dark
+    );
+    expect(chartAdherenceState.taken.light).toBe(
+      paletteHex("botanical", "brand-700")
+    );
+  });
+
+  // Floodlight's declared risk (#2701): its ACCENT is amber, and the chart
+  // series set contains an amber. The accent everywhere (brand-400 #fbbf24)
+  // must stay clearly apart from the Energy/warn series hue — if an edit walks
+  // them into identity, a data line starts reading as UI chrome.
+  it("keeps the Floodlight accent apart from the amber series hue", () => {
+    const accent = paletteHex("floodlight", "brand-400");
+    const d = deltaE(chartSeries.amber, accent);
+    expect(
+      d,
+      `chartSeries.amber ${chartSeries.amber} vs Floodlight accent ${accent} ` +
+        `is ΔE ${d.toFixed(1)} — the declared adjacency has collapsed.`
+    ).toBeGreaterThanOrEqual(NORMAL_FLOOR);
+  });
 });

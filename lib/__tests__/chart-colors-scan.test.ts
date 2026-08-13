@@ -48,9 +48,11 @@ const ALLOWLIST = new Map<string, string>([
     "components/PlateBuilderModal.tsx",
     "IPF/Olympic plate color code + metallic gradient stops",
   ],
-  // Semantic anatomy heat-ramp tint for the muscle figure (a single intensity
-  // color scaled by fill opacity), not a categorical chart series.
-  ["components/MuscleAnatomy.tsx", "semantic muscle heat-ramp tint"],
+  // The Settings → Appearance palette picker's swatch previews (#2701): a
+  // preview must show the palette you are NOT currently in, so its canvas/
+  // surface/accent chips are literal restatements of each palette's tokens —
+  // not a chart series.
+  ["components/AppearancePicker.tsx", "palette swatch preview colors"],
 ]);
 
 // A hex COLOR literal: '#' + exactly 6 or 8 hex digits. (3-digit shorthands and

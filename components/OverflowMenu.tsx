@@ -218,7 +218,7 @@ export default function OverflowMenu({
                 left: pos?.left ?? 0,
                 visibility: pos ? "visible" : "hidden",
               }}
-              className="z-50 w-40 overflow-hidden rounded-lg border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900"
+              className="z-50 w-40 overflow-hidden rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10"
             >
               {children({ close, runAction, anchorRef: triggerRef })}
             </div>

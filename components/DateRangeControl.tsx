@@ -50,7 +50,7 @@ function rangePillClass(active: boolean): string {
   return `rounded-full px-3 py-1 text-sm font-medium transition ${
     active
       ? "bg-ink-900 text-white dark:bg-white dark:text-ink-950"
-      : "bg-white/70 text-slate-600 hover:bg-white dark:bg-ink-900/70 dark:text-slate-300 dark:hover:bg-ink-850"
+      : "bg-surface/70 text-slate-600 hover:bg-surface dark:text-slate-300 dark:hover:bg-ink-850"
   }`;
 }
 

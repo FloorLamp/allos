@@ -937,9 +937,7 @@ export default function ReadingsTable({
           <thead>
             <tr className="border-b border-black/5 dark:border-white/10">
               {multiView && (
-                <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                  Profile
-                </th>
+                <th className="th sticky top-0 z-10 bg-surface">Profile</th>
               )}
               <SortableHeader
                 column="name"
@@ -955,9 +953,7 @@ export default function ReadingsTable({
               <th className="th sticky top-0 z-10 hidden bg-white md:table-cell dark:bg-ink-900">
                 Panel
               </th>
-              <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                Value
-              </th>
+              <th className="th sticky top-0 z-10 bg-surface">Value</th>
               {/* Reference hides below `sm`: the value cell already flags
               out-of-range readings, and full ranges live on the detail page. */}
               <th className="th sticky top-0 z-10 hidden bg-white sm:table-cell dark:bg-ink-900">

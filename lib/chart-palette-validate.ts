@@ -52,11 +52,13 @@ export const RAMP_MIN_DELTA_L = 0.06;
  *  spread means it is not a one-hue ramp — it is a categorical set pretending. */
 export const RAMP_MAX_HUE_SPREAD = 40;
 
-/** The two real chart surfaces the app renders marks against: the light card
- *  background and the dark page/card background (`app/globals.css`). */
+/** The two real chart surfaces the app renders marks against: the BASE
+ *  palette's card surfaces (Botanical, `app/globals.css` --surface). The other
+ *  appearance palettes' surfaces live in lib/chart-colors.ts PALETTES and are
+ *  validated by the 3-palette × 2-mode matrix in chart-palette.test.ts (#2701). */
 export const CHART_SURFACE = {
-  light: "#ffffff",
-  dark: "#0f172a",
+  light: "#f4f8f0",
+  dark: "#101711",
 } as const;
 
 export type ChartTheme = keyof typeof CHART_SURFACE;

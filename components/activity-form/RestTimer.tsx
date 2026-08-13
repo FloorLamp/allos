@@ -182,7 +182,7 @@ export default function RestTimer({
             type="button"
             onClick={() => nudge(-REST_STEP_SEC)}
             aria-label="Subtract 15 seconds"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-white text-base font-semibold text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-surface text-base font-semibold text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:text-slate-300"
           >
             −15
           </button>
@@ -190,7 +190,7 @@ export default function RestTimer({
             type="button"
             onClick={() => nudge(REST_STEP_SEC)}
             aria-label="Add 15 seconds"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-white text-base font-semibold text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-surface text-base font-semibold text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:text-slate-300"
           >
             +15
           </button>
@@ -213,7 +213,7 @@ export default function RestTimer({
             onClick={reset}
             aria-label="Reset rest timer"
             title="Reset rest timer"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-white text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-surface text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:text-slate-300"
           >
             <IconRotateClockwise className="h-5 w-5" />
           </button>
@@ -229,7 +229,7 @@ export default function RestTimer({
             className={`rounded-full border px-3 py-1 text-xs font-medium transition pointer-coarse:text-sm ${
               target === secs
                 ? "border-brand-500 bg-brand-500 text-white"
-                : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300"
+                : "border-black/10 bg-surface text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300"
             }`}
           >
             {formatSeconds(secs)}

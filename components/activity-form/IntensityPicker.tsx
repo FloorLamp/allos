@@ -30,7 +30,7 @@ export default function IntensityPicker({
               className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${
                 active
                   ? opt.active
-                  : `bg-white dark:bg-ink-900 ${opt.cls} hover:bg-slate-50 dark:hover:bg-ink-800`
+                  : `bg-surface ${opt.cls} hover:bg-slate-50 dark:hover:bg-ink-800`
               }`}
             >
               {opt.label}

@@ -308,7 +308,7 @@ export default function ScheduleGrid({
                         className={`sticky left-0 z-10 cursor-help px-3 py-1.5 ${
                           rowHover
                             ? "bg-slate-50 dark:bg-ink-850"
-                            : "bg-white dark:bg-ink-900"
+                            : "bg-surface"
                         }`}
                         onMouseEnter={(e) =>
                           setTip({

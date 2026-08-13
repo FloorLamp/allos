@@ -77,7 +77,7 @@ export default function ActivityEquipmentPicker({
           onChange={(e) =>
             onChange(e.target.value ? Number(e.target.value) : null)
           }
-          className="input bg-white dark:bg-ink-900"
+          className="input"
         >
           <option value="">None</option>
           {options.map((e) => (

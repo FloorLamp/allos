@@ -1,6 +1,7 @@
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import PageContainer from "@/components/PageContainer";
+import AppearancePicker from "@/components/AppearancePicker";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import UnitPrefsForm from "../UnitPrefsForm";
 import FormatPrefsForm from "../FormatPrefsForm";
@@ -15,6 +16,9 @@ export default async function DisplaySettingsPage() {
   return (
     <SettingsGroupLayout group="display" login={login} profile={profile}>
       <PageContainer width="form" className="space-y-6">
+        {/* Device-scoped (#2701): the palette lives beside the theme choice in
+            this browser's storage, not in login settings. */}
+        <AppearancePicker />
         <UnitPrefsForm prefs={getUnitPrefs(login.id)} />
         <FormatPrefsForm prefs={getDisplayFormatPrefs(login.id)} />
       </PageContainer>

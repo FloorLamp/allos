@@ -21,12 +21,49 @@
 /** Where the user's choice lives. Interpolated into the boot script's source. */
 export const THEME_STORAGE_KEY = "theme";
 
+/** Where the appearance-palette choice lives (#2701), beside the theme key.
+ *  Device-scoped, like the theme itself; per-login sync is deferred. */
+export const PALETTE_STORAGE_KEY = "palette";
+
+/** The appearance palettes (#2701). "botanical" is the BASE — its tokens carry
+ *  no attribute; the other two are `[data-palette]` override blocks in
+ *  globals.css. Palette is orthogonal to light/dark/system. */
+export type PaletteChoice = "botanical" | "almanac" | "floodlight";
+
+export const PALETTE_CHOICES: readonly PaletteChoice[] = [
+  "botanical",
+  "almanac",
+  "floodlight",
+];
+
+/** Anything unrecognised — absent, corrupt, from a future build — means the
+ *  base palette, mirroring normalizeThemeChoice's posture. */
+export function normalizePaletteChoice(
+  raw: string | null | undefined
+): PaletteChoice {
+  return raw === "almanac" || raw === "floodlight" ? raw : "botanical";
+}
+
+/**
+ * What `data-palette` on <html> should BE for a stored value: the palette name,
+ * or null for "no attribute" — the base palette is the absence of the attribute,
+ * not a third value, so a stale attribute must be REMOVED, never left behind.
+ * The boot script and ThemeReassert both transcribe/apply exactly this.
+ */
+export function paletteAttribute(
+  stored: string | null | undefined
+): string | null {
+  const choice = normalizePaletteChoice(stored);
+  return choice === "botanical" ? null : choice;
+}
+
 /**
  * The pre-paint boot script (#2183). One place the rule has to be RETYPED rather
  * than imported: this is a string of source that must execute before any bundle
  * does, so it cannot call `isDarkTheme` — but it lives HERE, beside the rule it
  * transcribes, and `lib/__tests__/theme.test.ts` executes it against `isDarkTheme`
- * across the whole stored × prefersDark matrix so the two cannot drift. (That pin
+ * across the whole stored × prefersDark matrix — and against `paletteAttribute`
+ * across the stored-palette axis (#2701) — so the copies cannot drift. (That pin
  * caught a real one on arrival: the old copy's `t || 'system'` read an
  * unrecognised stored value as light, where `normalizeThemeChoice` means system —
  * hence `t !== 'light'`, the same "anything unrecognised defers to the OS".)
@@ -43,6 +80,9 @@ export const THEME_BOOT_SCRIPT = `
     var t = localStorage.getItem('${THEME_STORAGE_KEY}');
     var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.classList.toggle('dark', dark);
+    var p = localStorage.getItem('${PALETTE_STORAGE_KEY}');
+    if (p === 'almanac' || p === 'floodlight') document.documentElement.setAttribute('data-palette', p);
+    else document.documentElement.removeAttribute('data-palette');
   } catch (e) {}
 })();
 `;
@@ -77,11 +117,10 @@ export function isDarkTheme({
  * Inline colours for the top-level error card (#1906).
  *
  * Values are the same ones the stylesheet uses, restated as literals because this is
- * the one surface that cannot reach the stylesheet: the light page is globals.css's
- * `#e4ece6` body and a white panel; the dark page is its `#090c0b` body with the
- * `ink-800`/`ink-750` surfaces and slate text the rest of the dark theme uses. The
- * brand green stays put in both — a primary action that changes colour with the
- * scheme reads as a different button, and this one is the same button.
+ * the one surface that cannot reach the stylesheet: per palette × mode (#2701), the
+ * page is that palette's canvas top, the panel its surface, and the buttons its
+ * btn/ghost tokens — so the error card is recognisably the same app the user was in,
+ * even with globals.css gone.
  */
 export type ErrorCardPalette = {
   page: string;
@@ -97,36 +136,102 @@ export type ErrorCardPalette = {
   secondaryBorder: string;
 };
 
-const LIGHT_ERROR_CARD: ErrorCardPalette = {
-  page: "#e4ece6",
-  panel: "#ffffff",
-  panelShadow: "0 10px 30px rgba(15,23,42,0.15)",
-  heading: "#1e293b",
-  body: "#64748b",
-  muted: "#94a3b8",
-  primaryBackground: "#16a34a",
-  primaryText: "#ffffff",
-  secondaryBackground: "#ffffff",
-  secondaryText: "#334155",
-  secondaryBorder: "rgba(15,23,42,0.12)",
+const ERROR_CARDS: Record<
+  PaletteChoice,
+  { light: ErrorCardPalette; dark: ErrorCardPalette }
+> = {
+  botanical: {
+    light: {
+      page: "#ecf3e7",
+      panel: "#f4f8f0",
+      panelShadow: "0 10px 30px rgba(34,56,38,0.15)",
+      heading: "#1e3226",
+      body: "#4e6354",
+      muted: "#86a190",
+      primaryBackground: "#166534",
+      primaryText: "#f0f7ea",
+      secondaryBackground: "#eef4e8",
+      secondaryText: "#405446",
+      secondaryBorder: "#ccdcc4",
+    },
+    dark: {
+      page: "#090e0b",
+      panel: "#101711",
+      panelShadow: "0 10px 30px rgba(0,0,0,0.45)",
+      heading: "#e7eee2",
+      body: "#86a190",
+      muted: "#5c7263",
+      primaryBackground: "#1d7a44",
+      primaryText: "#e7f5eb",
+      secondaryBackground: "#17251c",
+      secondaryText: "#d9e8de",
+      secondaryBorder: "#202e24",
+    },
+  },
+  almanac: {
+    light: {
+      page: "#f8f5ee",
+      panel: "#fdfbf5",
+      panelShadow: "0 10px 30px rgba(62,52,24,0.15)",
+      heading: "#2b2a20",
+      body: "#6f6a54",
+      muted: "#a09a84",
+      primaryBackground: "#3f6212",
+      primaryText: "#faf8ef",
+      secondaryBackground: "#faf7ee",
+      secondaryText: "#5c573f",
+      secondaryBorder: "#ddd6c3",
+    },
+    dark: {
+      page: "#0c0b08",
+      panel: "#131210",
+      panelShadow: "0 10px 30px rgba(0,0,0,0.5)",
+      heading: "#ece7d8",
+      body: "#a09a84",
+      muted: "#6f6a54",
+      primaryBackground: "#b0c452",
+      primaryText: "#171509",
+      secondaryBackground: "#1b1912",
+      secondaryText: "#ece7d8",
+      secondaryBorder: "#2b2820",
+    },
+  },
+  floodlight: {
+    light: {
+      page: "#fdfdfb",
+      panel: "#ffffff",
+      panelShadow: "3px 3px 0 #fbbf24",
+      heading: "#1a1917",
+      body: "#6b6a62",
+      muted: "#a3a299",
+      primaryBackground: "#1a1917",
+      primaryText: "#fbbf24",
+      secondaryBackground: "#fafaf6",
+      secondaryText: "#57564e",
+      secondaryBorder: "#1a1917",
+    },
+    dark: {
+      // Night Game: flat, no shadow — a hard offset needs a light source.
+      page: "#0a0a09",
+      panel: "#131312",
+      panelShadow: "none",
+      heading: "#ebeae2",
+      body: "#a3a299",
+      muted: "#6b6a62",
+      primaryBackground: "#fbbf24",
+      primaryText: "#191507",
+      secondaryBackground: "#1c1c19",
+      secondaryText: "#ebeae2",
+      secondaryBorder: "#3f3e38",
+    },
+  },
 };
 
-const DARK_ERROR_CARD: ErrorCardPalette = {
-  page: "#090c0b",
-  panel: "#141a17",
-  panelShadow: "0 10px 30px rgba(0,0,0,0.45)",
-  heading: "#f1f5f9",
-  body: "#94a3b8",
-  muted: "#64748b",
-  primaryBackground: "#16a34a",
-  primaryText: "#ffffff",
-  secondaryBackground: "#1a211d",
-  secondaryText: "#e2e8f0",
-  secondaryBorder: "rgba(255,255,255,0.12)",
-};
-
-export function errorCardPalette(dark: boolean): ErrorCardPalette {
-  return dark ? DARK_ERROR_CARD : LIGHT_ERROR_CARD;
+export function errorCardPalette(
+  dark: boolean,
+  palette: PaletteChoice = "botanical"
+): ErrorCardPalette {
+  return ERROR_CARDS[palette][dark ? "dark" : "light"];
 }
 
 // ── The re-assert diagnostic (#2183) ─────────────────────────────────────────

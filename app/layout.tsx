@@ -35,9 +35,11 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // The BASE palette's canvas tops (Botanical, #2701); a static export cannot
+  // follow the palette attribute, so browser chrome speaks the base palette.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#e4ece6" },
-    { media: "(prefers-color-scheme: dark)", color: "#090c0b" },
+    { media: "(prefers-color-scheme: light)", color: "#ecf3e7" },
+    { media: "(prefers-color-scheme: dark)", color: "#090e0b" },
   ],
 };
 

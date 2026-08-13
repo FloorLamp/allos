@@ -591,7 +591,7 @@ export default async function OverviewSection() {
                       {row.label}
                     </span>
                     <span
-                      className="h-2.5 min-w-1.5 rounded-full bg-emerald-500/80"
+                      className="h-2.5 min-w-1.5 rounded-full bg-brand-600/80"
                       style={{
                         width: `${coverageMax > 0 ? (row.sets / coverageMax) * 100 : 0}%`,
                       }}

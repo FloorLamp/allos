@@ -320,7 +320,7 @@ export default function Combobox({
         <ul
           id={listboxId}
           role="listbox"
-          className={`absolute z-50 mt-1 max-h-56 overflow-auto rounded-lg border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900 ${
+          className={`absolute z-50 mt-1 max-h-56 overflow-auto rounded-lg border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10 ${
             titleAppearance ? "w-80 max-w-[calc(100vw-2rem)]" : "w-full"
           }`}
         >

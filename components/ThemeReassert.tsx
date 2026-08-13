@@ -6,6 +6,8 @@ import { createLogger } from "@/lib/log";
 import {
   isDarkTheme,
   isHydrationErrorMessage,
+  PALETTE_STORAGE_KEY,
+  paletteAttribute,
   THEME_STORAGE_KEY,
   themeReassertEvent,
 } from "@/lib/theme";
@@ -85,6 +87,16 @@ export default function ThemeReassert() {
     // Idempotent both ways: heals the poisoned dark session AND clears a stale
     // class an explicit light choice disowns. No-op on the happy path.
     root.classList.toggle("dark", dark);
+    // The palette attribute rides the same safety net (#2701): a document whose
+    // boot script never ran would otherwise render the base palette forever.
+    // paletteAttribute is the one rule — null means REMOVE, base is the absence.
+    try {
+      const attr = paletteAttribute(localStorage.getItem(PALETTE_STORAGE_KEY));
+      if (attr) root.setAttribute("data-palette", attr);
+      else root.removeAttribute("data-palette");
+    } catch {
+      // Storage blocked — same posture as the theme read above.
+    }
   }, [pathname]);
 
   return null;

@@ -492,7 +492,7 @@ export default function CommandPalette({
       title="Search"
       onClose={close}
       initialFocusRef={inputRef}
-      className="mt-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:mt-8 sm:p-5 dark:bg-ink-900"
+      className="mt-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:mt-8 sm:p-5"
     >
       <div className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="relative">

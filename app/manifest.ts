@@ -23,9 +23,11 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    // Match the icon tile / dark page background so the launch splash is seamless.
-    background_color: "#090c0b",
-    theme_color: "#090c0b",
+    // Match the icon tile / the BASE palette's dark canvas (Botanical's
+    // "Conservatory Night", #2701) so the launch splash is seamless. A manifest
+    // is static, so it always speaks the base palette.
+    background_color: "#090e0b",
+    theme_color: "#090e0b",
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
       {

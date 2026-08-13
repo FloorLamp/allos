@@ -19,7 +19,7 @@ export default function NotesField({
         value={notes}
         onChange={(e) => onNotesChange(e.target.value)}
         rows={2}
-        className="input bg-white dark:bg-ink-900"
+        className="input"
         placeholder="How did it feel?"
       />
     </div>

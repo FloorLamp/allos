@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { errorCardPalette, isDarkTheme, THEME_STORAGE_KEY } from "@/lib/theme";
+import {
+  errorCardPalette,
+  isDarkTheme,
+  normalizePaletteChoice,
+  PALETTE_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+  type PaletteChoice,
+} from "@/lib/theme";
 import {
   nextSkewGuard,
   parseSkewGuard,
@@ -48,6 +55,7 @@ export default function GlobalError({
   // (no window) falls back to light and is corrected at hydration, which is what the
   // suppressHydrationWarning below covers — the same trade the root layout makes.
   const [dark] = useState(() => detectDark());
+  const [appearance] = useState(() => detectPalette());
   const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
@@ -93,7 +101,7 @@ export default function GlobalError({
     });
   }, [error]);
 
-  const palette = errorCardPalette(dark);
+  const palette = errorCardPalette(dark, appearance);
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -208,6 +216,18 @@ export default function GlobalError({
       </body>
     </html>
   );
+}
+
+// The same decision the boot script makes, from the same storage key (#2701):
+// this card should be recognisably the app the user was just in, palette included.
+function detectPalette(): PaletteChoice {
+  if (typeof window === "undefined") return "botanical";
+  try {
+    return normalizePaletteChoice(localStorage.getItem(PALETTE_STORAGE_KEY));
+  } catch {
+    // Storage denied — the base palette is the only safe answer.
+    return "botanical";
+  }
 }
 
 // The same decision the boot script makes, from the same storage key.

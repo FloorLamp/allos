@@ -119,7 +119,7 @@ export default function BiomarkerScale({
 
   const badge = rangeBadge(value, cb, sex, age, status);
   const marker = bounded
-    ? `border-2 bg-white dark:bg-ink-900 ${MARKER_BORDER[badge] ?? MARKER_BORDER.unknown}`
+    ? `border-2 bg-surface ${MARKER_BORDER[badge] ?? MARKER_BORDER.unknown}`
     : `ring-2 ring-white dark:ring-slate-900 ${MARKER_COLOR[badge] ?? MARKER_COLOR.unknown}`;
 
   return (
