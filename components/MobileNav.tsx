@@ -29,7 +29,7 @@ import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { usePresence } from "@/components/usePresence";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
-import { useResettableState } from "@/components/useResettableState";
+import { useMobileChrome } from "@/components/MobileChromeProvider";
 import {
   overlayMotionClass,
   useDragGesture,
@@ -163,10 +163,18 @@ export default function MobileNav({
   whatsNewUnseen?: boolean;
 }) {
   const pathname = usePathname();
-  // Navigation owns the lifetime of both overlays. A new pathname gets a fresh
-  // closed draft during render rather than closing them in a follow-up effect.
-  const [open, setOpen] = useResettableState(false, pathname);
-  const [sheetOpen, setSheetOpen] = useResettableState(false, pathname);
+  // Both overlays now have TWO triggers each — this bar's hamburger and caret,
+  // and the bottom dock's More slot and puck (#2651) — and the dock is rendered
+  // outside <ShellChrome> (a transformed ancestor re-parents `position: fixed`).
+  // So the boolean lives in the shared provider one level up; the OVERLAYS still
+  // live here, and navigation still owns their lifetime — the provider resets
+  // both on a new pathname during render, exactly as this file used to.
+  const {
+    drawerOpen: open,
+    setDrawerOpen: setOpen,
+    logSheetOpen: sheetOpen,
+    setLogSheetOpen: setSheetOpen,
+  } = useMobileChrome();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { openCreate, openLive, workoutOffer } = useActivityEditor();

@@ -138,6 +138,7 @@ import type * as M91 from "@/app/(app)/whats-new/actions";
 import type * as M92 from "@/app/(auth)/forgot-password/actions";
 import type * as M93 from "@/app/(auth)/login/actions";
 import type * as M94 from "@/app/(auth)/set-password/actions";
+import type * as M95 from "@/app/(app)/log-sheet-actions";
 
 // ---------------------------------------------------------------------------
 // The census
@@ -195,6 +196,7 @@ type Census = {
   "app/(app)/integrations/withings/actions.ts": Expect<
     ActionsAreSerializable<typeof M19>
   >;
+  "app/(app)/log-sheet-actions.ts": Expect<ActionsAreSerializable<typeof M95>>;
   "app/(app)/medical/background/actions.ts": Expect<
     ActionsAreSerializable<typeof M20>
   >;
@@ -396,6 +398,7 @@ const CENSUSED_MODULES = [
   "app/(app)/integrations/sync-actions.ts",
   "app/(app)/integrations/weather/actions.ts",
   "app/(app)/integrations/withings/actions.ts",
+  "app/(app)/log-sheet-actions.ts",
   "app/(app)/medical/background/actions.ts",
   "app/(app)/medical/cycles/actions.ts",
   "app/(app)/medical/cycles/ttc-actions.ts",

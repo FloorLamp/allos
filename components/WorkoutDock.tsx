@@ -69,7 +69,7 @@ export default function WorkoutDock({
   return (
     <div
       ref={edgeRef}
-      className={`fixed inset-x-0 bottom-0 ${BOTTOM_EDGE_DOCK_LAYER} px-[max(0.5rem,env(safe-area-inset-left))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 print:hidden`}
+      className={`fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] ${BOTTOM_EDGE_DOCK_LAYER} px-[max(0.5rem,env(safe-area-inset-left))] pt-2 pb-2 md:bottom-0 md:pb-[max(0.5rem,env(safe-area-inset-bottom))] print:hidden`}
       data-testid="workout-dock"
       // The session's start instant, exposed because it — not the rendered minute
       // count — is the invariant a resume must preserve (#1893). The elapsed text is
