@@ -300,6 +300,16 @@ ${nodeLine}
   a failure it did not have.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
+- PREMISE-AUDIT AGAINST main BEFORE WRITING ANYTHING. An issue describes the tree it
+  was FILED against; the brief was written from the issue. Grep for the modules and
+  symbols it says are missing and confirm they still are. If the work is already done
+  or partly done, SAY SO FIRST and build the remainder — do not re-implement it, and
+  do not assume the brief checked. #2657 was briefed as untouched when its fold and
+  month rollup had shipped hours earlier in #2685; the agent found it, and only
+  because it looked.
+- $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
+  this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
+  from another cluster's worktree, and do not write to /tmp instead.
 ${issueLines}
 ${MIGRATION_LINES}
 - Immediately before opening the PR: git merge origin/main && npm run typecheck.
