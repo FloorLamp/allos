@@ -1,7 +1,15 @@
 import type Database from "better-sqlite3";
 import { instantNow } from "../clock";
+import { createLogger } from "../log";
 import { runBootTx } from "./schema-utils";
+import {
+  foreignKeyViolationTally,
+  introducedViolations,
+  type ForeignKeyViolationTally,
+} from "./cascade-delete";
 import { MIGRATIONS } from "./versions";
+
+const log = createLogger("migrate");
 
 // Versioned migration runner (issue #119; name-keyed since #2601's follow-up). A
 // minimal, zero-dependency runner whose applied-set lives in a `schema_migrations`
@@ -171,8 +179,38 @@ export function runMigrations(
     const record = db.prepare(
       `INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)`
     );
+    // The FK-graph baseline for the orphan probe below. Taken LAZILY — a boot with
+    // nothing to apply (every boot after the first, on every install) must not pay
+    // for a probe it will never compare against.
+    let fkBefore: ForeignKeyViolationTally | null | undefined;
+    // A probe that could not be TAKEN is reported once per boot, not once per
+    // migration: the fact worth knowing is that this boot had a blind spot, and
+    // repeating it for every remaining migration would bury it.
+    let probeGapReported = false;
+    const noteProbeGap = (m: Migration): void => {
+      if (probeGapReported) return;
+      probeGapReported = true;
+      log.warn(
+        `could not read PRAGMA foreign_key_check around migration ${m.name} — ` +
+          `rows it orphaned would go unreported (#2703). The baseline is re-taken ` +
+          `for the migration after it, so this is one blind migration and not a ` +
+          `probe that switched itself off.`,
+        { migration: m.name }
+      );
+    };
     for (const m of migrations) {
       if (applied.has(m.name)) continue;
+      // `== null` deliberately: `undefined` is "not taken yet" and `null` is "the
+      // last probe FAILED", and both mean there is no baseline to compare against.
+      // Re-taking on `null` is what stops one transient pragma failure from
+      // disabling the guard for every later migration in the boot — a guard that
+      // turns itself off after a hiccup and says nothing is the shape this whole
+      // family exists to remove, and it said nothing precisely because `null` was
+      // being carried forward as if it were a taken baseline.
+      if (fkBefore == null) {
+        fkBefore = foreignKeyViolationTally(db);
+        if (fkBefore === null) noteProbeGap(m);
+      }
       const tx = db.transaction(() => {
         // Authoritative in-txn dedup: a peer worker may have applied this
         // migration between our pre-loop read and taking the write lock.
@@ -189,10 +227,68 @@ export function runMigrations(
         db.pragma(`user_version = ${next}`);
       });
       runBootTx(tx);
+      fkBefore = reportOrphansIntroduced(db, m, fkBefore);
+      if (fkBefore === null) noteProbeGap(m);
     }
   } finally {
     if (fkWasOn) db.pragma("foreign_keys = ON");
   }
+}
+
+/**
+ * Report the dangling references `m` just created, and return the new baseline for
+ * the migration after it (issue #2703).
+ *
+ * WHY THIS IS HERE AND NOT IN A SOURCE SCAN. Every migration applies with
+ * `foreign_keys = OFF` (issue #95, for safe table rebuilds), so `ON DELETE CASCADE`
+ * fires for nothing and any migration that removes parent rows leaves its children
+ * behind. #2680 guards the shape a scanner can READ — `DELETE FROM <parent>`. It
+ * cannot read a rebuild that copies a FILTERED subset of rows into `<t>_new`, which
+ * drops the rest with no `DELETE` token at all, and no lexical rule is complete over
+ * that class (see lib/migrations/cascade-delete.ts for the full argument). This asks
+ * the database instead, which answers for every shape at once.
+ *
+ * A REPORT, NEVER A REFUSAL. The rows are dead weight, not corruption — every
+ * current reader joins the parent — and refusing the boot over them would trade a
+ * quiet inconsistency for an install that will not start, which is the worse of the
+ * two. It is also the wrong moment to refuse: the migration's own transaction has
+ * committed, so a throw here would leave the database half-upgraded rather than
+ * undoing anything. So it names the migration and the links, loudly, and boots. The
+ * repair is a forward migration calling `sweepOrphanedCascadeRows`, exactly as
+ * 20260813-cascade-orphan-sweep did for the #2680 orphans.
+ *
+ * It fires wherever a migration meets DATA — an operator's install, and a
+ * developer's own seeded database, which is where a new migration is first run
+ * against rows. CI's fresh databases have nothing to orphan, which is precisely why
+ * this class needs a probe that lives outside CI.
+ */
+function reportOrphansIntroduced(
+  db: Database.Database,
+  m: Migration,
+  before: ForeignKeyViolationTally | null | undefined
+): ForeignKeyViolationTally | null {
+  const after = foreignKeyViolationTally(db);
+  const introduced = introducedViolations(before ?? null, after);
+  if (introduced.length > 0) {
+    const rows = introduced.reduce((n, v) => n + v.rows, 0);
+    // The remedy is per LINK, because the sweep is: it clears CASCADE orphans and
+    // deliberately leaves `SET NULL` danglers alone (they are live provenance —
+    // see sweepOrphanedCascadeRows). Prescribing it for a SET NULL link would be
+    // advice that does nothing, offered in a voice that says it will.
+    const sweepable = introduced.some((v) => v.action === "cascade");
+    log.warn(
+      `migration ${m.name} left ${rows} row(s) pointing at a parent it removed ` +
+        `— migrations apply with foreign_keys = OFF, so ON DELETE CASCADE did not ` +
+        `fire (#2680/#2703). Use deleteRowsWithCascade() in the migration` +
+        (sweepable
+          ? `, or append one calling sweepOrphanedCascadeRows() to clear the ` +
+            `CASCADE orphans this one left.`
+          : `. The sweep cannot clear these: it removes CASCADE orphans only, and ` +
+            `deliberately leaves SET NULL references alone.`),
+      { migration: m.name, rows, links: introduced.map((v) => v.link) }
+    );
+  }
+  return after;
 }
 
 // Registry invariants, checked at boot. The numbered era is a frozen PREFIX:
