@@ -10,8 +10,10 @@
 //
 // Fictional patient, reserved-style ids, synthetic diagnosis names — no PHI.
 
+import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
+import { runMigrations } from "@/lib/migrations/runner";
 import { extractFromCcda } from "@/lib/cda";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
 import { persistDocumentImport } from "@/lib/import-persist";
@@ -123,6 +125,37 @@ describe("CCD import — encounter diagnoses deduped across the rank qualifier (
   });
 });
 
+describe("CCD import — a clinical 'Primary'/'Secondary' pair is NOT a duplicate (#2589)", () => {
+  it("stores both etiologies when no plain twin evidences a rank", () => {
+    // Primary and secondary hyperparathyroidism are different diseases. The suffix here
+    // is the diagnosis, not its rank, and the summary carries nothing that says otherwise.
+    const profileId = newProfile("Dx Clinical (test)");
+    const docId = newDocument(profileId, "endocrine-visit.xml");
+    importXml(
+      profileId,
+      docId,
+      ccdWithEncounterDiagnoses([
+        "Hyperparathyroidism - Primary",
+        "Hyperparathyroidism - Secondary",
+      ])
+    );
+    expect(storedSummary(profileId)).toBe(
+      "Hyperparathyroidism - Primary; Hyperparathyroidism - Secondary"
+    );
+  });
+
+  it("stores a lone qualified diagnosis whole", () => {
+    const profileId = newProfile("Dx Lone Clause (test)");
+    const docId = newDocument(profileId, "adrenal-visit.xml");
+    importXml(
+      profileId,
+      docId,
+      ccdWithEncounterDiagnoses(["Adrenal insufficiency - Secondary"])
+    );
+    expect(storedSummary(profileId)).toBe("Adrenal insufficiency - Secondary");
+  });
+});
+
 describe("migration — stored summaries healed with the same rule (#2589)", () => {
   it("rewrites an already-stored duplicate pair and leaves a clean row untouched", () => {
     const profileId = newProfile("Dx Migration (test)");
@@ -147,5 +180,65 @@ describe("migration — stored summaries healed with the same rule (#2589)", () 
     expect((read.get(cleanId) as { diagnoses: string }).diagnoses).toBe(
       `${CLAUSE_DX}; Acute sinusitis`
     );
+  });
+});
+
+// Through the REAL runner, on the REAL migrated schema, because that is the thing that
+// touches a live install: the pass reads EVERY encounters row, never consults `source`,
+// and rewrites in place with no tombstone. A row it must not touch has exactly one
+// chance to be left alone. Every row below is one the earlier strip-on-sight rule
+// destroyed — the paired etiologies, the lone clause, and an unrelated list whose only
+// crime was containing the word.
+describe("migration through runMigrations — clinical rows survive untouched (#2589)", () => {
+  const UNTOUCHED = [
+    "Hyperparathyroidism - Primary; Hyperparathyroidism - Secondary",
+    "Amyloidosis - Primary; Amyloidosis - Secondary",
+    "Multiple sclerosis - Primary; Multiple sclerosis - Secondary",
+    "Adrenal insufficiency - Secondary",
+    "C; B; A - Primary; D",
+    `${CLAUSE_DX}; Acute sinusitis`,
+  ];
+
+  it("is a no-op on every clinical row and still heals the motivating duplicate", () => {
+    const mem = new Database(":memory:");
+    try {
+      // Build the real schema the way a real install does.
+      runMigrations(mem);
+      const profileId = Number(
+        mem.prepare("INSERT INTO profiles (name) VALUES (?)").run("Dx Runner")
+          .lastInsertRowid
+      );
+      const insert = mem.prepare(
+        `INSERT INTO encounters (profile_id, date, type, diagnoses, source)
+         VALUES (?, '2026-05-04', 'Office Visit', ?, 'ccd')`
+      );
+      const ids = UNTOUCHED.map((s) =>
+        Number(insert.run(profileId, s).lastInsertRowid)
+      );
+      const dupeId = Number(
+        insert.run(profileId, `${CARRIER_DX}; ${CARRIER_DX} - Primary`)
+          .lastInsertRowid
+      );
+
+      // Forget this one migration in the name-keyed ledger and re-run: the runner
+      // re-applies exactly it, against rows that now exist. This is the real apply
+      // path, not a direct `up()` call.
+      mem
+        .prepare(`DELETE FROM schema_migrations WHERE name = ?`)
+        .run("20260812-visit-diagnosis-rank-dedupe");
+      runMigrations(mem);
+
+      const read = mem.prepare(`SELECT diagnoses FROM encounters WHERE id = ?`);
+      ids.forEach((id, i) => {
+        expect((read.get(id) as { diagnoses: string }).diagnoses).toBe(
+          UNTOUCHED[i]
+        );
+      });
+      expect((read.get(dupeId) as { diagnoses: string }).diagnoses).toBe(
+        CARRIER_DX
+      );
+    } finally {
+      mem.close();
+    }
   });
 });

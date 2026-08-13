@@ -44,27 +44,32 @@ const phaseOn = (
   date: string,
   today: string = LIVED_THROUGH
 ) => cyclePhaseOnDate(periods, date, today);
+const dayOn = (
+  periods: CyclePeriod[],
+  date: string,
+  today: string = LIVED_THROUGH
+) => cycleDayOnDate(periods, date, today);
 
 describe("cycleDayOnDate (#1221)", () => {
   it("returns null before any recorded period", () => {
-    expect(cycleDayOnDate(HISTORY, "2025-12-31")).toBeNull();
+    expect(dayOn(HISTORY, "2025-12-31")).toBeNull();
   });
 
   it("counts 1-based from the current cycle's start (start day = day 1)", () => {
-    expect(cycleDayOnDate(HISTORY, "2026-01-01")).toBe(1);
-    expect(cycleDayOnDate(HISTORY, "2026-01-05")).toBe(5);
+    expect(dayOn(HISTORY, "2026-01-01")).toBe(1);
+    expect(dayOn(HISTORY, "2026-01-05")).toBe(5);
     // Day before the next period start (2026-01-29) is cycle day 28.
-    expect(cycleDayOnDate(HISTORY, "2026-01-28")).toBe(28);
+    expect(dayOn(HISTORY, "2026-01-28")).toBe(28);
   });
 
   it("resets to day 1 at the next recorded period start", () => {
-    expect(cycleDayOnDate(HISTORY, "2026-01-29")).toBe(1);
-    expect(cycleDayOnDate(HISTORY, "2026-01-30")).toBe(2);
+    expect(dayOn(HISTORY, "2026-01-29")).toBe(1);
+    expect(dayOn(HISTORY, "2026-01-30")).toBe(2);
   });
 
   it("keeps counting into the open cycle from the latest start", () => {
-    expect(cycleDayOnDate(HISTORY, "2026-02-26")).toBe(1);
-    expect(cycleDayOnDate(HISTORY, "2026-03-10")).toBe(13);
+    expect(dayOn(HISTORY, "2026-02-26")).toBe(1);
+    expect(dayOn(HISTORY, "2026-03-10")).toBe(13);
   });
 });
 
@@ -118,7 +123,7 @@ describe("cyclePhaseOnDate", () => {
     expect(open[0].period_end).toBeNull();
     // Cycle DAY still counts from the logged start: the start is a fact, the coverage
     // was the claim.
-    expect(cycleDayOnDate(open, "2026-04-11")).toBe(11);
+    expect(dayOn(open, "2026-04-11")).toBe(11);
   });
 
   it("still resolves luteal retrospectively once a next period follows a stale open one", () => {
@@ -196,6 +201,24 @@ describe("cyclePhaseOnDate refuses a future date (#2613)", () => {
   it("refuses before it consults the log at all — an empty log answers null either way", () => {
     expect(phaseOn([], "2026-12-10", "2026-08-12")).toBeNull();
     expect(phaseOn([], "2026-08-01", "2026-08-12")).toBeNull();
+  });
+
+  it("fails CLOSED on a missing horizon rather than answering every date", () => {
+    // `"2026-12-10" > undefined` is false, so a bare `date > today` comparison answers
+    // the future confidently on exactly the inputs that lost track of what today is.
+    // An absent horizon means the caller cannot say which days have been lived, and the
+    // honest answer to every date then is "no phase" — never "every phase".
+    expect(phaseOn(OPEN, "2026-03-03", "")).toBeNull();
+    expect(phaseOn(OPEN, "2026-12-10", "")).toBeNull();
+  });
+
+  it("gives cycleDayOnDate the SAME domain — the pair is formatted as one line", () => {
+    // "Cycle day 285" on a date four months out is the identical claim: a cycle that
+    // started in March is still running in December.
+    expect(dayOn(OPEN, "2026-08-12", "2026-08-12")).toBeGreaterThan(0);
+    expect(dayOn(OPEN, "2026-08-13", "2026-08-12")).toBeNull();
+    expect(dayOn(OPEN, "2026-12-10", "2026-08-12")).toBeNull();
+    expect(dayOn(OPEN, "2026-03-03", "")).toBeNull();
   });
 });
 

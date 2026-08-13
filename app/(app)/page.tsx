@@ -781,7 +781,7 @@ export default async function Dashboard() {
   const cyclePhase =
     cyclePeriods.length > 0 ? cyclePhaseOnDate(cyclePeriods, on, on) : null;
   const cycleDay =
-    cyclePeriods.length > 0 ? cycleDayOnDate(cyclePeriods, on) : null;
+    cyclePeriods.length > 0 ? cycleDayOnDate(cyclePeriods, on, on) : null;
   const cycleForecast =
     cyclePeriods.length > 0 ? getCycleForecast(profile.id, on) : null;
   const cycleControl = has("cycle-phase")

@@ -2,37 +2,82 @@
 //
 // `encounters.diagnoses` is a "; "-joined summary column, and every producer — the CCD
 // nested-problem walk, the standalone Visit Diagnoses section, the FHIR
-// Encounter.diagnosis references, the AI extractor — hands the persist layer a bare
-// `string[]` of display names. Those producers dedup by BYTE equality, which is exactly
-// what a source system defeats when it bakes the diagnosis RANK into the display name:
+// Encounter.diagnosis references, the AI extractor, the hand-typed textarea on the visit
+// form — hands the persist layer a bare `string[]` of display names. Those producers dedup
+// by BYTE equality, which is exactly what a source system defeats when it bakes the
+// diagnosis RANK into the display name:
 //
 //   "Encounter for genetic carrier testing"
 //   "Encounter for genetic carrier testing - Primary"
 //
 // is one diagnosis listed twice, and the pair renders as two full-width chips claiming
-// two separate findings. The rank is real information; expressing it as a suffix on the
-// NAME is the defect. So this module reads the suffix back off as a signal, dedups
-// case-insensitively on what remains, and orders the primary diagnosis first — the
-// summary states the rank by POSITION instead of by re-writing it into a name.
+// two separate findings.
 //
-// The qualifier list is CLOSED (`- Primary`, `- Secondary`, any casing, any surrounding
-// whitespace). It is deliberately not a general "strip anything after a trailing hyphen"
-// guess: clinical names legitimately carry hyphenated clauses ("Type 2 diabetes mellitus
-// - uncontrolled", "Fracture of tibia - closed"), and mangling one of those would lose
-// the very distinction the name exists to draw. A suffix that is not on the list is part
-// of the name, full stop.
+// ── Why the suffix alone is NOT evidence ──────────────────────────────────────────────
+//
+// "Primary" and "Secondary" are not only rank words. They are two of the most common
+// CLINICAL distinguishing clauses in diagnosis names, and they arrive in the very same
+// "<name> - <clause>" shape:
+//
+//   "Hyperparathyroidism - Primary"     vs  "Hyperparathyroidism - Secondary"
+//   "Amyloidosis - Primary"             vs  "Amyloidosis - Secondary"
+//   "Multiple sclerosis - Primary"      vs  "Multiple sclerosis - Secondary"
+//   "Adrenal insufficiency - Secondary"
+//
+// Those are DIFFERENT DISEASES with different management — primary hyperparathyroidism is
+// a parathyroid adenoma, secondary is a response to renal failure; AL and AA amyloidosis
+// are unrelated; PPMS and SPMS are distinct courses. A rule that strips the word because
+// it recognises it collapses two diagnoses into one and deletes an etiology off a lone
+// row, in a column nothing else records the rank in. That is worse than the duplicate it
+// was written to fix, and it is unrecoverable: the summary is rewritten in place.
+//
+// So the qualifier is never stripped on the strength of the WORD. It is stripped only
+// against EVIDENCE, found inside the same summary:
+//
+//   a ranked entry collapses only when its stripped base name exactly matches
+//   another entry in the SAME summary that carries no qualifier at all.
+//
+// That plain twin is what makes "- Primary" a rank here: the source stated the diagnosis
+// once bare, so the ranked copy is the same finding wearing its rank. With no twin there
+// is no evidence, and the suffix is part of the name, full stop.
+//
+//   ["X", "X - Primary"]             → ["X"] (rank primary recovered) — the motivating case
+//   ["X - Primary", "X - Secondary"] → both survive, byte-identical — two diagnoses
+//   ["X - Secondary"]                → survives, byte-identical — a lone etiology
+//   ["C", "B", "A - Primary", "D"]   → unchanged, IN ORDER — nothing was deduped
+//
+// One further guard, in the same direction: a base name that carries two DIFFERENT
+// recognized qualifiers in one summary is clinical even if a plain twin is also present.
+// A visit does not rank one finding both primary and secondary, so "X; X - Primary;
+// X - Secondary" reads as a bare mention plus two etiologies, and all three are kept.
+// Failing to dedup costs a repeated chip; deduping wrongly costs a diagnosis.
+//
+// ── Order ─────────────────────────────────────────────────────────────────────────────
+//
+// Source order is information, and re-sorting a list nothing was removed from needs a
+// reason better than "the algorithm sorts". Entries come back in the source's own order,
+// EXCEPT that a recovered primary is hoisted to the front — and a rank is only ever
+// recovered where a collapse actually happened, so a summary that deduped nothing is
+// returned in exactly the order it arrived. Hoisting is how the rank survives at all:
+// the column has no rank field, so position is the only place left to state it.
 //
 // Pure, so the import seam (lib/import-persist.ts), its diff-side mirror
-// (lib/import-diff.ts) and the one-shot migration that heals already-stored summaries
-// all normalize through the SAME rule rather than three copies of it.
+// (lib/import-diff.ts) and both display splitters ask the SAME rule. The one-shot
+// migration that heals already-stored summaries deliberately does NOT import from here —
+// see the frozen copy in lib/migrations/versions/20260812-visit-diagnosis-rank-dedupe.ts
+// and the reason written above it.
 
 export const DIAGNOSIS_RANKS = ["primary", "secondary"] as const;
 export type DiagnosisRank = (typeof DIAGNOSIS_RANKS)[number];
 
 export interface VisitDiagnosis {
-  // The display name with any recognized rank qualifier removed.
+  // The name to store and render. A qualifier is removed ONLY where the summary carried
+  // the evidence to call it a rank; with no evidence this is the raw name in full,
+  // qualifier included.
   name: string;
-  // The rank the source expressed as a suffix, or null when it stated none.
+  // The rank recovered from the summary, or null when none was evidenced. Non-null
+  // implies a collapse happened for this entry — the plain twin it merged with is what
+  // proved the suffix was a rank.
   rank: DiagnosisRank | null;
 }
 
@@ -51,8 +96,11 @@ function rankStrength(rank: DiagnosisRank | null): number {
   return 0;
 }
 
-// One raw display name split into its name and the rank the source baked into it.
-// A name with no recognized qualifier comes back trimmed and otherwise untouched.
+// The CANDIDATE split of one raw display name: the base name a recognized trailing
+// qualifier would leave behind, and the qualifier itself. This is a question about the
+// STRING and nothing more — it decides nothing. Whether that candidate is a rank or part
+// of the diagnosis is decided by normalizeVisitDiagnoses, against the rest of the
+// summary, because a single name can never carry that evidence on its own.
 export function parseVisitDiagnosis(raw: string): VisitDiagnosis {
   const trimmed = raw.trim();
   const m = RANK_SUFFIX_RE.exec(trimmed);
@@ -64,31 +112,67 @@ export function parseVisitDiagnosis(raw: string): VisitDiagnosis {
   return { name, rank: m[1].toLowerCase() as DiagnosisRank };
 }
 
-// The encounter's diagnoses as a deduplicated, rank-aware list. Duplicates collapse
-// case-insensitively on the name (the FIRST spelling is the one kept — a source that
-// repeats a name inconsistently gets its own first answer, not ours), taking the
-// strongest rank any of the copies stated. Primary-ranked entries come first; everything
-// else keeps the source's order.
+// The encounter's diagnoses as an evidence-deduplicated, rank-aware list. See the header:
+// a qualifier is read as a rank only where the same summary also carries the bare name,
+// and only where that base is not also wearing a second, different qualifier.
 export function normalizeVisitDiagnoses(
   raw: readonly string[]
 ): VisitDiagnosis[] {
+  const parsed = raw
+    .map((r) => ({
+      full: (r ?? "").trim(),
+      candidate: parseVisitDiagnosis(r ?? ""),
+    }))
+    .filter((p) => p.full !== "");
+
+  // The bare names the summary states with no qualifier at all — the evidence set.
+  const plainKeys = new Set(
+    parsed
+      .filter((p) => p.candidate.rank === null)
+      .map((p) => p.candidate.name.toLowerCase())
+  );
+  // Base names wearing more than one DISTINCT qualifier: clinical variants, not a rank.
+  const qualifiersByBase = new Map<string, Set<DiagnosisRank>>();
+  for (const p of parsed) {
+    if (p.candidate.rank === null) continue;
+    const key = p.candidate.name.toLowerCase();
+    const seen = qualifiersByBase.get(key) ?? new Set<DiagnosisRank>();
+    seen.add(p.candidate.rank);
+    qualifiersByBase.set(key, seen);
+  }
+
   const byKey = new Map<string, VisitDiagnosis>();
   const order: string[] = [];
-  for (const r of raw) {
-    const parsed = parseVisitDiagnosis(r ?? "");
-    if (!parsed.name) continue;
-    const key = parsed.name.toLowerCase();
+  for (const p of parsed) {
+    const base = p.candidate.name.toLowerCase();
+    const evidenced =
+      p.candidate.rank !== null &&
+      plainKeys.has(base) &&
+      (qualifiersByBase.get(base)?.size ?? 0) < 2;
+    // With evidence the qualifier is a rank and comes off; without it the qualifier is
+    // part of the diagnosis and the raw name is kept whole.
+    const entry: VisitDiagnosis = evidenced
+      ? { name: p.candidate.name, rank: p.candidate.rank }
+      : { name: p.full, rank: null };
+
+    const key = entry.name.toLowerCase();
     const prev = byKey.get(key);
     if (prev == null) {
-      byKey.set(key, parsed);
+      byKey.set(key, entry);
       order.push(key);
       continue;
     }
-    if (rankStrength(parsed.rank) > rankStrength(prev.rank)) {
-      byKey.set(key, { name: prev.name, rank: parsed.rank });
+    // A byte-equal repeat, or the plain twin meeting its ranked copy. The FIRST spelling
+    // is the one kept — a source that repeats a name inconsistently gets its own first
+    // answer, not ours — and the strongest rank any copy stated wins.
+    if (rankStrength(entry.rank) > rankStrength(prev.rank)) {
+      byKey.set(key, { name: prev.name, rank: entry.rank });
     }
   }
+
   const entries = order.map((k) => byKey.get(k) as VisitDiagnosis);
+  // Source order, except that a RECOVERED primary leads. `rank` is non-null only where a
+  // collapse happened, so a summary that deduped nothing is returned untouched.
   return [
     ...entries.filter((e) => e.rank === "primary"),
     ...entries.filter((e) => e.rank !== "primary"),
@@ -96,8 +180,8 @@ export function normalizeVisitDiagnoses(
 }
 
 // The stored summary column for a list of raw display names: normalized, deduped,
-// primary first, joined with "; ". Empty string when nothing survives — the persist
-// seam stores NULL for that, the diff seam stores "".
+// joined with "; ". Empty string when nothing survives — the persist seam stores NULL
+// for that, the diff seam stores "".
 export function joinVisitDiagnoses(raw: readonly string[]): string {
   return normalizeVisitDiagnoses(raw)
     .map((d) => d.name)
