@@ -947,6 +947,19 @@ See `docs/internals/e2e-hygiene.md`.
   guarantees no silent corruption; the audit upgrades refusals into good UX. Do
   not "upgrade" genuinely additive affordances (weight, food servings). See
   `docs/internals/stateful-affordances.md`.
+- **Act, then offer undo** — one lifecycle, not one per surface.
+  `components/useUndoableAction.ts` over the pure `lib/undo-offer.ts` owns the
+  window (`UNDO_TOAST_MS`), the "Undo" label and the refusal wording;
+  `useUndoableDelete` is its delete adapter and the dose confirm its second
+  tenant. A write may offer an undo only when its inverse is COMPLETE (children
+  and side-state included), LOCAL (nothing was sent, published or delivered) and
+  RE-DERIVED server-side — `undoDoseConfirm` proceeds only while the day's ledger
+  is still the single taken row the confirm wrote, because the one core's clear is
+  a `DELETE` by (dose, date). The gate is per OUTCOME, not per action: an
+  `already-taken` tap wrote nothing, so it gets no Undo. **Undo never replaces a
+  consequence-stating confirm** on a hard-to-reverse or outward-facing transition
+  — obligation demotion, retiring a dose with logs, ending an episode, stopping a
+  medication course. See `docs/internals/undo-contract.md`.
 - Findings have an explicit reach policy: care findings may reach Upcoming,
   attention surfaces, and notifications; coaching findings stay in calm,
   hideable surfaces. See `docs/internals/findings.md` — which also holds the **attention doctrine**:

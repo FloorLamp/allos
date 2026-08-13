@@ -45,6 +45,7 @@ import {
   snoozeAttention,
   dismissAttention,
   markAttentionDose,
+  undoAttentionDose,
 } from "@/app/(app)/actions";
 
 // The Tier-1 "Needs attention" hero (issue #171). Full-width, pinned first, NOT
@@ -150,6 +151,11 @@ function Row({
         {item.doseId != null && (
           <DoseConfirmButton
             action={markAttentionDose}
+            // Act → toast → Undo (#2642). The hero is the surface most likely to be
+            // tapped by accident — it sits at the top of the dashboard — and the
+            // inverse here is complete and local: the row goes, the supply comes
+            // back, the dose is due again.
+            undoAction={undoAttentionDose}
             fields={{ dose_id: item.doseId }}
             testid="attention-mark-taken"
             className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"

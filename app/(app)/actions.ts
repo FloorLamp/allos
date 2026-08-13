@@ -19,10 +19,14 @@ import {
   snoozeFinding,
   dismissFinding,
   markDoseTaken,
+  undoDoseConfirm,
   acknowledgeRestToday,
 } from "@/lib/queries";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
-import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
+import type {
+  DoseConfirmResult,
+  DoseUndoResult,
+} from "@/lib/dose-outcome-text";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logUsualRoutineCore } from "@/lib/usual-routine-write";
 import type { UsualFoodLogged } from "@/lib/food-usual-write";
@@ -223,6 +227,29 @@ export async function markAttentionDose(
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return { ok: false, error: "Couldn't find that dose." };
   const outcome = markDoseTaken(profile.id, doseId, null, today(profile.id));
+  revalidateRoute("/");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
+  return { ok: true, outcome };
+}
+
+// Take back the hero's "Mark taken" (#2642) — the inverse behind its Undo toast. Same
+// gate as the confirm (the acting profile's write access), same revalidation, and the
+// same discipline about answering: `undoDoseConfirm` re-derives whether this tap's row is
+// still the only thing standing for the day and refuses otherwise, and the button renders
+// that typed outcome rather than claiming the confirm came back.
+//
+// Nothing left the machine on the way in — a hero confirm sends no message — so the
+// inverse is complete and local: the row goes, the supply it consumed is handed back, and
+// the dose is due again, which is precisely the state not tapping would have left.
+export async function undoAttentionDose(
+  formData: FormData
+): Promise<DoseUndoResult> {
+  const { profile } = await requireWriteAccess();
+  const doseId = Number(formData.get("dose_id"));
+  if (!doseId) return { ok: false, error: "Couldn't find that dose." };
+  const outcome = undoDoseConfirm(profile.id, doseId, today(profile.id));
   revalidateRoute("/");
   revalidateRoute("/upcoming");
   revalidateRoute("/nutrition");

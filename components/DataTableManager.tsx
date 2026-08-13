@@ -11,10 +11,10 @@ import {
 } from "@/app/(app)/data/manage-actions";
 import { undoDeletes } from "@/app/(app)/undo-actions";
 import { currentPathHref } from "@/lib/hrefs";
-
-// How long the bulk-delete "Undo" toast stays up (ms) — the holding rows live
-// ~24h, but the toast is the only affordance, so it lingers past a normal toast.
-const UNDO_TOAST_MS = 15000;
+// The bulk-delete "Undo" toast uses the SHARED window (#2642) — the holding rows live
+// ~24h, but the toast is the only affordance, so it lingers past a normal toast. This
+// was a fourth local copy of 15000 until the vocabulary got one home.
+import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 
 interface Dataset {
   key: string;
