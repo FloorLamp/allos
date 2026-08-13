@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertPartition,
   isSpecFile,
+  movedFiles,
   planShards,
   type DurationMap,
 } from "@/lib/e2e-shard-plan";
@@ -152,5 +153,51 @@ describe("assertPartition", () => {
     expect(() =>
       assertPartition(["a", "b", "c"], [["c"], ["a"], ["b"]])
     ).not.toThrow();
+  });
+});
+
+describe("movedFiles (co-residency reporting)", () => {
+  // A refresh's real effect is on WHICH SPECS CAN SHARE A DATABASE, and a spec
+  // changing bucket is what makes a new collision possible (#2604, #2623). This
+  // is the count behind that report — see lib/e2e-shard-plan.ts.
+  const A = [
+    ["a", "b"],
+    ["c", "d"],
+  ];
+
+  it("reports nothing when the plan is unchanged", () => {
+    expect(movedFiles(A, A)).toEqual([]);
+  });
+
+  it("names the shard a spec came from and the one it went to", () => {
+    const B = [["a"], ["b", "c", "d"]];
+    expect(movedFiles(A, B)).toEqual([{ file: "b", from: 1, to: 2 }]);
+  });
+
+  it("does not count a NEW spec as moved — it had no neighbourhood to leave", () => {
+    const withNew = [
+      ["a", "b"],
+      ["c", "d", "e"],
+    ];
+    expect(movedFiles(A, withNew)).toEqual([]);
+  });
+
+  it("does not count a DELETED spec as moved either", () => {
+    const deleted = [["a", "b"], ["c"]];
+    expect(movedFiles(A, deleted)).toEqual([]);
+  });
+
+  it("counts the renumbering when the shard COUNT itself changes", () => {
+    // Re-splitting renumbers nearly everything: `c` and `d` did not change
+    // NEIGHBOURS at all — they are still exactly together — but their shard is
+    // now 3, and the report answers "which shard is this spec in now". Refresh
+    // the manifest and the shard count in separate commits if you want a
+    // readable number.
+    const grown = [["a"], ["b"], ["c", "d"]];
+    expect(movedFiles(A, grown)).toEqual([
+      { file: "b", from: 1, to: 2 },
+      { file: "c", from: 2, to: 3 },
+      { file: "d", from: 2, to: 3 },
+    ]);
   });
 });
