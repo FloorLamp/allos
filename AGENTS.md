@@ -231,10 +231,23 @@ boot complaining about the default posture forever is the standing-alarm shape.
 A REPORT, never a refusal: the rows are dead weight rather than corruption, the
 migration's transaction has already committed so a throw would only half-upgrade
 the database, and the fix is a forward migration calling
-`sweepOrphanedCascadeRows()`. It costs a fresh install nothing (190 checks over a
-database with no rows) and an established one one check per NEW migration, so it
-fires where the data actually is: an operator's install, and a developer's own
-seeded database.
+`sweepOrphanedCascadeRows()` — prescribed only for the CASCADE links that sweep
+can clear, never for the SET NULL ones it deliberately keeps. It costs a fresh
+install nothing (190 checks over a database with no rows) and an established one
+one check per NEW migration, so it fires where the data actually is: an operator's
+install, and a developer's own seeded database.
+
+Three things about the delta are load-bearing and were each wrong first. It is
+keyed on the RESOLVED COLUMNS, never on the pragma's `fkid`, which is a POSITION
+that an ordinary rebuild renumbers — 33 migrations rebuild a table, and under a
+positional key each one re-keys every pre-existing dangler into a fresh accusation
+against a migration that deleted nothing. It compares ROW IDENTITY, not counts,
+because a migration that repairs one dangler and orphans another nets to zero;
+where identity is unavailable (past the cap, or across a rebuild that may reassign
+rowids) it falls back to counting and says so rather than guessing. And a probe
+that could not be TAKEN answers `null`, which is a GAP: the baseline is re-taken
+for the next migration and the boot says so once, because carrying it forward as a
+baseline switched the guard off for the rest of the boot in silence.
 
 The runner applies migrations in individual immediate transactions, guards
 against a newer database being opened by older code, and temporarily disables

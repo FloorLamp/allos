@@ -40,9 +40,17 @@ import { NON_IDENTITY_CATEGORIES } from "../../medical-categories";
 //
 //   • A star with no family row of ANY kind. The buggy query never matched it, so
 //     it is still `backed = 0` and is not this defect's blast radius.
-//   • A star whose identity-carrying readings were deleted since. That is a GENUINE
-//     orphan the sweep should still take, and un-backing it would grant an amnesty
-//     the user never earned.
+//   • A star whose identity-carrying readings were deleted since AND whose family
+//     carries no non-identity row either. That is a GENUINE orphan the sweep should
+//     still take, and un-backing it would grant an amnesty the user never earned.
+//
+// THE SECOND EXCEPTION HAS A BOUNDARY, and it is worth stating rather than leaving
+// to be discovered. Delete a family's real readings while an `assessment` row
+// remains, and the state is byte-identical to the defect's — `backed = 1`, no
+// identity-carrying record, one non-identity record — so the repair resets that one
+// too. No query separates the two: the difference is a HISTORY the schema does not
+// keep. It errs toward preserving the tap, which is the direction argued below, and
+// the DB tier pins the case so it reads as a decision rather than an oversight.
 //
 // The move is only ever 1 → 0. `backed` is a claim about the past, so making it
 // smaller can lose nothing a reading actually justified — and the direction matters:
@@ -113,6 +121,15 @@ export function up(db: Database.Database): void {
     return;
   }
 
+  // The BACKFILL's predicate, deliberately, because this repair's job is to
+  // recognise the rows the backfill marked. It is NOT byte-identical to the
+  // sweep's: `cleanupOrphanSavedBiomarkers` tests `canonical_name IS NOT NULL`
+  // alone and then keys on `COALESCE(NULLIF(TRIM(canonical_name), ''), name)`, so
+  // a BLANK-but-not-NULL `canonical_name` is backing to the sweep and invisible
+  // here. That gap is one-directional and harmless: such a row leaves a star at
+  // `backed = 1` untouched — the sweep already agrees it is backed — and no write
+  // path in the tree produces the value (every writer stores NULL or a real name).
+  // If one ever did, the sweep's own PROMOTE self-heals it on the next run.
   const named = `canonical_name IS NOT NULL AND TRIM(canonical_name) != ''`;
   const nameExpr = `COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS n`;
   const placeholders = NON_IDENTITY_CATEGORIES.map(() => "?").join(",");

@@ -269,9 +269,9 @@ catch two spellings and miss `INSERT INTO t_new SELECT * FROM t` followed by a
 filtering delete on the new table (which has no inbound foreign keys, so the
 `DELETE` guard is blind to it) — and a guard that catches some spellings while
 reading like a guard is the #2444 defect, not a defence against it. The
-population is also one: of the 32 shipped migrations using the rebuild recipe,
-exactly one (083) filters rows, and `metric_samples` has no cascading children,
-so the historical exposure is zero.
+population is also one: of the 33 shipped migrations using the rebuild recipe,
+exactly one (083) filters rows, and `metric_samples` has no cascading children —
+not today and at no point in the sequence — so the historical exposure is zero.
 
 ### The other half of the ratchet is behavioural (#2703)
 
@@ -286,27 +286,56 @@ a filtering rebuild, a CTAS, a delete on the new table and a plain
 `DELETE FROM parent` all answer the same way, and nothing is spelled twice so
 nothing can be misspelled.
 
-Three properties are the design, not details:
+Four properties are the design, not details:
 
 - **A delta, not an assertion of cleanliness.** The pragma reports every dangling
   non-null reference, including the `SET NULL` danglers this project keeps on
   purpose. A probe that flagged those would be complaining about the default
   posture on every boot forever — the standing-alarm shape ruled out for the
-  health endpoint, and no better here. Only growth is reported.
+  health endpoint, and no better here. Only what a migration added is reported.
+- **A delta over row IDENTITY, not over counts.** Counts cancel: a migration that
+  clears one dangling row and orphans a live one on the same link nets to zero,
+  and "no net growth" is not "nothing was orphaned" — that is the
+  repair-plus-change and re-homing shape, which this tree has (177/180/185). The
+  tally carries which rows dangle, and the comparison asks whether a row that was
+  fine became an orphan. Two fallbacks to counting are declared rather than
+  silent: a link past the identity cap (20,000 dangling rows), and a child table
+  the migration **rebuilt** — a rebuild may reassign rowids, and reading those as
+  new orphans would be the false positive below, reintroduced.
 - **A report, never a refusal.** The rows are dead weight, not corruption: every
   current reader joins the parent. Refusing the boot would trade a quiet
   inconsistency for an install that will not start, and it is the wrong moment
   anyway — the migration's own transaction has already committed, so a throw
   leaves the database half-upgraded instead of undoing anything. The repair is a
   forward migration calling `sweepOrphanedCascadeRows()`, exactly as
-  `20260813-cascade-orphan-sweep` did for the #2680 orphans.
-- **It costs what the data costs.** `foreign_key_check` is O(rows): 0.23 ms on the
-  empty migrated schema, ~1 ms at 2.6k rows (`npm run seed`), ~50 ms at 500k. A
-  fresh install replays all 190 migrations against a database with no rows (worst
-  single check anywhere in the sequence: 0.45 ms; whole-boot cost inside
-  measurement noise). An established install applies only the migrations its
-  release added, so it pays one check per new migration on its real data. The
-  baseline is taken lazily, so a boot with nothing to apply pays nothing at all.
+  `20260813-cascade-orphan-sweep` did for the #2680 orphans — and the warning says
+  so only for the links that sweep can actually clear. It removes `CASCADE`
+  orphans and deliberately leaves `SET NULL` references alone, so prescribing it
+  for one of those would be advice that does nothing, offered in a voice that says
+  it will.
+- **It costs what the data costs.** `foreign_key_check` is O(rows × inbound keys)
+  — it walks a table once per inbound foreign key, so cost scales with how many
+  populated FK columns point out of a table and not with its row count alone.
+  Measured: 0.12 ms on the empty migrated schema, ~1 ms at 2.6k rows
+  (`npm run seed`), ~64 ms at 500k `medical_records` rows on one populated key and
+  ~83 ms with all five populated; ~1.5 s at 2,000,000 dangling rows. A fresh
+  install replays all 190 migrations against a database with no rows (worst single
+  check anywhere in the sequence: 0.45 ms; whole-boot cost inside measurement
+  noise). An established install applies only the migrations its release added, so
+  it pays one check per new migration on its real data. The baseline is taken
+  lazily, so a boot with nothing to apply pays nothing at all — and the pragma is
+  **streamed** rather than read into an array, which is what keeps a mass-orphan
+  database from turning a cheap report into a multi-hundred-megabyte boot tax
+  (2,000,000 orphans: 244 MB materialised, 27 MB streamed).
+
+**A probe that cannot be taken is a gap, not an answer.** `foreign_key_check` can
+refuse outright — a foreign key onto a non-unique column makes it fail for the
+whole database, not just that table — and the tally answers `null` there rather
+than throwing on the boot path. The runner treats `null` as "no baseline" and
+re-takes it for the next migration, and reports once per boot that it could not be
+taken. Carrying the `null` forward as though it were a taken baseline is what
+turned one hiccup into a guard that was off for the rest of the boot and said
+nothing about it, which is the #2444 shape one level up.
 
 The trade this accepts is that it does **not** fail CI: a fresh test database has
 no rows to orphan, which is exactly why this class needed a probe that lives
@@ -319,11 +348,15 @@ no scanner can read.
 
 The alternative sketched in #2703 — a per-migration behavioural harness running
 each of the 190 migrations against a fixture carrying a cascading child — was
-measured and rejected. The fixture is the expensive part, not the run: 13 of 117
-tables have inbound cascade/`SET NULL` links, and seeding a parent-and-child pair
-for them means populating 48 tables with 149 no-default `NOT NULL` columns, 42
-`CHECK` constraints and 21 further FK parents — at each of 190 historical schema
-shapes, which the 32 rebuild migrations keep changing underneath it. A generic
+measured and rejected. The fixture is the expensive part, not the run. 13 of the
+117 tables have inbound cascade/`SET NULL` links; seeding a parent-and-child pair
+for each means populating the **48** tables that those 13 and their cascading
+children make up. Across those 48: **146** columns declared `NOT NULL` with no
+`DEFAULT` (excluding primary keys — 152 if you count them), **42** `CHECK`
+constraints, and **21** distinct FK parent tables they reference, 7 of which lie
+outside the 48 and would have to be seeded as well. All of that at each of 190
+historical schema shapes, which the 33 rebuild migrations keep changing
+underneath it. A generic
 seeder would silently fail to insert most of that at most points in the sequence
 and the harness would then read as total while covering nothing, which is the
 #2444 defect the guard exists to avoid. Resident fixture rows would also collide

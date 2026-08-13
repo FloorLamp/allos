@@ -209,6 +209,27 @@ describe("20260813-saved-backed-identity-repair (#2673)", () => {
     expect(backedOf(mem, MEASURED)).toBe(1);
   });
 
+  it("un-backs a genuine orphan whose family ALSO carries an assessment", () => {
+    // The boundary the sentence above does not cover, pinned rather than implied.
+    // Delete the family's real reading and an `assessment` row remains: the state
+    // is now byte-identical to the defect's — backed = 1, no identity-carrying
+    // record, one non-identity record — and NO query can tell the two apart,
+    // because the difference is a history the schema does not keep.
+    //
+    // So the repair resets it, and the star keeps its amnesty it did not strictly
+    // earn. That is the direction #2623 chose deliberately: a star wrongly left at
+    // 1 is silently DELETED, a star wrongly reset to 0 is only PRESERVED, and the
+    // sweep promotes it back the moment a real reading arrives.
+    const mem = seeded();
+    upBackfill(mem);
+    expect(backedOf(mem, MIXED)).toBe(1);
+    mem
+      .prepare("DELETE FROM medical_records WHERE canonical_name = ?")
+      .run(MIXED_SIBLING);
+    upRepair(mem);
+    expect(backedOf(mem, MIXED)).toBe(0);
+  });
+
   it("is profile-scoped: another profile's readings decide nothing", () => {
     const mem = preMigrationDb();
     star(mem, WATCHED, 1);
