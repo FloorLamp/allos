@@ -16,6 +16,8 @@
 import { describe, it, expect } from "vitest";
 import {
   RECAP_SCALES,
+  REVIEW_CADENCES,
+  REVIEW_CADENCE_VALUES,
   firstWeekdayOnOrAfter,
   monthStartOf,
   parseRecapScale,
@@ -25,6 +27,7 @@ import {
   recapScaleRank,
   recapScalesAtOrAbove,
   type RecapScale,
+  type ReviewCadence,
 } from "@/lib/recap-scale";
 import { periodFor, resolveWeekPeriod } from "@/lib/recap";
 
@@ -62,15 +65,42 @@ describe("the scale registry (#2178)", () => {
     }
   });
 
-  it("deliberately excludes `year`: the annual retrospective is not a cadence tier", () => {
-    // #2179's owner ruling: a profile whose only review arrives every twelve months has
-    // no review, and a year does not fit in a message. If `year` ever appears here it
-    // is a product decision, not a refactor.
+  it("carries the year as a SCALE and refuses it as a cadence (#2179)", () => {
+    // #2179's owner ruling, now expressed as two lists rather than one. The year is a
+    // real member of the arithmetic + line-model axis — the retrospective is the same
+    // engine over a longer window — and it is deliberately NOT a review cadence: a
+    // profile whose only review arrives every twelve months has no review, and a year
+    // does not fit in a message. If `year` ever appears in REVIEW_CADENCES that is a
+    // product decision, not a refactor.
     expect(RECAP_SCALES.map((e) => e.scale)).toEqual([
       "week",
       "month",
       "quarter",
+      "year",
     ]);
+    expect(REVIEW_CADENCES.map((e) => e.scale)).toEqual([
+      "week",
+      "month",
+      "quarter",
+    ]);
+    expect(REVIEW_CADENCE_VALUES).toEqual(["week", "month", "quarter"]);
+    // The derived list is derived, not a copy kept in step by hand.
+    expect(REVIEW_CADENCES.every((e) => e.cadence)).toBe(true);
+    expect(RECAP_SCALES.filter((e) => !e.cadence).map((e) => e.scale)).toEqual([
+      "year",
+    ]);
+  });
+
+  it("keeps the year out of every send-side derivation (#2179)", () => {
+    // The four doors a non-cadence scale could sneak through. Each is closed by the
+    // `cadence` flag rather than by a filter at the call site.
+    for (const floor of REVIEW_CADENCE_VALUES)
+      expect(recapScalesAtOrAbove(floor)).not.toContain("year");
+    expect(parseRecapScale("year")).toBe("week");
+    // The slot planner cannot emit it even on the one day a year the period closes.
+    const plan = slot({ floor: "week", today: "2026-01-04" });
+    expect(plan.send?.scale).not.toBe("year");
+    expect(plan.superseded).not.toContain("year");
   });
 
   it("reads an unknown stored cadence as `week` rather than silencing the review", () => {
@@ -289,8 +319,8 @@ describe("replace, never stack: the precedence rule (#2178)", () => {
   });
 
   it("a longer cadence sends strictly fewer times over the same year", () => {
-    const run = (floor: RecapScale) => {
-      let markers: Partial<Record<RecapScale, string>> = {};
+    const run = (floor: ReviewCadence) => {
+      let markers: Partial<Record<ReviewCadence, string>> = {};
       let day = "2026-01-04";
       let sent = 0;
       while (day < "2027-01-03") {
