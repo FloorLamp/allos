@@ -266,11 +266,14 @@ const entries: Entry[] = [
 const RESTRICTED_HREFS = new Set<string>([]);
 
 const leafClass = (active: boolean, nested: boolean) =>
+  // Active = accent text on the accent-soft fill, per the palette doctrine
+  // (#2701/#2719 review) — the old Vitals gradient turned into a loud solid
+  // bar under the re-pointed ramps, and gradients are retired anyway.
   `flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition ${
     nested ? "pl-10 pr-3" : "px-3"
   } ${
     active
-      ? "bg-linear-to-r from-brand-500 to-brand-600 text-white shadow-xs"
+      ? "bg-(--accent-soft) text-brand-800 dark:text-brand-400"
       : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
   }`;
 
@@ -308,9 +311,7 @@ function NavLink({
         <span
           data-testid={BADGE_TESTID[leaf.badgeKey]}
           aria-label={BADGE_LABEL[leaf.badgeKey](badgeCount)}
-          className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-xs font-semibold ${
-            active ? "bg-white/25 text-white" : "bg-rose-500 text-white"
-          }`}
+          className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white"
         >
           {badgeCount}
         </span>

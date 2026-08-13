@@ -177,7 +177,7 @@ export default function MobileDock({
       // the bottom sheet (z-60) and the toasts (z-100). The one thing that also
       // owns the bottom edge — the minimized workout dock — is lifted clear of
       // this bar's height rather than stacked over it (BOTTOM_EDGE_ABOVE_NAV).
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-black/10 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden print:hidden dark:border-white/5 dark:bg-ink-950/90"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-black/10 bg-(--nav) pb-[env(safe-area-inset-bottom)] md:hidden print:hidden dark:border-white/5"
     >
       {/* Five columns for every profile — four slots and the puck's own column.
       The restricted four-column variant went with the hidden puck. */}

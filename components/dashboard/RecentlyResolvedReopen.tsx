@@ -116,7 +116,7 @@ export default function RecentlyResolvedReopen({
             Recently resolved:{" "}
             <Link
               href={item.episodeHref}
-              className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+              className="text-link"
               data-testid="recently-resolved-link"
             >
               {item.situation}

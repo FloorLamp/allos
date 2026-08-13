@@ -548,7 +548,7 @@ export default function TrainingLogCard({
         {hasActivityVisuals && (
           <div
             data-testid="activity-visuals"
-            className={`h-32 self-start overflow-hidden rounded-lg border border-black/10 bg-slate-50/70 p-2 sm:col-start-2 sm:row-start-1 dark:border-white/10 dark:bg-white/5 ${
+            className={`h-32 self-start overflow-hidden rounded-lg border border-(--border-strong) bg-slate-50/70 p-2 sm:col-start-2 sm:row-start-1 dark:bg-white/5 ${
               hasBothActivityVisuals ? "grid grid-cols-2 gap-2" : ""
             }`}
           >

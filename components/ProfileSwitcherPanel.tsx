@@ -88,7 +88,7 @@ export default function ProfileSwitcherPanel({
                 }}
                 className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition ${
                   isActing
-                    ? "bg-linear-to-r from-brand-500 to-brand-600 text-white shadow-xs"
+                    ? "bg-(--accent-soft) text-brand-800 dark:text-brand-400"
                     : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
                 }`}
               >

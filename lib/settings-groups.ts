@@ -105,7 +105,8 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     route: "/settings/display",
     tier: "login",
     adminOnly: false,
-    summary: "How weights, distances, dates, and times are shown to you.",
+    summary:
+      "Appearance palette, and how weights, distances, dates, and times are shown to you.",
   },
   {
     id: "health",

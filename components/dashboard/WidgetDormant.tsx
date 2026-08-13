@@ -58,7 +58,7 @@ export default function WidgetDormant(props: WidgetDormantProps) {
       {props.ctaHref !== undefined ? (
         <Link
           href={props.ctaHref}
-          className="inline-flex items-center gap-0.5 font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="inline-flex items-center gap-0.5 text-link"
         >
           {props.ctaLabel}
           <IconArrowRight className="h-4 w-4" stroke={1.75} />

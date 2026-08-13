@@ -475,7 +475,7 @@ export default function HowAreYouCard({
               await activateIllnessForSymptoms();
             })
           }
-          className="font-medium text-brand-700 hover:underline disabled:opacity-50 dark:text-brand-300"
+          className="text-link disabled:opacity-50"
         >
           {sickPending ? "Starting…" : "I'm feeling sick"}
         </button>
@@ -487,7 +487,7 @@ export default function HowAreYouCard({
               data-testid="checkin-symptom-toggle"
               aria-expanded={symptomExpanded}
               onClick={() => setSymptomExpanded((e) => !e)}
-              className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+              className="text-link"
             >
               {symptomExpanded
                 ? "Hide symptom log"

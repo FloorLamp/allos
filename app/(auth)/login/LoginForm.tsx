@@ -16,7 +16,7 @@ function SubmitButton({
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-lg bg-linear-to-r from-brand-500 to-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition hover:opacity-90 disabled:opacity-60"
+      className="w-full rounded-lg bg-(--btn) px-4 py-2.5 text-sm font-semibold text-(--btn-fg) shadow-xs transition hover:bg-(--btn-hover) disabled:opacity-60"
     >
       {pending ? busyLabel : idleLabel}
     </button>

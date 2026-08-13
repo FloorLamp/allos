@@ -267,7 +267,7 @@ export default function MobileNav({
       {/* pt + max() side padding keep the bar clear of the notch/status bar now
       that the viewport paints edge-to-edge (viewportFit cover in app/layout.tsx).
       Stickiness lives on the <ShellChrome> wrapper, not here. */}
-      <header className="border-b border-black/10 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-xl md:hidden print:hidden dark:border-white/5 dark:bg-ink-950/80">
+      <header className="border-b border-black/10 bg-(--nav) pt-[env(safe-area-inset-top)] md:hidden print:hidden dark:border-white/5">
         <div className="flex h-14 items-center gap-2 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
           <button
             type="button"
@@ -394,7 +394,7 @@ export default function MobileNav({
             <aside
               ref={drawerRef}
               data-testid="mobile-drawer"
-              className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 dark:bg-ink-950 ${panelMotion}`}
+              className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
             >
               <SidebarContent
                 activityDates={activityDates}

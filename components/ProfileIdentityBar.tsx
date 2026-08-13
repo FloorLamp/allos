@@ -201,7 +201,7 @@ export default function ProfileIdentityBar({
       className={`flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
         isMobile
           ? "tap-target press -ml-1 flex-1 hover:bg-slate-100 dark:hover:bg-ink-750"
-          : "w-full border border-black/10 bg-white/70 hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:hover:bg-ink-800"
+          : "w-full border border-black/10 bg-(--ghost) hover:bg-(--ghost-hover) dark:border-white/10"
       } ${mounted ? "" : "cursor-progress"}`}
     >
       <span aria-hidden className="flex shrink-0 items-center -space-x-2">

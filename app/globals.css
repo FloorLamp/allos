@@ -133,6 +133,21 @@
        the palette and the mode instead of staying a cool neutral. */
     border-color: var(--divider, currentcolor);
   }
+
+  /* Tailwind v4's preflight leaves buttons at `cursor: default` (matching the
+     native UA default), so every kebab trigger, chevron toggle, segment, and
+     combobox in the app read as inert to the pointer. Interactive means
+     pointer, one rule (#2719 review): enabled buttons and button-roled
+     elements, disclosure summaries, native selects, and combobox triggers.
+     Disabled controls keep their explicit not-allowed cursors (.btn family,
+     the checkbox rules below). */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="combobox"]:not(:disabled),
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
 }
 
 /* ── Semantic chokepoint tokens — light (the values ARE Botanical) ──────────
@@ -148,6 +163,10 @@
      alone leaves background-color transparent (a gradient is an image), and a
      transparent body borrows whatever is behind it in overscroll regions. */
   --canvas-base: #dfeadb;
+  /* The navigation ground (#2719 review): the sidebar / mobile chrome panel,
+     deliberately a step apart from BOTH the canvas and the card surface so the
+     nav reads as its own zone in every palette × mode. */
+  --nav: #e6efe0;
   --page-texture: none;
   --surface: #f4f8f0;
   --border: #ccdcc4;
@@ -183,6 +202,7 @@
   :root.dark {
     --canvas: linear-gradient(180deg, #090e0b 0%, #060908 100%);
     --canvas-base: #060908;
+    --nav: #0d130f;
     --page-texture: none;
     --surface: #101711;
     --border: #202e24;
@@ -230,9 +250,9 @@
   --color-slate-200: #ece7d8;
   --color-slate-300: #cdc6b0;
   --color-slate-400: #a09a84;
-  --color-slate-500: #6f6a54;
-  --color-slate-600: #5c573f;
-  --color-slate-700: #46422e;
+  --color-slate-500: #625d48;
+  --color-slate-600: #4e4a35;
+  --color-slate-700: #3b3726;
   --color-slate-800: #2b2a20;
   --color-slate-900: #221f16;
   --color-slate-950: #12100a;
@@ -263,6 +283,7 @@
 
   --canvas: linear-gradient(180deg, #f8f5ee 0%, #f1ecdf 100%);
   --canvas-base: #f1ecdf;
+  --nav: #f4efe2;
   --page-texture: repeating-linear-gradient(
     0deg,
     rgba(95, 82, 48, 0.05) 0 1px,
@@ -298,6 +319,7 @@
   :root.dark[data-palette="almanac"] {
     --canvas: linear-gradient(180deg, #0c0b08 0%, #070705 100%);
     --canvas-base: #070705;
+    --nav: #100f0b;
     --page-texture: repeating-linear-gradient(
       0deg,
       rgba(240, 225, 180, 0.028) 0 1px,
@@ -383,6 +405,7 @@
 
   --canvas: linear-gradient(180deg, #fdfdfb 0%, #f1f1ec 100%);
   --canvas-base: #f1f1ec;
+  --nav: #f6f6f1;
   --page-texture: none;
   --surface: #ffffff;
   --border: #1a1917;
@@ -413,6 +436,7 @@
   :root.dark[data-palette="floodlight"] {
     --canvas: linear-gradient(180deg, #0a0a09 0%, #050505 100%);
     --canvas-base: #050505;
+    --nav: #0f0f0e;
     --page-texture: none;
     --surface: #131312;
     --border: #3f3e38;
@@ -563,6 +587,20 @@
     background-color: var(--surface);
     color: var(--color-slate-200);
   }
+}
+
+@utility text-link {
+  /* The ONE inline action-link treatment (#2719 review): brand tone, medium
+     weight, underline on hover. Dashboard widgets had four near-copies
+     (brand-600 vs brand-700, with and without font-medium); this is the
+     survivor. Size stays contextual (compose with text-xs/text-sm). */
+  @apply font-medium text-brand-600 hover:underline dark:text-brand-400;
+}
+
+@utility text-link-muted {
+  /* The quiet sibling: a secondary link that starts muted and takes the brand
+     tone on hover — for "manage …" / "+N more" links beside primary actions. */
+  @apply font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400;
 }
 
 @utility label {
@@ -1472,8 +1510,11 @@
    on <html>; the base (Botanical) needs no rule in this section at all. */
 
 /* Almanac: the serif display face on headings, and the almanac-rule card top —
-   a 3px double rule in the strong border tone, the palette's one ornament. */
-[data-palette="almanac"] :is(h1, h2, h3) {
+   a 3px double rule in the strong border tone, the palette's one ornament.
+   The serif is a DISPLAY face: an uppercase micro-heading (a day-group label,
+   a section label rendered as an h2/h3) keeps the UI face — small-caps serif
+   tracking reads as a typo, not a headline (#2719 review). */
+[data-palette="almanac"] :is(h1, h2, h3):not(.uppercase, .section-label, .th) {
   font-family: var(--font-display);
 }
 [data-palette="almanac"] :is(.card, .card-quiet) {

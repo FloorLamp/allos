@@ -10,7 +10,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-lg bg-linear-to-r from-brand-500 to-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition hover:opacity-90 disabled:opacity-60"
+      className="w-full rounded-lg bg-(--btn) px-4 py-2.5 text-sm font-semibold text-(--btn-fg) shadow-xs transition hover:bg-(--btn-hover) disabled:opacity-60"
     >
       {pending ? "Saving…" : label}
     </button>
@@ -54,7 +54,7 @@ export default function SetPasswordForm({
             username ? `/login?u=${encodeURIComponent(username)}` : "/login"
           }
           data-testid="set-password-signin"
-          className="w-full rounded-lg bg-linear-to-r from-brand-500 to-brand-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-xs transition hover:opacity-90"
+          className="w-full rounded-lg bg-(--btn) px-4 py-2.5 text-center text-sm font-semibold text-(--btn-fg) shadow-xs transition hover:bg-(--btn-hover)"
         >
           Sign in
         </a>

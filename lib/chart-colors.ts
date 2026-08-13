@@ -99,7 +99,7 @@ export const PALETTES: Record<AppearancePalette, PaletteChartSpec> = {
       "slate-100": "#f4f0e4",
       "slate-200": "#ece7d8",
       "slate-400": "#a09a84",
-      "slate-500": "#6f6a54",
+      "slate-500": "#625d48",
       "slate-800": "#2b2a20",
       "slate-900": "#221f16",
       "slate-950": "#12100a",

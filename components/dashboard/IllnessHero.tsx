@@ -235,7 +235,7 @@ export default function IllnessHero({
                   href={c.episodeHref}
                   aria-label={`More details about ${c.displayName}'s illness episode`}
                   data-testid="illness-cockpit-full-episode"
-                  className="inline-flex min-h-10 shrink-0 items-center rounded-md px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-brand-400 dark:focus-visible:ring-offset-ink-900"
+                  className="inline-flex min-h-10 shrink-0 items-center rounded-md px-2 py-1.5 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-900"
                 >
                   More details
                 </Link>
