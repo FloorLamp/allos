@@ -161,6 +161,50 @@ describe("getTimelineEvents", () => {
     });
   });
 
+  // #2610: the confirmed-dose card names a row the app itself wrote, so it must
+  // name it the way the user does. The #2499 model rename swept the supplement
+  // branch's literal along with the type names and shipped "IntakeItem doses
+  // confirmed" to the feed; the unconditional `category: "medication"` badged it
+  // "Medication" on top of that. Both kinds are asserted, because a one-sided
+  // assertion is exactly what let one branch drift.
+  it("names dose events by kind, in the user's words, for BOTH kinds", () => {
+    const p = seedProfile("DOSEKIND");
+    // The shared fixture logs a supplement dose but no medication dose; this
+    // test owns the medication one it needs.
+    const medDoseId = db
+      .prepare(`SELECT id FROM intake_item_doses WHERE item_id = ?`)
+      .get(p.medicationId) as { id: number };
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date) VALUES (?, ?, ?)`
+    ).run(medDoseId.id, p.medicationId, p.todayStr);
+
+    const events = getTimelineEvents(p.profileId);
+    const supplement = events.find(
+      (e) => e.id === `intake:supplement:${p.todayStr}`
+    );
+    const medication = events.find(
+      (e) => e.id === `intake:medication:${p.todayStr}`
+    );
+
+    expect(supplement?.title).toBe("Supplement doses confirmed");
+    expect(supplement?.badgeLabel).toBe("Supplement");
+    expect(medication?.title).toBe("Medication doses confirmed");
+    expect(medication?.badgeLabel).toBe("Medication");
+
+    // Both still file under the one `medication` category: they share
+    // intake_items, the vocabulary has no supplement member, and splitting the
+    // filter pill was not what this bug asked for.
+    expect(supplement?.category).toBe("medication");
+    expect(medication?.category).toBe("medication");
+
+    // And the internal model name reaches no user-facing string on either card.
+    for (const e of [supplement, medication]) {
+      expect(
+        `${e?.title} ${e?.badgeLabel} ${e?.subtitle ?? ""} ${e?.detail ?? ""}`
+      ).not.toContain("IntakeItem");
+    }
+  });
+
   it("scopes timeline events to the requested profile", () => {
     const events = getTimelineEvents(imperial.profileId);
     const text = events

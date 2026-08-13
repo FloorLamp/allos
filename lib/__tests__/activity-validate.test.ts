@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isHabitTierRecovery,
   storedActivityFault,
   type StoredActivity,
   type StoredSet,
@@ -208,5 +209,72 @@ describe("storedActivityFault", () => {
         [set({ exercise: "Back Squat", weight_kg: 100, reps: 5 })]
       )
     ).toMatch(/drop/);
+  });
+});
+
+// #2611: the app's own one-tap mobility bar (#840) writes recovery components
+// with null distance AND null duration, deliberately — that is the habit tier.
+// The fault scan asks an EDITOR question, and these rows are not editor
+// artifacts, so they are out of its population entirely rather than forgiven.
+describe("habit-tier mobility sessions are out of the fault population", () => {
+  const mobility = (over: Partial<StoredActivity> = {}) =>
+    act({
+      type: "recovery",
+      title: "Mobility",
+      components: comps(
+        { name: "Couch stretch", type: "recovery" },
+        { name: "Ankle rocks", type: "recovery" },
+        { name: "Deep squat hold", type: "recovery" }
+      ),
+      duration_min: 8,
+      ...over,
+    });
+
+  it("passes the exact shape logMobilityMoveCore and the seed write", () => {
+    expect(storedActivityFault(mobility(), [])).toBeNull();
+    expect(isHabitTierRecovery(mobility(), [])).toBe(true);
+  });
+
+  it("passes with no session duration at all", () => {
+    // The bar only writes duration when the user states one; the moves alone
+    // are a complete session.
+    expect(storedActivityFault(mobility({ duration_min: null }), [])).toBeNull();
+  });
+
+  it("passes the move-less, duration-only session", () => {
+    // setMobilityDurationCore writes components '[]' with a duration. Loosening
+    // the per-component rule instead of exempting the tier would have left this
+    // one red ("No activities listed.").
+    const durationOnly = mobility({ components: "[]", duration_min: 15 });
+    expect(storedActivityFault(durationOnly, [])).toBeNull();
+  });
+
+  it("still judges a recovery row carrying exercise sets", () => {
+    // Sets are something the mobility bar cannot write — an editor-shaped row
+    // again, so the scan keeps its say (about the first fault it reaches).
+    const sets = [set({ exercise: "Back Squat", weight_kg: 100, reps: 5 })];
+    expect(isHabitTierRecovery(mobility(), sets)).toBe(false);
+    expect(storedActivityFault(mobility(), sets)).not.toBeNull();
+  });
+
+  it("still judges a recovery row with a non-recovery component", () => {
+    const mixed = mobility({
+      components: comps({ name: "Easy Spin", type: "cardio" }),
+    });
+    expect(isHabitTierRecovery(mixed, [])).toBe(false);
+    expect(storedActivityFault(mixed, [])).toMatch(
+      /Easy Spin.*no distance, duration, or time range/
+    );
+  });
+
+  it("still judges a legacy recovery row with no components list", () => {
+    const legacy = mobility({ components: null, duration_min: null });
+    expect(isHabitTierRecovery(legacy, [])).toBe(false);
+    expect(storedActivityFault(legacy, [])).toMatch(/No distance/);
+  });
+
+  it("leaves non-recovery activity types alone", () => {
+    const cardio = mobility({ type: "cardio" });
+    expect(isHabitTierRecovery(cardio, [])).toBe(false);
   });
 });
