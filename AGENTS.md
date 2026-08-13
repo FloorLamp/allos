@@ -103,11 +103,17 @@ CI runs formatting, lint, type checking, PHI scanning, a non-blocking full
 dependency audit plus a blocking high-severity audit gate, both coverage-gated
 test tiers, changed Playwright specs repeated three times at zero retries, and
 the full browser suite in twelve shards. A change with NO RUNTIME SURFACE skips
-the browser matrix — prose, plus the orchestration tooling under
-`scripts/orchestration/`, which nothing in the app or the e2e harness imports.
-The rest of `scripts/` is not exempt: `seed.ts`, `notify.ts` and the `gen-*.ts`
-generators feed the app and its fixtures. Grow that set only against the
-question "what imports this". `.github/workflows/e2e-full.yml` provides the manually
+the browser matrix — prose, `.claude/skills/`, the orchestration tooling under
+`scripts/orchestration/`, and the two unit tiers' own directories
+(`lib/__tests__/`, `lib/__db_tests__/`, `lib/__action_tests__/`) — none of which
+anything in the app or the e2e harness imports. The rest of `scripts/` is not
+exempt: `seed.ts`, `notify.ts` and the `gen-*.ts` generators feed the app and its
+fixtures. Neither is the rest of `lib/`: the rule keys on PATHS, so a
+comment-only edit under `lib/queries/` still runs the matrix, which is the right
+conservative answer rather than a gap. Grow that set only against the question
+"what imports this" — and only with a guard, because a claim about imports rots
+silently. `lib/__tests__/ci-skip-set.test.ts` reads the regex out of the workflow
+and fails a test-directory entry the moment a non-test module imports from one. `.github/workflows/e2e-full.yml` provides the manually
 dispatched full-suite census. Pre-commit runs Prettier through lint-staged and
 `phi-scan --staged`.
 
