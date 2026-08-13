@@ -1390,10 +1390,38 @@ database against `e2e/.data/template/app.db` to see what it actually left behind
 — that is what turned "some spec breaks this" into "`saved_items` went 9 → 7, and
 the two missing rows are ApoB and hs-CRP".
 
-A whole-suite `PW_WORKERS=1` run is the exhaustive form: it makes every spec
-co-resident with every other and finds every collision of this class in one pass.
-It is slow (no parallelism, the full suite serially) and worth it after a
-manifest refresh.
+A whole-suite `PW_WORKERS=1` run is a cheap OVER-APPROXIMATION, not a verdict. It
+makes every spec co-resident with every other, so it catches this class in one
+pass — but it also manufactures co-residency that sharding will never produce,
+and it reintroduces the cumulative degradation the matrix exists to avoid (the
+#1306 class `ci.yml` describes: "a spec fine when sharded, timing out deep into
+the single-worker crush"). Measured: a 22-minute full serial run reported three
+failures, and re-running each victim inside ITS OWN bucket at one worker cleared
+one of them — a 5s timeout that only appears under the crush.
+
+So use it as a filter and confirm every hit per bucket:
+
+```
+# 1. cheap filter, over-approximates
+PW_WORKERS=1 npx playwright test
+# 2. the verdict, for each victim, in the bucket CI actually runs
+PW_WORKERS=1 npx playwright test "${THAT_VICTIMS_BUCKET[@]}"
+```
+
+Worth doing after a manifest refresh, because the refresh is what changes who
+neighbours whom.
+
+### Not every collision is row pollution
+
+The two above were rows one spec left in the shared profile. A third
+(`wellbeing-check` → `offline-dose-confirm`, reproducible in shard 10) is NOT:
+every row it writes lands on profiles it creates and owns, profile 1 is
+byte-identical to the template afterwards, and it restores the shared session's
+active profile. The worker's `next start` server is long-lived ACROSS specs, so
+process-level state — a module-scope memo, a request cache warmed for a profile
+before a later spec writes to it — is co-residency too, and a database diff will
+show nothing. Diff the database first because it is cheap and usually answers;
+when it comes back clean, the neighbour is sharing a process, not a table.
 
 ## Fix (f) — DB-per-worker isolation (#1538)
 
