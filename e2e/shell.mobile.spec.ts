@@ -2,7 +2,9 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { openMobileDrawer, settledClick, expectInView } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
+import type { QuickLogId } from "@/lib/quick-log";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_MULTI,
@@ -292,43 +294,47 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     // through that overlay — and its durability — lives in
     // quick-log-overlay.mobile.spec.ts, which owns the fixture that writes.
     await page.goto("/");
-    const sheet = page.getByTestId("quick-log-sheet");
-    await expect(sheet).toHaveCount(0);
+    await expect(page.getByTestId("quick-log-sheet")).toHaveCount(0);
+    const sheet = await openLogSheet(page);
 
-    await expect(async () => {
-      if (!(await sheet.isVisible())) {
-        await page.getByTestId("quick-log-more").click();
-      }
-      await expect(sheet).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the caret past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded so a late tap can't re-close it
-
-    // It is a real dialog with the drag-handle affordance (#1425's seam), and
-    // it lists every common log — including the ones this route did not promote,
-    // and vitals, which joined the list in #1467 and merged into "Log
-    // measurements" in #1486.
+    // It is a real dialog with the drag-handle affordance (#1425's seam).
     await expect(sheet.getByRole("dialog")).toHaveAttribute(
       "aria-modal",
       "true"
     );
     await expect(sheet.getByTestId("sheet-drag-handle")).toBeVisible();
-    for (const id of [
+
+    // EVERY common log is still reachable from the sheet — and since #2651 that
+    // is the honest wording, because it is no longer one list. The long tail is a
+    // segmented domain track, so a log outside the segment the route opens on
+    // costs ONE segment tap before its row exists at all. This loop pays that tap
+    // per row (`showLogRow` asserts the segment reports itself selected), which
+    // is precisely the extra cost the redesign introduced: reachability is
+    // preserved, one-glance visibility of the whole menu is not.
+    //
+    // The rows themselves are the unchanged registry: the ones this route did not
+    // promote, vitals (which joined in #1467 and merged into "Log measurements"
+    // in #1486 — ONE measurements row since), and the two non-weight-scale
+    // entries a phone also needs, a tracked wellness practice (#1633) and filing
+    // a document (#1525).
+    const ids: QuickLogId[] = [
       "log-activity",
       "log-food",
       "log-dose",
-      // ONE measurements row since #1486/#1506 — weight + vitals are one form now.
       "log-measurements",
-      // The two non-weight-scale entries a phone also needs: a tracked wellness
-      // practice (#1633) and filing a document (#1525).
       "log-practice",
       "add-document",
-    ]) {
-      await expect(sheet.getByTestId(`quick-log-${id}`)).toBeVisible();
+    ];
+    for (const id of ids) {
+      const row = await showLogRow(sheet, id);
+      await expect(row).toBeVisible();
     }
 
     // Tapping a row closes the sheet and opens the EXISTING form right here —
     // no new write path, and no navigation (that is the #1468 rule).
     const before = page.url();
-    await sheet.getByTestId("quick-log-log-measurements").click();
+    const measurements = await showLogRow(sheet, "log-measurements");
+    await measurements.click();
     await expect(sheet).toHaveCount(0);
     const overlay = page.getByTestId("quick-entry-sheet");
     await expect(overlay).toBeVisible();
@@ -367,10 +373,10 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     await page.getByTestId("quick-log-more").click();
     await expect(sheet).toBeVisible();
     // Near the TOP of the scrim, not its centre: the scrim spans the viewport with
-    // the panel stacked over its lower half, and at six rows (#1525/#1633) the panel
-    // reaches past the midpoint — a default centre-click would land on the panel and
-    // dismiss nothing. The affordance under test is unchanged; where it is exposed
-    // is not.
+    // the panel stacked over its lower half, and with the context row and a
+    // segment's rows above the fold the panel can reach past the midpoint — a
+    // default centre-click would land on the panel and dismiss nothing. The
+    // affordance under test is unchanged; where it is exposed is not.
     await sheet
       .getByTestId("quick-log-sheet-backdrop")
       .click({ position: { x: 20, y: 20 } });

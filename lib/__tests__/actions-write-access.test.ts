@@ -62,6 +62,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#1468): gathers the props for the quick-entry overlay's forms (unit prefs, the day's food servings + ordered catalog, today's due doses) — every WRITE still goes through the mounted form's own gated action (addMeasurements / logFoodServing / markTaken), so login-scoped requireSession() is the right gate",
   },
   {
+    file: "app/(app)/log-sheet-actions.ts",
+    fn: "loadLogSheetContext",
+    why: "read-only (#2651): gathers the log sheet's due-and-usual context row — the composed usual-routine offer (getUsualRoutineOffer) and today's due-dose COUNT (collectHouseholdRollup) — and writes nothing; every tap still goes through the control's own gated action (logUsualRoutine / markTaken), so login-scoped requireSession() is the right gate, same posture as loadQuickEntry",
+  },
+  {
     file: "app/(app)/search-actions.ts",
     fn: "runGlobalSearch",
     why: "read-only: cross-domain search of the active profile",

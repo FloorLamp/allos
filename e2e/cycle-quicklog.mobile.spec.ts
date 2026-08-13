@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import {
   E2E_LOGIN_CYCLE_CTA,
   CYCLE_CTA_PROFILE,
@@ -41,24 +42,16 @@ function clearCycles(profileName: string): void {
   }
 }
 
-// Open the quick-log sheet. The caret is a pure CLIENT toggle, so a pre-hydration tap is
-// swallowed with no POST to settle on and no other awaitable open signal — the
-// visibility-guarded retry is the only honest wait here (#500/#830).
-async function openSheet(page: Page) {
-  const sheet = page.getByTestId("quick-log-sheet");
-  await expect(async () => {
-    if (!(await sheet.isVisible())) {
-      await page.getByTestId("quick-log-more").click();
-    }
-    await expect(sheet).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the caret past the pre-hydration swallow — a client toggle with no POST, visibility-guarded so a late tap can't re-close it
-  return sheet;
-}
-
 // The verb the sheet's overlay is currently offering, as the write it will perform.
+//
+// Since #2651 the period row lives in the sheet's Body segment rather than a flat
+// list, so reaching it costs one segment tap — asserted, not assumed, by
+// `showLogRow` (e2e/log-sheet-helpers.ts). What this helper measures is unchanged:
+// the verb the overlay offers, once the row is reached.
 async function sheetVerb(page: Page): Promise<string | null> {
-  const sheet = await openSheet(page);
-  await sheet.getByTestId("quick-log-log-period").click();
+  const sheet = await openLogSheet(page);
+  const row = await showLogRow(sheet, "log-period");
+  await row.click();
   const panel = page.getByTestId("quick-cycle-panel");
   await expect(panel).toBeVisible({ timeout: 20_000 });
   const offer = panel.getByTestId("period-offer-sheet").getByRole("button");
@@ -99,8 +92,11 @@ test.describe("quick-log sheet: log a period (#1892)", () => {
 
   test("the sheet carries a period row that opens the offer in place", async () => {
     await page.goto("/");
-    const sheet = await openSheet(page);
-    const row = sheet.getByTestId("quick-log-log-period");
+    const sheet = await openLogSheet(page);
+    // The dashboard promotes no particular log, so the sheet opens on Train
+    // (#2651). The period row is one segment tap away — a cost this spec now
+    // states rather than papers over, and the only thing about it that moved.
+    const row = await showLogRow(sheet, "log-period");
     await expect(row).toBeVisible();
     await expect(row).toContainText("Log period");
 
@@ -166,8 +162,14 @@ test.describe("the period row is relevance-gated (#1892/#1042)", () => {
     // false, exactly as for the Cycle nav entry and the dashboard card. The sheet's
     // other rows are unaffected: the gate is per-entry, not a mode.
     await page.goto("/");
-    const sheet = await openSheet(page);
-    await expect(sheet.getByTestId("quick-log-log-period")).toHaveCount(0);
-    await expect(sheet.getByTestId("quick-log-log-measurements")).toBeVisible();
+    const sheet = await openLogSheet(page);
+    // Both rows the census files under Body, asserted with that segment REVEALED —
+    // which is what keeps this an absence proof. On a segmented sheet "the period
+    // row is not in the DOM" is true of every unselected segment, so a bare
+    // count-0 would now pass for a profile the row is perfectly visible to.
+    const period = await showLogRow(sheet, "log-period");
+    await expect(period).toHaveCount(0);
+    const measurements = await showLogRow(sheet, "log-measurements");
+    await expect(measurements).toBeVisible();
   });
 });

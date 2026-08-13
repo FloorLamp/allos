@@ -42,7 +42,13 @@ otherwise, and they compound:
 `components/PendingNavLink.tsx` is the one nav-row affordance, used by
 `components/Nav.tsx` for every leaf — which both the desktop sidebar and the
 mobile drawer render through the shared `SidebarContent`, so the two viewports
-cannot drift.
+cannot drift — and, since #2651, by the phone's bottom dock
+(`components/MobileDock.tsx`) for each of its four destination slots. A dock slot
+is if anything MORE exposed to the silence above than a sidebar row, because it
+is reachable without opening anything; the spinner takes the icon's own slot, so
+nothing shifts in a 56px-tall bar. The dock's "More" slot is NOT a nav row — it
+is a disclosure that opens the same drawer — so it is a plain button with
+`aria-expanded` and no `aria-current`.
 
 - **Feedback comes from `useLinkStatus()`**, Next's per-link transition status.
   It works with no `loading.tsx` present, which is precisely what it was added

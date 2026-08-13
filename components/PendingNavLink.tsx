@@ -66,6 +66,7 @@ export default function PendingNavLink({
   icon,
   className,
   current = false,
+  testId,
   children,
 }: {
   href: AppRoute;
@@ -76,6 +77,13 @@ export default function PendingNavLink({
   className?: string;
   /** Renders `aria-current="page"` when this row is the page being viewed. */
   current?: boolean;
+  /**
+   * `data-testid` on the anchor itself. A row whose only distinguishing mark is
+   * its position — a bottom-dock slot (#2651) — needs a stable handle, and
+   * wrapping the link in a marked <div> would put the marker on an element that
+   * is not the thing you tap.
+   */
+  testId?: string;
   children?: ReactNode;
 }) {
   const pending = useRef(false);
@@ -86,6 +94,7 @@ export default function PendingNavLink({
     <Link
       href={href}
       aria-current={current ? "page" : undefined}
+      data-testid={testId}
       className={className}
       onClick={(e) => {
         if (
