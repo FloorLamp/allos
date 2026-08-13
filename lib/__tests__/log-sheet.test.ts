@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultLogSegment,
+  habitualLogSegment,
   logSheetSegments,
+  openingLogSegment,
+  LOG_HABIT_MIN_DAYS,
+  LOG_HABIT_WINDOW_DAYS,
   LOG_SEGMENT_CENSUS,
+  type SegmentLogDays,
 } from "@/lib/log-sheet";
 import { QUICK_LOG_IDS, quickLogMenu } from "@/lib/quick-log";
 
@@ -85,5 +90,133 @@ describe("defaultLogSegment", () => {
     const chosen = defaultLogSegment(restricted, "/settings", null);
     expect(restricted.map((s) => s.id)).toContain(chosen);
     expect(chosen).not.toBe("train");
+  });
+});
+
+// ── The dashboard's most-logged default (#2709) ──────────────────────────────
+//
+// The owner's ruling accepted a cost — predictability — so these tests are mostly
+// about how LITTLE the answer moves. The churn claim in the module header ("a lead
+// of two or more logged days survives any single day") is asserted here rather
+// than asserted in prose, which is the whole reason the decision is a pure
+// function.
+
+describe("habitualLogSegment", () => {
+  const all = logSheetSegments(false, true);
+
+  it("names the segment with the most logged days", () => {
+    expect(
+      habitualLogSegment(all, { train: 9, food: 40, body: 12, care: 30 })
+    ).toBe("food");
+  });
+
+  it("stays silent below the evidence floor, however lopsided", () => {
+    // Six food days out of ninety is not a habit, and a profile with no history
+    // at all is the same answer — which is the ruling's required fallback.
+    const thin = LOG_HABIT_MIN_DAYS - 1;
+    expect(habitualLogSegment(all, { food: thin })).toBeNull();
+    expect(habitualLogSegment(all, {})).toBeNull();
+    expect(habitualLogSegment(all, { food: LOG_HABIT_MIN_DAYS })).toBe("food");
+  });
+
+  it("never names a segment this profile's track does not carry", () => {
+    // A restricted profile has no Train segment. Activity days recorded before
+    // the gate applied must not select a segment the sheet does not render.
+    const restricted = logSheetSegments(true, true);
+    const chosen = habitualLogSegment(restricted, { train: 80, care: 20 });
+    expect(chosen).toBe("care");
+  });
+
+  it("breaks an exact tie by track order, deterministically", () => {
+    const days = { train: 20, food: 20, body: 20, care: 20 };
+    expect(habitualLogSegment(all, days)).toBe("train");
+    expect(habitualLogSegment(all, days)).toBe("train");
+  });
+
+  it("holds a two-day lead against anything one calendar day can do", () => {
+    // The churn bound. A day adds at most one logged day to a segment and drops
+    // at most one off the far end of the window, so a leader two days clear
+    // cannot be overtaken between two visits.
+    const before: SegmentLogDays = { food: 30, care: 28 };
+    const leader = habitualLogSegment(all, before);
+    // Every reachable next-day state: care gains a day, food loses its oldest,
+    // and both at once.
+    for (const after of [
+      { food: 30, care: 29 },
+      { food: 29, care: 28 },
+      { food: 29, care: 29 },
+    ]) {
+      expect(habitualLogSegment(all, after)).toBe(leader);
+    }
+  });
+
+  it("reads a whole quarter, so one busy week cannot be most of the evidence", () => {
+    expect(LOG_HABIT_WINDOW_DAYS).toBe(90);
+    expect(LOG_HABIT_MIN_DAYS).toBeLessThan(LOG_HABIT_WINDOW_DAYS);
+  });
+});
+
+describe("openingLogSegment", () => {
+  const all = logSheetSegments(false, true);
+  const heavyCare: SegmentLogDays = { train: 5, food: 10, body: 4, care: 60 };
+
+  it("opens the dashboard on the profile's most-logged segment", () => {
+    expect(
+      openingLogSegment({ segments: all, pathname: "/", habitDays: heavyCare })
+    ).toBe("care");
+  });
+
+  it("leaves every route that promotes its own domain alone", () => {
+    // The ruling's scope in one assertion: Nutrition still opens on Food and
+    // Medications on Care no matter what the history says.
+    expect(
+      openingLogSegment({
+        segments: all,
+        pathname: "/nutrition",
+        habitDays: heavyCare,
+      })
+    ).toBe("food");
+    expect(
+      openingLogSegment({
+        segments: all,
+        pathname: "/trends",
+        habitDays: heavyCare,
+      })
+    ).toBe("body");
+    // …and a long-tail route keeps the historical activity fallback rather than
+    // quietly inheriting the dashboard's rule.
+    expect(
+      openingLogSegment({
+        segments: all,
+        pathname: "/settings",
+        habitDays: heavyCare,
+      })
+    ).toBe("train");
+  });
+
+  it("falls back to the route default when history is absent or thin", () => {
+    expect(openingLogSegment({ segments: all, pathname: "/" })).toBe("train");
+    expect(
+      openingLogSegment({ segments: all, pathname: "/", habitDays: null })
+    ).toBe("train");
+    expect(
+      openingLogSegment({
+        segments: all,
+        pathname: "/",
+        habitDays: { food: LOG_HABIT_MIN_DAYS - 1 },
+      })
+    ).toBe("train");
+  });
+
+  it("only ever answers with a segment on the track", () => {
+    const restricted = logSheetSegments(true, false);
+    for (const pathname of ["/", "/nutrition", "/settings", "/trends"]) {
+      const chosen = openingLogSegment({
+        segments: restricted,
+        pathname,
+        habitDays: { train: 90, body: 30 },
+      });
+      expect(restricted.map((s) => s.id)).toContain(chosen);
+    }
   });
 });

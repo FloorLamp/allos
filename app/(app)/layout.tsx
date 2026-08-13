@@ -52,6 +52,7 @@ import {
   profileHasIntakeItems,
   getNavRelevance,
 } from "@/lib/queries";
+import { getSegmentLogDays } from "@/lib/queries/log-sheet";
 import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getFormRecoveringContext } from "@/lib/injuries";
@@ -208,6 +209,14 @@ export default async function AppLayout({
   // member with a read-only grant. Drives the "read-only" hint in the profile
   // menu; every mutating action is independently gated server-side.
   const readOnly = session.access === "read";
+  // Which domain this profile actually logs in, as DAYS-LOGGED per sheet segment
+  // over the trailing quarter (#2709). It decides the log sheet's opening segment
+  // on the DASHBOARD only — every other route either promotes its own domain or
+  // keeps the historical activity fallback — but the sheet is mounted by this
+  // shell on every route, so the gather is here rather than on the page. ONE
+  // hoisted statement; the decision, the window and the no-history fallback all
+  // live in lib/log-sheet.ts, never in a component.
+  const logHabitDays = getSegmentLogDays(profile.id, now);
   const onboarding = getOnboardingState(profile.id);
   const showOnboardingReturn =
     onboarding?.status === "in_progress" &&
@@ -319,6 +328,7 @@ export default async function AppLayout({
                                 reviewCount={reviewCount}
                                 readOnly={readOnly}
                                 whatsNewUnseen={whatsNewUnseen}
+                                logHabitDays={logHabitDays}
                               />
                             </ShellChrome>
                             {/* max(padding, safe-area inset) keeps content clear of the
