@@ -569,6 +569,8 @@ describe("pairSleepMood", () => {
         bedtimeSupplements: null,
         sleepEditable: false,
         sleepEditHours: null,
+        sleepSampleId: null,
+        moodLogId: null,
       },
       {
         date: "2026-03-18",
@@ -584,6 +586,8 @@ describe("pairSleepMood", () => {
         bedtimeSupplements: null,
         sleepEditable: false,
         sleepEditHours: null,
+        sleepSampleId: null,
+        moodLogId: null,
       },
       {
         date: "2026-03-19",
@@ -599,6 +603,8 @@ describe("pairSleepMood", () => {
         bedtimeSupplements: null,
         sleepEditable: false,
         sleepEditHours: null,
+        sleepSampleId: null,
+        moodLogId: null,
       },
       {
         date: "2026-03-20",
@@ -609,7 +615,37 @@ describe("pairSleepMood", () => {
         bedtimeSupplements: null,
         sleepEditable: false,
         sleepEditHours: null,
+        sleepSampleId: null,
+        moodLogId: null,
       },
+    ]);
+  });
+
+  // #2556: the log's ⋯ menu deletes a PHYSICAL row, so each line has to carry the
+  // ids it is made of — and only where this surface is allowed to remove them.
+  it("carries the row ids its per-record delete needs, and only where deletable", () => {
+    const history = buildSleepMoodHistory(
+      [
+        { date: "2026-03-17", value: 465 },
+        { date: "2026-03-18", value: 360 },
+      ],
+      [{ id: 91, date: "2026-03-18", valence: 4 }]
+    );
+    const attached = attachEditableManualSleep(history, [
+      { id: 12, date: "2026-03-17", value: 465 },
+    ]);
+    expect(
+      attached.map((row) => ({
+        date: row.date,
+        sleepSampleId: row.sleepSampleId,
+        moodLogId: row.moodLogId,
+      }))
+    ).toEqual([
+      // The manual duration-only night: editable, therefore deletable.
+      { date: "2026-03-17", sleepSampleId: 12, moodLogId: null },
+      // An imported/windowed night keeps NO sleep id — read-only in the dialog and
+      // in the menu alike — while its check-in is still its own removable record.
+      { date: "2026-03-18", sleepSampleId: null, moodLogId: 91 },
     ]);
   });
 

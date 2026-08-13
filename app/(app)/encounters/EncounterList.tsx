@@ -72,6 +72,10 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
   {
     header: "Chief complaint",
     cellClassName: "text-slate-600 dark:text-slate-300",
+    // The three placeholder columns of this table (#2588). On a phone an unfilled
+    // one used to read "CHIEF COMPLAINT —"; an Imaging visit with none of the three
+    // was a card of nothing but dashes.
+    empty: (e) => !e.reason,
     cell: (e) =>
       e.reason ? (
         <span className="wrap-break-word">{e.reason}</span>
@@ -83,6 +87,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Diagnoses",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden sm:table-cell",
+    empty: (e) => diagnosisList(e.diagnoses).length === 0,
     cell: (e) => {
       const diagnoses = diagnosisList(e.diagnoses);
       return diagnoses.length > 0 ? (
@@ -105,6 +110,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Provider",
     headerClassName: "hidden md:table-cell",
     cellClassName: "hidden whitespace-nowrap md:table-cell",
+    empty: (e) => !e.provider_name && !e.location_name,
     cell: (e) =>
       e.provider_name || e.location_name ? (
         <div

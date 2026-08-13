@@ -24,6 +24,18 @@ import type { Allergy } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
 
+// Every graded manifestation, through the ONE pure summary the passport and the FHIR
+// export also use. Named once so the cell and its #2588 emptiness verdict cannot
+// disagree about whether this row has reactions to show.
+function reactionSummary(a: Allergy): string {
+  return allergyReactionSummary(
+    composeAllergyReactions(
+      a,
+      (a.reactions ?? []).map((r, i) => ({ ...r, position: i }))
+    )
+  );
+}
+
 function buildColumns(
   contraindications: Record<number, DrugAllergyHit[]>,
   recordedAt: Record<number, LinkedEncounterRef>
@@ -83,13 +95,8 @@ function buildColumns(
       // the ONE pure summary the passport and the FHIR export also use.
       header: "Reactions",
       cellClassName: "text-slate-600 dark:text-slate-300",
-      cell: (a) =>
-        allergyReactionSummary(
-          composeAllergyReactions(
-            a,
-            (a.reactions ?? []).map((r, i) => ({ ...r, position: i }))
-          )
-        ) || "—",
+      empty: (a) => !reactionSummary(a),
+      cell: (a) => reactionSummary(a) || "—",
     },
     {
       // Criticality (life-threatening potential on a FUTURE exposure) and
@@ -97,6 +104,9 @@ function buildColumns(
       // because it looks like every other allergy but no longer gates anything.
       header: "Criticality / verification",
       cellClassName: "text-slate-600 dark:text-slate-300",
+      empty: (a) =>
+        allergyCriticalityLabel(a.criticality) == null &&
+        !a.verification_status,
       cell: (a) => (
         <span data-testid={`allergy-safety-${a.id}`}>
           {isHighCriticality(a) ? (

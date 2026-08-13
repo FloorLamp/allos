@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import {
   expectNoClippedContent,
   followLink,
+  settledBoxes,
   settledClick,
   settledFill,
 } from "./helpers";
@@ -131,7 +132,25 @@ test.describe("Visit detail page", () => {
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
   });
 
-  test("mobile visit rows use a dedicated Chief complaint row and omit Source", async ({
+  // The card composition of a visit row: which cells claim a line, and where the
+  // identity line ends.
+  //
+  // This used to assert that the chief complaint sat below the VISIT link, and it
+  // passed for a reason that was never a guarantee. The title cell's `flex-1` gave it
+  // a flex-basis of 0, so line assignment ignored it and the metas packed onto the
+  // head line in order until one did not fit; for the seeded "Annual physical" row
+  // that boundary happened to fall between Visit and Chief complaint. That is a
+  // string-length accident, and precisely the nondeterminism #2588 reports — its own
+  // screenshot shows a row where BOTH packed up onto the date ("May 20, 2026VISIT
+  // Dental CHIEF COMPLAINT Checkup and cleaning").
+  //
+  // The guarantee #2588 actually establishes is the one worth pinning: the head line
+  // is the row's IDENTITY plus its actions and nothing else, so every meta — Visit and
+  // Chief complaint alike — begins below it. Metas then flow together into wrapped
+  // line(s), which is what `.table-cards` has always promised and the reason this does
+  // NOT demand a line per meta: on the viewport with the least room, a whole line
+  // spent on "CHIEF COMPLAINT Cough" is a line spent on nothing (#2316).
+  test("mobile visit rows keep every meta off the identity line, and omit Source", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -149,17 +168,18 @@ test.describe("Visit detail page", () => {
       row.getByText("Chief complaint", { exact: true })
     ).toBeVisible();
     await expect(row.getByText("Ambulatory", { exact: true })).toHaveCount(0);
+
+    const head = row.locator('td[data-card="title"]');
     const visit = row.getByRole("link", { name: "Office Visit" });
     const complaint = row.getByText("Annual physical", { exact: true });
-    const [visitBox, complaintBox] = await Promise.all([
-      visit.boundingBox(),
-      complaint.boundingBox(),
+    const [headBox, visitBox, complaintBox] = await settledBoxes([
+      head,
+      visit,
+      complaint,
     ]);
-    expect(visitBox).not.toBeNull();
-    expect(complaintBox).not.toBeNull();
-    expect(complaintBox!.y).toBeGreaterThanOrEqual(
-      visitBox!.y + visitBox!.height
-    );
+    const headBottom = headBox.y + headBox.height;
+    expect(visitBox.y).toBeGreaterThanOrEqual(headBottom);
+    expect(complaintBox.y).toBeGreaterThanOrEqual(headBottom);
   });
 });
 

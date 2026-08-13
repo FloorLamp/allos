@@ -87,6 +87,7 @@ export default function VaccineDoseHistory({
     {
       header: "Administered by",
       cellClassName: "text-slate-600 dark:text-slate-300",
+      empty: (im) => !im.provider_name,
       cell: (im) => im.provider_name ?? "—",
     },
   ];
