@@ -29,6 +29,7 @@ export type DropReason =
   | "no_value" // the observation carried no productive value at all
   | "non_analyte" // an administrative/structural observation (specimen date, "Approved By", accession #) — not a measurement (#681/#693)
   | "derived_percentile" // a derived anthropometric percentile (BMI/weight-for-length/head-circ) the app recomputes itself, not a raw measurement (#684/#722/#693)
+  | "derived_result" // a printed DERIVED result whose chart is a computation over inputs that arrived in the same document and are themselves projected — a BMI beside the weight and height it came from (#2646). Distinct from `derived_percentile`, which is a rank the app recomputes off growth curves: this one is the quantity itself, dropped because it has no destination row rather than because it is the wrong quantity. It is the only ingest outcome with NO artefact anywhere afterwards, which is why #2678 made it report: a drop by design still has to be visible
   | "negated" // a negated / retracted / entered-in-error assertion
   | "other_subject" // a screening instrument that could not be attributed to this chart's patient (#2321/#2558): the document says it is somebody ELSE's, or says nothing while naming more than one patient. Post-natal screening is administered to a parent and filed in the child's chart; a misattributed crisis-escalating score is worse than an unimported one. A single-patient document that restates no subject is NOT this case — nobody else is in it, so it scores
   | "incomplete_instrument" // a recognised screening instrument that is only PARTIALLY answered (#2321). A partial total is not a smaller total, it is a different measurement — it cannot be banded against cut-offs derived from the whole
@@ -463,6 +464,7 @@ const REASON_LABELS: Record<DropReason, string> = {
   no_value: "No value",
   non_analyte: "Non-analyte / administrative",
   derived_percentile: "Derived percentile (recomputed)",
+  derived_result: "Derived result (charted from its inputs)",
   negated: "Negated / retracted",
   // Not "for another subject": that is only half of what lands here since #2558, and
   // the other half is a screening the document declined to attribute at all.
@@ -488,6 +490,7 @@ const REASON_ORDER: DropReason[] = [
   "unparsable_value",
   "non_analyte",
   "derived_percentile",
+  "derived_result",
   "incomplete_instrument",
   "other_subject",
   "negated",

@@ -2116,6 +2116,16 @@ today for the active profile) or with a dated form (start, optional inclusive
 end, a light/medium/heavy flow, and a note); each recorded period lists in the
 history with its bleeding length and is editable/deletable inline.
 
+The dated form is **folded behind a disclosure** — "Add a period with dates — for
+a past or corrected period" (#2583, applying the #1497 rare-cadence-entry rule
+that named this page as one of its examples). A period is a ~monthly event, so a
+four-field form standing permanently open charged every visit for the unusual
+case. The affordance is unconditional — the same named button in the same place
+on every visit, never behind a menu and never gated on state — so the sentences
+that point "below" still land on something visible and one tap from the form.
+Editing an existing period is unaffected: it already appeared only on demand,
+from its own history row.
+
 The **quick action is for the common case; the form owns the exceptions**
 (#1681). With no period open the control shows the derived cycle state ("Day 6 ·
 Follicular") rather than an always-on start button — "Period started today" only
@@ -2157,8 +2167,14 @@ the form, the quick actions, and any future import path share them:
   `menstrual`** — the forgotten "Period ended" tap no longer claims menses
   forever through the phase, the Timeline chip, the derived Period situation, or
   the phase-specific reference ranges. **Nothing is written**: the record stays
-  exactly as recorded and the surface prompts _"Still bleeding? Set the end
+  exactly as recorded and the surface prompts _"Still bleeding? … tap 'Period
+  ended today', or use 'Edit' on its row in the history below to set its end
   date."_ The app withdraws its own claim; only the user's tap edits the row.
+  (That second route
+  used to read "set its end date below", pointing at the dated ADD form — which
+  mints a new row and whose overlap guard refuses one covering the very period
+  being described, so the direction never worked. #2583 named the control that
+  does close an open row.)
 - A **too-long recorded period is stored, not refused** — prolonged bleeding is
   real, and an app that can't record it can't record an emergency. It surfaces a
   calm, dismissible coaching-tier finding ("N days of bleeding — worth
@@ -2172,7 +2188,11 @@ the form, the quick actions, and any future import path share them:
   pain) ride the SAME shipped symptom bar (#799/#815/#857) — a small `domain` tag
   (illness/cycle/general) on the symptom vocabulary leads each mount with its
   context's slugs, so the Cycle bar surfaces the menstrual symptoms first while
-  every symptom stays loggable; phase membership is derived by DATE, so a symptom
+  every symptom stays loggable. That tag is an ORDER lever for the **picker**
+  only: what the bar shows as LOGGED is the day's whole ledger, so a fever
+  recorded this morning appears on the Cycle page too. The section says so
+  (#2583) rather than filtering — one store (#221), and hiding a logged fever
+  would make "Symptoms today" lie. Phase membership is derived by DATE, so a symptom
   during a period during a cold belongs to both the illness episode and the cycle
   phase, correct by construction (no second symptom store). The **cycle phase**
   (menstrual/follicular/luteal) is DERIVED from the logged period history — one
@@ -2240,6 +2260,17 @@ statement of intent: the app never infers that someone is trying to conceive.
 Stopping is as easy as starting and removes only the declaration; the
 observations already recorded stay. The section is **adult-gated** (the same
 `!isMinor` line the other adult topics use).
+
+Until it is declared, the **offer itself is one quiet line** — "Trying to
+conceive · off — tap to turn on tracking" (#2583). Declared-only kept the
+CONTENT off, but the offer was a full card with an explainer and a live "Date you
+started trying" date field, standing open on every visit to the Cycle page, for
+the most personal topic in the app — shown to people who are not trying, who are
+past it, or who lost a pregnancy, every time they came to log a period. The line
+still names the topic and its state, because someone looking for this must still
+find it; tapping reveals exactly the same explainer and declare control. The
+**declared/active** and **pregnancy-paused** states render in full as before, and
+a minor's page still renders no line at all.
 
 Three observations, each **reusing a shipped store** rather than earning a table:
 
