@@ -228,9 +228,15 @@ test.describe("an active episode page on a phone (#2612)", () => {
           rows.every((row) => row.getAttribute("data-filtered-out") === "true")
         )
       ).toBe(true);
-      // The illness rows the default keeps ARE laid out.
+      // The illness rows the default keeps ARE laid out. Scoped to a day group the
+      // phone's own earlier-days fold is not holding back — that fold predates this
+      // change and is orthogonal to the chip.
       await expect(
-        timeline.locator('[data-testid="illness-event-symptom"]').first() // first-ok: the assertion is that SOME symptom row is laid out, not which
+        timeline
+          .locator(
+            'tbody[data-mobile-earlier="false"] [data-testid="illness-event-symptom"]'
+          )
+          .first() // first-ok: the assertion is that SOME symptom row is laid out, not which
       ).toBeVisible();
 
       // 3. NOTHING BECOMES UNREACHABLE. One tap on "All" brings the ledger back.
@@ -239,7 +245,13 @@ test.describe("an active episode page on a phone (#2612)", () => {
         "aria-pressed",
         "true"
       );
-      await expect(doseRows.first()).toBeVisible(); // first-ok: any dose row proves the ledger returned
+      await expect(
+        timeline
+          .locator(
+            'tbody[data-mobile-earlier="false"] [data-testid="illness-event-medication"]'
+          )
+          .first() // first-ok: any dose row in an unfolded day proves the ledger returned
+      ).toBeVisible();
     } finally {
       const cleanup = openDb();
       try {
@@ -315,7 +327,13 @@ test.describe("an active episode page on a phone (#2612)", () => {
       );
       expect(await doseRows.count()).toBe(doseCount);
       await hydratedClick(page, chips.getByRole("button", { name: "All" }));
-      await expect(doseRows.first()).toBeVisible(); // first-ok: any dose row proves the ledger returned
+      await expect(
+        timeline
+          .locator(
+            'tbody[data-mobile-earlier="false"] [data-testid="illness-event-medication"]'
+          )
+          .first() // first-ok: any dose row in an unfolded day proves the ledger returned
+      ).toBeVisible();
     } finally {
       const cleanup = openDb();
       try {
