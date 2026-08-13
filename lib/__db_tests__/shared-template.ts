@@ -49,11 +49,32 @@ export function templateKeyPath(): string {
 // reapplied per file regardless — they are in the key for the case where a task
 // changed what it bakes into the template, not for the ordinary path.
 //
-// The failure mode if this is ever wrong is LOUD: a stale template is missing a
-// column or a table, and the tests that touch it fail naming exactly that. It
-// cannot quietly turn a red test green.
+// EXCEPT WHERE THE TASK REMOVES SOMETHING, which is why the seed dataset is
+// hashed too. "Effects are reapplied per file" holds for an ADD and an UPDATE —
+// `seedCanonicalBiomarkers` is an `ON CONFLICT … DO UPDATE` upsert, so a changed
+// row is corrected on every boot — and fails for a DELETE, because no boot task
+// removes a `seed` row it no longer has. Measured on this branch: drop an entry
+// from `lib/canonical-biomarkers.json`, and a reused template still serves it
+// (`{"name":"Audiologic Diagnosis","source":"seed"}`), where an uncached run
+// answers `null`. So the dataset joins the key: it is the one input the
+// reapply-per-file argument does not cover.
+//
+// WHAT THIS KEY DOES NOT COVER, stated rather than implied. It hashes direct
+// inputs, not their import closures — `lib/db.ts` transitively reaches 989 files,
+// essentially all of `lib/`, and keying on that would rebuild on nearly every
+// edit a developer running this tier has just made, which is the whole saving.
+// So a dataset baked in through a module OTHER than the two named here can still
+// go stale. If you change what a boot task bakes, either add its input below or
+// delete node_modules/.cache/allos-db-tests.
+//
+// A wrong key is USUALLY loud — a stale template missing a column fails the tests
+// that touch it, naming it — but do not read that as "cannot turn a red test
+// green". The stale template can also carry an EXTRA row the current inputs no
+// longer produce, and code still depending on a row you just deleted goes green
+// locally and red on a cold CI checkout. Loud in the common direction, not in
+// every direction.
 const TEMPLATE_INPUT_DIRS = ["lib/migrations"];
-const TEMPLATE_INPUT_FILES = ["lib/db.ts"];
+const TEMPLATE_INPUT_FILES = ["lib/db.ts", "lib/canonical-biomarkers.json"];
 
 // The path is folded in REPO-RELATIVE, never absolute: a rename must change the
 // key, but the checkout's location must not. An absolute path would re-key the

@@ -842,13 +842,24 @@ set it:
 
 The DB tier's migrated schema is built once and then **cached between runs**
 under `node_modules/.cache/allos-db-tests`, keyed on a hash of the migration
-sources plus `lib/db.ts` (`templateKey`, `lib/__db_tests__/shared-template.ts`).
-Replaying 191 migrations is ~0.8s, and it used to be paid on every invocation —
-including running ONE test file, where the whole run is ~5.4s of which 0.1s is
-the test. The key hashes the migration files THEMSELVES rather than
-`manifest.json`, so it cannot go stale behind a manifest nobody updated; a new or
-edited migration rebuilds automatically and needs no cache-clearing step. Delete
-that directory if you ever want to force one.
+sources plus `lib/db.ts` and `lib/canonical-biomarkers.json` (`templateKey`,
+`lib/__db_tests__/shared-template.ts`). Replaying 191 migrations is ~0.8s, and it
+used to be paid on every invocation — including running ONE test file, where the
+whole run is ~5.4s of which 0.1s is the test. The key hashes the migration files
+THEMSELVES rather than `manifest.json`, so it cannot go stale behind a manifest
+nobody updated; a new or edited migration rebuilds automatically and needs no
+cache-clearing step.
+
+The seed dataset is in the key because "boot tasks re-run per file, so their
+effects are reapplied" holds for an ADD and an UPDATE and **fails for a DELETE** —
+`seedCanonicalBiomarkers` upserts, and nothing removes a `seed` row the dataset no
+longer has, so a reused template kept serving one. The key covers DIRECT inputs,
+not their import closures (`lib/db.ts` transitively reaches ~989 files, nearly all
+of `lib/`, and keying on that would rebuild on almost every edit — the whole
+saving). So a dataset baked in through some other module can still go stale:
+**if you change what a boot task bakes, add its input to `TEMPLATE_INPUT_FILES` or
+delete that cache directory.** `lib/__tests__/db-template-key.test.ts` pins the
+inputs that are covered.
 
 Every rendered UI feature must add or extend a browser test. The E2E harness
 seeds a template once, gives each worker its own database and `next start`
