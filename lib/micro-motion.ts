@@ -7,7 +7,9 @@
 //
 //   1. 150–300 ms. Long enough to be seen as a transition, short enough that a
 //      returning glance never waits on it. `MICRO_MOTION_MIN_MS`/`MAX_MS` are the
-//      band, and the completeness test below fails a duration outside it.
+//      band, and the completeness test below fails a duration outside it — unless
+//      the motion carries an ARGUED EXEMPTION (`MICRO_MOTION_BAND_EXEMPTIONS`),
+//      which is a value that cannot be constructed without its reasoning.
 //   2. NOTHING LOOPS. A looping animation is an attention claim that never stops
 //      making itself, and a health app must not campaign at anyone. Every class in
 //      the stylesheet's Micro-motion section runs once; the test fails an
@@ -56,10 +58,12 @@ export interface MicroMotionDecl {
 // `--motion-<name>` custom property in the stylesheet's Micro-motion section;
 // the completeness test fails either half on its own.
 //
-// `slide` — a dismissed finding travelling toward the fold that catches it — is
-// deliberately ABSENT: #2654 describes it, this pass does not ship it, and a token
-// with no tenant is dead vocabulary that the next reader has to disprove. It joins
-// this table with the surface that animates it.
+// `slide` and `fold` are TWO motions, not one, and conflating them is the mistake
+// the owner ruling below exists to prevent: the dismissed row TRAVELLING is one
+// duration (in-band), and the fold line ANSWERING is another (exempt). They are
+// authored, tokenized and timed apart because they are separately true — a fold can
+// pulse for a dismissal that came from a keyboard with no row travel worth drawing,
+// and a row can travel on a surface whose fold is currently empty.
 export const MICRO_MOTIONS = {
   settle: {
     ms: 300,
@@ -79,12 +83,103 @@ export const MICRO_MOTIONS = {
     reducedEndState:
       "the new number is simply there, with no tween and no scale pulse.",
   },
+  slide: {
+    ms: 300,
+    conveys:
+      "the finding you dismissed WENT SOMEWHERE — it travelled toward the fold below that catches it, so dismissed reads as filed rather than deleted.",
+    carriedBy:
+      "the 'Dismissed' toast, the row leaving the list, and the row's reappearance inside the 'Snoozed & dismissed' disclosure with its own Restore control.",
+    reducedEndState:
+      "the row is simply gone from the list on the frame the page re-renders, and the fold below already holds it.",
+  },
+  fold: {
+    ms: 500,
+    conveys:
+      "the fold CAUGHT it: the count on the 'Snoozed & dismissed' line just went up, and that line is where a dismissal is found again.",
+    carriedBy:
+      "the count in the summary's own text, which is the authoritative number on every paint, plus the restorable row now listed inside the disclosure.",
+    reducedEndState:
+      "the incremented count is simply there, with no ring and no pulse on the line.",
+  },
 } as const satisfies Record<string, MicroMotionDecl>;
 
 export type MicroMotion = keyof typeof MICRO_MOTIONS;
 
 export function microMotion(kind: MicroMotion): MicroMotionDecl {
   return MICRO_MOTIONS[kind];
+}
+
+// ── The band, and the one thing exempt from it ───────────────────────────────
+//
+// Rule 1 is 150–300 ms and #2705 made it mechanical, which is what turned "nothing
+// lingers" from a promise into a build property. An exemption is therefore not a
+// number you may quietly widen: it is a VALUE, and `bandExemption()` refuses to
+// construct one without its reasoning written down. That is the same declare-or-argue
+// shape `arguedExclusion()` uses in lib/loggable-domains.ts, for the same reason — a
+// bare numeric exception with no stated why is how a band stops being a rule and
+// becomes a default the next motion argues it also deserves.
+declare const BandExemptionBrand: unique symbol;
+
+export interface BandExemption {
+  // The duration this exemption authorizes, EXACTLY. Not a ceiling and not a
+  // licence: the test pins it to the motion's declared `ms`, so re-timing an exempt
+  // motion means re-arguing it here rather than sliding under an old permission.
+  readonly exemptMs: number;
+  // Who decided, and when. An exemption is a ruling, so it names one.
+  readonly ruling: string;
+  // The reasoning, in the ruling's own terms. Structurally required.
+  readonly because: string;
+  readonly [BandExemptionBrand]: "micro-motion-band-exemption";
+}
+
+export function bandExemption(
+  exemptMs: number,
+  ruling: string,
+  because: string
+): BandExemption {
+  if (!Number.isFinite(exemptMs) || exemptMs <= 0) {
+    throw new Error("A band exemption names the duration it authorizes.");
+  }
+  if (!ruling.trim() || !because.trim()) {
+    throw new Error("A band exemption states its ruling and its reasoning.");
+  }
+  return { exemptMs, ruling, because } as BandExemption;
+}
+
+// The exemptions, keyed by the motion they name. `Partial<Record<MicroMotion, …>>`
+// so an exemption can only ever name a motion that exists, and the test fails a
+// STALE one — an entry whose motion has since come back inside the band is a
+// permission nobody needs, and leaving it there is how the list grows.
+//
+// One entry today. A second is a deliberate edit of this table AND of the test's
+// pinned key list, with its own ruling beside it.
+export const MICRO_MOTION_BAND_EXEMPTIONS = {
+  fold: bandExemption(
+    500,
+    "owner ruling, 2026-08-13, recorded on #2654",
+    "A dismissal travelling to its fold is a materially different motion from a tick " +
+      "settling in place. The larger travel honestly wants more time, and compressing " +
+      "the fold's answer to 300 ms would make it read as hurried where it should read " +
+      "as deliberate. The ruling exempts the FOLD PULSE only: the dismissed row's own " +
+      "`slide` stays inside the band, every other motion stays inside the band, and " +
+      "`nothing loops` is untouched — one pulse, never a repeat."
+  ),
+} as const satisfies Partial<Record<MicroMotion, BandExemption>>;
+
+// The exemption naming this motion, or null. A caller that wants to know whether a
+// duration is legal asks this rather than re-deriving the band.
+export function bandExemptionFor(kind: MicroMotion): BandExemption | null {
+  return (
+    (
+      MICRO_MOTION_BAND_EXEMPTIONS as Partial<
+        Record<MicroMotion, BandExemption>
+      >
+    )[kind] ?? null
+  );
+}
+
+export function withinMicroMotionBand(ms: number): boolean {
+  return ms >= MICRO_MOTION_MIN_MS && ms <= MICRO_MOTION_MAX_MS;
 }
 
 // What a surface should actually do, once the viewer's preference is known.

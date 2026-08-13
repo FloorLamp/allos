@@ -10,19 +10,8 @@
 // Plus the completeness pin — every verb in TELEGRAM_COMMANDS is actually routed, so a
 // verb can never be advertised in Telegram's `/` menu and then answer with nothing.
 
-import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    sendMessageRaw: vi.fn(async () => 1),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    answerCallbackQuery: vi.fn(async () => {}),
-  };
-});
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { setProfileSetting } from "@/lib/settings";
@@ -30,6 +19,26 @@ import { handleIncomingMessage } from "@/lib/notifications/telegram-quick-log";
 import { sendMessageRaw } from "@/lib/notifications/telegram-api";
 import { TELEGRAM_COMMANDS } from "@/lib/notifications/telegram-commands";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => {
+  stubTelegramSends();
+  // A CONSTANT message id, which is what this file's own mock returned before the
+  // stub moved to lib/__db_tests__/telegram-spies.ts. Keeping it preserves exactly
+  // what these tests verified; it is not cosmetic.
+  //
+  // Under the shared stub's realistic incrementing ids, "a second /food strips the
+  // first" counts TWO notify_messages rows instead of one — the two sends no longer
+  // collide on one (chat_id, message_id). That test's query counts every
+  // `kind = 'food'` row rather than only live ones, so it was passing because the
+  // ids were equal, not because the strip had happened. Worth settling on its own;
+  // a performance change is the wrong place to alter what a notification test
+  // asserts.
+  vi.mocked(sendMessageRaw).mockResolvedValue(1);
+});
 
 const sendMock = vi.mocked(sendMessageRaw);
 

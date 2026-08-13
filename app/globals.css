@@ -675,9 +675,10 @@
 
 /* ── SECTION: Micro-motion ── */
 /* Micro-motion (issue #2654) — the small moves that answer "did that work?".
-   Two of them, and their whole justification is that they carry INFORMATION: a
-   tap-shaped confirm visibly BECOMING its done state, and a quantity visibly
-   CHANGING rather than being replaced.
+   Four of them, and their whole justification is that they carry INFORMATION: a
+   tap-shaped confirm visibly BECOMING its done state, a quantity visibly CHANGING
+   rather than being replaced, a dismissed finding visibly TRAVELLING toward the fold
+   that catches it, and that fold visibly ANSWERING.
 
    The numbers live in these custom properties and nowhere else. lib/micro-motion.ts
    mirrors them (its MICRO_MOTIONS table hands the same number to the counter's
@@ -685,17 +686,28 @@
    copies together, fails a duration outside the 150–300 ms band, and fails any rule
    in this section that loops.
 
+   ONE duration here is outside that band, by owner ruling of 2026-08-13 recorded on
+   #2654: `--motion-fold`, the fold line's pulse, at 500 ms. Its reasoning lives with
+   the exemption in lib/micro-motion.ts's MICRO_MOTION_BAND_EXEMPTIONS, which cannot
+   be constructed without one. It is not a precedent — the dismissed row's own
+   `--motion-slide` stays inside the band, and so does everything else.
+
    NOTHING HERE LOOPS, autoplays, or moves without a user gesture. Explicitly not in
    this vocabulary: skeleton shimmer, attention pulses on findings (a finding may not
-   campaign — reach policy), chart draw-in, page transitions. The overlay family
-   below is a different question at a different duration; do not cross-wire them.
+   campaign — reach policy), chart draw-in, page transitions. The fold pulse is the
+   near miss to keep an eye on: it fires ONCE, on the tap that incremented the count,
+   and never on arrival at the page. The overlay family below is a different question
+   at a different duration; do not cross-wire them.
 
-   Every class is transform/box-shadow only — never a property that triggers layout —
-   so a motion can never delay the next tap. The state change lands on its own frame;
-   the animation decorates a transition already made. */
+   Every class is transform/box-shadow/opacity only — never a property that triggers
+   layout — so a motion can never delay the next tap. The state change lands on its
+   own frame; the animation decorates a transition already made. */
 :root {
   --motion-settle: 300ms;
   --motion-count: 250ms;
+  --motion-slide: 300ms;
+  /* Band-exempt, see the note above. */
+  --motion-fold: 500ms;
   /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
      settles, it never bounces back. Mirrored by MICRO_MOTION_EASE. */
   --motion-ease: cubic-bezier(0.2, 0, 0, 1);
@@ -740,15 +752,60 @@
   animation: micro-count var(--motion-count) var(--motion-ease);
 }
 
+/* A dismissed finding travelling toward the fold that catches it. The fold — the
+   "Snoozed & dismissed" disclosure — is always BELOW the rows on the surface that
+   has one, so the travel is downward and it fades as it goes.
+
+   Deliberately no `forwards`: on the ordinary path the row is gone by the time the
+   re-render lands, and on the path where the write REFUSED the row is still there and
+   springing back to full opacity is the honest answer — it did not go anywhere. */
+@keyframes micro-slide {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+.motion-slide {
+  animation: micro-slide var(--motion-slide) var(--motion-ease);
+}
+
+/* The fold ANSWERING: a single ring blooming and clearing around the "Snoozed &
+   dismissed" line as its count goes up. Drawn as `box-shadow` rather than a real
+   border so the line's own box never changes size and nothing below it moves.
+
+   Slate, not the success green the confirm settle uses: catching a dismissal is a
+   LOCATION, not an achievement, and a celebratory colour here would read as praise
+   for hiding something. */
+@keyframes micro-fold {
+  0% {
+    box-shadow: 0 0 0 0 rgb(148 163 184 / 0);
+  }
+  35% {
+    box-shadow: 0 0 0 4px rgb(148 163 184 / 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgb(148 163 184 / 0);
+  }
+}
+.motion-fold {
+  animation: micro-fold var(--motion-fold) var(--motion-ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. `microMotionPlan()` already returns no class under the
      preference, so these are not applied at all — but a stylesheet that only works
      because its JS caller remembered to check is one refactor away from animating a
      viewer who asked it not to. The reduced path is the DESIGNED state, not a
-     degradation: the resolved styling and the new number are simply there, on the
-     frame the state changed. */
+     degradation: the resolved styling, the new number, the row's absence from the
+     list and the fold's new count are simply there, on the frame the state changed. */
   .motion-settle,
-  .motion-count {
+  .motion-count,
+  .motion-slide,
+  .motion-fold {
     animation: none;
   }
 }

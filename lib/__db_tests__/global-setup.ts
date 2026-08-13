@@ -12,11 +12,34 @@
 // per-boot tasks and no migrations.
 import fs from "node:fs";
 import path from "node:path";
-import { templateDbPath, TEMPLATE_SIDECARS } from "./shared-template";
+import {
+  templateDbPath,
+  templateKey,
+  templateKeyPath,
+  TEMPLATE_SIDECARS,
+} from "./shared-template";
 
 export default async function setup(): Promise<void> {
   const target = templateDbPath();
+
+  // Reuse the template when nothing that decides its schema has changed. The
+  // build below is ~0.8s of importing 191 migration modules and replaying the
+  // chain, and it was paid on every invocation — including a developer running
+  // ONE test file, where the whole run is ~5.4s of which 0.1s is the test.
+  //
+  // The key is a hash of the migration sources themselves (see templateKey), so
+  // it cannot go stale behind a manifest that was not updated. A miss rebuilds;
+  // being wrong would show as a test failing on a missing column, never as a red
+  // test passing.
+  const key = templateKey();
+  if (fs.existsSync(target) && readKey() === key) return;
+
   fs.mkdirSync(path.dirname(target), { recursive: true });
+  // Drop the key FIRST. Everything below can throw — a migration that fails, a
+  // boot task that does — and a key left beside a half-written template would
+  // make the next run trust it. Absent means rebuild, which is the safe default
+  // to crash into.
+  fs.rmSync(templateKeyPath(), { force: true });
   for (const suffix of TEMPLATE_SIDECARS) {
     fs.rmSync(target + suffix, { force: true });
   }
@@ -48,5 +71,18 @@ export default async function setup(): Promise<void> {
       `Template database was not created at ${target}. The shared-registry DB ` +
         `tier cannot seed its per-file databases without it.`
     );
+  }
+
+  // LAST, and only once the template is known to exist: the key's presence is
+  // the claim that a complete template built from these inputs is on disk.
+  fs.writeFileSync(templateKeyPath(), key + "\n");
+}
+
+/** The fingerprint recorded beside the template, or null when there is none. */
+function readKey(): string | null {
+  try {
+    return fs.readFileSync(templateKeyPath(), "utf8").trim();
+  } catch {
+    return null;
   }
 }

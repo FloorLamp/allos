@@ -13,20 +13,16 @@
 // Every case here goes through a REAL send (so the pointer is recorded exactly as
 // production records it), a REAL callback dispatch, and where relevant the REAL sweep.
 
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  let nextMessageId = 7000;
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => nextMessageId++),
-  };
-});
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { setTelegramBotConfig, setTimezone } from "@/lib/settings";
@@ -54,6 +50,12 @@ import { getFoodCorrectionBursts } from "@/lib/queries";
 import { getDoseCorrectionBursts } from "@/lib/queries/intake/adherence";
 import { getMedicationFamilyStates } from "@/lib/queries/intake/prn-family";
 import { seedLoginTelegram } from "./fixtures";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const answer = vi.mocked(answerCallbackQuery);
 const editText = vi.mocked(editMessageTextRaw);

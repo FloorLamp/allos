@@ -5,19 +5,8 @@
 // outcome (never an unconditional confirm). The pure parse half is in
 // lib/__tests__/telegram-quicklog-parse.test.ts.
 
-import { vi, describe, it, expect, beforeAll } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => {}),
-  };
-});
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { setProfileSetting } from "@/lib/settings";
@@ -32,6 +21,12 @@ import {
 } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 import { tempReplyMarker } from "@/lib/notifications/callback-data";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const editMock = vi.mocked(editMessageTextRaw);

@@ -3,13 +3,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  bandExemption,
+  bandExemptionFor,
   countRollValue,
   MICRO_MOTIONS,
+  MICRO_MOTION_BAND_EXEMPTIONS,
   MICRO_MOTION_EASE,
   MICRO_MOTION_MAX_MS,
   MICRO_MOTION_MIN_MS,
   microMotion,
   microMotionPlan,
+  withinMicroMotionBand,
   type MicroMotion,
 } from "@/lib/micro-motion";
 
@@ -21,6 +25,15 @@ import {
 // The other four assertions are the issue's guardrails made mechanical: the 150–300 ms
 // band, nothing looping, every motion declaring an independent carrier and a designed
 // reduced-motion end state, and every declared motion actually having a class.
+//
+// THE BAND HAS EXACTLY ONE EXEMPTION and it is not a hole. The owner ruling of
+// 2026-08-13 exempts the fold pulse at 500 ms, and the whole point of the ruling was
+// that "a bare numeric exception with no stated why is how a band stops being a rule".
+// So the exemption is a VALUE that cannot be constructed without its reasoning, and
+// the assertions below make three further things impossible: an exemption that
+// authorizes a duration other than the one actually declared, a STALE exemption for a
+// motion that has come back inside the band, and a second exemption slipping in
+// without an edit to the pinned key list right here.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const CSS = fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8");
@@ -65,15 +78,19 @@ describe("micro-motion tokens", () => {
       (rule) => !/animation:\s*none/.test(rule)
     );
     expect(rules.length).toBe(KINDS.length);
+    const anyToken = new RegExp(`var\\(--motion-(${KINDS.join("|")})\\)`);
     for (const rule of rules) {
       expect(rule, rule).toContain("var(--motion-ease)");
-      expect(rule, rule).toMatch(/var\(--motion-(settle|count)\)/);
+      expect(rule, rule).toMatch(anyToken);
     }
   });
 
-  it("keeps every duration inside the 150–300 ms band", () => {
+  it("keeps every duration inside the 150–300 ms band, or argues its way out", () => {
     for (const kind of KINDS) {
       const { ms } = MICRO_MOTIONS[kind];
+      // An exempt motion is judged by its exemption instead (asserted below). A
+      // motion with none has no answer but the band.
+      if (bandExemptionFor(kind)) continue;
       expect(ms, kind).toBeGreaterThanOrEqual(MICRO_MOTION_MIN_MS);
       expect(ms, kind).toBeLessThanOrEqual(MICRO_MOTION_MAX_MS);
     }
@@ -97,9 +114,10 @@ describe("micro-motion tokens", () => {
   });
 
   it("animates nothing that triggers layout", () => {
-    // Motion never delays or displaces the next tap: transform and box-shadow only.
-    // Read out of the @keyframes blocks, which are the only place a property is
-    // actually interpolated.
+    // Motion never delays or displaces the next tap: transform, box-shadow and
+    // opacity only — the three that paint or composite without reflowing anything
+    // around them. Read out of the @keyframes blocks, which are the only place a
+    // property is actually interpolated.
     const frames =
       SECTION.match(/@keyframes micro-[a-z]+ \{[\s\S]*?\n\}/g) ?? [];
     expect(frames.length).toBe(KINDS.length);
@@ -108,7 +126,69 @@ describe("micro-motion tokens", () => {
         [...block.matchAll(/^\s{4}([a-z-]+):/gm)].map((m) => m[1])
       )
     );
-    expect([...animated].sort()).toEqual(["box-shadow", "transform"]);
+    expect([...animated].sort()).toEqual([
+      "box-shadow",
+      "opacity",
+      "transform",
+    ]);
+  });
+});
+
+describe("the band's one argued exemption", () => {
+  const EXEMPT = Object.keys(MICRO_MOTION_BAND_EXEMPTIONS) as MicroMotion[];
+
+  it("is exactly the fold pulse, and nothing else", () => {
+    // Pinned so a second exemption cannot arrive as a quiet table entry. Adding one
+    // means editing THIS line, which is where the next reader asks what ruling
+    // authorized it — the ruling's own words: a band that accumulates unargued
+    // exceptions has stopped being a band.
+    expect(EXEMPT).toEqual(["fold"]);
+  });
+
+  it("names its ruling and states its reasoning, structurally", () => {
+    for (const kind of EXEMPT) {
+      const exemption = bandExemptionFor(kind);
+      expect(exemption, kind).not.toBeNull();
+      if (!exemption) continue;
+      expect(exemption.ruling, kind).toMatch(/\d{4}-\d{2}-\d{2}/);
+      // Not a length check dressed as a rule: the reasoning has to be an ARGUMENT,
+      // so it must say why THIS motion is different rather than restate its number.
+      expect(exemption.because.length, kind).toBeGreaterThan(120);
+      expect(exemption.because, kind).toMatch(/deliberate|hurried|travel/i);
+    }
+    // And the constructor is the reason a bare entry is impossible in the first
+    // place — there is no way to write one down without both halves.
+    expect(() => bandExemption(500, "", "because")).toThrow();
+    expect(() => bandExemption(500, "a ruling", "  ")).toThrow();
+    expect(() => bandExemption(0, "a ruling", "a reason")).toThrow();
+  });
+
+  it("authorizes exactly the duration the motion declares", () => {
+    // An exemption is a permission for ONE number, never a ceiling. Re-timing an
+    // exempt motion has to come back through the ruling.
+    for (const kind of EXEMPT) {
+      expect(bandExemptionFor(kind)?.exemptMs, kind).toBe(
+        MICRO_MOTIONS[kind].ms
+      );
+    }
+  });
+
+  it("fails as STALE once its motion is back inside the band", () => {
+    // The failure mode an allowlist has that a rule does not: an entry nobody needs,
+    // sitting there reading like a licence. An exempt motion must actually be out of
+    // the band, or its exemption is dead and must go.
+    for (const kind of EXEMPT) {
+      expect(withinMicroMotionBand(MICRO_MOTIONS[kind].ms), kind).toBe(false);
+    }
+  });
+
+  it("leaves the two halves of motion 2 separately timed", () => {
+    // The dismissed row TRAVELLING and the fold ANSWERING are different motions with
+    // different durations, and the ruling exempts only the second. Folding them into
+    // one token would smuggle the row's travel out of the band too.
+    expect(withinMicroMotionBand(MICRO_MOTIONS.slide.ms)).toBe(true);
+    expect(bandExemptionFor("slide")).toBeNull();
+    expect(MICRO_MOTIONS.fold.ms).not.toBe(MICRO_MOTIONS.slide.ms);
   });
 });
 
@@ -150,6 +230,13 @@ describe("micro-motion declarations", () => {
       className: "motion-settle",
     });
     expect(microMotionPlan("count", false).ms).toBe(250);
+    // Motion 2's two halves, separately: the row's travel and the fold's answer.
+    expect(microMotionPlan("slide", false).ms).toBe(300);
+    expect(microMotionPlan("fold", false)).toEqual({
+      ms: 500,
+      animate: true,
+      className: "motion-fold",
+    });
   });
 
   it("keeps the overlay family out of this vocabulary", () => {

@@ -821,6 +821,21 @@ calls `vi.mock()` or `process.chdir()` is routed to the tier's isolated project
 automatically by the scan in `vitest.isolation.ts`, where it behaves exactly as
 the tier did before. It is only slower, so prefer not to reach for either.
 
+That routing is mechanical, so the cost of it is easy to stop noticing:
+**an isolated spec re-pays the whole module graph** — ~259ms against ~26ms for a
+shared one — and the DB tier's isolated project reached 43% of the tier's wall
+clock for 7% of its files. Twenty of those 49 specs were isolated for the same
+reason: each carried its own stub of the Telegram primitives, because there was no
+other way to stub a module. There is now — shared spy INSTANCES installed by the
+tier's setup (`lib/__db_tests__/telegram-spies.ts`, `lib/__action_tests__/cache-spies.ts`),
+which a spec steers with a plain function call. Make such a mock DELEGATE to the
+real module by default: a stub-by-default one silently changes what every other
+spec in the tier tests, including the ones that drive the real module against a
+stubbed `fetch` and never mention it. `lib/__tests__/vitest-isolation-budget.test.ts`
+pins the counts so the total stops growing unwatched; raising it is fine, not
+noticing is what it prevents. Note that file must never spell the marker it counts
+— the router is a text scan, so writing the literal routes the budget itself.
+
 Two things the scan cannot see, both about state that now outlives the file that
 set it:
 
@@ -829,6 +844,11 @@ set it:
   #2066 dose-schedule memo, the `next/cache` spies and the acting session. A
   cache that is missed does not fail — it answers the next file with the
   previous file's data, which is worse.
+- A GLOBAL a spec installs must be restored in the same file. `vi.useFakeTimers()`
+  without a matching `useRealTimers` was contained while that spec had a registry
+  to itself; under the shared one the frozen clock outlives the file, and the NEXT
+  spec in that worker sees expired tokens and wrong timezone-derived instants —
+  failing while naming neither the clock nor the file that stopped it.
 - A module-scope prepared statement must use `hoistedStatement()` from
   `lib/db.ts`, never a bare `db.prepare(...)`. The shared tier swaps the database
   between files, and a statement compiled against the closed connection throws.
@@ -839,6 +859,27 @@ set it:
   above, decided separately. The owned-table scans read both forms, so scoping
   stays enforced either way — note they are TEXT scans, so `db.prepare()` written
   in a comment fails `profile-scoping.test.ts` as an unverifiable non-literal.
+
+The DB tier's migrated schema is built once and then **cached between runs**
+under `node_modules/.cache/allos-db-tests`, keyed on a hash of the migration
+sources plus `lib/db.ts` and `lib/canonical-biomarkers.json` (`templateKey`,
+`lib/__db_tests__/shared-template.ts`). Replaying 191 migrations is ~0.8s, and it
+used to be paid on every invocation — including running ONE test file, where the
+whole run is ~5.4s of which 0.1s is the test. The key hashes the migration files
+THEMSELVES rather than `manifest.json`, so it cannot go stale behind a manifest
+nobody updated; a new or edited migration rebuilds automatically and needs no
+cache-clearing step.
+
+The seed dataset is in the key because "boot tasks re-run per file, so their
+effects are reapplied" holds for an ADD and an UPDATE and **fails for a DELETE** —
+`seedCanonicalBiomarkers` upserts, and nothing removes a `seed` row the dataset no
+longer has, so a reused template kept serving one. The key covers DIRECT inputs,
+not their import closures (`lib/db.ts` transitively reaches ~989 files, nearly all
+of `lib/`, and keying on that would rebuild on almost every edit — the whole
+saving). So a dataset baked in through some other module can still go stale:
+**if you change what a boot task bakes, add its input to `TEMPLATE_INPUT_FILES` or
+delete that cache directory.** `lib/__tests__/db-template-key.test.ts` pins the
+inputs that are covered.
 
 Every rendered UI feature must add or extend a browser test. The E2E harness
 seeds a template once, gives each worker its own database and `next start`

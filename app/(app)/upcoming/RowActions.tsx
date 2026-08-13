@@ -22,6 +22,7 @@ import {
   type SnoozeDismissProps,
 } from "@/components/SnoozeDismissMenu";
 import { type AppRoute } from "@/lib/hrefs";
+import { DISMISS_ROW_ATTR } from "./dismiss-row";
 
 // ---------------------------------------------------------------------------
 // The Upcoming row's SECONDARY actions — one model, two presentations (#1446).
@@ -284,7 +285,7 @@ export default function UpcomingRowMenu({
       open={open}
       onOpenChange={setOpen}
     >
-      {({ runAction }) => (
+      {({ runAction, anchorRef }) => (
         <>
           <RowActionMenuItems actions={folded} runAction={runAction} />
           {hasPreventive && (
@@ -295,7 +296,20 @@ export default function UpcomingRowMenu({
             />
           )}
           {suppression && (
-            <SnoozeDismissItems {...suppression} runAction={runAction} />
+            <SnoozeDismissItems
+              {...suppression}
+              runAction={runAction}
+              // #2654 motion 2. Upcoming is the surface that HAS a fold — the
+              // "Snoozed & dismissed" disclosure below these rows catches every
+              // dismissal — so a dismissal here travels toward it. The row is found
+              // by walking up from the kebab, which is the only part of this menu
+              // still standing inside it (the panel is portaled to <body>).
+              slideTarget={() =>
+                anchorRef.current?.closest<HTMLElement>(
+                  `[${DISMISS_ROW_ATTR}]`
+                ) ?? null
+              }
+            />
           )}
         </>
       )}
