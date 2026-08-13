@@ -51,6 +51,30 @@
       "date": "2026-08-12",
       "entries": [
         {
+          "pr": 2509,
+          "title": "Timeline, medication detail and household stop re-running read work they already had",
+          "kind": "perf",
+          "issues": [2113, 2114, 2116]
+        },
+        {
+          "pr": 2519,
+          "title": "Household and Upcoming gather each member state once instead of once per surface",
+          "kind": "perf",
+          "issues": [2112, 2115, 2446, 2117]
+        },
+        {
+          "pr": 2577,
+          "title": "Results filed under a generic biomarker catch-all are re-filed under the category they belong to",
+          "kind": "fix",
+          "issues": [2479]
+        },
+        {
+          "pr": 2581,
+          "title": "Pages that repeat a query render faster, compiling each statement once instead of thousands of times",
+          "kind": "perf",
+          "issues": []
+        },
+        {
           "pr": 2562,
           "title": "A deploy reloads the tab itself at a safe moment, with dirty forms resuming in place",
           "kind": "feature",
