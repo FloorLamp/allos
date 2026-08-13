@@ -42,6 +42,7 @@ import {
   showsActivityShortcuts,
   type QuickLogIcon,
 } from "@/lib/quick-log";
+import type { SegmentLogDays } from "@/lib/log-sheet";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
 import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
@@ -120,6 +121,7 @@ export default function MobileNav({
   reviewCount = 0,
   readOnly = false,
   whatsNewUnseen = false,
+  logHabitDays = null,
 }: {
   activityDates: string[];
   // Resolved on the server (git/env) and passed in — this client component
@@ -161,6 +163,10 @@ export default function MobileNav({
   // Unopened bundled release notes for this login (issue #1421); threaded into the
   // shared SidebarContent so the drawer shows the same calm "What's new" dot.
   whatsNewUnseen?: boolean;
+  // Days-logged per sheet segment over the trailing quarter (#2709), resolved once
+  // by the shell. Passed straight through to the sheet, which consults it on the
+  // DASHBOARD only; null means "not gathered", and the route's own default stands.
+  logHabitDays?: SegmentLogDays | null;
 }) {
   const pathname = usePathname();
   // Both overlays now have TWO triggers each — this bar's hamburger and caret,
@@ -426,6 +432,7 @@ export default function MobileNav({
         // The same server-resolved relevance bitset the drawer's nav entries gate on,
         // so the sheet's period row and the Cycle nav entry appear together (#1892).
         cycleRelevant={relevance.cycle}
+        logHabitDays={logHabitDays}
       />
     </>
   );

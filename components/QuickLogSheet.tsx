@@ -26,9 +26,10 @@ import {
   type LogSheetContext,
 } from "@/app/(app)/log-sheet-actions";
 import {
-  defaultLogSegment,
   logSheetSegments,
+  openingLogSegment,
   type LogSegmentId,
+  type SegmentLogDays,
 } from "@/lib/log-sheet";
 import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 
@@ -76,7 +77,11 @@ import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 // this sheet has always rendered — same entries, same two gates, same registry —
 // grouped into a one-line segmented domain track so no log needs its page first.
 // The track opens on the segment holding the current route's promoted log, so
-// the puck on Nutrition lands on Food.
+// the puck on Nutrition lands on Food — except on the DASHBOARD, which promotes
+// no log of its own and opens instead on the segment this profile has logged on
+// the most DAYS over the trailing quarter (#2709, owner ruling).
+// `openingLogSegment` owns that whole composition, including the fallback for a
+// profile with no history; none of it is decided here.
 //
 // Still no navigation and still no second write path: every row opens an
 // EXISTING form in place (the shared activity editor, or a quick-entry overlay
@@ -99,15 +104,23 @@ export default function QuickLogSheet({
   onClose,
   restricted = false,
   cycleRelevant = true,
+  logHabitDays = null,
 }: {
   open: boolean;
   onClose: () => void;
   // An age-restricted profile has no training surface, so the activity entry is
-  // dropped (lib/quick-log.ts owns that rule) and its whole segment with it.
+  // dropped (lib/quick-log.ts owns that rule) and its whole segment with it. It
+  // still gets the sheet and the puck that opens it (#2651, owner ruling
+  // 2026-08-13) — every entry that survives `quickLogMenu(true)` is one a
+  // restricted profile may log, and hiding the door removed one-tap logging
+  // without adding any protection the per-entry gates were not already giving.
   restricted?: boolean;
   // The #1042 `cycle` relevance bit, resolved once by the app layout — the SAME bit
   // gating the Cycle nav entry and the dashboard phase widget (#1892).
   cycleRelevant?: boolean;
+  // Days-logged per segment over the trailing quarter (#2709), resolved once by
+  // the shell. Consulted on the DASHBOARD only; null means "not gathered".
+  logHabitDays?: SegmentLogDays | null;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -119,7 +132,12 @@ export default function QuickLogSheet({
   // sheet is opened repeatedly from the same page and should always lead with
   // what that page is for.
   const [segment, setSegment] = useResettableState<LogSegmentId, string>(
-    defaultLogSegment(segments, pathname, searchParams.get("tab")),
+    openingLogSegment({
+      segments,
+      pathname,
+      tab: searchParams.get("tab"),
+      habitDays: logHabitDays,
+    }),
     `${pathname}|${open ? 1 : 0}`
   );
 

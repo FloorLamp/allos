@@ -1,6 +1,9 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
+import { loginAs } from "./nav";
+import { showLogRow } from "./log-sheet-helpers";
+import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The phone's bottom dock and its log sheet (issue #2651).
 //
@@ -121,19 +124,30 @@ test("the puck opens the log sheet, whose segmented long tail reaches every log"
   const sheet = page.getByTestId("quick-log-sheet");
   await tapUntilOpen(page, page.getByTestId("dock-log-puck"), sheet);
 
-  // The dashboard promotes no particular log, so the registry's fallback
-  // (Log activity) decides the opening segment — Train.
+  // The dashboard promotes no log of its own, so since #2709 the opening segment
+  // is the one this profile has logged on the most DAYS over the trailing
+  // quarter — no longer the registry's Train fallback.
+  //
+  // Which segment that IS depends on the seed's ledgers, and this spec does not
+  // own them, so the assertion is the one the seed's SHAPE guarantees rather than
+  // a count: the shared profile logs food and doses far more often than it logs
+  // workouts by hand, so Train — the old answer — cannot be the new one. The exact
+  // adaptive answer is proven on owned data in
+  // e2e/log-sheet-default-segment.mobile.spec.ts and in the DB tier.
   const track = sheet.getByTestId("log-sheet-segments");
   await expect(track).toBeVisible();
-  await expect(sheet.getByTestId("quick-log-log-activity")).toBeVisible();
+  await expect(
+    track.getByTestId("log-sheet-segment-train")
+  ).not.toHaveAttribute("aria-pressed", "true");
 
   // The long tail: another domain is one segment tap away, no page visit needed.
   await sheet.getByTestId("log-sheet-segment-care").click();
   await expect(sheet.getByTestId("quick-log-log-dose")).toBeVisible();
   await expect(sheet.getByTestId("quick-log-add-document")).toBeVisible();
-  // Segments are mutually exclusive — the previous segment's rows are gone, not
+  // Segments are mutually exclusive — another segment's rows are gone, not
   // stacked below.
   await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
+  await expect(sheet.getByTestId("quick-log-log-food")).toHaveCount(0);
 
   // A row still opens its EXISTING form in place (#1468) rather than navigating.
   await sheet.getByTestId("quick-log-log-dose").click();
@@ -153,6 +167,51 @@ test("the sheet opens on the segment the current route is about", async ({
   await tapUntilOpen(page, page.getByTestId("dock-log-puck"), sheet);
   await expect(sheet.getByTestId("quick-log-log-food")).toBeVisible();
   await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
+});
+
+test("an age-restricted profile gets the puck, and a sheet with no Train segment", async ({
+  browser,
+}) => {
+  // #2651's owner ruling (2026-08-13). The dock shipped with the puck hidden for a
+  // restricted profile, mirroring the top bar; that was reversed. Every entry the
+  // sheet offers such a profile has already been through `quickLogMenu(true)`, so
+  // hiding the door removed one-tap logging without adding a gate.
+  //
+  // A raw context from loginAs does NOT inherit the `mobile` project's `use`
+  // block, so the phone viewport is restated or this silently runs at desktop
+  // width where the dock does not render at all.
+  const child = await loginAs(
+    browser,
+    { username: E2E_LOGIN_CHILD, password: E2E_MEMBER_PASSWORD },
+    { viewport: { width: 390, height: 844 }, hasTouch: true }
+  );
+  try {
+    await child.goto("/");
+    const dock = child.getByTestId("mobile-dock");
+    await expect(dock).toBeVisible();
+    await expect(dock.getByTestId("dock-log-puck")).toBeVisible();
+    // The slot substitution is unchanged: Timeline stands in for Training.
+    await expect(dock.getByTestId("dock-slot-timeline")).toBeVisible();
+    await expect(dock.getByTestId("dock-slot-training")).toHaveCount(0);
+
+    const sheet = child.getByTestId("quick-log-sheet");
+    await tapUntilOpen(child, child.getByTestId("dock-log-puck"), sheet);
+
+    // What the ruling did NOT change: the activity entry is still gated away, so
+    // the track carries no Train segment at all rather than an empty one.
+    const track = sheet.getByTestId("log-sheet-segments");
+    await expect(track).toBeVisible();
+    await expect(track.getByTestId("log-sheet-segment-train")).toHaveCount(0);
+    await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
+
+    // And what it reinstates: a log this profile may make, one tap from the puck.
+    const row = await showLogRow(sheet, "log-food");
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(child.getByTestId("quick-entry-sheet")).toBeVisible();
+  } finally {
+    await child.close();
+  }
 });
 
 test("the dock never campaigns, and never renders above `md`", async ({

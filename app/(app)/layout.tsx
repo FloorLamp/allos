@@ -52,6 +52,7 @@ import {
   profileHasIntakeItems,
   getNavRelevance,
 } from "@/lib/queries";
+import { getSegmentLogDays } from "@/lib/queries/log-sheet";
 import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getFormRecoveringContext } from "@/lib/injuries";
@@ -208,6 +209,30 @@ export default async function AppLayout({
   // member with a read-only grant. Drives the "read-only" hint in the profile
   // menu; every mutating action is independently gated server-side.
   const readOnly = session.access === "read";
+  // Which domain this profile actually logs in, as DAYS-LOGGED per sheet segment
+  // over the trailing quarter (#2709). It decides the log sheet's opening segment
+  // on the DASHBOARD only — every other route either promotes its own domain or
+  // keeps the historical activity fallback — but the sheet is mounted by this
+  // shell on every route, so the gather is here rather than on the page. ONE
+  // hoisted statement; the decision, the window and the no-history fallback all
+  // live in lib/log-sheet.ts, never in a component.
+  //
+  // Its COST is unconditional, and that was weighed rather than overlooked
+  // (#2720): it runs on every route and every viewport, including desktop, where
+  // the sheet does not exist and nothing reads the result. It stays unconditional
+  // because the layout cannot see the pathname — that is exactly why `pathname
+  // === "/"` is decided client-side in the sheet — and because a lazy fetch would
+  // cost more than it saves. EXPLAIN QUERY PLAN on the migrated schema: all eight
+  // arms are index SEARCHes, six of them seeking straight to (profile, date) and
+  // four covering; `metric_samples` and the `intake_item_logs` join seek on the
+  // profile alone and filter the date, so those two read a profile's own history
+  // rather than a quarter's slice, which is the only part of this that grows.
+  // Against one compiled statement on a synchronous local SQLite that is cheaper
+  // than the round trip deferring it would add, on the hottest path there is. So
+  // the trigger for revisiting this is an arm losing its index — or those two
+  // gaining a date-leading one, if a heavy profile ever makes it worth measuring —
+  // never the desktop waste.
+  const logHabitDays = getSegmentLogDays(profile.id, now);
   const onboarding = getOnboardingState(profile.id);
   const showOnboardingReturn =
     onboarding?.status === "in_progress" &&
@@ -319,6 +344,7 @@ export default async function AppLayout({
                                 reviewCount={reviewCount}
                                 readOnly={readOnly}
                                 whatsNewUnseen={whatsNewUnseen}
+                                logHabitDays={logHabitDays}
                               />
                             </ShellChrome>
                             {/* max(padding, safe-area inset) keeps content clear of the
