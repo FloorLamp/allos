@@ -458,6 +458,55 @@ when no identity-carrying row is left under the name.
 One thing #2646 explicitly did **not** do: add a `DERIVED_DEFS` entry.
 `bmiSeriesDatePaired` stays the only BMI derivation there is.
 
+##### Consequence must scale with confidence (#2678)
+
+"The name axis separates the two for free" was true of the spellings it was probed
+with and false of two it was not. `acronymNameForms` splits `Full Name (ABBR)` and
+tries the bare acronym on its own, so **any** label shaped `X (…BMI…)` resolved to
+`bmi` — `Body Mass Index Percentile (BMI)` included. And `normalizeCanonicalKey`
+strips every non-alphanumeric, so a bare `BMI%` — the shape a paediatric flowsheet
+actually prints, and the number that matters most for a child — normalized to `bmi`
+with no acronym split involved at all.
+
+That mis-recognition **pre-dated** the ingest arm. What #2646 changed was its
+consequence: from _cosmetic_ (a value filed under the wrong home, still visible and
+mergeable) to _destructive_ (a value deleted, with no trail anywhere). The fix is
+tiered along exactly that line.
+
+| tier | where                                                 | rule                                                                                                                                                                       |
+| ---- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `trendMetricHomeFor` — the shared recognizer          | an acronym may **corroborate, never overrule**: the bare abbr vouches for slug S only when no registered name-key of S is a **proper subset** of the full half's token set |
+| 2    | `derivedInputsMetricFor` — the one destructive caller | additionally refuses a label whose **original** spelling carries a `STATISTIC_SIGNIFIERS` token the slug's own registered names lack                                       |
+| 3    | `withoutDerivedResults` (`lib/import-shape.ts`)       | the drop is reported as an `ImportDrop` with reason `derived_result`, so Data → Review can say a document had three printed derived results                                |
+
+Tier 1 is **derived from the registry, never a denylist**, and it fails in the safe
+direction: `{body, index, mass}` ⊂ `{body, index, mass, percentile}` is a
+contradiction the compression does not get to settle, while `Índice de Masa Corporal
+(BMI)` is _disjoint_ from S's keys — no contradiction, so the acronym is the only
+evidence there is and it still matches. Equality (`Body Mass Index (BMI)`) is the
+ordinary case and matches on the full half before the acronym is consulted. It also
+fixes the pre-existing cosmetic bug in the same motion, because
+`listedInResultsCatalog` reads the same function: a stored BMI percentile stops being
+hidden from the Results browser by a chart that does not plot percentiles.
+
+Tier 2 exists because Tier 1 has nothing to consult when there is no full half. Its
+list is small, curated and each token carries its reason (`%`, `percentile`,
+`centile`, `z-score`, `SDS`) — matched against the ORIGINAL spelling, because for the
+`%` entry the punctuation _is_ the signifier.
+
+Tier 3 is the invariant half. The four `withoutCaptured*` helpers need no accounting
+because their trail **is** the projected row; this drop leaves no row, no vocabulary
+entry and no count, which made it the one ingest outcome nobody could notice had
+happened. It is not a tombstone — the drop is still by design and still unconditional
+— just the visibility every other outcome already had. The counts follow for free:
+`withFootprintCounts` recomputes `considered` as footprint + row drops at persist.
+
+The guards are generative on purpose. BMI is the FIRST `derived-inputs` slug, so
+`lib/__tests__/trend-metric-analytes.test.ts` decorates **every name every such slug
+claims** with **every** signifier and requires the result to survive ingest — the next
+slug inherits the protection without anyone remembering to write its cases — beside
+the sweep proving no curated registry name is swallowed.
+
 #### The stress test's two halves (#2322)
 
 The five `Stress Test …` vitals are the registry's clearest illustration that a

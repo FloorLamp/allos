@@ -1245,3 +1245,158 @@ describe("extractionToPersistInput — the duration door (#2322)", () => {
     expect(report?.considered).toBe((report?.imported ?? 0) + 1);
   });
 });
+
+// #2678 Tier 3 — the drop leaves a trail. The four `withoutCaptured*` helpers need no
+// accounting because their trail IS the projected row; the derived-result drop leaves
+// nothing anywhere, which made it the one ingest outcome nobody could notice had
+// happened. It is now reported like every other one.
+describe("derived results are dropped WITH a trail (#2678)", () => {
+  function bmiExtraction(names: string[]) {
+    return doneExtraction({
+      results: names.map((name) =>
+        mkResult({
+          category: "vitals",
+          name,
+          canonical_name: name,
+          value: "21.4",
+          value_num: 21.4,
+          unit: null,
+          collected_date: "2024-02-01",
+        })
+      ),
+    });
+  }
+
+  it("reports each dropped derived result as a row drop on the AI path", () => {
+    const input = extractionToPersistInput(
+      bmiExtraction([
+        "Body Mass Index",
+        "Body Mass Index",
+        "Body Mass Index",
+        "Blood Pressure Systolic",
+      ]),
+      "2099-12-31"
+    );
+    // Still dropped — unconditionally, exactly as #2646 decided.
+    expect(input.records.map((r) => r.name)).toEqual([
+      "Blood Pressure Systolic",
+    ]);
+    const report = parseImportReport(input.meta.importReport);
+    const derived = report!.drops.filter((d) => d.reason === "derived_result");
+    // "a document with 3 printed derived results says so in Data → Review"
+    expect(derived).toHaveLength(3);
+    expect(derived[0]).toEqual({
+      kind: "vitals",
+      label: "Body Mass Index",
+      reason: "derived_result",
+    });
+    // And the drop is counted, so the coverage card's arithmetic stays honest.
+    expect(report!.considered).toBe(report!.imported + 3);
+  });
+
+  it("labels the drop with the name the DOCUMENT printed, not the slug", () => {
+    // The row has to be findable on the page it came from, and neither the slug nor
+    // the canonical name is what that page says. Here the CANONICAL name is what
+    // resolves and the PRINTED one is what gets reported.
+    const input = extractionToPersistInput(
+      doneExtraction({
+        results: [
+          mkResult({
+            category: "vitals",
+            name: "Body mass index, calc",
+            canonical_name: "Body Mass Index",
+            value: "21.4",
+            value_num: 21.4,
+            collected_date: "2024-02-01",
+          }),
+        ],
+      }),
+      "2099-12-31"
+    );
+    expect(input.records).toEqual([]);
+    const report = parseImportReport(input.meta.importReport);
+    expect(report!.drops.filter((d) => d.reason === "derived_result")).toEqual([
+      {
+        kind: "vitals",
+        label: "Body mass index, calc",
+        reason: "derived_result",
+      },
+    ]);
+  });
+
+  it("STORES the percentile spellings that used to be deleted (#2678)", () => {
+    // The end-to-end statement of the issue, at the door where the loss happened. Each
+    // of these resolved to `bmi` before the fix and was deleted with no trail.
+    const spellings = [
+      "Body Mass Index Percentile (BMI%)",
+      "Body Mass Index Percentile (BMI)",
+      "BMI Percentile (BMI%)",
+      "BMI%",
+      "BMI %",
+    ];
+    const input = extractionToPersistInput(
+      bmiExtraction(spellings),
+      "2099-12-31"
+    );
+    expect(input.records.map((r) => r.name)).toEqual(spellings);
+    const report = parseImportReport(input.meta.importReport);
+    expect(report!.drops.filter((d) => d.reason === "derived_result")).toEqual(
+      []
+    );
+  });
+
+  it("appends the drop to the deterministic parse's own report", () => {
+    // The CCD/FHIR path builds its report inside the parser, one layer BELOW this
+    // decision, so the drop is appended rather than re-derived — and the parse-time
+    // counts are deliberately left for persist's footprint reconciliation to rebind.
+    const withBmi: ImportResult = {
+      immunizations: [],
+      records: [
+        {
+          category: "vitals",
+          name: "Body mass index",
+          canonical: "Body Mass Index",
+          value: "21.4",
+          value_num: 21.4,
+          unit: "kg/m2",
+          date: "2024-01-10",
+          external_id: "ccda:vital:39156-5:2024-01-10",
+        },
+        {
+          category: "vitals",
+          name: "Body mass index percentile per age and sex",
+          canonical: "Body Mass Index Percentile (BMI%)",
+          value: "62",
+          value_num: 62,
+          unit: "%",
+          date: "2024-01-10",
+          external_id: "ccda:vital:59574-4:2024-01-10",
+        },
+      ],
+      demographics: null,
+      report: {
+        drops: [
+          { kind: "lab", label: "Comment(s)", reason: "null_flavor" as const },
+        ],
+        coverage: [],
+        imported: 2,
+        considered: 3,
+      },
+    };
+    const input = healthRecordToPersistInput(withBmi, "ccda", "MyChart");
+    // The percentile stays; only the BMI itself goes.
+    expect(input.records.map((r) => r.canonical)).toEqual([
+      "Body Mass Index Percentile (BMI%)",
+    ]);
+    const report = parseImportReport(input.meta.importReport);
+    // The parser's own drop is preserved beside the new one — appended, not replaced.
+    expect(report!.drops).toEqual([
+      { kind: "lab", label: "Comment(s)", reason: "null_flavor" },
+      {
+        kind: "vitals",
+        label: "Body mass index",
+        reason: "derived_result",
+      },
+    ]);
+  });
+});
