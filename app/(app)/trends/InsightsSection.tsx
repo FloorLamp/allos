@@ -14,7 +14,7 @@ import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { periodLabel } from "@/lib/recap-narrative";
 import type { PeriodRecapKind } from "@/lib/recap-narrative";
-import { RECAP_SCALES, parseRecapScale } from "@/lib/recap-scale";
+import { REVIEW_CADENCES, parseRecapScale } from "@/lib/recap-scale";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
 import DateField from "@/components/DateField";
@@ -113,7 +113,7 @@ export default async function InsightsSection({
                   narrative periods and the recap's own cadence are one
                   vocabulary, so a fourth scale would not need a fourth button
                   written by hand. */}
-              {RECAP_SCALES.map((sc) => (
+              {REVIEW_CADENCES.map((sc) => (
                 <SubmitButton
                   key={sc.scale}
                   name="period"

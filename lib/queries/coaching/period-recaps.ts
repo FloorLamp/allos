@@ -6,12 +6,12 @@
 
 import { db } from "../../db";
 import type { PeriodRecap, PeriodRecapKind } from "../../types";
-import { RECAP_SCALES } from "../../recap-scale";
+import { REVIEW_CADENCES, type ReviewCadence } from "../../recap-scale";
 
 // The recap kinds (period-scoped) the Insights tab lists. This is now the whole
 // period-recap vocabulary, since the lab-trend kind was removed (#1164).
-export const RECAP_KINDS: readonly PeriodRecapKind[] = RECAP_SCALES.map(
-  (e) => e.scale
+export const RECAP_KINDS: readonly PeriodRecapKind[] = REVIEW_CADENCES.map(
+  (e) => e.scale as ReviewCadence
 );
 
 export interface SavePeriodRecapInput {

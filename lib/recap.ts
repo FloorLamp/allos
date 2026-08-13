@@ -15,6 +15,14 @@
 // resolves the declared period and emits the lines whose declared scale set contains
 // it. A fourth length would be a row and a column, not a code path.
 //
+// THE FOURTH LENGTH ARRIVED, AND IT WAS A ROW AND A COLUMN (#2179). The annual
+// retrospective is `scale: "year"` over this same engine — a rendered surface rather
+// than a send, so it is a SCALE and not a review CADENCE (lib/recap-scale.ts draws that
+// line, and the types hold it). Its one declared difference is the COMMEMORATIVE
+// EXEMPTION: a retrospective is commemorative, not evaluative, so a raw count is
+// allowed as a RECORD at year scale — and, in exchange, carries no comparison at all.
+// That is `countsAsRecordAt` below, enforced once inside `push`.
+//
 // COVERAGE RULE (#1935, owner-decided) — the recap's comparative advantage over the
 // daily digest is showing what you CANNOT see day to day, so that is the inclusion
 // test: does this fact only become visible at week scale? Three lines failed it and
@@ -477,24 +485,43 @@ export const RECAP_COMPARISON_KINDS: Record<RecapLineKey, RecapComparisonKind> =
 export interface RecapLineScaleSpec {
   scales: readonly RecapScale[];
   why: string;
+  /**
+   * THE COMMEMORATIVE EXEMPTION (#2179), declared per line rather than branched on.
+   *
+   * The recap contract — "a summary, never a score" — holds for REVIEWS because a total
+   * invites judgment. The annual retrospective is commemorative rather than evaluative:
+   * "214 workouts, 12 PRs" is the genre's whole point, and refusing to state it would be
+   * the re-total rule applied where its reason has run out. So the exemption is scoped,
+   * and it is scoped by naming the scales at which a line's value is a RAW COUNT kept as
+   * a RECORD.
+   *
+   * Its price is the second half of the ruling: **no comparison is ever attached to a
+   * count**. A count just is. "214 workouts, down from 231" is the verdict the exemption
+   * refuses, so `buildRecap` strips the comparison off any line listed here at the scale
+   * it is listed for — trajectories carry the comparisons, counts do not. Absent ⇒ the
+   * line states no bare count at any scale and the ordinary rules apply unchanged.
+   */
+  countsAsRecordAt?: readonly RecapScale[];
 }
 
 export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
   recovery: {
-    scales: ["week", "month", "quarter"],
-    why: "Days inside a flagged illness episode, derived from the episodes themselves rather than summed from smaller reports (#837). It is CONTEXT for the numbers under it, and low numbers need that context at every length — a quarter with three weeks of illness in it reads as a failed quarter without it.",
+    scales: ["week", "month", "quarter", "year"],
+    why: "Days inside a flagged illness episode, derived from the episodes themselves rather than summed from smaller reports (#837). It is CONTEXT for the numbers under it, and low numbers need that context at every length — a quarter with three weeks of illness in it reads as a failed quarter without it, and a year with a long episode in it reads as a lost year. #2179 keeps it leading the retrospective for exactly that reason: the commemorative counts below it are read against what the year actually held.",
   },
   workouts: {
-    scales: ["week"],
-    why: "A session COUNT is the week's own fact. At month scale the same line is the re-total the rule forbids — 'you did 18 workouts' is four weekly lines added up — so the month speaks composition and rate through `training-mix` instead.",
+    scales: ["week", "year"],
+    countsAsRecordAt: ["year"],
+    why: "A session COUNT is the week's own fact. At month and quarter scale the same line is the re-total the rule forbids — 'you did 18 workouts' is four weekly lines added up — so those scales speak composition and rate through `training-mix` instead. THE YEAR IS THE DECLARED EXEMPTION (#2179): a retrospective is commemorative rather than evaluative, and '214 workouts' is the genre's point rather than a verdict. Admitted as a RECORD, which is why it carries no comparison at year scale at all — see `countsAsRecordAt`.",
   },
   "training-mix": {
-    scales: ["month", "quarter"],
-    why: "A SHARE needs enough sessions to mean anything; one week of 'strength 67%' is three sessions and noise. Composition drift — the slow slide from lifting toward running, or the deload block that changed the balance — is exactly what a month makes visible and a week cannot. Reported as shares plus a per-week RATE, never a total.",
+    scales: ["month", "quarter", "year"],
+    why: "A SHARE needs enough sessions to mean anything; one week of 'strength 67%' is three sessions and noise. Composition drift — the slow slide from lifting toward running, or the deload block that changed the balance — is exactly what a month makes visible and a week cannot. Reported as shares plus a per-week RATE, never a total. At year scale it is the arc the retrospective's counts cannot state — what the year was actually made of, and how that balance sat against the year before.",
   },
   prs: {
-    scales: ["week", "month"],
-    why: "A personal record is a discrete event, not a total, so naming the lifts is news at either length. Withheld at quarter scale on purpose: thirteen weeks of records is a list, and a list is where a summary turns into a scoreboard.",
+    scales: ["week", "month", "year"],
+    countsAsRecordAt: ["year"],
+    why: "A personal record is a discrete event, not a total, so naming the lifts is news at either length. Withheld at quarter scale on purpose: thirteen weeks of records is a list, and a list is where a summary turns into a scoreboard. Admitted at YEAR scale under the commemorative exemption (#2179) — 'the records you set this year' is precisely what the artifact is for — as a count kept as a record, with the first few named and nothing compared to last year's tally.",
   },
   "intake-deltas": {
     scales: ["week"],
@@ -506,7 +533,7 @@ export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
   },
   "adherence-pattern": {
     scales: ["month", "quarter"],
-    why: "The weekday/weekend split and the first-half/second-half drift need several weeks of days before either is signal rather than coincidence. This is the #2178 inclusion test working in the constructive direction: not the weekly line at a longer length, a DIFFERENT fact the longer length is the first to show.",
+    why: "The weekday/weekend split and the first-half/second-half drift need several weeks of days before either is signal rather than coincidence. This is the #2178 inclusion test working in the constructive direction: not the weekly line at a longer length, a DIFFERENT fact the longer length is the first to show. Withheld at YEAR scale (#2179), for the same reason the monthly percentage is withheld from the month: twelve months of days average across the very drift this line exists to show, and 'weekends 71%' over a year has stopped describing how this person takes them now.",
   },
   targets: {
     scales: ["week"],
@@ -529,35 +556,37 @@ export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
     why: "The latest weigh-in against last week's — a point reading with a short comparison, which is what a week can honestly say about a noisy daily quantity.",
   },
   "weight-trajectory": {
-    scales: ["month", "quarter"],
-    why: "Over a month the useful question stops being 'what did the scale say' and becomes 'where is this going and how fast'. Robust median endpoints over the period plus a per-week rate, compared against the SAME figure one period back — a direction, not a total.",
+    scales: ["month", "quarter", "year"],
+    why: "Over a month the useful question stops being 'what did the scale say' and becomes 'where is this going and how fast'. Robust median endpoints over the period plus a per-week rate, compared against the SAME figure one period back — a direction, not a total. It is one of the long arcs #2179 names, and being a TRAJECTORY it keeps its comparison at year scale: the exemption removes comparisons from COUNTS, and a direction is the thing that is supposed to carry one.",
   },
   zone2: {
     scales: ["week"],
     why: "Measured against the WEEKLY aerobic-base target (#159). There is no monthly target to measure against, and multiplying the weekly one by four would invent a goal the user never set.",
   },
   "sleep-duration": {
-    scales: ["week", "month", "quarter"],
+    scales: ["week", "month", "quarter", "year"],
     why: "Regularity without duration is an odd half of the picture — a perfectly consistent five hours a night scores well (#2396). A MEDIAN night is a shape, not a sum, so it re-totals nothing and reports identically at every length; one night is a digest fact (#1117), which is what the minimum-nights gate keeps this line from restating.",
   },
   sleepRegularity: {
     scales: ["week", "month", "quarter"],
-    why: "The SRI is already a trailing 28-night index (#160) — it is a month-scale statistic that the weekly recap borrows. It is native at month and quarter scale and needs no re-derivation to speak there.",
+    why: "The SRI is already a trailing 28-night index (#160) — it is a month-scale statistic that the weekly recap borrows. It is native at month and quarter scale and needs no re-derivation to speak there. Withheld at YEAR scale (#2179): a trailing 28-night index is LAST MONTH's fact, and printing it inside a year's retrospective would attribute one month's regularity to twelve — the one thing the surface must not do with a number it did not compute over the year.",
   },
   mood: {
     scales: ["week"],
     why: "An opt-in, gentle summary of a handful of check-ins (#992). Averaging a quarter of mood scores into one number is precisely the over-claim the line's own contract forbids.",
   },
   goals: {
-    scales: ["week", "month", "quarter"],
+    scales: ["week", "month", "quarter", "year"],
+    countsAsRecordAt: ["year"],
     why: "A goal reached is a dated event, so it belongs to whichever window contains it at any length — and quarter scale is the horizon goals are actually set on, which is why it is one of the few lines that leads a quarterly recap. Dated since #2394 by the goal's own `achieved_at`, so the window it belongs to is the one it actually happened in.",
   },
   "goals-missed": {
-    scales: ["week", "month", "quarter"],
+    scales: ["week", "month", "quarter", "year"],
+    countsAsRecordAt: ["year"],
     why: "A deadline passing unmet is the same kind of dated event as a deadline being met, and reporting one without the other is the asymmetry #2394 closes — the app cheerfully announced the goals that landed and said nothing about the ones that did not. Once, in the period the date fell in, at whatever length that period is.",
   },
   "fitness-check": {
-    scales: ["week", "month", "quarter"],
+    scales: ["week", "month", "quarter", "year"],
     why: "A completed battery is a discrete event with its own comparison built in (this fitness age vs the prior one). It cannot be summed and it does not decay, so it reports identically at every length.",
   },
 };
@@ -565,6 +594,19 @@ export const RECAP_LINE_MODEL: Record<RecapLineKey, RecapLineScaleSpec> = {
 /** Does this line speak at this scale? The ONE reader of the declaration above. */
 export function lineSpeaksAt(key: RecapLineKey, scale: RecapScale): boolean {
   return RECAP_LINE_MODEL[key].scales.includes(scale);
+}
+
+/**
+ * Is this line a RAW COUNT kept as a record at this scale (#2179)? True only where the
+ * commemorative exemption is declared, and its consequence is that the line may state
+ * the count and may not compare it. The ONE reader is `buildRecap`'s `push`, so no
+ * surface can re-attach a comparison downstream.
+ */
+export function countsAsRecordAt(
+  key: RecapLineKey,
+  scale: RecapScale
+): boolean {
+  return (RECAP_LINE_MODEL[key].countsAsRecordAt ?? []).includes(scale);
 }
 
 export interface RecapLine {
@@ -784,7 +826,16 @@ export function buildRecap(input: RecapInput): Recap {
   const wu = input.weightUnit;
   const lines: RecapLine[] = [];
   const push = (line: RecapLine) => {
-    if (lineSpeaksAt(line.key, scale)) lines.push(line);
+    if (!lineSpeaksAt(line.key, scale)) return;
+    // THE COMMEMORATIVE EXEMPTION'S PRICE (#2179), enforced in the ONE place every line
+    // passes through rather than trusted to each line's author: where a value is a bare
+    // count kept as a record, the comparison comes off. "214 workouts" is a record;
+    // "214 workouts, 231 last year" is the verdict the exemption was scoped against.
+    lines.push(
+      countsAsRecordAt(line.key, scale)
+        ? { ...line, comparison: NO_COMPARISON }
+        : line
+    );
   };
   const illnessDays = input.illnessDays ?? 0;
 

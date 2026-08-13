@@ -41,7 +41,7 @@
 // now mint through a builder here, over a closed slot union. That is what turns the scan
 // from "checks the literals someone happened to write out" into a real total.
 
-import type { RecapScale } from "../recap-scale";
+import type { ReviewCadence } from "../recap-scale";
 import type { FoodNudgeWindow } from "./food-format";
 import type { IntakeSendSlot } from "./supplement-format";
 
@@ -295,7 +295,7 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     cadence: "per-period",
     store: "profile_settings",
     shape:
-      "`<RecapScale>` — week / month / quarter, the closed cadence union declared in lib/recap-scale.ts and minted ONLY through recapMarkerKey below",
+      "`<ReviewCadence>` — week / month / quarter, the closed cadence union declared in lib/recap-scale.ts and minted ONLY through recapMarkerKey below. The `year` SCALE (#2179) is deliberately not a member: the annual retrospective is rendered, not sent, so it has no marker at all",
     value:
       "the END DATE of the period this scale last spoke for — not a send date (#2178). Equality with the candidate period's end is what makes a scale already-spent, which is also how a SUPERSEDED scale is retired: when a quarterly recap replaces a weekly one, the week's marker is advanced to the week it would have reported, so those days are never delivered twice.",
     writer:
@@ -630,10 +630,10 @@ export const DIGEST_MARKER_KEY = "notify_last_digest";
 export const DIGEST_ATTEMPT_KEY = "notify_digest_attempt";
 /**
  * The recap's per-scale, period-anchored marker (#2178). The tail is a member of the
- * closed `RecapScale` union, so the scan can see every key this family can ever mint —
+ * closed `ReviewCadence` union, so the scan can see every key this family can ever mint —
  * the reason it is a builder and not an interpolation at the call site.
  */
 export const RECAP_MARKER_PREFIX = "notify_last_recap_";
-export function recapMarkerKey(scale: RecapScale): string {
+export function recapMarkerKey(scale: ReviewCadence): string {
   return `${RECAP_MARKER_PREFIX}${scale}`;
 }

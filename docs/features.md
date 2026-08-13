@@ -12,7 +12,8 @@ feature. Architecture and implementation invariants live in
   [Symptom log](#symptom-log), [Daily wellbeing](#daily-wellbeing-check),
   [Upcoming](#upcoming), and [Sleep](#sleep)
 - **Training and trends:** [Training](#training), [Equipment](#equipment),
-  [Trends](#trends), [Longevity](#longevity), [Goals](#goals),
+  [Trends](#trends), [Year in review](#year-in-review),
+  [Longevity](#longevity), [Goals](#goals),
   [Benchmarks](#benchmarks), [Progress photos](#progress-photos), and
   [Video clips](#video-clips)
 - **Nutrition and intake:** [Nutrition](#nutrition),
@@ -1055,6 +1056,27 @@ Insights can add optional AI narration to the deterministic charts. The chart,
 units, source selection, and flags remain authoritative when AI is unavailable.
 Chart interaction and visual rules are documented in
 [the chart specification](internals/charts.md).
+
+## Year in review
+
+**Year in review** (`/retrospective`) is a once-a-year page rather than a
+message: the periodic review comes to you weekly, monthly or quarterly, and a
+year does not fit in a message, so this one you go and look at. Nothing is
+pushed, and there is nothing to dismiss.
+
+It is built from the same recap engine the weekly card and the periodic review
+use, at year scale — so a number here can never disagree with the number on your
+dashboard. A year picker moves between the years you have data for.
+
+The one deliberate difference is that a year is allowed to keep its **counts**.
+Elsewhere the review reports shapes, rates and directions rather than totals,
+because a total invites a verdict. A retrospective is commemorative, so
+"214 workouts, 12 PRs" is the point — **and no count is ever compared against
+another year's**. Trajectories (training mix, body-weight direction, typical
+night) carry the comparisons; counts just are.
+
+A year that has not finished, or one that began part-way through because that is
+when your data starts, says so above the numbers.
 
 ## Sleep
 
