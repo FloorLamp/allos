@@ -29,7 +29,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/records/history/visits");
     await followLink(
       page,
-      page.getByRole("link", { name: /Office Visit/ }).first(), // first-ok: dedicated VISITLINKS fixture profile — the only Office Visit rows are this spec's own
+      page.getByRole("link", { name: /Office Visit/ }).first(), // first-ok: exactly one link ON THIS PAGE matches — the dedicated VISITLINKS profile owns a single Office Visit — and the destination (the encounter detail) names its type only in a heading, never in a link
       /\/encounters\/\d+/
     );
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
@@ -61,7 +61,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/medications");
     await followLink(
       page,
-      page.getByRole("link", { name: /Amoxicillin \(e2e\)/ }).first(), // first-ok: dedicated VISITLINKS fixture profile — Amoxicillin (e2e) exists only in this spec's seed
+      page.getByRole("link", { name: /Amoxicillin \(e2e\)/ }).first(), // first-ok: exactly one link ON THIS PAGE matches — the dedicated VISITLINKS profile seeds a single Amoxicillin (e2e) — and the destination (the medication detail) names it only in its heading, never in a link
       /\/medications\/\d+/
     );
     await expect(page.getByTestId("medication-detail")).toBeVisible();
@@ -72,9 +72,21 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
 
   test("the episode cockpit Care line links the visit and the encounter back-links", async () => {
     await page.goto("/medical/episodes");
+    // Pinned to the INDEX row, not to the name (#2631). followLink re-evaluates its
+    // locator on every retry, so a locator that is only a name is evaluated against
+    // whatever page is loaded at that moment — and the destination cockpit carries a
+    // link matching /sinus infection/i too: the timeline's encounter care event uses
+    // the encounter's `reason` ("Sinus infection") as its link text and points at
+    // /encounters/<id>. Under contention the first click's transition had not
+    // committed when the retry fired, the retry resolved on the cockpit, and the test
+    // landed on /encounters/9077. `episode-index-row` exists ONLY on this index, so
+    // the locator can no longer resolve anywhere else.
     await followLink(
       page,
-      page.getByRole("link", { name: /sinus infection/i }).first(), // first-ok: dedicated VISITLINKS fixture profile — the sinus-infection episode is this spec's own fixture
+      page
+        .getByTestId("episode-index-row")
+        .filter({ hasText: /sinus infection/i })
+        .first(), // first-ok: exactly one episode row ON THIS PAGE carries that text — the axis that makes a .first() safe is "one match on the page being clicked", not "one match in the fixture profile"
       /\/medical\/episodes\/\d+/
     );
     const care = page.getByTestId("episode-care");

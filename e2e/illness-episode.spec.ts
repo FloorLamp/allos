@@ -81,11 +81,13 @@ test.describe("Illness-episode view (#801)", () => {
     const headers = resp?.headers() ?? {};
     expect(headers["referrer-policy"]).toBe("no-referrer");
     expect(headers["x-robots-tag"]).toContain("noindex");
-    // Production (the CI webServer) must forbid storage. Next's dev server replaces
-    // custom document Cache-Control with its own no-cache header after middleware;
-    // local e2e accepts that development-only equivalent.
-    if (process.env.CI) expect(headers["cache-control"]).toContain("no-store");
-    else expect(headers["cache-control"]).toMatch(/no-store|no-cache/);
+    // `next start` retains no-store. This used to read `process.env.CI` as a proxy
+    // for "is this a production build" and fall back to /no-store|no-cache/ for a
+    // `next dev` harness — but e2e/fixtures.ts boots every worker's server with
+    // NODE_ENV=production unconditionally, so that arm has been unreachable since
+    // #1538 and the loosened alternative only ever weakened the assertion (#2645,
+    // #2648). A cache header is a property of the RESPONSE, not of the runner.
+    expect(headers["cache-control"]).toContain("no-store");
     await expect(
       anon.getByRole("heading", { name: /Illness episode/ })
     ).toBeVisible();
