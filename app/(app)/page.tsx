@@ -252,6 +252,17 @@ export default async function Dashboard() {
   // left to scale with the accessible set. Grants are respected —
   // getAccessibleProfiles returns only reachable profiles, and the switch action
   // re-checks.
+  //
+  // It stays the whole model DELIBERATELY (#2110). Every cheap substitute —
+  // collectHouseholdRollup, an overdue-only slice — returns a DIFFERENT INTEGER,
+  // because cardBandForItem admits act-now items from essentially all 30
+  // generators; a chip driven by one of those would stop being the number that
+  // member's own hero shows (#524), which is a correctness regression wearing a
+  // performance label. What got cheaper instead is what the gather COMPILES: the
+  // clinical-fact and current-reading reads it repeats per member are hoisted
+  // (hoistedStatement), so they compile once per connection rather than once per
+  // chip. lib/__db_tests__/household-attention-count.test.ts pins both halves —
+  // the integer and the one-compile-per-connection claim.
   const accessible = await getAccessibleProfiles();
   // Own-profile link (#1013): the acting-profile write forms (the weight quick-add)
   // name the subject when the login is acting as someone OTHER than its own profile,
