@@ -1802,6 +1802,21 @@ identities); nothing gates on the links — they are provenance and navigation
 only. The Passport summary carries the offline **Emergency Card** as its
 `#emergency` section.
 
+A visit's **diagnosis chips** show what the source recorded, exactly as it
+recorded it. Where a source states a rank as DATA — FHIR
+`Encounter.diagnosis.rank` / `.use` — the primary diagnosis carries a **Primary**
+badge (a lower-ranked one its number, a stated role its label: Admission,
+Discharge, Comorbidity, …), stored beside the diagnosis summary rather than
+inside it. Where a source states it as SPELLING — a C-CDA has no rank element, so
+some systems weld " - Primary" into the display name — the name is stored and
+shown verbatim: only clinical knowledge separates a rank ("… - Primary") from an
+etiology ("Hyperparathyroidism - Secondary"), the two are the same string shape,
+and Allos does not guess between them. What it does instead is **render them
+compactly**: consecutive diagnoses sharing a long stem print that stem once with
+each entry's tail after it, so one long Z-code listed twice stops costing four
+wrapped lines on a phone. Nothing is hidden — every character of every name stays
+on screen, and hovering or a screen reader gives the full names back untouched.
+
 ### Providers
 
 The Providers tab (`/records/care/providers`) is the instance-wide directory of

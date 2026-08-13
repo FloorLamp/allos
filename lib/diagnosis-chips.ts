@@ -72,7 +72,9 @@ function commonPrefixLength(a: string, b: string): number {
 // share a stem that ends mid-token.
 function boundaryStemLength(names: string[], rawLen: number): number {
   for (let k = rawLen; k > 0; k--) {
-    const ok = names.every((n) => n.length === k || !/[\p{L}\p{N}]/u.test(n[k]));
+    const ok = names.every(
+      (n) => n.length === k || !/[\p{L}\p{N}]/u.test(n[k])
+    );
     if (ok) return k;
   }
   return 0;

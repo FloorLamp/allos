@@ -520,6 +520,171 @@ describe("FHIR Encounter → ImportedEncounter", () => {
     expect(r2.encounters![0].code_system).toBeNull();
   });
 
+  // #2589 half 1: the source states the rank as DATA, so it is captured as data.
+  // The withdrawn attempts at #2589 tried to read a rank out of the display name;
+  // these assert the opposite discipline — a rank exists only where a source
+  // wrote one in a structured field.
+  it("captures Encounter.diagnosis.rank and .use as structured ranks (#2589)", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-primary",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-primary",
+            code: { text: "Acute bronchitis" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:cond-other",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-other",
+            code: { text: "Essential hypertension" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-ranked",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-ranked",
+            status: "finished",
+            period: { start: "2026-04-01" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-primary" },
+                rank: 1,
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "DD",
+                    },
+                  ],
+                },
+              },
+              { condition: { reference: "urn:uuid:cond-other" }, rank: 2 },
+            ],
+          },
+        },
+      ])
+    );
+    const e = r.encounters![0];
+    expect(e.diagnoses).toEqual(["Acute bronchitis", "Essential hypertension"]);
+    expect(e.diagnosis_ranks).toEqual([
+      { name: "Acute bronchitis", rank: 1, use: ["dd"] },
+      { name: "Essential hypertension", rank: 2 },
+    ]);
+  });
+
+  it("merges the rank/use of repeated entries for one diagnosis, and reads the R5 use array (#2589)", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-repeat",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-repeat",
+            code: { text: "Community acquired pneumonia" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-repeat",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-repeat",
+            status: "finished",
+            period: { start: "2026-04-02" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-repeat" },
+                rank: 2,
+                use: [
+                  {
+                    coding: [
+                      {
+                        system:
+                          "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                        code: "AD",
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                condition: { reference: "urn:uuid:cond-repeat" },
+                rank: 1,
+                use: [
+                  {
+                    coding: [
+                      {
+                        system:
+                          "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                        code: "DD",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ])
+    );
+    const e = r.encounters![0];
+    // The name dedupe is unchanged; the two entries STATE one diagnosis, so the
+    // strongest rank wins and both roles survive.
+    expect(e.diagnoses).toEqual(["Community acquired pneumonia"]);
+    expect(e.diagnosis_ranks).toEqual([
+      { name: "Community acquired pneumonia", rank: 1, use: ["ad", "dd"] },
+    ]);
+  });
+
+  it("never infers a rank from a display name that carries one (#2589)", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-flat-plain",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-flat-plain",
+            code: { text: "Hyperparathyroidism" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:cond-flat-suffix",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-flat-suffix",
+            code: { text: "Hyperparathyroidism - Secondary" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-flat",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-flat",
+            status: "finished",
+            period: { start: "2026-04-03" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-flat-plain" } },
+              { condition: { reference: "urn:uuid:cond-flat-suffix" } },
+            ],
+          },
+        },
+      ])
+    );
+    const e = r.encounters![0];
+    // Both names survive byte-for-byte and neither gains a rank: a source that
+    // spells a qualifier into a name has stated nothing structurally.
+    expect(e.diagnoses).toEqual([
+      "Hyperparathyroidism",
+      "Hyperparathyroidism - Secondary",
+    ]);
+    expect(e.diagnosis_ranks).toEqual([]);
+  });
+
   it("skips entered-in-error and dateless encounters", () => {
     const r = parseFhirBundle(
       bundle([
