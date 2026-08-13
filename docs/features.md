@@ -1805,9 +1805,14 @@ only. The Passport summary carries the offline **Emergency Card** as its
 A visit's **diagnosis chips** show what the source recorded, exactly as it
 recorded it. Where a source states a rank as DATA — FHIR
 `Encounter.diagnosis.rank` / `.use` — the primary diagnosis carries a **Primary**
-badge (a lower-ranked one its number, a stated role its label: Admission,
-Discharge, Comorbidity, …), stored beside the diagnosis summary rather than
-inside it. Where a source states it as SPELLING — a C-CDA has no rank element, so
+badge (a lower-ranked one its number), stored beside the diagnosis summary rather
+than inside it. The badge names every part the source stated, so it also names
+its own scope: FHIR ranks a diagnosis _per role_, so a rank stated under the
+discharge role reads **Primary, Discharge** rather than an unqualified "Primary"
+that would claim more than the record does. A role stated with no rank shows its
+label alone (Admission, Discharge, Comorbidity, …), and where one condition is
+ranked differently under two roles the rank is withheld entirely and both roles
+are kept. Where a source states it as SPELLING — a C-CDA has no rank element, so
 some systems weld " - Primary" into the display name — the name is stored and
 shown verbatim: only clinical knowledge separates a rank ("… - Primary") from an
 etiology ("Hyperparathyroidism - Secondary"), the two are the same string shape,
@@ -1817,8 +1822,10 @@ each entry's tail after it, so one long Z-code listed twice stops costing four
 wrapped lines on a phone. This is about wrapping and nothing else — it groups any
 long shared stem, including two genuinely different diagnoses, and it never claims
 they are one. Nothing is hidden: the stem plus each tail is exactly the stored
-name, and hovering or a screen reader gives every full name back with whatever
-rank the source stated. A source-stated rank and a fragment of a name are styled
+name, and a compacted chip carries every full name — each with whatever the source
+stated about it — as its hover text and as the text a screen reader reads instead
+of the fragments. (An uncompacted chip already prints its whole name, so it has no
+hover text of its own.) A source-stated rank and a fragment of a name are styled
 apart, because they are different claims.
 
 ### Providers

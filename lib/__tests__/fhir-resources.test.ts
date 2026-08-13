@@ -717,6 +717,10 @@ describe("FHIR Encounter → ImportedEncounter", () => {
     // them together and let the surviving chip claim Primary while discarding the
     // other statement. They are two statements; the names still collapse to one
     // chip (unchanged behaviour), and the badge is withheld rather than guessed.
+    //
+    // NOTE: two different rules reach `[]` here — see the test below, which is
+    // the one that actually pins the condition key. This fixture is the shape a
+    // reader expects, kept for that, but it cannot distinguish the keyings.
     const r = parseFhirBundle(
       bundleWithUrls([
         {
@@ -761,6 +765,210 @@ describe("FHIR Encounter → ImportedEncounter", () => {
     const e = r.encounters![0];
     expect(e.diagnoses).toEqual(["Anemia"]);
     expect(e.diagnosis_ranks).toEqual([]);
+  });
+
+  it("keys on the Condition where identity-keying and name-keying DISAGREE (#2589)", () => {
+    // The test above is a fixture where the two keyings COINCIDE: identity-keyed,
+    // the per-name shape guard withholds; name-keyed, both ranks land in one
+    // bucket and the per-condition agreement rule withholds. Both routes answer
+    // `[]`, so it cannot tell which key is in use — and the condition key was
+    // therefore unguarded: deleting `identity ?? ` left every pure and DB test
+    // green.
+    //
+    // These two fixtures diverge. Under name-keying the separate statements the
+    // source made about two DIFFERENT conditions fuse into one entry, and the
+    // surviving chip carries a claim no source made about it.
+    const twoAnemias = (snomedDx: object, icdDx: object, encId: string) =>
+      parseFhirBundle(
+        bundleWithUrls([
+          {
+            fullUrl: "urn:uuid:cond-snomed-x",
+            resource: {
+              resourceType: "Condition",
+              id: "cond-snomed-x",
+              code: {
+                text: "Anemia",
+                coding: [
+                  { system: "http://snomed.info/sct", code: "271737000" },
+                ],
+              },
+            },
+          },
+          {
+            fullUrl: "urn:uuid:cond-icd-x",
+            resource: {
+              resourceType: "Condition",
+              id: "cond-icd-x",
+              code: {
+                text: "Anemia",
+                coding: [
+                  {
+                    system: "http://hl7.org/fhir/sid/icd-10-cm",
+                    code: "D64.9",
+                  },
+                ],
+              },
+            },
+          },
+          {
+            fullUrl: `urn:uuid:${encId}`,
+            resource: {
+              resourceType: "Encounter",
+              id: encId,
+              status: "finished",
+              period: { start: "2026-04-10" },
+              diagnosis: [
+                {
+                  condition: { reference: "urn:uuid:cond-snomed-x" },
+                  ...snomedDx,
+                },
+                { condition: { reference: "urn:uuid:cond-icd-x" }, ...icdDx },
+              ],
+            },
+          },
+        ])
+      );
+    const role = (code: string) => ({
+      use: {
+        coding: [
+          {
+            system: "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+            code,
+          },
+        ],
+      },
+    });
+
+    // A RANK about the SNOMED condition beside a ROLE about the ICD-10 one. Fused
+    // by name these read `{ rank: 1, use: ["dd"] }` — one condition's Primary
+    // badge welded to a DIFFERENT condition's discharge role, which is the harm
+    // the condition key exists to prevent. Keyed on the condition they are two
+    // statements of different shapes about one name, so both are withheld.
+    const rankPlusRole = twoAnemias(
+      { rank: 1 },
+      role("DD"),
+      "enc-diverge-rank"
+    );
+    expect(rankPlusRole.encounters![0].diagnoses).toEqual(["Anemia"]);
+    expect(rankPlusRole.encounters![0].diagnosis_ranks).toEqual([]);
+
+    // Two ROLES and no rank anywhere. Fused by name they accumulate into
+    // `{ use: ["ad", "dd"] }` — one chip claiming both roles when each condition
+    // was given exactly one.
+    const rolePlusRole = twoAnemias(
+      role("AD"),
+      role("DD"),
+      "enc-diverge-roles"
+    );
+    expect(rolePlusRole.encounters![0].diagnoses).toEqual(["Anemia"]);
+    expect(rolePlusRole.encounters![0].diagnosis_ranks).toEqual([]);
+  });
+
+  it("withholds the rank when three roles disagree, and keeps all three (#2589)", () => {
+    // Two of the three stated ranks agree. Agreement is not a vote: `every` is the
+    // rule, so one dissenting number is enough to make the rank a per-role
+    // statement this shape cannot hold. The roles do not contradict each other and
+    // all three survive.
+    const roleDx = (code: string, rank?: number) => ({
+      condition: { reference: "urn:uuid:cond-three-roles" },
+      ...(rank === undefined ? {} : { rank }),
+      use: {
+        coding: [
+          {
+            system: "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+            code,
+          },
+        ],
+      },
+    });
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-three-roles",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-three-roles",
+            code: {
+              text: "Community acquired pneumonia",
+              coding: [{ system: "http://snomed.info/sct", code: "385093006" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-three-roles",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-three-roles",
+            status: "finished",
+            period: { start: "2026-04-11" },
+            diagnosis: [roleDx("AD", 1), roleDx("DD", 1), roleDx("CC", 2)],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnosis_ranks).toEqual([
+      { name: "Community acquired pneumonia", use: ["ad", "cc", "dd"] },
+    ]);
+  });
+
+  it("keeps a rank stated under one role beside a rankless second role (#2589)", () => {
+    // Only ONE rank was stated, so there is nothing to disagree with: the rankless
+    // discharge entry is an absence, not a competing number, and treating it as
+    // one would lose a fact the source did state. The roles are kept alongside.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-one-rank",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-one-rank",
+            code: {
+              text: "Community acquired pneumonia",
+              coding: [{ system: "http://snomed.info/sct", code: "385093006" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-one-rank",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-one-rank",
+            status: "finished",
+            period: { start: "2026-04-12" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-one-rank" },
+                rank: 2,
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "AD",
+                    },
+                  ],
+                },
+              },
+              {
+                condition: { reference: "urn:uuid:cond-one-rank" },
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "DD",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnosis_ranks).toEqual([
+      { name: "Community acquired pneumonia", rank: 2, use: ["ad", "dd"] },
+    ]);
   });
 
   it("treats two TEXT-ONLY same-named Conditions as one, exactly as the importer does (#2589)", () => {

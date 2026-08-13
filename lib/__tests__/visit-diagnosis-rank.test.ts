@@ -20,17 +20,27 @@ describe("diagnosisRankBadge", () => {
     expect(diagnosisRankBadge({ name: "Anemia", rank: 2 })).toBe("#2");
   });
 
-  it("falls back to the diagnosis-role label, and stays silent on an unknown code", () => {
+  it("names the diagnosis-role labels, and stays silent on an unknown code", () => {
     expect(diagnosisRankBadge({ name: "Anemia", use: ["dd"] })).toBe(
       "Discharge"
     );
     expect(diagnosisRankBadge({ name: "Anemia", use: ["cm"] })).toBe(
       "Comorbidity"
     );
-    // A source's private code is not echoed into the UI as if it meant something.
+    // Every KNOWN role, not just the first — showing one of two dropped a fact the
+    // source stated, and this is the exact shape the withheld-rank case renders in
+    // (`{ use: ["ad", "dd"] }`, the per-role disagreement of #2589).
+    expect(diagnosisRankBadge({ name: "Anemia", use: ["ad", "dd"] })).toBe(
+      "Admission, Discharge"
+    );
+    // A source's private code is not echoed into the UI as if it meant something,
+    // and dropping it leaves no dangling separator beside the codes that are known.
     expect(
       diagnosisRankBadge({ name: "Anemia", use: ["zz-local"] })
     ).toBeNull();
+    expect(
+      diagnosisRankBadge({ name: "Anemia", use: ["zz-local", "dd"] })
+    ).toBe("Discharge");
     expect(diagnosisRankBadge({ name: "Anemia" })).toBeNull();
   });
 
@@ -49,10 +59,30 @@ describe("diagnosisRankBadge", () => {
     expect(decodeDiagnosisRanks('[{"name":"Anemia","rank":1e21}]')).toEqual([]);
   });
 
-  it("prefers the rank over the role when both are stated", () => {
+  it("qualifies a rank with the role the source scoped it to (#2589)", () => {
+    // R4 defines rank "for each role type", so rank 1 stated under the discharge
+    // role is primary-AT-DISCHARGE. Returning on the rank and never reaching the
+    // roles rendered that as a bare "Primary" — the same unqualified cross-role
+    // claim `encounterDiagnoses` withholds a rank to avoid, reached from the other
+    // side, and it dropped the role from the card as well. Two conditions in one
+    // visit, one ranked 1 at admission and one ranked 1 at discharge, then both
+    // read "Primary" with nothing to tell a reader why.
     expect(diagnosisRankBadge({ name: "Anemia", rank: 1, use: ["ad"] })).toBe(
-      "Primary"
+      "Primary, Admission"
     );
+    expect(diagnosisRankBadge({ name: "Anemia", rank: 1, use: ["dd"] })).toBe(
+      "Primary, Discharge"
+    );
+    expect(diagnosisRankBadge({ name: "Anemia", rank: 2, use: ["ad"] })).toBe(
+      "#2, Admission"
+    );
+    // A rank the source scoped to NO role stays unqualified: there is nothing to
+    // name, and appending a scope the source did not state would be the guess.
+    expect(diagnosisRankBadge({ name: "Anemia", rank: 1 })).toBe("Primary");
+    // Rank with only an unknown role code degrades to the rank alone.
+    expect(
+      diagnosisRankBadge({ name: "Anemia", rank: 1, use: ["zz-local"] })
+    ).toBe("Primary");
   });
 });
 
@@ -121,6 +151,14 @@ describe("spokenDiagnosis", () => {
       "Acute bronchitis (Primary)"
     );
     expect(spokenDiagnosis("Anemia", entries)).toBe("Anemia (Comorbidity)");
+  });
+
+  it("speaks the role qualifier too, so the visual and accessible claims match", () => {
+    // The badge is comma-joined rather than glyph-joined precisely so this string
+    // reads: a comma is a pause to a screen reader, a separator glyph is noise.
+    expect(
+      spokenDiagnosis("Anemia", [{ name: "Anemia", rank: 1, use: ["dd"] }])
+    ).toBe("Anemia (Primary, Discharge)");
   });
 
   it("speaks a rankless diagnosis as its bare name", () => {

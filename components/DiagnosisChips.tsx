@@ -32,14 +32,31 @@ import {
 // CARRY their rank (`spokenDiagnosisList`), because a badge visible only to
 // sighted users would be half 2 deleting half 1.
 //
-// WHAT IS AND IS NOT GUARDED. Every decision this file makes is pure and tested
-// elsewhere — the grouping (lib/diagnosis-chips.ts), the badge vocabulary and the
-// spoken strings (lib/visit-diagnosis-rank.ts). The MARKUP is not: the repo has a
-// decided no-component-tier stance (docs/internals/component-tests.md), so nothing
-// in the pure tier can catch this file being rewired to drop the sr-only span or
-// to style a tail like a badge. That gap is real and is stated in the PR; the
-// `data-testid`s below exist so a browser test can close it without touching this
-// component.
+// WHAT IS AND IS NOT GUARDED — stated plainly, because an earlier draft of this
+// header undersold it. Every DECISION this file makes is pure and tested
+// elsewhere: the grouping (lib/diagnosis-chips.ts), the badge vocabulary and the
+// spoken strings (lib/visit-diagnosis-rank.ts). NONE OF THE MARKUP IN THIS FILE IS
+// GUARDED BY ANY TIER, because nothing renders the component: there is no
+// component tier here (docs/internals/component-tests.md), and no browser spec
+// mounts a visit whose encounter carries `diagnosis_ranks`. Mutation testing
+// confirmed the consequence rather than inferring it — each of these passes the
+// whole suite silently:
+//
+//  - deleting <RankBadge/> from the single-chip branch, which is the DOMINANT
+//    path (grouping needs a long shared stem), so the feature disappears from
+//    most visits with every test still green;
+//  - dropping `aria-hidden` from the stem and tail spans, so a screen reader
+//    hears the fragments AND the full names;
+//  - passing `m.tail` instead of `m.name` into `spokenDiagnosisList`, so it
+//    speaks fragments;
+//  - dropping `title=` from the grouped chip, so hover recovers nothing.
+//
+// That is a gap in this PR, not a property of the repo: docs/internals/component-
+// tests.md's contract is Playwright over seeded fixtures PLUS pure guards, and its
+// escape clause needs logic that can be reached by neither — this can be reached
+// by a browser test. One is in flight (#2589 R2) and the `data-testid`s below
+// exist for it, so it can close this without touching this component. Until it
+// lands, treat every line of JSX here as unverified.
 //
 // Server-renderable: no state, no client hooks, so both surfaces use one copy.
 
@@ -55,7 +72,10 @@ function RankBadge({ entry }: { entry: VisitDiagnosisRank | null }) {
     <span
       className="ml-1 rounded-full bg-amber-700 px-1.5 text-xs font-semibold uppercase tracking-wide text-amber-50 dark:bg-amber-300 dark:text-amber-950"
       data-testid="diagnosis-rank-badge"
-      title="Rank stated by the source record"
+      // Not "Rank stated by…": the badge also carries role labels on their own
+      // when the rank was withheld, and naming only the rank would mis-describe
+      // half of what it shows.
+      title="Stated by the source record"
     >
       {label}
     </span>

@@ -68,21 +68,40 @@ const USE_LABELS: Record<string, string> = {
 // this list", while "secondary" in a diagnosis name means an etiology, and
 // spending the clinical word on the ordinal one is exactly the conflation that
 // sank the withdrawn work.
+//
+// THE BADGE STATES EVERY PART, AND SO NAMES ITS SCOPE. R4 defines rank as
+// "ranking of the diagnosis (for each role type)", so rank 1 stated under the
+// discharge role is primary-AT-DISCHARGE, not the visit's primary diagnosis. An
+// earlier version returned on the rank and never reached the roles, which meant a
+// rank scoped by its source rendered as a bare "Primary" — the same unqualified
+// cross-role claim `encounterDiagnoses` withholds a rank to avoid, arrived at
+// from the other direction, and it dropped the stated role from the card
+// entirely. Two conditions in one visit, one ranked 1 at admission and one ranked
+// 1 at discharge, both read "Primary" with nothing to tell a reader why.
+//
+// So rank and roles compose: "Primary, Discharge", "#2, Admission". Comma-joined
+// because this is also the accessible text (`spokenDiagnosis`), where a comma is
+// a pause and a glyph separator is noise. The list is what the source STATED
+// about this diagnosis, in the order the payload holds it; it does not claim the
+// rank was stated under each role listed, because the stored shape does not carry
+// that and inventing it would be the guess this whole file refuses. Roles alone
+// list every KNOWN one for the same reason the rank now appears with them —
+// showing only the first silently dropped the rest.
 export function diagnosisRankBadge(entry: VisitDiagnosisRank): string | null {
+  const parts: string[] = [];
   if (
     typeof entry.rank === "number" &&
     Number.isInteger(entry.rank) &&
     entry.rank >= 1 &&
     entry.rank <= MAX_DIAGNOSIS_RANK
-  ) {
-    if (entry.rank === 1) return "Primary";
-    return `#${entry.rank}`;
-  }
+  )
+    parts.push(entry.rank === 1 ? "Primary" : `#${entry.rank}`);
   for (const u of entry.use ?? []) {
     const label = USE_LABELS[u];
-    if (label) return label;
+    // An unlisted code contributes nothing rather than being echoed raw.
+    if (label && !parts.includes(label)) parts.push(label);
   }
-  return null;
+  return parts.length ? parts.join(", ") : null;
 }
 
 function normalizeEntry(raw: unknown): VisitDiagnosisRank | null {
@@ -172,10 +191,12 @@ export function spokenDiagnosis(
 }
 
 // The whole accessible text of a factored chip, as one call. The component holds
-// no composition of its own beyond joining these: the repo has a decided
-// no-component-tier stance (docs/internals/component-tests.md), so anything the
-// markup can get WRONG has to live somewhere a pure test can reach it. This is
-// that place for the R2 regression — a grouped chip speaking only names.
+// no composition of its own beyond joining these, so that everything the grouped
+// chip SAYS is decided somewhere a pure test can reach — a grouped chip speaking
+// only names is caught here. That is one half of the contract in
+// docs/internals/component-tests.md and not a substitute for the other: whether
+// the component still calls this, and still hides the visual pieces behind it, is
+// only reachable by a browser test (see the header of components/DiagnosisChips.tsx).
 export function spokenDiagnosisList(
   names: readonly string[],
   entries: readonly VisitDiagnosisRank[]
