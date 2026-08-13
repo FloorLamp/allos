@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
+import { microMotionPlan } from "@/lib/micro-motion";
 import { localDate, shouldQueueOffline } from "@/lib/offline/queue";
 import {
   DOSE_ACTION_AMBER,
@@ -80,6 +82,44 @@ export default function DoseStatusControl({
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
 
+  // THE CONFIRM SETTLE (#2654, motion 1). A dose check-off is the app's most
+  // tap-shaped confirm, and the control BECOMING its done state is the receipt —
+  // which is why the happy path here has never needed a toast. The class is hung on
+  // the take button for one 300 ms run after a tap that actually LANDED on `taken`:
+  //
+  //  * only on a tap. Server state arriving already-taken (a reload, a revalidation,
+  //    another device) never animates — a settle claims "you just did that".
+  //  * only toward `taken`. Un-taking is a correction, not a confirm.
+  //  * only when the write said yes. A refusal or a failed request wrote nothing.
+  //  * never a gate. The state change and its styling land on their own frame; this
+  //    decorates a transition already made, and no tap ever waits on it.
+  //
+  // Under reduced motion `microMotionPlan` returns no class and no duration, so the
+  // resolved styling — plus `aria-pressed`, the accessible name and the title, which
+  // are the actual carriers of "taken" — simply lands. Published as
+  // `data-reduced-motion` on the root so the browser suite can prove the branch.
+  const reduced = usePrefersReducedMotion();
+  const settlePlan = microMotionPlan("settle", reduced);
+  const [settling, setSettling] = useState(false);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    []
+  );
+
+  function settleConfirm() {
+    if (!settlePlan.animate) return;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    setSettling(true);
+    settleTimer.current = setTimeout(() => {
+      settleTimer.current = null;
+      setSettling(false);
+    }, settlePlan.ms);
+  }
+
   // `tappedAt` is the moment the user actually pressed the control — captured by the
   // caller BEFORE the online attempt, so a confirm that falls back to the queue after
   // a slow failing request still records when the dose was taken, not when we gave up
@@ -149,8 +189,11 @@ export default function DoseStatusControl({
     await ledger.tap<DoseTap>({
       key,
       write: () => runTap(target, tappedAt),
-      settle: (outcome) =>
-        outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" },
+      settle: (outcome) => {
+        // The one place that knows a tap both aimed at `taken` AND landed.
+        if (outcome === "wrote" && target === "taken") settleConfirm();
+        return outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" };
+      },
       onError: () => {
         toast("Couldn't update this dose. Try again.", { tone: "error" });
         return { kind: "rollback" };
@@ -269,12 +312,14 @@ export default function DoseStatusControl({
       }`}
       data-testid="dose-status"
       data-variant={variant}
+      data-reduced-motion={reduced ? "true" : "false"}
     >
       <button
         type="button"
         onClick={() => apply(isTaken ? "clear" : "taken")}
         disabled={busy}
-        className={takeClass}
+        data-settling={settling ? "true" : "false"}
+        className={`${takeClass}${settling ? ` ${settlePlan.className}` : ""}`}
         aria-pressed={isTaken}
         aria-label={isTaken ? "Mark not taken" : "Mark taken"}
         title={isTaken ? "Taken — click to undo" : "Mark taken"}
