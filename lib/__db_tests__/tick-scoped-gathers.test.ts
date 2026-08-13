@@ -34,19 +34,16 @@
 //
 // Every value is synthetic — fake meds, a fake HA webhook URL, a fake bot token.
 
-import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => 4242),
-  };
-});
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import {
@@ -82,6 +79,12 @@ import { runRedoseNotices } from "@/lib/notifications/redose";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import { recordMessagePointer } from "@/lib/notifications/message-pointers";
 import { runInTickScope, inTickScope } from "@/lib/tick-cache";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-tick-scope";
 

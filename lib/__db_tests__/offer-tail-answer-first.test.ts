@@ -12,19 +12,8 @@
 // message, and the digest is not one), and the rebuilt keyboard must carry that tap's
 // 🕐 correction chips, which the reminder flow has always had.
 
-import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => {}),
-  };
-});
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
@@ -35,6 +24,12 @@ import {
 import { DOSE_TIME_PREFIXES } from "@/lib/notifications/correction-rows";
 import { OFFER_COLLAPSE_PREFIX } from "@/lib/notifications/offer-tail";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const markupMock = vi.mocked(editMessageReplyMarkupRaw);
