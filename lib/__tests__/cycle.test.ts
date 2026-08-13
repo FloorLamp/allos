@@ -215,13 +215,17 @@ describe("cyclePhaseOnDate refuses a future date (#2613)", () => {
   // a union-typed context or an unsound cast, and `"2026-03-03" > undefined` is FALSE, so
   // without the guard the derivation runs and answers. The cast is the point of the test:
   // the type forbids it, and the guard exists for the callers that get past the type.
+  //
+  // Called against the RAW derivations, never the defaulted `phaseOn`/`dayOn`/`periodIn`
+  // helpers above: a default parameter substitutes its default for `undefined`, so a
+  // helper call would quietly test the LIVED_THROUGH horizon and assert nothing at all.
   const NO_HORIZON = undefined as unknown as string;
 
   it("fails CLOSED on a missing horizon rather than answering every date", () => {
     // Both would answer without the guard: 03-03 is inside the period (menstrual) and
     // 12-10 is the open-cycle branch (follicular).
-    expect(phaseOn(OPEN, "2026-03-03", NO_HORIZON)).toBeNull();
-    expect(phaseOn(OPEN, "2026-12-10", NO_HORIZON)).toBeNull();
+    expect(cyclePhaseOnDate(OPEN, "2026-03-03", NO_HORIZON)).toBeNull();
+    expect(cyclePhaseOnDate(OPEN, "2026-12-10", NO_HORIZON)).toBeNull();
   });
 
   it("gives cycleDayOnDate the SAME domain — the pair is formatted as one line", () => {
@@ -232,8 +236,8 @@ describe("cyclePhaseOnDate refuses a future date (#2613)", () => {
     expect(dayOn(OPEN, "2026-12-10", "2026-08-12")).toBeNull();
     // Same probe, same reason — this one counts days from a logged start, so without the
     // guard it would answer a positive day number for every date it is handed.
-    expect(dayOn(OPEN, "2026-03-03", NO_HORIZON)).toBeNull();
-    expect(dayOn(OPEN, "2026-12-10", NO_HORIZON)).toBeNull();
+    expect(cycleDayOnDate(OPEN, "2026-03-03", NO_HORIZON)).toBeNull();
+    expect(cycleDayOnDate(OPEN, "2026-12-10", NO_HORIZON)).toBeNull();
   });
 
   it("gives periodOnDate the SAME domain — an open claim may not run past today", () => {
@@ -245,7 +249,7 @@ describe("cyclePhaseOnDate refuses a future date (#2613)", () => {
     const ongoing: CyclePeriod[] = [period(2, "2026-08-11", null)];
     expect(periodIn(ongoing, "2026-08-12", "2026-08-12")?.id).toBe(2);
     expect(periodIn(ongoing, "2026-08-15", "2026-08-12")).toBeNull();
-    expect(periodIn(ongoing, "2026-08-11", NO_HORIZON)).toBeNull();
+    expect(periodOnDate(ongoing, "2026-08-11", NO_HORIZON)).toBeNull();
   });
 });
 
