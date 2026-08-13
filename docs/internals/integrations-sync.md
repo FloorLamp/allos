@@ -327,11 +327,28 @@ everything else as "N retrying" without a second column.
 "stopped part-way, imported rows intact", so both preserve `total_items`,
 `completed_items`, `request_count`, `active_seconds` and `started_at` on the next
 manual queue — the earlier run's throughput is what the ETA is computed from, and
-zeroing it made a job that was 60 rides in read "0 of 40". `total` is re-derived as
-`completed + missing` (floored at the prior total) rather than carried forward, so a
-candidate set that has changed since cannot leave the bar describing work that no
-longer exists. `completed` is not resumable: nothing stopped part-way, so a fresh
-queue over newly-imported rides starts at 0 of N.
+zeroing it made a job that was 60 rides in read "0 of 40". The counters are re-derived
+on every queue rather than carried forward, so a candidate set that has changed since
+cannot leave the bar describing work that no longer exists. `completed` is not
+resumable: nothing stopped part-way, so a fresh queue over newly-imported rides starts
+at 0 of N.
+
+**A resume credits exactly what it will not ask about again (#2672).** That
+re-derivation used to be `completed + missing`, floored at the prior total — and
+`completed_items` credits the unavailable candidates above, which the candidate query
+still returns, so the two terms counted the same rows twice. A job holding one
+permanently-unavailable ride and one retryably-failing ride grew its own denominator
+on every attempt: "1 of 3", then "2 of 4", then "3 of 5", for two rides, with the
+percentage moving backwards each time and no convergence. The rule that replaces it
+lives in `lib/integrations/backfill-counters.ts` (pure, unit-tested): a resumed job
+carries only the items that have LEFT the candidate query, because those are the ones
+it will never re-ask — an unavailable one IS re-asked, which is exactly what the
+missing give-up marker buys. `carried` has no column of its own, but the prior
+`total_items` IS `carried + candidates` while the candidate set has not moved, so
+`total = max(candidates, prior total)` and `completed = total - candidates` are exact
+in that case and conservative — understated, never inflated — when new candidates have
+arrived since. The accounting was the whole defect: a run still asks about each
+candidate exactly once, and the request spend per retry never moved.
 
 **One rendering of sync history (#1212 → #1772).** Per-provider sync history —
 the events of `integration_sync_events` with the #674 inserted/updated/unchanged

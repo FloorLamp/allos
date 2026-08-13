@@ -9,6 +9,10 @@ import type { IntegrationId } from "@/lib/types";
 import { getIntegration } from "./registry";
 import { getIntegrationBackfillRunner } from "./backfill-runners";
 import {
+  queuedBackfillCounters,
+  runningBackfillCompleted,
+} from "./backfill-counters";
+import {
   getIntegrationBackfillJob,
   type IntegrationBackfillJob,
   type IntegrationBackfillStatus,
@@ -55,26 +59,16 @@ export function queueIntegrationBackfill(
     // `completed` is deliberately NOT resumable: nothing stopped part-way, so a new
     // queue over a changed candidate set is a new batch and starts at 0 of N.
     //
-    // The arithmetic below is what keeps the resumed figures honest — `total` is
-    // re-derived as `completed + missing` (floored at the prior total, so a shrinking
-    // candidate set cannot make the bar go backwards) and `completed` is re-derived
-    // from it, so neither is carried forward unchecked from a run whose candidate set
-    // has since moved.
-    //
-    // #2385 — WORKING: a re-queue after a failed run reads "60 of 100", and the ETA
-    //   keeps the throughput the first run measured. WRONG: `completed_items` exceeds
-    //   `total_items`, a percentage moves backwards, or a job never returns to 0-of-N
-    //   after new rides arrive. DECEPTIVE SUCCESS: "progress bars stopped resetting" —
-    //   a bar that never resets is also what a resume branch taken too eagerly
-    //   produces, showing healthy progress against a total that no longer describes
-    //   the work; the figure to read is `total_items` still tracking
-    //   `completed_items + missing`, not the absence of resets.
+    // The counters themselves are backfill-counters.ts's question, not this module's
+    // — `completed_items` credits items the source has given a final answer for, and
+    // those are still in `missing`, so adding the two together counted them twice and
+    // grew the denominator on every retry (#2672).
     const resume =
       existing?.status === "paused" || existing?.status === "failed";
-    const total = resume
-      ? Math.max(existing.completed_items + missing, existing.total_items)
-      : missing;
-    const completed = resume ? Math.max(total - missing, 0) : 0;
+    const { total, completed } = queuedBackfillCounters(
+      resume ? existing : null,
+      missing
+    );
     const status: IntegrationBackfillStatus =
       missing === 0 ? "completed" : "queued";
     const now = utcInstant();
@@ -146,8 +140,9 @@ export async function runIntegrationBackfillJob(
     const result = await runner.run(profileId, (progress) => {
       const activeSeconds =
         baseSeconds + Math.max((Date.now() - batchStarted) / 1000, 0.001);
-      const completed = Math.max(
-        initial.total_items - progress.remaining,
+      const completed = runningBackfillCompleted(
+        initial.total_items,
+        progress.remaining,
         initial.completed_items
       );
       writeTx(() =>
@@ -189,7 +184,10 @@ export async function runIntegrationBackfillJob(
       );
     } else {
       const now = new Date();
-      const completed = Math.max(initial.total_items - result.remaining, 0);
+      const completed = runningBackfillCompleted(
+        initial.total_items,
+        result.remaining
+      );
       // `remaining` is "still worth asking about", not "still missing" (#2196): a
       // runner subtracts the candidates the source gave a final answer for. Without
       // that, one permanently-unfetchable row held the whole job in `failed` forever
