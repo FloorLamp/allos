@@ -208,7 +208,19 @@ it reads is the graph as of N, which a frozen literal could not be. The same tes
 file pins the cascading children of `medical_records` and fails a new migration
 that deletes from a cascade parent without the helper; migration 118 is the
 precedent that did it by hand, and `20260813-cascade-orphan-sweep` clears the
-orphans 180 and the BMI migration left.
+orphans 180 and the BMI migration left — logging the per-link tally, because a
+boot-time delete of health records with no backup behind it and no undo has to
+leave a record of what it took.
+
+That ratchet is the whole argument for a helper with no production caller, so it
+is judged per STATEMENT and FAILS CLOSED. There is no file-level exemption —
+importing the module used to excuse every hand-delete in the file, and merely
+naming it in a comment did the same — and a `DELETE FROM` whose table the scan
+cannot resolve to a literal is a violation, not a skip, because a delete it
+cannot read is not a delete it may ignore. It sees DELETE statements only; a
+table rebuild copying a filtered subset into `<t>_new` orphans identically and is
+out of its reach, stated in `docs/versioned-migrations-spec.md` rather than left
+to read as coverage.
 
 The runner applies migrations in individual immediate transactions, guards
 against a newer database being opened by older code, and temporarily disables
