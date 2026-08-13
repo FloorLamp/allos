@@ -19,6 +19,7 @@ import {
   getIntakeDoses,
   getIntakeLogsInRange,
   getActivityDates,
+  getEverLoggedItemIds,
 } from "./queries";
 import { getActiveSituations, getSituationEvents } from "./settings";
 import { getTimezone } from "./settings";
@@ -37,6 +38,11 @@ import {
   INTAKE_DELTA_DAYS,
   type IntakeDeltas,
 } from "./intake-deltas";
+import {
+  detectUnconfirmedMedications,
+  isImportProvenanced,
+  UNCONFIRMED_WINDOW_DAYS,
+} from "./medication-unconfirmed";
 import type { IntakeItem } from "./types";
 
 // One item plus its window: the aggregated per-day strip (oldest-first, trailing
@@ -140,6 +146,54 @@ export function getIntakeDeltas(
         name: item.name,
         strip,
       }))
+  );
+}
+
+// THE server-side entry point for the unconfirmed-medication offer (#2574): the item
+// ids whose dose reminder may carry the one-tap Stop.
+//
+// A domain adapter over the SAME gather above, exactly as getIntakeDeltas is — the
+// occurrence count is read off the strip the Supplements page renders, so the offer and
+// the strip can never disagree about which days were occasions. The one fact this needs
+// that the strip cannot supply is the LIFETIME log count, because the strip is windowed
+// by construction and the claim is that nothing has ever happened; that is one extra
+// profile-scoped read, done once per gather.
+//
+// Returns ids rather than the candidates because the one consumer is a per-dose boolean.
+export function getUnconfirmedMedicationIds(
+  profileId: number,
+  today: string
+): Set<number> {
+  // A cheap gate on the item list BEFORE the 30-day gather. The detector's first three
+  // refusals — not a medication, not import-provenanced, not pushed — are decidable
+  // from the row alone, and a profile with no imported medication at all is the
+  // overwhelmingly common case. Without this the reminder path would run a second full
+  // history gather on every send for every profile, to answer "no".
+  const eligible = getIntakeItems(profileId).some(
+    (i) =>
+      i.active &&
+      i.kind === "medication" &&
+      isImportProvenanced(i) &&
+      isPushedIntake(i)
+  );
+  if (!eligible) return new Set();
+
+  const everLogged = getEverLoggedItemIds(profileId);
+  return new Set(
+    detectUnconfirmedMedications(
+      getIntakeHistory(profileId, today, UNCONFIRMED_WINDOW_DAYS).map(
+        ({ item, strip }) => ({
+          itemId: item.id,
+          name: item.name,
+          kind: item.kind,
+          source: item.source,
+          obligation: item.obligation,
+          active: Boolean(item.active),
+          strip,
+          lifetimeLogs: everLogged.has(item.id) ? 1 : 0,
+        })
+      )
+    ).map((c) => c.itemId)
   );
 }
 

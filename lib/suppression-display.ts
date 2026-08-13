@@ -36,6 +36,8 @@ import {
   STREAM_ONBOARD_PREFIX,
 } from "./integrations/stream-lifecycle";
 import { STEPS_PACE_PREFIX } from "./steps-target";
+import { pairedObservationEntry } from "./paired-observations";
+import { biomarkerKeyLabel, titleizeKeyTail } from "./biomarker-key-label";
 import { PR_CARDIO_PREFIX, PR_STRENGTH_PREFIX } from "./dismissal-keys";
 import { formatNotifyTime } from "./notifications/schedule";
 
@@ -65,12 +67,9 @@ export function orphanSuppressionDisplay(): SuppressedKeyDisplay {
 // Capitalize each word of a subject parsed out of a lowercased key so it reads
 // as a name ("bench press" → "Bench Press"). Keys store subjects lowercased;
 // the original casing is gone, so title case is the honest approximation.
-function titleize(s: string): string {
-  return s
-    .split(/\s+/)
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(" ");
-}
+// Shared with lib/biomarker-key-label.ts, which uses it as ITS last resort after the
+// two lookups that can recover a real spelling.
+const titleize = titleizeKeyTail;
 
 // One resolver entry: the key namespace it owns and the label template over the
 // key's tail (the part after the prefix).
@@ -109,7 +108,7 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     part(t, 0) === "weight-loss-rate"
       ? "Weight-loss rate caution"
       : "Goal pacing note",
-  "adherence:": () => "IntakeItem adherence pattern",
+  "adherence:": () => "Supplement adherence pattern",
   // #1505: keyed on the ITEM id, so there is no name in the key to render — the
   // label names the decision instead ("you chose to keep the current priority").
   "demote-obligation:": () => "Obligation demotion suggestion",
@@ -159,6 +158,11 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
   "ttc-workup:": () => "Fertility conversation suggestion",
   "mood-obs:": () => "Mood observation",
   "sleep-mood:": () => "Sleep & mood observation",
+  // #2177: the head is a registry pair key, so the label is the pair's OWN declared
+  // title rather than a second copy of it here — a silenced observation reads in this
+  // list exactly as it read where it was dismissed.
+  "paired-obs:": (t) =>
+    pairedObservationEntry(part(t, 0))?.title ?? "Paired observation",
   "med-dup:": (t) => {
     const n = titleize(part(t, 0).replace(/[_-]/g, " "));
     return n ? `Duplicate ingredient — ${n}` : "Duplicate-ingredient note";
@@ -185,8 +189,8 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     const head = part(t, 0);
     if (head === "clinical-records") return "Lab results recency";
     if (head === "archive") {
-      const provider = titleize(part(t, 1).replace(/[_-]/g, " "));
-      return provider ? `Archive refresh — ${provider}` : "Archive refresh";
+      const sourceName = titleize(part(t, 1).replace(/[_-]/g, " "));
+      return sourceName ? `Archive refresh — ${sourceName}` : "Archive refresh";
     }
     return "Records recency";
   },
@@ -283,9 +287,15 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
   },
   { prefix: "goal:", domain: "Due & scheduled", label: () => "Goal check-in" },
   {
+    // Every weekly FLOOR target — training, nutrition and mobility scopes alike —
+    // shares this id-keyed namespace (trainingSignalKey, #245). The key carries only
+    // the target id, so this pure resolver cannot know the scope; "Training target"
+    // therefore asserted something it could not check, and asserted it wrongly for the
+    // food-group and mobility rows #2578 found on the page. "Weekly target" is what
+    // the key actually says.
     prefix: "training:",
     domain: "Due & scheduled",
-    label: () => "Training target",
+    label: () => "Weekly target",
   },
   {
     // The outdoor-session planning item (#1724 part 5) — "Saturday is the best window
@@ -321,11 +331,14 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     label: () => "Medication monitoring",
   },
   // ---- Biomarkers ----------------------------------------------------------
+  // Both tails are an IDENTITY, not a name — `family:<key>` for a registered family
+  // (#482/#564/#1193), a lowercased analyte name otherwise — so both resolve through
+  // the shared biomarkerKeyLabel rather than title-casing the raw tail (#2578).
   {
     prefix: "biomarker-flag:",
     domain: "Biomarkers",
     label: (t) => {
-      const n = titleize(t);
+      const n = biomarkerKeyLabel(t);
       return n ? `Flagged result — ${n}` : "Flagged result";
     },
   },
@@ -333,15 +346,19 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: "biomarker:",
     domain: "Biomarkers",
     label: (t) => {
-      const n = titleize(t);
+      const n = biomarkerKeyLabel(t);
       return n ? `Retest — ${n}` : "Biomarker retest";
     },
   },
   {
+    // The trajectory key keeps the analyte's ORIGINAL casing
+    // (`trajectory:LDL Cholesterol:<rule>`), so its subject needs no recovery — but it
+    // is still a biomarker name, so it shares the same resolver: a family identity
+    // here would resolve, and a curated spelling is returned unchanged.
     prefix: "trajectory:",
     domain: "Biomarkers",
     label: (t) => {
-      const n = titleize(part(t, 0));
+      const n = biomarkerKeyLabel(part(t, 0));
       return n ? `Trajectory — ${n}` : "Trajectory note";
     },
   },
@@ -470,13 +487,13 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     // heart rate — want the bedtime reminder?" answered with No thanks. Not in
     // RULE_FINDING_REGISTRY for the same reason `pool-refill:` isn't — no rule builder
     // emits it, and the registry's reflection guards read builder output. Both tails
-    // are registry vocabulary, so the provider reads back as a name.
+    // are registry vocabulary, so the source reads back as a name.
     prefix: STREAM_ONBOARD_PREFIX,
     domain: "Suggestions",
     label: (t) => {
-      const provider = titleize(part(t, 0).replace(/[_-]/g, " "));
-      return provider
-        ? `Bedtime watch reminder offer — ${provider}`
+      const sourceName = titleize(part(t, 0).replace(/[_-]/g, " "));
+      return sourceName
+        ? `Bedtime watch reminder offer — ${sourceName}`
         : "Bedtime watch reminder offer";
     },
   },
@@ -487,9 +504,9 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: STREAM_OFFBOARD_PREFIX,
     domain: "Suggestions",
     label: (t) => {
-      const provider = titleize(part(t, 0).replace(/[_-]/g, " "));
-      return provider
-        ? `Paused watch reminder note — ${provider}`
+      const sourceName = titleize(part(t, 0).replace(/[_-]/g, " "));
+      return sourceName
+        ? `Paused watch reminder note — ${sourceName}`
         : "Paused watch reminder note";
     },
   },

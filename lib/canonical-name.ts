@@ -351,6 +351,13 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["GAD 7", "GAD-7"],
   ["Generalized Anxiety Disorder-7", "GAD-7"],
   ["Generalized Anxiety Disorder 7", "GAD-7"],
+  // EPDS (#2321) — the perinatal-depression screen, a THIRD distinct identity, never
+  // folded onto PHQ-9: different items, a different range and different cut-offs, so
+  // one score may not stand in for the other.
+  ["EPDS-10", "EPDS"],
+  ["Edinburgh Postnatal Depression Scale", "EPDS"],
+  ["Edinburgh Postnatal Depression Score", "EPDS"],
+  ["Edinburgh Depression Scale", "EPDS"],
   // Respiratory function (#1850) — the spellings a peak-flow meter's leaflet and a
   // spirometry report actually print, routed onto the curated entries so an extracted
   // reading joins the series it belongs to instead of coining a fourth "PEFR".
@@ -1203,6 +1210,26 @@ export function biomarkerFamilyAnchor(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return "";
   return FAMILY_BY_IDENTITY.get(biomarkerFamily(trimmed))?.anchor ?? trimmed;
+}
+
+// The anchor for an already-computed IDENTITY string — the `family:<key>` value a
+// stored key carries — or null when the string is not a registered family identity.
+//
+// The distinction from biomarkerFamilyAnchor is which direction you are coming from.
+// That one takes a reading's NAME and resolves it forward through biomarkerFamily.
+// This one takes the identity itself, which is what a persisted key holds: #564 moved
+// the flag dismissal to `biomarker-flag:family:vitamin-d-25-hydroxy` so one dismissal
+// silences the flag and the trajectory together, and the key is stored LOWERCASED —
+// so a surface that later has only the key has a family identity, not a name, and
+// title-casing it printed "Flagged result — Family:vitamin-d-25-hydroxy" on the live
+// Upcoming page (#2578). Returns null rather than the input so a caller can tell "this
+// is a family" from "this is some other tail" and fall back to its own formatting.
+export function biomarkerIdentityAnchor(
+  identity: string | null | undefined
+): string | null {
+  const trimmed = (identity ?? "").trim().toLowerCase();
+  if (!trimmed) return null;
+  return FAMILY_BY_IDENTITY.get(trimmed)?.anchor ?? null;
 }
 
 // The RETEST-clock grouping key (#1193). BROADER than biomarkerFamily's identity

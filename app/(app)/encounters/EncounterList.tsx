@@ -6,6 +6,7 @@ import { IconBuildingHospital } from "@tabler/icons-react";
 import EncounterForm from "./EncounterForm";
 import { updateEncounter, deleteEncounter } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -71,6 +72,10 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
   {
     header: "Chief complaint",
     cellClassName: "text-slate-600 dark:text-slate-300",
+    // The three placeholder columns of this table (#2588). On a phone an unfilled
+    // one used to read "CHIEF COMPLAINT —"; an Imaging visit with none of the three
+    // was a card of nothing but dashes.
+    empty: (e) => !e.reason,
     cell: (e) =>
       e.reason ? (
         <span className="wrap-break-word">{e.reason}</span>
@@ -82,6 +87,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Diagnoses",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden sm:table-cell",
+    empty: (e) => diagnosisList(e.diagnoses).length === 0,
     cell: (e) => {
       const diagnoses = diagnosisList(e.diagnoses);
       return diagnoses.length > 0 ? (
@@ -104,6 +110,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Provider",
     headerClassName: "hidden md:table-cell",
     cellClassName: "hidden whitespace-nowrap md:table-cell",
+    empty: (e) => !e.provider_name && !e.location_name,
     cell: (e) =>
       e.provider_name || e.location_name ? (
         <div
@@ -162,6 +169,7 @@ export default function EncounterList({
   multiView?: ListMultiView;
 }) {
   const fmt = useFormatPrefs();
+  const undoable = useUndoableDelete();
   // Canonical-kind filter (#1233): "show ED visits" and friends, keyed on the ONE
   // encounterKind() identity function. Only the kinds actually present appear as
   // chips (in the canonical order), so a list with a single kind shows no filter.
@@ -224,13 +232,19 @@ export default function EncounterList({
         )}
         confirmDelete={(e) => ({
           title: "Delete visit",
-          message: `Delete the ${dateLabel(e, fmt)} visit? This can’t be undone.`,
+          // What the delete actually costs, now that the visit itself comes back
+          // (#1847): the detached back-links do NOT. Naming them is the whole point of
+          // the confirm — "this can’t be undone" was both frightening and, since the
+          // capture landed, untrue.
+          message: `Delete the ${dateLabel(e, fmt)} visit? Anything recorded at it keeps its link to the visit cleared.`,
         })}
         onDelete={async (e) => {
           const fd = new FormData();
           fd.set("id", String(e.id));
           if (multiView) fd.set("profile_id", String(e.subject.profileId));
-          await deleteEncounter(fd);
+          await undoable(deleteEncounter, fd, {
+            deletedMessage: "Visit deleted.",
+          });
         }}
       />
     </>

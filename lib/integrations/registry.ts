@@ -6,7 +6,7 @@ import type {
 import { KIND_DELIVERY, type IntegrationDelivery } from "./delivery";
 
 // Declarative list of integrations. The Integrations page renders from this, so
-// adding a provider is a matter of adding an entry (and, for 'available' ones, a
+// adding a source is a matter of adding an entry (and, for 'available' ones, a
 // parser + config page). Health Connect, Strava, Oura, and Withings are
 // 'available' (plus the outbound calendar-feed subscription); Garmin is a
 // 'planned' preview today.
@@ -44,7 +44,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // The phone exporter pushes on a schedule (typically hourly), so a connected
     // Health Connect goes quiet only when the phone stops: the exporter app was
     // killed, battery optimization suspended it, or the token was rotated. EXPLICIT
-    // rather than derived — a push provider declares no poll cadence to derive from.
+    // rather than derived — a push source declares no poll cadence to derive from.
     //
     // 12 h, revised down from three days on evidence (#2263 decision 3b). Measured
     // over 1223 pushes across 19 days: median gap 16 min, p90 34 min, p99 67 min,
@@ -78,6 +78,29 @@ export const INTEGRATIONS: IntegrationDef[] = [
         // watch nobody has worn for three days is not "quiet", it is put away, and a
         // row about it every morning is how a surface earns being ignored.
         expectedActive: { windowDays: 3, minDays: 2 },
+        // THE DECISION'S EVIDENCE BAR (#2560). Four quiet pushes, not two.
+        frozenEvidence: {
+          syncs: 4,
+          because:
+            "Measured over 1514 pushes of one real profile since 15 Jul, " +
+            "decomposing integration_sync_events.inserted against " +
+            "integration_sync_rows so the count is hr_minutes rows exactly. The " +
+            "watch batches into phone Health Connect independently of the " +
+            "exporter's own ~15-minute push, and coarsely: single pushes in one " +
+            "evening delivered 324, 195, 183, 165 and 164 minutes of heart rate at " +
+            "once. So 9% of ALL pushes carry no new hr_minutes at all — a quiet " +
+            "push is ordinary, not rare — and the FRONTIER-ADVANCE interval, which " +
+            "is the quantity this bar is counted in, runs median 16 / p75 25 / p90 " +
+            "39 / p95 51 / p99 81 / max 183 min, over 30 min 19.6% of the time. At " +
+            "N=2 that p90 sits on top of the 40-minute floor, so ONE long batch " +
+            "satisfies both conditions at once instead of them cross-checking each " +
+            "other. Every frozen run in 28 days, scored against whether hr_minutes " +
+            "(late but arriving) covered the frozen window: every clean false " +
+            "positive was k=2, every true detection k>=5. At N=4 the three false " +
+            "sends go, both real wear gaps that touched a slot attempt are still " +
+            "caught, and the cost is one slot attempt of latency on 24 Jul — on a " +
+            "gap the user closed by 22:28 unprompted either way.",
+        },
         quiet: {
           // A FLOOR on the frontier's age since #2341, not the discriminator. The
           // measurement below is what places it; what changed is the quantity it
@@ -150,12 +173,12 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // (isQuietSync). So the last successful sync tracks the CONNECTION's liveness,
     // not the user's training: a rest week is not staleness. Three days is ~72
     // missed polls. An OVERRIDE of the cadence-derived default, keeping the number
-    // and the reason this provider already shipped with (#2263).
+    // and the reason this source already shipped with (#2263).
     silenceToleranceMinutes: 3 * 24 * 60,
     stoppedConsequence: "New runs and rides have stopped arriving.",
     docsUrl: "https://developers.strava.com/",
     pull: {
-      // THE PROVIDER THAT SETS THE TICK FLOOR (#2121). Strava's default READ quota
+      // THE SOURCE THAT SETS THE TICK FLOOR (#2121). Strava's default READ quota
       // is 100 requests / 15 min and 1,000/day for the whole API application, not
       // per athlete. The shared request budget learns upgraded limits from Strava's
       // X-ReadRateLimit headers and reserves headroom for another profile/process.
@@ -169,7 +192,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
         timeoutMs: 30_000,
         // Historical name inherited from the shared paging facet. For Strava this
         // is an absolute per-operation REQUEST ceiling (lists, details, athlete,
-        // zones, and streams all count); the provider's live read quota can stop a
+        // zones, and streams all count); the source's live read quota can stop a
         // run sooner and it resumes on the next invocation.
         maxPages: 150,
         // The cursor tracks an activity's START time, but a ride recorded offline
@@ -217,7 +240,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // Polled hourly like Strava (declared pull cadence, not the tick rate), and a
     // quiet poll still records an ok event, so the same three-day reading applies: nights without the ring off the charger are not
     // staleness, a connection that stopped answering is. An OVERRIDE of the
-    // cadence-derived default, keeping this provider's shipped number and reason
+    // cadence-derived default, keeping this source's shipped number and reason
     // (#2263).
     silenceToleranceMinutes: 3 * 24 * 60,
     stoppedConsequence:
@@ -262,7 +285,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // finds no new measurement still records an ok event — so a week between weigh-ins is NOT staleness (the scale is idle, the
     // connection is fine). Three days measures the poll, which is the thing that can
     // silently die. An OVERRIDE of the cadence-derived default, keeping this
-    // provider's shipped number and reason (#2263).
+    // source's shipped number and reason (#2263).
     silenceToleranceMinutes: 3 * 24 * 60,
     stoppedConsequence:
       "Measurements from your scale and cuff have stopped arriving.",
@@ -350,7 +373,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     //
     // …but the DATA can still fall behind, and for four streams nothing else in the app
     // can catch it (#2164). Every connection-level detector is blind here BY the two
-    // decisions above: the provider is exempt from staleness, there is no failing event
+    // decisions above: the source is exempt from staleness, there is no failing event
     // to classify, and the phone exporter keeps pushing everything Fitbit DOES forward
     // — so every signal reads healthy while the scale's readings quietly stop.
     archiveRefresh: {
@@ -452,22 +475,22 @@ export const INTEGRATIONS: IntegrationDef[] = [
     // one value #2263 actually decided, so the default is the number rather than a
     // number beside it.
     //
-    // 12 h clears this provider's measured p90 success→success gap (6 h, over 171
+    // 12 h clears this source's measured p90 success→success gap (6 h, over 171
     // runs) with headroom while still reporting a real outage inside half a day. It
     // REPLACES a two-day quiet-stop threshold that let a stopped feed degrade the
     // sun-exposure/UV math for two days before saying anything — and, more to the
     // point, it replaces a three-consecutive-failure escalation that sat BELOW this
-    // provider's ordinary operating variance and read "Sync failing" for 29% of hours
+    // source's ordinary operating variance and read "Sync failing" for 29% of hours
     // while every successful run re-fetched the full 381-row window.
     stoppedConsequence:
       "UV and daylight readings for your home location have stopped arriving.",
     docsUrl: "https://open-meteo.com/",
-    // Weather IS a pull provider — the hourly tick runs it and "Sync now" offers it —
+    // Weather IS a pull source — the hourly tick runs it and "Sync now" offers it —
     // so it dispatches like the rest. It carries NO `paging` block: there is no
     // credential, no cursor, and no pagination, just a fixed rolling window the module
     // owns (WEATHER_WINDOW_DAYS / WEATHER_FORECAST_DAYS). Declaring maxPages/rescanDays
     // here to make the shape uniform would be a fiction — which is exactly the "forcing
-    // a non-OAuth provider into the facet" the consolidation was told not to do.
+    // a non-OAuth source into the facet" the consolidation was told not to do.
     pull: {
       // Keyless, but NOT free: Open-Meteo asks non-commercial users to stay under a
       // daily request budget, and the data itself is hourly-resolution forecast, so
@@ -488,7 +511,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "alongside the rest of your schedule.",
     dataTypes: ["Appointments", "Reminders"],
     // Exempt: OUTBOUND. The calendar app pulls our feed; we never sync anything in,
-    // so this provider records no sync events and has no freshness to assert.
+    // so this source records no sync events and has no freshness to assert.
     silenceToleranceMinutes: null,
     docsUrl:
       "https://support.google.com/calendar/answer/37100#subscribe_by_url",
@@ -499,8 +522,8 @@ export function getIntegration(id: IntegrationId): IntegrationDef | undefined {
   return INTEGRATIONS.find((i) => i.id === id);
 }
 
-// WHO MOVES this provider's data (#2301), derived from its kind — never declared on
-// the entry, because the kind already states it and two providers of one kind cannot
+// WHO MOVES this source's data (#2301), derived from its kind — never declared on
+// the entry, because the kind already states it and two sources of one kind cannot
 // differ. An unregistered id is treated as `scheduled`: that is the family every
 // connection-shaped reader was already written for, so an id with no registry entry
 // keeps the behaviour it has today rather than silently changing families.
@@ -510,9 +533,9 @@ export function integrationDelivery(
   return def ? KIND_DELIVERY[def.kind] : "scheduled";
 }
 
-// The registered providers of one delivery family, in registry order. This is what
+// The registered sources of one delivery family, in registry order. This is what
 // replaced the hand-enumerated member lists — a `Set<string>` of four kinds in the
-// Connected-sources filter, and a single provider id spelled into the Imports feed's
+// Connected-sources filter, and a single source id spelled into the Imports feed's
 // SQL. Status is NOT filtered here: a caller that only wants shippable entries adds
 // `status === "available"` itself, the way getConnectedSources always has.
 export function integrationsWithDelivery(
@@ -521,7 +544,7 @@ export function integrationsWithDelivery(
   return INTEGRATIONS.filter((i) => KIND_DELIVERY[i.kind] === delivery);
 }
 
-// A registered provider allos PULLS (#2040) — one that declares the `pull` facet AND
+// A registered source allos PULLS (#2040) — one that declares the `pull` facet AND
 // is actually shippable. `planned` entries (Garmin) are excluded: the preview card is
 // real, the runner is not.
 export type PullIntegrationDef = IntegrationDef & {
@@ -534,8 +557,8 @@ export function isPullIntegration(
   return def.pull != null && def.status === "available";
 }
 
-// THE pull-provider list. The generic "Sync now" action and the hourly tick iterate
-// this instead of naming providers by hand, so adding the fifth (Garmin) is a facet
+// THE pull-source list. The generic "Sync now" action and the hourly tick iterate
+// this instead of naming sources by hand, so adding the fifth (Garmin) is a facet
 // plus a runner — not a fifth copy of an action, a tick block, and a page loop.
 export const PULL_INTEGRATIONS: PullIntegrationDef[] =
   INTEGRATIONS.filter(isPullIntegration);

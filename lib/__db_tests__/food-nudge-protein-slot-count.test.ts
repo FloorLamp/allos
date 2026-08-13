@@ -104,7 +104,7 @@ function cqWithFoodButtons(
 }
 
 const CHAT = "5550780";
-// A fixed instant so the tap's logged_at buckets deterministically; the asserted window is
+// A fixed instant so the tap's recorded_at buckets deterministically; the asserted window is
 // derived from it, so the exact hour/timezone doesn't matter (see the file header).
 const FROZEN = "2026-07-15T20:30:00Z";
 let p: SeededProfile;

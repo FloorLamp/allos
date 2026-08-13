@@ -14,6 +14,51 @@ Status: **shipped** · Tracking issue:
 > below and are the shipped behavior. Kept for the rationale; the code is the
 > source of truth.
 
+## Revision (2026-08-12) — the numbered era closes; migrations are name-keyed
+
+The sequential integer was the one piece of this design that fought the way the
+repo actually develops: with many agents working in parallel, the next free
+number was a contended, session-held reservation (the orchestration runbook
+grew a whole slot-map protocol, a renumber recipe used three times, and an
+"unhonorable until the earlier one merges" rule), and `assertContiguousIds`
+made a numbering gap fail every DB test file at import. None of that contention
+bought correctness — order is what matters, and order was always the
+`MIGRATIONS` array.
+
+So the applied-set moved off `PRAGMA user_version` onto a **`schema_migrations`
+ledger keyed by migration NAME**, created by the runner itself (every
+historical database gains it on its next boot, backfilled from its
+`user_version` stamp, which by the old contiguity invariant names exactly
+migrations 1..V):
+
+- **Migrations 001–185 are the closed numbered era** — files, ids and hashes
+  frozen exactly as shipped. The runner refuses a numbered migration after the
+  first name-keyed one.
+- **A new migration is `versions/YYYYMMDD-slug.ts`**, exports
+  `{ name, up }` with no `id`, is appended LAST to the array, and adds its
+  sha256 to `manifest.json`. Names are the ledger's primary key; uniqueness and
+  the two filename shapes are enforced by `assertRegistry` at boot and
+  `lib/__tests__/migration-immutability.test.ts` in CI.
+- **The array stays the single ordering authority** (deliberately not filename
+  sort: date prefixes from parallel branches interleave, and fresh databases
+  must replay in the same order deployed ones received). Production applied
+  sets are always a prefix of the array because main is linear; a DEV database
+  that applied a branch migration and then merged main simply has the missing
+  earlier one applied late, which the runner tolerates by design.
+- **`PRAGMA user_version` survives as a monotonic applied-count tripwire**: it
+  keeps climbing past 185 so pre-ledger builds refuse a newer database, and the
+  backup/restore version gate (#472) keeps comparing it against the build's
+  migration count unchanged. The ledger is authoritative; the pragma is a
+  tripwire. The primary downgrade guard is now name-based — a ledger row this
+  build does not know fails the boot naming it.
+- **Re-baselining was considered and declined**: the full 185-migration replay
+  on a fresh database measures ~0.4–0.5 s (no single migration over 25 ms), the
+  chain is hash-frozen so it costs no maintenance, and a snapshot would add a
+  chain-equivalence proof obligation plus an upgrade-path constraint for
+  operators who skip versions. Revisit only if fresh-database replay time
+  becomes a measured problem (CI or operator-visible), the same
+  recorded-trigger posture as the reading-model phase 3.
+
 ## Revision (2026-07-10)
 
 Owner decision at implementation review: the "no rewriting of history that

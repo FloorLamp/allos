@@ -71,7 +71,7 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   );
 
   // ── Clean up: delete the supplement so the fixture is left as found ──────────
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.locator("div.card").filter({ hasText: NAME })).toHaveCount(

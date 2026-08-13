@@ -65,7 +65,11 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
-import { DYNAMIC_ROUTES, routeSlug } from "./ux-census-routes.mjs";
+import {
+  DISCLOSURE_EXPANSIONS,
+  DYNAMIC_ROUTES,
+  routeSlug,
+} from "./ux-census-routes.mjs";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
 const SHOTS =
@@ -233,6 +237,19 @@ function tapGesture() {
 // action (step-function damage — no percentage threshold, per #1510).
 function writeAuditArtifacts(baselineDir) {
   const out = [];
+  // The run's data shape (#2594): which census shape seeded it and which
+  // entropy seed shaped the data. Written beside metrics.json so a look is
+  // reproducible from its artifacts, and so --baseline can refuse to compare
+  // incomparable shapes below.
+  const runInfo = {
+    uxSeed: process.env.UX_SEED ?? null,
+    seedRng: process.env.SEED_RNG ?? null,
+  };
+  fs.writeFileSync(
+    path.join(SHOTS, "run.json"),
+    JSON.stringify(runInfo, null, 1)
+  );
+  out.push("run.json");
   if (metricsRows.length) {
     fs.writeFileSync(
       path.join(SHOTS, "metrics.json"),
@@ -256,7 +273,14 @@ function writeAuditArtifacts(baselineDir) {
       .sort((a, b) => b[key] - a[key])
       .slice(0, n);
   const row = (r, key) => `| ${r.route} | ${r[key]} |`;
-  const lines = ["# Mobile audit report", ""];
+  const lines = [
+    "# Mobile audit report",
+    "",
+    // Name the data shape up front (#2594): a finding filed from this run must
+    // say which look produced it, and a re-run needs both knobs.
+    `Data shape: UX_SEED=${runInfo.uxSeed ?? "unset (fresh)"} · SEED_RNG=${runInfo.seedRng ?? "unset (pinned baseline)"}`,
+    "",
+  ];
   // Render health first (#1544) — a route that rendered the error boundary or the
   // 404 boundary produced numbers, but they measure a broken page, so say so
   // before any ranking a reader might otherwise trust.
@@ -275,6 +299,22 @@ function writeAuditArtifacts(baselineDir) {
     lines.push("| route | why |", "|---|---|");
     for (const u of unresolvedDynamic)
       lines.push(`| ${u.pattern} | ${u.why} |`);
+    lines.push("");
+  }
+  // #2616: routes that landed somewhere other than their own path are aliases —
+  // their byte-identical shots are expected, not the stuck-census signature the
+  // capture-validation hash check hunts. Desktop rows only; the mobile pass
+  // lands identically.
+  const aliased = metricsRows.filter(
+    (r) => r.landedOn && r.viewport === "desktop"
+  );
+  if (aliased.length) {
+    lines.push(
+      "## Alias routes (redirected — byte-identical shots are expected)",
+      ""
+    );
+    lines.push("| route | landed on |", "|---|---|");
+    for (const r of aliased) lines.push(`| ${r.route} | ${r.landedOn} |`);
     lines.push("");
   }
   if (mobile.length) {
@@ -324,6 +364,22 @@ function writeAuditArtifacts(baselineDir) {
         return null;
       }
     };
+    // Refuse to pretend two different data shapes are comparable (#2594): a
+    // seed change moves firstData/height everywhere at once, and diffing that
+    // as "regressions" buries any real one. The diff still prints — the warning
+    // just outranks it. An old baseline with no run.json compares seed-blind,
+    // exactly as it did before run.json existed.
+    const oldRun = load("run.json");
+    if (
+      oldRun &&
+      ((oldRun.uxSeed ?? null) !== runInfo.uxSeed ||
+        (oldRun.seedRng ?? null) !== runInfo.seedRng)
+    ) {
+      lines.push(
+        `- **BASELINE SHAPE MISMATCH** — baseline ran UX_SEED=${oldRun.uxSeed ?? "unset"} SEED_RNG=${oldRun.seedRng ?? "unset"}, this run UX_SEED=${runInfo.uxSeed ?? "unset"} SEED_RNG=${runInfo.seedRng ?? "unset"}. The diffs below compare different data shapes; re-run with matching seeds before trusting them.`,
+        ""
+      );
+    }
     const oldMetrics = load("metrics.json");
     if (oldMetrics) {
       const key = (r) => `${r.viewport} ${r.route}`;
@@ -696,6 +752,36 @@ async function resolveDynamicRoutes(page, patterns) {
 // each through DYNAMIC_ROUTES (#1544) instead of being skipped — detail pages
 // are exactly where density problems concentrate. Redirect routes screenshot
 // their target — that's fine, the point is "what does a user see at every URL".
+// Where they land is RECORDED (`landedOn` on the metrics row, an "Alias routes"
+// table in audit.md), so the capture-validation hash check can tell a known
+// alias's byte-identical shot from a genuinely stuck census (#2616).
+
+// #2616: open every still-closed disclosure a registered surface hides its
+// content behind. Re-queries after each click so toggles revealed by earlier
+// expansion are included; iteration caps are pathology guards (a selector that
+// never empties), not expected limits. Returns how many toggles it opened.
+async function expandDisclosures(page, exp) {
+  let opened = 0;
+  for (let i = 0; i < 80; i++) {
+    const closed = page.locator(exp.closedToggle).first();
+    if ((await closed.count()) === 0) break;
+    await closed.click();
+    opened++;
+    await page.waitForTimeout(150);
+  }
+  if (exp.loadMore) {
+    // Long groups reveal a "load the rest" button once open; drain those too —
+    // the whole point is seeing every row. Load is async, so give each a beat.
+    for (let i = 0; i < 40; i++) {
+      const more = page.locator(exp.loadMore).first();
+      if ((await more.count()) === 0) break;
+      await more.click().catch(() => {});
+      await page.waitForTimeout(400);
+    }
+  }
+  return opened;
+}
+
 async function pagesJourney(browser) {
   const appDir = path.join(process.cwd(), "app", "(app)");
   const routes = [];
@@ -775,17 +861,26 @@ async function pagesJourney(browser) {
       ...picked.map((route) => ({ route, target: route })),
       ...[...dynamicTargets].map(([route, r]) => ({ route, target: r.target })),
     ].sort((a, b) => a.route.localeCompare(b.route));
+    const expansionByRoute = new Map(
+      DISCLOSURE_EXPANSIONS.map((e) => [e.route, e])
+    );
     for (const { route, target } of visits) {
       const slug = routeSlug(route);
       try {
         await page.goto(`${BASE}${target}`);
         await page.waitForTimeout(1200);
         await shot(page, `page-${tag}-${slug}`);
+        // #2616: a route that redirects captures its destination — fine, but
+        // record WHERE, so the hash-validation step can tell a known alias's
+        // byte-identical shot from a stuck census.
+        const landedOn = new URL(page.url()).pathname;
+        const wanted = new URL(`${BASE}${target}`).pathname;
         // #1510 Part 1: the metrics probe rides the census visit it already made.
         const m = await page.evaluate(pageProbe);
         metricsRows.push({
           route,
           ...(target === route ? {} : { resolved: target }),
+          ...(landedOn === wanted ? {} : { landedOn }),
           viewport: tag,
           ...m,
         });
@@ -793,6 +888,38 @@ async function pagesJourney(browser) {
           log(
             `RENDER FAULT ${route} (${tag}) at ${target}: ${m.renderFault} — the shot is a boundary, not the page`
           );
+        // #2616: registered disclosure surfaces get a second, expanded capture.
+        // Only on the route's own visit (aliases landing here would quintuple
+        // the shot), and only AFTER the metrics probe — the default state is
+        // what `--baseline` diffs, so expansion must never touch its numbers.
+        const exp = expansionByRoute.get(route);
+        if (exp && landedOn === wanted) {
+          const opened = await expandDisclosures(page, exp);
+          if (opened === 0) {
+            log(
+              `BLIND SPOT ${route} (${tag}): no closed ${exp.label} to expand — expanded shot skipped`
+            );
+          } else {
+            // Expanded content can still hide below an INTERNAL fold — the
+            // readings table caps itself at 70vh and scrolls inside the card,
+            // and a fullPage screenshot only sees a scroller's visible part.
+            // Uncap every internal scroller for this capture; the default shot
+            // is already on disk, so the page's real presentation is untouched.
+            await page.evaluate(() => {
+              for (const el of document.querySelectorAll("*")) {
+                if (
+                  el instanceof HTMLElement &&
+                  el.scrollHeight > el.clientHeight + 8
+                ) {
+                  el.style.maxHeight = "none";
+                  el.style.overflow = "visible";
+                }
+              }
+            });
+            await page.waitForTimeout(400);
+            await shot(page, `page-${tag}-${slug}-expanded`);
+          }
+        }
       } catch (err) {
         log(`FAILED to shoot ${route} (${tag}): ${err.message.split("\n")[0]}`);
       }
@@ -1562,7 +1689,7 @@ const picked = args.filter(
 if (!picked.length) {
   console.error(
     `usage: node scripts/ux-walkthrough.mjs [--serve] [--baseline <prior shots dir>] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
---serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first, UX_SEED=thin seeds then trims to the last ~7 days) and tears it down after.
+--serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first, UX_SEED=thin seeds then trims to the last ~7 days) and tears it down after. SEED_RNG=<int> (#2594) gives a seeded shape a distinct, reproducible scenario-dial look; unset = the pinned baseline.
 --baseline diffs a prior run's metrics.json/taps.json (pages/workflows journeys write them) into audit.md.`
   );
   process.exit(1);

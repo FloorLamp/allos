@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -29,6 +30,12 @@ import {
 // manual form doesn't offer a provider picker yet, so a manual Rx carries a NULL
 // provider_id (the same stance imaging takes for its provider links). A provider
 // merge still re-points it (PROVIDER_LINK_COLUMNS).
+//
+// MULTI-VIEW (#2557): the pane now LISTS several members, so the per-row writes gate
+// through gateItemProfile — the ROW's posted profile, re-authorized with
+// requireProfileWriteAccess. A row being visible under a resolved `ProfileScope`
+// proves nothing about the caller's right to change it (AGENTS.md); this is where
+// that right is established. `add` stays on the ACTING profile.
 
 function revalidateVision() {
   // Vision folded into Health record (#1042 final tail): the surface is now
@@ -108,7 +115,9 @@ export async function addOpticalPrescription(
 export async function updateOpticalPrescription(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#2557): gate + target the ROW's own profile; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that prescription.");
   // Keep the loaded provider link unless the typed name actually changed (#601).
@@ -125,7 +134,7 @@ export async function updateOpticalPrescription(
            pd = ?, base_curve = ?, diameter = ?, brand = ?,
            issued_date = ?, expiry_date = ?, notes = ?, provider_id = ?
      WHERE id = ? AND profile_id = ?`
-  ).run(...rxValues(formData), providerId, id, profile.id);
+  ).run(...rxValues(formData), providerId, id, profileId);
   revalidateVision();
   return formOk();
 }
@@ -133,12 +142,12 @@ export async function updateOpticalPrescription(
 export async function deleteOpticalPrescription(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that prescription.");
   db.prepare(
     "DELETE FROM optical_prescriptions WHERE id = ? AND profile_id = ?"
-  ).run(id, profile.id);
+  ).run(id, profileId);
   revalidateVision();
   return formOk();
 }

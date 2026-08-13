@@ -8,9 +8,9 @@
 // bounding a pathological payload — larger ones are truncated with a marker.
 export const MAX_PAYLOAD_BYTES = 512 * 1024;
 
-// Newest-N raw payload files kept per (profile, provider); older ones are unlinked
+// Newest-N raw payload files kept per (profile, source); older ones are unlinked
 // so the store never grows unbounded.
-export const KEEP_PER_PROVIDER = 50;
+export const KEEP_PER_SOURCE = 50;
 
 // Validate that a stored ref is a bare, safe filename: [A-Za-z0-9._-] only (no
 // path separators, no NUL), non-empty and bounded, and not the `.`/`..` directory

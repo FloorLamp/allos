@@ -2,8 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { IconPencil } from "@tabler/icons-react";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import PaginationControls from "@/components/PaginationControls";
+import { HISTORY_PAGE_SIZE, pageCount as countPages } from "@/lib/pagination";
 import ScatterChartCard from "@/components/ScatterChartCard";
 import ScrollFade from "@/components/ScrollFade";
 import { chartSeries } from "@/lib/chart-colors";
@@ -22,15 +28,16 @@ import {
   type SleepMoodPoint,
 } from "@/lib/sleep-summary";
 import { describeCorrelation, pearson } from "@/lib/trends-compare";
+import { readingTargetToken } from "@/lib/reading-placement";
 import SleepMoodEditDialog from "./SleepMoodEditDialog";
 import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
+import { deleteSleepMoodRow } from "./actions";
 import type { NapHistoryRow } from "@/lib/queries/sleep";
 
 // A two- or three-dot scatter plot exaggerates coincidence and produces an
 // unstable Pearson coefficient. Five paired nights is the minimum for the plot;
 // the factual history table below is always available.
 const MIN_SLEEP_MOOD_SCATTER_POINTS = 5;
-const HISTORY_PAGE_SIZE = 10;
 const STAGE_COLUMNS: {
   key: keyof SleepStageMinutes;
   label: string;
@@ -97,15 +104,16 @@ export default function SleepMoodSection({
       bedtimeSupplements: null,
       sleepEditable: true,
       sleepEditHours: null,
+      sleepSampleId: null,
+      moodLogId: null,
     });
   }
   const newestFirst = [...historyByDate.values()].sort((a, b) =>
     a.date < b.date ? 1 : a.date > b.date ? -1 : 0
   );
-  const pageCount = Math.max(
-    1,
-    Math.ceil(newestFirst.length / HISTORY_PAGE_SIZE)
-  );
+  // The record-history page size and its arithmetic are shared (lib/pagination.ts):
+  // this table, the Trends body history and the dose ledger page the same way.
+  const pageCount = countPages(newestFirst.length, HISTORY_PAGE_SIZE);
   const page = Math.min(requestedPage, pageCount);
   const pageRows = newestFirst.slice(
     (page - 1) * HISTORY_PAGE_SIZE,
@@ -341,20 +349,16 @@ export default function SleepMoodSection({
                         </td>
                       ))}
                       <td className="td whitespace-nowrap text-right">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                          onClick={() => setEditing(row)}
-                          aria-label={`Edit sleep and mood for ${formatLongDate(row.date, formatPrefs)}`}
-                          data-testid="sleep-mood-history-edit"
-                        >
-                          <IconPencil
-                            className="h-3.5 w-3.5"
-                            stroke={1.75}
-                            aria-hidden
-                          />
-                          Edit
-                        </button>
+                        {/* Edit AND delete on the shared ⋯ menu (#2556). The row is
+                            a UNION of up to two physical records, so each delete
+                            names the one it removes — and each is offered only when
+                            that record exists and this surface is allowed to remove
+                            it. */}
+                        <SleepMoodRowMenu
+                          row={row}
+                          dateLabel={formatLongDate(row.date, formatPrefs)}
+                          onEdit={() => setEditing(row)}
+                        />
                       </td>
                     </tr>
                   ))
@@ -382,6 +386,124 @@ export default function SleepMoodSection({
           onClose={() => setEditing(null)}
         />
       )}
+    </div>
+  );
+}
+
+// One log line's row actions. Edit opens the existing dialog; each Delete names the
+// physical record it removes and posts that row's own target token to the ONE
+// per-reading delete contract (#2032) through the sleep action's gate.
+//
+// RENDERED FROM STATE, per the stateful-affordance rule: a night with no manual
+// duration-only sample offers no sleep delete (an imported or windowed night is
+// read-only here exactly as it is in the edit dialog), and a day with no check-in
+// offers no mood delete. The menu therefore never presents a write that would refuse.
+function SleepMoodRowMenu({
+  row,
+  dateLabel,
+  onEdit,
+}: {
+  row: SleepMoodHistoryRow;
+  dateLabel: string;
+  onEdit: () => void;
+}) {
+  const confirm = useConfirm();
+  const undoable = useUndoableDelete();
+  const [open, setOpen] = useState(false);
+
+  async function remove(
+    target: string,
+    prompt: { title: string; message: string; deleted: string }
+  ) {
+    const ok = await confirm({
+      title: prompt.title,
+      message: prompt.message,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    const fd = new FormData();
+    fd.set("target", target);
+    await undoable(deleteSleepMoodRow, fd, { deletedMessage: prompt.deleted });
+  }
+
+  return (
+    <div className="flex items-center justify-end">
+      <OverflowMenu
+        label={`Actions for ${dateLabel}`}
+        open={open}
+        onOpenChange={setOpen}
+      >
+        {({ close }) => (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className={MENU_ITEM}
+              data-testid="sleep-mood-history-edit"
+              onClick={() => {
+                onEdit();
+                close();
+              }}
+            >
+              Edit
+            </button>
+            {/* Close the menu BEFORE the confirm in every branch: a handler that
+                returns without close() leaves the click-away backdrop shielding the
+                whole page. */}
+            {row.sleepSampleId != null && (
+              <button
+                type="button"
+                role="menuitem"
+                className={MENU_ITEM_DANGER}
+                data-testid="sleep-history-delete-sleep"
+                onClick={() => {
+                  close();
+                  void remove(
+                    readingTargetToken({
+                      store: "metric_samples",
+                      id: row.sleepSampleId!,
+                      metric: "sleep_min",
+                    }),
+                    {
+                      title: "Delete sleep duration",
+                      message: `Delete the manual sleep duration logged for ${dateLabel}? You can undo this.`,
+                      deleted: "Sleep duration deleted.",
+                    }
+                  );
+                }}
+              >
+                Delete sleep duration
+              </button>
+            )}
+            {row.moodLogId != null && (
+              <button
+                type="button"
+                role="menuitem"
+                className={MENU_ITEM_DANGER}
+                data-testid="sleep-history-delete-mood"
+                onClick={() => {
+                  close();
+                  void remove(
+                    readingTargetToken({
+                      store: "mood",
+                      id: row.moodLogId!,
+                      series: "valence",
+                    }),
+                    {
+                      title: "Delete mood check-in",
+                      message: `Delete the mood check-in for ${dateLabel}? Its note and factors go with it. You can undo this.`,
+                      deleted: "Mood check-in deleted.",
+                    }
+                  );
+                }}
+              >
+                Delete mood check-in
+              </button>
+            )}
+          </>
+        )}
+      </OverflowMenu>
     </div>
   );
 }

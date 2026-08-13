@@ -5,11 +5,12 @@
 // activity, the UV-dose crossing (getUvDoseForDay), and the overexposure care finding
 // firing only past the skin-type threshold + staying silent without a skin type.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { setHomeLocation, setTimezone, setSkinType } from "@/lib/settings";
 import {
   runWeatherSync,
+  weatherPartialWarning,
   WEATHER_FORECAST_DAYS,
   type WeatherSyncResult,
 } from "@/lib/integrations/weather-sync";
@@ -19,9 +20,15 @@ import type {
   DailyWeatherRow,
 } from "@/lib/integrations/open-meteo";
 import { getUvHoursForDay } from "@/lib/integrations/weather-cache";
-import { getUvDoseForDay } from "@/lib/queries/weather";
+import {
+  isTruncatedSyncEvent,
+  parseSyncEventDetails,
+} from "@/lib/integrations/sync-details";
+import { eventVerdict } from "@/lib/integrations/source-state";
+import { getUvDoseForDay, getUvDoseForDays } from "@/lib/queries/weather";
 import { decideUvOverexposure } from "@/lib/uv-overexposure";
 import { collectUpcoming } from "@/lib/queries";
+import type { IntegrationSyncEvent } from "@/lib/types";
 
 function newProfile(name: string): number {
   const id = Number(
@@ -76,6 +83,27 @@ function uvRow(hourTs: string, uvIndex: number): HourlyUvRow {
 }
 
 const DATE = "2026-06-15";
+
+// Statement counting (the #885 shape, as lib/__db_tests__/tick-scoped-gathers.test.ts
+// uses it): the query layer prepares its statements inline on every call, so counting
+// prepares of a signature counts evaluations of the read that owns it. One spy for
+// every signature — vi.spyOn returns the SAME spy for an already-spied method, so two
+// independent spies would leave the second calling through to itself.
+function countPrepareSet(...signatures: RegExp[]): { calls: () => number }[] {
+  const counts = signatures.map(() => 0);
+  const real = db.prepare.bind(db);
+  vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+    signatures.forEach((s, i) => {
+      if (s.test(sql)) counts[i]++;
+    });
+    return real(sql);
+  }) as typeof db.prepare);
+  return signatures.map((_, i) => ({ calls: () => counts[i] }));
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
   it("inserts on first sync and reports unchanged on re-sync (dedup on location+hour)", async () => {
@@ -264,6 +292,117 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     expect(failure!.window_end).toBe(success!.window_end);
     expect(failure!.window_start).toBe(success!.window_start);
   });
+
+  // ── #2567 item 2: a run whose daily half failed recorded as a clean success ──
+  //
+  // `partial` was computed, folded into the returned summary and logged — and the
+  // event was then written WITHOUT it: `ok: true`, no details, no error, nothing
+  // anywhere saying the run was degraded. The only trace was `received` dropping from
+  // 381 to 360, which is how two silently-degraded runs among eighty were eventually
+  // found. There was no test here, which is why it shipped invisible.
+  describe("a half-failed run records as PARTIAL, not as a clean success", () => {
+    function dailyFails(reason: string): WeatherSource {
+      return {
+        id: "fixture",
+        async fetchHourly() {
+          return { ok: true, rows: [uvRow(`${DATE}T10:00`, 5)] };
+        },
+        async fetchDaily() {
+          return { ok: false, rows: [], status: 503, error: reason };
+        },
+      };
+    }
+
+    function latestEvent(profileId: number) {
+      return db
+        .prepare(
+          `SELECT * FROM integration_sync_events
+            WHERE profile_id = ? AND provider = 'weather' ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileId) as IntegrationSyncEvent;
+    }
+
+    it("marks the event partial through the SHARED reader every surface already uses", async () => {
+      const p = newProfile("weather-partial");
+      const res = await runWeatherSync(
+        p,
+        dailyFails("air quality unavailable")
+      );
+      // The run still SUCCEEDED — the hourly UV series is cached and the whole weather
+      // family degrades rather than breaking. That was never in doubt; what was
+      // missing is that anything said so.
+      expect(res).not.toHaveProperty("error");
+      expect((res as WeatherSyncResult).partial).toBeTruthy();
+
+      const ev = latestEvent(p);
+      expect(ev.ok).toBe(1);
+      // `isTruncatedSyncEvent` is the canonical reader — Strava, Oura and Withings
+      // already write this exact marker, and `scheduledStanding` turns it into
+      // "partial". Nothing new renders; the run simply stops lying.
+      expect(isTruncatedSyncEvent(ev)).toBe(true);
+      expect(eventVerdict(ev)).toEqual({ label: "Partial", tone: "caution" });
+      // The Review line names the half that failed and carries the upstream reason,
+      // rather than the shared default's page-cap/rate-limit sentence, which would be
+      // false here.
+      const warnings = parseSyncEventDetails(ev.details ?? null)!.warnings;
+      expect(warnings).toEqual([
+        weatherPartialWarning("air quality unavailable"),
+      ]);
+      expect(warnings[0]).not.toMatch(/page cap|rate limit/i);
+    });
+
+    it("leaves a whole run clean — the marker is absent, not false", async () => {
+      const p = newProfile("weather-whole");
+      await runWeatherSync(
+        p,
+        fixtureSource(
+          [uvRow(`${DATE}T10:00`, 5)],
+          [
+            {
+              date: DATE,
+              tempMaxC: 24,
+              tempMinC: 14,
+              pressureMslHpa: 1015,
+              precipitationMm: 0,
+              weatherCode: 1,
+              uvIndexMax: 6,
+              aqi: 30,
+              pollenTree: 1,
+              pollenGrass: 1,
+              pollenWeed: 1,
+            },
+          ]
+        )
+      );
+      const ev = latestEvent(p);
+      expect(ev.ok).toBe(1);
+      expect(ev.details ?? null).toBeNull();
+      expect(isTruncatedSyncEvent(ev)).toBe(false);
+      // Both halves landed, so the run's `received` carries both — the count whose
+      // silent drop was the only evidence these degraded runs left.
+      expect(ev.received).toBe(2);
+    });
+
+    it("marks a daily half that failed in the WRITE, not the fetch", async () => {
+      const p = newProfile("weather-partial-write");
+      const badDaily: WeatherSource = {
+        id: "fixture",
+        async fetchHourly() {
+          return { ok: true, rows: [uvRow(`${DATE}T10:00`, 5)] };
+        },
+        async fetchDaily() {
+          // A day row the cache upsert refuses — the try/catch branch that also sets
+          // `partial`, and which was equally invisible.
+          return {
+            ok: true,
+            rows: [{ date: null as unknown as string } as DailyWeatherRow],
+          };
+        },
+      };
+      await runWeatherSync(p, badDaily);
+      expect(isTruncatedSyncEvent(latestEvent(p))).toBe(true);
+    });
+  });
 });
 
 describe("getUvDoseForDay — the ONE crossing, with historical backfill", () => {
@@ -309,6 +448,69 @@ describe("getUvDoseForDay — the ONE crossing, with historical backfill", () =>
     expect(dose).not.toBeNull();
     expect(dose!.uvSource).toBe("clear-sky");
     expect(dose!.outdoorMinutes).toBe(120);
+  });
+});
+
+// #2113: the Timeline renders a UV chip per day and used to ask the single-date
+// accessor inside that loop — home location, timezone, skin type, the day's activities
+// and the day's cached UV hours, re-read once per rendered day. The widened read must
+// answer IDENTICALLY (that is the whole bar for a read-path consolidation) in a fixed
+// number of statements.
+describe("getUvDoseForDays — one widened read, identical answers (#2113)", () => {
+  const DAYS = ["2026-06-10", "2026-06-11", "2026-06-12", "2026-06-13"];
+
+  async function seedFeed(name: string): Promise<number> {
+    const p = newProfile(name);
+    setSkinType(p, 2);
+    // Two days with outdoor time and cached live UV, one with outdoor time but no
+    // cached UV (the clear-sky rung), one with neither (the zero-minute dose).
+    seedOutdoorActivity(p, DAYS[0], "10:00", "12:00");
+    seedOutdoorActivity(p, DAYS[1], "09:00", "10:00");
+    seedOutdoorActivity(p, DAYS[2], "11:00", "13:00");
+    await runWeatherSync(
+      p,
+      fixtureSource([
+        uvRow(`${DAYS[0]}T10:00`, 6),
+        uvRow(`${DAYS[0]}T11:00`, 7),
+        uvRow(`${DAYS[1]}T09:00`, 4),
+      ])
+    );
+    return p;
+  }
+
+  it("matches the per-day accessor on every date, including the empty one", async () => {
+    const p = await seedFeed("weather-batch");
+    const batched = getUvDoseForDays(p, DAYS);
+    expect([...batched.keys()].sort()).toEqual([...DAYS].sort());
+    for (const date of DAYS) {
+      expect(batched.get(date)).toEqual(getUvDoseForDay(p, date));
+    }
+    // The fixture is real: two live days, one degraded, one with no outdoor time.
+    expect(batched.get(DAYS[0])!.uvSource).toBe("live");
+    expect(batched.get(DAYS[0])!.outdoorMinutes).toBe(120);
+    expect(batched.get(DAYS[2])!.outdoorMinutes).toBe(120);
+    expect(batched.get(DAYS[3])!.outdoorMinutes).toBe(0);
+  });
+
+  it("issues one activities read and one UV-hours read for the whole set", async () => {
+    const p = await seedFeed("weather-batch-count");
+    const [activities, uvHours] = countPrepareSet(
+      /FROM activities a\s+WHERE a\.profile_id/,
+      /FROM weather_uv_hours/
+    );
+    getUvDoseForDays(p, DAYS);
+    expect(activities.calls()).toBe(1);
+    expect(uvHours.calls()).toBe(1);
+  });
+
+  it("returns an empty map without a home location, and for an empty date set", () => {
+    const id = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('no-home-batch')").run()
+        .lastInsertRowid
+    );
+    expect(getUvDoseForDays(id, DAYS).size).toBe(0);
+    const p = newProfile("weather-batch-empty");
+    expect(getUvDoseForDays(p, []).size).toBe(0);
   });
 });
 

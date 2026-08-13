@@ -9,7 +9,7 @@ import { workerDbPath, frozenSyncInstant } from "./worker-env";
 // The state under test cannot be produced by any recorded failure, which is the whole
 // point: nothing failed (so the Strava-style "sync failed" row can't appear) and nothing
 // arrived. The only evidence is the age of the last SUCCESSFUL sync, so this spec seeds
-// exactly that: a connected provider plus one ok=1 event, dated well past the provider's
+// exactly that: a connected source plus one ok=1 event, dated well past the source's
 // registry threshold, measured against the run's frozen clock.
 //
 // Weather is chosen deliberately — the shared seed leaves it untouched (Strava is
@@ -90,7 +90,7 @@ test("Data → Review shows a stopped sync with its own copy, not the reauth wor
   await expect(attention.getByText("Needs attention")).toBeVisible();
 
   // Since #1880 a quiet stop escalates the STANDING (the staleness breach composes
-  // into `failing`), so the provider renders its full source card under Needs
+  // into `failing`), so the source renders its full source card under Needs
   // attention — once — rather than a summary row beside a duplicate card below.
   const card = attention.getByTestId(`source-${PROVIDER}`);
   await expect(card).toBeVisible();
@@ -100,7 +100,7 @@ test("Data → Review shows a stopped sync with its own copy, not the reauth wor
   await expect(card).toContainText("Check the connection");
   // … and never claims a cause it has no evidence for.
   await expect(card).not.toContainText("Reconnect to resume syncing");
-  // The card renders ONCE: the provider is not listed again under Connected sources.
+  // The card renders ONCE: the source is not listed again under Connected sources.
   await expect(
     review.getByTestId("connected-sources").getByTestId(`source-${PROVIDER}`)
   ).toHaveCount(0);
@@ -131,7 +131,7 @@ test("the dashboard attention card carries the stopped sync with its own action"
   // The Upcoming page renders the full shared model; the structural signals file under
   // "For review" alongside the import-review count. The row's testid is the item's own
   // key, which is `integration:<id>` for BOTH the failing and the stale variant — one
-  // row per provider, whichever signal raised it.
+  // row per source, whichever signal raised it.
   const item = main.getByTestId(`upcoming-item-integration:${PROVIDER}`);
   await expect(item).toBeVisible();
   await expect(item).toContainText("sync has stopped");

@@ -101,6 +101,8 @@ import { runScheduledBackup } from "../lib/backup";
 import { pruneAuditEvents } from "../lib/audit";
 import { sweepDeletedRows } from "../lib/undo-delete-db";
 import { sweepReplayedKeys } from "../lib/offline/writes";
+import { purgeExpiredSessions } from "../lib/auth";
+import { purgeExpiredTotpChallenges } from "../lib/two-factor";
 import { reapStuckExtractions } from "../lib/extraction-reaper";
 import {
   inferWorkoutSchedule,
@@ -241,7 +243,7 @@ async function tickProfile(
   tickMinutes: number
 ): Promise<boolean> {
   // THE PULL PASS, ON ITS OWN CADENCE (#2121 step 1). Runs on every tick regardless
-  // of which notification slots are due — but a provider is POLLED only once per its
+  // of which notification slots are due — but a source is POLLED only once per its
   // registry-declared cadence window (hourly for all four today). That is the whole
   // decoupling: everything below this line is "what is due to send", bounded only by
   // this process's ~0.5 s boot and free to be evaluated as often as the scheduler
@@ -434,7 +436,7 @@ async function tickProfile(
   // check-in rides Evening.
   //
   // The gate here is only "is the slot due"; every other condition — the consent flag
-  // itself, the expected-active gate, the provider-health deference, and the quiet-
+  // itself, the expected-active gate, the source-health deference, and the quiet-
   // stream predicate — lives in buildWearReminder, which returns null for all of them.
   // That is deliberate: null is what the dueSlots loop calls "nothing due", and a
   // "nothing due" night leaves the per-day marker UNSET, so a skipped evaluation never
@@ -1108,8 +1110,8 @@ async function tick() {
   }
 
   // Sync-event retention sweep (#388): global, once per tick. integration_sync_events
-  // gains a row per provider per hourly tick and was the one tick sibling nothing
-  // pruned. Keeps the last 90 days plus the newest event per (profile, provider).
+  // gains a row per source per hourly tick and was the one tick sibling nothing
+  // pruned. Keeps the last 90 days plus the newest event per (profile, source).
   // Best-effort (pruneSyncEvents never throws); never affects the notification
   // flow/exit code.
   try {
@@ -1117,6 +1119,27 @@ async function tick() {
     if (prunedSync > 0) log.info("pruned sync events", { prunedSync });
   } catch (e) {
     log.error("sync-event prune failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
+  // Expired-session + TOTP-challenge sweep (#1843): global, once per tick. Both
+  // purges existed but were called ONLY from the login action, so "somebody signs
+  // in" was the sole trigger — and with 30-day SLIDING sessions, a family instance
+  // where nobody signs in for months accumulated dead `sessions` and
+  // `login_totp_challenges` rows unbounded. Purely a bookkeeping sweep: an expired
+  // row is already refused by every read path, so this deletes nothing a live
+  // session depends on. Best-effort, like its siblings; never affects the
+  // notification flow/exit code.
+  try {
+    const sweptSessions = purgeExpiredSessions();
+    if (sweptSessions > 0)
+      log.info("swept expired sessions", { sweptSessions });
+    const sweptChallenges = purgeExpiredTotpChallenges();
+    if (sweptChallenges > 0)
+      log.info("swept expired 2FA challenges", { sweptChallenges });
+  } catch (e) {
+    log.error("session sweep failed", {
       err: e instanceof Error ? e : String(e),
     });
   }

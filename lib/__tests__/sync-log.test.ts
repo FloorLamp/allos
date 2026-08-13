@@ -3,8 +3,8 @@ import {
   summarizeSync,
   dateWindow,
   formatWindow,
-  currentlyFailingProviders,
-  latestEventPerProvider,
+  currentlyFailingSources,
+  latestEventPerSource,
   emptyCounts,
   foldCounts,
   summarizeSplit,
@@ -471,48 +471,48 @@ describe("currentlyFailingProviders", () => {
   // Events are newest-first, as the queries return them.
   it("returns providers whose most-recent event is a failure", () => {
     const events = [
-      { provider: "strava", ok: 0 }, // strava currently broken
-      { provider: "health-connect", ok: 1 }, // HC currently fine
-      { provider: "strava", ok: 1 }, // older strava success — ignored
+      { sourceId: "strava", ok: 0 }, // strava currently broken
+      { sourceId: "health-connect", ok: 1 }, // HC currently fine
+      { sourceId: "strava", ok: 1 }, // older strava success — ignored
     ];
-    expect(currentlyFailingProviders(events)).toEqual([
-      { provider: "strava", ok: 0 },
+    expect(currentlyFailingSources(events)).toEqual([
+      { sourceId: "strava", ok: 0 },
     ]);
   });
 
   it("clears a provider once its latest event succeeds", () => {
     const events = [
-      { provider: "strava", ok: 1 }, // recovered
-      { provider: "strava", ok: 0 }, // earlier failure — superseded
+      { sourceId: "strava", ok: 1 }, // recovered
+      { sourceId: "strava", ok: 0 }, // earlier failure — superseded
     ];
-    expect(currentlyFailingProviders(events)).toEqual([]);
+    expect(currentlyFailingSources(events)).toEqual([]);
   });
 
   it("keeps only the newest event per failing provider", () => {
     const events = [
-      { provider: "strava", ok: 0, id: 2 },
-      { provider: "strava", ok: 0, id: 1 },
+      { sourceId: "strava", ok: 0, id: 2 },
+      { sourceId: "strava", ok: 0, id: 1 },
     ];
-    expect(currentlyFailingProviders(events)).toEqual([
-      { provider: "strava", ok: 0, id: 2 },
+    expect(currentlyFailingSources(events)).toEqual([
+      { sourceId: "strava", ok: 0, id: 2 },
     ]);
   });
 
   it("returns an empty array when there are no events", () => {
-    expect(currentlyFailingProviders([])).toEqual([]);
+    expect(currentlyFailingSources([])).toEqual([]);
   });
 
-  // A needs_reauth provider (issue #326) records an ok:0 sync event the moment its
+  // A needs_reauth source (issue #326) records an ok:0 sync event the moment its
   // token dies and the tick then stops re-syncing it, so its most-recent event stays
   // that failure — it must still be reported as currently failing when it's the
-  // provider's latest event (issue #304's "compose" requirement).
+  // source's latest event (issue #304's "compose" requirement).
   it("catches a needs_reauth provider whose latest event is the auth failure", () => {
     const events = [
-      { provider: "health-connect", ok: 1 }, // chatty provider, currently fine
-      { provider: "strava", ok: 0 }, // dead token → needs_reauth, latest is the failure
+      { sourceId: "health-connect", ok: 1 }, // chatty source, currently fine
+      { sourceId: "strava", ok: 0 }, // dead token → needs_reauth, latest is the failure
     ];
-    expect(currentlyFailingProviders(events)).toEqual([
-      { provider: "strava", ok: 0 },
+    expect(currentlyFailingSources(events)).toEqual([
+      { sourceId: "strava", ok: 0 },
     ]);
   });
 });
@@ -521,24 +521,24 @@ describe("latestEventPerProvider", () => {
   // Events are newest-first, as the queries return them.
   it("keeps exactly one (the newest) event per provider", () => {
     const events = [
-      { provider: "strava", ok: 0, id: 5 }, // newest strava
-      { provider: "health-connect", ok: 1, id: 4 },
-      { provider: "strava", ok: 1, id: 3 }, // older strava — dropped
-      { provider: "health-connect", ok: 1, id: 2 }, // older HC — dropped
+      { sourceId: "strava", ok: 0, id: 5 }, // newest strava
+      { sourceId: "health-connect", ok: 1, id: 4 },
+      { sourceId: "strava", ok: 1, id: 3 }, // older strava — dropped
+      { sourceId: "health-connect", ok: 1, id: 2 }, // older HC — dropped
     ];
-    expect(latestEventPerProvider(events)).toEqual([
-      { provider: "strava", ok: 0, id: 5 },
-      { provider: "health-connect", ok: 1, id: 4 },
+    expect(latestEventPerSource(events)).toEqual([
+      { sourceId: "strava", ok: 0, id: 5 },
+      { sourceId: "health-connect", ok: 1, id: 4 },
     ]);
   });
 
   it("preserves newest-first order across providers", () => {
     const events = [
-      { provider: "a", id: 3 },
-      { provider: "b", id: 2 },
-      { provider: "c", id: 1 },
+      { sourceId: "a", id: 3 },
+      { sourceId: "b", id: 2 },
+      { sourceId: "c", id: 1 },
     ];
-    expect(latestEventPerProvider(events).map((e) => e.provider)).toEqual([
+    expect(latestEventPerSource(events).map((e) => e.sourceId)).toEqual([
       "a",
       "b",
       "c",
@@ -546,7 +546,7 @@ describe("latestEventPerProvider", () => {
   });
 
   it("returns an empty array when there are no events", () => {
-    expect(latestEventPerProvider([])).toEqual([]);
+    expect(latestEventPerSource([])).toEqual([]);
   });
 });
 
@@ -580,13 +580,13 @@ describe("shouldShowConnectedSource", () => {
 
 describe("planSyncEventPrune", () => {
   // Structurally-typed events; `at` values are ISO strings ordered lexicographically.
-  type Ev = { id: number; profile_id: number; provider: string; at: string };
+  type Ev = { id: number; profile_id: number; sourceId: string; at: string };
 
   it("prunes events older than the cutoff", () => {
     const evs: Ev[] = [
-      { id: 1, profile_id: 1, provider: "strava", at: "2024-01-01" },
-      { id: 2, profile_id: 1, provider: "strava", at: "2024-02-01" },
-      { id: 3, profile_id: 1, provider: "strava", at: "2024-03-01" },
+      { id: 1, profile_id: 1, sourceId: "strava", at: "2024-01-01" },
+      { id: 2, profile_id: 1, sourceId: "strava", at: "2024-02-01" },
+      { id: 3, profile_id: 1, sourceId: "strava", at: "2024-03-01" },
     ];
     // cutoff 2024-02-15: id 1 old, id 2 old but newest? no — id 3 is newest and kept.
     // id 2 (2024-02-01) is < cutoff and not newest → pruned. id 1 likewise.
@@ -595,18 +595,18 @@ describe("planSyncEventPrune", () => {
 
   it("always keeps the newest event per (profile, provider) even when it's ancient", () => {
     const evs: Ev[] = [
-      { id: 1, profile_id: 1, provider: "strava", at: "2020-01-01" },
+      { id: 1, profile_id: 1, sourceId: "strava", at: "2020-01-01" },
     ];
-    // The only event is old but is the newest for its provider → kept.
+    // The only event is old but is the newest for its source → kept.
     expect(planSyncEventPrune(evs, "2024-01-01")).toEqual([]);
   });
 
   it("keeps newest-per-provider independently across providers and profiles", () => {
     const evs: Ev[] = [
-      { id: 1, profile_id: 1, provider: "strava", at: "2020-01-01" },
-      { id: 2, profile_id: 1, provider: "strava", at: "2020-02-01" }, // newest strava/p1
-      { id: 3, profile_id: 1, provider: "oura", at: "2020-01-15" }, // newest oura/p1
-      { id: 4, profile_id: 2, provider: "strava", at: "2020-01-20" }, // newest strava/p2
+      { id: 1, profile_id: 1, sourceId: "strava", at: "2020-01-01" },
+      { id: 2, profile_id: 1, sourceId: "strava", at: "2020-02-01" }, // newest strava/p1
+      { id: 3, profile_id: 1, sourceId: "oura", at: "2020-01-15" }, // newest oura/p1
+      { id: 4, profile_id: 2, sourceId: "strava", at: "2020-01-20" }, // newest strava/p2
     ];
     // cutoff far in the future → everything is "old"; only the newest per key survives.
     expect(planSyncEventPrune(evs, "2099-01-01")).toEqual([1]);
@@ -614,9 +614,9 @@ describe("planSyncEventPrune", () => {
 
   it("keeps events at or after the cutoff (strictly-older only)", () => {
     const evs: Ev[] = [
-      { id: 1, profile_id: 1, provider: "strava", at: "2024-01-01" }, // newest → kept
-      { id: 2, profile_id: 1, provider: "oura", at: "2024-02-01" }, // == cutoff → kept
-      { id: 3, profile_id: 1, provider: "oura", at: "2024-02-05" }, // newest oura → kept
+      { id: 1, profile_id: 1, sourceId: "strava", at: "2024-01-01" }, // newest → kept
+      { id: 2, profile_id: 1, sourceId: "oura", at: "2024-02-01" }, // == cutoff → kept
+      { id: 3, profile_id: 1, sourceId: "oura", at: "2024-02-05" }, // newest oura → kept
     ];
     expect(planSyncEventPrune(evs, "2024-02-01")).toEqual([]);
   });
@@ -627,10 +627,10 @@ describe("planSyncEventPrune", () => {
 
   it("returns prunable ids sorted ascending", () => {
     const evs: Ev[] = [
-      { id: 5, profile_id: 1, provider: "strava", at: "2020-05-01" },
-      { id: 2, profile_id: 1, provider: "strava", at: "2020-02-01" },
-      { id: 9, profile_id: 1, provider: "strava", at: "2020-09-01" }, // newest → kept
-      { id: 1, profile_id: 1, provider: "strava", at: "2020-01-01" },
+      { id: 5, profile_id: 1, sourceId: "strava", at: "2020-05-01" },
+      { id: 2, profile_id: 1, sourceId: "strava", at: "2020-02-01" },
+      { id: 9, profile_id: 1, sourceId: "strava", at: "2020-09-01" }, // newest → kept
+      { id: 1, profile_id: 1, sourceId: "strava", at: "2020-01-01" },
     ];
     expect(planSyncEventPrune(evs, "2099-01-01")).toEqual([1, 2, 5]);
   });

@@ -81,6 +81,33 @@ const setPartial = (name: string, s: StoredSet) =>
   );
 
 /**
+ * The HABIT-TIER mobility session (#840): one `recovery` activity per
+ * (profile, date) whose components are the tapped moves, each deliberately
+ * carrying no distance and no duration — "one move = one tap", the
+ * false-precision trap the mobility bar exists to avoid. Its editing surface is
+ * that bar (tap a move on, tap it off), never the activity editor, and it
+ * carries no exercise sets.
+ *
+ * Identified exactly the way lib/mobility-log-write identifies it — a
+ * `recovery`-typed row whose recovery components ARE the move set — plus the
+ * absence of sets, which the bar never writes and which would make the row an
+ * editor-shaped thing again. A components list that is present but EMPTY counts:
+ * that is the duration-only session `setMobilityDurationCore` writes. A legacy
+ * row with no components list at all does not — nothing states it is a move set.
+ *
+ * Imported recovery sessions are unaffected: they carry a per-component
+ * `duration_min` (Fitbit yoga, migration 117), so they never faulted anyway.
+ */
+export function isHabitTierRecovery(
+  a: StoredActivity,
+  sets: StoredSet[]
+): boolean {
+  if (a.type !== "recovery" || sets.length > 0) return false;
+  if (!a.components) return false;
+  return parseComponents(a.components).every((c) => c.type === "recovery");
+}
+
+/**
  * Why a stored activity can't be re-saved by the editor as-is — the first
  * fault found, in the same order as ActivityForm's saveBlocker — or null when
  * it's fine. Form-authored activities always pass; this exists to flag
@@ -92,11 +119,22 @@ const setPartial = (name: string, s: StoredSet) =>
  * picker's suggestions themselves, and a cardio/sport name the picker doesn't
  * know loads as a committed custom activity (typed by the stored row) — the
  * editor accepts free-text cardio/sport.
+ *
+ * The habit tier is out of the POPULATION, not merely forgiven (#2611). This is
+ * a question about the activity editor, and a mobility session is not an editor
+ * artifact — asking it of one produced a true answer to an irrelevant question,
+ * rendered as an error-red "Can't be saved as-is" on every row the app's own
+ * one-tap bar had just written, with no action offered because nothing was
+ * wrong. Loosening the per-component rule instead (accepting the session's
+ * activity-level duration) was the other candidate and is worse: it changes the
+ * verdict for rows the scan is genuinely right about, and it would still leave
+ * the move-less, duration-only session red.
  */
 export function storedActivityFault(
   a: StoredActivity,
   sets: StoredSet[]
 ): string | null {
+  if (isHabitTierRecovery(a, sets)) return null;
   const timeError = !!a.start_time && !!a.end_time && a.end_time < a.start_time;
 
   // Group sets by exercise, case-insensitively like the editor, keeping the

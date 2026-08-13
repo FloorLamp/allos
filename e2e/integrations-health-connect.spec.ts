@@ -63,7 +63,7 @@ test.describe("Health Connect integration (#391)", () => {
       expect(first.length).toBeGreaterThan(10);
 
       // #1212 deduped sync history to ONE surface and left this page a link to it;
-      // #1772 inverted that — the provider's own page is its HOME, so the history
+      // #1772 inverted that — the source's own page is its HOME, so the history
       // renders here as a real table and Review became an inbox linking back.
       await expect(member.getByTestId("sync-history-link")).toHaveCount(0);
       await expect(member.getByText("Recent activity")).toHaveCount(0);

@@ -532,6 +532,18 @@ renderer:
   owns, active or not), and the shared `DateRange` vocabulary with
   `DOSE_HISTORY_DAYS` as the default window and `?range=all` as the explicit
   all-time sentinel. The pure half is `lib/dose-ledger.ts`.
+- **A range is a filter; the PAGE is the bound (#2445).** "All time" is a
+  legitimate answer here — history outlives retirement — so it cannot be what
+  limits the read, and a `must` medication logged twice daily for years is
+  thousands of rows. The surface therefore reads
+  `getIntakeDoseLedgerPage(profileId, since, filters, page, HISTORY_PAGE_SIZE)`,
+  a real `LIMIT`/`OFFSET` over the same statement plus the `COUNT(*)` the pager
+  needs, with `?page=` riding the URL and every other control dropping it (a
+  narrowed ledger re-pages from its first row). `HISTORY_PAGE_SIZE` and the page
+  arithmetic are `lib/pagination.ts`, shared with the other record-history
+  tables. `getIntakeDoseHistoryAll` stays for callers that genuinely want the
+  whole window in one array, and as the row-for-row cross-check against the
+  per-item panel — but nothing that RENDERS the ledger uses it.
 - **"Log past dose" is a top-level entry** on the ledger — the same
   `HistoricalDoseForm` with an item picker in front, which opens on the item the
   ledger is filtered to. The per-item panel keeps its own entry: an item-scoped
@@ -689,6 +701,51 @@ hatch that ever reaches them. Accepting is the only write — `demoteIntakeOblig
 (`demoted` / `already-may` / `inactive` / `not-found`) that both surfaces render
 rather than assuming success. Recovery clears the candidate; demotion is
 downward-only, permanently (no promotion suggestions).
+
+**The unconfirmed imported MEDICATION escape hatch (#2574).** The demotion detector
+above exempts medications entirely, and correctly: poor med adherence is a missed-dose
+escalation concern, never an obligation question. The consequence was that a medication
+genuinely STOPPED became indistinguishable from one badly adhered to — a course
+prescribed during an acute illness, imported from a CCD that never marked it
+discontinued, reminds at `must` every morning forever.
+
+The signal that separates them is not adherence, it is **provenance plus silence**:
+
+> `kind = medication` AND `source = 'extracted'` AND **zero lifetime logs** AND ≥10
+> scheduled occurrences in the trailing 30 days.
+
+Pure detection in `lib/medication-unconfirmed.ts` over the SAME `getIntakeHistory`
+gather, plus one lifetime read (`getEverLoggedItemIds`) — the strip is windowed by
+construction and the claim is that nothing has _ever_ happened. It produces no
+`Finding`: no dedupe key, no suppression bus, no registry entry, no send. It sets a
+per-dose flag and puts a **🏁 Stop** button beside Take and Skip on the reminder that
+was already going out.
+
+- **Disjoint from `demotable` by construction** — that detector refuses medications and
+  this one requires one — so a row gains at most one extra button, asserted over the
+  cross product rather than assumed.
+- **One tap performs the STOP**, through `stopMedicationCourses`, the same core the web
+  Stop dialog calls. No second write path, no demotion to `may` (which would assert
+  "available, take when you want" about a course that ended), and no deep link (which
+  is the two-step journey the person could already make). The web action's eager
+  refill-marker clear is NOT copied: it lives in the action rather than the core and is
+  an optimisation for a same-session Stop→Restart, while `planRefillNudges`' #325
+  self-healing sweep is the authoritative drop on the next tick.
+- **The tap RE-DERIVES the offer before it writes.** A button that sat in a chat while
+  a dose was taken, skipped, or the med was stopped from the web answers `withdrawn`
+  and changes nothing. That is what makes "never on a medication with any engagement
+  history" true of the TAP and not merely of the render.
+- **Typed outcomes are rendered**, never an unconditional success
+  (`stopped` / `already-stopped` / `synced` / `not-found` / `withdrawn`).
+- **`stop_reason` is `other`** — the button collects none — and the reply says where to
+  name a real one. A callback answer is a plain-text toast, so the pointer is words
+  rather than a link; the reminder's own body never mentions the button, which is the
+  #1718 rule for Web Push and Home Assistant.
+- **Restart is the undo**, opening a new course dated today rather than reopening the
+  old one, so a mis-tap costs one tap and rewrites no history.
+
+A weekly medication never reaches the occurrence floor and never gets the button. That
+is the conservative direction and the only one a safety-adjacent offer may err in.
 
 **Digests report DELTAS, not a fraction (#1505 part 3).** `lib/intake-deltas.ts`
 classifies the must+should ledger into **notably missed** (a taken-streak of ≥3
@@ -965,7 +1022,12 @@ sees: any pool an accessible profile draws from, plus member-less orphans (they 
 nobody, and somebody has to be able to clear them). The page lists
 `listVisiblePoolViews(scope.ids)` and every door counts `countVisiblePools(scope.ids)`
 through the SAME predicate, so a door can never promise a bottle the page won't show.
-The count skips the pooled-projection build the list needs.
+The count skips the pooled-projection build the list needs, and since #2116 it reads
+membership for the whole cabinet in ONE query instead of one `poolMembers` call per
+bottle — the rule stays in `isPoolVisibleTo`, evaluated in JS over that one read, so
+there is still exactly one definition of "in the cabinet". `poolIdsForProfiles` (the
+pools an accessible SET draws from) is set-based for the same reason, which is why
+`lib/queries/intake/supply-pool.ts` is a registered `CROSS_PROFILE_SQL_MODULES` module.
 
 **The product-fact exchange (#1705).** A bottle carries `name`/`strength`/`form`;
 an item carries `name`, `product`/`brand` and its dose amounts — **there is no

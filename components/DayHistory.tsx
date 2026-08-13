@@ -8,9 +8,11 @@ import {
   formatMonthDay,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
+import { monthNames } from "@/lib/date";
 import {
   dayHistoryAddHref,
   timelineDayHref,
+  timelineRangeHref,
   trainingLogDayHref,
   type AppRoute,
 } from "@/lib/hrefs";
@@ -18,13 +20,20 @@ import {
   DAY_HISTORY_DOMAINS,
   FOLDED_ROW_KEY,
   activeHistoryWeeks,
+  bucketWord,
   buildDayHistoryCalendar,
   buildDayHistoryRows,
+  buildDayHistoryStrip,
   dayHistoryStart,
   dayTotals,
-  historyDays,
+  historyAggregateLevel,
+  historyBucket,
+  historyBucketCoverage,
+  historyBuckets,
+  historyCellLevel,
   type DayHistoryCalendarCell,
   type DayHistoryDomainKey,
+  type DayHistoryGrain,
   type DayHistoryGroupMeta,
   type DayHistoryRow,
   type DayHistoryValue,
@@ -34,15 +43,22 @@ import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
 } from "@/components/FoodGroupIcon";
 
-// Three-letter weekday labels indexed by 0=Sun … 6=Sat, overlaid on the grid.
+// Three-letter weekday labels indexed by 0=Sun … 6=Sat, one per grid row.
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Cell geometry, shared by the cells and the overlaid label offsets. The
+// Cell geometry, shared by the cells and the axis-label offsets. The
 // calendar cell GROWS from the 24px base to fill the container when the
 // window is short (a 4-week range gets ~34px cells, 13 weeks keeps 24).
 const CAL_CELL = 24;
 const CAL_CELL_MAX = 34;
 const CAL_GAP = 3;
+// The calendar's RESERVED axis gutters (#2582). A text-xs label's line box is 16px
+// and "Wed" needs about 27px, so a 16px header row and a 30px left column hold the
+// month and weekday labels entirely OUTSIDE the grid. Both are also the offset every
+// absolutely-positioned label adds, because they are padding on the labels' own
+// containing block.
+const CAL_LABEL_H = 16;
+const CAL_LABEL_W = 30;
 const MTX_CELL_W = 18;
 const MTX_CELL_H = 26;
 const MTX_GAP = 2;
@@ -52,19 +68,31 @@ const MTX_STEP = MTX_CELL_W + MTX_GAP;
 // calendar gets for free from its columns.
 const MTX_WEEK_GAP = 5;
 
-// Calendar axis labels stay overlaid so its compact seven-row overview keeps
-// every pixel of width. The matrix gets a real reserved header below: date
-// labels must never cover the quantity cells they explain.
-const OVERLAY_LABEL =
-  "pointer-events-none absolute rounded-sm bg-white/70 px-1 text-xs font-semibold uppercase tracking-wide text-slate-700 backdrop-blur-[2px] dark:bg-ink-950/60 dark:text-slate-200";
+// Calendar axis labels, in the reserved gutters above and to the left of the grid
+// (#2582). They USED to be overlaid on the grid itself with a `bg-white/70` +
+// `backdrop-blur-[2px]` chip, which bought one cell of width at the cost of the one
+// thing a heatmap has: in a heatmap the cell's fill level IS the data, so a
+// translucent chip on top of it made a covered day read as a LOWER level than it had.
+// A month chip's 16px line box, hung 6px above the grid, reached 10px into the first
+// row's 24px cells; a "Mon" chip was wider than a whole 24px cell in column 0. Now
+// they sit outside the grid box, which also means they need no background at all —
+// the same rule the matrix half already states for its reserved date header — and
+// their typography is the shared `.section-label` primitive rather than a hand-roll.
+const AXIS_LABEL = "section-label pointer-events-none absolute";
 
 // The horizontal scroll wrapper both halves share. A small, breakpoint-free
 // gutter escape uses nearly all available width without assuming which shell
 // owns the page padding. Its matching inner padding leaves focus/selection
 // rings room at the clipped edges.
 const SCROLLER = "-mx-1 overflow-x-auto px-1 pb-1 pt-2";
-const MATRIX_LABEL_FADE =
-  "bg-gradient-to-r from-white/70 via-white/70 via-[82%] to-transparent dark:from-ink-950/70 dark:via-ink-950/70";
+// The matrix's sticky row-label backdrop. OPAQUE, and that is the whole point
+// (#2582): a sticky first column necessarily sits over cells at every scroll offset
+// past zero — that is what "frozen column" means, and the cells it hides are reachable
+// by scrolling — but a 70%-opacity gradient over them made those cells DIMLY VISIBLE,
+// i.e. showing a level they do not have. Hidden is honest; washed out is not. The
+// blur went with it, for the same reason.
+const MATRIX_LABEL_BG =
+  "bg-white dark:bg-ink-950 border-r border-black/5 dark:border-white/10";
 const PANE_TITLE = "text-sm font-semibold text-slate-800 dark:text-slate-100";
 const PANE_META = "text-xs text-slate-500 dark:text-slate-400";
 const PANE_ROW = "text-xs text-slate-700 dark:text-slate-200";
@@ -83,12 +111,19 @@ function durationLabel(minutes: number): string {
   return `${hours}h${remainder > 0 ? ` ${remainder}m` : ""}`;
 }
 
-// The generalized group×day history (calendar + matrix) — the client half of
-// lib/day-history.ts. One component, four domains (food, workout, dose,
+// The generalized group×bucket history (calendar/strip + matrix) — the client
+// half of lib/day-history.ts. One component, four domains (food, workout, dose,
 // practice); the
 // domain key selects the DECLARED level/wording policy client-side, because
 // the group filter chips re-run the pure builders on every toggle and a
 // function can never cross the server→client prop boundary.
+//
+// TWO GRAINS (#2413), one renderer. A column is a DAY or a WEEK, chosen by the
+// caller's window, and everything below reads `buckets` rather than days. Only
+// the aggregate half genuinely forks: seven rows of day cells become a
+// single-row week strip, because at week grain the day-of-week axis says
+// nothing. The matrix, the crosshair, the panels, the fold, the trim and the
+// today marker are the same code at both grains.
 export default function DayHistory({
   domain,
   values,
@@ -96,6 +131,7 @@ export default function DayHistory({
   end,
   weeks,
   weekStart,
+  grain = "day",
   today,
   formatPrefs,
   addHref,
@@ -108,8 +144,10 @@ export default function DayHistory({
   // Vocabulary order (catalog order for food); only groups with data.
   groups: DayHistoryGroupMeta[];
   end: string; // the window's last day (never future)
-  weeks: number; // week columns, from the lens's clamped caps
+  weeks: number; // week columns (day grain) or week cells (week grain)
   weekStart: number;
+  // Bucket grain, decided by the caller's window through `dayHistoryWindow`.
+  grain?: DayHistoryGrain;
   today: string;
   formatPrefs: DisplayFormatPrefs;
   // Domain landing page for a new entry. The selected day is appended here,
@@ -121,6 +159,14 @@ export default function DayHistory({
   testId?: string;
 }) {
   const spec = DAY_HISTORY_DOMAINS[domain];
+  const week = grain === "week";
+  // Ladders and legend copy are DECLARED per grain in the registry; this picks
+  // the pair, and never writes a ladder of its own.
+  const cellLevel = historyCellLevel(spec, grain);
+  const aggregateLevel = historyAggregateLevel(spec, grain);
+  const levelLabels = week ? spec.weekLevelLabels : spec.levelLabels;
+  // "day"/"week" — the bucket word every count in the copy is measured in.
+  const bw = bucketWord(grain);
   const ramp =
     spec.ramp === "activity" ? chartActivityRamp : chartObservationRamp;
   const levelClasses = [ramp.emptyClass, ...ramp.stepClasses];
@@ -166,38 +212,95 @@ export default function DayHistory({
     [values, end, weeks, weekStart]
   );
 
-  const days = useMemo(
-    () => historyDays(dayHistoryStart(end, shownWeeks, weekStart), end),
-    [end, shownWeeks, weekStart]
+  // The column keys: days, or week starts. ONE list, read by the matrix, the
+  // aggregate half and every index the crosshair and keyboard grid resolve.
+  const buckets = useMemo(
+    () =>
+      historyBuckets(
+        dayHistoryStart(end, shownWeeks, weekStart),
+        end,
+        grain,
+        weekStart
+      ),
+    [end, shownWeeks, weekStart, grain]
   );
 
   const rows = useMemo(
     () =>
       buildDayHistoryRows({
-        days,
+        days: buckets,
         values,
         groups,
         selected,
         maxRows: expanded ? Number.MAX_SAFE_INTEGER : maxRows,
-        cellLevel: spec.cellLevel,
+        cellLevel,
         today,
+        grain,
+        weekStart,
       }),
-    [days, values, groups, selected, maxRows, expanded, spec, today]
+    [
+      buckets,
+      values,
+      groups,
+      selected,
+      maxRows,
+      expanded,
+      cellLevel,
+      today,
+      grain,
+      weekStart,
+    ]
   );
 
   const calendar = useMemo(
     () =>
-      showCalendar
+      showCalendar && !week
         ? buildDayHistoryCalendar({
             totals: dayTotals(values, selected),
             end,
             weeks: shownWeeks,
             weekStart,
-            calendarLevel: spec.calendarLevel,
+            calendarLevel: aggregateLevel,
             today,
           })
         : null,
-    [showCalendar, values, selected, end, shownWeeks, weekStart, spec, today]
+    [
+      showCalendar,
+      week,
+      values,
+      selected,
+      end,
+      shownWeeks,
+      weekStart,
+      aggregateLevel,
+      today,
+    ]
+  );
+
+  // The week-grain twin of the calendar: one row, one cell per week.
+  const strip = useMemo(
+    () =>
+      showCalendar && week
+        ? buildDayHistoryStrip({
+            totals: dayTotals(values, selected, { grain: "week", weekStart }),
+            end,
+            weeks: shownWeeks,
+            weekStart,
+            stripLevel: aggregateLevel,
+            today,
+          })
+        : null,
+    [
+      showCalendar,
+      week,
+      values,
+      selected,
+      end,
+      shownWeeks,
+      weekStart,
+      aggregateLevel,
+      today,
+    ]
   );
 
   // Resolve the actual date span visible in the matrix. The calendar shows the
@@ -236,7 +339,7 @@ export default function DayHistory({
   const scrollMatrixToDay = useCallback(
     (date: string) => {
       const el = matrixRef.current;
-      const ci = days.indexOf(date);
+      const ci = buckets.indexOf(date);
       if (!el || ci < 0) return;
       const cell = el.querySelector<HTMLElement>(
         `[data-matrix-row="0"][data-matrix-col="${ci}"]`
@@ -256,7 +359,7 @@ export default function DayHistory({
       );
       updateMatrixRange();
     },
-    [days, updateMatrixRange]
+    [buckets, updateMatrixRange]
   );
 
   const selectDay = (date: string, revealInMatrix: boolean) => {
@@ -278,7 +381,7 @@ export default function DayHistory({
       if (el) el.scrollLeft = el.scrollWidth;
     }
     requestAnimationFrame(updateMatrixRange);
-  }, [days.length, updateMatrixRange]);
+  }, [buckets.length, updateMatrixRange]);
 
   useEffect(() => {
     const el = matrixRef.current;
@@ -295,9 +398,9 @@ export default function DayHistory({
   // day. React immediately retries this component with the valid selection.
   if (
     selectedDay &&
-    (days.length === 0 ||
-      selectedDay < days[0] ||
-      selectedDay > days[days.length - 1])
+    (buckets.length === 0 ||
+      selectedDay < buckets[0] ||
+      selectedDay > buckets[buckets.length - 1])
   ) {
     setSelectedDay(null);
   }
@@ -317,11 +420,11 @@ export default function DayHistory({
   // has moved away from the default cell. This is derived-state repair, not an
   // external synchronization effect, so apply it during render.
   if (focusCell) {
-    if (rows.length === 0 || days.length === 0) {
+    if (rows.length === 0 || buckets.length === 0) {
       setFocusCell(null);
     } else {
       const row = Math.min(focusCell.row, rows.length - 1);
-      const col = Math.min(focusCell.col, days.length - 1);
+      const col = Math.min(focusCell.col, buckets.length - 1);
       if (row !== focusCell.row || col !== focusCell.col) {
         setFocusCell({ row, col });
       }
@@ -338,6 +441,10 @@ export default function DayHistory({
         el.clientWidth -
         parseFloat(cs.paddingLeft) -
         parseFloat(cs.paddingRight) -
+        // The reserved weekday gutter is inside the scroller and is NOT available to
+        // the cells (#2582) — leaving it out here would size a short window's cells
+        // to overflow the container by exactly one gutter.
+        CAL_LABEL_W -
         (shownWeeks - 1) * CAL_GAP;
       setCalCell(
         Math.max(
@@ -419,6 +526,25 @@ export default function DayHistory({
     return sum;
   }, [values, selected]);
 
+  // One bucket's NAME, wherever it is spoken: a date at day grain, "week of …"
+  // at week grain. A week cell that named only its first day would read as a
+  // Sunday with a suspiciously large total.
+  const bucketLabel = (bucket: string): string =>
+    week
+      ? `Week of ${formatLongDate(bucket, formatPrefs, { year: "always" })}`
+      : formatLongDate(bucket, formatPrefs, { year: "always" });
+
+  // How much of a bucket the window covers, spoken. Silent for a complete one:
+  // the qualifier exists to stop a half-elapsed week reading as a decline, and
+  // saying "7 of 7 days" everywhere else would be noise.
+  const partialSuffix = (bucket: string): string => {
+    if (!week) return "";
+    const coverage = historyBucketCoverage(bucket, "week", end);
+    return coverage.partial
+      ? ` · ${plural(coverage.days, "day", "days")} so far`
+      : "";
+  };
+
   const matrixCellSummary = (row: DayHistoryRow, ci: number): string => {
     const cell = row.cells[ci];
     const mins =
@@ -426,29 +552,62 @@ export default function DayHistory({
         ? ` · ${cell.detail} ${spec.detailSuffix}`
         : "";
     const notes = cell.notes.length > 0 ? ` · ${cell.notes.join(", ")}` : "";
-    return `${row.label} · ${formatLongDate(cell.date, formatPrefs, {
-      year: "always",
-    })} — ${plural(cell.value, spec.unitOne, spec.unitMany)}${mins}${notes}`;
+    return `${row.label} · ${bucketLabel(cell.date)} — ${plural(
+      cell.value,
+      spec.unitOne,
+      spec.unitMany
+    )}${mins}${notes}${partialSuffix(cell.date)}`;
   };
 
   const minsSuffix =
     spec.detailSuffix === "min" && totalDetail > 0
       ? ` · ${durationLabel(totalDetail)}`
       : "";
-  const summary = calendar
-    ? `${plural(calendar.totalValue, spec.unitOne, spec.unitMany)} over ${plural(
-        calendar.activeDays,
-        "day",
-        "days"
-      )}${minsSuffix}`
-    : `${plural(
-        rows.reduce((s, r) => s + r.total, 0),
-        spec.unitOne,
-        spec.unitMany
-      )} in this window${minsSuffix}`;
+  const aggregateTotal = calendar?.totalValue ?? strip?.totalValue ?? null;
+  const aggregateActive = calendar?.activeDays ?? strip?.activeWeeks ?? null;
+  const summary =
+    aggregateTotal != null && aggregateActive != null
+      ? `${plural(aggregateTotal, spec.unitOne, spec.unitMany)} over ${plural(
+          aggregateActive,
+          bw.one,
+          bw.many
+        )}${minsSuffix}`
+      : `${plural(
+          rows.reduce((s, r) => s + r.total, 0),
+          spec.unitOne,
+          spec.unitMany
+        )} in this window${minsSuffix}`;
 
-  const selectedMarkerIndex = selectedDay ? days.indexOf(selectedDay) : -1;
-  const hoverMarkerIndex = hoverDay ? days.indexOf(hoverDay) : -1;
+  // The matrix's reserved date header. At day grain it prints a compact date
+  // above every week boundary; at week grain every column IS a week, so a date
+  // per column would be a wall of numbers — it prints the MONTH name above the
+  // week that opens each month instead, the same rule the calendar's overlay
+  // uses for its columns.
+  const axisLabels = useMemo(() => {
+    if (!week) {
+      return buckets
+        .map((d, index) => ({ index, label: formatMonthDay(d, formatPrefs) }))
+        .filter(({ index }) => index % 7 === 0);
+    }
+    const months = monthNames("short");
+    const out: { index: number; label: string }[] = [];
+    let prev = -1;
+    buckets.forEach((b, index) => {
+      const month = Number(b.slice(5, 7)) - 1;
+      if (month !== prev) {
+        out.push({ index, label: months[month] });
+        prev = month;
+      }
+    });
+    return out;
+  }, [week, buckets, formatPrefs]);
+
+  // Every boundary is a week boundary at week grain, so the matrix's extra
+  // intra-week separator collapses to the plain gap.
+  const weekGap = week ? 0 : MTX_WEEK_GAP;
+
+  const selectedMarkerIndex = selectedDay ? buckets.indexOf(selectedDay) : -1;
+  const hoverMarkerIndex = hoverDay ? buckets.indexOf(hoverDay) : -1;
   // When hover and selection are close, the hover preview temporarily wins:
   // rendering both labels would make the dates unreadable. The selected marker
   // returns as soon as the pointer/focus leaves.
@@ -462,7 +621,7 @@ export default function DayHistory({
         ? [selectedDay!]
         : [];
   const matrixMarkerIndexes = matrixDateMarkers.map((date) =>
-    days.indexOf(date)
+    buckets.indexOf(date)
   );
   // Selection borrows the ordinary day-hover emphasis only while no live
   // pointer/focus preview exists. A real hover temporarily takes priority and
@@ -494,18 +653,29 @@ export default function DayHistory({
       .map((cell) => [cell.date, cell]) ?? []
   );
 
-  const calendarCellSummary = (cell: DayHistoryCalendarCell): string => {
-    const date = formatLongDate(cell.date, formatPrefs, { year: "always" });
+  // One summary for a cell of the aggregate half at EITHER grain: a calendar
+  // day and a strip week answer the same question about different buckets.
+  const aggregateCellSummary = (cell: {
+    date: string;
+    value: number;
+    today: boolean;
+  }): string => {
+    const name = bucketLabel(cell.date);
     const base =
       cell.value === 0
-        ? `${date} — no ${spec.unitMany}`
-        : `${date} — ${plural(cell.value, spec.unitOne, spec.unitMany)}`;
+        ? `${name} — no ${spec.unitMany}`
+        : `${name} — ${plural(cell.value, spec.unitOne, spec.unitMany)}`;
     const rowCell = calendarEmphasisCells.get(cell.date);
     const rowContext = calendarEmphasisRow
       ? ` · ${calendarEmphasisRow.label}: ${rowCell ? plural(rowCell.value, spec.unitOne, spec.unitMany) : "none"}`
       : "";
-    return `${base}${rowContext}${cell.today ? " · today" : ""}`;
+    return `${base}${rowContext}${partialSuffix(cell.date)}${
+      cell.today ? (week ? " · this week" : " · today") : ""
+    }`;
   };
+
+  const calendarCellSummary = (cell: DayHistoryCalendarCell): string =>
+    aggregateCellSummary(cell);
 
   // Hover for pointers, focus for keyboards, tap for touch — `title` never
   // fires on touch, so taps push the same summaries into the caption.
@@ -535,7 +705,7 @@ export default function DayHistory({
     },
   });
 
-  // The selected day's items under the CURRENT filter, largest first.
+  // The selected BUCKET's items under the CURRENT filter, largest first.
   const dayItems = useMemo(() => {
     if (!selectedDay) return null;
     const agg = new Map<
@@ -543,7 +713,8 @@ export default function DayHistory({
       { value: number; detail: number; notes: string[] }
     >();
     for (const v of values) {
-      if (v.date !== selectedDay || !(v.value > 0)) continue;
+      if (historyBucket(v.date, grain, weekStart) !== selectedDay) continue;
+      if (!(v.value > 0)) continue;
       if (selected && !selected.has(v.group)) continue;
       const e = agg.get(v.group) ?? { value: 0, detail: 0, notes: [] };
       e.value += v.value;
@@ -558,26 +729,44 @@ export default function DayHistory({
         ...e,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [selectedDay, values, selected, groups]);
+  }, [selectedDay, values, selected, groups, grain, weekStart]);
   const selectedDayTotal =
     dayItems?.reduce((sum, item) => sum + item.value, 0) ?? 0;
   const selectedDayUnfilteredTotal = selectedDay
     ? values.reduce(
         (sum, item) =>
-          item.date === selectedDay && item.value > 0 ? sum + item.value : sum,
+          historyBucket(item.date, grain, weekStart) === selectedDay &&
+          item.value > 0
+            ? sum + item.value
+            : sum,
         0
       )
     : 0;
+  // A week has no single day anchor to scroll to and the Training Log's anchor
+  // is a DAY, so at week grain every domain lands on the Timeline filtered to
+  // the week — clamped to the window's end, never claiming days that have not
+  // happened.
+  const bucketFeedHref = (bucket: string): AppRoute =>
+    timelineRangeHref(
+      bucket,
+      historyBucketCoverage(bucket, "week", end).through
+    );
   const selectedDayHref = (date: string) =>
-    domain === "workout" && selectedDayTotal > 0
-      ? trainingLogDayHref(date)
-      : timelineDayHref(date);
+    week
+      ? bucketFeedHref(date)
+      : domain === "workout" && selectedDayTotal > 0
+        ? trainingLogDayHref(date)
+        : timelineDayHref(date);
   const selectedDayLinkLabel =
-    domain === "workout" && selectedDayTotal > 0
+    !week && domain === "workout" && selectedDayTotal > 0
       ? "Training log →"
       : "Timeline →";
   const occurrenceHref = (date: string) =>
-    domain === "workout" ? trainingLogDayHref(date) : timelineDayHref(date);
+    week
+      ? bucketFeedHref(date)
+      : domain === "workout"
+        ? trainingLogDayHref(date)
+        : timelineDayHref(date);
 
   const selectedRow = selectedRowKey
     ? (rows.find((row) => row.key === selectedRowKey) ?? null)
@@ -588,7 +777,7 @@ export default function DayHistory({
 
   const focusMatrixCell = (row: number, col: number) => {
     const nextRow = Math.max(0, Math.min(rows.length - 1, row));
-    const nextCol = Math.max(0, Math.min(days.length - 1, col));
+    const nextCol = Math.max(0, Math.min(buckets.length - 1, col));
     setFocusCell({ row: nextRow, col: nextCol });
     matrixRef.current
       ?.querySelector<HTMLElement>(
@@ -640,12 +829,59 @@ export default function DayHistory({
       if (event.key === "ArrowUp") next = { row: ri - 1, col: ci };
       if (event.key === "ArrowDown") next = { row: ri + 1, col: ci };
       if (event.key === "Home") next = { row: ri, col: 0 };
-      if (event.key === "End") next = { row: ri, col: days.length - 1 };
+      if (event.key === "End") next = { row: ri, col: buckets.length - 1 };
       if (!next) return;
       event.preventDefault();
       focusMatrixCell(next.row, next.col);
     },
   });
+
+  // The aggregate half's heading, summary and legend — identical at both
+  // grains, so the strip does not restate them. Only the CELLS fork.
+  const aggregateHeader = (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h3
+          id={`${testId}-calendar-title`}
+          data-testid={
+            calendarHeaderRow ? "day-history-calendar-row-context" : undefined
+          }
+          aria-live="polite"
+          className={`truncate ${PANE_TITLE}`}
+        >
+          {calendarHeaderRow
+            ? `${calendarHeaderRow.label} ${bw.many}`
+            : week
+              ? spec.weekCalendarTitle
+              : spec.calendarTitle}
+        </h3>
+        <span
+          data-testid={
+            calendarHeaderRow ? "day-history-calendar-row-summary" : undefined
+          }
+          className={`mt-0.5 block ${PANE_META}`}
+        >
+          {calendarHeaderRow
+            ? `${plural(
+                calendarHeaderRow.total,
+                spec.unitOne,
+                spec.unitMany
+              )} across ${plural(calendarHeaderRow.activeDays, bw.one, bw.many)}`
+            : summary}
+        </span>
+      </div>
+      <div className={`mt-0.5 flex items-center gap-3 ${PANE_META}`}>
+        <span className="flex items-center gap-1">
+          <span className={`h-2.5 w-2.5 rounded-[3px] ${levelClasses[0]}`} />
+          No record
+          <span
+            className={`ml-1 h-2.5 w-2.5 rounded-[3px] ${levelClasses[1]}`}
+          />
+          {spec.calendarKind === "coverage" ? "Recorded" : "Active"}
+        </span>
+      </div>
+    </div>
+  );
 
   return (
     <div data-testid={testId} className="space-y-4">
@@ -739,75 +975,37 @@ export default function DayHistory({
       <div
         data-testid="day-history-calendar-band"
         className={`grid gap-4 ${
-          calendar && (selectedDay || selectedRow)
+          (calendar || strip) && (selectedDay || selectedRow)
             ? "xl:grid-cols-2 xl:items-start"
             : ""
         }`}
       >
-        {/* Calendar half: coverage. Labels are OVERLAID on the grid (no gutter
-          rows/columns), so the cells themselves get the full width — on a
-          phone the window fills the screen edge to edge. */}
+        {/* Calendar half: coverage. The month and weekday labels sit in RESERVED
+          gutters (a 16px header row, a 30px left column — #2582), never on the
+          cells: the fill level is the data, so nothing translucent may sit on
+          top of it. The cost is one cell of width; the cost of the overlay was
+          a day reading as a level lighter than it is. */}
         {calendar && (
           <section
             aria-labelledby={`${testId}-calendar-title`}
             data-testid="day-history-calendar-panel"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3
-                  id={`${testId}-calendar-title`}
-                  data-testid={
-                    calendarHeaderRow
-                      ? "day-history-calendar-row-context"
-                      : undefined
-                  }
-                  aria-live="polite"
-                  className={`truncate ${PANE_TITLE}`}
-                >
-                  {calendarHeaderRow
-                    ? `${calendarHeaderRow.label} days`
-                    : spec.calendarTitle}
-                </h3>
-                <span
-                  data-testid={
-                    calendarHeaderRow
-                      ? "day-history-calendar-row-summary"
-                      : undefined
-                  }
-                  className={`mt-0.5 block ${PANE_META}`}
-                >
-                  {calendarHeaderRow
-                    ? `${plural(
-                        calendarHeaderRow.total,
-                        spec.unitOne,
-                        spec.unitMany
-                      )} across ${plural(
-                        calendarHeaderRow.activeDays,
-                        "day",
-                        "days"
-                      )}`
-                    : summary}
-                </span>
-              </div>
-              <div className={`mt-0.5 flex items-center gap-3 ${PANE_META}`}>
-                <span className="flex items-center gap-1">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-[3px] ${levelClasses[0]}`}
-                  />
-                  No record
-                  <span
-                    className={`ml-1 h-2.5 w-2.5 rounded-[3px] ${levelClasses[1]}`}
-                  />
-                  {spec.calendarKind === "coverage" ? "Recorded" : "Active"}
-                </span>
-              </div>
-            </div>
+            {aggregateHeader}
             <div
               ref={calendarRef}
               className={SCROLLER}
               data-testid="day-history-calendar"
             >
-              <div className="relative inline-block align-top">
+              {/* The gutters are PADDING on the labels' own containing block, so
+                every absolute offset below simply adds them and the flex grid needs
+                no change. */}
+              <div
+                className="relative inline-block align-top"
+                style={{
+                  paddingTop: CAL_LABEL_H,
+                  paddingLeft: CAL_LABEL_W,
+                }}
+              >
                 <div className="flex">
                   {calendar.columns.map((col, ci) => (
                     <div key={ci} className="flex flex-col">
@@ -897,35 +1095,144 @@ export default function DayHistory({
                     </div>
                   ))}
                 </div>
+                {/* Month names ride the reserved header row, aligned to the column
+                  that opens the month. */}
                 {calendar.monthLabels.map((m) => (
                   <span
                     key={m.col}
+                    data-testid="day-history-month-label"
                     aria-hidden="true"
-                    className={`${OVERLAY_LABEL} -top-1.5 z-2`}
-                    style={{ left: m.col * calStep }}
+                    className={`${AXIS_LABEL} top-0 leading-4`}
+                    style={{ left: CAL_LABEL_W + m.col * calStep }}
                   >
                     {m.label}
                   </span>
                 ))}
-                {calendar.weekdayOrder.map((wd, row) =>
-                  row % 2 === 1 ? (
-                    <span
-                      key={row}
-                      aria-hidden="true"
-                      className={`${OVERLAY_LABEL} -left-1 z-2`}
-                      style={{ top: row * calStep + (calCell - 16) / 2 }}
-                    >
-                      {DOW[wd]}
-                    </span>
-                  ) : null
-                )}
+                {/* ALL SEVEN weekdays, right-aligned in the reserved left column.
+                  Only alternating rows were labelled before, so finding Tue meant
+                  counting rows — an artifact of the labels colliding with the cells
+                  they were sitting on, not a choice worth keeping once they no
+                  longer do (#2582). */}
+                {calendar.weekdayOrder.map((wd, row) => (
+                  <span
+                    key={row}
+                    data-testid="day-history-weekday-label"
+                    aria-hidden="true"
+                    className={`${AXIS_LABEL} left-0 text-right leading-4`}
+                    style={{
+                      top: CAL_LABEL_H + row * calStep + (calCell - 16) / 2,
+                      width: CAL_LABEL_W - 4,
+                    }}
+                  >
+                    {DOW[wd]}
+                  </span>
+                ))}
               </div>
             </div>
           </section>
         )}
 
-        {/* Day panel: what the SELECTED day held, under the current filter —
-          selection, not navigation; its domain ledger stays one link away. */}
+        {/* Week strip: the aggregate half at week grain. One row, one cell per
+          week — the 7-row day-of-week shape means nothing when every cell IS a
+          week, and `ActiveDaysStrip` is the in-app precedent. Month names ride
+          the same reserved header row the calendar uses (#2582): its 12px
+          padding left a 16px chip 4px inside the cells. */}
+        {strip && (
+          <section
+            aria-labelledby={`${testId}-calendar-title`}
+            data-testid="day-history-strip-panel"
+          >
+            {aggregateHeader}
+            <div
+              ref={calendarRef}
+              className={SCROLLER}
+              data-testid="day-history-strip"
+            >
+              <div
+                className="relative inline-block align-top"
+                style={{ paddingTop: CAL_LABEL_H }}
+              >
+                <div className="flex">
+                  {strip.cells.map((cell, ci) => {
+                    const isSelected = selectedDay === cell.date;
+                    const isPreviewed = hoverDay === cell.date;
+                    const rowMatch = calendarEmphasisCells.has(cell.date);
+                    const rowRecedes =
+                      calendarEmphasisRow !== null &&
+                      !rowMatch &&
+                      !isSelected &&
+                      !isPreviewed &&
+                      !cell.today;
+                    const echo = hoverRow !== null && hoverDay === cell.date;
+                    const text = aggregateCellSummary(cell);
+                    const cls = `relative rounded-[5px] transition-[box-shadow,opacity] duration-150 ease-out motion-reduce:transition-none ${
+                      levelClasses[cell.level]
+                    }${
+                      isSelected || isPreviewed || echo
+                        ? " ring-2 ring-slate-600 dark:ring-slate-200"
+                        : ""
+                    }${rowRecedes ? " opacity-20" : ""}`;
+                    return (
+                      <button
+                        key={cell.date}
+                        type="button"
+                        data-testid={
+                          cell.value > 0 ? "day-history-week" : undefined
+                        }
+                        data-date={cell.date}
+                        data-level={cell.level}
+                        data-active={cell.value > 0 ? "true" : "false"}
+                        data-partial={cell.partial ? "true" : undefined}
+                        data-row-match={
+                          calendarEmphasisRow
+                            ? rowMatch
+                              ? "true"
+                              : "false"
+                            : undefined
+                        }
+                        aria-label={text}
+                        aria-pressed={isSelected}
+                        aria-current={cell.today ? "date" : undefined}
+                        style={{
+                          // Each week owns the whitespace to its right, so the
+                          // pointer never drops between cells.
+                          width:
+                            ci < strip.cells.length - 1
+                              ? MTX_CELL_W + MTX_GAP
+                              : MTX_CELL_W,
+                          height: MTX_CELL_H,
+                        }}
+                        className="group grid place-items-start focus:outline-hidden"
+                        {...calendarCellProps(text, cell.date)}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{ width: MTX_CELL_W, height: MTX_CELL_H }}
+                          className={`${cls} block group-hover:ring-2 group-hover:ring-slate-600 group-focus:ring-2 group-focus:ring-slate-600 dark:group-hover:ring-slate-200 dark:group-focus:ring-slate-200`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+                {strip.monthLabels.map((m) => (
+                  <span
+                    key={m.col}
+                    data-testid="day-history-month-label"
+                    aria-hidden="true"
+                    className={`${AXIS_LABEL} top-0 leading-4`}
+                    style={{ left: m.col * (MTX_CELL_W + MTX_GAP) }}
+                  >
+                    {m.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Bucket panel: what the SELECTED day or week held, under the current
+          filter — selection, not navigation; the domain ledger stays one link
+          away. */}
         {selectedDay && dayItems && (
           <div
             data-testid="day-history-daypanel"
@@ -933,22 +1240,32 @@ export default function DayHistory({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className={PANE_TITLE}>
-                  {formatLongDate(selectedDay, formatPrefs, {
-                    year: "always",
-                  })}
-                  {selectedDay === today ? " · today" : ""}
+                <h3
+                  className={PANE_TITLE}
+                  data-testid="day-history-panel-title"
+                >
+                  {bucketLabel(selectedDay)}
+                  {selectedDay === historyBucket(today, grain, weekStart)
+                    ? week
+                      ? " · this week"
+                      : " · today"
+                    : ""}
                 </h3>
                 <span className={`mt-0.5 block ${PANE_META}`}>
                   {dayItems.length === 0
                     ? selectedDayUnfilteredTotal > 0
-                      ? "Nothing logged this day under the current filters."
-                      : "Nothing logged this day."
+                      ? `Nothing logged this ${bw.one} under the current filters.`
+                      : `Nothing logged this ${bw.one}.`
                     : `${plural(selectedDayTotal, spec.unitOne, spec.unitMany)} under the current filters`}
+                  {partialSuffix(selectedDay)}
                 </span>
               </div>
               <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                {addHref ? (
+                {/* "Log for this day" seeds a DATE into the domain's writer.
+                    A week is not a date, and seeding its first day would put
+                    the entry on a day the reader never picked — so at week
+                    grain the offer is withheld rather than guessed (#2413). */}
+                {addHref && !week ? (
                   <Link
                     href={dayHistoryAddHref(addHref, domain, selectedDay)}
                     data-testid="day-history-add-link"
@@ -959,7 +1276,13 @@ export default function DayHistory({
                 ) : null}
                 {spec.dayLink ? (
                   <Link
-                    href={spec.dayLink.href(selectedDay)}
+                    href={spec.dayLink.href(
+                      selectedDay,
+                      week
+                        ? historyBucketCoverage(selectedDay, "week", end)
+                            .through
+                        : selectedDay
+                    )}
                     data-testid="day-history-day-link"
                     className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
                   >
@@ -974,7 +1297,7 @@ export default function DayHistory({
                 </Link>
                 <button
                   type="button"
-                  aria-label="Close day details"
+                  aria-label={`Close ${bw.one} details`}
                   title="Close"
                   onClick={() => setSelectedDay(null)}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
@@ -1036,7 +1359,7 @@ export default function DayHistory({
                 <h3 className={PANE_TITLE}>{selectedRow.label}</h3>
                 <span className={`mt-0.5 block ${PANE_META}`}>
                   {plural(selectedRow.total, spec.unitOne, spec.unitMany)}{" "}
-                  across {plural(selectedRow.activeDays, "day", "days")}
+                  across {plural(selectedRow.activeDays, bw.one, bw.many)}
                 </span>
               </div>
               <button
@@ -1085,9 +1408,7 @@ export default function DayHistory({
 
       <p className="sr-only" aria-live="polite">
         {selectedDay
-          ? `${formatLongDate(selectedDay, formatPrefs, {
-              year: "always",
-            })} selected. ${plural(
+          ? `${bucketLabel(selectedDay)} selected. ${plural(
               selectedDayTotal,
               spec.unitOne,
               spec.unitMany
@@ -1097,7 +1418,7 @@ export default function DayHistory({
                 selectedRow.total,
                 spec.unitOne,
                 spec.unitMany
-              )} across ${plural(selectedRow.activeDays, "day", "days")}.`
+              )} across ${plural(selectedRow.activeDays, bw.one, bw.many)}.`
             : ""}
       </p>
 
@@ -1137,12 +1458,14 @@ export default function DayHistory({
               <span
                 data-testid="day-history-scale"
                 className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400"
-                aria-label={`Cell scale: ${spec.levelLabels.join(", ")} ${spec.unitMany}`}
+                aria-label={`Cell scale: ${levelLabels.join(", ")} ${spec.unitMany}${
+                  week ? " a week" : ""
+                }`}
               >
                 {levelClasses.map((c, i) => (
                   <span key={i} className="flex items-center gap-0.5">
                     <span className={`h-[11px] w-[11px] rounded-[2px] ${c}`} />
-                    <span>{spec.levelLabels[i]}</span>
+                    <span>{levelLabels[i]}</span>
                   </span>
                 ))}
                 <span>{spec.unitMany}</span>
@@ -1165,30 +1488,29 @@ export default function DayHistory({
                 unambiguous. */}
               <div className="relative h-6" aria-hidden="true">
                 <span
-                  className={`sticky left-0 z-[3] block h-full w-24 backdrop-blur-[2px] sm:w-28 ${MATRIX_LABEL_FADE}`}
+                  className={`sticky left-0 z-[3] block h-full w-24 sm:w-28 ${MATRIX_LABEL_BG}`}
                 />
-                {days.map((d, i) =>
-                  i % 7 === 0 &&
-                  !matrixMarkerIndexes.some(
+                {axisLabels.map(({ index: i, label }) =>
+                  matrixMarkerIndexes.some(
                     (markerIndex) => Math.abs(markerIndex - i) <= 4
-                  ) ? (
+                  ) ? null : (
                     <span
-                      key={d}
+                      key={buckets[i]}
                       data-testid="day-history-week-label"
-                      data-date={d}
+                      data-date={buckets[i]}
                       className="absolute top-0 z-[1] whitespace-nowrap text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400"
                       style={{
                         left: `calc(var(--day-history-label-w) + ${
-                          i * MTX_STEP + (i / 7) * MTX_WEEK_GAP
+                          i * MTX_STEP + Math.floor(i / 7) * weekGap
                         }px)`,
                       }}
                     >
-                      {formatMonthDay(d, formatPrefs)}
+                      {label}
                     </span>
-                  ) : null
+                  )
                 )}
                 {matrixDateMarkers.map((date) => {
-                  const i = days.indexOf(date);
+                  const i = buckets.indexOf(date);
                   return (
                     <span
                       key={date}
@@ -1197,21 +1519,23 @@ export default function DayHistory({
                       className="absolute top-0 z-2 whitespace-nowrap rounded-sm bg-white px-0.5 text-[11px] font-semibold tabular-nums text-slate-800 shadow-sm dark:bg-ink-950 dark:text-slate-100"
                       style={{
                         left: `calc(var(--day-history-label-w) + ${
-                          i * MTX_STEP + Math.floor(i / 7) * MTX_WEEK_GAP
+                          i * MTX_STEP + Math.floor(i / 7) * weekGap
                         }px)`,
                         transform: `translateX(calc(-50% + ${MTX_CELL_W / 2}px))`,
                       }}
                     >
-                      {formatMonthDay(date, formatPrefs)}
+                      {week
+                        ? `Wk ${formatMonthDay(date, formatPrefs)}`
+                        : formatMonthDay(date, formatPrefs)}
                     </span>
                   );
                 })}
               </div>
               <div
                 role="grid"
-                aria-label={`${spec.matrixTitle}, one column per day`}
+                aria-label={`${spec.matrixTitle}, one column per ${bw.one}`}
                 aria-rowcount={rows.length}
-                aria-colcount={days.length}
+                aria-colcount={buckets.length}
                 className="flex flex-col"
               >
                 {rows.map((row, ri) => {
@@ -1237,7 +1561,7 @@ export default function DayHistory({
                     row.total,
                     spec.unitOne,
                     spec.unitMany
-                  )} across ${plural(row.activeDays, "day", "days")}`;
+                  )} across ${plural(row.activeDays, bw.one, bw.many)}`;
                   const rowHoverProps = {
                     onMouseEnter: () => {
                       setDetail(rowSummary);
@@ -1271,7 +1595,7 @@ export default function DayHistory({
                           title={row.foldedKeys.map(labelFor).join(", ")}
                           data-matrix-label
                           aria-label={`${row.label}; expand ${row.foldedKeys.map(labelFor).join(", ")}`}
-                          className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end gap-1 self-stretch px-3 text-xs font-medium text-brand-700 backdrop-blur-[2px] hover:font-semibold sm:w-28 dark:text-brand-400 ${MATRIX_LABEL_FADE}`}
+                          className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end gap-1 self-stretch px-3 text-xs font-medium text-brand-700 hover:font-semibold sm:w-28 dark:text-brand-400 ${MATRIX_LABEL_BG}`}
                           {...rowHoverProps}
                           onFocus={() => {
                             setDetail(rowSummary);
@@ -1290,7 +1614,7 @@ export default function DayHistory({
                           role="rowheader"
                           data-matrix-label
                           aria-label={rowSummary}
-                          className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end self-stretch px-3 text-xs text-slate-600 backdrop-blur-[2px] transition-colors hover:text-slate-900 sm:w-28 dark:text-slate-300 dark:hover:text-slate-100 ${MATRIX_LABEL_FADE}`}
+                          className={`sticky left-0 z-2 flex w-24 shrink-0 cursor-pointer items-center justify-end self-stretch px-3 text-xs text-slate-600 transition-colors hover:text-slate-900 sm:w-28 dark:text-slate-300 dark:hover:text-slate-100 ${MATRIX_LABEL_BG}`}
                           title={row.label}
                           {...rowHoverProps}
                         >
@@ -1361,7 +1685,7 @@ export default function DayHistory({
                                   ? focusCell.row === ri && focusCell.col === ci
                                     ? 0
                                     : -1
-                                  : ri === 0 && ci === days.length - 1
+                                  : ri === 0 && ci === buckets.length - 1
                                     ? 0
                                     : -1
                               }
@@ -1374,7 +1698,7 @@ export default function DayHistory({
                                   MTX_STEP +
                                   ((ci + 1) % 7 === 0 &&
                                   ci < row.cells.length - 1
-                                    ? MTX_WEEK_GAP
+                                    ? weekGap
                                     : 0),
                                 height: MTX_CELL_H + MTX_ROW_GAP,
                               }}

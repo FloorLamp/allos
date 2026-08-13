@@ -1,13 +1,15 @@
 import { db } from "../db";
 import { cache } from "../request-cache";
+import { clampPage, pageCount, pageOffset } from "../pagination";
 import { tickCached } from "../tick-cache";
 import {
-  PROVIDER_PREFERENCE,
-  pickOneProviderPerDay,
+  SOURCE_PREFERENCE,
+  pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
+  pickRowsOneSourcePerWindow,
   type SourceSelection,
-} from "../metric-providers";
+} from "../metric-sources";
 import {
   DOCUMENTS_SOURCE_CLASS,
   resolveMetricSources,
@@ -52,7 +54,7 @@ function resolutionFor(profileId: number, metric: string): SourceResolution {
   return resolveMetricSources(
     metric,
     getMetricSourcePriority(profileId),
-    PROVIDER_PREFERENCE
+    SOURCE_PREFERENCE
   );
 }
 
@@ -174,16 +176,33 @@ export function getBodyMetricsWithSource(
            ON w.source = '${DOCUMENT_SOURCE_PREFIX}' || d.id
           AND d.profile_id = w.profile_id
         WHERE w.profile_id = ?
-        ORDER BY w.date DESC
+        ${BODY_METRICS_ORDER}
         LIMIT ?`
     )
-    .all(profileId, limit) as (BodyMetric & {
-    document_id: number | null;
-    doc_source: string | null;
-    doc_type: string | null;
-    doc_filename: string | null;
-  })[];
-  return rows.map(({ doc_source, doc_type, doc_filename, ...w }) => ({
+    .all(profileId, limit) as BodyMetricSourceRow[];
+  return rows.map(withSourceLabel);
+}
+
+// Newest first, with `id` breaking a same-day tie. The tiebreak is what makes the
+// order TOTAL, and a paged read needs that: with `date DESC` alone, two rows on one
+// day may sort either way between two queries, so a row could show on both pages of
+// a page boundary or on neither (#2530).
+const BODY_METRICS_ORDER = "ORDER BY w.date DESC, w.id DESC";
+
+type BodyMetricSourceRow = BodyMetric & {
+  document_id: number | null;
+  doc_source: string | null;
+  doc_type: string | null;
+  doc_filename: string | null;
+};
+
+function withSourceLabel({
+  doc_source,
+  doc_type,
+  doc_filename,
+  ...w
+}: BodyMetricSourceRow): BodyMetricWithSource {
+  return {
     ...w,
     source_label:
       w.document_id != null
@@ -197,7 +216,71 @@ export function getBodyMetricsWithSource(
           : w.source.startsWith(DOCUMENT_SOURCE_PREFIX)
             ? "Document" // source document row no longer exists
             : (getIntegration(w.source as IntegrationId)?.name ?? w.source),
-  }));
+  };
+}
+
+export interface BodyMetricsPage {
+  rows: BodyMetricWithSource[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ONE page of the body-metrics history, newest first, plus the total the pager needs
+// to say how much history there is (the audit viewer's `queryAuditEvents` shape).
+//
+// The history table on Trends is deliberately ALL-TIME — it is the record editor, and
+// a stray row you want to delete is usually outside whatever window the charts above
+// are showing — so the bound cannot come from the hub's date range; it has to be a
+// page (#2530). A daily weigh-in over two years is ~700 rows, each carrying notes, a
+// possible edit-lock badge and a client delete button, and before this the whole
+// ledger was read and serialized into every render of the Body census.
+export function getBodyMetricsPage(
+  profileId: number,
+  page: number,
+  pageSize: number
+): BodyMetricsPage {
+  const size = Math.max(1, Math.trunc(pageSize));
+  const total = (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?")
+      .get(profileId) as { n: number }
+  ).n;
+  const clamped = Math.min(clampPage(page), pageCount(total, size));
+  const rows = db
+    .prepare(
+      `SELECT w.*, d.id AS document_id, d.source AS doc_source,
+              d.doc_type AS doc_type, d.filename AS doc_filename
+         FROM body_metrics w
+         LEFT JOIN medical_documents d
+           ON w.source = '${DOCUMENT_SOURCE_PREFIX}' || d.id
+          AND d.profile_id = w.profile_id
+        WHERE w.profile_id = ?
+        ${BODY_METRICS_ORDER}
+        LIMIT ? OFFSET ?`
+    )
+    .all(profileId, size, pageOffset(clamped, size)) as BodyMetricSourceRow[];
+  return {
+    rows: rows.map(withSourceLabel),
+    total,
+    page: clamped,
+    pageSize: size,
+  };
+}
+
+// The body-metrics rows recorded FOR one day. A different question from a page of
+// history: the Body census asks it to decide whether a day's composition number is
+// one physical reading (and may therefore print that reading's clock) or a blend of
+// several, and that answer must not depend on which page of the table is open.
+export function getBodyMetricsOnDate(
+  profileId: number,
+  date: string
+): BodyMetric[] {
+  return db
+    .prepare(
+      "SELECT * FROM body_metrics WHERE profile_id = ? AND date = ? ORDER BY id"
+    )
+    .all(profileId, date) as BodyMetric[];
 }
 
 // ---- Integration metrics (steps, distance, calories, HR) ----
@@ -208,7 +291,7 @@ export function getBodyMetricsWithSource(
 // Source handling (issue #14): an ADDITIVE metric is never summed across sources
 // — every SUM metric picks one source per day (the profile's primary source
 // first, else the default preference, else single-source passthrough), so two
-// providers reporting the same day can't double-count. A POINT (AVG) metric
+// sources reporting the same day can't double-count. A POINT (AVG) metric
 // keeps averaging every source's readings per day (they measure the same
 // quantity and a same-date manual + imported reading must agree, not sum);
 // an explicit primary source narrows it to that source's readings.
@@ -249,7 +332,7 @@ export function getMetricDailyTotals(
       .all(profileId, metric, limitDays) as { date: string; value: number }[];
     return rows.reverse();
   }
-  // Additive metric: one source per day. pickOneProviderPerDay must run in JS,
+  // Additive metric: one source per day. pickOneSourcePerDay must run in JS,
   // so we can't just LIMIT the aggregate; instead find the cutoff date of the
   // limitDays most-recent dates-with-data first, then aggregate only from there.
   // This is exact (the output is those same dates), while bounding both the SUM
@@ -275,7 +358,7 @@ export function getMetricDailyTotals(
     value: number;
   }[];
   return (
-    pickOneProviderPerDay(
+    pickOneSourcePerDay(
       pickRowsOneOriginPerSourceDay(
         rows,
         (r) => r.date,
@@ -283,7 +366,7 @@ export function getMetricDailyTotals(
         (r) => r.origin,
         (r) => r.value
       ),
-      resolveMetricSources(metric, priority, PROVIDER_PREFERENCE)
+      resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
     )
       .sort((a, b) => (a.date < b.date ? 1 : -1))
       // ALL_ROWS is -1 ("no limit" — that is what SQLite's `LIMIT -1` means, and the
@@ -347,6 +430,15 @@ export function getLatestMetricValue(
 // must match that elected stream. This preserves issue #14's one-source-per-night
 // contract while avoiding an independent stage-only election that could choose a
 // different wearable from the session whose duration is shown.
+//
+// `limitDays` is a READ bound, not a post-slice (#2520): it is the SQL LIMIT on the
+// stage-day scan, and the cutoff it yields bounds every other statement here. So a
+// caller asking for 14 nights reads 14 nights' rows — Health Connect stores one row
+// per stage per night, so the difference between the caller's window and this
+// function's default is thousands of rows on a daily wearable user. The returned
+// series can be SHORTER than `limitDays`: a stage day whose elected main session is
+// missing contributes no row, and that is the honest answer for "the last N days
+// that have stage data" rather than a silent look-back past the window.
 export function getSleepStageDailyTotals(
   profileId: number,
   limitDays = 180
@@ -379,10 +471,15 @@ export function getSleepStageDailyTotals(
     value: number;
   }[];
 
-  // Elect the sleep_min source/origin PER DAY exactly as the additive duration
-  // chart does. The SRI session read has a different, stream-wide fallback (the
-  // newest source), so routing this chart through it could make the duration point
-  // Health Connect while its stages came from Oura.
+  // Elect the sleep_min source/origin with the SAME resolution the additive
+  // duration chart uses. The SRI session read has a different, stream-wide fallback
+  // (the newest source), so routing this chart through it could make the duration
+  // point Health Connect while its stages came from Oura.
+  //
+  // Per overlapping WINDOW, not per day (#2552): a manual nap on the same wake-day
+  // used to win the whole day, leaving `mainSleepPeriod` to elect that nap as the
+  // night — and no stage row matches a manual session's source, so the night's
+  // entire stage stack disappeared from the chart.
   const rawSessions = db
     .prepare(
       `SELECT date, start_time AS start, end_time AS end, source, origin, value
@@ -391,7 +488,7 @@ export function getSleepStageDailyTotals(
           AND julianday(end_time) > julianday(start_time)`
     )
     .all(profileId, cutoff) as SelectedSleepSessionRow[];
-  const sessions = pickRowsOneSourcePerDay(
+  const sessions = pickRowsOneSourcePerWindow(
     pickRowsOneOriginPerSourceDay(
       rawSessions,
       (row) => row.date,
@@ -400,7 +497,8 @@ export function getSleepStageDailyTotals(
       (row) => row.value
     ),
     resolutionFor(profileId, "sleep_min"),
-    (row) => row.date,
+    (row) => row.start,
+    (row) => row.end,
     (row) => row.source,
     (row) => row.value
   );
@@ -409,6 +507,17 @@ export function getSleepStageDailyTotals(
     const day = sessionsByDay.get(session.date);
     if (day) day.push(session);
     else sessionsByDay.set(session.date, [session]);
+  }
+  // Bucket the stage rows by date ONCE. The attribution below is per day, and
+  // rescanning the whole array inside that loop made the cost days × rows — a few
+  // thousand stage rows over a half-year window is ~10^6 iterations to answer about
+  // a handful of nights (#2520). The attribution itself is unchanged; only its
+  // access pattern was quadratic.
+  const rowsByDay = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const day = rowsByDay.get(row.date);
+    if (day) day.push(row);
+    else rowsByDay.set(row.date, [row]);
   }
 
   const out: {
@@ -427,8 +536,7 @@ export function getSleepStageDailyTotals(
     }));
     const totals = { deep: 0, rem: 0, light: 0, awake: 0 };
     let found = false;
-    for (const row of rows) {
-      if (row.date !== date) continue;
+    for (const row of rowsByDay.get(date) ?? []) {
       if (row.source !== period.main.source) continue;
       if (row.origin !== period.main.origin) continue;
       // Fitbit Takeout aggregate-stage rows append `#deep` / `#rem` / ... to
@@ -472,8 +580,34 @@ export function getSleepStageDailyTotals(
 // sources reporting the same nights would interleave duplicate windows and wreck
 // the timing statistics. When several sources have sessions, the profile's
 // 'sleep_min' primary source wins; unset (or a chosen source with no sessions)
-// falls back to the source of the most recent session (the most-recently-synced
-// stream). A single-source profile is passthrough, as before.
+// falls back to the most-recently-synced stream. A single-source profile is
+// passthrough, as before.
+//
+// THE BUCKET IS STILL THE STREAM, and #2552 did not change that. Its per-window
+// election (pickRowsOneSourcePerWindow) is the right shape for date-keyed DISPLAY
+// history, which is why getDailySleepSessionsSince exists separately — but this read
+// feeds a statistic over a whole window, and a timeline stitched from two devices'
+// sleep detection is a different quantity from either device's. The stream stays.
+//
+// WHAT WAS WRONG WAS THE PROBE (#2603). "Most-recently-synced" used to be read off
+// the single newest session of any kind, so an afternoon nap synced by a phone was
+// the newest session most afternoons and elected the phone — taking a ring's entire
+// session history out of the read, and leaving the hero, the SRI, the consistency
+// strip, the typical wake time and the digest's sleep line all describing 45 minutes.
+// A stream is a stream because it reports NIGHTS, so the probe asks for the newest
+// OVERNIGHT and only falls back to the newest session at all for a profile that
+// records no overnight anywhere. Recency is still the rule — a new wearable takes the
+// stream over on its first night, which "whoever has the most sessions" would not
+// have allowed.
+//
+// WHAT WOULD SHOW IT WORKING (#2385): on a two-source profile whose second source
+// contributes only naps, the session history keeps its night count and the hero's
+// duration stays in overnight range. WHAT WOULD SHOW IT WRONG: a profile that has
+// genuinely switched wearables sitting on the OLD device's nights while the new one
+// syncs — recency lost, which is the failure the previous probe existed to prevent.
+// THE DECEPTIVE SUCCESS: "sessions returned per read went up", which also goes up
+// when the election starts interleaving two devices — the very thing #14 forbids. The
+// honest measure is the elected source's OWN night count, not the row count.
 //
 // A STRICT choice (#1642) applies its filter unconditionally — even to a
 // single-source profile, whose lone stream is simply not the elected one — so an
@@ -489,6 +623,18 @@ export interface SleepSessionRow {
 interface SelectedSleepSessionRow extends SleepSessionRow {
   origin: string | null;
 }
+
+// A sleep sample is an OVERNIGHT rather than a nap at/above this duration. The
+// provenance ledger carries no session label, so the sample is bounded by duration
+// instead: a three-hour window is short for a night and long for a nap.
+//
+// TWO askers, one number, because it is one question. The arrival statistic (#2214)
+// asks it to keep a nap's sync latency out of "when does last night normally land?";
+// the stream election above asks it to keep a nap from electing a whole source
+// (#2603). Migration 166 froze its own COPY of this floor under the constant's former
+// name — a shipped migration must keep converting as it did on the day it ran, so
+// retuning this number deliberately does not reach back into it.
+const SLEEP_OVERNIGHT_MIN_MINUTES = 180;
 
 function readSleepSessions(
   profileId: number,
@@ -521,14 +667,20 @@ function readSleepSessions(
         : null;
     if (picked != null) applyFilter(picked);
     else {
+      // The newest OVERNIGHT, falling back to the newest session of any length —
+      // both in ONE statement, so this stays the three-statement read the memo above
+      // getSleepSessions describes. `value >= ?` sorts overnights ahead of naps and
+      // `end_time DESC` picks the newest inside whichever group survives, so a
+      // nap-only profile still elects somebody instead of nobody.
       const newest = db
         .prepare(
           `SELECT source FROM metric_samples
             WHERE profile_id = ? AND metric = 'sleep_min'
               ${validWindow}
-            ORDER BY end_time DESC LIMIT 1`
+            ORDER BY (value >= ?) DESC, end_time DESC LIMIT 1`
         )
-        .get(profileId) as { source: string | null } | undefined;
+        .get(profileId, SLEEP_OVERNIGHT_MIN_MINUTES) as
+        { source: string | null } | undefined;
       applyFilter(sourceKey(newest?.source));
     }
   }
@@ -641,11 +793,19 @@ export function getSleepSessionsSince(
   return readSleepSessions(profileId, { since });
 }
 
-// Valid sleep windows on or after a calendar cutoff, electing one source per
-// wake-day with the SAME resolution used by the additive sleep_min chart. This
-// is deliberately separate from getSleepSessionsSince: SRI needs one continuous
-// provider stream across its whole window, while date-keyed display history must
-// not lose older days when a profile changes wearables.
+// Valid sleep windows on or after a calendar cutoff, de-duplicated across sources
+// with the SAME resolution used by the additive sleep_min chart. This is
+// deliberately separate from getSleepSessionsSince: SRI needs one continuous source
+// stream across its whole window, while date-keyed display history must not lose
+// older days when a profile changes wearables.
+//
+// The election is PER OVERLAPPING WINDOW, not per day (#2552). One wake-day can
+// legitimately carry sessions from two sources that are NOT the same session — a
+// wearable's overnight plus a hand-logged afternoon nap — and the day-grained
+// election dropped every row from the losing source, which for a manual nap (first
+// in SOURCE_PREFERENCE) meant the whole overnight vanished and the nap was then
+// classified as that night's main sleep. A duplicate account of one night still
+// collapses to a single source, because a duplicate overlaps.
 export function getDailySleepSessionsSince(
   profileId: number,
   since: string
@@ -659,7 +819,7 @@ export function getDailySleepSessionsSince(
         ORDER BY end_time DESC`
     )
     .all(profileId, since) as SelectedSleepSessionRow[];
-  return pickRowsOneSourcePerDay(
+  return pickRowsOneSourcePerWindow(
     pickRowsOneOriginPerSourceDay(
       rows,
       (row) => row.date,
@@ -668,7 +828,8 @@ export function getDailySleepSessionsSince(
       (row) => row.value
     ),
     resolutionFor(profileId, "sleep_min"),
-    (row) => row.date,
+    (row) => row.start,
+    (row) => row.end,
     (row) => row.source,
     (row) => row.value
   ).map(({ date, start, end, value, source }) => ({
@@ -694,13 +855,6 @@ export function getSleepSessionsInRange(
     through: to,
   });
 }
-
-// A night is an overnight (rather than a nap) for arrival purposes at this
-// duration. The provenance ledger carries no session label, so the sample is
-// bounded by duration instead: a three-hour window is short for a night and long
-// for a nap, and an afternoon nap's sync latency is not the quantity being asked
-// about ("when does last night normally land?").
-const ARRIVAL_LAG_MIN_OVERNIGHT_MIN = 180;
 
 // WHEN each recent night's row actually landed — the GATHER behind the arrival
 // statistic (#2214). The decision itself is `arrivalStatistics`
@@ -768,7 +922,7 @@ function getSleepArrivalsUncached(
         ORDER BY ms.date DESC
         LIMIT ?`
     )
-    .all(profileId, ARRIVAL_LAG_MIN_OVERNIGHT_MIN, limitNights) as {
+    .all(profileId, SLEEP_OVERNIGHT_MIN_MINUTES, limitNights) as {
     endTime: string | null;
     arrivedAt: string | null;
   }[];
@@ -794,6 +948,8 @@ function getSleepArrivalsUncached(
 // update. Windowed/imported sessions remain read-only.
 interface ManualSleepEditabilityRow {
   date: string;
+  /** The manual sample's own row id — what a per-reading delete has to name (#2556). */
+  id: number | null;
   value: number | null;
   editable: number;
 }
@@ -810,6 +966,13 @@ function getManualSleepEditability(
                             AND start_time = date || 'T00:00:00'
                             AND end_time = date || 'T00:00:00'
                        THEN value END) AS value,
+              -- Safe as a MAX: the editable flag below only holds when the day
+              -- has EXACTLY ONE sample and that one is the manual duration-only
+              -- row, so there is never a second id for this to pick between.
+              MAX(CASE WHEN source = 'manual' AND origin IS NULL
+                            AND start_time = date || 'T00:00:00'
+                            AND end_time = date || 'T00:00:00'
+                       THEN id END) AS id,
               CASE WHEN COUNT(*) = 1
                          AND SUM(CASE WHEN source = 'manual' AND origin IS NULL
                                            AND start_time = date || 'T00:00:00'
@@ -828,10 +991,10 @@ export function getEditableManualSleepDurations(
   profileId: number,
   since: string,
   through = "9999-12-31"
-): { date: string; value: number }[] {
+): { id: number | null; date: string; value: number }[] {
   return getManualSleepEditability(profileId, since, through).flatMap((row) =>
     row.editable === 1 && row.value != null
-      ? [{ date: row.date, value: row.value }]
+      ? [{ id: row.id, date: row.date, value: row.value }]
       : []
   );
 }
@@ -1276,7 +1439,7 @@ export function getLatestBodyMetricDailyPoints(
 // ---- Per-source comparison series (issue #14) ----
 // The raw material for the "Compare sources" overlay: the SAME daily rollup the
 // single-series charts use, but grouped per source instead of collapsed to one.
-// Sources are ordered by the default provider preference (then alphabetically) so
+// Sources are ordered by the default source preference (then alphabetically) so
 // series colors/legends are stable.
 
 export interface MetricSourceSeries {
@@ -1286,8 +1449,8 @@ export interface MetricSourceSeries {
 
 function orderSources(sources: string[]): string[] {
   return sources.sort((a, b) => {
-    const ia = PROVIDER_PREFERENCE.indexOf(a);
-    const ib = PROVIDER_PREFERENCE.indexOf(b);
+    const ia = SOURCE_PREFERENCE.indexOf(a);
+    const ib = SOURCE_PREFERENCE.indexOf(b);
     if (ia !== -1 || ib !== -1) {
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
     }

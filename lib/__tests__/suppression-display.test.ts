@@ -18,6 +18,10 @@ import {
 import { RULE_FINDING_REGISTRY } from "@/lib/rule-finding-prefixes";
 import { MED_BRIDGE_PREFIX } from "@/lib/medication-record-match";
 import { DORMANT_PRN_PREFIX } from "@/lib/dormant-prn";
+import {
+  biomarkerDismissalKey,
+  biomarkerFlagDismissalKey,
+} from "@/lib/dismissal-keys";
 
 describe("prefix-coverage guard (#1151)", () => {
   it("every RULE_FINDING_REGISTRY prefix has an EXPLICIT display mapping", () => {
@@ -111,12 +115,55 @@ describe("label templates parse the subject out of the key", () => {
     );
   });
 
-  it("biomarker keys name the analyte", () => {
+  it("biomarker keys name the analyte, recovering the curated spelling (#2578)", () => {
+    // The key stores the identity LOWERCASED, so title-casing it printed
+    // "Ldl Cholesterol". The curated dataset knows the real spelling.
     expect(
       resolveSuppressedKeyDisplay("biomarker-flag:ldl cholesterol")!.label
-    ).toBe("Flagged result — Ldl Cholesterol");
+    ).toBe("Flagged result — LDL Cholesterol");
     expect(resolveSuppressedKeyDisplay("biomarker:glucose")!.label).toBe(
       "Retest — Glucose"
+    );
+  });
+
+  it("a family: tail resolves to the family anchor, not a title-cased key (#2578)", () => {
+    // #564 keys the flag dismissal on the #482 FAMILY identity, so the tail is
+    // `family:<key>` — an identity, never a name. The live page read
+    // "Flagged result — Family:vitamin-d-25-hydroxy".
+    expect(
+      resolveSuppressedKeyDisplay(biomarkerFlagDismissalKey("25-OH Vitamin D"))!
+        .label
+    ).toBe("Flagged result — Vitamin D, 25-Hydroxy");
+    // The retest key routes through the WIDER retest identity (#1193) and lands on
+    // the same family string, so it leaked the same way.
+    expect(
+      resolveSuppressedKeyDisplay(
+        biomarkerDismissalKey("Vitamin D3, 25-Hydroxy")
+      )!.label
+    ).toBe("Retest — Vitamin D, 25-Hydroxy");
+    // The A1c ↔ eAG family: an eAG-keyed dismissal names the family's anchor.
+    expect(
+      resolveSuppressedKeyDisplay(biomarkerFlagDismissalKey("eAG"))!.label
+    ).toBe("Flagged result — Hemoglobin A1c");
+  });
+
+  it("an unregistered analyte still title-cases; the trajectory key keeps its own casing", () => {
+    // An ai-coined spelling lives in the profile's vocabulary, not the shipped
+    // dataset, and this resolver is pure — so it falls back as it always did.
+    expect(
+      resolveSuppressedKeyDisplay("biomarker-flag:body mass index (bmi)")!.label
+    ).toBe("Flagged result — Body Mass Index (bmi)");
+    expect(
+      resolveSuppressedKeyDisplay("trajectory:LDL Cholesterol:rising")!.label
+    ).toBe("Trajectory — LDL Cholesterol");
+  });
+
+  it("a weekly-target key is not claimed as a TRAINING target (#2578)", () => {
+    // `training:<id>` is the shared id-keyed namespace for every weekly floor target
+    // — training, nutrition and mobility scopes alike — and the key carries no scope,
+    // so the label may not assert one.
+    expect(resolveSuppressedKeyDisplay("training:42")!.label).toBe(
+      "Weekly target"
     );
   });
 });

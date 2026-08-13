@@ -571,7 +571,7 @@ const SLEEP_SESSION_SIGNATURE =
 //     cannot also match the recent-changes digest's own DISTINCT-provider read, which
 //     asks a different question (`AND ok = 1 AND at <= ?`) of the same table.
 const INTEGRATION_ATTENTION_SIGNATURE =
-  /SELECT DISTINCT provider FROM integration_sync_events\s+WHERE profile_id = \?\s*$/;
+  /SELECT DISTINCT provider AS source_id FROM integration_sync_events\s+WHERE profile_id = \?\s*$/;
 
 function seedSendNight(
   profileId: number,

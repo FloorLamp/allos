@@ -665,20 +665,30 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown login." };
 
-  const acct = db
-    .prepare("SELECT id, username, role FROM logins WHERE id = ?")
-    .get(id) as { id: number; username: string; role: Role } | undefined;
-  if (!acct) return { ok: false, error: "Login not found." };
+  // The last-admin guard is ACCESS-CONTROL state, so it re-reads and decides INSIDE
+  // the IMMEDIATE write lock (issue #2108) — the same #467 discipline setGrants above
+  // applies to grants. Read-then-write outside the transaction is a guard only as long
+  // as nothing else touches `logins` in between: a second process on the same SQLite
+  // file (a second container, a script run against the live DB) deleting the OTHER
+  // admin between the count and the DELETE would take the instance to zero admins,
+  // which is exactly the one invariant this action exists to hold. The row read moves
+  // in with it, so a role demotion racing the delete cannot slip past either.
+  type DeleteOutcome =
+    | { kind: "deleted"; username: string; isSelf: boolean }
+    | { kind: "not-found" }
+    | { kind: "refused"; reason: string };
+  const outcome = writeTx((): DeleteOutcome => {
+    const acct = db
+      .prepare("SELECT id, username, role FROM logins WHERE id = ?")
+      .get(id) as { id: number; username: string; role: Role } | undefined;
+    if (!acct) return { kind: "not-found" };
 
-  const decision = canDeleteLogin({
-    role: acct.role,
-    adminCount: adminLoginCount(),
-  });
-  if (!decision.ok) return { ok: false, error: decision.reason };
+    const decision = canDeleteLogin({
+      role: acct.role,
+      adminCount: adminLoginCount(),
+    });
+    if (!decision.ok) return { kind: "refused", reason: decision.reason };
 
-  const isSelf = session.login.id === acct.id;
-
-  writeTx(() => {
     db.prepare("DELETE FROM sessions WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_profiles WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_settings WHERE login_id = ?").run(id);
@@ -691,16 +701,26 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
     // teardown holds even if foreign_keys is off, like the siblings above.
     deleteApiTokensForLogin(id);
     db.prepare("DELETE FROM logins WHERE id = ?").run(id);
+    return {
+      kind: "deleted",
+      username: acct.username,
+      isSelf: session.login.id === acct.id,
+    };
   });
+
+  if (outcome.kind === "not-found")
+    return { ok: false, error: "Login not found." };
+  if (outcome.kind === "refused") return { ok: false, error: outcome.reason };
+
   recordAudit({
     loginId: session.login.id,
     profileId: session.profile.id,
     action: AUDIT_ACTIONS.loginDelete,
     target: String(id),
-    detail: acct.username,
+    detail: outcome.username,
   });
 
-  if (isSelf) {
+  if (outcome.isSelf) {
     // We just deleted our own login. Clear the cookie and bounce to /login;
     // redirect() throws (NEXT_REDIRECT), so nothing below runs.
     await destroySession();
@@ -709,17 +729,23 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
 
   revalidateRoute("/settings/family");
   revalidateRoute("/", "layout");
-  return { ok: true, message: `Deleted login “${acct.username}”.` };
+  return { ok: true, message: `Deleted login “${outcome.username}”.` };
 }
 
 // Revoke every live session for a login without changing its password —
 // the "sign out all devices" companion to the password reset,
 // exposed directly so an admin can boot a login off every device on suspicion of
 // compromise. Admin-only; profiles/credentials are untouched.
+//
+// AUDITED (#1843). This is the sharpest of the three revocation paths: one login
+// force-terminating ANOTHER person's live sessions, in an app where a caregiver
+// login can reach someone else's health record. It used to write nothing at all,
+// while resetPassword — ninety lines above, doing strictly more — recorded an
+// event. actor = the admin, target = the login signed out, detail = the count.
 export async function revokeLoginSessions(
   formData: FormData
 ): Promise<FamilyResult> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown login." };
 
@@ -727,7 +753,16 @@ export async function revokeLoginSessions(
     { id: number } | undefined;
   if (!acct) return { ok: false, error: "Login not found." };
 
-  destroyLoginSessions(id);
+  const ended = destroyLoginSessions(id);
+  if (ended > 0) {
+    recordAudit({
+      loginId: admin.login.id,
+      profileId: admin.profile.id,
+      action: AUDIT_ACTIONS.sessionRevokeAll,
+      target: String(id),
+      detail: `${ended} session(s)`,
+    });
+  }
   revalidateRoute("/settings/family");
   return { ok: true, message: "Signed out of all devices." };
 }

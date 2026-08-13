@@ -7,6 +7,7 @@ import DemoBanner from "@/components/DemoBanner";
 import { getAppVersion } from "@/lib/version";
 import { isDemoMode } from "@/lib/demo";
 import ThemeReassert from "@/components/ThemeReassert";
+import UpdateTakenToast from "@/components/UpdateTakenToast";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -85,7 +86,13 @@ export default async function RootLayout({
         <ThemeReassert />
         <ServiceWorkerRegister sha={sha} />
         {isDemoMode() && <DemoBanner />}
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          {/* Tell-after, not ask-before (#2471): a tab that reloaded itself to take
+              a deploy says so once, on the other side. Inside the provider because
+              ServiceWorkerRegister above it cannot call useToast(). */}
+          <UpdateTakenToast />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

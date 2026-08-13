@@ -5,7 +5,8 @@
 // Adherence / dose-log reads and writes: taken/skipped dose sets, the idempotent
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
-import { db, today, writeTx } from "../../db";
+import { db, hoistedStatement, today, writeTx } from "../../db";
+import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
   doseOnDay,
@@ -116,18 +117,48 @@ export function getIntakeLogsForDate(
   return new Set(rows.map((r) => r.item_id));
 }
 
+// Intake item ids with AT LEAST ONE LOG EVER, of either status (#2574) — the lifetime
+// counterpart of the windowed reads above, and the evidence behind "nobody has ever
+// engaged with this item".
+//
+// A skipped dose counts. That is the point rather than an oversight: a skip is a
+// decision on the record (#232), so an item somebody has skipped even once is an item
+// somebody is managing, and the unconfirmed-medication offer must not reach it.
+//
+// Scoped through the DOSE's parent rather than the nullable `l.item_id` — a log whose
+// denormalised item link was never written still belongs to its dose's item, and
+// reading that column would silently answer "never logged" for it. Retired doses are
+// included for the same reason: retiring a dose does not un-happen what was taken from
+// it.
+export function getEverLoggedItemIds(profileId: number): Set<number> {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT d.item_id AS item_id
+         FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ?`
+    )
+    .all(profileId) as { item_id: number }[];
+  return new Set(rows.map((r) => r.item_id));
+}
+
 // Dose ids TAKEN on `date` (per-dose view for the schedule check-offs), scoped to
 // the profile through the dose's parent supplement. Skipped doses are NOT taken —
 // getSkippedDoseIds surfaces those separately for the tri-state (issue #232).
+// Hoisted: adherence is asked per member on every cross-profile surface (360
+// executions on one /household render). NOT cache()-wrapped — markDoseTaken writes
+// this table and the same request re-reads it to render the new state.
+const TAKEN_DOSE_IDS_STMT = hoistedStatement(
+  `SELECT l.dose_id FROM intake_item_logs l
+     JOIN intake_item_doses d ON d.id = l.dose_id
+     JOIN intake_items s ON s.id = d.item_id
+    WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
+);
 export function getTakenDoseIds(profileId: number, date: string): Set<number> {
-  const rows = db
-    .prepare(
-      `SELECT l.dose_id FROM intake_item_logs l
-         JOIN intake_item_doses d ON d.id = l.dose_id
-         JOIN intake_items s ON s.id = d.item_id
-        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
-    )
-    .all(profileId, date) as { dose_id: number }[];
+  const rows = TAKEN_DOSE_IDS_STMT.all(profileId, date) as {
+    dose_id: number;
+  }[];
   return new Set(rows.map((r) => r.dose_id));
 }
 
@@ -324,8 +355,18 @@ function applyDoseStatusCore(
             opts.takenAt,
             getTimezone(profileId),
             date,
-            // Real time on purpose: a clock-skew comparison, not a date derivation.
-            new Date()
+            // The APP's now (#2312), not a bare `new Date()`. This used to read
+            // real time on the reasoning that a client capture and the server's
+            // clock are two independent REAL clocks — the same reasoning the food
+            // path carried until #2287 overturned it. The guard's OTHER half
+            // already compares against `date`, which came from `today()`, i.e.
+            // from this seam: a predicate whose two halves read two different
+            // clocks is not one predicate. And under the e2e freeze the capture
+            // and the seam are the same frozen instant, so real time refuses a
+            // seconds-old stamp as hours in the future and the dose silently
+            // loses its captured minute. Inert in production, where the seam IS
+            // real time, so a genuinely fast device is still refused.
+            clockNow()
           )
         : null;
       db.prepare(
@@ -460,21 +501,24 @@ function logAdministrationTx(
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: null
+  expectedRedoseAdministrationId: null,
+  notifyMessageId?: number | null
 ): AdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: number
+  expectedRedoseAdministrationId: number,
+  notifyMessageId?: number | null
 ): RedoseWindowAdministrationOutcome;
 function logAdministrationTx(
   profileId: number,
   itemId: number,
   date: string,
   recordedAtStr: string,
-  expectedRedoseAdministrationId: number | null
+  expectedRedoseAdministrationId: number | null,
+  notifyMessageId?: number | null
 ): RedoseWindowAdministrationOutcome {
   // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
   // the profile through the parent item. A PRN med always has at least one dose row
@@ -518,9 +562,17 @@ function logAdministrationTx(
     { id: number } | undefined;
   if (!dup) {
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at)
-       VALUES (?,?,?,?,?)`
-    ).run(dose.dose_id, itemId, date, dose.amount, recordedAtStr);
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, amount, recorded_at, notify_message_id)
+       VALUES (?,?,?,?,?,?)`
+    ).run(
+      dose.dose_id,
+      itemId,
+      date,
+      dose.amount,
+      recordedAtStr,
+      notifyMessageId ?? null
+    );
     decrementSupply(profileId, itemId);
   }
   const summary = db
@@ -552,7 +604,14 @@ function logAdministrationTx(
 export function logAdministration(
   profileId: number,
   itemId: number,
-  recordedAt?: Date
+  recordedAt?: Date,
+  // Which message's tap this is (#2264) — Telegram handlers only, exactly as
+  // markDoseTaken takes it. Without it a chat-logged administration produces an
+  // UNATTRIBUTED correction burst, which may then ride the newest live dose message in
+  // the chat rather than the message it came from (#2418 part 2): the digest's offer
+  // list is not a dose reminder, so its taps have to say where they happened or their
+  // 🕐 chips surface on an unrelated reminder.
+  notifyMessageId?: number | null
 ): AdministrationOutcome {
   const tz = getTimezone(profileId);
   const when = recordedAt ?? clockNow();
@@ -563,7 +622,14 @@ export function logAdministration(
   const date = dateStrInTz(tz, when);
   const recordedAtStr = utcSqlString(when);
   return writeTx(() =>
-    logAdministrationTx(profileId, itemId, date, recordedAtStr, null)
+    logAdministrationTx(
+      profileId,
+      itemId,
+      date,
+      recordedAtStr,
+      null,
+      notifyMessageId
+    )
   );
 }
 
@@ -1183,22 +1249,23 @@ export type IntakeDoseLedgerRow = IntakeDoseHistoryRow & {
 // `getIntakeDoseHistory` returns for that item over the same window (asserted in
 // lib/__db_tests__/supplement-dose-history.test.ts), which is what lets the ledger
 // and the per-item panel be two views of one ledger instead of two answers.
-export function getIntakeDoseHistoryAll(
-  profileId: number,
-  sinceDate: string,
-  opts: {
-    kind?: IntakeItemKind;
-    itemId?: number;
-    // Inclusive last day of the window; omit for "up to the newest row".
-    untilDate?: string;
-  } = {}
-): IntakeDoseLedgerRow[] {
-  // The profile scope stays SPELLED OUT in the statement text — the optional filters
-  // are appended, never the scope predicate, so the profile-scoping guard can still
-  // read this query and so no future filter can accidentally replace the join
-  // condition that makes it this profile's ledger.
+export interface IntakeDoseLedgerFilters {
+  kind?: IntakeItemKind;
+  itemId?: number;
+  // Inclusive last day of the window; omit for "up to the newest row".
+  untilDate?: string;
+}
+
+// The optional narrowing clauses, in the order their params are bound. The profile
+// scope is NEVER built here — it stays spelled out in each statement's own text
+// below, so the profile-scoping guard can read the query and so no future filter can
+// accidentally replace the join condition that makes it this profile's ledger.
+function doseLedgerFilters(opts: IntakeDoseLedgerFilters): {
+  sql: string;
+  params: (string | number)[];
+} {
   const filters: string[] = [];
-  const params: (string | number)[] = [profileId, sinceDate];
+  const params: (string | number)[] = [];
   if (opts.untilDate) {
     filters.push(" AND l.date <= ?");
     params.push(opts.untilDate);
@@ -1211,6 +1278,15 @@ export function getIntakeDoseHistoryAll(
     filters.push(" AND l.item_id = ?");
     params.push(opts.itemId);
   }
+  return { sql: filters.join(""), params };
+}
+
+export function getIntakeDoseHistoryAll(
+  profileId: number,
+  sinceDate: string,
+  opts: IntakeDoseLedgerFilters = {}
+): IntakeDoseLedgerRow[] {
+  const filters = doseLedgerFilters(opts);
   return db
     .prepare(
       `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.recorded_at,
@@ -1218,12 +1294,71 @@ export function getIntakeDoseHistoryAll(
               s.name AS item_name, s.kind AS item_kind
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
-        WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.join(
-          ""
-        )}
+        WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.sql}
         ${DOSE_HISTORY_ORDER}`
     )
-    .all(...params) as IntakeDoseLedgerRow[];
+    .all(profileId, sinceDate, ...filters.params) as IntakeDoseLedgerRow[];
+}
+
+export interface IntakeDoseLedgerPage {
+  rows: IntakeDoseLedgerRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ONE page of that ledger, plus the total the pager needs.
+//
+// This is what the dose-history SURFACE reads (#2445). Its date range offers an
+// explicit "All time", which passes the ISO floor as `sinceDate` — a window with no
+// lower bound — and the reader above has no LIMIT, so a twice-daily medication kept
+// for years fetched and rendered thousands of rows on that tap. A range control is a
+// filter, not a bound: "all time" is a legitimate answer here (history outlives
+// retirement, and a dose taken years ago still happened), so the bound has to be the
+// page, and the page has to reach the SQL rather than only the DOM.
+//
+// The unpaged reader stays for callers that genuinely want the whole window in one
+// array — and as the row-for-row cross-check against the per-item panel — but nothing
+// that RENDERS the ledger should use it.
+export function getIntakeDoseLedgerPage(
+  profileId: number,
+  sinceDate: string,
+  opts: IntakeDoseLedgerFilters,
+  page: number,
+  pageSize: number
+): IntakeDoseLedgerPage {
+  const size = Math.max(1, Math.trunc(pageSize));
+  const filters = doseLedgerFilters(opts);
+  const total = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n
+           FROM intake_item_logs l
+           JOIN intake_items s ON s.id = l.item_id
+          WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.sql}`
+      )
+      .get(profileId, sinceDate, ...filters.params) as { n: number }
+  ).n;
+  const clamped = Math.min(clampPage(page), pageCount(total, size));
+  const rows = db
+    .prepare(
+      `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.recorded_at,
+              l.taken_at, l.amount, l.product,
+              s.name AS item_name, s.kind AS item_kind
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.status = 'taken' AND l.date >= ?${filters.sql}
+        ${DOSE_HISTORY_ORDER}
+        LIMIT ? OFFSET ?`
+    )
+    .all(
+      profileId,
+      sinceDate,
+      ...filters.params,
+      size,
+      pageOffset(clamped, size)
+    ) as IntakeDoseLedgerRow[];
+  return { rows, total, page: clamped, pageSize: size };
 }
 
 // ---- Undoable medication administration delete (issue #851 item 11) ----

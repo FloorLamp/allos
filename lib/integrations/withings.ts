@@ -4,7 +4,7 @@ import { toKg } from "@/lib/units";
 import type { NormBodyMetric, NormMetricSample, NormVital } from "./normalize";
 
 // Maps Withings API responses (https://developer.withings.com/api-reference) into
-// the provider-agnostic normalized records (see normalize.ts), so the shared
+// the source-agnostic normalized records (see normalize.ts), so the shared
 // upserts handle all of the DB mapping and idempotency. Mirrors the Oura/Strava
 // parsers: tolerant field reads, timezone-aware day attribution, and canonical-unit
 // conversion at the boundary. This module is PURE (no @/lib/db, no fetch) so it
@@ -177,7 +177,7 @@ export function mapWithingsMeasureGroup(
     canonical: string,
     unit: string,
     value: number | null,
-    category: "vitals" | "biomarker" = "vitals"
+    category: "vitals" | "lab" = "vitals"
   ) => {
     if (value == null) return;
     vitals.push({
@@ -263,13 +263,14 @@ export function mapWithingsMeasureGroup(
       tempC != null ? Math.round(((tempC * 9) / 5 + 32) * 10) / 10 : null
     )
   );
-  // VO2 max → the supported biomarker vital (same canonical + category as the Health
-  // Connect vo2_max mapping), so a scale/watch estimate lands with lab/manual readings.
+  // VO2 max → the same canonical + category as the Health Connect vo2_max mapping, so
+  // a scale/watch estimate lands with the lab/manual readings of the same quantity.
+  // `vitals` is the canonical registry's own classification (#2479 part 2); this used
+  // to write the legacy `biomarker` catch-all.
   pushVital(
     "VO2 Max",
     "mL/kg/min",
-    boundedOrNull("VO2 Max", byType.get(MEAS_VO2MAX) ?? null),
-    "biomarker"
+    boundedOrNull("VO2 Max", byType.get(MEAS_VO2MAX) ?? null)
   );
 
   if (!bodyMetric && vitals.length === 0 && samples.length === 0) return null;

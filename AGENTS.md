@@ -102,8 +102,12 @@ npx vitest run -t "estimate1RM"
 CI runs formatting, lint, type checking, PHI scanning, a non-blocking full
 dependency audit plus a blocking high-severity audit gate, both coverage-gated
 test tiers, changed Playwright specs repeated three times at zero retries, and
-the full browser suite in eight shards. Documentation-only changes skip the
-browser matrix. `.github/workflows/e2e-full.yml` provides the manually
+the full browser suite in twelve shards. A change with NO RUNTIME SURFACE skips
+the browser matrix — prose, plus the orchestration tooling under
+`scripts/orchestration/`, which nothing in the app or the e2e harness imports.
+The rest of `scripts/` is not exempt: `seed.ts`, `notify.ts` and the `gen-*.ts`
+generators feed the app and its fixtures. Grow that set only against the
+question "what imports this". `.github/workflows/e2e-full.yml` provides the manually
 dispatched full-suite census. Pre-commit runs Prettier through lint-staged and
 `phi-scan --staged`.
 
@@ -124,6 +128,26 @@ Server Components normally read through the query layer and pass data to client
 components. SQL remains inline through `db.prepare(...)`; there is no
 repository or ORM layer.
 
+`db.prepare(...)` COMPILES the statement on every call, and compilation is the
+half of the cost nobody counts. A render issues thousands of statements against a
+couple of hundred distinct SQL texts, so it pays to compile the same query
+hundreds of times: `/household` spent 720ms compiling against 237ms executing, in
+a 1288ms render, and `getProfileSetting` alone recompiled its one-line SELECT
+10,600 times. A read on a HOT PATH therefore declares its SQL through
+`hoistedStatement()` (`lib/db.ts`), which compiles once per connection and reuses
+it. Hot means: reached once per profile on a cross-profile surface, reached per
+row/day/item inside a loop, or reached through a helper many unrelated callers
+share — an age gate, a timezone, a settings key.
+
+Hoisting caches the COMPILED STATEMENT, never the value, so a read-after-write in
+the same request still sees the write. That is what makes it safe where `cache()`
+is not, and why it is the DEFAULT answer to a repeated read. Request-scoped
+`cache()` is the second, narrower tool: reach for it only when the same read
+repeats with the SAME arguments and no writer can intervene, and give the reason
+beside it (`getUnitPrefs`, `getTimezone`, `getProfileBirthdate` each carry theirs).
+A read the surface genuinely needs once per profile is not a duplicate at all —
+it is fan-out, and hoisting is its whole fix.
+
 Modules are named after the surface they serve. The Longevity page (`/longevity`)
 reads through `lib/queries/longevity.ts` over the pure `lib/longevity-pillars.ts`;
 "healthspan" remains the domain term for that model and stays in the persisted
@@ -132,20 +156,43 @@ dashboard widget id `healthspan-pillars`.
 ### Database and migrations
 
 `createDb()` runs `runMigrations(db)` and then `bootTasks(db)`. Migrations in
-`lib/migrations/versions/` are ordered, append-only, and keyed by
-`PRAGMA user_version`. Migration 001 is the frozen clean baseline from the
-runner's introduction; a fresh database reaches the current schema by applying
-that baseline and every later migration. The hash manifest makes shipped
-migrations immutable.
+`lib/migrations/versions/` are ordered, append-only, and **name-keyed**: the
+applied set lives in the `schema_migrations` ledger (created by the runner
+itself), and the `MIGRATIONS` array in `versions/index.ts` is the single
+ordering authority. Migrations 001–185 are the CLOSED numbered era — their ids
+are frozen and `PRAGMA user_version` survives only as a monotonic applied-count
+tripwire (it makes pre-ledger builds refuse a newer database, and feeds the
+backup/restore version gate). Migration 001 is the frozen clean baseline from
+the runner's introduction; a fresh database reaches the current schema by
+applying that baseline and every later migration. The hash manifest makes
+shipped migrations immutable.
 
 For every schema change:
 
-- Add a new table or column with a new migration.
+- Add a new table or column with a new migration: a `YYYYMMDD-slug.ts` file
+  exporting `{ name: "YYYYMMDD-slug", up }` (no `id` — the runner refuses a
+  numbered migration after the name-keyed era began), appended LAST to the
+  `MIGRATIONS` array, with its sha256 added to `manifest.json`. Two branches
+  adding migrations conflict only in `index.ts`, and the resolution is keeping
+  both sides — the merge order becomes the order.
 - Grow a `CHECK` enum or add a foreign key with a rebuild migration.
 - Put one-shot data moves in a migration, not a settings flag.
 - Never edit `001-baseline.ts` or another shipped migration.
 - Add a new profile-owned table to `lib/owned-tables.ts`.
 - Null dangling links before rebuilding a table to enforce a foreign key.
+
+A one-shot row-move migration that DELETES rows declares the (table, column)
+child links that must block a delete, and probes each with `PRAGMA table_info`
+so it can run against every historical schema shape. That probe cannot tell "this
+database predates the table" from "this pair is a typo", so a misnamed entry drops
+out silently and the guard covers nothing while still reading like a guard —
+migration 180 shipped with three of four entries naming columns that have never
+existed, and deleted rows a live care-plan follow-up still referenced (#2444).
+A typo is only visible against the FINAL migrated schema, so that is where it is
+checked: `lib/__db_tests__/migration-child-links.test.ts` reads every migration's
+link literals, fails an unknown pair, and pins the non-cascading FK parents of
+`medical_records`. The frozen entries a hash-locked migration cannot un-name are
+allowlisted there with the corrective migration named beside them.
 
 The runner applies migrations in individual immediate transactions, guards
 against a newer database being opened by older code, and temporarily disables
@@ -186,6 +233,19 @@ the surface's own key. A surface names a quantity or a row; it does not name a
 table. Neither phase changes schema — the physical merge is a separate, later
 decision. See `docs/internals/reading-model.md`.
 
+The `biomarker` storage category is RETIRED (#2479 part 2). It was the pre-#1076
+catch-all — "a result, and nothing narrower was picked" — and migration 185 re-files
+the rows the canonical registry can classify, applying retroactively the rule ingest
+has followed since #1076 (a resolved canonical name's registry category wins). A row
+the registry cannot classify STAYS and is reported, never guessed, which is why the
+value is still legal in the CHECK and still filterable. What no longer exists is a way
+to create one: `ASSIGNABLE_MEDICAL_CATEGORIES` is the derived complement of
+`RETIRED_MEDICAL_CATEGORIES` and is what the extractor's enum, its accept-list and the
+category picker offer, while `NormVital.category` and `FitnessStore` drop the string
+from the TYPE so a writer does not compile. The pass deletes nothing and moves no id,
+so it declares no `CHILD_LINKS` — a probe guarding a delete that cannot happen is the
+#2444 defect, not a guard against it.
+
 Not every dated observation a document carries IS a quantity. A functional-status
 finding, the body site a temperature was taken at, one screening question's answer
 and a bare result-status word are observations that state no measurement, and a
@@ -199,7 +259,11 @@ Identity runs on the CODE and on the NAME, and a guard on one axis is not a guar
 (#2318 was exactly that: `functionalStatusExtractor` nulled the assessment LOINC
 and the same rows coined canonical names anyway). An attribute of another entity —
 a vaccine's lot number and expiry — is not an observation at all; the entity that
-owns it already stores it.
+owns it already stores it. Storage category, catalog browsability and identity are
+three DIFFERENT axes and quantitation is none of them — a urine dipstick result
+states no number and carries full identity, a questionnaire ITEM answer is numeric
+and carries none — so `carriesResultIdentity()` is named for what it gates and
+`docs/internals/clinical-result-terminology.md` is the map.
 
 ### Weekly cadence
 
@@ -219,7 +283,16 @@ Calendar grids and lens windows are the same discipline one level down:
 `dayGrid()` (`lib/day-grid.ts`) lays days on a 7×N grid for every heatmap and
 calendar, with the payload and level function supplied by the caller; `lensWindow()`
 (`lib/trends.ts`) resolves the Trends hub's shared `DateRange` to one anchor, with
-only the per-lens week caps supplied.
+only the per-lens week caps supplied; and `dayHistoryWindow()`
+(`lib/day-history.ts`) resolves it to a GRAIN. A day-history column is a day or a
+week, and above `MAX_HISTORY_DAY_WEEKS` it re-grains rather than clamping a
+year-scale request back to a quarter (#2413) — read on the UNCLAMPED span, because
+asking the already-clamped week count whether it exceeded the cap can only answer
+no. Ladders are declared per domain PER GRAIN and the completeness test fails a
+missing twin; the coverage domains stay coverage at week grain rather than being
+rescaled. The partial trailing week is KEPT and DECLARED (`historyBucketCoverage`),
+never dropped and never compared as a whole week. See
+`docs/internals/day-history.md`.
 
 ### Food regularity
 
@@ -273,7 +346,7 @@ undeclared temporal column fails CI and the published index
 (`docs/internals/time-columns.md`, `npm run gen:time-columns`) cannot rot.
 `lib/row-instants.ts` asks the question over it: `eventInstant`, `recordInstant`,
 `bestKnownInstant`, `rowLocalDay`. Never hand-roll `COALESCE(recorded_at, taken_at)`
-or `eaten_at ?? logged_at` again — a ledger in
+or `occurred_at ?? recorded_at` again — a ledger in
 `lib/__tests__/time-columns.test.ts` freezes the ones that remain.
 `eventInstant` NEVER falls back to the record instant: a row that states no event
 time returns an explicit absence with a reason, because answering it with the tap
@@ -388,20 +461,30 @@ See `docs/ai.md` for provider, logging, and extraction details.
 
 ### Integrations
 
-`lib/integrations/registry.ts` is the provider registry. Current entries include
+`lib/integrations/registry.ts` is the SOURCE registry. Current entries include
 Health Connect, Strava, Oura, Withings, Fitbit Takeout, Weather & UV, Calendar
 feed, and the planned Garmin integration.
 
-A provider also declares its **continuous streams** there — the ones expected to
+A connected integration is a **source** — `sourceId` in every TypeScript
+parameter, field and query API (#2487), matching the user-facing "Connected
+sources" wording. `Provider` and `provider_id` are reserved for healthcare
+clinicians and organizations, always. The persisted columns still say `provider`
+on `integration_connections`, `integration_sync_events`,
+`integration_backfill_jobs` and `stream_frontiers`; that rename is deferred to
+its own forward migration, so reads select `provider AS source_id` at an
+explicitly commented boundary and row shapes expose `source_id`. There is no
+wrapper type — see `docs/internals/integrations-sync.md`.
+
+A source also declares its **continuous streams** there — the ones expected to
 keep arriving minute after minute while a device is worn — beside
 `silenceToleranceMinutes`, read only through `lib/integrations/continuous-streams.ts`.
 That tolerance is about the CONNECTION; a stream declaration is about the DATA, and
 the two are independent: a phone can keep pushing aggregates while the watch feeding
 heart rate is off a wrist. `quietStreamVerdict` (#2146) reports that — stream silent
-past its DECLARED dip tolerance _while the provider kept syncing ok in that window_,
+past its DECLARED dip tolerance _while the source kept syncing ok in that window_,
 which is the clause that keeps it disjoint from #1685 staleness — with no stored
 state, and it renders on Data → Review only: it is coaching tier and never a send.
-A provider with no continuous stream declares none and is exempt by construction.
+A source with no continuous stream declares none and is exempt by construction.
 
 Sync and import behavior must remain idempotent:
 
@@ -543,25 +626,57 @@ See `docs/internals/supplements.md`.
 ### Health endpoint
 
 `app/api/health` is public and deliberately coarse. It returns 503 for database,
-write, cached-integrity, or configured backup-staleness failures without
-exposing paths, versions, or health data. Keep status composition in
+write, cached-integrity, disk-headroom, or configured backup-staleness failures
+without exposing paths, versions, or health data. Keep status composition in
 `lib/health-status.ts`; the endpoint itself must stay cheap.
+
+A new reason is a WORD, and the numbers behind it stay server-side — `disk-low`
+(#1856) is decided from free bytes, volume size and DB size that the caller never
+sees. It must also be a state a healthy install is NOT in: a reason that describes
+the DEFAULT deployment posture would pin every default install at 503 forever,
+which is why "uploads are in no backup" is an admin-card fact and not a reason
+here. Prefer a transient, self-clearing alarm over a standing complaint about how
+the operator set the box up.
 
 ### Deploys and deployment skew
 
 A deploy leaves open tabs on a build the server no longer serves. The service
 worker installs and **waits** rather than taking over, one merged pending state
-raises one "Update ready" bar, only the tab that tapped ever reloads, and a
+answers the whole question, only the tab that asked ever reloads, and a
 waiting worker for the build the page already runs — found waiting at load, or
 installed by the page's own registration just after it — is consumed silently
 instead of re-offered. A tab that navigates while still stale hits a deleted chunk; the
 top-level error boundary recognises that signature and hard-reloads **once**,
 under a rationed `sessionStorage` guard, before rendering any card. A tab that
 keeps SAVING while stale fails every Server Action (the ids are build-keyed);
-`isStaleActionError` classifies that signature, `shouldQueueOffline` treats it
-like a dead connection so quick-log taps queue and replay through the
-build-stable replay route, and the activity editor keeps its local draft (live
-mode included) and banners the reload instead of erroring in place.
+`isStaleActionError` classifies that signature, and `shouldQueueOffline` treats
+it like a dead connection so quick-log taps queue and replay through the
+build-stable replay route.
+
+Since #2471 the tab does not ASK about any of that — it **takes** the deploy at
+the first moment it can prove is safe, and says so afterwards. `autoReloadPlan`
+is that proof and its ORDER is the safety argument: ration spent → hold; work
+with no durable copy on the page → hold; a form submit still settling → wait;
+hidden → reload; input-quiet (pointer/key/wheel/touch/scroll, watched at the
+DOCUMENT, not just inside forms) → reload, else wait. Quiet is counted from the
+LATER of the last event and `watchingSince`: "nothing has been heard" is not
+"the page is quiet" in the first milliseconds of a document, and a tab that
+reloads there has taken the page out from under someone mid-gesture. `wait` and `hold` are
+different answers because only `hold` may render a bar; a bar during a
+two-second scroll pause would be the ask-before gate this removed. The reload is
+LOSSLESS BY SEQUENCE, never by hope: every draft is flushed and settled, then the
+one-shot resume pointer and toast marker are written, then the ration is spent,
+and only then the existing machinery reload runs — any step that throws stops it
+and the old banner renders. `useFormDraft` applies the draft with no banner
+under that pointer and only under it (`shouldAutoApplyDraft`); everywhere else
+the never-apply-without-a-tap rule stands. The manual affordances survive ONLY as
+the rationed-failure fallback and call the same routine, so even a manual tap
+resumes. The refusal is the feature: a draft-backed form is recoverable, and
+anything else holding unsaved input (the #1878 registry's `markUnrecoverableWork`
+axis) is not, so settings cards, record forms and uploads keep today's behaviour
+rather than being reloaded over. Rations compose but never refill each other —
+the worst case of a broken deploy is bounded by the SUM of this ration and
+`global-error`'s.
 
 DETECTING a deploy and RESOLVING one are different jobs, and only one thing can
 do the first from an already-open tab: the `/api/version` sha read. `public/sw.js`
@@ -614,8 +729,13 @@ set it:
 - A module-scope prepared statement must use `hoistedStatement()` from
   `lib/db.ts`, never a bare `db.prepare(...)`. The shared tier swaps the database
   between files, and a statement compiled against the closed connection throws.
-  Inline `db.prepare(...)` inside a function is unaffected. The owned-table scans
-  read both forms, so scoping stays enforced either way.
+  Inline `db.prepare(...)` inside a function is unaffected BY THIS HAZARD — but
+  that is a statement about test isolation only, and reading it as a blessing is
+  what left the app's most-executed read compiling itself 10,600 times a render.
+  Whether an inline prepare is a defect is the COST question in Architecture
+  above, decided separately. The owned-table scans read both forms, so scoping
+  stays enforced either way — note they are TEXT scans, so `db.prepare()` written
+  in a comment fails `profile-scoping.test.ts` as an unverifiable non-literal.
 
 Every rendered UI feature must add or extend a browser test. The E2E harness
 seeds a template once, gives each worker its own database and `next start`
@@ -626,6 +746,14 @@ server, and freezes the run's clock. Specs import `test` and `expect` from
 Use stable test IDs and the settled interaction helpers in `e2e/helpers.ts`.
 Do not add `waitForTimeout`, `networkidle`, or an unmarked `.first()` on a shared
 surface. A test owns its fixture data and must not exact-count shared seed rows.
+A spec that WRITES to the shared profile also leaves it as it found it, and one
+whose precondition is an ABSENCE ("no tracked protein", "never measured") owns
+that state rather than trusting the seed to keep it: specs sharing a worker share
+its database, so a neighbour's ordinary write silently destroys an absence and
+neither spec is wrong alone. Duration-balanced shards decide who those neighbours
+are, so a manifest refresh is a co-residency change — and a colliding pair only
+collides when both land on the SAME worker, which means a green run at
+`--workers=2` proves nothing and `PW_WORKERS=1` is the reproduction.
 Do not write redundant assertions or defensive assert checks for conditions
 already proven by types or prior control flow.
 See `docs/internals/e2e-hygiene.md`.
@@ -640,10 +768,32 @@ See `docs/internals/e2e-hygiene.md`.
 - Use `readTx` when several reads must share one snapshot.
 - Ordinary edit forms are last-write-wins. Counter-like, lifecycle, and
   access-control fields need atomic transitions or compare-and-swap.
+- Last-write-wins is not whole-**ROW**. An edit core takes a PATCH (`Partial` of
+  the create input): absent means unchanged, a present `null` still clears, and
+  the merge runs INSIDE the transaction and BEFORE `sanitize`, so cross-field
+  rules judge the merged whole rather than each field against a row it no longer
+  belongs to. A form that buys the same property with hidden inputs is a trap
+  whose failure is silent and destructive — add a column, write it from the core,
+  forget the hidden input. `updateInjury` (#2359) had the hidden inputs;
+  `updateEndurancePlan` (#2573) never had them, so it wrote `notes = null` on
+  every edit. The guard is a schema CENSUS, not a list of today's fields:
+  enumerate the table via `PRAGMA table_info`, force the fixture to give every
+  column a real value, name ONE field in the edit, and require every other column
+  byte-identical. A complete editor that genuinely carries every column it writes
+  (`saveActivityCore`) is a different shape and stays whole-row.
 - `lib/` write cores are auth-blind. They take `profileId` first and never import
   `lib/auth`; the Server Action performs authorization and validation.
 - Server Action records pass serializable data only. Do not return a
-  `better-sqlite3` row proxy to a client component.
+  `better-sqlite3` row proxy to a client component. That is a TYPE now, not
+  review: `Serializable<T>` (`lib/serializable.ts`) is a structural mirror of
+  what React's serializer accepts, and every `"use server"` module under `app/`
+  is asserted against it as one census in
+  `lib/__tests__/serializable-action-returns.test.ts`. A module whose action
+  grows a function, a class instance or a statement handle in its resolved value
+  fails on its own row, so the compiler names it. A new action module joins the
+  census; the scan in the same file fails one that does not. Annotate a
+  hand-written return type with `AssertSerializable<…>` when you want the error
+  at the signature rather than at the census.
 - Never call `router.refresh()` after awaiting a Server Action that revalidates:
   any `revalidatePath`/`revalidateTag` makes the action response carry a freshly
   rendered current page, so the refresh is a second full fetch. A refresh is only
@@ -668,6 +818,24 @@ See `docs/internals/e2e-hygiene.md`.
 - An icon-only button carries both `aria-label` (specific accessible name) and
   `title` (short hover tooltip); `lib/__tests__/icon-button-tooltip-scan.test.ts`
   enforces it.
+- A one-line mutually-exclusive selector is `<SegmentedControl>`, in whichever of
+  its **two bindings** fits: `onChange` when the selection is client state
+  (`<button>` + `aria-pressed`), an `href` per option when it lives in the URL
+  (`<Link>` + `aria-current`). One primitive, two bindings, for the same reason
+  `PaginationControls` has them (#2546/#2535) — and the link half exists because
+  its absence was an a11y DEFECT, not untidiness: four hand-rolled URL selectors
+  all marked the selection with `aria-pressed` on a link, which `role="link"` does
+  not support, so no assistive technology announced any selection at all.
+  `lib/__tests__/link-aria-pressed-scan.test.ts` fails that combination outright.
+  A segment is a plain `<Link>`, not `PendingNavLink` — the nav-row rule above is
+  about the sidebar, and a segment has no icon slot to give up to a spinner.
+- The "nothing here yet" panel is `<EmptyState>`, never a hand-rolled dashed box.
+  Its `data-empty-state` marker is load-bearing (#2531/#2399: an absent chart must
+  not reserve the chart's height) and a copy carries no marker. When the copy names
+  a destination, pass `action`/`actions` instead of leaving the reader to navigate
+  by hand. Padding is exactly two values — the default and `compact`.
+  `lib/__tests__/empty-state-panel-scan.test.ts` fails a class carrying both
+  `border-dashed` and `text-center`; a surface it cannot serve declares a reason.
 - Pages that cap width use `<PageContainer>` and its named widths — never a
   hand-written `mx-auto max-w-*` and never a `max-w-*` smuggled through its
   `className`; `lib/__tests__/page-width-scan.test.ts` enforces it and reads
@@ -739,6 +907,22 @@ See `docs/internals/e2e-hygiene.md`.
   `substance_log`, `protein_log`); the undo path builds its ledger from the same
   `CounterSpec` the undo registry declares, so the write side and the undo side
   cannot drift.
+- **Adult-only content refuses at the CORE**, not only at the surface. #1174 hid
+  the substance-use surface from a known minor; #1279 re-checked in every one of
+  that surface's actions, because a Server Action is independently POST-callable
+  and a UI-only gate is theater. #2107 closed the last hole: the instrument write
+  cores are SHARED with the mental-health catalog and update/delete resolve their
+  instrument from the targeted ROW, so the calling surface's family was no evidence
+  at all about what was being written, and the mental-health twins reached the very
+  scores #1279 refuses to touch. `adultOnlyRefusal`
+  (`lib/instrument-records.ts`) is the one question each of those cores asks about
+  the instrument it resolved; a refused one answers exactly as an unknown row does
+  (`null` / `not-found`), mental-health instruments pass unconditionally, and an
+  unknown age still passes (`lib/life-stage`'s positive-match-only policy).
+  `ADULT_ONLY_WRITE_CORES` (`lib/adult-only-writes.ts`) registers the gated modules
+  and its scan fails a new mutating export there that skips the gate — the
+  exemption list is empty. Narrowing the known callers is the fix that leaves the
+  next caller to rediscover the hole.
 - Identity families use one canonical pure function everywhere (movement facts
   key on `exerciseHistoryKey`; load-sensitive strength facts on
   `strengthLoadKey`/`movementLoadKey`; biomarker identity on `biomarkerFamily`,
@@ -762,6 +946,40 @@ See `docs/internals/e2e-hygiene.md`.
   unilaterally, never increase it or rewrite user-owned state), which domains can
   carry an obligation at all, and the right-sizing family every "the system
   noticed X" suggestion belongs to.
+- The doctrine's other half is **how a feature would learn it should stop**
+  (#2385). A feature that claims to change BEHAVIOUR declares three things beside
+  its acceptance criteria: what would show it working, what would show it wrong,
+  and its **deceptive success** — the measure that improves while the feature does
+  harm (food coverage rising while servings-per-window falls). Local queries over
+  data the instance already holds; never telemetry, never a user-facing score,
+  never on a correctness feature, and never on a safety signal, whose
+  justification is not effectiveness. This is prose in the issue and in the module
+  header — do not build a registry, a scoring engine or a metrics pipeline for it.
+- Its first application is **repeat dismissal read as an answer** (#2386):
+  `lib/dismissal-fatigue.ts` counts distinct declined RAISINGS of one topic
+  (keyed on the #436 episode anchor, never rows) and de-prioritises, then retires
+  from the routine surface — never mutes, never writes, never touches the
+  suppression bus, and always still reachable where the user goes looking. The
+  safety floor is DERIVED, not listed: `mayQuietOnDismissal` asks
+  `isHiddenUnderPolicy`, so quieting can only ever reach a finding a plain dismiss
+  would already have silenced. A dose reminder, a missed-dose escalation, the
+  crisis finding and an overdue care follow-up are refused before any count is read.
+  A finding DECLARES its topic stem — as `supersedes` when it had a pre-anchor key,
+  as `episodeFamily` when its key was born anchored (#2543) — and the declaration is
+  only honoured when it is a strict PREFIX of the key, which is what stops a producer
+  widening a stem to accumulate faster. Three digest lines declare one (`portal-sync`,
+  `records-recency`, `digest-time`) and the digest drops anything not `routine`; every
+  care-tier line names its SUBJECT rather than an episode of it, has one possible key,
+  and is out of reach by construction rather than by exemption.
+- **An imported medication nobody has ever logged can be stopped from its own
+  reminder** (#2574). `lib/medication-unconfirmed.ts` is the pure detector —
+  `kind = medication` AND import provenance AND ZERO lifetime logs AND past the
+  occurrence floor — the exact complement of the demotion detector's medication
+  refusal, so a dose row gains at most one extra button. It produces no `Finding`, no
+  dedupe key and no send: a flag, and a 🏁 Stop beside Take and Skip on the nudge that
+  was already going out. The tap RE-DERIVES candidacy before writing, goes through
+  `stopMedicationCourses` (the one core the web dialog uses), and renders its typed
+  outcome. Detection suggests; the tap writes.
 
 ## Repository hygiene
 
@@ -795,3 +1013,13 @@ the host is a manual or scheduled `docker compose pull && docker compose up -d`.
 Persistent data lives under `/app/data`, bind-mounted from `DATA_DIR`. Keep that
 directory outside the checkout. See README **Quick start with Docker** for the
 operator setup.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

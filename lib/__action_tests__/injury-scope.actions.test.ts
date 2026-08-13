@@ -216,10 +216,14 @@ describe("status changes never rewrite what the user declared", () => {
   });
 });
 
-// #2297 — the edit form's half of the round trip. `updateInjury` writes the WHOLE row, so
-// these pin both directions: a narrowing correction reaches the engine, and the lifecycle
-// the form deliberately doesn't edit (status, start date) survives it because the form
-// submits it back verbatim.
+// #2297 — the edit form's half of the round trip: a narrowing correction reaches the
+// engine, and the lifecycle the form deliberately does not edit survives it.
+//
+// #2359 changed WHY the second half holds. `updateInjury` used to write the whole row,
+// so the form kept status/since/notes/muscles alive by submitting them back as hidden
+// inputs — correct, but only for as long as everyone remembered. The action now sends a
+// PARTIAL naming just the declaration and the write core leaves an unnamed column alone,
+// so these cases submit nothing beyond what the form actually edits.
 describe("correcting a constraint after it is understood (#2297)", () => {
   // The realistic sequence from the issue: logged broadly on day one, narrowed a week
   // later to the movement that is actually affected.
@@ -246,12 +250,7 @@ describe("correcting a constraint after it is understood (#2297)", () => {
 
     const res = await updateInjury(
       injuryForm(
-        {
-          id: String(id),
-          label: "shoulder",
-          status: "active",
-          since: "2026-07-01",
-        },
+        { id: String(id), label: "shoulder" },
         { regions: ["Chest", "Shoulders"], exercises: ["Overhead Press"] }
       )
     );
@@ -266,7 +265,7 @@ describe("correcting a constraint after it is understood (#2297)", () => {
     expect(exerciseInjuryVerdict(constraints, "Cable Fly").kind).toBe("clear");
   });
 
-  it("keeps the start date, the status and the fine muscles the form carries back", async () => {
+  it("keeps the start date, the status, the notes and the fine muscles it never mentions", async () => {
     const { profile } = seedActor();
     await logInjury(
       injuryForm(
@@ -274,6 +273,7 @@ describe("correcting a constraint after it is understood (#2297)", () => {
           label: "left knee",
           status: "recovering",
           since: "2026-06-15",
+          notes: "tweaked it on a run",
           loadFactor: "0.5",
         },
         { regions: ["Legs"], muscles: ["quads"] }
@@ -281,26 +281,109 @@ describe("correcting a constraint after it is understood (#2297)", () => {
     );
     const before = getInjuries(profile.id)[0];
 
+    // The form submits ONLY the declaration it edits (#2359) — no status, no since,
+    // no notes, no muscles. Before the partial this would have cleared all four.
     await updateInjury(
       injuryForm(
-        {
-          id: String(before.id),
-          label: "left knee",
-          // The lifecycle the edit form does not offer, submitted back verbatim.
-          status: before.status,
-          since: before.since!,
-          loadFactor: "0.5",
-        },
-        { regions: ["Legs"], muscles: ["quads"], movements: ["legs"] }
+        { id: String(before.id), label: "left knee", loadFactor: "0.5" },
+        { regions: ["Legs"], movements: ["legs"] }
       )
     );
 
     const after = getInjuries(profile.id)[0];
     expect(after.since).toBe("2026-06-15"); // history, not a correction
     expect(after.status).toBe("recovering"); // the chip's buttons own this
-    expect(after.muscles).toEqual(["quads"]); // no control for it, so not dropped
+    expect(after.notes).toBe("tweaked it on a run"); // no control for it, so not dropped
+    expect(after.muscles).toEqual(["quads"]); // likewise
     expect(after.loadFactor).toBe(0.5);
     expect(after.movements).toEqual(["legs"]); // …and the correction landed
+  });
+
+  // The trap #2359 removes, pinned as a PROPERTY rather than as a list of the fields
+  // that happen to exist today: enumerate the injury row's real columns and require
+  // every one of them to survive a patch that does not name it. Add a column, write
+  // it from the write core, and forget to carry it through `mergePatch` — this fails,
+  // where the old per-field assertions could not, because they could only ever pin
+  // the fields their author knew about.
+  it("leaves every column a partial update does not name exactly as it was", async () => {
+    const { profile } = seedActor();
+    await logInjury(
+      injuryForm(
+        {
+          label: "right elbow",
+          status: "recovering",
+          since: "2026-05-02",
+          notes: "sore on pressing",
+          laterality: "right",
+          loadFactor: "0.7",
+          reviewDate: "2026-09-30",
+        },
+        {
+          regions: ["Arms"],
+          muscles: ["biceps"],
+          movements: ["push"],
+          exercises: ["Bench Press"],
+        }
+      )
+    );
+    const id = getInjuries(profile.id)[0].id;
+
+    // Every column of the row, read from the migrated schema so a NEW one joins this
+    // census automatically instead of waiting to be remembered.
+    const columns = (
+      db.prepare("PRAGMA table_info(injuries)").all() as { name: string }[]
+    ).map((c) => c.name);
+    const readRow = () =>
+      db.prepare("SELECT * FROM injuries WHERE id = ?").get(id) as Record<
+        string,
+        unknown
+      >;
+    const before = readRow();
+
+    // Guard the census itself: a column sitting at its default proves nothing about
+    // having been preserved, so the fixture above must give every column a value.
+    // ONE exemption, with its reason — `resolved_date` is derived from status and can
+    // only be non-null on a RESOLVED row, which cannot also carry the recovering-only
+    // load preference this fixture needs. It stays in the equality loop below, where
+    // "still null" is exactly the assertion that matters for it.
+    const NULL_BY_CONSTRUCTION = new Set(["resolved_date"]);
+    for (const c of columns) {
+      if (NULL_BY_CONSTRUCTION.has(c)) continue;
+      expect(
+        before[c],
+        `fixture leaves injuries.${c} empty — give it a value`
+      ).not.toBeNull();
+    }
+
+    // Submit exactly what the edit form submits — its own scope controls, unchanged,
+    // with only the label corrected. Nothing else is named anywhere in the request.
+    const res = await updateInjury(
+      injuryForm(
+        {
+          id: String(id),
+          label: "right elbow (tendon)",
+          laterality: "right",
+          loadFactor: "0.7",
+          reviewDate: "2026-09-30",
+        },
+        {
+          regions: ["Arms"],
+          movements: ["push"],
+          exercises: ["Bench Press"],
+        }
+      )
+    );
+    expect(res.ok).toBe(true);
+
+    const after = readRow();
+    expect(after.label).toBe("right elbow (tendon)");
+    for (const c of columns) {
+      if (c === "label") continue;
+      expect(
+        after[c],
+        `injuries.${c} was changed by an edit that never named it`
+      ).toEqual(before[c]);
+    }
   });
 
   it("refuses an edit that leaves no affected region, without damaging the row", async () => {

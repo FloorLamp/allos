@@ -4,15 +4,25 @@ import {
   CADENCE_VERDICT_LABEL,
   CAP_VERDICTS,
   FLOOR_VERDICTS,
+  cadenceCapWeeksSentence,
   cadenceDirection,
+  cadenceScopeNoun,
   cadenceToGo,
+  cadenceWeekVerdictLine,
   cadenceVerdict,
   cadenceWeekMet,
   isCadenceScopeKind,
+  sessionAdvancesScope,
   verdictDirection,
+  SESSION_ADVANCEABLE_SCOPE_KINDS,
+  SESSION_ADVANCE_RULES,
   type CadenceVerdict,
+  type SessionCadenceFacts,
 } from "../cadence";
-import { FREQUENCY_SCOPE_KINDS } from "../frequency-targets";
+import {
+  FREQUENCY_SCOPE_KINDS,
+  type FrequencyScopeKind,
+} from "../frequency-targets";
 import { frequencyRangeState } from "../practice";
 import { substanceCapStatus } from "../substance-use";
 import { practiceWeekVerdict } from "../trends-practices";
@@ -192,5 +202,239 @@ describe("the anti-nudge pin", () => {
     expect(cadenceWeekMet("under-cap")).toBe(true);
     expect(cadenceWeekMet("at-cap")).toBe(true);
     expect(cadenceWeekMet("over-cap")).toBe(false);
+  });
+});
+
+// ── What ONE session advances (#2503) ───────────────────────────────────────────
+//
+// The ledger's membership rule asked of a single activity. It exists because the
+// post-workout recap read the profile-wide weekly rollup as if the finishing session
+// had produced it, and a walk was congratulated for a chest target a barbell session
+// had advanced days earlier.
+
+describe("sessionAdvancesScope", () => {
+  const legDay: SessionCadenceFacts = {
+    types: ["strength"],
+    regions: ["Legs"],
+  };
+  const walk: SessionCadenceFacts = { types: ["cardio"], regions: [] };
+
+  it("is TOTAL over FrequencyScopeKind — a new scope must answer", () => {
+    expect(Object.keys(SESSION_ADVANCE_RULES).sort()).toEqual(
+      [...FREQUENCY_SCOPE_KINDS].sort()
+    );
+  });
+
+  it("matches a region the session's sets actually mapped to", () => {
+    expect(
+      sessionAdvancesScope({ kind: "region", value: "Legs" }, legDay)
+    ).toBe(true);
+    expect(
+      sessionAdvancesScope({ kind: "region", value: "Chest" }, legDay)
+    ).toBe(false);
+    // A session with no sets at all maps to no region — the walk's whole problem.
+    expect(sessionAdvancesScope({ kind: "region", value: "Chest" }, walk)).toBe(
+      false
+    );
+  });
+
+  it("takes a group as the union of its regions, the way the ledger counts it", () => {
+    expect(
+      sessionAdvancesScope({ kind: "group", value: "Lower" }, legDay)
+    ).toBe(true);
+    expect(
+      sessionAdvancesScope({ kind: "group", value: "Upper" }, legDay)
+    ).toBe(false);
+    expect(sessionAdvancesScope({ kind: "group", value: "Full" }, legDay)).toBe(
+      true
+    );
+  });
+
+  it("reads the activity's own type and its components' types", () => {
+    expect(sessionAdvancesScope({ kind: "type", value: "cardio" }, walk)).toBe(
+      true
+    );
+    expect(
+      sessionAdvancesScope({ kind: "type", value: "strength" }, walk)
+    ).toBe(false);
+    expect(
+      sessionAdvancesScope(
+        { kind: "type", value: "cardio" },
+        { types: ["strength", "cardio"], regions: ["Chest"] }
+      )
+    ).toBe(true);
+  });
+
+  it("declines the scopes an activity row cannot answer for", () => {
+    // Null is "unanswerable here", not "no": the mobility ledger reads a recovery
+    // session's MOVES (#840), and food/practice count their own ledgers. A cap is never
+    // advanced at all (#998) — asking would be asking for a to-go number on alcohol.
+    for (const kind of [
+      "mobility_region",
+      "food_group",
+      "practice",
+      "substance",
+    ])
+      expect(
+        SESSION_ADVANCE_RULES[kind as FrequencyScopeKind],
+        kind
+      ).toBeNull();
+    expect(
+      sessionAdvancesScope({ kind: "substance", value: "alcohol" }, walk)
+    ).toBe(false);
+    expect(
+      sessionAdvancesScope({ kind: "mobility_region", value: "Legs" }, legDay)
+    ).toBe(false);
+    // An unregistered kind is not a yes either.
+    expect(sessionAdvancesScope({ kind: "invented", value: "x" }, legDay)).toBe(
+      false
+    );
+  });
+
+  it("derives the workout-affectable kinds from the rules themselves", () => {
+    // The recap's #1122 narrowing reads this rather than keeping its own list, so the
+    // two cannot drift apart.
+    expect([...SESSION_ADVANCEABLE_SCOPE_KINDS].sort()).toEqual([
+      "group",
+      "region",
+      "type",
+    ]);
+  });
+});
+
+// ── The CLOSED week's verdict line (#2395) ──────────────────────────────────────
+//
+// The daily digest reports a weekly target's PACE and the message that closes the week
+// reported nothing about the targets at all. This is the twin of that rollup, over a
+// verdict rather than a pace — so the pins here are the same anti-nudge pins as above,
+// asked of a SENTENCE instead of a label. A cap tenant must be able to reach this line
+// (a profile that set an alcohol cap wants to know it held) without the line ever
+// speaking a floor's vocabulary about it.
+
+describe("cadenceWeekVerdictLine (#2395)", () => {
+  const floor = (label: string, verdict: CadenceVerdict, over = false) => ({
+    label,
+    direction: "floor" as const,
+    verdict,
+    ...(over ? { overCeiling: true } : {}),
+  });
+  const cap = (label: string, verdict: CadenceVerdict) => ({
+    label,
+    direction: "cap" as const,
+    verdict,
+  });
+
+  it("says nothing for a profile with no targets", () => {
+    expect(cadenceWeekVerdictLine([])).toBeNull();
+  });
+
+  it("rolls floors up as met, naming what fell short", () => {
+    const line = cadenceWeekVerdictLine([
+      floor("Back", "under"),
+      floor("Cardio", "met"),
+      floor("Legs", "at-ceiling"),
+      floor("Chest", "met"),
+      floor("Core", "met"),
+    ]);
+    expect(line).toEqual({
+      value: "4 of 5 targets met",
+      notes: ["short on Back"],
+    });
+  });
+
+  it("counts at-ceiling as met — the range model's most complete state", () => {
+    expect(
+      cadenceWeekVerdictLine([floor("Mobility", "at-ceiling")])?.value
+    ).toBe("1 of 1 target met");
+  });
+
+  it("counts the overflow of a long shortfall list rather than listing it", () => {
+    const line = cadenceWeekVerdictLine(
+      ["Back", "Chest", "Legs", "Core", "Cardio"].map((l) => floor(l, "under"))
+    );
+    expect(line?.notes).toEqual(["short on Back, Chest, Legs, +2 more"]);
+  });
+
+  it("reports a cap as held or over, and NEVER with a figure to go", () => {
+    const line = cadenceWeekVerdictLine([
+      floor("Cardio", "met"),
+      cap("Alcohol", "over-cap"),
+      cap("Nicotine", "under-cap"),
+    ]);
+    expect(line?.value).toBe("1 of 1 target met");
+    expect(line?.notes).toEqual([
+      "over the Alcohol cap",
+      "within the Nicotine cap",
+    ]);
+    // The pin, restated at sentence level: no clause anywhere on this line may read as
+    // room left to fill under a limit (#998).
+    const nudging = /to go|left|remaining|behind|on pace|more of|keep going/i;
+    for (const note of line!.notes) expect(note, note).not.toMatch(nudging);
+  });
+
+  it("gives a cap-only profile a cap-only head", () => {
+    // Rolling caps into "targets met" would state a floor's success condition over a
+    // scope that has no floor.
+    expect(
+      cadenceWeekVerdictLine([
+        cap("Alcohol", "under-cap"),
+        cap("Nicotine", "at-cap"),
+      ])
+    ).toEqual({ value: "2 of 2 weekly caps held", notes: [] });
+    expect(cadenceWeekVerdictLine([cap("Alcohol", "over-cap")])).toEqual({
+      value: "0 of 1 weekly cap held",
+      notes: ["over the Alcohol cap"],
+    });
+  });
+
+  it("reports a floor-plus-ceiling target's FLOOR verdict, mentioning the ceiling only when passed", () => {
+    // #2395's ruling for a target carrying both. Reaching the weekly maximum is the calm
+    // "that's plenty" state (`at-ceiling` is a MET verdict); only passing it is a fact.
+    expect(
+      cadenceWeekVerdictLine([floor("Sauna", "at-ceiling")])?.notes
+    ).toEqual([]);
+    expect(cadenceWeekVerdictLine([floor("Sauna", "met", true)])).toEqual({
+      value: "1 of 1 target met",
+      notes: ["past the weekly maximum on Sauna"],
+    });
+  });
+
+  it("names the substance plainly, without the chip's own direction suffix", () => {
+    // `frequencyScopeLabel` annotates a substance chip with "(weekly cap)" because a chip
+    // has no sentence to carry the direction; a sentence does, and pasting the annotation
+    // in produces "over the Alcohol (weekly cap) cap".
+    expect(cadenceScopeNoun("substance", "alcohol")).toBe("Alcohol");
+    expect(cadenceScopeNoun("group", "Upper")).toBe("Upper body");
+  });
+});
+
+// ── A cap over SEVERAL closed weeks (#2397) ─────────────────────────────────────
+
+describe("cadenceCapWeeksSentence (#2397)", () => {
+  it("states the exceedance as a share of the weeks, never as a run", () => {
+    expect(
+      cadenceCapWeeksSentence({ label: "Alcohol", overWeeks: 3, weeks: 4 })
+    ).toBe("over the Alcohol cap in 3 of 4 weeks");
+  });
+
+  it("says a clean period held rather than going silent", () => {
+    // Silence would be indistinguishable from having declared no cap at all, and
+    // under-cap is the SUCCESS state (#1670) — it is worth saying.
+    expect(
+      cadenceCapWeeksSentence({ label: "Nicotine", overWeeks: 0, weeks: 4 })
+    ).toBe("Nicotine cap held all 4 weeks");
+  });
+
+  it("carries no pace, no to-go and no comparative in either branch", () => {
+    const nudging =
+      /to go|left|remaining|behind|on pace|more of|keep going|streak|in a row/i;
+    for (const overWeeks of [0, 1, 4]) {
+      const s = cadenceCapWeeksSentence({
+        label: "Alcohol",
+        overWeeks,
+        weeks: 4,
+      });
+      expect(s, s).not.toMatch(nudging);
+    }
   });
 });

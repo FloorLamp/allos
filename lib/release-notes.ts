@@ -15,6 +15,7 @@
 // that hints at it — the surfaces are formatters over this one answer.
 
 import raw from "./release-notes.json";
+import { clampPage, pageCount, pageOffset } from "./pagination";
 import { REPO_URL } from "./version";
 
 export const RELEASE_NOTE_KINDS = [
@@ -25,13 +26,20 @@ export const RELEASE_NOTE_KINDS = [
 ] as const;
 export type ReleaseNoteKind = (typeof RELEASE_NOTE_KINDS)[number];
 
+/**
+ * A change is ONE concise bullet (owner directive, 2026-08-13): the title is the
+ * whole entry, in product language, and there is no prose body — the day card is
+ * the entry, its changes are bullets. `MAX_TITLE_LENGTH` and the body refusal in
+ * `parseEntry` are what keep verbosity from creeping back; detail that an
+ * operator genuinely needs goes in the day's `operatorNotes`.
+ */
+export const MAX_TITLE_LENGTH = 120;
+
 export type ReleaseNoteEntry = {
   /** The merged pull request number. */
   pr: number;
-  /** Short headline, product language (no internal jargon). */
+  /** The change, as one concise bullet — product language, no internal jargon. */
   title: string;
-  /** One short paragraph describing the user-visible change. */
-  body: string;
   /** Optional classification; renders as a chip when present. */
   kind?: ReleaseNoteKind;
   /** Issue numbers the entry closes/addresses (may be empty). */
@@ -103,10 +111,24 @@ function parseEntry(v: unknown, path: string): ReleaseNoteEntry {
     }
     kind = kindRaw as ReleaseNoteKind;
   }
+  if ("body" in v) {
+    throw new ReleaseNotesError(
+      `${path}.body`,
+      "bodies are retired (2026-08-13): a change is one concise bullet — fold " +
+        "the essential fact into the title, or the day's operatorNotes if it " +
+        "is an upgrade action"
+    );
+  }
+  const title = requireString(v.title, `${path}.title`);
+  if (title.length > MAX_TITLE_LENGTH) {
+    throw new ReleaseNotesError(
+      `${path}.title`,
+      `expected at most ${MAX_TITLE_LENGTH} characters (a bullet, not a paragraph) — got ${title.length}`
+    );
+  }
   return {
     pr: requirePositiveInt(v.pr, `${path}.pr`),
-    title: requireString(v.title, `${path}.title`),
-    body: requireString(v.body, `${path}.body`),
+    title,
     ...(kind ? { kind } : {}),
     issues: requireArray(v.issues, `${path}.issues`).map((n, i) =>
       requirePositiveInt(n, `${path}.issues[${i}]`)
@@ -191,6 +213,76 @@ export function hasUnseenNotes(
   if (!newestDate) return false;
   if (!seenDate) return true;
   return seenDate < newestDate;
+}
+
+/**
+ * How many ENTRIES one page of /whats-new renders (#2528).
+ *
+ * The page's job is "what did the image I just pulled bring me" — the newest day or
+ * two — and everything below that is archive. The file is append-only by design
+ * (~15 entries a merge day), so with no bound the page grows forever; counting
+ * ENTRIES rather than days is what makes the bound steady, because a merge day
+ * holds anywhere from 1 to 32 of them. The number was 20 when an entry was a
+ * titled paragraph; an entry is one bullet LINE now (2026-08-13), roughly a third
+ * of the height, so the same steady-page-height reasoning lands at 60.
+ *
+ * Not `HISTORY_PAGE_SIZE` (lib/pagination.ts): that one sizes a table row, this
+ * one a linked bullet, and those are different questions. The arithmetic
+ * underneath is the shared one.
+ */
+export const WHATS_NEW_PAGE_ENTRIES = 60;
+
+/**
+ * One page of the notes, newest first, with each day kept in reading order.
+ *
+ * The unit is the ENTRY, so a day may be split across the boundary — and a split
+ * day's `operatorNotes` ride EVERY page that shows any of its entries. Those are the
+ * one-time upgrade actions for that release: a reader on page 2 looking at the rest
+ * of a day must not have to page back to learn the day needs a manual step, and
+ * hiding them behind a page boundary would be the regression this bound exists to
+ * avoid.
+ *
+ * Pure, like the rest of this module — the page renders exactly what this returns.
+ */
+export function releaseNotesPage(
+  notes: ReleaseNotes,
+  page: number,
+  pageSize = WHATS_NEW_PAGE_ENTRIES
+): {
+  days: ReleaseNoteDay[];
+  page: number;
+  pageCount: number;
+  total: number;
+  shown: number;
+} {
+  const size = Math.max(1, Math.trunc(pageSize));
+  const total = notes.days.reduce((n, day) => n + day.entries.length, 0);
+  const pages = pageCount(total, size);
+  const current = Math.min(clampPage(page), pages);
+  const from = pageOffset(current, size);
+  const to = from + size;
+
+  const days: ReleaseNoteDay[] = [];
+  let seen = 0;
+  for (const day of notes.days) {
+    const start = seen;
+    seen += day.entries.length;
+    if (seen <= from || start >= to) continue;
+    days.push({
+      ...day,
+      entries: day.entries.slice(
+        Math.max(0, from - start),
+        Math.min(day.entries.length, to - start)
+      ),
+    });
+  }
+  return {
+    days,
+    page: current,
+    pageCount: pages,
+    total,
+    shown: days.reduce((n, day) => n + day.entries.length, 0),
+  };
 }
 
 /** External link to a merged PR. External URLs stay plain strings (#285). */

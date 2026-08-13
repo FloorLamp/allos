@@ -18,6 +18,10 @@ import {
   sanitizeSpecimen,
 } from "./lab-result-lifecycle";
 import { evictPreviewsForDocument } from "./reprocess-preview-cache";
+import {
+  captureDocumentCorrections,
+  reapplyDocumentCorrections,
+} from "./import-corrections";
 import { clinicalKeyForInput } from "./clinical-content-key";
 export {
   applyImportFollowups,
@@ -318,6 +322,18 @@ export function moveImportedDocumentRows(
       `UPDATE ${t.table} SET profile_id = ? WHERE ${t.key} = ? AND ${footprintScope(t)}`
     ).run(destProfileId, footprintKeyValue(t, docId, source), srcProfileId);
   }
+  // A folded screening score's per-item answers (#2321) are CHILDREN of a
+  // medical_records row, not a footprint table of their own — the delete path gets
+  // them through ON DELETE CASCADE, but a reassign moves the parent's profile_id and
+  // would strand them under the source profile. Move them with the score they belong
+  // to, matched through the parent that just landed in the destination.
+  db.prepare(
+    `UPDATE instrument_responses SET profile_id = ?
+       WHERE profile_id = ?
+         AND medical_record_id IN (
+           SELECT id FROM medical_records WHERE document_id = ? AND profile_id = ?
+         )`
+  ).run(destProfileId, srcProfileId, docId, destProfileId);
   // Row-ops side-state (#288): the appointment → encounter link must never cross
   // profiles. A reassign can move an encounter (or a linking appointment) but not
   // its counterpart — e.g. a MANUAL appointment stays in the source while its
@@ -538,6 +554,14 @@ export function persistDocumentImport(
     // backing dose a re-extraction drops (#602). Empty on a first import (the doc has
     // no prior immunization rows), so the sweep no-ops there.
     const priorVaccines = documentImmunizationVaccines(profileId, docId);
+    // Capture the user's HAND CORRECTIONS to this document's readings BEFORE the
+    // clear — same reason and same shape as the visit-link decisions re-applied
+    // below (#1050/#1053): a reprocess deletes and re-inserts the footprint under
+    // new ids, and a corrected VALUE is a durable user decision, not import data.
+    // Until #2364 the delete-set simply discarded it: no warning, no "3 corrections
+    // will be lost", on the overwrite path most likely to hit a document-derived
+    // reading. Empty on a first import.
+    const priorCorrections = captureDocumentCorrections(profileId, docId);
     // Replace this document's prior rows (a no-op on first import; on reprocess
     // it clears the old set) across every table an import writes — including the
     // previously auto-structured meds, cleared here before the existing-meds set
@@ -588,6 +612,17 @@ export function persistDocumentImport(
     // decision swept). Tier-1 FHIR links already self-healed above at insert.
     reapplyVisitLinkDecisions(profileId);
 
+    // Re-state the user's hand corrections onto the readings this insert produced
+    // (#2364), matched on #482 identity + day + unit rather than on row id — the
+    // ids are new. A correction the fresh extraction has no counterpart for is
+    // ORPHANED: it rides out as a drop on the report below instead of being
+    // resurrected as a row the document no longer claims.
+    const orphanedCorrections = reapplyDocumentCorrections(
+      profileId,
+      docId,
+      priorCorrections
+    );
+
     // The toast + Review feed report ONE "N items imported" number. Tally it off
     // the footprint tables here — after every insert loop — so it counts every
     // clinical kind an import wrote, not just the immunizations + records the old
@@ -630,7 +665,16 @@ export function persistDocumentImport(
       // its old hand-maintained sum silently omitted medications, imaging, optical,
       // dental, genomics, and appointments. `considered` follows as
       // footprint + row drops.
-      reconcileStoredReportCounts(input.meta.importReport, extractedCount),
+      //
+      // The orphaned corrections join it here because this is the only step that
+      // can know them (#2364) — the parse cannot see what the previous import's
+      // rows had been corrected to. They do not move `considered`: a lost
+      // correction was never a candidate this document offered.
+      reconcileStoredReportCounts(
+        input.meta.importReport,
+        extractedCount,
+        orphanedCorrections
+      ),
       // The CLINICAL identity of this document (#1780): a digest of the source-minted
       // entry ids it just imported. Stamped HERE, at the one 'done' transition every
       // extract/import/reprocess path funnels through, and computed from the SAME
@@ -863,6 +907,16 @@ function insertImportRows(
         notes, panel, flag, canonical_name, document_id, source, external_id,
         provider_id, profile_id, loinc, result_status, fasting, specimen)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+
+  // The per-item answers behind a folded screening-instrument score (#2321). Keyed on
+  // the score's row id, so the upsert is what makes a REPROCESS idempotent: the score
+  // row is re-created by the delete-set + INSERT OR IGNORE above, and its answers are
+  // re-written here rather than accumulating.
+  const insInstrumentAnswer = db.prepare(
+    `INSERT INTO instrument_responses (profile_id, medical_record_id, item_index, answer)
+     VALUES (?,?,?,?)
+     ON CONFLICT(medical_record_id, item_index) DO UPDATE SET answer = excluded.answer`
   );
 
   // Allergies + problem-list conditions. Own tables, same idempotency
@@ -1162,7 +1216,17 @@ function insertImportRows(
     );
     if (info.changes > 0) {
       recCount++;
-      insertedRecordIds.push(Number(info.lastInsertRowid));
+      const recordId = Number(info.lastInsertRowid);
+      insertedRecordIds.push(recordId);
+      // A folded screening-instrument SCORE (#2321) brings its per-item answers with
+      // it. They go into the SAME `instrument_responses` table the in-app tap-through
+      // writes, so item 9 / item 10 drives the crisis decision for an imported score
+      // exactly as it does for an administered one. The rows are children of the score
+      // (ON DELETE CASCADE), so the document's delete-set clears them with it and
+      // nothing extra joins the import footprint.
+      for (const a of r.instrumentAnswers ?? []) {
+        insInstrumentAnswer.run(profileId, recordId, a.itemIndex, a.answer);
+      }
     }
   }
   for (const a of input.allergies) {

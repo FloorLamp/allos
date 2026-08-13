@@ -11,8 +11,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!session) {
     return Response.json({ ok: false, error: "auth" }, { status: 401 });
   }
-  const provider = new URL(request.url).searchParams.get("provider");
-  if (provider && !getIntegration(provider as IntegrationId)) {
+  const sourceId = new URL(request.url).searchParams.get("source");
+  if (sourceId && !getIntegration(sourceId as IntegrationId)) {
     return Response.json(
       { ok: false, error: "Unknown integration." },
       { status: 400 }
@@ -23,7 +23,7 @@ export async function GET(request: Request): Promise<Response> {
       ok: true,
       jobs: getIntegrationBackfillJobs(
         session.profile.id,
-        provider ?? undefined
+        sourceId ?? undefined
       ),
     },
     { headers: { "Cache-Control": "no-store" } }

@@ -95,6 +95,12 @@ export const ONE_TAP_AFFORDANCES = {
     feedback: "outcome-toast",
     why: "ONE offer rendered from server state (#2380): its contents ARE the habitual groups this window still has nothing logged for, so a second tap has nothing left to offer and the write core re-derives the same set with a typed `nothing-to-log` refusal — a stale tap lands on an honest answer, never a second breakfast.",
   },
+  "routine-usual": {
+    repeat: "idempotent",
+    expectedInterval: "none",
+    feedback: "outcome-toast",
+    why: "The COMPOSED morning offer (#2458) — the food half of `food-usual` PLUS the doses declared in that window and still pending. Both halves are rendered from server state and both are re-derived by the write core, which writes only the intersection: a second tap finds an empty bundle and answers `nothing-to-log`, and a partly-stale one writes the remainder and names what it could not. A separate id from `food-usual` deliberately — its tap also confirms doses, which moves a supply ledger, and misdeclaring that as the food tap would hide it from every census that reads this registry.",
+  },
   "protein-grams": {
     repeat: "additive",
     expectedInterval: "none",

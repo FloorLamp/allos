@@ -1,6 +1,6 @@
 // ONE CLOCK-SKEW CANONICALIZATION (#2088).
 //
-// "A provider's timestamp disagrees with the profile's clock by a plausible UTC
+// "A source's timestamp disagrees with the profile's clock by a plausible UTC
 // offset" is a property of INGEST. It was being evaluated at DETECTION, and
 // differently each time: #2011/#2055 taught the duplicate detector to forgive a
 // whole-hour gap, #2063/#2092 widened that guard to the half- and three-quarter-hour
@@ -18,21 +18,21 @@
 //     midnight, so a 23:30 reading and a 00:30 reading the next day are an hour
 //     apart rather than 23 hours apart. This is the whole of #2056: the arithmetic
 //     was right and the FRAME was wrong.
-//   • CANONICALIZATION — given a provider timestamp, the profile's timezone, and
+//   • CANONICALIZATION — given a source timestamp, the profile's timezone, and
 //     the candidate readings either side of it, the canonical profile-local
 //     date+clock, or a typed refusal.
 //
 // TWO BRANCHES, AND THE DIFFERENCE BETWEEN THEM IS EVIDENCE:
 //
-//   A. The provider handed us a TRUE INSTANT. Then the profile-local date and clock
+//   A. The source handed us a TRUE INSTANT. Then the profile-local date and clock
 //      follow from the profile's timezone and nothing is inferred — this is
 //      knowledge, so it applies to a lone row and is the ingest-side close of the
 //      class (see lib/integrations/strava.ts, where a stale `utc_offset` is exactly
 //      how #2011's copy arrived an hour early).
-//   B. The provider handed us only a WALL CLOCK. Then a skew can only be inferred
+//   B. The source handed us only a WALL CLOCK. Then a skew can only be inferred
 //      from cross-source evidence — and #2055 already ruled what the system may
 //      conclude from it: that the two clocks disagree, and by how much, but NEVER
-//      which of two providers lied. So branch B reports the skew and refuses to pick
+//      which of two sources lied. So branch B reports the skew and refuses to pick
 //      a winner; the pair goes to a person in Data → Review. A lone row with no
 //      evidence gets `no-evidence` and is left exactly as reported.
 //
@@ -45,7 +45,7 @@ export const MINUTES_PER_DAY = 1440;
 // ── The plausible-offset table ────────────────────────────────────────────────
 //
 // The gaps REAL UTC OFFSETS differ by. Several are not whole hours: India +5:30,
-// Newfoundland -3:30, Nepal +5:45, Chatham +12:45, Eucla +8:45. A provider that
+// Newfoundland -3:30, Nepal +5:45, Chatham +12:45, Eucla +8:45. A source that
 // resolves one of those against a whole-hour neighbour lands its copy 30 or 45
 // minutes off — which the original whole-hour-only guard rejected outright, leaving
 // the defect silently unfixed for every household in those zones (#2063/#2092).
@@ -209,7 +209,7 @@ export function localReadingOf(instant: Date, tz: string): ClockReading | null {
  *
  * `canonical` carries a reading to FILE THE ROW UNDER. `skew` carries a
  * disagreement the system can see but must not resolve on its own — #2055's ruling:
- * nothing in a pair of wall clocks says which of two providers lied, so a heuristic
+ * nothing in a pair of wall clocks says which of two sources lied, so a heuristic
  * there would be the system asserting knowledge it does not have. `refused` is
  * everything else, each reason named so a caller renders the right thing instead of
  * treating "no evidence" and "not offset-shaped" as one silence.
@@ -218,7 +218,7 @@ export type ClockCanonicalization =
   | {
       kind: "canonical";
       reading: ClockReading;
-      /** Minutes the provider's own wall clock was off by (0 when it agreed). */
+      /** Minutes the source's own wall clock was off by (0 when it agreed). */
       offsetMinutes: number;
       /** False when the row is ALREADY canonical — the idempotent re-run. */
       changed: boolean;
@@ -236,9 +236,9 @@ export type ClockCanonicalization =
     };
 
 export interface ClockCanonicalizationInput {
-  /** The wall clock the provider filed the row under, when it stated one. */
+  /** The wall clock the source filed the row under, when it stated one. */
   reported: ClockReading | null;
-  /** The true instant behind that row, when the provider sent one. */
+  /** The true instant behind that row, when the source sent one. */
   instant?: { at: Date; tz: string } | null;
   /** Candidate readings either side of it — the cross-source evidence. */
   evidence?: readonly ClockReading[];
@@ -252,7 +252,7 @@ export interface ClockCanonicalizationInput {
  * Order matters and is the policy:
  *
  * 1. An EDIT-LOCKED row is never rewritten, whatever the evidence says. A manual
- *    correction outranks every provider, which is the same stance `isEditLocked`
+ *    correction outranks every source, which is the same stance `isEditLocked`
  *    enforces across every ingest path.
  * 2. A TRUE INSTANT answers outright (branch A) — including `changed: false` when
  *    the row is already canonical, so re-running at ingest is a no-op.
@@ -261,7 +261,7 @@ export interface ClockCanonicalizationInput {
  * 4. With evidence, the smallest plausible offset among the candidates is reported
  *    as a `skew` — a disagreement, named and measured, for a person to resolve.
  */
-export function canonicalizeProviderClock(
+export function canonicalizeSourceClock(
   input: ClockCanonicalizationInput
 ): ClockCanonicalization {
   if (input.editLocked) return { kind: "refused", reason: "edit-locked" };

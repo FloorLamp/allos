@@ -3,7 +3,7 @@
 // both signals in one API (hourly uv_index AND shortwave/direct/diffuse irradiance in
 // W/m²), a FREE historical archive (ERA5) that lets us backfill the UV for already-
 // logged outdoor minutes, and uv_index_clear_sky alongside actual UV (the degradation
-// ladder's clear-sky rung, as a field). The provider sits behind the small WeatherSource
+// ladder's clear-sky rung, as a field). The source sits behind the small WeatherSource
 // interface so the source is SWAPPABLE (an OpenWeatherMap adapter, or a self-hosted
 // Open-Meteo, drops in without touching the sync/cache/dose layers) — default is
 // Open-Meteo.
@@ -15,7 +15,7 @@
 
 // One hour of the cached series (local wall-clock hour for the location's timezone, so
 // it crosses directly with the local-time daylight/activity windows). Any field may be
-// null when the provider omits it for that hour.
+// null when the source omits it for that hour.
 export interface HourlyUvRow {
   // Local hour timestamp "YYYY-MM-DDTHH:00" (Open-Meteo `timezone` param = the
   // location's IANA zone), the natural dedup key together with the location.
@@ -152,7 +152,7 @@ function num(v: unknown): number | null {
 // PURE: parse an Open-Meteo hourly response body into HourlyUvRow[]. Tolerant of
 // missing arrays/fields (a variable the endpoint didn't return → all-null for that
 // field). Both the forecast and archive endpoints share this `{ hourly: { time, ... }}`
-// shape, so ONE parser covers both. Rows come back in the provider's order (ascending
+// shape, so ONE parser covers both. Rows come back in the source's order (ascending
 // time); the caller dedups on (location, hourTs).
 export function parseOpenMeteoHourly(json: unknown): HourlyUvRow[] {
   const body = (json ?? {}) as { hourly?: Record<string, unknown> };
@@ -215,7 +215,7 @@ const AIR_QUALITY_VARS = [
   "ragweed_pollen",
 ] as const;
 
-// Which pollen FAMILY each provider species belongs to. Family grain is the domain
+// Which pollen FAMILY each source species belongs to. Family grain is the domain
 // grain: the predicate and the copy speak of tree/grass/weed pollen, and the family's
 // value is the max across its species (one high species makes the family high).
 const POLLEN_FAMILY: Record<string, "tree" | "grass" | "weed"> = {
@@ -257,7 +257,7 @@ function emptyDay(date: string): DailyWeatherRow {
 
 // PURE: parse an Open-Meteo `daily` response body (plus its hourly `pressure_msl`
 // column, meaned per local day) into DailyWeatherRow[]. Tolerant of missing arrays and
-// of a body carrying only one of the two blocks. Rows come back in provider order
+// of a body carrying only one of the two blocks. Rows come back in source order
 // (ascending date); the caller dedups on (location, date).
 export function parseOpenMeteoDaily(json: unknown): DailyWeatherRow[] {
   const body = (json ?? {}) as {
@@ -514,7 +514,7 @@ export async function openMeteoFetchDaily(
 }
 
 // The default source: Open-Meteo. Swap this (or inject another WeatherSource into
-// runWeatherSync) to change providers.
+// runWeatherSync) to change sources.
 export const openMeteoSource: WeatherSource = {
   id: "open-meteo",
   fetchHourly: openMeteoFetch,

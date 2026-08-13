@@ -259,7 +259,7 @@ export default async function ProtocolDetailPage(props: {
 
               {intakeItem && (
                 <div>
-                  <div className="section-label">IntakeItem or medication</div>
+                  <div className="section-label">Supplement or medication</div>
                   <Link
                     href={intakeHref(intakeItem.kind)}
                     className="mt-0.5 inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline dark:text-brand-300"
@@ -270,7 +270,7 @@ export default async function ProtocolDetailPage(props: {
                     <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                       {intakeItem.kind === "medication"
                         ? "Medication"
-                        : "IntakeItem"}
+                        : "Supplement"}
                     </span>
                   </Link>
                 </div>

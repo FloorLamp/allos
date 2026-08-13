@@ -9,9 +9,9 @@
 //
 // ── The declared continuous stream ───────────────────────────────────────────
 //
-// The stream is no longer named here. #2146 moved the declaration into the provider
+// The stream is no longer named here. #2146 moved the declaration into the source
 // registry (`continuousStreams`, with a `reminder` facet on the entry this watches),
-// so `streamsWithReminder` below IS the binding: which provider, which table, and —
+// so `streamsWithReminder` below IS the binding: which source, which table, and —
 // through the shared reader — how its timestamps are read. A second wearable becomes a
 // registry entry rather than an edit here.
 //
@@ -66,7 +66,7 @@ import {
 import type { NotificationMessage } from "./types";
 
 /**
- * The (provider, stream) pair this reminder watches, resolved from the registry.
+ * The (source, stream) pair this reminder watches, resolved from the registry.
  *
  * The "first declared entry wins" rule moved into `reminderStream` in #2162, because
  * the offboarding prompt has to name the SAME stream this send watches — it claims
@@ -95,13 +95,16 @@ export function bedtimeWearReminderState(
       verdict: bedtimeWearVerdict({
         enabled: enabled && watched != null,
         expectedActive: false,
-        providerHealthy: false,
+        sourceHealthy: false,
         frontierAgeMin: null,
         syncsSinceAdvance: null,
         // Never read: `enabled` is false here by construction, and it is checked
-        // first. There is no floor to state because there is no stream to state it
-        // for — the declaration lives on the stream, and this path has none.
+        // first. There is no floor and no evidence bar to state because there is no
+        // stream to state them for — both declarations live on the stream, and this
+        // path has none. `frozenSyncs` is stated as Infinity rather than 0 so that if
+        // this branch ever WERE reached, the unreachable answer is silence.
         floorMin: 0,
+        frozenSyncs: Number.POSITIVE_INFINITY,
       }),
       lastSeenLocalHhmm: null,
     };
@@ -117,17 +120,17 @@ export function bedtimeWearReminderState(
     localToday
   );
 
-  // Yields to the bigger problem (#1685): while the provider is failing or stale a
+  // Yields to the bigger problem (#1685): while the source is failing or stale a
   // reconnect item already owns the contact, and "still on the charger?" would be
   // false advice with the pipeline down.
-  const providerHealthy = !getIntegrationAttention(profileId).some(
-    (row) => row.id === watched.provider
+  const sourceHealthy = !getIntegrationAttention(profileId).some(
+    (row) => row.id === watched.sourceId
   );
 
   const latest = latestStreamInstant(
     profileId,
     watched.stream.table,
-    watched.provider
+    watched.sourceId
   );
   const latestUtc = latest ? parseUtcSql(latest) : null;
   const frontierAgeMin =
@@ -136,10 +139,10 @@ export function bedtimeWearReminderState(
       : Math.floor((at.getTime() - latestUtc.getTime()) / 60_000);
   // The stored observation the INGEST path writes (#2341): how many successful pushes
   // have landed against this exact frontier. Null until the first push after the
-  // provider connected — no evidence, so no send, and the next push repairs it.
+  // source connected — no evidence, so no send, and the next push repairs it.
   const frontier = readStreamFrontier(
     profileId,
-    watched.provider,
+    watched.sourceId,
     watched.stream.id
   );
 
@@ -147,13 +150,17 @@ export function bedtimeWearReminderState(
     verdict: bedtimeWearVerdict({
       enabled,
       expectedActive,
-      providerHealthy,
+      sourceHealthy,
       frontierAgeMin,
       syncsSinceAdvance: frontier?.syncsSinceAdvance ?? null,
       // DECLARED on the stream, beside the quiet facet's own tolerance — the whole
       // point of #2341 item 2. A stream carrying the `bedtime-wear` adapter carries
       // its floor with it, so this cannot silently fall back to a module constant.
       floorMin: watched.stream.reminder.frontierFloorMin,
+      // DECLARED on the stream too, since #2560 — how many quiet pushes this source's
+      // delivery chain takes before a frozen frontier means the wrist and not the
+      // watch's own Bluetooth batch.
+      frozenSyncs: watched.stream.frozenEvidence.syncs,
     }),
     // The stored instant PROJECTED to the profile's own wall clock — "since 21:05"
     // must be the hour the user saw, not the UTC one.

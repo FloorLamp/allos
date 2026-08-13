@@ -160,6 +160,37 @@ work must not erode them:
 - The registry-plus-reflection-test culture — conventions with CI teeth — which
   is what made this quarter's consolidations safe to land in days. When a
   convention matters, its scan is part of shipping it.
+- **A bound is a decision, and a surface that promises one must have it in the
+  READ.** A range selector, a `limitDays` parameter and a page are three
+  different promises, and only the last two are bounds — "all time" and "every
+  row this profile ever recorded" are legitimate answers, so what limits the
+  query has to be something else. The failure mode is quiet: the surface looks
+  finished while its cost scales with the profile's whole history (#2530 /
+  #2445 / #2520 / #2528). Two rules follow. A window parameter is applied in
+  SQL, never as a `.slice()` after the read — otherwise every caller pays the
+  function's own default. And a paged surface takes its page size and its
+  arithmetic from `lib/pagination.ts` (`HISTORY_PAGE_SIZE`, `clampPage`,
+  `pageOffset`, `pageCount`) and renders `components/PaginationControls.tsx`,
+  which pages by callback for a client table and by href for a server-paged
+  read — two surfaces capping the same kind of list do not each invent a
+  number. Paging needs a TOTAL order, so a read ordered by day breaks ties on
+  `id` before it takes an `OFFSET`.
+  A fifth instance (#2551) added the corollary the first four only implied: when
+  a read gains a bound, its own callers get swept too. `getSleepStageComposition`
+  was taught to pass its window down while `getLastNightSummary`, calling the
+  same underlying function directly, kept running on the 180-day default.
+- **A cross-source de-duplication elects one source per THING, and the bucket
+  has to be that thing** (#2552). Two sources inside one bucket are a duplicate
+  when they describe the same thing and two records when they do not, so the
+  bucket is what decides which: a calendar day is the right bucket for a per-day
+  QUANTITY (a day's HR minutes, a weigh-in) and the wrong one for a list of
+  EVENTS that merely share a date. Sleep sessions were elected per day, so an
+  afternoon nap pushed by the phone took the ring's whole overnight out of the
+  read with it — the losing source's rows are dropped WHOLE, which is why the
+  wrong bucket loses data rather than merely choosing oddly.
+  `pickRowsOneSourcePerDay` and `pickRowsOneSourcePerWindow`
+  (`lib/metric-sources.ts`) are one election over the two bucket grains: pick by
+  what the rows ARE, and never widen a bucket to make a set collapse.
 
 ## 8. The one rebuild delta that stays parked: the physical readings merge
 

@@ -19,6 +19,22 @@ export const AUDIT_ACTIONS = {
   // the old behavior minted a session and silently bounced, leaving no trail.
   loginNoAccess: "login.no-profile-access",
   logout: "login.logout",
+  // Session revocation without a credential change (#1843). `logout` covers a
+  // login ending its OWN session from the header; these cover a session being
+  // TERMINATED from elsewhere: one device dropped off the active-sessions list
+  // (sessionRevoke), or every other device at once (sessionRevokeAll — both the
+  // "sign out everywhere else" button and the admin force sign-out of ANOTHER
+  // login). target = the login whose sessions ended, detail = how many did.
+  //
+  // They stay in the `login` domain rather than opening a `session` one: the
+  // viewer's action filter groups on the domain, `login.logout` is already a
+  // session-ending event, and splitting "a session ended" across two filter
+  // groups would leave an admin reading half a trail. The admin path is why the
+  // pair exists at all — force-terminating another login's live sessions was the
+  // one privileged auth action writing no event, while the password reset ninety
+  // lines away in the same file wrote one.
+  sessionRevoke: "login.session-revoke",
+  sessionRevokeAll: "login.session-revoke-all",
   passwordChange: "login.password-change",
   passwordReset: "login.password-reset",
   // Optional TOTP 2FA (issue #23). enable/disable are the enrollment lifecycle;
@@ -140,23 +156,10 @@ export function rowsToPrune(total: number, maxRows: number): number {
 }
 
 // ---- Pagination ----
+//
+// The audit viewer's PAGE SIZE, which is this domain's own policy (identifier-only
+// rows, 50 to a screen). The arithmetic it rides on — clampPage / pageOffset /
+// pageCount — moved to lib/pagination.ts when a third and fourth surface needed it
+// (#2530/#2445); import it from there.
 
 export const AUDIT_PAGE_SIZE = 50;
-
-// Coerce an arbitrary (possibly user-supplied) page value to a 1-based integer.
-export function clampPage(page: number): number {
-  if (!Number.isFinite(page) || page < 1) return 1;
-  return Math.floor(page);
-}
-
-// The SQL OFFSET for a 1-based page of `pageSize` rows.
-export function pageOffset(page: number, pageSize: number): number {
-  return (clampPage(page) - 1) * pageSize;
-}
-
-// Total number of pages for `total` rows at `pageSize` (at least 1, so an empty
-// table still reads as "page 1 of 1").
-export function pageCount(total: number, pageSize: number): number {
-  if (pageSize <= 0) return 1;
-  return Math.max(1, Math.ceil(total / pageSize));
-}

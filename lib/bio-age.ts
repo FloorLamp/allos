@@ -28,7 +28,11 @@ import {
 } from "./derived-biomarkers";
 import { isAdultForClinical } from "./life-stage";
 import { optimalBand, referenceRange } from "./reference-range/selection";
-import type { CanonicalBiomarker, ReproductiveStatus, Sex } from "./types";
+import type {
+  CanonicalResultDefinition,
+  ReproductiveStatus,
+  Sex,
+} from "./types";
 
 // Julian year — matches the day→year conversion in lib/biomarker-trajectory.
 const DAYS_PER_YEAR = 365.25;
@@ -290,7 +294,7 @@ export function censoredInputNote(draw: BioAgeDrawInputs): string | null {
 // whose curated band is demographic-specific is compared against the band that
 // actually applies to this profile.
 export function phenoAgeReferenceValue(
-  cb: CanonicalBiomarker | null | undefined,
+  cb: CanonicalResultDefinition | null | undefined,
   sex: Sex | null,
   age: number | null,
   status: ReproductiveStatus | null

@@ -34,11 +34,11 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 //
 // ── Every action carries the dedupeKey and nothing else ──────────────────────
 //
-// The (provider, stream) is derived from that single token and then re-checked against
+// The (source, stream) is derived from that single token and then re-checked against
 // the LIVE offer list before any write (the #1670/#1505 precedent). Two consequences:
 // a card left open on a phone while the watch came back cannot enable a reminder
 // nobody is currently being offered, and a tampered form cannot reach an arbitrary
-// provider — the key must name a stream that is offering exactly this kind right now.
+// source — the key must name a stream that is offering exactly this kind right now.
 
 const STALE =
   "That offer is out of date — reload the page to see the current state.";
@@ -56,7 +56,7 @@ function liveOffer(
       (o) =>
         o.key === dedupeKey &&
         o.kind === kind &&
-        o.provider === target.provider &&
+        o.sourceId === target.sourceId &&
         o.streamId === target.streamId
     ) ?? null
   );
@@ -92,7 +92,7 @@ export async function acceptStreamReminder(
 /**
  * "No thanks" — the onboarding decline. A dismissal and NOTHING ELSE: there is no
  * setting to turn off, because the offer never turned one on. Permanent per
- * (provider, stream); a different provider, or a new stream, mints a different key and
+ * (source, stream); a different source, or a new stream, mints a different key and
  * is therefore a new offer.
  */
 export async function dismissStreamReminderOffer(

@@ -5,9 +5,6 @@ import {
   matchesActionPrefix,
   retentionModifier,
   rowsToPrune,
-  clampPage,
-  pageOffset,
-  pageCount,
   DEFAULT_AUDIT_RETENTION_DAYS,
   AUDIT_PAGE_SIZE,
 } from "@/lib/audit-actions";
@@ -22,6 +19,19 @@ describe("audit action naming", () => {
   it("action names are unique", () => {
     const values = Object.values(AUDIT_ACTIONS);
     expect(new Set(values).size).toBe(values.length);
+  });
+
+  // #1843. The pair is deliberately in the `login` domain rather than a new
+  // `session` one: the viewer's action filter groups on the domain, and
+  // `login.logout` is already a session-ending event, so a `session.*` spelling
+  // would split "a session ended" across two filter groups.
+  it("session revocation lives in the login domain, beside logout", () => {
+    expect(AUDIT_ACTIONS.sessionRevoke).toBe("login.session-revoke");
+    expect(AUDIT_ACTIONS.sessionRevokeAll).toBe("login.session-revoke-all");
+    expect(actionDomain(AUDIT_ACTIONS.sessionRevoke)).toBe(
+      actionDomain(AUDIT_ACTIONS.logout)
+    );
+    expect(actionDomain(AUDIT_ACTIONS.sessionRevokeAll)).toBe("login");
   });
 
   it("actionDomain returns the segment before the first dot", () => {
@@ -72,30 +82,9 @@ describe("retention math", () => {
   });
 });
 
-describe("pagination math", () => {
-  it("clampPage coerces to a 1-based integer", () => {
-    expect(clampPage(1)).toBe(1);
-    expect(clampPage(3)).toBe(3);
-    expect(clampPage(0)).toBe(1);
-    expect(clampPage(-5)).toBe(1);
-    expect(clampPage(2.7)).toBe(2);
-    expect(clampPage(NaN)).toBe(1);
-  });
-
-  it("pageOffset is (page-1)*pageSize on a clamped page", () => {
-    expect(pageOffset(1, 50)).toBe(0);
-    expect(pageOffset(2, 50)).toBe(50);
-    expect(pageOffset(3, 20)).toBe(40);
-    expect(pageOffset(0, 50)).toBe(0); // clamped to page 1
-  });
-
-  it("pageCount is a ceil, at least 1", () => {
-    expect(pageCount(0, 50)).toBe(1);
-    expect(pageCount(50, 50)).toBe(1);
-    expect(pageCount(51, 50)).toBe(2);
-    expect(pageCount(101, 50)).toBe(3);
-  });
-
+describe("pagination", () => {
+  // The arithmetic moved to lib/pagination.ts (lib/__tests__/pagination.test.ts);
+  // what stays here is this viewer's own page-size policy.
   it("default page size", () => {
     expect(AUDIT_PAGE_SIZE).toBe(50);
   });

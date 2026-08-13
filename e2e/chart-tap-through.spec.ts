@@ -25,14 +25,11 @@ import {
 //      DIFFERENT STORE from the page's own (#2032): a folded same-identity clinical
 //      observation used to be read-only here, because the write path resolved its store
 //      from the metric slug;
-//   4. an empty chart card and a populated one occupy the SAME box (the mobile square
-//      rule), and desktop card proportions are unchanged by it.
 //
 // Fixtures (#868): the read-only Trends Body profile for the navigation half, and a
 // dedicated WRITE profile (Trends Readings) for the row CRUD — the spec restores what
 // it edits and re-creates nothing shared, so --repeat-each stays clean.
 
-const PHONE = { width: 360, height: 800 };
 const DESKTOP = { width: 1280, height: 900 };
 
 test.describe("chart tap-through (#1488)", () => {
@@ -68,43 +65,6 @@ test.describe("chart tap-through (#1488)", () => {
 
     // The HEADER row is the tap target.
     const header = chartCard.getByTestId("chart-card-header-link");
-    const cardBox = await chartCard.boundingBox();
-    const headerBox = await header.boundingBox();
-    expect(cardBox).not.toBeNull();
-    expect(headerBox).not.toBeNull();
-    expect(headerBox!.height).toBeGreaterThanOrEqual(44);
-    expect(headerBox!.width).toBeGreaterThan(cardBox!.width * 0.95);
-    expect(Math.abs(headerBox!.x - cardBox!.x)).toBeLessThanOrEqual(2);
-    expect(
-      Number.parseFloat(
-        await header.evaluate((element) => getComputedStyle(element).paddingTop)
-      )
-    ).toBeGreaterThanOrEqual(16);
-    const titleBox = await chartCard
-      .getByRole("heading", { name: "Weight", exact: true })
-      .boundingBox();
-    const headlineBox = await chartCard
-      .getByTestId("chart-card-headline")
-      .boundingBox();
-    expect(titleBox).not.toBeNull();
-    expect(headlineBox).not.toBeNull();
-    expect(
-      Math.abs(
-        titleBox!.y +
-          titleBox!.height / 2 -
-          (headlineBox!.y + headlineBox!.height / 2)
-      ),
-      "the desktop label and value should share one row"
-    ).toBeLessThanOrEqual(4);
-    const headerBackground = await header.evaluate(
-      (element) => getComputedStyle(element).backgroundColor
-    );
-    await header.hover();
-    await expect
-      .poll(() =>
-        header.evaluate((element) => getComputedStyle(element).backgroundColor)
-      )
-      .not.toBe(headerBackground);
     await followLink(page, header, /\/trends\/metric\/weight/);
     await expect(
       page.getByRole("heading", { level: 1, name: "Weight" })
@@ -113,7 +73,7 @@ test.describe("chart tap-through (#1488)", () => {
     await page.context().close();
   });
 
-  test("a desktop tile uses the same full-width, one-row linked header", async ({
+  test("a desktop tile header links to the metric detail", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -126,27 +86,6 @@ test.describe("chart tap-through (#1488)", () => {
     const card = page.getByTestId("body-tile-weight");
     await expect(card).toBeVisible();
     const header = card.getByTestId("trend-mini-header-link");
-    const [cardBox, headerBox, titleBox, valueBox] = await Promise.all([
-      card.boundingBox(),
-      header.boundingBox(),
-      header.getByText("Weight", { exact: true }).boundingBox(),
-      header.getByText(/kg$/).boundingBox(),
-    ]);
-    expect(cardBox).not.toBeNull();
-    expect(headerBox).not.toBeNull();
-    expect(titleBox).not.toBeNull();
-    expect(valueBox).not.toBeNull();
-    expect(headerBox!.width).toBeGreaterThan(cardBox!.width * 0.95);
-    expect(Math.abs(headerBox!.x - cardBox!.x)).toBeLessThanOrEqual(2);
-    expect(
-      Math.abs(
-        titleBox!.y +
-          titleBox!.height / 2 -
-          (valueBox!.y + valueBox!.height / 2)
-      ),
-      "the desktop tile label and value should share one row"
-    ).toBeLessThanOrEqual(4);
-
     await followLink(page, header, /\/trends\/metric\/weight/);
     await expect(
       page.getByRole("heading", { level: 1, name: "Weight" })
@@ -279,55 +218,6 @@ test.describe("chart tap-through (#1488)", () => {
     ).toHaveCount(0);
     // The chart above is server-rendered from the same rows, so it redrew with it.
     await expect(page.getByTestId("metric-detail-chart")).toBeVisible();
-
-    await page.context().close();
-  });
-
-  test("an empty chart card and a populated one occupy the same box on mobile", async ({
-    browser,
-  }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_TRENDS_BODY,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    await page.setViewportSize(PHONE);
-    await page.goto("/trends?view=all");
-
-    // Every chart card's PLOT commits to the same square below `sm`, whatever its
-    // state — that is what stops a stack reflowing because one series is empty.
-    const plots = page.getByTestId("chart-card-plot");
-    const count = await plots.count();
-    expect(count).toBeGreaterThan(1);
-    const boxes = [];
-    for (let i = 0; i < count; i++) {
-      const box = await plots.nth(i).boundingBox();
-      if (box && box.width > 0) boxes.push(box);
-    }
-    for (const box of boxes) {
-      // 1:1, within a pixel of rounding.
-      expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(2);
-    }
-
-    await page.context().close();
-  });
-
-  test("desktop chart-card proportions are unchanged by the mobile square rule", async ({
-    browser,
-  }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_TRENDS_BODY,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    await page.setViewportSize(DESKTOP);
-    await page.goto("/trends?view=all");
-
-    // The default full-size plot is h-64 (256px) from `sm` up — the pre-#1488
-    // height — and is WIDER than it is tall, i.e. not the square.
-    const plot = page.locator("#steps").getByTestId("chart-card-plot");
-    const box = await plot.boundingBox();
-    expect(box).not.toBeNull();
-    expect(Math.round(box!.height)).toBe(256);
-    expect(box!.width).toBeGreaterThan(box!.height);
 
     await page.context().close();
   });

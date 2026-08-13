@@ -15,8 +15,8 @@
 //     SOURCE-OWNED re-push — never the user's own correction (see `recordReading`);
 //   • the inserted/updated/unchanged split is classified by `classifyUpsert` and bumped
 //     ONLY by `tallyUpsert`;
-//   • deletes of source-owned rows write the #507/#508 re-import tombstone, or go
-//     through `captureDelete`, which writes it and makes the delete undoable.
+//   • deletes go through `captureDelete`, which writes the #507/#508 re-import
+//     tombstone AND makes the delete undoable — one path, not two (#2123).
 //
 // NO SCHEMA CHANGE, and `medical_records` stays the clinical record: writes ROUTE to it,
 // nothing here restructures it. Phase 3 (the physical merge) is a separate, later
@@ -30,7 +30,6 @@ import {
   type UpsertCounts,
   type UpsertDisposition,
 } from "./integrations/sync-log";
-import { writeImportTombstoneForRow } from "./integrations/tombstones";
 import { captureDelete } from "./undo-delete-db";
 import { addCanonicalNames, reconcileFlags } from "./queries";
 import { placeReading, type ReadingTarget } from "./reading-placement";
@@ -310,12 +309,32 @@ export interface ReadingWriteInput<U extends string = string> {
   provenance?: ReadingProvenance;
 }
 
+// What recording one reading did. `statedTimeRefused` (#2363, completing #2311 and
+// #2296) rides on the SUCCESS arm on purpose: a refused statement costs the
+// statement and never the reading, so it is a NOTICE about a write that landed —
+// never an error, and never a reason to fail. It is absent whenever nobody stated a
+// time, which is the common case and nothing to report.
+//
+// WHO REPORTS IT IS THE CALLER'S DECISION, and the two answers are both correct:
+//
+//   • A MANUAL sitting reports it. The user typed a minute and the app threw it
+//     away; saying "Measurements saved" and nothing else is the defect #2296 ruled
+//     against. `insertVitals` → `addMeasurements` carries it to the form.
+//   • A NON-MANUAL caller collapses it, deliberately: a document's own stated time
+//     (persistDocumentImport's readings), a fitness battery's derived instant, an
+//     integration push. Those are not a user's statement, so there is nobody in the
+//     room to tell and no toast to put it in — the reading lands, `occurred_at`
+//     stays NULL, and the import report is where a document's refusals belong.
+//
+// The point of widening the type is that the choice is now MADE at each call site
+// rather than made for everyone by a shape that could not carry the answer.
 export type ReadingRecordOutcome =
   | {
       ok: true;
       store: ReadingTarget["store"];
       rowId: number;
       disposition: UpsertDisposition;
+      statedTimeRefused?: StatedTimeRefusal;
     }
   | {
       ok: false;
@@ -373,17 +392,16 @@ export function recordReading<U extends string>(
         // reading — and the find-then-write itself is untouched: occurred_at is
         // descriptive, so it plays no part in which row a write lands on.
         //
-        // KNOWN GAP, stated rather than implied (#2311's audit). This core still
-        // COLLAPSES `.refused` — `ReadingRecordOutcome` has nowhere to carry it, and
-        // widening it reaches every reading writer (imports, the fitness battery, the
-        // vitals sitting) rather than the manual body-metrics submission #2311 was
-        // reproduced on. The refusal is now visible right here rather than erased by
-        // the resolver's shape, which is what makes the follow-up a small change.
-        const stated = resolveStatedOccurredAt(
+        // The verdict rides out on the outcome (#2363) instead of being collapsed
+        // here. Widening `ReadingRecordOutcome` reaches every reading writer, which
+        // is exactly why it belongs at the core: each caller now DECIDES whether a
+        // refusal is somebody's to hear, rather than the shape deciding for all of
+        // them that it is nobody's.
+        const { value: stated, refused } = resolveStatedOccurredAt(
           profileId,
           input.date,
           input.occurredAt
-        ).value;
+        );
         const found = bodyMetricFind(placement.column).get(
           profileId,
           input.date,
@@ -418,6 +436,7 @@ export function recordReading<U extends string>(
             store: "body_metrics",
             rowId: found.id,
             disposition,
+            ...(refused ? { statedTimeRefused: refused } : {}),
           } as const;
         }
         const info = bodyMetricInsert(placement.column).run(
@@ -432,6 +451,7 @@ export function recordReading<U extends string>(
           store: "body_metrics",
           rowId: Number(info.lastInsertRowid),
           disposition,
+          ...(refused ? { statedTimeRefused: refused } : {}),
         } as const;
       }
       case "metric_samples": {
@@ -508,14 +528,15 @@ export function recordReading<U extends string>(
         // The stated instant (#2154), through the SAME acceptance gate the
         // body_metrics branch runs: a refused statement costs the statement,
         // never the reading. An observation is always a fresh INSERT, so
-        // "no statement" and "explicit clear" both land as honest NULL.
-        // `.refused` is collapsed here for the same reason as the body_metrics
-        // branch above — see that comment; it is #2311's named audit survivor.
-        const stated = resolveStatedOccurredAt(
+        // "no statement" and "explicit clear" both land as honest NULL. The
+        // verdict rides out on the outcome (#2363), as it does above — this is
+        // the branch a vitals sitting's BP, glucose, SpO₂ and temperature all
+        // land in, so it is the branch that used to make the sitting silent.
+        const { value: stated, refused } = resolveStatedOccurredAt(
           profileId,
           input.date,
           input.occurredAt
-        ).value;
+        );
         const info = db
           .prepare(
             `INSERT INTO medical_records
@@ -551,6 +572,7 @@ export function recordReading<U extends string>(
           store: "medical_records",
           rowId,
           disposition: "inserted",
+          ...(refused ? { statedTimeRefused: refused } : {}),
         } as const;
       }
     }
@@ -561,6 +583,12 @@ export function recordReading<U extends string>(
  * Record several readings and report the shared upsert accounting. The counts are bumped
  * ONLY through `tallyUpsert`, so a caller's inserted/updated/unchanged split is the same
  * split every sync reports.
+ *
+ * Every outcome is returned, `statedTimeRefused` included (#2363) — a batch does not get
+ * to lose per-reading answers just because it also keeps a tally. There is no COUNT of
+ * refusals here on purpose: a refusal is a notice about one statement, not a segment of
+ * the dedup split, and folding it into `UpsertCounts` would put it in the accounting a
+ * sync reports rather than in front of the person who made the statement.
  */
 export function recordReadings<U extends string>(
   profileId: number,
@@ -634,9 +662,20 @@ export function updateReadingAt(
           .prepare(
             `UPDATE medical_records
                 SET value = ?, value_num = ?,
-                    -- Same #133 lock the record editor applies: an imported reading
-                    -- corrected here must survive the next rolling window.
-                    edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
+                    -- The #133 lock, armed UNCONDITIONALLY (#2364). This used to read
+                    -- CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END,
+                    -- which asked WHICH IMPORT PATH produced the row rather than
+                    -- whether a human changed a value this app derived — and
+                    -- external_id is NULL for every AI-extracted row by construction
+                    -- (extractionToPersistInput sets it so), which is the majority of
+                    -- readings in the app. The lock was therefore not merely unset on
+                    -- them, it was UNSETTABLE, and edited protected against
+                    -- integration sync while the likeliest overwrite of a
+                    -- document-derived reading is the document's own reprocess.
+                    -- lib/unit-mislabel-correction.ts already sets it unconditionally
+                    -- on this table for the same act; the two correction writers agree
+                    -- now instead of depending on which field you corrected.
+                    edited = 1
               WHERE id = ? AND profile_id = ?
                 AND biomarker_family(canonical_name) = biomarker_family(?) COLLATE NOCASE`
           )
@@ -654,12 +693,12 @@ export function updateReadingAt(
 }
 
 /**
- * Delete one reading by the row it IS. Where an undoable capture already exists for the
- * store's root (`body_metrics`, `medical_records`) it goes through `captureDelete`,
- * which writes the re-import tombstone and makes the delete restorable from the toast.
- * The stores with no undoable root delete directly, capturing their tombstone pre-image
- * FIRST — the #653 pattern, without which the next rolling-window sync would simply
- * re-insert the row the user just removed.
+ * Delete one reading by the row it IS. EVERY store goes through `captureDelete` (#2123),
+ * which writes the re-import tombstone and makes the delete restorable from the toast:
+ * one control on one row may not offer Undo for a weigh-in and permanent loss for an
+ * HRV sample. `body_metrics` is the one branch that can answer with no token, and not
+ * because of the store — a row there carries up to three measures, so removing one of
+ * several NULLs a column rather than deleting a row, and a column clear is not a capture.
  */
 export function deleteReadingAt(
   profileId: number,
@@ -702,23 +741,23 @@ export function deleteReadingAt(
       return { ok: undoId != null, undoId };
     }
     case "metric_samples": {
-      return writeTx(() => {
-        const row = db
-          .prepare(
-            `SELECT metric, source, origin, start_time FROM metric_samples
-              WHERE id = ? AND profile_id = ? AND metric = ?`
-          )
-          .get(target.id, profileId, target.metric) as
-          Record<string, unknown> | undefined;
-        if (!row) return { ok: false, undoId: null };
-        const info = db
-          .prepare(`DELETE FROM metric_samples WHERE id = ? AND profile_id = ?`)
-          .run(target.id, profileId);
-        // The pre-image was read BEFORE the delete — the row is gone now, and the
-        // tombstone is what stops the next sync from re-inserting it (#508/#653).
-        writeImportTombstoneForRow(profileId, "metric_samples", row);
-        return { ok: info.changes > 0, undoId: null };
-      });
+      // The row has to be this METRIC's before it is captured: captureDelete scopes by
+      // (id, profile_id) and knows nothing about the metric a target names, so without
+      // this probe a target carrying a valid id under the wrong metric would delete the
+      // row anyway — the guard the bare DELETE used to get from its own WHERE clause.
+      const owned = db
+        .prepare(
+          `SELECT 1 FROM metric_samples
+            WHERE id = ? AND profile_id = ? AND metric = ?`
+        )
+        .get(target.id, profileId, target.metric);
+      if (!owned) return { ok: false, undoId: null };
+      // captureDelete owns the tombstone write (metric_samples IS a TOMBSTONE_TABLES
+      // member), so the #508/#653 re-import protection this branch used to write by hand
+      // is preserved rather than duplicated — and unlike the hand-written one it is
+      // REMOVED again when the restore puts the row back.
+      const undoId = captureDelete("metric-sample", profileId, target.id);
+      return { ok: undoId != null, undoId };
     }
   }
 }

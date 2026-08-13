@@ -50,6 +50,8 @@ import { reminderStream } from "@/lib/integrations/continuous-streams";
 
 /** The floor the REGISTRY declares (#2341) — this module owns no threshold. */
 const FLOOR = reminderStream("bedtime-wear")!.stream.reminder.frontierFloorMin;
+/** And the evidence bar it declares beside it (#2560) — likewise read, never restated. */
+const EVIDENCE = reminderStream("bedtime-wear")!.stream.frozenEvidence.syncs;
 
 const PROVIDER = "health-connect";
 // 2026-07-14, 22:00 in a UTC profile — the Bedtime slot tick.
@@ -131,9 +133,14 @@ function seedLostNightSignature(): void {
   stream("21:05");
   // The off-wrist signature: pushes CONTINUE, carrying phone-sourced aggregates, with
   // nothing landing on the stream. The first of them DELIVERED the 21:05 minutes (the
-  // pipeline's own lag), and the two after it find the frontier exactly where it was —
-  // which is the evidence, and is what separates this from a connection outage.
-  sync("21:20:00");
+  // pipeline's own lag), and the DECLARED number after it find the frontier exactly
+  // where it was — which is the evidence, and is what separates this from a connection
+  // outage. Four of them since #2560, because two is also what one pending watch →
+  // Health Connect batch looks like; a charger left overnight accumulates evidence
+  // without bound, so the case this feature exists for is unaffected.
+  sync("21:12:00");
+  sync("21:24:00");
+  sync("21:36:00");
   sync("21:48:00");
   sync("22:00:00");
 }
@@ -199,8 +206,11 @@ describe("bedtime wear reminder (#2161)", () => {
   it("stays silent for a profile that does not wear a device to sleep", () => {
     connect();
     stream("21:05");
-    // The whole off-wrist signature — the delivering push and two quiet ones after it.
-    sync("21:20:00");
+    // The whole off-wrist signature — the delivering push and the declared number of
+    // quiet ones after it.
+    sync("21:12:00");
+    sync("21:24:00");
+    sync("21:36:00");
     sync("21:48:00");
     sync("22:00:00");
     setProfileWearReminder(profileId, true);
@@ -220,8 +230,8 @@ describe("bedtime wear reminder (#2161)", () => {
     // rule. "Still on the charger?" would be false advice with the pipeline down, and
     // #1685's one-row rule forbids two contacts for one fault.
     //
-    // The credential dying (#326) is what escalates a provider that is still pushing:
-    // since #2263 the OTHER escalation is a silence tolerance, and a provider whose
+    // The credential dying (#326) is what escalates a source that is still pushing:
+    // since #2263 the OTHER escalation is a silence tolerance, and a source whose
     // pushes are landing has no silence to measure.
     db.prepare(
       `UPDATE integration_connections SET status = 'needs_reauth'
@@ -262,9 +272,9 @@ describe("bedtime wear reminder (#2161)", () => {
     connect();
     seedSleepHistory();
     setProfileWearReminder(profileId, true);
-    // A watch put down a few minutes before the slot: two pushes have already found
-    // the frontier where it was, so the EVIDENCE is in — and the floor is what stops
-    // the send anyway. Rows end one minute short of the declared floor.
+    // A watch put down a few minutes before the slot: the declared number of pushes
+    // have already found the frontier where it was, so the EVIDENCE is in — and the
+    // floor is what stops the send anyway. Rows end one minute short of the floor.
     const inside = 22 * 60 - (FLOOR - 1);
     stream(
       `${String(Math.floor(inside / 60)).padStart(2, "0")}:${String(
@@ -272,11 +282,13 @@ describe("bedtime wear reminder (#2161)", () => {
       ).padStart(2, "0")}`
     );
     sync("21:24:00");
+    sync("21:30:00");
     sync("21:42:00");
+    sync("21:50:00");
     sync("21:59:00");
     expect(
       readStreamFrontier(profileId, PROVIDER, "heart-rate")!.syncsSinceAdvance
-    ).toBe(2);
+    ).toBe(EVIDENCE);
     expect(bedtimeWearReminderState(profileId).verdict).toEqual({
       send: false,
       skip: "stream-live",
@@ -325,11 +337,13 @@ describe("bedtime wear reminder (#2161)", () => {
       `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source)
        VALUES (?, '2026-07-14T21:05:00Z', 62, 60, ?)`
     ).run(eastern, PROVIDER);
-    // Three pushes: the first delivered those minutes (this pipeline's own lag), the
-    // two after it found the frontier exactly where it was.
+    // The first push delivered those minutes (this pipeline's own lag); the declared
+    // number after it found the frontier exactly where it was.
     for (const at of [
-      "2026-07-14T21:20:00Z",
-      "2026-07-14T21:40:00Z",
+      "2026-07-14T21:12:00Z",
+      "2026-07-14T21:24:00Z",
+      "2026-07-14T21:36:00Z",
+      "2026-07-14T21:48:00Z",
       "2026-07-14T21:55:00Z",
     ]) {
       db.prepare(
@@ -362,7 +376,7 @@ describe("bedtime wear reminder (#2161)", () => {
 // ── The frontier discriminator, end to end (#2341) ───────────────────────────
 //
 // The two nights the old predicate could not tell apart, against the real stores. They
-// run the SAME pipeline at the SAME lag with the provider healthy throughout; the only
+// run the SAME pipeline at the SAME lag with the source healthy throughout; the only
 // difference is whether the watch kept producing. The first of them is the night this
 // send went out wrongly, and this fixture fails on the code that sent it.
 
@@ -412,8 +426,50 @@ describe("the frontier, not the clock (#2341)", () => {
     });
   });
 
+  it("does NOT send on a pending watch batch — two or three quiet pushes (#2560)", () => {
+    // THE NIGHT #2560 IS ABOUT, against the real stores. The frontier is frozen past
+    // the floor across two, then three, healthy pushes — and the watch is on the wrist
+    // the whole time, with its own Bluetooth batch into phone Health Connect still
+    // pending. Single pushes in the measured window delivered 164–324 minutes of heart
+    // rate at once, so this signature is ordinary rather than rare: 9% of all pushes
+    // carry no new heart-rate rows.
+    //
+    // Both slot attempts, because the second attempt is the one that actually sent.
+    connect();
+    seedSleepHistory();
+    setProfileWearReminder(profileId, true);
+    stream("21:05");
+    sync("21:12:00"); // delivers 21:05 — the advance
+    sync("21:36:00"); // k = 1
+    sync("21:52:00"); // k = 2
+    expect(
+      readStreamFrontier(profileId, PROVIDER, "heart-rate")!.syncsSinceAdvance
+    ).toBe(2);
+    // Past the floor, so the floor is not what is silencing this — the evidence bar is.
+    expect(bedtimeWearReminderState(profileId).verdict).toEqual({
+      send: false,
+      skip: "no-recent-sync",
+    });
+    expect(buildWearReminder(profileId)).toBeNull();
+
+    sync("22:41:00"); // k = 3, the second attempt of the slot
+    const secondAttempt = new Date(`${DAY}T23:00:00.000Z`);
+    expect(bedtimeWearReminderState(profileId, secondAttempt).verdict).toEqual({
+      send: false,
+      skip: "no-recent-sync",
+    });
+
+    // And the batch finally lands: the frontier jumps forward by the whole backlog,
+    // which is what the wrist was doing all along.
+    stream("22:50", 105);
+    sync("22:55:00");
+    expect(
+      readStreamFrontier(profileId, PROVIDER, "heart-rate")!.syncsSinceAdvance
+    ).toBe(0);
+  });
+
   it("SENDS for the watch removed at 21:05, at both attempts of the slot", () => {
-    // The motivating incident, on the same lagging pipeline: three pushes land, none
+    // The motivating incident, on the same lagging pipeline: five pushes land, none
     // of them carrying anything newer than 21:05.
     seedLostNightSignature();
     setProfileWearReminder(profileId, true);
@@ -455,7 +511,7 @@ describe("the frontier, not the clock (#2341)", () => {
   });
 
   it("keeps another provider's watermark out of this one's answer", () => {
-    // The watermark is keyed on (profile, provider, stream). The app's other
+    // The watermark is keyed on (profile, source, stream). The app's other
     // hr_minutes writer declares no continuous stream at all, so it can never write
     // one — but a row planted under its name must not be read as this stream's either.
     seedLostNightSignature();

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 
 // #1596: the food quick-adds — a one-tap food-group serving and the protein-grams
@@ -105,6 +105,19 @@ test("protein grams added offline queue, then sync exactly once on reconnect (#1
     `${before + 30}g today`
   );
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
+
+  // Undo, so this leaves the SHARED profile as it found it — the same rule
+  // protein-quickadd.spec follows on its own isolated fixture, and for the same
+  // reason: tracked grams flip the adequacy card from the ESTIMATED basis to
+  // COMBINED, which is exactly what protein-adequacy.spec asserts about profile 1.
+  // The delta assertions above are already shared-seed safe; the RESIDUE was not,
+  // and a leftover row breaks any neighbour on this worker rather than this test.
+  // It only surfaced when duration-balanced sharding (#2590) put the two specs in
+  // one shard — the collision was always here, waiting on a grouping to reveal it.
+  await settledClick(page, page.getByTestId("protein-quickadd-undo"));
+  await expect(page.getByTestId("protein-quickadd-total")).toHaveText(
+    `${before}g today`
+  );
 });
 
 // The ledger's high-water mark, so a test can address the row IT created without
@@ -128,18 +141,18 @@ function maxFoodEventId(): number {
 
 function newestBerriesEventAfter(
   afterId: number
-): { eaten_at: string | null; time_source: string | null } | undefined {
+): { occurred_at: string | null; time_source: string | null } | undefined {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
     return db
       .prepare(
-        `SELECT eaten_at, time_source FROM food_log_events
+        `SELECT occurred_at, time_source FROM food_log_events
           WHERE id > ? AND group_key = 'berries'
           ORDER BY id DESC LIMIT 1`
       )
       .get(afterId) as
-      { eaten_at: string | null; time_source: string | null } | undefined;
+      { occurred_at: string | null; time_source: string | null } | undefined;
   } finally {
     db.close();
   }
@@ -201,9 +214,9 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
   const row = newestBerriesEventAfter(baselineEventId);
   expect(row).not.toBeUndefined();
   expect(row!.time_source).toBe("stated");
-  expect(row!.eaten_at).not.toBeNull();
+  expect(row!.occurred_at).not.toBeNull();
   expect(
-    Math.abs(new Date(row!.eaten_at!).getTime() - frozenNow().getTime())
+    Math.abs(new Date(row!.occurred_at!).getTime() - frozenNow().getTime())
   ).toBeLessThan(60 * 60_000);
 });
 
@@ -282,6 +295,6 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
 
   const row = newestBerriesEventAfter(baselineEventId);
   expect(row).not.toBeUndefined();
-  expect(row!.eaten_at).toBeNull();
+  expect(row!.occurred_at).toBeNull();
   expect(row!.time_source).toBeNull();
 });

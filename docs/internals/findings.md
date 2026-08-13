@@ -189,6 +189,73 @@ consequences worth knowing when touching identity code:
 
 ---
 
+## Paired observations (coaching tier, #2177)
+
+`lib/paired-observations.ts` is a **declared registry of factor × outcome pairs**
+and the one pure engine that judges them; `lib/queries/paired-observations.ts`
+gathers, and `buildPairedObservationFindings` emits. It generalizes the vocabulary
+of the sleep↔mood bridge (#992) — fixed effect floors, a per-arm datapoint
+minimum, month-anchored episode keys, coaching reach, co-occurrence copy — to
+comparisons across two different streams. #992's own bridge is NOT an entry: its
+arms are two time WINDOWS of one stream gated on a separately detected low-mood
+window, while an entry's arms are two sets of days inside one window split by a
+logged factor. Calling "the date is recent" a factor is exactly what this registry
+forbids.
+
+**The registry IS the multiplicity control.** There is no miner and there must
+never be one: comparing every logged factor against every measured stream over a
+life's worth of days will produce a statement for any question you care to ask.
+`PAIRED_OBSERVATIONS` is fixed, short (≤6, pinned by test) and human-reviewable,
+and every entry carries a written `rationale` for why that comparison earns a
+slot. Adding a pair costs a paragraph of argument plus a reader binding, on
+purpose. The three shipped pairs are alcohol→overnight HRV, alcohol→next-morning
+resting HR, and trained-day→that night's main sleep.
+
+**The factor is always a row the user wrote**, never inferred behaviour. And
+absence of a log is not absence of the thing, so each entry declares a control
+rule: `logging-evidence` (the day must carry independent evidence that the
+factor's log surface was in use — the food-regularity discipline: a day with no
+food log is evidence about logging, not about eating) or `absence-is-a-state`
+(a day with no activity is a rest day everywhere else in Allos — bounded to the
+stretch after the log's first use in the window).
+
+**Gates are legible constants, never statistics.** Nights per arm
+(`PAIRED_MIN_NIGHTS_PER_ARM`) plus a fixed floor in the outcome's own unit
+(8 ms / 3 bpm / 30 min), and a recency gate so a stream that went quiet cannot
+keep producing fresh-sounding observations. No p-values, no confidence intervals,
+no significance language. **Both arms' n is always in the sentence** — a reader
+who cannot see the arm sizes cannot judge the claim.
+
+**Below the floor is SILENCE in v1** (#2177 constraint 4). This is a real cost —
+"we compared and found nothing" is useful and is not the same claim as saying
+nothing — and it is deferred, not denied: a no-association surface has its own
+copy problem and its own issue. The training→sleep pair is declared anyway so the
+null case is exercised end to end.
+
+**Reach.** Coaching tier, registered under `PAIRED_OBS_PREFIX`; joins
+`collectCoachingFindings` and renders on the calm, hideable dashboard rollup.
+Never Upcoming, never a notification, never the hero, never an obligation. Keys
+are `paired-obs:<pair>:<YYYY-MM>` and declare their stem as `episodeFamily`
+(#2543), so a dismissal is per-month and repeat declines are read as an answer
+(#2386). Substance-conditioned pairs declare `adultOnly` and are withheld from a
+known minor by `pairedObservationsFor()` — the one selection the builder and its
+tests both call, so a second caller cannot walk past the gate (#2107).
+
+**Confounding is acknowledged, not solved.** Drink evenings are also later, more
+social, more often weekends. Nothing adjusts for anything; the copy contract is
+the whole of the honesty.
+
+**#2385 triple.** Working: a firing pair is followed by the user opening the
+outcome's own surface, and the pair is not dismissed on its next raising. Wrong:
+the same pair re-fires after a dismissal with arm means that barely moved, or a
+pair fires for most profiles that have both streams (a pattern everyone has is a
+property of the streams, not of the person). **Deceptive success: observations
+surfaced per profile** — every pair added, every floor lowered, every arm minimum
+relaxed improves that number while making the average statement flimsier. The
+count is a cost, not a score.
+
+---
+
 ## The digest time suggestion (coaching tier, #2217)
 
 A **ride-along** member of the coaching tier, and worth reading beside the portal
@@ -939,7 +1006,9 @@ the parallel mechanism is correct and this exemption is why.
 Status: **shipped** · first implemented by #1505 (intake obligation); extended by
 #1718 (channel honesty), #1670 (frequency-target right-sizing across practices,
 training frequency goals and food groups) and #1668 (mood check-in auto-pause) as
-they land.
+they land; §9 (declared falsification, #2385) and §10 (repeat dismissal as an
+answer, #2386) add its missing other half — having decided the system may speak,
+how it would learn it should stop.
 
 The two-tier reach policy above answers "how far does a SIGNAL travel". That
 turned out to be one question inside a larger one the codebase kept answering
@@ -1464,22 +1533,210 @@ would be a second definition of "notable" — the #221 drift these rules exist t
 prevent, and a place where a user's display choice could quietly change what counts
 as clinically interesting.
 
+## 9. A feature that claims behaviour change declares its own falsification (#2385)
+
+Everything above answers **whether the system may speak**. Nothing above answers
+**whether speaking helped**, and until #2385 nothing in the doctrine could be
+wrong: a nudge is an attempt to change a person's behaviour in a health context,
+and "we may send this" and "sending this works" are different claims, of which
+only the first was ever written down.
+
+The evidence is already on disk in every instance. `upcoming_dismissals` records a
+`signal_key` and a `dismissed_at` per decline. The demotion engine SUGGESTS and the
+user's tap is the write, so its acceptance rate is inherently recorded.
+`notify_lifecycle` records delivery. And the domain ledgers — adherence, the food
+log, cadence verdicts, the training history — are the outcome measures themselves.
+The gap was never instrumentation; it was that nobody wrote down what those rows
+would have to say for a feature to be wrong.
+
+> A feature that claims to change behaviour declares, alongside its acceptance
+> criteria, **what would show it working**, **what would show it wrong**, and **its
+> deceptive success**.
+
+**1. What would show it working.** In terms of data the instance already holds —
+a named table, a named ledger, a direction. Not a KPI: a query a maintainer could
+run against one database and get an answer from.
+
+**2. What would show it wrong.** The observation that should retire or rework the
+feature. It has to be an observation the instance can actually make, and it has to
+be one the author would accept. A falsification nobody would act on is decoration.
+
+**3. The deceptive success.** The load-bearing one: the measure that improves
+_while the feature does harm_. #2376 is the canonical case — food coverage rising
+while servings-per-window falls is a feature training compliance rather than
+helping, and on the headline number alone it looks like a win. Naming the
+deceptive success is what forces the PAIRED measure into the declaration, because
+the honest reading is always "X improved AND Y held", never "X improved".
+
+Three constraints keep this repo-shaped, and each of them rules out the obvious
+wrong build:
+
+- **No telemetry, ever.** Self-hosted, multi-profile, PHI. Nothing about feature
+  effectiveness leaves the instance. These are local queries answerable against one
+  database and stated in the issue — not a dashboard, not a service, not a metrics
+  pipeline, and not a registry. The declaration is prose in the issue and in the
+  module header; there is no framework, and adding one would be the failure mode.
+- **Never a user-facing score.** Adherence-shaped numbers become streaks, and the
+  codebase already forbids that where it hurts most ("never gamify a depression
+  score"). A feature's effectiveness is a maintainer's question; surfacing it to
+  the user converts it into a target and destroys the measure.
+- **Only where a behavioural claim is made.** A correctness feature — the right
+  note, from the curated map, with the safety screens — is fully pinned by
+  acceptance criteria and tests. Requiring this section everywhere turns it into
+  boilerplate, which is how declared-reason fields die.
+
+**The safety-signal exception.** Dose reminders and missed-dose escalations carry
+no such declaration and can never be retired because a measure looked flat. Their
+justification is not effectiveness — a reminder that changes nothing on average is
+still correct for the one dose that would otherwise have been missed. The same
+holds for the mental-health crisis finding. Effectiveness governs the coaching and
+routine-care surfaces: refill and preventive nudges, workout nudges, the bedtime
+reminder, the food nudge, the digest itself, coaching findings, and the demotion
+suggestions.
+
+## 10. Repeat dismissal is an answer — the worked example (#2386)
+
+`upcoming_dismissals` had stored a decline per key since #39, and nothing anywhere
+read how OFTEN a key had been declined: a finding the user had refused five times
+was raised a sixth in the same words at the same prominence. §2 already grants the
+system permission to reduce contact unilaterally, and repeat dismissal is the
+clearest evidence it should — so acting on it needs no new permission, no new data
+and no user configuration. `lib/dismissal-fatigue.ts` is the decision;
+`lib/__tests__/dismissal-fatigue.test.ts` and
+`lib/__db_tests__/dismissal-fatigue.test.ts` pin it.
+
+**Count distinct raisings, not rows.** The store carries a unique
+`(profile_id, signal_key)`, so several dismissals inside one appearance are already
+one row. What separates raisings is the #436 **episode anchor**: a behavioural
+finding's `dedupeKey` is `<topic stem>:<episode anchor>` and it DECLARES the stem —
+as `supersedes` for an engine that had a pre-anchor key, or as `episodeFamily` for one
+whose key was born anchored (#2543). Two stored rows under two anchors of one stem are
+two raisings of one topic, both declined. The family is therefore a fact the ENGINE declared, not a
+per-namespace rule this module invented — and `supersedes` is only read as a stem
+when it is a strict prefix of the key, so the trajectory finding's cross-finding
+acknowledgment (#564, `biomarker-flag:<family>`) yields no family and no fatigue.
+A snooze is a "later", never an answer, and is never counted. A row whose
+`dismissed_at` is null is a dismissal of unknown date: it counts, and no date is
+invented for it, because the count reads keys and never timestamps.
+
+**Escalate the response, never mute.** Two declined raisings → `quiet`: the finding
+stops leading and leaves the routine set. Four → `on-demand`: it leaves the routine
+surface, and remains fully rendered where the user goes looking — its own tab, and
+Upcoming's "Snoozed & dismissed" section for rows stored there. Nothing is deleted,
+nothing user-owned is written, and the suppression bus is not touched: this is a
+§2 reduction in prominence, which the system may make unilaterally, and it is
+reversible the moment the counting inputs change.
+
+**Changing evidence resets it.** The #203/#482 re-keying discipline already says a
+moved reading is a different signal. A key whose identity carries its evidence
+(`digest:ldl:up` vs `digest:ldl:down`, `biomarker-flag:<family>`) lands in a
+different family when the evidence moves, so its count starts at zero and a newly
+flagged value speaks at full prominence however often its predecessor was declined.
+
+**The safety floor is absolute, and derived rather than listed.**
+`mayQuietOnDismissal` does not carry an exemption list someone could forget to
+extend. It asks `isHiddenUnderPolicy` — the one place the #449/#716/#942 carve-out
+is written — whether a plain dismiss would be honoured at all, and quieting is
+available only where the answer is yes. So quieting is strictly weaker than the
+dismissal that produced it: **a finding cannot be quieted by having been dismissed
+unless being dismissed could have silenced it outright.** Dose reminders,
+missed-dose escalations and the crisis finding declare `safety-ungated` and are
+refused before any count is consulted; an overdue care follow-up declares
+`snooze-only`, which resists a dismiss, and is refused for the same reason. The
+pure test enumerates `LIFECYCLE_SUPPRESSION_POLICIES`, so a new tier must be
+classified before it ships.
+
+### Where it applies — the dashboard, and the digest (#2543)
+
+#2538 shipped the dashboard half: `routineOrder` reranks so a fatigued finding stops
+leading, and leaves the surface at four declines. The digest half sat unshipped on the
+reading that no digest line had a family to accumulate against, and that reading was
+wrong in a specific and fixable way: **the anchors were already there and the
+declaration was missing.** `supersedes` means "my pre-anchor legacy key", so an engine
+whose key was BORN anchored had nowhere to say what its stem was and answered "no
+family" while carrying exactly the right key shape.
+
+`Finding.episodeFamily` (and its `UpcomingItem` twin) is that declaration. Three digest
+lines make it, each minting the stem from the same components as its own key so the two
+cannot drift:
+
+| Line              | Key                                    | Declared stem                    | What an episode is                |
+| ----------------- | -------------------------------------- | -------------------------------- | --------------------------------- |
+| `portal-sync`     | `portal-sync:<portal>/<account>:<day>` | `portal-sync:<portal>/<account>` | one ask, on the day it was raised |
+| `records-recency` | `records-recency:<source>:<frontier>`  | `records-recency:<source>`       | one staleness episode             |
+| `digest-time`     | `digest-time:<configured>:<proposed>`  | `digest-time:<configured>`       | one proposal past the ratchet     |
+
+The digest then drops anything not `routine` (`lib/notifications/digest-data.ts`,
+beside the two existing strict reductions), and the row stays on Upcoming / Data →
+Review / the Settings mirror. That is a §2 reduction: fewer words on a message that
+was sending anyway, nothing written, nothing hidden from the surfaces the user opens.
+
+**No re-keying happened, and none should.** #2543's option 1 — "give the relevant
+digest families an episode anchor" — would have been a re-keying exercise that orphans
+dismissals; declaring the anchors that already exist orphans nothing. Its option 2 —
+"decide the digest is out of scope" — is retired for these three and **stands for
+everything else**: `dose:<id>`, `refill:<id>`, `screening:<rule>` and their siblings
+name their SUBJECT rather than an episode of it, so one key is all there can ever be,
+the count cannot reach the threshold, and that is an answer rather than a gap. The
+declaration is validated as a strict prefix of the key it rides on, which is what stops
+a producer widening a stem to accumulate faster — the failure mode any
+"declines avoided" measure rewards.
+
+### Its declared falsification
+
+**What would show it working.** New dismissal rows stop accumulating in the
+families that reached a threshold: `upcoming_dismissals` gains no further sibling
+keys under a stem after it went `quiet`, because the user is no longer being asked.
+Paired with the negative that makes it meaningful — `restoreFinding` deletions on
+those stems stay at zero, so nobody is having to dig a quieted finding back out.
+
+**What would show it wrong.** A retired family is later ACTED ON. The lapsed lift
+is trained again, the right-sized target is lowered, the demotion is accepted —
+all visible in the domain's own ledger, all after the app stopped raising it
+routinely. That would mean the declines meant "not now", the mechanism read them
+as "no", and it removed the thing the user would have acted on the fifth time. A
+run of restores on quieted stems says the same thing more directly. Either
+observation should push the thresholds up or retire the retirement band and leave
+only de-prioritisation.
+
+**The deceptive success.** _Dismissals per profile per week fell._ It is guaranteed
+to improve: you cannot dismiss what is not raised, so the measure improves
+monotonically with how much the feature quiets — and it improves FASTEST exactly
+when the feature is wrong, because the families it wrongly retires are the ones
+that were generating the most declines. It reads as "we learned to stop bothering
+people" and is perfectly compatible with "we stopped surfacing the one observation
+each user would eventually have acted on". The paired measure is the domain ledger:
+declines falling while action on the quieted domains holds is the feature working;
+declines falling while action falls with them is the harm, wearing the same number.
+
+A second-order version worth naming because the mechanism invites it: widening what
+counts as one family makes counts accumulate faster and quiets more, so any measure
+of "declines avoided" rewards over-broad stems — which is the mechanism silencing
+distinct concerns under one topic. That is why the family is read off the engine's
+own declared episode anchor and never widened here, and why the #2543 explicit
+declaration is honoured only when it is a strict PREFIX of the key that carries it:
+a producer can name a stem its own key grew out of, and nothing broader.
+
 ## Where each rule is enforced
 
-| Rule                                                         | Enforced by                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Obligation decides push; kind decides clinical identity      | `isPushedIntake` / `accruesMisses` / `escalatesOnMiss` (`lib/intake-schedule.ts`)                                                                                                                                                                                                              |
-| Safety engines are obligation-blind                          | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                                                                                                                                                                                                         |
-| Conservative direction per aggregate (5a)                    | `lib/__tests__/dri.test.ts` + `lib/__tests__/intake-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions                                                                                            |
-| Suggest-never-write                                          | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                                                                                                       |
-| Reconciliation only ever REDUCES a message's claims          | `lib/notifications/reconcile-core.ts` emits close/strip only; predicates read the ledger and never the suppression bus (`lib/__db_tests__/message-reconcile.test.ts`)                                                                                                                          |
-| Preference filters never override safety floors (8)          | `flagged` ⇒ notable in `applyRecentChangeDemotion`, so a tuned-down `labs` still delivers its flagged result; `lib/__tests__/digest-tune.test.ts` + `lib/__db_tests__/digest-tune.test.ts`                                                                                                     |
-| Recovery clears a suggestion                                 | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                                                                                                           |
-| Window nesting                                               | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                                                                                                        |
-| Reach tier per finding namespace                             | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                                                                                                                |
-| A quiet-stream observation renders and never sends (#2146)   | `isEscalatingIntegration` (`lib/attention.ts`) filters the kind inside `buildAttentionModel` and the digest's integration section; `getQuietStreamAttention` is a separate entry point the badge / hero / digest never call                                                                    |
-| A stream lifecycle offer renders and never sends (#2162)     | `getStreamLifecycleOffers` (`lib/queries/stream-lifecycle.ts`) is its own entry point returning its own shape — nothing it produces is an `AttentionIntegration`, so there is no escalation list, and therefore no digest section, for it to reach                                             |
-| Only a tap writes the bedtime-reminder consent (#2161/#2162) | `setProfileWearReminder` is called from exactly two places, both Server Actions bound to a user's button (`app/(app)/stream-lifecycle-actions.ts`, `app/(app)/settings/profile/actions.ts`); the lifecycle gather only ever READS it (`lib/__action_tests__/stream-lifecycle.actions.test.ts`) |
+| Rule                                                                                     | Enforced by                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Obligation decides push; kind decides clinical identity                                  | `isPushedIntake` / `accruesMisses` / `escalatesOnMiss` (`lib/intake-schedule.ts`)                                                                                                                                                                                                                                                                                                              |
+| Safety engines are obligation-blind                                                      | `lib/__db_tests__/intake-obligation-lifecycle.test.ts`                                                                                                                                                                                                                                                                                                                                         |
+| Conservative direction per aggregate (5a)                                                | `lib/__tests__/dri.test.ts` + `lib/__tests__/intake-schedule.test.ts`; `e2e/dietary-limits.spec.ts` (full weight) and `e2e/rda-adequacy.spec.ts` (excluded + disclosed) pin the opposite directions                                                                                                                                                                                            |
+| Suggest-never-write                                                                      | `demoteIntakeObligation` is the only obligation-lowering write, and it is called only from a user action                                                                                                                                                                                                                                                                                       |
+| Reconciliation only ever REDUCES a message's claims                                      | `lib/notifications/reconcile-core.ts` emits close/strip only; predicates read the ledger and never the suppression bus (`lib/__db_tests__/message-reconcile.test.ts`)                                                                                                                                                                                                                          |
+| Preference filters never override safety floors (8)                                      | `flagged` ⇒ notable in `applyRecentChangeDemotion`, so a tuned-down `labs` still delivers its flagged result; `lib/__tests__/digest-tune.test.ts` + `lib/__db_tests__/digest-tune.test.ts`                                                                                                                                                                                                     |
+| Recovery clears a suggestion                                                             | pure detection over a trailing window (`lib/supplement-demotion.ts`)                                                                                                                                                                                                                                                                                                                           |
+| Window nesting                                                                           | `lib/__tests__/intake-demotion.test.ts`                                                                                                                                                                                                                                                                                                                                                        |
+| Reach tier per finding namespace                                                         | `RULE_FINDING_REGISTRY` + its reflection guards                                                                                                                                                                                                                                                                                                                                                |
+| A quiet-stream observation renders and never sends (#2146)                               | `isEscalatingIntegration` (`lib/attention.ts`) filters the kind inside `buildAttentionModel` and the digest's integration section; `getQuietStreamAttention` is a separate entry point the badge / hero / digest never call                                                                                                                                                                    |
+| A stream lifecycle offer renders and never sends (#2162)                                 | `getStreamLifecycleOffers` (`lib/queries/stream-lifecycle.ts`) is its own entry point returning its own shape — nothing it produces is an `AttentionIntegration`, so there is no escalation list, and therefore no digest section, for it to reach                                                                                                                                             |
+| Repeat dismissal never reaches a safety signal (10)                                      | `mayQuietOnDismissal` (`lib/dismissal-fatigue.ts`) derives the gate from `isHiddenUnderPolicy`, so quieting is available only where a plain dismiss is already honoured; `lib/__tests__/dismissal-fatigue.test.ts` enumerates `LIFECYCLE_SUPPRESSION_POLICIES` and `lib/__db_tests__/dismissal-fatigue.test.ts` pins the crisis item and a care-persistent follow-up against twelve dismissals |
+| Quieting de-prioritises and never silences (10)                                          | `routineOrder` reranks; the origin tabs and `collectCoachingFindings` are untouched, and no suppression row is written (`lib/__db_tests__/dismissal-fatigue.test.ts`)                                                                                                                                                                                                                          |
+| A declared episode family can never widen a stem (#2543)                                 | `findingEpisodeFamily` validates the declaration as a strict prefix of the finding's own `dedupeKey`, so a producer can only name a stem its key grew out of; `lib/__tests__/dismissal-fatigue.test.ts` rejects a cross-namespace and a separator-less declaration, and `lib/__db_tests__/digest-dismissal-fatigue.test.ts` proves an unanchored digest line is untouched by ten stored keys   |
+| An unconfirmed imported medication may be stopped, never demoted or auto-stopped (#2574) | `detectUnconfirmedMedication` (`lib/medication-unconfirmed.ts`) requires `kind = medication` + import provenance + ZERO lifetime logs; `handleMedStopTap` re-derives candidacy before it writes and calls `stopMedicationCourses`, the same core the web dialog uses (`lib/__tests__/medication-unconfirmed.test.ts`, `lib/__db_tests__/medication-unconfirmed.test.ts`)                       |
+| Only a tap writes the bedtime-reminder consent (#2161/#2162)                             | `setProfileWearReminder` is called from exactly two places, both Server Actions bound to a user's button (`app/(app)/stream-lifecycle-actions.ts`, `app/(app)/settings/profile/actions.ts`); the lifecycle gather only ever READS it (`lib/__action_tests__/stream-lifecycle.actions.test.ts`)                                                                                                 |
 
 ## 3c. A named waiting state says what the DATA is doing (#2097)
 

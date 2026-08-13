@@ -86,6 +86,7 @@ import {
   parseTuneCallback,
   parseDigestTimeCallback,
   parseDemoteCallback,
+  parseMedStopCallback,
   parsePracticeDoneCallback,
   parsePracticeLogCallback,
   parseRightSizeLowerCallback,
@@ -174,6 +175,7 @@ import {
   handleTuneTap,
   handleDigestTimeTap,
   handleDemoteTap,
+  handleMedStopTap,
   handleSymptomPick,
   handleSymptomSeverity,
 } from "./telegram-quick-log";
@@ -297,7 +299,7 @@ export async function handleCallbackQuery(
     return;
   }
   // Eating-time correction (#2019): a −Nh chip, or the 🕐 absolute-hour drill-down.
-  // Both ride the food nudge's own keyboard and re-stamp `eaten_at` for a whole burst.
+  // Both ride the food nudge's own keyboard and re-stamp `occurred_at` for a whole burst.
   const foodTimeChip = parseCorrectionChipToken(
     cq.data,
     FOOD_TIME_PREFIXES.chip
@@ -333,6 +335,16 @@ export async function handleCallbackQuery(
   const demote = parseDemoteCallback(cq.data);
   if (demote) {
     await handleDemoteTap(cq, demote);
+    return;
+  }
+
+  // Stop (#2574): end an unconfirmed imported medication from the reminder that is
+  // interrupting about it. Its own token namespace, parsed beside the demotion tap
+  // because they ride the same row and are complements on `kind` — never both present,
+  // and never mistakable for one another.
+  const medStop = parseMedStopCallback(cq.data);
+  if (medStop) {
+    await handleMedStopTap(cq, medStop);
     return;
   }
 
@@ -1322,8 +1334,10 @@ async function handleFoodExpand(
   const rebuilt = buildFoodNudge(profileId, token.window, token.date, next, {
     ref: { chatId, messageId },
   });
-  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+  // Show more / show less writes nothing: the clamp above IS the outcome, so the ack
+  // goes before the redraw (#2418).
   await answerCallbackQuery(cq.id);
+  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
 }
 
 // Handle the first-connection food opt-in prompt (#682): flip the per-profile

@@ -490,6 +490,56 @@ export interface ProteinToday {
   trailing: ProteinTrailing;
 }
 
+// ---- The gauge's average MARKER (issue #2328) ----
+//
+// The band gauge draws ONE thin marker line for "and how does that compare". Which
+// average it is has never been a free choice: #1917 made the Food-tab gauge show the
+// WEEK-TO-DATE figure, because the adequacy card beside it reaches a WEEKLY verdict
+// on exactly that number, and an ambiguous "Avg" was the one label it could not wear.
+//
+// That rule has a hole on the first morning of a week, which is the same hole #2328
+// found in the gather's suppression guard: week-to-date on the week-start day is
+// today alone, so for an established logger there is simply no weekly figure yet —
+// and the card beside the gauge states no weekly verdict either. Nothing is being
+// contradicted, so the honest move is to show the evidence the model DOES hold, under
+// its own name: the trailing 7-day average (#1917), labelled as such. Never both,
+// never mislabelled — the marker carries the label that belongs to the number in it.
+//
+// A `dayOne` trailing figure is DECLINED, the way the Steps card and the dashboard
+// nutrition tile decline it: that value is today's own intake, which the gauge is
+// already drawing as its primary bar. Marking today against itself adds a line and
+// no information.
+export type ProteinGaugeMarkerKind = "week-to-date" | "trailing";
+
+export interface ProteinGaugeMarker {
+  kind: ProteinGaugeMarkerKind;
+  grams: number;
+  /** The legend's term for this number — never interchangeable (#1917). */
+  label: string;
+  /** The same fact as a spoken phrase, for the gauge's aria description. */
+  ariaPhrase: string;
+}
+
+export function proteinGaugeMarker(t: ProteinToday): ProteinGaugeMarker | null {
+  if (t.weeklyAverageGrams != null) {
+    return {
+      kind: "week-to-date",
+      grams: t.weeklyAverageGrams,
+      label: "This week",
+      ariaPhrase: `this week ${g(t.weeklyAverageGrams)} grams a day`,
+    };
+  }
+  if (t.trailing.grams != null && !t.trailing.dayOne) {
+    return {
+      kind: "trailing",
+      grams: t.trailing.grams,
+      label: "7-day avg",
+      ariaPhrase: `7-day average ${g(t.trailing.grams)} grams a day`,
+    };
+  }
+  return null;
+}
+
 // ---- Today's protein STATUS (issues #974 / #1710) ----
 //
 // Whether today's protein has reached the goal band. ONE derivation (#221) — the

@@ -57,6 +57,33 @@ export function liftRequiredCategory(name: string): EquipmentCategory | null {
   return null; // Cable / Bodyweight / unknown → always available
 }
 
+// Whether a set logged on this equipment CATEGORY contradicts a free-weight
+// population standard (#2326). The strength-standards tables are barbell norms; a
+// fixed-path, selectorised or plate-loaded machine has a mechanical advantage those
+// norms do not model, so a machine set states nothing about where a lifter sits
+// against them.
+//
+// `Machine` is the only registry category that contradicts. `EQUIPMENT_CATEGORIES`
+// carries no separate Cable entry — a cable stack is a selectorised machine and is
+// registered as `Machine` — so the issue's "Machine and its cable/selectorised
+// equivalents" is exactly one category here, derived from the category list rather
+// than restated as a second one.
+//
+// A NULL / unknown category is NOT a contradiction. Most sets carry no equipment row
+// at all, and unknown must keep meaning "nothing contradicts", never "machine" —
+// reading absence as a machine would strip the standing from almost every lifter.
+// Kettlebell and Dumbbell are free weights, not a machine's fixed path; whether a
+// bare base NAME should map onto the barbell table at all is `tableFor`'s separate
+// question.
+//
+// Lives here, not in `lib/strength-standards`, so the standards module asks a
+// question about equipment instead of restating a category list (#2326).
+export function contradictsFreeWeightStandard(
+  category: string | null | undefined
+): boolean {
+  return (category ?? "").trim().toLowerCase() === "machine";
+}
+
 // Whether a lift is satisfiable with the profile's available gear. Always true when
 // the registry is empty (everything available) or the lift needs nothing
 // trackable; otherwise true only when the required category is present.

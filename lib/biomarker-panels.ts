@@ -230,6 +230,7 @@ export const BIOMARKER_PANELS: Record<
     "Glucose, Fasting",
     "Hemoglobin A1c",
     "Insulin",
+    "Insulin, Fasting",
     "Homeostatic Model Assessment of Insulin Resistance (HOMA-IR)",
     "C-Peptide",
     "Glucose, Gestational Screen (50 g)",
@@ -344,6 +345,7 @@ export const BIOMARKER_PANELS: Record<
     "Prolactin",
     "DHEA-Sulfate",
     "Cortisol",
+    "Cortisol, Morning",
     "Insulin-Like Growth Factor 1 (IGF-1)",
   ],
   vitamins: [
@@ -614,7 +616,7 @@ export const BIOMARKER_PANELS: Record<
     "Forced Vital Capacity (FVC)",
     "FEV1/FVC Ratio",
   ],
-  "mental-health": ["PHQ-9", "GAD-7", "AUDIT", "AUDIT-C", "DAST-10"],
+  "mental-health": ["PHQ-9", "GAD-7", "EPDS", "AUDIT", "AUDIT-C", "DAST-10"],
   "biological-age": ["Biological Age", "PhenoAge"],
 };
 

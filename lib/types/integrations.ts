@@ -8,7 +8,7 @@ import type { RevalidateTarget } from "../revalidate";
 
 // ---- Integrations ----
 
-// How a provider delivers data: 'push' (the source POSTs to us, e.g. Health
+// How a source delivers data: 'push' (the source POSTs to us, e.g. Health
 // Connect via an exporter app), 'oauth' (we connect and pull, e.g. Strava/Garmin),
 // or 'feed' (we EXPOSE data for an external subscriber to pull — the calendar
 // subscribe feed, where a calendar client polls our token-authed .ics URL).
@@ -50,9 +50,9 @@ export type IntegrationId =
   | "fitbit-takeout"
   | "patient-portals";
 
-// The PULL facet (#2040): the declarative half of "this provider is one we pull on a
-// schedule". Its presence is what makes a provider dispatchable — the generic
-// "Sync now" action and the hourly tick iterate registered pull providers instead of
+// The PULL facet (#2040): the declarative half of "this source is one we pull on a
+// schedule". Its presence is what makes a source dispatchable — the generic
+// "Sync now" action and the hourly tick iterate registered pull sources instead of
 // naming four by hand, which is how the four copy-pasted action skeletons and the
 // four copy-pasted tick blocks became one each.
 //
@@ -61,7 +61,7 @@ export type IntegrationId =
 // the whole normalize/upsert stack behind every import of the registry — including
 // the pure tier and the client components that render the grid.
 export interface IntegrationPagingTunables {
-  // Server-side per-request timeout, so a hung provider request never stalls the
+  // Server-side per-request timeout, so a hung source request never stalls the
   // hourly tick (it processes profiles sequentially).
   timeoutMs: number;
   // Safety cap on pages (or, for Strava, per-activity detail calls) per endpoint per
@@ -72,25 +72,25 @@ export interface IntegrationPagingTunables {
   // edited a day or two late isn't skipped. Upserts are keyed, so this is free.
   rescanDays: number;
   // How far back the FIRST-EVER sync reaches when there is no cursor yet. 0 = no
-  // bounded backfill; the first run reaches as far as the provider will go.
+  // bounded backfill; the first run reaches as far as the source will go.
   backfillDays: number;
 }
 
 export interface IntegrationPullFacet {
-  // The bounds of a PAGED credentialed pull. Absent for a pull provider that has no
+  // The bounds of a PAGED credentialed pull. Absent for a pull source that has no
   // credential, no cursor, and no pagination — Weather's keyless fixed rolling
   // window — because declaring numbers that govern nothing would be a fiction.
   paging?: IntegrationPagingTunables;
-  // HOW OFTEN THIS PROVIDER MAY BE POLLED, in whole minutes (#2121 step 1). The tick
+  // HOW OFTEN THIS SOURCE MAY BE POLLED, in whole minutes (#2121 step 1). The tick
   // used to conflate two cadences: "how often do we evaluate what is due to send"
   // (bounded only by process boot) and "how often do we call someone else's API"
   // (bounded by their quota). Splitting them is what lets the tick go finer without
-  // multiplying provider calls, and this is the quota-bounded half — declared here,
-  // beside the provider's other delivery metadata, because the right number is a
-  // property of the provider's quota, not of the scheduler.
+  // multiplying source calls, and this is the quota-bounded half — declared here,
+  // beside the source's other delivery metadata, because the right number is a
+  // property of the source's quota, not of the scheduler.
   //
   // Absent = the safe default (DEFAULT_PULL_CADENCE_MINUTES, hourly), which is what
-  // every provider was polled at before the split. Read ONLY through
+  // every source was polled at before the split. Read ONLY through
   // pullCadenceMinutes (lib/integrations/pull-cadence.ts) so the guard, any future
   // operator surface, and the docs share one derivation.
   cadenceMinutes?: number;
@@ -103,15 +103,15 @@ export interface IntegrationPullFacet {
 
 // ── The CONTINUOUS STREAM facet (#2146) ──────────────────────────────────────
 //
-// A provider's connection can be green while one of its data streams has gone
+// A source's connection can be green while one of its data streams has gone
 // silent — a watch off the wrist while the phone keeps pushing daily aggregates.
 // Seeing that needs one thing the app did not have: a DECLARATION of which of a
-// provider's streams are supposed to be arriving continuously, and what "quiet"
+// source's streams are supposed to be arriving continuously, and what "quiet"
 // means for each. This is that declaration, and it lives beside
 // `silenceToleranceMinutes` for the same reason that one does — the right numbers
-// are properties of how the provider delivers, not of any one detector.
+// are properties of how the source delivers, not of any one detector.
 //
-// A provider with NO continuous streams (weather, the calendar feed, patient
+// A source with NO continuous streams (weather, the calendar feed, patient
 // portals, a Takeout archive) simply declares none and is exempt BY CONSTRUCTION
 // rather than by a special case in the detector.
 //
@@ -128,13 +128,13 @@ export interface IntegrationPullFacet {
 // importable from the pure tier and no SQL is ever built from a declaration.
 export type ContinuousStreamTable = "hr_minutes";
 
-// Stable, provider-local stream id. It keys the #2162 lifecycle and the date-scoped
+// Stable, source-local stream id. It keys the #2162 lifecycle and the date-scoped
 // suppression key, so it must not be renamed once shipped.
 export type ContinuousStreamId = "heart-rate";
 
 // The send adapter watching a stream, when one exists (#2161). Declared here so
 // "which streams have a reminder" is answered by reading the registry rather than by
-// a module knowing a provider id by heart.
+// a module knowing a source id by heart.
 export type ContinuousStreamReminderId = "bedtime-wear";
 
 // How long a stream may DIP before its silence means something, and why that number.
@@ -155,7 +155,7 @@ export interface ContinuousStreamQuietFacet {
   // registry completeness test.
   because: string;
   // The rendered row's TAIL: what to check, and what this particular stream's silence
-  // costs while it lasts. Distinct from the provider-wide `stoppedConsequence`, which
+  // costs while it lasts. Distinct from the source-wide `stoppedConsequence`, which
   // is about the whole connection dying. It ASKS rather than instructs (#2097's copy
   // rule) — an observation domain carries no obligation, so "put your watch on" would
   // be an implied *should* the app has no standing to state.
@@ -199,6 +199,33 @@ export interface ContinuousStreamReminderFacet {
   because: string;
 }
 
+// How much evidence a FROZEN frontier needs before it means anything, declared per
+// stream (#2560).
+//
+// It used to be one shared constant in lib/stream-frontier.ts, defended there as "a
+// property of what a push MEANS, not of any one stream's wear pattern". That argument
+// was made against a measurement taken on the wrong leg. There are TWO batching stages
+// on the Health Connect pipeline —
+//
+//     watch --(Bluetooth, batches coarsely)--> phone Health Connect
+//           --(exporter, ~15 min)-----------> allos
+//
+// — and #2422 measured only the second. While a watch's own batch is pending, healthy
+// pushes land carrying nothing new for the stream and the frontier is frozen with the
+// watch on the wrist the whole time. How many pushes it takes for the SOURCE's state to
+// be reflected is therefore a property of THAT source's delivery chain: a device
+// writing straight into its vendor cloud would need 1. That is exactly the kind of fact
+// `dipToleranceMin` and `frontierFloorMin` already live here to carry, and #2341 item 2
+// moved the last constant that got this wrong for the same reason.
+export interface ContinuousStreamFrozenEvidence {
+  // N — successive successful pushes that must land WITHOUT advancing the frontier
+  // before it may be called frozen.
+  syncs: number;
+  // The evidence behind the number, carried as data exactly as `quiet.because` is, so
+  // it is impossible to move the bar without restating why.
+  because: string;
+}
+
 export interface ContinuousStreamDef {
   id: ContinuousStreamId;
   // What the user calls this stream, lowercase, for mid-sentence use
@@ -210,6 +237,9 @@ export interface ContinuousStreamDef {
   // means a 2.5-hour tolerance is ~150 missing rows, not a rounding error.
   rowsPerHour: number;
   expectedActive: ContinuousStreamActivityWindow;
+  // The DECISION's evidence bar (#2560). Required, so a new stream cannot inherit an
+  // accidental default from the module that owns the fold.
+  frozenEvidence: ContinuousStreamFrozenEvidence;
   // The #2146 detection facet. Absent = this stream is enumerated (so #2162 can
   // offer it) but never reported quiet.
   quiet?: ContinuousStreamQuietFacet;
@@ -220,7 +250,7 @@ export interface ContinuousStreamDef {
 
 // ── The ARCHIVE REFRESH facet (#2164) ────────────────────────────────────────
 //
-// A `kind: "archive"` provider is a one-off import, not a connection: it has no
+// A `kind: "archive"` source is a one-off import, not a connection: it has no
 // cadence to be late against, which is why it declares `silenceToleranceMinutes:
 // null` and why no connection-level detector can see it going stale. But some of its
 // data reaches allos through NO OTHER PATH — Fitbit does not forward scale weight,
@@ -229,11 +259,11 @@ export interface ContinuousStreamDef {
 //
 // This facet declares WHICH streams only the archive can deliver and HOW LONG they may
 // age, in the same place and for the same reason `silenceToleranceMinutes` and
-// `continuousStreams` live here: the right numbers are properties of how the provider
+// `continuousStreams` live here: the right numbers are properties of how the source
 // delivers. DECLARED, never inferred (#2164 constraint 2) — there is no learner here
 // and there must not be one.
 //
-// A provider that declares no facet raises nothing, so exemption is by construction
+// A source that declares no facet raises nothing, so exemption is by construction
 // rather than by an exemption list in the detector. Read ONLY through
 // lib/integrations/archive-refresh.ts.
 
@@ -247,7 +277,7 @@ export type ArchiveStreamSelector =
   | { table: "metric_samples"; metric: string };
 
 export interface ArchiveExclusiveStreamDef {
-  // Stable, provider-local stream id. It appears in no persisted key today, but the
+  // Stable, source-local stream id. It appears in no persisted key today, but the
   // registry completeness test pins it, so treat it as shipped vocabulary.
   id: string;
   // What the user calls this stream, lowercase, for mid-sentence use
@@ -267,14 +297,14 @@ export interface IntegrationArchiveRefreshFacet {
   // The evidence behind the number, carried as data — the same discipline as
   // ContinuousStreamQuietFacet.because.
   because: string;
-  // The streams only this archive can deliver. Empty is not allowed: a provider with
+  // The streams only this archive can deliver. Empty is not allowed: a source with
   // nothing exclusive omits the whole facet.
   streams: readonly ArchiveExclusiveStreamDef[];
 }
 
 export interface IntegrationBackfillFacet {
-  // Stable provider-local operation id. It keys the durable job checkpoint and the
-  // runnable binding; a provider may eventually expose several independent fills.
+  // Stable source-local operation id. It keys the durable job checkpoint and the
+  // runnable binding; a source may eventually expose several independent fills.
   id: string;
   label: string;
   itemNoun: string;
@@ -289,51 +319,51 @@ export interface IntegrationDef {
   blurb: string;
   dataTypes: string[];
   docsUrl?: string;
-  // How many MINUTES a CONNECTED provider may go without a successful run before it
+  // How many MINUTES a CONNECTED source may go without a successful run before it
   // is treated as broken (#2263). This is THE escalation rule — the one question
-  // "how long may this provider be silent before it is broken?", asked once. It
+  // "how long may this source be silent before it is broken?", asked once. It
   // replaced a pair that answered it at two incompatible grains: a consecutive-failed-
-  // RUN count (three runs = three hours for an hourly provider, below that provider's
+  // RUN count (three runs = three hours for an hourly source, below that source's
   // own p90 gap between successes) and a whole-DAY staleness threshold. Silence is
   // silence whether it was recorded as failures, recorded as nothing, or a mix, so
-  // one measure covers both — and neither over-reports an idempotent provider whose
+  // one measure covers both — and neither over-reports an idempotent source whose
   // next good run catches everything up.
   //
-  // It belongs beside the provider's other metadata because the right number is a
-  // property of how the provider delivers, not of the detector.
+  // It belongs beside the source's other metadata because the right number is a
+  // property of how the source delivers, not of the detector.
   //
-  // ABSENT = derive it from the provider's declared poll cadence
-  // (DEFAULT_SILENCE_TOLERANCE_POLLS × cadence). A provider with NO declared cadence
-  // — a `push` provider has no poll interval — must state a number or an explicit
+  // ABSENT = derive it from the source's declared poll cadence
+  // (DEFAULT_SILENCE_TOLERANCE_POLLS × cadence). A source with NO declared cadence
+  // — a `push` source has no poll interval — must state a number or an explicit
   // null; a registry completeness test fails an undeclared one.
   //
-  // NULL = exempt, and exemption is a statement about the provider: a manual archive
+  // NULL = exempt, and exemption is a statement about the source: a manual archive
   // import has no cadence to be late against, and a planned/outbound entry never syncs
   // inbound at all. Read ONLY through silenceToleranceMinutes (lib/integrations/
   // staleness.ts) so the badge, the attention item, and the digest line share one
   // derivation (#221).
   silenceToleranceMinutes?: number | null;
-  // The consequence of THIS provider being broken, in user terms (#1880 item 2):
+  // The consequence of THIS source being broken, in user terms (#1880 item 2):
   // what stops arriving, named the way the user thinks of it ("measurements from
   // your scale and cuff"), not by transport. Rendered on the escalated Review card
-  // through failureConsequence (lib/integrations/provider-state.ts), which owns
-  // the generic fallback for providers that don't declare one.
+  // through failureConsequence (lib/integrations/source-state.ts), which owns
+  // the generic fallback for sources that don't declare one.
   stoppedConsequence?: string;
-  // Present exactly on the providers allos PULLS on a schedule (#2040). Absent for
+  // Present exactly on the sources allos PULLS on a schedule (#2040). Absent for
   // push, archive, feed, attended-external, and `planned` entries — there is nothing
   // to run for those, so nothing dispatches them.
   pull?: IntegrationPullFacet;
-  // The provider's CONTINUOUS streams (#2146) — the ones expected to keep arriving
+  // The source's CONTINUOUS streams (#2146) — the ones expected to keep arriving
   // minute after minute while the device is worn, as opposed to the daily aggregates
   // and event rows that arrive when something happens. Absent = none, which is a
-  // statement about the provider (weather, an outbound feed, attended portals and a
+  // statement about the source (weather, an outbound feed, attended portals and a
   // one-off archive have no continuous stream to be silent), and the reason the
-  // quiet-stream detector needs no per-provider exemption list. Read ONLY through
+  // quiet-stream detector needs no per-source exemption list. Read ONLY through
   // lib/integrations/continuous-streams.ts.
   continuousStreams?: readonly ContinuousStreamDef[];
   // The streams only a `kind: "archive"` import can deliver, and how long they may age
   // before the refresh ask is raised (#2164). Absent = nothing here is archive-only, so
-  // there is nothing to fall behind — which is every provider except the Takeout
+  // there is nothing to fall behind — which is every source except the Takeout
   // archive. Read ONLY through lib/integrations/archive-refresh.ts.
   archiveRefresh?: IntegrationArchiveRefreshFacet;
   // Optional enrichment of rows already imported. Metadata stays registry-pure;
@@ -341,8 +371,8 @@ export interface IntegrationDef {
   backfills?: readonly IntegrationBackfillFacet[];
 }
 
-// Persisted connection state for a provider (integration_connections table).
-// `needs_reauth` (issue #326) is the terminal-until-user-acts state a provider lands
+// Persisted connection state for a source (integration_connections table).
+// `needs_reauth` (issue #326) is the terminal-until-user-acts state a source lands
 // in after a DEFINITIVE auth failure (a dead/revoked refresh token or PAT): the
 // hourly tick only auto-syncs `connected` rows, so it stops re-attempting forever,
 // and the UI surfaces a "Reconnect" prompt. Stored in the existing bare-TEXT `status`
@@ -353,7 +383,12 @@ export type IntegrationConnectionStatus =
 
 export interface IntegrationConnection {
   profile_id: number;
-  provider: string;
+  // THE #2487 BOUNDARY. In TypeScript an integration source is a `sourceId`; the
+  // persisted column is still named `provider`, and renaming it is deferred to its own
+  // forward migration. Every read of this table therefore selects
+  // `provider AS source_id` explicitly — the alias IS the mapping, so no shared domain
+  // type is left carrying two meanings for one word.
+  source_id: string;
   status: IntegrationConnectionStatus;
   config: string | null; // JSON: { token } for push; OAuth tokens for pull
   last_sync_at: string | null;
@@ -369,7 +404,9 @@ export interface IntegrationConnection {
 export interface IntegrationSyncEvent {
   id: number;
   profile_id: number;
-  provider: string;
+  // The #2487 boundary again: the column is still `provider`, every read aliases it to
+  // `source_id`. See IntegrationConnection.source_id.
+  source_id: string;
   at: string;
   ok: number; // 1 = success, 0 = failure
   window_start: string | null;
@@ -391,7 +428,7 @@ export interface IntegrationSyncEvent {
   // Optional structured diagnostics for a successful sync (currently Health
   // Connect exporter-shape warnings and within-source origin choices).
   details?: string | null;
-  // Bare filename of the captured raw provider payload under
+  // Bare filename of the captured raw source payload under
   // data/integration-payloads/<profile_id>/ (issue #9), or null. Read back only by
   // the admin-only raw viewer route; never surfaced to members.
   raw_ref: string | null;

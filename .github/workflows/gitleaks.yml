@@ -1,11 +1,14 @@
 name: gitleaks
 
-# Secret scanning for the repo's full git history. Runs on every PR and on
-# pushes to non-main branches (deploy.yml handles main). Fails the job if any
-# secret is detected. Self-contained: it downloads the gitleaks binary and runs
-# it directly, so it needs no marketplace action and no license key.
+# Secret scanning for the repo's full git history. Runs on every PR, on pushes
+# to non-main branches (deploy.yml handles main), and on merge-queue validation
+# commits — a required check must report on the merge_group event or the queue
+# stalls forever waiting for it. Fails the job if any secret is detected.
+# Self-contained: it downloads the gitleaks binary and runs it directly, so it
+# needs no marketplace action and no license key.
 on:
   pull_request:
+  merge_group:
   push:
     branches-ignore: [main]
 
@@ -21,14 +24,45 @@ jobs:
         with:
           fetch-depth: 0
 
+      # A red `gitleaks` is the most alarming check in this repo, so the one thing
+      # this step must never do is fail SILENTLY-LIKE-A-FINDING (#2592). It failed
+      # exactly that way on three unrelated PRs inside eight minutes: zero commits
+      # scanned, and a red check whose name implies a leak.
+      #
+      # The defect is an UNGUARDED NETWORK FETCH, not one status code, and the two
+      # observed signatures need both flags. `--retry` covers the transport half
+      # (#2587's `curl: (56) Connection died` — whose "tried 5 times" is curl's own
+      # connection-reuse retry, NOT this flag, and covers no HTTP response at all);
+      # `--retry-all-errors` is what extends it to an HTTP error reply like #2591's
+      # 503, which plain `--retry` ignores.
+      #
+      # And every failure path here says "gitleaks did not run" through a workflow
+      # annotation, which surfaces on the check itself, so the two states ("a secret
+      # is on this branch" / "the CDN hiccuped") are distinguishable from the PR page
+      # instead of only from the bottom of the job log.
+      #
+      # The archive is pinned by sha256 (the digest published in the release's
+      # gitleaks_<version>_checksums.txt): retrying a download is exactly the
+      # situation where a silently different artifact would go unnoticed, and a
+      # scanner is the wrong binary to run unverified. Bump both values together.
       - name: Install gitleaks
         env:
           GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
         run: |
           set -euo pipefail
+          did_not_run() {
+            echo "::error title=gitleaks did not run::$1 NO commits were scanned; this is a toolchain failure, not a secret finding."
+            exit 1
+          }
           url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -fsSL "$url" -o /tmp/gitleaks.tar.gz
-          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 \
+            "$url" -o /tmp/gitleaks.tar.gz \
+            || did_not_run "Downloading gitleaks v${GITLEAKS_VERSION} failed after 5 retries."
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c - \
+            || did_not_run "The downloaded gitleaks v${GITLEAKS_VERSION} archive did not match its pinned sha256."
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks \
+            || did_not_run "Unpacking the gitleaks v${GITLEAKS_VERSION} archive failed."
           sudo install /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
 

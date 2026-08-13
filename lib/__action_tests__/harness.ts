@@ -7,9 +7,32 @@ import type { Access, CurrentSession, Role } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashPasswordSync } from "@/lib/password";
 import type { WeightUnit, DistanceUnit } from "@/lib/settings";
+import { ACTION_TEST_PASSWORD } from "./password-fixture";
 import { setActingSession } from "./session-state";
 
 let seq = 0;
+
+// The scrypt hash every harness login shares, computed at most once per worker.
+//
+// scrypt is expensive by design, and `createLogin` used to hash a per-login
+// `"pw-" + username` — a value nothing signs in with, because this harness binds
+// the session directly through `setActingSession`. The tier calls it ~1200 times,
+// so the column filler cost more than the assertions did.
+//
+// A per-login password also defeats the obvious memo, and bought nothing: the one
+// test that referenced it (`demo.actions.test.ts`) passes it to an action that
+// rejects on the demo-mode guard BEFORE any verification. So the tier shares the
+// existing visibly-fake `ACTION_TEST_PASSWORD`, and the hash of it is computed
+// once. Tests that exercise a REAL sign-in or password-change path (invite-create,
+// password-reset, family-email) hash through the action under test and are
+// untouched.
+//
+// `lib/password.ts` is deliberately not modified: production hashing keeps its
+// full cost.
+let sharedHash: string | undefined;
+function testPasswordHash(): string {
+  return (sharedHash ??= hashPasswordSync(ACTION_TEST_PASSWORD));
+}
 
 export interface TestLogin {
   id: number;
@@ -39,7 +62,7 @@ export function createLogin(
       .prepare(
         "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, ?)"
       )
-      .run(username, hashPasswordSync("pw-" + username), role).lastInsertRowid
+      .run(username, testPasswordHash(), role).lastInsertRowid
   );
   if (opts.weightUnit) {
     db.prepare(

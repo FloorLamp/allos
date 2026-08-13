@@ -201,7 +201,7 @@ describe("Withings sync upsert/dedup", () => {
     });
   });
 
-  it("lands VO2 max as a biomarker vital in medical_records (#419)", () => {
+  it("lands VO2 max as a vitals-category reading in medical_records (#419, #2479)", () => {
     const VO2 = {
       grpid: 900009,
       date: 1700000000,
@@ -231,7 +231,7 @@ describe("Withings sync upsert/dedup", () => {
       unit: string;
       canonical_name: string;
     };
-    expect(vo2.category).toBe("biomarker");
+    expect(vo2.category).toBe("vitals");
     expect(vo2.value_num).toBe(48);
     expect(vo2.unit).toBe("mL/kg/min");
     // A re-push of the same reading dedups on external_id.

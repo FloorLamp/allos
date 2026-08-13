@@ -1,4 +1,5 @@
-import { db, today, writeTx } from "../db";
+import { db, hoistedStatement, today, writeTx } from "../db";
+import { cache } from "../request-cache";
 import { readAllForUpdate } from "../tx";
 import { ageFromBirthdate, ageMonthsFrom } from "../date";
 import { normalizeExcludedGroups } from "../dietary-preferences";
@@ -245,9 +246,20 @@ export function setProfileFullName(profileId: number, name: string | null) {
 // The profile's birthdate (ISO YYYY-MM-DD), when known. A property of the tracked
 // person, so it lives in profile_settings. Preferred over a bare age because the
 // current age can be derived from it at any time (see getProfileAge).
-export function getProfileBirthdate(profileId: number): string | null {
+//
+// cache()-wrapped because this is the most-repeated single read in the app: every
+// age gate, life-stage check and age-banded reference range asks for it, and one
+// `/` render read the SAME profile's birthdate 175 times. #1961 already hoisted
+// this read out of the per-DATE loop inside profileAgeResolver; request scope is
+// the same fix one level up, across the ~90 unrelated callers that each resolve an
+// age independently. A birthdate cannot change mid-render — setProfileBirthdate is
+// a settings write that revalidates rather than re-reading — and outside a request
+// cache() degrades to a plain passthrough.
+export const getProfileBirthdate = cache(function getProfileBirthdate(
+  profileId: number
+): string | null {
   return getProfileSetting(profileId, "birthdate") ?? null;
-}
+});
 
 // Set (or clear, with null) the profile's birthdate. Setting a real date also
 // drops any stored age fallback: once the birthdate is known, a bare age is
@@ -1061,15 +1073,17 @@ export function resolveSituationId(
 // shared currency across the notifier / adherence / digest layers — and, since
 // getIntakeItems coalesces the same situations.name onto each item, a rename
 // re-keys both sides together (no detachment).
+// Statement hoisted: this is read once per situation-gated decision, so a
+// cross-profile surface pays it per member (748 executions on one /household
+// render) and compiled the SQL every time.
+const ACTIVE_SITUATIONS_STMT = hoistedStatement(
+  `SELECT name FROM situations
+    WHERE profile_id = ? AND active = 1 ORDER BY name COLLATE NOCASE`
+);
 export function getActiveSituations(profileId: number): string[] {
-  return (
-    db
-      .prepare(
-        `SELECT name FROM situations
-          WHERE profile_id = ? AND active = 1 ORDER BY name COLLATE NOCASE`
-      )
-      .all(profileId) as { name: string }[]
-  ).map((r) => r.name);
+  return (ACTIVE_SITUATIONS_STMT.all(profileId) as { name: string }[]).map(
+    (r) => r.name
+  );
 }
 
 // Set the profile's active situations to exactly `situations` (by name). Rows are

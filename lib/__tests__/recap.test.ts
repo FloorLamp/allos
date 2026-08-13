@@ -730,6 +730,13 @@ describe("typed comparison slot (#1935)", () => {
         mood: { avgValence: 3.5, daysLogged: 4 },
         goalsCompleted: ["Run a 10k"],
         fitnessCheck: { fitnessAge: 34, priorFitnessAge: 36 },
+        // The week's target verdicts (#2395) — rolling mode, so `completed` selects the
+        // same trailing seven days and only tells the builder the period has closed.
+        completed: true,
+        targetVerdicts: [
+          { label: "Back", direction: "floor", verdict: "under" },
+          { label: "Cardio", direction: "floor", verdict: "met" },
+        ],
       })
     );
 
@@ -751,7 +758,7 @@ describe("typed comparison slot (#1935)", () => {
     // Record; this pins the other direction (no stale entries) and, with the loop
     // above, closes the loop for every line the builder can emit.
     const keys = Object.keys(RECAP_COMPARISON_KINDS) as RecapLineKey[];
-    expect(keys.length).toBe(17);
+    expect(keys.length).toBe(20);
     for (const k of keys) expect(RECAP_COMPARISON_KINDS[k]).toBeTruthy();
   });
 
@@ -881,6 +888,13 @@ describe("per-line scale model (#2178)", () => {
     );
     expect(monthOnly.sort()).toEqual([
       "adherence-pattern",
+      // A cap's record is a count of WEEKS a verdict held, not a re-total of the four
+      // weekly numbers under it (#2397).
+      "caps",
+      // A SHARE of the period's logged days, which is a shape rather than a sum: the
+      // month does not add up four weekly habit counts, it re-measures over its own
+      // denominator (#2397).
+      "food-habits",
       "training-mix",
       "weight-trajectory",
     ]);
@@ -1263,5 +1277,115 @@ describe("sleep duration line (#2396)", () => {
     expect(body).toContain("1h 18m weekend shift");
     // The decimal-hours spelling is gone (#2389 item 4).
     expect(body).not.toMatch(/\d\.\dh/);
+  });
+});
+
+// ── The week's verdict, and the month's observations (#2395 / #2397) ─────────────
+//
+// The builder half: which scale each line speaks at, what a closed period means for a
+// verdict, and the one emptiness decision the new evidence changes.
+
+describe("the target-verdict line (#2395)", () => {
+  const verdicts = [
+    { label: "Back", direction: "floor" as const, verdict: "under" as const },
+    { label: "Cardio", direction: "floor" as const, verdict: "met" as const },
+  ];
+
+  it("reports the verdict of a CLOSED period", () => {
+    const recap = buildRecap(
+      baseInput({ completed: true, targetVerdicts: verdicts })
+    );
+    const line = recap.lines.find((l) => l.key === "targets")!;
+    expect(line.value).toBe("1 of 2 targets met");
+    expect(recapLineAnnotation(line)).toBe("short on Back");
+  });
+
+  it("refuses to score a period still in progress", () => {
+    // Not a gather detail: a week that has not ended is under its floor by construction,
+    // so the builder states the rule rather than trusting its caller to.
+    const recap = buildRecap(baseInput({ targetVerdicts: verdicts }));
+    expect(recap.lines.find((l) => l.key === "targets")).toBeUndefined();
+  });
+
+  it("emits nothing for a profile with no targets", () => {
+    expect(
+      buildRecap(baseInput({ completed: true, targetVerdicts: [] })).lines.find(
+        (l) => l.key === "targets"
+      )
+    ).toBeUndefined();
+  });
+
+  it("does not make a bare failure into a whole message", () => {
+    // A period with nothing else in it stays EMPTY even when every target was missed:
+    // "0 of 2 targets met" as the entire send is a scold on a week someone may have
+    // spent ill, travelling or deliberately resting.
+    const recap = buildRecap(
+      baseInput({
+        completed: true,
+        targetVerdicts: [
+          { label: "Back", direction: "floor", verdict: "under" },
+          { label: "Cardio", direction: "floor", verdict: "under" },
+        ],
+      })
+    );
+    expect(recap.isEmpty).toBe(true);
+    expect(renderRecapMessage(recap, "Test")).toBeNull();
+  });
+});
+
+describe("the monthly food-habit and cap lines (#2397)", () => {
+  const habits = [
+    {
+      groupKey: "fatty_fish",
+      label: "Fatty fish",
+      days: 12,
+      observedDays: 26,
+      rationale: "a source of Omega-3 and Vitamin D",
+    },
+  ];
+
+  it("names the LOGGED-day denominator once, then each group as a note", () => {
+    const recap = buildRecap(
+      baseInput({ scale: "month", foodHabits: habits, capWeeks: [] })
+    );
+    const line = recap.lines.find((l) => l.key === "food-habits")!;
+    expect(line.value).toBe("over 26 logged days");
+    expect(recapLineAnnotation(line)).toBe(
+      "Fatty fish 12 of 26 logged days, a source of Omega-3 and Vitamin D"
+    );
+  });
+
+  it("counts a month of logged eating as something to say", () => {
+    // #2396 established that a profile which only logs food has not had an empty period.
+    // At month scale the coverage line does not speak, so the habits are that evidence.
+    const recap = buildRecap(baseInput({ scale: "month", foodHabits: habits }));
+    expect(recap.isEmpty).toBe(false);
+  });
+
+  it("keeps both lines off a weekly recap, by declaration", () => {
+    const week = buildRecap(
+      baseInput({
+        foodHabits: habits,
+        capWeeks: [{ label: "Alcohol", overWeeks: 1, weeks: 4 }],
+      })
+    );
+    expect(week.lines.find((l) => l.key === "food-habits")).toBeUndefined();
+    expect(week.lines.find((l) => l.key === "caps")).toBeUndefined();
+  });
+
+  it("states each declared cap once, in the cap vocabulary", () => {
+    const recap = buildRecap(
+      baseInput({
+        scale: "month",
+        capWeeks: [
+          { label: "Alcohol", overWeeks: 3, weeks: 4 },
+          { label: "Nicotine", overWeeks: 0, weeks: 4 },
+        ],
+      })
+    );
+    const line = recap.lines.find((l) => l.key === "caps")!;
+    expect(line.value).toBe("over the Alcohol cap in 3 of 4 weeks");
+    expect(recapLineAnnotation(line)).toBe("Nicotine cap held all 4 weeks");
+    expect(line.comparison.kind).toBe("none");
   });
 });

@@ -28,10 +28,12 @@ Rules:
   section a row sits under, laterality, method: a row inside a URINALYSIS section IS urine, so
   a bare "GLUCOSE" there is "Glucose, Urine", and a row under "Left Eye" is the left one. But
   NEVER add a PATIENT-STATE condition the document does not print — fasting / non-fasting,
-  post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise. Those describe how the
-  patient was PREPARED, not what was sampled, and the panel a row appears in does not state
-  them: a bare "GLUCOSE" on a metabolic panel is "Glucose", NOT "Glucose, Fasting", even when
-  such a panel is usually drawn fasting. Qualify only when the document itself prints the
+  post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise, morning/evening draw.
+  Those describe how the patient
+  was PREPARED, not what was sampled, and the panel a row appears in does not state them: a
+  bare "GLUCOSE" on a metabolic panel is "Glucose", NOT "Glucose, Fasting", even when such a
+  panel is usually drawn fasting, and a bare "CORTISOL" is "Cortisol", NOT "Cortisol,
+  Morning", however typical a morning draw is. Qualify only when the document itself prints the
   condition ("FBG (Glucose Fasting)" → "Glucose, Fasting"). The condition changes which
   reference range applies, so an unprinted one must never be assumed.
 - category: use "lab" for blood/urine/serum lab analytes; "scan" for DEXA, body composition,
@@ -40,7 +42,10 @@ Rules:
   NOT a measurement — a functional-status finding, one questionnaire/screening ITEM's
   answer, a qualifier such as the body site a temperature was taken at, a bare
   result-status word; "instrument" for a scored screening TOTAL (a PHQ-9 sum), which IS
-  a measurement and must never be "assessment"; "biomarker" only if nothing else fits.
+  a measurement and must never be "assessment"; "reference" for an immutable identity
+  fact (ABO blood group, Rh type). There is NO catch-all category: every result gets
+  one of these. When a measurement genuinely fits none of the narrower classes, use
+  "lab" if it was measured from a specimen and "vitals" if it was measured on the body.
 - value: the result as shown. Keep qualitative values verbatim ("NEGATIVE", "YELLOW",
   "Pattern A", "RH(D) POSITIVE"). value_num: the same value as a number ONLY when it is
   purely numeric; otherwise null. For "<0.10" or "<10", set value as the string and
@@ -266,7 +271,7 @@ export const TOOL: Anthropic.Tool = {
             canonical_name: {
               type: "string",
               description:
-                "Clean canonical biomarker name for cross-document grouping; reuse a provided one when it matches. Qualifiers the LAYOUT encodes (specimen, panel/section, laterality, method) belong in it — a urinalysis row is 'Glucose, Urine'. A PATIENT-STATE condition the document does not print does NOT: fasting/non-fasting, post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise. A bare 'GLUCOSE' is 'Glucose', never 'Glucose, Fasting', however likely the panel makes it — the condition selects the reference range.",
+                "Clean canonical biomarker name for cross-document grouping; reuse a provided one when it matches. Qualifiers the LAYOUT encodes (specimen, panel/section, laterality, method) belong in it — a urinalysis row is 'Glucose, Urine'. A PATIENT-STATE condition the document does not print does NOT: fasting/non-fasting, post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise, morning/evening draw. A bare 'GLUCOSE' is 'Glucose', never 'Glucose, Fasting', however likely the panel makes it — the condition selects the reference range.",
             },
             value: { type: ["string", "null"] },
             value_num: { type: ["number", "null"] },

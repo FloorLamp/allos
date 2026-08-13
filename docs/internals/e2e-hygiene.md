@@ -274,6 +274,24 @@ Two things to carry forward when you fixture a rule/finding surface:
 - **Say which finding.** The spec asserts the fixture goal's own title, so a
   card that renders for some OTHER reason cannot pass it.
 
+## The value gate: test behavior people rely on
+
+An E2E assertion earns its runtime by protecting an observable capability or a
+meaningful product rule. Do not keep a browser guard for a retired selector,
+label, or route after its production definition is gone; an absence assertion
+against vocabulary no code can render is permanently green. Conditional absence
+is valuable only when the test creates or selects the state that could otherwise
+render the thing (permissions, age gates, empty data, successful deletion, and
+similar branches).
+
+Likewise, prefer semantic state and relationships over cosmetic implementation
+details. Navigation, persisted writes, accessible state, content order, usable
+overflow, and minimum touch targets can express things a person relies on. Exact
+font sizes, border widths, equal card dimensions, and sub-pixel coordinates
+usually pin a particular CSS implementation instead. Keep geometry only when it
+directly proves usability and no semantic assertion can do so; use the shared
+containment helper for clipped mobile content.
+
 ## Assertion integrity — the two ways an assertion lies (#1543 / #1545)
 
 A spec can be green for two opposite bad reasons: it asserts something that
@@ -444,23 +462,101 @@ already covered by a sibling test in the same file. When you find yourself
 raising a number a third time, ask what the test is NAMED for and seed everything
 that isn't that.
 
+**A test can outgrow 30 s with no oversized assertion anywhere in it** (#2525).
+`shared-supply-pool`'s decrement case declared no ceiling above the defaults and
+still ran at 22–25 s of the 30 s TEST budget, because "two members draw from one
+bottle" is four profile switches (each a Server Action plus a layout revalidate)
+around nine page loads. The same box runs it at 8.5 s idle and 26–28 s at four
+workers, so the margin is set by load, not by the diff. Two answers, in this
+order: move the claims that do not need this sequence to a case that already has
+the page (a static chip assertion needs no navigation of its own; a navigation
+claim needs no pooled arithmetic), then declare `test.slow()` for what is left,
+with the before/after measurement and its conditions in the comment. At
+`retries: 0` that budget masks nothing — only a busy runner stops failing.
+
+**A helper with no no-op path turns "already there" into a timeout that hides the
+real error.** `switchToProfile` drives the switcher popover, which offers no row
+for the profile already being acted as, so calling it for the CURRENT profile
+spins its `toPass` until the budget dies. In a `finally` that is worse than slow:
+a case that failed BEFORE the switch it was restoring reports the restore's
+timeout, in the restore's stack, and the actual failure never appears. Ask before
+restoring — the identity-bar trigger's `aria-label` states the acting profile.
+
+## A retry is only safe on an IDEMPOTENT interaction (2026-08-11, #2437)
+
+Every retrying helper in this module rests on an unstated premise: doing the
+interaction twice is the same as doing it once. That is true of a `<Link>` — a
+second click asks for the same URL — and it is why `followLink` may re-click at
+all. It is false of anything whose handler reads the CURRENT state and moves one
+from it. `hydratedClick`'s comment has always said so for toggles ("a second tap
+UNDOES the first — a retry loop there is a coin flip"); the same sentence applies
+to a **relative navigation**, which is the toggle case wearing a URL.
+
+`PaginationControls` calls `onPageChange(page + 1)`. Guarded on
+`p_medical_records=2`, `followLink` re-clicked it, overshot to 3, and from there
+the guard could never match again — so it kept clicking for the whole 25 s
+budget and failed reporting `p_medical_records=11`. Read as a timeout that is
+"the transition never committed", i.e. latency; read as the URL it actually
+printed, it is ten clicks that all landed.
+
+Two changes close it:
+
+- **`followLink` only re-clicks while the page is still on the URL it started
+  from.** Both races it exists to absorb (a swallowed pre-hydration click, a
+  transition that commits then unwinds) leave the page on the source URL, so both
+  stay covered. A third URL means the click LANDED and went elsewhere, which no
+  re-click can walk back — it stops clicking, keeps waiting, and if it never
+  arrives it fails naming both URLs and pointing at this rule. Two things narrow
+  it, each paid for by a real failure: the guard arms on the FIRST CLICK, not at
+  call time (a page can move its own url at hydration — `RangeFilterSelect`
+  restores a `range` param from sessionStorage in a mount effect), and departure
+  is judged WITHOUT the fragment (a hash-only move is not a navigation: same
+  document, same tree, swallow race still live — `/training` writes itself to
+  `/training#day-…`, which cost a shard on this change's first CI run). A pager
+  moves the search and a route change moves the pathname, so both still register.
+- **A relative control uses `hydratedClick` + a URL assertion.** That closes the
+  pre-hydration window without a loop, which is the only shape a non-idempotent
+  control can accept.
+
+The general form, when a helper flakes under more workers: ask whether its retry
+is idempotent before assuming its ceiling is too low.
+
+## Measure a relative layout as ONE snapshot (2026-08-11, #2437)
+
+`await Promise.all([a.boundingBox(), b.boundingBox(), …])` is not atomic — each
+box is its own CDP round-trip and the page keeps laying out between them. Feed
+two of those reads into one subtraction and the result can describe a layout that
+never existed: `sleep-page` measured its duration card while the chart was still
+sizing and the card below it after, and asserted the difference against a 20–28 px
+window that no `expect` could retry, because the numbers were already in
+variables. It failed at two workers, where the growth window is wide enough to
+land in.
+
+`settledBoxes([...locators])` reads the whole group and repeats until two
+consecutive passes agree (`centerOf`'s rule, applied to a group), so every box
+comes from the same settled layout and none is null. Use it for any assertion
+whose subject is the RELATIONSHIP between elements; a single element's own size
+can still be read directly.
+
 ## Fix (b) — the blessed interaction module `e2e/helpers.ts`
 
 ONE home for settled interactions. The file header carries the authoritative
 decision tree; the summary:
 
-| Situation                                                                                                            | Use                                                                                                                                   |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits an action POST that started AFTER the click and targets this page's route (#1952)              |
-| …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                    | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858) |
-| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)           |
-| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                           |
-| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                  |
-| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard      |
-| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                       |
-| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration          | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)         |
-| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                               | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231) |
-| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                            |
+| Situation                                                                                                            | Use                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — hydration-gated, clicks ONCE, then awaits an action POST that started AFTER that click and targets this page's route (#1952/#2599) |
+| …and the next thing you assert is the **revalidated render** (a marker only the new tree carries)                    | `settledClickApplied(page, locator, marker)` — the action POST **and** the router applying that tree, under one named ceiling (#1858)                              |
+| A **file pick** whose `onChange` fires a Server Action (hidden camera/file input — no click to drive)                | `settledUpload(page, input, files)` — the same correlated wait as `settledClick`, through the same shared predicate (#1952)                                        |
+| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                                                        |
+| …but the navigation is **relative** (a pager's Next/Prev, a stepper — the handler reads current state and moves one) | `hydratedClick(page, locator)` then assert the URL — a retry loop compounds a relative advance and can never converge back (#2437)                                 |
+| A **relative geometry** assertion over several elements (this card one gap below that, these columns share an x)     | `settledBoxes([...locators])` — one snapshot from one settled layout, so no gap is computed across two of them (#2437)                                             |
+| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state                                               |
+| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard                                   |
+| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                                                    |
+| A **client** disclosure / chip / overflow menu / dialog opener whose CLICK itself can be lost pre-hydration          | `hydratedClick(page, locator)` — clicks ONCE after React attaches; then assert what it revealed. NEVER `settledClick` (#1952)                                      |
+| A **native `<details>`** the APP also opens (Care › Overview's hash-revealed sections)                               | `openCareOverviewSection(page, testId)` — guarded on the element's own `open`, so the app's writer can't be clicked back shut (#2231)                              |
+| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                                                         |
 
 Why not networkidle: it waits for network SILENCE, not "my interaction landed" —
 it settles falsely on a page with a long-poll/SSE/streaming request and adds
@@ -472,6 +568,33 @@ a click that fires NO action (a client toggle, an `<a href>` nav) there is no
 POST to await and it times out — that's what `followLink`/`hydratedClick`/`expect`
 are for. Its timeout message says so explicitly, because that timeout almost
 always means the CALL SITE is wrong rather than the app being slow (#1952).
+
+### The pre-hydration ACTION-click swallow (`settledClick`, #2599)
+
+A `<form action={serverAction}>` submit is swallow-proof by construction: before
+React attaches, the form still carries a real `action` attribute and the click
+posts natively — which is exactly the case `armActionPost` matches by route, since
+a pre-hydration submit carries no `next-action` header. A `<button onClick>` that
+runs its action through `useTransition` (`ReprocessDiffPanel`'s "Preview changes",
+every Family create/grant button) has **no such fallback**: a click dispatched in
+the hydration window does nothing at all, and `settledClick` then waits its whole
+budget for a POST nobody asked for. Reproduced 4/4 at a 20× CPU throttle on
+`import-records-browser.spec.ts`, with the hydration probe reading `false` at the
+moment of the click.
+
+So `settledClick` gates on React's own hydration markers first — the same probe
+`settledFill` and `hydratedClick` use — inside its existing shared deadline, and
+then clicks ONCE. It is not a retry: a Server Action click is rarely idempotent
+and re-clicking is the #2437 defect. The gate lives in the helper rather than at
+the call site because every action click already passes through it, and no spec
+author should have to know which of the two shapes they are holding.
+
+Its diagnosis also stopped conflating two failures. Both halves share one
+deadline, so a click that never LANDS (a control covered by a stale overlay, a
+button that is never enabled) expires at the same moment as the response wait;
+`Promise.all` then reported whichever rejected first, and the click's own error
+was dropped — printing "NO same-origin POST was seen at all" about a page that was
+never asked to post. The click error now leads whenever there is one.
 
 ### The pre-hydration fill-revert (`settledFill`, #1188)
 
@@ -1147,6 +1270,131 @@ pain they replace):
     pass-on-retry tests through the same script, and at the default `retries: 0`
     it reports an accurate empty.
 
+## Shards plan themselves by DURATION, not test count
+
+`--shard` splits the suite by test COUNT, and count is a bad proxy for cost here:
+`patient-portals-setup` is 17 tests / 54s, `food-log` is 21 tests / 13s, and
+`profile-switch-toasts` is ONE test that takes 21s. The result is a stable skew,
+not noise — shards 7 and 10 were the two slowest in every 12-way CI run sampled,
+at 1.22–1.32× the mean. Since the browser matrix is the whole critical path, the
+slowest shard IS the wait, so that skew is paid on every push. Going 8→12 shards
+diluted it without dissolving it, because the skew is a property of the split
+rather than of N.
+
+Each shard now plans its own bucket:
+
+```
+ARGS=$(npx tsx scripts/e2e-shard-plan.ts "$SHARD" "$TOTAL")
+npm run test:e2e -- $ARGS
+```
+
+The plan is a pure, deterministic function of (spec list, `e2e/spec-durations.json`,
+shard count) — greedy longest-processing-time, ties broken on filename — so all
+twelve runners compute the SAME twelve buckets and each takes its own. No planning
+job, nothing serialized ahead of the matrix, no artifact passed between runners.
+Measured on the real 391-file suite: buckets of 126–127s, max/mean 1.00.
+
+**The safety property is the partition, not the balance.** An unbalanced suite is
+merely slow; a lossy one is green while running nothing. `planShards`
+(`lib/e2e-shard-plan.ts`) therefore validates the buckets it just built and throws
+rather than returning a plan that would drop or duplicate a spec, and the shard
+fails loudly on that. Its unit tests assert the partition, the determinism, and
+each way the plan can lie.
+
+Two failure modes it is deliberately built to survive:
+
+- **A missing manifest** is not fatal — the script emits `--shard=N/M` and the
+  matrix falls back to the count-based split it replaced.
+- **A stale manifest** degrades balance, never correctness. A spec absent from
+  the manifest is still planned, weighted at 1.25× the mean measured file (erring
+  high, so a new spec lands in a lighter bucket), and every run prints its
+  coverage — a manifest that has rotted says so in the job log instead of quietly
+  unbalancing the matrix.
+
+The manifest holds seconds per spec file. **Measure it on a RUNNER, not on a
+laptop** — the first version of this was measured locally on the claim that only
+relative weight matters, and that claim is wrong at the precision this needs:
+
+| manifest measured on | predicted | ACTUAL spread on an independent CI run |
+| -------------------- | --------- | -------------------------------------- |
+| a developer's box    | equal     | 160–288s, max/mean **1.16**            |
+| a CI runner          | equal     | 222–262s, max/mean **1.05**            |
+
+A constant factor would indeed cancel; the runner is not a constant factor. The
+same suite is 1518s locally and 2978s on a runner, and the ratio is not uniform
+per file — different specs are bound by different things (CPU, disk, the app's
+own render), and those scale apart. Planning CI's work with laptop weights left
+most of the imbalance in place: the buckets came out predicted-equal and CI ran
+127–183s.
+
+Refresh when the SHAPE changes (a heavy spec added, split, or deleted), not to
+chase drift, and refresh from CI artifacts:
+
+```
+gh run download <run-id> -p 'e2e-results-shard-*'
+npx tsx scripts/gen-e2e-durations.ts e2e-results-shard-*/e2e-results.json
+```
+
+Both `ci.yml`'s matrix and `e2e-full.yml` upload each shard's raw JSON report as
+`e2e-results-shard-N` for exactly this. Twelve of ci.yml's cover the whole suite;
+`e2e-full.yml` is the alternative when you want a census run's numbers (its
+`repeat-each` inflates every file by the same factor, which DOES cancel).
+
+## Co-residency: an ABSENCE is the precondition that sharding breaks
+
+Two specs sharing a worker share its database. That is fine for the fixture rule
+above — a spec owning its own rows is unaffected by a neighbour adding more. It
+is NOT fine when a spec's precondition is an **absence**, because a neighbour's
+perfectly ordinary write destroys it and neither spec is wrong on its own.
+
+Both instances so far had that exact shape:
+
+| victim asserts                                              | neighbour does                                                   | result               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------- | -------------------- |
+| profile 1 has NO tracked protein (`data-basis="estimated"`) | `offline-food-log` adds 30g and never removes it                 | `"combined"` (#2604) |
+| the seed's two never-measured stars keep their empty tiles  | `hearing.spec` deletes an audiogram, which runs the orphan sweep | stars gone (#2623)   |
+
+Neither was caused by the sharding. Duration-balanced buckets (#2590) put the
+pair on one database for the first time, and reshuffling the buckets — which a
+manifest refresh does — can expose another one at any time. **Assume a bucket
+change is a co-residency change.**
+
+The rule that prevents it is the fixture-ownership rule one step further: a spec
+that WRITES to the shared profile leaves it as it found it, and a spec that
+depends on something NOT being there says so where the state is created rather
+than trusting the seed to stay that way. `protein-quickadd.spec` has followed the
+first half for a long time ("Add→undo leaves the fixture as found"), on a
+dedicated fixture, for precisely this hazard.
+
+### Reproducing one — a green shard proves nothing
+
+DB-per-worker means a colliding pair only collides when Playwright puts both
+files on the SAME worker, which varies per run. So:
+
+- at `--workers=2` the shard can pass while CI fails, and passes again on the
+  re-run that was supposed to confirm it;
+- at `--workers=1` every spec in the bucket is co-resident, in order, and the
+  failure is deterministic.
+
+```
+# the shard's own composition — passes, proves nothing
+npx playwright test "${BUCKET[@]}"
+# every spec on one database — this is the test
+PW_WORKERS=1 npx playwright test "${BUCKET[@]}"
+```
+
+Both collisions above passed at two workers and failed at one, and the second was
+nearly filed as unreproducible on the strength of a green two-worker run. Bisect
+the bucket against the victim to name the neighbour, then diff the worker
+database against `e2e/.data/template/app.db` to see what it actually left behind
+— that is what turned "some spec breaks this" into "`saved_items` went 9 → 7, and
+the two missing rows are ApoB and hs-CRP".
+
+A whole-suite `PW_WORKERS=1` run is the exhaustive form: it makes every spec
+co-resident with every other and finds every collision of this class in one pass.
+It is slow (no parallelism, the full suite serially) and worth it after a
+manifest refresh.
+
 ## Fix (f) — DB-per-worker isolation (#1538)
 
 Until this landed, the suite booted ONE app server against ONE seeded SQLite
@@ -1232,10 +1480,22 @@ never builds, `E2E_FORCE_BUILD=1` always does; in CI the build step owns it and
 wide enough for its worker count.
 
 **Workers.** Locally the Playwright default (half the cores) applies; pass
-`--workers=N` or `PW_WORKERS=N`. **CI still runs one worker per shard**: the
-4-way shard matrix already spends a 2-core runner, and several `next start`
-processes on it would trade honest parallelism for swap. Raising it is now a
-measurement, not a redesign.
+`--workers=N` or `PW_WORKERS=N`. **CI runs two workers per shard**: the old
+one-worker pin assumed a 2-core runner, but `ubuntu-latest` gives public repos
+4 cores, and the measurement below says two is the optimum on exactly that
+hardware — the shard matrix parallelizes across runners while each runner
+parallelizes across two workers.
+
+The first attempt at that (#2437) was parked because the suite went red at two,
+and the reds read as contention latency. **They were not latency**, and the
+distinction is the reason this landed on the second pass: each red was a spec or
+helper that only LOOKED settled at one worker, and a second worker widened the
+window enough to show it. Both root causes are fixed in `e2e/helpers.ts` — see
+_A retry is only safe on an idempotent interaction_ and `settledBoxes` below.
+The lesson generalises: **at N workers, a red is a hypothesis about the spec
+before it is a verdict on N.** Read the failure's own evidence first — the
+pager's failure printed the URL it had walked to (`p_medical_records=11` against
+a page-2 guard), which is a compounding retry in plain sight, not a slow one.
 
 **Measured (48-spec / 212-test slice, one 4-core container, back to back).** The
 shared-DB harness at `--workers=4` fails 20 tests; DB-per-worker at
@@ -1395,6 +1655,110 @@ and the sharded CI matrix moved to `retries: 0` (see the telemetry note above).
 Keep it that way — a spec that can't hold at zero retries is a flake to fix, not
 a run to retry.
 
+## The known CI failure classes
+
+Every class here recurred at least once. Format: **tell** — mechanism — fix.
+This is the ONE home for the taxonomy (it moved here from the orchestration
+runbook so spec authors and the orchestrator diagnose from the same list; the
+runbook's "Diagnosing a red" section points here). The census table below
+tracks the individual recurring specs; this list is the general shapes.
+
+1. **`.first()` on a shared surface; a spec's count drifts.** All specs share
+   one seeded DB (#868). A spec must only act on rows it created; self-cleanup
+   in `beforeAll` AND `afterAll`. Non-DB state (`data/logs/*.jsonl`) is not
+   reset — seed with write, never append.
+2. **Cryptic `text.replace is not a function` from the selector generator.** A
+   page CONSOLIDATION made a neighbour spec's page-wide `getByRole` ambiguous
+   (the #1042 specialty fold). Scope selectors to a container; anchor cards on
+   their own heading. When gating a consolidation, re-run any spec that drove
+   the folded-in pages — it is the folding orchestrator's lane.
+3. **Autosave races** — wait for the Saved indicator before any reload.
+4. **Collapsed `<details>`** — click the summary before asserting contents.
+5. **Component variants** — a testid may cover several visual variants; target
+   the one under test via `data-variant`.
+6. **Cross-row pairing** — never pair two `.first()` locators and assert their
+   spatial relationship; scope both to one parent.
+7. **A fixture seeds a dead legacy write path.** When a PR moves where state
+   lives, a fixture still seeding the OLD mechanism silently stops feeding the
+   surface — a migration's legacy-copy acts at migration time and the e2e seed
+   runs after. Fixtures seed through the REAL write core
+   (`writeTx(setX(...))`), never by hand-writing storage. Reviewers: a PR
+   relocating state must grep `e2e/seed-events.ts` and `scripts/seed.ts`.
+8. **Red only in a wall-clock window** (rare since #1103). Base-comparison
+   identifies it; the two root causes are a CLIENT relative-age off the
+   browser clock, which cannot see `ALLOS_TEST_NOW` (fix with #1028's server
+   `nowIso` thread), or a DB fixture deriving date and time from TWO instants.
+9. **Persisted channel config turns event-driven dispatches into marker
+   pollution.** The delivery-health marker is GLOBAL. A spec persisting
+   notification-channel config needs its OWN fixture profile (HA webhook) or
+   login/profile pair (Telegram chat id) — since #1025 leaked config turns any
+   crossing-temperature log elsewhere into a real failed send that overwrites
+   the fixture marker. Reviewers: a PR adding an event-driven send path must
+   grep the specs for persisted channel config on shared profiles.
+10. **Passes locally, red in CI, around a conditional branch.** `if (await
+x.isVisible().catch(() => false))` right after `goto` races the render. Wait
+    for a stable section anchor first; for accept-if-present flows also assert
+    the element UNMOUNTS (`toHaveCount(0)`) so the mutation committed.
+11. **A failure that worsens over months; deterministic on a slow container**
+    (#1392/#1412). A page rendering a row PER FIXTURE ENTITY degrades as every
+    spec adds a login — the real root cause behind the long #830/#1111
+    "createLoginViaFamily flake" census — `/settings/family` hit 91×91 ≈ 8,281
+    controls / 5.16 MB. Fixes in order: product (render O(entities) at rest),
+    then fixture budget (seed enrichment fixtures as PROFILES WITHOUT LOGINS).
+    Timeout bumps measurably did NOT help.
+12. **A run that STRADDLES real 00:00 UTC** (#1534) fails date-keyed specs —
+    SQL `date('now')` can't be frozen by the JS freeze. Check the run's
+    timestamps; retrigger clear of the boundary. If the rerun fails clear of
+    midnight the explanation is FALSIFIED and it gets a real root-cause (that
+    falsification found #13).
+13. **"Passed for weeks", then fails every run for a whole day.** Fixture
+    dates must be RELATIVE to today or DEEP-PAST (`2026-01-*`), never fixed
+    near-present: `scripts/seed.ts` writes ~3 weeks of rolling relative rows,
+    so a fixed near-present date gets landed on eventually. Corollary: an
+    assertion on a SHARED-WORLD AGGREGATE is the same violation one level up —
+    scope it to the spec's own rows.
+14. **`"/route" is not assignable to AppRoute` after merging main into a
+    worktree.** Next's typedRoutes `.d.ts` under `.next/` is stale, not the
+    code. Re-run `npm run typecheck` before believing it — since #2293 that
+    regenerates the route types itself (`next typegen`, ~1s). Never widen the
+    type.
+15. **Where fixtures live (post-#1511).** Per-domain modules —
+    `e2e/seed/<domain>.ts` + `e2e/logins/<domain>.ts` — composed by the thin
+    entrypoints (`seed-events.ts` / `fixture-logins.ts`), whose CALL ORDER is
+    load-bearing (row ids follow insertion order). Agents add to the domain
+    module, never the composer.
+16. **A count/dueness flip, red only in late-UTC-evening runs** (#1577). A
+    fixture row falling to SQL's `datetime('now')` DEFAULT anchors on REAL UTC
+    while every consumer reads the FROZEN clock; they agree except in the
+    ~30-min band where #1464's nudge puts frozen date at D+1. Fix at the
+    fixture (stamp from the frozen clock). Grep vector: intake/dose/metric
+    INSERTs in `e2e/seed/**` omitting `created_at`.
+17. **One test dropping to a default-5s expectation under shard load** (#1556 —
+    the dominant residual class). A Server-Action write + RSC refresh
+    round-trip loses the default budget. Fix: a DECLARED 15–30s budget on the
+    SERVER-TRUTH signal (the row that only renders after the write committed),
+    with a comment citing the measured overrun; at retries=0 a budget masks
+    nothing. On dashboard-class surfaces with bystander POST traffic
+    `settledClick` is the WRONG tool (its any-POST wait resolves on a
+    bystander) — widen the server-truth window. Watch for BUDGET ASYMMETRY
+    inside one spec. Every new one-off goes on the #1556 census.
+
+**Two spec-authoring hazards worth their own note.**
+
+- **Adding a new spec FILE reshuffles the shard split** and surfaces LATENT
+  interference in specs that previously happened to shard apart. Confirm it is
+  pre-existing by running the accused specs TOGETHER on the PR branch AND on
+  clean main; if both fail, harden the fragile specs to own their fixtures —
+  it is not the new spec's doing.
+- **The controlled-input pre-hydration fill-revert** (#1188). A `.fill()`
+  before React hydrates a CONTROLLED input sets the DOM (a naive `toHaveValue`
+  passes) but never fires `onChange`, so hydration reverts the field and a
+  Save persists the empty value SILENTLY. Use `settledFill` / `settledCheck`.
+  Related self-race (#1400): a retry loop that bare-clicks a write-bearing
+  control then immediately reloads ABORTS its own Server-Action POST, so the
+  loop spins while the DB never changes. Settle write-bearing taps before any
+  reload inside a retry loop; client-only toggles stay bare clicks.
+
 ## Recurring-failure census
 
 CI failures at `--retries=0` that recurred on diffs that could not have caused
@@ -1402,11 +1766,13 @@ them. Two unrelated-diff occurrences of the same failure earn an entry here and
 a named-ceiling (or root-cause) fix; one occurrence is exonerated by a local
 3×-at-CI-parity pass and a retrigger.
 
-| Spec / assertion                                                                                               | Occurrences                                                                                                                                                                                   | Diagnosis                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `imaging.spec.ts` — PET row after Add (`toContainText("PET …")`)                                               | 2026-07-29 (PR #1666, trends-only diff), 2026-07-30 (PR #1694, release-notes JSON only), 2026-07-30 (PR #1715) — the third occurrence waited the FULL 20 s ceiling and the row never appeared | **Latency is DISPROVEN as the explanation** — a 20 s ceiling did not save it, on a shard whose two sibling imaging tests passed in 1.1 s and 1.5 s. The real defect was that this test alone submitted BLIND: `settledClick` resolves on any same-origin POST, including one carrying a refusal, and `addImagingStudy` reports failure as an inline `role="alert"` with no row. A refused, a never-submitted and a merely slow add were therefore indistinguishable, and all three surfaced 20 s later as a bare "element(s) not found" on the row locator — a signature that names neither the failure nor its reason. Instrumented locally (see Resolution): the write always commits, the repaint is driven by the add action's own response (proven by disabling the layout's 6 s `ExtractionToaster`/`ImportJobsToaster` polls — the repaint still lands), the form is fully hydrated before the fills, and the repaint costs ~0.3 s unthrottled / ~8 s under a 25× CPU throttle. The CI trigger itself is not yet named: the `error-context.md` artifacts for all three runs live on blob storage that this environment's egress policy blocks.                                                                                                                                             | Assert the SUBMIT OUTCOME (`submitWithToast`, "Study saved") at parity with the two sibling tests, plus an explicit `imaging-study-list` visibility assertion so "list missing" is distinguishable from "row missing"; the 20 s ceiling stays but now covers only post-success repaint. Product fix in the same change: `revalidateImaging()` revalidated `/results`, a pure `redirect()` stub that renders no imaging, so nothing but the client-side `router.refresh()` could ever repaint the list — it now revalidates `/results/imaging`, the route that renders it. **A next occurrence is expected to fail at the toast with the inline error in the snapshot; re-open this entry with that text.**                                                                                                                                             |
-| `shell.mobile.spec.ts` — the measurements form inside the quick-entry overlay (`#m-weight`)                    | 2026-07-30, measured locally at CI parity on the PR branch AND on unmodified `main` (3×3 runs, ~10.5 s per test either way)                                                                   | Same class: the overlay's props arrive from a Server Action whose response carries a re-render of the seeded profile's dashboard — the heaviest page in the app — which exceeds the 5 s default on a loaded runner regardless of the diff. Raising only the ceiling made both trees pass 3/3.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Named 20 s ceiling on that assertion (PR for #1525/#1633). A `settledClickApplied(page, quick-log row, #m-weight)` candidate under #1858 — left alone for now because the intervening sheet-dismissal assertions would have to move below the call.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `illness-front-door.spec.ts` — `symptom-log-bar` after `feeling-sick-activate`                                 | 2026-07-30 (PR #1702, release-notes JSON only); previously failing 3/4 locally on clean main (flagged in #1695's report)                                                                      | Same Server-Action full-page re-render latency class — the activate action's re-render exceeds the 5 s default on a loaded shard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Originally: named 20 s ceilings on the three post-activate `symptom-log-bar` waits. **Superseded by #1858** — all four post-activate sites in that spec now call `settledClickApplied(page, activate, symptom-log-bar)`, which waits for the action POST _and_ the router's apply. The bar is the marker; the ceiling moved inside the helper as its documented default, so the spec no longer declares a duration at all.                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `illness-front-door.spec.ts` — `temp-quick-entry` closes after quick-save (`toHaveCount(0)`)                   | 2026-07-31 (PR #1755, release-notes JSON only)                                                                                                                                                | Same Server-Action full-page re-render latency class as the row above — the quick-save action's re-render exceeds the 5 s default on a loaded shard; the panel only unmounts when it lands.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Named 20 s ceiling on the post-save `temp-quick-entry` count assert. **Still a ceiling after #1858, deliberately:** the only signal here is an ABSENCE, which `settledClickApplied` refuses by design — a stale tree and an applied tree are the same DOM once the panel is gone. Converting it means finding the positive marker the save's re-render produces (the logged reading) and asserting the absence after it.                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `wellness-practices.spec.ts` — first `practice-log-button` after the second create (`settledClick` pre-assert) | pre-2026-07-31 watch-list occurrence (unrelated diff); 2026-07-31 (PR #1758, patient-portals-only diff)                                                                                       | The second Save's Server-Action re-render repaints the whole practice list, and `settledClick`'s own pre-visibility assert runs at the 5 s default — it does not honor `opts.timeout` — so the first card lookup after the save can outrun it on a loaded shard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Originally: a named 20 s ceiling on the first post-create card wait before the `settledClick` sequence. Both of its successors have landed — the test now SEEDS its two practices instead of driving two create round-trips (see the ceiling-that-keeps-growing note above, 25–31 s → under 7 s), and **#1858 made `settledClick` honour `opts.timeout` in its pre-assert**, so the named follow-up this row filed is closed: no call site has to raise a ceiling that the pre-assert would then ignore.                                                                                                                                                                                                                                                                                                                                               |
-| `illness-episode-followups.spec.ts:596` — `symptom-day-toggle` gone after the episode-editor Save              | 2026-08-03, ~1 in 4 at `--repeat-each=2 --workers=2`, reproduced identically with pre-#1958 `e2e/` on the same build (#1964, split out of #1952 / PR #1958)                                   | Fifth of the same class, and the first one MEASURED end to end rather than inferred. The issue's hypothesis — an App Router unwind tearing the editor down and remounting it — is **disproven**: across 40 instrumented runs the URL never left `/medical/episodes/2`, the Save always posted there, and `episode-editor` went 1→0 monotonically, never back. What the runs show instead is two waits with wildly different latencies being spelled the same way. The modal closes from the action's own resolution (`EpisodeEditor` calls `onClose` when `editEpisodeAction` returns ok) — 0.03–0.39 s after `settledClick` returns, even at a 20× CPU throttle. The toggle only goes away when the router APPLIES the revalidated tree — 0.06–0.27 s unthrottled but 0.47–3.33 s throttled, 8–40× longer with 7× run-to-run spread, because `revalidatePath` also invalidates the client router cache and the page immediately re-prefetches every visible `<Link>` (~25 `_rsc` GETs, then the whole set again under a second cache key) on the same main thread that has to render the payload. So the absence assert was the only thing absorbing the apply window, on the 5 s default — and a stale toggle and a page that never updated are the same DOM, so it could not say which it saw. | Assert the re-render's POSITIVE marker between them: `episode-summary-day` reads `1` (the same server computation of the episode's day span that decides whether yesterday is offered at all), so the absence below reads a page already proven settled. No ceiling was raised — the wait that was missing is a state, not a duration, and the feature's race-free proof (the dashboard copy after `goto("/")`) was already in the test. **The structural follow-up this class had earned twice over is now shipped (#1858): `settledClick` guarantees only "the action completed server-side", so a caller that then asserts a revalidated render declares that with `settledClickApplied` — and `settledClick`'s own pre-assert finally honours `opts.timeout`. Four ceilings and this marker were five call-site patches of one helper-level gap.** |
+| Spec / assertion                                                                                               | Occurrences                                                                                                                                                                                                                                                                                             | Diagnosis                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `imaging.spec.ts` — PET row after Add (`toContainText("PET …")`)                                               | 2026-07-29 (PR #1666, trends-only diff), 2026-07-30 (PR #1694, release-notes JSON only), 2026-07-30 (PR #1715) — the third occurrence waited the FULL 20 s ceiling and the row never appeared                                                                                                           | **Latency is DISPROVEN as the explanation** — a 20 s ceiling did not save it, on a shard whose two sibling imaging tests passed in 1.1 s and 1.5 s. The real defect was that this test alone submitted BLIND: `settledClick` resolves on any same-origin POST, including one carrying a refusal, and `addImagingStudy` reports failure as an inline `role="alert"` with no row. A refused, a never-submitted and a merely slow add were therefore indistinguishable, and all three surfaced 20 s later as a bare "element(s) not found" on the row locator — a signature that names neither the failure nor its reason. Instrumented locally (see Resolution): the write always commits, the repaint is driven by the add action's own response (proven by disabling the layout's 6 s `ExtractionToaster`/`ImportJobsToaster` polls — the repaint still lands), the form is fully hydrated before the fills, and the repaint costs ~0.3 s unthrottled / ~8 s under a 25× CPU throttle. The CI trigger itself is not yet named: the `error-context.md` artifacts for all three runs live on blob storage that this environment's egress policy blocks.                                                                                                                                             | Assert the SUBMIT OUTCOME (`submitWithToast`, "Study saved") at parity with the two sibling tests, plus an explicit `imaging-study-list` visibility assertion so "list missing" is distinguishable from "row missing"; the 20 s ceiling stays but now covers only post-success repaint. Product fix in the same change: `revalidateImaging()` revalidated `/results`, a pure `redirect()` stub that renders no imaging, so nothing but the client-side `router.refresh()` could ever repaint the list — it now revalidates `/results/imaging`, the route that renders it. **A next occurrence is expected to fail at the toast with the inline error in the snapshot; re-open this entry with that text.**                                                                                                                                             |
+| `shell.mobile.spec.ts` — the measurements form inside the quick-entry overlay (`#m-weight`)                    | 2026-07-30, measured locally at CI parity on the PR branch AND on unmodified `main` (3×3 runs, ~10.5 s per test either way)                                                                                                                                                                             | Same class: the overlay's props arrive from a Server Action whose response carries a re-render of the seeded profile's dashboard — the heaviest page in the app — which exceeds the 5 s default on a loaded runner regardless of the diff. Raising only the ceiling made both trees pass 3/3.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Named 20 s ceiling on that assertion (PR for #1525/#1633). A `settledClickApplied(page, quick-log row, #m-weight)` candidate under #1858 — left alone for now because the intervening sheet-dismissal assertions would have to move below the call.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `illness-front-door.spec.ts` — `symptom-log-bar` after `feeling-sick-activate`                                 | 2026-07-30 (PR #1702, release-notes JSON only); previously failing 3/4 locally on clean main (flagged in #1695's report)                                                                                                                                                                                | Same Server-Action full-page re-render latency class — the activate action's re-render exceeds the 5 s default on a loaded shard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Originally: named 20 s ceilings on the three post-activate `symptom-log-bar` waits. **Superseded by #1858** — all four post-activate sites in that spec now call `settledClickApplied(page, activate, symptom-log-bar)`, which waits for the action POST _and_ the router's apply. The bar is the marker; the ceiling moved inside the helper as its documented default, so the spec no longer declares a duration at all.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `illness-front-door.spec.ts` — `temp-quick-entry` closes after quick-save (`toHaveCount(0)`)                   | 2026-07-31 (PR #1755, release-notes JSON only)                                                                                                                                                                                                                                                          | Same Server-Action full-page re-render latency class as the row above — the quick-save action's re-render exceeds the 5 s default on a loaded shard; the panel only unmounts when it lands.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Named 20 s ceiling on the post-save `temp-quick-entry` count assert. **Still a ceiling after #1858, deliberately:** the only signal here is an ABSENCE, which `settledClickApplied` refuses by design — a stale tree and an applied tree are the same DOM once the panel is gone. Converting it means finding the positive marker the save's re-render produces (the logged reading) and asserting the absence after it.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `wellness-practices.spec.ts` — first `practice-log-button` after the second create (`settledClick` pre-assert) | pre-2026-07-31 watch-list occurrence (unrelated diff); 2026-07-31 (PR #1758, patient-portals-only diff)                                                                                                                                                                                                 | The second Save's Server-Action re-render repaints the whole practice list, and `settledClick`'s own pre-visibility assert runs at the 5 s default — it does not honor `opts.timeout` — so the first card lookup after the save can outrun it on a loaded shard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Originally: a named 20 s ceiling on the first post-create card wait before the `settledClick` sequence. Both of its successors have landed — the test now SEEDS its two practices instead of driving two create round-trips (see the ceiling-that-keeps-growing note above, 25–31 s → under 7 s), and **#1858 made `settledClick` honour `opts.timeout` in its pre-assert**, so the named follow-up this row filed is closed: no call site has to raise a ceiling that the pre-assert would then ignore.                                                                                                                                                                                                                                                                                                                                               |
+| `illness-episode-followups.spec.ts:596` — `symptom-day-toggle` gone after the episode-editor Save              | 2026-08-03, ~1 in 4 at `--repeat-each=2 --workers=2`, reproduced identically with pre-#1958 `e2e/` on the same build (#1964, split out of #1952 / PR #1958)                                                                                                                                             | Fifth of the same class, and the first one MEASURED end to end rather than inferred. The issue's hypothesis — an App Router unwind tearing the editor down and remounting it — is **disproven**: across 40 instrumented runs the URL never left `/medical/episodes/2`, the Save always posted there, and `episode-editor` went 1→0 monotonically, never back. What the runs show instead is two waits with wildly different latencies being spelled the same way. The modal closes from the action's own resolution (`EpisodeEditor` calls `onClose` when `editEpisodeAction` returns ok) — 0.03–0.39 s after `settledClick` returns, even at a 20× CPU throttle. The toggle only goes away when the router APPLIES the revalidated tree — 0.06–0.27 s unthrottled but 0.47–3.33 s throttled, 8–40× longer with 7× run-to-run spread, because `revalidatePath` also invalidates the client router cache and the page immediately re-prefetches every visible `<Link>` (~25 `_rsc` GETs, then the whole set again under a second cache key) on the same main thread that has to render the payload. So the absence assert was the only thing absorbing the apply window, on the 5 s default — and a stale toggle and a page that never updated are the same DOM, so it could not say which it saw. | Assert the re-render's POSITIVE marker between them: `episode-summary-day` reads `1` (the same server computation of the episode's day span that decides whether yesterday is offered at all), so the absence below reads a page already proven settled. No ceiling was raised — the wait that was missing is a state, not a duration, and the feature's race-free proof (the dashboard copy after `goto("/")`) was already in the test. **The structural follow-up this class had earned twice over is now shipped (#1858): `settledClick` guarantees only "the action completed server-side", so a caller that then asserts a revalidated render declares that with `settledClickApplied` — and `settledClick`'s own pre-assert finally honours `opts.timeout`. Four ceilings and this marker were five call-site patches of one helper-level gap.** |
+| `full-export.spec.ts:89` — the medical_records pager never reaching `p_medical_records=2`                      | 2026-08-10, all three of #2437's `workers: 2` runs (each a different spec; this one on the run rebased past the #2438 sw-update fix, so it is the un-confounded occurrence). Reproduced locally 1-in-4 at `--workers=2` under six CPU hogs on a 4-core box — `…&p_medical_records=9` against CI's `=11` | **Not latency, and the failure printed its own proof.** `followLink`'s 25 s timeout reads as "the transition never committed", but the URL it reported was page ELEVEN: the clicks all landed. `PaginationControls` advances by `onPageChange(page + 1)`, so the navigation is RELATIVE — and `followLink` re-clicks whenever the URL does not match its destination. One overshoot past page 2 (the URL commits between the loop's check and its next click, and the RSC re-render lands, so the following click computes from the NEW page) puts the destination permanently out of reach, and the loop then spends its whole budget walking away from it. Every retrying helper assumes the interaction is idempotent; a `<Link>` is, a relative pager step is not. Two workers did not create this — they widened the commit window enough to hit it.                                                                                                                                                                                                                                                                                                                                                                                                                                         | Root cause at both levels. (1) `followLink` only re-clicks while the page is still on the URL it started from — both races it exists to absorb (swallowed pre-hydration click, commit-then-unwind) leave it there — and a third URL now ends the clicking and fails naming both URLs and the idempotence rule. (2) The pager call site uses `hydratedClick` + a URL assertion: React's handler is attached before the one click, so the swallow is closed without a loop. 4/4 green under the same six-hog contention that failed the old code.                                                                                                                                                                                                                                                                                                        |
+| `sleep-page.spec.ts:246` — the duration→regularity card gap read as wider than its 28 px window                | 2026-08-10, #2437's first `workers: 2` run                                                                                                                                                                                                                                                              | Same shape one layer down: `await Promise.all([a.boundingBox(), …])` is four separate CDP round-trips, not one snapshot, and the cards' charts size themselves after mount. Measure the duration card while it is still growing and the regularity card after, and the subtraction describes a layout that never existed — then it is asserted with a plain numeric `expect`, which cannot retry, because the numbers are already in variables. The ±4 px window is not the defect; computing a relative geometry from two different layouts is.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `settledBoxes([...locators])` — read the whole group, repeat until two consecutive passes agree (`centerOf`'s rule applied to a group), return non-null boxes so the call site drops its four `not.toBeNull()` guards and its `!`s. No ceiling raised and no window widened. 4/4 green under six-hog contention.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |

@@ -1061,14 +1061,15 @@ export function seedPanelIndex(): void {
     ["HDL Cholesterol", "mg/dL", 54, null],
     ["Triglycerides", "mg/dL", 108, null],
     ["VLDL Cholesterol", "mg/dL", 21, null],
-    // Glucose & insulin. The glucose is seeded under the FASTING entry because the
-    // derived HOMA-IR below is part of this fixture's point and, since #2357, that
-    // index accepts only "Glucose, Fasting" — an index defined on a fasting frame
-    // declines on an unqualified reading rather than assuming one. PhenoAge prefers
-    // the same entry, so nothing else about the draw changes.
+    // Glucose & insulin. BOTH are seeded under the FASTING entry because the derived
+    // HOMA-IR below is part of this fixture's point and that index accepts only the
+    // frame-stating names — "Glucose, Fasting" since #2357, "Insulin, Fasting" since
+    // #2371. An index defined on a fasting frame declines on an unqualified reading
+    // rather than assuming one. PhenoAge prefers the same glucose entry, so nothing
+    // else about the draw changes.
     ["Glucose, Fasting", "mg/dL", 92, null],
     ["Hemoglobin A1c", "%", 5.3, null],
-    ["Insulin", "uIU/mL", 6.1, null],
+    ["Insulin, Fasting", "uIU/mL", 6.1, null],
     // Inflammation
     ["High-Sensitivity C-Reactive Protein (hs-CRP)", "mg/L", 0.8, null],
     ["Homocysteine", "umol/L", 9.4, null],

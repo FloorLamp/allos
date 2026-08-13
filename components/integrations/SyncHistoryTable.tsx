@@ -7,15 +7,15 @@ import {
   escalationPolicyLabel,
   runWindowNorm,
   syncRunNounForKind,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import { projectSyncHistoryDays } from "@/lib/integrations/sync-history-view";
 import SyncHistoryDays from "./SyncHistoryDays";
 
-// The provider's sync history, on the provider's own page (#1772), GROUPED BY DAY
+// The source's sync history, on the source's own page (#1772), GROUPED BY DAY
 // (#1991).
 //
 // #1212 retired the duplicate copy and left Review's expander as the single history;
-// #1772 rebuilt it as a real table on the provider's own page. Neither fixed what a
+// #1772 rebuilt it as a real table on the source's own page. Neither fixed what a
 // high-frequency source does to a per-run log: the Health Connect exporter re-sends
 // its rolling window every ~20 minutes, so the table read
 // "Synced · N new · 4 changed · 73 unchanged" about seventy times a day. The
@@ -24,7 +24,7 @@ import SyncHistoryDays from "./SyncHistoryDays";
 //
 // So: one line per DAY, expanding to only what earned it (the pure rules live in
 // lib/integrations/sync-history-days.ts); the WINDOW column is gone, because it was
-// structurally constant for a given provider and is already stated once in this
+// structurally constant for a given source and is already stated once in this
 // header; and the admin raw viewer is one link per run opening a dialog instead of a
 // JSON tree rendered inline in the primary reading position.
 //
@@ -59,7 +59,7 @@ export default function SyncHistoryTable({
     vocabulary,
     timeZone: state.timeZone,
     provenanceCounts: state.provenanceCounts,
-    // The history marker names the newest RECORDED run. Provider standing may use a
+    // The history marker names the newest RECORDED run. Source standing may use a
     // synthetic expired-token event that deliberately does not belong in this log.
     latestEventId: history[0]?.id ?? null,
   });
@@ -94,7 +94,7 @@ export default function SyncHistoryTable({
           key={`${state.latest?.id ?? "empty"}:${state.historyNextBefore ?? "end"}`}
           days={days}
           today={state.today}
-          providerId={state.id}
+          sourceId={state.id}
           initialCursor={state.historyNextBefore}
           timeZone={state.timeZone}
           isAdmin={isAdmin}

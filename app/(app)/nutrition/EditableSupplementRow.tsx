@@ -224,7 +224,7 @@ export default function EditableSupplementRow({
             />
           )}
           <OverflowMenu
-            label="IntakeItem actions"
+            label="Supplement actions"
             open={menuOpen}
             onOpenChange={setMenuOpen}
           >
@@ -266,12 +266,12 @@ export default function EditableSupplementRow({
                           ok: true,
                           message:
                             res.state === "paused"
-                              ? "IntakeItem paused"
-                              : "IntakeItem resumed",
+                              ? "Supplement paused"
+                              : "Supplement resumed",
                         };
                       },
                       fd,
-                      s.active ? "IntakeItem paused" : "IntakeItem resumed"
+                      s.active ? "Supplement paused" : "Supplement resumed"
                     )
                   }
                 >
@@ -300,7 +300,7 @@ export default function EditableSupplementRow({
                     const fd = new FormData();
                     fd.set("id", String(s.id));
                     await undoable(deleteIntakeItem, fd, {
-                      deletedMessage: "IntakeItem deleted.",
+                      deletedMessage: "Supplement deleted.",
                     });
                   }}
                 >

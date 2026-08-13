@@ -126,6 +126,32 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // boot. FLAG_LOGIC_VERSION is deliberately NOT bumped: the derivation LOGIC is
 // unchanged and the dataset half of the signature already forces the re-reconcile on
 // its own (the #2300/#2337/#2335 reasoning).
+// Updated for #2371: the insulin twin of the #2337 glucose split. `Insulin, Fasting`
+// is coined carrying the bands the unqualified entry used to hold (ref ≤18.4, optimal
+// 2–5, lower_better) — they were always FASTING intervals, asserted by a one-word
+// "Fasting" note rather than by the name — and the unqualified `Insulin` gives them
+// up, because an insulin of unstated frame has no band the app can honestly apply and
+// the post-prandial spread is wider here than it is on glucose. A new entry plus four
+// fields going null legitimately moves the signature, and the boot reconcile runs
+// once: a stored bare `Insulin` reading loses a flag it should never have carried, and
+// nothing is re-pointed, because a reading that does not state a fasting frame is not
+// ours to re-file under one (#2338). FLAG_LOGIC_VERSION is deliberately NOT bumped:
+// the derivation LOGIC is unchanged (the #2300/#2337/#2335 reasoning).
+// Updated for #2321: EPDS joins the instrument entries beside PHQ-9 and GAD-7. Like
+// them it is a RANGELESS instrument score — no ref/optimal bounds, so it contributes no
+// flag of its own and the severity band remains the only on-screen signal — but a new
+// entry moves the signature by construction, so the boot reconcile runs once and
+// changes no stored flag. FLAG_LOGIC_VERSION is deliberately NOT bumped: the derivation
+// LOGIC is unchanged (the #2300/#2337/#2335 reasoning).
+// Updated for #2526: the cortisol twin of the same split, found by the audit #2518
+// asked for. `Cortisol, Morning` is coined carrying the 6-18 ug/dL band the unqualified
+// entry used to hold — it is a MORNING interval, asserted by the two-word note "Morning
+// draw" rather than by the name, and cortisol's diurnal swing is the widest of the three:
+// a value normal at 8 p.m. is low against the 8 a.m. band. The unqualified `Cortisol`
+// gives the band up. One new entry plus two fields going null moves the signature, and
+// the boot reconcile runs once: a stored bare `Cortisol` reading loses a flag it should
+// never have carried, and nothing is re-pointed (#2338/#2518). FLAG_LOGIC_VERSION is
+// deliberately NOT bumped: the derivation LOGIC is unchanged.
 // Updated for the hepatitis A total-antibody entry: ONE new curated row, RANGELESS
 // (every ref/optimal field null), so it adds no numeric band and re-judges nothing by
 // value. What it changes is IDENTITY — a name that had no curated entry now has one,
@@ -139,7 +165,7 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // is unchanged and the dataset half of the signature forces the one re-reconcile.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "82244293d78b9ae58249a6f2f7c97898acc303a46887ed899488821263cb7f6d"; // phi-scan-ok
+  "b52823b75ec93baffdd0e521bdb2ba906b27b6c6972a01d91fde2aa82ba99b22"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

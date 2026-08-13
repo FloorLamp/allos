@@ -18,8 +18,9 @@ import { seedStandardMetricSaves } from "../standard-metric-seeds";
 import { runPhotoMetadataBackfill } from "../photo/metadata-backfill";
 import { reconcileCyclingStreamSummaries } from "../cycling-stream-summary-db";
 import { runBootTx } from "./schema-utils";
-import { clockOverride } from "../clock";
-import { utcInstant } from "../date";
+import { clockOverride, now } from "../clock";
+import { dateStrInTz, utcInstant } from "../date";
+import { resolveTimezone } from "../timezone";
 import { createLogger } from "../log";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
@@ -743,6 +744,24 @@ function reconcileNonOptimalFlags(db: Database.Database) {
     : null;
   const readPeriods = (profileId: number): CyclePeriod[] =>
     periodsStmt ? (periodsStmt.all(profileId) as CyclePeriod[]) : [];
+  // The profile-LOCAL today the cycle log is read against (#2613): the phase
+  // derivation refuses a date after it. Resolved here rather than through
+  // lib/db.today() because bootTasks runs on the `db` handle it is HANDED — the
+  // module singleton is still being constructed — but the resolution order is the
+  // same one (profile setting, then instance default, then UTC) over the same
+  // shared resolveTimezone and the same lib/clock seam, so a boot-time reconcile
+  // and a request-time one can't disagree about which day it is.
+  const readToday = (profileId: number): string => {
+    const prof = (
+      profileSetting.get(profileId, "timezone") as
+        { value?: string } | undefined
+    )?.value;
+    const instance = prof
+      ? undefined
+      : (globalSetting.get("timezone") as { value?: string } | undefined)
+          ?.value;
+    return dateStrInTz(resolveTimezone(prof, instance), now());
+  };
 
   const rowsStmt = db.prepare(
     `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
@@ -800,6 +819,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
         age,
         reproductiveStatus,
         periods,
+        today: readToday(p.id),
       })) {
         if (c.flag === null) clear.run(c.id);
         else setFlag.run(c.flag, c.id);

@@ -411,6 +411,15 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     shape: "`co:<monthAnchor>`",
   },
   {
+    // #2177. The head is a curated registry token (a `PAIRED_OBSERVATIONS.key`, never
+    // a user-typed name) and the tail is the month the observation was raised in, so a
+    // dismissal silences that pair for that month and a later month mints a new key.
+    // Nothing here recycles.
+    prefix: "paired-obs:",
+    keyClass: "anchored",
+    shape: "`<registryPairKey>:<monthAnchor>`",
+  },
+  {
     prefix: "sun-exposure:",
     keyClass: "anchored",
     shape: "`daylight:<date>`",
@@ -666,6 +675,10 @@ export const NON_DISMISSAL_PREFIXES: readonly {
   {
     prefix: "dgtno",
     what: "Telegram callback-data namespace for the digest time suggestion's decline (lib/digest-time-suggestion); the DISMISSAL it writes is keyed `digest-time:`",
+  },
+  {
+    prefix: "medstop",
+    what: "Telegram callback-data namespace for the unconfirmed-medication Stop button (#2574, lib/notifications/callback-data). It silences nothing and writes no suppression row: the tap closes the medication's course through stopMedicationCourses, which is a lifecycle write the user can undo with Restart",
   },
 ];
 

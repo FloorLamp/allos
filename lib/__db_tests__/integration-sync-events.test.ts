@@ -76,17 +76,17 @@ describe("integration_sync_events: profile + provider scoping", () => {
     const hcA = getIntegrationSyncEvents(profileA, "health-connect");
     expect(hcA.length).toBe(2);
     expect(hcA.every((e) => e.profile_id === profileA)).toBe(true);
-    expect(hcA.every((e) => e.provider === "health-connect")).toBe(true);
+    expect(hcA.every((e) => e.source_id === "health-connect")).toBe(true);
     // B's row (received 999) never leaks in.
     expect(hcA.some((e) => e.received === 999)).toBe(false);
   });
 
   it("filters by provider — the Strava event is not in the HC list", () => {
     const hcA = getIntegrationSyncEvents(profileA, "health-connect");
-    expect(hcA.some((e) => e.provider === "strava")).toBe(false);
+    expect(hcA.some((e) => e.source_id === "strava")).toBe(false);
     const stravaA = getIntegrationSyncEvents(profileA, "strava");
     expect(stravaA.length).toBe(1);
-    expect(stravaA[0].provider).toBe("strava");
+    expect(stravaA[0].source_id).toBe("strava");
   });
 
   it("returns B's own events and nothing of A's", () => {
@@ -112,7 +112,7 @@ describe("integration_sync_events: profile + provider scoping", () => {
       (e) => e.ok === 1
     );
     expect(at).toBe(success!.at);
-    // B never had a successful sync of a provider it doesn't use.
+    // B never had a successful sync of a source it doesn't use.
     expect(getLastSuccessfulSyncAt(profileB, "strava")).toBeNull();
   });
 
@@ -327,7 +327,7 @@ describe("getConnectedSources includes the keyless Weather stream", () => {
     // Keyless and tick-driven, but still pullable on demand — #1772 unified the
     // setup page's redirecting sync form and Review's inline button into ONE
     // affordance, so weather joined the on-demand set instead of keeping a private
-    // one. Healthy providers collapse in Review, so the button only renders where
+    // one. Healthy sources collapse in Review, so the button only renders where
     // there is something to act on.
     expect(weather!.canSyncNow).toBe(true);
     // It speaks the cache dialect: its counts are revised forecast cells, not records.
@@ -366,7 +366,7 @@ describe("getConnectedSources includes the keyless Weather stream", () => {
   });
 });
 
-// The other half of the #1771 gate: a provider that DOES record provenance still
+// The other half of the #1771 gate: a source that DOES record provenance still
 // resolves it, so the drill-in stays reachable exactly where it can deliver.
 describe("provenanceCountsByEvent — the drill-in gate, and its count", () => {
   let p: number;

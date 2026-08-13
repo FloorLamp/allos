@@ -46,21 +46,26 @@ import {
 const HOUR = 60;
 // The declared Health Connect heart-rate tolerance: 2.5 h, the measured valley.
 const TOLERANCE = 150;
+// The declared evidence bar for the same stream (#2560), READ from the registry rather
+// than restated here: this test must not be able to disagree with the declaration.
+const EVIDENCE = continuousStream("health-connect", "heart-rate")!.stream
+  .frozenEvidence.syncs;
 
 /** The measured off-wrist signature, with one field at a time overridden. */
 function offWrist(over: Partial<QuietStreamSignals> = {}): QuietStreamSignals {
   return {
-    provider: "health-connect",
+    sourceId: "health-connect",
     streamId: "heart-rate",
-    providerHealthy: true,
+    sourceHealthy: true,
     expectedActive: true,
     // 21:05 → 06:24, the worst of the five measured events: the watch spent the night
     // on the charger and the profile lost its only sleep night in eight weeks.
     minutesSinceStream: 9 * HOUR + 19,
-    // Frozen across two successive pushes (#2341) — the evidence that the SOURCE
-    // stopped, as distinct from the pipeline running late.
-    syncsSinceAdvance: 2,
+    // Frozen across the DECLARED number of successive pushes (#2341/#2560) — the
+    // evidence that the SOURCE stopped, as distinct from the pipeline running late.
+    syncsSinceAdvance: EVIDENCE,
     toleranceMin: TOLERANCE,
+    frozenSyncs: EVIDENCE,
     ...over,
   };
 }
@@ -107,11 +112,15 @@ describe("quietStreamVerdict (#2146)", () => {
     });
   });
 
-  it("does NOT fire on one quiet push, or with no observation at all (constraint 1)", () => {
-    // One push carrying nothing new is jitter. NONE at all is the PHONE being off,
-    // not the watch: #1685's staleness detector owns that and already names it, so
-    // reporting it here would be two rows and two voices for one fault.
-    expect(quietStreamVerdict(offWrist({ syncsSinceAdvance: 1 }))).toEqual({
+  it("does NOT fire below the declared bar, or with no observation at all (constraint 1)", () => {
+    // A push carrying nothing new is jitter — and since #2560 the number of them that
+    // still counts as jitter is the stream's own declaration, because the watch batches
+    // into Health Connect independently of the exporter's push. NONE at all is the
+    // PHONE being off, not the watch: #1685's staleness detector owns that and already
+    // names it, so reporting it here would be two rows and two voices for one fault.
+    expect(
+      quietStreamVerdict(offWrist({ syncsSinceAdvance: EVIDENCE - 1 }))
+    ).toEqual({
       quiet: false,
       skip: "no-recent-sync",
     });
@@ -134,16 +143,16 @@ describe("quietStreamVerdict (#2146)", () => {
 
   it("does NOT fire for a provider already carrying a failing/stale row (constraint 7)", () => {
     // Checked FIRST, before anything about the data: one row names the cause.
-    expect(quietStreamVerdict(offWrist({ providerHealthy: false }))).toEqual({
+    expect(quietStreamVerdict(offWrist({ sourceHealthy: false }))).toEqual({
       quiet: false,
-      skip: "provider-unhealthy",
+      skip: "source-unhealthy",
     });
     // And it wins even when every other signal screams.
     expect(
       quietStreamVerdict(
-        offWrist({ providerHealthy: false, minutesSinceStream: 40 * HOUR })
+        offWrist({ sourceHealthy: false, minutesSinceStream: 40 * HOUR })
       )
-    ).toEqual({ quiet: false, skip: "provider-unhealthy" });
+    ).toEqual({ quiet: false, skip: "source-unhealthy" });
   });
 
   it("does NOT fire for a stream that was not delivering to begin with", () => {
@@ -193,7 +202,7 @@ describe("quietStreams — one row per provider", () => {
       quietStreams([
         candidate({ syncsSinceAdvance: 0 }),
         candidate({ minutesSinceStream: 30 }),
-        candidate({ providerHealthy: false }),
+        candidate({ sourceHealthy: false }),
       ])
     ).toEqual([]);
   });
@@ -202,13 +211,13 @@ describe("quietStreams — one row per provider", () => {
 describe("the reach boundary — quiet-stream never escalates (constraint 4)", () => {
   const quiet: AttentionIntegration = {
     id: "health-connect",
-    provider: "Google Health Connect",
+    sourceName: "Google Health Connect",
     detail: "No heart-rate data has arrived since 9:05 PM.",
     kind: "quiet-stream",
   };
   const stale: AttentionIntegration = {
     id: "strava",
-    provider: "Strava",
+    sourceName: "Strava",
     detail: "No data since 2026-07-10.",
     kind: "stale",
   };
@@ -261,7 +270,7 @@ describe("the copy", () => {
 
   it("scopes the dedupe key to the profile-local DAY", () => {
     const key = quietStreamDedupeKey({
-      provider: "health-connect",
+      sourceId: "health-connect",
       streamId: "heart-rate",
       today: "2026-07-15",
     });
@@ -269,7 +278,7 @@ describe("the copy", () => {
     // Silencing this morning must not silence next Tuesday's.
     expect(key).not.toBe(
       quietStreamDedupeKey({
-        provider: "health-connect",
+        sourceId: "health-connect",
         streamId: "heart-rate",
         today: "2026-07-16",
       })
@@ -298,10 +307,21 @@ describe("the registry declaration", () => {
     expect(hc?.stream.reminder?.because).toMatch(/lag/i);
   });
 
+  it("declares the frozen-evidence bar on the STREAM, at the measured four (#2560)", () => {
+    // The ruling #2560 asked for. It was one shared constant in lib/stream-frontier.ts,
+    // defended as "a property of what a push MEANS, not of any one stream's wear
+    // pattern" — and every measurement behind it was taken on the exporter → allos leg
+    // only. The watch → Health Connect leg batches independently and coarsely, so how
+    // many quiet pushes mean anything is a property of THIS source's delivery chain.
+    const hc = continuousStream("health-connect", "heart-rate");
+    expect(hc?.stream.frozenEvidence.syncs).toBe(4);
+    expect(hc?.stream.frozenEvidence.because).toMatch(/batch/i);
+  });
+
   it("exempts a provider with no continuous streams BY CONSTRUCTION (constraint 3)", () => {
-    // No exemption list anywhere in lib/: a provider with nothing continuous to
+    // No exemption list anywhere in lib/: a source with nothing continuous to
     // deliver simply declares nothing, and the detector never sees it. This is the
-    // ledger that forces a NEW provider to make the decision explicitly rather than
+    // ledger that forces a NEW source to make the decision explicitly rather than
     // inherit an accidental default — it is a test-side ledger, not a runtime list.
     const withStreams = INTEGRATIONS.filter(
       (i) => continuousStreamsFor(i).length > 0
@@ -330,12 +350,12 @@ describe("the registry declaration", () => {
 
   it("enumerates streams with their provider — the #2162 seam", () => {
     const all = allContinuousStreams();
-    expect(all.map((s) => `${s.provider}:${s.stream.id}`)).toEqual([
+    expect(all.map((s) => `${s.sourceId}:${s.stream.id}`)).toEqual([
       "health-connect:heart-rate",
     ]);
     // The facets are independently optional, so a lifecycle feature can ask which
     // streams carry a reminder adapter without this shape widening first.
-    expect(streamsWithReminder("bedtime-wear").map((s) => s.provider)).toEqual([
+    expect(streamsWithReminder("bedtime-wear").map((s) => s.sourceId)).toEqual([
       "health-connect",
     ]);
     expect(quietReportableStreams().map((s) => s.stream.id)).toEqual([
@@ -362,6 +382,12 @@ describe("the registry declaration", () => {
         expect(stream.reminder.frontierFloorMin).toBeGreaterThan(0);
         expect(stream.reminder.because.length).toBeGreaterThan(40);
       }
+      // And so does the frozen-evidence bar (#2560). Required, not optional: a stream
+      // with no declaration would silently inherit another pipeline's batching, which
+      // is exactly the defect that moved this number out of lib/stream-frontier.ts.
+      expect(stream.frozenEvidence.syncs).toBeGreaterThan(0);
+      expect(Number.isInteger(stream.frozenEvidence.syncs)).toBe(true);
+      expect(stream.frozenEvidence.because.length).toBeGreaterThan(40);
     }
   });
 });

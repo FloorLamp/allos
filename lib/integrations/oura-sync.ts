@@ -24,7 +24,7 @@ import type {
 // pagination, and row mapping. Everything either side of that — the timeout and page
 // bounds, the 429 → truncate-and-keep-cursor rule, the transaction, the cursor
 // decision, and the sync-event accounting — belongs to lib/integrations/pull-sync.ts
-// and lib/integrations/pull-window.ts, which the other pull providers share.
+// and lib/integrations/pull-window.ts, which the other pull sources share.
 //
 // This file used to carry its own copy of all of it, and said so in a comment
 // ("Mirrors strava-sync.ts"); withings-sync.ts said the same about this file.

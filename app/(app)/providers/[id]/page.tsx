@@ -32,7 +32,7 @@ import {
 import { formatMergeImpact, providerDisambigLabel } from "@/lib/provider-merge";
 import { formatRecordDate } from "@/lib/record-format";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import ProviderIdentityCard from "../ProviderIdentityCard";
 import ProviderMergePanel from "../ProviderMergePanel";
@@ -323,12 +323,11 @@ export default async function ProviderDetailPage(props: {
           Showing {profile.name}’s records with this provider.
         </p>
         {totalActivity === 0 ? (
-          <p
-            className="rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
-            data-testid="provider-no-activity"
-          >
-            {profile.name} has no records linked to this provider yet.
-          </p>
+          <EmptyState
+            compact
+            testId="provider-no-activity"
+            message={`${profile.name} has no records linked to this provider yet.`}
+          />
         ) : (
           <div data-testid="provider-activity-tabs">
             <NavTabsStrip

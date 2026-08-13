@@ -4,6 +4,7 @@ import {
   getPickerProviders,
   createVisitOffers,
 } from "@/lib/queries";
+import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
@@ -19,12 +20,28 @@ import { addDentalProcedure } from "@/app/(app)/records/specialty/dental/actions
 // manually. Periodontal MEASUREMENTS (pocket depth, bleeding-on-probing) are
 // biomarkers and trend on Results; dental X-rays are imaging studies. Server Actions
 // + client components stayed in app/(app)/records/specialty/dental/; the page body moved here.
-export default function DentalSection({ profileId }: { profileId: number }) {
-  const records = getDentalProcedures(profileId);
-  const followUps = getDentalProcedureFollowUps(profileId);
+//
+// MULTI-VIEW (#2557): the record list reads every profile in view through the
+// loop-composition helper and stamps each row with its subject, so the table can name
+// whose record it is and post that row's own profile on an edit or delete. Everything
+// else on this pane stays ACTING-PROFILE work, and deliberately: the add form creates
+// a record for whoever is acting, the recheck follow-up writes the acting profile's
+// care plan (the #1328 scope-limit precedent Imaging set), and "create a visit from
+// this record" builds an encounter on the acting profile's timeline. Widening any of
+// those would be a wrong-target write, not a feature.
+export default function DentalSection({ scope }: { scope: ProfileScope }) {
+  const multi = scope.viewIds.length > 1;
+  const records = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) => getDentalProcedures(pid))
+  );
+  const followUps = getDentalProcedureFollowUps(scope.actingProfileId);
   // "Create a visit from this record?" (#1099): a completed procedure dated D with no
   // encounter that day.
-  const createVisitOffersList = createVisitOffers(profileId, "dental");
+  const createVisitOffersList = createVisitOffers(
+    scope.actingProfileId,
+    "dental"
+  );
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
@@ -38,10 +55,16 @@ export default function DentalSection({ profileId }: { profileId: number }) {
           <DentalProcedureForm action={addDentalProcedure} />
         </AddEntryPanel>
         <CreateVisitFromRecord
-          profileId={profileId}
+          profileId={scope.actingProfileId}
           offers={createVisitOffersList}
         />
-        <DentalProcedureList items={records} followUps={followUps} />
+        <DentalProcedureList
+          items={records}
+          followUps={followUps}
+          multiView={
+            multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+        />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
           This is a record of dental work and findings, not a clinical charting
           tool.

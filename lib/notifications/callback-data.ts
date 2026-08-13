@@ -1386,6 +1386,37 @@ export function parseDemoteCallback(data: unknown): DemoteCallback | null {
   return { profileId, itemId, date };
 }
 
+// ---- The unconfirmed-medication Stop (issue #2574) --------------------------
+
+// The token prefix for the Stop button riding a dose reminder. Its own namespace, and
+// deliberately not a variant of `demote:` — the two buttons perform different writes
+// through different cores, and one token that could mean either is one mis-parse away
+// from stopping a medication somebody asked to demote.
+export const MED_STOP_PREFIX = "medstop";
+
+export interface MedStopCallback {
+  profileId: number;
+  itemId: number;
+  date: string;
+}
+
+// Parse a "medstop:<profileId>:<itemId>:<date>" button token — the one-tap Stop on an
+// unconfirmed imported medication (#2574). As with every tap token the profile id is a
+// CROSS-CHECK only: the handler re-resolves the acting profile from the chat and
+// `stopMedicationCourses` re-filters on it plus `kind = 'medication'`, so a forged id
+// reaches nothing. The token carries no state beyond the identity — the handler
+// re-derives everything else — so a button that has been sitting in a chat for a week
+// cannot assert anything the detector has since stopped believing.
+export function parseMedStopCallback(data: unknown): MedStopCallback | null {
+  if (typeof data !== "string" || !data.startsWith(`${MED_STOP_PREFIX}:`))
+    return null;
+  const [, profStr, itemStr, date] = data.split(":");
+  const profileId = Number(profStr);
+  const itemId = Number(itemStr);
+  if (!profileId || !itemId || !date) return null;
+  return { profileId, itemId, date };
+}
+
 // ---- The digest time suggestion's exits (issue #2217) -----------------------
 
 export interface DigestTimeCallback {

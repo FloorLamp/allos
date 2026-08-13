@@ -6,6 +6,7 @@ import {
   type MemberAttention,
   type ProfiledUpcomingItem,
 } from "@/lib/attention";
+import { doseSortKey } from "@/lib/dose-order";
 
 // Pure-tier coverage for the multi-profile page-group MERGE (lib/attention.ts, issue
 // #1096) — and specifically the PER-PROFILE-CONTEXT TRAP: each member's items must be
@@ -98,6 +99,116 @@ describe("mergeAttentionPageGroups", () => {
     // y (priority 1) leads; then the two priority-0 items ordered by profileId (7
     // before 9): x (profile 7) then z (profile 9).
     expect(todayGroup?.items.map((i) => i.key)).toEqual(["y", "x", "z"]);
+  });
+
+  // ---- The absolute within-band tiebreaks (#2578) --------------------------
+  // Since #1096 the Upcoming page renders EVERY view through this merge, single
+  // profile included — so the #297 dose-day order and the DOMAIN_ORDER rank have to
+  // survive it. They were dropped along with compareWithinBand's date fallback, which
+  // left a band of doses ordered by raw key string.
+
+  it("orders a band of doses by their DOSE-DAY slot, not by key string (#297 via #2578)", () => {
+    // Keys deliberately in the order that made the live page read
+    // "Before sleep → Evening → Midday": "dose:104" sorts before "dose:12" as a
+    // STRING, and that is what the merged comparator was left comparing.
+    const members: MemberAttention[] = [
+      {
+        profileId: 7,
+        today: "2026-07-23",
+        items: [
+          item(7, "dose:104", null, {
+            title: "Magnesium",
+            sortHint: doseSortKey({
+              timeOfDay: "bedtime",
+              obligation: "must",
+              stack: null,
+              name: "Magnesium",
+            }),
+          }),
+          item(7, "dose:12", null, {
+            title: "Creatine",
+            sortHint: doseSortKey({
+              timeOfDay: "lunch",
+              obligation: "must",
+              stack: null,
+              name: "Creatine",
+            }),
+          }),
+          item(7, "dose:9", null, {
+            title: "Vitamin D",
+            sortHint: doseSortKey({
+              timeOfDay: "morning",
+              obligation: "must",
+              stack: null,
+              name: "Vitamin D",
+            }),
+          }),
+        ],
+      },
+    ];
+    const todayGroup = mergeAttentionPageGroups(members).find(
+      (g) => g.kind === "today"
+    );
+    // Morning → Midday → Before sleep, which is what the row's own slot label says.
+    expect(todayGroup?.items.map((i) => i.title)).toEqual([
+      "Vitamin D",
+      "Creatine",
+      "Magnesium",
+    ]);
+  });
+
+  it("orders two domains sharing a date by DOMAIN_ORDER, ahead of the key tiebreak", () => {
+    // `dose` ranks 0 and `refill` ranks 1, so the dose leads whatever the keys say —
+    // here the refill's key sorts FIRST alphabetically, so a key-only comparator
+    // would invert them.
+    const members: MemberAttention[] = [
+      {
+        profileId: 7,
+        today: "2026-07-23",
+        items: [
+          item(7, "aaa-refill:1", "2026-07-23", {
+            domain: "refill",
+            title: "Refill",
+          }),
+          item(7, "zzz-dose:1", "2026-07-23", {
+            domain: "dose",
+            title: "Dose",
+          }),
+        ],
+      },
+    ];
+    const todayGroup = mergeAttentionPageGroups(members).find(
+      (g) => g.kind === "today"
+    );
+    expect(todayGroup?.items.map((i) => i.domain)).toEqual(["dose", "refill"]);
+  });
+
+  it("still tiebreaks on profileId then key once every absolute fact is equal", () => {
+    // Same date, same priority, same domain, no sortHint, SAME title — the stability
+    // tiebreak is all that is left, and it must still be profileId then key.
+    const members: MemberAttention[] = [
+      {
+        profileId: 9,
+        today: "2026-07-23",
+        items: [item(9, "dose:1", "2026-07-23", { title: "Same" })],
+      },
+      {
+        profileId: 7,
+        today: "2026-07-23",
+        items: [
+          item(7, "dose:3", "2026-07-23", { title: "Same" }),
+          item(7, "dose:2", "2026-07-23", { title: "Same" }),
+        ],
+      },
+    ];
+    const todayGroup = mergeAttentionPageGroups(members).find(
+      (g) => g.kind === "today"
+    );
+    expect(todayGroup?.items.map((i) => i.key)).toEqual([
+      "dose:2",
+      "dose:3",
+      "dose:1",
+    ]);
   });
 
   it("is the single-member identity: one member merges to that member's own grouping", () => {

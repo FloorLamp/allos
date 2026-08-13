@@ -21,11 +21,25 @@ import type { SubjectInfo } from "@/lib/scope";
 // Give a column `sort` to make its header clickable — `value` is the comparison
 // key and `initialDir` the direction chosen when it first becomes the active
 // sort.
+//
+// `empty` is the column's emptiness VERDICT for one row, and it is the half of the
+// #1426 contract this table was missing (#2588). A cell authored for the desktop
+// GRID renders a "—" so the columns stay aligned; on a card there is no grid to
+// align, so that placeholder became a fully labeled line ("CHIEF COMPLAINT —")
+// saying nothing — three of them on one encounter card. `Td` already knew how to
+// drop such a cell (`empty`, from #531–#534: label by what DIFFERS); a column had
+// no way to SAY it, so the prop was never threaded. Declare it wherever a cell has
+// a placeholder branch: the desktop table is untouched (the cell still renders,
+// still aligned), and the card simply omits the line.
+//
+// The first column is the card TITLE and is structural — `cardCellAttrs` keeps its
+// slot regardless — so declaring `empty` there is a no-op, not a hazard.
 export interface RecordColumn<T> {
   header: string;
   headerClassName?: string;
   cellClassName?: string;
   cell: (item: T) => React.ReactNode;
+  empty?: (item: T) => boolean;
   sort?: {
     value: (item: T) => string;
     initialDir?: "asc" | "desc";
@@ -218,6 +232,7 @@ export default function RecordTable<T extends { id: number }>({
                       key={i}
                       slot={i === 0 ? "title" : "meta"}
                       label={i > 0 ? col.header : undefined}
+                      empty={col.empty?.(item)}
                       className={col.cellClassName ?? ""}
                     >
                       {col.cell(item)}

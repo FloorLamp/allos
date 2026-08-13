@@ -66,7 +66,11 @@ describe("strength level is one computation across every surface", () => {
 
       // Healthspan strength pillar headline.
       const [pillar] = buildPillars({
-        strength: { level, lift: standing.lift },
+        strength: {
+          level,
+          lift: standing.lift,
+          exercise: standing.exercise,
+        },
       });
       expect(pillar.value).toBe(label);
     });

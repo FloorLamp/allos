@@ -39,6 +39,7 @@ import {
   type UrgencyBand,
   BAND_LABELS,
   bandForItem,
+  compareAbsoluteOrder,
   compareWithinBand,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
@@ -55,8 +56,8 @@ import { type Reason, concatReasons, flaggedReason } from "./reasons";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 import type { IntegrationId } from "./types";
 
-// A broken integration provider, reduced to what the model renders. `kind` distinguishes
-// the two ways a provider can be broken (#1685), because they need different copy and ask
+// A broken integration source, reduced to what the model renders. `kind` distinguishes
+// the two ways a source can be broken (#1685), because they need different copy and ask
 // the user for different things:
 //   "failing" — a recorded failure / dead grant. The cause is known and the fix is
 //               consent: reconnect.
@@ -64,15 +65,15 @@ import type { IntegrationId } from "./types";
 //               perfectly authorized; all we honestly know is that it stopped, so the
 //               copy states the observation ("no data since <date>") and asks the user to
 //               check rather than claiming a cause.
-// Both carry the SAME item key, so a provider is one row on every surface no matter which
-// signal raised it, and the gather guarantees only one of the two can fire per provider.
+// Both carry the SAME item key, so a source is one row on every surface no matter which
+// signal raised it, and the gather guarantees only one of the two can fire per source.
 //
 // A THIRD kind since #2146, and it is not a third way of being broken:
 //   "quiet-stream" — the connection is FINE and one continuous DATA STREAM stopped (the
 //               watch off the wrist while the phone keeps pushing). Heart rate is an
 //               observation domain — nobody committed to wearing a watch — so this is
 //               COACHING TIER: it renders where the user goes looking and never travels
-//               a send. It also yields to the two above, so a provider is still one row.
+//               a send. It also yields to the two above, so a source is still one row.
 //
 // So `kind` now names the TIER as well as the copy, and the difference is enforced
 // rather than documented: `isEscalatingIntegration` below is the one gate,
@@ -81,7 +82,7 @@ import type { IntegrationId } from "./types";
 // (`getQuietStreamAttention`) that the badge / hero / digest never call.
 export interface AttentionIntegration {
   id: IntegrationId | null;
-  provider: string;
+  sourceName: string;
   detail: string | null;
   kind?: "failing" | "stale" | "quiet-stream";
 }
@@ -115,7 +116,7 @@ export interface AttentionInput {
   // as the digest). Each MAY carry the risk-layer "why this profile" reasons (issue
   // #656 item 4), computed by the gather so the flag item explains its elevation.
   flaggedBiomarkers: FlaggedBiomarkerInput[];
-  // Currently-failing integration providers.
+  // Currently-failing integration sources.
   integrations: AttentionIntegration[];
   // Count of unresolved review-inbox pairs (duplicates/conflicts).
   reviewCount: number;
@@ -185,20 +186,20 @@ export function integrationToItem(i: AttentionIntegration): UpcomingItem {
       ? "No recent data from this source."
       : "Reconnect to resume syncing.");
   return {
-    key: `integration:${i.id ?? i.provider}`,
+    key: `integration:${i.id ?? i.sourceName}`,
     domain: "integration",
     signalGroup: "review",
     title: stale
-      ? `${i.provider} sync has stopped`
-      : `${i.provider} sync needs attention`,
+      ? `${i.sourceName} sync has stopped`
+      : `${i.sourceName} sync needs attention`,
     detail,
     // The digest's named line asks for a CAUSE FRAGMENT (#1913 item 6). This producer's
     // detail already IS one — the recorded error text ("weather fetch failed (503)"), or
     // the observation behind a quiet stop — so the field is declared rather than derived,
     // and the rendered line is unchanged from what it printed before.
     because: detail,
-    // Match the CTA's promise: known, connectable providers go straight to their
-    // setup page. Unknown/planned providers safely fall back to Review.
+    // Match the CTA's promise: known, connectable sources go straight to their
+    // setup page. Unknown/planned sources safely fall back to Review.
     href: reconnectHref ?? dataSectionHref("review"),
     dueDate: null,
     dueText: stale ? "No recent data" : "Reconnect",
@@ -336,11 +337,21 @@ export interface MemberAttention {
 }
 
 // Absolute (context-free) within-band order for merged cross-profile items. We do
-// NOT reuse compareWithinBand here: it takes a single `today` and would evaluate one
-// member's item against another member's clock. Each member's banding is already
-// decided in its own context (below); within a merged band we only need a stable,
-// timezone-independent tiebreak — soonest due date, then risk priority, then a
-// stable id — so the merged list never reorders between renders.
+// NOT reuse compareWithinBand here: its FIRST key is the effective due date resolved
+// against a single `today`, which would evaluate one member's item against another
+// member's clock. Each member's banding is already decided in its own context
+// (below), so the merged order needs a date rule that carries no clock — the raw due
+// date, undated items last.
+//
+// Everything AFTER that date rule is the shared clock-free comparator
+// (compareAbsoluteOrder): risk priority (#517), then DOMAIN_ORDER, then the dose-day
+// sortHint (#297), then title. Those three were dropped along with the date fallback
+// when this comparator was written (#1096) even though none of them reads a clock,
+// and since #1096 the Upcoming page renders EVERY view — single profile included —
+// through this merge. The result was a dose fold ordered by raw key string
+// ("dose:104" before "dose:12"), reading Before sleep → Evening → Midday → Midday
+// while each row carried the slot label #297 added to explain the ordering (#2578).
+// profileId and key stay LAST, as the stability tiebreak they always were.
 function compareMerged(
   a: ProfiledUpcomingItem,
   b: ProfiledUpcomingItem
@@ -348,9 +359,8 @@ function compareMerged(
   const ad = a.dueDate ?? "9999-12-31";
   const bd = b.dueDate ?? "9999-12-31";
   if (ad !== bd) return ad < bd ? -1 : 1;
-  const ap = a.priority ?? 0;
-  const bp = b.priority ?? 0;
-  if (ap !== bp) return bp - ap; // higher priority first
+  const absolute = compareAbsoluteOrder(a, b);
+  if (absolute !== 0) return absolute;
   if (a.profileId !== b.profileId) return a.profileId - b.profileId;
   return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 }

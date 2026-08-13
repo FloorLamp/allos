@@ -16,7 +16,6 @@ import {
   type BedtimeWearSignals,
 } from "@/lib/wear-reminder";
 import {
-  FROZEN_SYNC_EVIDENCE,
   observeFrontier,
   type StreamFrontierState,
 } from "@/lib/stream-frontier";
@@ -24,6 +23,12 @@ import { reminderStream } from "@/lib/integrations/continuous-streams";
 
 /** The floor the REGISTRY declares for the watched stream — never a local constant. */
 const FLOOR = reminderStream("bedtime-wear")!.stream.reminder.frontierFloorMin;
+/**
+ * The EVIDENCE BAR the registry declares for the same stream (#2560). Read, never
+ * restated: this file must not be able to disagree with the declaration, and the
+ * declaration is what moved when the watch → Health Connect batch was finally measured.
+ */
+const EVIDENCE = reminderStream("bedtime-wear")!.stream.frozenEvidence.syncs;
 
 // The measured incident (#2146's 56-day profile): charger at 21:05, bedtime slot at
 // 22:00, the phone still pushing its own aggregates the whole time — and, since #2341,
@@ -31,14 +36,15 @@ const FLOOR = reminderStream("bedtime-wear")!.stream.reminder.frontierFloorMin;
 const OFF_WRIST: BedtimeWearSignals = {
   enabled: true,
   expectedActive: true,
-  providerHealthy: true,
+  sourceHealthy: true,
   frontierAgeMin: 55,
-  syncsSinceAdvance: 2,
+  syncsSinceAdvance: EVIDENCE,
   floorMin: FLOOR,
+  frozenSyncs: EVIDENCE,
 };
 
 describe("bedtimeWearVerdict (#2161)", () => {
-  it("fires on the off-wrist signature: frontier frozen across two pushes, past the floor", () => {
+  it("fires on the off-wrist signature: frontier frozen across the declared pushes, past the floor", () => {
     expect(bedtimeWearVerdict(OFF_WRIST)).toEqual({
       send: true,
       quietForMin: 55,
@@ -69,9 +75,10 @@ describe("bedtimeWearVerdict (#2161)", () => {
   it("yields to a failing or stale provider — a reconnect item owns that contact", () => {
     // "Still on the charger?" is false advice while the pipeline is down, and #1685's
     // one-row rule means the two must not both report one outage.
-    expect(
-      bedtimeWearVerdict({ ...OFF_WRIST, providerHealthy: false })
-    ).toEqual({ send: false, skip: "provider-unhealthy" });
+    expect(bedtimeWearVerdict({ ...OFF_WRIST, sourceHealthy: false })).toEqual({
+      send: false,
+      skip: "source-unhealthy",
+    });
   });
 
   it("says nothing when the stream has never delivered anything", () => {
@@ -133,10 +140,11 @@ describe("bedtimeWearVerdict (#2161)", () => {
       bedtimeWearVerdict({
         enabled: false,
         expectedActive: false,
-        providerHealthy: false,
+        sourceHealthy: false,
         frontierAgeMin: null,
         syncsSinceAdvance: null,
         floorMin: FLOOR,
+        frozenSyncs: EVIDENCE,
       })
     ).toEqual({ send: false, skip: "disabled" });
   });
@@ -146,7 +154,7 @@ describe("bedtimeWearVerdict (#2161)", () => {
 //
 // Replayed as SEQUENCES OF PUSHES through `observeFrontier` — the same fold the ingest
 // path applies — because "did the frontier move" cannot be expressed as a reading. Both
-// nights run the same pipeline, at the same lag, with the provider healthy throughout;
+// nights run the same pipeline, at the same lag, with the source healthy throughout;
 // the ONLY difference is whether the watch kept producing. The old predicate saw
 // 40–61 minutes of "silence" in both.
 
@@ -255,23 +263,27 @@ describe("the worn watch behind a slow pipeline (#2341)", () => {
 });
 
 describe("the watch removed at 21:05 before a 22:00 slot (#2341)", () => {
-  // The motivating incident. The same lagging pipeline, and the same three pushes —
-  // but the watch stopped producing at 21:05, so each push carries the phone's own
-  // aggregates and nothing newer for the stream.
+  // The motivating incident. The same lagging pipeline — but the watch stopped
+  // producing at 21:05, so every push after the one that delivered those minutes
+  // carries the phone's own aggregates and nothing newer for the stream.
+  //
+  // The sequence carries the DECLARED number of quiet pushes (#2560), not two: the
+  // charger case accumulates evidence without bound, which is exactly why raising the
+  // bar does not cost it anything.
   const removed = [
-    { pushedAt: at("21:28"), frontier: at("21:05") },
-    { pushedAt: at("21:44"), frontier: at("21:05") },
+    { pushedAt: at("21:12"), frontier: at("21:05") },
+    { pushedAt: at("21:24"), frontier: at("21:05") },
+    { pushedAt: at("21:36"), frontier: at("21:05") },
+    { pushedAt: at("21:48"), frontier: at("21:05") },
     { pushedAt: at("21:59"), frontier: at("21:05") },
   ];
 
-  it("fires at the slot: frozen across two pushes AND past the floor", () => {
+  it("fires at the slot: frozen across the declared pushes AND past the floor", () => {
     const state = replay(removed);
     const signals = signalsAt(at("22:00"), state);
     expect(signals.frontierAgeMin).toBe(55);
-    expect(state!.syncsSinceAdvance).toBe(2);
-    expect(state!.syncsSinceAdvance).toBeGreaterThanOrEqual(
-      FROZEN_SYNC_EVIDENCE
-    );
+    expect(state!.syncsSinceAdvance).toBe(4);
+    expect(state!.syncsSinceAdvance).toBeGreaterThanOrEqual(EVIDENCE);
     expect(bedtimeWearVerdict(signals)).toEqual({
       send: true,
       quietForMin: 55,
@@ -305,6 +317,29 @@ describe("the watch removed at 21:05 before a 22:00 slot (#2341)", () => {
     });
   });
 
+  it("does not fire on TWO or THREE quiet pushes either, at either slot attempt (#2560)", () => {
+    // THE CASE THIS ISSUE IS ABOUT. Two quiet pushes with the frontier past the floor
+    // is the exact signature that sent on a night `hr_minutes` later showed 60/60
+    // minutes in every hour — and it is the signature of one pending watch → Health
+    // Connect batch, which delivered 164–324 minutes at a time in the measured window.
+    // Scored against whether the rows eventually covered the frozen window, every
+    // clean false positive in 28 days was k=2 and every true detection was k>=5.
+    for (const k of [2, 3]) {
+      const state = replay(removed.slice(0, k + 1));
+      expect(state!.syncsSinceAdvance).toBe(k);
+      // Past the floor at BOTH attempts of the slot, so the floor cannot be what is
+      // doing the silencing — at N=4 the floor is dominated and says nothing here.
+      for (const attempt of ["22:00", "23:00"]) {
+        const signals = signalsAt(at(attempt), state);
+        expect(signals.frontierAgeMin).toBeGreaterThanOrEqual(FLOOR);
+        expect(bedtimeWearVerdict(signals)).toEqual({
+          send: false,
+          skip: "no-recent-sync",
+        });
+      }
+    }
+  });
+
   it("goes quiet again the moment the watch goes back on", () => {
     // The self-corrected night: four of the five measured quiet evenings ended this
     // way, unprompted. The advance resets the evidence in the same push that carries
@@ -333,6 +368,52 @@ describe("the watch removed at 21:05 before a 22:00 slot (#2341)", () => {
     expect(bedtimeWearVerdict(signalsAt(at("22:00"), state))).toEqual({
       send: false,
       skip: "frontier-advanced",
+    });
+  });
+});
+
+describe("the ceiling raising N does not raise (#2560)", () => {
+  it("is silent through a real wear gap whose backlog drains mid-gap", () => {
+    // The mirror image of the false positive, and the reason this change is honest
+    // about what it does not fix. The watch came off at 21:12; a push at 22:08
+    // delivered 31 minutes of heart rate RECORDED BEFORE it came off, which is an
+    // ADVANCE, so the counter reset in the middle of the gap. Both slot attempts see
+    // one quiet push.
+    //
+    // Nothing about a frontier can see this: the backlog draining through a wear gap
+    // is indistinguishable, at the frontier, from the watch producing. Raising N makes
+    // it strictly worse, which is stated here rather than rediscovered.
+    const first = replay([
+      { pushedAt: at("21:20"), frontier: at("20:41") },
+      { pushedAt: at("21:52"), frontier: at("20:41") },
+    ]);
+    // One quiet push at the 22:00 attempt, with the frontier well past the floor.
+    expect(first!.syncsSinceAdvance).toBe(1);
+    expect(signalsAt(at("22:00"), first).frontierAgeMin).toBeGreaterThanOrEqual(
+      FLOOR
+    );
+    expect(bedtimeWearVerdict(signalsAt(at("22:00"), first))).toEqual({
+      send: false,
+      skip: "no-recent-sync",
+    });
+
+    // Then the batch lands: 31 minutes recorded BEFORE the watch came off, carrying
+    // the frontier from 20:41 to 21:12. That is an advance, and it resets the counter
+    // in the middle of a real wear gap — so the 23:00 attempt is back to one quiet
+    // push, and stays silent at every N.
+    const second = replay([
+      { pushedAt: at("21:20"), frontier: at("20:41") },
+      { pushedAt: at("21:52"), frontier: at("20:41") },
+      { pushedAt: at("22:08"), frontier: at("21:12") },
+      { pushedAt: at("22:39"), frontier: at("21:12") },
+    ]);
+    expect(second!.syncsSinceAdvance).toBe(1);
+    expect(
+      signalsAt(at("23:00"), second).frontierAgeMin
+    ).toBeGreaterThanOrEqual(FLOOR);
+    expect(bedtimeWearVerdict(signalsAt(at("23:00"), second))).toEqual({
+      send: false,
+      skip: "no-recent-sync",
     });
   });
 });

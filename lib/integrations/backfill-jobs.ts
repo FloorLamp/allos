@@ -1,3 +1,7 @@
+// THE #2487 BOUNDARY for this module: TypeScript names an integration source
+// `sourceId`, and the persisted column is still named `provider` — the column rename
+// is deferred to its own forward migration (see docs/internals/integrations-sync.md).
+// Reads alias `provider AS source_id`; writes bind the TS value into the old column.
 import { db, writeTx } from "@/lib/db";
 import { toUtcInstant, utcInstant } from "@/lib/date";
 import { createLogger } from "@/lib/log";
@@ -25,22 +29,48 @@ export interface QueueIntegrationBackfillResult {
 
 export function queueIntegrationBackfill(
   profileId: number,
-  provider: IntegrationId,
+  sourceId: IntegrationId,
   kind: string
 ): QueueIntegrationBackfillResult | { error: string } {
-  const definition = getIntegration(provider)?.backfills?.find(
+  const definition = getIntegration(sourceId)?.backfills?.find(
     (backfill) => backfill.id === kind
   );
-  const runner = getIntegrationBackfillRunner(provider, kind);
+  const runner = getIntegrationBackfillRunner(sourceId, kind);
   if (!definition || !runner) return { error: "Backfill is not available." };
 
   return writeTx(() => {
-    const existing = getIntegrationBackfillJob(profileId, provider, kind);
+    const existing = getIntegrationBackfillJob(profileId, sourceId, kind);
     if (existing?.status === "running" || existing?.status === "queued") {
       return { job: existing, shouldRun: false };
     }
     const missing = runner.count(profileId);
-    const resume = existing?.status === "paused";
+    // A RE-QUEUE RESUMES, it does not restart (#2195). `paused` and `failed` are both
+    // "this job stopped part-way and its imported rows are still on disk" — the only
+    // difference is whether the source asked us to wait. Treating `failed` as a fresh
+    // start threw away `completed_items`, `request_count` and `active_seconds` from
+    // work that had genuinely happened, so a manual retry after a mid-run network
+    // error showed "0 of 40" for a job that was 60 rides in, and the ETA restarted
+    // with no observed throughput to divide by.
+    //
+    // `completed` is deliberately NOT resumable: nothing stopped part-way, so a new
+    // queue over a changed candidate set is a new batch and starts at 0 of N.
+    //
+    // The arithmetic below is what keeps the resumed figures honest — `total` is
+    // re-derived as `completed + missing` (floored at the prior total, so a shrinking
+    // candidate set cannot make the bar go backwards) and `completed` is re-derived
+    // from it, so neither is carried forward unchecked from a run whose candidate set
+    // has since moved.
+    //
+    // #2385 — WORKING: a re-queue after a failed run reads "60 of 100", and the ETA
+    //   keeps the throughput the first run measured. WRONG: `completed_items` exceeds
+    //   `total_items`, a percentage moves backwards, or a job never returns to 0-of-N
+    //   after new rides arrive. DECEPTIVE SUCCESS: "progress bars stopped resetting" —
+    //   a bar that never resets is also what a resume branch taken too eagerly
+    //   produces, showing healthy progress against a total that no longer describes
+    //   the work; the figure to read is `total_items` still tracking
+    //   `completed_items + missing`, not the absence of resets.
+    const resume =
+      existing?.status === "paused" || existing?.status === "failed";
     const total = resume
       ? Math.max(existing.completed_items + missing, existing.total_items)
       : missing;
@@ -65,7 +95,7 @@ export function queueIntegrationBackfill(
          updated_at = excluded.updated_at`
     ).run(
       profileId,
-      provider,
+      sourceId,
       kind,
       definition.label,
       definition.itemNoun,
@@ -80,7 +110,7 @@ export function queueIntegrationBackfill(
       now
     );
     return {
-      job: getIntegrationBackfillJob(profileId, provider, kind)!,
+      job: getIntegrationBackfillJob(profileId, sourceId, kind)!,
       shouldRun: status === "queued",
     };
   });
@@ -88,10 +118,10 @@ export function queueIntegrationBackfill(
 
 export async function runIntegrationBackfillJob(
   profileId: number,
-  provider: string,
+  sourceId: string,
   kind: string
 ): Promise<IntegrationBackfillJob | null> {
-  const runner = getIntegrationBackfillRunner(provider, kind);
+  const runner = getIntegrationBackfillRunner(sourceId, kind);
   if (!runner) return null;
   const claimed = writeTx(() =>
     db
@@ -102,12 +132,12 @@ export async function runIntegrationBackfillJob(
           WHERE profile_id = ? AND provider = ? AND kind = ?
             AND status IN ('queued','paused')`
       )
-      .run(utcInstant(), profileId, provider, kind)
+      .run(utcInstant(), profileId, sourceId, kind)
   );
   if (claimed.changes !== 1) {
-    return getIntegrationBackfillJob(profileId, provider, kind);
+    return getIntegrationBackfillJob(profileId, sourceId, kind);
   }
-  const initial = getIntegrationBackfillJob(profileId, provider, kind)!;
+  const initial = getIntegrationBackfillJob(profileId, sourceId, kind)!;
   const batchStarted = Date.now();
   const baseSeconds = initial.active_seconds;
   const baseRequests = initial.request_count;
@@ -130,12 +160,18 @@ export async function runIntegrationBackfillJob(
           )
           .run(
             completed,
-            progress.failed,
+            // ONE stored column for two runner counts, on purpose (#2196). The job's
+            // own status already separates them: a retryable failure keeps
+            // `remaining > 0`, which ends the job `failed`, so a job that reaches
+            // `completed` with `failed_items > 0` can only be carrying unavailable
+            // ones. The progress surface derives the wording from that pair rather
+            // than from a second column (backfillFailureLabel).
+            progress.failed + progress.unavailable,
             baseRequests + progress.requests,
             activeSeconds,
             utcInstant(),
             profileId,
-            provider,
+            sourceId,
             kind
           )
       );
@@ -149,11 +185,15 @@ export async function runIntegrationBackfillJob(
                 SET status = 'failed', error = ?, finished_at = ?, updated_at = ?
               WHERE profile_id = ? AND provider = ? AND kind = ? AND status = 'running'`
           )
-          .run(result.error, now, now, profileId, provider, kind)
+          .run(result.error, now, now, profileId, sourceId, kind)
       );
     } else {
       const now = new Date();
       const completed = Math.max(initial.total_items - result.remaining, 0);
+      // `remaining` is "still worth asking about", not "still missing" (#2196): a
+      // runner subtracts the candidates the source gave a final answer for. Without
+      // that, one permanently-unfetchable row held the whole job in `failed` forever
+      // while the bar said "retrying" about work that could never succeed.
       const done = result.remaining === 0;
       const paused = !done && result.paused;
       const status: IntegrationBackfillStatus = done
@@ -165,7 +205,8 @@ export async function runIntegrationBackfillJob(
         ? (toUtcInstant(result.retryAfterAt) ??
           utcInstant(new Date(now.getTime() + FALLBACK_RETRY_MS)))
         : null;
-      const failedCount = Math.max(result.failed, result.remaining);
+      const notCompleted = result.failed + result.unavailable;
+      const failedCount = Math.max(notCompleted, result.remaining);
       const error =
         status === "failed"
           ? `${failedCount} ${initial.item_noun}${failedCount === 1 ? "" : "s"} could not be completed. Retry the backfill.`
@@ -182,7 +223,7 @@ export async function runIntegrationBackfillJob(
           .run(
             status,
             completed,
-            result.failed,
+            notCompleted,
             baseRequests + result.requests,
             baseSeconds + Math.max((Date.now() - batchStarted) / 1000, 0.001),
             retryAfter,
@@ -190,7 +231,7 @@ export async function runIntegrationBackfillJob(
             error,
             utcInstant(now),
             profileId,
-            provider,
+            sourceId,
             kind
           )
       );
@@ -198,7 +239,7 @@ export async function runIntegrationBackfillJob(
   } catch (err) {
     log.error("integration backfill runner failed", {
       profileId,
-      provider,
+      sourceId,
       kind,
       err: String(err),
     });
@@ -215,12 +256,12 @@ export async function runIntegrationBackfillJob(
           now,
           now,
           profileId,
-          provider,
+          sourceId,
           kind
         )
     );
   }
-  return getIntegrationBackfillJob(profileId, provider, kind);
+  return getIntegrationBackfillJob(profileId, sourceId, kind);
 }
 
 export async function resumeDueIntegrationBackfills(
@@ -229,15 +270,15 @@ export async function resumeDueIntegrationBackfills(
 ): Promise<void> {
   const due = db
     .prepare(
-      `SELECT provider, kind FROM integration_backfill_jobs
+      `SELECT provider AS source_id, kind FROM integration_backfill_jobs
         WHERE profile_id = ?
           AND (status = 'queued' OR (
             status = 'paused' AND retry_after_at IS NOT NULL AND retry_after_at <= ?
           ))
         ORDER BY updated_at`
     )
-    .all(profileId, utcInstant(at)) as { provider: string; kind: string }[];
+    .all(profileId, utcInstant(at)) as { source_id: string; kind: string }[];
   for (const job of due) {
-    await runIntegrationBackfillJob(profileId, job.provider, job.kind);
+    await runIntegrationBackfillJob(profileId, job.source_id, job.kind);
   }
 }

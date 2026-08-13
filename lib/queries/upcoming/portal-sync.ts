@@ -8,6 +8,7 @@ import {
   daysUntilExpiry,
   syncRequestCopy,
   syncRequestDedupeKey,
+  syncRequestFamily,
   syncRequestExpiryPhrase,
 } from "../../sync-requests";
 import { daysBetweenDateStr } from "../../date";
@@ -57,6 +58,10 @@ export function syncRequestItems(
     const left = daysUntilExpiry(req.expiresAt, today);
     items.push({
       key: syncRequestDedupeKey(req.portalSlug, req.accountSlug, req.createdAt),
+      // The topic these day-anchored asks are episodes of (#2543), so repeat declines
+      // of ONE portal login's hygiene accumulate and eventually leave the digest —
+      // while the row stays on Upcoming, where the user goes looking.
+      episodeFamily: syncRequestFamily(req.portalSlug, req.accountSlug),
       domain: "portal-sync",
       title: copy.title,
       detail: copy.detail,

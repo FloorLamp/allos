@@ -8,10 +8,22 @@ description: Node, dependencies, Playwright Chromium, and the Next production bu
 runs:
   using: composite
   steps:
+    # NO `cache: npm`. That restores ~/.npm (198 MB, ~2.2s) so `npm ci` can install
+    # from disk instead of the registry — but the step below skips `npm ci` entirely
+    # whenever the whole-node_modules cache hits, which is the common path. Measured
+    # on a 12-shard run: the npm cache restored 198 MB and `npm ci` reported
+    # `outcome=skipped`, on every shard.
+    #
+    # It cannot rescue the miss either, because both keys derive from the SAME
+    # package-lock hash: a lockfile change misses node_modules AND ~/.npm together,
+    # so `npm ci` goes to the registry regardless. The only case it ever covered is
+    # node_modules being evicted while ~/.npm survived, and dropping this makes that
+    # rarer rather than commoner — it frees 198 MB of the repo's 10 GB cache quota
+    # and ~3 GB of restore traffic per run (15 jobs x 198 MB), which is quota the
+    # node_modules entry now keeps.
     - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
-        cache: npm
 
     # Whole-node_modules cache: the single biggest step is `npm ci` (~2 min,
     # dominated by better-sqlite3's native compile). The key pins the exact
@@ -40,16 +52,30 @@ runs:
     # The suite itself is the dependency check on a hit; a genuinely missing shared
     # library fails at browser launch with that cause instead of depending on every
     # external apt index on the common path.
+    #
+    # --only-shell: `playwright install chromium` lays down TWO binaries — the full
+    # headed `chromium` (389 MB) and `chromium_headless_shell` (262 MB) — and a
+    # headless `browserName: "chromium"` run launches the shell. The headed copy was
+    # therefore 389 MB of the 651 MB this cache carried, restored on every shard of
+    # every run and launched by nothing: playwright.config.ts sets no `channel`, no
+    # `headless: false`, and its `trace: "on-first-retry"` cannot fire at
+    # `retries: 0`. Measured restore on a 12-shard run: 16s of a 62s setup floor.
+    #
+    # The key carries `-shell` so this does not silently restore the old two-binary
+    # entry (the lockfile hash is unchanged by a flag change) and so a revert
+    # re-keys rather than inheriting a shell-only cache. If a spec ever genuinely
+    # needs the headed browser it fails AT LAUNCH naming the missing executable,
+    # which is the loud failure — drop the flag and the suffix together.
     - name: Cache Playwright Chromium
       id: playwright
       uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     - name: Install Playwright Chromium
       if: steps.playwright.outputs.cache-hit != 'true'
-      run: npx playwright install --with-deps chromium
+      run: npx playwright install --with-deps --only-shell chromium
       shell: bash
 
     # Next's incremental compile cache, shared ACROSS RUNS (#61): keyed on the
@@ -65,9 +91,20 @@ runs:
 
     # CI runs production-like: build once, then the Playwright webServer boots
     # `next start` against the built app (see playwright.config.ts).
+    #
+    # NEXT_SKIP_TYPECHECK drops `next build`'s own `tsc` pass (see the `typescript`
+    # block in next.config.js). It is REDUNDANT here, not skipped: the `check` job
+    # runs `npm run typecheck` over the same tsconfig and more files, on every pull
+    # request. Without this, every Playwright job — the 8-way shard matrix, the
+    # changed-spec lane, the on-demand full suite — re-ran that identical check on
+    # the critical path, inside the per-shard floor ci.yml wants to lower. Only
+    # this action sets it, so a local build and the deploy image build are
+    # unchanged.
     - name: Build
       run: npm run build
       shell: bash
+      env:
+        NEXT_SKIP_TYPECHECK: "1"
 
     # UTC-midnight backstop (issue #1534). Date-keyed specs assert against "today",
     # and a suite that STRADDLES real 00:00 UTC can write a row on one side of the

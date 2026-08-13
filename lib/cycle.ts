@@ -147,10 +147,21 @@ export function isStaleOpenPeriod(p: CyclePeriod, date: string): boolean {
 // ongoing period (null end) covers its first MAX_PLAUSIBLE_PERIOD_DAYS days and then stops
 // claiming coverage (#1682 — see periodRange). Used for the period marker + flow on the
 // Timeline/Cycle surfaces.
+//
+// Takes the same `today` horizon as its two twins (#2613), and for the same reason. An
+// OPEN period's claim runs to openPeriodClaimEnd, which is up to nine days AHEAD of today
+// — so with a period started yesterday this happily answered "yes, bleeding" for a day
+// three days out. That it never reached a user is an accident of rendering:
+// CyclePhaseChip early-returns on a null phase, so the phase refusal was hiding a period
+// marker that had not been refused. A renderer that happens to prevent the claim is
+// exactly the arrangement #2613 exists to argue against, so the refusal goes here.
 export function periodOnDate(
   periods: CyclePeriod[],
-  date: string
+  date: string,
+  today: string
 ): CyclePeriod | null {
+  if (!today) return null; // fail closed on a missing horizon — see cyclePhaseOnDate
+  if (date > today) return null; // after today — unknowable, not merely uncertain
   const sorted = sortByStart(periods);
   let idx = -1;
   for (let i = 0; i < sorted.length; i++) {
@@ -165,8 +176,21 @@ export function periodOnDate(
 }
 
 // The cycle PHASE on `date`, or null when it can't be derived (before the first recorded
-// period). The ONE phase computation every surface formats over (the Cycle "current
-// phase" card, the Timeline day chip, and the #718 phase-specific reference-range feed).
+// period, or after `today`). The ONE phase computation every surface formats over (the
+// Cycle "current phase" card, the Timeline day chip, and the #718 phase-specific
+// reference-range feed).
+//
+// `today` is the caller's PROFILE-LOCAL today, and it is required because the refusal
+// below is the contract, not a caller's option (#2613). This derivation is retrospective
+// — "what the body did" — and for any date past the last recorded period it answers
+// `follicular` from the open-cycle branch. Fed a date four months out, that branch
+// answered with total confidence about days nobody has lived, and the Timeline stamped a
+// bare "Follicular" chip on every future goal-target day group in exactly the voice it
+// uses for today. Several periods will happen in between: the phase there is not
+// uncertain, it is unknowable. So a future date gets an ABSENCE — no phase, hence no
+// chip — rather than a hedge; /medical/cycles already owns the honest vocabulary for
+// what CAN be said about the future ("a projection from your own recorded cycles, not a
+// certainty"), and that stays the only place saying it.
 //
 // Derivation (retrospective, non-predictive):
 //   • menstrual — `date` falls within a recorded period (start..inclusive end, or an
@@ -184,8 +208,17 @@ export function periodOnDate(
 //     next period is actually logged.
 export function cyclePhaseOnDate(
   periods: CyclePeriod[],
-  date: string
+  date: string,
+  today: string
 ): CyclePhase | null {
+  // Fails CLOSED on a missing horizon. `today` is typed `string`, but a union-typed
+  // context or an unsound cast can still deliver undefined, and `"2026-12-10" > undefined`
+  // is FALSE — so a bare `date > today` would answer the future confidently on exactly
+  // the inputs that lost track of what today is. An absent horizon means the caller does
+  // not know which days have been lived, and the honest answer to every date then is
+  // "no phase", not "every phase".
+  if (!today) return null;
+  if (date > today) return null; // after today — unknowable, not merely uncertain
   const sorted = sortByStart(periods);
   let idx = -1;
   for (let i = 0; i < sorted.length; i++) {
@@ -212,14 +245,25 @@ export function cyclePhaseOnDate(
 
 // The CYCLE DAY on `date` (1-based) — days since the start of the current cycle (the
 // latest recorded period start on-or-before `date`), inclusive of the start day, so the
-// first bleeding day is day 1. Null before any recorded period (same domain as
-// cyclePhaseOnDate). Retrospective and non-predictive: it counts elapsed days from a
+// first bleeding day is day 1. Null before any recorded period, and null after `today` —
+// the SAME domain as cyclePhaseOnDate, deliberately. Retrospective and non-predictive:
+// it counts elapsed days from a
 // LOGGED start, never a forecast. The Cycle-phase dashboard card (#1221) formats
 // "Cycle day N · <phase>" over this + cyclePhaseOnDate.
+//
+// The horizon is here for the same #2613 reason, and not because a caller feeds it a
+// future date today — neither of the two does. "Cycle day 285" on a date four months out
+// is the identical claim the phase chip was making: it says a cycle that started in March
+// is still running in December, when several periods will have happened in between. The
+// day and the phase are formatted as ONE line, so leaving the twin unguarded is how the
+// hole comes back the next time a surface reaches for the day and not the phase.
 export function cycleDayOnDate(
   periods: CyclePeriod[],
-  date: string
+  date: string,
+  today: string
 ): number | null {
+  if (!today) return null; // fail closed on a missing horizon — see cyclePhaseOnDate
+  if (date > today) return null; // after today — unknowable, not merely uncertain
   const sorted = sortByStart(periods);
   let idx = -1;
   for (let i = 0; i < sorted.length; i++) {

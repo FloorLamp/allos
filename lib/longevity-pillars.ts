@@ -41,7 +41,7 @@ import {
   type FreshnessState,
   type FreshnessTally,
 } from "./freshness";
-import type { CanonicalBiomarker, MedicalFlag, Sex } from "./types";
+import type { CanonicalResultDefinition, MedicalFlag, Sex } from "./types";
 
 // ── Optimal-range hit rate ("31 of 38 markers optimal") ──────────────────────
 
@@ -94,7 +94,7 @@ export interface OptimalHitRate {
 export interface BiomarkerReading {
   value_num: number | null;
   unit: string | null;
-  cb: CanonicalBiomarker | null | undefined;
+  cb: CanonicalResultDefinition | null | undefined;
   // The reading's effective date + the retest-clock inputs (#2023), so the pillar can
   // state how current its ratio is. All OPTIONAL: absent ⇒ the retest status is
   // "not-applicable" and the pillar reports unknown freshness rather than inventing
@@ -356,6 +356,23 @@ export function pillarHref(key: PillarKey): AppRoute {
   return `/longevity#${PILLAR_ANCHOR[key]}`;
 }
 
+// The strength pillar's destination (#1921) — the Training → Analyze detail panel for the
+// lift the pillar NAMES, which renders the same LevelBadge and the standards table
+// highlighted at this lifter's row and level. `pillarHref` above stays the static map for
+// the pillars whose expansion is a page section; the strength pillar is the first whose
+// href is DATA, which `Pillar.href` has always supported per-pillar.
+//
+// The param is `item`, the in-app Analyze vocabulary (`exercise` is the alias the
+// notification "How to" button uses). The value must be the LOGGED exercise name: the
+// panel selects by exact match against the profile's own history and silently falls back
+// to its first lift otherwise, so sending the standards base name would land the reader
+// somewhere they then have to search — the defect restated, not fixed. No helper in
+// lib/hrefs: the literal owns no routing policy, matching lib/rule-findings' own
+// `exerciseHref` for the same destination.
+function strengthEvidenceHref(exercise: string): AppRoute {
+  return `/training?tab=analyze&kind=strength&item=${encodeURIComponent(exercise)}`;
+}
+
 export type PillarTone = "good" | "warn" | "bad" | "neutral";
 
 // The text twin of each tone's color (WCAG 1.4.1, issue #1220): a pillar's
@@ -404,9 +421,14 @@ export interface PillarInputs {
   // The lifter's strongest standing across the core barbell lifts (#152). `lift`
   // is the lift that reached `level`; the headline formats over `level` only, so a
   // consistency test can pin the pillar value equals strengthLevelLabel(level).
+  //
+  // `exercise` is the LOGGED name that produced it, and is REQUIRED (#1921): the pillar's
+  // deep link IS the evidence for its own claim, and `lift` — the standards base name —
+  // cannot address it. A caller holding a standing always holds both.
   strength?: {
     level: StrengthLevel;
     lift: string;
+    exercise: string;
     trend?: PillarTrend | null;
   } | null;
 }
@@ -476,7 +498,10 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       // strengthTone returns good/warn/bad, all valid PillarTones.
       tone: strengthTone(level),
       trend: inputs.strength.trend ?? null,
-      href: pillarHref("strength"),
+      // The claim names a lift; the tap reaches THAT lift's evidence (#1921). The
+      // explainer this used to point at is one hop away from there, and stays linked from
+      // the Longevity fitness section.
+      href: strengthEvidenceHref(inputs.strength.exercise),
     });
   }
 

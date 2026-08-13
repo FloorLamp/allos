@@ -116,6 +116,13 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     why: "#2131: `retired` decides whether a dose's child ledger rows are still SCHEDULED — the child table (intake_item_logs) was gated (#2074) while this parent flag was raw SQL in a Server Action with no typed outcome and no reopen. dose-lifecycle.ts owns both transitions: retire-or-delete for removed doses (retire keeps the row precisely because deleting would CASCADE away its taken history) and the guarded un-retire (only a retired dose with no conflicting live slot reopens), each bounding dueness through appended schedule versions (#1973) so neither transition ever re-judges a past day. Column-narrowed: amount/time/window edits on a live dose are ordinary form writes (the edit UPDATE's `retired = 0` guard predicate is allowlisted in the scan).",
   },
   {
+    table: "protocols",
+    columns: ["end_date"],
+    cores: ["lib/protocol-lifecycle.ts"],
+    offerState: "protocolReopenEligibility",
+    why: "#2135: `end_date` is a THREE-state machine — NULL is ongoing, a recent date is resumable, an old one is expired and the honest move is a new run — and the states were already named once in the pure protocolReopenEligibility, which ProtocolControls renders its Resume/Run again offer from. The WRITE half was the gap: end and resume read the row with getProtocol OUTSIDE the writeTx they then wrote in, swapped with a bare `id = ? AND profile_id = ?` UPDATE that could not refuse, and answered in English strings. lib/protocol-lifecycle.ts now owns both transitions on the cycles shape — in-transaction re-read, CAS on the expected prior end date, typed already-ended / already-ongoing / expired / invalid / not-found — and inverts the protocol's SITUATION activation inside the same transaction, because a protocol reading \"ended\" while its situation stays active keeps firing situational supplements for a block the user has stopped. Column-narrowed: name/notes/outcome/equipment/practice-link edits are ordinary last-write-wins form writes, and DELETE is not a state transition (deleteProtocol carries its own side-state under the row-ops rule). The create INSERT, the run-again INSERT and the edit form's absolute window write are allowlisted in the scan with their justifications.",
+  },
+  {
     table: "routines",
     columns: ["active"],
     cores: ["lib/routines.ts"],
@@ -138,6 +145,16 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     columns: ["retired"],
     cores: ["lib/equipment.ts"],
     why: "#2138: `retired` is the lifecycle gate that keeps sold/broken gear out of pickers, availability summaries, and workout suggestions (#341) — a flag by the registry's own criterion, and until #2138 its absence here was silence rather than a decision. lib/equipment.ts owns the state-named CAS (setEquipmentRetired): the caller posts the state its render promised, and a swap that did not land is distinguished under the write lock into already-in-that-state versus row-gone, so a silently-failed retire can no longer keep offering sold gear. Column-narrowed: name/weight/category edits and the create INSERT are ordinary form writes, and DELETE (deleteEquipment's changes-checked detach-then-drop) is not a state transition.",
+  },
+  {
+    table: "integration_backfill_jobs",
+    cores: ["lib/integrations/backfill-jobs.ts"],
+    // No `offerState`, honestly: the Strava button renders a count of rides missing
+    // details, not the job's own state, so its label does not yet name the write it
+    // will perform. It cannot corrupt — queueIntegrationBackfill refuses a
+    // running/queued job with a typed outcome the action renders, and the run claim is
+    // a CAS on `status IN ('queued','paused')` — but the derivation is not extracted.
+    why: "#2196/#2195: the whole row IS a lifecycle checkpoint — `status` drives what the hourly pass resumes, what boot recovery reaps, and whether a re-queue resumes or restarts, while completed/failed/request/active-seconds are the durable counters a resumed run continues from. Not column-narrowed, because the table has no non-lifecycle column: every field is that machine's state. lib/integrations/backfill-jobs.ts is the one core — the queue CAS (running/queued refuses with a typed outcome), the claim CAS, the per-item checkpoint, and the terminal completed/paused/failed write. A raw write elsewhere would either restart counters over intact imported rows (#2195's bug, as a one-liner) or park a job in a status the resume query never selects, which is #2196's stuck job with no fix but hand-editing the DB. The crash-lease reaper in lib/migrations/boot-tasks.ts writes it too and is out of the scan's scope by the migrations carve-out; it is a lease expiry, running before any request exists, not a user-reachable transition.",
   },
 ];
 

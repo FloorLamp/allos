@@ -27,7 +27,7 @@
 // reconstructed later — the same reason a tap instant is a poor basis for history and
 // a fine basis for the present. So a trailing window over the ledger's most recent
 // serving is the whole computation. When a serving carries a STATED eating instant
-// (#2019's `eaten_at`) that instant wins over the tap stamp, which is the only place
+// (#2019's `occurred_at`) that instant wins over the tap stamp, which is the only place
 // this feature needed to know #2019 exists.
 //
 // NO DB, NO CLOCK — the caller reads the ledger and passes minutes — so the truth
@@ -74,7 +74,7 @@ export const NO_CHECK: FoodTimingCheck = { kind: "none" };
 // The predicate, over the five declared timings × the ledger's most recent serving.
 //
 // `minutesSinceServing` is minutes since the most recent serving's EATING instant
-// (its stated `eaten_at` when it has one, else its tap stamp), or null when the ledger
+// (its stated `occurred_at` when it has one, else its tap stamp), or null when the ledger
 // holds none in the lookback window. A negative value — a stated instant slightly
 // ahead of the caller's now — is read as "just now" rather than being rejected: the
 // user said they ate, and arguing with them about seconds would be the wrong answer.

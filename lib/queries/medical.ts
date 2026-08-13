@@ -11,7 +11,7 @@ import {
   representativeCte,
 } from "../representative-ids";
 import type {
-  CanonicalBiomarker,
+  CanonicalResultDefinition,
   MedicalDocument,
   MedicalFlag,
   ClinicalObservation,
@@ -153,7 +153,7 @@ const BIOMARKER_FAMILY_KEY = biomarkerFamilyKey();
 // identical family identity the readings do.
 const SAVED_FAMILY_KEY = familyKeyOfExpr("key");
 // "this row carries a biomarker identity" as SQL — the statement
-// carriesBiomarkerIdentity makes in TypeScript (#2318). Every read that decides
+// carriesResultIdentity makes in TypeScript (#2318). Every read that decides
 // whether a NAME is an analyte binds NON_IDENTITY_CATEGORIES through this, so a
 // category added to that list reaches all of them at once.
 const IDENTITY_CATEGORY_SQL = `category NOT IN (${NON_IDENTITY_CATEGORIES.map(
@@ -268,21 +268,19 @@ function observationFiltersKey(filters: ClinicalObservationFilters): string {
   );
 }
 
-// cache(): one dashboard render fans the same profile's medical_records dedup
-// window out ~4× (upcoming biomarker items + preventive inference + the recent-
-// labs widget + healthspan pillars), each a full-table scan + sort partitioned by
-// a non-indexable name expression (#386). Keyed on (profileId, serialized
-// filters) so equivalent calls collapse to a single scan per request.
-const getObservationsCached = cache(function getObservationsCached(
-  profileId: number,
-  filtersKey: string
-): ClinicalObservation[] {
-  const filters = JSON.parse(filtersKey) as ClinicalObservationFilters;
+// The WHERE clause + bound args a filter set resolves to, over the DEDUP+LATEST CTEs.
+// ONE composition, so the row read and the COUNT read below can never select different
+// sets (#2116): a badge that disagrees with the list it links to is worse than a slow
+// badge. `profile_id = ?` leads it, so every statement built from it is profile-scoped.
+function observationSelection(filters: ClinicalObservationFilters): {
+  clause: string;
+  args: (string | number)[];
+} {
   // Cross-source de-dup: the list always shows ONE representative per
   // content-identity (see DEDUP_IDS_CTE), so a reading uploaded in two documents —
   // or a manual reading plus its imported twin — is never double-counted.
   const where: string[] = ["profile_id = ?", IN_DEDUPED];
-  const args: (string | number)[] = [profileId];
+  const args: (string | number)[] = [];
   if (filters.category) {
     where.push("category = ?");
     args.push(filters.category);
@@ -322,7 +320,20 @@ const getObservationsCached = cache(function getObservationsCached(
     // the other filters, so the row shown is the biomarker's true latest.
     where.push(LATEST_IN_GROUP);
   }
-  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return { clause: `WHERE ${where.join(" AND ")}`, args };
+}
+
+// cache(): one dashboard render fans the same profile's medical_records dedup
+// window out ~4× (upcoming biomarker items + preventive inference + the recent-
+// labs widget + healthspan pillars), each a full-table scan + sort partitioned by
+// a non-indexable name expression (#386). Keyed on (profileId, serialized
+// filters) so equivalent calls collapse to a single scan per request.
+const getObservationsCached = cache(function getObservationsCached(
+  profileId: number,
+  filtersKey: string
+): ClinicalObservation[] {
+  const filters = JSON.parse(filtersKey) as ClinicalObservationFilters;
+  const { clause, args } = observationSelection(filters);
   const orderBy = observationOrderBy(
     "date DESC, id DESC",
     filters.sort,
@@ -332,7 +343,7 @@ const getObservationsCached = cache(function getObservationsCached(
   // can flag it. Computed over the DE-DUPED readings (via the CTEs), so it holds
   // even when older rows are filtered out of the result set and never marks a
   // collapsed duplicate. Both CTEs bind profile_id (deduped first, then latest —
-  // in WITH order), before the main query's `args` (which start with profile_id).
+  // in WITH order), then the main query's own `profile_id = ?`, then `args`.
   return db
     .prepare(
       `WITH ${DEDUP_IDS_CTE},
@@ -346,7 +357,7 @@ const getObservationsCached = cache(function getObservationsCached(
                 AS ordering_provider_name,
               (${LATEST_IN_GROUP}) AS is_latest FROM medical_records ${clause} ORDER BY ${orderBy}`
     )
-    .all(profileId, profileId, ...args) as ClinicalObservation[];
+    .all(profileId, profileId, profileId, ...args) as ClinicalObservation[];
 });
 
 export function getClinicalObservations(
@@ -354,6 +365,30 @@ export function getClinicalObservations(
   filters: ClinicalObservationFilters = {}
 ): ClinicalObservation[] {
   return getObservationsCached(profileId, observationFiltersKey(filters));
+}
+
+// HOW MANY observations a filter set selects, without hydrating one (#2116). The
+// /household out-of-range badge renders a number per accessible profile and used to
+// take `.length` of the full read: the same DEDUP+LATEST pass, but every matching row
+// materialized with every column and both provider sub-selects, once per member.
+//
+// Same `observationSelection` as the row read above and the same CTEs, so the number
+// is exactly the length of the list it stands for. Ordering is irrelevant to a count,
+// so no ORDER BY. Not cache()d: a count and a row list are different result shapes,
+// and the surfaces that want the rows already share the read above.
+export function countClinicalObservations(
+  profileId: number,
+  filters: ClinicalObservationFilters = {}
+): number {
+  const { clause, args } = observationSelection(filters);
+  const row = db
+    .prepare(
+      `WITH ${DEDUP_IDS_CTE},
+            ${LATEST_IDS_CTE}
+       SELECT COUNT(*) AS n FROM medical_records ${clause}`
+    )
+    .get(profileId, profileId, profileId, ...args) as { n: number };
+  return row.n;
 }
 
 // A narrative diagnostic report row (#708): the free-text body of a microbiology
@@ -925,16 +960,38 @@ export function findObservationsByContentIdentity(
 // `assessment` never charts, so a star backed only by one points at nothing just as
 // surely as a star with no rows at all.
 export function cleanupOrphanSavedBiomarkers(profileId: number): void {
-  db.prepare(
-    `DELETE FROM saved_items
-     WHERE profile_id = ?
-       AND kind = 'biomarker'
-       AND ${SAVED_FAMILY_KEY} NOT IN (
-         SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
-         WHERE profile_id = ? AND canonical_name IS NOT NULL
-           AND ${IDENTITY_CATEGORY_SQL}
-       )`
-  ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
+  writeTx(() => {
+    // PROMOTE first: a watch-star that has since gained a reading is no longer a
+    // watch, so from here on its absence would be real orphanhood. Doing this
+    // before the delete is what lets a star cross from watch to backed without
+    // any write path having to notice the reading arrive.
+    db.prepare(
+      `UPDATE saved_items
+          SET backed = 1
+        WHERE profile_id = ?
+          AND kind = 'biomarker'
+          AND backed = 0
+          AND ${SAVED_FAMILY_KEY} IN (
+            SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
+            WHERE profile_id = ? AND canonical_name IS NOT NULL
+              AND ${IDENTITY_CATEGORY_SQL}
+          )`
+    ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
+    // Then de-orphan ONLY what a reading once stood behind. `backed = 0` is a
+    // star waiting for its first reading — deleting that is not de-orphaning, it
+    // is discarding a tap.
+    db.prepare(
+      `DELETE FROM saved_items
+       WHERE profile_id = ?
+         AND kind = 'biomarker'
+         AND backed = 1
+         AND ${SAVED_FAMILY_KEY} NOT IN (
+           SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
+           WHERE profile_id = ? AND canonical_name IS NOT NULL
+             AND ${IDENTITY_CATEGORY_SQL}
+         )`
+    ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
+  });
 }
 
 // True when THIS biomarker — or any sibling in its #482 family — is saved, so
@@ -960,9 +1017,23 @@ export function isBiomarkerSaved(
 // (isBiomarkerSaved / getSavedBiomarkers), so the stored row stays a real analyte
 // name that a rename can re-key (#203) and a human can read in an export.
 export function saveBiomarker(profileId: number, canonical: string): void {
+  // `backed` records whether a reading has EVER stood behind this star, which is
+  // what lets the de-orphan sweep tell "its readings were deleted" from "nobody
+  // has measured it yet". Stamped at save time from what is true now; the sweep
+  // promotes 0 -> 1 later if a reading arrives (see cleanupOrphanSavedBiomarkers).
+  // It never returns to 0 — the question is about the past, and the past does not
+  // un-happen.
   db.prepare(
-    `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
-  ).run(profileId, canonical);
+    `INSERT OR IGNORE INTO saved_items (profile_id, kind, key, backed)
+     VALUES (?, 'biomarker', ?, (
+       SELECT EXISTS (
+         SELECT 1 FROM medical_records
+          WHERE profile_id = ? AND canonical_name IS NOT NULL
+            AND ${IDENTITY_CATEGORY_SQL}
+            AND ${BIOMARKER_FAMILY_KEY} = ${familyKeyOfExpr("?")} COLLATE NOCASE
+       )
+     ))`
+  ).run(profileId, canonical, profileId, ...NON_IDENTITY_CATEGORIES, canonical);
 }
 
 // Remove every saved biomarker in a #482 family (the unsave half of the toggle):
@@ -1022,7 +1093,7 @@ export interface SavedBiomarker {
   latest_notes: string | null;
   latest_reference_range: string | null;
   // Reference entry (ranges/direction) joined in so the chip needs no extra query.
-  canonical: CanonicalBiomarker | null;
+  canonical: CanonicalResultDefinition | null;
 }
 
 // Saved biomarkers with their latest reading and the canonical reference entry
@@ -1069,7 +1140,7 @@ export function getSavedBiomarkers(profileId: number): SavedBiomarker[] {
       `SELECT * FROM canonical_biomarkers
        WHERE name IN (${stars.map(() => "?").join(",")})`
     )
-    .all(...stars) as CanonicalBiomarker[];
+    .all(...stars) as CanonicalResultDefinition[];
   const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
 
   return stars.map((name) => {

@@ -1,0 +1,68 @@
+name: CI (main)
+
+# Post-merge validation for main itself. ci.yml is `pull_request` only, which
+# means every check validates a MERGE COMMIT against the base that existed when
+# the PR's checks ran — main after the squash lands is never tested by anything
+# (docs/orchestration.md, "CI tests the merge commit, not your branch"). At this
+# repo's merge rate that gap is not theoretical: two individually-green PRs have
+# interacted to land a main that failed `tsc` and `npm test` (#1560/#1562), a
+# widened signature has broken two sibling branches in one afternoon (#2245),
+# and each time the red surfaced on the NEXT innocent PRs instead of on main.
+#
+# This workflow closes that window with the three cheap tiers — static
+# analysis, pure unit, DB/action — on every push to main (~3.5 min, the slowest
+# of three parallel jobs). A semantic conflict between merges now reds main
+# directly within minutes, instead of masquerading as a failure on whichever
+# branch pushed next.
+#
+# The browser matrix is deliberately NOT here: eight shards per merge at this
+# merge rate would dwarf the rest of CI combined, and the documented
+# two-green-PRs breakage class (type errors, unit failures) is exactly what the
+# three cheap tiers see. e2e-full.yml remains the on-demand full-suite census.
+#
+# This is a detector, not a gate — deploy.yml runs independently on the same
+# push (gated by its own `next build`). A red here means: stop merging, fix
+# main first (a follow-up PR or a revert), then resume.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only the newest main matters: a push that supersedes a still-running
+# validation cancels it rather than queueing a verdict about a dead head.
+concurrency:
+  group: ci-main
+  cancel-in-progress: true
+
+jobs:
+  # Mirrors ci.yml's `check` job minus the dependency audits: an advisory is a
+  # property of the lockfile, not of a merge interaction, and the PR-side gate
+  # already blocks it. What CAN break at merge time is exactly the rest —
+  # format, lint, and above all typecheck (the widened-signature class).
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/node-setup
+      - name: Format check
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+
+  test-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/node-setup
+      - name: Test + coverage
+        run: npm run test:coverage
+
+  test-db:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/node-setup
+      - name: Test (DB) + coverage
+        run: npm run test:db:coverage

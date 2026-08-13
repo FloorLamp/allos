@@ -197,7 +197,7 @@ describe("mapWithingsMeasureGroup", () => {
     expect(res!.bodyMetric).toMatchObject({ weight_kg: 70.5 });
   });
 
-  it("maps VO2 max to the biomarker vital (#419)", () => {
+  it("maps VO2 max to the vitals-category vital (#419, #2479)", () => {
     const res = mapWithingsMeasureGroup(
       measureGroup({
         grpid: 100005,
@@ -208,7 +208,9 @@ describe("mapWithingsMeasureGroup", () => {
     const vo2 = res!.vitals.find((v) => v.canonical === "VO2 Max");
     expect(vo2).toMatchObject({
       external_id: `${WITHINGS_ID}:100005:VO2 Max`,
-      category: "biomarker",
+      // `vitals` — the canonical registry's own classification. It was the legacy
+      // `biomarker` catch-all until #2479 part 2 retired that value.
+      category: "vitals",
       value_num: 48,
       unit: "mL/kg/min",
       date: "2023-11-14",

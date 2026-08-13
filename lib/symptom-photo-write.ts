@@ -147,31 +147,16 @@ export function getSymptomPhotosForLog(
     .all(profileId, symptomLogId) as SymptomPhotoRow[];
 }
 
-// Delete every photo bound to a symptom-day log — rows AND their on-disk files (#1093
-// row-side-state: a deleted symptom log takes its photos, and foreign_keys=ON requires
-// the referencing rows gone before the log row can be dropped). Path-contained unlink,
-// like deleteSymptomPhotoCore. Composes INSIDE a caller's writeTx (the symptom-log delete
-// paths) — never opens its own. Returns the number of photo rows removed.
-export function deletePhotosForSymptomLog(
-  profileId: number,
-  symptomLogId: number
-): number {
-  const rows = db
-    .prepare(
-      `SELECT id, stored_path FROM symptom_photos
-        WHERE profile_id = ? AND symptom_log_id = ?`
-    )
-    .all(profileId, symptomLogId) as { id: number; stored_path: string }[];
-  if (rows.length === 0) return 0;
-  db.prepare(
-    `DELETE FROM symptom_photos WHERE profile_id = ? AND symptom_log_id = ?`
-  ).run(profileId, symptomLogId);
-  unlinkPhotoFiles(
-    "symptom",
-    rows.flatMap((r) => [r.stored_path, thumbSiblingPath(r.stored_path)])
-  );
-  return rows.length;
-}
+// A symptom-DAY's photos are taken by the `symptom-day` undo kind now (#2124), not by a
+// helper here. The removed `deletePhotosForSymptomLog` deleted the rows AND unlinked the
+// files in one breath, which is exactly what made the bar's one-tap × unrecoverable
+// off-DB. captureDelete removes the photo rows as declared `deleteExplicitly` children
+// (their FK carries no ON DELETE, so they must go before the log row) and LEAVES THE
+// FILES: they are content-named, a restored row re-points at the same bytes, and the
+// undo purge reclaims them if no undo ever came.
+//
+// A per-PHOTO delete still unlinks immediately — deleteSymptomPhotoCore below is a user
+// saying "remove this photo", not "remove this day".
 
 // Update only the user-authored caption. Empty text clears it; the same 500-character
 // ceiling used at upload keeps both write paths consistent. Profile-scoped by id.

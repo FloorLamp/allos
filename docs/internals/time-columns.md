@@ -204,9 +204,10 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `food_log` | `date` | day | day | n/a |  |
 | `food_log` | `created_at` | record | instant | bare |  |
 | `food_log_events` | `date` | day | day | n/a |  |
-| `food_log_events` | `logged_at` | record | instant | canonical |  |
+| `food_log_events` | `recorded_at` | record | instant | canonical | The TAP instant, `logged_at` until migration 183 (#2205 phase 2, the food wave). Migration 056 froze what it means — never backfilled, because the ranking predicts the next TAP — which is the `recorded_at` semantic under a name the table had coined for itself. The same migration normalized the millisecond-shaped values the offline replay had been writing (#2370) and bound every writer to lib/date.ts. |
 | `food_log_events` | `created_at` | bookkeeping | instant | bare |  |
-| `food_log_events` | `eaten_at` | event | instant | canonical | NULL means nobody stated an eating time, and that stays a real answer (#2019/#2053) rather than being filled in from the tap. `time_source` records whether a present value was a tap contract or a stated one. |
+| `food_log_events` | `occurred_at` | event | instant | canonical | NULL means nobody stated an eating time, and that stays a real answer (#2019/#2053) rather than being filled in from the tap. `time_source` records whether a present value was a tap contract or a stated one. Named `eaten_at` until migration 183; nothing was backfilled into it then either, because food REFUSES to infer an eating instant where intake infers one, and that divergence is deliberate. |
+| `food_log_events` | `eaten_at` | bookkeeping | instant | bare | VESTIGIAL and always NULL — migration 183 renamed it to `occurred_at` and kept an inert shell only because the frozen migration 154 re-adds the column unless its PRAGMA guard finds it, and migrate() replays every migration. Declared `bookkeeping`, never `event`, so a dead column cannot join the chain lib/row-instants.ts walks; the convention is moot for a column that never holds a value. |
 | `frequency_targets` | `created_at` | bookkeeping | instant | bare |  |
 | `genomic_variants` | `report_date` | event | day | n/a |  |
 | `genomic_variants` | `created_at` | record | instant | bare |  |
@@ -348,6 +349,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `routines` | `started_date` | window-start | day | n/a |  |
 | `routines` | `created_at` | bookkeeping | instant | bare |  |
 | `saved_items` | `created_at` | record | instant | bare |  |
+| `schema_migrations` | `applied_at` | record | instant | canonical | The migration runner's applied-set ledger (name-keyed migrations; lib/migrations/runner.ts is the only writer, bound to instantNow()). BORN canonical. For rows backfilled from a pre-ledger user_version stamp this is when the backfill ran, not when the migration originally applied — the name is the fact, the timestamp is provenance. |
 | `sessions` | `created_at` | bookkeeping | instant | bare |  |
 | `sessions` | `expires_at` | planned | instant | bare |  |
 | `sessions` | `last_used_at` | lifecycle | instant | bare |  |

@@ -54,10 +54,16 @@ import {
   mapPatientDemographics,
   mapProcedureResource,
   mapVisionPrescription,
-  observationRecords,
+  observationOutcome,
 } from "./resources";
 
 interface MapperOutput {
+  // Candidates the MAPPER itself refused, already classified (#2411). Only the mapper
+  // knows which of a multi-component Observation's components it turned away, so the
+  // drop travels out with the readings rather than being re-derived from the resource
+  // by `fhirDropReason` (which is only ever asked about a resource that mapped to
+  // NOTHING). Pushed verbatim into the report, so each counts into `considered`.
+  drops?: ImportDrop[];
   immunization?: ImportedImmunization | null;
   record?: ImportedRecord | null;
   records?: ImportedRecord[];
@@ -95,11 +101,19 @@ const RESOURCE_MAPPERS: Record<
     immunization: mapImmunizationResource(r, ctx.idPrefix, ctx),
   }),
   Observation: (r, ctx) => {
-    // Zero readings → an explicit null primary shape so the drop path classifies it
-    // (no_value / undated). One-or-more (scalar, or a BP's component readings) →
-    // the container `records` path, which pushRec-dedups each.
-    const recs = observationRecords(r, ctx.idPrefix, ctx);
-    return recs.length > 0 ? { records: recs } : { record: null };
+    // Zero readings AND zero component refusals → an explicit null primary shape so
+    // the drop path classifies the RESOURCE (no_value / undated / non-analyte / …).
+    // One-or-more (scalar, or a BP's component readings) → the container `records`
+    // path, which pushRec-dedups each.
+    //
+    // A resource that kept nothing but REFUSED components takes the container path
+    // too (#2411): the components are the candidates, so N component drops are the
+    // honest accounting and a single resource-level "no value" on top of them would
+    // count one candidate twice.
+    const { records, drops } = observationOutcome(r, ctx.idPrefix, ctx);
+    return records.length > 0 || drops.length > 0
+      ? { records, drops }
+      : { record: null };
   },
   Condition: (r) => ({ condition: mapConditionResource(r) }),
   AllergyIntolerance: (r, ctx) => ({ allergy: mapAllergyResource(r, ctx) }),
@@ -466,6 +480,9 @@ export function entriesToImportResult(
     // its readings are recorded via pushRec. Every other mapper yields one primary
     // shape whose explicit null means "dropped" — classify it.
     const isContainer = out.records !== undefined;
+    // Mapper-classified refusals (#2411) join the report before anything else, so a
+    // partially-valued panel's kept and dropped candidates land together.
+    if (out.drops) drops.push(...out.drops);
     if (out.immunization) {
       if (seenImm.has(out.immunization.external_id))
         drops.push({

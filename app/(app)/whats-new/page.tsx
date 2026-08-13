@@ -5,14 +5,19 @@ import AppVersion from "@/components/AppVersion";
 import MarkWhatsNewSeen from "@/components/MarkWhatsNewSeen";
 import { getDisplayFormatPrefs, getWhatsNewSeenDate } from "@/lib/settings";
 import { formatLongDate } from "@/lib/format-date";
+import PaginationControls from "@/components/PaginationControls";
+import { clampPage } from "@/lib/pagination";
 import {
+  WHATS_NEW_PAGE_ENTRIES,
   hasUnseenNotes,
   issueUrl,
   loadReleaseNotes,
   newestNoteDate,
   pullRequestUrl,
+  releaseNotesPage,
   type ReleaseNoteKind,
 } from "@/lib/release-notes";
+import type { AppRoute } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,14 @@ export const dynamic = "force-dynamic";
 // what clears the unread dot beside the version hash in the sidebar footer and on
 // the Settings index footer. Notes are per-image content, not per-profile data, so
 // nothing here is profile-scoped.
+//
+// PAGED (#2528). The file is append-only by design — a merge day adds ~15 entries —
+// so "render everything" is a page that grows forever, and at 20 days it was the
+// tallest surface in the app: 76,647 px on a 390 px-wide phone, ~87 viewport heights
+// in one scroll. The bound is `releaseNotesPage`, counted in ENTRIES so a 1-entry day
+// and a 32-entry day page the same, with `?page=` in the URL. Marking the notes seen
+// stays a property of VISITING, not of reaching the last page: the dot means "there
+// is something you haven't looked at", and the newest notes are on page 1.
 
 // Kind chips. Each kind gets its OWN color (never one family color, #533) so the
 // classification is readable at a glance; an entry with no kind renders no chip.
@@ -51,10 +64,19 @@ const KIND_CHIP: Record<ReleaseNoteKind, { label: string; className: string }> =
     },
   };
 
-export default async function WhatsNewPage() {
+export default async function WhatsNewPage(props: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}) {
   const { login } = await requireSession();
+  const searchParams = await props.searchParams;
   const notes = loadReleaseNotes();
   const prefs = getDisplayFormatPrefs(login.id);
+  const rawPage = Array.isArray(searchParams.page)
+    ? searchParams.page[0]
+    : searchParams.page;
+  const paged = releaseNotesPage(notes, clampPage(Number(rawPage) || 1));
+  const pageHref = (page: number): AppRoute =>
+    page <= 1 ? "/whats-new" : `/whats-new?page=${page}`;
   // Mount the seen-marker writer only when there IS something unseen, so a repeat
   // visit issues no write at all. Same one comparison the dot uses.
   const unseen = hasUnseenNotes(
@@ -83,7 +105,7 @@ export default async function WhatsNewPage() {
         </div>
       ) : (
         <div className="space-y-6" data-testid="whats-new-days">
-          {notes.days.map((day) => (
+          {paged.days.map((day) => (
             <section
               key={day.date}
               className="card space-y-4"
@@ -93,31 +115,28 @@ export default async function WhatsNewPage() {
               <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                 {formatLongDate(day.date, prefs)}
               </h2>
-              <ul className="space-y-4">
+              {/* One concise bullet per change (owner directive, 2026-08-13): the
+                  title IS the entry — the validator refuses bodies — so the day
+                  card reads as one scannable list. Inline layout, not flex: an li
+                  with display:flex drops its ::marker. */}
+              <ul className="list-disc space-y-1.5 pl-5">
                 {day.entries.map((entry) => {
                   const chip = entry.kind ? KIND_CHIP[entry.kind] : null;
                   return (
                     <li
                       key={entry.pr}
-                      className="space-y-1"
+                      className="text-sm leading-relaxed text-slate-800 dark:text-slate-200"
                       data-testid="whats-new-entry"
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        {chip && (
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${chip.className}`}
-                          >
-                            {chip.label}
-                          </span>
-                        )}
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                          {entry.title}
+                      {chip && (
+                        <span
+                          className={`mr-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${chip.className}`}
+                        >
+                          {chip.label}
                         </span>
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap text-slate-600 dark:text-slate-300">
-                        {entry.body}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      )}
+                      {entry.title}{" "}
+                      <span className="text-xs whitespace-nowrap text-slate-500 dark:text-slate-400">
                         {/* Repo links are EXTERNAL URLs, so plain strings (#285). */}
                         <a
                           href={pullRequestUrl(entry.pr)}
@@ -133,12 +152,12 @@ export default async function WhatsNewPage() {
                             href={issueUrl(issue)}
                             target="_blank"
                             rel="noreferrer"
-                            className="underline-offset-2 hover:text-slate-700 hover:underline dark:hover:text-slate-200"
+                            className="ml-2 underline-offset-2 hover:text-slate-700 hover:underline dark:hover:text-slate-200"
                           >
                             issue #{issue}
                           </a>
                         ))}
-                      </div>
+                      </span>
                     </li>
                   );
                 })}
@@ -160,6 +179,20 @@ export default async function WhatsNewPage() {
               )}
             </section>
           ))}
+          {/* The bound, and the way back to the archive it hides. Older notes stay
+              reachable in-app rather than only on GitHub. */}
+          <PaginationControls
+            page={paged.page}
+            pageCount={paged.pageCount}
+            pageSize={WHATS_NEW_PAGE_ENTRIES}
+            total={paged.total}
+            visibleCount={paged.shown}
+            prevHref={paged.page > 1 ? pageHref(paged.page - 1) : null}
+            nextHref={
+              paged.page < paged.pageCount ? pageHref(paged.page + 1) : null
+            }
+            testId="whats-new-pagination"
+          />
         </div>
       )}
     </PageContainer>

@@ -8,7 +8,7 @@ import ObservationSearch from "./ObservationSearch";
 import RangeFilterSelect from "./RangeFilterSelect";
 import CategoryFilterSelect from "./CategoryFilterSelect";
 import PanelFilterSelect from "./PanelFilterSelect";
-import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import { activeFacetCount, filterTriggerLabel } from "@/lib/record-facets";
 import type { PanelId } from "@/lib/biomarker-panels";
 
@@ -131,7 +131,7 @@ export default function MedicalFilters({
             here (see getClinicalObservations excludeCategories on the page). */}
           <CategoryFilterSelect
             value={category}
-            categories={BIOMARKER_CATEGORIES}
+            categories={RESULTS_CATALOG_CATEGORIES}
           />
 
           <PanelFilterSelect value={panel} panels={panels} />

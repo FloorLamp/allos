@@ -30,6 +30,9 @@ import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
 import CompactDateMenu from "@/components/CompactDateMenu";
 import { useToast } from "@/components/Toast";
+// The list-naming phrase is shared with the dashboard's composed control (#2458), so
+// the Food tab and the dashboard can never name a write differently.
+import { namesPhrase } from "@/lib/usual-routine";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
@@ -47,6 +50,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { usualFoodOffer } from "@/lib/food-regularity";
+import { foodLimitNoteText } from "@/lib/food-limit-note";
 import {
   deleteFoodLogEvent,
   logFoodServing,
@@ -78,16 +82,6 @@ type FoodPlacement = Extract<FoodEventEditResult, { ok: true }>["from"];
 // triggers would otherwise reorder the list under the user's finger — jarring right
 // where they just tapped. Tapping a row's label expands the (normally truncated) serving detail so it's
 // readable on a narrow phone without leaving the page.
-
-// "Berries", "Berries and Fermented foods", "Berries, Eggs and Fermented foods" — the
-// group names a "log my usual" control names OUT LOUD, in its label and in the toast
-// that answers it (#2380). Plain English on purpose: the label has to be readable as a
-// promise of what the tap writes, which is also why the two never diverge — the button
-// and its answer format the same list.
-function namesPhrase(names: readonly string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
 
 const TIER_ORDER: FoodGroupTier[] = ["encourage", "neutral", "limit"];
 const TIER_LABEL: Record<FoodGroupTier, string> = {
@@ -596,12 +590,12 @@ export default function FoodLogBar({
     // off its own day.
     const draftHhmm = statedHhmm(draft.when.statedAt, tz) || null;
     if (draftHhmm === null) {
-      if (editing.eatenAt !== null) fd.set("eaten_at", "none");
+      if (editing.eatenAt !== null) fd.set("occurred_at", "none");
     } else if (
       draftHhmm !== editing.eatenAt ||
       draft.when.date !== editing.date
     ) {
-      fd.set("eaten_at", draftHhmm);
+      fd.set("occurred_at", draftHhmm);
     }
     let outcome: FoodEventEditResult;
     try {
@@ -823,7 +817,7 @@ export default function FoodLogBar({
         // "now". Only an add states a time — an undo removes a serving and asserts
         // nothing about when anything was eaten.
         if (statedChoice && delta === 1)
-          fd.set("eaten_at", eatingTimeChoiceValue(statedChoice));
+          fd.set("occurred_at", eatingTimeChoiceValue(statedChoice));
         return {
           kind: "wrote",
           outcome:
@@ -851,6 +845,19 @@ export default function FoodLogBar({
                 STATED_TIME_REFUSAL_NOTE[outcome.statedTimeRefused]
               }.`
             );
+          }
+          // The curated limit note (#2377). NON-BLOCKING and after the fact: the
+          // serving is already on the counter, and this only reports what the curated
+          // map and the food–drug ledger have to say about the group. Success tone on
+          // purpose — an error tone on a tap that worked reads as "your tap failed"
+          // (#2296) — so the two kinds are told apart by PROMINENCE instead: an
+          // interaction holds until the reader dismisses it, a dietary note takes the
+          // ordinary timer. The server already ranked them; at most one ever arrives.
+          if (outcome.limitNote) {
+            toast(foodLimitNoteText(outcome.limitNote), {
+              key: `food-limit-${outcome.limitNote.groupKey}`,
+              ...(outcome.limitNote.hold ? { duration: null } : {}),
+            });
           }
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.
@@ -1628,7 +1635,7 @@ export default function FoodLogBar({
               {/* The day + eating-time PAIR, owned together by the shared control
                   (#2227/#2236): hour grain (the data's own precision), correct mode
                   ("Not stated" is first and clears), bounded to the same recent days
-                  the retired Day dropdown offered. `logged_at` is deliberately not
+                  the retired Day dropdown offered. `recorded_at` is deliberately not
                   here — the tap instant is audit history, never editable. */}
               <WhenControl
                 mode="correct"

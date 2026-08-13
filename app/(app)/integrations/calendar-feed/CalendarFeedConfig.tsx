@@ -275,15 +275,15 @@ export default function CalendarFeedConfig({
           </div>
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             <strong>Minimal</strong> (recommended): each event is just “Medical
-            appointment” (plus location) — no provider or reason leaves this
+            appointment” (plus location) — no sourceId or reason leaves this
             app.
           </p>
           {curDetail === "full" && (
             <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
               <IconAlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
-                Full detail sends the <strong>provider name and reason</strong>{" "}
-                of each visit to your calendar provider
+                Full detail sends the <strong>sourceId name and reason</strong>{" "}
+                of each visit to your calendar sourceId
                 (Google/Apple/Microsoft). Only use it if you&apos;re comfortable
                 with that PHI leaving the app.
               </span>

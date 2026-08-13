@@ -22,6 +22,19 @@ import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
 import { dataSectionHref } from "@/lib/hrefs";
 
+// Follow-ups are an acting-profile-derived feature (#1328 scope-limit): the followUps
+// map + trackImagingFollowUp both target the acting profile, so a non-acting member's
+// row shows no track control to avoid a wrong-profile follow-up write. Single view /
+// acting rows keep the control. Named once so the cell and its emptiness verdict
+// cannot disagree.
+function tracksFollowUp(
+  study: ImagingStudy,
+  multiView?: ListMultiView
+): boolean {
+  const pid = (study as { profileId?: number }).profileId;
+  return !(multiView && pid != null && pid !== multiView.actingProfileId);
+}
+
 // Columns as a factory so the Follow-up cell can read the per-study follow-up map
 // (issue #700) without a module-level global.
 function buildColumns(
@@ -33,19 +46,15 @@ function buildColumns(
     ...baseColumns(fmt),
     {
       header: "Follow-up",
-      cell: (s) => {
-        // Follow-ups are an acting-profile-derived feature (#1328 scope-limit): the
-        // followUps map + trackImagingFollowUp both target the acting profile, so a
-        // non-acting member's row shows no track control (a "—") to avoid a wrong-
-        // profile follow-up write. Single view / acting rows keep the control.
-        const pid = (s as { profileId?: number }).profileId;
-        if (multiView && pid != null && pid !== multiView.actingProfileId) {
-          return <span className="text-slate-400">—</span>;
-        }
-        return (
+      // The non-acting placeholder is a "—" like any other (#2588): on a card it
+      // claimed a "FOLLOW-UP —" line that said nothing about the study.
+      empty: (s) => !tracksFollowUp(s, multiView),
+      cell: (s) =>
+        tracksFollowUp(s, multiView) ? (
           <TrackFollowUpControl studyId={s.id} existing={followUps.get(s.id)} />
-        );
-      },
+        ) : (
+          <span className="text-slate-400">—</span>
+        ),
     },
   ];
 }
@@ -88,11 +97,18 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
+    empty: (s) => !s.study_date,
     cell: (s) => formatRecordDate(s.study_date, "—", fmt),
   },
   {
     header: "Provider",
     headerClassName: "hidden md:table-cell",
+    empty: (s) =>
+      !s.ordering_provider_id &&
+      !(
+        s.reading_provider_id &&
+        s.reading_provider_id !== s.ordering_provider_id
+      ),
     cellClassName: "hidden md:table-cell text-xs",
     cell: (s) => {
       const parts: ReactNode[] = [];

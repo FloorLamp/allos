@@ -196,7 +196,7 @@ describe("clinicalRecencyHorizon — read from the preventive catalog, not writt
 describe("copy — states the data, names the action", () => {
   it("archives: names the streams, the frontier and the drift", () => {
     const copy = archiveRefreshCopy({
-      providerName: "Fitbit (Google Takeout)",
+      sourceName: "Fitbit (Google Takeout)",
       streamLabels: ["weight", "body fat", "sleep score"],
       frontier: "2026-07-26",
       daysBehind: 41,
@@ -215,7 +215,7 @@ describe("copy — states the data, names the action", () => {
 
   it("archives: agrees with itself on a single stream", () => {
     const copy = archiveRefreshCopy({
-      providerName: "Fitbit (Google Takeout)",
+      sourceName: "Fitbit (Google Takeout)",
       streamLabels: ["weight"],
       frontier: "2026-07-26",
       daysBehind: 31,

@@ -107,3 +107,55 @@ export function cycleTrackingRelevant(input: CycleRelevanceInput): boolean {
   const stage = lifeStage(input.age);
   return stage === "adolescent" || stage === "adult";
 }
+
+// ── The Records › Specialty pane set, under a MULTI-PROFILE view (#2557) ──────
+
+// The three bits that shape the Specialty sub-tab strip and its per-pane route
+// gates. Structurally the `RecordsRelevance` of app/(app)/records/nav.ts; declared
+// here because the fold below is the pure decision and that module is the nav model.
+export interface SpecialtyRelevance {
+  vision: boolean;
+  dental: boolean;
+  substanceUse: boolean;
+}
+
+/**
+ * The pane set for a VIEW rather than for one profile (#2557).
+ *
+ * Converting Dental and Vision to multi-view forced the question the issue calls out:
+ * `getNavRelevance(profile.id).dental` gated a route that now LISTS several members,
+ * so "relevant to whom?" had to be answered rather than inherited.
+ *
+ * The answer is not one rule, because the three bits are not one KIND of question:
+ *
+ *   • `vision` / `dental` are DATA-PRESENCE questions about what the pane will show.
+ *     The pane shows every profile in view, so the bit is ANY profile in view has
+ *     rows. Gating on the acting profile alone would redirect a caregiver away from
+ *     a pane that was about to list their child's dental work — the pane would have
+ *     had content, and the gate would have denied it existed. Only when NO member in
+ *     view has a row is the pane genuinely empty, which is the state the gate is for.
+ *
+ *   • `substanceUse` is a LIFE-STAGE question about the CONTENT that pane serves for
+ *     one data subject (#1174: AUDIT/DAST are adult-validated). It is deliberately
+ *     NOT folded. That section still reads exactly one profile — the acting one — so
+ *     the profile whose age governs the content is the acting profile, and ORing an
+ *     adult's bit in would unhide adult-validated instruments for a view that a known
+ *     minor is acting as. A gate whose subject is the content stays with the subject.
+ *
+ * Single view (`inView` = the acting profile alone) reproduces today's answer
+ * exactly, which is the regression bar: an unconverted instance renders identically.
+ * An empty view set yields both data bits false — the pane is hidden, which is the
+ * safe answer to "nothing is in view".
+ */
+export function specialtyRelevanceForView(input: {
+  /** The ACTING profile's own bitset — the only source of `substanceUse`. */
+  acting: SpecialtyRelevance;
+  /** One bitset per profile IN VIEW; the acting profile may not be among them. */
+  inView: readonly Pick<SpecialtyRelevance, "vision" | "dental">[];
+}): SpecialtyRelevance {
+  return {
+    vision: input.inView.some((r) => r.vision),
+    dental: input.inView.some((r) => r.dental),
+    substanceUse: input.acting.substanceUse,
+  };
+}

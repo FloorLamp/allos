@@ -310,4 +310,12 @@ export const MESSAGE_LINE_MODULES: readonly { module: string; why: string }[] =
       module: "lib/notifications/workout-recap-format.ts",
       why: "The post-workout finish nudge's weekly-status line (#981/#1122).",
     },
+    {
+      module: "lib/cadence.ts",
+      why: "The closed week's target-verdict rollup and a cap's period sentence (#2395/#2397) — a recap line's head and its per-shortfall notes are composed here. Registered for the same reason lib/nutrition-day.ts is: in scope for what it produces, not for where it lives.",
+    },
+    {
+      module: "lib/food-habit-observation.ts",
+      why: "The monthly food-habit note (#2397) — one group's share sentence, composed here and handed to the recap line as one entry of a homogeneous repeating tail.",
+    },
   ];

@@ -12,7 +12,7 @@ import {
   RHYTHM_WINDOW_WEEKS,
   type WeeklyRhythm,
 } from "../../weekly-rhythm";
-import { db, today } from "../../db";
+import { db, hoistedStatement, today } from "../../db";
 import { decayedWeight } from "../../decay";
 import {
   LIFT_OPTIONS,
@@ -319,6 +319,16 @@ export interface TrainingLogPage {
 // `null` on a field means "this filter is not active". An EMPTY preimage array
 // means "active, and nothing in the ledger can match" — the page is empty, which is
 // very different from absent; keep the two apart.
+//
+// That distinction is made by the SHAPE, not by a predicate over it: an empty
+// preimage builds a `WHERE … IN ()` that matches nothing, while a null field emits
+// no clause at all, so the two already answer differently one line further down.
+// `trainingLogFilterSpecActive` — a spec-level "is anything filtered" that shipped in
+// #2501 and never gained a caller — was deleted in #2527: the question is asked one
+// level EARLIER, on the UI-shaped filters, by `trainingLogFiltersActive`
+// (lib/training-log-filters.ts), which is what decides whether a spec gets resolved
+// at all (lib/training-log-feed.ts). Asking it again of the resolved spec would be a
+// second answer to a settled question.
 export interface TrainingLogFilterSpec {
   query: string | null; // free text (already trimmed), matched by LIKE
   type: ActivityType | null;
@@ -336,18 +346,6 @@ export const NO_TRAINING_LOG_FILTERS: TrainingLogFilterSpec = {
   tagExercises: null,
   faultIds: null,
 };
-
-export function trainingLogFilterSpecActive(
-  spec: TrainingLogFilterSpec
-): boolean {
-  return (
-    spec.query != null ||
-    spec.type != null ||
-    spec.source != null ||
-    spec.tagExercises != null ||
-    spec.faultIds != null
-  );
-}
 
 // The `source` half of the WHERE clause for a provenance KEY. Mirrors
 // activityProvenanceKey()'s collapse in SQL: 'manual' covers NULL and the literal
@@ -611,12 +609,13 @@ export function getActivitiesByDate(
   profileId: number,
   date: string
 ): Activity[] {
-  return db
-    .prepare(
-      "SELECT * FROM activities WHERE profile_id = ? AND date = ? ORDER BY id DESC"
-    )
-    .all(profileId, date) as Activity[];
+  return ACTIVITIES_BY_DATE_STMT.all(profileId, date) as Activity[];
 }
+// Hoisted: read per member on every cross-profile surface (360 executions on one
+// /household render — two per member).
+const ACTIVITIES_BY_DATE_STMT = hoistedStatement(
+  "SELECT * FROM activities WHERE profile_id = ? AND date = ? ORDER BY id DESC"
+);
 
 export function getActivityDates(profileId: number): string[] {
   return (
@@ -639,15 +638,18 @@ export type InferredWorkoutSchedule = WeeklyRhythm;
 // enough, and the most common start hour. Falls back to every day at 18:00 when
 // there's no clear pattern. A thin SQL gather over the shared inference core
 // (#2188) — the thresholds live in lib/weekly-rhythm.ts, not here.
+// Hoisted for the same reason as ACTIVITIES_BY_DATE_STMT above.
+const WORKOUT_RHYTHM_STMT = hoistedStatement(
+  `SELECT date, start_time FROM activities WHERE profile_id = ? AND date >= ?`
+);
 export function inferWorkoutSchedule(
   profileId: number,
   weeks = RHYTHM_WINDOW_WEEKS
 ): InferredWorkoutSchedule {
-  const rows = db
-    .prepare(
-      `SELECT date, start_time FROM activities WHERE profile_id = ? AND date >= ?`
-    )
-    .all(profileId, shiftDateStr(today(profileId), -weeks * 7)) as {
+  const rows = WORKOUT_RHYTHM_STMT.all(
+    profileId,
+    shiftDateStr(today(profileId), -weeks * 7)
+  ) as {
     date: string;
     start_time: string | null;
   }[];

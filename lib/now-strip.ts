@@ -128,7 +128,7 @@ export interface NowSignals {
   workoutFinishedMinAgo: number | null;
   // The profile's mealtime-shaped anchors as minutes-of-day. These are the
   // existing intake reminder slots (Morning/Midday/Evening); the food log
-  // deliberately cannot supply a better distribution — `food_log_events.logged_at`
+  // deliberately cannot supply a better distribution — `food_log_events.recorded_at`
   // is TAP time, documented as explicitly NOT eating time, and reinterpreting it
   // would invent an eating-time engine this issue's scope guard forbids.
   mealAnchors: readonly number[];

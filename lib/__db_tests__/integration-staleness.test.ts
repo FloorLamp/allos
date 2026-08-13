@@ -3,14 +3,14 @@
 // reaches every surface that already reads getImportIssues.
 //
 // The point of the signal is the case no event-driven detector can see: the connection
-// sits at `connected`, nothing has FAILED (so currentlyFailingProviders is empty and
+// sits at `connected`, nothing has FAILED (so currentlyFailingSources is empty and
 // isAuthRefreshFailure never fired), and nothing has arrived either. This harness builds
 // exactly that state from real rows — a connection plus a last successful sync event of a
 // chosen age — and asserts it through the real reads the badge, the Data → Review Issues
 // list and the dashboard hero use.
 //
 // Since #2263 it is also THE escalation rule, at minute grain: silence past the
-// provider's declared tolerance is what makes a connected provider `failing`, whether
+// source's declared tolerance is what makes a connected source `failing`, whether
 // the silence was recorded as failures, as nothing, or a mix. So the fixtures below
 // are built from INSTANTS relative to the app's own clock, not from calendar days.
 
@@ -36,14 +36,14 @@ function newProfile(name: string): number {
 
 function connect(
   profileId: number,
-  provider: string,
+  sourceId: string,
   status = "connected"
 ): void {
   db.prepare(
     `INSERT INTO integration_connections (profile_id, provider, status)
      VALUES (?, ?, ?)
      ON CONFLICT (profile_id, provider) DO UPDATE SET status = excluded.status`
-  ).run(profileId, provider, status);
+  ).run(profileId, sourceId, status);
 }
 
 // A recorded sync event `hoursAgo` hours back from the app's own now. ok=1 is a
@@ -52,7 +52,7 @@ function connect(
 // so a day-derived fixture would drift with the hour CI happens to run at.
 function syncEvent(
   profileId: number,
-  provider: string,
+  sourceId: string,
   hoursAgo: number,
   ok = 1,
   error: string | null = null
@@ -63,7 +63,7 @@ function syncEvent(
   db.prepare(
     `INSERT INTO integration_sync_events (profile_id, provider, at, ok, error)
      VALUES (?, ?, ?, ?, ?)`
-  ).run(profileId, provider, at, ok, error);
+  ).run(profileId, sourceId, at, ok, error);
 }
 
 const DAYS = 24;
@@ -81,7 +81,7 @@ describe("a connected integration that stopped syncing (#1685)", () => {
 
     const stale = staleIssues(p);
     expect(stale).toHaveLength(1);
-    expect(stale[0].provider).toBe("strava");
+    expect(stale[0].source_id).toBe("strava");
     // The distinct copy: what we observed, and a date — never "Reconnect", which would
     // assert a cause this signal has no evidence for.
     expect(stale[0].error).toContain("No data since");
@@ -119,8 +119,8 @@ describe("a connected integration that stopped syncing (#1685)", () => {
     syncEvent(p, "withings", 1, 0, "Withings token refresh failed (401)"); // … then a failure
 
     const issues = getImportIssues(p);
-    // Exactly ONE row for the provider: the recorded failure, which names the cause.
-    expect(issues.filter((e) => e.provider === "withings")).toHaveLength(1);
+    // Exactly ONE row for the source: the recorded failure, which names the cause.
+    expect(issues.filter((e) => e.source_id === "withings")).toHaveLength(1);
     expect(staleIssues(p)).toEqual([]);
     expect(issues[0].error).toContain("401");
   });
@@ -169,7 +169,7 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
     expect(item.title).toBe("Withings sync has stopped");
     expect(item.actionLabel).toBe("Check connection");
     expect(item.dueText).toBe("No recent data");
-    // Same key + href as the failing variant: one row per provider on every surface.
+    // Same key + href as the failing variant: one row per source on every surface.
     expect(item.key).toBe("integration:withings");
     expect(item.href).toBe("/integrations/withings");
     // Structural — you fix it, you don't snooze it (#524).
@@ -193,7 +193,7 @@ describe("the stale signal reaches the surfaces that read import issues", () => 
   });
 
   // The #2263 behaviour change, pinned where the old rule lived: three consecutive
-  // failures with a success beside them raise NOTHING. The provider is flapping, its
+  // failures with a success beside them raise NOTHING. The source is flapping, its
   // data is arriving, and calling it broken is the crying-wolf this rule exists to
   // stop.
   it("raises nothing for consecutive failures with a recent success behind them", () => {

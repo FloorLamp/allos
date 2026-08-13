@@ -562,7 +562,7 @@ describe("destructive icon-only buttons are recoverable without a hover", () => 
     "app/(app)/encounters/AppointmentList.tsx",
     "app/(app)/immunizations/VaccineDoseHistory.tsx",
     "components/practices/PracticeSessionHistory.tsx",
-    "app/(app)/trends/DeleteBodyMetricButton.tsx",
+    "app/(app)/trends/BodyMetricRowMenu.tsx",
   ];
 
   it.each(CONFIRMS)("%s confirms before it deletes", (rel) => {

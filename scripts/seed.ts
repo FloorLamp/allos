@@ -27,6 +27,12 @@ import {
   initialOnboardingState,
   serializeOnboardingState,
 } from "../lib/onboarding";
+import {
+  describeDials,
+  jitterStream,
+  sampleDials,
+  seedFromEnv,
+} from "./seed-rng";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -37,6 +43,25 @@ const SEED_PROFILE_ID = 1;
 function daysAgo(n: number): string {
   return shiftDateStr(today(SEED_PROFILE_ID), -n);
 }
+
+// Deterministic entropy (#2594): SEED_RNG selects a scenario-dial vector so the
+// UX census can generate distinct, REPRODUCIBLE looks. Unset (or =1) is the
+// pinned baseline — exactly the hand-authored look below, which `npm run seed`,
+// the e2e template DB, and census `--baseline` diffing all rely on. The dial
+// hooks are inline at their data sites, each tagged "#2594 dial".
+const SEED_ENTROPY = seedFromEnv(process.env);
+const DIALS = sampleDials(SEED_ENTROPY);
+const rand = jitterStream(SEED_ENTROPY);
+console.log(`seed entropy: SEED_RNG=${SEED_ENTROPY} — ${describeDials(DIALS)}`);
+// The current illness episode's day offset (#2594 dial: illnessNow). "active"
+// keeps the episode overlapping today (the baseline); "past" slides the whole
+// thing — situation run, symptom days, fever curve, illness-tagged moods — two
+// weeks back, so domain symptom pickers show NO frecency interference.
+const EPISODE_SHIFT = DIALS.illnessNow === "active" ? 0 : 14;
+// A 4-day logging/sync outage (#2594 dial: gapiness) applied to the food-log
+// and mood loops, so day-grain surfaces render a real hole instead of the
+// seed's unbroken ribbon.
+const gapDay = (d: number) => DIALS.gapiness === "gappy" && d >= 8 && d <= 11;
 
 // The seed targets profile 1 specifically. On a fresh DB bootstrapAuth() creates
 // it; if it's missing here, an admin deleted it (profile deletion). Rather than
@@ -418,6 +443,54 @@ goal.run(
   daysAgo(-120),
   "active"
 );
+// #2594 dial: volume. The "goal pile" look — many far-dated freeform goals
+// (45–120 days out), the exact shape that crowded Upcoming's Later band in
+// #2579 and gives ordering defects enough same-band rows to show. Titles must
+// not near-duplicate the baseline exercise-linked goals below ("Bench Press
+// 100 kg", "Back Squat 140 kg", "Plank 2:30 hold") — the 2026-08 sweep's
+// reviewers read those collisions as a data bug, drowning the defects the
+// dial exists to surface.
+if (DIALS.volume === "heavy") {
+  const heavyGoals: [string, string | null, number, number, string, number][] =
+    [
+      // title, category, target, current, unit, days out
+      ["Meditate 100 sessions", null, 100, 38, "sessions", 45],
+      ["Overhead press 60 kg", "strength", 60, 52, "kg", 52],
+      ["Wall sit 3 minutes", "strength", 180, 120, "sec", 60],
+      ["Read 12 books", null, 12, 7, "books", 68],
+      ["Swim 1 km nonstop", "cardio", 1, 0.6, "km", 75],
+      ["Row 2k under 7:30", "cardio", 450, 468, "sec", 85],
+      ["Cycle 300 km this quarter", "cardio", 300, 190, "km", 95],
+      ["Leg press 200 kg", "strength", 200, 170, "kg", 105],
+      ["8,000 steps daily average", "body", 8000, 7100, "steps", 118],
+    ];
+  for (const [title, category, target, current, unit, out] of heavyGoals) {
+    goal.run(
+      title,
+      null,
+      category,
+      target,
+      current,
+      unit,
+      daysAgo(-out),
+      "active"
+    );
+  }
+}
+// #2594 dial: textLength. One goal whose title exercises truncation and wrap
+// on every surface that renders goal names.
+if (DIALS.textLength === "long") {
+  goal.run(
+    "Complete the full 12-week progressive overload block without missing a scheduled session, including both deload weeks",
+    null,
+    "strength",
+    12,
+    4,
+    "weeks",
+    daysAgo(-100),
+    "active"
+  );
+}
 
 // Exercise-linked goals: progress derives from sets (weight / reps / sets×reps / hold).
 const exGoal = db.prepare(
@@ -555,7 +628,9 @@ db.prepare(
 // optimal range, so trends render and the optimal-band ("non-optimal") flagging
 // is demoable. Flags are derived from the canonical ranges via reconcileFlags
 // below (not hand-set), so high/low/non-optimal stay consistent with the data.
-type MedCategory = "lab" | "biomarker" | "vitals" | "scan";
+// No `biomarker`: the pre-#1076 catch-all is retired (#2479 part 2), and the seed
+// filing three real lab analytes under it was one of the paths keeping it alive.
+type MedCategory = "lab" | "vitals" | "scan";
 interface Panel {
   category: MedCategory;
   name: string; // display name (also the canonical name unless noted)
@@ -571,7 +646,7 @@ const LAB_DATES = [1080, 870, 660, 450, 240, 30];
 // The lab each draw was sent to, parallel to LAB_DATES. Because every reading of
 // a biomarker inherits its draw's lab, the same biomarker shows varying panels
 // over time — mirroring a patient whose bloodwork moved between providers. Only
-// applied to lab/biomarker draws; vitals and scans aren't lab work.
+// applied to lab draws; vitals and scans aren't lab work.
 const LAB_PANELS = [
   "Quest Diagnostics",
   "LabCorp",
@@ -582,7 +657,7 @@ const LAB_PANELS = [
 ];
 
 function panelFor(category: MedCategory, i: number): string | null {
-  if (category === "lab" || category === "biomarker") return LAB_PANELS[i];
+  if (category === "lab") return LAB_PANELS[i];
   if (category === "vitals") return "Home Monitor";
   return null; // scans carry no panel
 }
@@ -662,7 +737,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "Insulin, Fasting",
-    canonical: "Insulin",
+    canonical: "Insulin, Fasting",
     unit: "uIU/mL",
     ref: "<18.4",
     values: [9.5, 8.2, 7.1, 6.0, 5.2, 4.6],
@@ -677,7 +752,7 @@ const PANELS: Panel[] = [
   },
   // Inflammation / liver.
   {
-    category: "biomarker",
+    category: "lab",
     name: "hs-CRP",
     canonical: "High-Sensitivity C-Reactive Protein (hs-CRP)",
     unit: "mg/L",
@@ -711,7 +786,7 @@ const PANELS: Panel[] = [
     values: [1.02, 1.0, 0.99, 0.97, 0.96, 0.94],
   },
   {
-    category: "biomarker",
+    category: "lab",
     name: "Homocysteine",
     canonical: "Homocysteine",
     unit: "umol/L",
@@ -829,7 +904,7 @@ const PANELS: Panel[] = [
     values: [4.6, 4.9, 5.2, 5.4, 5.6, 5.8],
   },
   {
-    category: "biomarker",
+    category: "lab",
     name: "Omega-6/Omega-3 Ratio",
     canonical: "Omega-6/Omega-3 Ratio",
     unit: "ratio",
@@ -1541,7 +1616,9 @@ const supLog = db.prepare(
 );
 for (let d = 6; d >= 1; d--) {
   for (const dd of allDoses) {
-    if (Math.random() > 0.2) supLog.run(dd.id, dd.item_id, daysAgo(d));
+    // Seeded jitter (#2594): the one formerly-Math.random() call in the seed —
+    // now deterministic, so the same SEED_RNG reproduces the same adherence.
+    if (rand() > 0.2) supLog.run(dd.id, dd.item_id, daysAgo(d));
   }
 }
 
@@ -1818,6 +1895,34 @@ encIns.run(
   null,
   "Referred for lipid management"
 );
+// #2594 dial: importQuirks — source-system artifacts written exactly the way
+// the import's verbatim join lands them today (obviously-fictional content).
+if (DIALS.importQuirks === "quirky") {
+  // The #2589 shape: the SAME visit diagnosis repeated with the rank qualifier
+  // baked into the display name. Once #2589's normalization lands, this dial
+  // becomes its standing census regression look (one chip, not two).
+  encIns.run(
+    daysAgo(210),
+    null,
+    "Office Visit",
+    "AMB",
+    "Screening",
+    "Encounter for screening for malignant neoplasm of colon; Encounter for screening for malignant neoplasm of colon - Primary",
+    null,
+    clinic,
+    null
+  );
+  // Biomarker family spelling variety (#482): two older vitamin-D readings
+  // under variant spellings, the way different labs print the same analyte —
+  // exercises family grouping, the shared retest clock, and every surface that
+  // must label the family rather than leak its identity key.
+  const quirkRec = db.prepare(
+    `INSERT INTO medical_records (profile_id, date, category, name, value, value_num, unit)
+     VALUES (1, ?, 'lab', ?, ?, ?, 'ng/mL')`
+  );
+  quirkRec.run(daysAgo(700), "25-Hydroxy Vitamin D", "24", 24);
+  quirkRec.run(daysAgo(520), "Vitamin D, Total", "27", 27);
+}
 // A visit attributed to the duplicate provider row (#275 merge fixture).
 encIns.run(
   daysAgo(90),
@@ -2370,13 +2475,13 @@ const foodLog = db.prepare(
    VALUES (1, ?, ?, ?)
    ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
 );
-// The per-TAP event ledger (#950): each serving also records a tap `logged_at` (a UTC
+// The per-TAP event ledger (#950): each serving also records a tap `recorded_at` (a UTC
 // instant) at a slot-appropriate hour, so slot-aware ranking has a realistic skew in
 // dev — greens/grains at breakfast, fatty fish reliably at lunch, alcohol/dessert in
 // the evening. Default boundaries are 11:00/15:00, so these land in Morning/Midday/
 // Evening respectively.
 const foodEvent = db.prepare(
-  `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+  `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
    VALUES (1, ?, ?, ?)`
 );
 const logFood = (
@@ -2392,6 +2497,9 @@ const logFood = (
 // A weekly rhythm: greens/legumes/fruit most days, fatty fish twice a week, the
 // occasional red meat / alcohol / dessert.
 for (let d = 55; d >= 0; d--) {
+  // #2594 dial: gapiness — the outage hole, so nutrition day-history renders a
+  // real multi-day gap instead of the seed's unbroken ribbon.
+  if (gapDay(d)) continue;
   const date = daysAgo(d);
   logFood(date, "leafy_greens", 1 + (d % 2), "08:15:00"); // morning
   logFood(date, "fruit", 1, "08:20:00"); // morning
@@ -2497,7 +2605,15 @@ const situationTransitions: {
   { date: daysAgo(52), before: ["Illness"], after: [] },
   { date: daysAgo(14), before: [], after: ["Travel"] },
   { date: daysAgo(9), before: ["Travel"], after: [] },
-  { date: daysAgo(3), before: [], after: ["Illness"] },
+  // #2594 dial: illnessNow. Baseline keeps the episode OPEN since daysAgo(3);
+  // "past" slides it back by EPISODE_SHIFT and CLOSES it, so no situation is
+  // active today and the symptom pickers rank without illness frecency.
+  ...(DIALS.illnessNow === "active"
+    ? [{ date: daysAgo(3), before: [], after: ["Illness"] }]
+    : [
+        { date: daysAgo(3 + EPISODE_SHIFT), before: [], after: ["Illness"] },
+        { date: daysAgo(EPISODE_SHIFT - 1), before: ["Illness"], after: [] },
+      ]),
 ];
 const situationEvents = situationTransitions.flatMap((t) =>
   diffSituations(t.before, t.after, t.date)
@@ -2513,7 +2629,10 @@ const seedSituation = db.prepare(
   `INSERT INTO situations (profile_id, name, active) VALUES (1, ?, ?)`
 );
 const illnessSituationId = Number(
-  seedSituation.run("Illness", 1).lastInsertRowid
+  // Active exactly when the episode overlaps today (#2594 dial: illnessNow) —
+  // the row must agree with the situation_events run seeded above.
+  seedSituation.run("Illness", DIALS.illnessNow === "active" ? 1 : 0)
+    .lastInsertRowid
 );
 seedSituation.run("Travel", 0);
 db.prepare("UPDATE intake_items SET situation_id = ? WHERE id = ?").run(
@@ -2579,7 +2698,14 @@ const seededSymptoms: [number, string, number, string | null][] = [
   [57, "nausea", 3, null],
 ];
 for (const [ago, symptom, severity, note] of seededSymptoms) {
-  seedSymptom.run(daysAgo(ago), symptom, severity, note);
+  // The current episode's rows (ago ≤ 3) slide with the illnessNow dial
+  // (#2594) so symptom days always sit inside the seeded episode run.
+  seedSymptom.run(
+    daysAgo(ago <= 3 ? ago + EPISODE_SHIFT : ago),
+    symptom,
+    severity,
+    note
+  );
 }
 
 // ── Daily mood check-ins (issue #992) ────────────────────────────────────────
@@ -2628,8 +2754,14 @@ const seededMoods: [
   [0, 3, 2, 2, ["health"], null],
 ];
 for (const [ago, valence, energy, anxiety, factors, note] of seededMoods) {
+  // Illness-tagged moods slide with the episode (#2594 dial: illnessNow) — a
+  // "fever peaked" note must sit on a fever day. The upsert absorbs any
+  // collision with an ordinary row already on the shifted date. gapDay carves
+  // the outage hole (#2594 dial: gapiness).
+  const day = ago + (factors?.includes("health") ? EPISODE_SHIFT : 0);
+  if (gapDay(day)) continue;
   seedMood.run(
-    daysAgo(ago),
+    daysAgo(day),
     valence,
     energy,
     anxiety,
@@ -2665,7 +2797,9 @@ const tempReadings: [number, string, number][] = [
 const tempIds: number[] = [];
 const seedTz = getTimezone(SEED_PROFILE_ID);
 for (const [ago, time, degF] of tempReadings) {
-  const day = daysAgo(ago);
+  // The fever curve tracks the episode (#2594 dial: illnessNow) — a peak "today"
+  // beside a closed two-weeks-ago episode would be incoherent data.
+  const day = daysAgo(ago + EPISODE_SHIFT);
   const [ty, tm, td] = day.split("-").map(Number);
   const [th, tmin] = time.split(":").map(Number);
   tempIds.push(
@@ -2712,9 +2846,14 @@ for (const [startAgo, endAgo, flow, note] of seededCycles) {
 // ── Saved views: RETIRED, kept as legacy data ────────────────────────────────
 // The Trends overhaul removed the Views strip and #1653 removed the actions,
 // settings accessors and list math behind it. Nothing reads this key any more —
-// the rows stay ON PURPOSE, because an upgraded database still carries them and
-// e2e/trends-saved-views.spec.ts asserts that inert data cannot resurrect the
-// removed chrome. There is no cleanup migration; dead settings data is harmless.
+// the rows stay ON PURPOSE, because a database upgraded past #1653 but not yet
+// re-migrated still carries them, and an absence assertion is only worth anything
+// against a profile where the data it would render from EXISTS. Migration 142
+// purges the key, so these rows are written back after it runs — deliberately, to
+// keep that fixture. The surviving assertion is "range controls fill the row
+// without saved views" (e2e/trends-fold.mobile.spec.ts), which runs over this seed;
+// e2e/trends-saved-views.spec.ts, which this comment used to name, was deleted by
+// #2512 as a permanently-green absence test (#2524).
 // (The `trend_pins` KV this block used to seed was folded into `saved_items` by
 // migration 113 — see the saved-items seed below.)
 upsertProfileSetting.run(
@@ -2840,7 +2979,7 @@ const docId = Number(
 const linkedRows = db
   .prepare(
     `UPDATE medical_records SET document_id = ?, source = 'extracted'
-       WHERE profile_id = 1 AND date = ? AND category IN ('lab','biomarker')`
+       WHERE profile_id = 1 AND date = ? AND category = 'lab'`
   )
   .run(docId, daysAgo(30));
 db.prepare(

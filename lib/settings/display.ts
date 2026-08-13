@@ -112,7 +112,19 @@ export function setDisplayFormatPrefs(
 // this same read (it can't import settings.ts without a cycle); keep them in sync
 // via the shared lib/timezone.resolveTimezone.
 
-export function getTimezone(profileId: number): string {
+// cache()-wrapped like getUnitPrefs above, and for a stronger reason: lib/db.ts's
+// copy of this read is ALREADY memoized per profile (a 5s TTL, because the notify
+// sidecar is a long-lived process with no request to scope to), while this one —
+// the canonical copy every page and query calls — re-read the two settings rows on
+// every call. The two agreed on the VALUE and diverged on the COST: one `/` render
+// asked for a profile's timezone 41 times and the instance default 53 more.
+// Request scope is strictly tighter than that TTL, so this cannot go stale in a
+// way the db.ts memo would not have. setTimezone writes through
+// setProfileSetting, which invalidates the db.ts memo and revalidates rather than
+// re-reading in the same request.
+export const getTimezone = cache(function getTimezone(
+  profileId: number
+): string {
   // Per-profile setting wins; read the instance default only when it's unset (the
   // `??` short-circuit), then resolveTimezone validates-or-falls-back to UTC.
   const prof = getProfileSetting(profileId, "timezone");
@@ -120,7 +132,7 @@ export function getTimezone(profileId: number): string {
     prof,
     prof == null ? getSetting("timezone") : undefined
   );
-}
+});
 
 export function setTimezone(profileId: number, tz: string): void {
   if (!isValidTimezone(tz)) throw new Error(`Invalid timezone: ${tz}`);

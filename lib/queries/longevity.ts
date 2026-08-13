@@ -95,10 +95,23 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
   const bodyweightKg = getLatestBodyMetric(profileId, "weight");
   if (sex && bodyweightKg && isAdultForClinical(age)) {
     const standings = getStrengthByExercise(profileId)
-      .map((e) => strengthStanding(e.exercise, e.e1rmKg, sex, bodyweightKg))
+      // freeWeightE1rmKg, not e1rmKg (#2326): the pillar scores against a barbell
+      // population table, so a lift backed only by machine sets contributes no
+      // standing rather than a meaningless one.
+      .map((e) =>
+        strengthStanding(e.exercise, e.freeWeightE1rmKg, sex, bodyweightKg)
+      )
       .filter((s): s is NonNullable<typeof s> => s != null);
     const best = bestStanding(standings);
-    if (best) inputs.strength = { level: best.level, lift: best.lift };
+    // `lift` is the standards row the claim is judged against ("Bench Press"); `exercise`
+    // is the logged lift that produced it ("Barbell Bench Press"), which is what the
+    // pillar's deep link has to address (#1921).
+    if (best)
+      inputs.strength = {
+        level: best.level,
+        lift: best.lift,
+        exercise: best.exercise,
+      };
   }
 
   // Sleep regularity (#160, SRI).

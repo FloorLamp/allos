@@ -2,10 +2,14 @@ import { db, today } from "../db";
 import {
   CADENCE_SCOPES,
   cadenceDirection,
+  cadenceScopeNoun,
   cadenceVerdict,
+  type CadenceCapWeeks,
   type CadenceDirection,
   type CadenceSource,
+  type CadenceTargetVerdict,
   type CadenceVerdict,
+  type SessionCadenceFacts,
 } from "../cadence";
 import { daysBetweenDateStr, shiftDateStr } from "../date";
 import type { FrequencyScopeKind } from "../frequency-targets";
@@ -42,6 +46,11 @@ import { weekWindowStartOn } from "./profile-week";
 //   getFrequencyTargetWeeklyHistory  → weeks N, completed only, direction floor
 //   getSubstanceWeekState            → weeks 1, includeCurrent, direction cap
 //   getSubstanceWeeklyTrend          → weeks N, includeCurrent, direction cap
+//
+// The periodic recap's two reads joined them (#2395/#2397), at the bottom of this file:
+//
+//   getCadenceWeekVerdicts           → weeks 1, includeCurrent, BOTH directions
+//   getCadenceCapWeeks               → weeks N, includeCurrent, direction cap
 //
 // Load-bearing properties carried over unchanged from those readers:
 //
@@ -486,6 +495,44 @@ export function getCadenceLedger(
   });
 }
 
+// The cadence facts ONE activity carries (#2503) — the session-level twin of the two
+// workout gathers above, reading the SAME two sources they do: the activity's own type
+// plus its components' types (`activity-type`), and the regions its logged sets map to
+// (`exercise-sets`). A missing or cross-profile row answers with empty facts, which
+// `sessionAdvancesScope` then reads as "advanced nothing" — the honest answer for a row
+// this profile does not have.
+export function getSessionCadenceFacts(
+  profileId: number,
+  activityId: number
+): SessionCadenceFacts {
+  const row = db
+    .prepare(
+      `SELECT type, components FROM activities WHERE id = ? AND profile_id = ?`
+    )
+    .get(activityId, profileId) as
+    { type: string; components: string | null } | undefined;
+  if (!row) return { types: [], regions: [] };
+
+  const types = new Set<string>([row.type]);
+  for (const c of parseComponents(row.components))
+    if (c?.type) types.add(c.type);
+
+  // Scoped through the parent activity, which the id+profile check above already
+  // pinned to this profile.
+  const regions = new Set<string>();
+  for (const s of db
+    .prepare(
+      `SELECT DISTINCT s.exercise AS exercise
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE s.activity_id = ? AND a.profile_id = ?`
+    )
+    .all(activityId, profileId) as { exercise: string }[]) {
+    const region = regionForExercise(s.exercise);
+    if (region) regions.add(region);
+  }
+  return { types: [...types], regions: [...regions] };
+}
+
 // Per-week counts for ONE scope with no target row required — the seam substance
 // week state and the substance trend read, since a substance is tracked (and its
 // consumption shown) whether or not a cap has been set.
@@ -498,4 +545,121 @@ export function getCadenceScopeCounts(
     cadenceCounts(profileId, [scope], windows).get(scopeKey(scope)) ??
     (Array(windows.length).fill(0) as number[])
   );
+}
+
+// ---------------------------------------------------------------------------
+// The recap's two reads (#2395 / #2397) — adapters, not a fifth reader
+// ---------------------------------------------------------------------------
+//
+// The daily digest reports a weekly target's PACE; the message that closes the week
+// reported raw activity counts and never mentioned the targets the week is defined
+// over (#2395). Both of the reads below are the SAME ledger with a different declared
+// option set — one week for a verdict, several weeks for a cap's period record — and
+// neither computes a verdict of its own: `cadenceVerdict` decided it inside
+// `getCadenceLedger`, and these turn its output into the shape a message builder words.
+//
+// WHY BOTH DIRECTIONS ARE READ BY NAME. `direction` is a ledger OPTION, so a read that
+// wants floors and caps asks twice and says so, rather than reading one and subtracting
+// a scope kind (the anti-pattern #2034 removed). The two answers stay distinguishable
+// all the way to the sentence, which is what keeps a cap out of the floor vocabulary.
+
+// ANCHORING. The ledger's windows are the profile's OWN weekly windows walked back from
+// an anchor DAY, so a caller that already knows the week it means passes that week's
+// LAST day and reads the anchor's own window: in calendar mode that is the week
+// containing `weekEnd`, in rolling mode the trailing seven days ending on it. Both are
+// fully elapsed when `weekEnd` is a closed period's end, which is the only way the
+// recap calls this. Stepping the anchor forward by a day instead would shift a rolling
+// profile's whole window by a day, which is why the period's own end date is the anchor
+// and not the day after it.
+function weekEndingOn(
+  profileId: number,
+  weekEnd: string,
+  direction: CadenceDirection
+): CadenceLedgerEntry[] {
+  return getCadenceLedger(profileId, {
+    weeks: 1,
+    includeCurrent: true,
+    direction,
+    asOf: weekEnd,
+  });
+}
+
+// Every active target's verdict for the week ENDING on `weekEnd`, floors and caps
+// alike, ready for `cadenceWeekVerdictLine`.
+//
+// A target that did not exist for the whole of that week is left out (#1670's cold-start
+// exclusion, already carried on the ledger entry): a target declared on Thursday is
+// under its floor by construction, and reporting it as "short" would be the app scoring
+// a week the user had not yet declared anything about.
+export function getCadenceWeekVerdicts(
+  profileId: number,
+  weekEnd: string
+): CadenceTargetVerdict[] {
+  const out: CadenceTargetVerdict[] = [];
+  for (const direction of ["floor", "cap"] as const) {
+    for (const entry of weekEndingOn(profileId, weekEnd, direction)) {
+      if (!entry.existedWholeWindow) continue;
+      const week = entry.weeks[0];
+      if (!week) continue;
+      const ceiling = entry.target.per_week_max;
+      out.push({
+        label: cadenceScopeNoun(
+          entry.target.scope_kind,
+          entry.target.scope_value
+        ),
+        direction,
+        verdict: week.verdict,
+        // The RANGE ceiling of a floor target (#1259), exceeded strictly — reaching it
+        // is the calm "that's plenty" state the vocabulary already calls `at-ceiling`,
+        // and only passing it is a fact worth a clause. Never asked of a cap: a cap's
+        // exceedance IS its `over-cap` verdict.
+        ...(direction === "floor" && ceiling != null && week.count > ceiling
+          ? { overCeiling: true }
+          : {}),
+      });
+    }
+  }
+  return out;
+}
+
+// How each declared CAP fared across the completed weeks ending on `asOf` — the
+// restructured half of #2397. "Over the alcohol cap in 3 of the past 4 weeks" is the
+// ledger's own verdict on a target the USER set: no pattern detection, no biomarker, and
+// silence for a profile that declared no cap.
+//
+// `weeks` is how many whole weekly windows the caller's period holds; a cap declared
+// part-way through is reported over the weeks it actually existed for, and a cap with
+// fewer than `minWeeks` of them is not reported at all — one week's cap verdict is the
+// weekly recap's job, and calling a single week a period record would overstate it.
+export const CAP_PERIOD_MIN_WEEKS = 2;
+
+export function getCadenceCapWeeks(
+  profileId: number,
+  opts: { asOf: string; weeks: number }
+): CadenceCapWeeks[] {
+  if (opts.weeks < CAP_PERIOD_MIN_WEEKS) return [];
+  const entries = getCadenceLedger(profileId, {
+    weeks: opts.weeks,
+    includeCurrent: true,
+    direction: "cap",
+    asOf: opts.asOf,
+  });
+  const out: CadenceCapWeeks[] = [];
+  for (const entry of entries) {
+    // Only the weeks that began after the cap was declared. The ledger's
+    // `existedWholeWindow` answers this for its OLDEST window; a multi-week read needs
+    // it per week, off the same `created_at` day the flag compares.
+    const declaredOn = entry.target.created_at.slice(0, 10);
+    const weeks = entry.weeks.filter((w) => w.start >= declaredOn);
+    if (weeks.length < CAP_PERIOD_MIN_WEEKS) continue;
+    out.push({
+      label: cadenceScopeNoun(
+        entry.target.scope_kind,
+        entry.target.scope_value
+      ),
+      overWeeks: weeks.filter((w) => w.verdict === "over-cap").length,
+      weeks: weeks.length,
+    });
+  }
+  return out;
 }

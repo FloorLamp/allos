@@ -1,6 +1,6 @@
 import type { HealthConnectOriginChoice } from "./health-connect";
 
-// The structured `details` JSON every provider's sync event can carry. Started as
+// The structured `details` JSON every source's sync event can carry. Started as
 // Health Connect's origin/warning diagnostics and is now the shared event-level
 // channel: Fitbit Takeout writes its partial-failure warning here, and a PULL run
 // that stopped early marks itself `truncated` (#1614) so Review can render it as a
@@ -9,7 +9,7 @@ import type { HealthConnectOriginChoice } from "./health-connect";
 export interface SyncEventDetails {
   warnings: string[];
   origins: HealthConnectOriginChoice[];
-  // The provider had MORE data than this run took: a page cap or a 429 stopped it,
+  // The source had MORE data than this run took: a page cap or a 429 stopped it,
   // and the sync cursor was deliberately not advanced so the next run re-covers the
   // remainder. Absent (rather than false) on an ordinary complete run.
   truncated?: boolean;
@@ -80,18 +80,29 @@ export function isTruncatedSyncEvent(ev: { details?: string | null }): boolean {
   return parseSyncEventDetails(ev.details ?? null)?.truncated === true;
 }
 
-// The one Review line for a pull that a provider page cap or rate limit cut short.
+// The one Review line for a pull that a source page cap or rate limit cut short.
 // Written into the event's own `details` (never a second event), beside the
 // `truncated` marker the UI badges. The cursor is deliberately NOT advanced on such a
 // run, so the next sync re-covers the window.
 export const TRUNCATED_SYNC_WARNING =
   "Partial sync — a page cap or rate limit stopped this run early. The next sync picks up where it left off.";
 
-// The serialized `details` payload for a truncated pull run. ONE shape for Strava,
-// Oura, and Withings so their partial runs can't describe themselves differently.
-export function truncatedSyncDetails(): string {
+// The serialized `details` payload for a PARTIAL run. ONE shape for Strava, Oura,
+// Withings and — since #2567 — Weather, so their partial runs can't describe
+// themselves differently.
+//
+// `warning` overrides the human Review LINE only, never the durable marker: every
+// caller writes the same `truncated: true` that `isTruncatedSyncEvent` reads and
+// `scheduledStanding` turns into `"partial"`. Weather passes its own line because the
+// default names a cause it does not have — no page cap and no rate limit stopped it,
+// its air-quality half simply failed — and a marker whose sentence is false is worse
+// than no sentence at all. Bounded here rather than trusted: a partial reason can be
+// an arbitrary upstream error string.
+export function truncatedSyncDetails(
+  warning: string = TRUNCATED_SYNC_WARNING
+): string {
   return JSON.stringify({
-    warnings: [TRUNCATED_SYNC_WARNING],
+    warnings: [warning.slice(0, 500)],
     origins: [],
     truncated: true,
   } satisfies SyncEventDetails);

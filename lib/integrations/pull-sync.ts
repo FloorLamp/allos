@@ -42,7 +42,7 @@ import {
 import { shouldAdvanceCursor, type CursorPolicy } from "./pull-window";
 
 // THE pull-sync runner (#2040). One implementation of everything a scheduled pull
-// does either side of the provider's own API calls:
+// does either side of the source's own API calls:
 //
 //   credentials → gather → upsert in one tx → post-commit hooks → cursor → accounting
 //
@@ -55,7 +55,7 @@ import { shouldAdvanceCursor, type CursorPolicy } from "./pull-window";
 // The invariants (docs/internals/integrations-sync.md) are asserted HERE, once:
 // dedupe happens in the keyed upserts, a manually edited row is never overwritten
 // (isEditLocked, inside those upserts), every run records inserted/updated/unchanged,
-// and a run the provider cut short keeps its cursor and carries the durable
+// and a run the source cut short keeps its cursor and carries the durable
 // `truncated` marker Review reads.
 //
 // It must NOT touch any Next.js request-scoped API (revalidatePath): it runs from
@@ -63,7 +63,7 @@ import { shouldAdvanceCursor, type CursorPolicy } from "./pull-window";
 
 const log = createLogger("pull-sync");
 
-// The rows one run gathered, already normalized. A provider supplies only the kinds
+// The rows one run gathered, already normalized. A source supplies only the kinds
 // it actually produces; the rest are absent and their upserts are skipped.
 export interface PullBatch {
   activities?: NormActivity[];
@@ -77,7 +77,7 @@ export interface PullBatch {
   // Optional rich cycling artifacts gathered with an activity. These resolve their
   // parent through the activity external id, so the shared runner persists them in
   // the SAME transaction, after the activity upsert. Replacement parents are
-  // explicit: a provider may successfully fetch an empty lap/segment list, while a
+  // explicit: a source may successfully fetch an empty lap/segment list, while a
   // transient detail failure must preserve the prior children.
   cyclingTelemetry?: NormCyclingTelemetry[];
   activityLaps?: NormActivityLap[];
@@ -88,11 +88,11 @@ export interface PullBatch {
 // A successful gather.
 export interface PullGather<TCursor extends string | number> {
   batch: PullBatch;
-  // The raw provider JSON this run fetched, for the admin-only raw viewer (#9).
+  // The raw source JSON this run fetched, for the admin-only raw viewer (#9).
   raw: unknown[];
-  // Rows the provider returned that mapped to nothing.
+  // Rows the source returned that mapped to nothing.
   skipped: number;
-  // The provider cut the run short (page/detail cap, or a rate limit). Data remains
+  // The source cut the run short (page/detail cap, or a rate limit). Data remains
   // upstream; the cursor policy below decides what that means.
   truncated: boolean;
   // The newest cursor value this run reached. The runner commits it per the spec's
@@ -102,7 +102,7 @@ export interface PullGather<TCursor extends string | number> {
 
 // A gather that could not complete. `status` is the failing HTTP status when there
 // was one — a DEFINITIVE auth failure (a revoked personal access token) flips the
-// connection to needs_reauth so the tick stops retrying forever (#326). A provider
+// connection to needs_reauth so the tick stops retrying forever (#326). A source
 // that resolves credentials through its own refresh path leaves it unset, because
 // that path already owns the reauth transition.
 export interface PullFailure {
@@ -119,7 +119,7 @@ function isFailure<T extends string | number>(
   return "error" in o;
 }
 
-// Per-kind row totals (inserted + updated + unchanged) — what a provider names its
+// Per-kind row totals (inserted + updated + unchanged) — what a source names its
 // counts after. Kinds it does not produce are 0.
 export interface PullTotals {
   activities: number;
@@ -155,14 +155,14 @@ export interface PullSpec<
     write(profileId: number, value: TCursor): void;
     policy: CursorPolicy;
   };
-  // The genuinely per-provider part: endpoints, `next_token` vs `offset/more` vs
+  // The genuinely per-source part: endpoints, `next_token` vs `offset/more` vs
   // `page` pagination, and row mapping.
   gather(
     profileId: number,
     token: TToken,
     cursor: TCursor
   ): Promise<PullOutcome<TCursor>>;
-  // The provider's own count vocabulary for `last_sync_summary` and its typed result
+  // The source's own count vocabulary for `last_sync_summary` and its typed result
   // ("workouts" for Oura, "activities" for Strava, …).
   summarize(totals: PullTotals): TCounts;
   // Work that must happen after the transaction COMMITTED — a reconcile, a merge.
@@ -170,13 +170,13 @@ export interface PullSpec<
   // Gets the gathered batch too, since a reconcile generally needs the MAPPED rows
   // (their canonical names) and not only the ids the transaction returned.
   afterCommit?(profileId: number, commit: PullCommit, batch: PullBatch): void;
-  // What the provider ran out of, for the truncation log line.
+  // What the source ran out of, for the truncation log line.
   truncationReason?: string;
 }
 
-// Run one provider's scheduled pull. Returns its own count summary (plus
+// Run one source's scheduled pull. Returns its own count summary (plus
 // `truncated: true` when the run was cut short), or `{ error }` for a graceful
-// failure — never throws for an ordinary provider/network problem.
+// failure — never throws for an ordinary source/network problem.
 export async function runPullSync<
   TToken,
   TCursor extends string | number,
@@ -299,7 +299,7 @@ export async function runPullSync<
   // The no-finish fallback for imports (#1154 §B2): a just-synced session dated today
   // gets the delayed post-workout dose dispatch armed, so its doses aren't
   // bucket-slot-dependent. Only when the run actually INSERTED an activity — a pure
-  // re-scan of known rows arms nothing, and a provider that writes no activities at
+  // re-scan of known rows arms nothing, and a source that writes no activities at
   // all never reaches it.
   if (commit.activities.inserted > 0)
     queuePostWorkoutForFreshImports(profileId);
@@ -308,7 +308,7 @@ export async function runPullSync<
       spec.afterCommit(profileId, commit, batch);
     } catch (err) {
       log.error("post-commit hook failed", {
-        provider: spec.id,
+        sourceId: spec.id,
         err: err instanceof Error ? err.message : String(err),
       });
     }
@@ -335,7 +335,7 @@ export async function runPullSync<
     skipped,
   });
 
-  // The legacy flat `last_sync_summary`, in the provider's own count vocabulary.
+  // The legacy flat `last_sync_summary`, in the source's own count vocabulary.
   recordSync(profileId, spec.id, { ...counts, truncated: truncated ? 1 : 0 });
   {
     const w = win();
@@ -362,7 +362,7 @@ export async function runPullSync<
       suppressed: tally.suppressed,
       edited: tally.edited,
       skipped: tally.skipped,
-      // A run the provider cut short (page cap / 429) is NOT a clean success: the
+      // A run the source cut short (page cap / 429) is NOT a clean success: the
       // cursor was deliberately not advanced and data is still upstream, so the event
       // carries a durable `truncated` marker + its Review line (#1614). Ordinary
       // complete runs write no details at all.

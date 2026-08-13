@@ -34,7 +34,7 @@ describe("sharedSupplyMemberLabels", () => {
       },
     ]);
 
-    expect(labels.get(1)).toBe("Magnesium · IntakeItem · 200 mg");
+    expect(labels.get(1)).toBe("Magnesium · Supplement · 200 mg");
     expect(labels.get(2)).toBe("Magnesium · Medication · 400 mg");
   });
 

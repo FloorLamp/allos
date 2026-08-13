@@ -7,6 +7,7 @@ import {
   clusterActivityDuplicates,
   preferActivityKeeperId,
   autoMergeCluster,
+  highConfidenceTwinIds,
   orderDropsForFold,
   type ActivityDupInput,
 } from "@/lib/import-review/detect";
@@ -290,5 +291,71 @@ describe("autoMergeCluster (#1081)", () => {
     expect(d).not.toBeNull();
     expect(d!.keepId).toBe(1); // the edited row wins despite being the manual one
     expect(d!.dropIds).toEqual([2]);
+  });
+});
+
+// ── The post-workout dispatch's duplicate awareness (#2570) ──────────────────
+
+describe("highConfidenceTwinIds", () => {
+  // THE SHAPE THE ISSUE IS ABOUT: one bike ride mirrored into a hub by the same app,
+  // 32 seconds apart, so the start-instant identity kept both. One provider called it
+  // biking; the other wrote it untyped. Same source, so auto-merge declines it — and
+  // before #2570 nothing else was watching either.
+  const hubA = row({
+    id: 391,
+    source: "health-connect",
+    external_id: "health-connect:fixture-a",
+    start_time: "09:04",
+    end_time: "10:01",
+  });
+  const hubB = row({
+    id: 392,
+    type: "unclassified",
+    source: "health-connect",
+    external_id: "health-connect:fixture-b",
+    start_time: "09:03",
+    end_time: "10:01",
+  });
+
+  it("names the other row of a same-source overlapping pair", () => {
+    const pairs = findActivityDuplicates([hubA, hubB]);
+    expect(pairs.map((p) => p.confidence)).toEqual(["high"]);
+    expect(highConfidenceTwinIds(pairs, 391)).toEqual([392]);
+    expect(highConfidenceTwinIds(pairs, 392)).toEqual([391]);
+  });
+
+  it("names every high-confidence partner when a session landed as four rows", () => {
+    const rich = row({
+      id: 400,
+      source: "strava",
+      external_id: "strava:fixture",
+      start_time: "09:04",
+      end_time: "10:01",
+    });
+    const pairs = findActivityDuplicates([hubA, hubB, rich]);
+    expect(highConfidenceTwinIds(pairs, 400).sort()).toEqual([391, 392]);
+  });
+
+  it("ignores a MEDIUM proximity match — declining a send needs better than a guess", () => {
+    // A medium pair is medium precisely because a human is meant to look at it. A
+    // second real workout that merely resembles the first must still be announced.
+    const later = row({
+      id: 500,
+      source: "strava",
+      external_id: "strava:later",
+      start_time: "17:10",
+      end_time: "17:40",
+    });
+    const manualLater = row({ id: 501, start_time: null, end_time: null });
+    const pairs = findActivityDuplicates([later, manualLater]);
+    expect(pairs.every((p) => p.confidence === "medium")).toBe(true);
+    expect(highConfidenceTwinIds(pairs, 500)).toEqual([]);
+  });
+
+  it("says nothing about a row nothing was detected against", () => {
+    expect(highConfidenceTwinIds([], 391)).toEqual([]);
+    expect(
+      highConfidenceTwinIds(findActivityDuplicates([hubA, hubB]), 999)
+    ).toEqual([]);
   });
 });

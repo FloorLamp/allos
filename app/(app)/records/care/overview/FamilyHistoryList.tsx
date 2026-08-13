@@ -56,6 +56,7 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
     headerClassName: "hidden sm:table-cell",
     cellClassName:
       "hidden whitespace-nowrap text-slate-600 sm:table-cell dark:text-slate-300",
+    empty: (f) => f.onset_age == null,
     cell: (f) => (f.onset_age != null ? `${f.onset_age} yrs` : "—"),
   },
   {

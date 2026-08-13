@@ -69,6 +69,23 @@ const ALLOW_WRITE: { file: string; includes: string; why: string }[] = [
     why: "the importer's medication CREATE names `active` only as the born row's literal initial value (1) — there is no prior state to transition from, the additive case the audit criterion leaves plain (#2133). Every later flip of the flag, including the import path's own course-derived re-sync, goes through the registered cores.",
   },
   {
+    file: "app/(app)/protocols/actions.ts",
+    includes:
+      "INSERT INTO protocols (profile_id, name, start_date, end_date, notes, outcome_keys, situation, equipment_id, frequency_target_id, owns_frequency_target, intake_item_id) VALUES (?, ?, ?, ?,",
+    why: "createProtocol: the form's CREATE names `end_date` as the born row's initial window bound — usually NULL, and a past-dated backfill when the user is recording a block they already finished. There is no prior state to transition from, the additive case the audit criterion leaves plain (#2135). Every later flip of the flag goes through the registered core.",
+  },
+  {
+    file: "app/(app)/protocols/actions.ts",
+    includes:
+      "INSERT INTO protocols (profile_id, name, start_date, end_date, notes, outcome_keys, situation, equipment_id, frequency_target_id, owns_frequency_target, intake_item_id) VALUES (?, ?, ?, NULL,",
+    why: "runProtocolAgain: a born row again — the literal NULL is the new run's open window, not a transition of the expired run it copies from (that row is left closed on purpose, so its finished comparison window survives). The eligibility question it asks first is the same pure protocolReopenEligibility the core and the Resume control use.",
+  },
+  {
+    file: "app/(app)/protocols/actions.ts",
+    includes: "UPDATE protocols SET name = ?",
+    why: "updateProtocol: the protocol EDIT form writes the whole record, and `end_date` is one of its FIELDS — the user is stating the window this block ran over, in the same save as its name, notes and outcomes, and a date typed into a dated form is a correction rather than a one-tap transition. It is not a blind write: the save reconciles the situation activation with the new window inside the same writeTx, exactly as the core does. Splitting one form save into two writes would put a second reason to fail inside a form the user is trying to submit.",
+  },
+  {
     file: "app/(app)/nutrition/intake-actions.ts",
     includes: "UPDATE intake_item_doses SET amount = ?",
     why: "updateIntakeItem's dose EDIT: amount/time/window on a live dose are ordinary last-write-wins form writes; `retired` appears only as the guard PREDICATE (`AND retired = 0`) that keeps a forged/stale id from rewriting a retired dose's row — the column is never SET here (#2131). The retire/un-retire transitions themselves live in the registered dose-lifecycle core.",

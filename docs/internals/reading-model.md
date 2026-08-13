@@ -504,6 +504,48 @@ identity, no clinical knowledge and therefore no placement. It stays outside
 `ReadingTarget`, and `lib/metric-readings.ts` splits it off to the mood store's
 own write core, where #992 requires every mutation of that table to live.
 
+### The lock is reachable, and it survives a reprocess (#2364)
+
+Correcting a reading arms the #133 lock. `updateReadingAt` used to arm it on
+`medical_records` with `CASE WHEN external_id IS NOT NULL`, which asks **which
+import path produced the row** rather than **did a human change a value this app
+derived** — and `extractionToPersistInput` sets `external_id: null`
+unconditionally, so for an AI-extracted reading the lock was not merely unset, it
+was _unsettable_ (measured: 309 of 309 AI-extracted rows on a real database carry
+a null `external_id`; deterministic CCD rows are the mirror image at 250 of 250).
+Every `medical_records` correction writer arms it unconditionally now — the
+Results record editor, the temperature editor, the audiogram entry form,
+`updateReadingAt`, and `lib/unit-mislabel-correction.ts`, which always did; the
+disagreement between them was the tell. On a table an import reaches ONLY through
+`external_id` — `practice_logs`, which has no `document_id` — that condition is
+still the right question and stays, so
+`lib/__tests__/observation-substrate.test.ts` scans `medical_records` statements
+alone.
+
+The lock alone was not enough. A reprocess is **delete-and-reinsert** over
+`IMPORT_FOOTPRINT_TABLES` — that is what makes the delete-set and the reprocess
+path the same code — so even a correctly locked row was removed by a
+re-extraction, a re-import from the saved raw (#903), or a reprocess-all.
+`edited` therefore protected against integration sync while the likeliest
+overwrite of a document-derived reading is the document's own reprocess.
+
+The footprint does not grow a per-table exception. `lib/import-corrections.ts`
+captures the document's corrected readings **before** the clear and re-applies
+them **after** the insert — the `reapplyVisitLinkDecisions` (#1050/#1053) shape,
+for the other durable user decision a reprocess would otherwise discard. Matching
+is on **#482 identity + day + unit**, never on row id (the ids are new); same-day
+duplicates of one identity pair in order, since a second same-day reading is a
+curve and not a correction (#800/#843). A different unit does not match — pasting
+104 mg/dL onto a mmol/L row would be corruption dressed as a rescue.
+
+A correction the fresh extraction produces no counterpart for is **reported, not
+resurrected**: an `ImportDrop` with reason `correction_orphaned` on the document's
+import report, so the user learns the correction lost its subject instead of
+keeping a row the document stopped claiming. It does not move the report's
+`considered` count — a lost correction was never a candidate the document
+offered. No schema change: the capture lives for one persist transaction, and
+nothing is stored between reprocesses.
+
 ### What routed differently
 
 `Resting Heart Rate` joined `CONTINUOUS_READING_METRIC` (part 3 of #1996): its

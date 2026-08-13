@@ -55,12 +55,14 @@ import {
   coursesFromImportedMedication,
   normalizeFhirMedStatus,
 } from "../medication-course-import";
+import type { DropReason, ImportDrop } from "../import-report";
 import {
   ICD10,
   RXNORM,
   conceptName,
   doseLabel,
   fhirReadingFromCode,
+  hasUnparsableDurationValue,
   firstCodingCode,
   humanName,
   fhirTime,
@@ -155,20 +157,91 @@ export function mapImmunizationResource(
 
 // ---- Observation ----
 
+// What one Observation resource yielded: the readings it KEPT, and the candidates it
+// REFUSED at the component level (#2411).
+//
+// A resource-level refusal is classified from the resource by `fhirDropReason`, which
+// can only be asked once the resource maps to nothing at all. A COMPONENT-level
+// refusal has no such observer: only the mapper knows which of a BP's two components
+// it actually refused, and a resource that kept its systolic maps to something, so the
+// resource-level classifier is never consulted. That is why the drops travel back OUT
+// of the mapper rather than being re-derived from the node — each carries the
+// component's OWN printed label and its own reason, and (via `drops`) counts into
+// `considered`, so kept-vs-considered stays true for a partially-valued panel.
+export interface ObservationOutcome {
+  records: ImportedRecord[];
+  drops: ImportDrop[];
+}
+
+// Why one component[] entry yielded no reading. Mirrors the guard order in
+// `readFhirObservationValue`, in the same spirit as `fhirDropReason` does for a whole
+// resource:
+//   • an explicit `dataAbsentReason` is FHIR's null flavor — the source SAID the value
+//     is absent, which is a different fact from carrying nothing;
+//   • a colon-formatted duration unit whose value isn't a duration is the #2322 door
+//     refusing it (`unparsable_value`), never "no value", which says the opposite;
+//   • anything else genuinely carried no productive value.
+function componentDropReason(comp: any): DropReason {
+  if (comp?.dataAbsentReason != null) return "null_flavor";
+  if (hasUnparsableDurationValue({ ...comp, component: undefined }))
+    return "unparsable_value";
+  return "no_value";
+}
+
+// One refused component as a reported drop. The label is the component's OWN printed
+// name (never the parent Observation's), resolved the way `fhirReadingFromCode`
+// resolves a KEPT component's name, and the kind follows the component's own LOINC
+// disposition — a refused diastolic is a `vitals` candidate exactly as the systolic
+// beside it is a `vitals` reading.
+function componentDrop(comp: any, reason: DropReason, parent: any): ImportDrop {
+  const code = comp?.code as FhirCodeableConcept | undefined;
+  const loinc = loincFromFhirCode(code);
+  const label =
+    code?.text ||
+    code?.coding?.find((c) => c.display)?.display ||
+    (loinc ? `LOINC ${loinc}` : null) ||
+    "Observation component";
+  return {
+    kind: classifyLoinc(loinc).disposition === "vital" ? "vitals" : "lab",
+    label,
+    reason,
+    section:
+      typeof parent?.resourceType === "string"
+        ? parent.resourceType
+        : "Observation",
+  };
+}
+
 // Map one Observation resource to ZERO or more readings. A scalar Observation is
 // one reading; a panel-style Observation that carries its real numbers in
 // component[] (canonically, blood pressure LOINC 85354-9 with systolic 8480-6 +
 // diastolic 8462-4 components — how Epic/Apple "Export FHIR" ships BP) becomes ONE
 // reading per valued component. A valueless, component-less Observation is DROPPED
 // (empty array) rather than importing a nameless "—" row.
+//
+// Back-compat accessor over `observationOutcome` for callers that only want the kept
+// readings. A caller that reports an import (the bundle walk) must use the outcome —
+// discarding `.drops` here is exactly the silence #2411 fixed.
 export function observationRecords(
   r: any,
   idPrefix: string,
   ctx?: FhirBundleCtx
 ): ImportedRecord[] {
+  return observationOutcome(r, idPrefix, ctx).records;
+}
+
+export function observationOutcome(
+  r: any,
+  idPrefix: string,
+  ctx?: FhirBundleCtx
+): ObservationOutcome {
   // Drop retracted/void readings, mirroring the immunization mapper — an
-  // entered-in-error or cancelled Observation is not real data.
-  if (r?.status === "entered-in-error" || r?.status === "cancelled") return [];
+  // entered-in-error or cancelled Observation is not real data. Classified at the
+  // RESOURCE level (`negated`), so no component drops are emitted for it: the whole
+  // resource is one refusal, not N.
+  const none: ObservationOutcome = { records: [], drops: [] };
+  if (r?.status === "entered-in-error" || r?.status === "cancelled")
+    return none;
   // Keep the prior `effectiveDateTime ?? issued` order so no already-stored key
   // shifts; effectivePeriod.start is only a final fallback that RECOVERS
   // observations which carry a period but neither of those (previously dropped).
@@ -180,7 +253,9 @@ export function observationRecords(
     r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start
   );
   const date = sourceDay(time);
-  if (!date) return [];
+  // An undated resource is one resource-level refusal (`other`) — its components are
+  // not separately reportable, because none of them could have been placed on a day.
+  if (!date) return none;
   // The performing lab/org (Observation.performer) — provenance.
   const provider = ctx
     ? providerFromRefs(r?.performer, ctx, r?.contained, "organization")
@@ -189,15 +264,29 @@ export function observationRecords(
   const encExt = encounterRefExternalId(r, ctx);
 
   const out: ImportedRecord[] = [];
+  const drops: ImportDrop[] = [];
   // A component-bearing Observation carries its numbers in the components (BP), so
   // emit one reading per valued component. A rare top-level value alongside
   // components is also kept so nothing is lost.
+  //
+  // A component that yields no value is a REFUSED CANDIDATE, reported as such (#2411)
+  // — a two-component BP whose diastolic is null-flavored used to import as a lone
+  // systolic with the report saying nothing at all.
   const components = Array.isArray(r?.component) ? r.component : [];
+  // The component node each kept component reading came from, positionally aligned
+  // with the head of `out` — so a reading the disposition filter below refuses can be
+  // reported against its OWN component (the refused ones already left the array).
+  const keptFrom: any[] = [];
   for (const comp of components) {
     const val = readFhirObservationValue(comp);
-    if (!val) continue;
+    if (!val) {
+      drops.push(componentDrop(comp, componentDropReason(comp), r));
+      continue;
+    }
+    keptFrom.push(comp);
     out.push(fhirReadingFromCode(comp?.code, val, date, idPrefix, provider));
   }
+  const componentCount = out.length;
   const topVal = readFhirObservationValue(r);
   if (topVal) {
     out.push(
@@ -225,19 +314,34 @@ export function observationRecords(
   const resultStatus = normalizeResultStatus(
     typeof r?.status === "string" ? r.status : null
   );
-  return out
-    .filter((rec) => {
-      // Drop the same administrative/percentile codes the CDA mapper drops
-      // (#681/#684/#722), via the single LOINC classifier.
-      const d = classifyLoinc(rec.loinc).disposition;
-      return d !== "non-analyte" && d !== "percentile";
-    })
-    .map((rec) => ({
+  const kept = out.filter((rec, i) => {
+    // Drop the same administrative/percentile codes the CDA mapper drops
+    // (#681/#684/#722), via the single LOINC classifier.
+    const d = classifyLoinc(rec.loinc).disposition;
+    if (d !== "non-analyte" && d !== "percentile") return true;
+    // A COMPONENT refused here is reported like any other component refusal (#2411).
+    // The scalar reading is NOT: a resource that yields nothing is classified from the
+    // resource by `fhirDropReason`, which already reports exactly these two reasons —
+    // reporting it here too would count one candidate twice.
+    if (i < componentCount)
+      drops.push(
+        componentDrop(
+          keptFrom[i],
+          d === "percentile" ? "derived_percentile" : "non_analyte",
+          r
+        )
+      );
+    return false;
+  });
+  return {
+    records: kept.map((rec) => ({
       ...rec,
       occurred_at: sourceInstant(time),
       encounter_external_id: encExt,
       result_status: resultStatus,
-    }));
+    })),
+    drops,
+  };
 }
 
 // Back-compat single-reading accessor: the FIRST reading an Observation yields, or
@@ -1118,24 +1222,27 @@ export function mapGoalResource(r: any): ImportedCareGoal | null {
 // external_id), so the value here is picking up Observations that live ONLY inside
 // the report — its `contained` resources and any referenced result that resolves to
 // one. Overlap with a top-level Observation collapses on the shared external_id.
+// Returns the same ObservationOutcome shape its members do: a component refused inside
+// a report-only Observation is reported exactly like one refused at top level (#2411).
 export function recordsFromDiagnosticReport(
   r: any,
   idPrefix: string,
   ctx: FhirBundleCtx
-): ImportedRecord[] {
-  if (r?.status === "entered-in-error" || r?.status === "cancelled") return [];
-  const out: ImportedRecord[] = [];
+): ObservationOutcome {
+  const out: ObservationOutcome = { records: [], drops: [] };
+  if (r?.status === "entered-in-error" || r?.status === "cancelled") return out;
+  const take = (obs: any) => {
+    const o = observationOutcome(obs, idPrefix, ctx);
+    out.records.push(...o.records);
+    out.drops.push(...o.drops);
+  };
   const contained = Array.isArray(r?.contained) ? r.contained : [];
   for (const c of contained) {
-    if (c?.resourceType === "Observation") {
-      out.push(...observationRecords(c, idPrefix, ctx));
-    }
+    if (c?.resourceType === "Observation") take(c);
   }
   for (const ref of Array.isArray(r?.result) ? r.result : []) {
     const obs = ctx.resolve(ref, contained);
-    if (obs?.resourceType === "Observation") {
-      out.push(...observationRecords(obs, idPrefix, ctx));
-    }
+    if (obs?.resourceType === "Observation") take(obs);
   }
   return out;
 }
@@ -1442,10 +1549,14 @@ export function mapDiagnosticReport(
   r: any,
   idPrefix: string,
   ctx: FhirBundleCtx
-): { records: ImportedRecord[]; imagingStudies: ImportedImagingStudy[] } {
-  const records = recordsFromDiagnosticReport(r, idPrefix, ctx);
+): {
+  records: ImportedRecord[];
+  imagingStudies: ImportedImagingStudy[];
+  drops: ImportDrop[];
+} {
+  const { records, drops } = recordsFromDiagnosticReport(r, idPrefix, ctx);
   if (r?.status === "entered-in-error" || r?.status === "cancelled")
-    return { records, imagingStudies: [] };
+    return { records, imagingStudies: [], drops };
   const conclusion =
     typeof r?.conclusion === "string" && r.conclusion.trim()
       ? r.conclusion.trim()
@@ -1455,7 +1566,7 @@ export function mapDiagnosticReport(
   const narrative =
     [conclusion, conclusionCodeText, formText].filter(Boolean).join("\n\n") ||
     null;
-  if (!narrative) return { records, imagingStudies: [] };
+  if (!narrative) return { records, imagingStudies: [], drops };
   const date = sourceDay(
     fhirTime(r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start)
   );
@@ -1469,6 +1580,7 @@ export function mapDiagnosticReport(
     );
     return {
       records,
+      drops,
       imagingStudies: [
         {
           modality,
@@ -1491,7 +1603,7 @@ export function mapDiagnosticReport(
   }
   // Non-imaging report narrative → a value-less lab record. A record needs a date to
   // place it on the timeline/series; a dateless report narrative is dropped.
-  if (!date) return { records, imagingStudies: [] };
+  if (!date) return { records, imagingStudies: [], drops };
   const name = conceptName(r?.code) ?? "Diagnostic Report";
   const loinc = loincFromFhirCode(r?.code);
   const drId =
@@ -1510,7 +1622,7 @@ export function mapDiagnosticReport(
     loinc: loinc ?? null,
     provider: null,
   };
-  return { records: [...records, narrativeRecord], imagingStudies: [] };
+  return { records: [...records, narrativeRecord], imagingStudies: [], drops };
 }
 
 // A FHIR DocumentReference → a structured imaging study, ONLY when it is an

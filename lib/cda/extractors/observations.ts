@@ -24,7 +24,11 @@ import {
   normalizeImportedTemperature,
 } from "../../vitals-input";
 import { SECTIONS } from "../constants";
-import type { SectionExtractor } from "../constants";
+import type {
+  CdaDocumentFacts,
+  CdaSection,
+  SectionExtractor,
+} from "../constants";
 import {
   asArray,
   buildNarrativeBlockMap,
@@ -45,6 +49,12 @@ import {
 } from "../normalize";
 import { sourceDay, sourceInstant } from "../../source-time";
 import { normalizeDurationValue } from "../../duration-value";
+import { foldInstrumentScores } from "../../instrument-import";
+import type {
+  DocumentSubjectScope,
+  InstrumentSubject,
+} from "../../instrument-recognize";
+import type { ImportDrop } from "../../import-report";
 
 // ── Source-stated reference range + abnormal flag (CDA labs) ────────────────
 // A CCD lab observation carries its OWN normal range (<referenceRange>) and the lab's
@@ -299,6 +309,56 @@ export function mapObservation(
     // <performer>, else the organizer's.
     provider: providerFromPerformer(obs) ?? fallbackProvider,
   };
+}
+
+// ── Whose screening is this? (#2321) ────────────────────────────────────────
+//
+// A C-CDA clinical statement may name a subject other than the record target with a
+// `<subject><relatedSubject>` participation — the shape Family History already reads
+// for the affected relative. A perinatal screening administered to a PARENT and filed
+// in the CHILD's chart is the case that matters: attributing that depression score to
+// the child would be wrong clinically, wrong under this app's profile model, and would
+// put a crisis-escalating score on the wrong person.
+//
+// So this reports what the document SAYS, and never infers. `relatedSubject
+// classCode="PAT"` is the chart's own patient; any other relatedSubject is somebody
+// else; no statement at all is `unstated`. What `unstated` MEANS is not this function's
+// call — it depends on how many patients the document names, which is a header fact
+// (documentSubjectScope, lib/cda/parse.ts) resolved by attributesToPatient. A stated
+// other still refuses unconditionally, whatever the header says.
+const PATIENT_SUBJECT_CLASS = "PAT";
+
+function subjectOfNode(node: any): InstrumentSubject | null {
+  const rel = node?.subject?.relatedSubject;
+  if (rel == null) return null;
+  const cls = String(rel?.["@_classCode"] ?? "")
+    .trim()
+    .toUpperCase();
+  return cls === PATIENT_SUBJECT_CLASS ? "patient" : "other";
+}
+
+// The subject the section's entries state, scanning the section node, each entry's
+// organizer and each observation. A stated OTHER wins over a stated patient: if any
+// part of the screening names a different subject, the screening is not the patient's.
+export function statedInstrumentSubject(
+  sectionNode: any,
+  entries: any[]
+): InstrumentSubject {
+  const nodes: any[] = [sectionNode];
+  for (const entry of entries) {
+    nodes.push(entry, entry?.organizer);
+    nodes.push(
+      ...asArray(entry?.organizer?.component).map((c: any) => c?.observation)
+    );
+    nodes.push(...asArray(entry?.observation));
+  }
+  let seen: InstrumentSubject = "unstated";
+  for (const n of nodes) {
+    const v = subjectOfNode(n);
+    if (v === "other") return "other";
+    if (v === "patient") seen = "patient";
+  }
+  return seen;
 }
 
 function observationsFromEntries(
@@ -613,10 +673,42 @@ function reportRecordsFromEntries(
   return out;
 }
 
+// A section's screening instrument, folded out of its per-question rows (#2321). The
+// SAME call in every section that carries assessment rows, so which section an EHR
+// files a screening in — Results or Functional Status — cannot change whether it
+// scores. `foldInstrumentScores` is a no-op for a section that spells out no
+// instrument, which is nearly all of them.
+//
+// The two attribution facts are gathered from the two places they are actually
+// knowable: the SECTION states (or does not state) a subject, the DOCUMENT says how
+// many patients it is about. `doc` is optional at the interface (a test may drive one
+// extractor with a bare section), and its absence is the strict scope — an unknown
+// document is not a single-patient one (#2558).
+function withInstrumentScores(
+  section: CdaSection,
+  records: ImportedRecord[],
+  doc?: CdaDocumentFacts
+): { records: ImportedRecord[]; drops: ImportDrop[] } {
+  return foldInstrumentScores(
+    records,
+    {
+      stated: statedInstrumentSubject(section.raw, section.entries),
+      scope: doc?.subjectScope ?? "multiple-subjects",
+    },
+    sectionTitleOf(section)
+  );
+}
+
+// The section's printed title, for a drop's context line.
+function sectionTitleOf(section: CdaSection): string {
+  const t = textOf(section.raw?.title);
+  return t?.trim() || "Results";
+}
+
 export const labResultsExtractor: SectionExtractor = {
   key: "results",
   matches: (s) => sectionIs(s, SECTIONS.results),
-  extract: (s) => {
+  extract: (s, _contextDate, doc) => {
     // Two shapes of the same narrative: the block map for multi-line report BODIES +
     // radiology impressions (#708), the collapsed map for single-line lab/report NAMES.
     // Build the block map with ONE tree walk and derive the collapsed map from it (a
@@ -624,11 +716,17 @@ export const labResultsExtractor: SectionExtractor = {
     // is superlinear, so it must not be paid twice.
     const narrativeBlocks = buildNarrativeBlockMap(s.raw?.text);
     const narrativeIds = collapseNarrativeMap(narrativeBlocks);
-    return {
-      records: [
+    const folded = withInstrumentScores(
+      s,
+      [
         ...observationsFromEntries(s.entries, "lab", narrativeIds),
         ...reportRecordsFromEntries(s.entries, narrativeIds, narrativeBlocks),
       ],
+      doc
+    );
+    return {
+      records: folded.records,
+      drops: folded.drops,
       imagingStudies: imagingStudiesFromEntries(s.entries, narrativeBlocks),
     };
   },
@@ -670,11 +768,14 @@ export const vitalSignsExtractor: SectionExtractor = {
 export const functionalStatusExtractor: SectionExtractor = {
   key: "functionalStatus",
   matches: (s) => sectionIs(s, SECTIONS.functionalStatus),
-  extract: (s) => ({
-    records: observationsFromEntries(
-      s.entries,
-      "assessment",
-      buildNarrativeIdMap(s.raw?.text)
-    ).map((r) => ({ ...r, loinc: null })),
-  }),
+  extract: (s, _contextDate, doc) =>
+    withInstrumentScores(
+      s,
+      observationsFromEntries(
+        s.entries,
+        "assessment",
+        buildNarrativeIdMap(s.raw?.text)
+      ).map((r) => ({ ...r, loinc: null })),
+      doc
+    ),
 };

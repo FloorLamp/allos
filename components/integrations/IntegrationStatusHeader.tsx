@@ -12,7 +12,7 @@ import {
   standingBadge,
   standingHeadline,
   syncRunNounForKind,
-} from "@/lib/integrations/provider-state";
+} from "@/lib/integrations/source-state";
 import { groupSyncDays } from "@/lib/integrations/sync-history-days";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
@@ -35,9 +35,9 @@ function writtenCount(ev: {
 }
 
 // THE status header for one integration (#1772) — the answer to "what's the state of
-// this integration", rendered identically wherever it is asked. The provider's setup
+// this integration", rendered identically wherever it is asked. The source's setup
 // page (its home) puts it at the top of the page with the connect/disconnect/sync
-// controls; Review's inbox renders the same component for a provider that needs
+// controls; Review's inbox renders the same component for a source that needs
 // attention. They used to be two hand-mirrored cards with different badges, different
 // timestamp formats, and different accountings.
 //
@@ -49,7 +49,7 @@ function writtenCount(ev: {
 //   "run"    — Review's inbox card. It shows ONE event and there is nothing beneath
 //              it, so the newest run's split, its coverage, its drill-in and its raw
 //              link ARE the card's content.
-//   "period" — the provider's own page, which renders the full history right below.
+//   "period" — the source's own page, which renders the full history right below.
 //              The card answers and stops (pin 9): the standing as a sentence, plus
 //              today's aggregate. Restating the newest run here put the identical
 //              split, "What this wrote" and "View raw" TWICE on one screen.
@@ -65,7 +65,7 @@ export default function IntegrationStatusHeader({
   watchBackfills = false,
 }: {
   state: IntegrationState;
-  // Review lists several providers, so it names each; the setup page's PageHeader
+  // Review lists several sources, so it names each; the setup page's PageHeader
   // already carries the name.
   showName?: boolean;
   controls?: ReactNode;
@@ -135,7 +135,7 @@ export default function IntegrationStatusHeader({
       </div>
 
       {standing === "intermittent" ? (
-        // A FLAPPING provider's header states the pattern, not the last event
+        // A FLAPPING source's header states the pattern, not the last event
         // (#1880 item 1): what is true ("working, with interruptions"), the honest
         // tally, and why nothing is lost — the question a person actually has.
         <div className="mt-2" data-testid="intermittent-summary">
@@ -225,7 +225,7 @@ export default function IntegrationStatusHeader({
           </p>
         )}
       {/* The newest run's diagnostics, drill-in and raw payload belong to whichever
-          surface OWNS that run. On the provider's own page the history below owns it,
+          surface OWNS that run. On the source's own page the history below owns it,
           and repeating it here was the #1991 duplication. */}
       {perRun && latest && <SyncDetailsNotes ev={latest} />}
       {perRun && latest && written > 0 && provenance[latest.id] && (
@@ -238,7 +238,7 @@ export default function IntegrationStatusHeader({
 
       {(visibleBackfills.length > 0 || watchBackfills) && (
         <IntegrationBackfillProgress
-          provider={state.id}
+          sourceId={state.id}
           initialJobs={visibleBackfills}
           watch={watchBackfills}
         />

@@ -66,6 +66,21 @@ to the shots for fast human review.
   lands in the "Unreached dynamic routes" table in `audit.md`; it is never
   silently dropped. `lib/__tests__/ux-census-routes.test.ts` fails the unit tier
   when a new dynamic route ships without a registry entry.
+- **Tab-hub blind spot**: `pages` shoots each route at its DEFAULT tab only, so a
+  `?tab=` hub's metrics describe that one tab — /training's firstData is the Log
+  tab's, not Overview's. Attribute metrics to the tab, name it when filing, and
+  never rank a hub against plain pages without the caveat (#2566 tracks teaching
+  the harness non-default tabs).
+- **Disclosure expansion (#2616)**: a surface whose default state collapses its
+  content (the readings catalog's panel groups) registers in
+  `DISCLOSURE_EXPANSIONS` (`scripts/ux-census-routes.mjs`) and gets a SECOND
+  capture, `…-expanded.png`, taken after every closed toggle is clicked open —
+  that shot is where identity splits and label leaks show. The default shot and
+  its metrics row are untouched, so `--baseline` diffs stay comparable; a
+  registered route with nothing to expand logs `BLIND SPOT`. Redirecting routes
+  record `landedOn` in their metrics row and an "Alias routes" table in
+  `audit.md`, so byte-identical shots are attributable. The registry test pins
+  routes and `data-testid`s, so a rename fails the unit tier, not the next run.
 - Screenshots land in `data/ux-shots/` (gitignored) unless `UX_SHOTS` overrides.
 - If Playwright can't find its browser build (version-pinned cache miss), set
   `UX_CHROMIUM` to a Chromium binary — in Claude Code's remote environment that
@@ -91,7 +106,8 @@ The proven workflow for an all-pages consistency audit:
 | sort -u | wc -l` — near-1 unique hashes means the pass ran unauthenticated
    (it once produced 58 identical /login screenshots that read as a completed
    census). The harness now aborts loudly on auth failure, but verify anyway;
-   duplicates should correspond only to known redirect routes.
+   duplicates should correspond only to the audit.md "Alias routes" table's
+   rows (routes recorded as landing on another path).
 2. **Dispatch 3–4 parallel reviewer subagents**, each owning ~15–20 shots (split
    desktop alphabetically; one agent takes a mobile sample). Give each: the
    exact file list, the house conventions to judge against (one PageHeader h1 +
@@ -118,6 +134,15 @@ The proven workflow for an all-pages consistency audit:
    | thin   | `UX_SEED=thin node scripts/ux-walkthrough.mjs --serve pages` | a phone's first week         |
    | seeded | `UX_SEED=1 node scripts/ux-walkthrough.mjs --serve pages`    | ~3 weeks, full tables/charts |
 
+   **Entropy (#2594)**: any seeded shape also takes `SEED_RNG=<int>` for a
+   distinct, REPRODUCIBLE look — a seeded PRNG samples five scenario dials
+   (past/active illness, import quirks, heavy goal volume, logging gaps, long
+   names), each mapped to a defect class the seeded baseline can't show. Unset
+   = the pinned baseline (what e2e and old baselines expect). The run's
+   `run.json` + the audit header record both knobs, and `--baseline` prints a
+   loud shape-mismatch warning instead of a wall of false regressions when
+   seeds differ. Sweep 2–3 seeds when hunting; keep one seed when diffing.
+
    `UX_SEED=thin` (#1544) runs `scripts/seed.ts` and then
    `scripts/ux-thin-data.ts`, which trims every dated observation store to the
    last ~7 days (`UX_THIN_DAYS` overrides). Seven days is the point where the
@@ -129,6 +154,56 @@ The proven workflow for an all-pages consistency audit:
    document import, and keeping it lets the detail-page census still resolve ids
    on this shape. Use a scratch `ALLOS_DB_PATH` per shape, or delete the DB
    between runs — the seed refuses a non-empty database.
+
+### Live screenshots outrank the census
+
+The census's data is clean by construction, and a whole class of defect only
+exists in a lived-in profile: cross-domain interference (a recent illness
+putting Fever atop the Cycle page's symptom picker via frecency), import
+quirks (a MyChart CCD repeating a diagnosis with " - Primary" baked into the
+name), identity-family display leaks ("Family:vitamin-d-25-hydroxy" as a
+label), and ordering regressions that need enough same-band rows to show. When
+the owner posts a screenshot of their real app, treat it as a first-class
+audit input — the 2026-08 sweep's highest-value bugs all came from two such
+shots, none from the seeded census.
+
+### Trace every symptom to its mechanism before filing
+
+The first plausible mechanism is often wrong, in both directions:
+
+- A jumbled dose order read as "bucket sort is alphabetical" — every #297
+  layer was correct, and the real cause was the multi-profile merge comparator
+  dropping ALL of `compareWithinBand`'s absolute tiebreaks (it sorted by raw
+  key string). Filing the first hypothesis would have sent the fix to the
+  wrong module.
+- "Fever on the Cycle page" read as a category error — it is deliberate (the
+  bar is the day's one symptom ledger; hiding a logged fever would lie), and
+  the honest fix was a framing line, not a filter. Check whether the "bug" is
+  a documented design before filing; the fix for those is copy.
+
+Both directions end the same way: name the file:line mechanism in the issue,
+or don't file yet.
+
+## From findings to filings
+
+The loop that survived owner contact, for anything bigger than a point bug:
+
+1. Verify each visible defect in code (above), separating defects from design
+   choices from owner calls.
+2. Ship a **compact clickable prototype** of the redesigned surface — a
+   single-theme artifact in the app's own dark look, with real `<details>`
+   disclosures so fold behavior is demonstrable. Owner feedback was explicit:
+   prototypes over design essays ("artifact is tldr"). Long-form rationale
+   docs are for the record, not the pitch.
+3. Before proposing a structural change (merging surfaces, retiring a tab),
+   search closed/open issues for standing owner rulings — several surfaces
+   are pinned by decision, not by code, and a proposal that re-litigates one
+   burns the review.
+4. File **self-contained issues**: artifact URLs are private-by-default, so
+   the issue body must carry the full diagnosis and fix direction on its own.
+   Bugs and redesigns file separately (bugs are shippable independently and
+   often gate the redesign); resolved owner calls are recorded as resolved,
+   open ones listed with a recommendation.
 
 ## Mobile audit (metrics + tap costs, #1510)
 

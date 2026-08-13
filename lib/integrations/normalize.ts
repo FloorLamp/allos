@@ -29,15 +29,15 @@ import {
 import { isStaleMetricSnapshot } from "@/lib/metric-snapshot";
 import { streamKeysPlacedIn } from "@/lib/reading-placement";
 
-// Provider-agnostic record shapes. Every integration parses its own payload into
-// these, then calls the shared upserts below — so a new provider (Strava, Garmin)
+// Source-agnostic record shapes. Every integration parses its own payload into
+// these, then calls the shared upserts below — so a new source (Strava, Garmin)
 // reuses all of the DB mapping and idempotency logic.
 
 // Per-day body metrics. weight_kg may be undefined (e.g. a body-fat-only day).
 //
 // `weight_kg` is BRANDED (#2149): the column stores kilograms, so a parser must state
-// the unit its provider reported in by minting through `toKg` — `toKg(lbs, "lb")` for
-// a provider that reports pounds, `toKg(v, "kg")` for one that already reports the
+// the unit its source reported in by minting through `toKg` — `toKg(lbs, "lb")` for
+// a source that reports pounds, `toKg(v, "kg")` for one that already reports the
 // canonical unit. A raw `number` no longer compiles here, which is what stops a
 // display-unit or wrong-unit payload from reaching `body_metrics.weight_kg`.
 export interface NormBodyMetric {
@@ -47,7 +47,7 @@ export interface NormBodyMetric {
   resting_hr?: number;
   // The absolute instant (ISO) this reading was taken. Only used to collapse multiple
   // same-date readings within a batch deterministically (#605) — the LATEST non-null
-  // value wins per field. Providers that already emit one row per date (Health
+  // value wins per field. Sources that already emit one row per date (Health
   // Connect) omit it; Withings/Oura set it so their unsorted per-reading rows fold
   // in chronological order. Never persisted.
   measured_at?: string;
@@ -65,7 +65,7 @@ export interface NormMetricSample {
   start_time: string; // absolute ISO instant; point records set start == end
   end_time: string;
   value: number;
-  // Provider-within-provider provenance. Health Connect can carry records from
+  // Source-within-source provenance. Health Connect can carry records from
   // several origin apps (for example Fitbit and Garmin) under the single
   // `health-connect` integration source. Other integrations omit it.
   origin?: string | null;
@@ -90,13 +90,13 @@ export interface NormActivity {
   type: ActivityType;
   title: string;
   duration_min: number | null;
-  // BRANDED (#2149), for the same reason as NormBodyMetric.weight_kg: providers report
+  // BRANDED (#2149), for the same reason as NormBodyMetric.weight_kg: sources report
   // distance in metres (Strava), miles, or kilometres, and `activities.distance_km`
   // stores kilometres. A parser states which by minting through `toKm`.
   distance_km: Km | null;
   start_time: string | null; // HH:MM
   end_time: string | null; // HH:MM
-  // Richer per-activity metrics (Strava). All optional — a provider that omits a
+  // Richer per-activity metrics (Strava). All optional — a source that omits a
   // field leaves the column null. Power/cadence/kilojoules are cycling-only,
   // avg_temp_c is outdoor-only, workout_type is a label (see strava.ts).
   avg_hr?: number | null;
@@ -114,18 +114,18 @@ export interface NormActivity {
   workout_type?: string | null;
   // Session effort level on the app's manual-entry scale ('easy' | 'moderate' |
   // 'hard'), the one column an integration can fill in activities.intensity (Oura
-  // reports it directly). NULL for providers that don't supply it (Strava, Health
+  // reports it directly). NULL for sources that don't supply it (Strava, Health
   // Connect) — see mapOuraWorkout.
   intensity?: string | null;
   // Structured components (e.g. a single canonical-sport entry for a Strava ride)
   // persisted to the activities.components JSON column. Cardio/sport summaries group
   // by component name (see effortEntries/getCardioByActivity), so a Strava row with a
   // "Cycling" component groups under Cycling even though its title is the athlete's
-  // freeform name. Omitted/null for providers (Health Connect) that don't set it.
+  // freeform name. Omitted/null for sources (Health Connect) that don't set it.
   components?: ActivityComponent[] | null;
 }
 
-// A provider-owned wellness-practice session. Unlike training activities, practices
+// A source-owned wellness-practice session. Unlike training activities, practices
 // live in their own ledger and carry no exercise type, distance, sets, or components.
 export interface NormPracticeLog {
   external_id: string;
@@ -159,14 +159,14 @@ export function upsertPracticeLogs(
   // Fitbit meditations originally landed in activities. Migration 118 moves the
   // untouched rows, but deliberately leaves a user-edited/attached activity in
   // place. Preserve that cross-table occupancy on every later re-import so the same
-  // provider record cannot also appear as a practice.
+  // source record cannot also appear as a practice.
   const findLegacyActivity = db.prepare(
     `SELECT edited FROM activities
       WHERE profile_id = ? AND external_id = ?`
   );
   const tombstoned = loadImportTombstones(profileId, "practice_logs");
   // A meditation deleted before migration 118 has its suppression recorded against
-  // the old target table. The provider identity did not change when its destination
+  // the old target table. The source identity did not change when its destination
   // did, so that deletion must continue to suppress the rerouted practice.
   const legacyActivityTombstones = loadImportTombstones(
     profileId,
@@ -247,7 +247,7 @@ export function upsertPracticeLogs(
   return counts;
 }
 
-// A GPS route for an activity → activity_routes (issue #569). Provider-agnostic:
+// A GPS route for an activity → activity_routes (issue #569). Source-agnostic:
 // carries the encoded polyline as delivered plus optional start/end coordinates,
 // keyed to its parent activity by `external_id` (resolved to the activity's DB id
 // at upsert time). Source-owned and never hand-edited, so no edit-lock applies.
@@ -284,7 +284,7 @@ function activityMetricValues(r: NormActivity): (number | string | null)[] {
   return ACTIVITY_METRIC_COLS.map((c) => r[c] ?? null);
 }
 
-// A clinical vital / biomarker reading → medical_records. canonical groups it with
+// A clinical vital / lab reading → medical_records. canonical groups it with
 // the same analyte from manual entry / documents; external_id dedups re-syncs.
 export interface NormVital {
   external_id: string; // 'health-connect:<canonical>:<time>'
@@ -297,7 +297,11 @@ export interface NormVital {
   // (Fitbit Takeout's daily SpO₂/respiratory files): a vendor day-summary has no
   // event instant, and NULL is the honest day-grain answer.
   occurred_at?: string | null;
-  category: "vitals" | "lab" | "biomarker";
+  // #2479 part 2: `biomarker` is GONE from this union, not merely unused. It was the
+  // legacy catch-all, and a source writing it (VO2 Max did, from Health Connect and
+  // Withings) refilled the very bucket migration 185 empties. The narrowing is the
+  // guard: a parser that reaches for it no longer compiles.
+  category: "vitals" | "lab";
   name: string;
   canonical: string;
   value_num: number;
@@ -356,7 +360,7 @@ export function upsertBodyMetrics(
   const tombstoned = loadImportTombstones(profileId, "body_metrics");
   const counts = emptyCounts();
   // Collapse multiple same-date readings in this batch to one row per date FIRST
-  // (#605), so the stored triple is independent of the order the provider returned
+  // (#605), so the stored triple is independent of the order the source returned
   // its readings (Withings/Oura push one row per reading with no per-date collapse)
   // and a multi-weigh-in day no longer flip-flops on every re-scan.
   const collapsed = collapseBodyMetricsByDate(rows);
@@ -835,7 +839,7 @@ export function upsertActivities(
   const metricPlaceholders = ACTIVITY_METRIC_COLS.map(() => "?").join(", ");
   // `components` is a JSON string column, compared alongside the base/metric cols so
   // a components change → updated and an identical re-sync (same serialized JSON) →
-  // unchanged. Providers that omit components store/compare null on both sides.
+  // unchanged. Sources that omit components store/compare null on both sides.
   const compareCols = [
     ...ACTIVITY_BASE_COLS,
     ...ACTIVITY_METRIC_COLS,
@@ -858,7 +862,7 @@ export function upsertActivities(
   );
   // NOTE (#342): equipment_id is deliberately absent from BOTH this UPDATE's column
   // set and the compareCols above, so a re-sync never clobbers a hand-set session
-  // gear link — the picker is app-only, providers don't supply it. A user who links
+  // gear link — the picker is app-only, sources don't supply it. A user who links
   // gear on an imported row also flips `edited` (saveActivity), so the found.edited
   // guard below already short-circuits the whole write; this keeps it safe even if
   // that lock ever changed. Keep equipment_id out of the sync footprint.

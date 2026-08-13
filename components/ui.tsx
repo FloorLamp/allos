@@ -105,6 +105,18 @@ export function StatCard({
 // documents, and naming only one of them would be arbitrary. Pass one or the
 // other — `action` is the single-destination shorthand, and a caller supplying
 // both simply gets the singular one appended last. Every href stays `AppRoute`.
+//
+// #2536 adopted the twelve surfaces that had drawn this panel by hand. Two notes
+// for the next caller, both learned there:
+//
+//   • `message` is a NODE, not a string, because copy that has to name a thing
+//     precisely ("the <code>allos-notify</code> sidecar") should not have to
+//     re-declare the panel in order to say it. It is still one message, not a
+//     content slot: a panel wanting its own layout inside wants a card.
+//   • The padding vocabulary is exactly two values — `compact` for a nested
+//     history, the default for a page-level landing state. Reaching for a third is
+//     how the twelve copies arrived at three paddings and two radii, and
+//     lib/__tests__/empty-state-panel-scan.test.ts now fails a new hand-rolled one.
 export function EmptyState({
   message,
   action,
@@ -112,7 +124,7 @@ export function EmptyState({
   testId,
   compact = false,
 }: {
-  message: string;
+  message: React.ReactNode;
   action?: { href: AppRoute; label: string };
   actions?: ReadonlyArray<{ href: AppRoute; label: string }>;
   // Optional stable hook for a surface whose empty state is itself the feature under
@@ -127,6 +139,12 @@ export function EmptyState({
   return (
     <div
       data-testid={testId}
+      // The marker that lets a container recognise an ABSENCE and stop reserving
+      // room for the thing that is missing (#2399). ChartCard's plot box is the one
+      // reader: `.chart-card-plot` sizes whatever it holds to the plot's height, and
+      // that rule is right for a chart and wrong for the message saying there is no
+      // chart. Attribute-driven so no call site has to re-declare its own emptiness.
+      data-empty-state=""
       className={`rounded-xl border border-dashed border-black/10 bg-white text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 ${
         compact ? "p-4" : "p-10"
       }`}

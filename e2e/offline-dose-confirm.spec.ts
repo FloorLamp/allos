@@ -53,7 +53,7 @@ function morningRow(page: Page, name: string) {
 
 async function deleteIntakeItem(page: Page, name: string) {
   const row = morningRow(page, name);
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.locator("div.card").filter({ hasText: name })).toHaveCount(

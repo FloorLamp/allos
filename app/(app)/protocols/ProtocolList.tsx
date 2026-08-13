@@ -4,6 +4,7 @@ import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { Protocol } from "@/lib/types";
 import type { ProtocolHeatmap } from "@/lib/protocol-heatmap";
 import PracticeHeatmap from "@/components/practices/PracticeHeatmap";
+import { EmptyState } from "@/components/ui";
 
 // The protocol list — ongoing protocols carry a live badge; each row deep-links to
 // its before/during detail page. Server-rendered (plain data in).
@@ -18,9 +19,10 @@ export default function ProtocolList({
 }) {
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-black/10 px-4 py-8 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
-        No protocols yet. Start one when you want to test a change.
-      </div>
+      <EmptyState
+        compact
+        message="No protocols yet. Start one when you want to test a change."
+      />
     );
   }
   return (

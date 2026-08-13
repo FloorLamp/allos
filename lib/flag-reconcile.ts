@@ -4,7 +4,7 @@ import { cyclePhaseOnDate, type CyclePeriod } from "./cycle";
 import type { ReproductiveStatus, Sex } from "./types";
 
 // The canonical-ranges shape reconciledFlag needs to judge a value. Kept loose so
-// both callers (queries/medical.ts with full CanonicalBiomarker rows, db.ts with a
+// both callers (queries/medical.ts with full CanonicalResultDefinition rows, db.ts with a
 // column-subset row) can pass their own map without a cast at the boundary.
 type CanonicalLike = Parameters<typeof reconciledFlag>[3];
 
@@ -31,7 +31,7 @@ export interface FlagReconcileRow {
 // fallback. Age is computed per row from `birthdate` at the row's collection date,
 // falling back to `age` (a bare stored age), then to the adult band when neither
 // is known.
-export interface FlagReconcileContext {
+interface FlagReconcileSubject {
   sex?: Sex | null;
   birthdate?: string | null;
   age?: number | null;
@@ -40,13 +40,20 @@ export interface FlagReconcileContext {
   // profile's hormone records (the same simplification as the stored-age fallback).
   // Threaded into reconciledFlag alongside sex; only affects female physiology.
   reproductiveStatus?: ReproductiveStatus | null;
-  // The profile's logged menstrual periods (issue #718). Unlike the coarse status
-  // above, cycle phase is PER-RECORD: for each row, cyclePhaseOnDate resolves the
-  // phase on that row's OWN collection date, so the phase-specific hormone range
-  // applies (above the status proxy). Absent/empty (no cycle log) → no phase is
-  // derived and the derivation is byte-identical to the pre-#718 behavior.
-  periods?: CyclePeriod[] | null;
 }
+
+// The cycle log and the profile-local day it is read against travel TOGETHER (#2613).
+// Cycle phase is PER-RECORD — cyclePhaseOnDate resolves the phase on each row's OWN
+// collection date, so the phase-specific hormone range applies above the coarse status
+// proxy (#718) — and that derivation now refuses a date after `today`, because a phase
+// past today is unknowable rather than uncertain. A caller that brings a cycle log must
+// therefore say which day is today; a caller with no log (the pre-#718 shape, and the
+// bare-`Sex` form below) states neither and derives no phase, exactly as before.
+type FlagReconcileCycle =
+  | { periods?: null | undefined; today?: string | null }
+  | { periods: CyclePeriod[]; today: string };
+
+export type FlagReconcileContext = FlagReconcileSubject & FlagReconcileCycle;
 
 // The subject's age (whole years) for a record's collection date: derived from the
 // birthdate on that date when both are known, else the stored age fallback, else
@@ -93,12 +100,13 @@ export function computeFlagReconciliation<T>(
   const out: FlagChange[] = [];
   for (const r of rows) {
     const cb = cbByName.get(r.canonical_name.toLowerCase());
-    // The cycle phase on THIS record's collection date (#718), or null when there is
-    // no cycle log or the date predates the first recorded period. reconciledFlag only
-    // uses it for female physiology on an analyte that carries phase ranges.
+    // The cycle phase on THIS record's collection date (#718), or null when there is no
+    // cycle log, the date predates the first recorded period, or the date is AFTER today
+    // (#2613 — a record dated ahead of the day it is read on has no derivable phase).
+    // reconciledFlag only uses it for female physiology on an analyte with phase ranges.
     const cyclePhase =
-      periods && periods.length > 0 && r.date
-        ? cyclePhaseOnDate(periods, r.date)
+      periods && periods.length > 0 && r.date && context.today
+        ? cyclePhaseOnDate(periods, r.date, context.today)
         : null;
     const next = reconciledFlag(
       r.flag,

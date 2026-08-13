@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SegmentedControl from "@/components/SegmentedControl";
 import {
   IconPill,
   IconRefresh,
@@ -11,6 +12,8 @@ import {
   IconFlask,
   IconTarget,
   IconBarbell,
+  IconSalad,
+  IconStretching,
   IconSparkles,
   IconClipboardList,
   IconPlugConnected,
@@ -126,6 +129,13 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "med-monitor": IconMicroscope,
   goal: IconTarget,
   training: IconBarbell,
+  // The other two weekly-floor-target identities (#2578) get the glyph their SCOPE
+  // already carries elsewhere in the app: the salad the dashboard's nutrition card and
+  // the palette's food actions use, and a stretch for the mobility habit. The barbell
+  // belongs to the strength/cardio scopes only — it is what made "Berries" read as a
+  // training target on the live page.
+  "nutrition-target": IconSalad,
+  "mobility-target": IconStretching,
   practice: IconSparkles,
   careplan: IconClipboardList,
   followup: IconStethoscope,
@@ -580,40 +590,36 @@ function AllCaughtUpLine({
   );
 }
 
-// The interleaved | by-person ordering toggle (issue #1327 fix 2). Two server-rendered
-// Next <Link>s (a native <a href> that works pre-hydration, #830) — no permanent client
-// chrome. Only rendered in multi-view.
+// The interleaved | by-person ordering toggle (issue #1327 fix 2). The shared
+// SegmentedControl in its LINK binding (#2535): server-rendered <Link>s that work
+// pre-hydration (#830), no permanent client chrome, `aria-current="page"` on the
+// selected segment. This and Timeline's were the same hand-rolled control down to the
+// wrapper classes and the parallel testid naming; they are now one call each. Only
+// rendered in multi-view.
 function ModeToggle({ mode }: { mode: ViewMode }) {
-  const base =
-    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition";
-  const on =
-    "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300";
-  const off =
-    "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750";
   return (
-    <div
-      data-testid="upcoming-mode-toggle"
-      className="mb-4 inline-flex items-center gap-1 rounded-xl border border-black/10 p-1 dark:border-white/10"
-    >
-      <Link
-        href="/upcoming"
-        data-testid="mode-interleaved"
-        aria-pressed={mode === "interleaved"}
-        className={`${base} ${mode === "interleaved" ? on : off}`}
-      >
-        <IconLayoutList className="h-4 w-4" stroke={1.75} />
-        By date
-      </Link>
-      <Link
-        href="/upcoming?group=by-person"
-        data-testid="mode-by-person"
-        aria-pressed={mode === "by-person"}
-        className={`${base} ${mode === "by-person" ? on : off}`}
-      >
-        <IconUsers className="h-4 w-4" stroke={1.75} />
-        By person
-      </Link>
-    </div>
+    <SegmentedControl<ViewMode>
+      className="mb-4"
+      testId="upcoming-mode-toggle"
+      ariaLabel="Upcoming grouping"
+      value={mode}
+      options={[
+        {
+          value: "interleaved",
+          label: "By date",
+          href: "/upcoming",
+          testId: "mode-interleaved",
+          icon: <IconLayoutList className="h-4 w-4" stroke={1.75} />,
+        },
+        {
+          value: "by-person",
+          label: "By person",
+          href: "/upcoming?group=by-person",
+          testId: "mode-by-person",
+          icon: <IconUsers className="h-4 w-4" stroke={1.75} />,
+        },
+      ]}
+    />
   );
 }
 

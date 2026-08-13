@@ -11,6 +11,7 @@ import {
   setStravaCredentials,
   setStravaTokens,
 } from "@/lib/integrations/connections";
+import { countMissingStravaRideDetails } from "@/lib/integrations/strava-sync";
 import { resetStravaRateLimitState } from "@/lib/integrations/strava-rate-limit";
 import { resetInterruptedWork } from "@/lib/migrations/boot-tasks";
 
@@ -31,6 +32,20 @@ describe("integration backfill jobs", () => {
   afterEach(() => vi.unstubAllGlobals());
   let profileId: number;
 
+  function addRide(stravaId: number): void {
+    db.prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, duration_min, distance_km,
+          components, source, external_id)
+       VALUES (?, '2024-06-01', 'cardio', 'Legacy ride', 60, 24,
+          ?, 'strava', ?)`
+    ).run(
+      profileId,
+      JSON.stringify([{ name: "Cycling", type: "cardio" }]),
+      `strava:${stravaId}`
+    );
+  }
+
   beforeEach(() => {
     resetStravaRateLimitState();
     profileId = Number(
@@ -44,13 +59,7 @@ describe("integration backfill jobs", () => {
       refreshToken: "fake-refresh",
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
     });
-    db.prepare(
-      `INSERT INTO activities
-         (profile_id, date, type, title, duration_min, distance_km,
-          components, source, external_id)
-       VALUES (?, '2024-06-01', 'cardio', 'Legacy ride', 60, 24,
-          ?, 'strava', 'strava:901')`
-    ).run(profileId, JSON.stringify([{ name: "Cycling", type: "cardio" }]));
+    addRide(901);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: unknown) => {
@@ -123,13 +132,15 @@ describe("integration backfill jobs", () => {
     ).toMatchObject({ status: "completed", completed_items: 1 });
   });
 
-  it("stops automatic retries after a non-quota item failure", async () => {
+  it("stops automatic retries after a transient item failure", async () => {
+    // A 500 is "not right now": the ride stays a candidate, so the job ends `failed`
+    // and the progress line's "retrying" is a promise that can still be kept.
     const fetchMock = vi.fn(async (url: unknown) => {
       const path = String(url);
       if (path.endsWith("/athlete")) return Response.json({ ftp: 250 });
       if (path.endsWith("/athlete/zones")) return Response.json({});
       if (path.endsWith("/activities/901")) {
-        return new Response(null, { status: 404 });
+        return new Response(null, { status: 500 });
       }
       throw new Error(`Unexpected URL ${path}`);
     });
@@ -159,6 +170,157 @@ describe("integration backfill jobs", () => {
       new Date(Date.now() + 24 * 60 * 60 * 1000)
     );
     expect(fetchMock).toHaveBeenCalledTimes(requests);
+  });
+
+  it("finishes the job when Strava refuses a candidate for good (#2196)", async () => {
+    // A deleted or now-private activity 404s forever. Before #2196 that row held the
+    // job in `failed` permanently — `remaining` never reached 0 because the candidate
+    // query has no concept of giving up — and the bar read "1 retrying" about a
+    // success that was never coming.
+    const fetchMock = vi.fn(async (url: unknown) => {
+      const path = String(url);
+      if (path.endsWith("/athlete")) return Response.json({ ftp: 250 });
+      if (path.endsWith("/athlete/zones")) return Response.json({});
+      if (path.endsWith("/activities/901")) {
+        return new Response(null, { status: 404 });
+      }
+      throw new Error(`Unexpected URL ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    queueIntegrationBackfill(profileId, "strava", "ride-details");
+
+    const done = await runIntegrationBackfillJob(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect(done).toMatchObject({
+      status: "completed",
+      completed_items: 1,
+      failed_items: 1,
+      error: null,
+    });
+
+    // No automatic re-attempt: a completed job is not due, so the two requests per
+    // unavailable candidate are spent only when a person asks again.
+    const requests = fetchMock.mock.calls.length;
+    await resumeDueIntegrationBackfills(
+      profileId,
+      new Date(Date.now() + 24 * 60 * 60 * 1000)
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(requests);
+  });
+
+  it("treats a 200 ride with no streams as a final answer, and still re-asks on demand", async () => {
+    // The second permanently-stuck class: both calls succeed, the ride simply has no
+    // telemetry, and the empty `streams_json` matches the candidate predicate again.
+    // No HTTP-status rule would catch it — both responses are 200.
+    const emptyStreams = vi.fn(async (url: unknown) => {
+      const path = String(url);
+      if (path.endsWith("/athlete")) return Response.json({ ftp: 250 });
+      if (path.endsWith("/athlete/zones")) return Response.json({});
+      if (path.includes("/streams")) return Response.json({});
+      if (path.endsWith("/activities/901")) return Response.json(ride);
+      throw new Error(`Unexpected URL ${path}`);
+    });
+    vi.stubGlobal("fetch", emptyStreams);
+    queueIntegrationBackfill(profileId, "strava", "ride-details");
+    expect(
+      await runIntegrationBackfillJob(profileId, "strava", "ride-details")
+    ).toMatchObject({ status: "completed", failed_items: 1, error: null });
+
+    // The verdict is NOT persisted, on purpose: the ride is still counted as missing
+    // details, and a later run that finds streams — an upload Strava has since
+    // processed, a re-authorized token — backfills it normally. That reversibility is
+    // what buys the two requests an explicit retry spends.
+    expect(countMissingStravaRideDetails(profileId)).toBe(1);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        const path = String(url);
+        if (path.endsWith("/athlete")) return Response.json({ ftp: 250 });
+        if (path.endsWith("/athlete/zones")) return Response.json({});
+        if (path.includes("/streams")) {
+          return Response.json({ time: { data: [0, 1] } });
+        }
+        if (path.endsWith("/activities/901")) return Response.json(ride);
+        throw new Error(`Unexpected URL ${path}`);
+      })
+    );
+    const requeued = queueIntegrationBackfill(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect("job" in requeued && requeued.job.status).toBe("queued");
+    expect(
+      await runIntegrationBackfillJob(profileId, "strava", "ride-details")
+    ).toMatchObject({ status: "completed", completed_items: 1 });
+    expect(countMissingStravaRideDetails(profileId)).toBe(0);
+  });
+
+  it("resumes a failed job's counters on a manual re-queue (#2195)", async () => {
+    // Ride 901 succeeds, ride 902 hits a transient error mid-run. The imported
+    // telemetry for 901 is on disk and stays there, so the retry is a RESUME: it
+    // continues "1 of 2", not "0 of 1". Zeroing the counters made a job that was
+    // most of the way through look like it had never run, and threw away the
+    // throughput the ETA is computed from.
+    addRide(902);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        const path = String(url);
+        if (path.endsWith("/athlete")) return Response.json({ ftp: 250 });
+        if (path.endsWith("/athlete/zones")) return Response.json({});
+        if (path.includes("/activities/902")) {
+          return new Response(null, { status: 503 });
+        }
+        if (path.includes("/streams")) {
+          return Response.json({
+            time: { data: [0, 1] },
+            watts: { data: [190, 210] },
+          });
+        }
+        if (path.endsWith("/activities/901")) return Response.json(ride);
+        throw new Error(`Unexpected URL ${path}`);
+      })
+    );
+
+    const first = queueIntegrationBackfill(profileId, "strava", "ride-details");
+    expect("job" in first && first.job).toMatchObject({
+      total_items: 2,
+      completed_items: 0,
+    });
+    const failed = await runIntegrationBackfillJob(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect(failed).toMatchObject({
+      status: "failed",
+      total_items: 2,
+      completed_items: 1,
+      failed_items: 1,
+    });
+    const spentRequests = failed!.request_count;
+    expect(spentRequests).toBeGreaterThan(0);
+    expect(failed!.active_seconds).toBeGreaterThan(0);
+
+    const retried = queueIntegrationBackfill(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect("job" in retried && retried.job).toMatchObject({
+      status: "queued",
+      // The candidate query returns only ride 902, so a non-resuming re-queue read
+      // "0 of 1" for a job that had already imported half its rides.
+      total_items: 2,
+      completed_items: 1,
+      request_count: spentRequests,
+      started_at: failed!.started_at,
+    });
+    expect("job" in retried && retried.job.active_seconds).toBeGreaterThan(0);
   });
 
   it("pauses only crash-stranded jobs for automatic recovery", () => {

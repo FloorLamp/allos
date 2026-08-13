@@ -27,6 +27,8 @@ import {
   addProteinGramsCore,
   undoProteinGramsCore,
 } from "@/lib/protein-daily-totals-write";
+import { getFoodLimitTapNote } from "@/lib/queries/food-limit";
+import type { FoodLimitTapNote } from "@/lib/food-limit-note";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Log/undo answer with the group's AUTHORITATIVE post-write daily total (issue #748
@@ -45,6 +47,12 @@ export type FoodLogResult =
       // nobody stated a time, which is the common case and nothing to report. A plain
       // string union, so the Server Action record stays serializable.
       statedTimeRefused?: StatedTimeRefusal;
+      // The curated limit note this tap earned (#2377), or absent — which is the
+      // overwhelmingly common answer and means there is nothing to say, never an
+      // all-clear. A plain object of strings and a boolean, so the record stays
+      // serializable. It is a NOTE on a successful write: the serving is already on the
+      // counter, and #559's rule is that context gates order, never what can be logged.
+      limitNote?: FoodLimitTapNote;
     }
   | { ok: false; error: string };
 
@@ -115,7 +123,7 @@ export async function logFoodServing(
   // not an absence — it was stated.
   const at = clockNow();
   const tz = getTimezone(profile.id);
-  const choice = parseEatingTimeChoice(formData.get("eaten_at"));
+  const choice = parseEatingTimeChoice(formData.get("occurred_at"));
   const resolved = choice ? resolveEatingTimeChoice(choice, at, tz) : null;
   const verdict: StatedTimeVerdict = !choice
     ? { kind: "unstated" }
@@ -135,6 +143,19 @@ export async function logFoodServing(
       : undefined
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
+  // The curated limit note (#2377), resolved AFTER the write for two reasons. The
+  // food–drug ledger detects a co-occurrence from the day's servings, so the serving has
+  // to be on the counter for it to see one; and nothing in this decision may influence
+  // whether the serving lands, which is #559 held structurally rather than by review.
+  // `servings - 1` is the day's count BEFORE this tap — the gate for "at most one note
+  // per group per day" — because after the write the count this tap produced is
+  // indistinguishable from one that was already there.
+  const limitNote = getFoodLimitTapNote(
+    profile.id,
+    fields.group,
+    fields.date,
+    Math.max(0, outcome.servings - 1)
+  );
   revalidateRoute("/nutrition");
   revalidateRoute("/trends");
   revalidateRoute("/");
@@ -148,6 +169,7 @@ export async function logFoodServing(
     ...(verdict.kind === "refused"
       ? { statedTimeRefused: verdict.reason }
       : {}),
+    ...(limitNote ? { limitNote } : {}),
   };
 }
 
@@ -241,7 +263,7 @@ export type FoodEventEditResult =
 // in ONE IMMEDIATE transaction. The core's statements are id + profile_id scoped, so
 // another profile's event id answers "not-found" and writes nothing.
 //
-// The `eaten_at` field has three wire values (#2227): absent/empty = unchanged, "none"
+// The `occurred_at` field has three wire values (#2227): absent/empty = unchanged, "none"
 // = clear (back to the honest "nobody said"), "HH:MM" = state that local wall time on
 // the submitted day. `judgeEatenAt`'s POSTURE INVERTS here relative to the log path,
 // deliberately: at log time an unusable instant costs the statement and never the
@@ -280,7 +302,7 @@ export async function updateFoodLogEvent(
     if (!isFoodSlot(rawMealSlot)) return formError("Unknown meal.");
     patch.mealSlot = rawMealSlot;
   }
-  const rawEatenAt = String(formData.get("eaten_at") ?? "").trim();
+  const rawEatenAt = String(formData.get("occurred_at") ?? "").trim();
   if (rawEatenAt === "none") {
     patch.eatenAt = null;
   } else if (rawEatenAt) {
@@ -288,7 +310,7 @@ export async function updateFoodLogEvent(
       return formError("Enter a valid time.");
     // A wall time is only meaningful ON a day; the sheet always submits its day
     // alongside. Resolved in the profile's timezone against the SUBMITTED day, then
-    // gated — the same judgeEatenAt every eaten_at write passes, with the inverted
+    // gated — the same judgeEatenAt every occurred_at write passes, with the inverted
     // consequence described above (the core re-checks against the final date too).
     if (!patch.date) return formError("Enter a valid date.");
     const tz = getTimezone(profile.id);
@@ -325,7 +347,7 @@ export type FoodEventDeleteResult =
   | { ok: false; error: string };
 
 // Remove ONE named logged serving (issue #1963). The bar's "−" is group-scoped and pops
-// the newest tap in the window by `logged_at`; since #1934 a corrected serving keeps its
+// the newest tap in the window by `recorded_at`; since #1934 a corrected serving keeps its
 // original tap instant, so it is not necessarily the newest thing in the window it was
 // moved into and the group control could take a neighbour. The ⋯ menu already asserts a
 // per-row identity — this is the removal that honours it. `undoFoodServing` is unchanged.

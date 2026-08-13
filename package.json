@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "node --max-old-space-size=4096 node_modules/next/dist/bin/next build",
     "start": "next start",
-    "lint": "eslint .",
+    "lint": "eslint . --cache --cache-strategy content --cache-location .cache/eslint/",
     "typecheck": "next typegen && node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit",
     "test": "vitest run",
     "test:db": "vitest run --config vitest.db.config.ts",
@@ -16,8 +16,10 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --check . --cache --cache-strategy content --cache-location .cache/prettier",
     "phi-scan": "tsx scripts/phi-scan.ts",
+    "reconcile": "tsx scripts/orchestration/reconcile-tracker.ts",
+    "reconcile:apply": "tsx scripts/orchestration/reconcile-apply.ts",
     "schema:dump": "tsx scripts/schema-dump.ts",
     "seed": "tsx scripts/seed.ts",
     "demo-reset": "tsx scripts/demo-reset.ts",
@@ -56,6 +58,7 @@
     "gen:zip-centroids": "tsx scripts/gen-zip-centroids.ts",
     "prepare": "husky",
     "gen:time-columns": "tsx scripts/gen-time-column-index.ts",
+    "gen:e2e-durations": "tsx scripts/gen-e2e-durations.ts",
     "gen:condition-training-considerations": "tsx scripts/gen-condition-training-considerations.ts"
   },
   "lint-staged": {

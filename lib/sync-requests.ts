@@ -118,7 +118,25 @@ export function syncRequestDedupeKey(
   accountSlug: string,
   createdAt: string
 ): string {
-  return `${SYNC_REQUEST_PREFIX}${portalSlug}/${accountSlug}:${dayOf(createdAt)}`;
+  return `${syncRequestFamily(portalSlug, accountSlug)}:${dayOf(createdAt)}`;
+}
+
+// The TOPIC the key above is an episode of — "portal hygiene for THIS login" — declared
+// for the repeat-dismissal family lookup (#2543/#2386). Minted from the SAME components
+// as the key and by the key itself, so the stem cannot drift wider than the identity it
+// belongs to: widening it would mean editing the key.
+//
+// It is the right stem because it is exactly what the anchor was chosen to separate. The
+// comment above says a row-id key "would be stable forever and a single dismiss would
+// silence portal hygiene for that login permanently"; the day anchor makes each ask its
+// own key so a dismiss means "not this ask". Counting keys under this stem therefore
+// counts ASKS DECLINED for one portal login — the question #2386 wanted answered — and
+// counts nothing across two different logins, which are two different errands.
+export function syncRequestFamily(
+  portalSlug: string,
+  accountSlug: string
+): string {
+  return `${SYNC_REQUEST_PREFIX}${portalSlug}/${accountSlug}`;
 }
 
 // The calendar day of a stored `YYYY-MM-DD HH:MM:SS` stamp (or of a bare date).

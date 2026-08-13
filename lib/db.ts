@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { resolveTimezone } from "./timezone";
 import { dateStrInTz, shiftDateStr, zonedMinuteStr } from "./date";
 import { now } from "./clock";
-import { runMigrations } from "./migrations/runner";
+import { ensureLedger, runMigrations } from "./migrations/runner";
 import { bootTasks } from "./migrations/boot-tasks";
 import { MIGRATIONS } from "./migrations/versions";
 import {
@@ -109,13 +109,15 @@ function createDb(): Database.Database {
 
 // DB-tier test entry point. Applies the full current schema — EVERY migration's
 // up() in order (baseline's CREATE ... IF NOT EXISTS set plus each appended
-// migration) followed by the per-boot tasks — UNCONDITIONALLY (not version-gated).
-// The production boot path (createDb) uses the version-gated `runMigrations` +
+// migration) followed by the per-boot tasks — UNCONDITIONALLY (not ledger-gated).
+// The production boot path (createDb) uses the ledger-gated `runMigrations` +
 // `bootTasks` instead; this wrapper exists for the lib/__db_tests__ suites that
 // build the schema on their own in-memory handle (and re-run it to prove the replay
-// is a no-op) without touching user_version. Every migration is written to be
-// re-runnable (CREATE IF NOT EXISTS / guarded ADD COLUMN), so replaying the whole
-// list is a schema no-op.
+// is a no-op) without touching user_version or recording applied names. Every
+// migration is written to be re-runnable (CREATE IF NOT EXISTS / guarded ADD
+// COLUMN), so replaying the whole list is a schema no-op. The empty
+// schema_migrations ledger is still created so this path yields the SAME table set
+// as production.
 export function migrate(db: Database.Database): void {
   // Mirror runMigrations: apply migrations with foreign_keys disabled so a FK-parent
   // rebuild (issue #95) can drop-and-recreate its table without cascade-wiping
@@ -123,6 +125,7 @@ export function migrate(db: Database.Database): void {
   const fkWasOn = (db.pragma("foreign_keys", { simple: true }) as number) === 1;
   if (fkWasOn) db.pragma("foreign_keys = OFF");
   try {
+    ensureLedger(db);
     for (const m of MIGRATIONS) m.up(db);
   } finally {
     if (fkWasOn) db.pragma("foreign_keys = ON");

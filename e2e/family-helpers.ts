@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { Access } from "../lib/grants";
+import { identityBarLabel } from "../lib/profile-identity";
 import {
   hydratedClick,
   settledCheck,
@@ -158,7 +159,29 @@ async function profileRowExists(page: Page, name: string): Promise<boolean> {
 
 // Switch the shared session's active profile via the sidebar identity bar, retry-clicking
 // through the hydration window (#730) as the household/front-door specs do.
+//
+// ── The no-op fast path (#2600) ──────────────────────────────────────────────
+//
+// The natural place to call this is a `finally`/`afterEach` restore, and a restore
+// that did not need to happen still paid the whole open-panel → submit →
+// revalidate → re-render round trip: measured at ~1.5s per redundant call against
+// a warm worker, on the critical path, silently.
+//
+// (For the record, since the issue guessed at a worse failure: the panel DOES
+// render a `switch-to-<id>` row for the acting profile — `aria-current="true"` on
+// it — so a redundant restore SUCCEEDS today rather than spinning `toPass` to its
+// budget. What it costs is time, not correctness. The fast path is still the
+// right shape: nothing below it does anything a no-op switch needs.)
+//
+// The signal is the identity bar's accessible name, which states the ACTING fact
+// and nothing else — deliberately not its TEXT, which also carries the view-set
+// remainder, so a substring match there could return early for a profile that is
+// merely IN VIEW. Same string the app renders, from the same pure function.
 export async function switchToProfile(page: Page, name: string): Promise<void> {
+  const bar = page.getByTestId("profile-identity-bar");
+  await expect(bar).toBeVisible({ timeout: 20_000 });
+  if ((await bar.getAttribute("aria-label")) === identityBarLabel(name)) return;
+
   // Target the act-as switch button by its data-testid (#1096) — the popover now
   // holds TWO name-bearing controls per profile (the act-as switch + a per-profile
   // "eye" view toggle whose aria-label also contains the name), so a getByRole
@@ -172,7 +195,7 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
     .locator('[data-testid^="switch-to-"]')
     .filter({ hasText: name });
   await expect(async () => {
-    await page.getByTestId("profile-identity-bar").click();
+    await bar.click();
     await expect(target).toBeVisible({ timeout: 2_000 });
     // The popover trigger can be clicked pre-hydration; no single awaitable event
     // covers "trigger opened AND target rendered", so re-open until it does.
@@ -189,7 +212,7 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
   // the default 5s (the dashboard and the merged Trends surface are the heavy
   // cases). A named ceiling, not a sleep — this still fails if the switch never
   // lands.
-  await expect(page.getByTestId("profile-identity-bar")).toContainText(name, {
+  await expect(bar).toContainText(name, {
     timeout: 20_000,
   });
 }

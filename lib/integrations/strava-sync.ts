@@ -33,6 +33,7 @@ import {
   type StravaRequestBudget,
 } from "./strava-rate-limit";
 import { isCyclingActivity } from "@/lib/cycling-activity";
+import { backfillFetchVerdict } from "./backfill-outcome";
 
 // Strava's half of the shared pull runner (#2040): the list+detail request pair, the
 // `page`/`per_page` pagination, and row mapping. Everything either side of that —
@@ -270,7 +271,7 @@ const stravaSpec: PullSpec<
         // A non-429 detail failure (e.g. a deleted/forbidden activity) imports
         // without calories rather than stalling all newer activities on one bad id.
         const detail = detailRes.ok ? detailRes.json : undefined;
-        // Keep the raw provider JSON for the raw viewer, whether or not it maps.
+        // Keep the raw source JSON for the raw viewer, whether or not it maps.
         raw.push(detail ?? summary);
 
         const mapped = mapStravaActivity(summary, detail, tz);
@@ -383,6 +384,11 @@ export function countMissingStravaRideDetails(profileId: number): number {
 export interface StravaBackfillResult {
   backfilled: number;
   failed: number;
+  // Candidates Strava gave a FINAL answer for this run: refused (404/403/410) or
+  // answered with no streams at all. They are excluded from `remaining` so the job
+  // can finish (#2196) — see lib/integrations/backfill-outcome.ts for why no marker
+  // is stored.
+  unavailable: number;
   remaining: number;
   requests: number;
   paused: boolean;
@@ -392,12 +398,19 @@ export interface StravaBackfillResult {
 export interface StravaBackfillProgress {
   remaining: number;
   failed: number;
+  unavailable: number;
   requests: number;
 }
 
 // Fill rich artifacts for Strava rides imported before cycling telemetry existed.
 // Successful rows disappear from the candidate query, so every invocation resumes
-// naturally and is safe to repeat after a quota pause or transient provider error.
+// naturally and is safe to repeat after a quota pause or transient source error.
+//
+// A candidate Strava can never answer for does NOT disappear from that query — a
+// deleted/private ride is never stored, and a ride with no telemetry stores an empty
+// `streams_json` the predicate still matches. Those are counted as `unavailable` and
+// subtracted from `remaining`, which is what lets the job reach `completed` while
+// leaving the row visible to a later retry (#2196).
 export async function runStravaDetailsBackfill(
   profileId: number,
   onProgress?: (progress: StravaBackfillProgress) => void
@@ -409,6 +422,7 @@ export async function runStravaDetailsBackfill(
     return {
       backfilled: 0,
       failed: 0,
+      unavailable: 0,
       remaining: 0,
       requests: 0,
       paused: false,
@@ -421,12 +435,17 @@ export async function runStravaDetailsBackfill(
   const snapshotAt = new Date().toISOString();
   let backfilled = 0;
   let failed = 0;
+  let unavailable = 0;
   let paused = false;
 
+  // An unavailable candidate is DONE for progress purposes even though it stays in
+  // the candidate query — otherwise the bar stalls one short of full for the rest of
+  // the run and the ETA divides by a remainder that never shrinks.
   const reportProgress = () =>
     onProgress?.({
-      remaining: Math.max(candidates.length - backfilled, 0),
+      remaining: Math.max(candidates.length - backfilled - unavailable, 0),
       failed,
+      unavailable,
       requests: budget.requests,
     });
 
@@ -445,13 +464,16 @@ export async function runStravaDetailsBackfill(
     if (paused) break;
     const match = /^strava:(\d+)$/.exec(candidate.external_id);
     if (!match) {
-      failed++;
+      // No Strava id to ask about. Nothing a retry can change, so this is a final
+      // answer rather than a failure to be reattempted forever.
+      unavailable++;
       reportProgress();
       continue;
     }
-    const providerId = match[1];
+    // Strava's own activity id, not an integration source id (#2487).
+    const stravaActivityId = match[1];
     const detailRes = await stravaGet(
-      `/activities/${providerId}`,
+      `/activities/${stravaActivityId}`,
       token,
       budget
     );
@@ -460,13 +482,15 @@ export async function runStravaDetailsBackfill(
         paused = true;
         break;
       }
-      failed++;
+      if (backfillFetchVerdict(detailRes.status) === "unavailable")
+        unavailable++;
+      else failed++;
       reportProgress();
       continue;
     }
     const keys = STRAVA_STREAM_KEYS.join(",");
     const streamRes = await stravaGet(
-      `/activities/${providerId}/streams?keys=${keys}&key_by_type=true`,
+      `/activities/${stravaActivityId}/streams?keys=${keys}&key_by_type=true`,
       token,
       budget
     );
@@ -475,12 +499,16 @@ export async function runStravaDetailsBackfill(
         paused = true;
         break;
       }
-      failed++;
+      // Strava answers 404 here for an activity that simply has no recorded streams,
+      // which is the same final answer as a deleted one — see backfill-outcome.ts.
+      if (backfillFetchVerdict(streamRes.status) === "unavailable")
+        unavailable++;
+      else failed++;
       reportProgress();
       continue;
     }
     const artifacts = mapStravaCyclingArtifacts(
-      providerId,
+      stravaActivityId,
       detailRes.json,
       streamRes.json,
       athlete,
@@ -498,14 +526,25 @@ export async function runStravaDetailsBackfill(
       ]);
     });
     if (hasStreams) backfilled++;
-    else failed++;
+    // Both calls returned 200 and the ride still carries no telemetry — an indoor or
+    // manually-entered ride. This used to count as a failure, so the row matched the
+    // candidate predicate (`streams_json = '{}'`) again on every run, at two 200-OK
+    // requests a time, and no HTTP-status rule would ever have caught it (#2196).
+    else unavailable++;
     reportProgress();
   }
 
   return {
     backfilled,
     failed,
-    remaining: countMissingStravaRideDetails(profileId),
+    unavailable,
+    // The candidate query cannot express "gave up", so the unavailable rows are still
+    // in this count. Subtract what this run resolved: `remaining` means "still worth
+    // asking about", which is the question `done` is asking.
+    remaining: Math.max(
+      countMissingStravaRideDetails(profileId) - unavailable,
+      0
+    ),
     requests: budget.requests,
     paused,
     retryAfterAt: paused ? budget.retryAfterAt : null,

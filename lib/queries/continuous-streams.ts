@@ -49,7 +49,7 @@
 //
 // `MAX(ts)` on the stream (one indexed seek on the primary key) for the frontier's AGE,
 // and one seek on `stream_frontiers`' unique key for whether it is MOVING (#2341). The
-// second replaced a `MAX(at)` over the provider's ok events, which cost the same and
+// second replaced a `MAX(at)` over the source's ok events, which cost the same and
 // answered the wrong question: a push that is merely LATE is still a successful push,
 // so "an ok sync landed inside the gap" was true whether the watch was on a charger or
 // on a wrist behind this pipeline's measured 30–61 minute ingest lag. The expected-
@@ -203,7 +203,7 @@ export function streamDeliveredDays(
 }
 
 /**
- * The stored FRONTIER observation for one (profile, provider, stream), or null when
+ * The stored FRONTIER observation for one (profile, source, stream), or null when
  * no push has ever been observed against it (#2341).
  *
  * One seek on the table's unique key. This is the read half of the watermark whose
@@ -219,16 +219,17 @@ export function streamDeliveredDays(
  */
 export function readStreamFrontier(
   profileId: number,
-  provider: string,
+  sourceId: string,
   stream: ContinuousStreamId
 ): StreamFrontierState | null {
   const row = db
+    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     .prepare(
       `SELECT frontier_at, advanced_at, observed_at, syncs_since_advance
          FROM stream_frontiers
         WHERE profile_id = ? AND provider = ? AND stream = ?`
     )
-    .get(profileId, provider, stream) as
+    .get(profileId, sourceId, stream) as
     | {
         frontier_at: string | null;
         advanced_at: string;
@@ -261,7 +262,7 @@ function ms(at: string | null): number | null {
 // ── The gather ───────────────────────────────────────────────────────────────
 
 /**
- * Every quiet stream for this profile, at most one per provider.
+ * Every quiet stream for this profile, at most one per source.
  *
  * Read-time and stateless: it writes nothing, sets no marker, and a backfilled batch
  * clears the row on the next render because it moves `MAX(ts)` forward.
@@ -278,27 +279,27 @@ export const getQuietStreams = cache(function getQuietStreams(
   const nowMs = Date.parse(instantNow());
   const tz = getTimezone(profileId);
   const todayStr = profileToday(profileId);
-  // The providers already carrying a `failing` / `stale` row (#1685) — the memoized
+  // The sources already carrying a `failing` / `stale` row (#1685) — the memoized
   // escalation list every other surface reads, so "healthy" here means exactly what
   // Data → Review's Needs-attention card means. Resolved at most once per gather and
   // only when a declared stream is actually reached — a profile with no connected
-  // stream provider pays nothing for it.
+  // stream source pays nothing for it.
   let flagged: Set<string | null> | null = null;
-  const alreadyFlagged = (provider: string): boolean => {
+  const alreadyFlagged = (sourceId: string): boolean => {
     flagged ??= new Set(getIntegrationAttention(profileId).map((r) => r.id));
-    return flagged.has(provider);
+    return flagged.has(sourceId);
   };
 
   const candidates: QuietStreamCandidate[] = [];
-  for (const { provider, stream } of streams) {
+  for (const { sourceId, stream } of streams) {
     // A stream is only expected while the connection is live. A disconnected or
-    // needs-reauth provider is not delivering anything and is not being asked to.
-    if (getConnection(profileId, provider)?.status !== "connected") continue;
+    // needs-reauth source is not delivering anything and is not being asked to.
+    if (getConnection(profileId, sourceId)?.status !== "connected") continue;
 
     const quiet = stream.quiet;
     if (!quiet) continue;
 
-    const sinceAt = latestStreamInstant(profileId, stream.table, provider);
+    const sinceAt = latestStreamInstant(profileId, stream.table, sourceId);
     const sinceMs = ms(sinceAt);
     const minutesSinceStream =
       sinceMs == null ? null : Math.floor((nowMs - sinceMs) / 60_000);
@@ -315,7 +316,7 @@ export const getQuietStreams = cache(function getQuietStreams(
       ? streamDeliveredDays(
           profileId,
           stream.table,
-          provider,
+          sourceId,
           tz,
           todayStr,
           stream.expectedActive.windowDays
@@ -324,19 +325,19 @@ export const getQuietStreams = cache(function getQuietStreams(
 
     // THE discriminator since #2341: how many successful pushes have landed against
     // this exact frontier. `null` when no push has ever been observed for the stream
-    // (a fresh deploy, a just-connected provider) — the predicate treats that as "no
+    // (a fresh deploy, a just-connected source) — the predicate treats that as "no
     // evidence" and stays silent until the next push writes one.
     const frontier = overTolerance
-      ? readStreamFrontier(profileId, provider, stream.id)
+      ? readStreamFrontier(profileId, sourceId, stream.id)
       : null;
     candidates.push({
-      provider,
+      sourceId,
       streamId: stream.id,
       // Resolved unconditionally so the pure predicate's guard ORDER holds exactly as
       // written (yield first, then the data). It is free on the surface that renders
       // this: Data → Review already reads the same escalation list for its
       // Needs-attention card, and `getIntegrationAttention` is request-memoized.
-      providerHealthy: !alreadyFlagged(provider),
+      sourceHealthy: !alreadyFlagged(sourceId),
       expectedActive: isStreamActive(
         deliveredDays,
         todayStr,
@@ -346,6 +347,9 @@ export const getQuietStreams = cache(function getQuietStreams(
       minutesSinceStream,
       syncsSinceAdvance: frontier?.syncsSinceAdvance ?? null,
       toleranceMin: quiet.dipToleranceMin,
+      // DECLARED on the stream (#2560), never a module constant: how many quiet pushes
+      // this source's own delivery chain takes before silence means anything.
+      frozenSyncs: stream.frozenEvidence.syncs,
       sinceAt,
       sinceLocalHhmm: sinceAt != null ? localHhmm(tz, sinceAt) : null,
       today: todayStr,
@@ -381,16 +385,16 @@ export function getQuietStreamAttention(
   loginId: number
 ): AttentionIntegration[] {
   const prefs = getDisplayFormatPrefs(loginId);
-  const byProvider = new Map(
-    quietReportableStreams().map((s) => [`${s.provider}:${s.stream.id}`, s])
+  const bySource = new Map(
+    quietReportableStreams().map((s) => [`${s.sourceId}:${s.stream.id}`, s])
   );
   const rows: AttentionIntegration[] = [];
   for (const q of getQuietStreams(profileId)) {
-    const declared = byProvider.get(`${q.provider}:${q.streamId}`);
+    const declared = bySource.get(`${q.sourceId}:${q.streamId}`);
     if (!declared?.stream.quiet) continue;
     rows.push({
-      id: q.provider,
-      provider: declared.providerName,
+      id: q.sourceId,
+      sourceName: declared.sourceName,
       detail: quietStreamDetail({
         streamLabel: declared.stream.label,
         sinceClock: formatClockValue(q.sinceLocalHhmm, prefs.timeFormat),
@@ -418,10 +422,10 @@ export function getQuietStreamRows(
   profileId: number,
   loginId: number
 ): QuietStreamRow[] {
-  const quiet = new Map(getQuietStreams(profileId).map((q) => [q.provider, q]));
+  const quiet = new Map(getQuietStreams(profileId).map((q) => [q.sourceId, q]));
   const labels = new Map(
     quietReportableStreams().map((s) => [
-      `${s.provider}:${s.stream.id}`,
+      `${s.sourceId}:${s.stream.id}`,
       s.stream.label,
     ])
   );
@@ -432,10 +436,10 @@ export function getQuietStreamRows(
       {
         ...row,
         title: quietStreamTitle(
-          row.provider,
-          labels.get(`${q.provider}:${q.streamId}`) ?? "stream"
+          row.sourceName,
+          labels.get(`${q.sourceId}:${q.streamId}`) ?? "stream"
         ),
-        href: integrationDetailHref(q.provider),
+        href: integrationDetailHref(q.sourceId),
         key: quietStreamDedupeKey(q),
       },
     ];

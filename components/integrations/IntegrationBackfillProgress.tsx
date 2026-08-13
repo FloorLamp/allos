@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { IntegrationBackfillJob } from "@/lib/integrations/backfill-state";
 import {
+  backfillFailureLabel,
   formatBackfillTime,
   integrationBackfillView,
 } from "@/lib/integrations/backfill-progress";
@@ -15,11 +16,11 @@ function plural(count: number, noun: string): string {
 }
 
 export default function IntegrationBackfillProgress({
-  provider,
+  sourceId,
   initialJobs,
   watch = false,
 }: {
-  provider: string;
+  sourceId: string;
   initialJobs: IntegrationBackfillJob[];
   watch?: boolean;
 }) {
@@ -28,7 +29,7 @@ export default function IntegrationBackfillProgress({
   const poll = useCallback(async () => {
     try {
       const response = await fetch(
-        `/api/jobs/integration-backfills?provider=${encodeURIComponent(provider)}`,
+        `/api/jobs/integration-backfills?source=${encodeURIComponent(sourceId)}`,
         { cache: "no-store" }
       );
       if (!response.ok) return;
@@ -40,7 +41,7 @@ export default function IntegrationBackfillProgress({
     } catch {
       // A progress read is observational; keep the last durable snapshot offline.
     }
-  }, [provider]);
+  }, [sourceId]);
 
   const running = jobs.some((job) =>
     ["queued", "running"].includes(job.status)
@@ -69,7 +70,7 @@ export default function IntegrationBackfillProgress({
   return (
     <div
       className="mt-3 space-y-3"
-      data-testid={`backfill-progress-${provider}`}
+      data-testid={`backfill-progress-${sourceId}`}
     >
       {jobs.map((job) => {
         const view = integrationBackfillView(job);
@@ -83,13 +84,14 @@ export default function IntegrationBackfillProgress({
                 : job.status === "completed"
                   ? "Complete"
                   : "Failed";
+        const leftover = backfillFailureLabel(job.status, job.failed_items);
         const eta =
           view.etaSeconds == null
             ? "ETA available after the first completed item"
             : `ETA ${formatBackfillTime(view.etaSeconds)}`;
         return (
           <div
-            key={`${job.provider}:${job.kind}`}
+            key={`${job.source_id}:${job.kind}`}
             className="rounded-lg border border-black/5 bg-slate-50/70 p-3 dark:border-white/5 dark:bg-white/3"
             data-testid={`backfill-job-${job.kind}`}
           >
@@ -116,8 +118,7 @@ export default function IntegrationBackfillProgress({
             </div>
             <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
               {plural(job.completed_items, job.item_noun)} of {job.total_items}{" "}
-              · {view.percent}%
-              {job.failed_items > 0 ? ` · ${job.failed_items} retrying` : ""}
+              · {view.percent}%{leftover ? ` · ${leftover}` : ""}
             </p>
             {job.status === "paused" && view.resumesInSeconds != null ? (
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">

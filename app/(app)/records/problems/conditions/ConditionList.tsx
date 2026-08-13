@@ -73,6 +73,7 @@ function buildColumns(
       headerClassName: "hidden sm:table-cell",
       cellClassName:
         "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
+      empty: (c) => !c.code,
       cell: (c) =>
         c.code ? (
           <>
@@ -96,6 +97,7 @@ function buildColumns(
       headerClassName: "hidden md:table-cell",
       cellClassName:
         "hidden whitespace-nowrap text-slate-600 md:table-cell dark:text-slate-300",
+      empty: (c) => !c.onset_date,
       cell: (c) => formatRecordDate(c.onset_date, "—", fmt),
     },
     {

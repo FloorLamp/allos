@@ -46,6 +46,8 @@ import {
   type ImportedSessionFacts,
 } from "./workout-recap-format";
 import { getFrequencyTargetProgress } from "../queries";
+import { getSessionCadenceFacts } from "../queries/cadence-ledger";
+import type { ActivityType } from "../types/training";
 import { collectWindowDoses } from "./supplements";
 import {
   notifiableWindowDoses,
@@ -61,6 +63,12 @@ import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { GLYPH } from "./glyphs";
+import {
+  POST_WORKOUT_MARKER_PREFIX,
+  postWorkoutAnnouncedOn,
+  postWorkoutFinishMarkerKey,
+} from "./post-workout-marker";
+import { announcedActivityTwin } from "../queries/integrations";
 
 const log = createLogger("notify");
 
@@ -73,10 +81,11 @@ const ALL_WINDOWS: ReminderWindow[] = [
 
 // --- Finish-triggered post-workout dose reminder ---
 
-export const POST_WORKOUT_MARKER_PREFIX = "notify_last_post_workout_";
-export function postWorkoutFinishMarkerKey(activityId: number): string {
-  return `${POST_WORKOUT_MARKER_PREFIX}${activityId}`;
-}
+// The key and its builder live in the leaf module lib/notifications/post-workout-
+// marker.ts since #2570, because the MERGE path has to read and write them and cannot
+// afford to import this module's notification stack. Re-exported so every existing
+// importer is unchanged.
+export { POST_WORKOUT_MARKER_PREFIX, postWorkoutFinishMarkerKey };
 
 // Every post_workout-conditioned dose due today, across every time-of-day window,
 // tagged with taken/skipped state. Reuses collectWindowDoses so the dueness +
@@ -176,7 +185,9 @@ interface FinishRow {
   max_hr: number | null;
   relative_effort: number | null;
   title: string;
-  type: string;
+  // The column's CHECK enum, which is the declared tuple (#2272) — carried as the type
+  // so the ask's `unclassified` test and the title map read the same vocabulary.
+  type: ActivityType;
   source: string | null;
 }
 
@@ -241,6 +252,38 @@ export async function runPostWorkoutForActivity(
   const markerKey = postWorkoutFinishMarkerKey(activityId);
   if (getProfileSetting(profileId, markerKey) != null) return { failed: false };
 
+  // DUPLICATE AWARENESS (#2570). The one-shot above is keyed on a ROW; a session can
+  // be several rows, and a merge destroys and recreates that identity. So the send
+  // also asks whether a row a HIGH-confidence detection calls the same session has
+  // already been announced.
+  //
+  // Why this is needed ON TOP of the fold in lib/notifications/post-workout-marker.ts:
+  // that fold covers the case where a merge HAPPENED and the keeper is a new id. Here
+  // no merge happens at all — `autoMergeCluster` refuses every same-source group by
+  // design, and a pair waiting for a human in Data → Review is not merged either — so
+  // there is no fold to carry anything through. One bike ride mirrored twice into
+  // Health Connect by the same app, 32 seconds apart, is exactly that case, and it
+  // produced two contacts fifteen minutes apart.
+  //
+  // Declining costs nothing that matters: the twin's send already carried this
+  // session's recap and its due post-workout doses, which are the same doses. The
+  // one-shot is deliberately NOT burned here — a merge could still make this row the
+  // keeper of a session that has not been announced, and the marker should then say
+  // what actually happened rather than what was declined.
+  const announcedTwin = announcedActivityTwin(
+    profileId,
+    activityId,
+    (twinId) => postWorkoutAnnouncedOn(profileId, twinId) != null
+  );
+  if (announcedTwin != null) {
+    log.info("post-workout finish nudge declined — session already announced", {
+      profile: profileId,
+      activity: activityId,
+      announcedAs: announcedTwin,
+    });
+    return { failed: false };
+  }
+
   // The recap-led composition (#924): the session recap line LEADS, then the due
   // post-workout supplement section. The recap line is gated by the workout-recap
   // kind (below); the dose section by dueness. Either alone still sends; both
@@ -276,8 +319,15 @@ export async function runPostWorkoutForActivity(
   // SAME weekly rollup the reminder reads (#221). It rides WITH the recap line (the
   // congratulatory moment) — omitted when there's no recap line to lead it, no targets,
   // or the message is dose-only.
+  //
+  // The rollup is profile-wide, so the facts of THIS session go with it (#2503): without
+  // them the line led with the closest-to-done target anywhere, and a walk's recap
+  // reported a chest target a barbell session had advanced earlier in the week.
   const weeklyLine = recapLine
-    ? weeklyRemainingLine(getFrequencyTargetProgress(profileId))
+    ? weeklyRemainingLine(
+        getFrequencyTargetProgress(profileId),
+        getSessionCadenceFacts(profileId, activityId)
+      )
     : null;
   const leadLine =
     recapLine && weeklyLine ? `${recapLine}\n${weeklyLine}` : recapLine;
@@ -293,7 +343,12 @@ export async function runPostWorkoutForActivity(
           actions: activityTypeAskActions(profileId, activityId),
         }
       : null;
-  const msg = composeFinishNudge(leadLine, doseMsg, ask);
+  const msg = composeFinishNudge(
+    leadLine,
+    doseMsg,
+    ask,
+    finishRow?.type ?? null
+  );
   if (!msg) return { failed: false }; // nothing to send — don't burn the one-shot
 
   // ATTRIBUTION (#1721). "🏋️ Post-workout — 2 doses" / "🏋️ Workout complete" name
