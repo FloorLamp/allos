@@ -6,11 +6,25 @@
 // edge, that a synced row is not a log, that the Body and Care segments are fed by
 // every store their entries write to, and that one profile's logging never lands
 // in another's count.
+//
+// THE BODY CASE WRITES THROUGH THE REAL CORES, not through raw SQL, and that is
+// the point of it rather than a stylistic preference. It shipped hand-writing its
+// `medical_records` row with no `source`, which is a row shape the app has never
+// produced: `insertVitals` stamps `source = 'manual'` through `recordReading`, so
+// the arm's `source IS NULL` filter excluded every real vitals sitting while the
+// fixture's invented one sailed through. A predicate can only be held to its
+// writer by a fixture that IS its writer (#2720).
 
 import { describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
+import { createCycleRow } from "@/lib/cycle-store";
+import {
+  insertBodyMetric,
+  insertVitals,
+  insertWaistCirc,
+} from "@/lib/offline/writes";
 import {
   LOG_HABIT_WINDOW_DAYS,
   openingLogSegment,
@@ -77,23 +91,46 @@ describe("getSegmentLogDays", () => {
 
   it("feeds Body from every store its entries write to, deduped per day", () => {
     const { profileId, anchor } = makeProfile("Habit Body");
-    // A weigh-in, a manual growth/waist sample, a hand-typed vitals sitting and a
-    // period start — four stores, one segment.
-    db.prepare(
-      "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 70)"
-    ).run(profileId, anchor);
-    db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
-       VALUES (?, 'manual', 'waist_circumference_cm', ?, ?, ?, 80)`
-    ).run(profileId, anchor, `${anchor}T00:00:00`, `${anchor}T00:00:00`);
-    db.prepare(
-      `INSERT INTO medical_records (profile_id, date, category, name, value)
-       VALUES (?, ?, 'vitals', 'Blood pressure', '118/74')`
-    ).run(profileId, shiftDateStr(anchor, -1));
-    db.prepare(
-      "INSERT INTO cycles (profile_id, period_start) VALUES (?, ?)"
-    ).run(profileId, shiftDateStr(anchor, -2));
-    // Three distinct days, not four rows.
+    // A weigh-in, a manual waist measurement, a hand-typed vitals sitting and a
+    // period start — four stores, one segment. Every one of them goes through the
+    // core the sheet's own entry mounts, so each arm is tested against the row
+    // shape that entry actually writes.
+    expect(
+      insertBodyMetric(profileId, {
+        date: anchor,
+        weight: "70",
+        weightUnit: "kg",
+        bodyFatPct: null,
+        restingHr: null,
+        notes: null,
+      }).wrote
+    ).toBe(true);
+    expect(
+      insertWaistCirc(profileId, anchor, {
+        waistCirc: "80",
+        waistCircUnit: "cm",
+      })
+    ).toBe(true);
+    expect(
+      insertVitals(profileId, shiftDateStr(anchor, -1), {
+        systolic: "118",
+        diastolic: "74",
+      }).wrote
+    ).toBe(true);
+    createCycleRow(profileId, shiftDateStr(anchor, -2), null, null, null);
+    // The vitals sitting really is `source = 'manual'` in the store — the fact the
+    // arm's predicate has to agree with, pinned here so a fixture can never again
+    // invent an easier row than the app writes.
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT source FROM medical_records
+            WHERE profile_id = ? AND category = 'vitals'`
+        )
+        .pluck()
+        .all(profileId)
+    ).toEqual(["manual"]);
+    // Three distinct days, not five rows.
     expect(getSegmentLogDays(profileId, anchor).body).toBe(3);
   });
 

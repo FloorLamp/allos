@@ -85,6 +85,39 @@ describe("LOG_DAY_SOURCES", () => {
     }
   });
 
+  it("counts each store toward the segment its declaring entry maps to", () => {
+    // The cases above check the two records against each other one AXIS at a time:
+    // every declared store is counted, every counted store is declared, every used
+    // segment tag is a real one. None of them ties a STORE to a SEGMENT, so tagging
+    // the `cycles` arm 'care' passed all three — `body` was still tagged (by
+    // `body_metrics`) and `care` is still a legal segment — while a period start had
+    // silently become Care evidence. The pairing is the fact the measure rests on,
+    // so it is checked as a pairing.
+    const expected = new Map<string, Set<LogSegmentId>>();
+    for (const id of QUICK_LOG_IDS) {
+      const declared = LOG_DAY_SOURCES[id];
+      if (isArguedExclusion(declared)) continue;
+      for (const table of declared) {
+        const set = expected.get(table) ?? new Set<LogSegmentId>();
+        set.add(LOG_SEGMENT_CENSUS[id]);
+        expected.set(table, set);
+      }
+    }
+    const arms = SQL.split("UNION ALL").filter((a) => a.includes("FROM"));
+    for (const arm of arms) {
+      const segment = /SELECT '([a-z]+)' AS segment/.exec(arm)?.[1] ?? "";
+      // The arm's OWN table is its first FROM; a JOIN'd parent (intake_items) is
+      // how a child scopes to the profile and produces no days of its own.
+      const table = /FROM\s+([a-z_]+)/.exec(arm)?.[1] ?? "";
+      const declaredFor = [...(expected.get(table) ?? [])];
+      expect(
+        declaredFor,
+        `${table || "(no table)"} is counted toward '${segment}', but the census ` +
+          `declares it under ${declaredFor.length ? declaredFor.map((s) => `'${s}'`).join(" / ") : "no segment at all"}`
+      ).toContain(segment as LogSegmentId);
+    }
+  });
+
   it("scopes every counted arm to the profile", () => {
     // The owned-table scan already proves this for the statement as a whole; this
     // is the per-ARM version, which a single-literal UNION otherwise hides: one

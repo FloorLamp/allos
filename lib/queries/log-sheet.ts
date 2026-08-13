@@ -27,6 +27,30 @@ import {
 // unattended — would pin the answer to Body forever and no amount of tapping could
 // move it, which is the opposite of adapting to what somebody logs.
 //
+// ── "HAND-ENTERED" IS SPELLED PER COLUMN, NOT ONCE ─────────────────────────────
+//
+// Three arms below spell it three ways, and that is a property of the COLUMNS
+// rather than an inconsistency to tidy. Each arm's predicate is read off its own
+// store's writers, because a predicate that disagrees with its writer counts
+// nothing while still reading like a filter — which is exactly what this
+// statement did until #2720: `medical_records` was filtered on `source IS NULL`
+// while `insertVitals`, the core behind the sheet's own "Log measurements" entry,
+// stamps `source = 'manual'` through `recordReading`. The store added so that a
+// blood-pressure logger would not be under-counted counted that logger at zero.
+//
+//   activities / body_metrics / practice_logs — `source IS NULL`. The column is
+//     nullable and every manual writer omits it (`saveActivityCore`,
+//     `insertBodyMetric`, `logPracticeSession`); only an integration binds it.
+//   metric_samples — `source = 'manual'`. The column is NOT NULL, so there is no
+//     null half to admit and `OR source IS NULL` here would be dead SQL. Its one
+//     manual writer, `upsertManualSample`, always stamps 'manual'.
+//   medical_records — `source IS NULL OR source = 'manual'`. Nullable AND written
+//     by hand-entry paths that disagree: `insertVitals`/`recordReading` and the
+//     temperature logger stamp 'manual', while the /results "add a result" form
+//     leaves it NULL. Both are a person typing, so both count, and nothing synced
+//     slips in — the integration vitals writer always binds its source id, and an
+//     imported reading is already excluded by `document_id IS NULL`.
+//
 // ── ONE STATEMENT, HOISTED, AND WRITTEN OUT IN FULL ──────────────────────────
 //
 // It is read once per app-shell render — the hottest path there is — so it is a
@@ -61,7 +85,9 @@ const HABIT_DAYS = hoistedStatement(
      UNION ALL
      SELECT 'body' AS segment, date AS d FROM medical_records
        WHERE profile_id = @profileId AND category = 'vitals'
-         AND document_id IS NULL AND source IS NULL AND date >= @from
+         AND document_id IS NULL
+         AND (source IS NULL OR source = 'manual')
+         AND date >= @from
      UNION ALL
      SELECT 'body' AS segment, period_start AS d FROM cycles
        WHERE profile_id = @profileId AND period_start >= @from
