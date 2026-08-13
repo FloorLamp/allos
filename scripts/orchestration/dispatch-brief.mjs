@@ -20,6 +20,8 @@
 //   node scripts/orchestration/dispatch-brief.mjs list
 //   node scripts/orchestration/dispatch-brief.mjs done <branch> [--keep]
 //   node scripts/orchestration/dispatch-brief.mjs resume <branch>
+//   node scripts/orchestration/dispatch-brief.mjs adopt <branch> \
+//     [--issues 123,456] [--task "one line"] [--e2e] [--port-base N]
 //
 // `new` prints a complete brief block (stdout) and appends a ledger entry.
 // `list` shows active dispatches with ages, flagging anything past 3x the
@@ -32,6 +34,11 @@
 // `resume` re-opens a closed dispatch: same failure mode as closing one and
 //   then messaging the agent back to life — the agent was live but invisible
 //   to the roster, so the restart drill would never have rescued it.
+// `adopt` brings a dispatch that SKIPPED this script — an Agent-tool run —
+//   under the ledger and roster. Split-brain dispatch (2026-08-13): the tool
+//   path writes no roster entry, so the check-in screamed RESCUE NOW at a
+//   live agent's tree, and the roster — the only state that outlives the
+//   orchestrator — was incomplete by construction. One path, not two.
 //
 // Migration slots are RETIRED: migrations are name-keyed (lib/migrations/
 // runner.ts), so the brief carries a fixed convention block instead of a
@@ -60,6 +67,22 @@ const repoRoot = path.resolve(
   "..",
   ".."
 );
+
+/**
+ * The MAIN checkout, asked of git rather than inferred from this file's location.
+ *
+ * `repoRoot` above answers "where does this copy of the script live", which stops
+ * being the same question the moment the script runs from anywhere but the main
+ * checkout. `--git-common-dir` resolves to the main checkout's `.git` from every
+ * linked worktree, so its parent is the main checkout wherever the caller sits.
+ * Falls back to `repoRoot` outside a git tree, where nothing else is meaningful.
+ */
+function mainCheckout() {
+  const common = git("rev-parse --path-format=absolute --git-common-dir", {
+    allowFail: true,
+  });
+  return common ? path.resolve(path.dirname(common)) : repoRoot;
+}
 
 // The one state directory both files live in. Matches
 // scripts/orchestrator-checkin.sh's `STATE_DIR=${SCRATCH:-/home/user/scratch}`
@@ -707,15 +730,105 @@ function cmdResume(argv) {
   );
 }
 
+// A dispatch that never went through `new` — an Agent-tool run — is live but
+// invisible: no ledger entry, no roster line, so the check-in reads its dirty
+// worktree as abandoned and the restart drill would never rescue it. `adopt`
+// closes that hole after the fact; the rule (docs/orchestration.md, pipeline
+// step 3) is to not open it — generate every brief through `new`.
+function cmdAdopt(argv) {
+  const branch = argv.find((a) => !a.startsWith("--"));
+  if (!branch) {
+    console.error(
+      'usage: dispatch-brief.mjs adopt <branch> [--issues 1,2] [--task "..."] [--e2e] [--port-base N]'
+    );
+    process.exit(2);
+  }
+  const opts = parseArgs(argv.filter((a) => a !== branch));
+  const active = activeDispatches(readLedger());
+  if (active.some((d) => d.branch === branch)) {
+    console.error(`${branch} is already active — nothing to adopt.`);
+    process.exit(1);
+  }
+  // Adopt an agent that EXISTS: the worktree is the evidence. With no worktree
+  // there is nothing running to adopt — that dispatch wants `new`.
+  const wtPath = worktreeForBranch(branch);
+  if (!wtPath) {
+    console.error(
+      `no worktree has ${branch} checked out — nothing running to adopt. Dispatch with \`new --branch ${branch}\` instead.`
+    );
+    process.exit(1);
+  }
+  // `git worktree list` includes the main checkout, and the orchestrator's own
+  // branch lives there — adopting it would roster the orchestrator as an agent.
+  //
+  // ASK GIT WHICH CHECKOUT IS THE MAIN ONE, never `repoRoot`. `repoRoot` is derived
+  // from this FILE's path, so it answers "where does this copy of the script live",
+  // which is only the same question when the script is run from the main checkout.
+  // Run a copy from anywhere else — a worktree, a review checkout — and the guard
+  // compares the main checkout against that copy's directory, matches nothing, and
+  // adopts the orchestrator. Measured, not theorised: running this from a review
+  // worktree rostered `/home/user/allos` twice before the guard was re-pointed.
+  // `--git-common-dir` is the main checkout's `.git` from ANY linked worktree, so
+  // its parent is the answer wherever the script sits.
+  if (path.resolve(wtPath) === mainCheckout()) {
+    console.error(
+      `${branch} is checked out in the MAIN CHECKOUT (${mainCheckout()}), where no agent works — nothing to adopt.`
+    );
+    process.exit(1);
+  }
+  if (opts.e2e && active.filter((d) => d.e2e).length >= 2) {
+    console.error(
+      "REFUSED: adopting this as e2e-touching would exceed the 2-agent e2e cap. " +
+        "Close one with `done <branch>` first, or drop --e2e if it touches no spec."
+    );
+    process.exit(1);
+  }
+  const reserved = opts.portBase && RESERVED_PORT_REASON(opts.portBase);
+  if (reserved) {
+    console.error(`${reserved}. Drop --port-base to let the allocator pick.`);
+    process.exit(1);
+  }
+  const taken = new Set(active.map((d) => d.portBase).filter(Boolean));
+  if (opts.portBase && taken.has(opts.portBase)) {
+    console.error(
+      `port base ${opts.portBase} is already allocated to an active dispatch — drop --port-base to let the allocator pick.`
+    );
+    process.exit(1);
+  }
+  const portBase = opts.portBase ?? allocatePortBase(active);
+
+  const entry = {
+    at: new Date().toISOString(),
+    status: "active",
+    adopted: true,
+    branch,
+    worktree: path.basename(wtPath),
+    issues: opts.issues,
+    task: opts.task,
+    portBase,
+    e2e: opts.e2e,
+  };
+  appendLedger(entry);
+  const rostered = rosterAdd(entry);
+  console.log(
+    `adopted ${branch} (worktree ${wtPath}) — port base ${portBase}.\n` +
+      `The agent was never TOLD a port: if it runs e2e, message it E2E_PORT=${portBase} now.` +
+      (rostered
+        ? ""
+        : `\nWARNING: could not write ${rosterPath} — the check-in script still will not see this agent as live.`)
+  );
+}
+
 const [cmd = "new", ...rest] = process.argv.slice(2);
 try {
   if (cmd === "new") cmdNew(rest);
   else if (cmd === "list") cmdList();
   else if (cmd === "done") cmdDone(rest);
   else if (cmd === "resume") cmdResume(rest);
+  else if (cmd === "adopt") cmdAdopt(rest);
   else {
     console.error(
-      `unknown command: ${cmd} (expected new | list | done | resume)`
+      `unknown command: ${cmd} (expected new | list | done | resume | adopt)`
     );
     process.exit(2);
   }
