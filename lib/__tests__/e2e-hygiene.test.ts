@@ -315,7 +315,10 @@ const MULTI_BOX_RE =
   /await\s+Promise\.all\(\s*\[(?:(?!Promise\.all)[\s\S])*?\.boundingBox\((?:(?!Promise\.all)[\s\S])*?\.boundingBox\(/g;
 const MULTI_BOX_ALLOW: Record<string, number> = {
   "dashboard.spec.ts": 1,
-  "encounters.spec.ts": 2,
+  // 2 → 1: the mobile visit-row card spec moved onto settledBoxes when #2588 gave its
+  // geometry claim something deterministic to assert (the head line's end, rather than
+  // whichever meta happened to wrap).
+  "encounters.spec.ts": 1,
   "entry-ergonomics.spec.ts": 1,
   "kids-growth.spec.ts": 1,
   "medications-followups.spec.ts": 1,

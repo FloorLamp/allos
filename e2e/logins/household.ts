@@ -60,6 +60,14 @@ export const MULTI_OWNER_VISIT = "Multi Owner Physical (e2e)";
 export const MULTI_SHARED_VISIT = "Multi Shared Checkup (e2e)";
 export const MULTI_OWNER_VACCINE = "influenza";
 export const MULTI_SHARED_VACCINE = "tdap";
+// Records › Specialty multi-view fixtures (issue #2557). These sit ONLY on the SHARED
+// profile, deliberately: Dental and Vision are DATA-GATED panes, so a record the
+// acting (owner) profile does not have is exactly what makes the product decision
+// visible — single view hides the pane, and toggling the shared member into view must
+// reveal it, because the pane now has something to list. The owner half of the pair is
+// an ABSENCE, which the spec establishes for itself rather than assuming.
+export const MULTI_SHARED_DENTAL = "Multi Shared Crown 19 (e2e)";
+export const MULTI_SHARED_RX_BRAND = "Multi Shared Frames (e2e)";
 
 // Multi-view Timeline with a DIVERGENT-timezone day boundary (issue #1329). A dedicated
 // member granted TWO adult profiles WRITE whose per-profile timezones sit ~25h apart

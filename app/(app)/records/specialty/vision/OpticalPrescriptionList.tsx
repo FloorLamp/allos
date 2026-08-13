@@ -20,6 +20,13 @@ import {
   type RxExpiryState,
 } from "@/lib/optical-prescription";
 import type { OpticalPrescription } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
+
+// A profile id → that profile's local `today` (lib/db `today(profileId)`). "Has this
+// Rx expired?" is asked in the SUBJECT's timezone, not the actor's, so multi-view
+// resolves one per member in view rather than reusing the acting profile's day.
+export type TodayByProfile = Record<number, string>;
 
 function ExpiryBadge({ state }: { state: RxExpiryState }) {
   if (state === "expired")
@@ -38,9 +45,18 @@ function ExpiryBadge({ state }: { state: RxExpiryState }) {
 }
 
 function buildColumns(
-  today: string,
+  todayByProfile: TodayByProfile,
+  actingProfileId: number,
   fmt: DisplayFormatPrefs
 ): RecordColumn<OpticalPrescription>[] {
+  // The row's own subject's day, falling back to the actor's — which is exactly the
+  // single-view answer, since there the row IS the actor's.
+  const dayFor = (rx: OpticalPrescription) =>
+    todayByProfile[
+      (rx as { profileId?: number }).profileId ?? actingProfileId
+    ] ??
+    todayByProfile[actingProfileId] ??
+    "";
   return [
     {
       header: "Prescription",
@@ -52,7 +68,7 @@ function buildColumns(
             OD {formatDiopter(rx.od_sphere)} · OS {formatDiopter(rx.os_sphere)}
           </span>
           {(() => {
-            const state = rxExpiryState(rx.expiry_date, today);
+            const state = rxExpiryState(rx.expiry_date, dayFor(rx));
             return state ? (
               <span className="ml-2">
                 <ExpiryBadge state={state} />
@@ -65,6 +81,7 @@ function buildColumns(
     {
       header: "Issued",
       cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
+      empty: (rx) => !rx.issued_date,
       cell: (rx) => formatRecordDate(rx.issued_date, "—", fmt),
     },
     {
@@ -72,12 +89,14 @@ function buildColumns(
       headerClassName: "hidden sm:table-cell",
       cellClassName:
         "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
+      empty: (rx) => !rx.expiry_date,
       cell: (rx) => formatRecordDate(rx.expiry_date, "—", fmt),
     },
     {
       header: "Prescriber",
       headerClassName: "hidden md:table-cell",
       cellClassName: "hidden md:table-cell",
+      empty: (rx) => !rx.provider_id,
       cell: (rx) =>
         rx.provider_id ? (
           <ProviderName
@@ -100,26 +119,44 @@ function buildColumns(
 }
 
 // Manage stored optical prescriptions on the shared RecordTable: edit in place or
-// delete. `today` drives the expiry badge (plain UI text — no findings engine, #697).
+// delete. `todayByProfile` drives the expiry badge (plain UI text — no findings
+// engine, #697), one day per profile in view (#2557).
 export default function OpticalPrescriptionList({
   items,
-  today,
+  todayByProfile,
+  multiView,
 }: {
-  items: OpticalPrescription[];
-  today: string;
+  items: Stamped<OpticalPrescription>[];
+  todayByProfile: TodayByProfile;
+  multiView?: ListMultiView;
 }) {
   const fmt = useFormatPrefs();
-  const columns = useMemo(() => buildColumns(today, fmt), [today, fmt]);
+  // Single view has exactly one day in the map, and it is the acting profile's.
+  const actingProfileId =
+    multiView?.actingProfileId ?? Number(Object.keys(todayByProfile)[0] ?? 0);
+  const columns = useMemo(
+    () => buildColumns(todayByProfile, actingProfileId, fmt),
+    [todayByProfile, actingProfileId, fmt]
+  );
   return (
     <div data-testid="optical-prescription-list" className="space-y-3">
       <RecordTable
         items={items}
         columns={columns}
         emptyMessage="No prescriptions yet. Add one, or upload an Rx slip to import it."
+        multiView={
+          multiView
+            ? {
+                actingProfileId: multiView.actingProfileId,
+                subjectOf: (rx) => rx.subject,
+              }
+            : undefined
+        }
         renderEditForm={(rx, done) => (
           <OpticalPrescriptionForm
             action={updateOpticalPrescription}
             rx={rx}
+            profileId={multiView ? rx.subject.profileId : undefined}
             onDone={done}
           />
         )}
@@ -130,6 +167,9 @@ export default function OpticalPrescriptionList({
         onDelete={async (rx) => {
           const fd = new FormData();
           fd.set("id", String(rx.id));
+          // Multi-view (#2557): post the ROW's own profile so the action gates and
+          // writes that member, never whoever happens to be acting.
+          if (multiView) fd.set("profile_id", String(rx.subject.profileId));
           await deleteOpticalPrescription(fd);
         }}
       />

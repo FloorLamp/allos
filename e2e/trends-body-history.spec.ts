@@ -43,14 +43,14 @@ test("the body history table pages instead of rendering every row (#2530)", asyn
       `Showing 1–${HISTORY_PAGE_SIZE} of ${LONG_RANGE_DAYS}`
     );
 
-    // Each delete control names ITS row, so the accessible names differ.
+    // Each row's ⋯ control names ITS row, so the accessible names differ.
     const firstDate = (
       await rows.nth(0).getByTestId("body-history-date").innerText()
     ).trim();
     await expect(
       rows
         .nth(0)
-        .getByRole("button", { name: `Delete entry from ${firstDate}` })
+        .getByRole("button", { name: `Actions for entry from ${firstDate}` })
     ).toBeVisible();
 
     // Next is a real navigation: the page rides the URL, so what it turns is the

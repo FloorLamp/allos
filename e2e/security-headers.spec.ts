@@ -10,13 +10,21 @@ import { test, expect } from "./fixtures";
 // value — the nonce is per-request and changes every load.
 const NONCE_TOKEN = /'nonce-[A-Za-z0-9+/=]+'/;
 
-// The e2e app boots in production mode ONLY under CI (`next start`, NODE_ENV=
-// production — see playwright.config.ts); a local run uses `next dev`
-// (NODE_ENV=development). middleware.ts branches script-src on NODE_ENV, so the
-// nonce'd, no-'unsafe-inline' policy is what CI serves, while dev keeps
-// 'unsafe-inline' + 'unsafe-eval' for HMR. The spec reads the SAME CI switch so
-// both runs stay green and the strict hardening is verified where it applies.
-const IS_PROD_RUN = process.env.CI === "true" || process.env.CI === "1";
+// THE APP UNDER TEST IS ALWAYS PRODUCTION, so there is no dev branch here.
+// e2e/fixtures.ts spawns every worker's server as `next start` with
+// NODE_ENV: "production", unconditionally — that is what DB-per-worker (#1538)
+// replaced the old `webServer` block with, and its own comment explains why dev
+// mode cannot be used per worker. middleware.ts branches script-src on NODE_ENV,
+// so the nonce'd, no-'unsafe-inline' policy is the ONLY one this suite can ever
+// observe.
+//
+// This used to read `process.env.CI` as a proxy for that, which was true of the
+// runner and false of everything else: locally the spec took a dev branch that
+// the server had already made unreachable, demanded 'unsafe-inline', got a
+// correct production nonce policy, and failed. Three specs here could not pass on
+// a developer machine — so `npm run test:e2e` could not go green locally, which
+// is exactly when you most want to run it. The proxy stood in for a fact the
+// harness already decides; asserting that fact directly is simpler and honest.
 
 function scriptSrcDirective(csp: string): string {
   return csp.split(";").find((d) => d.trim().startsWith("script-src")) ?? "";
@@ -44,16 +52,10 @@ function expectGlobalHeaders(headers: Record<string, string>) {
   expect(csp).toContain("connect-src 'self'");
   // style-src keeps 'unsafe-inline' by design (Tailwind + Next inline styles).
   expect(csp).toContain("style-src 'self' 'unsafe-inline'");
-  // script-src (step 3): the production run carries a per-request nonce token and
-  // NO 'unsafe-inline'; the dev run keeps 'unsafe-inline' + 'unsafe-eval' for HMR.
+  // script-src (step 3): a per-request nonce token and NO 'unsafe-inline'.
   const scriptSrc = scriptSrcDirective(csp);
-  if (IS_PROD_RUN) {
-    expect(scriptSrc).toMatch(NONCE_TOKEN);
-    expect(scriptSrc).not.toContain("'unsafe-inline'");
-  } else {
-    expect(scriptSrc).toContain("'unsafe-inline'");
-    expect(scriptSrc).toContain("'unsafe-eval'");
-  }
+  expect(scriptSrc).toMatch(NONCE_TOKEN);
+  expect(scriptSrc).not.toContain("'unsafe-inline'");
   // The report-only test bed was removed once the nonce tightening graduated.
   expect(headers["content-security-policy-report-only"]).toBeUndefined();
 }
@@ -77,11 +79,6 @@ test("authenticated app page carries the global security headers", async ({
 });
 
 test("each request gets a distinct script-src nonce", async ({ request }) => {
-  // Nonce assertions only apply to the production run (dev has no nonce token).
-  test.skip(
-    !IS_PROD_RUN,
-    "dev script-src is nonce-free (unsafe-inline for HMR)"
-  );
   // The nonce is per-request: two loads of the same page must carry different
   // nonce tokens (a fixed nonce would defeat the whole mechanism). Use raw
   // requests so no client cache collapses the two.
@@ -97,10 +94,6 @@ test("each request gets a distinct script-src nonce", async ({ request }) => {
 test("the nonce in the header is stamped onto the served inline scripts", async ({
   request,
 }) => {
-  test.skip(
-    !IS_PROD_RUN,
-    "dev script-src is nonce-free (unsafe-inline for HMR)"
-  );
   // The middleware's nonce and the layout's <script nonce> must agree, or the
   // theme-boot script would be blocked in production. Assert against the RAW HTML
   // (not the live DOM — browsers blank the nonce attribute after parsing to stop
@@ -145,11 +138,11 @@ test("share route keeps its stricter middleware headers", async ({
   // Stricter than the global default: no-referrer (global is
   // strict-origin-when-cross-origin) and an anti-cache/anti-index posture.
   expect(headers["referrer-policy"]).toBe("no-referrer");
-  // CI runs next start and must retain no-store. Next dev intentionally replaces
-  // document Cache-Control after middleware with no-cache, so accept that only in the
-  // local development harness.
-  if (process.env.CI) expect(headers["cache-control"]).toContain("no-store");
-  else expect(headers["cache-control"]).toMatch(/no-store|no-cache/);
+  // `next start` retains no-store. The loosened /no-store|no-cache/ alternative
+  // that used to sit behind `if (process.env.CI)` was for a `next dev` harness
+  // this suite has not had since #1538, and it weakened the assertion everywhere
+  // it was taken.
+  expect(headers["cache-control"]).toContain("no-store");
   expect(headers["x-robots-tag"]).toContain("noindex");
   // The global hardening still rides along.
   expect(headers["x-frame-options"]).toBe("DENY");

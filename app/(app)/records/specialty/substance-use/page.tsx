@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
-import { requireSession } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 import { isMinor } from "@/lib/life-stage";
 import { getProfileAge, getDisplayFormatPrefs } from "@/lib/settings";
-import { getRecordsSpecialtyRelevance } from "@/lib/queries/nav-relevance";
+import { getRecordsSpecialtyRelevanceForView } from "@/lib/queries/nav-relevance";
 import { visibleSpecialtyPanes } from "../../nav";
 import { isSubstanceInstrument } from "@/lib/substance-use";
 import SubstanceUseSection from "../../SubstanceUseSection";
@@ -21,14 +21,22 @@ export const dynamic = "force-dynamic";
 // under-age match, never on missing data) — the section-visibility predicate lives in
 // getRecordsSpecialtyRelevance / records/nav.ts, so the sub-tab and this route agree.
 // Mental health, adolescent-validated, is deliberately NOT gated this way.
+//
+// This section is NOT multi-view and its gate is not folded over the view set (#2557):
+// the content it serves belongs to ONE data subject, so the age that governs it is the
+// ACTING profile's. Only the redirect TARGET is view-aware, so a bounced visitor lands
+// on a pane the sub-tab strip is actually showing them.
 export default async function RecordsSubstanceUsePage(props: {
   searchParams: Promise<{ screen?: string | string[] }>;
 }) {
-  const { login, profile } = await requireSession();
+  const scope = await requireScope();
+  const profileId = scope.actingProfileId;
   // The first VISIBLE pane, from the shared gated list (see the Vision pane's note).
-  if (isMinor(getProfileAge(profile.id)))
+  if (isMinor(getProfileAge(profileId)))
     redirect(
-      visibleSpecialtyPanes(getRecordsSpecialtyRelevance(profile.id))[0].href
+      visibleSpecialtyPanes(
+        getRecordsSpecialtyRelevanceForView(profileId, scope.viewIds)
+      )[0].href
     );
   // Deep-link preselect (#1083): a preventive drug/alcohol-screening row/nudge lands
   // here with `?screen=<INSTRUMENT>`. Validate against the known instruments; an
@@ -46,8 +54,8 @@ export default async function RecordsSubstanceUsePage(props: {
         yourself.
       </SectionSubtitle>
       <SubstanceUseSection
-        profileId={profile.id}
-        formatPrefs={getDisplayFormatPrefs(login.id)}
+        profileId={profileId}
+        formatPrefs={getDisplayFormatPrefs(scope.loginId)}
         initialInstrument={initialInstrument}
       />
     </PageContainer>

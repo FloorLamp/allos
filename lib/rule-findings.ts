@@ -54,6 +54,14 @@ import {
 } from "./settings";
 import { isMinor } from "./life-stage";
 import {
+  decidePairedObservation,
+  pairedObservationsFor,
+} from "./paired-observations";
+import {
+  gatherPairedNights,
+  outcomeSeriesReader,
+} from "./queries/paired-observations";
+import {
   getMedicationsMissingRxcuiCount,
   getMedicationMissingRxcuiSoleId,
   getFailedExtractionDocumentCount,
@@ -448,6 +456,7 @@ export function collectCoachingFindings(
     ...buildMobilitySuggestionFindings(profileId, today),
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
+    ...buildPairedObservationFindings(profileId, today),
     ...buildCycleBleedingFindings(profileId, today),
     ...buildTtcWorkupFindings(profileId, today),
     // Appended LAST (#1045): the structural data-quality gaps join this ONE coaching
@@ -566,6 +575,56 @@ export function buildSleepMoodBridgeFindings(
       actionLabel: "View trends",
     },
   ];
+}
+
+// ---- Paired observations (#2177): the declared factor × outcome registry ----
+
+// One calm coaching finding per DECLARED pair whose two arms both cleared the
+// per-arm night minimum and whose means differ by at least that pair's fixed floor.
+// The registry (lib/paired-observations) is the multiplicity control — this builder
+// runs exactly the pairs someone argued for in writing, never a search — and the
+// decision, the gates and every word of the copy are pure and live there.
+//
+// Coaching tier ONLY (#449): joins collectCoachingFindings, PAIRED_OBS_PREFIX is
+// registered, never a notification, never the hero, never an obligation. Keys are
+// month-anchored (#436) and declare their stem as `episodeFamily` (#2543), so a
+// dismissal silences the pair for the month and repeat declines are read as an answer
+// (#2386) rather than accumulating unheard.
+//
+// The adult gate is asked ONCE, in the pure entry selection both this builder and its
+// tests call, so a second caller cannot walk past it (#2107); an alcohol-conditioned
+// pair simply is not in the list for a known minor. No owned SQL added here.
+export function buildPairedObservationFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const entries = pairedObservationsFor({
+    isKnownMinor: isMinor(getProfileAge(profileId)),
+  });
+  if (entries.length === 0) return [];
+  const series = outcomeSeriesReader(profileId);
+  const monthAnchor = today.slice(0, 7);
+  const out: Finding[] = [];
+  for (const entry of entries) {
+    const nights = gatherPairedNights(profileId, entry, today, series);
+    const verdict = decidePairedObservation(entry, nights, today, monthAnchor);
+    if (!verdict) continue;
+    out.push({
+      domain: "paired-obs",
+      dedupeKey: verdict.dedupeKey,
+      episodeFamily: verdict.episodeFamily,
+      title: verdict.title,
+      detail: verdict.detail,
+      // Calm FYI — a co-occurrence in the user's own logs, never an alarm.
+      tone: "info",
+      evidence:
+        `Co-occurrence in your own logs — ${verdict.withArm.nights} nights with, ` +
+        `${verdict.withoutArm.nights} without. Not a causal claim and not a diagnosis.`,
+      actionHref: entry.actionHref,
+      actionLabel: entry.actionLabel,
+    });
+  }
+  return out;
 }
 
 // ---- Endurance plans (#839): the calm weekly long-session nudge -------------

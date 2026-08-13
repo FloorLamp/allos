@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { hydratedClick } from "./helpers";
 // The DESKTOP half of the responsive confirm primitive (issue #1428, A).
 //
 // #1428 asks for one component that renders "centered ≥md and as a sheet below",
@@ -9,22 +10,34 @@ import { test, expect } from "./fixtures";
 // quietly regressed the OTHER viewport", which a phone-only spec cannot see.
 //
 // Writes nothing: it opens a confirm and cancels.
+//
+// The confirm is reached through the Body history row's ⋯ menu. That row joined the
+// shared #1491 row-action convention in #2556 (it used to carry a bare × delete and
+// no edit at all), so opening this dialog is now TWO taps — the menu, then the item —
+// and the item is a `menuitem`, not a `button`. The accessible name is unchanged, and
+// the spec's own point is unchanged with it: any seeded history row opens the SAME
+// shared ConfirmDialog, and this spec only ever cancels it.
 
 test("the same confirm uses its desktop presentation and cancels cleanly", async ({
   page,
 }) => {
   await page.goto("/trends");
 
-  const deletes = page.getByRole("button", { name: "Delete entry" });
-  await expect(deletes.first()).toBeVisible(); // first-ok: any seeded history row opens the same shared ConfirmDialog; this spec only CANCELS it
+  // The row's ⋯ trigger names its own entry (#2530), so the substring match finds
+  // every body-history row's menu and none of the page's other controls.
+  const rowActions = page.getByRole("button", {
+    name: "Actions for entry from",
+  });
+  await expect(rowActions.first()).toBeVisible(); // first-ok: any seeded history row opens the same shared ConfirmDialog; this spec only CANCELS it
+
+  // hydratedClick replaces the old re-tap loop: it waits for React to attach to THIS
+  // node and then taps once, which is what a menu needs — a re-tap loop on a toggle
+  // would close the menu it just opened.
+  await hydratedClick(page, rowActions.first()); // first-ok: same row as above
 
   const dialog = page.getByTestId("confirm-dialog");
-  await expect(async () => {
-    if (!(await dialog.isVisible())) {
-      await deletes.first().click(); // first-ok: same row as above, re-tapped past the pre-hydration swallow
-    }
-    await expect(dialog).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: the confirm is opened by a CLIENT handler (useConfirm) — no POST to settle on, and no other awaitable open signal
+  await page.getByRole("menuitem", { name: "Delete entry" }).click();
+  await expect(dialog).toBeVisible();
 
   // One primitive, one presentation mode — the viewport is the only difference.
   await expect(dialog).toHaveAttribute("data-presentation", "dialog");
@@ -37,5 +50,8 @@ test("the same confirm uses its desktop presentation and cancels cleanly", async
   await expect(dialog.getByRole("button", { name: "Delete" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await expect(deletes.first()).toBeVisible(); // first-ok: the same seeded row, proving the cancel wrote nothing
+  // The menu closed itself before the confirm opened (a cancelled confirm must not
+  // leave the click-away backdrop shielding the table), so what proves the cancel
+  // wrote nothing is the row still offering its actions.
+  await expect(rowActions.first()).toBeVisible(); // first-ok: the same seeded row, proving the cancel wrote nothing
 });
