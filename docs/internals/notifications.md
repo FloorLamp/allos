@@ -1642,6 +1642,16 @@ The periodic review is **one engine at three scales** — weekly, monthly,
 quarterly — with the scale as a **declared axis**, and it **replaces, never
 stacks**.
 
+> **The year is a scale, not a cadence (#2179).** The engine gained a fourth
+> length for the annual retrospective, and `lib/recap-scale.ts` now carries two
+> lists: `RECAP_SCALES` (the four-member arithmetic + line-model axis) and the
+> derived `REVIEW_CADENCES` (the three sendable rows). Everything below is about
+> the second. The year can never be planned into the recap slot, parsed out of the
+> cadence setting, offered by the picker or minted as a send marker — all four are
+> closed by the `cadence` flag and by the `ReviewCadence` type, not by a filter at
+> each call site. The retrospective is a rendered page with no send at all; see
+> `docs/internals/retrospective.md`.
+
 **The engine.** `buildRecap` (`lib/recap.ts`) is the ONE pure computation. Every
 difference between a weekly, a monthly and a quarterly recap is a row in
 `RECAP_SCALES` (`lib/recap-scale.ts`) — the period arithmetic, the send marker,
@@ -1764,11 +1774,16 @@ slot, one arrival.
 the send on the one that **closed**. The persisted widget id stays `weekly-recap`;
 renaming it would silently un-place every saved dashboard layout.
 
-**Not a fourth cadence.** The annual retrospective (#2179) is deliberately absent
-from `RECAP_SCALES` — a profile whose only review arrives every twelve months has
-no review, and a year does not fit in a message. It is a rendered surface with a
-pointer send, and because it would _stack_ beside the chosen cadence it carries
-its own toggle. This registry owns the review; it does not own the retrospective.
+**Not a fourth cadence.** The annual retrospective (#2179) is a member of
+`RECAP_SCALES` — it is the same engine over a longer window — and deliberately
+absent from `REVIEW_CADENCES`: a profile whose only review arrives every twelve
+months has no review, and a year does not fit in a message. It is a rendered
+surface (`/retrospective`), and its eventual pointer send would _stack_ beside the
+chosen cadence, so that send is a contact increase needing its own toggle and its
+own decision — it is not built. Nothing on this page's send path can see the year:
+`recapScalesAtOrAbove`, `parseRecapScale`, the cadence picker and `recapMarkerKey`
+are all closed over `ReviewCadence`. This registry owns the review; it does not own
+the retrospective (`docs/internals/retrospective.md`).
 
 ## The tick has a memo of its own (#2118, #2111, #2249, #2283)
 

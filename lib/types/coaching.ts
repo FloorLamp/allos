@@ -2,7 +2,7 @@
 // protocols). Split out of lib/types.ts (#319); the `@/lib/types` barrel
 // re-exports everything here, so import paths are unchanged.
 
-import type { RecapScale } from "../recap-scale";
+import type { ReviewCadence } from "../recap-scale";
 
 export interface DailyInsight {
   id: number;
@@ -17,9 +17,13 @@ export interface DailyInsight {
 // "labs" lab-trend kind was retired with the Trends → Biomarkers tab — #1164; any rows
 // stored under it are inert, read by no surface.) The column carries no CHECK, so
 // widening the union to `quarter` (#2178) needed no migration.
-// The stored period kind IS the recap scale (#2178) — one vocabulary, so a saved
-// recap and the data it summarizes can never name their period differently.
-export type PeriodRecapKind = RecapScale;
+// The stored period kind IS the review CADENCE (#2178) — one vocabulary, so a saved
+// recap and the data it summarizes can never name their period differently. It is the
+// cadence rather than the whole scale axis (#2179): the annual retrospective is a
+// rendered surface with no send and, in this first slice, no stored narrative, so a
+// `year` row would be a kind nothing writes and the Insights tab would offer a
+// regenerate button for a recap that does not exist.
+export type PeriodRecapKind = ReviewCadence;
 
 export interface PeriodRecap {
   id: number;

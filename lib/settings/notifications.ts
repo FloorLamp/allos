@@ -25,7 +25,7 @@ import {
   serializeFoodNudgePointer,
   type FoodNudgePointer,
 } from "../notifications/food-nudge-pointer";
-import { parseRecapScale, type RecapScale } from "../recap-scale";
+import { parseRecapScale, type ReviewCadence } from "../recap-scale";
 import {
   parseHouseholdRoundPointer,
   serializeHouseholdRoundPointer,
@@ -823,7 +823,7 @@ export interface NotifySchedule {
   // on. `week` (the default) hears from every scale as its periods close; `quarter`
   // hears only from the quarter. Profile-scoped CONTENT, beside the schedule — the
   // delivery channels stay login-scoped, per the mixed-scope Notifications model.
-  recapScale: RecapScale;
+  recapScale: ReviewCadence;
   // Milestone alerts (issue #32): whether to notify when a milestone fires. On by
   // default — milestones are always recorded to the timeline regardless; this only
   // gates the (quiet) push/Telegram alert.
@@ -865,11 +865,11 @@ export const RECAP_SCALE_KEY = "notify_recap_scale";
  * default, and the safe direction — an unparseable setting must never SILENCE a review
  * the user turned on, only ever leave it where it was.
  */
-export function getRecapScale(profileId: number): RecapScale {
+export function getRecapScale(profileId: number): ReviewCadence {
   return parseRecapScale(getProfileSetting(profileId, RECAP_SCALE_KEY));
 }
 
-export function setRecapScale(profileId: number, scale: RecapScale): void {
+export function setRecapScale(profileId: number, scale: ReviewCadence): void {
   setProfileSetting(profileId, RECAP_SCALE_KEY, scale);
 }
 

@@ -1,4 +1,4 @@
-import { db } from "../../db";
+import { db, hoistedStatement } from "../../db";
 import {
   REPRESENTATIVE_SPECS,
   representativeCte,
@@ -32,21 +32,24 @@ const IMMUNIZATION_DEDUPED = representativeCte(
   REPRESENTATIVE_SPECS.immunizations
 );
 
+// Hoisted (#2110): the immunization schedule generator asks for all three of these
+// per member, and the dashboard's household strip runs that generator once per
+// member. Statement cached per connection, value never — the answer is identical.
+const IMMUNIZATIONS_STMT = hoistedStatement(
+  `WITH ${IMMUNIZATION_DEDUPED}
+   SELECT id, date, vaccine, dose_label, notes,
+          lot_number, route, site, reaction,
+          source, external_id, created_at,
+          provider_id,
+          (SELECT p.name FROM providers p WHERE p.id = immunizations.provider_id)
+            AS provider_name
+   FROM immunizations
+   WHERE profile_id = ? AND id IN (SELECT id FROM imm_deduped)
+   ORDER BY date DESC, id DESC`
+);
+
 export function getImmunizations(profileId: number): Immunization[] {
-  return db
-    .prepare(
-      `WITH ${IMMUNIZATION_DEDUPED}
-       SELECT id, date, vaccine, dose_label, notes,
-              lot_number, route, site, reaction,
-              source, external_id, created_at,
-              provider_id,
-              (SELECT p.name FROM providers p WHERE p.id = immunizations.provider_id)
-                AS provider_name
-       FROM immunizations
-       WHERE profile_id = ? AND id IN (SELECT id FROM imm_deduped)
-       ORDER BY date DESC, id DESC`
-    )
-    .all(profileId, profileId) as Immunization[];
+  return IMMUNIZATIONS_STMT.all(profileId, profileId) as Immunization[];
 }
 
 export interface ImmunizationOverrideRow {
@@ -61,15 +64,17 @@ export interface ImmunizationOverrideRow {
   created_at: string;
 }
 
+const IMMUNIZATION_OVERRIDES_STMT = hoistedStatement(
+  `SELECT vaccine, kind, reason, exemption_type, note, created_at
+     FROM immunization_overrides WHERE profile_id = ?`
+);
+
 export function getImmunizationOverrides(
   profileId: number
 ): ImmunizationOverrideRow[] {
-  return db
-    .prepare(
-      `SELECT vaccine, kind, reason, exemption_type, note, created_at
-         FROM immunization_overrides WHERE profile_id = ?`
-    )
-    .all(profileId) as ImmunizationOverrideRow[];
+  return IMMUNIZATION_OVERRIDES_STMT.all(
+    profileId
+  ) as ImmunizationOverrideRow[];
 }
 
 export function getImmunizationOverride(
@@ -98,22 +103,25 @@ function likeContains(value: string): string {
   return `%${value.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
 }
 
+// One LIKE per distinctive titer token. The token list is a module constant, so the
+// text is fixed at import — hoisting it (#2110) is safe, and hoistedStatement only
+// stores the text (it compiles on first USE), so the empty-token guard below still
+// short-circuits before any invalid SQL could reach SQLite.
+const TITER_ROWS_STMT = hoistedStatement(
+  `SELECT * FROM medical_records
+    WHERE profile_id = ? AND (${TITER_DISTINCTIVE_TOKENS.map(
+      () =>
+        `COALESCE(NULLIF(TRIM(canonical_name), ''), name) LIKE ? ESCAPE '\\'`
+    ).join(" OR ")})
+    ORDER BY date DESC, id DESC`
+);
+
 export function getImmunityTiters(profileId: number): ImmunityTiter[] {
   if (TITER_DISTINCTIVE_TOKENS.length === 0) return [];
-  const nameKey = "COALESCE(NULLIF(TRIM(canonical_name), ''), name)";
-  const likeClauses = TITER_DISTINCTIVE_TOKENS.map(
-    () => `${nameKey} LIKE ? ESCAPE '\\'`
-  ).join(" OR ");
-  const rows = db
-    .prepare(
-      `SELECT * FROM medical_records
-        WHERE profile_id = ? AND (${likeClauses})
-        ORDER BY date DESC, id DESC`
-    )
-    .all(
-      profileId,
-      ...TITER_DISTINCTIVE_TOKENS.map((token) => likeContains(token))
-    ) as ClinicalObservation[];
+  const rows = TITER_ROWS_STMT.all(
+    profileId,
+    ...TITER_DISTINCTIVE_TOKENS.map((token) => likeContains(token))
+  ) as ClinicalObservation[];
 
   const seen = new Set<string>();
   const titers: ImmunityTiter[] = [];
