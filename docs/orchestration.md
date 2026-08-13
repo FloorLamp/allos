@@ -74,8 +74,26 @@ disagree, fix the script in the same change, never work around it.
 | `scripts/orchestration/agent-gates.sh`               | The gate sequence in the mandated order: lint → typecheck → pure tier → DB tier → e2e-hygiene (when `e2e/` changed) → phi-scan → format LAST. Goes in every brief.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `.github/workflows/ci-main.yml`                      | Tests main itself: static analysis + both unit tiers on every push, so a two-green-PRs semantic conflict reds main directly. See **CI tests the merge commit**.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `.github/merge-queue-ruleset.json`                   | The main merge-queue ruleset, owner-applied in one call (`gh api repos/FloorLamp/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`). Once active, the queue validates every merge's speculative commit against the three cheap tiers + gitleaks BEFORE it lands. See **The merge queue**.                                                                                                                                                                                                                                                                                                         |
+| `scripts/orchestration/dependabot-eval-brief.mjs`    | The major-bump evaluation brief: what changed upstream vs what this repo touches, proven in a worktree at the merge ref; delivers a recommendation comment + `recommend-*` + `needs-human` + owner assignment.                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `scripts/orchestration/release-notes-gather.mjs`     | Merged PRs since the newest release-notes day, internal ones flagged (a stated heuristic) — the gathering half of the notes; curation stays prose.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `scripts/orchestration/adversarial-review-brief.mjs` | The second review lane for high-stakes diffs. `<pr> --check` answers "does this PR touch a path where a miss corrupts data, crosses the auth boundary, or silences a safety signal" (the path list is DECLARED in the script); without `--check` it emits the full refuter brief — a separate agent prompted to REFUTE the PR's claims with executed attacks. See **The adversarial review lane**.                                                                                                                                                                                                                     |
+
+## Labels — the queue's interface
+
+Every issue carries a domain label and a priority (P0–P3; the semantics live in
+the label descriptions themselves) or `parked`. `lib`/`ui` are secondary
+location labels, never the whole story. Three labels route HUMAN attention:
+
+- **`needs-human`** — an agent left a SPECIFIC question only a human can
+  answer, stated on the issue/PR. Apply the label AND assign the owner: the
+  assignment reaches their inbox, the label makes the set queryable. Every
+  generated brief asks agents to return OPEN QUESTIONS as a labelled list; the
+  orchestrator converts that list to `needs-human` the same day. Distinct
+  from `parked` (work not started by decision) — needs-human work is done or
+  in flight, and one answer unblocks it.
+- **`recommend-adopt` / `recommend-hold`** — an evaluation's verdict, with
+  the evidence in the eval comment. The label is the recommendation, never the
+  decision; pair with `needs-human` + assignment so the decision surfaces.
 
 ## Environment facts (verify before trusting; the volatile ones say so)
 
@@ -496,9 +514,15 @@ id>`); `orchestrator-checkin.sh` reads it and alarms when nothing future is
   issues" means blocked/owner-gated/awaiting-dependency — say so in the pulse.
 - **Parked issues carry the `parked` label** (owner, 2026-08-06); the pulse
   and the label must agree.
-- **Dependabot minor/patch groups merge on green; majors stay owner-gated**
-  (owner, 2026-08-06). The green must be against CURRENT main, and the review
-  still reads the group's contents.
+- **Dependabot: minors merge, majors get evaluated — parked is not a resting
+  state** (owner, 2026-08-13; supersedes the 2026-08-06 form). Minor/patch
+  groups merge on green against CURRENT main, same day, review still reading
+  the group's contents. A MAJOR gets an evaluation agent within a day of
+  arrival (`dependabot-eval-brief.mjs <pr>`): recommendation comment on the
+  PR + `recommend-adopt`/`recommend-hold` + `needs-human` with the owner
+  assigned. `parked` is legitimate only AFTER the recommendation exists — a
+  major once sat parked 35 days with no evaluation, a decision deferred to
+  nobody.
 - **File infra issues WITH a priority label, and label bottlenecks P1**
   (owner, 2026-07-26) — a bottleneck taxes every subsequent unit of work; the
   label IS the queue position. A single latent flake in one spec is P3.

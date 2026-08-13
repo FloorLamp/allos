@@ -308,7 +308,11 @@ ${MIGRATION_LINES}
 - No model identifiers in commits/PR/code
 - Open the PR READY (not draft) via REST, base main
 - Return: PR number/URL, per-issue fix summary, VERBATIM gate results (say plainly if
-  something failed — never report a green you did not see), surprises`;
+  something failed — never report a green you did not see), surprises, and OPEN
+  QUESTIONS as their own labelled list — every decision you made provisionally and
+  every one you could not make, stated as questions. A question buried mid-prose is
+  a question nobody answers; the orchestrator turns this list into \`needs-human\`
+  labels with the owner assigned.`;
 
   return { brief, portBase, active };
 }
