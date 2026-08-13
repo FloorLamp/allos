@@ -57,6 +57,30 @@ test("the browser drops a vitals analyte with a metric home, keeps one without (
   ).toBeVisible();
 });
 
+test("the browser lists a bare `BMI%` a chart cannot plot (#2700)", async ({
+  page,
+}) => {
+  // #2699 stopped DELETING the paediatric percentile spellings at ingest, but a bare
+  // `BMI%` was still filed under the `bmi` slug — so it was stored and then hidden from
+  // the one browser that would have shown it, behind a chart of raw BMI that cannot
+  // plot a percentile. Raw BMI is close to meaningless for a child, so the percentile is
+  // the number worth finding; saved-but-unfindable is not the same as found.
+  //
+  // Read-only against the rows document 912 (e2e/seed/imports.ts) already stores on the
+  // shared profile — the same two spellings e2e/derived-result-drop.spec.ts asserts
+  // survive ingest, asked one surface further on. `%` is escaped by the search's own
+  // LIKE builder, so the query matches the literal spelling.
+  await page.goto("/results/readings?q=" + encodeURIComponent("BMI%"));
+  const table = page.getByTestId("biomarkers-table");
+
+  // Exact, because the parenthesised spelling below contains this one as a substring.
+  await expect(table.getByText("BMI%", { exact: true })).toHaveCount(1);
+  // The spelling that has been listed since #2699, so the two agree on one surface.
+  await expect(
+    table.getByText("Body Mass Index Percentile (BMI%)")
+  ).toHaveCount(1);
+});
+
 test("the Trends Body section's vitals block renders the physiologic vitals (#1076/#1486)", async ({
   page,
 }) => {

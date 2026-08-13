@@ -505,6 +505,152 @@ describe("an acronym may corroborate, never overrule (#2678)", () => {
   });
 });
 
+// #2700 — the statistic-signifier check runs at Tier 1 too. #2678 scoped it to the DROP
+// tier on the reading that cosmetic homing can tolerate fuzz a delete cannot; the
+// owner's ruling is that hiding a stored row from the flat Results catalog, and pointing
+// its only link at a chart that cannot plot it, IS a consequence for the purpose of this
+// check. Narrow supersession: acronym matching is untouched everywhere else, and Tier 2's
+// refusal at the deletion tier is unchanged.
+describe("a statistic signifier refuses the home too (#2700)", () => {
+  it("the bare `%` spellings stop being filed as a BMI", () => {
+    // The defect the issue measured. `normalizeCanonicalKey` strips the `%` before any
+    // key exists, so the structural rule has nothing to consult and these matched the
+    // `bmi` key outright — stored (since #2699) but hidden from the only browser that
+    // would have shown them, with the one link pointing at a chart of raw BMI.
+    for (const spelling of ["BMI%", "BMI %"]) {
+      expect(trendMetricHomeFor(spelling), spelling).toBeNull();
+      expect(
+        listedInResultsCatalog({
+          category: "vitals",
+          name: spelling,
+          canonical_name: null,
+        }),
+        spelling
+      ).toBe(true);
+    }
+  });
+
+  it("the bare and parenthesised spellings now answer alike", () => {
+    // The issue's table, top to bottom: every statistic OF a BMI is null and listed,
+    // and the BMI itself is untouched, because it IS a BMI.
+    const rows: [string, string | null, boolean][] = [
+      ["Body Mass Index Percentile (BMI%)", null, true],
+      ["Body Mass Index Percentile (BMI)", null, true],
+      ["BMI Percentile", null, true],
+      ["BMI%", null, true],
+      ["BMI %", null, true],
+      ["Body Mass Index (BMI)", "bmi", false],
+    ];
+    for (const [label, home, listed] of rows) {
+      expect(trendMetricHomeFor(label), label).toBe(home);
+      expect(
+        listedInResultsCatalog({
+          category: "vitals",
+          name: label,
+          canonical_name: null,
+        }),
+        label
+      ).toBe(listed);
+    }
+  });
+
+  it("a quantity MEASURED in percent keeps its home", () => {
+    // Running the check at Tier 1 asks it of every homed quantity, and two of them
+    // declare `unit: "%"`. In "Body Fat %" the `%` is the unit, so evicting that label
+    // would be the same findability defect pointed the other way — which is why the
+    // slug's declared unit counts as its own vocabulary.
+    expect(TREND_METRIC_META["body-fat"].unit).toBe("%");
+    expect(TREND_METRIC_META.spo2.unit).toBe("%");
+    expect(trendMetricHomeFor("Body Fat %")).toBe("body-fat");
+    expect(trendMetricHomeFor("Oxygen Saturation %")).toBe("spo2");
+    expect(trendMetricHomeFor("SpO₂ %")).toBe("spo2");
+    // …and the exemption is the UNIT, not the family: a WORD signifier matches no unit
+    // any metric declares, so a rank of the same quantity is still refused.
+    expect(trendMetricHomeFor("Body Fat Percentile")).toBeNull();
+    expect(trendMetricHomeFor("Body Fat Z-Score")).toBeNull();
+    // A quantity whose unit is NOT a percent has no such excuse.
+    expect(trendMetricHomeFor("Weight %")).toBeNull();
+    expect(trendMetricHomeFor("Height %")).toBeNull();
+  });
+
+  it("Tier 1's safe direction is untouched", () => {
+    // The corroborating cases #2678 protected. None of them carries a signifier, so the
+    // new gate never runs on them and the structural rule still decides.
+    expect(trendMetricHomeFor("Índice de Masa Corporal (BMI)")).toBe("bmi");
+    expect(trendMetricHomeFor("Resting HR (RHR)")).toBe("resting-hr");
+    expect(trendMetricHomeFor("Waist Circumference (WC)")).toBe("waist-circ");
+    expect(trendMetricHomeFor("Body Mass Index (BMI)")).toBe("bmi");
+  });
+
+  it("EVERY homed name × EVERY signifier — generatively", () => {
+    // The Tier-2 guard's twin, one tier up: derived from the registries so the next
+    // metric inherits it. A decorated name is refused unless the slug's own declared
+    // unit carries that signifier, in which case the decoration is the unit and the
+    // label is still the quantity.
+    let refused = 0;
+    let corroborated = 0;
+    for (const slug of REACHABLE_SLUGS) {
+      const names = registryNamesFor(slug);
+      const unit = TREND_METRIC_META[slug].unit;
+      for (const name of names) {
+        // The bare name IS the quantity, or every assertion below passes vacuously.
+        expect(trendMetricHomeFor(name), name).toBe(slug);
+        for (const sig of STATISTIC_SIGNIFIERS)
+          for (const spelling of [
+            `${name} ${sig.token}`,
+            `${name}${sig.token}`,
+            `${name} ${sig.token.toUpperCase()}`,
+          ])
+            if (sig.pattern.test(unit)) {
+              corroborated += 1;
+              expect(trendMetricHomeFor(spelling), spelling).toBe(slug);
+            } else {
+              refused += 1;
+              expect(trendMetricHomeFor(spelling), spelling).toBeNull();
+            }
+      }
+    }
+    expect(refused).toBeGreaterThan(100);
+    // Non-vacuous in BOTH directions: the unit exemption is exercised, not just declared.
+    expect(corroborated).toBeGreaterThan(0);
+  });
+
+  it("no curated registry name loses its home to the check", () => {
+    // The removing direction is the expensive one (#2365), so the whole curated
+    // vocabulary is swept rather than the `vitals` slice: the homed set is EXACTLY the
+    // six physiologic vitals, peak flow, and the DEXA body-fat entry that homes but
+    // stays listed because its category is `scan`. Nothing was evicted by #2700.
+    const homed = CANONICAL_BIOMARKERS.filter((e) =>
+      hasTrendMetricHome(e.name)
+    ).map((e) => e.name);
+    expect(homed.sort()).toEqual(
+      [
+        "Blood Pressure Diastolic",
+        "Blood Pressure Systolic",
+        "Body Fat Percentage",
+        "Body Temperature",
+        "Oxygen Saturation",
+        "Peak Expiratory Flow",
+        "Resting Heart Rate",
+        "Respiratory Rate",
+      ].sort()
+    );
+  });
+
+  it("the detail link never lands on the BMI chart", () => {
+    // The issue's third clause. Worth pinning even though it was already true: nothing
+    // in `readingDetailHref` consults `trendMetricHomeFor` — the metric-detail branch is
+    // `continuousReadingSlug`, whose per-name table has no BMI entry — so these labels
+    // resolve to the episodic reading surface both before and after. The assertion
+    // exists so a future attempt to route homed analytes by this recognizer has to
+    // notice the percentile.
+    for (const spelling of ["BMI%", "BMI %", "Body Mass Index Percentile"])
+      expect(readingDetailHref(spelling), spelling).not.toContain(
+        "/trends/metric"
+      );
+  });
+});
+
 describe("listedInResultsCatalog scopes the rule to `vitals`", () => {
   it("drops a homed vitals row and keeps a homeless one", () => {
     expect(
@@ -669,6 +815,15 @@ describe("derivedInputsMetricFor (#2646)", () => {
     // Non-vacuous: the registry it swept is the whole curated vocabulary (327 entries
     // when this landed), not an empty list.
     expect(CANONICAL_BIOMARKERS.length).toBeGreaterThan(300);
+    // #2700 extends the sweep to the SIGNIFIER-decorated spellings, now that the same
+    // refusal runs at Tier 1: no curated name decorated with a statistic signifier may
+    // resolve to a derived-input slug either. (Not the `(ABBR)` print form — appending
+    // `(BMI)` to an unrelated curated name is the DISJOINT full half #2678 deliberately
+    // lets the acronym corroborate, so that sweep would assert the opposite rule.)
+    const swallowedDecorated = CANONICAL_BIOMARKERS.flatMap((e) =>
+      STATISTIC_SIGNIFIERS.map((sig) => `${e.name} ${sig.token}`)
+    ).filter((name) => derivedInputsMetricFor(name) !== null);
+    expect(swallowedDecorated).toEqual([]);
   });
 
   it("EVERY derived-inputs name survives EVERY statistic qualifier — generatively (#2678)", () => {
