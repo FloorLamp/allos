@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   assertPartition,
+  diffBuckets,
   isSpecFile,
+  movedFiles,
   planShards,
   type DurationMap,
 } from "@/lib/e2e-shard-plan";
@@ -152,5 +154,70 @@ describe("assertPartition", () => {
     expect(() =>
       assertPartition(["a", "b", "c"], [["c"], ["a"], ["b"]])
     ).not.toThrow();
+  });
+});
+
+describe("co-residency diff", () => {
+  // What a manifest refresh actually changes is WHICH SPECS CAN SHARE A DATABASE.
+  // These pin the two reporting primitives; the generator composes them.
+  const A = [
+    ["a", "b"],
+    ["c", "d"],
+  ];
+
+  it("reports nothing when the plan is unchanged", () => {
+    expect(diffBuckets(A, A)).toEqual([]);
+    expect(movedFiles(A, A)).toEqual([]);
+  });
+
+  it("names the shard a spec entered AND the one it left", () => {
+    const B = [["a"], ["b", "c", "d"]];
+    expect(diffBuckets(A, B)).toEqual([
+      { shard: 1, entered: [], left: ["b"] },
+      { shard: 2, entered: ["b"], left: [] },
+    ]);
+    expect(movedFiles(A, B)).toEqual([{ file: "b", from: 1, to: 2 }]);
+  });
+
+  it("does not report a NEW spec as moved — it had no neighbourhood to leave", () => {
+    // It still shows as `entered` on its bucket (a resident DID gain a neighbour),
+    // but it has not been reshuffled, so it is not a spec that "changed bucket".
+    const withNew = [
+      ["a", "b"],
+      ["c", "d", "e"],
+    ];
+    expect(movedFiles(A, withNew)).toEqual([]);
+    expect(diffBuckets(A, withNew)).toEqual([
+      { shard: 2, entered: ["e"], left: [] },
+    ]);
+  });
+
+  it("reports a deleted spec as leaving, and not as a move", () => {
+    const deleted = [["a", "b"], ["c"]];
+    expect(movedFiles(A, deleted)).toEqual([]);
+    expect(diffBuckets(A, deleted)).toEqual([
+      { shard: 2, entered: [], left: ["d"] },
+    ]);
+  });
+
+  it("reports the tail when the shard COUNT itself changes", () => {
+    // Re-splitting the suite renumbers nearly everything: `c` and `d` did not
+    // change NEIGHBOURS at all — they are still exactly together — but their
+    // shard is now 3. That is honest rather than noisy: the report answers "which
+    // shard is this spec in now", and after a count change the answer really has
+    // changed for almost every spec. Refresh the manifest and the shard count in
+    // separate commits if you want a readable diff.
+    const grown = [["a"], ["b"], ["c", "d"]];
+    expect(movedFiles(A, grown)).toEqual([
+      { file: "b", from: 1, to: 2 },
+      { file: "c", from: 2, to: 3 },
+      { file: "d", from: 2, to: 3 },
+    ]);
+    // Shard 3 is absent from `before` entirely — everything in it is new there.
+    expect(diffBuckets(A, grown).at(-1)).toEqual({
+      shard: 3,
+      entered: ["c", "d"],
+      left: [],
+    });
   });
 });

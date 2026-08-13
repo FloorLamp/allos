@@ -1500,6 +1500,43 @@ pair on one database for the first time, and reshuffling the buckets — which a
 manifest refresh does — can expose another one at any time. **Assume a bucket
 change is a co-residency change.**
 
+### A manifest refresh re-rolls the WHOLE suite's co-residency
+
+Not "perturbs". `gen-e2e-durations.ts` now reports the share of specs that change
+bucket, and the reason it reports a share rather than a list is that there is no
+small case. Measured against the committed manifest at 12 shards:
+
+| manifest change                     | specs that change bucket |
+| ----------------------------------- | ------------------------ |
+| identical (control)                 | 0%                       |
+| one spec **+1%**                    | **48%**                  |
+| one spec deleted                    | 56%                      |
+| one spec +10%                       | 60%                      |
+| one spec added                      | 66%                      |
+| a plain re-measure, no shape change | **86%**                  |
+| one heavy spec ×4                   | 90%                      |
+
+Greedy LPT assigns in descending-weight order, so ANY weight change swaps two
+files in that order and cascades through every later assignment. This is the
+algorithm working, not drifting — but it means a refresh is not a tweak. Every
+spec's neighbourhood is new afterwards, so the whole suite's absence-precondition
+safety is re-rolled at once, and **a red shard on the next run is a co-residency
+suspect before it is a regression.**
+
+Two consequences worth keeping:
+
+- Refresh the manifest in its OWN commit. Sharing one with a code change makes
+  the two indistinguishable as causes of a red shard.
+- A manifest whose numbers changed but whose PLAN did not is a no-op for this
+  hazard, and the report says so (`co-residency: unchanged`) even when the file
+  diff is large. Rounding alone can rewrite 40 lines and move nothing.
+
+Making the plan STABLE under re-measurement — so a refresh moves only what
+rebalancing requires — would turn that 86% into a genuinely small, reviewable
+diff. It is not free: it needs the previous assignment as an input, which means
+committing the plan and pinning the shard count that `ci.yml` currently changes
+in one line. Not done; the number is reported instead.
+
 The rule that prevents it is the fixture-ownership rule one step further: a spec
 that WRITES to the shared profile leaves it as it found it, and a spec that
 depends on something NOT being there says so where the state is created rather

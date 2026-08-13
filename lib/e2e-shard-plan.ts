@@ -175,3 +175,77 @@ export function assertPartition(
     );
   }
 }
+
+// ── CO-RESIDENCY (the #2604 / #2623 class) ───────────────────────────────────
+//
+// Specs sharing a worker share its DATABASE, so a spec whose precondition is an
+// ABSENCE ("no tracked protein", "never measured") is destroyed by a neighbour's
+// ordinary write — and neither spec is wrong alone. Bucket membership is the
+// NECESSARY condition: two files in different buckets can never share a worker,
+// while two in the same bucket may or may not, since Playwright hands tests to
+// the shard's workers dynamically. So a bucket change is what makes a collision
+// newly POSSIBLE, which is the blast radius a manifest refresh actually has.
+//
+// That refresh is silent today. `e2e/spec-durations.json` is regenerated to track
+// the suite's SHAPE, the plan reshuffles, and a latent collision surfaces later as
+// one red shard with nothing pointing at the cause — which is what #2604 and #2623
+// each cost a diagnosis to find. This does not prevent that. It puts the reshuffle
+// in the diff, so the next one is attributable in a glance instead of a bisect.
+
+/** What changed about one shard's membership between two plans. */
+export interface BucketChange {
+  /** 1-based shard number. */
+  shard: number;
+  /** Files that were NOT in this bucket before and are now. */
+  entered: string[];
+  /** Files that WERE in this bucket and no longer are. */
+  left: string[];
+}
+
+/**
+ * Per-shard membership changes between two plans, shards with no change omitted.
+ *
+ * Reported per BUCKET rather than as newly-co-resident PAIRS on purpose. A moved
+ * file gains a new neighbour for every other file in its destination — roughly a
+ * whole bucket each — so the pair list is thousands of lines that all say the same
+ * thing. "Shard 7 gained these two and lost that one" is the same information at
+ * the granularity a red shard is reported in.
+ */
+export function diffBuckets(
+  before: readonly (readonly string[])[],
+  after: readonly (readonly string[])[]
+): BucketChange[] {
+  const changes: BucketChange[] = [];
+  for (let i = 0; i < Math.max(before.length, after.length); i++) {
+    const was = new Set(before[i] ?? []);
+    const now = new Set(after[i] ?? []);
+    const entered = [...now].filter((f) => !was.has(f)).sort();
+    const left = [...was].filter((f) => !now.has(f)).sort();
+    if (entered.length > 0 || left.length > 0) {
+      changes.push({ shard: i + 1, entered, left });
+    }
+  }
+  return changes;
+}
+
+/** Files that are in a different bucket after than before, `old -> new` (1-based). */
+export function movedFiles(
+  before: readonly (readonly string[])[],
+  after: readonly (readonly string[])[]
+): { file: string; from: number; to: number }[] {
+  const where = (buckets: readonly (readonly string[])[]) => {
+    const m = new Map<string, number>();
+    buckets.forEach((b, i) => b.forEach((f) => m.set(f, i + 1)));
+    return m;
+  };
+  const a = where(before);
+  const b = where(after);
+  const moved: { file: string; from: number; to: number }[] = [];
+  for (const [file, to] of b) {
+    const from = a.get(file);
+    // A file absent from `before` is NEW to the suite, not moved — it has no
+    // previous neighbourhood to have been reshuffled out of.
+    if (from !== undefined && from !== to) moved.push({ file, from, to });
+  }
+  return moved.sort((x, y) => x.file.localeCompare(y.file));
+}

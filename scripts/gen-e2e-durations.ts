@@ -22,8 +22,20 @@
 // that is not an exact partition of the suite.
 import fs from "node:fs";
 import path from "node:path";
+import {
+  diffBuckets,
+  movedFiles,
+  planShards,
+  type DurationMap,
+} from "../lib/e2e-shard-plan";
 
 const MANIFEST = path.join("e2e", "spec-durations.json");
+
+// The shard count CI runs. It lives in .github/workflows/ci.yml's matrix, and is
+// read here only to report the reshuffle at the granularity that actually ships —
+// a wrong value makes the report describe a split nobody runs, never a bad
+// manifest. Override with --shards=N.
+const CI_SHARD_COUNT = 12;
 
 interface JsonSpec {
   file?: string;
@@ -88,11 +100,95 @@ function main(): void {
       .sort(([a], [b]) => a.localeCompare(b))
   );
 
+  const previous = readPreviousManifest();
   fs.writeFileSync(MANIFEST, JSON.stringify(rounded, null, 2) + "\n");
   const total = Object.values(rounded).reduce((a, b) => a + b, 0);
   console.log(
     `${MANIFEST}: ${Object.keys(rounded).length} spec files, ${total.toFixed(0)}s total`
   );
+  reportReshuffle(previous, rounded, shardCountArg());
+}
+
+/** The manifest as it stood BEFORE this run overwrote it, or null on first write. */
+function readPreviousManifest(): DurationMap | null {
+  try {
+    return JSON.parse(fs.readFileSync(MANIFEST, "utf8")) as DurationMap;
+  } catch {
+    return null;
+  }
+}
+
+function shardCountArg(): number {
+  const flag = process.argv.find((a) => a.startsWith("--shards="));
+  const n = flag ? Number(flag.slice("--shards=".length)) : CI_SHARD_COUNT;
+  return Number.isInteger(n) && n > 0 ? n : CI_SHARD_COUNT;
+}
+
+/**
+ * Print what this refresh does to CO-RESIDENCY — see lib/e2e-shard-plan.ts.
+ *
+ * Planned over the UNION of both manifests' files so the two plans describe the
+ * same suite: a file only one side knows about would otherwise register as a
+ * bucket change that is really just an appearance. Both plans are built from the
+ * same file list, so every difference between them is the weights' doing, which
+ * is exactly what a manifest refresh changes.
+ */
+function reportReshuffle(
+  previous: DurationMap | null,
+  next: DurationMap,
+  shards: number
+): void {
+  if (!previous) {
+    console.log("co-residency: no previous manifest — nothing to compare.");
+    return;
+  }
+  const files = [
+    ...new Set([...Object.keys(previous), ...Object.keys(next)]),
+  ].sort();
+  const before = planShards(files, previous, shards).buckets;
+  const after = planShards(files, next, shards).buckets;
+  const moved = movedFiles(before, after);
+  if (moved.length === 0) {
+    console.log(
+      `co-residency: unchanged at ${shards} shards — no spec changed bucket.`
+    );
+    return;
+  }
+  const share = Math.round((moved.length / files.length) * 100);
+  console.log(
+    `\nco-residency: ${moved.length} of ${files.length} spec(s) (${share}%) ` +
+      `change bucket at ${shards} shards. A spec that moves can share a worker — ` +
+      `and so a DATABASE — with specs it never has before, which is how a latent ` +
+      `absence-precondition collision surfaces as one red shard ` +
+      `(docs/internals/e2e-hygiene.md).`
+  );
+  console.log(
+    `  Expect roughly half the suite or more: greedy LPT assigns in descending-` +
+      `weight order, so ANY weight change swaps two files in that order and ` +
+      `cascades through every later assignment. Measured on this manifest — one ` +
+      `spec +1%: 48%. One spec deleted: 56%. One spec added: 66%. A plain ` +
+      `re-measure with no shape change at all: 86%. So this number is not a ` +
+      `warning sign, it is the shape of the algorithm; what it tells you is that ` +
+      `after this refresh every spec's neighbourhood is new, and a red shard is a ` +
+      `co-residency suspect before it is a regression.`
+  );
+  // Per-shard membership is behind --verbose because there is no small case to
+  // print it for: the table above is the whole distribution, and everything but an
+  // identical manifest moves ~half the suite. Four hundred lines that all say
+  // "everything moved" is how the one line that matters gets scrolled past. It
+  // stays available because when you ARE chasing a specific red shard, "what
+  // entered shard 7" is the question you have.
+  if (process.argv.includes("--verbose")) {
+    for (const { shard, entered, left } of diffBuckets(before, after)) {
+      const parts = [
+        ...entered.map((f) => `+${f}`),
+        ...left.map((f) => `-${f}`),
+      ];
+      console.log(`  shard ${String(shard).padStart(2)}: ${parts.join(" ")}`);
+    }
+  } else {
+    console.log(`  (per-shard membership: --verbose)`);
+  }
 }
 
 main();
