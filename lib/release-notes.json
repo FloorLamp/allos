@@ -1,6 +1,65 @@
 {
   "days": [
     {
+      "date": "2026-08-13",
+      "entries": [
+        {
+          "pr": 2647,
+          "title": "Two things you log are compared for you, with both counts shown and no advice attached",
+          "kind": "feature",
+          "issues": [2177]
+        },
+        {
+          "pr": 2638,
+          "title": "A morning cortisol has its own entry, so an evening draw is no longer flagged low",
+          "kind": "fix",
+          "issues": [2526]
+        },
+        {
+          "pr": 2638,
+          "title": "Biomarker pages drop the boilerplate disclaimer that had crept back in through curated data",
+          "kind": "fix",
+          "issues": [2342]
+        },
+        {
+          "pr": 2634,
+          "title": "No cycle phase, cycle day or period is claimed for a day that has not happened yet",
+          "kind": "fix",
+          "issues": [2613]
+        },
+        {
+          "pr": 2640,
+          "title": "Supplement doses are called supplements, not by an internal model name",
+          "kind": "fix",
+          "issues": [2610]
+        },
+        {
+          "pr": 2640,
+          "title": "One-tap mobility sessions are no longer flagged red as impossible to save",
+          "kind": "fix",
+          "issues": [2611]
+        },
+        {
+          "pr": 2639,
+          "title": "Card rows drop the labelled dashes for cells that hold nothing",
+          "kind": "fix",
+          "issues": [2588]
+        },
+        {
+          "pr": 2639,
+          "title": "Body measurements can be edited and sleep or mood rows deleted from the history list",
+          "kind": "feature",
+          "issues": [2556]
+        },
+        {
+          "pr": 2639,
+          "title": "Dental and Vision list only rows the current view can actually edit",
+          "kind": "fix",
+          "issues": [2557]
+        }
+      ]
+    },
+    {
       "date": "2026-08-12",
       "entries": [
         {
@@ -68,6 +127,42 @@
           "title": "A workout recap only claims the target the session actually advanced",
           "kind": "fix",
           "issues": []
+        },
+        {
+          "pr": 2628,
+          "title": "One afternoon nap from a phone no longer replaces a whole night's sleep history",
+          "kind": "fix",
+          "issues": [2603]
+        },
+        {
+          "pr": 2628,
+          "title": "An imported questionnaire score is dated by its own date, not by the document's row order",
+          "kind": "fix",
+          "issues": [2553]
+        },
+        {
+          "pr": 2623,
+          "title": "A starred biomarker you have not measured yet stays starred",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2622,
+          "title": "A ride-detail backfill that cannot finish now says so, and a retry resumes where it stopped",
+          "kind": "fix",
+          "issues": [2196, 2195]
+        },
+        {
+          "pr": 2630,
+          "title": "Signing a device out is recorded in the audit log, by whoever did it",
+          "kind": "feature",
+          "issues": [1843]
+        },
+        {
+          "pr": 2630,
+          "title": "The health endpoint reports a filling disk before writes start failing",
+          "kind": "feature",
+          "issues": [1856]
         }
       ]
     },
