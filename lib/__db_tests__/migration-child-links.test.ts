@@ -11,10 +11,17 @@
 //
 // A typo is only detectable against the FINAL migrated schema, which is a superset of
 // every historical shape — so it is detectable HERE and nowhere in the pure tier.
-// The first suite reads every migration's source for link-shaped literals and checks
-// each pair against the real schema. Migration 180's own three are allowlisted with
-// the reason: the file is hash-locked by lib/migrations/manifest.json and cannot be
-// corrected in place; migration 184 repairs what they let through.
+// The first suite reads every migration's source for link-shaped literals (through the
+// scanner in migration-link-scan.ts) and checks each pair against the real schema.
+// Migration 180's own three are allowlisted with the reason: the file is hash-locked by
+// lib/migrations/manifest.json and cannot be corrected in place; migration 184 repairs
+// what they let through.
+//
+// SPELLING IS NOT EXERCISE — issue #2677, and the reason this file has a twin. A pair
+// checked here is real; nothing here asks whether the migration DOES anything with it.
+// migration-child-links-exercised.test.ts is that half: it reads the same literals,
+// requires every non-cascading FK parent of the deleted table to be among them, and
+// plants a child row per pair to prove each one actually blocks.
 //
 // THE OTHER HALF — issue #2680. `CHILD_LINKS` is about NON-CASCADING parents only:
 // the ones whose reference must BLOCK a delete. It says nothing about CASCADING
@@ -45,6 +52,7 @@ import {
   sweepOrphanedCascadeRows,
 } from "@/lib/migrations/cascade-delete";
 import { runMigrations } from "@/lib/migrations/runner";
+import { linkLiterals } from "./migration-link-scan";
 import { up as up184 } from "@/lib/migrations/versions/184-care-plan-dangling-record-links";
 import { up as upSweep } from "@/lib/migrations/versions/20260813-cascade-orphan-sweep";
 
@@ -79,44 +87,6 @@ const FROZEN_BAD_LINKS: readonly {
     why: "#2444: care_plan_items has no `source_record_id` — the real columns are source_medical_record_id and resolved_by_medical_record_id (migrations 050/060). This is the entry whose absence let 180 delete a live follow-up's source reading.",
   },
 ];
-
-interface LinkLiteral {
-  file: string;
-  table: string;
-  column: string;
-}
-
-// Every `{ table: "…", column: "…" }` object literal in the migration sources. Shape-
-// matched rather than name-matched, so renaming CHILD_LINKS does not escape the scan.
-function linkLiterals(): LinkLiteral[] {
-  const out: LinkLiteral[] = [];
-  for (const file of fs
-    .readdirSync(VERSIONS)
-    // Both eras: the closed numbered prefix (NNN-slug.ts) and the name-keyed era
-    // after it (YYYYMMDD-slug.ts) — a new migration's CHILD_LINKS must be scanned
-    // regardless of which naming scheme it shipped under.
-    .filter((f) => f.endsWith(".ts") && f !== "index.ts")
-    .sort()) {
-    const src = fs.readFileSync(path.join(VERSIONS, file), "utf8");
-    const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true);
-    const visit = (node: ts.Node): void => {
-      if (ts.isObjectLiteralExpression(node)) {
-        const props = new Map<string, string>();
-        for (const p of node.properties) {
-          if (!ts.isPropertyAssignment(p) || !ts.isIdentifier(p.name)) continue;
-          if (!ts.isStringLiteral(p.initializer)) continue;
-          props.set(p.name.text, p.initializer.text);
-        }
-        const table = props.get("table");
-        const column = props.get("column");
-        if (table && column) out.push({ file, table, column });
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(sf);
-  }
-  return out;
-}
 
 function columnsOf(table: string): Set<string> {
   try {

@@ -193,6 +193,14 @@ checked: `lib/__db_tests__/migration-child-links.test.ts` reads every migration'
 link literals, fails an unknown pair, and pins the non-cascading FK parents of
 `medical_records`. The frozen entries a hash-locked migration cannot un-name are
 allowlisted there with the corrective migration named beside them.
+SPELLING A PAIR RIGHT IS NOT EXERCISING IT (#2677), which is the same defect one
+level up: 180's fixture built no child table at all, and `20260813-bmi-derived-rows`
+had a fixture for one of its three correct pairs, so deleting either of the other two
+left the whole DB tier green. `migration-child-links-exercised.test.ts` is that half.
+It reads the deleted table's non-cascading parents out of the SCHEMA — so removing an
+entry fails THERE rather than quietly deleting its own test — and plants a child row
+per pair to prove each blocks, controlled by an unreferenced row that must still go.
+A migration declaring `CHILD_LINKS` registers a fixture there or the census fails.
 
 That registry is HALF the delete story, and its silence used to read as coverage
 (#2680). It covers the NON-CASCADING parents — the links that must BLOCK a

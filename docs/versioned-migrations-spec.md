@@ -222,6 +222,18 @@ So a row-deleting migration owes its neighbours two _different_ things:
   and `lib/__db_tests__/migration-child-links.test.ts` checks every declared pair
   against the final migrated schema. **`CHILD_LINKS` covers this half only.** Its
   silence about the other one is not coverage.
+  Spelling a pair correctly is also not exercising it (#2677):
+  `20260813-bmi-derived-rows` declared three correct pairs and only one had a
+  fixture — deleting either of the other two left the whole DB tier green — and
+  migration 180's fixture creates no child table at all, so all four of its
+  entries were unexercised, the one it got right included.
+  `lib/__db_tests__/migration-child-links-exercised.test.ts` is that half. It
+  reads the non-cascading FK parents of the deleted table **out of the schema**,
+  requires every one to be declared (so removing an entry fails there rather
+  than quietly removing its own test), and plants a child row per pair to prove
+  each one blocks — with two controls, since "the row survived" is evidence only
+  beside "an unreferenced row went". A new migration declaring `CHILD_LINKS`
+  registers a fixture there; the census fails one that does not.
 - The **cleanup** half is `lib/migrations/cascade-delete.ts`. Call
   `deleteRowsWithCascade(db, table, ids)` instead of a bare `DELETE FROM table`
   and the migration leaves the same graph behind that the app's own delete path
