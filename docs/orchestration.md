@@ -31,6 +31,24 @@ What that means in practice:
 - **Every PR gets a real review** before merge: full diff read (or focused reads
   - test-surface verification for >1,500-line refactors), posted as a COMMENT
     review via REST (APPROVE is rejected for this session type).
+- **NEVER submit `REQUEST_CHANGES`. It is a ONE-WAY DOOR for this session type.**
+  A changes-requested review blocks the merge until it is APPROVED or DISMISSED,
+  and this session can do neither — both come back "not permitted for this
+  session type", through MCP and REST alike. `main`'s ruleset makes it
+  unrecoverable rather than merely awkward: `required_approving_review_count: 0`
+  (so nothing needs approving — the block is purely the outstanding review) and
+  `dismiss_stale_reviews_on_push: false` (so it survives every later commit,
+  including the one that fixes the finding). The author cannot clear it either.
+  Only the human can, by hand, on a PR that is otherwise green and finished.
+  Done on #2692 at 12:15Z: the finding was real and the fix landed, and the PR
+  still sat unmergeable behind a verdict nobody in the loop could lift. Routing
+  around it by flipping the ruleset would be worse — that setting exists to keep
+  a genuine blocking review blocking.
+  A HOLD is expressed the same way every other one is: post the finding as a
+  COMMENT review, apply `parked`, and say plainly at the top that the merge is
+  held pending it. That blocks nothing mechanically, which is correct — holding
+  is the orchestrator's own action, the same rule `recommend-hold` already
+  follows.
 - **Merges are yours**, squash only, via `mcp__github__merge_pull_request` —
   and once the merge-queue ruleset is applied, via the queue instead (see
   **The merge queue**). Draft→ready goes through MCP `update_pull_request`
