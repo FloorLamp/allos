@@ -147,10 +147,21 @@ export function isStaleOpenPeriod(p: CyclePeriod, date: string): boolean {
 // ongoing period (null end) covers its first MAX_PLAUSIBLE_PERIOD_DAYS days and then stops
 // claiming coverage (#1682 — see periodRange). Used for the period marker + flow on the
 // Timeline/Cycle surfaces.
+//
+// Takes the same `today` horizon as its two twins (#2613), and for the same reason. An
+// OPEN period's claim runs to openPeriodClaimEnd, which is up to nine days AHEAD of today
+// — so with a period started yesterday this happily answered "yes, bleeding" for a day
+// three days out. That it never reached a user is an accident of rendering:
+// CyclePhaseChip early-returns on a null phase, so the phase refusal was hiding a period
+// marker that had not been refused. A renderer that happens to prevent the claim is
+// exactly the arrangement #2613 exists to argue against, so the refusal goes here.
 export function periodOnDate(
   periods: CyclePeriod[],
-  date: string
+  date: string,
+  today: string
 ): CyclePeriod | null {
+  if (!today) return null; // fail closed on a missing horizon — see cyclePhaseOnDate
+  if (date > today) return null; // after today — unknowable, not merely uncertain
   const sorted = sortByStart(periods);
   let idx = -1;
   for (let i = 0; i < sorted.length; i++) {

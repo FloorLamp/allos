@@ -67,10 +67,17 @@ export interface DerivedSituations {
   derivedNames: Set<string>;
 }
 
-// Resolve every derived situation for the profile on `date` (its local calendar day).
+// Resolve every derived situation for the profile on `today` (its local calendar day).
+//
+// The parameter is named `today` because every caller resolves it that way (the dashboard's
+// `on`, med-data's `todayStr`) and because every verdict below is a statement about NOW —
+// the period field is literally `coversToday`, and the weather series deliberately ends
+// today rather than reading its forecast tail. It matters to #2613: the period read takes a
+// horizon, and passing the subject day as its own horizon is only sound where the subject
+// really is today. Naming it says so instead of leaving a guard that silently cannot fire.
 export function resolveDerivedSituations(
   profileId: number,
-  date: string
+  today: string
 ): DerivedSituations {
   const active = getActiveSituations(profileId);
 
@@ -84,7 +91,7 @@ export function resolveDerivedSituations(
     sleep: getSleepSignal(profileId),
     thresholds: DEFAULT_COACHING_THRESHOLDS,
     declared: declared(active, BUILTIN_POOR_SLEEP_SITUATION),
-    overridden: suppressions.has(poorSleepOverrideKey(date)),
+    overridden: suppressions.has(poorSleepOverrideKey(today)),
   });
 
   // ---- Period (#1298) ----
@@ -94,7 +101,8 @@ export function resolveDerivedSituations(
   const cycleRelevant = getNavRelevance(profileId).cycle;
   const period: PeriodVerdict | null = cycleRelevant
     ? periodVerdict({
-        coversToday: periodOnDate(listCyclePeriods(profileId), date) != null,
+        coversToday:
+          periodOnDate(listCyclePeriods(profileId), today, today) != null,
         declared: declared(active, BUILTIN_PERIOD_SITUATION),
       })
     : null;
@@ -104,7 +112,7 @@ export function resolveDerivedSituations(
   // symptom these situations explain), then decided purely by the cached daily series
   // ending TODAY — never on the forecast tail, so a situation cannot activate on
   // weather that has not happened. No data ⇒ no situation.
-  const weather = resolveWeatherSituations(profileId, date).active;
+  const weather = resolveWeatherSituations(profileId, today).active;
 
   // Only the names turned on by DERIVATION (not already declared) need adding — a
   // declared toggle is already in getActiveSituations.

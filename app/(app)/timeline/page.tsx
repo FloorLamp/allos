@@ -1021,7 +1021,7 @@ export default async function TimelinePage(props: {
                   />
                   <CyclePhaseChip
                     phase={cyclePhaseOnDate(cyclePeriods, day.date, todayStr)}
-                    period={periodOnDate(cyclePeriods, day.date)}
+                    period={periodOnDate(cyclePeriods, day.date, todayStr)}
                   />
                   {notableByDay.has(day.date) && (
                     <div

@@ -169,7 +169,7 @@ describe("a stale open period stops claiming menstrual (#1682 fix a)", () => {
 
     const rows = listCyclePeriods(p);
     expect(cyclePhaseOnDate(rows, today(p), today(p))).toBe("follicular");
-    expect(periodOnDate(rows, today(p))).toBeNull();
+    expect(periodOnDate(rows, today(p), today(p))).toBeNull();
 
     // The record is untouched: still open, still owned by the user to close.
     const row = db

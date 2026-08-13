@@ -49,6 +49,11 @@ const dayOn = (
   date: string,
   today: string = LIVED_THROUGH
 ) => cycleDayOnDate(periods, date, today);
+const periodIn = (
+  periods: CyclePeriod[],
+  date: string,
+  today: string = LIVED_THROUGH
+) => periodOnDate(periods, date, today);
 
 describe("cycleDayOnDate (#1221)", () => {
   it("returns null before any recorded period", () => {
@@ -113,11 +118,11 @@ describe("cyclePhaseOnDate", () => {
     expect(MAX_PLAUSIBLE_PERIOD_DAYS).toBe(10);
     // Day 10 is 04-10 (the start day is day 1) — still the last plausible bleeding day.
     expect(phaseOn(open, "2026-04-10")).toBe("menstrual");
-    expect(periodOnDate(open, "2026-04-10")?.id).toBe(9);
+    expect(periodIn(open, "2026-04-10")?.id).toBe(9);
     expect(isStaleOpenPeriod(open[0], "2026-04-10")).toBe(false);
     // Day 11 — the claim lapses and the date derives as it would with no open claim.
     expect(phaseOn(open, "2026-04-11")).toBe("follicular");
-    expect(periodOnDate(open, "2026-04-11")).toBeNull();
+    expect(periodIn(open, "2026-04-11")).toBeNull();
     expect(isStaleOpenPeriod(open[0], "2026-04-11")).toBe(true);
     // The row itself is untouched — withdrawal is a read-side decision, never a write.
     expect(open[0].period_end).toBeNull();
@@ -142,7 +147,7 @@ describe("cyclePhaseOnDate", () => {
     // observed by a coaching finding, never withdrawn or refused.
     const long = [period(4, "2026-04-01", "2026-04-20")];
     expect(phaseOn(long, "2026-04-18")).toBe("menstrual");
-    expect(periodOnDate(long, "2026-04-18")?.id).toBe(4);
+    expect(periodIn(long, "2026-04-18")?.id).toBe(4);
     expect(isStaleOpenPeriod(long[0], "2026-04-18")).toBe(false);
   });
 
@@ -203,13 +208,20 @@ describe("cyclePhaseOnDate refuses a future date (#2613)", () => {
     expect(phaseOn([], "2026-08-01", "2026-08-12")).toBeNull();
   });
 
+  // `undefined`, not `""`. An empty string is the WRONG probe: `"2026-03-03" > ""` is
+  // already true, so the plain `date > today` comparison returns null on its own and the
+  // fail-closed guard never executes — the assertion passes with the guard deleted, which
+  // is no assertion at all. `undefined` is the value that actually reaches this code from
+  // a union-typed context or an unsound cast, and `"2026-03-03" > undefined` is FALSE, so
+  // without the guard the derivation runs and answers. The cast is the point of the test:
+  // the type forbids it, and the guard exists for the callers that get past the type.
+  const NO_HORIZON = undefined as unknown as string;
+
   it("fails CLOSED on a missing horizon rather than answering every date", () => {
-    // `"2026-12-10" > undefined` is false, so a bare `date > today` comparison answers
-    // the future confidently on exactly the inputs that lost track of what today is.
-    // An absent horizon means the caller cannot say which days have been lived, and the
-    // honest answer to every date then is "no phase" — never "every phase".
-    expect(phaseOn(OPEN, "2026-03-03", "")).toBeNull();
-    expect(phaseOn(OPEN, "2026-12-10", "")).toBeNull();
+    // Both would answer without the guard: 03-03 is inside the period (menstrual) and
+    // 12-10 is the open-cycle branch (follicular).
+    expect(phaseOn(OPEN, "2026-03-03", NO_HORIZON)).toBeNull();
+    expect(phaseOn(OPEN, "2026-12-10", NO_HORIZON)).toBeNull();
   });
 
   it("gives cycleDayOnDate the SAME domain — the pair is formatted as one line", () => {
@@ -218,15 +230,30 @@ describe("cyclePhaseOnDate refuses a future date (#2613)", () => {
     expect(dayOn(OPEN, "2026-08-12", "2026-08-12")).toBeGreaterThan(0);
     expect(dayOn(OPEN, "2026-08-13", "2026-08-12")).toBeNull();
     expect(dayOn(OPEN, "2026-12-10", "2026-08-12")).toBeNull();
-    expect(dayOn(OPEN, "2026-03-03", "")).toBeNull();
+    // Same probe, same reason — this one counts days from a logged start, so without the
+    // guard it would answer a positive day number for every date it is handed.
+    expect(dayOn(OPEN, "2026-03-03", NO_HORIZON)).toBeNull();
+    expect(dayOn(OPEN, "2026-12-10", NO_HORIZON)).toBeNull();
+  });
+
+  it("gives periodOnDate the SAME domain — an open claim may not run past today", () => {
+    // The third twin. An OPEN period's claim runs to openPeriodClaimEnd, up to nine days
+    // AHEAD of today, so with a period started yesterday this answered "yes, bleeding"
+    // for days that have not happened. Nothing rendered it only because CyclePhaseChip
+    // early-returns on the null phase — a renderer preventing the claim, which is the
+    // arrangement #2613 exists to argue against.
+    const ongoing: CyclePeriod[] = [period(2, "2026-08-11", null)];
+    expect(periodIn(ongoing, "2026-08-12", "2026-08-12")?.id).toBe(2);
+    expect(periodIn(ongoing, "2026-08-15", "2026-08-12")).toBeNull();
+    expect(periodIn(ongoing, "2026-08-11", NO_HORIZON)).toBeNull();
   });
 });
 
 describe("periodOnDate", () => {
   it("returns the covering period or null", () => {
-    expect(periodOnDate(HISTORY, "2026-01-03")?.id).toBe(1);
-    expect(periodOnDate(HISTORY, "2026-01-10")).toBeNull();
-    expect(periodOnDate(HISTORY, "2026-02-27")?.id).toBe(3);
+    expect(periodIn(HISTORY, "2026-01-03")?.id).toBe(1);
+    expect(periodIn(HISTORY, "2026-01-10")).toBeNull();
+    expect(periodIn(HISTORY, "2026-02-27")?.id).toBe(3);
   });
 });
 
