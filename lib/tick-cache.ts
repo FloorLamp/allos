@@ -33,6 +33,20 @@
 // metric/appointment rows rather than dose logs or preventive records. The scope
 // closes with the profile, so the next profile — and the next tick — re-reads.
 //
+// WHAT THE SCOPE DOES NOT COVER (#2674). "The tick only READS these inputs" is a
+// claim about the two gathers named above, not a property of the tick, and the
+// difference is load-bearing: a read repeated inside a tick is NOT thereby a
+// candidate. `getFindingSuppressions` is the worked counter-example. It is read six
+// times in one digest gather and eleven times across an ordinary two-profile tick,
+// which is exactly the shape that looks like this module's job — but `runPreventive`
+// DELETES from upcoming_dismissals inside the scope (its #1024 episode-end sweep,
+// lib/notifications/preventive.ts:127, reached from scripts/notify.ts:605), and the
+// Telegram poll loop writes the same table from ANOTHER PROCESS while the scope sits
+// open across every awaited dispatch. So the read stays unmemoized and pays its
+// round-trip; the compile cost, which is the expensive half, is already gone through
+// `hoistedStatement`. Before adding a name here, find the writers first — a snapshot
+// of a suppression bus reads as "still silenced", and that is a safety direction.
+//
 // Outside a scope this is a plain passthrough, exactly like the request-cache shim:
 // a DB test, a `manual` send, and the `poll` loop all compute every call. That is
 // what makes it composable with `cache()` — wrap a gather in both and each process

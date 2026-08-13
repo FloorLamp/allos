@@ -193,6 +193,14 @@ checked: `lib/__db_tests__/migration-child-links.test.ts` reads every migration'
 link literals, fails an unknown pair, and pins the non-cascading FK parents of
 `medical_records`. The frozen entries a hash-locked migration cannot un-name are
 allowlisted there with the corrective migration named beside them.
+SPELLING A PAIR RIGHT IS NOT EXERCISING IT (#2677), which is the same defect one
+level up: 180's fixture built no child table at all, and `20260813-bmi-derived-rows`
+had a fixture for one of its three correct pairs, so deleting either of the other two
+left the whole DB tier green. `migration-child-links-exercised.test.ts` is that half.
+It reads the deleted table's non-cascading parents out of the SCHEMA — so removing an
+entry fails THERE rather than quietly deleting its own test — and plants a child row
+per pair to prove each blocks, controlled by an unreferenced row that must still go.
+A migration declaring `CHILD_LINKS` registers a fixture there or the census fails.
 
 That registry is HALF the delete story, and its silence used to read as coverage
 (#2680). It covers the NON-CASCADING parents — the links that must BLOCK a
@@ -651,7 +659,14 @@ A tick is not a request, so `cache()` (`lib/request-cache.ts`) is identity in it
 Per-tick memoization goes through `lib/tick-cache.ts`: `scripts/notify.ts` opens
 one scope per profile, and a repeated heavy gather declares `tickCached` beside
 its `cache()`. Do not reach for a TTL memo here — a scope, not a duration, is
-what lets a safety counter be memoized at all.
+what lets a safety counter be memoized at all. A repeated read is not thereby a
+CANDIDATE: the scope may hold only what nothing inside it writes, and
+`getFindingSuppressions` is the worked counter-example (#2674) — six round-trips
+in one digest gather, eleven across an ordinary tick, and left unmemoized anyway
+because `runPreventive`'s #1024 episode-end sweep deletes from
+`upcoming_dismissals` inside the same scope while the Telegram poll loop writes
+the table from another process. Its compile cost is already gone through
+`hoistedStatement`; find the writers before adding a name.
 
 See `docs/internals/notifications.md`.
 

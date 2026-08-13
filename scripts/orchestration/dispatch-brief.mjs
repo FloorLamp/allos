@@ -301,7 +301,20 @@ ${MIGRATION_LINES}
   file left in the worktree reads to the check-in as unrescued work. Every finished
   cluster used to trip "DIRTY AND NO AGENT: RESCUE NOW" over a PR body already
   published on GitHub, which is the ignorable-alarm failure the flight recorder
-  exists to avoid.
+  exists to avoid. The branch-unique rule covers every LOG and temp file too
+  ($SCRATCH/gates-${opts.branch.split("/").pop()}.log, never gates.log): the logs are
+  what collide in practice — two clusters appending to one gates.log interleaved their
+  vitest output, and each read the other's failures as its own.
+- NEVER \`pkill -f <pattern>\` — not vitest, not next, not playwright, not your own
+  harness name. Sibling clusters run the same binaries in this container, so a pattern
+  kill takes their runs down with yours and they have no way to tell that from a real
+  failure. Kill only an explicit PID you captured yourself.
+- node_modules in your worktree is a hardlink COPY (cp -al), never a symlink: a symlink
+  satisfies vitest but makes \`next build\` die with "TurbopackInternalError: Symlink
+  [project]/node_modules is invalid, it points out of the filesystem root", so an e2e
+  run fails in global-setup before a single spec starts. Hardlinks share inodes with the
+  canonical tree, so never write INTO node_modules — recreate node_modules/.cache after
+  the copy.
 - Use the GitHub token by its NAME — $GH_TOKEN (fallback $GITHUB_TOKEN) — in every curl;
   never "search the environment for credentials"
 - Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit)
