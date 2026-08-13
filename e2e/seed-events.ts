@@ -23,6 +23,7 @@ import {
   seedTrainingRollup,
   seedLabValueGoal,
   seedLoadContexts,
+  seedWeekSpine,
 } from "./seed/training";
 import {
   seedIntegrationSyncEvents,
@@ -243,6 +244,9 @@ seedPortalHouseholds();
 // Appended LAST (#1675): a new profile plus its own lab rows, so every existing
 // fixture's row ids stay exactly where they were.
 seedBiomarkerPickerRank();
+// Appended LAST (#2566): a new profile plus its own activity rows, so every existing
+// fixture's row ids stay exactly where they were.
+seedWeekSpine();
 seedDayOneAverages();
 // Appended LAST (#2209): two new profiles plus a direct write of data/logs/
 // notify.jsonl, so every existing fixture's row ids stay exactly where they were.

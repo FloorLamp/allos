@@ -92,6 +92,23 @@ A ramp is validated as a ramp (`validateCellRamp`): one hue, monotone lightness,
 end ≥ 3:1. The pale end is anchored to the ramp's own empty cell, not the card
 surface — in a grid, every cell's neighbour is another cell.
 
+### Categorical cell colors
+
+A cell grid whose question is _which kind_, not _how much_, is **categorical**
+and draws from `chartSeries`, never from a same-hue ladder.
+
+- `chartActivityTypeBlock` — one block color per `ActivityType`: violet
+  strength, rose cardio, sky sport (the hues the Training Log's own type badges
+  already use), brand mobility, and the declared **neutral** for
+  `unclassified`, which states that the source never said what the session was
+  (#2272) rather than naming a discipline. Exhaustive `Record<ActivityType, …>`,
+  so a sixth activity type must declare its block before the app compiles.
+  `WeekSpine` (the #2566 week spine).
+
+Each entry ships the class the DOM renders **and** the hex it equals, for the
+same reason a ramp does: the guard that scans for stray hex cannot see a
+Tailwind class.
+
 ---
 
 ## 2. Choosing a form
@@ -107,6 +124,7 @@ surface — in a grid, every cell's neighbour is another cell.
 | composition over time                            | stacked bars                              | `StackedBarCard`, `ZoneMinutesCard`                 |
 | a relationship between two variables             | scatter                                   | `ScatterChartCard`                                  |
 | consistency / "did I show up"                    | calendar heatmap                          | `ActiveDaysStrip`, `AdherenceCalendar`              |
+| one week's sessions, by day AND kind             | seven-day band of categorical blocks      | `WeekSpine` (over `lib/training-week-spine.ts`)     |
 | coverage + composition, per group per day        | day-history calendar + group×day matrix   | `DayHistory` (over `lib/day-history.ts`)            |
 | growth against reference percentiles             | percentile bands + trajectory             | `GrowthChart`                                       |
 | ONE day, every layer, on a clock axis            | hand-drawn SVG day chart (scrub + zoom)   | `IntradayChart` (via `IntradayPanel`)               |
