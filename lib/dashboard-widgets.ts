@@ -26,6 +26,7 @@
 // the daily check-in. A deliberate violation needs a NAMED exception in that test.
 
 import { DATA_QUALITY_PREFIX } from "./data-quality";
+import type { DormancyDomain } from "./domain-dormancy";
 import type { ReorderStrategy } from "./drag-order";
 
 export type WidgetSpan = "full" | "two-thirds" | "third" | "half";
@@ -80,7 +81,49 @@ export interface WidgetDef {
   // (the Cycle-phase card, gated on the SAME bit as the Cycle nav entry, so the card
   // and the nav entry can never disagree about whether cycle tracking is relevant).
   relevanceKey?: "cycle";
+  // The DOMAIN this card presents, for dormancy (#2652 behavior 2). Declaring one
+  // makes the card collapsible: when nothing has arrived in that domain for its
+  // declared interval (lib/domain-dormancy.ts), the page renders ONE line stating how
+  // long the record has been silent and carrying the fix, instead of a card about
+  // today.
+  //
+  // Only a `dataAware` widget may declare one — dormancy is the state BETWEEN "never
+  // recorded" and "current", so a card with no absent story has nothing to be dormant
+  // against. Every dataAware widget either declares a domain or is named in
+  // DORMANCY_EXEMPT_WIDGETS with its reason; the registry test enforces both halves.
+  dormancyDomain?: DormancyDomain;
 }
+
+// Data-aware widgets that deliberately never collapse, each with the reason (#2652).
+// Three kinds of reason, and the first is the one that bounds this whole feature:
+//
+//   1. THE CARD IS SHOWING A REAL VALUE. Recent labs and Latest vitals render the
+//      latest reading per marker however old it is, under a declared presentation
+//      floor that age-labels it and strips its trend arrow (#1216/#2303). That floor
+//      exists so a stale value can stay on screen HONESTLY, and the freshness
+//      doctrine's rule is that the fix is what an aggregate claims, never what it
+//      hides. Collapsing these would hide precisely what the floor keeps.
+//   2. THE CARD IS ABOUT TODAY. Nutrition today and Cycle phase ask about today and
+//      carry the one tap that would end the dormancy; collapsing them would remove the
+//      write rather than the height (#2419 — a log affordance is never gated).
+//   3. THE AGGREGATE ALREADY ANSWERS. Healthspan pillars spans four domains that each
+//      report their own freshness, and #2023's `hasNoCurrentReading` already makes it
+//      go neutral rather than render current-shaped copy. A second answer is a fork.
+//
+// Promoting a case-1 card would need a FOLD that keeps its rows reachable in place
+// (the #2685 URL-state pattern), not this line — deliberately out of scope here.
+export const DORMANCY_EXEMPT_WIDGETS: Record<string, string> = {
+  "recent-labs":
+    "Renders the latest value per marker at any age under RECENT_LAB_STALE_DAYS; collapsing would hide what that floor deliberately shows (#1216/#2303).",
+  "vitals-latest":
+    "Renders its two latest readings at any age under VITAL_PRESENTATION_FLOORS; #2303 pins that nothing on this card is hidden or emptied.",
+  "nutrition-today":
+    "Asks about TODAY's protein and carries today's log offer; dormancy is a claim about the past.",
+  "cycle-phase":
+    "Its populated state carries cycleControlState's write, and #714 already governs what it may display.",
+  "healthspan-pillars":
+    "An aggregate over four domains that each carry their own freshness; #2023 already makes it go neutral.",
+};
 
 // The per-profile eligibility gate the page resolves from DB state and threads into
 // the resolve* functions — the dashboard twin of the nav's per-entry gating
@@ -522,6 +565,10 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     actionable: false,
     span: "half",
     dataAware: true,
+    // Dormant at the 90-day default (#2652). A nightly stream that has said nothing for
+    // a season is a device off the wrist or a disconnected source — which is what the
+    // collapsed line says, and what its fix addresses.
+    dormancyDomain: "sleep",
   },
   {
     id: "naps-today",
@@ -547,6 +594,10 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     actionable: false,
     span: "half",
     dataAware: true,
+    // Dormant at the 90-day default (#2652) — which is also this card's own trailing
+    // window, so before this the card's empty CTA told a returning weigh-in logger
+    // "No weigh-ins yet".
+    dormancyDomain: "weight",
   },
   {
     id: "healthspan-pillars",
@@ -631,6 +682,30 @@ export interface ResolvedWidget {
   empty: boolean;
 }
 
+// WHICH OF THE THREE THINGS A CARD RENDERS (#2652). Kept here, pure, because the
+// precedence between them is a claim about honesty rather than a layout preference and
+// must be stated exactly once:
+//
+//   • "dormant" — the domain HAS recorded and then went quiet past its declared
+//     interval. Wins over "empty", because the two states say opposite things about
+//     whether anything was ever recorded and only one of them can be true.
+//   • "empty"   — the domain has never recorded anything: the onboarding CTA.
+//   • "content" — the card itself.
+//
+// A widget that declares no `dormancyDomain` can never be dormant however the caller
+// flags it, and a widget that is not `dataAware` can never be empty — so a caller that
+// over-reports cannot make a card claim something its registry entry does not support.
+export type WidgetDisplayState = "content" | "empty" | "dormant";
+
+export function widgetDisplayState(
+  def: WidgetDef,
+  flags: { empty: boolean; dormant: boolean }
+): WidgetDisplayState {
+  if (def.dormancyDomain != null && flags.dormant) return "dormant";
+  if (def.dataAware && flags.empty) return "empty";
+  return "content";
+}
+
 // The widgets a profile is eligible to customize, in registry order: everything
 // except pinned widgets (rendered separately), fitness widgets on an age-restricted
 // profile, and per-`WidgetGate` entries whose gate bit is off for the profile
@@ -662,6 +737,10 @@ export function customizableWidgetDefs(
 // `emptyIds` is the set of data-aware widget ids whose domain currently has no
 // data; a data-aware widget in that set resolves with `empty: true` so the page
 // renders its onboarding CTA. Emptiness never changes `visible`.
+//
+// Dormancy (#2652) is deliberately NOT resolved here: like emptiness on this page it
+// is decided from the gathers, long after eligibility, and it never changes `visible`
+// — nothing is removed by adaptation. `widgetDisplayState` above owns the precedence.
 export function resolveWidgetList(
   layout: DashboardLayout | null,
   restricted: boolean,

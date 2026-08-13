@@ -283,3 +283,16 @@ export const FOLD_TAIL_KID_PROFILE = "Fold Tail Kid (e2e)";
 export const E2E_LOGIN_FOLDWELL = "e2e_foldwell";
 export const FOLD_WELL_PARENT_PROFILE = "Fold Well Parent (e2e)";
 export const FOLD_WELL_KID_PROFILE = "Fold Well Kid (e2e)";
+
+// A dedicated ADULT profile for the #2652 dormancy collapse: three domains that
+// RECORDED and then went quiet (weight and sleep past the 90-day default, vitals past
+// the 180-day floor the blood-pressure card already declares), and one that has never
+// recorded at all (labs). Both states on one dashboard on purpose — the whole claim of
+// this feature is that "it stopped" and "there has never been any" are different
+// sentences with different affordances, and a fixture that only carried one of them
+// could not prove they had not been conflated.
+//
+// Dedicated because the assertion is an ABSENCE with a shape: no neighbouring spec may
+// log a weight, a night or a reading here, or the collapse under test evaporates.
+export const E2E_LOGIN_DORMANT = "e2e_dormant";
+export const DORMANT_DOMAINS_PROFILE = "Dormant Domains (e2e)";

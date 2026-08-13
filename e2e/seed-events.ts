@@ -56,6 +56,7 @@ import {
   seedNavGating,
   seedWhatsNew,
   seedHouseholdFolds,
+  seedDormantDomains,
 } from "./seed/dashboard";
 import {
   seedRestEpisode,
@@ -261,3 +262,6 @@ seedTrendsCurrency();
 // Appended LAST (#2653): one new profile plus its own body_metrics rows, so every
 // existing fixture's row ids stay exactly where they were.
 seedTrendsSparse();
+// Appended LAST (#2652): one new profile plus its own weight/sleep/vital rows, so
+// every existing fixture's row ids stay exactly where they were.
+seedDormantDomains();
