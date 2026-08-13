@@ -1,3 +1,11 @@
+// Env FIRST, before any dependency is evaluated. This module reads process.env
+// (E2E_PORT, ALLOS_TEST_NOW) at module scope, and since e2e/seed/session.ts began
+// importing it, it is no longer loaded only by the Playwright runner — which
+// loads env itself — but also inside the standalone `tsx e2e/seed-events.ts` run
+// that seeds the template. lib/__tests__/script-env-bootstrap.test.ts is what
+// noticed; see its header for the #679 class this prevents.
+import "../scripts/load-env";
+
 import fs from "node:fs";
 import path from "node:path";
 import { syncInstantBefore } from "./sync-instants";
@@ -54,6 +62,15 @@ export const TEMPLATE_DEMO_DIR = path.join(E2E_DATA_DIR, "template-demo");
 
 /** The database file inside a template dir / a worker dir. */
 export const DB_BASENAME = "app.db";
+
+/**
+ * The saved storage state inside a template dir / a worker dir.
+ *
+ * The seed writes it into the TEMPLATE (e2e/seed/session.ts) and the per-worker
+ * copy carries it to exactly `workerAuthPath(idx)` — same basename, so the copy
+ * needs no special case and neither side hard-codes the other's filename.
+ */
+export const AUTH_BASENAME = "auth.json";
 
 /** Where global-setup.ts hands the run-wide frozen clock to the workers. */
 export const RUN_CONTEXT_PATH = path.join(E2E_DATA_DIR, "run-context.json");
@@ -156,9 +173,9 @@ export function workerMailboxPath(idx: number = workerIndex()): string {
   return path.join(workerDir(idx), "mailbox.jsonl");
 }
 
-/** This worker's saved storage state (its own logged-in admin session). */
+/** This worker's saved storage state (the admin session seeded into the template). */
 export function workerAuthPath(idx: number = workerIndex()): string {
-  return path.join(workerDir(idx), "auth.json");
+  return path.join(workerDir(idx), AUTH_BASENAME);
 }
 
 export function workerPort(slot: number = slotIndex()): number {

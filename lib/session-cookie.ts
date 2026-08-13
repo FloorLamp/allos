@@ -19,9 +19,29 @@
 // invalidated.
 export const SESSION_COOKIE_SECURE = process.env.NODE_ENV === "production";
 
-export const SESSION_COOKIE = SESSION_COOKIE_SECURE
-  ? "__Host-ht_session"
-  : "ht_session";
+/**
+ * The `__Host-` name a cookie takes at a given Secure-ness.
+ *
+ * The constants below are this applied to THIS process's NODE_ENV, which is the
+ * right answer for every caller that IS the server — middleware and the auth
+ * layer both are. It is the wrong answer for a caller that mints a cookie for a
+ * server it is not running inside: the e2e seed (e2e/seed/session.ts) writes a
+ * storageState for `next start` workers that are always production while the
+ * seed process itself is not, so it must ask for `true` explicitly rather than
+ * read `SESSION_COOKIE`. Getting that backwards is silent — the browser stores a
+ * perfectly valid cookie under a name the server never reads, and every request
+ * is simply anonymous.
+ */
+export function sessionCookieName(secure: boolean): string {
+  return secure ? "__Host-ht_session" : "ht_session";
+}
+
+/** As `sessionCookieName`, for the slide mark. */
+export function slideMarkCookieName(secure: boolean): string {
+  return secure ? "__Host-ht_slid" : "ht_slid";
+}
+
+export const SESSION_COOKIE = sessionCookieName(SESSION_COOKIE_SECURE);
 
 // Second-factor challenge cookie (issue #23). Between a correct password and a
 // correct TOTP code the login is NOT authenticated — no session exists. This
@@ -81,9 +101,9 @@ export function sessionCookieOptions(maxAgeSec: number = SESSION_TTL_SEC) {
 //
 // The mark holds no secret (a constant), so it is never a second copy of the
 // token; it exists only to be present or absent.
-export const SESSION_SLIDE_MARK_COOKIE = SESSION_COOKIE_SECURE
-  ? "__Host-ht_slid"
-  : "ht_slid";
+export const SESSION_SLIDE_MARK_COOKIE = slideMarkCookieName(
+  SESSION_COOKIE_SECURE
+);
 export const SESSION_SLIDE_MARK_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
 export const SESSION_SLIDE_MARK_VALUE = "1";
 
