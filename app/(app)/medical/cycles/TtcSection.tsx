@@ -9,6 +9,7 @@ import {
 import type { TtcState } from "@/lib/ttc-store";
 import TtcDeclareControl from "./TtcDeclareControl";
 import TtcLogBar from "./TtcLogBar";
+import TtcOffDisclosure from "./TtcOffDisclosure";
 
 // The trying-to-conceive surface (issue #1680), rendered inside the Cycle page. A SERVER
 // component: it formats the ONE assembled TtcState (lib/ttc-store.getTtcState) and decides
@@ -18,6 +19,13 @@ import TtcLogBar from "./TtcLogBar";
 // NOT_CONTRACEPTION_NOTE; ovulation confirmation is stated as a past event; the counter
 // reports elapsed months and cycles and nothing else. No streaks, no encouragement, no
 // score, no "chance today" — the app states what it observed and stops.
+//
+// THREE branches, and only the third folds (#2583 part 2). Pregnancy-paused and
+// declared/active render exactly as they always have — someone who declared this is
+// mid-topic, and folding their surface would be the app second-guessing a declaration
+// it is not allowed to make for them. The NOT-ACTIVE branch is the one that stood open
+// on every visit for people who never asked about it, so it spends one line
+// (TtcOffDisclosure) with the same explainer and the same declare control behind it.
 export default function TtcSection({
   state,
   today,
@@ -48,17 +56,14 @@ export default function TtcSection({
 
   if (!state.active) {
     return (
-      <section className="card space-y-3" data-testid="ttc-section">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-          Trying to conceive
-        </h2>
+      <TtcOffDisclosure>
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Turn this on to record ovulation (LH) tests, waking temperatures and
           cervical mucus, and to see a fertile window built from them — with the
           evidence each window rests on.
         </p>
         <TtcDeclareControl ttcStart={state.ttcStart} today={today} />
-      </section>
+      </TtcOffDisclosure>
     );
   }
 

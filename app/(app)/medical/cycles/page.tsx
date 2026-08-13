@@ -25,6 +25,7 @@ import {
   CYCLE_REGULARITY_VARIATION_DAYS,
 } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import CycleForecastCard from "./CycleForecastCard";
 import TtcSection from "./TtcSection";
 import CycleForm from "./CycleForm";
@@ -99,15 +100,24 @@ export default async function CyclePage() {
         </div>
         {/* A period left open past the plausible maximum (#1682): the phase above has
             already stopped claiming menstrual, and we ASK rather than closing the record
-            ourselves — the record is the user's, and only their tap writes to it. */}
+            ourselves — the record is the user's, and only their tap writes to it.
+
+            The second half of the sentence used to read "set its end date below", which
+            pointed at the dated ADD form — a form that mints a NEW row and whose
+            plausibility gate (#1682) refuses one overlapping the very period being
+            described, so the direction never worked. Folding that form (#2583) made the
+            miss visible rather than causing it, so the sentence now names the control
+            that does close an existing row: Edit on its History entry, which is also
+            where reopenPeriodAction's too-old refusal already sends people. */}
         {control.staleOpenPeriod && (
           <p
             className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200"
             data-testid="cycle-stale-open"
           >
             Still bleeding? This period has been open since{" "}
-            {control.openPeriodStart} — set its end date below, or tap “Period
-            ended today”. Until then the phase is derived without it.
+            {control.openPeriodStart} — tap “Period ended today”, or use “Edit”
+            on its row in the history below to set its end date. Until then the
+            phase is derived without it.
           </p>
         )}
         <PeriodQuickActions state={control} />
@@ -161,11 +171,30 @@ export default async function CyclePage() {
         )}
       </section>
 
-      {/* Per-day cycle symptoms — the shipped symptom bar, led with the cycle context. */}
+      {/* Per-day symptoms — the shipped symptom bar, with the PICKER led by the cycle
+          context. What renders as logged is the day's WHOLE ledger (#221: one store),
+          which is why a fever logged this morning appears on this page too.
+
+          #2583 part 3 is the framing, and it is COPY ONLY. A bare "Symptoms today"
+          heading inside a Cycle page promises cycle symptoms and delivers the day, so
+          the readability sweep read Fever and Cough leading the bar as a category
+          error. The behaviour is right: filtering the logged set to cycle symptoms
+          would hide a fever the user recorded and make the heading lie, so the subtitle
+          says what the section is instead. `leadDomain` stays an ORDER lever for the
+          picker only, still ranked below the profile's own usage
+          (lib/queries/symptoms.ts). Do NOT turn this into a domain filter. */}
       <section className="card space-y-2" data-testid="cycle-symptoms">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
           Symptoms today
         </h2>
+        <p
+          className="text-xs text-slate-500 dark:text-slate-400"
+          data-testid="cycle-symptoms-scope"
+        >
+          Your whole symptom log for today, not a cycle-only list — cycle
+          symptoms lead the picker, and anything you log today shows up here
+          whatever it is.
+        </p>
         <SymptomLogBar
           date={todayStr}
           initial={getSymptomSeveritiesOnDate(profile.id, todayStr)}
@@ -187,8 +216,28 @@ export default async function CyclePage() {
         />
       )}
 
-      {/* Add a period. */}
-      <CycleForm action={saveCycleAction} />
+      {/* Add a period with dates — behind a disclosure since #2583 (the #1497
+          rare-cadence-entry rule, which named this page as one of its examples). A
+          period is a ~monthly event and the common case is the one-tap control at the
+          top of this page; a four-field dated form standing permanently open charges
+          every visit for the unusual case.
+
+          The affordance is UNCONDITIONAL — the same named button in the same place on
+          every visit, never behind a menu and never gated on state — because the way
+          this fold fails is by getting quieter and taking the backfilled and corrected
+          periods with it. INLINE rather than the hubs' modal: this is one reading
+          column, and the sentences above ("add one with dates below") point at a
+          summary the reader can see without a dialog opening over it. The qualifier
+          rides the OPEN heading and the collapsed button stays short, which is exactly
+          what AddEntryPanel's addLabel is for. */}
+      <AddEntryPanel
+        testId="cycle-add-panel"
+        panelId="cycle-add-panel-body"
+        label="Add a period with dates — for a past or corrected period"
+        addLabel="Add a period with dates"
+      >
+        <CycleForm action={saveCycleAction} />
+      </AddEntryPanel>
 
       {/* History. */}
       <section className="space-y-2" data-testid="cycle-history">
@@ -196,7 +245,7 @@ export default async function CyclePage() {
           History
         </h2>
         {periods.length === 0 ? (
-          <EmptyState message="No periods logged yet. Use “Period started” above or add one with dates." />
+          <EmptyState message="No periods logged yet. Use “Period started” above for today’s, or “Add a period with dates” for an earlier one." />
         ) : (
           <ul className="flex flex-col gap-2">
             {periods.map((p) => (
