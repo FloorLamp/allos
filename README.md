@@ -240,6 +240,18 @@ npm run test:e2e
 npm run build
 ```
 
+The browser suite needs Chromium downloaded once, and nothing else does:
+
+```bash
+npx playwright install --only-shell chromium
+```
+
+Chromium is the only browser the suite runs, and `--only-shell` fetches just the
+headless binary it launches — the headed one is 389 MB that nothing here starts.
+Without this, `npm run test:e2e` fails at browser launch; Playwright's own message
+suggests the unflagged `npx playwright install`, which works but downloads every
+browser.
+
 The test suites are intentionally separate:
 
 - `npm test` runs pure unit tests.
