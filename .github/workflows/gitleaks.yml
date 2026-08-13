@@ -56,9 +56,28 @@ jobs:
             exit 1
           }
           url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 \
-            "$url" -o /tmp/gitleaks.tar.gz \
-            || did_not_run "Downloading gitleaks v${GITLEAKS_VERSION} failed after 5 retries."
+          # The retry WINDOW, not the retry count. The original
+          # `--retry 5 --retry-delay 2` gave up after a MEASURED 11.8s against a
+          # persistently failing endpoint, because `--retry-delay` pins curl to a
+          # fixed wait and disables its backoff. The outages it was written for
+          # lasted minutes — three unrelated PRs inside eight minutes (#2592) — so
+          # the guard covered a hiccup an order of magnitude shorter than the event.
+          #
+          # EVEN SPACING, not exponential backoff, because the budget is what is
+          # scarce here. Default backoff spends its window on one enormous final
+          # sleep: measured at `--retry 8 --retry-max-time 180`, curl slept 1,2,4,
+          # …,128s and took 259s to give up — over the stated cap, since
+          # `--retry-max-time` gates when a retry may START, not when it may finish.
+          # A fixed 15s delay puts ~12 attempts across the window instead, which is
+          # what samples a CDN blip; the last one begins before 180s, so the job
+          # gives up in about three minutes.
+          #
+          # Three minutes once per PR is cheap against a red check named `gitleaks`
+          # — the most alarming check in this repo, and the reason it must never fail
+          # silently-like-a-finding.
+          curl -fsSL --retry 12 --retry-all-errors --retry-delay 15 --retry-max-time 180 \
+            --connect-timeout 15 "$url" -o /tmp/gitleaks.tar.gz \
+            || did_not_run "Downloading gitleaks v${GITLEAKS_VERSION} failed after ~3 minutes of retries."
           echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c - \
             || did_not_run "The downloaded gitleaks v${GITLEAKS_VERSION} archive did not match its pinned sha256."
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks \
