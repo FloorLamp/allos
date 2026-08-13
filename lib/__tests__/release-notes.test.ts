@@ -20,7 +20,7 @@ import shipped from "@/lib/release-notes.json";
 
 const day = (over: Record<string, unknown> = {}) => ({
   date: "2026-07-24",
-  entries: [{ pr: 1, title: "T", body: "B", issues: [] }],
+  entries: [{ pr: 1, title: "T", issues: [] }],
   operatorNotes: [],
   ...over,
 });
@@ -31,8 +31,8 @@ describe("parseReleaseNotes", () => {
       days: [
         day({
           entries: [
-            { pr: 12, title: "A", body: "a", kind: "fix", issues: [3, 4] },
-            { pr: 13, title: "B", body: "b", issues: [] },
+            { pr: 12, title: "A", kind: "fix", issues: [3, 4] },
+            { pr: 13, title: "B", issues: [] },
           ],
           operatorNotes: ["run the thing"],
         }),
@@ -77,22 +77,30 @@ describe("parseReleaseNotes", () => {
     ["empty entries", { days: [day({ entries: [] })] }],
     [
       "entry missing title",
-      { days: [day({ entries: [{ pr: 1, body: "b", issues: [] }] })] },
+      { days: [day({ entries: [{ pr: 1, issues: [] }] })] },
     ],
     [
-      "blank body",
+      // Bodies are RETIRED (2026-08-13): a change is one concise bullet, and the
+      // validator is what keeps prose from creeping back.
+      "a body (retired)",
       {
         days: [
-          day({ entries: [{ pr: 1, title: "t", body: "  ", issues: [] }] }),
+          day({ entries: [{ pr: 1, title: "t", body: "prose", issues: [] }] }),
+        ],
+      },
+    ],
+    [
+      "an over-long title (a bullet, not a paragraph)",
+      {
+        days: [
+          day({ entries: [{ pr: 1, title: "x".repeat(121), issues: [] }] }),
         ],
       },
     ],
     [
       "non-numeric pr",
       {
-        days: [
-          day({ entries: [{ pr: "1", title: "t", body: "b", issues: [] }] }),
-        ],
+        days: [day({ entries: [{ pr: "1", title: "t", issues: [] }] })],
       },
     ],
     [
@@ -100,9 +108,7 @@ describe("parseReleaseNotes", () => {
       {
         days: [
           day({
-            entries: [
-              { pr: 1, title: "t", body: "b", kind: "chore", issues: [] },
-            ],
+            entries: [{ pr: 1, title: "t", kind: "chore", issues: [] }],
           }),
         ],
       },
@@ -110,7 +116,7 @@ describe("parseReleaseNotes", () => {
     [
       "issues not an array",
       {
-        days: [day({ entries: [{ pr: 1, title: "t", body: "b", issues: 3 }] })],
+        days: [day({ entries: [{ pr: 1, title: "t", issues: 3 }] })],
       },
     ],
     ["operator note not a string", { days: [day({ operatorNotes: [7] })] }],
@@ -209,7 +215,6 @@ describe("releaseNotesPage", () => {
     Array.from({ length: n }, (_, i) => ({
       pr: from + i,
       title: `T${from + i}`,
-      body: "B",
       issues: [],
     }));
   // Three days of 3/1/4 entries, newest first once parsed.

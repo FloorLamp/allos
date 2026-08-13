@@ -60,7 +60,7 @@ export default async function CyclePage() {
   // derived state line, and whether an open period has outrun the plausible maximum. The
   // client component renders it and decides nothing.
   const control = cycleControlState(periods, todayStr);
-  const currentPhase = cyclePhaseOnDate(periods, todayStr);
+  const currentPhase = cyclePhaseOnDate(periods, todayStr, todayStr);
   const stats = cycleStats(periods);
   const lengths = cycleLengths(periods); // oldest-first
   const trendData = lengths.map((l) => ({ date: l.start, value: l.days }));

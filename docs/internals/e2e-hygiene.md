@@ -1340,6 +1340,61 @@ Both `ci.yml`'s matrix and `e2e-full.yml` upload each shard's raw JSON report as
 `e2e-full.yml` is the alternative when you want a census run's numbers (its
 `repeat-each` inflates every file by the same factor, which DOES cancel).
 
+## Co-residency: an ABSENCE is the precondition that sharding breaks
+
+Two specs sharing a worker share its database. That is fine for the fixture rule
+above — a spec owning its own rows is unaffected by a neighbour adding more. It
+is NOT fine when a spec's precondition is an **absence**, because a neighbour's
+perfectly ordinary write destroys it and neither spec is wrong on its own.
+
+Both instances so far had that exact shape:
+
+| victim asserts                                              | neighbour does                                                   | result               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------- | -------------------- |
+| profile 1 has NO tracked protein (`data-basis="estimated"`) | `offline-food-log` adds 30g and never removes it                 | `"combined"` (#2604) |
+| the seed's two never-measured stars keep their empty tiles  | `hearing.spec` deletes an audiogram, which runs the orphan sweep | stars gone (#2623)   |
+
+Neither was caused by the sharding. Duration-balanced buckets (#2590) put the
+pair on one database for the first time, and reshuffling the buckets — which a
+manifest refresh does — can expose another one at any time. **Assume a bucket
+change is a co-residency change.**
+
+The rule that prevents it is the fixture-ownership rule one step further: a spec
+that WRITES to the shared profile leaves it as it found it, and a spec that
+depends on something NOT being there says so where the state is created rather
+than trusting the seed to stay that way. `protein-quickadd.spec` has followed the
+first half for a long time ("Add→undo leaves the fixture as found"), on a
+dedicated fixture, for precisely this hazard.
+
+### Reproducing one — a green shard proves nothing
+
+DB-per-worker means a colliding pair only collides when Playwright puts both
+files on the SAME worker, which varies per run. So:
+
+- at `--workers=2` the shard can pass while CI fails, and passes again on the
+  re-run that was supposed to confirm it;
+- at `--workers=1` every spec in the bucket is co-resident, in order, and the
+  failure is deterministic.
+
+```
+# the shard's own composition — passes, proves nothing
+npx playwright test "${BUCKET[@]}"
+# every spec on one database — this is the test
+PW_WORKERS=1 npx playwright test "${BUCKET[@]}"
+```
+
+Both collisions above passed at two workers and failed at one, and the second was
+nearly filed as unreproducible on the strength of a green two-worker run. Bisect
+the bucket against the victim to name the neighbour, then diff the worker
+database against `e2e/.data/template/app.db` to see what it actually left behind
+— that is what turned "some spec breaks this" into "`saved_items` went 9 → 7, and
+the two missing rows are ApoB and hs-CRP".
+
+A whole-suite `PW_WORKERS=1` run is the exhaustive form: it makes every spec
+co-resident with every other and finds every collision of this class in one pass.
+It is slow (no parallelism, the full suite serially) and worth it after a
+manifest refresh.
+
 ## Fix (f) — DB-per-worker isolation (#1538)
 
 Until this landed, the suite booted ONE app server against ONE seeded SQLite

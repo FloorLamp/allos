@@ -243,6 +243,11 @@ describe("computeFlagReconciliation", () => {
     },
   ];
 
+  // The day the log is read against. Both records below were collected long before it,
+  // which is what the #718 per-record derivation is about; the #2613 case at the end
+  // moves the horizon instead of the record.
+  const TODAY = "2024-06-01";
+
   it("derives each hormone record's cycle phase from ITS OWN date (#718)", () => {
     const rows = [
       // Jan 6 = follicular → 15 ng/mL is above the ≤1.5 follicular ceiling.
@@ -265,7 +270,11 @@ describe("computeFlagReconciliation", () => {
       },
     ];
     expect(
-      computeFlagReconciliation(rows, progByName, { sex: "female", periods })
+      computeFlagReconciliation(rows, progByName, {
+        sex: "female",
+        periods,
+        today: TODAY,
+      })
     ).toEqual([{ id: 1, flag: "high" }]);
   });
 
@@ -285,10 +294,43 @@ describe("computeFlagReconciliation", () => {
       computeFlagReconciliation(rows, progByName, {
         sex: "female",
         periods: [],
+        today: TODAY,
       })
     ).toEqual([]);
     expect(
       computeFlagReconciliation(rows, progByName, { sex: "female" })
     ).toEqual([]);
+  });
+
+  it("a record dated AFTER today derives no phase and falls back to the base envelope (#2613)", () => {
+    const rows = [
+      // The very row the #718 case flags "high" off its follicular ceiling — only now
+      // it is dated ahead of the day the log is being read on (a mistyped collection
+      // date, or a document whose date parsed wrong). No phase is derivable there, so
+      // the base ≤23.9 envelope applies and nothing is flagged.
+      {
+        id: 1,
+        value_num: 15,
+        unit: "ng/mL",
+        canonical_name: "Progesterone",
+        flag: null,
+        date: "2024-01-06",
+      },
+    ];
+    expect(
+      computeFlagReconciliation(rows, progByName, {
+        sex: "female",
+        periods,
+        today: "2024-01-05",
+      })
+    ).toEqual([]);
+    // One day later the record is in the past, and the phase range applies again.
+    expect(
+      computeFlagReconciliation(rows, progByName, {
+        sex: "female",
+        periods,
+        today: "2024-01-06",
+      })
+    ).toEqual([{ id: 1, flag: "high" }]);
   });
 });

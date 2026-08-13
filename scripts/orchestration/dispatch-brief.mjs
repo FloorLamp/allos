@@ -18,12 +18,20 @@
 //     [--worktree wt-<name>] [--issues 123,456] [--task "one line"] \
 //     [--e2e] [--port-base N]
 //   node scripts/orchestration/dispatch-brief.mjs list
-//   node scripts/orchestration/dispatch-brief.mjs done <branch>
+//   node scripts/orchestration/dispatch-brief.mjs done <branch> [--keep]
+//   node scripts/orchestration/dispatch-brief.mjs resume <branch>
 //
 // `new` prints a complete brief block (stdout) and appends a ledger entry.
 // `list` shows active dispatches with ages, flagging anything past 3x the
 //   median completed-dispatch duration (the runbook's stall threshold).
-// `done` closes a dispatch, freeing its port range.
+// `done` closes a dispatch, frees its port range, and CLEANS UP: removes the
+//   worktree (located by BRANCH via `git worktree list`, wherever it was
+//   built), prunes stale remote refs, and deletes the local branch once its
+//   remote is gone (merged-and-tidied). A DIRTY worktree refuses the whole
+//   command — rescue first, or pass --keep to close the ledger entry only.
+// `resume` re-opens a closed dispatch: same failure mode as closing one and
+//   then messaging the agent back to life — the agent was live but invisible
+//   to the roster, so the restart drill would never have rescued it.
 //
 // Migration slots are RETIRED: migrations are name-keyed (lib/migrations/
 // runner.ts), so the brief carries a fixed convention block instead of a
@@ -255,7 +263,10 @@ ${nodeLine}
   Committing is not enough — your worktree is NOT backed up and container restarts
   are frequent. This is a HARD GATE, not restart advice: if you have touched more
   than ~10 files, or worked more than ~45 minutes, since your last PUSH, commit and
-  push NOW, even mid-task and even if gates have not run.
+  push NOW, even mid-task and even if gates have not run. If a push fails with
+  "stale info" or a missing upstream, the branch was squash-merged and deleted on
+  the remote: git fetch --prune origin, then push again — deterministic, not a
+  conflict.
 - If the work turns out materially bigger than this brief implies, SAY SO and push a
   checkpoint before continuing — do not silently absorb a 15-file footprint that was
   briefed as a one-line registry edit.
@@ -443,10 +454,26 @@ function cmdList() {
   }
 }
 
+// Locate a branch's worktree by asking git, not by guessing a path — two live
+// clusters once built theirs OUTSIDE $SCRATCH and were invisible to every
+// path-glob check. `git worktree list --porcelain` knows every worktree this
+// repo has, wherever it is.
+function worktreeForBranch(branch) {
+  const out = git("worktree list --porcelain", { allowFail: true });
+  if (!out) return null;
+  let current = null;
+  for (const line of out.split("\n")) {
+    if (line.startsWith("worktree ")) current = line.slice("worktree ".length);
+    else if (line === `branch refs/heads/${branch}` && current) return current;
+  }
+  return null;
+}
+
 function cmdDone(argv) {
-  const branch = argv[0];
+  const branch = argv.find((a) => !a.startsWith("--"));
+  const keep = argv.includes("--keep");
   if (!branch) {
-    console.error("usage: dispatch-brief.mjs done <branch>");
+    console.error("usage: dispatch-brief.mjs done <branch> [--keep]");
     process.exit(2);
   }
   const active = activeDispatches(readLedger());
@@ -457,9 +484,134 @@ function cmdDone(argv) {
     );
     process.exit(1);
   }
+
+  // Cleanup preflight BEFORE closing anything: a dirty worktree refuses the
+  // whole command, so `done` can never half-run and leave unrescued work with
+  // no roster entry pointing at it. --keep opts out of cleanup entirely.
+  const wtPath = keep ? null : worktreeForBranch(branch);
+  if (wtPath) {
+    const dirty = execSync(
+      `git -C ${JSON.stringify(wtPath)} status --porcelain`,
+      {
+        encoding: "utf8",
+        timeout: 20_000,
+      }
+    ).trim();
+    if (dirty) {
+      console.error(
+        `REFUSED: ${wtPath} is DIRTY (${dirty.split("\n").length} entries) and nobody would be
+coming back for it after done. Rescue first (commit as explicitly-labelled WIP,
+push), or pass --keep to close the ledger entry without touching the tree.`
+      );
+      process.exit(1);
+    }
+  }
+
   appendLedger({ at: new Date().toISOString(), status: "done", branch });
   rosterClose(branch);
   console.log(`closed ${branch} — freed port base ${entry.portBase}`);
+  if (keep) {
+    console.log("(--keep: worktree and local branch left as-is)");
+    return;
+  }
+
+  if (wtPath) {
+    if (
+      git(`worktree remove ${JSON.stringify(wtPath)}`, { allowFail: true }) !==
+      null
+    ) {
+      console.log(`removed worktree ${wtPath}`);
+    } else {
+      console.log(`could not remove worktree ${wtPath} — remove by hand`);
+    }
+  }
+  // Prune BEFORE judging the local branch: the squash-merge deleted the remote
+  // ref, and a stale remote-tracking ref would make "remote still exists" lie.
+  git("fetch --prune origin", { allowFail: true });
+  if (
+    git(`show-ref --verify refs/heads/${branch}`, { allowFail: true }) !== null
+  ) {
+    const remoteGone =
+      git(`show-ref --verify refs/remotes/origin/${branch}`, {
+        allowFail: true,
+      }) === null;
+    if (remoteGone) {
+      // -D, not -d: a squash-merged branch is never an ancestor of main, so -d
+      // refuses even though the content landed. Remote-gone after prune IS the
+      // merged-and-tidied shape (the #2621 rule).
+      if (git(`branch -D ${branch}`, { allowFail: true }) !== null) {
+        console.log(
+          `deleted local branch ${branch} (remote gone — merged and tidied)`
+        );
+      }
+    } else {
+      console.log(
+        `kept local branch ${branch} — its remote still exists (not merged?)`
+      );
+    }
+  }
+}
+
+function cmdResume(argv) {
+  const branch = argv[0];
+  if (!branch) {
+    console.error("usage: dispatch-brief.mjs resume <branch>");
+    process.exit(2);
+  }
+  const rows = readLedger();
+  const active = activeDispatches(rows);
+  if (active.some((d) => d.branch === branch)) {
+    console.error(`${branch} is already active — nothing to resume.`);
+    process.exit(1);
+  }
+  const prior = [...rows]
+    .reverse()
+    .find((r) => r.branch === branch && r.status === "active");
+  if (!prior) {
+    console.error(
+      `no prior dispatch for ${branch} in the ledger — use \`new --branch ${branch}\`.`
+    );
+    process.exit(1);
+  }
+  if (prior.e2e && active.filter((d) => d.e2e).length >= 2) {
+    console.error(
+      "REFUSED: resuming this e2e-touching dispatch would exceed the 2-agent e2e cap. " +
+        "Close one with `done <branch>` first."
+    );
+    process.exit(1);
+  }
+  // Reuse the prior port range when it is still free — the agent's environment
+  // still says E2E_PORT=<old base>; only reallocate on a genuine collision.
+  const taken = new Set(active.map((d) => d.portBase).filter(Boolean));
+  const portBase = taken.has(prior.portBase)
+    ? allocatePortBase(active)
+    : prior.portBase;
+  // The resumed agent's first push often follows a squash-merge of its old PR;
+  // prune now so the whole shared .git sees current refs (worktrees share one).
+  git("fetch --prune origin", { allowFail: true });
+
+  const entry = {
+    at: new Date().toISOString(),
+    status: "active",
+    resumed: true,
+    branch,
+    worktree: prior.worktree,
+    issues: prior.issues ?? [],
+    task: prior.task ?? null,
+    portBase,
+    e2e: Boolean(prior.e2e),
+  };
+  appendLedger(entry);
+  const rostered = rosterAdd(entry);
+  console.log(
+    `resumed ${branch} — port base ${portBase}` +
+      (portBase !== prior.portBase
+        ? ` (prior ${prior.portBase} was taken — TELL THE AGENT its E2E_PORT changed)`
+        : "") +
+      (rostered
+        ? ""
+        : `\nWARNING: could not write ${rosterPath} — the check-in script will not see this agent as live.`)
+  );
 }
 
 const [cmd = "new", ...rest] = process.argv.slice(2);
@@ -467,8 +619,11 @@ try {
   if (cmd === "new") cmdNew(rest);
   else if (cmd === "list") cmdList();
   else if (cmd === "done") cmdDone(rest);
+  else if (cmd === "resume") cmdResume(rest);
   else {
-    console.error(`unknown command: ${cmd} (expected new | list | done)`);
+    console.error(
+      `unknown command: ${cmd} (expected new | list | done | resume)`
+    );
     process.exit(2);
   }
 } catch (err) {

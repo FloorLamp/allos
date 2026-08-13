@@ -115,31 +115,28 @@ export default async function WhatsNewPage(props: {
               <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                 {formatLongDate(day.date, prefs)}
               </h2>
-              <ul className="space-y-4">
+              {/* One concise bullet per change (owner directive, 2026-08-13): the
+                  title IS the entry — the validator refuses bodies — so the day
+                  card reads as one scannable list. Inline layout, not flex: an li
+                  with display:flex drops its ::marker. */}
+              <ul className="list-disc space-y-1.5 pl-5">
                 {day.entries.map((entry) => {
                   const chip = entry.kind ? KIND_CHIP[entry.kind] : null;
                   return (
                     <li
                       key={entry.pr}
-                      className="space-y-1"
+                      className="text-sm leading-relaxed text-slate-800 dark:text-slate-200"
                       data-testid="whats-new-entry"
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        {chip && (
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${chip.className}`}
-                          >
-                            {chip.label}
-                          </span>
-                        )}
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                          {entry.title}
+                      {chip && (
+                        <span
+                          className={`mr-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${chip.className}`}
+                        >
+                          {chip.label}
                         </span>
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap text-slate-600 dark:text-slate-300">
-                        {entry.body}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      )}
+                      {entry.title}{" "}
+                      <span className="text-xs whitespace-nowrap text-slate-500 dark:text-slate-400">
                         {/* Repo links are EXTERNAL URLs, so plain strings (#285). */}
                         <a
                           href={pullRequestUrl(entry.pr)}
@@ -155,12 +152,12 @@ export default async function WhatsNewPage(props: {
                             href={issueUrl(issue)}
                             target="_blank"
                             rel="noreferrer"
-                            className="underline-offset-2 hover:text-slate-700 hover:underline dark:hover:text-slate-200"
+                            className="ml-2 underline-offset-2 hover:text-slate-700 hover:underline dark:hover:text-slate-200"
                           >
                             issue #{issue}
                           </a>
                         ))}
-                      </div>
+                      </span>
                     </li>
                   );
                 })}
