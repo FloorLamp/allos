@@ -73,8 +73,8 @@ disagree, fix the script in the same change, never work around it.
 | `scripts/orchestration/ci-watch.mjs`                 | The CI watcher. Derives settlement (identical check set across two consecutive polls, zero pending) instead of hardcoding a count, refuses to poll without a token, exits 3 immediately on a conflict-dirty PR. Exit 0 green / 1 settled red / 2 unsettled-re-invoke / 3 blocked.                                                                                                                                                                                                                                                                                                                                      |
 | `scripts/orchestration/agent-gates.sh`               | The gate sequence in the mandated order: lint → typecheck → pure tier → DB tier → e2e-hygiene (when `e2e/` changed) → phi-scan → format LAST. Goes in every brief.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `.github/workflows/ci-main.yml`                      | Tests main itself: static analysis + both unit tiers on every push, so a two-green-PRs semantic conflict reds main directly. See **CI tests the merge commit**.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `.github/merge-queue-ruleset.json`                   | The main merge-queue ruleset, owner-applied in one call (`gh api repos/FloorLamp/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`). Once active, the queue validates every merge's speculative commit against the three cheap tiers + gitleaks BEFORE it lands. See **The merge queue**.                                                                                                                                                                                                                                                                                                         |
-| `scripts/orchestration/dependabot-eval-brief.mjs`    | The major-bump evaluation brief: what changed upstream vs what this repo touches, proven in a worktree at the merge ref; delivers a recommendation comment + `recommend-*` + `needs-human` + owner assignment.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `.github/merge-queue-ruleset.json`                   | The main merge-queue ruleset — TRANSFER-READY, not applicable today: GitHub offers merge queue only on org-owned repos, so the apply call 422s on this user-owned repo. Inert until/unless the repo moves to an organization. See **The merge queue**.                                                                                                                                                                                                                                                                                                                                                                 |
+| `scripts/orchestration/dependabot-eval-brief.mjs`    | The major-bump evaluation brief: what changed upstream vs what this repo touches, proven in a worktree at the merge ref; delivers a recommendation comment + a verdict label that closes its own loop (hold parks; adopt = orchestrator merges).                                                                                                                                                                                                                                                                                                                                                                       |
 | `scripts/orchestration/release-notes-gather.mjs`     | Merged PRs since the newest release-notes day, internal ones flagged (a stated heuristic) — the gathering half of the notes; curation stays prose.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `scripts/orchestration/adversarial-review-brief.mjs` | The second review lane for high-stakes diffs. `<pr> --check` answers "does this PR touch a path where a miss corrupts data, crosses the auth boundary, or silences a safety signal" (the path list is DECLARED in the script); without `--check` it emits the full refuter brief — a separate agent prompted to REFUTE the PR's claims with executed attacks. See **The adversarial review lane**.                                                                                                                                                                                                                     |
 
@@ -92,8 +92,11 @@ location labels, never the whole story. Three labels route HUMAN attention:
   from `parked` (work not started by decision) — needs-human work is done or
   in flight, and one answer unblocks it.
 - **`recommend-adopt` / `recommend-hold`** — an evaluation's verdict, with
-  the evidence in the eval comment. The label is the recommendation, never the
-  decision; pair with `needs-human` + assignment so the decision surfaces.
+  the evidence in the eval comment. A verdict closes its own loop (owner,
+  2026-08-13): `recommend-hold` pairs with `parked` (revisit trigger in the
+  comment), `recommend-adopt` means the orchestrator merges through its normal
+  review flow. Neither gets `needs-human` — that pairing is only for an eval
+  that cannot reach a verdict, stated as the specific question.
 
 ## Environment facts (verify before trusting; the volatile ones say so)
 
@@ -464,18 +467,25 @@ The structural fix for the class above: the queue validates every merge's
 SPECULATIVE commit — the exact bytes that will become main, in landing order —
 so a two-green-PRs interaction fails in the queue instead of on main.
 `ci.yml`/`gitleaks.yml` run on `merge_group` (cheap tiers + gitleaks only; two
-`if:` lines in `ci.yml` extend the bar to the browser tier). **Owner-applied,
-inert until then** — a session cannot mutate repo settings:
-`gh api repos/FloorLamp/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`
-(squash, ALLGREEN groups of ≤5, admin bypass for direct owner pushes, which
-`ci-main.yml` keeps covering).
+`if:` lines in `ci.yml` extend the bar to the browser tier).
 
-Once active: merging = `enable_pr_auto_merge` on a PR whose OWN CI is fully
-green (e2e is not re-validated in the queue — never queue a red-head PR), and
-three hand-serialization rules retire: "serialize merges", "defer the later
-rebase until the LAST conflicting merge lands", "re-check every open PR's
-mergeability after each merge" — the queue does that serialization itself and
-kicks out an entry whose validation fails.
+**Blocked on account type (measured 2026-08-13):** GitHub offers merge queue
+only on ORGANIZATION-owned repos, so applying the ruleset to this user-owned
+repo 422s with `Invalid rule 'merge_queue'` — no JSON shape fixes that. The
+`merge_group` triggers and `.github/merge-queue-ruleset.json` stay as the
+transfer-ready artifact (inert, zero cost), and the hand-serialization rules
+STAND: serialize merges, defer the later rebase until the LAST conflicting
+merge lands, re-check every open PR's mergeability after each merge. (A
+strict up-to-date required-checks ruleset was considered and rejected: it
+re-runs full CI per open PR per landing while buying nothing the protocol
+doesn't.)
+
+If the owner transfers the repo to an org:
+`gh api repos/<org>/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`
+(squash, ALLGREEN groups of ≤5, admin bypass for direct owner pushes, which
+`ci-main.yml` keeps covering). Then merging = `enable_pr_auto_merge` on a PR
+whose OWN CI is fully green (e2e is not re-validated in the queue — never
+queue a red-head PR), and the three hand-serialization rules retire.
 
 ## Cadence & lifecycle
 
@@ -519,10 +529,11 @@ id>`); `orchestrator-checkin.sh` reads it and alarms when nothing future is
   groups merge on green against CURRENT main, same day, review still reading
   the group's contents. A MAJOR gets an evaluation agent within a day of
   arrival (`dependabot-eval-brief.mjs <pr>`): recommendation comment on the
-  PR + `recommend-adopt`/`recommend-hold` + `needs-human` with the owner
-  assigned. `parked` is legitimate only AFTER the recommendation exists — a
-  major once sat parked 35 days with no evaluation, a decision deferred to
-  nobody.
+  PR + `recommend-adopt` (orchestrator merges it) or `recommend-hold` +
+  `parked` (revisit trigger in the comment) — no `needs-human` unless the eval
+  cannot reach a verdict. `parked` is legitimate only AFTER the recommendation
+  exists — a major once sat parked 35 days with no evaluation, a decision
+  deferred to nobody.
 - **File infra issues WITH a priority label, and label bottlenecks P1**
   (owner, 2026-07-26) — a bottleneck taxes every subsequent unit of work; the
   label IS the queue position. A single latent flake in one spec is P3.

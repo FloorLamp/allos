@@ -68,6 +68,8 @@ import {
   NAV_FEMALE_PROFILE,
   E2E_LOGIN_NAV_MALE,
   NAV_MALE_PROFILE,
+  E2E_LOGIN_DORMANT,
+  DORMANT_DOMAINS_PROFILE,
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
@@ -1030,5 +1032,110 @@ export function seedHouseholdFolds(): void {
 
   console.log(
     `e2e: seeded household band-fold fixtures — reopen ${reopenParentId}/${reopenKidAId}/${reopenKidBId}, tail ${tailParentId}/${tailKidId}, well ${wellParentId}/${wellKidId} (#1548/#1549)`
+  );
+}
+
+// ── #2652: a profile whose domains RECORDED and then went quiet ────────────────
+// The two collapsible domains, plus the two neighbours that prove the collapse is
+// bounded:
+//
+//   • weight — a real run of weigh-ins ending 150 days ago. Past the 90-day default,
+//     and past the weight card's own 90-day window, which is exactly why the card used
+//     to answer this profile with the onboarding CTA "No weigh-ins yet".
+//   • sleep  — nightly samples ending 150 days ago, from a source that then went quiet.
+//   • vitals — a blood pressure and a resting heart rate 200 days back, and labs a
+//     panel 400 days back. Both are DELIBERATELY not collapsible: those cards render
+//     their latest value at any age under a declared presentation floor (#1216/#2303),
+//     so the spec can assert they stay full-height and keep their numbers while their
+//     two neighbours collapse. Without them the fixture would only be able to show that
+//     collapsing happens, never that it stops.
+//
+// The ABSENT control comes free on the same page: this profile has never logged food,
+// so `nutrition-today` renders the onboarding CTA right beside the collapsed lines.
+// One screenshot, both sentences.
+//
+// Read-only by contract: the spec never writes here, so --repeat-each and parallel
+// workers cannot erode the absence these assertions are built on.
+export function seedDormantDomains(): void {
+  const id = fixtureProfileId(DORMANT_DOMAINS_PROFILE);
+  const on = today(id);
+  // Rebuilt from scratch every seed so a reused dev server cannot leave a newer row
+  // behind and quietly wake a domain the spec needs dormant.
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(id);
+
+  // Weight: a fortnight of real weigh-ins, the newest exactly 150 days back.
+  const insWeight = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, ?, 'manual')`
+  );
+  for (let offset = 163; offset >= 150; offset--) {
+    insWeight.run(id, shiftDateStr(on, -offset), 81.5 - (163 - offset) * 0.1);
+  }
+  // Vitals: one resting heart rate and one blood pressure, 200 days back.
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, resting_hr, source) VALUES (?, ?, 58, 'manual')`
+  ).run(id, shiftDateStr(on, -200));
+  const insBp = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name)
+     VALUES (?, ?, 'vitals', ?, ?, ?, 'mmHg', ?)`
+  );
+  insBp.run(
+    id,
+    shiftDateStr(on, -200),
+    "Blood Pressure Systolic",
+    "118",
+    118,
+    "Blood Pressure Systolic"
+  );
+  insBp.run(
+    id,
+    shiftDateStr(on, -200),
+    "Blood Pressure Diastolic",
+    "76",
+    76,
+    "Blood Pressure Diastolic"
+  );
+  // Labs: a small panel drawn exactly 400 days back.
+  const insLab = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, panel)
+     VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, 'Metabolic Panel (e2e)')`
+  );
+  for (const [name, value, unit] of [
+    ["Glucose", 92, "mg/dL"],
+    ["Creatinine", 0.9, "mg/dL"],
+    ["Sodium", 140, "mmol/L"],
+  ] as const) {
+    insLab.run(
+      id,
+      shiftDateStr(on, -400),
+      name,
+      String(value),
+      value,
+      unit,
+      name
+    );
+  }
+  // Sleep: a week of nights, the newest exactly 150 days back.
+  const insSleep = db.prepare(
+    `INSERT INTO metric_samples
+       (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'oura', 'sleep_min', ?, ?, ?, 450)`
+  );
+  for (let offset = 156; offset >= 150; offset--) {
+    const wakeDay = shiftDateStr(on, -offset);
+    const bedDay = shiftDateStr(wakeDay, -1);
+    insSleep.run(
+      id,
+      wakeDay,
+      zonedWallTimeToUtc(getTimezone(id), bedDay, "23:00")!.toISOString(),
+      zonedWallTimeToUtc(getTimezone(id), wakeDay, "06:30")!.toISOString()
+    );
+  }
+  seedMemberLogin(E2E_LOGIN_DORMANT, id, "read");
+  console.log(
+    `e2e: seeded dormant-domain fixture — profile ${id} (${DORMANT_DOMAINS_PROFILE}): weight/sleep quiet 150d, vitals 200d, labs 400d (#2652)`
   );
 }

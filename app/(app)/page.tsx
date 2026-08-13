@@ -95,11 +95,21 @@ import { shiftDateStr, hhmmToMinutes, zonedDateParts } from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { recentLabHighlights } from "@/lib/recent-labs";
+import {
+  DORMANCY_DOMAINS,
+  WEIGHT_TREND_WINDOW_DAYS,
+  dormancyState,
+  dormantRecordLine,
+  type DormancyDomain,
+} from "@/lib/domain-dormancy";
+import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
+import { freshnessAgeDays } from "@/lib/freshness";
 import { getRecapCard } from "@/lib/notifications/recap-data";
 import {
   findingsForDashboardHome,
   resolveWidgetList,
   rollupCoachingFindings,
+  widgetDisplayState,
 } from "@/lib/dashboard-widgets";
 import { rankNowCards, NOW_CARD_IDS } from "@/lib/now-strip";
 import { getNotifySchedule } from "@/lib/settings/notifications";
@@ -146,6 +156,7 @@ import {
   householdFanoutWithActing,
 } from "@/lib/household-fanout";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
+import WidgetDormant from "@/components/dashboard/WidgetDormant";
 import LogReadingButton from "@/components/dashboard/LogReadingButton";
 import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
 import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
@@ -190,11 +201,6 @@ import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
 
 export const dynamic = "force-dynamic";
-
-// Trailing window for the dashboard weight-trend glance (#395): a deliberate date
-// window, not a row cap, so the widget matches the full deduped body-census series it
-// links to instead of silently truncating at N readings.
-const WEIGHT_TREND_WINDOW_DAYS = 90;
 
 export default async function Dashboard() {
   const { login, profile, access } = await requireSession();
@@ -521,14 +527,18 @@ export default async function Dashboard() {
   // day and disagree with the body census this widget links to. Windowed by DATE
   // (a deliberate trailing-90-day glance) rather than the old undisclosed 60-row cap.
   const weightTrendSince = shiftDateStr(on, -(WEIGHT_TREND_WINDOW_DAYS - 1));
-  const bodyMetrics = has("weight-trend")
+  // The UNWINDOWED series is kept: its newest day is the weight domain's last record,
+  // which is what separates "never weighed" from "stopped weighing" below (#2652). The
+  // card and the dormancy verdict therefore read one computation, not two (#221).
+  const weightSeries = has("weight-trend")
     ? getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS)
-        .filter((p) => p.date >= weightTrendSince)
-        .map((p) => ({
-          date: p.date,
-          value: dispWeight(p.value, units.weightUnit),
-        }))
     : [];
+  const bodyMetrics = weightSeries
+    .filter((p) => p.date >= weightTrendSince)
+    .map((p) => ({
+      date: p.date,
+      value: dispWeight(p.value, units.weightUnit),
+    }));
 
   // healthspan-pillars (issue #161): the visible longevity pillars, each consuming
   // its already-merged source computation. buildPillars omits an absent pillar, so
@@ -925,6 +935,76 @@ export default async function Dashboard() {
   // no derived line, so the widget stays one component in both states.
   if (has("cycle-phase") && cycleModel == null) emptyIds.add("cycle-phase");
 
+  // ── DORMANCY (#2652 behavior 2) ────────────────────────────────────────────────
+  // A domain that HAS recorded and then went quiet past its declared interval
+  // (lib/domain-dormancy.ts) collapses to one line stating how long, carrying the fix.
+  // Distinct from `emptyIds` above in the only way that matters: emptiness is "nothing
+  // was ever recorded" and says so, dormancy is "it stopped" and says THAT. Before
+  // this the second state rendered the first state's onboarding copy — the weight card
+  // told a returning weigh-in logger "No weigh-ins yet", because its own window is 90
+  // days and an empty window read as an empty domain.
+  //
+  // Only two domains are collapsible, and the registry says why: a card still showing a
+  // stale VALUE under a presentation floor is never collapsed, because that would hide
+  // what the floor deliberately keeps on screen.
+  const lastRecordByDomain: Record<DormancyDomain, string | null> = {
+    // Read off the UNWINDOWED series the card already fetched, so the card and the
+    // verdict are one computation (#221).
+    weight: weightSeries.reduce<string | null>(
+      (newest, p) => (newest == null || p.date > newest ? p.date : newest),
+      null
+    ),
+    // The one read no card makes — see lib/queries/domain-dormancy.ts for why the
+    // card's own "last night" model cannot answer this question.
+    sleep: has("sleep-last-night") ? getLastSleepRecordDate(profile.id) : null,
+  };
+  const dormantIds = new Set<string>();
+  for (const w of list) {
+    const domain = w.def.dormancyDomain;
+    if (!domain || !has(w.def.id)) continue;
+    if (
+      dormancyState({
+        lastRecordDate: lastRecordByDomain[domain],
+        today: on,
+        domain,
+      }) === "dormant"
+    )
+      dormantIds.add(w.def.id);
+  }
+
+  // The collapsed line for a dormant widget. Same fix affordance the card's onboarding
+  // CTA offers — compression changes height, never reach.
+  function dormantNode(id: string, domain: DormancyDomain): ReactNode {
+    const ageDays =
+      freshnessAgeDays(lastRecordByDomain[domain], on) ??
+      DORMANCY_DOMAINS[domain].collapseAfterDays;
+    const line = dormantRecordLine(domain, ageDays);
+    switch (id) {
+      case "weight-trend":
+        return (
+          <WidgetDormant
+            title="Weight trend"
+            icon={IconScale}
+            line={line}
+            ctaLabel="Body metrics"
+            ctaHref="/trends"
+          />
+        );
+      case "sleep-last-night":
+        return (
+          <WidgetDormant
+            title="Sleep"
+            icon={IconMoon}
+            line={line}
+            ctaLabel="Sync a source"
+            ctaHref="/data"
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
   // The onboarding CTA for a data-aware widget whose domain is empty — the
   // dashboard doubling as the setup checklist, each empty widget pointing at the
   // pipeline that fills it.
@@ -1198,10 +1278,24 @@ export default async function Dashboard() {
     // "Take any meds?" branch (#1221) is composed inside the card (shown only on a well
     // day with active PRN meds), which removes the old standalone-widget availability
     // special case entirely.
-    node:
-      def.dataAware && emptyIds.has(def.id)
-        ? emptyNode(def.id)
-        : renderWidget(def.id),
+    // Three states, one precedence, declared once in lib/dashboard-widgets.ts: a
+    // dormant domain outranks an empty one (they cannot both be true), and a widget
+    // that declares neither capability can be flagged for neither.
+    node: (() => {
+      switch (
+        widgetDisplayState(def, {
+          empty: emptyIds.has(def.id),
+          dormant: dormantIds.has(def.id),
+        })
+      ) {
+        case "dormant":
+          return dormantNode(def.id, def.dormancyDomain!);
+        case "empty":
+          return emptyNode(def.id);
+        default:
+          return renderWidget(def.id);
+      }
+    })(),
   }));
 
   // ── The "Now" strip (issue #1413, section A) ────────────────────────────────
@@ -1235,9 +1329,18 @@ export default async function Dashboard() {
   // still "available" — it renders an ONBOARDING CTA rather than content — and
   // promoting that would put a "connect a source" prompt at the top of the page
   // every mealtime. That is precisely the filler card lib/now-strip.ts refuses.
+  // A DORMANT widget is excluded for the same reason (#2652): its card is one line
+  // saying the domain went quiet, which is the opposite of a card worth promoting to
+  // the top of the page at a mealtime.
   const gridPromotable = new Set(
     gridWidgets
-      .filter((w) => w.visible && w.available && !emptyIds.has(w.id))
+      .filter(
+        (w) =>
+          w.visible &&
+          w.available &&
+          !emptyIds.has(w.id) &&
+          !dormantIds.has(w.id)
+      )
       .map((w) => w.id)
   );
   const nowEligible = NOW_CARD_IDS.filter((id) =>
