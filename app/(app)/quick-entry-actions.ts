@@ -42,6 +42,7 @@ import {
 } from "@/lib/queries";
 import { MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
 import { upcomingDueText } from "@/lib/upcoming";
+import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import type { FoodGroup } from "@/lib/food-groups";
 import {
   FOOD_SLOTS,
@@ -348,7 +349,10 @@ export async function loadQuickEntry(
       doseId: item.doseId!,
       title: item.title,
       detail: item.detail ?? null,
-      dueText: upcomingDueText(item, date),
+      // Every dose here is due TODAY, so the band-aware fallback (#2579-B) never
+      // reaches its calendar-date arm — the prefs are passed because a formatter that
+      // CAN render a date is called with the reader's shape, not because this one does.
+      dueText: upcomingDueText(item, date, getDisplayFormatPrefs(login.id)),
     })
   );
   if (doses.length === 0) {

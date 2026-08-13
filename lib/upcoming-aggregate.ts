@@ -25,6 +25,29 @@
 //
 // The digest, the dashboard hero, and the calendar feed read the same model and are
 // untouched — this is page-side presentation only.
+//
+// ── How the goal fold would learn it should stop (#2385, for #2579-A/B) ──
+//
+// This claims to change BEHAVIOUR — that people find and act on the dated horizon —
+// so it states the three things such a claim owes, in prose, over data the instance
+// already holds. No registry, no metrics pipeline, no telemetry, no user-facing score.
+//
+//   WORKING: the arranging errands stop being buried. Rows this page is the primary
+//   home of — a screening to book, an appointment, a care-plan step, a refill — get
+//   ACTED ON at planning distance: `upcoming_dismissals` snoozes and booking-link
+//   follow-through against a Later-banded errand rise, and the interval between an
+//   errand entering Later and its resolution falls.
+//
+//   WRONG: goals go quiet. A dated goal that used to be seen every visit is now
+//   behind a tap, so the signal that this fold hid rather than compacted is goal
+//   deadlines sliding past their target_date un-updated and un-archived at a higher
+//   rate than before — completeness preserved on the page and lost in practice.
+//
+//   DECEPTIVE SUCCESS: DENSITY. Later gets shorter, the page gets tidier, the
+//   screenshot improves — and the number of planning ACTIONS taken per visit falls.
+//   A fuller, better-organised ledger nobody acts on is the failure mode of every
+//   compaction, and it is the one that photographs best. Read the errand-resolution
+//   interval above, never the pixel height, as the measure of whether this worked.
 
 import {
   type UpcomingItem,
@@ -37,10 +60,25 @@ import { itemSuppressionPolicy } from "./upcoming-suppress";
 // What folds
 // ---------------------------------------------------------------------------
 
-// The two fold classes. Each is a CLOSED, named set of domains — never "everything
+// The fold classes. Each is a CLOSED, named set of domains — never "everything
 // that looks routine" — so adding a domain to a rollup is a deliberate edit with a
 // test to update, not a silent inheritance.
-export type AggregateKind = "dose" | "med-safety";
+//
+// `goal` is the third (#2579-A), added for the same reason the first two were and
+// under the identical contract. The density rule the Upcoming charter states is: a
+// row earns full height on this page only if this page is its PRIMARY HOME. A goal
+// deadline's home is the Training hub's Goals tab — where its progress bar, its
+// target and its edit controls live; here it is a date on the horizon. On the seeded
+// profile that cost the whole Later band: twelve goal deadlines burying a
+// colonoscopy to book, a scheduled physical exam and a marathon, which are rows this
+// page IS the home of (an arranging errand — book, schedule, settle).
+//
+// Deliberately NO horizon on `goalItems` to go with it (owner call, #2579-A):
+// completeness is the planning view's charter (the #524 subset invariant is this
+// page's contract with the hero), so the fold keeps every goal PRESENT and COUNTED.
+// A 90-day cutoff would have made the ledger lie and manufactured silent day-N
+// arrivals — a row appearing with no event behind it.
+export type AggregateKind = "dose" | "med-safety" | "goal";
 
 // The med-safety rollup covers `interaction` + `pgx` ONLY (#1504 scope pin).
 // Deliberately NOT included:
@@ -69,6 +107,12 @@ export function aggregateKindForDomain(
 ): AggregateKind | null {
   if (domain === "dose") return "dose";
   if (MED_SAFETY_ROLLUP_DOMAINS.includes(domain)) return "med-safety";
+  // The goal fold is the `goal` domain and nothing else (#2579-A). It is NOT "every
+  // coaching-tier dated row": `training`/`nutrition-target`/`mobility-target`/
+  // `practice` are weekly pace rows whose status column is the row (E is their own
+  // decision), and `careplan`/`followup`/`screening` are arranging errands this page
+  // is the home of.
+  if (domain === "goal") return "goal";
   return null;
 }
 
@@ -234,14 +278,62 @@ export function medSafetyAggregateLabel(count: number): string {
   return `${count} medication-safety ${count === 1 ? "note" : "notes"}`;
 }
 
+// The goal fold's always-visible headline (#2579-A). Count first and PRICED, like
+// its two siblings — but the second clause is a DATE, not a fraction, because the
+// question a folded goal band has to answer without being opened is "is anything
+// about to land?". "12 goal deadlines · nearest Sep 26" answers it; "12 goal
+// deadlines" alone would make the fold a place things go to be forgotten, which is
+// the one thing a completeness-charter page may not build.
+//
+// `nearestLabel` is ALREADY FORMATTED by the caller (the page renders it through the
+// viewer's date prefs against the profile's today). This module stays free of date
+// formatting for the same reason it stays free of DB access: it is the decision, not
+// the presentation. A null label — no folded goal states a date, which the domain's
+// own builder makes impossible today — drops the clause rather than inventing one.
+export function goalAggregateLabel(
+  count: number,
+  nearestLabel?: string | null
+): string {
+  const head = `${count} goal ${count === 1 ? "deadline" : "deadlines"}`;
+  return nearestLabel ? `${head} · nearest ${nearestLabel}` : head;
+}
+
+// The per-kind facts a summary line may use. Each is read by exactly one kind, and a
+// kind that is handed the other's fact ignores it: a "9 of 21 taken" on a goal fold
+// or a "nearest Sep 26" on a dose fold would both be a denominator that doesn't
+// match its rows, which is the failure doseAggregateLabel's own comment names.
+export interface AggregateSummaryFacts {
+  progress?: DoseDayProgress | null;
+  nearestLabel?: string | null;
+}
+
 export function aggregateLabel(
   kind: AggregateKind,
   count: number,
-  progress?: DoseDayProgress | null
+  facts: AggregateSummaryFacts = {}
 ): string {
-  return kind === "dose"
-    ? doseAggregateLabel(count, progress)
-    : medSafetyAggregateLabel(count);
+  if (kind === "dose") return doseAggregateLabel(count, facts.progress);
+  if (kind === "goal") return goalAggregateLabel(count, facts.nearestLabel);
+  return medSafetyAggregateLabel(count);
+}
+
+// The earliest due date among a fold's items, or null when none of them state one.
+//
+// A MINIMUM, not `items[0].dueDate`. The fold hands its items back in the band's own
+// order and that order is date-ascending today, so reading the first row would agree
+// — until a comparator change made it quietly disagree, and a headline that says
+// "nearest" while naming the second-nearest is worse than no headline. Order-
+// independent by construction, so it cannot be broken from a distance.
+export function aggregateNearestDueDate<T extends UpcomingItem>(
+  items: readonly T[]
+): string | null {
+  let nearest: string | null = null;
+  for (const item of items) {
+    const due = item.dueDate;
+    if (due == null) continue;
+    if (nearest == null || due < nearest) nearest = due;
+  }
+  return nearest;
 }
 
 // Whether a band should carry the dose progress fraction (see doseAggregateLabel).

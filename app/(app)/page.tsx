@@ -1323,6 +1323,7 @@ export default async function Dashboard() {
           <NeedsAttentionHero
             items={attention}
             today={on}
+            formatPrefs={formatPrefs}
             preferCollapsed={getAttentionHeroCollapsed(login.id)}
             saveCollapsed={saveAttentionHeroCollapsed}
           />

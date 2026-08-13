@@ -99,6 +99,88 @@ describe("upcomingDueText", () => {
   });
 });
 
+// #2579-B — calendar dates at planning distance.
+//
+// The countdown is a unit of URGENCY. Inside the week it names something the reader
+// can act on; past it, "45 days left" is arithmetic standing where a calendar date
+// should be, on the one page whose charter is arranging. Every expectation below is
+// a PINNED LITERAL, never re-derived from the formatter under test.
+describe("upcomingDueText past the This-week boundary (#2579-B)", () => {
+  it("prints the calendar date in the Later band", () => {
+    // 2026-09-26 is 80 days out from TODAY: the old fallback said "80 days left".
+    expect(
+      upcomingDueText(item({ key: "goal:1", dueDate: "2026-09-26" }), TODAY)
+    ).toBe("Sep 26");
+  });
+
+  it("switches at the band boundary, not a day either side of it", () => {
+    // Day 7 is the inclusive upper edge of This week (bandForDays) — countdown.
+    expect(
+      upcomingDueText(item({ key: "w", dueDate: "2026-07-15" }), TODAY)
+    ).toBe("7 days left");
+    // Day 8 is the first Later day — date.
+    expect(
+      upcomingDueText(item({ key: "l", dueDate: "2026-07-16" }), TODAY)
+    ).toBe("Jul 16");
+  });
+
+  it("leaves Overdue and Today on countdown grammar", () => {
+    // Far overdue stays a countdown: "97 days overdue" is a statement about how late
+    // something is, which is exactly the urgency reading the Later band lacks.
+    expect(
+      upcomingDueText(item({ key: "o", dueDate: "2026-04-02" }), TODAY)
+    ).toBe("97 days overdue");
+    expect(
+      upcomingDueText(item({ key: "t", dueDate: "2026-07-08" }), TODAY)
+    ).toBe("today");
+  });
+
+  it("still lets an explicit dueText override win at planning distance", () => {
+    expect(
+      upcomingDueText(
+        item({ key: "s", dueDate: "2026-09-26", dueText: "Scheduled" }),
+        TODAY
+      )
+    ).toBe("Scheduled");
+  });
+
+  it("follows the band the ROW is rendered under, override included", () => {
+    // A status-driven item forced into Later reads as Later: the due text can never
+    // disagree with the heading directly above it.
+    expect(
+      upcomingDueText(
+        item({ key: "b2", dueDate: "2026-07-10", band: "later" }),
+        TODAY
+      )
+    ).toBe("Jul 10");
+    // …and the mirror: a far-out item forced into This week keeps the countdown.
+    expect(
+      upcomingDueText(
+        item({ key: "c2", dueDate: "2026-09-26", band: "week" }),
+        TODAY
+      )
+    ).toBe("80 days left");
+  });
+
+  it("renders the date in the viewer's own shape", () => {
+    const later = item({ key: "p", dueDate: "2026-09-26" });
+    expect(
+      upcomingDueText(later, TODAY, { timeFormat: "24h", dateFormat: "dmy" })
+    ).toBe("26 Sep");
+    expect(
+      upcomingDueText(later, TODAY, { timeFormat: "24h", dateFormat: "iso" })
+    ).toBe("2026-09-26");
+  });
+
+  it("carries the year when the deadline leaves the current calendar year", () => {
+    // Decided against the PROFILE's today, not the process wall clock — so this
+    // expectation still holds when the machine running it rolls into 2027.
+    expect(
+      upcomingDueText(item({ key: "n", dueDate: "2027-01-05" }), TODAY)
+    ).toBe("Jan 5, 2027");
+  });
+});
+
 describe("groupUpcoming", () => {
   it("returns no groups for an empty item list (empty state)", () => {
     expect(groupUpcoming([], TODAY)).toEqual([]);

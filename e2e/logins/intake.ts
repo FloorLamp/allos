@@ -68,3 +68,26 @@ export const UPCOMING_AGG_SUPPLEMENT = "Aggregate Vitamin D (e2e)";
 export const UPCOMING_AGG_TAKEN = "Aggregate Magnesium (e2e)";
 // The PRN medication logged over its confirmed max — the prn-max safety row.
 export const UPCOMING_AGG_PRN = "Aggregate Naproxen PRN (e2e)";
+// Four dated goals plus one arranging errand, all in the Later band (#2579-A). They
+// give the profile the shape the Upcoming charter describes — a run of goal deadlines
+// burying the one row this page is the primary home of — so the goal fold and the
+// Later band's calendar due-text can both be asserted on real rows.
+export const UPCOMING_AGG_GOAL_NEAREST = "Aggregate goal — swim a mile (e2e)";
+export const UPCOMING_AGG_GOALS: readonly (readonly [string, number])[] = [
+  // [title, whole days past this profile's today]. Deliberately NOT in date order:
+  // the summary's "nearest" claim must be a minimum over the fold, never whichever
+  // row happens to come first.
+  ["Aggregate goal — ride a century (e2e)", 200],
+  [UPCOMING_AGG_GOAL_NEAREST, 40],
+  ["Aggregate goal — deadlift bodyweight (e2e)", 120],
+  ["Aggregate goal — hold a handstand (e2e)", 300],
+];
+// The errand beside them: a scheduled appointment whose FULL-HEIGHT row must survive
+// the fold — this page is its primary home, so it never folds. Its This-week TWIN is
+// the same domain on the same page a few days out, so #2579-B's band boundary can be
+// asserted on two rows that differ in nothing else.
+export const UPCOMING_AGG_APPOINTMENT = "Aggregate colonoscopy (e2e)";
+export const UPCOMING_AGG_APPOINTMENT_DAYS = 60;
+export const UPCOMING_AGG_APPOINTMENT_SOON =
+  "Aggregate dermatology check (e2e)";
+export const UPCOMING_AGG_APPOINTMENT_SOON_DAYS = 3;
