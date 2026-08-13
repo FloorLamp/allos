@@ -284,7 +284,7 @@ describe("goalHighlights", () => {
     expect(hi[1].pct).toBeNull();
     // Bar tint is the shared pace map: a dateless in-progress goal → on-pace (brand),
     // never a raw-completion rose; a goal with no numeric basis renders no bar.
-    expect(hi[0].barClass).toBe("bg-brand-500");
+    expect(hi[0].barClass).toBe("bg-brand-600");
     expect(hi[1].barClass).toBe("");
   });
 });

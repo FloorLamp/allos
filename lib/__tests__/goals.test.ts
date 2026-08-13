@@ -187,9 +187,9 @@ describe("goalPaceTone", () => {
 describe("goalBarClass", () => {
   it("formats the pace verdict over the shared fill map", () => {
     // Dateless / no-opts → brand until complete (no false rose verdict).
-    expect(goalBarClass(0)).toBe("bg-brand-500");
-    expect(goalBarClass(40)).toBe("bg-brand-500");
-    expect(goalBarClass(100)).toBe("bg-emerald-500");
+    expect(goalBarClass(0)).toBe("bg-brand-600");
+    expect(goalBarClass(40)).toBe("bg-brand-600");
+    expect(goalBarClass(100)).toBe("bg-emerald-600");
     // A blown dated deadline short of target is the only rose.
     expect(
       goalBarClass(80, {
@@ -244,7 +244,7 @@ describe("shared pace tone→class map", () => {
     expect(habitPace).toBe("on-pace");
     // The chip's tone is its FrequencyPace; both index the same map.
     expect(PACE_FILL_CLASS[goalTone]).toBe(PACE_FILL_CLASS[habitPace]);
-    expect(PACE_FILL_CLASS[goalTone]).toBe("bg-brand-500");
+    expect(PACE_FILL_CLASS[goalTone]).toBe("bg-brand-600");
   });
 });
 
