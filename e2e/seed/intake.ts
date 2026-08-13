@@ -36,6 +36,11 @@ import {
   UPCOMING_AGG_SUPPLEMENT,
   UPCOMING_AGG_TAKEN,
   UPCOMING_AGG_PRN,
+  UPCOMING_AGG_GOALS,
+  UPCOMING_AGG_APPOINTMENT,
+  UPCOMING_AGG_APPOINTMENT_DAYS,
+  UPCOMING_AGG_APPOINTMENT_SOON,
+  UPCOMING_AGG_APPOINTMENT_SOON_DAYS,
 } from "../fixture-logins";
 import {
   PROFILE_ID,
@@ -532,6 +537,8 @@ export function seedUpcomingAggregate(): void {
   ).run(aggId);
   db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(aggId);
   db.prepare(`DELETE FROM upcoming_dismissals WHERE profile_id = ?`).run(aggId);
+  db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(aggId);
+  db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(aggId);
 
   const aggDay = today(aggId);
   const scheduled = (name: string, kind: "medication" | "supplement") => {
@@ -602,6 +609,33 @@ export function seedUpcomingAggregate(): void {
       utcSqlString(new Date(clockNow().getTime() - backMs))
     );
   }
+
+  // The Later band (#2579-A): four dated goals — the fold — beside one scheduled
+  // appointment, the arranging errand this page IS the primary home of, which keeps
+  // its full-height row. Offsets are whole days past this profile's own today, so the
+  // band is stable under the run's frozen clock.
+  for (const [title, days] of UPCOMING_AGG_GOALS) {
+    db.prepare(
+      `INSERT INTO goals (profile_id, title, status, archived, target_date)
+       VALUES (?, ?, 'active', 0, ?)`
+    ).run(aggId, title, shiftDateStr(aggDay, days));
+  }
+  db.prepare(
+    `INSERT INTO appointments (profile_id, date, time_of_day, title, location, status)
+     VALUES (?, ?, '09:30', ?, 'Test Clinic (e2e)', 'scheduled')`
+  ).run(
+    aggId,
+    shiftDateStr(aggDay, UPCOMING_AGG_APPOINTMENT_DAYS),
+    UPCOMING_AGG_APPOINTMENT
+  );
+  db.prepare(
+    `INSERT INTO appointments (profile_id, date, time_of_day, title, location, status)
+     VALUES (?, ?, '14:00', ?, 'Test Clinic (e2e)', 'scheduled')`
+  ).run(
+    aggId,
+    shiftDateStr(aggDay, UPCOMING_AGG_APPOINTMENT_SOON_DAYS),
+    UPCOMING_AGG_APPOINTMENT_SOON
+  );
 
   seedMemberLogin(E2E_LOGIN_UPCOMING_AGG, aggId, "write");
   console.log(

@@ -32,6 +32,7 @@ import type { UpcomingItem } from "@/lib/upcoming";
 import { fmtWeight } from "@/lib/units";
 import { subjectActionLabel } from "@/lib/own-profile";
 import { upcomingDueText } from "@/lib/upcoming";
+import { type DisplayFormatPrefs } from "@/lib/format-date";
 import type { HouseholdRollup } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
 import type { Adherence, GoalHighlight, WeightTrend } from "@/lib/household";
@@ -59,6 +60,10 @@ export interface HouseholdCardData {
   rollup: HouseholdRollup;
   // This profile's "today" (resolved in its timezone) — for the appointment due-text.
   today: string;
+  // The VIEWING login's date shape (#964). The appointment due-text prints a calendar
+  // date once the visit is past this week (#2579-B), and a rendered date follows the
+  // reader's prefs — the profile owns the clock, the login owns the shape.
+  formatPrefs: DisplayFormatPrefs;
   adherence: Adherence;
   // The pushed tier's state-change headline (#1505 part 3) — "Missed: Magnesium
   // (3 days)" — preformatted by the ONE shared `intakeDeltaLine` the morning digest
@@ -234,7 +239,7 @@ function DueDoseRow({
 }
 
 function Attention({ data }: { data: HouseholdCardData }) {
-  const { profile, canWrite, rollup, today, subjectName } = data;
+  const { profile, canWrite, rollup, today, subjectName, formatPrefs } = data;
   const { dueDoses, lowRefills, nextAppointment } = rollup;
   const nothing =
     dueDoses.length === 0 && lowRefills.length === 0 && !nextAppointment;
@@ -321,7 +326,7 @@ function Attention({ data }: { data: HouseholdCardData }) {
             <AttentionRow
               Icon={IconCalendarEvent}
               title={nextAppointment.title}
-              detail={upcomingDueText(nextAppointment, today)}
+              detail={upcomingDueText(nextAppointment, today, formatPrefs)}
               testid="household-next-appointment"
             />
           )}

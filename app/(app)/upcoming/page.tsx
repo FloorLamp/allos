@@ -66,13 +66,18 @@ import {
 } from "@/lib/upcoming";
 import {
   aggregateLabel,
+  aggregateNearestDueDate,
   bandShowsDoseProgress,
   planBandRender,
   sumDoseProgress,
   EMPTY_DOSE_PROGRESS,
   type AggregateKind,
+  type AggregateSummaryFacts,
+  type BandNode,
   type DoseDayProgress,
 } from "@/lib/upcoming-aggregate";
+import { formatMonthDay, type DisplayFormatPrefs } from "@/lib/format-date";
+import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Avatar from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
@@ -153,6 +158,18 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   review: IconInbox,
 };
 
+// Fold class → the glyph its summary row leads with. Total over AggregateKind, so a
+// fourth fold class is a compile error here rather than silently inheriting whichever
+// icon the ternary this replaced happened to fall through to (#2579-A: a goal fold
+// under the med-safety alert triangle would have read as a safety row).
+const AGGREGATE_ICON: Record<AggregateKind, TablerIcon> = {
+  dose: IconPill,
+  "med-safety": IconAlertTriangle,
+  // The same target the individual goal rows carry (DOMAIN_ICON.goal): the fold is a
+  // rendering of those rows, so it wears their glyph.
+  goal: IconTarget,
+};
+
 // Page group → accent tone for the group heading + the due-text. The date bands
 // carry their urgency tone; the two signal groupings (Flagged / For review) get an
 // alerting amber (issue #524).
@@ -193,6 +210,10 @@ export default async function UpcomingPage(props: {
   // The viewer's unit prefs (#1019 display-unit policy: web always follows the
   // login's prefs) so measurement-carrying item strings render in the viewer's unit.
   const units = getUnitPrefs(loginId);
+  // The viewer's date shape (#964), resolved ONCE for the whole page. Needed since
+  // #2579-B: the Later band and the goal fold's "nearest" clause print calendar
+  // dates, and a date the app renders must follow the login's prefs like every other.
+  const formatPrefs = getDisplayFormatPrefs(loginId);
 
   // The ONE unified attention model (issue #524), composed per member (#1096). Each
   // member's dueness/banding is computed in its own today (loop-composed, never
@@ -288,6 +309,7 @@ export default async function UpcomingPage(props: {
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              formatPrefs={formatPrefs}
               // By-person: the member's OWN progress, so the fraction describes the
               // rows in THIS section rather than the whole household.
               doseProgress={
@@ -310,6 +332,7 @@ export default async function UpcomingPage(props: {
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              formatPrefs={formatPrefs}
               // Interleaved: the band merges every in-view member, so its fraction
               // sums the same members.
               doseProgress={sumDoseProgress(doseProgressByProfile.values())}
@@ -373,6 +396,7 @@ function GroupSection({
   multi,
   actingProfileId,
   subjectByProfile,
+  formatPrefs,
   doseProgress,
 }: {
   group: AttentionPageGroup;
@@ -383,6 +407,7 @@ function GroupSection({
   multi: boolean;
   actingProfileId: number;
   subjectByProfile: Map<number, SubjectInfo>;
+  formatPrefs: DisplayFormatPrefs;
   // The dose progress this presentation's band may print (#1504) — the sum over the
   // in-view members for the merged band, one member's own for a by-person section.
   doseProgress: DoseDayProgress;
@@ -393,6 +418,26 @@ function GroupSection({
   // renders the SAME item objects through the SAME <Row>.
   const nodes = planBandRender(group.items as ProfiledUpcomingItem[]);
   const progress = bandShowsDoseProgress(group.kind) ? doseProgress : null;
+  // The per-kind facts each summary line may state (#1504 / #2579-A). The dose fold
+  // gets the day's fraction, the goal fold the nearest deadline as a DATE; neither
+  // ever gets the other's, because a second clause that doesn't describe the rows
+  // behind it is worse than none. The nearest date's auto-year is decided against the
+  // acting profile's today rather than the wall clock — in merged multi-view the rows
+  // come from several members' clocks, and the YEAR is the only thing that reads it.
+  const summaryFacts = (
+    node: Extract<BandNode<ProfiledUpcomingItem>, { node: "aggregate" }>
+  ): AggregateSummaryFacts => {
+    if (node.kind === "dose") return { progress };
+    if (node.kind === "goal") {
+      const nearest = aggregateNearestDueDate(node.items);
+      return {
+        nearestLabel: nearest
+          ? formatMonthDay(nearest, formatPrefs, { today: now })
+          : null,
+      };
+    }
+    return {};
+  };
   const renderRow = (item: ProfiledUpcomingItem) => (
     <Row
       key={`${item.profileId}:${item.key}`}
@@ -403,6 +448,7 @@ function GroupSection({
       chipRow={chipRows === true}
       actingProfileId={actingProfileId}
       subject={multi ? (subjectByProfile.get(item.profileId) ?? null) : null}
+      formatPrefs={formatPrefs}
     />
   );
   return (
@@ -425,7 +471,7 @@ function GroupSection({
               kind={node.kind}
               band={group.kind}
               count={node.items.length}
-              progress={node.kind === "dose" ? progress : null}
+              facts={summaryFacts(node)}
               tone={GROUP_TONE[group.kind]}
             >
               {node.items.map(renderRow)}
@@ -452,18 +498,18 @@ function AggregateDisclosure({
   kind,
   band,
   count,
-  progress,
+  facts,
   tone,
   children,
 }: {
   kind: AggregateKind;
   band: PageGroupKind;
   count: number;
-  progress: DoseDayProgress | null;
+  facts: AggregateSummaryFacts;
   tone: string;
   children: React.ReactNode;
 }) {
-  const Icon = kind === "dose" ? IconPill : IconAlertTriangle;
+  const Icon = AGGREGATE_ICON[kind];
   return (
     <details
       data-testid={`upcoming-aggregate-${kind}`}
@@ -480,7 +526,7 @@ function AggregateDisclosure({
           aria-hidden="true"
         />
         <span className="min-w-0 flex-1 truncate font-medium text-slate-800 dark:text-slate-100">
-          {aggregateLabel(kind, count, progress)}
+          {aggregateLabel(kind, count, facts)}
         </span>
         <span
           className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
@@ -508,6 +554,7 @@ function MemberBlock({
   multi,
   actingProfileId,
   subjectByProfile,
+  formatPrefs,
   doseProgress,
 }: {
   section: MemberSection;
@@ -517,6 +564,7 @@ function MemberBlock({
   multi: boolean;
   actingProfileId: number;
   subjectByProfile: Map<number, SubjectInfo>;
+  formatPrefs: DisplayFormatPrefs;
   doseProgress: DoseDayProgress;
 }) {
   const name = subject?.name ?? `Profile ${section.profileId}`;
@@ -557,6 +605,7 @@ function MemberBlock({
               multi={multi}
               actingProfileId={actingProfileId}
               subjectByProfile={subjectByProfile}
+              formatPrefs={formatPrefs}
               doseProgress={doseProgress}
             />
           ))}
@@ -976,6 +1025,7 @@ function Row({
   chipRow,
   actingProfileId,
   subject,
+  formatPrefs,
 }: {
   item: ProfiledUpcomingItem;
   now: string;
@@ -991,6 +1041,8 @@ function Row({
   // read-only-granted, this row's write affordances are hidden — the #858 per-item
   // access-gating rule generalized (#1096).
   subject: SubjectInfo | null;
+  // The viewer's date shape (#964), for the band-aware due text (#2579-B).
+  formatPrefs: DisplayFormatPrefs;
 }) {
   const Icon = DOMAIN_ICON[item.domain];
   const isActing = item.profileId === actingProfileId;
@@ -1011,7 +1063,7 @@ function Row({
   // presentation that renders chips (interleaved; by-person names the subject in its
   // member header instead).
   const showChip = chipRow && subjectChipVisible({ multi, isActing });
-  const dueText = upcomingDueText(item, now);
+  const dueText = upcomingDueText(item, now, formatPrefs);
 
   // The row's SECONDARY actions, built ONCE (issue #1446). RowActionChips renders
   // them inline at `sm`+; below `sm` the very same descriptors render as items in

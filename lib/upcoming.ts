@@ -11,7 +11,12 @@ import type { Reason } from "./reasons";
 import type { LifecycleSuppressionPolicy } from "./lifecycle";
 import type { WriteTarget } from "./multi-view";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
-import { daysRemainingLabel } from "./format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  daysRemainingLabel,
+  formatMonthDay,
+  type DisplayFormatPrefs,
+} from "./format-date";
 import { compareSortHint } from "./dose-order";
 
 // The longest a user-requested snooze can push a finding out (~10 years). Clamped
@@ -484,9 +489,30 @@ export function bandForItem(item: UpcomingItem, today: string): UrgencyBand {
 // Human due-text for an item: an explicit `dueText` override wins; otherwise a
 // countdown label off the due date ("today" / "tomorrow" / "N days left" /
 // "N days overdue"), or "Today" for a null (now) due date.
-export function upcomingDueText(item: UpcomingItem, today: string): string {
+//
+// BAND-AWARE past the This-week boundary (#2579-B). A countdown is a unit of
+// URGENCY: "3 days overdue", "tomorrow", "6 days left" each name something the
+// reader can act on this week, and the number is the point. At planning distance it
+// stops being one — "45 days left" is arithmetic the reader has to run backwards to
+// get the only fact they can actually put in a calendar, and a page whose charter is
+// "what stands between me and the horizon, and what needs arranging" is exactly the
+// page where that fact is the answer. So the Later band prints the DATE ("Sep 26")
+// and Overdue/Today/This week keep the countdown grammar, where it means something.
+//
+// Display only. The band this asks for is the one the row is already rendered under
+// (`bandForItem`, override included), so the text can never disagree with the heading
+// above it — and keys, banding and suppression identity are untouched, exactly as the
+// #1504 fold left them.
+export function upcomingDueText(
+  item: UpcomingItem,
+  today: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
   if (item.dueText != null) return item.dueText;
   if (item.dueDate == null) return "Today";
+  if (bandForItem(item, today) === "later") {
+    return formatMonthDay(item.dueDate, prefs, { today });
+  }
   return daysRemainingLabel(item.dueDate, today) ?? item.dueDate;
 }
 
