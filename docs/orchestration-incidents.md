@@ -339,3 +339,71 @@ runbook already answers something, the answer belongs in a script.
   in CI (`Date.now()` without `clock-ok`; a `.first()` marker on the wrong
   line — the scan requires SAME-LINE markers). The scan is 2 seconds; a CI
   round trip is 25 minutes.
+- **The unevaluated major**: a TypeScript 5.9→7.0 bump sat `parked` for 35
+  days with no evaluation at all — parked-without-a-recommendation is a
+  decision deferred to nobody. Hence the eval-within-a-day rule for majors.
+
+## The REQUEST_CHANGES one-way door (#2692, 2026-08-13)
+
+A changes-requested review blocks merging until it is APPROVED or DISMISSED,
+and this session type can do neither — both return "not permitted for this
+session type", through MCP and REST alike. `main`'s ruleset makes that
+unrecoverable rather than merely awkward: `required_approving_review_count: 0`
+(nothing needs approving — the block is purely the outstanding review) and
+`dismiss_stale_reviews_on_push: false` (it survives every later commit,
+including the one that fixes the finding). The author cannot clear it either;
+only the human can, by hand. Proven on #2692 at 12:15Z: the finding was real,
+the fix landed, and the PR sat unmergeable behind a verdict nobody in the loop
+could lift. Flipping the ruleset would be worse — that setting exists to keep a
+genuine blocking review blocking. Hence the rule: a hold is a COMMENT review +
+`parked` + a plain statement at the top that the merge waits on the finding.
+
+## GraphQL is the scarce bucket, not REST (measured 2026-08-12)
+
+"Prefer REST over MCP" names the wrong limit: MCP _writes_ — reviews, merges,
+issue edits, issue comments — are GraphQL, a **5,000**/h pool against REST
+core's **15,000**. A review POST failed mid-session at `graphql 0/5000` while
+`core` sat untouched at `15000/15000`; roughly twenty merges plus one sweep's
+ten issue comments drained the pool inside an hour. Check
+`https://api.github.com/rate_limit` and read the `graphql` resource, not
+`core` — `core` will look fine.
+
+## Split-brain dispatch (2026-08-13)
+
+Some clusters were dispatched through `dispatch-brief.mjs new` (ledger +
+roster + port allocation), some through the Agent tool, which writes neither.
+That produced a false RESCUE NOW on a live agent's tree, and it means the
+roster — the only state that outlives the orchestrator — is incomplete by
+construction. Hence one dispatch path: every dispatch through `new`, and
+`adopt <branch>` to bring an already-running, script-less agent under the
+ledger + roster the moment it is noticed.
+
+## Relay errors — amplification in restatement (2026-08-13)
+
+Three relay errors in one stretch, one shape — an agent's conclusion restated
+with more force than its evidence carries: the analyte column dropped from
+#2712's examples, so a reviewer disproved a claim nobody made; #2713's "inert"
+amplified into "destructive advice" when the exclusion that made it inert had
+been approved hours earlier; and a false clause in a recorded owner ruling on
+#2700. The correction is mechanical: quote the agent's evidence verbatim, and
+let the conclusion be stronger only where it was re-derived — #2720's finding
+held for exactly that reason.
+
+## The write path, not the diff (#2720)
+
+#2720's blocking defect was invisible in the diff, in the tests, and in CI:
+the shipped fixture inserted a row shape the app never produces, which is
+exactly how it passed. It appeared only by calling `insertVitals` and reading
+what actually landed in the column. A review of a write-path change exercises
+the write path.
+
+## The merge queue that couldn't (2026-08-13)
+
+Applying `.github/merge-queue-ruleset.json` 422s with
+`Invalid rule 'merge_queue'`: GitHub offers merge queue only on
+ORGANIZATION-owned repos, and this repo is user-owned — no JSON shape fixes
+that. The ruleset file and the `merge_group` workflow triggers stay as the
+transfer-ready artifact (inert, zero cost). A strict up-to-date
+required-checks ruleset was considered and rejected: it re-runs full CI per
+open PR per landing while buying nothing the hand-serialization protocol
+doesn't.
