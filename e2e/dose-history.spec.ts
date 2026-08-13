@@ -59,7 +59,7 @@ test("dosage restructure keeps the taken history at its original amount", async 
   ).toBeVisible();
 
   // ── Restructure: replace both doses with a single 1000 mg dose ─────────────
-  await morningRow.getByRole("button", { name: "IntakeItem actions" }).click();
+  await morningRow.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const editForm = page.getByRole("dialog", { name: `Edit ${name}` });
   await expect(editForm.getByTestId("supplement-edit-panel")).toHaveCSS(
@@ -78,13 +78,13 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await expect(rows.first()).toContainText("1000 mg"); // first-ok: the single remaining dose row (count asserted above) — order-agnostic
 
   // ── History survived at the original amount ─────────────────────────────────
-  // The timeline's "IntakeItem doses confirmed" event for today still lists the
+  // The timeline's "Supplement doses confirmed" event for today still lists the
   // confirmed dose — retired, not cascaded — and its expanded detail shows the
   // amount SNAPSHOTTED at confirm time (500 mg), not the post-edit 1000 mg.
   await page.goto("/timeline");
   const confirmedEvent = page
     .locator("details")
-    .filter({ hasText: "IntakeItem doses confirmed" })
+    .filter({ hasText: "Supplement doses confirmed" })
     .filter({ hasText: name })
     .first(); // first-ok: filtered to the confirmed-doses event for THIS spec's supplement — one match
   await confirmedEvent.locator("summary").click();
@@ -123,7 +123,7 @@ test("a supplement's dose history offers the medication row actions, and an edit
   ).toBeVisible();
 
   // ── The row's ⋯ menu now reaches dose history ──────────────────────────────
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Dose history" }).click();
   const panel = row.getByTestId("supplement-dose-history-panel");
   await expect(
@@ -281,7 +281,7 @@ test("the supplements tab reaches a cross-item dose ledger and logs a past dose 
 
   // ── The item-filtered ledger says exactly what the item's own panel says ───
   await page.goto("/nutrition?tab=supplements");
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Dose history" }).click();
   const panel = row.getByTestId("supplement-dose-history-panel");
   await expect(panel.getByTestId("dose-history-row")).toHaveCount(2);

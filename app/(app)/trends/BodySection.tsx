@@ -47,6 +47,7 @@ import {
   getBodyCardPins,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
+import { bodyMetricMeasures } from "@/lib/body-metric-measures";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { buildGrowthTrendPresentation } from "@/lib/growth-trend-views";
@@ -126,7 +127,7 @@ import {
   stackContainerClass,
   type BodyView,
 } from "./body-view";
-import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
+import BodyMetricRowMenu from "./BodyMetricRowMenu";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
 
@@ -1877,9 +1878,15 @@ export default async function BodySection({
                               <NotesText notes={w.notes} />
                             </td>
                             <td className="td text-right">
-                              <DeleteBodyMetricButton
+                              {/* Edit (per measure) + delete on the shared ⋯ menu
+                            (#2556). The row is WIDE — up to three readings — so
+                            each Edit names its own measure and writes it through
+                            the existing per-reading contract; the delete is
+                            unchanged and still removes the day's whole entry. */}
+                              <BodyMetricRowMenu
                                 id={w.id}
                                 label={formatMonthDay(w.date, formatPrefs)}
+                                measures={bodyMetricMeasures(w, wu)}
                               />
                             </td>
                           </tr>

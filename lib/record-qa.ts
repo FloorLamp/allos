@@ -56,7 +56,7 @@ export const DOMAIN_LABEL: Record<SearchDomain, string> = {
   dental: "Dental record",
   skin: "Skin lesion",
   activity: "Activity",
-  supplement: "IntakeItem or medication",
+  supplement: "Supplement or medication",
   protocol: "Protocol",
   practice: "Wellness practice",
   equipment: "Equipment",

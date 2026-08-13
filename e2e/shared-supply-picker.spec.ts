@@ -16,7 +16,7 @@ test("creating a shared bottle confirms the write and cannot duplicate it", asyn
 
   const row = page.getByTestId("supplement-row").filter({ hasText: itemName });
   await expect(row).toHaveCount(1);
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
 
   const editDialog = page.getByRole("dialog", { name: `Edit ${itemName}` });

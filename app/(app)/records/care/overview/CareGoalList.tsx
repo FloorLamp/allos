@@ -30,6 +30,7 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
   {
     header: "Target date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
+    empty: (g) => !g.target_date,
     cell: (g) => formatRecordDate(g.target_date, "—", fmt),
   },
   {

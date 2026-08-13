@@ -143,12 +143,20 @@ while read -r d; do
   # a detached HEAD has no branch to push. An alarm you cannot act on is the
   # canary again, so name the lane instead of alarming on it.
   #
-  # The exemption is the DECLARED lane only (`wt-refute-*`, detached). A detached
+  # The exemption is the DECLARED lane only (`wt-refute*`, detached). A detached
   # worktree that is NOT the lane still gets said out loud, because commits made
   # there belong to no branch and are one `worktree remove` from gone — a
   # different problem from an unpushed branch, and not one to silence.
+  #
+  # The glob has no hyphen after `refute` because the first version did, and the
+  # second refuter — a re-run on the same PR — got hand-named `wt-refute2-2634`,
+  # which the pattern missed by one character. So the alarm fired on the very lane
+  # it had just been taught to recognise. An exemption keyed on a name a human
+  # types will drift from the name that human types next time; matching the prefix
+  # rather than one spelling of it is the cheap half of the fix, and briefing the
+  # lane to use `wt-refute-<pr>` is the other.
   case "$(basename "$d")" in
-    wt-refute-*)
+    wt-refute*)
       if [ "$b" = "HEAD" ]; then
         printf "  %-16s %-32s %-6s local=%s  (read-only refuter lane — nothing to rescue)\n" \
           "$(basename "$d")" "(detached)" "lane" "${h:0:7}"

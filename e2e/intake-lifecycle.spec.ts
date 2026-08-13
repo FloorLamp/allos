@@ -8,7 +8,7 @@ import { settledClick, settledFill } from "./helpers";
 //
 // 1. Pause/Resume is STATE-NAMED: a row still rendering "Pause" after another
 //    tab/device already paused the item must surface the typed refusal — never
-//    resume it while toasting "IntakeItem paused" (the #2133 inversion).
+//    resume it while toasting "Supplement paused" (the #2133 inversion).
 // 2. A retired dose renders in the edit form's "Retired doses" section with its
 //    Restore affordance, and restoring puts the SAME dose row back on the
 //    schedule (#2131).
@@ -47,7 +47,7 @@ async function deleteIntakeItem(
     .getByTestId("supplement-row")
     .filter({ hasText: name })
     .first(); // first-ok: spec-owned unique name; a multi-dose item renders one row per dose and any of ITS rows opens the same item menu
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
     page,
@@ -71,7 +71,7 @@ test("a stale tab's Pause refuses with the typed outcome instead of resuming (#2
   );
 
   const row = page.getByTestId("supplement-row").filter({ hasText: NAME });
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   // The stale render still offers "Pause" — the tap must refuse, not invert.
   await page.getByRole("menuitem", { name: "Pause" }).click();
   // The "added" success toast from the fixture setup may still be on screen, so
@@ -127,7 +127,7 @@ test("a retired dose offers Restore in the edit form and rejoins the schedule (#
 
   await page.reload();
   const row = page.getByTestId("supplement-row").filter({ hasText: NAME });
-  await row.getByRole("button", { name: "IntakeItem actions" }).click();
+  await row.getByRole("button", { name: "Supplement actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
 
   const retired = page.getByTestId("retired-doses");

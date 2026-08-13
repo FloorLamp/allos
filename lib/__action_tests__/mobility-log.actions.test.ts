@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
+import { getActivityFaults } from "@/lib/queries";
 import {
   logMobilityMove,
   unlogMobilityMove,
@@ -125,5 +126,36 @@ describe("mobility log actions", () => {
     const res = await logMobilityMove(fd({ move: "pigeon-pose", date: DATE }));
     if (!res.ok) throw new Error(res.error);
     expect(res.session.moves).toEqual(["pigeon_pose"]);
+  });
+
+  // #2611: what this bar writes must never come back described as broken. The
+  // Training Log's red "Can't be saved N" chip and its fault filter both read
+  // getActivityFaults, so this is the count the user actually sees.
+  it("writes no row the Training Log calls unsaveable (#2611)", async () => {
+    const login = createLogin();
+    const profile = createProfile("mobility-faults", login.id);
+    actAs(login, profile);
+
+    const moves = ["couch_stretch", "ankle_rocks", "deep_squat_hold"];
+    for (const move of moves) {
+      const res = await logMobilityMove(fd({ move, date: DATE }));
+      if (!res.ok) throw new Error(res.error);
+    }
+    expect(getActivityFaults(profile.id).count).toBe(0);
+
+    // With the session's overall duration stated.
+    const dur = await setMobilityDuration(fd({ minutes: "8", date: DATE }));
+    if (!dur.ok) throw new Error(dur.error);
+    expect(getActivityFaults(profile.id).count).toBe(0);
+
+    // And down to the move-less, duration-only session the bar also writes.
+    for (const move of moves) {
+      const res = await unlogMobilityMove(fd({ move, date: DATE }));
+      if (!res.ok) throw new Error(res.error);
+    }
+    const rows = recoveryRows(profile.id);
+    expect(rows.length).toBe(1);
+    expect(JSON.parse(rows[0].components ?? "[]")).toEqual([]);
+    expect(getActivityFaults(profile.id).count).toBe(0);
   });
 });

@@ -69,6 +69,7 @@ const buildColumns = (
   {
     header: "Significance",
     cellClassName: "whitespace-nowrap text-slate-500 dark:text-slate-400",
+    empty: (v) => !v.significance,
     cell: (v) =>
       v.significance ? significanceLabel(v.significance) : <span>—</span>,
   },
@@ -80,6 +81,7 @@ const buildColumns = (
   {
     header: "Reported",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
+    empty: (v) => !v.report_date,
     cell: (v) => formatRecordDate(v.report_date, "—", fmt),
   },
   {

@@ -45,6 +45,7 @@ const buildColumns = (
     headerClassName: "hidden sm:table-cell",
     cellClassName:
       "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
+    empty: (p) => !p.code,
     cell: (p) =>
       p.code ? (
         <>
@@ -60,12 +61,14 @@ const buildColumns = (
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
+    empty: (p) => !p.date,
     cell: (p) => formatRecordDate(p.date, "—", fmt),
   },
   {
     header: "Provider",
     headerClassName: "hidden md:table-cell",
     cellClassName: "hidden whitespace-nowrap md:table-cell",
+    empty: (p) => !p.provider_name,
     cell: (p) =>
       p.provider_name ? (
         <ProviderName name={p.provider_name} providerId={p.provider_id} />

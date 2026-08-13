@@ -54,6 +54,8 @@ import {
   MULTI_SHARED_VISIT,
   MULTI_OWNER_VACCINE,
   MULTI_SHARED_VACCINE,
+  MULTI_SHARED_DENTAL,
+  MULTI_SHARED_RX_BRAND,
   E2E_LOGIN_OWN,
   OWN_SELF_PROFILE,
   OWN_OTHER_PROFILE,
@@ -412,6 +414,35 @@ export function seedMultiProfile(): void {
     seedMultiVisit(multiSharedId, MULTI_SHARED_VISIT);
     seedMultiVaccine(multiOwnerId, MULTI_OWNER_VACCINE);
     seedMultiVaccine(multiSharedId, MULTI_SHARED_VACCINE);
+    // Records › Specialty multi-view (#2557): a dental record and an optical Rx on the
+    // SHARED profile ONLY. Both panes are data-gated, so this asymmetry is the fixture:
+    // acting alone the owner sees neither pane, and toggling the shared member in makes
+    // both reachable with one subject-chipped row each.
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM dental_procedures WHERE profile_id = ? AND name = ?"
+        )
+        .get(multiSharedId, MULTI_SHARED_DENTAL)
+    ) {
+      db.prepare(
+        `INSERT INTO dental_procedures (profile_id, name, status, tooth, procedure_date, source)
+         VALUES (?, ?, 'completed', '19', '2026-02-18', NULL)`
+      ).run(multiSharedId, MULTI_SHARED_DENTAL);
+    }
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM optical_prescriptions WHERE profile_id = ? AND brand = ?"
+        )
+        .get(multiSharedId, MULTI_SHARED_RX_BRAND)
+    ) {
+      db.prepare(
+        `INSERT INTO optical_prescriptions
+           (profile_id, kind, brand, od_sphere, os_sphere, issued_date, source)
+         VALUES (?, 'glasses', ?, -2.0, -2.25, '2026-02-18', NULL)`
+      ).run(multiSharedId, MULTI_SHARED_RX_BRAND);
+    }
     const multiLoginId = seedMemberLogin(
       E2E_LOGIN_MULTI,
       multiOwnerId,

@@ -115,6 +115,13 @@ const VIEW_CONTROL_COPY =
 const ACTING_IMMUNIZATION_COPY =
   "The schedule assessment is deliberately acting-profile-only even though the " +
   "record list below is multi-view, so second person still names the active profile.";
+const ACTING_SUBSTANCE_USE_COPY =
+  "Substance use is deliberately NOT multi-view (#2557): its adult-validated " +
+  "instruments serve ONE data subject, and that subject is the acting profile — " +
+  "which is why its life-stage gate is the only Specialty bit not folded over the " +
+  "view set. The route reads viewIds solely to pick a redirect target the sub-tab " +
+  "strip is actually showing, so it trips the scope marker while every word it " +
+  "renders still names the active profile.";
 const CROSS_PROFILE_VOICE_ALLOW: {
   file: string;
   substring: string;
@@ -124,6 +131,11 @@ const CROSS_PROFILE_VOICE_ALLOW: {
     file: "app/(app)/records/ImmunizationsSection.tsx",
     substring: "You're up to date on the tracked schedule.",
     why: ACTING_IMMUNIZATION_COPY,
+  },
+  {
+    file: "app/(app)/records/specialty/substance-use/page.tsx",
+    substring: "reduction targets you set",
+    why: ACTING_SUBSTANCE_USE_COPY,
   },
   {
     file: "app/(app)/records/ImmunizationsSection.tsx",
