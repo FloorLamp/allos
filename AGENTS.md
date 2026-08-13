@@ -651,7 +651,14 @@ A tick is not a request, so `cache()` (`lib/request-cache.ts`) is identity in it
 Per-tick memoization goes through `lib/tick-cache.ts`: `scripts/notify.ts` opens
 one scope per profile, and a repeated heavy gather declares `tickCached` beside
 its `cache()`. Do not reach for a TTL memo here — a scope, not a duration, is
-what lets a safety counter be memoized at all.
+what lets a safety counter be memoized at all. A repeated read is not thereby a
+CANDIDATE: the scope may hold only what nothing inside it writes, and
+`getFindingSuppressions` is the worked counter-example (#2674) — six round-trips
+in one digest gather, eleven across an ordinary tick, and left unmemoized anyway
+because `runPreventive`'s #1024 episode-end sweep deletes from
+`upcoming_dismissals` inside the same scope while the Telegram poll loop writes
+the table from another process. Its compile cost is already gone through
+`hoistedStatement`; find the writers before adding a name.
 
 See `docs/internals/notifications.md`.
 
