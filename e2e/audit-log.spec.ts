@@ -3,9 +3,9 @@ import { loginAs } from "./nav";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_CHILD } from "./fixture-logins";
 
 // Settings → Audit (issue #22): the admin-only access/modification trail. The
-// admin (the seed, plus this worker's own fixture sign-in — which writes a
-// `login.success` audit row into this worker's database) can see the tab and that
-// row; a member is redirected away from the URL by requireAdmin().
+// admin (the seed, which mints this worker's session AND records the matching
+// `login.success` audit row — e2e/seed/session.ts) can see the tab and that row;
+// a member is redirected away from the URL by requireAdmin().
 test.describe("Settings → Audit log", () => {
   test("admin sees the Audit tab and a login event row", async ({ page }) => {
     await page.goto("/settings/audit");
@@ -20,7 +20,9 @@ test.describe("Settings → Audit log", () => {
     ).toBeVisible();
 
     // The table renders; filter to the login domain and find the login.success
-    // row written when this worker signed itself in as admin (#1538).
+    // row that came with this worker's seeded admin session (e2e/seed/session.ts).
+    // That row is written by the SEED deliberately, precisely so this assertion
+    // keeps meaning what it did when the worker signed itself in (#1538).
     await expect(page.getByTestId("audit-table")).toBeVisible();
     await page.goto("/settings/audit?action=login");
     await expect(

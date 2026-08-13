@@ -202,8 +202,9 @@ jobs:
   #     the event's base.sha when it happens to be in history, else fall back to
   #     HEAD^1 — robust for both PR and push (HEAD^1 is the prior commit).
   #   • no setup project to pass along any more (#1538): each Playwright worker
-  #     boots its own server against its own copy of the seeded template DB and
-  #     signs itself in, so there is no shared login step to schedule.
+  #     boots its own server against its own copy of the seeded template DB,
+  #     which carries a seeded admin session, so there is no shared login step to
+  #     schedule and no per-worker one either.
   #
   #   • the `mobile` project (#1420) needs NO extra wiring here: this lane runs
   #     `npx playwright test <specs>` with no `--project` filter, so a changed

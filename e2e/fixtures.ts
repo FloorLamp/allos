@@ -325,35 +325,28 @@ export const test = base.extend<{}, WorkerFixtures>({
       }
       const bootMs = Date.now() - bootStart;
 
-      // 4) This worker's session. A session is a row in THIS database, so the
-      //    worker signs in against its own server and saves its own storageState
-      //    (the replacement for the old single auth.setup.ts project).
-      let authMs = 0;
-      if (!demo) {
-        const authStart = Date.now();
-        // Both options are passed EXPLICITLY: Playwright fills any option a manual
-        // newContext() omits from the test's resolved `use` — and `storageState`
-        // resolves through this very fixture, so naming it here (as undefined =
-        // anonymous, which is what a login context needs) keeps worker setup from
-        // depending on a value it is in the middle of producing.
-        const ctx = await browser.newContext({
-          baseURL,
-          storageState: undefined,
-        });
-        try {
-          const page = await ctx.newPage();
-          await page.goto("/login");
-          await page.fill('input[name="username"]', ADMIN_USERNAME);
-          await page.fill('input[name="password"]', ADMIN_PASSWORD);
-          await page.click('button[type="submit"]');
-          await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
-            timeout: 30_000,
-          });
-          await ctx.storageState({ path: workerAuthPath(idx) });
-        } finally {
-          await ctx.close();
-        }
-        authMs = Date.now() - authStart;
+      // 4) This worker's session — ALREADY HERE, copied in with the template.
+      //
+      //    A session is still a row in THIS database; it is just minted at seed
+      //    time rather than by driving the login form once per worker. The seed
+      //    (e2e/seed/session.ts) writes the storageState next to the DB it
+      //    matches, so step 2's copy lands it at exactly workerAuthPath(idx) and
+      //    there is nothing to do here but check the copy arrived.
+      //
+      //    That check is deliberately fatal rather than a silent fall back to
+      //    signing in. A fallback would still go green — just two seconds slower
+      //    per worker, which is the whole cost this removed — so a seed that quietly
+      //    stopped writing the file would be invisible for exactly as long as
+      //    nobody re-read a timing log.
+      //
+      //    The demo template runs scripts/seed.ts WITHOUT the e2e event layer, so
+      //    it has no seeded session and demo specs sign themselves in — same as
+      //    before.
+      if (!demo && !fs.existsSync(workerAuthPath(idx))) {
+        throw new Error(
+          `worker ${idx}: no seeded session at ${workerAuthPath(idx)} — ` +
+            `e2e/seed/session.ts must write it into the template (see #1538)`
+        );
       }
 
       // Belt and braces for any code path that still consults the env var: inside
@@ -362,7 +355,7 @@ export const test = base.extend<{}, WorkerFixtures>({
 
       console.log(
         `[e2e] worker ${idx} (slot ${slot}${demo ? ", demo" : ""}): ${baseURL} db=${path.relative(process.cwd(), dbPath)} ` +
-          `boot=${bootMs}ms auth=${authMs}ms total=${Date.now() - started}ms`
+          `boot=${bootMs}ms total=${Date.now() - started}ms`
       );
 
       await use({ index: idx, slot, baseURL, port, dbPath, dir, demo });
