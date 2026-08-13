@@ -30,32 +30,54 @@
 // credibility.
 //
 // WHY THE BLOCKER IS PART OF THE ANSWER — the mixed-scope trap, in miniature.
-// Settings → Notifications is intentionally mixed-tier, and these four columns are
-// owned by THREE different people:
+// Settings → Notifications is intentionally mixed-tier, and these four columns are NOT
+// owned alike. `channelReadiness` below is the one place that declaration lives:
 //
-//     Telegram  server (bot token, an admin) AND login (your chat)
-//     Web Push  server (VAPID keys, an admin) AND login (this browser's subscription)
-//     Email     server (SMTP, an admin)       AND login (your address + opt-in)
-//     Home Assistant                              profile (that profile's webhook)
+//     Telegram        server (the instance bot token, an ADMIN) AND login (your chat)
+//     Email           server (SMTP, an ADMIN)                   AND login (your address)
+//     Web Push        LOGIN ONLY — see the correction below
+//     Home Assistant  PROFILE ONLY (that profile's webhook)
 //
 // A bare "not set up" tells a member nothing about whether the next step is theirs, an
 // admin's, or the profile's — so the same two words meant three different obligations.
 // `columnLiveness` therefore returns WHO is blocking, server-first (an admin's missing
 // bot token blocks a member's chat id, not the other way round), and `deadColumnNotes`
-// turns that into one sentence per OWNER. Three owners, three sentences, each naming
-// its own tier: that is how this change keeps the tiers legible rather than flattening
-// them into one indistinguishable row of dots.
+// turns that into one sentence per OWNER — each naming its own tier, rather than
+// flattening them into one indistinguishable row of dots.
+//
+// WEB PUSH HAS NO SERVER TIER, and getting this wrong is worse than saying nothing.
+// It LOOKS like it has one — there is an instance-wide VAPID keypair in `settings` —
+// but `lib/notifications/push.ts` generates that keypair LAZILY, the first time any
+// login enables push (`ensureVapidKeys`), with "no admin setup step". There is no VAPID
+// control on Settings → Server, and `getPushPublicKey` is gated on `requireSession()`,
+// not `requireAdmin()`: its one caller is the "Enable push on this browser" button in
+// the Channels section of this very page. So an unconfigured push column is resolved by
+// the READER, on the page they are already looking at, and the first draft of this
+// module sent them to an admin instead — a login-actionable blocker rendered as the
+// server's problem, which is the exact mis-attribution the module exists to fix. It
+// also fired on the DEFAULT FRESH INSTALL and conjoined with Telegram and Email, which
+// genuinely are admin-owned, so nothing on screen marked the false third of the
+// sentence. Naming the wrong tier is the same class of defect as "delivering" above:
+// stating as fact something that cannot be true. When in doubt about a tier, the honest
+// move is the narrower claim.
 
 // Who has to act for a channel to be set up. "server" is the instance-wide technology
 // an admin configures; "login" is the person/device tier (`login_settings`); "profile"
 // is the data subject's tier (`profile_settings`).
 export type ChannelScope = "server" | "login" | "profile";
 
+// The four routing columns.
+export type MatrixChannelId = "telegram" | "push" | "ha" | "email";
+
 // The facts a surface supplies per column. Deliberately two booleans and a scope rather
 // than one `configured`: the single boolean is what made "not set up" unactionable.
 export type ChannelReadiness = {
-  // The instance-wide technology this channel needs (a bot token, VAPID keys, SMTP).
-  // A channel with no server tier at all — Home Assistant — passes `true`.
+  // The instance-wide technology this channel needs that AN ADMIN MUST GO AND SET UP —
+  // a bot token, an SMTP server. A channel with no such step passes `true`, and that
+  // includes one with instance-wide state nobody has to configure (Web Push's
+  // lazily-generated VAPID keypair) as well as one with no instance state at all
+  // (Home Assistant). The question this field answers is "is an admin blocking this",
+  // not "is there a row in `settings`".
   serverReady: boolean;
   // Whether the tier that owns the TARGET has one: a chat, a push subscription, an
   // address, a webhook URL.
@@ -74,6 +96,52 @@ export function columnLiveness(r: ChannelReadiness): ColumnLiveness {
   if (!r.serverReady) return { state: "not-set-up", blocker: "server" };
   if (!r.targetReady) return { state: "not-set-up", blocker: r.targetScope };
   return { state: "ready" };
+}
+
+// The instance facts the four columns are decided from. Each is exactly one of the
+// reads the page already performed; naming them here rather than shaping the record at
+// the call site is what makes WHICH TIER OWNS WHICH COLUMN a pinnable declaration
+// instead of an object literal in a 400-line server component.
+export type ChannelFacts = {
+  // An admin has set the instance Telegram bot token.
+  telegramBotConfigured: boolean;
+  // At least one managing login (deduped by chat) has an enabled chat for this profile
+  // — the login-scoped fan-out (#1072).
+  telegramRecipient: boolean;
+  // This browser holds a push subscription for this login. Deliberately ONE fact: the
+  // VAPID half needs no admin, so there is no server-tier fact to separate out.
+  pushSubscribed: boolean;
+  // This profile has an enabled, well-formed Home Assistant webhook.
+  haWebhook: boolean;
+  // An admin has configured outgoing mail.
+  smtpConfigured: boolean;
+  // A managing login has the email channel on with an address (#1855).
+  emailRecipient: boolean;
+};
+
+export function channelReadiness(
+  f: ChannelFacts
+): Record<MatrixChannelId, ChannelReadiness> {
+  return {
+    telegram: {
+      serverReady: f.telegramBotConfigured,
+      targetReady: f.telegramRecipient,
+      targetScope: "login",
+    },
+    // No server tier: the keypair generates itself on first use and there is nothing
+    // for an admin to configure. See the header.
+    push: {
+      serverReady: true,
+      targetReady: f.pushSubscribed,
+      targetScope: "login",
+    },
+    ha: { serverReady: true, targetReady: f.haWebhook, targetScope: "profile" },
+    email: {
+      serverReady: f.smtpConfigured,
+      targetReady: f.emailRecipient,
+      targetScope: "login",
+    },
+  };
 }
 
 // The one boolean the rest of the matrix already asked for (safety coverage, the

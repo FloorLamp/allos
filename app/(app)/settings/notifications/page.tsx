@@ -44,7 +44,7 @@ import {
   resolveEmailRecipients,
 } from "@/lib/notifications/email";
 import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
-import type { ChannelReadiness } from "@/lib/notifications/matrix-liveness";
+import { channelReadiness } from "@/lib/notifications/matrix-liveness";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import { notifyScopeForLogin } from "@/lib/notify-scope-db";
 import { notifyScopeCaption } from "@/lib/notify-scope";
@@ -168,34 +168,26 @@ export default async function NotificationsSettingsPage() {
   // obligations (an admin's, this login's, this profile's) with nothing on screen to
   // tell them apart.
   //
-  //   Telegram  server = the instance bot token; target = at least one managing login
-  //             (deduped by chat) with an enabled chat — the login-scoped fan-out (#1072)
-  //   Web Push  server = VAPID keys; target = a subscription from THIS browser
-  //   Email     server = SMTP; target = a managing login with the channel on and an
-  //             address (#1855)
-  //   Home Assistant — no server tier at all; the webhook is the PROFILE's
-  const readiness = {
-    telegram: {
-      serverReady: botConfigured,
-      targetReady: resolveTelegramRecipients(profile.id).length > 0,
-      targetScope: "login",
-    },
-    push: {
-      serverReady: isPushConfigured(),
-      targetReady: countPushSubscriptionsForLogin(login.id) > 0,
-      targetScope: "login",
-    },
-    ha: {
-      serverReady: true,
-      targetReady: ha.enabled && isValidWebhookUrl(ha.webhookUrl),
-      targetScope: "profile",
-    },
-    email: {
-      serverReady: smtpConfigured,
-      targetReady: resolveEmailRecipients(profile.id).length > 0,
-      targetScope: "login",
-    },
-  } as const satisfies Record<string, ChannelReadiness>;
+  // WHICH tier owns which column is declared in `channelReadiness`, not here — this
+  // page supplies FACTS only. Web Push in particular has NO admin step despite its
+  // instance-wide VAPID keypair (it is generated lazily on first use, and there is no
+  // control for it on Settings → Server), so `isPushConfigured()` is part of the
+  // LOGIN-tier fact rather than a server-tier one. See that module's header.
+  //
+  // TWO of these reads — the Telegram and Email recipient fan-outs — used to be skipped
+  // by a short-circuit when their server half was false, and now always run. Both are
+  // read-only settings/fan-out queries on a force-dynamic page that is not a hot path,
+  // and the fact shape is worth more than the skip. Push's own short-circuit survives
+  // verbatim inside `pushSubscribed`, which is byte-identical to main's `pushConfigured`.
+  const readiness = channelReadiness({
+    telegramBotConfigured: botConfigured,
+    telegramRecipient: resolveTelegramRecipients(profile.id).length > 0,
+    pushSubscribed:
+      isPushConfigured() && countPushSubscriptionsForLogin(login.id) > 0,
+    haWebhook: ha.enabled && isValidWebhookUrl(ha.webhookUrl),
+    smtpConfigured,
+    emailRecipient: resolveEmailRecipients(profile.id).length > 0,
+  });
   const telegramConfigured =
     readiness.telegram.serverReady && readiness.telegram.targetReady;
   const householdRound = getProfileHouseholdRound(profile.id);

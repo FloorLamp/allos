@@ -125,6 +125,33 @@ test.describe("Matrix column liveness", () => {
         `Home Assistant isn’t set up for ${MATRIX_INK_PROFILE} yet — its card is in Channels above.`
       );
 
+      // WEB PUSH IS LOGIN-OWNED, and the first draft of this feature said it was the
+      // server's. The keypair generates itself on first use, there is no VAPID control
+      // on Settings → Server, and the one control that fixes this column is the "Enable
+      // push on this browser" button in the Channels section of this same page — so
+      // sending the reader to an admin was an instruction nobody could carry out, on
+      // the default fresh install this very instance is. Asserted structurally: EXACTLY
+      // ONE sentence may mention Web Push, and it must be the LOGIN one. Were the
+      // column grouped back into the admin sentence, that same sentence would match the
+      // filter and fail both clauses below.
+      //
+      // Deliberately NOT an exact-text assertion. Web Push's own tier is this spec's to
+      // own — no push subscription can exist in a headless browser, so the column is
+      // reliably dead — but its SENTENCE-MATES are not. `deadColumnNotes` groups every
+      // login-blocked column into ONE line, and whether Telegram and Email are
+      // server-blocked or login-blocked turns on the instance-wide bot token and SMTP
+      // that neighbouring specs configure and reset mid-run — the same shared-state
+      // reason this spec owns only the Home Assistant column end to end. Pinning the
+      // whole line would let a neighbour's ordinary write fail this spec. The two
+      // clauses below are what the finding is actually about, and neither weakens when
+      // another column joins the sentence.
+      const pushNote = notes
+        .getByRole("listitem")
+        .filter({ hasText: "Web Push" });
+      await expect(pushNote).toHaveCount(1);
+      await expect(pushNote).toContainText("set up for your login yet");
+      await expect(pushNote).not.toContainText("Settings → Server");
+
       // ── (4) Setting the channel up revives the STORED preferences ───────────
       await setHaEnabled(true);
 

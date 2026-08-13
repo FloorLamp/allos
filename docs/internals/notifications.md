@@ -204,16 +204,35 @@ duplicates of controls already on it:
   meaning "configured, and nothing has been tried" is the lie that rule forbids.
 
   **It also names WHOSE setup step is missing** — the mixed-tier page's own trap.
-  These four columns are owned by three tiers (Telegram/Push/Email each need
-  instance-wide SERVER config AND a LOGIN-tier target; Home Assistant is purely
-  the PROFILE's webhook), so one undifferentiated "not set up" meant three
-  different obligations. `columnLiveness` returns the blocking tier, server-first
-  (an absent bot token blocks a member's chat id, not the reverse), and
-  `deadColumnNotes` renders **one sentence per owner** in server → login → profile
-  order: the server sentence points an admin at Settings → Server and tells a
-  member whose step it is, the login sentence says "your login", the profile
-  sentence uses the profile's NAME. Copy only — Settings → Server keeps its own
-  `requireAdmin()`.
+  These four columns are not owned alike, and one undifferentiated "not set up"
+  meant three different obligations. `channelReadiness` is the single place that
+  declaration lives:
+
+  | column         | admin step             | target tier                                 |
+  | -------------- | ---------------------- | ------------------------------------------- |
+  | Telegram       | the instance bot token | login (a managing login's enabled chat)     |
+  | Email          | SMTP                   | login (a managing login's address + opt-in) |
+  | Web Push       | **none**               | login (this browser's subscription)         |
+  | Home Assistant | **none**               | profile (that profile's webhook)            |
+
+  **Web Push has NO server tier**, despite the instance-wide VAPID keypair in
+  `settings`: `push.ts` generates that keypair lazily on first use ("no admin
+  setup step"), there is no VAPID control on Settings → Server, and
+  `getPushPublicKey` is gated on `requireSession()` — its one caller is the
+  "Enable push on this browser" button in the Channels section of this same page.
+  The first draft of #2565 read `isPushConfigured()` as a server fact and so told
+  a reader on a **default fresh install** to go configure something on a page with
+  no control for it, conjoined into the same sentence as Telegram and Email, which
+  genuinely are admin-owned. `serverReady` asks "is an admin blocking this", not
+  "is there a row in `settings`"; naming the wrong tier is the same class of
+  defect as the `delivering` caption above.
+
+  `columnLiveness` returns the blocking tier, server-first (an absent bot token
+  blocks a member's chat id, not the reverse), and `deadColumnNotes` renders **one
+  sentence per owner** in server → login → profile order: the server sentence
+  points an admin at Settings → Server and tells a member whose step it is, the
+  login sentence says "your login", the profile sentence uses the profile's NAME.
+  Copy only — Settings → Server keeps its own `requireAdmin()`.
 
 - **The digest mirror is collapsed.** Its ten checkboxes were an acknowledged
   mirror of the message's ⚙️ Tune control, so they now sit behind a disclosure
