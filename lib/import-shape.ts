@@ -604,12 +604,40 @@ function withoutCapturedWaistCircs(
 // The recognizer is `derivedInputsMetricFor`, which reads the reach registry itself,
 // so a second `derived-inputs` slug is covered here with no edit and this cannot
 // drift from the declaration it implements.
-function withoutDerivedResults(records: PersistRecord[]): PersistRecord[] {
-  return records.filter(
-    (r) =>
-      derivedInputsMetricFor(r.canonical) === null &&
-      derivedInputsMetricFor(r.name) === null
-  );
+//
+// AND IT REPORTS (#2678). The four `withoutCaptured*` helpers above need no accounting
+// because their trail IS the projected row: the reading is still on a chart, under a
+// key, in a table, and anyone can go and look. This one leaves NOTHING — no row, no
+// vocabulary entry, no sync count — which makes it the one ingest outcome nobody could
+// notice had happened. So it returns its drops, the callers fold them into the import
+// report they already build, and a document with three printed derived results says so
+// on its Data → Review detail. That is not a tombstone and not a reversal: the drop is
+// still by design and still unconditional. It is the visibility every other outcome
+// already had.
+function withoutDerivedResults(records: PersistRecord[]): {
+  kept: PersistRecord[];
+  drops: ImportDrop[];
+} {
+  const kept: PersistRecord[] = [];
+  const drops: ImportDrop[] = [];
+  for (const r of records) {
+    const derived =
+      derivedInputsMetricFor(r.canonical) ?? derivedInputsMetricFor(r.name);
+    if (!derived) {
+      kept.push(r);
+      continue;
+    }
+    drops.push({
+      // Same shape the duration door above uses: a derived anthropometric result is a
+      // vital, and anything else routes to the lab bucket rather than inventing a kind.
+      kind: r.category === "vitals" ? "vitals" : "lab",
+      // The name the DOCUMENT printed, so the row can be found on the page — not the
+      // slug it resolved to, which is the app's own vocabulary.
+      label: r.name,
+      reason: "derived_result",
+    });
+  }
+  return { kept, drops };
 }
 
 // Wrap a captured provider/facility NAME (the AI path surfaces these as bare
@@ -824,7 +852,7 @@ export function extractionToPersistInput(
     result.results,
     result.meta.document_date
   );
-  const records = withoutDerivedResults(
+  const derived = withoutDerivedResults(
     withoutCapturedWaistCircs(
       withoutCapturedHeadCircs(
         withoutCapturedHeights(
@@ -836,6 +864,7 @@ export function extractionToPersistInput(
       waistCircs
     )
   );
+  const records = derived.kept;
 
   // Clinical-narrative domains (parity with the deterministic importer). The AI path
   // leaves external_id null — a document's rows are cleared/reprocessed by
@@ -1073,8 +1102,13 @@ export function extractionToPersistInput(
   // parsers count through. persistDocumentImport rebinds these to the post-persist
   // footprint tally, so this path's card agrees with its extracted count too.
   // Every row-level drop this path reports: the model-shape rejections the
-  // normalizer collected, plus the duration door's refusals above (#2322).
-  const allDrops: ImportDrop[] = [...result.drops, ...durationDrops];
+  // normalizer collected, the duration door's refusals above (#2322), and the derived
+  // results this shape dropped for want of a destination (#2646/#2678).
+  const allDrops: ImportDrop[] = [
+    ...result.drops,
+    ...durationDrops,
+    ...derived.drops,
+  ];
   const imported = keptRowCount({
     records,
     immunizations,
@@ -1294,7 +1328,7 @@ export function healthRecordToPersistInput(
     })),
     docDate
   );
-  const records = withoutDerivedResults(
+  const derived = withoutDerivedResults(
     withoutCapturedWaistCircs(
       withoutCapturedHeadCircs(
         withoutCapturedHeights(
@@ -1306,6 +1340,18 @@ export function healthRecordToPersistInput(
       waistCircs
     )
   );
+  const records = derived.kept;
+  // The deterministic parse already built its own report; the derived-result drops are
+  // decided HERE, one layer above it, so they are appended rather than re-derived
+  // (#2678). The COUNTS are deliberately left alone: `imported`/`considered` on a
+  // parse-time report are estimates that persistDocumentImport rebinds to the
+  // post-persist footprint tally (withFootprintCounts), which recomputes `considered`
+  // as footprint + row drops — so appending the drop is exactly what moves the stored
+  // numbers, and adjusting them here would double-count.
+  const reportWithDerivedDrops =
+    parsed.report && derived.drops.length
+      ? { ...parsed.report, drops: [...parsed.report.drops, ...derived.drops] }
+      : parsed.report;
   return {
     records,
     immunizations: parsed.immunizations.map((im) => ({
@@ -1477,7 +1523,7 @@ export function healthRecordToPersistInput(
       raw: JSON.stringify(parsed),
       model: null,
       // The deterministic CCD/FHIR parse carries the drop/coverage report.
-      importReport: serializeImportReport(parsed.report),
+      importReport: serializeImportReport(reportWithDerivedDrops),
     },
     // `lab` only — a vital has its own home, and a `report` / `assessment` row
     // carries no analyte identity at all (#708/#2318), so this filter is already the

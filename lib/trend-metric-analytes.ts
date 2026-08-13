@@ -123,6 +123,31 @@
 // changed and the derivation followed. This module answers only "is this quantity
 // answered elsewhere"; which store a given row went to is `placeReading()`'s question.
 //
+// CONSEQUENCE MUST SCALE WITH CONFIDENCE (#2678). The `derived-inputs` arm turned a
+// recognition this module had always made into a DELETE, and the two are not the same
+// bet. The same acronym fuzz that files a row under a slightly wrong home — visible,
+// mergeable, recoverable — deletes the row outright once a drop hangs off it, and a
+// destination-less drop is the one ingest outcome with no forensic trail. So the fix
+// is TIERED, and the tiers are ordered by how much damage a wrong answer does:
+//
+//   1. `trendMetricHomeFor`, the SHARED recognizer, gets a structural rule — an
+//      acronym may CORROBORATE, never OVERRULE (`acronymOverruledBy`). It is derived
+//      from the registry, so it also fixes the pre-existing cosmetic bug that
+//      `listedInResultsCatalog` inherited: a stored BMI percentile stops being hidden
+//      from the Results browser by a chart that does not plot percentiles.
+//   2. `derivedInputsMetricFor`, the ONE caller whose consequence is deletion, demands
+//      more on top: a label whose original spelling carries a statistic signifier the
+//      slug's own names lack is refused (`STATISTIC_SIGNIFIERS`). This is the only
+//      thing that reaches a bare `BMI%`, where the `%` is punctuation and dies in
+//      normalization before any key or token set exists.
+//   3. The drop itself is COUNTED — `withoutDerivedResults` in lib/import-shape.ts
+//      reports each one as an `ImportDrop`, so Data → Review can say a document had
+//      three printed derived results. Not a tombstone: the drop is by design, and this
+//      is only the visibility every other ingest outcome already has.
+//
+// The failure asymmetry is the whole argument. When recognition is uncertain, the
+// failure must land on the side that leaves evidence.
+//
 // PURE: registries and string keys, no DB, no React. The projectors are deliberately
 // NOT imported here — they pull the extraction types in behind them, and the check
 // belongs to the test rather than to the request path.
@@ -353,23 +378,85 @@ const HOME_BY_KEY: ReadonlyMap<string, TrendMetricSlug> = (() => {
   return map;
 })();
 
+// The TOKEN SETS of the names each slug claims — the same three sources, kept as sets
+// so the subset question below can be asked of them. Derived from the registry in the
+// same pass as HOME_BY_KEY, so the two cannot disagree about what a slug is called.
+const KEY_TOKENS_BY_SLUG: ReadonlyMap<TrendMetricSlug, Set<string>[]> = (() => {
+  const map = new Map<TrendMetricSlug, Set<string>[]>();
+  for (const slug of TREND_METRIC_SLUGS) {
+    const sets = registryNamesFor(slug)
+      .map((name) => new Set(tokensOf(name)))
+      .filter((s) => s.size > 0);
+    if (sets.length) map.set(slug, sets);
+  }
+  return map;
+})();
+
+function tokensOf(name: string): string[] {
+  return normalizeCanonicalKey(name).split(" ").filter(Boolean);
+}
+
+/**
+ * AN ACRONYM MAY CORROBORATE, NEVER OVERRULE (#2678) — the structural half.
+ *
+ * `acronymNameForms` splits "Full Name (ABBR)" and the bare ABBR is tried on its own.
+ * That is a lossy compression of the words standing right beside it, and until this
+ * gate the compression could outvote its own expansion: "Body Mass Index Percentile
+ * (BMI)" matched `bmi` on the acronym, even though the full half says in words that
+ * the quantity is a percentile OF a BMI.
+ *
+ * The rule, derived from the registry and never from a denylist: the bare abbr may
+ * vouch for slug S only when NO registered name-key of S is a PROPER SUBSET of the
+ * full half's token set. `{body, index, mass}` ⊂ `{body, index, mass, percentile}`
+ * means the full half is naming a statistic of S and the leftover tokens say which —
+ * a contradiction the acronym does not get to settle.
+ *
+ * PROPER is load-bearing in both directions. EQUALITY is the ordinary case ("Body Mass
+ * Index (BMI)"), which the full form already matched before the abbr is ever tried, and
+ * DISJOINTNESS is the corroborating case this must not break: "Índice de Masa Corporal
+ * (BMI)" states no contradiction — nothing of S's vocabulary is in it — so the acronym
+ * is the only evidence there is and it still matches. "Resting HR (RHR)" is untouched
+ * for the same reason.
+ */
+function acronymOverruledBy(slug: TrendMetricSlug, fullHalf: string): boolean {
+  const fullTokens = new Set(tokensOf(fullHalf));
+  if (fullTokens.size === 0) return false;
+  for (const keyTokens of KEY_TOKENS_BY_SLUG.get(slug) ?? []) {
+    if (keyTokens.size >= fullTokens.size) continue; // proper subset only
+    let contained = true;
+    for (const t of keyTokens)
+      if (!fullTokens.has(t)) {
+        contained = false;
+        break;
+      }
+    if (contained) return true;
+  }
+  return false;
+}
+
 /**
  * The metric slug that is this analyte's home, or null when nothing charts it.
  *
  * The name is tried as written and — when it is written "Full Name (ABBR)" — as the
  * spellings that derivation yields, so a document's "Body Mass Index (BMI)" and the
- * registry's "Body Mass Index" are one quantity.
+ * registry's "Body Mass Index" are one quantity. The bare acronym is the WEAKEST of
+ * the three and is tried last, under `acronymOverruledBy`.
  */
 export function trendMetricHomeFor(
   name: string | null | undefined
 ): TrendMetricSlug | null {
   const raw = (name ?? "").trim();
   if (!raw) return null;
-  for (const form of [raw, ...acronymNameForms(raw)]) {
-    const slug = HOME_BY_KEY.get(normalizeCanonicalKey(form));
-    if (slug) return slug;
-  }
-  return null;
+  const asWritten = HOME_BY_KEY.get(normalizeCanonicalKey(raw));
+  if (asWritten) return asWritten;
+  const forms = acronymNameForms(raw);
+  if (forms.length === 0) return null;
+  const [full, abbr] = forms;
+  const byFull = HOME_BY_KEY.get(normalizeCanonicalKey(full));
+  if (byFull) return byFull;
+  const byAbbr = HOME_BY_KEY.get(normalizeCanonicalKey(abbr));
+  if (!byAbbr) return null;
+  return acronymOverruledBy(byAbbr, full) ? null : byAbbr;
 }
 
 /** Whether some registered trend metric already charts this quantity. */
@@ -408,13 +495,94 @@ export function hasTrendMetricHome(name: string | null | undefined): boolean {
  * is a DIFFERENT quantity from BMI (LOINC 39156-5) and shares its stem, so a code
  * axis would need its own negative list; the name axis separates them for free,
  * because a percentile's token set is not a BMI's.
+ *
+ * AND IT DEMANDS A STRICTER STANDARD THAN THE SHARED RECOGNIZER (#2678). This is the
+ * only caller whose consequence is DELETION — every other reader of
+ * `trendMetricHomeFor` decides where a kept row is filed or listed, which is cosmetic
+ * and recoverable. Consequence must scale with confidence, so on top of Tier 1's
+ * structural rule this refuses any label whose ORIGINAL spelling carries a statistic
+ * signifier the slug's own registered names lack. It is also the ONLY thing that can
+ * catch a bare `BMI%`, where `normalizeCanonicalKey` erases the `%` before any key
+ * exists and there is no full half for Tier 1 to consult.
  */
 export function derivedInputsMetricFor(
   name: string | null | undefined
 ): TrendMetricSlug | null {
-  const slug = trendMetricHomeFor(name);
+  const raw = (name ?? "").trim();
+  const slug = trendMetricHomeFor(raw);
   if (!slug) return null;
-  return METRIC_DOCUMENT_REACH[slug].reaches === "derived-inputs" ? slug : null;
+  if (METRIC_DOCUMENT_REACH[slug].reaches !== "derived-inputs") return null;
+  return foreignStatisticSignifier(slug, raw) ? null : slug;
+}
+
+/**
+ * A word or mark that says a label names a STATISTIC OF a quantity rather than the
+ * quantity — the Tier-2 list (#2678). Deliberately small and curated, each entry
+ * carrying the reason it earns a place, in the glyph-registry style.
+ *
+ * Matched against the ORIGINAL spelling, before `normalizeCanonicalKey` folds case,
+ * word order and punctuation away, because for the `%` entry the punctuation IS the
+ * signifier.
+ */
+export interface StatisticSignifier {
+  /** How the signifier is written, for the reason line and for tests to enumerate. */
+  readonly token: string;
+  /** What recognizes it in an original spelling. No `g` flag — these are reused. */
+  readonly pattern: RegExp;
+  /** Why this marks a statistic OF the quantity rather than the quantity itself. */
+  readonly reason: string;
+}
+
+export const STATISTIC_SIGNIFIERS: readonly StatisticSignifier[] = [
+  {
+    token: "%",
+    pattern: /%/,
+    reason:
+      "The percentile marker a paediatric flowsheet prints bare (`BMI%`, `BMI %`). normalizeCanonicalKey strips every non-alphanumeric, so it is erased before any key exists — no token set, and no full half for the structural rule to consult. This entry is the only thing standing between that spelling and a delete.",
+  },
+  {
+    token: "percentile",
+    pattern: /\bpercentiles?\b/i,
+    reason:
+      "The spelled-out age/sex rank — LOINC 59574-4 is `Body mass index (BMI) [Percentile]`, a different quantity from BMI's own 39156-5. A rank is not the measurement it ranks, and for a child it is the clinically meaningful number.",
+  },
+  {
+    token: "centile",
+    pattern: /\bcentiles?\b/i,
+    reason:
+      "The UK/WHO growth-chart spelling of the same statistic. Listed separately because `\\bcentile\\b` does not match inside `percentile` — neither entry covers the other.",
+  },
+  {
+    token: "z-score",
+    pattern: /\bz[\s-]?scores?\b/i,
+    reason:
+      "Standard deviations from the reference mean — a normalised position on a growth curve. Shares nothing with the measurement's own scale or units.",
+  },
+  {
+    token: "SDS",
+    pattern: /\bsds\b/i,
+    reason:
+      "Standard Deviation Score: the paediatric-endocrinology abbreviation for the z-score above, and the form a growth-clinic report actually prints.",
+  },
+];
+
+/**
+ * The first statistic signifier `label` carries that NONE of `slug`'s own registered
+ * names carries, or null. The second half is what keeps the list from refusing a
+ * quantity that is honestly named after a statistic: if a slug's registry title said
+ * "percentile", a label saying so would be agreeing with it, not contradicting it.
+ */
+function foreignStatisticSignifier(
+  slug: TrendMetricSlug,
+  label: string
+): StatisticSignifier | null {
+  const names = registryNamesFor(slug);
+  for (const sig of STATISTIC_SIGNIFIERS) {
+    if (!sig.pattern.test(label)) continue;
+    if (names.some((n) => sig.pattern.test(n))) continue;
+    return sig;
+  }
+  return null;
 }
 
 /**
