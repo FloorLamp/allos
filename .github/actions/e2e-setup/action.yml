@@ -8,10 +8,22 @@ description: Node, dependencies, Playwright Chromium, and the Next production bu
 runs:
   using: composite
   steps:
+    # NO `cache: npm`. That restores ~/.npm (198 MB, ~2.2s) so `npm ci` can install
+    # from disk instead of the registry — but the step below skips `npm ci` entirely
+    # whenever the whole-node_modules cache hits, which is the common path. Measured
+    # on a 12-shard run: the npm cache restored 198 MB and `npm ci` reported
+    # `outcome=skipped`, on every shard.
+    #
+    # It cannot rescue the miss either, because both keys derive from the SAME
+    # package-lock hash: a lockfile change misses node_modules AND ~/.npm together,
+    # so `npm ci` goes to the registry regardless. The only case it ever covered is
+    # node_modules being evicted while ~/.npm survived, and dropping this makes that
+    # rarer rather than commoner — it frees 198 MB of the repo's 10 GB cache quota
+    # and ~3 GB of restore traffic per run (15 jobs x 198 MB), which is quota the
+    # node_modules entry now keeps.
     - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
-        cache: npm
 
     # Whole-node_modules cache: the single biggest step is `npm ci` (~2 min,
     # dominated by better-sqlite3's native compile). The key pins the exact
