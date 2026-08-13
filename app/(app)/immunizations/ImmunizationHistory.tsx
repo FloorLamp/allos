@@ -86,6 +86,7 @@ export default function ImmunizationHistory({
       header: "Date",
       cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
       sort: { value: (im) => im.date, initialDir: "desc" },
+      empty: (im) => !im.date,
       cell: (im) => formatRecordDate(im.date, "—", fmt),
     },
     {
@@ -98,6 +99,7 @@ export default function ImmunizationHistory({
       header: "Administered by",
       cellClassName: "text-slate-600 dark:text-slate-300",
       sort: { value: (im) => (im.provider_name ?? "").toLowerCase() },
+      empty: (im) => !im.provider_name,
       cell: (im) => im.provider_name ?? "—",
     },
     {
@@ -109,6 +111,7 @@ export default function ImmunizationHistory({
       headerClassName: "hidden md:table-cell",
       cellClassName: "hidden text-slate-600 md:table-cell dark:text-slate-300",
       sort: { value: (im) => immunizationAdministrationLine(im).toLowerCase() },
+      empty: (im) => !immunizationAdministrationLine(im) && !im.reaction,
       cell: (im) => (
         <span data-testid={`immunization-admin-${im.id}`}>
           {immunizationAdministrationLine(im) || "—"}

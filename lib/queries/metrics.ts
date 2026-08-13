@@ -948,6 +948,8 @@ function getSleepArrivalsUncached(
 // update. Windowed/imported sessions remain read-only.
 interface ManualSleepEditabilityRow {
   date: string;
+  /** The manual sample's own row id — what a per-reading delete has to name (#2556). */
+  id: number | null;
   value: number | null;
   editable: number;
 }
@@ -964,6 +966,13 @@ function getManualSleepEditability(
                             AND start_time = date || 'T00:00:00'
                             AND end_time = date || 'T00:00:00'
                        THEN value END) AS value,
+              -- Safe as a MAX: the editable flag below only holds when the day
+              -- has EXACTLY ONE sample and that one is the manual duration-only
+              -- row, so there is never a second id for this to pick between.
+              MAX(CASE WHEN source = 'manual' AND origin IS NULL
+                            AND start_time = date || 'T00:00:00'
+                            AND end_time = date || 'T00:00:00'
+                       THEN id END) AS id,
               CASE WHEN COUNT(*) = 1
                          AND SUM(CASE WHEN source = 'manual' AND origin IS NULL
                                            AND start_time = date || 'T00:00:00'
@@ -982,10 +991,10 @@ export function getEditableManualSleepDurations(
   profileId: number,
   since: string,
   through = "9999-12-31"
-): { date: string; value: number }[] {
+): { id: number | null; date: string; value: number }[] {
   return getManualSleepEditability(profileId, since, through).flatMap((row) =>
     row.editable === 1 && row.value != null
-      ? [{ date: row.date, value: row.value }]
+      ? [{ id: row.id, date: row.date, value: row.value }]
       : []
   );
 }

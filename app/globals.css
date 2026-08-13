@@ -311,8 +311,23 @@
   & td:not([data-card]) {
     @apply max-sm:hidden;
   }
+  /* THE HEAD LINE IS TITLE + ACTIONS, DETERMINISTICALLY (#2588).
+     `flex-1` is `flex: 1 1 0%`, and flex-wrap assigns items to lines from their BASE
+     sizes — so a title with a 0 base contributed nothing to the packing, and every
+     meta short enough to fit joined the identity line before `grow` ever ran. One
+     encounters list therefore rendered three different head-line shapes in one
+     screenful ("May 20, 2026VISIT Dental CHIEF COMPLAINT Checkup and cleaning",
+     "May 13, 2026  VISIT Imaging", and a ⋯ floating mid-row with a meta after it),
+     purely as a function of how long the strings happened to be.
+     Reserving the actions gutter in the title's BASIS is what makes the break
+     deterministic: 2.5rem for the ⋯ trigger plus the row's 0.75rem gap, rounded up.
+     Grow still fills the line, so nothing renders narrower than before; the metas
+     simply always wrap to their own line, which is the layout the block comment at
+     the top of this utility already promised. A list that deliberately keeps
+     another cell up on the head line overrides the basis back — see
+     `metric-readings-list`, whose value cell is pinned to the title's right. */
   & td[data-card="title"] {
-    @apply max-sm:order-1 max-sm:min-w-0 max-sm:flex-1 max-sm:text-[0.9375rem] max-sm:font-medium max-sm:text-slate-800 max-sm:dark:text-slate-100;
+    @apply max-sm:order-1 max-sm:min-w-0 max-sm:shrink max-sm:grow max-sm:basis-[calc(100%-3.5rem)] max-sm:text-[0.9375rem] max-sm:font-medium max-sm:text-slate-800 max-sm:dark:text-slate-100;
   }
   & td[data-card="actions"] {
     @apply max-sm:order-2 max-sm:ml-auto max-sm:shrink-0;
@@ -366,6 +381,14 @@
   }
   & tr:last-child {
     @apply max-sm:border-b-0;
+  }
+  /* This list keeps its VALUE on the head line (below), so the title must NOT
+     reserve the whole line the way the generic #2588 rule does — it goes back to a
+     zero basis and grows, which is what pins the value and the ⋯ to the right of
+     the date. Its metas already claim `basis-full`, so they were never at risk of
+     packing onto the head line in the first place. */
+  & td[data-card="title"] {
+    @apply max-sm:basis-0!;
   }
   & td[data-card="value"] {
     @apply max-sm:order-2! max-sm:ml-auto! max-sm:w-auto! max-sm:basis-auto! max-sm:text-right max-sm:text-[0.9375rem] max-sm:font-medium;

@@ -1,5 +1,5 @@
-import { requireSession } from "@/lib/auth";
-import { getRecordsSpecialtyRelevance } from "@/lib/queries/nav-relevance";
+import { requireScope } from "@/lib/scope";
+import { getRecordsSpecialtyRelevanceForView } from "@/lib/queries/nav-relevance";
 import PageContainer from "@/components/PageContainer";
 import type { AppRoute } from "@/lib/hrefs";
 import AnchorRedirect from "@/components/AnchorRedirect";
@@ -16,9 +16,12 @@ export const dynamic = "force-dynamic";
 // auto-hiding app chrome; on desktop they sit below the visible page heading. The
 // active group's section strip stays immediately above its pane. Each pane's
 // `page.tsx` renders its one section (or, for a stacked pane, its 2–4 light section
-// components). The data-gated Specialty set is resolved here (getNavRelevance) and
-// passed to that section strip, so a hidden Vision/Dental sub-tab and its (re-gated)
-// route agree. Bare `/records` redirects to `/records/history/visits`.
+// components). The data-gated Specialty set is resolved here and passed to that
+// section strip, so a hidden Vision/Dental sub-tab and its (re-gated) route agree.
+// Since #2557 that resolution is over the VIEW SET, not the acting profile alone —
+// Dental and Vision list every profile in view, so the strip has to ask the same
+// question their routes do or a reachable pane loses its tab. Bare `/records`
+// redirects to `/records/history/visits`.
 
 // Old `/records#<section>` bookmarks land on a route-per-tab page whose hash no
 // longer names a section — bridge them client-side (a fragment never reaches the
@@ -50,8 +53,10 @@ export default async function RecordsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { profile } = await requireSession();
-  const groups = recordsGroups(getRecordsSpecialtyRelevance(profile.id));
+  const scope = await requireScope();
+  const groups = recordsGroups(
+    getRecordsSpecialtyRelevanceForView(scope.actingProfileId, scope.viewIds)
+  );
   return (
     <PageContainer width="wide" className="mx-auto">
       <AnchorRedirect map={ANCHOR_MAP} />

@@ -33,6 +33,8 @@ function emptyRow(date: string): SleepMoodHistoryRow {
     bedtimeSupplements: null,
     sleepEditable: true,
     sleepEditHours: null,
+    sleepSampleId: null,
+    moodLogId: null,
   };
 }
 

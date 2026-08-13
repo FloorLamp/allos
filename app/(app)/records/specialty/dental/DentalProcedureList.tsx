@@ -19,24 +19,47 @@ import {
 } from "@/lib/dental";
 import type { DentalFollowUpSummary } from "@/lib/queries";
 import type { DentalProcedure, DentalStatus } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
+
+// Rechecks are an ACTING-profile-derived feature (#1328 scope-limit — the shape
+// Imaging's follow-up column already uses): the `followUps` map and
+// trackDentalFollowUp both target the acting profile's care plan, so a non-acting
+// member's row shows no track control instead of offering a wrong-profile write.
+// Single view / acting rows keep it. Named once so the cell and its #2588 emptiness
+// verdict cannot disagree.
+function tracksRecheck(
+  record: DentalProcedure,
+  multiView?: ListMultiView
+): boolean {
+  const pid = (record as { profileId?: number }).profileId;
+  return !(multiView && pid != null && pid !== multiView.actingProfileId);
+}
 
 // Columns as a factory so the Recheck cell can read the per-record follow-up map
 // (issue #700) without a module-level global.
 function buildColumns(
   followUps: Map<number, DentalFollowUpSummary>,
-  fmt: DisplayFormatPrefs
+  fmt: DisplayFormatPrefs,
+  multiView?: ListMultiView
 ): RecordColumn<DentalProcedure>[] {
   return [
     ...baseColumns(fmt),
     {
       header: "Recheck",
-      cell: (d) => (
-        <TrackDentalFollowUpControl
-          recordId={d.id}
-          offer={d.status !== "completed"}
-          existing={followUps.get(d.id)}
-        />
-      ),
+      // The non-acting placeholder is a "—" like any other (#2588): on a card it
+      // would claim a "RECHECK —" line saying nothing about the record.
+      empty: (d) => !tracksRecheck(d, multiView),
+      cell: (d) =>
+        tracksRecheck(d, multiView) ? (
+          <TrackDentalFollowUpControl
+            recordId={d.id}
+            offer={d.status !== "completed"}
+            existing={followUps.get(d.id)}
+          />
+        ) : (
+          <span className="text-slate-400">—</span>
+        ),
     },
   ];
 }
@@ -68,17 +91,20 @@ const baseColumns = (
     headerClassName: "hidden sm:table-cell",
     cellClassName:
       "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
+    empty: (d) => !toothLabel(d),
     cell: (d) => toothLabel(d) || "—",
   },
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
+    empty: (d) => !d.procedure_date,
     cell: (d) => formatRecordDate(d.procedure_date, "—", fmt),
   },
   {
     header: "Provider",
     headerClassName: "hidden md:table-cell",
     cellClassName: "hidden md:table-cell",
+    empty: (d) => !d.provider_id,
     cell: (d) =>
       d.provider_id ? (
         <ProviderName
@@ -106,9 +132,11 @@ const baseColumns = (
 export default function DentalProcedureList({
   items,
   followUps = [],
+  multiView,
 }: {
-  items: DentalProcedure[];
+  items: Stamped<DentalProcedure>[];
   followUps?: DentalFollowUpSummary[];
+  multiView?: ListMultiView;
 }) {
   const [status, setStatus] = useState<DentalStatus | "">("");
   const [tooth, setTooth] = useState("");
@@ -123,8 +151,8 @@ export default function DentalProcedureList({
   }, [followUps]);
   const fmt = useFormatPrefs();
   const columns = useMemo(
-    () => buildColumns(followUpByRecord, fmt),
-    [followUpByRecord, fmt]
+    () => buildColumns(followUpByRecord, fmt, multiView),
+    [followUpByRecord, fmt, multiView]
   );
 
   const filtered = useMemo(() => {
@@ -166,10 +194,19 @@ export default function DentalProcedureList({
         items={filtered}
         columns={columns}
         emptyMessage="No dental records yet. Add one, or upload a dental exam/treatment record to import it."
+        multiView={
+          multiView
+            ? {
+                actingProfileId: multiView.actingProfileId,
+                subjectOf: (d) => d.subject,
+              }
+            : undefined
+        }
         renderEditForm={(d, done) => (
           <DentalProcedureForm
             action={updateDentalProcedure}
             record={d}
+            profileId={multiView ? d.subject.profileId : undefined}
             onDone={done}
           />
         )}
@@ -180,6 +217,9 @@ export default function DentalProcedureList({
         onDelete={async (d) => {
           const fd = new FormData();
           fd.set("id", String(d.id));
+          // Multi-view (#2557): post the ROW's own profile so the action gates and
+          // writes that member, never whoever happens to be acting.
+          if (multiView) fd.set("profile_id", String(d.subject.profileId));
           await deleteDentalProcedure(fd);
         }}
       />
