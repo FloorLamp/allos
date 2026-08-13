@@ -1,4 +1,4 @@
-import { db, today } from "@/lib/db";
+import { db, hoistedStatement, today } from "@/lib/db";
 import { cache } from "@/lib/request-cache";
 import { tickCached } from "@/lib/tick-cache";
 import { toUtcInstant, utcInstant } from "@/lib/date";
@@ -460,10 +460,14 @@ export interface BodyMetricConflictRow extends BodyMetricConflictInput {
 // different buckets — so the pair was never loaded, never classified, and never
 // offered. A pre-filter may only ever be a SUPERSET of what the pure detector will
 // accept; type is the detector's question, on the branches where it still asks it.
-function loadActivityDupRows(profileId: number): ActivityDupRow[] {
-  return db
-    .prepare(
-      `WITH midnight AS (${ACTIVITY_MIDNIGHT_CANDIDATE_SQL})
+//
+// Hoisted (#2110): getReviewPairCount reaches this on every attention gather, and the
+// dashboard's household strip runs one gather per member — so the widest text this
+// module compiles was being recompiled once per chip. Text is fixed at import (both
+// interpolations are module constants); the value is not cached, so the review-pair
+// count the chip folds in is unchanged.
+const ACTIVITY_DUP_ROWS_STMT = hoistedStatement(
+  `WITH midnight AS (${ACTIVITY_MIDNIGHT_CANDIDATE_SQL})
        SELECT a.id, a.date, a.type, a.title, a.source, a.external_id,
               a.duration_min, a.distance_km, a.start_time, a.end_time,
               a.elevation_m, a.avg_hr, a.max_hr, a.avg_speed_kmh, a.max_speed_kmh,
@@ -480,13 +484,15 @@ function loadActivityDupRows(profileId: number): ActivityDupRow[] {
                UNION SELECT morning_date FROM midnight) m
            ON m.date = a.date
         WHERE a.profile_id = ?`
-    )
-    .all(
-      profileId,
-      ...ACTIVITY_MIDNIGHT_CANDIDATE_CLOCKS,
-      profileId,
-      profileId
-    ) as ActivityDupRow[];
+);
+
+function loadActivityDupRows(profileId: number): ActivityDupRow[] {
+  return ACTIVITY_DUP_ROWS_STMT.all(
+    profileId,
+    ...ACTIVITY_MIDNIGHT_CANDIDATE_CLOCKS,
+    profileId,
+    profileId
+  ) as ActivityDupRow[];
 }
 
 // Body-metric conflicts include duplicate MANUAL rows (same date, same source),

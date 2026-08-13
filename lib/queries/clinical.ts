@@ -50,16 +50,7 @@ export function getAllergies(profileId: number): Allergy[] {
   // provider_name joins the documenting clinician for display + for the edit form's
   // loaded value (#1526) — the same correlated-subquery shape getSkinLesions uses, so
   // `SELECT *` keeps carrying every stored column.
-  const rows = db
-    .prepare(
-      `SELECT *,
-              (SELECT p.name FROM providers p WHERE p.id = allergies.provider_id)
-                AS provider_name
-         FROM allergies
-        WHERE profile_id = ? AND id IN (${ALLERGY_REPRESENTATIVE_IDS})
-        ORDER BY (status = 'active') DESC, substance COLLATE NOCASE ASC, id DESC`
-    )
-    .all(profileId, profileId) as Allergy[];
+  const rows = ALLERGIES_STMT.all(profileId, profileId) as Allergy[];
   const byAllergy = allergyReactionRows(profileId);
   // Attach the full graded manifestation list (#1405) through the ONE pure
   // composition, so a caller never has to know whether this row's reactions live in
@@ -78,15 +69,7 @@ function allergyReactionRows(
   number,
   { manifestation: string; severity: string | null; position: number }[]
 > {
-  const rows = db
-    .prepare(
-      `SELECT r.allergy_id AS allergyId, r.manifestation, r.severity, r.position
-         FROM allergy_reactions r
-         JOIN allergies a ON a.id = r.allergy_id
-        WHERE a.profile_id = ?
-        ORDER BY r.allergy_id, r.position, r.id`
-    )
-    .all(profileId) as {
+  const rows = ALLERGY_REACTIONS_STMT.all(profileId) as {
     allergyId: number;
     manifestation: string;
     severity: string | null;
@@ -177,6 +160,151 @@ export const ALLERGY_REPRESENTATIVE_IDS = representativeIds(
   REPRESENTATIVE_SPECS.allergies
 );
 
+// ---- Hoisted clinical-list statements (#2110) -------------------------------
+//
+// These are the profile's DURABLE clinical facts — conditions, allergies, family
+// history, procedures, variants, imaging, dental, optical, care plan items. Almost
+// every attention generator consults at least one of them, which makes them the
+// densest compile cluster on the dashboard's household fan-out: the strip asks
+// attentionCountForProfile() once per member, and each ask used to recompile this
+// whole set from scratch. Measured on a seeded sparse member, one gather compiled
+// 44 distinct texts at ~7.6ms, of which this cluster is the largest single share:
+// the same gather prepared the conditions read 14×, allergies 8× and family history
+// 5×, each compile discarded immediately after one use.
+//
+// Hoisting caches the COMPILED STATEMENT per connection, never the value, so a
+// read-after-write in the same request still sees the write and the household chip
+// keeps returning the identical integer — that equality is what
+// lib/__db_tests__/household-attention-count.test.ts pins.
+//
+// Declared HERE rather than beside each function because the texts interpolate the
+// representative-id subqueries above: a module constant evaluated before those would
+// TDZ-fault. Only CONSTANT texts are hoisted — a read whose SQL varies with its
+// arguments (getClinicalObservations' filter clause) is left inline on purpose,
+// since caching statements keyed on an unbounded text space is a leak, not a fix.
+const ALLERGIES_STMT = hoistedStatement(
+  `SELECT *,
+          (SELECT p.name FROM providers p WHERE p.id = allergies.provider_id)
+            AS provider_name
+     FROM allergies
+    WHERE profile_id = ? AND id IN (${ALLERGY_REPRESENTATIVE_IDS})
+    ORDER BY (status = 'active') DESC, substance COLLATE NOCASE ASC, id DESC`
+);
+
+const ALLERGY_REACTIONS_STMT = hoistedStatement(
+  `SELECT r.allergy_id AS allergyId, r.manifestation, r.severity, r.position
+     FROM allergy_reactions r
+     JOIN allergies a ON a.id = r.allergy_id
+    WHERE a.profile_id = ?
+    ORDER BY r.allergy_id, r.position, r.id`
+);
+
+// One per status-filter shape (#193): the filtered variant pushes `status = ?` into
+// the representative selection, so the two are genuinely different SQL and each gets
+// its own hoisted entry rather than a text built per call. Written out twice rather
+// than through a builder because the profile-scoping scan reads this file as TEXT and
+// cannot verify a statement whose `profile_id = ?` is hidden behind a function call.
+const CONDITIONS_ORDER = `ORDER BY (status = 'active') DESC,
+             COALESCE(onset_date, '') DESC, name COLLATE NOCASE ASC`;
+
+const CONDITIONS_STMT = {
+  unfiltered: hoistedStatement(
+    `SELECT * FROM conditions
+      WHERE profile_id = ? AND id IN (${conditionRepresentativeIds(false)})
+      ${CONDITIONS_ORDER}`
+  ),
+  byStatus: hoistedStatement(
+    `SELECT * FROM conditions
+      WHERE profile_id = ? AND id IN (${conditionRepresentativeIds(true)})
+      ${CONDITIONS_ORDER}`
+  ),
+};
+
+const PROCEDURES_STMT = hoistedStatement(
+  `SELECT pr.id, pr.name, pr.code, pr.code_system, pr.date,
+          pr.provider_id, p.name AS provider_name,
+          pr.notes, pr.source, pr.document_id, pr.external_id, pr.created_at
+     FROM procedures pr
+     LEFT JOIN providers p ON p.id = pr.provider_id
+    WHERE pr.profile_id = ? AND pr.id IN (${PROCEDURE_REPRESENTATIVE_IDS})
+    ORDER BY COALESCE(pr.date, '') DESC, pr.name COLLATE NOCASE ASC, pr.id DESC`
+);
+
+const FAMILY_HISTORY_STMT = hoistedStatement(
+  `SELECT * FROM family_history
+    WHERE profile_id = ? AND id IN (${FAMILY_HISTORY_REPRESENTATIVE_IDS})
+    ORDER BY (relation IS NULL) ASC, relation COLLATE NOCASE ASC,
+             condition COLLATE NOCASE ASC, id DESC`
+);
+
+const GENOMIC_VARIANTS_STMT = hoistedStatement(
+  `SELECT id, gene, variant, genotype, star_allele, zygosity, significance,
+          result_type, interpretation, source_lab, report_date, notes,
+          source, document_id, external_id, created_at
+     FROM genomic_variants
+    WHERE profile_id = ?
+    ORDER BY COALESCE(report_date, '') DESC, gene COLLATE NOCASE ASC, id DESC`
+);
+
+const IMAGING_STUDIES_STMT = hoistedStatement(
+  `SELECT id, modality, body_region, laterality, contrast, contrast_agent,
+          study_date, dose_msv, impression, indication, status,
+          ordering_provider_id, reading_provider_id,
+          (SELECT p.name FROM providers p WHERE p.id = imaging_studies.ordering_provider_id)
+            AS ordering_provider_name,
+          (SELECT p.name FROM providers p WHERE p.id = imaging_studies.reading_provider_id)
+            AS reading_provider_name,
+          notes,
+          source, document_id, external_id, created_at
+     FROM imaging_studies
+    WHERE profile_id = ?
+    ORDER BY COALESCE(study_date, '') DESC, id DESC`
+);
+
+const OPTICAL_PRESCRIPTIONS_STMT = hoistedStatement(
+  `SELECT id, kind, od_sphere, od_cylinder, od_axis, od_add,
+          os_sphere, os_cylinder, os_axis, os_add, pd,
+          base_curve, diameter, brand, issued_date, expiry_date,
+          provider_id,
+          (SELECT p.name FROM providers p WHERE p.id = optical_prescriptions.provider_id)
+            AS provider_name,
+          notes, source, document_id, external_id, created_at
+     FROM optical_prescriptions
+    WHERE profile_id = ?
+    ORDER BY COALESCE(issued_date, '') DESC, id DESC`
+);
+
+const DENTAL_PROCEDURES_STMT = hoistedStatement(
+  `SELECT id, name, status, tooth, tooth_system, surface, cdt_code,
+          procedure_date, finding, follow_up_interval_days, provider_id,
+          (SELECT p.name FROM providers p WHERE p.id = dental_procedures.provider_id)
+            AS provider_name,
+          notes, source, document_id, external_id, created_at
+     FROM dental_procedures
+    WHERE profile_id = ?
+    ORDER BY COALESCE(procedure_date, '') DESC, id DESC`
+);
+
+const CARE_PLAN_ITEMS_STMT = hoistedStatement(
+  `SELECT cp.id, cp.description, cp.code, cp.code_system, cp.category,
+          cp.planned_date, cp.status, cp.provider_id, p.name AS provider_name,
+          cp.notes, cp.source, cp.document_id, cp.external_id, cp.created_at,
+          cp.source_kind, cp.source_imaging_study_id,
+          cp.source_medical_record_id, cp.source_dental_procedure_id,
+          cp.source_skin_lesion_id,
+          cp.recommended_interval_days, cp.resolution,
+          cp.resolved_by_imaging_study_id,
+          cp.resolved_by_medical_record_id,
+          cp.resolved_by_dental_procedure_id,
+          cp.resolved_by_skin_lesion_id, cp.resolved_at,
+          cp.settled_disposition, cp.settled_on, cp.settled_reason
+     FROM care_plan_items cp
+     LEFT JOIN providers p ON p.id = cp.provider_id
+    WHERE cp.profile_id = ?
+    ORDER BY (cp.planned_date IS NULL) ASC, cp.planned_date ASC,
+             cp.description COLLATE NOCASE ASC, cp.id DESC`
+);
+
 // Conditions, optionally filtered to a single status (drives the page's
 // active/resolved filter). Active first, then most recent onset. De-duplicated
 // across documents via the condition-representative subquery (its profile_id bind
@@ -189,22 +317,13 @@ export function getConditions(
   profileId: number,
   opts: { status?: ConditionStatus } = {}
 ): Condition[] {
-  const filterStatus = opts.status != null;
-  const where = [
-    "profile_id = ?",
-    `id IN (${conditionRepresentativeIds(filterStatus)})`,
-  ];
   const args: (string | number)[] = [profileId, profileId];
   if (opts.status) {
     args.push(opts.status);
   }
-  return db
-    .prepare(
-      `SELECT * FROM conditions WHERE ${where.join(" AND ")}
-       ORDER BY (status = 'active') DESC,
-                COALESCE(onset_date, '') DESC, name COLLATE NOCASE ASC`
-    )
-    .all(...args) as Condition[];
+  const stmt =
+    opts.status != null ? CONDITIONS_STMT.byStatus : CONDITIONS_STMT.unfiltered;
+  return stmt.all(...args) as Condition[];
 }
 
 // Whether the profile has an IMPORTED social-history smoking condition (#188) — the
@@ -239,17 +358,7 @@ export function getCondition(
 // across documents via PROCEDURE_REPRESENTATIVE_IDS (the subquery's profile_id bind
 // comes after the main WHERE's).
 export function getProcedures(profileId: number): Procedure[] {
-  return db
-    .prepare(
-      `SELECT pr.id, pr.name, pr.code, pr.code_system, pr.date,
-              pr.provider_id, p.name AS provider_name,
-              pr.notes, pr.source, pr.document_id, pr.external_id, pr.created_at
-         FROM procedures pr
-         LEFT JOIN providers p ON p.id = pr.provider_id
-        WHERE pr.profile_id = ? AND pr.id IN (${PROCEDURE_REPRESENTATIVE_IDS})
-        ORDER BY COALESCE(pr.date, '') DESC, pr.name COLLATE NOCASE ASC, pr.id DESC`
-    )
-    .all(profileId, profileId) as Procedure[];
+  return PROCEDURES_STMT.all(profileId, profileId) as Procedure[];
 }
 
 // Structured genomic variants (#709), newest report first. Read straight from the
@@ -257,16 +366,7 @@ export function getProcedures(profileId: number): Procedure[] {
 // retest, never flags abnormal), so there is no representative-id dedup here.
 // Predictive variants are returned factually; no risk interpretation is derived.
 export function getGenomicVariants(profileId: number): GenomicVariant[] {
-  return db
-    .prepare(
-      `SELECT id, gene, variant, genotype, star_allele, zygosity, significance,
-              result_type, interpretation, source_lab, report_date, notes,
-              source, document_id, external_id, created_at
-         FROM genomic_variants
-        WHERE profile_id = ?
-        ORDER BY COALESCE(report_date, '') DESC, gene COLLATE NOCASE ASC, id DESC`
-    )
-    .all(profileId) as GenomicVariant[];
+  return GENOMIC_VARIANTS_STMT.all(profileId) as GenomicVariant[];
 }
 
 // Structured imaging studies (#702), newest study first. Read straight from the
@@ -275,22 +375,10 @@ export function getGenomicVariants(profileId: number): GenomicVariant[] {
 // and surfaced as a boolean. The impression is the radiologist's report body; the
 // indication is captured but not gated on (screening-vs-diagnostic is deferred).
 export function getImagingStudies(profileId: number): ImagingStudy[] {
-  const rows = db
-    .prepare(
-      `SELECT id, modality, body_region, laterality, contrast, contrast_agent,
-              study_date, dose_msv, impression, indication, status,
-              ordering_provider_id, reading_provider_id,
-              (SELECT p.name FROM providers p WHERE p.id = imaging_studies.ordering_provider_id)
-                AS ordering_provider_name,
-              (SELECT p.name FROM providers p WHERE p.id = imaging_studies.reading_provider_id)
-                AS reading_provider_name,
-              notes,
-              source, document_id, external_id, created_at
-         FROM imaging_studies
-        WHERE profile_id = ?
-        ORDER BY COALESCE(study_date, '') DESC, id DESC`
-    )
-    .all(profileId) as (Omit<ImagingStudy, "contrast"> & {
+  const rows = IMAGING_STUDIES_STMT.all(profileId) as (Omit<
+    ImagingStudy,
+    "contrast"
+  > & {
     contrast: number;
   })[];
   return rows.map((r) => ({ ...r, contrast: r.contrast === 1 }));
@@ -303,20 +391,7 @@ export function getImagingStudies(profileId: number): ImagingStudy[] {
 export function getOpticalPrescriptions(
   profileId: number
 ): OpticalPrescription[] {
-  return db
-    .prepare(
-      `SELECT id, kind, od_sphere, od_cylinder, od_axis, od_add,
-              os_sphere, os_cylinder, os_axis, os_add, pd,
-              base_curve, diameter, brand, issued_date, expiry_date,
-              provider_id,
-              (SELECT p.name FROM providers p WHERE p.id = optical_prescriptions.provider_id)
-                AS provider_name,
-              notes, source, document_id, external_id, created_at
-         FROM optical_prescriptions
-        WHERE profile_id = ?
-        ORDER BY COALESCE(issued_date, '') DESC, id DESC`
-    )
-    .all(profileId) as OpticalPrescription[];
+  return OPTICAL_PRESCRIPTIONS_STMT.all(profileId) as OpticalPrescription[];
 }
 
 // The tracked follow-up (issue #700), if any, for each imaging study — so the Imaging
@@ -354,18 +429,7 @@ export function getImagingStudyFollowUps(
 // All structured dental procedures/findings for a profile, newest first. Like
 // imaging_studies, a dental record is a durable narrative fact. Profile-scoped.
 export function getDentalProcedures(profileId: number): DentalProcedure[] {
-  return db
-    .prepare(
-      `SELECT id, name, status, tooth, tooth_system, surface, cdt_code,
-              procedure_date, finding, follow_up_interval_days, provider_id,
-              (SELECT p.name FROM providers p WHERE p.id = dental_procedures.provider_id)
-                AS provider_name,
-              notes, source, document_id, external_id, created_at
-         FROM dental_procedures
-        WHERE profile_id = ?
-        ORDER BY COALESCE(procedure_date, '') DESC, id DESC`
-    )
-    .all(profileId) as DentalProcedure[];
+  return DENTAL_PROCEDURES_STMT.all(profileId) as DentalProcedure[];
 }
 
 // The tracked follow-up (issue #700), if any, for each dental record — so the Dental
@@ -550,41 +614,14 @@ export function getIopFollowUps(profileId: number): LabFollowUpSummary[] {
 // FAMILY_HISTORY_REPRESENTATIVE_IDS (the subquery's profile_id bind comes after the
 // main WHERE's).
 export function getFamilyHistory(profileId: number): FamilyHistory[] {
-  return db
-    .prepare(
-      `SELECT * FROM family_history
-        WHERE profile_id = ? AND id IN (${FAMILY_HISTORY_REPRESENTATIVE_IDS})
-        ORDER BY (relation IS NULL) ASC, relation COLLATE NOCASE ASC,
-                 condition COLLATE NOCASE ASC, id DESC`
-    )
-    .all(profileId, profileId) as FamilyHistory[];
+  return FAMILY_HISTORY_STMT.all(profileId, profileId) as FamilyHistory[];
 }
 
 // Care plan items — planned / ordered future care, soonest planned date first
 // (undated last). The ordering clinician's name is joined from the shared providers
 // registry for display. NB: distinct from the user's own fitness `goals`.
 export function getCarePlanItems(profileId: number): CarePlanItem[] {
-  return db
-    .prepare(
-      `SELECT cp.id, cp.description, cp.code, cp.code_system, cp.category,
-              cp.planned_date, cp.status, cp.provider_id, p.name AS provider_name,
-              cp.notes, cp.source, cp.document_id, cp.external_id, cp.created_at,
-              cp.source_kind, cp.source_imaging_study_id,
-              cp.source_medical_record_id, cp.source_dental_procedure_id,
-              cp.source_skin_lesion_id,
-              cp.recommended_interval_days, cp.resolution,
-              cp.resolved_by_imaging_study_id,
-              cp.resolved_by_medical_record_id,
-              cp.resolved_by_dental_procedure_id,
-              cp.resolved_by_skin_lesion_id, cp.resolved_at,
-              cp.settled_disposition, cp.settled_on, cp.settled_reason
-         FROM care_plan_items cp
-         LEFT JOIN providers p ON p.id = cp.provider_id
-        WHERE cp.profile_id = ?
-        ORDER BY (cp.planned_date IS NULL) ASC, cp.planned_date ASC,
-                 cp.description COLLATE NOCASE ASC, cp.id DESC`
-    )
-    .all(profileId) as CarePlanItem[];
+  return CARE_PLAN_ITEMS_STMT.all(profileId) as CarePlanItem[];
 }
 
 // Care goals — clinical targets from the record, soonest target date first
