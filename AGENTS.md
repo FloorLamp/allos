@@ -922,6 +922,21 @@ See `docs/internals/e2e-hygiene.md`.
   has not earned. A continuity span never sits below that metric's
   `TREND_METRIC_PRESENTATION_FLOORS` day count: the two registries answer
   different questions and are pinned consistent rather than merged.
+- MOTION IS INFORMATION or it is not there. Two vocabularies answering different
+  questions: `lib/motion.ts` owns a panel ARRIVING (240 ms, enter/exit, a
+  `usePresence` unmount window — `docs/internals/overlays.md`), and
+  `lib/micro-motion.ts` owns FEEDBACK ON A WRITE (#2654) — a confirm settling into
+  its done state, a counter rolling to its new quantity. Four rules hold the second
+  one: 150–300 ms; NOTHING LOOPS (a looping animation is an attention claim that
+  never stops making itself); reduced motion is the DESIGNED state, so every motion
+  declares the end state that arrives instantly instead; and motion is never the
+  ONLY carrier, so every motion declares what states the same fact when nothing
+  moves. Tokens and a declaration, not a registry engine: a new motion is a
+  `MICRO_MOTIONS` row plus a `--motion-<name>` property and a class, and
+  `lib/__tests__/micro-motion.test.ts` fails either half on its own. Never
+  hand-write a duration, and never animate a property that triggers layout — the
+  state change lands on its own frame and the animation only decorates a transition
+  already made. See `docs/internals/micro-motion.md`.
 
 ### Routes and APIs
 
