@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath } from "./worker-env";
 
@@ -152,7 +152,8 @@ test("household due doses name their slot and fold past the shared threshold (#2
     await expect(folded).toHaveCount(3);
     for (const row of await folded.all()) await expect(row).toBeHidden();
 
-    await settledClick(
+    // A native <details> summary: a pure client toggle, no POST and no navigation.
+    await hydratedClick(
       page,
       card.getByTestId("household-dose-aggregate-summary")
     );
