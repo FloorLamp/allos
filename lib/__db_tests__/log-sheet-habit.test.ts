@@ -118,7 +118,7 @@ describe("getSegmentLogDays", () => {
     expect(getSegmentLogDays(profileId, anchor).body ?? 0).toBe(0);
   });
 
-  it("feeds Care from doses, practices and mood alike", () => {
+  it("feeds Care from doses and practices, and never from the check-in store", () => {
     const { profileId, anchor } = makeProfile("Habit Care");
     const itemId = Number(
       db
@@ -140,10 +140,13 @@ describe("getSegmentLogDays", () => {
     db.prepare(
       "INSERT INTO practice_logs (profile_id, practice, date) VALUES (?, 'sauna', ?)"
     ).run(profileId, shiftDateStr(anchor, -1));
+    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
+    // A check-in on a third day adds nothing: the #992 contract keeps its store
+    // out of every engine, and this measure is an engine.
     db.prepare(
       "INSERT INTO mood_logs (profile_id, date, valence) VALUES (?, ?, 3)"
     ).run(profileId, shiftDateStr(anchor, -2));
-    expect(getSegmentLogDays(profileId, anchor).care).toBe(3);
+    expect(getSegmentLogDays(profileId, anchor).care).toBe(2);
   });
 
   it("counts one profile's logging only", () => {

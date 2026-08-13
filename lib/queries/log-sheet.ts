@@ -72,9 +72,6 @@ const HABIT_DAYS = hoistedStatement(
      UNION ALL
      SELECT 'care' AS segment, date AS d FROM practice_logs
        WHERE profile_id = @profileId AND source IS NULL AND date >= @from
-     UNION ALL
-     SELECT 'care' AS segment, date AS d FROM mood_logs
-       WHERE profile_id = @profileId AND date >= @from
    ) WHERE d IS NOT NULL AND d != ''
    GROUP BY segment`
 );

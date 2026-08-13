@@ -199,7 +199,18 @@ export const LOG_DAY_SOURCES = {
   "log-period": ["cycles"],
   "log-dose": ["intake_item_logs"],
   "log-practice": ["practice_logs"],
-  "log-mood": ["mood_logs"],
+  // The daily check-in's store is STORE-PRIVATE by the #992 contract: nothing
+  // outside its own read/write/registry modules may name the table, because a
+  // subjective self-rating must never feed a flag, a retest clock, a streak or
+  // any other engine. Counting how often somebody checks in — even only to pick
+  // which tab of a menu opens first — is a computation ABOUT mood by a module
+  // that is none of the four, so it is refused here rather than argued into that
+  // guard's allowlist. Doses and practices carry the Care segment's evidence, and
+  // the cost is stated: a profile whose only care logging is check-ins is
+  // under-counted, and its dashboard keeps the route default.
+  "log-mood": arguedExclusion(
+    "The daily check-in's store is store-private under the #992 sensitivity contract — a subjective self-rating feeds no engine — and counting check-ins to order a menu would be exactly such an engine. Doses and practices carry the Care segment's evidence instead."
+  ),
   // A document row is dated by the DOCUMENT — the day the lab drew the blood,
   // often months before anyone filed it — so its date says nothing about when its
   // owner logs, and the day the filing actually happened exists only as the
