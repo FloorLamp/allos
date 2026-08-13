@@ -26,7 +26,10 @@ import {
   chartMarkMotion,
   chartSparklineAxisProps,
   chartSparklineMargin,
+  chartSparseDot,
+  chartSparseLineProps,
   chartTooltipProps,
+  CHART_LINE_STROKE_WIDTH,
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand, chartSeries } from "@/lib/chart-colors";
@@ -46,7 +49,12 @@ import {
   longRangeBucketLabel,
   longRangeCaption,
 } from "@/lib/long-range-series";
-import { applyDayFill, type DayFillSpec } from "@/lib/trend-sparkline";
+import {
+  applyDayFill,
+  sparseSeriesCaption,
+  sparseSeriesVerdict,
+  type DayFillSpec,
+} from "@/lib/trend-sparkline";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
@@ -245,6 +253,17 @@ export default function LineChartCard({
             : ([p.lo, p.hi] as [number, number]),
       }))
     : series;
+  // The DENSITY verdict (#2653 state 5). Asked of the RAW series, before
+  // densification and before aggregation: a filled calendar day is not a reading,
+  // and a bucket mean is not one either. Only a gapFill caller can be judged —
+  // the series key is what carries the declared continuity span, and a
+  // `gap-exempt:` chart's x is not a calendar day, so days between its points is
+  // not a question that has an answer. An aggregated plot is dense by definition
+  // (aggregation requires ≥2 readings per bucket), so the two never coincide.
+  const sparse =
+    isoDates && key === "value" && gapFill && !longRange
+      ? sparseSeriesVerdict(gapFill.seriesKey, data)
+      : null;
   const tickFmt =
     tickFormatter ??
     (isoDates
@@ -457,21 +476,36 @@ export default function LineChartCard({
             type="monotone"
             dataKey={key}
             stroke={color}
-            strokeWidth={2}
-            dot={chartLineDot(c, {
-              color,
-              // REAL readings, never calendar days (#2258 §5): the densified
-              // array is a day count, and comparing it against the density
-              // threshold would drop the dots from a sparse-but-short series.
-              // An aggregated plot counts its OCCUPIED buckets for the same
-              // reason.
-              pointCount: longRange
-                ? longRange.points.filter((p) => p.value != null).length
-                : filled.realCount,
-              // Tile sparklines opt into resting points; dense series still fall
-              // through chartLineDot's shared clutter threshold.
-              enabled: showDots && (!sparkline || sparklineDots),
-            })}
+            // A stroke across readings further apart than the series' declared
+            // continuity span is mostly assertion, so it demotes to a hint and
+            // the dots take the lead (#2653 state 5). Nothing is hidden and no
+            // point moves — the same data, drawn at the confidence it earns.
+            {...(sparse
+              ? chartSparseLineProps()
+              : { strokeWidth: CHART_LINE_STROKE_WIDTH })}
+            dot={
+              // A demoted line's dots lead, on a TILE as much as on a card: the
+              // readings are the content, and a tile that opts out of resting
+              // dots for density reasons has no density to protect here. Only
+              // the caller's hard override still wins, and a series dense enough
+              // to need it can never be sparse.
+              sparse && showDots
+                ? chartSparseDot(color)
+                : chartLineDot(c, {
+                    color,
+                    // REAL readings, never calendar days (#2258 §5): the
+                    // densified array is a day count, and comparing it against
+                    // the density threshold would drop the dots from a
+                    // sparse-but-short series. An aggregated plot counts its
+                    // OCCUPIED buckets for the same reason.
+                    pointCount: longRange
+                      ? longRange.points.filter((p) => p.value != null).length
+                      : filled.realCount,
+                    // Tile sparklines opt into resting points; dense series still
+                    // fall through chartLineDot's shared clutter threshold.
+                    enabled: showDots && (!sparkline || sparklineDots),
+                  })
+            }
             activeDot={chartActiveDot(color)}
             {...chartMarkMotion(motion)}
             connectNulls={bridges}
@@ -480,19 +514,34 @@ export default function LineChartCard({
       </ResponsiveContainer>
     </div>
   );
-  if (!longRange || sparkline) return chart;
-  // The aggregated chart's honesty caption (#1938): each point is a summary, and
-  // the plot must say so on the surface, not only in the tooltip. Sparklines skip
-  // it — a tile has no room for a caption, and its numbers are the caller's.
+  // Both captions are honesty notes ABOUT THE MARK, and a sparkline takes
+  // neither: a tile has no room for a sentence, and its numbers are the caller's.
+  if (sparkline || (!longRange && !sparse)) return chart;
   return (
     <div className="min-w-0 max-w-full">
       {chart}
-      <p
-        className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-        data-testid="chart-long-range-note"
-      >
-        {longRangeCaption(longRange.grain)}
-      </p>
+      {/* The aggregated chart's honesty caption (#1938): each point is a summary,
+          and the plot must say so on the surface, not only in the tooltip. */}
+      {longRange && (
+        <p
+          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="chart-long-range-note"
+        >
+          {longRangeCaption(longRange.grain)}
+        </p>
+      )}
+      {/* The demoted plot's count (#2653 state 5). Same slot, same neutral text
+          token, no chip and no colour — it lets a reader price the stroke, and a
+          badge would make the chart look more considered instead of less
+          certain. */}
+      {sparse && (
+        <p
+          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="chart-sparse-note"
+        >
+          {sparseSeriesCaption(sparse)}
+        </p>
+      )}
     </div>
   );
 }
