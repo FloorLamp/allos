@@ -5,19 +5,8 @@
 // unmapped chat writes NOTHING. The pure parse/render half is covered in
 // lib/__tests__/food-callback.test.ts + food-nudge.test.ts.
 
-import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => {}),
-  };
-});
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today, yesterday } from "@/lib/db";
 import {
@@ -29,6 +18,12 @@ import { getFoodServingsOnDate } from "@/lib/queries";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const OWN_CHAT = "5550100";

@@ -6,13 +6,8 @@
 // itself prompted) exactly once, only when the login's Telegram is actually
 // connectable. The Telegram network transport is stubbed.
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return { ...actual, sendMessageRaw: vi.fn(async () => {}) };
-});
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "../__db_tests__/telegram-spies";
 
 import { revalidatePath } from "next/cache";
 import { saveNotificationPrefs } from "@/app/(app)/settings/profile/actions";
@@ -24,6 +19,12 @@ import {
 } from "@/lib/settings";
 import { sendMessageRaw } from "@/lib/notifications/telegram-api";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const revalidate = vi.mocked(revalidatePath);
 const sendMock = vi.mocked(sendMessageRaw);

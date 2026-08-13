@@ -10,19 +10,8 @@
 // Only the raw Telegram transport is stubbed (the #454 guarded boundary), so the
 // keyboard and the message body asserted here are the genuine rendered output.
 
-import { vi, describe, it, expect } from "vitest";
-
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    answerCallbackQuery: vi.fn(async () => {}),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    sendMessageRaw: vi.fn(async () => 1),
-  };
-});
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
@@ -60,6 +49,12 @@ import {
 import { resolveSuppressedKeyDisplay } from "@/lib/suppression-display";
 import { seedLoginTelegram } from "./fixtures";
 import { plainBody } from "@/lib/notifications/rich-text";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const editKeyboardMock = vi.mocked(editMessageReplyMarkupRaw);
 const answerMock = vi.mocked(answerCallbackQuery);

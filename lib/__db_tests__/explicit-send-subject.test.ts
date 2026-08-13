@@ -30,20 +30,8 @@
 //       `/mood` keep re-issuing onto one slot instead of stacking;
 //   (4) a chat that maps to no profile records nothing rather than inventing an owner.
 
-import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
-
-let nextMessageId = 4400;
-vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
-  const actual =
-    await importActual<typeof import("@/lib/notifications/telegram-api")>();
-  return {
-    ...actual,
-    sendMessageRaw: vi.fn(async () => nextMessageId++),
-    editMessageTextRaw: vi.fn(async () => {}),
-    editMessageReplyMarkupRaw: vi.fn(async () => {}),
-    answerCallbackQuery: vi.fn(async () => {}),
-  };
-});
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { getProfilesByTelegramChatId, setSetting } from "@/lib/settings";
@@ -56,6 +44,12 @@ import {
 import { liveMessagePointersForKind } from "@/lib/notifications/message-pointers";
 import type { NotificationMessage } from "@/lib/notifications/types";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
+
+// This spec exercises the logic ABOVE the wire, so the four Telegram
+// primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
+// delegate to the real module by default, so this opt-in is what replaces the
+// per-spec `vi.mock` that used to cost this file a private module registry.
+beforeAll(() => stubTelegramSends());
 
 const sendMock = vi.mocked(sendMessageRaw);
 const closeMock = vi.mocked(editMessageTextRaw);
