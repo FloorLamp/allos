@@ -194,6 +194,22 @@ link literals, fails an unknown pair, and pins the non-cascading FK parents of
 `medical_records`. The frozen entries a hash-locked migration cannot un-name are
 allowlisted there with the corrective migration named beside them.
 
+That registry is HALF the delete story, and its silence used to read as coverage
+(#2680). It covers the NON-CASCADING parents — the links that must BLOCK a
+delete. The CASCADING children are the opposite obligation, clean up rather than
+block, and the runner cannot discharge it: migrations apply with
+`foreign_keys = OFF` (below), so `ON DELETE CASCADE` fires for NOTHING and a bare
+`DELETE FROM parent` inside a migration orphans children the same delete at
+runtime would remove. `deleteRowsWithCascade()` (`lib/migrations/cascade-delete.ts`)
+is what a row-deleting migration calls instead, and its links are DERIVED from
+`PRAGMA foreign_key_list` at apply time rather than transcribed — nothing is
+spelled twice, so a #2444 typo is impossible, and when migration N runs the graph
+it reads is the graph as of N, which a frozen literal could not be. The same test
+file pins the cascading children of `medical_records` and fails a new migration
+that deletes from a cascade parent without the helper; migration 118 is the
+precedent that did it by hand, and `20260813-cascade-orphan-sweep` clears the
+orphans 180 and the BMI migration left.
+
 The runner applies migrations in individual immediate transactions, guards
 against a newer database being opened by older code, and temporarily disables
 foreign-key enforcement for safe SQLite table rebuilds. Per-boot work such as
