@@ -56,6 +56,9 @@ export default function Avatar({
   return (
     <span
       aria-hidden="true"
+      // The initials are `aria-hidden` (the profile's name is always beside them),
+      // so their TEXT is the only thing a browser test can read them by (#2615).
+      data-testid="avatar-initials"
       className={`${base} ${color} font-semibold leading-none`}
     >
       {avatarInitials(profile.name)}
