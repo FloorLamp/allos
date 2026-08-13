@@ -34,6 +34,35 @@ import { NON_IDENTITY_CATEGORIES } from "../../medical-categories";
 // executions on one /household render). NOT cache()-wrapped — dismissFinding and
 // restoreFinding write this table, and an inline re-read after a dismissal must
 // see the new row.
+//
+// AND NOT `tickCached` EITHER (#2674). Hoisting is the whole fix here, and the
+// measurements say why. The expensive half of a repeated read is COMPILATION, and
+// this statement compiles once per connection: 4.5 µs per call hoisted against
+// 24.4 µs through a fresh `db.prepare` — 5.4× — so what a value memo could still
+// buy is the round-trip alone. One profile's digest gather issues SIX of these
+// (collectUpcoming, liveFoodLimits, and resolveDerivedSituations four times over
+// from four unrelated callers), i.e. ~27 µs; collapsing them to one would save
+// ~23 µs per profile per tick. That is the entire prize.
+//
+// Against it stands a writer the tick's own scope cannot exclude, which is the
+// condition lib/tick-cache.ts demands before anything may be memoized there.
+// `runPreventive` (scripts/notify.ts:605, INSIDE runInTickScope) reads this map at
+// lib/notifications/preventive.ts:103 and then DELETES from upcoming_dismissals at
+// :127 — the #1024 episode-end sweep, retiring the indefinite dismissal of a rule
+// that has stopped being actionable. Everything the tick reads AFTER it would be
+// handed the pre-delete snapshot: four readers on an ordinary tick (illness care at
+// :630, temp red flag at :686, practices at :724, the coaching gather), plus all six
+// of the digest's when the morning slot fires at :830. A second writer is not even
+// in this process: the Telegram poll loop and the webhook route call
+// snoozeFinding/dismissFinding at arbitrary instants, and a profile's tick scope
+// stays open across every awaited `dispatch()`, so a tap on the message the tick
+// just sent lands mid-scope.
+//
+// A stale suppression map reads as "still silenced", and this map is what
+// isHiddenUnderPolicy consults. Trading ~23 µs for a snapshot of the safety
+// suppression bus is the wrong side of that bargain, so the duplication stays and
+// lib/__db_tests__/tick-suppression-freshness.test.ts pins it: a write made inside
+// an open tick scope must be visible to the next read.
 const FINDING_SUPPRESSIONS_STMT = hoistedStatement(
   `SELECT signal_key, snooze_until, dismissed_at
      FROM upcoming_dismissals WHERE profile_id = ?`
