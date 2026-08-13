@@ -97,9 +97,20 @@
 //                           `isHeightReading` / `isHeadCircReading`), asked with the
 //                           very names the slug claims.
 //
-// A declaration that stops being true fails CI. `derived-inputs` is the one arm with no
-// mechanical check — it is a judgement, which is why it has exactly one member and why
-// that member is the issue's own explicit ruling.
+//   • `derived-inputs`   — against `derivedInputsMetricFor`, the recognizer the ingest
+//                           drop is built on, asked with the names the slug claims.
+//
+// A declaration that stops being true fails CI.
+//
+// AND EVERY REACHING ARM NOW RESOLVES THE IMPORTED ROW (#2646). It did not always:
+// `derived-inputs` declared reachability and had no ingest consequence at all, so a
+// printed BMI survived as a `medical_records` row, an AI import coined an `ai`
+// vocabulary name for it, and `getUsedCanonicalNames` returned it forever as a
+// Coverage candidate for a quantity this very registry had just declared answered.
+// The arm's consequence is a DROP with no projection — see `derivedInputsMetricFor`
+// below for why that is the right shape and why it is unconditional. Which slug the
+// arm covers is a judgement, and it still has exactly one member, the issue's own
+// explicit ruling; what is no longer a judgement is whether a row obeys it.
 //
 // A MISPLACED ROW IS THEN A PLACEMENT BUG, NOT A CATALOG PROBLEM. "Body Mass Index
 // (BMI)" arriving as a `medical_records` row is #2318's misplacement — under this rule
@@ -229,6 +240,11 @@ export const METRIC_DOCUMENT_REACH: Record<
   // and both of those ARE projected — so the quantity is charted from the same import.
   // This is #2318's misplaced row, and the reason it stops being browsable is that the
   // question "what is this person's BMI" is answered, not that the row was tidied away.
+  //
+  // Its ingest consequence (#2646) is a DROP with no projection, because there is no
+  // destination row to project INTO — `derivedInputsMetricFor` below, applied by
+  // `withoutDerivedResults` in lib/import-shape.ts, with migration
+  // 20260813-bmi-derived-rows retiring what is already on disk.
   bmi: {
     reaches: "derived-inputs",
     from: "weight × height (bmiSeriesDatePaired), both import-projected",
@@ -359,6 +375,46 @@ export function trendMetricHomeFor(
 /** Whether some registered trend metric already charts this quantity. */
 export function hasTrendMetricHome(name: string | null | undefined): boolean {
   return trendMetricHomeFor(name) !== null;
+}
+
+/**
+ * The DERIVED metric an imported reading of this name is the printed RESULT of, or
+ * null — i.e. the `derived-inputs` arm, asked at the door (#2646).
+ *
+ * THE ARM THAT HAD NO INGEST CONSEQUENCE. Every other REACHING variant resolves the
+ * imported `medical_records` row: `observations` keeps it (the row IS the chart
+ * point), `observation-fold` keeps it (folded onto the stream by identity), and
+ * `import-projection` DROPS it, because a `withoutCaptured*` helper wrote the stream
+ * row instead. `derived-inputs` did nothing at all: no projector, no destination, no
+ * drop — so the row survived, an AI import coined a `canonical_biomarkers` name for
+ * it, and `getUsedCanonicalNames` returned it forever as a Coverage candidate for a
+ * quantity the app already answers on a chart.
+ *
+ * The consequence here is a DROP WITH NO PROJECTION, because there is no destination
+ * row to move to: the chart is a computation over inputs that arrive in the same
+ * document and are themselves projected. It is UNCONDITIONAL. A document that
+ * measured the inputs gives the derivation everything it needs, and a document that
+ * did NOT is echoing a chart value carried forward from an earlier visit (the #2646
+ * evidence: an identical BMI to two decimals six days apart, and a FLAT BMI two
+ * months later for a growing toddler) — so a printed result is never independent
+ * evidence either way. Same argument shape as EGFR_RACE_BRANCHED: the reported value
+ * is superseded by a derivation the app trusts more.
+ *
+ * Derived from `METRIC_DOCUMENT_REACH` rather than from a second list, so this cannot
+ * disagree with the declaration it implements, and a second `derived-inputs` slug
+ * gets the ingest arm with no edit at the door.
+ *
+ * NAME AND CANONICAL ONLY, never LOINC. "Body Mass Index Percentile" (LOINC 59574-4)
+ * is a DIFFERENT quantity from BMI (LOINC 39156-5) and shares its stem, so a code
+ * axis would need its own negative list; the name axis separates them for free,
+ * because a percentile's token set is not a BMI's.
+ */
+export function derivedInputsMetricFor(
+  name: string | null | undefined
+): TrendMetricSlug | null {
+  const slug = trendMetricHomeFor(name);
+  if (!slug) return null;
+  return METRIC_DOCUMENT_REACH[slug].reaches === "derived-inputs" ? slug : null;
 }
 
 /**

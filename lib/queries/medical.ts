@@ -1,4 +1,4 @@
-import { db, writeTx } from "../db";
+import { db, hoistedStatement, writeTx } from "../db";
 import { cache } from "../request-cache";
 import { biomarkerFamily } from "../canonical-name";
 import { BIOMARKER_FAMILY_FN, BIOMARKER_PANEL_FN } from "../sql-functions";
@@ -433,6 +433,92 @@ export interface CurrentFlaggedReading {
   date: string;
 }
 
+// ---- Hoisted current-reading statements (#2110) -----------------------------
+//
+// The DEDUP+LATEST pass over medical_records is the most expensive text this module
+// compiles, and the dashboard's household strip asks for it once PER MEMBER: the
+// flagged-labs read is the attention model's own (through the digest's
+// getNewlyFlaggedBiomarkers), the qualitative read is the condition-suggestion
+// builder's. Hoisting compiles each once per connection instead of once per member
+// per render — the value is never cached, so the chip's integer is untouched.
+//
+// getClinicalObservations' row/count reads are deliberately NOT here: their WHERE
+// clause is assembled from the caller's filters (an exclude list contributes one
+// placeholder per category), so their text space is unbounded and a per-text
+// statement cache over it would leak. They keep the request-scoped cache() that
+// already collapses their repeats.
+// Each hoisted text is spelled out at its own `hoistedStatement` call rather than
+// returned by a builder: the profile-scoping scan reads this file as TEXT and can
+// only verify a statement whose `profile_id = ?` it can SEE, so a builder call would
+// be an unverifiable non-literal. The parts that are genuinely shared between the
+// four flagged variants are interpolated fragments, which the scan does follow.
+const FLAGGED_CURRENT_COLUMNS = `COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
+          NULLIF(TRIM(canonical_name), '') AS canonicalName,
+          value, flag, date`;
+const FLAGGED_DENYLIST = `AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')`;
+const FLAGGED_WINDOW = `AND created_at > ? AND date >= date(?)`;
+
+const FLAGGED_LABS_STMT = {
+  unwindowed: hoistedStatement(
+    `WITH ${DEDUP_IDS_CTE},
+          ${LATEST_IDS_CTE}
+     SELECT ${FLAGGED_CURRENT_COLUMNS}
+       FROM medical_records
+      WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+        AND category = 'lab'
+        ${FLAGGED_DENYLIST}
+      ORDER BY date DESC, id ASC`
+  ),
+  windowed: hoistedStatement(
+    `WITH ${DEDUP_IDS_CTE},
+          ${LATEST_IDS_CTE}
+     SELECT ${FLAGGED_CURRENT_COLUMNS}
+       FROM medical_records
+      WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+        AND category = 'lab'
+        ${FLAGGED_DENYLIST}
+        ${FLAGGED_WINDOW}
+      ORDER BY date DESC, id ASC`
+  ),
+};
+
+const FLAGGED_VITALS_STMT = {
+  unwindowed: hoistedStatement(
+    `WITH ${DEDUP_IDS_CTE},
+          ${LATEST_IDS_CTE}
+     SELECT ${FLAGGED_CURRENT_COLUMNS}
+       FROM medical_records
+      WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+        AND category = 'vitals'
+        ${FLAGGED_DENYLIST}
+      ORDER BY date DESC, id ASC`
+  ),
+  windowed: hoistedStatement(
+    `WITH ${DEDUP_IDS_CTE},
+          ${LATEST_IDS_CTE}
+     SELECT ${FLAGGED_CURRENT_COLUMNS}
+       FROM medical_records
+      WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+        AND category = 'vitals'
+        ${FLAGGED_DENYLIST}
+        ${FLAGGED_WINDOW}
+      ORDER BY date DESC, id ASC`
+  ),
+};
+
+const CURRENT_QUALITATIVE_STMT = hoistedStatement(
+  `WITH ${DEDUP_IDS_CTE},
+        ${LATEST_IDS_CTE}
+   SELECT id,
+          COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
+          value, notes, reference_range AS reference, loinc, date
+     FROM medical_records
+    WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+      AND category IN ('lab', 'biomarker')
+      AND value_num IS NULL
+    ORDER BY date DESC, id ASC`
+);
+
 // THE shared "which biomarkers are currently flagged" computation (issue #557).
 // Returns one row per biomarker family whose CURRENT reading is flagged, reusing
 // the SAME DEDUP+LATEST CTE machinery (LATEST_IDS_CTE / the #482/#394 family
@@ -468,30 +554,14 @@ export function getCurrentFlaggedBiomarkers(
   since?: string
 ): CurrentFlaggedReading[] {
   const args: (string | number)[] = [profileId, profileId, profileId];
-  let windowClause = "";
-  if (since != null) {
-    windowClause = "AND created_at > ? AND date >= date(?)";
-    args.push(since, since);
-  }
+  if (since != null) args.push(since, since);
   // Both CTEs bind profile_id (deduped first, then latest — in WITH order), then
   // the main query's profile_id, then the optional window's two `since` binds.
   // ORDER BY date DESC (newest collection first) with an id ASC tiebreak keeps the
   // slice the caller applies deterministic.
-  return db
-    .prepare(
-      `WITH ${DEDUP_IDS_CTE},
-            ${LATEST_IDS_CTE}
-       SELECT COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
-              NULLIF(TRIM(canonical_name), '') AS canonicalName,
-              value, flag, date
-         FROM medical_records
-        WHERE profile_id = ? AND ${LATEST_IN_GROUP}
-          AND category = 'lab'
-          AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')
-          ${windowClause}
-        ORDER BY date DESC, id ASC`
-    )
-    .all(...args) as CurrentFlaggedReading[];
+  const stmt =
+    since != null ? FLAGGED_LABS_STMT.windowed : FLAGGED_LABS_STMT.unwindowed;
+  return stmt.all(...args) as CurrentFlaggedReading[];
 }
 
 // The VITALS twin of getCurrentFlaggedBiomarkers (#1713). Same DEDUP+LATEST machinery,
@@ -515,26 +585,12 @@ export function getCurrentFlaggedVitals(
   since?: string
 ): CurrentFlaggedReading[] {
   const args: (string | number)[] = [profileId, profileId, profileId];
-  let windowClause = "";
-  if (since != null) {
-    windowClause = "AND created_at > ? AND date >= date(?)";
-    args.push(since, since);
-  }
-  return db
-    .prepare(
-      `WITH ${DEDUP_IDS_CTE},
-            ${LATEST_IDS_CTE}
-       SELECT COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
-              NULLIF(TRIM(canonical_name), '') AS canonicalName,
-              value, flag, date
-         FROM medical_records
-        WHERE profile_id = ? AND ${LATEST_IN_GROUP}
-          AND category = 'vitals'
-          AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')
-          ${windowClause}
-        ORDER BY date DESC, id ASC`
-    )
-    .all(...args) as CurrentFlaggedReading[];
+  if (since != null) args.push(since, since);
+  const stmt =
+    since != null
+      ? FLAGGED_VITALS_STMT.windowed
+      : FLAGGED_VITALS_STMT.unwindowed;
+  return stmt.all(...args) as CurrentFlaggedReading[];
 }
 
 // The CURRENT qualitative (value_num IS NULL) lab/biomarker readings — one per
@@ -557,20 +613,11 @@ export interface CurrentQualitativeReading {
 export function getCurrentQualitativeResults(
   profileId: number
 ): CurrentQualitativeReading[] {
-  return db
-    .prepare(
-      `WITH ${DEDUP_IDS_CTE},
-            ${LATEST_IDS_CTE}
-       SELECT id,
-              COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
-              value, notes, reference_range AS reference, loinc, date
-         FROM medical_records
-        WHERE profile_id = ? AND ${LATEST_IN_GROUP}
-          AND category IN ('lab', 'biomarker')
-          AND value_num IS NULL
-        ORDER BY date DESC, id ASC`
-    )
-    .all(profileId, profileId, profileId) as CurrentQualitativeReading[];
+  return CURRENT_QUALITATIVE_STMT.all(
+    profileId,
+    profileId,
+    profileId
+  ) as CurrentQualitativeReading[];
 }
 
 export function getMedicalDocuments(profileId: number): MedicalDocument[] {

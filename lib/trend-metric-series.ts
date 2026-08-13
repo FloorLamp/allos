@@ -15,6 +15,7 @@ import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "./vitals-input";
 import { PEAK_FLOW_METRIC } from "./peak-flow";
 import { WAIST_CIRC_METRIC } from "./waist-circ-extract";
 import { bmiSeriesDatePaired } from "./growth-series";
+import { getProfileBirthdate } from "./settings/profile-attrs";
 import { moodSeriesPoints } from "./mood";
 import { dispWeight, round } from "./units";
 import { lastNDates } from "./date";
@@ -152,6 +153,10 @@ function streamMetricSeries(
         value: Math.round(row.avg),
       }));
     case "bmi":
+      // The ONE BMI derivation (#2646 decision 3). The birthdate is what bounds how
+      // stale the paired height may be — for a growing profile a months-old height
+      // reads growth as fatness — so this reader resolves it rather than defaulting
+      // to the unbounded adult rule.
       return bmiSeriesDatePaired(
         getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map((row) => ({
           date: row.date,
@@ -160,7 +165,8 @@ function streamMetricSeries(
         getMetricDailyTotals(profileId, "height_cm", ALL_ROWS).map((row) => ({
           date: row.date,
           value: row.value,
-        }))
+        })),
+        getProfileBirthdate(profileId)
       ).map((point) => ({ date: point.date, value: round(point.value, 1) }));
     case "lean-mass":
       return getMetricDailyTotals(profileId, "lean_mass_kg", ALL_ROWS).map(
