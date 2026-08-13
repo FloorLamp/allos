@@ -158,7 +158,7 @@ export default function SupplementSchedule({
           data-testid="supplement-slot-selector"
           data-variant="large"
           role="group"
-          aria-label="IntakeItem time slot"
+          aria-label="Supplement time slot"
           className="grid grid-cols-4 gap-1.5 sm:gap-2"
         >
           {slotOptions.map((option) => (

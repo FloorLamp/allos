@@ -557,6 +557,11 @@ more" clicks. A **Source** filter sits alongside them, offering exactly the
 providers your own history contains (Manual, Strava, Google Health Connect,
 Document, …) labelled the same way the cards' provenance chips are.
 
+"Can't be saved" is a question about the **activity editor** — which imported or
+legacy rows it couldn't re-save without dropping something. Mobility sessions are
+not in its population at all: a tapped move is a whole record on its own, its
+editor is the mobility bar, and it is never flagged.
+
 **When a tracker doesn't say what a session was.** Some providers record an hour
 of exercise and explicitly decline to categorize it — Health Connect's "a workout,
 unspecified" is the common one. Allos stores that as **Unspecified** rather than

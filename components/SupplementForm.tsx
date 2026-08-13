@@ -269,7 +269,7 @@ export default function SupplementForm({
     formData.set("cadence_interval_days", cadence.intervalDays);
     formData.set("cadence_anchor_date", cadence.anchorDate);
     formData.set("pairs", JSON.stringify(pairRows));
-    const label = name.trim() || "IntakeItem";
+    const label = name.trim() || "Supplement";
     // Consent gate (#1296): a situational hold on a mandatory-priority item silences
     // its reminders while the situation is active — confirm before linking it.
     const pause = pauseSituation.trim();
