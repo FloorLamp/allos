@@ -243,7 +243,20 @@ test.describe("an active episode page on a phone (#2612)", () => {
           .first() // first-ok: the assertion is that SOME symptom row is laid out, not which
       ).toBeVisible();
 
-      // 3. NOTHING BECOMES UNREACHABLE. One tap on "All" brings the ledger back.
+      // 3. THE PRINTED RECORD STAYS COMPLETE. The chip narrows the SCREEN; the
+      // episode summary is a doctor-visit artifact, and one that silently dropped
+      // the medications given would be a worse defect than a long page. Under print
+      // every hidden dose row comes back — the same `print:*` undo the mobile
+      // earlier-days fold has always used one level up.
+      await page.emulateMedia({ media: "print" });
+      expect(
+        await doseRows.evaluateAll((rows) =>
+          rows.every((row) => getComputedStyle(row).display !== "none")
+        )
+      ).toBe(true);
+      await page.emulateMedia({ media: null });
+
+      // 4. NOTHING BECOMES UNREACHABLE. One tap on "All" brings the ledger back.
       await hydratedClick(page, chips.getByRole("button", { name: "All" }));
       await expect(chips.getByRole("button", { name: "All" })).toHaveAttribute(
         "aria-pressed",
