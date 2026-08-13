@@ -301,7 +301,48 @@ jobs:
   # of the suite. It
   # needs no job of its own — a separate job would pay a whole extra runner's
   # checkout + npm ci + `next build` (~4 min) to run ~25 s of tests.
+  # MEASUREMENT ONLY (throwaway branch). Build the app ONCE and hand `.next` to
+  # the twelve shards as an artifact, instead of each shard restoring
+  # `.next/cache` and running `npm run build` itself.
+  build-once:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Cache node_modules
+        id: modules
+        uses: actions/cache@v6
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+        if: steps.modules.outputs.cache-hit != 'true'
+      - name: Restore Next.js build cache
+        uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'public/**', 'next.config.*') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_SKIP_TYPECHECK: "1"
+      - name: Upload the build output
+        uses: actions/upload-artifact@v7
+        with:
+          name: next-build
+          path: |
+            .next
+            !.next/cache
+          retention-days: 1
+          compression-level: 1
+
   e2e:
+    needs: build-once
     # pull_request only — see the merge_group note in the `on:` comment: the
     # queue's bar is deliberately the three cheap tiers.
     if: github.event_name == 'pull_request'
@@ -405,8 +446,37 @@ jobs:
             echo "No runtime surface in this diff - skipping the browser suite."
           fi
 
-      - uses: ./.github/actions/e2e-setup
+      # MEASUREMENT ONLY: e2e-setup minus `.next/cache` and minus the build,
+      # plus an artifact download of the build produced by `build-once`.
+      - uses: actions/setup-node@v7
         if: steps.changes.outputs.code == 'true'
+        with:
+          node-version-file: .nvmrc
+      - name: Cache node_modules
+        id: modules
+        if: steps.changes.outputs.code == 'true'
+        uses: actions/cache@v6
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+        if: steps.changes.outputs.code == 'true' && steps.modules.outputs.cache-hit != 'true'
+      - name: Cache Playwright Chromium
+        id: playwright
+        if: steps.changes.outputs.code == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.changes.outputs.code == 'true' && steps.playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps --only-shell chromium
+      - name: Download the shared build
+        if: steps.changes.outputs.code == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: next-build
+          path: .next
 
       # The plan is a pure function of (spec list, e2e/spec-durations.json, shard
       # count), so every shard computes the SAME twelve buckets and takes its own
