@@ -183,9 +183,34 @@ export function runMigrations(
     // nothing to apply (every boot after the first, on every install) must not pay
     // for a probe it will never compare against.
     let fkBefore: ForeignKeyViolationTally | null | undefined;
+    // A probe that could not be TAKEN is reported once per boot, not once per
+    // migration: the fact worth knowing is that this boot had a blind spot, and
+    // repeating it for every remaining migration would bury it.
+    let probeGapReported = false;
+    const noteProbeGap = (m: Migration): void => {
+      if (probeGapReported) return;
+      probeGapReported = true;
+      log.warn(
+        `could not read PRAGMA foreign_key_check around migration ${m.name} — ` +
+          `rows it orphaned would go unreported (#2703). The baseline is re-taken ` +
+          `for the migration after it, so this is one blind migration and not a ` +
+          `probe that switched itself off.`,
+        { migration: m.name }
+      );
+    };
     for (const m of migrations) {
       if (applied.has(m.name)) continue;
-      if (fkBefore === undefined) fkBefore = foreignKeyViolationTally(db);
+      // `== null` deliberately: `undefined` is "not taken yet" and `null` is "the
+      // last probe FAILED", and both mean there is no baseline to compare against.
+      // Re-taking on `null` is what stops one transient pragma failure from
+      // disabling the guard for every later migration in the boot — a guard that
+      // turns itself off after a hiccup and says nothing is the shape this whole
+      // family exists to remove, and it said nothing precisely because `null` was
+      // being carried forward as if it were a taken baseline.
+      if (fkBefore == null) {
+        fkBefore = foreignKeyViolationTally(db);
+        if (fkBefore === null) noteProbeGap(m);
+      }
       const tx = db.transaction(() => {
         // Authoritative in-txn dedup: a peer worker may have applied this
         // migration between our pre-loop read and taking the write lock.
@@ -203,6 +228,7 @@ export function runMigrations(
       });
       runBootTx(tx);
       fkBefore = reportOrphansIntroduced(db, m, fkBefore);
+      if (fkBefore === null) noteProbeGap(m);
     }
   } finally {
     if (fkWasOn) db.pragma("foreign_keys = ON");
@@ -242,14 +268,23 @@ function reportOrphansIntroduced(
   before: ForeignKeyViolationTally | null | undefined
 ): ForeignKeyViolationTally | null {
   const after = foreignKeyViolationTally(db);
-  const introduced = introducedViolations(db, before ?? null, after);
+  const introduced = introducedViolations(before ?? null, after);
   if (introduced.length > 0) {
     const rows = introduced.reduce((n, v) => n + v.rows, 0);
+    // The remedy is per LINK, because the sweep is: it clears CASCADE orphans and
+    // deliberately leaves `SET NULL` danglers alone (they are live provenance —
+    // see sweepOrphanedCascadeRows). Prescribing it for a SET NULL link would be
+    // advice that does nothing, offered in a voice that says it will.
+    const sweepable = introduced.some((v) => v.action === "cascade");
     log.warn(
       `migration ${m.name} left ${rows} row(s) pointing at a parent it removed ` +
         `— migrations apply with foreign_keys = OFF, so ON DELETE CASCADE did not ` +
-        `fire (#2680/#2703). Use deleteRowsWithCascade(), or append a migration ` +
-        `calling sweepOrphanedCascadeRows() to clear what this one left.`,
+        `fire (#2680/#2703). Use deleteRowsWithCascade() in the migration` +
+        (sweepable
+          ? `, or append one calling sweepOrphanedCascadeRows() to clear the ` +
+            `CASCADE orphans this one left.`
+          : `. The sweep cannot clear these: it removes CASCADE orphans only, and ` +
+            `deliberately leaves SET NULL references alone.`),
       { migration: m.name, rows, links: introduced.map((v) => v.link) }
     );
   }
