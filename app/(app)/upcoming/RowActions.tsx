@@ -38,6 +38,11 @@ import { type AppRoute } from "@/lib/hrefs";
 // Adding a row action means adding one descriptor; both viewports get it.
 // ---------------------------------------------------------------------------
 
+// The marker the (server-rendered) Upcoming row carries so a dismissal from its
+// portaled kebab can find the element to slide (#2654, motion 2). One name, spelled
+// once, used by the row that sets it and the menu that walks up to it.
+export const DISMISS_ROW_ATTR = "data-dismiss-row";
+
 // Icons can't cross the server/client boundary as component references, so a
 // descriptor names its icon and each presenter resolves it through this map.
 const ACTION_ICON: Record<string, TablerIcon> = {
@@ -284,7 +289,7 @@ export default function UpcomingRowMenu({
       open={open}
       onOpenChange={setOpen}
     >
-      {({ runAction }) => (
+      {({ runAction, anchorEl }) => (
         <>
           <RowActionMenuItems actions={folded} runAction={runAction} />
           {hasPreventive && (
@@ -295,7 +300,19 @@ export default function UpcomingRowMenu({
             />
           )}
           {suppression && (
-            <SnoozeDismissItems {...suppression} runAction={runAction} />
+            <SnoozeDismissItems
+              {...suppression}
+              runAction={runAction}
+              // #2654 motion 2. Upcoming is the surface that HAS a fold — the
+              // "Snoozed & dismissed" disclosure below these rows catches every
+              // dismissal — so a dismissal here travels toward it. The row is found
+              // by walking up from the kebab, which is the only part of this menu
+              // still standing inside it (the panel is portaled to <body>).
+              slideTarget={() =>
+                anchorEl()?.closest<HTMLElement>(`[${DISMISS_ROW_ATTR}]`) ??
+                null
+              }
+            />
           )}
         </>
       )}

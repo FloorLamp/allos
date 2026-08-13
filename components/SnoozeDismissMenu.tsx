@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IconClock, IconEyeOff } from "@tabler/icons-react";
 import OverflowMenu, {
   MENU_ITEM,
   type MenuHelpers,
 } from "@/components/OverflowMenu";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { microMotionPlan } from "@/lib/micro-motion";
 
 // Quick-snooze durations offered per item. One list, shared by both surfaces
 // that render this menu, so the choices can't drift apart.
@@ -30,6 +32,20 @@ export interface SnoozeDismissProps {
   // the affordance honest). `dismissAction` is still required so the caller can pass
   // one uniform prop set.
   snoozeOnly?: boolean;
+  // THE DISMISSAL SLIDE (#2654, motion 2). The element that should travel toward the
+  // fold — in practice the dismissed row — resolved by the caller at tap time.
+  //
+  // Supplying it is the SURFACE'S DECLARATION THAT IT HAS A FOLD. Only /upcoming
+  // does: its "Snoozed & dismissed" disclosure sits below the rows and catches every
+  // dismissal, which is the lesson the travel teaches (dismissed ≠ deleted, and here
+  // is where to look — the #2386 doctrine's reachability, animated). The dashboard
+  // "Needs attention" hero passes nothing: there is no fold on that page, and a row
+  // sliding toward nowhere would teach a place that does not exist.
+  //
+  // A SNOOZE does not slide. It is also caught by the same fold, but a snooze is a
+  // "later" and its row is coming back on its own; the travel is the answer to
+  // "where did it GO", which is a question only a dismiss raises.
+  slideTarget?: () => HTMLElement | null;
 }
 
 // The snooze/dismiss MENU ITEMS on their own, so a row that also has other menu
@@ -46,7 +62,49 @@ export function SnoozeDismissItems({
   dismissAction,
   profileId,
   snoozeOnly = false,
+  slideTarget,
 }: SnoozeDismissProps & { runAction: MenuHelpers["runAction"] }) {
+  // THE DISMISSAL SLIDE (#2654, motion 2), started on the tap and NEVER awaited.
+  //
+  // The class goes on the row the instant the form is submitted, before `runAction`
+  // awaits the write. That ordering is the whole "motion never delays interactivity"
+  // rule: the animation rides the round-trip the dismissal was already going to take,
+  // and the row is normally gone — replaced by the revalidated render — before the
+  // travel finishes. Nothing waits on it, and no second tap is blocked by it.
+  //
+  // It is applied imperatively rather than through state because the row is a Server
+  // Component: there is no React path from this portaled menu item to the element
+  // that must move. The class is removed on a timer for the one path where the row
+  // SURVIVES the tap — a write that threw, which `runAction` reports as an error
+  // toast — so a refused dismissal leaves no half-faded row behind. The keyframe has
+  // no `forwards`, so that row is already back at full opacity by then: it did not go
+  // anywhere, and it should not look like it did.
+  const reduced = usePrefersReducedMotion();
+  const slidePlan = microMotionPlan("slide", reduced);
+  const slideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const slidingEl = useRef<HTMLElement | null>(null);
+
+  const clearSlide = useCallback(() => {
+    if (slideTimer.current) clearTimeout(slideTimer.current);
+    slideTimer.current = null;
+    slidingEl.current?.classList.remove(slidePlan.className || "motion-slide");
+    slidingEl.current?.removeAttribute("data-sliding");
+    slidingEl.current = null;
+  }, [slidePlan.className]);
+
+  useEffect(() => clearSlide, [clearSlide]);
+
+  function slideToFold() {
+    if (!slidePlan.animate || !slideTarget) return;
+    const el = slideTarget();
+    if (!el) return;
+    clearSlide();
+    slidingEl.current = el;
+    el.classList.add(slidePlan.className);
+    el.setAttribute("data-sliding", "true");
+    slideTimer.current = setTimeout(clearSlide, slidePlan.ms);
+  }
+
   return (
     <>
       <div className="flex items-center gap-1 px-3 py-1 section-label">
@@ -72,7 +130,10 @@ export function SnoozeDismissItems({
       ))}
       {!snoozeOnly && (
         <form
-          action={(fd) => runAction(dismissAction, fd, "Dismissed")}
+          action={(fd) => {
+            slideToFold();
+            return runAction(dismissAction, fd, "Dismissed");
+          }}
           className="border-t border-black/5 dark:border-white/5"
         >
           <input type="hidden" name="signal_key" value={signalKey} />

@@ -49,6 +49,14 @@ export interface MenuHelpers {
     fd: FormData,
     message: string
   ) => Promise<void>;
+  // The trigger button — the one part of this menu still standing inside the row it
+  // belongs to. The PANEL is portaled to <body>, so a menu item cannot reach its own
+  // row with `closest()`, and cannot reach it through React either (the row is a
+  // Server Component and the callback would have to cross that boundary). A caller
+  // that genuinely needs the row walks up from here; #2654's dismissal slide is the
+  // only one today. Read-only, and never a substitute for props — it exists because
+  // the portal severed a DOM ancestry that really is there.
+  anchorEl: () => HTMLElement | null;
 }
 
 export default function OverflowMenu({
@@ -209,7 +217,11 @@ export default function OverflowMenu({
               }}
               className="z-50 w-40 overflow-hidden rounded-lg border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900"
             >
-              {children({ close, runAction })}
+              {children({
+                close,
+                runAction,
+                anchorEl: () => triggerRef.current,
+              })}
             </div>
           </>,
           document.body

@@ -81,7 +81,12 @@ import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Avatar from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
-import UpcomingRowMenu, { RowActionChips, type RowAction } from "./RowActions";
+import UpcomingRowMenu, {
+  DISMISS_ROW_ATTR,
+  RowActionChips,
+  type RowAction,
+} from "./RowActions";
+import FoldSummary from "./FoldSummary";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import FollowUpSettleControls from "@/components/FollowUpSettleControls";
 import ExplainFinding from "@/components/ExplainFinding";
@@ -935,12 +940,14 @@ function SuppressedSection({
   })).filter((g) => g.entries.length > 0);
   return (
     <details className="mt-8" data-testid="suppressed-section">
-      <summary className="cursor-pointer section-label">
-        Snoozed &amp; dismissed{" "}
-        <span className="text-slate-500 dark:text-slate-400">
-          ({items.length})
-        </span>
-      </summary>
+      {/* The fold that catches a dismissal, and the only part of this section that is
+          a client component: it pulses ONCE when its count goes up (#2654, motion 2),
+          which is the other half of the dismissed row's travel toward it. The count
+          itself is server truth on every paint; the pulse only decorates a change. */}
+      <FoldSummary
+        count={items.length}
+        className="cursor-pointer section-label"
+      />
       <div className="card mt-2 space-y-3 p-2">
         {groups.map((g) => (
           <div key={g.domain}>
@@ -1242,6 +1249,11 @@ function Row({
   return (
     <div
       data-testid={`upcoming-item-${item.key}`}
+      // The element a dismissal from this row's kebab travels with (#2654, motion 2).
+      // The row is server-rendered and the menu's panel is portaled to <body>, so the
+      // menu walks UP from its trigger to this marker; the attribute name is spelled
+      // once, in RowActions.
+      {...{ [DISMISS_ROW_ATTR]: "" }}
       // flex-wrap (#1063): the trailing action/badge chips are nowrap-by-design,
       // so at phone width they must WRAP under the title instead of forcing the
       // row past the viewport (where the shell's overflow-x-clip hides them).

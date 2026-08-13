@@ -162,7 +162,7 @@ export const MICRO_MOTION_BAND_EXEMPTIONS = {
       "the fold's answer to 300 ms would make it read as hurried where it should read " +
       "as deliberate. The ruling exempts the FOLD PULSE only: the dismissed row's own " +
       "`slide` stays inside the band, every other motion stays inside the band, and " +
-      "`nothing loops` is untouched — one pulse, never a repeat.",
+      "`nothing loops` is untouched — one pulse, never a repeat."
   ),
 } as const satisfies Partial<Record<MicroMotion, BandExemption>>;
 
@@ -170,9 +170,11 @@ export const MICRO_MOTION_BAND_EXEMPTIONS = {
 // duration is legal asks this rather than re-deriving the band.
 export function bandExemptionFor(kind: MicroMotion): BandExemption | null {
   return (
-    (MICRO_MOTION_BAND_EXEMPTIONS as Partial<Record<MicroMotion, BandExemption>>)[
-      kind
-    ] ?? null
+    (
+      MICRO_MOTION_BAND_EXEMPTIONS as Partial<
+        Record<MicroMotion, BandExemption>
+      >
+    )[kind] ?? null
   );
 }
 
