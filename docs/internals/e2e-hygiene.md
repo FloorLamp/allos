@@ -1604,6 +1604,51 @@ guilty neighbour. A bisect over such a spec converges on an arbitrary file,
 because its predicate ("did the victim fail") is true whatever the neighbours
 are. Rebuild before believing any of this.
 
+### When it is not co-residency at all — slow the CPU, not the neighbours
+
+The controls above answer "WHICH neighbour"; they cannot answer "was there a
+neighbour". A failure that reproduces in CI and never locally may be **timing**,
+and the loudest member of that class is a tap that lands before hydration
+(#500/#830): the handler never attaches, the click is swallowed with no error —
+Playwright's actionability checks all pass, because the ELEMENT is fine — and the
+assertion after it fails as `element(s) not found`. The window is a few
+milliseconds wide on a fast quiet box and comfortably wide on a CI runner, which
+is exactly the shape that looks unreproducible.
+
+That class reproduces on demand by making the box slow, through CDP:
+
+```ts
+const cdp = await page.context().newCDPSession(page);
+await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 });
+await page.reload(); // the throttle must span the hydration you suspect
+// … the tap under suspicion …
+await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+```
+
+**Run it at least five times, and always against a BASE-TREE control.** The
+verdict is the comparison, never one tree's result: a PR is convicted only when
+the base passes and the branch fails, and exonerated when the base fails too.
+
+`#2742` is the receipt. Two CI shard failures, a green shard on a near-identical
+base, and a spec that passed 18/18 at CI parity locally — read together as "the PR
+broke it", and wrong. Throttled, five trials each:
+
+| tree                          | tap             | result          |
+| ----------------------------- | --------------- | --------------- |
+| the branch                    | bare `.click()` | 0 pass / 5 fail |
+| `main`, none of the PR's code | bare `.click()` | 0 pass / 5 fail |
+| the branch                    | `hydratedClick` | 5 pass / 0 fail |
+
+Pre-existing spec fragility, not the PR. **One run proves nothing in EITHER
+direction** — the single green shard on the base was treated as exoneration of the
+base, and the first single throttled run on `main` passed too. Both would have
+produced the opposite conclusion. Five trials is cheap; a wrong attribution is
+not, and it lands on whoever wrote the PR.
+
+The fix for this class is `hydratedClick`, never a retry loop: `useConfirm`
+settles an in-flight confirm as CANCELLED when a second replaces it, so
+re-clicking can cancel the dialog it is waiting for (#2729).
+
 ## Fix (f) — DB-per-worker isolation (#1538)
 
 Until this landed, the suite booted ONE app server against ONE seeded SQLite
