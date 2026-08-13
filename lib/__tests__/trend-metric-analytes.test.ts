@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   METRIC_DOCUMENT_REACH,
+  STATISTIC_SIGNIFIERS,
   derivedInputsMetricFor,
+  registryNamesFor,
   trendMetricHomeFor,
   hasTrendMetricHome,
   listedInResultsCatalog,
@@ -434,6 +436,75 @@ describe("what STAYS in the browser (#2365)", () => {
   });
 });
 
+// #2678 Tier 1 — the STRUCTURAL rule at the shared recognizer, and the one that fixes
+// the pre-existing cosmetic bug too: `listedInResultsCatalog` reads the same function,
+// so a stored BMI percentile stops being hidden from the Results browser by a chart
+// that does not plot percentiles.
+describe("an acronym may corroborate, never overrule (#2678)", () => {
+  it("REFUSES the acronym when a registered key is a proper subset of the full half", () => {
+    // `{body, index, mass}` ⊂ `{body, index, mass, percentile}`: the full half is
+    // naming a statistic OF bmi and the leftover token says which. The compression
+    // does not get to outvote its own expansion.
+    expect(trendMetricHomeFor("Body Mass Index Percentile (BMI)")).toBeNull();
+    expect(trendMetricHomeFor("Body Mass Index Percentile (BMI%)")).toBeNull();
+    // `{bmi}` ⊂ `{bmi, percentile}` — the same refusal, reached through the LABEL key
+    // rather than the title key, so the rule is over every registered name of the slug.
+    expect(trendMetricHomeFor("BMI Percentile (BMI%)")).toBeNull();
+    // Not a BMI-only property: a statistic of any homed quantity is refused the same
+    // way, whatever arm the slug's reach declares.
+    expect(
+      trendMetricHomeFor("Resting Heart Rate Percentile (RHR)")
+    ).toBeNull();
+  });
+
+  it("ACCEPTS the acronym when the full half is DISJOINT from the slug's keys", () => {
+    // The corroborating case, and the direction a denylist would have got wrong. A
+    // spelling the registry has never seen states no contradiction — nothing of the
+    // slug's vocabulary is in it — so the acronym is the only evidence there is, and it
+    // still matches. This is what "fails in the safe direction" means here.
+    expect(trendMetricHomeFor("Índice de Masa Corporal (BMI)")).toBe("bmi");
+    expect(trendMetricHomeFor("Indice de Masa Corporal (BMI)")).toBe("bmi");
+    // And the everyday shape that must not regress: "Resting HR" shares `resting` with
+    // nothing registered as a whole key, so RHR still vouches for it.
+    expect(trendMetricHomeFor("Resting HR (RHR)")).toBe("resting-hr");
+    expect(trendMetricHomeFor("Body Mass Index (BMI)")).toBe("bmi");
+  });
+
+  it("EQUALITY is not a subset — the ordinary print form is untouched", () => {
+    // "Body Mass Index (BMI)" has a full half whose token set EQUALS a registered key.
+    // Proper-subset is what keeps that the ordinary case (it matches on the full half
+    // before the acronym is consulted at all), and the refusal narrow.
+    for (const spelling of [
+      "Body Mass Index (BMI)",
+      "body mass index (BMI)",
+      "Waist Circumference (WC)",
+    ])
+      expect(trendMetricHomeFor(spelling), spelling).not.toBeNull();
+  });
+
+  it("the percentile stops being hidden from the Results browser", () => {
+    // The pre-existing COSMETIC half of the same defect, from before the drop existed:
+    // a stored percentile row was matched to the `bmi` home and dropped from the flat
+    // catalog by `listedInResultsCatalog` — hidden behind a chart that does not plot
+    // percentiles. One structural rule fixes both.
+    expect(
+      listedInResultsCatalog({
+        category: "vitals",
+        name: "Body Mass Index Percentile (BMI)",
+        canonical_name: null,
+      })
+    ).toBe(true);
+    // The BMI itself still leaves, exactly as #2365 decided.
+    expect(
+      listedInResultsCatalog({
+        category: "vitals",
+        name: "Body Mass Index (BMI)",
+        canonical_name: null,
+      })
+    ).toBe(false);
+  });
+});
+
 describe("listedInResultsCatalog scopes the rule to `vitals`", () => {
   it("drops a homed vitals row and keeps a homeless one", () => {
     expect(
@@ -548,6 +619,103 @@ describe("derivedInputsMetricFor (#2646)", () => {
       "BMI for Age Percentile",
     ])
       expect(derivedInputsMetricFor(percentile), percentile).toBeNull();
+  });
+
+  it("the disagreement pairs, side by side (#2678)", () => {
+    // The whole issue in three lines. The first is the quantity and is DROPPED; the
+    // other two name a statistic OF it and are STORED. They leak through different
+    // mechanisms — the middle one through the acronym split, the last through
+    // punctuation-stripping — so the pair is only meaningful read together.
+    expect(derivedInputsMetricFor("Body Mass Index (BMI)")).toBe("bmi");
+    expect(
+      derivedInputsMetricFor("Body Mass Index Percentile (BMI)")
+    ).toBeNull();
+    expect(derivedInputsMetricFor("BMI%")).toBeNull();
+  });
+
+  it("every parenthesised and %-marked percentile spelling survives (#2678)", () => {
+    // The probes from the issue, both halves. Before the fix each of these resolved to
+    // `bmi` and was therefore deleted at ingest with no record that it had existed.
+    for (const spelling of [
+      "Body Mass Index Percentile (BMI%)",
+      "Body Mass Index Percentile (BMI)",
+      "BMI Percentile (BMI%)",
+      "BMI%",
+      "BMI %",
+      "Body Mass Index Centile (BMI)",
+      "BMI z-score",
+      "BMI SDS",
+    ])
+      expect(derivedInputsMetricFor(spelling), spelling).toBeNull();
+    // …and the spellings that were already safe, kept as a regression floor so a
+    // future loosening of the recognizer has to break something visible.
+    for (const spelling of [
+      "BMI Percentile",
+      "Body mass index (BMI) [Percentile]",
+      "BMI percentile per age",
+    ])
+      expect(derivedInputsMetricFor(spelling), spelling).toBeNull();
+  });
+
+  it("no curated registry name is swallowed by the drop (#2675's guard, kept)", () => {
+    // The check #2675's PR ran by hand, pinned so it runs on every change instead of
+    // once. A curated entry is a quantity the app stores and charts under its own
+    // identity; not one of them may resolve to a derived-input slug, because that
+    // resolution is a DELETE.
+    const swallowed = CANONICAL_BIOMARKERS.map((e) => e.name).filter(
+      (name) => derivedInputsMetricFor(name) !== null
+    );
+    expect(swallowed).toEqual([]);
+    // Non-vacuous: the registry it swept is the whole curated vocabulary (327 entries
+    // when this landed), not an empty list.
+    expect(CANONICAL_BIOMARKERS.length).toBeGreaterThan(300);
+  });
+
+  it("EVERY derived-inputs name survives EVERY statistic qualifier — generatively (#2678)", () => {
+    // BMI is the FIRST `derived-inputs` slug and the pattern is the point: the next one
+    // must inherit this protection without anyone remembering to write its cases. So
+    // the cases are DERIVED — every name the slug claims × every Tier-2 signifier ×
+    // the shapes a document writes them in.
+    const derivedSlugs = TREND_METRIC_SLUGS.filter(
+      (slug) => METRIC_DOCUMENT_REACH[slug].reaches === "derived-inputs"
+    );
+    expect(derivedSlugs.length).toBeGreaterThan(0);
+    let cases = 0;
+    for (const slug of derivedSlugs) {
+      const names = registryNamesFor(slug);
+      expect(names.length).toBeGreaterThan(0);
+      const abbr = TREND_METRIC_META[slug].label;
+      // The bare names ARE the quantity and MUST still be dropped — otherwise every
+      // assertion below passes for the wrong reason.
+      for (const name of names)
+        expect(derivedInputsMetricFor(name), name).toBe(slug);
+      for (const name of names)
+        for (const sig of STATISTIC_SIGNIFIERS)
+          for (const spelling of [
+            `${name} ${sig.token}`,
+            `${name}${sig.token}`,
+            `${name} ${sig.token} (${abbr})`,
+            `${name} ${sig.token.toUpperCase()}`,
+          ]) {
+            cases += 1;
+            expect(derivedInputsMetricFor(spelling), spelling).toBeNull();
+          }
+    }
+    expect(cases).toBeGreaterThan(20);
+  });
+
+  it("every statistic signifier states why it earns a place", () => {
+    // The glyph-registry discipline: a curated list stays small only while each entry
+    // has to justify itself, and a bare token nobody can defend is how it grows.
+    const tokens = STATISTIC_SIGNIFIERS.map((s) => s.token);
+    expect(new Set(tokens).size).toBe(tokens.length);
+    for (const sig of STATISTIC_SIGNIFIERS) {
+      expect(sig.reason.length, sig.token).toBeGreaterThan(40);
+      // No `g` flag — these patterns are reused across calls and a sticky lastIndex
+      // would make the SECOND label carrying a signifier slip through.
+      expect(sig.pattern.flags, sig.token).not.toContain("g");
+      expect(sig.pattern.test(sig.token), sig.token).toBe(true);
+    }
   });
 
   it("covers exactly the slugs whose declared reach is derived-inputs", () => {

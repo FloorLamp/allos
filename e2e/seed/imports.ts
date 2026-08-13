@@ -8,6 +8,8 @@ import "../../scripts/load-env";
 import path from "node:path";
 import { zonedWallTimeToUtc, utcSqlString } from "../../lib/date";
 import { db, today } from "../../lib/db";
+import { extractionToPersistInput } from "../../lib/import-shape";
+import type { ExtractionResult } from "../../lib/medical-extract";
 import { getTimezone } from "../../lib/settings";
 import { PROFILE_ID } from "./common";
 import { PARITY_MED_NAME } from "./intake";
@@ -197,6 +199,111 @@ export function seedDropReport(): void {
 
   console.log(
     `e2e: seeded import document ${DROP_DOC_ID} with a 260-drop report + an unmapped LOINC (#270), and ${DECLINED_ONLY_DOC_ID} with declared-only unresolved names (#2313)`
+  );
+}
+
+// ── Import-detail derived-result drop fixture (#2678) ──
+export function seedDerivedResultDrops(): void {
+  // A printed BMI is DROPPED at ingest — the chart is a computation over the weight and
+  // height that arrived beside it, so there is no destination row to project into
+  // (#2646). That drop used to leave NOTHING behind: no row, no vocabulary entry, no
+  // count, which made it the one ingest outcome nobody could notice had happened.
+  // #2678 gives it the same trail every other outcome has.
+  //
+  // Built by running the REAL shape pipeline over a synthetic extraction rather than by
+  // hand-writing a report blob, so this fixture proves the WIRING and not just the
+  // rendering: if withoutDerivedResults ever stops reporting, this document stops
+  // carrying the group and the spec fails.
+  //
+  // Its own document id, and the spec owns every row on it — the surrounding assertions
+  // are about an ABSENCE (no derived_result drop for the percentile) and a shared
+  // fixture could not carry that honestly.
+  const DERIVED_DOC_ID = 912;
+  db.prepare(`DELETE FROM medical_records WHERE document_id = ?`).run(
+    DERIVED_DOC_ID
+  );
+  db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(DERIVED_DOC_ID);
+
+  const vitalsRow = (name: string, value: string) => ({
+    category: "vitals" as const,
+    panel: null,
+    name,
+    canonical_name: name,
+    value,
+    value_num: Number(value),
+    unit: null,
+    reference_range: null,
+    flag: null,
+    collected_date: "2026-07-05",
+    notes: null,
+  });
+  const extraction: Extract<ExtractionResult, { status: "done" }> = {
+    status: "done",
+    model: "e2e-fixture",
+    raw: "",
+    meta: {
+      document_type: "visit",
+      source: "E2E Paediatrics",
+      patient_name: null,
+      patient_sex: null,
+      patient_birthdate: null,
+      patient_age: null,
+      document_date: "2026-07-05",
+    },
+    results: [
+      // THREE printed derived results — the issue's own "a document with 3 printed
+      // derived results says so in Data → Review".
+      vitalsRow("Body Mass Index", "16.2"),
+      vitalsRow("Body Mass Index", "16.3"),
+      vitalsRow("Body Mass Index", "16.4"),
+      // The percentile spellings that used to be DELETED by the same recognizer. They
+      // are a statistic OF a BMI, not a BMI, and they must survive as stored rows.
+      vitalsRow("Body Mass Index Percentile (BMI%)", "62"),
+      vitalsRow("BMI%", "63"),
+    ],
+    immunizations: [],
+    conditions: [],
+    allergies: [],
+    procedures: [],
+    encounters: [],
+    familyHistory: [],
+    carePlanItems: [],
+    careGoals: [],
+    drops: [],
+  };
+  const shaped = extractionToPersistInput(extraction, "2026-07-05");
+
+  db.prepare(
+    `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, import_report, uploaded_at)
+   VALUES (?, ?, 'e2e-growth-visit.pdf', '', 'application/pdf', 1536,
+           'Visit summary', 'upload', 'done', ?, ?,
+           '2026-07-08 09:40:00')`
+  ).run(
+    DERIVED_DOC_ID,
+    PROFILE_ID,
+    shaped.records.length,
+    shaped.meta.importReport
+  );
+  const insertRecord = db.prepare(
+    `INSERT INTO medical_records
+     (profile_id, document_id, date, category, name, value, canonical_name, source)
+   VALUES (?, ?, ?, ?, ?, ?, ?, 'upload')`
+  );
+  for (const r of shaped.records)
+    insertRecord.run(
+      PROFILE_ID,
+      DERIVED_DOC_ID,
+      r.date,
+      r.category,
+      r.name,
+      r.value,
+      r.canonical
+    );
+
+  console.log(
+    `e2e: seeded import document ${DERIVED_DOC_ID} — ${shaped.records.length} kept rows and the derived-result drops the real shape pipeline produced (#2678)`
   );
 }
 

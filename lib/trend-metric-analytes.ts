@@ -353,8 +353,13 @@ export const METRIC_DOCUMENT_REACH: Record<
  * Every name the metric registry knows a quantity by — the three sources above — or
  * NOTHING when an imported reading of it cannot reach its chart, because a slug that
  * cannot receive the reading has not earned the right to remove it from the catalog.
+ *
+ * Exported for the #2678 generative guard, which decorates every name a
+ * `derived-inputs` slug claims with every statistic signifier and requires the result
+ * to survive ingest. That guard has to read the SAME list the recognizer does, or the
+ * next derived slug inherits a test that quietly covers nothing.
  */
-function registryNamesFor(slug: TrendMetricSlug): string[] {
+export function registryNamesFor(slug: TrendMetricSlug): string[] {
   if (METRIC_DOCUMENT_REACH[slug].reaches === false) return [];
   const meta = TREND_METRIC_META[slug];
   const knowledge = METRIC_KNOWLEDGE[slug];
