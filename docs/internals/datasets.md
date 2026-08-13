@@ -473,26 +473,54 @@ consequence: from _cosmetic_ (a value filed under the wrong home, still visible 
 mergeable) to _destructive_ (a value deleted, with no trail anywhere). The fix is
 tiered along exactly that line.
 
-| tier | where                                                 | rule                                                                                                                                                                       |
-| ---- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `trendMetricHomeFor` — the shared recognizer          | an acronym may **corroborate, never overrule**: the bare abbr vouches for slug S only when no registered name-key of S is a **proper subset** of the full half's token set |
-| 2    | `derivedInputsMetricFor` — the one destructive caller | additionally refuses a label whose **original** spelling carries a `STATISTIC_SIGNIFIERS` token the slug's own registered names lack                                       |
-| 3    | `withoutDerivedResults` (`lib/import-shape.ts`)       | the drop is reported as an `ImportDrop` with reason `derived_result`, so Data → Review can say a document had three printed derived results                                |
+| tier | where                                                 | rule                                                                                                                                                                                                                           |
+| ---- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | `trendMetricHomeFor` — the shared recognizer          | an acronym may **corroborate, never overrule** (the bare abbr vouches for slug S only when no registered name-key of S is a **proper subset** of the full half's token set), **and** the signifier refusal below (since #2700) |
+| 2    | `derivedInputsMetricFor` — the one destructive caller | refuses a label whose **original** spelling carries a `STATISTIC_SIGNIFIERS` token the slug's own vocabulary lacks — kept as the delete tier's own **floor**, not an increment                                                 |
+| 3    | `withoutDerivedResults` (`lib/import-shape.ts`)       | the drop is reported as an `ImportDrop` with reason `derived_result`, so Data → Review can say a document had three printed derived results                                                                                    |
 
-Tier 1 is **derived from the registry, never a denylist**, and it fails in the safe
-direction: `{body, index, mass}` ⊂ `{body, index, mass, percentile}` is a
-contradiction the compression does not get to settle, while `Índice de Masa Corporal
-(BMI)` is _disjoint_ from S's keys — no contradiction, so the acronym is the only
-evidence there is and it still matches. Equality (`Body Mass Index (BMI)`) is the
-ordinary case and matches on the full half before the acronym is consulted. It also
-fixes the pre-existing cosmetic bug in the same motion, because
-`listedInResultsCatalog` reads the same function: a stored BMI percentile stops being
-hidden from the Results browser by a chart that does not plot percentiles.
+Tier 1's structural half is **derived from the registry, never a denylist**, and it
+fails in the safe direction: `{body, index, mass}` ⊂
+`{body, index, mass, percentile}` is a contradiction the compression does not get to
+settle, while `Índice de Masa Corporal (BMI)` is _disjoint_ from S's keys — no
+contradiction, so the acronym is the only evidence there is and it still matches.
+Equality (`Body Mass Index (BMI)`) is the ordinary case and matches on the full half
+before the acronym is consulted. It also fixes the pre-existing cosmetic bug in the
+same motion, because `listedInResultsCatalog` reads the same function: a stored BMI
+percentile stops being hidden from the Results browser by a chart that does not plot
+percentiles.
 
-Tier 2 exists because Tier 1 has nothing to consult when there is no full half. Its
-list is small, curated and each token carries its reason (`%`, `percentile`,
-`centile`, `z-score`, `SDS`) — matched against the ORIGINAL spelling, because for the
-`%` entry the punctuation _is_ the signifier.
+The signifier list exists because the structural rule has nothing to consult when
+there is no full half. It is small, curated and each token carries its reason (`%`,
+`percentile`, `centile`, `z-score`, `SDS`) — matched against the ORIGINAL spelling,
+because for the `%` entry the punctuation _is_ the signifier.
+
+##### …and catalog invisibility is a consequence too (#2700)
+
+#2678 put that list at the drop tier only, on the reading that cosmetic homing can
+tolerate fuzz a delete cannot. The owner's ruling is that this consequence is not
+cosmetic: hiding a stored row from the flat Results catalog — the only browsable home
+a reading with no chart of its own has — while its one link points at a chart that
+cannot plot it, is a **findability** defect. And it landed on the worst spelling: the
+structural rule reaches `Body Mass Index Percentile (BMI%)` because there is a full
+half to read, and cannot reach a bare `BMI%`, which is what a paediatric flowsheet
+prints and the number that actually matters for a child. So `trendMetricHomeFor`
+applies the same `foreignStatisticSignifier` — one function, so the two tiers cannot
+disagree about one label; the Tier-2 call stays as the delete tier's stated floor, so
+a later relaxation of the shared recognizer cannot quietly loosen what gets deleted.
+
+The supersession is **narrow**, in the ruling's own words: consequence-scales-with-
+confidence still governs, nothing about acronym matching loosens or tightens
+elsewhere, and the Tier-2 refusal is unchanged.
+
+One thing running the check at Tier 1 required. It now asks the question of **every**
+homed quantity rather than of `bmi` alone, and two of them — `spo2` and `body-fat` —
+declare `unit: "%"`. In `Body Fat %` the `%` is the unit, not a percentile marker, so
+`foreignStatisticSignifier` reads the slug's declared **unit** alongside its registered
+names: a signifier a slug's own vocabulary already carries is corroboration. That
+discriminates for free rather than by exception — `%` matches the unit `%`, while
+`percentile`, `centile`, `z-score` and `SDS` match no unit any metric declares, so
+`Body Fat Percentile` is still refused and `Weight %` (unit `kg`) still is too.
 
 Tier 3 is the invariant half. The four `withoutCaptured*` helpers need no accounting
 because their trail **is** the projected row; this drop leaves no row, no vocabulary
@@ -505,7 +533,11 @@ The guards are generative on purpose. BMI is the FIRST `derived-inputs` slug, so
 `lib/__tests__/trend-metric-analytes.test.ts` decorates **every name every such slug
 claims** with **every** signifier and requires the result to survive ingest — the next
 slug inherits the protection without anyone remembering to write its cases — beside
-the sweep proving no curated registry name is swallowed.
+the sweep proving no curated registry name is swallowed. #2700 adds the Tier-1 twin:
+every name **every homed slug** claims × every signifier, refused unless that slug's
+declared unit carries the signifier, in which case it must still resolve. Both
+directions are counted so neither half can go vacuous, and the whole curated
+vocabulary is swept for a name that LOST its home.
 
 #### The stress test's two halves (#2322)
 
