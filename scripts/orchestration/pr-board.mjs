@@ -121,8 +121,32 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
       : p.mergeable === null
         ? " (mergeable unknown)"
         : "";
+  // AN APPROVAL IS FOR A COMMIT, NOT FOR A PR. GitHub stamps every review with
+  // the `commit_id` it was written against and then keeps showing "Approved" on
+  // the PR after the head moves, so the reassuring word outlives the thing it
+  // was about — the same shape as the flight recorder's soothing all-clear.
+  //
+  // Observed on #2665: approved at 1a03b4ae after reading a diff that moved two
+  // sessionStorage keys into lib/, then the author replaced the whole approach
+  // with one that changes no product file at all. Everything a merge gate
+  // normally looks at still said yes — approved, green, author quiet — and
+  // merging would have shipped the superseded design and discarded the better
+  // one. Nothing in the board could see it, which is why it is here and not in
+  // a runbook: "re-read the diff before merging" is advice, and this is a check.
+  const reviews = gh(`pulls/${p.number}/reviews?per_page=100`);
+  let stale = "";
+  if (Array.isArray(reviews)) {
+    // Last verdict wins — an approval after a changes-requested supersedes it.
+    const verdicts = reviews.filter(
+      (r) => r.state === "APPROVED" || r.state === "CHANGES_REQUESTED"
+    );
+    const last = verdicts[verdicts.length - 1];
+    if (last?.state === "APPROVED" && last.commit_id !== p.head.sha) {
+      stale = `  <<< APPROVAL IS STALE: approved ${String(last.commit_id).slice(0, 7)}, head is ${p.head.sha.slice(0, 7)} — RE-READ THE DIFF`;
+    }
+  }
   console.log(
-    `#${p.number} ${p.draft ? "draft " : ""}${state.padEnd(9)} ${p.head.ref.slice(0, 34).padEnd(34)} ${p.title.slice(0, 46)}${merge}`
+    `#${p.number} ${p.draft ? "draft " : ""}${state.padEnd(9)} ${p.head.ref.slice(0, 34).padEnd(34)} ${p.title.slice(0, 46)}${merge}${stale}`
   );
   if (failed.length) red.push({ pr: p.number, failed });
 }
