@@ -8,6 +8,7 @@ import { LESION_PHOTO_DIR } from "./skin-photo-write";
 import { SYMPTOM_PHOTO_DIR } from "./symptom-photo-write";
 import { DATASETS, RESTRICTED_DATASETS } from "./export";
 import { isTrainingRestricted } from "./age-gate";
+import { decodeDiagnosisRanks } from "./visit-diagnosis-rank";
 import {
   getProfileSex,
   getProfileBirthdate,
@@ -418,7 +419,8 @@ export function collectFhirExportInput(
   const encounters = (
     db
       .prepare(
-        `SELECT date, end_date, type, class_code, reason, diagnoses
+        `SELECT date, end_date, type, class_code, reason, diagnoses,
+                diagnosis_ranks
            FROM encounters WHERE profile_id = ? ORDER BY date DESC, id DESC`
       )
       .all(profileId) as {
@@ -428,6 +430,7 @@ export function collectFhirExportInput(
       class_code: string | null;
       reason: string | null;
       diagnoses: string | null;
+      diagnosis_ranks: string | null;
     }[]
   ).map<FhirExportEncounter>((e) => ({
     date: e.date,
@@ -439,6 +442,9 @@ export function collectFhirExportInput(
       .split(";")
       .map((s) => s.trim())
       .filter(Boolean),
+    // The structured rank travels with the export (#2589) — otherwise exporting
+    // and re-importing a visit downgrades a stated rank back to list order.
+    diagnosis_ranks: decodeDiagnosisRanks(e.diagnosis_ranks),
   }));
 
   const familyHistory = db

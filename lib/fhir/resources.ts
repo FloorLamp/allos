@@ -21,6 +21,11 @@ import {
 } from "../clinical-parse";
 import type { FhirCodeableConcept } from "../cvx-map";
 import { codeFromVaccineCode } from "../cvx-map";
+import {
+  DIAGNOSIS_ROLE_SYSTEM,
+  MAX_DIAGNOSIS_RANK,
+  type VisitDiagnosisRank,
+} from "../visit-diagnosis-rank";
 import type {
   ImportDemographics,
   ImportedAllergy,
@@ -881,37 +886,162 @@ function encounterReason(r: any): string | null {
   return null;
 }
 
+// The diagnosis-role codes of one Encounter.diagnosis entry. R4 `use` is a single
+// CodeableConcept; R5 made it 0..* — read both shapes, the way this mapper already
+// straddles period/actualPeriod.
+//
+// ONLY the HL7 diagnosis-role system is read. `AD`, `CC` and `CM` are two-letter
+// codes any source could mint in a local system meaning something else entirely,
+// and this is the one place an unvalidated source string turns into a
+// clinical-sounding English word on a card ("Admission", "Comorbidity"). A coding
+// from another system is not a diagnosis role, so it is ignored rather than
+// relabelled.
+function diagnosisUseCodes(d: any): string[] {
+  const concepts = Array.isArray(d?.use) ? d.use : d?.use ? [d.use] : [];
+  const out: string[] = [];
+  for (const c of concepts) {
+    for (const coding of Array.isArray(c?.coding) ? c.coding : []) {
+      const system =
+        typeof coding?.system === "string"
+          ? coding.system.trim().replace(/\/+$/, "").toLowerCase()
+          : "";
+      if (system !== DIAGNOSIS_ROLE_SYSTEM.toLowerCase()) continue;
+      const code = typeof coding?.code === "string" ? coding.code.trim() : "";
+      if (code) out.push(code.toLowerCase());
+    }
+  }
+  return out;
+}
+
+// A stated rank, or undefined. Bounded on BOTH ends: `Number.isInteger(1e21)` is
+// true, and a malformed source should not be able to badge a diagnosis "#1e+21".
+// A list longer than MAX_DIAGNOSIS_RANK entries is not a ranking anybody stated
+// deliberately, so the value is dropped rather than clamped — a clamp would invent
+// a rank the source never wrote.
+function statedRank(d: any): number | undefined {
+  const v = d?.rank;
+  return typeof v === "number" &&
+    Number.isInteger(v) &&
+    v >= 1 &&
+    v <= MAX_DIAGNOSIS_RANK
+    ? v
+    : undefined;
+}
+
 // Visit diagnoses: each Encounter.diagnosis[].condition is a Reference to a
 // Condition (R4) or a CodeableReference (R5). Resolve the reference to read the
 // problem name; fall back to an inline CodeableReference.concept.
+//
+// The STRUCTURED rank rides along (#2589): R4 carries `rank` (positiveInt, 1 =
+// primary) and `use` (diagnosis-role) beside `condition`, and this mapper read
+// neither until now — so a source that STATED which diagnosis was primary had
+// that fact discarded, leaving list position as its only trace. It is captured
+// per diagnosis and stored beside the summary, never folded into it. R5 dropped
+// `rank`, so an R5 bundle yields use codes only; that is an absence, and nothing
+// here infers a rank from a display name.
+//
+// TWO THINGS ARE WITHHELD RATHER THAN GUESSED, and both are narrow:
+//
+//  1. RANK IS PER ROLE. R4 defines it as "ranking of the diagnosis (for each role
+//     type)", so rank 3 among admission diagnoses and rank 1 among discharge
+//     diagnoses are two different statements about one condition, and taking the
+//     lower of them asserts THE primary diagnosis where the source asserted
+//     primary-at-discharge. When the stated ranks for one condition DIFFER, the
+//     rank is withheld and the roles are kept. One stated rank (repeated or not)
+//     is carried with whatever roles came alongside it.
+//  2. THE STORED PAYLOAD IS KEYED BY NAME, because a name is what the card has to
+//     match against. So two conditions the importer CAN tell apart (their
+//     external_ids differ — a code, or an onset date) that nevertheless share a
+//     display name are two statements, and a disagreement between them emits no
+//     rank rather than letting one chip carry the other's. Two TEXT-ONLY
+//     conditions with the same name are NOT told apart here, and deliberately so:
+//     `conditionExternalId` falls back to the name, and `parseFhirBundle` already
+//     collapses them into one imported condition row. To this app they are one
+//     condition, so treating their rank statements as one is consistent rather
+//     than a hole — but it does mean this guard separates only what the importer's
+//     own identity separates. That is the claim, and no larger one.
 function encounterDiagnoses(
   r: any,
   ctx: FhirBundleCtx
-): { names: string[]; conditionExternalIds: string[] } {
+): {
+  names: string[];
+  conditionExternalIds: string[];
+  ranks: VisitDiagnosisRank[];
+} {
   const out: string[] = [];
   const conditionExternalIds: string[] = [];
   const seen = new Set<string>();
-  const push = (name: string | null) => {
+  // Keyed by the resolved CONDITION (its `external_id`), not by its spelling —
+  // with the caveats in the header. Every rank the source stated for that
+  // condition is kept as stated; nothing is combined until the emit pass below.
+  const stated = new Map<
+    string,
+    { name: string; ranks: number[]; use: string[] }
+  >();
+  const push = (name: string | null, d: any, identity: string | null) => {
     if (!name) return;
     const k = name.toLowerCase();
     if (!seen.has(k)) {
       seen.add(k);
       out.push(name);
     }
+    const rank = statedRank(d);
+    const use = diagnosisUseCodes(d);
+    if (rank === undefined && use.length === 0) return;
+    const key = identity ?? `name:${k}`;
+    const prior = stated.get(key) ?? { name, ranks: [], use: [] };
+    if (rank !== undefined) prior.ranks.push(rank);
+    // Roles accumulate: admission and discharge can both be true of one
+    // condition, and unlike rank they do not contradict each other.
+    for (const u of use) if (!prior.use.includes(u)) prior.use.push(u);
+    stated.set(key, prior);
   };
   for (const d of Array.isArray(r?.diagnosis) ? r.diagnosis : []) {
     const cond = ctx.resolve(d?.condition, r?.contained);
     if (cond?.resourceType === "Condition") {
-      push(conceptName(cond.code));
       // Tier-1 visit-diagnosis link (#1050): recompute the resolved Condition's
       // external_id off the SAME mapper the condition sink uses, so bundle.ts can
-      // stamp encounter_external_id onto the imported condition row.
-      const ext = mapConditionResource(cond)?.external_id;
+      // stamp encounter_external_id onto the imported condition row. It doubles as
+      // this diagnosis's identity.
+      const ext = mapConditionResource(cond)?.external_id ?? null;
+      push(conceptName(cond.code), d, ext);
       if (ext && !conditionExternalIds.includes(ext))
         conditionExternalIds.push(ext);
-    } else if (d?.condition?.concept) push(conceptName(d.condition.concept));
+    } else if (d?.condition?.concept) {
+      push(conceptName(d.condition.concept), d, null);
+    }
   }
-  return { names: out, conditionExternalIds };
+  // Per condition: one rank only if every rank the source stated for it is the
+  // same number (rank 1 under admission AND under discharge is still rank 1);
+  // differing numbers are per-role statements this shape cannot hold, so the rank
+  // goes and the roles stay.
+  const resolved: VisitDiagnosisRank[] = [];
+  for (const s of stated.values()) {
+    const entry: VisitDiagnosisRank = { name: s.name };
+    if (s.ranks.length > 0 && s.ranks.every((v) => v === s.ranks[0]))
+      entry.rank = s.ranks[0];
+    if (s.use.length) entry.use = [...s.use].sort();
+    if (entry.rank !== undefined || entry.use !== undefined)
+      resolved.push(entry);
+  }
+  // Then per NAME, for the collision described in the header.
+  const byName = new Map<string, VisitDiagnosisRank[]>();
+  for (const entry of resolved) {
+    const k = entry.name.toLowerCase();
+    byName.set(k, [...(byName.get(k) ?? []), entry]);
+  }
+  const shape = (e: VisitDiagnosisRank) =>
+    `${e.rank ?? ""}|${(e.use ?? []).join(",")}`;
+  const ordered: VisitDiagnosisRank[] = [];
+  // Emit in the order the names were kept, so the stored payload reads with the
+  // summary.
+  for (const name of out) {
+    const entries = byName.get(name.toLowerCase());
+    if (!entries || entries.length === 0) continue;
+    if (entries.every((e) => shape(e) === shape(entries[0])))
+      ordered.push(entries[0]);
+  }
+  return { names: out, conditionExternalIds, ranks: ordered };
 }
 
 export function mapEncounterResource(
@@ -951,7 +1081,11 @@ export function mapEncounterResource(
       "organization"
     ) ??
     providerFromRefs(r?.serviceProvider, ctx, r?.contained, "organization");
-  const { names: diagnoses, conditionExternalIds } = encounterDiagnoses(r, ctx);
+  const {
+    names: diagnoses,
+    conditionExternalIds,
+    ranks: diagnosisRanks,
+  } = encounterDiagnoses(r, ctx);
   // With a source id the key is stable + reprocess-idempotent; without one, fold in
   // the date/type/class so two id-less same-day visits don't collide. Kept under the
   // `ccda:encounter:` namespace the encounters sink already dedups on (FHIR resource
@@ -971,6 +1105,10 @@ export function mapEncounterResource(
     class_code: classCode,
     reason: encounterReason(r),
     diagnoses,
+    // The source's OWN statement of which diagnosis is primary (#2589) — stored
+    // beside the "; "-joined summary, which stays byte-for-byte what the source
+    // said. Empty for every non-FHIR path.
+    diagnosis_ranks: diagnosisRanks,
     provider,
     location,
     // FHIR R4/R5 Encounter carries no plain free-text note field, so there is no

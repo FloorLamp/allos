@@ -17,6 +17,7 @@ import type {
   Sex,
 } from "./types";
 import type { ImportReport } from "./import-report";
+import type { VisitDiagnosisRank } from "./visit-diagnosis-rank";
 
 // A derived medication COURSE (episode) carried on an imported medication record
 //. started_on/stopped_on are the source's effective-period
@@ -214,6 +215,13 @@ export interface ImportedEncounter {
   class_code: string | null; // HL7 ActEncounterCode class, e.g. "AMB"
   reason: string | null; // chief complaint / reason for visit text
   diagnoses: string[]; // visit diagnosis display names (may be empty)
+  // The STRUCTURED rank/role the source stated about those diagnoses (#2589),
+  // keyed by display name: FHIR R4 Encounter.diagnosis.rank / .use. Real evidence
+  // about which diagnosis is primary, as opposed to the " - Primary" some source
+  // systems weld into the display name — which is not readable as data and is
+  // left exactly as written. C-CDA R2.1's Encounter Diagnosis act defines no rank
+  // element, so the CDA path leaves this empty rather than inferring one.
+  diagnosis_ranks?: VisitDiagnosisRank[];
   provider: ImportedProvider | null; // attending / performing clinician
   location: ImportedProvider | null; // facility / performing organization
   notes: string | null; // the encounter's free-text narrative / visit summary
