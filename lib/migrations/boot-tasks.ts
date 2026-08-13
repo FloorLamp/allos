@@ -791,6 +791,16 @@ function reconcileNonOptimalFlags(db: Database.Database) {
       WHERE value_num IS NULL AND category IN ('lab','biomarker')`
   );
 
+  // What this pass TOUCHED. It rewrites stored clinical flags on every profile's
+  // records, and until #2687 it did so silently — a boot-time write that records
+  // nothing cannot be audited afterwards, and "the red flag on my hepatitis result is
+  // gone" has no answer without it. One line, counts only: which pass wrote, how many
+  // rows it set and how many it cleared. No names, no values, no ids — the log is not
+  // a place for clinical data, and the counts are what says a repair happened.
+  let numericChanged = 0;
+  let qualitativeSet = 0;
+  let qualitativeCleared = 0;
+
   const run = db.transaction(() => {
     for (const p of profiles) {
       const sex = readSex(p.id);
@@ -823,6 +833,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
       })) {
         if (c.flag === null) clear.run(c.id);
         else setFlag.run(c.flag, c.id);
+        numericChanged++;
       }
     }
     // Qualitative flag reconcile (#549): promote durable-immunity titers to "immune"
@@ -848,10 +859,24 @@ function reconcileNonOptimalFlags(db: Database.Database) {
       flag: r.flag,
       loinc: r.loinc,
     }));
+    // …and, since #2687, clear the flag a value that states no result ("See Note")
+    // was left carrying — the one case where overriding the extractor is safe,
+    // because there is no verdict to override.
     for (const c of computeQualitativeFlagChanges(qrows)) {
-      if (c.flag === null) clear.run(c.id);
-      else setFlag.run(c.flag, c.id);
+      if (c.flag === null) {
+        clear.run(c.id);
+        qualitativeCleared++;
+      } else {
+        setFlag.run(c.flag, c.id);
+        qualitativeSet++;
+      }
     }
   });
   runBootTx(run);
+  if (numericChanged || qualitativeSet || qualitativeCleared)
+    createLogger("flags").info("boot flag reconcile rewrote stored flags", {
+      numericChanged,
+      qualitativeSet,
+      qualitativeCleared,
+    });
 }

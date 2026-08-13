@@ -224,6 +224,71 @@ const SCREEN_LOW_RISK =
 const SCREEN_HIGH_RISK =
   /\b(high[-\s]?risk|increased risk|at[-\s]?risk|screen(?:ing)?[-\s]?positive|aneuploid|abnormal|detected|positive)\b/i;
 
+// ── A value that STATES NO RESULT (#2687) ───────────────────────────────────
+//
+// "See Note" is not a result. It is a POINTER to the narrative the document files
+// the finding in, and a lab prints it in the value column exactly where a word like
+// "Reactive" would otherwise go. So does "QNS", "Test not performed" and "Cancelled":
+// the row exists, it is dated, its analyte is real — and it reports nothing.
+//
+// This matters because of what the flag resolver does with an unclassifiable value.
+// `classifyQualitativeResult` returns null for these (correctly — the value MEANS
+// nothing, so there is no class), and the resolver's response to null is "leave the
+// existing flag alone", which is right when the extractor's flag encodes a verdict
+// the app cannot re-derive and WRONG here, because there is no verdict: only the
+// extractor's one-shot guess, comparing a non-matching value against a qualitative
+// reference range. That guess is then permanent — no re-reconcile can ever reach it.
+// A stored hepatitis A row carried `flag = 'abnormal'` on a value of "See Note" for
+// exactly that reason, while the same non-value on a numerically-referenced row
+// (`BUN/CREATININE RATIO`, "SEE NOTE", ref `6-22`) carried none. The difference was
+// which reference-range shape the document happened to print.
+//
+// WHAT THIS IS NOT. It is not a claim about the ROW: the reading is real, keeps its
+// analyte identity, its canonical name, its series, its Coverage candidacy and its
+// retest clock — a test that produced no answer is if anything MORE worth redrawing.
+// Nothing here hides or drops anything. Quantitation is not an identity axis
+// (docs/internals/clinical-result-terminology.md); this is a property of the VALUE
+// and its only consequence is the flag.
+//
+// THE LINE. "States no result" is narrower than the #687 SCREEN_INDETERMINATE
+// vocabulary it neighbours, and deliberately excludes that vocabulary's core:
+// `indeterminate` / `inconclusive` / `equivocal` / `borderline` are FINDINGS — the
+// assay ran and reported an ambiguous one — and overriding a finding is the very
+// thing #549 forbids. Only a pointer to a narrative, or a statement that no answer
+// was produced, qualifies. (`no result` / `no call` / `not reportable` sit in both
+// lists honestly: on the screening axis they are one of three risk verdicts, here
+// they are the absence of one.) Grow this list on evidence from real exports, never
+// on a synonym that could be a finding.
+//
+// Matched on the WHOLE value, never as a substring: "0.5 (see note)" states a result
+// AND points at a note, and "Negative, see comment below" is a negative. Only a value
+// that is nothing BUT the non-answer is one.
+const NO_RESULT_STATEMENT =
+  /^(?:no results?|not reportable|unable to report|no[-\s]?call|not performed|test not performed|tnp|not done|not tested|cancell?ed|test cancell?ed|pending|results? pending|in process|qns|quantity not sufficient|insufficient (?:specimen|quantity)|specimen unsatisfactory|unsatisfactory(?: for evaluation)?|not applicable|n\/a)$/;
+
+// A pointer to where the finding actually lives. Both halves are required — the
+// value must OPEN with "see" and NAME something to go and read — so "See Note",
+// "SEE COMMENT", "see scanned report" and "please see note below" match while a value
+// that merely mentions a report does not.
+const SEE_POINTER_OPENING = /^(?:please\s+|pls\s+)?see\b/;
+const SEE_POINTER_TARGET =
+  /\b(?:notes?|comments?|commentary|reports?|narrative|interpretation|text|addendum|attachment|attached|image|below|above)\b/;
+
+// Whether a reading's VALUE states no result at all: a pointer to the narrative, or
+// a statement that the assay produced no answer. Case- and punctuation-insensitive
+// ("SEE NOTE", "*See Note*", "(see comment)"), whole-value only.
+export function statesNoResult(value: string | null | undefined): boolean {
+  const s = String(value ?? "")
+    .replace(/[*"'`]/g, "")
+    .replace(/^[\s([{]+|[\s)\]}.,;:!-]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!s || s.length > 48) return false;
+  if (NO_RESULT_STATEMENT.test(s)) return true;
+  return SEE_POINTER_OPENING.test(s) && SEE_POINTER_TARGET.test(s);
+}
+
 export type ScreeningRisk = "low_risk" | "high_risk" | "indeterminate";
 
 export function screeningRisk(
@@ -404,7 +469,20 @@ export function qualitativeFlagResolution(
   loinc?: string | null
 ): "immune" | "abnormal" | null | undefined {
   const c = classifyQualitativeResult(name, value, notes, reference, loinc);
-  if (!c) return undefined; // unrecognized → leave the extractor/existing flag
+  if (!c) {
+    // No classification. Two different reasons hide behind that, and they deserve
+    // opposite answers (#2687). An UNRECOGNIZED value may still encode a verdict the
+    // app cannot re-derive, so the extractor's flag stays — that conservatism is #549
+    // and it is right. A value that states NO RESULT encodes nothing: there is no
+    // verdict to preserve, only a guess, so an out-of-range flag on it is cleared
+    // rather than frozen forever. Deliberately narrow: this branch is reached only
+    // when the classifier itself found nothing, so a row whose NOTES do carry a
+    // recognizable finding (value "See Note", notes "Reactive") classifies above and
+    // keeps that verdict — the pointer is followed rather than overruled.
+    return statesNoResult(value) && isOutOfRange(currentFlag)
+      ? null
+      : undefined;
+  }
   if (c.polarity === "bad") {
     // A bad-polarity positive (positive HBsAg/HCV/HIV, a positive culture) that the
     // extractor left null/normal would otherwise display as "Normal" and never reach

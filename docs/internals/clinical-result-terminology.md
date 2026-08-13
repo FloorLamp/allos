@@ -123,6 +123,21 @@ interpretation, an audiologic diagnosis. Classified at read time by
 `classifyQualitativeResult` (`lib/reference-range/qualitative.ts`) with
 `qualitativePresence` / `screeningRisk` / `qualitativeFlagResolution`.
 
+A value that **states no result** — `See Note`, `SEE COMMENT`, `QNS`, `Cancelled` —
+is a fourth thing again, and it moves a row on **none** of the three axes. The
+analyte is real, so the row keeps its storage category, its catalog place, its
+canonical name, its series, its Coverage candidacy and its retest clock (a test that
+produced no answer is if anything more worth redrawing). What it cannot carry is a
+**flag**: a flag is a verdict about a value, and there is no value — only a pointer
+to the narrative the document files the finding in. `statesNoResult`
+(`lib/reference-range/qualitative.ts`) is the vocabulary and
+`qualitativeFlagResolution` is its one consumer, which **clears** an out-of-range
+flag there instead of preserving it (#2687). It is deliberately narrower than the
+neighbouring `SCREEN_INDETERMINATE`: `indeterminate` / `inconclusive` / `equivocal` /
+`borderline` are ambiguous **findings**, and overriding a finding is what #549
+forbids. Being non-quantitative is not what withholds identity here either — see the
+crossing table above.
+
 It sits on a **different axis from `Assessment`**, and the map says so explicitly
 because conflating the two is the mistake #2479's body made. A `QualitativeResult`
 is registered, browsable where its category allows, and carries full identity; an

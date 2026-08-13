@@ -43,7 +43,14 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // judgeable. Every stored record must re-reconcile once so an imported 158
 // mm[Hg] blood pressure finally gets its "high" flag — this same pass also
 // covers the Body Temperature rows migration 074 converted to canonical °F.
-export const FLAG_LOGIC_VERSION = 9;
+// v10: a value that states no result (#2687) — qualitativeFlagResolution now CLEARS an
+// out-of-range flag on a reading whose value is a pointer to the narrative ("See Note",
+// "SEE COMMENT") or a statement that the assay produced no answer ("QNS", "Cancelled"),
+// instead of leaving the extractor's guess in place forever. Such a flag is permanent
+// per row today — no re-reconcile can reach it — so every stored qualitative row must
+// re-reconcile once for the guesses already on disk to clear. The pass MUTATES stored
+// clinical flags and reports what it touched (see reconcileNonOptimalFlags's audit line).
+export const FLAG_LOGIC_VERSION = 10;
 
 // The canonical fields that can change a record's derived flag: the reference and
 // optimal ranges (incl. sex-specific and age-banded variants), the unit +
