@@ -73,7 +73,7 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
   const row = medicationRow(page, "Naproxen").first(); // first-ok: accumulating fixture row
   await expect(row).toBeVisible();
   await expect(medicationRowLink(row)).toBeVisible();
-  await expect(row.getByText("As Needed", { exact: true })).toBeVisible();
+  await expect(row.getByText("As needed", { exact: true })).toBeVisible();
   await expect(medicationDoseSummary(row)).toHaveText("220 mg");
 });
 

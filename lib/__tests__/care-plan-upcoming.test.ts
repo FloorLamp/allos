@@ -4,6 +4,7 @@ import {
   isCarePlanItemOpen,
   isRecognizedCarePlanStatus,
   carePlanItemToUpcomingItem,
+  carePlanCategoryLabel,
   carePlanUpcomingItems,
   CARE_PLAN_CATEGORIES,
   CARE_PLAN_CATEGORY_LABELS,
@@ -80,7 +81,7 @@ describe("carePlanItemToUpcomingItem", () => {
     expect(item.band).toBeUndefined();
     expect(item.dueText).toBeUndefined();
     // Detail names category + ordering clinician.
-    expect(item.detail).toBe("procedure · Dr Test");
+    expect(item.detail).toBe("Procedure · Dr Test");
   });
 
   it("falls back to a neutral detail when category/provider are absent", () => {
@@ -191,5 +192,30 @@ describe("carePlanDoneResult (#2140)", () => {
 
   it("refuses a forged or vanished id", () => {
     expect(carePlanDoneResult({ kind: "not-found" }).ok).toBe(false);
+  });
+});
+
+describe("carePlanCategoryLabel (#2615 item 4)", () => {
+  it("shows a plain noun instead of the stored FHIR-ish key", () => {
+    expect(carePlanCategoryLabel("encounter")).toBe("Visit");
+    expect(carePlanCategoryLabel("observation")).toBe("Test");
+    expect(carePlanCategoryLabel("procedure")).toBe("Procedure");
+  });
+
+  it("covers every declared category", () => {
+    for (const category of CARE_PLAN_CATEGORIES) {
+      expect(carePlanCategoryLabel(category)).toBeTruthy();
+      expect(carePlanCategoryLabel(category)).not.toBe(category);
+    }
+  });
+
+  it("capitalizes an unrecognized imported value rather than dropping it", () => {
+    // `category` is free-form TEXT — an importer may write its own vocabulary.
+    expect(carePlanCategoryLabel("referral")).toBe("Referral");
+  });
+
+  it("answers null for an absent or blank category", () => {
+    expect(carePlanCategoryLabel(null)).toBeNull();
+    expect(carePlanCategoryLabel("  ")).toBeNull();
   });
 });

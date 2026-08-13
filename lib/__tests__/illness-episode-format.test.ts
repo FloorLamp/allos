@@ -304,7 +304,7 @@ describe("episodeLastDoseClause", () => {
       ],
     });
     expect(episodeLastDoseClause(e, "12h")).toBe(
-      "last acetaminophen · 160 mg / 5 mL 4:02 PM"
+      "last acetaminophen (160 mg / 5 mL) 4:02 PM"
     );
     expect(illnessTimelineEvents(e)[0]).toMatchObject({
       detail: "160 mg / 5 mL",

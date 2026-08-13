@@ -559,7 +559,17 @@ export function episodeLastDoseClause(
   if (!best) return null;
   const name = best.name.toLowerCase();
   const dose = formatMedicationDoseProduct(best.amount, best.product);
-  const medication = dose ? `${name} · ${dose}` : name;
+  // The dose is bound to the DRUG, and the clock is what follows the pair (#2615
+  // item 4). The clause used to read "last ibuprofen · 200 mg 17:33", which put its
+  // two part boundaries in the wrong places twice over: a separator split the drug
+  // from its own dose, and then the clock was concatenated onto the dose with no
+  // boundary at all. Worse, that separator was the SAME " · " the household line
+  // joins its clauses with, so "200 mg" read as a sibling of "sick day 3" — and
+  // `formatMedicationDoseProduct` can itself return a " · "-joined string
+  // ("160 mg · Chewable tablet"), which a third level of the same separator would
+  // have made unreadable. Parentheses close the dose off, and the no-dose clause
+  // ("last ibuprofen 4:02 PM") is unchanged.
+  const medication = dose ? `${name} (${dose})` : name;
   return best.time
     ? `last ${medication} ${formatClockValue(best.time, timeFormat)}`
     : `last ${medication}`;

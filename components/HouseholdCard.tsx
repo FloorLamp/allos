@@ -27,6 +27,8 @@ import type {
   HouseholdSetupRow,
 } from "@/lib/household-setup";
 import type { FindingTone } from "@/lib/findings";
+import { aggregateLabel, planBandRender } from "@/lib/upcoming-aggregate";
+import type { UpcomingItem } from "@/lib/upcoming";
 import { fmtWeight } from "@/lib/units";
 import { subjectActionLabel } from "@/lib/own-profile";
 import { upcomingDueText } from "@/lib/upcoming";
@@ -171,11 +173,79 @@ function AttentionRow({
   );
 }
 
+// One due-dose row. Split out of Attention so the fold below can render exactly the
+// same row inside its disclosure — folding is a RENDERING decision and identity is
+// not (#1496/#1504), so the confirm form, its ids and its outcome toast are unchanged
+// on either side of the summary.
+//
+// THE DETAIL LINE NAMES THE SLOT (#2615 item 2). A caregiver's card listed "Omega-3"
+// / "600 mg" twice in a row, once for the morning dose and once for the evening one,
+// with two identical Confirm buttons — the label must include the attribute that
+// actually distinguishes otherwise identical choices, and this row already knew it:
+// `dueText` is the dose's own bucket ("Morning", "Evening", "Morning · Mondays"),
+// formatted by the ONE `timeBucket`/`cadenceLabel` pair the Upcoming row, the digest
+// and the reminder all use. It leads the line because it is the distinguishing half.
+function DueDoseRow({
+  item,
+  profileId,
+  canWrite,
+  subjectName,
+}: {
+  item: UpcomingItem;
+  profileId: number;
+  canWrite: boolean;
+  subjectName: string | null;
+}) {
+  const detail =
+    [item.dueText, item.detail].filter(Boolean).join(" · ") || null;
+  return (
+    <AttentionRow
+      Icon={IconPill}
+      title={item.title}
+      detail={detail}
+      testid="household-due-dose"
+      action={
+        canWrite && item.doseId != null ? (
+          // Confirm this dose for THIS profile without switching to it —
+          // the hidden profileId targets the action at the card's profile.
+          // Rendered through the shared outcome-toast confirm (#2106), so a
+          // refusal (item paused, dose retired) is said out loud instead of
+          // the row silently re-rendering unchanged.
+          <DoseConfirmButton
+            action={confirmDoseAction}
+            fields={{ profileId, dose_id: item.doseId }}
+            testid="household-confirm-dose"
+            // The visible label stays short; the accessible name carries the same
+            // distinguishing attributes the detail line just gained, so two confirms
+            // on one card are never announced identically.
+            ariaLabel={subjectActionLabel(
+              `Confirm ${[item.title, detail].filter(Boolean).join(" · ")}`,
+              subjectName
+            )}
+            className="inline-flex items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+          >
+            <IconCheck className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
+            {subjectActionLabel("Confirm", subjectName)}
+          </DoseConfirmButton>
+        ) : null
+      }
+    />
+  );
+}
+
 function Attention({ data }: { data: HouseholdCardData }) {
   const { profile, canWrite, rollup, today, subjectName } = data;
   const { dueDoses, lowRefills, nextAppointment } = rollup;
   const nothing =
     dueDoses.length === 0 && lowRefills.length === 0 && !nextAppointment;
+  // The SAME fold decision the Upcoming page's band makes (#1504, #2615 item 2):
+  // this list ran twelve dose rows unrolled on a card whose whole job is a glance,
+  // while the page-side equivalent folded. `planBandRender` is that one decision —
+  // safety-pinned rows lead and never fold, a class under AGGREGATE_MIN_ROWS renders
+  // individually exactly as before, and the aggregate takes the position of the first
+  // row it folded. Reused rather than re-derived, so "when does a dose list fold" has
+  // one answer.
+  const doseNodes = planBandRender(dueDoses);
 
   return (
     <div className="mt-4 space-y-2 border-t border-black/5 pt-3 dark:border-white/5">
@@ -189,37 +259,55 @@ function Attention({ data }: { data: HouseholdCardData }) {
         </div>
       ) : (
         <div className="space-y-2">
-          {dueDoses.map((item) => (
-            <AttentionRow
-              key={item.key}
-              Icon={IconPill}
-              title={item.title}
-              detail={item.detail}
-              testid="household-due-dose"
-              action={
-                canWrite && item.doseId != null ? (
-                  // Confirm this dose for THIS profile without switching to it —
-                  // the hidden profileId targets the action at the card's profile.
-                  // Rendered through the shared outcome-toast confirm (#2106), so a
-                  // refusal (item paused, dose retired) is said out loud instead of
-                  // the row silently re-rendering unchanged.
-                  <DoseConfirmButton
-                    action={confirmDoseAction}
-                    fields={{ profileId: profile.id, dose_id: item.doseId }}
-                    testid="household-confirm-dose"
-                    className="inline-flex items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-                  >
-                    <IconCheck
-                      className="h-3.5 w-3.5"
-                      stroke={2}
-                      aria-hidden="true"
+          {doseNodes.map((node) =>
+            node.node === "item" ? (
+              <DueDoseRow
+                key={node.item.key}
+                item={node.item}
+                profileId={profile.id}
+                canWrite={canWrite}
+                subjectName={subjectName}
+              />
+            ) : (
+              // A plain <details>: no persisted state, collapsed on every visit, and
+              // the count is never hidden — the ALWAYS-PRESENT contract, not an
+              // always-full one.
+              <details
+                key={`aggregate:${node.kind}`}
+                className="group"
+                data-testid="household-dose-aggregate"
+              >
+                <summary
+                  data-testid="household-dose-aggregate-summary"
+                  className="flex cursor-pointer list-none items-center gap-2 rounded-md py-0.5 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+                >
+                  <IconPill
+                    className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                    stroke={1.75}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                    {aggregateLabel(node.kind, node.items.length)} due
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap text-xs font-medium text-brand-700 dark:text-brand-400">
+                    <span className="group-open:hidden">Show</span>
+                    <span className="hidden group-open:inline">Hide</span>
+                  </span>
+                </summary>
+                <div className="mt-2 space-y-2 border-l-2 border-black/5 pl-2 dark:border-white/10">
+                  {node.items.map((item) => (
+                    <DueDoseRow
+                      key={item.key}
+                      item={item}
+                      profileId={profile.id}
+                      canWrite={canWrite}
+                      subjectName={subjectName}
                     />
-                    {subjectActionLabel("Confirm", subjectName)}
-                  </DoseConfirmButton>
-                ) : null
-              }
-            />
-          ))}
+                  ))}
+                </div>
+              </details>
+            )
+          )}
           {lowRefills.map((item) => (
             <AttentionRow
               key={item.key}

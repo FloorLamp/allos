@@ -44,6 +44,7 @@ want a re-check" are the same arithmetic.
 | Longevity's optimal-biomarker pillar                                        | —                                                                                   | consumes the biomarker adapter above; mints nothing                                                           |
 | Recent labs (`lib/recent-labs.ts`)                                          | the flat `RECENT_LAB_STALE_DAYS` presentation floor (#1216)                         | none — an undatable reading is `not-applicable`, never fresh                                                  |
 | Latest vitals (`lib/vitals-latest.ts`)                                      | the per-quantity presentation floor: resting HR 14 days, blood pressure 180 (#2303) | none — an undatable reading is `not-applicable`, never due                                                    |
+| Trends chart cards (`lib/trend-metric-freshness.ts`)                        | the per-metric presentation floor, total over `TrendMetricSlug` (#2615)             | none — an undatable reading is `not-applicable`, never due                                                    |
 
 A tenant **adapts** onto the shared decision. It does not fork it, and it does
 not re-derive "is this stale" in a component.
@@ -68,6 +69,16 @@ notification; and it is not per-profile or configurable, exactly as #1216's roun
 365 is not. It resolves through `freshnessState` like every other tenant, so the
 repo holds one staleness decision rather than one per card.
 
+`TREND_METRIC_PRESENTATION_FLOORS` (#2615) is the third, and it is where the
+per-quantity argument earns a registry: a fortnight-old body temperature is
+history and a fortnight-old adult height is simply your height, so one global
+number would have to be wrong for one of them. It is a `Record` over
+`TrendMetricSlug`, so a new metric is a **compile error** rather than a silent
+default — the `missingFreshnessPolicies` discipline expressed as a type. The three
+quantities that already had a floor (`systolic`, `diastolic`, `resting-hr`) take
+`VITAL_PRESENTATION_FLOORS` **by reference**, never a copied number, so two
+registries cannot come to disagree about how old a blood pressure may be.
+
 ## What is deliberately NOT here
 
 **Phrasing.** "Retest due", "wants a re-check" and "based on older results" are
@@ -88,6 +99,9 @@ presented as current.
 - The two glance cards keep the reading at full prominence and change what the
   line under it says: an amber age statement plus a `title` explaining the tint,
   and — on Latest vitals — no trend arrow, since an arrow is a claim about now.
+- A Trends body-census chart card keeps its headline number and adds an **as-of
+  stamp** naming the day it was read (#2615). The number is the latest reading
+  there is; what it may no longer imply is that it is today's.
 
 Both keep the underlying values visible with their provenance. The fix is what
 the aggregate CLAIMS, never what it hides.

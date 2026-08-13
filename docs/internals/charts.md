@@ -205,6 +205,38 @@ the axis a reader traces a value along. `e2e/trends-sparkline.mobile.spec.ts`
 pins both halves at 390px — no axis inside a tile, axes still present (and ticks
 still ≥ 10px) on a full-size chart.
 
+### One reading is a mark, not a plot (#1485 G / #2615)
+
+**A line needs two points to describe a direction.** Given one, the sparkline
+variant draws nothing at all (its per-point dots are suppressed) and the
+full-size card draws a 30- or 90-day band, empty apart from a single dot
+half-clipped against the y-axis. Both read as a rendering failure rather than as
+the true statement: there is one reading here.
+
+So a one-reading series gets a deliberate mark — a dot on a fading rule with a
+caption naming what it is and when — drawn by `components/SingleReadingMark.tsx`
+and selected by one pure predicate, `loneReading` (`lib/trend-sparkline.ts`),
+counting NON-NULL points so a calendar-densified series (#2258 below) is not
+mistaken for a dense one. The tiles have degraded this way since #1485 G; the
+full chart cards joined them in #2615, over the same predicate and the same
+drawing, so a tile and the card it taps through to cannot render the identical
+situation two ways.
+
+The CAPTION's words stay per surface: "Single reading · Jul 13" inside the
+window, "Latest recorded · Jul 13" for a reading behind it. Those are different
+claims about the same drawing.
+
+### A headline is a claim about NOW (#2615)
+
+A chart card's header carries the latest plotted value in large type. That is
+current-shaped copy, and past the metric's **presentation floor** it may not be
+left unqualified — the freshness doctrine's rule, one surface over from the
+glance cards that already follow it. The value stays exactly where it is, at
+full prominence, and gains an as-of stamp naming the day it was read; the floor
+is per metric (`lib/trend-metric-freshness.ts`) and the stamp's colour and hover
+sentence are the shared glance-age treatment (`lib/glance-age.ts`, form
+`as-of`). See `docs/internals/freshness.md`.
+
 ### Long ranges aggregate (#1938)
 
 **A year of daily readings is not 365 marks.** Past ~6 months of span, a dense

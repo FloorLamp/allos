@@ -1713,6 +1713,9 @@ export default async function BodySection({
               annotations={annotations}
               windows={protocolWindows}
               gapWindow={dayFillWindow(range)}
+              // The profile-local day each card's headline is aged against
+              // (#2615 item 3), never the server's.
+              today={todayStr}
             />
           ) : (
             <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
@@ -1775,6 +1778,9 @@ export default async function BodySection({
                 annotations={annotations}
                 windows={protocolWindows}
                 gapWindow={dayFillWindow(range)}
+                // The profile-local day each card's headline is aged against
+                // (#2615 item 3), never the server's.
+                today={todayStr}
               />
             ) : (
               <EmptyState message="No body metrics yet. Add a reading with “+ Log” above to see the trend." />

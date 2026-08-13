@@ -46,12 +46,10 @@ const ALLOWLIST = new Map<string, string>([
     "audiogram threshold matrix: compact numeric grid keyed by frequency, " +
       "same deliberate treatment as its input-grid twin AudiogramForm",
   ],
-  [
-    "components/illness/EpisodeTimeline.tsx",
-    "pre-#1426 hand-rolled card mode: its mobile grid re-lays cells with its " +
-      "own paddings and print/mobile group-collapse rules; migrating it onto " +
-      "ResponsiveTable is #1491 item 2 (deferred there, not silent drift)",
-  ],
+  // (components/illness/EpisodeTimeline.tsx used to live here as the last hand-rolled
+  // card mode — the prior art ResponsiveTable was generalised from. It renders through
+  // <ResponsiveTable>/<Td> since #2533 item 2, so its cells carry the shared vocabulary
+  // and the entry is deleted rather than left dormant.)
 ]);
 
 function walk(dir: string): string[] {

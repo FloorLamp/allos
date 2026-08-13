@@ -278,3 +278,32 @@ export const WAIST_SEEDED_READINGS = 4;
 // writer upserts on its natural key, so a re-run corrects the day rather than
 // stacking a second point.
 export const WAIST_LOG_CM = 91.5;
+
+// ── What a chart card may CLAIM about its latest value (issue #2615 item 3) ──
+// A dedicated ADULT profile whose body census carries exactly the two states the
+// chart cards used to render dishonestly, one per card, so each is observable
+// alone:
+//
+//   • WEIGHT — two weigh-ins, the newer of them past `weight`'s presentation floor
+//     (45 days). The card plots a real line and headlines a real number, and that
+//     number is no longer today's — so the header must stamp the day it was read.
+//     Two readings, not one, so the as-of claim is isolated from the single-reading
+//     degrade below.
+//   • BODY FAT — exactly ONE reading, recent enough that its currency is not in
+//     question. A 90-day band with one dot clipped against the y-axis is the render
+//     this replaces with the tiles' own single-reading mark.
+//
+// Dedicated ON PURPOSE (#868): both states are ABSENCES in disguise — "no second
+// body-fat reading", "no weigh-in since" — and one neighbour's ordinary write
+// destroys either. Read-only in its spec (it navigates only), so --repeat-each stays
+// clean.
+export const E2E_LOGIN_TRENDS_CURRENCY = "e2e_trends_currency";
+export const TRENDS_CURRENCY_PROFILE = "Trends Currency (e2e)";
+// Days back for each seeded reading. The weigh-ins straddle the 45-day floor so the
+// OLDER one is stale too and the newer one decides; both sit inside the 90-day
+// default window, so the card has a line to draw.
+export const TRENDS_CURRENCY_WEIGH_IN_DAYS = [70, 50] as const;
+export const TRENDS_CURRENCY_WEIGH_IN_KG = [80.6, 79.2] as const;
+// The lone body-fat reading, well inside the window and well inside its own floor.
+export const TRENDS_CURRENCY_BODY_FAT_DAYS = 10;
+export const TRENDS_CURRENCY_BODY_FAT_PCT = 21.4;

@@ -134,6 +134,7 @@ import {
   seedMetricFold,
   seedLongRange,
   seedPeakFlow,
+  seedTrendsCurrency,
   seedWaistCircumference,
 } from "./seed/trends";
 
@@ -249,3 +250,6 @@ seedNotifyTickLog();
 // Appended LAST (#2345): one admin login + two new profiles, so every existing
 // fixture's row ids stay exactly where they were.
 seedNotifyScope();
+// Appended LAST (#2615): one new profile plus its own body_metrics rows, so every
+// existing fixture's row ids stay exactly where they were.
+seedTrendsCurrency();
