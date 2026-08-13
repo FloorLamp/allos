@@ -336,10 +336,11 @@ jobs:
         with:
           name: next-build
           path: |
-            .next
-            !.next/cache
+            .next/**
+            !.next/cache/**
           retention-days: 1
           compression-level: 1
+          include-hidden-files: true
 
   e2e:
     needs: build-once
