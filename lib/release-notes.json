@@ -4,6 +4,18 @@
       "date": "2026-08-13",
       "entries": [
         {
+          "pr": 2658,
+          "title": "Total hepatitis A antibody is a catalogued marker instead of an uncatalogued one",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2655,
+          "title": "An illness episode fits on a phone, and four surfaces stop clipping at 390px",
+          "kind": "fix",
+          "issues": [2612, 2614]
+        },
+        {
           "pr": 2647,
           "title": "Two things you log are compared for you, with both counts shown and no advice attached",
           "kind": "feature",
@@ -38,6 +50,42 @@
     {
       "date": "2026-08-12",
       "entries": [
+        {
+          "pr": 2591,
+          "title": "A clinical document with a single patient stops being screened as if its subject were unclear",
+          "kind": "fix",
+          "issues": [2558, 2136, 2135]
+        },
+        {
+          "pr": 2597,
+          "title": "Three things that fired at the wrong time now fire at the right one",
+          "kind": "fix",
+          "issues": [2570, 2567, 2560]
+        },
+        {
+          "pr": 2598,
+          "title": "Four rows stop stating something the page beside them contradicts",
+          "kind": "fix",
+          "issues": [2578, 2582]
+        },
+        {
+          "pr": 2602,
+          "title": "A ring overnight and a phone nap on the same day are two sleep records, not a duplicate",
+          "kind": "fix",
+          "issues": [2552, 2551, 2192]
+        },
+        {
+          "pr": 2617,
+          "title": "Digest lines you keep declining stop coming back, and an unlogged imported medication can be stopped from its nudge",
+          "kind": "fix",
+          "issues": [2543, 2574]
+        },
+        {
+          "pr": 2620,
+          "title": "A cancelled delete no longer leaves its menu stuck open, with two more interaction fixes",
+          "kind": "fix",
+          "issues": [2600, 2523, 2606]
+        },
         {
           "pr": 2549,
           "title": "Empty panels and view switchers look and read the same everywhere",
