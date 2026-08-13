@@ -188,6 +188,20 @@ becomes a two-sided **UV dose** (enough for vitamin D/circadian light, with a
 burn-risk heads-up past your skin type's threshold) — degrading gracefully to a
 clear-sky estimate, then to plain minutes, offline.
 
+The feed is **windowed** rather than unrolled. Anything dated after today folds
+into one **Scheduled ahead** line at the top — expandable, never the opening
+content, so the page starts on your own recent history instead of on a goal
+target date months out. The last **14 days** stay event-grained, exactly as
+before: day groups with individual cards. Everything older collapses to one card
+per **calendar month** ("May 2026 · 47 events · 22 days"), expanding in place on
+tap. Nothing is removed — a closed card always states how much is inside it, and
+the **Oldest** jump opens whichever card holds its destination on the way. Which
+folds are open lives in the URL (`?open=2026-05`), so an expanded month is
+shareable, bookmarkable and reachable with the back button. A profile with
+nothing in the last fortnight arrives with its newest month already open. The
+category and date filters compose with all of this; a single-day view is never
+windowed, because a day is already the window.
+
 A brand-new account sees a Timeline empty state that names the next action —
 links to log an activity, add a body metric, or import a document, the three
 sources a timeline fills from. Once a category pill or a date window is applied,
@@ -2170,8 +2184,9 @@ the form, the quick actions, and any future import path share them:
   only assigned once the following period is logged, because a phase says what
   the body did, not what it will do — and for the same reason there is **no
   phase at all after today** (#2613). The derivation takes the profile-local
-  current day and refuses any date past it: the Timeline's default view leaves
-  its upper bound open so future-dated events stay visible, and a goal target
+  current day and refuses any date past it: the Timeline's window leaves its
+  upper bound open so future-dated events stay reachable (inside the Scheduled
+  ahead fold), and a goal target
   date months out used to arrive carrying a bare "Follicular" chip in the same
   factual voice as today's. Several periods will happen in between, so that
   phase is not merely uncertain, it is unknowable — the refusal is an ABSENCE
