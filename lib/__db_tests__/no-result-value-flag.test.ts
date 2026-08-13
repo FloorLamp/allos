@@ -152,3 +152,127 @@ describe("a stored value that states no result (#2687)", () => {
     expect(flagOf(id)).toBeNull();
   });
 });
+
+// The guard around that transition, re-derived after review (#2712). These are STORED
+// rows carried through the same two reconciles above — the pure verdict is pinned in
+// lib/__tests__/reference-range.test.ts; what is pinned here is that nothing rewrites
+// them on disk.
+describe("what the no-result clear must NOT reach (#2712)", () => {
+  // R1: the value states its result right after the pointer. R2: the value is a bare
+  // pointer and the finding is in the notes. R3: a person set the flag by hand.
+  const cases: Array<{
+    label: string;
+    name: string;
+    value: string;
+    notes: string | null;
+    reference: string | null;
+    flag: string;
+    edited: number;
+  }> = [
+    {
+      label: "R1 pointer then a positive",
+      name: "Some Novel Assay",
+      value: "See note: POSITIVE",
+      notes: null,
+      reference: "Negative",
+      flag: "abnormal",
+      edited: 0,
+    },
+    {
+      label: "R1 pointer then a titer",
+      name: "ANA Screen, IFA",
+      value: "See note: POSITIVE 1:640",
+      notes: null,
+      reference: "Negative",
+      flag: "abnormal",
+      edited: 0,
+    },
+    {
+      label: "R1 pointer then a number",
+      name: "BUN/CREATININE RATIO",
+      value: "See below: 15.2 mg/dL",
+      notes: null,
+      reference: "6-22",
+      flag: "high",
+      edited: 0,
+    },
+    {
+      label: "R2 finding in the notes, unrecognized analyte",
+      name: "Some Novel Assay",
+      value: "See Note",
+      notes: "REACTIVE",
+      reference: "Negative",
+      flag: "abnormal",
+      edited: 0,
+    },
+    {
+      label: "R2 finding in the notes, recognized titer",
+      name: "Rubella IgG",
+      value: "See below",
+      notes: "Reactive",
+      reference: null,
+      flag: "abnormal",
+      edited: 0,
+    },
+    {
+      label: "R3 hand-edited row",
+      name: "HEPATITIS A Ab/TOTAL",
+      value: "See Note",
+      notes: null,
+      reference: "Negative",
+      flag: "abnormal",
+      edited: 1,
+    },
+  ];
+
+  it("survives the boot reconcile and the request-time one", () => {
+    const insert = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, reference_range,
+          notes, flag, edited)
+       VALUES (?, '2026-03-01', 'lab', ?, ?, NULL, ?, ?, ?, ?)`
+    );
+    const ids = cases.map((c) =>
+      Number(
+        insert.run(
+          profileId,
+          c.name,
+          c.value,
+          c.reference,
+          c.notes,
+          c.flag,
+          c.edited
+        ).lastInsertRowid
+      )
+    );
+
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES ('canonical_flags_sig', 'stale-again') " +
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+    ).run();
+    reconcileFlagsIfCanonicalChanged(db);
+    reconcileFlags(profileId, ids);
+
+    expect(cases.map((c, i) => `${c.label}: ${flagOf(ids[i])}`)).toEqual(
+      cases.map((c) => `${c.label}: ${c.flag}`)
+    );
+  });
+
+  it("and the genuine non-result beside them still clears", () => {
+    // The same two passes, over a row whose value really is nothing but a pointer and
+    // whose notes say nothing. Over-matching is not fixed by breaking the feature.
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, value_num, reference_range,
+              canonical_name, flag, edited)
+           VALUES (?, '2026-03-02', 'lab', 'HEPATITIS A Ab/TOTAL', 'See Note', NULL,
+                   'Negative', 'Hepatitis A Antibody, Total', 'abnormal', 0)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    reconcileFlags(profileId, [id]);
+    expect(flagOf(id)).toBeNull();
+  });
+});

@@ -781,12 +781,24 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   // migration 034 `loinc` column (e.g. a migration test that boots at an earlier
   // revision), so select it only when present and fall back to NULL (→ the
   // classifier's name-based path) otherwise (#684).
-  const hasLoinc = (
-    db.prepare(`PRAGMA table_info(medical_records)`).all() as { name: string }[]
-  ).some((c) => c.name === "loinc");
+  // `edited` (the #133 hand-edit lock, migration 002) is probed the same way and for
+  // the same reason: this pass may boot against a pre-002 schema. It gates the #2687
+  // no-result clear (#2712 R3) — a mass rewrite of stored clinical flags must not
+  // reach a row a person has corrected by hand. Absent → 0 → nothing is locked, which
+  // is exactly right for a schema that predates the lock.
+  const medicalColumns = new Set(
+    (
+      db.prepare(`PRAGMA table_info(medical_records)`).all() as {
+        name: string;
+      }[]
+    ).map((c) => c.name)
+  );
+  const hasLoinc = medicalColumns.has("loinc");
+  const hasEdited = medicalColumns.has("edited");
   const qualRowsStmt = db.prepare(
     `SELECT id, canonical_name, name, value, notes, reference_range, flag,
-            ${hasLoinc ? "loinc" : "NULL AS loinc"}
+            ${hasLoinc ? "loinc" : "NULL AS loinc"},
+            ${hasEdited ? "edited" : "0 AS edited"}
        FROM medical_records
       WHERE value_num IS NULL AND category IN ('lab','biomarker')`
   );
@@ -802,6 +814,14 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   let qualitativeCleared = 0;
 
   const run = db.transaction(() => {
+    // runBootTx re-runs the whole callback on a SQLITE_BUSY retry AFTER the rollback,
+    // so the counts are rebuilt from scratch rather than carrying a lost attempt's
+    // increments forward — "5 rows written, 7 reported" is not an audit record, least
+    // of all under the contention this boot path exists to survive (#581/#582). Same
+    // reset lib/cycling-stream-summary-db.ts does, for the same reason (#2712 R4).
+    numericChanged = 0;
+    qualitativeSet = 0;
+    qualitativeCleared = 0;
     for (const p of profiles) {
       const sex = readSex(p.id);
       const birthdate = readBirthdate(p.id);
@@ -849,6 +869,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
         reference_range: string | null;
         flag: string | null;
         loinc: string | null;
+        edited: number | null;
       }[]
     ).map((r) => ({
       id: r.id,
@@ -858,6 +879,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
       reference: r.reference_range,
       flag: r.flag,
       loinc: r.loinc,
+      edited: r.edited,
     }));
     // …and, since #2687, clear the flag a value that states no result ("See Note")
     // was left carrying — the one case where overriding the extractor is safe,

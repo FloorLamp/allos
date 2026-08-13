@@ -138,6 +138,20 @@ neighbouring `SCREEN_INDETERMINATE`: `indeterminate` / `inconclusive` / `equivoc
 forbids. Being non-quantitative is not what withholds identity here either — see the
 crossing table above.
 
+Four conditions gate that clear, and each one exists because dropping it deletes a
+real verdict (#2712). The **value** must be consumed WHOLE by the non-answer
+vocabulary — matching a `see` prefix plus a target word anywhere let `See note:
+POSITIVE` count as stating no result, and the extractor is instructed to copy the
+document's own H/L marker, so the flag beside a printed result is the lab's. The
+**flag** must be out of range: this is one transition, never a promotion. The
+**notes** must assert nothing recognizable — `classifyQualitativeResult` reads notes
+only inside its recognized classes, so an unrecognized analyte's narrative was being
+discarded by the very clear that claims to follow the pointer. And the **row** must
+not be edit-locked (`isEditLocked`, #133): `updateResult` writes the user's chosen
+flag and `edited = 1` and then reconciles on the next line, so without the lock the
+save deletes the flag it just stored. The lock gates this clear only; the older
+#544/#548 transitions are unchanged.
+
 It sits on a **different axis from `Assessment`**, and the map says so explicitly
 because conflating the two is the mistake #2479's body made. A `QualitativeResult`
 is registered, browsable where its category allows, and carries full identity; an
