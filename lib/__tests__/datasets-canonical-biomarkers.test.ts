@@ -126,9 +126,20 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // boot. FLAG_LOGIC_VERSION is deliberately NOT bumped: the derivation LOGIC is
 // unchanged and the dataset half of the signature already forces the re-reconcile on
 // its own (the #2300/#2337/#2335 reasoning).
+// Updated for the hepatitis A total-antibody entry: ONE new curated row, RANGELESS
+// (every ref/optimal field null), so it adds no numeric band and re-judges nothing by
+// value. What it changes is IDENTITY — a name that had no curated entry now has one,
+// so the ai-coined `Hepatitis A Ab Total` vocabulary row is superseded, its stored
+// readings are re-pointed by mergeSupersededCanonicalNames, and the boot reconcile
+// judges them against a real entry instead of none. It fell through a seam rather
+// than being declined: the hepatitis serology was curated as INFECTION markers
+// (HBsAg, anti-HCV) and the immunity titers as the MMR/varicella set, and total
+// anti-HAV is a hepatitis marker that reads as an immunity titer — belonging to
+// neither list's author. FLAG_LOGIC_VERSION is again NOT bumped: the derivation logic
+// is unchanged and the dataset half of the signature forces the one re-reconcile.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "d33f5288493fa580d832e338e4adf5671d117a42c116097ab5504aed1505e684"; // phi-scan-ok
+  "82244293d78b9ae58249a6f2f7c97898acc303a46887ed899488821263cb7f6d"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

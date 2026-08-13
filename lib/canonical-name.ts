@@ -321,6 +321,17 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Alpha-Fetoprotein", "Alpha-Fetoprotein (AFP)"],
   ["CEA", "Carcinoembryonic Antigen (CEA)"],
   ["Carcinoembryonic Antigen", "Carcinoembryonic Antigen (CEA)"],
+  // Hepatitis A TOTAL antibody. `normalizeCanonicalKey` sorts tokens, so "Hepatitis A
+  // Total Antibody" already folds onto the entry and needs no route; what does need one
+  // is the abbreviated "Ab" spelling, which is what a real Epic export printed
+  // ("HEPATITIS A Ab/TOTAL") and what an AI import then coined as its own vocabulary
+  // row. NOT aliased, deliberately: bare "Hepatitis A Antibody" / bare "Anti-HAV". The
+  // IgM-only assay is a DIFFERENT test — it answers acute infection where the total
+  // answers immunity — so an unqualified spelling must coin its own entry rather than
+  // inherit this one's identity (the §2 trap, same shape as bare "ANA" and bare "pH").
+  ["Hepatitis A Ab Total", "Hepatitis A Antibody, Total"],
+  ["HAV Ab Total", "Hepatitis A Antibody, Total"],
+  ["Anti-HAV Total", "Hepatitis A Antibody, Total"],
   ["HBsAg", "Hepatitis B Surface Antigen (HBsAg)"],
   ["Hepatitis B Surface Antigen", "Hepatitis B Surface Antigen (HBsAg)"],
   ["HBsAb", "Hepatitis B Surface Antibody (HBsAb)"],

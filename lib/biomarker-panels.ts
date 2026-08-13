@@ -430,6 +430,7 @@ export const BIOMARKER_PANELS: Record<
     "Carcinoembryonic Antigen (CEA)",
   ],
   "infectious-disease": [
+    "Hepatitis A Antibody, Total",
     "Hepatitis B Surface Antigen (HBsAg)",
     "Hepatitis B Surface Antibody (HBsAb)",
     "Hepatitis C Antibody (Anti-HCV)",
