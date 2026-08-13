@@ -102,12 +102,7 @@ export interface IllnessTimelineDayGroup {
 //     narrow to "Symptoms", which hides the medicine — the exact mistake above —
 //     so it stays on "All" and keeps the legend fix's height win alone.
 export type IllnessTimelineFilter =
-  | "all"
-  | "illness"
-  | "symptoms"
-  | "temperature"
-  | "medications"
-  | "care";
+  "all" | "illness" | "symptoms" | "temperature" | "medications" | "care";
 
 export const ILLNESS_TIMELINE_FILTERS: readonly {
   value: IllnessTimelineFilter;

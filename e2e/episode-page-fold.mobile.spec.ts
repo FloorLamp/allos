@@ -138,8 +138,10 @@ function seedOwnedEpisode(
     }
     if (!opts.withTemperature) continue;
     const taken = zonedWallTimeToUtc(opts.tz, day, "08:00");
-    expect(taken, "the fixture clock must resolve in the profile's zone").not
-      .toBeNull();
+    expect(
+      taken,
+      "the fixture clock must resolve in the profile's zone"
+    ).not.toBeNull();
     db.prepare(
       `INSERT INTO medical_records
          (profile_id, date, category, name, value, value_num, unit,
@@ -292,7 +294,6 @@ test.beforeEach(() => {
   }
 });
 
-
 test.describe("an active episode page on a phone (#2612)", () => {
   test("the dose caption under the History chart is one bounded legend line", async ({
     page,
@@ -412,7 +413,9 @@ test.describe("an active episode page on a phone (#2612)", () => {
       // given for the illness would have thrown out the most important row on the
       // page along with the noise.
       expect(hiddenByChip.length).toBe(seeded.supplementLogs);
-      expect(hiddenByChip.filter((text) => text.includes(MEDICINE))).toEqual([]);
+      expect(hiddenByChip.filter((text) => text.includes(MEDICINE))).toEqual(
+        []
+      );
       // The medicine is not merely present — it is on screen, in a day group the
       // phone's own earlier-days fold is not holding back (that fold predates this
       // change and is orthogonal to the chip).
