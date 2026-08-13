@@ -29,6 +29,7 @@ import {
   type ReconciliationSummary,
 } from "./import-report";
 import { normalizeDurationValue } from "./duration-value";
+import type { VisitDiagnosisRank } from "./visit-diagnosis-rank";
 import {
   summarizeExtractionConfidence,
   type ConfidenceItem,
@@ -270,6 +271,12 @@ export interface PersistEncounter {
   class_code: string | null;
   reason: string | null;
   diagnoses: string[];
+  // The structured rank/role the SOURCE stated about those diagnoses (#2589) —
+  // FHIR Encounter.diagnosis.rank / .use. Optional for the same reason `code` is
+  // (existing PersistInput literals need no change); persist encodes it beside
+  // the joined summary and writes null when it is absent, which is every CDA and
+  // AI path. Never inferred from a display name.
+  diagnosis_ranks?: VisitDiagnosisRank[];
   provider: ImportedProvider | null;
   location: ImportedProvider | null;
   notes: string | null;
@@ -1344,6 +1351,10 @@ export function healthRecordToPersistInput(
       class_code: e.class_code,
       reason: e.reason,
       diagnoses: e.diagnoses,
+      // Carried, not re-derived (#2589): only the FHIR mapper fills this, from
+      // Encounter.diagnosis.rank / .use. The CDA parser has no rank element to
+      // read, so its encounters arrive with none.
+      diagnosis_ranks: e.diagnosis_ranks ?? [],
       provider: e.provider ?? null,
       location: e.location ?? null,
       notes: e.notes ?? null,

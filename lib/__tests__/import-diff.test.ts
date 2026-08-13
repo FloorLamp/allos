@@ -4,6 +4,7 @@ import {
   recordRow,
   medicationRow,
   bodyMetricRow,
+  encounterRow,
   diffRows,
   computeImportDiff,
   snapshotFromPersistInput,
@@ -259,5 +260,38 @@ describe("bodyMetricRow display precision (issue #1109)", () => {
     // beyond 2dp), so a reprocess that re-derives the same reading is still detected
     // as unchanged rather than diffing against the rounded label.
     expect(row.fields).toContain("weight_kg=70.4382");
+  });
+});
+
+describe("encounterRow carries the structured rank (#2589)", () => {
+  const base = {
+    date: "2026-05-04",
+    end_date: null,
+    type: "Office Visit",
+    class_code: null,
+    reason: null,
+    diagnoses: "Acute bronchitis; Anemia",
+    external_id: "ccda:encounter:enc-1",
+  };
+
+  it("diffs a visit whose only change is a newly stated rank", () => {
+    // The reprocess preview promises "nothing to save" honestly. A re-import that
+    // would ADD a source-stated rank changes what the visit card renders, so it
+    // must not preview as unchanged just because the diagnosis TEXT is identical.
+    const before = encounterRow({ ...base, diagnosis_ranks: null });
+    const after = encounterRow({
+      ...base,
+      diagnosis_ranks: '[{"name":"Acute bronchitis","rank":1}]',
+    });
+    expect(after.key).toBe(before.key);
+    expect(after.fields).not.toBe(before.fields);
+    expect(diffRows([before], [after]).changed).toHaveLength(1);
+  });
+
+  it("stays unchanged when the same ranks come back", () => {
+    const ranks = '[{"name":"Acute bronchitis","rank":1}]';
+    const before = encounterRow({ ...base, diagnosis_ranks: ranks });
+    const after = encounterRow({ ...base, diagnosis_ranks: ranks });
+    expect(diffRows([before], [after]).changed).toHaveLength(0);
   });
 });
