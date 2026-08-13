@@ -37,10 +37,33 @@ import { workerDbPath } from "./worker-env";
 // timeline event or label a Panel cell.
 const VENDOR_TITLES = /(Quest Diagnostics|LabCorp|BioReference) results/;
 
+// The Timeline windows its feed (#2657): older months arrive as collapsed cards and
+// render none of their rows. This assertion is about TITLING, not windowing, and its
+// absence half ("no vendor title anywhere in the feed") is only meaningful over a feed
+// that is actually rendered — so it opens every month the shared profile's lab draws
+// live in, by asking the database which those are rather than guessing.
+function medicalMonthsQuery(): string {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const rows = db
+      .prepare(
+        `SELECT DISTINCT substr(date, 1, 7) AS month
+           FROM medical_records
+          WHERE profile_id = 1 AND date IS NOT NULL
+          ORDER BY month DESC`
+      )
+      .all() as { month: string }[];
+    return rows.map((r) => `&open=${r.month}`).join("");
+  } finally {
+    db.close();
+  }
+}
+
 test("the Timeline titles lab draws by clinical panel, not the lab vendor (#1502)", async ({
   page,
 }) => {
-  await page.goto("/timeline?category=medical");
+  await page.goto(`/timeline?category=medical${medicalMonthsQuery()}`);
 
   // A clinically-named event is present…
   await expect(
