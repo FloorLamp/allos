@@ -1,7 +1,7 @@
 ---
 name: needs-human
 description: Drain the needs-human queue with the owner present — gather every issue/PR flagged for a human decision, verify each question is still live and ripe, ask the owner in batched recommendation-first questions, record rulings on the issue so agents can act on them, then un-label, un-assign, and route (back to the queue, or merge when the answer was a merge gate). Use when the owner asks to clear the decision queue, sweep or drain the needs-human label, or asks "what needs me" across the tracker. NOT for clarifying questions while designing a spec or drafting an issue — "ask me questions" in that context is ordinary conversation about the work at hand, not a queue sweep.
-allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(gh api:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(git diff:*), Bash(git fetch:*), mcp__github__merge_pull_request, mcp__github__issue_read, mcp__github__pull_request_read
+allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(gh api:*), Bash(curl:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(git diff:*), Bash(git fetch:*), mcp__github__merge_pull_request, mcp__github__issue_read, mcp__github__pull_request_read
 ---
 
 # needs-human — the resolution half of the queue
@@ -25,11 +25,28 @@ rewrite the doctrine that governs another) · when the owner's answer contradict
 recorded doctrine, that tension belongs IN the question's options, stated before
 they answer — never discovered after.
 
+## 0. Transport — `gh` if you have it, curl if you do not
+
+REST always, never `gh issue`/`gh pr` subcommands as the primary path (they ride
+GraphQL, whose rate pool exhausts independently; REST has survived every sweep).
+
+**Check once, at the start: `command -v gh`.** `gh` is NOT installed in a Claude
+Code remote session, which is the session type that most often owns this queue —
+the first live run of this skill hit that at step 1. `docs/orchestration.md` §Tooling
+prescribes the fallback and it is exact:
+
+```bash
+TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
+curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/OWNER/REPO/..."
+```
+
+Never hunt for a credential — use the variable by name; if it is unset, say so and
+stop. Every `gh api X` below reads as "that path, by whichever transport you have".
+
 ## 1. Gather
 
-REST first — `gh api`, never `gh issue`/`gh pr` subcommands as the primary path
-(they ride GraphQL, whose rate pool exhausts independently; REST has survived
-every sweep). The label endpoint returns issues AND PRs:
+The label endpoint returns issues AND PRs:
 
 ```bash
 gh api "repos/OWNER/REPO/issues?labels=needs-human&state=open" \
@@ -75,6 +92,23 @@ For each item, before any question reaches the owner:
 Batch with `AskUserQuestion`, up to 4 questions per call, multiple rounds until
 the queue is drained or the owner stops. Per question:
 
+- **Say what it does to the person using the app, in plain English, FIRST.** Not
+  the module, not the function, not the doctrine — what someone trying to do
+  something notices. This is the rule the skill's own first run failed: a
+  question about whether a signifier check should run at Tier 1 came back
+  "explain simply, how does this impact the user", and the answer that actually
+  let the owner decide was three sentences with no identifiers in them — _a
+  child's BMI percentile is saved, but it does not show up in the list you would
+  browse to find it, and the one link that points at it opens a chart that
+  cannot display it. For a child the percentile is the meaningful number, so the
+  useful value is the hard one to find._
+  Write that paragraph BEFORE the options, every time, even when the mechanism
+  seems self-evident — it is self-evident to whoever just read the code, which
+  is exactly why they are the wrong judge of it. If a question genuinely has no
+  user-visible consequence, say so in the same place and explain what it costs
+  instead (agent time, a guard's reach, a doc's truthfulness); "no user impact"
+  is useful context, not a reason to skip the sentence.
+  Symbol names belong AFTER that, for the implementer who reads the ruling later.
 - **Recommendation first**, labeled `(Recommended)`, with the reasoning IN the
   description — the owner is ratifying or overruling an argument, not picking a
   label.
@@ -119,6 +153,13 @@ Only when EVERY question on an item is resolved:
 gh api -X DELETE "repos/OWNER/REPO/issues/N/labels/needs-human"
 gh api -X DELETE "repos/OWNER/REPO/issues/N/assignees" -f "assignees[]=OWNER"
 ```
+
+**VERIFY BY RE-READING THE ITEM, NEVER THE LIST.** `GET issues?labels=needs-human`
+is served stale for a while after a successful delete: on this skill's first run
+three removals each returned `200`, and the list endpoint immediately afterwards
+still reported all three plus a fourth — four items that had just become one. A
+sweep that trusts that list re-asks questions it already resolved, or reports a
+queue it has already drained. `GET issues/N` and check `labels` per item.
 
 Partially answered → body updated with what was ruled, label and assignment
 stay, the remaining questions enumerated so the next sweep asks only those.

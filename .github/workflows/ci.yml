@@ -140,6 +140,21 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The e2e shard planner enumerates the suite with a cheap directory walk
+      # instead of `playwright --list`. The walk only has to be a SUPERSET of what
+      # Playwright resolves for the partition guarantee to hold — but "superset"
+      # is a claim about playwright.config.ts, so it is checked rather than
+      # assumed, and the check names any file that would run on no shard.
+      #
+      # It lives HERE because the expensive half is the `--list` it was moved out
+      # of the browser tier to avoid: this job has ~130s of slack against the e2e
+      # matrix, so ~8s costs a PR nothing, whereas the same 8s on the twelve
+      # shards was 8s of critical path and 96s of runner time every run. It needs
+      # no browser (Playwright resolves test files without launching one) and no
+      # build.
+      - name: Verify the e2e shard plan covers the whole suite
+        run: ./node_modules/.bin/tsx scripts/e2e-shard-plan.ts --verify
+
   # Pure unit suite AND the coverage regression floor in one pass. This runs
   # the same test set as `npm test` (vitest.config.ts include: lib/**), just
   # under v8 coverage, so it doubles as the correctness gate — a separate
@@ -403,6 +418,12 @@ jobs:
       # It EXITS NON-ZERO if the twelve buckets are not an exact partition of the
       # suite. That is the failure worth being loud about: a spec in no bucket is
       # run by no shard, and the matrix still goes green.
+      #
+      # The planner enumerates the suite by WALKING e2e/ (2ms) rather than asking
+      # `playwright --list` (8.4s here, on every shard, for a name list the run
+      # then recomputes). The `check` job runs `--verify` to prove that walk still
+      # covers everything Playwright resolves — see that step for why the check
+      # belongs there and not on this path.
       - name: E2E (Playwright, shard ${{ matrix.shard }}/${{ strategy.job-total }})
         if: steps.changes.outputs.code == 'true'
         run: |
@@ -414,7 +435,11 @@ jobs:
           # The command substitution is what enforces the plan's exit code —
           # `set -e` aborts here, whereas piping the script into mapfile would
           # swallow a non-zero exit and leave ARGS empty.
-          PLAN=$(npx tsx scripts/e2e-shard-plan.ts ${{ matrix.shard }} ${{ strategy.job-total }})
+          #
+          # `./node_modules/.bin/tsx`, not `npx tsx`: npx re-resolves the binary
+          # (and can reach the registry when it misses) on the critical path of
+          # every shard, to run a script the local install already provides.
+          PLAN=$(./node_modules/.bin/tsx scripts/e2e-shard-plan.ts ${{ matrix.shard }} ${{ strategy.job-total }})
           # Empty would mean NO file filter, i.e. run the whole suite on every
           # shard. The planner never emits it; refuse rather than trust that.
           [ -n "$PLAN" ] || { echo "::error::empty shard plan"; exit 1; }
