@@ -156,9 +156,7 @@ export type PairedFactorSource = "alcohol-servings" | "logged-activity";
 
 // Which measured series the outcome is read from. Same closed-union discipline.
 export type PairedOutcomeStream =
-  | "overnight-hrv"
-  | "next-morning-resting-hr"
-  | "main-sleep-minutes";
+  "overnight-hrv" | "next-morning-resting-hr" | "main-sleep-minutes";
 
 // How the CONTROL arm is populated — the "absence of a log" question above.
 //   • logging-evidence  — a day joins the without-arm only when it carries independent

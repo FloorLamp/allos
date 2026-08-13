@@ -140,9 +140,7 @@ export function gatherPairedNights(
   // logged day. (`logging-evidence` needs no such bound — its observed set already
   // answers day by day.)
   const controlFrom =
-    days.observed === null
-      ? [...days.present].sort()[0]
-      : factorFrom;
+    days.observed === null ? [...days.present].sort()[0] : factorFrom;
 
   const byDate = new Map(
     series(entry.outcome.stream).map((p) => [p.date, p.value])
