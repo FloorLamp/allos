@@ -288,16 +288,41 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       medicationRows.getByTestId("illness-medication-dose")
     ).toHaveCount(await medicationRows.count());
 
-    // Filters keep the complete ledger as the default but make a long episode scannable.
+    // Filters keep the complete ledger as the default but make a long episode
+    // scannable. #2612 narrowed "complete" by ONE clause: a profile whose routine
+    // SUPPLEMENT doses would outnumber everything else opens on an Illness chip
+    // that hides them. This profile is not one — its `may` intake is the illness's
+    // own medicine — so All still leads, which is now pinned rather than assumed.
     const historyFilters = page.getByTestId("illness-history-filters");
+    await expect(
+      historyFilters.getByRole("button", { name: "All" })
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
       historyFilters.getByRole("button", { name: "All" })
     ).not.toHaveClass(/bg-brand/);
     await historyFilters.getByRole("button", { name: "Temperature" }).click();
     const tempEvent = page.getByTestId("illness-event-temperature").first(); // first-ok: asserts a temperature event renders under the Temperature filter — order-agnostic
     await expect(tempEvent).toBeVisible();
-    await expect(page.getByTestId("illness-event-medication")).toHaveCount(0);
-    await expect(page.getByTestId("illness-event-appointment")).toHaveCount(0);
+    // A filtered-out row is HIDDEN, not removed (#2612): it leaves the layout so the
+    // page shortens, stays in the document, and comes back under print so a printed
+    // illness record never silently drops the doses given. The reader-facing claim
+    // is therefore counted over VISIBLE rows — strictly more than the bare count
+    // this replaces, which only said the rows were absent from the DOM.
+    await expect(
+      page.getByTestId("illness-event-medication").filter({ visible: true })
+    ).toHaveCount(0);
+    await expect(
+      page.getByTestId("illness-event-appointment").filter({ visible: true })
+    ).toHaveCount(0);
+    await page.emulateMedia({ media: "print" });
+    expect(
+      await page
+        .getByTestId("illness-event-medication")
+        .evaluateAll((rows) =>
+          rows.every((row) => getComputedStyle(row).display !== "none")
+        )
+    ).toBe(true);
+    await page.emulateMedia({ media: null });
     await historyFilters.getByRole("button", { name: "All" }).click();
     const medEvent = page.getByTestId("illness-event-medication").first(); // first-ok: asserts a medication event renders under the All filter — order-agnostic
     await expect(medEvent).toBeVisible();
