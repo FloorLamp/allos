@@ -53,7 +53,10 @@ const AXES: Record<string, Axis> = {
   context: {
     bareAllowed: true,
     why: "the bare entry is the reading whose context is unstated (#2337)",
-    qualifiers: ["Fasting", "Gestational Screen (50 g)"],
+    // "Morning" joined the axis in #2526's audit of the same shape: the time of a
+    // diurnal draw is a context the report either states or does not, exactly as
+    // fasting is, and the bare `Cortisol` is the draw whose timing it never printed.
+    qualifiers: ["Fasting", "Gestational Screen (50 g)", "Morning"],
   },
   // A derived RATIO of the bare analyte to something else is its own quantity, not a
   // second way of measuring the bare one — the same standing `Cholesterol/HDL Ratio`

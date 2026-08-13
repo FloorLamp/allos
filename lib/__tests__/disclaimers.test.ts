@@ -78,6 +78,14 @@ const DATASET_METADATA_KEYS = new Set([
 // one taken here.
 const SCANNED_GENERATORS = ["scripts/gen-canonical-biomarkers.ts"];
 
+// TypeScript modules that are themselves curated copy — CURATED_LABS holds the `note`
+// of every hand-curated canonical entry, and `curateBiomarkers` writes it back over the
+// JSON on every `--curated-only` regeneration. Stripping the JSON alone would have been
+// undone by the next run (the idempotency test in biomarker-loinc.test.ts is what
+// caught it), so the source is scanned too, with COMMENTS removed: the surrounding
+// commentary explains the app's posture to a maintainer and is not rendered anywhere.
+const CURATED_COPY_MODULES = ["lib/curated/reference-data.ts"];
+
 function datasetFiles(): string[] {
   const out = [path.join(REPO, "lib", "canonical-biomarkers.json")];
   const dir = path.join(REPO, "lib", "datasets", "data");
@@ -233,6 +241,22 @@ describe("curated datasets carry no disclaimer copy either (issue #2342)", () =>
         `the same #1049 rule as a source literal: the disclaimer lives on /disclaimer ` +
         `and is footer-linked from every page. Delete the sentence — do not reference ` +
         `a constant here, a dataset row is not a place to render one:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("no curated-copy module hand-writes a disclaimer phrasing in a note literal", () => {
+    const offenders: string[] = [];
+    for (const rel of CURATED_COPY_MODULES) {
+      const code = stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
+      code.split("\n").forEach((line, i) => {
+        if (BANNED.some((re) => re.test(line))) offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(
+      offenders,
+      `A curated \`note\` written here is copied onto the committed dataset by ` +
+        `curateBiomarkers and rendered from there, so it is governed by the same rule ` +
+        `as the JSON. Delete the sentence:\n${offenders.join("\n")}`
     ).toEqual([]);
   });
 
