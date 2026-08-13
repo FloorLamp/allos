@@ -673,6 +673,86 @@
   }
 }
 
+/* ── SECTION: Micro-motion ── */
+/* Micro-motion (issue #2654) — the small moves that answer "did that work?".
+   Two of them, and their whole justification is that they carry INFORMATION: a
+   tap-shaped confirm visibly BECOMING its done state, and a quantity visibly
+   CHANGING rather than being replaced.
+
+   The numbers live in these custom properties and nowhere else. lib/micro-motion.ts
+   mirrors them (its MICRO_MOTIONS table hands the same number to the counter's
+   requestAnimationFrame tween) and lib/__tests__/micro-motion.test.ts pins the two
+   copies together, fails a duration outside the 150–300 ms band, and fails any rule
+   in this section that loops.
+
+   NOTHING HERE LOOPS, autoplays, or moves without a user gesture. Explicitly not in
+   this vocabulary: skeleton shimmer, attention pulses on findings (a finding may not
+   campaign — reach policy), chart draw-in, page transitions. The overlay family
+   below is a different question at a different duration; do not cross-wire them.
+
+   Every class is transform/box-shadow only — never a property that triggers layout —
+   so a motion can never delay the next tap. The state change lands on its own frame;
+   the animation decorates a transition already made. */
+:root {
+  --motion-settle: 300ms;
+  --motion-count: 250ms;
+  /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
+     settles, it never bounces back. Mirrored by MICRO_MOTION_EASE. */
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* A confirm settling into its done state. The control dips a hair under the finger
+   and rises into place while a soft ring blooms and clears — the ring is
+   `box-shadow`, so nothing around it moves. */
+@keyframes micro-settle {
+  0% {
+    transform: scale(0.94);
+    box-shadow: 0 0 0 0 rgb(34 197 94 / 0.45);
+  }
+  60% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 6px rgb(34 197 94 / 0.18);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgb(34 197 94 / 0);
+  }
+}
+.motion-settle {
+  animation: micro-settle var(--motion-settle) var(--motion-ease);
+}
+
+/* The scale pulse that rides the counter roll. The DIGITS are tweened in JS
+   (components/RollingNumber.tsx over lib/micro-motion.ts's countRollValue); this is
+   the one subtle beat that says the quantity moved rather than being rewritten. */
+@keyframes micro-count {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.motion-count {
+  animation: micro-count var(--motion-count) var(--motion-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Belt and braces. `microMotionPlan()` already returns no class under the
+     preference, so these are not applied at all — but a stylesheet that only works
+     because its JS caller remembered to check is one refactor away from animating a
+     viewer who asked it not to. The reduced path is the DESIGNED state, not a
+     degradation: the resolved styling and the new number are simply there, on the
+     frame the state changed. */
+  .motion-settle,
+  .motion-count {
+    animation: none;
+  }
+}
+
 /* ── SECTION: Motion primitives + the overlay motion family ── */
 /* ── Motion primitives (issue #1416, section F) ────────────────────────────────
    The app's shared vocabulary for the two things it animates: a transform
