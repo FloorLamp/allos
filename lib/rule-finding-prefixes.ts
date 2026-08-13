@@ -49,6 +49,7 @@ import { SUBSTANCE_USE_PREFIX } from "./substance-use";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
+import { PAIRED_OBS_PREFIX } from "./paired-observations";
 import { MED_DUP_PREFIX } from "./medication-family";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
 import { CYCLE_BLEEDING_PREFIX } from "./cycle-observation";
@@ -261,6 +262,18 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SLEEP_MOOD_PREFIX,
     tier: "coaching",
     builder: "buildSleepMoodBridgeFindings",
+    reasons: [],
+  },
+  {
+    // Paired observations (#2177): one calm note per DECLARED factor × outcome pair
+    // whose two arms both cleared the per-arm night minimum and whose means differ by
+    // at least that pair's fixed floor. Co-occurrence phrasing with BOTH arms' n in
+    // the sentence; never causal, never clinical, never advice. COACHING tier — never
+    // a notification, never the hero, never an obligation. Keys are month-anchored and
+    // declare their stem, so a dismissal is per-month and repeat declines are read.
+    prefix: PAIRED_OBS_PREFIX,
+    tier: "coaching",
+    builder: "buildPairedObservationFindings",
     reasons: [],
   },
   {
