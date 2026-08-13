@@ -840,6 +840,16 @@ set it:
   stays enforced either way — note they are TEXT scans, so `db.prepare()` written
   in a comment fails `profile-scoping.test.ts` as an unverifiable non-literal.
 
+The DB tier's migrated schema is built once and then **cached between runs**
+under `node_modules/.cache/allos-db-tests`, keyed on a hash of the migration
+sources plus `lib/db.ts` (`templateKey`, `lib/__db_tests__/shared-template.ts`).
+Replaying 191 migrations is ~0.8s, and it used to be paid on every invocation —
+including running ONE test file, where the whole run is ~5.4s of which 0.1s is
+the test. The key hashes the migration files THEMSELVES rather than
+`manifest.json`, so it cannot go stale behind a manifest nobody updated; a new or
+edited migration rebuilds automatically and needs no cache-clearing step. Delete
+that directory if you ever want to force one.
+
 Every rendered UI feature must add or extend a browser test. The E2E harness
 seeds a template once, gives each worker its own database and `next start`
 server, and freezes the run's clock. Specs import `test` and `expect` from
