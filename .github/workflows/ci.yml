@@ -393,13 +393,35 @@ jobs:
       #     skill still runs, and only Playwright (which cannot see one) is
       #     dropped. #2707 shipped a 147-line skill and bought a full
       #     twelve-shard matrix with it.
+      #   • lib/__tests__/, lib/__db_tests__/, lib/__action_tests__/ — the two
+      #     unit tiers' own files. They are the largest remaining entry and the
+      #     one that looks most like runtime, because they sit under lib/, so the
+      #     "what imports this" question is the whole justification: NOTHING in
+      #     app/, components/, e2e/ or the rest of scripts/ imports anything from
+      #     those three directories. Both tiers run unconditionally, so the suite
+      #     that actually executes a change to one still executes it; only
+      #     Playwright, which cannot reach a vitest file, is dropped.
+      #     Measured before adding it: #2721 (a new .test.ts plus a scanner module
+      #     only tests import) and #2722 (comments plus a .test.ts) each ran the
+      #     full twelve shards for ~38 CI-minutes, neither able to alter a
+      #     rendered pixel. Note the saving is CI MINUTES, not latency — the
+      #     slowest shard (3.6m) finishes inside the `check` job (3.7m), so the
+      #     matrix costs a PR author nothing in wall-clock.
+      #     A NON-TEST module may live here (lib/__db_tests__/migration-link-scan.ts,
+      #     the scanner #2721's two guards share) and the entry still holds for the
+      #     same reason it holds for the rest: its importers are tests. If a
+      #     non-test consumer ever appears, this entry is what has to go.
       # The REST of scripts/ stays out: seed.ts, notify.ts and the gen-*.ts
       # generators feed the app and its fixtures — the e2e harness seeds from
       # seed.ts directly — so a change there must still drive the browser.
+      # The REST of lib/ stays out for the same reason, and that boundary is
+      # load-bearing: a comment-only edit to lib/queries/*.ts is invisible to this
+      # rule, which keys on PATHS rather than on content, and that is the correct
+      # conservative answer rather than a gap to close.
       - name: Detect changes with a runtime surface
         id: changes
         run: |
-          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
+          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
