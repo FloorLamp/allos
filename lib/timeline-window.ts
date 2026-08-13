@@ -24,12 +24,15 @@
 //   4. YEARS — a month OUTSIDE the current calendar year compresses once more, into a
 //      year card ("2025 · 180 events · 3 months"). The same grammar one level up, and
 //      the reason is the same defect one level up: a month card costs ~70px, so a
-//      profile deep enough to need windowing at all grows a spine of them. The
-//      Timeline's own `?category=medical` view carried FIFTY-FOUR collapsed month
-//      cards — 3,723px of chrome standing in for 5 rendered days — which is the
-//      unrolled-history shape again, only in miniature. With years, a five-year
-//      profile is a one-screen spine: future fold, recent days, this year's months,
-//      then one card per earlier year.
+//      profile deep enough to need windowing at all grows a spine of them. On the
+//      seeded profile at 390px, `?category=medical` carried EIGHTEEN collapsed month
+//      cards — 3,723px standing in for 5 rendered days — which is the unrolled-history
+//      shape again, only in miniature. Seven cards and 2,799px with years. Count them
+//      as `[data-fold-key]` nodes, which is one per card: the `timeline-fold-` TESTID
+//      prefix matches three nodes per card (section, toggle, counts) and answers 54,
+//      which is how this comment first shipped the wrong number. With years, a
+//      five-year profile is a one-screen spine: future fold, recent days, this year's
+//      months, then one card per earlier year.
 //
 // A YEAR IS OPEN WHENEVER A MONTH INSIDE IT IS. Nesting could have needed two keys in
 // the URL to reach one March, which would have made every pre-existing `?open=2025-03`
