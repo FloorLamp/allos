@@ -74,7 +74,7 @@ disagree, fix the script in the same change, never work around it.
 | `scripts/orchestration/agent-gates.sh`               | The gate sequence in the mandated order: lint → typecheck → pure tier → DB tier → e2e-hygiene (when `e2e/` changed) → phi-scan → format LAST. Goes in every brief.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `.github/workflows/ci-main.yml`                      | Tests main itself: static analysis + both unit tiers on every push, so a two-green-PRs semantic conflict reds main directly. See **CI tests the merge commit**.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `.github/merge-queue-ruleset.json`                   | The main merge-queue ruleset — TRANSFER-READY, not applicable today: GitHub offers merge queue only on org-owned repos, so the apply call 422s on this user-owned repo. Inert until/unless the repo moves to an organization. See **The merge queue**.                                                                                                                                                                                                                                                                                                                                                                 |
-| `scripts/orchestration/dependabot-eval-brief.mjs`    | The major-bump evaluation brief: what changed upstream vs what this repo touches, proven in a worktree at the merge ref; delivers a recommendation comment + `recommend-*` + `needs-human` + owner assignment.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `scripts/orchestration/dependabot-eval-brief.mjs`    | The major-bump evaluation brief: what changed upstream vs what this repo touches, proven in a worktree at the merge ref; delivers a recommendation comment + a verdict label that closes its own loop (hold parks; adopt = orchestrator merges).                                                                                                                                                                                                                                                                                                                                                                       |
 | `scripts/orchestration/release-notes-gather.mjs`     | Merged PRs since the newest release-notes day, internal ones flagged (a stated heuristic) — the gathering half of the notes; curation stays prose.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `scripts/orchestration/adversarial-review-brief.mjs` | The second review lane for high-stakes diffs. `<pr> --check` answers "does this PR touch a path where a miss corrupts data, crosses the auth boundary, or silences a safety signal" (the path list is DECLARED in the script); without `--check` it emits the full refuter brief — a separate agent prompted to REFUTE the PR's claims with executed attacks. See **The adversarial review lane**.                                                                                                                                                                                                                     |
 
@@ -92,8 +92,11 @@ location labels, never the whole story. Three labels route HUMAN attention:
   from `parked` (work not started by decision) — needs-human work is done or
   in flight, and one answer unblocks it.
 - **`recommend-adopt` / `recommend-hold`** — an evaluation's verdict, with
-  the evidence in the eval comment. The label is the recommendation, never the
-  decision; pair with `needs-human` + assignment so the decision surfaces.
+  the evidence in the eval comment. A verdict closes its own loop (owner,
+  2026-08-13): `recommend-hold` pairs with `parked` (revisit trigger in the
+  comment), `recommend-adopt` means the orchestrator merges through its normal
+  review flow. Neither gets `needs-human` — that pairing is only for an eval
+  that cannot reach a verdict, stated as the specific question.
 
 ## Environment facts (verify before trusting; the volatile ones say so)
 
@@ -526,10 +529,11 @@ id>`); `orchestrator-checkin.sh` reads it and alarms when nothing future is
   groups merge on green against CURRENT main, same day, review still reading
   the group's contents. A MAJOR gets an evaluation agent within a day of
   arrival (`dependabot-eval-brief.mjs <pr>`): recommendation comment on the
-  PR + `recommend-adopt`/`recommend-hold` + `needs-human` with the owner
-  assigned. `parked` is legitimate only AFTER the recommendation exists — a
-  major once sat parked 35 days with no evaluation, a decision deferred to
-  nobody.
+  PR + `recommend-adopt` (orchestrator merges it) or `recommend-hold` +
+  `parked` (revisit trigger in the comment) — no `needs-human` unless the eval
+  cannot reach a verdict. `parked` is legitimate only AFTER the recommendation
+  exists — a major once sat parked 35 days with no evaluation, a decision
+  deferred to nobody.
 - **File infra issues WITH a priority label, and label bottlenecks P1**
   (owner, 2026-07-26) — a bottleneck taxes every subsequent unit of work; the
   label IS the queue position. A single latent flake in one spec is P3.
