@@ -573,7 +573,22 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
 
   // Layer 3 — a deliberate second session of the same day ASKS, naming the practice.
   // Cancelling writes nothing: the confirm is a question, not a gate on the write.
-  await reloaded.getByTestId("practice-log-button").click();
+  //
+  // hydratedClick, not a bare click: the `page.reload()` above put this button back
+  // inside the #500/#830 pre-hydration window, and NOTHING between the reload and
+  // here proves React has attached its `onClick`. Every assertion in between — the
+  // history row count, the "20 min" cell, the stepper's value — is satisfied by the
+  // SERVER-rendered markup, so all three pass against a page that is not yet
+  // interactive. A tap lost there is lost for good: the handler never runs, the
+  // dialog never mounts, and the 5 s expect below fails as `element(s) not found`.
+  // That is decision-tree case 3's hydratedClick sub-case, and it is the same lesson
+  // `openRowMenu` above already carries for this spec's ⋯ menus (#2632).
+  //
+  // A retry loop is the wrong repair rather than a heavier one: `useConfirm` settles
+  // the in-flight confirm as CANCELLED when a second request replaces it, so
+  // re-clicking can cancel the very dialog it is waiting for (#2729). hydratedClick
+  // polls for the hydration marker and then clicks exactly ONCE.
+  await hydratedClick(page, reloaded.getByTestId("practice-log-button"));
   const dialog = page.getByTestId("confirm-dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(`You logged ${unique} today`);
@@ -585,7 +600,10 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
 
   // …and confirming logs the genuine second session (#798: informational, never
   // permissive — a second sauna is legitimate).
-  await reloaded.getByTestId("practice-log-button").click();
+  // Hydration is already proven by the tap above, but this tap opens the same
+  // non-idempotent confirm and sits one edit away from a reload being introduced
+  // between them — the two taps stay the same shape so neither has to be rediscovered.
+  await hydratedClick(page, reloaded.getByTestId("practice-log-button"));
   await expect(page.getByTestId("confirm-dialog")).toBeVisible();
   await settledClick(
     page,
