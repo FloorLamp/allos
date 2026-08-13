@@ -130,16 +130,18 @@
 // destination-less drop is the one ingest outcome with no forensic trail. So the fix
 // is TIERED, and the tiers are ordered by how much damage a wrong answer does:
 //
-//   1. `trendMetricHomeFor`, the SHARED recognizer, gets a structural rule — an
-//      acronym may CORROBORATE, never OVERRULE (`acronymOverruledBy`). It is derived
-//      from the registry, so it also fixes the pre-existing cosmetic bug that
-//      `listedInResultsCatalog` inherited: a stored BMI percentile stops being hidden
-//      from the Results browser by a chart that does not plot percentiles.
-//   2. `derivedInputsMetricFor`, the ONE caller whose consequence is deletion, demands
-//      more on top: a label whose original spelling carries a statistic signifier the
-//      slug's own names lack is refused (`STATISTIC_SIGNIFIERS`). This is the only
-//      thing that reaches a bare `BMI%`, where the `%` is punctuation and dies in
-//      normalization before any key or token set exists.
+//   1. `trendMetricHomeFor`, the SHARED recognizer, applies BOTH name rules — the
+//      structural one (an acronym may CORROBORATE, never OVERRULE:
+//      `acronymOverruledBy`) and the statistic-signifier one
+//      (`foreignStatisticSignifier`). Both are derived from the registry, so they also
+//      fix the pre-existing cosmetic bug that `listedInResultsCatalog` inherited: a
+//      stored BMI percentile stops being hidden from the Results browser by a chart
+//      that does not plot percentiles.
+//   2. `derivedInputsMetricFor`, the ONE caller whose consequence is deletion, keeps
+//      the signifier refusal as an explicit FLOOR of its own — the same function, so
+//      the two tiers cannot disagree about one label, but the delete tier's standard
+//      stays stated at the delete tier rather than borrowed from a recognizer someone
+//      could later relax.
 //   3. The drop itself is COUNTED — `withoutDerivedResults` in lib/import-shape.ts
 //      reports each one as an `ImportDrop`, so Data → Review can say a document had
 //      three printed derived results. Not a tombstone: the drop is by design, and this
@@ -147,6 +149,33 @@
 //
 // The failure asymmetry is the whole argument. When recognition is uncertain, the
 // failure must land on the side that leaves evidence.
+//
+// WHY THE SIGNIFIER CHECK MOVED UP TO TIER 1 (#2700). #2678 scoped it to the DROP tier
+// on the reading that cosmetic homing can tolerate fuzz a delete cannot. The owner's
+// ruling is that this particular consequence is NOT cosmetic: hiding a stored row from
+// the flat Results catalog — the only place a reading with no chart of its own is
+// browsable — while its one link points at a chart that cannot plot it, is a
+// findability defect, not a filing preference. And it landed on exactly the wrong
+// spelling: Tier 1's structural rule reaches `Body Mass Index Percentile (BMI%)`
+// because there is a full half to consult, and cannot reach a bare `BMI%`, which is
+// the shape a paediatric flowsheet prints and the number that matters most for a child
+// (raw BMI is close to meaningless at 6 vs 16). So the row #2699 rescued from deletion
+// was saved-but-unfindable.
+//
+// The supersession is NARROW, in the ruling's own words: #2678's principle still
+// governs, and nothing about acronym matching loosens or tightens anywhere else. What
+// is settled is that catalog invisibility COUNTS as a consequence for this check.
+//
+// AND THE UNIT IS PART OF A SLUG'S OWN VOCABULARY. Running the check at Tier 1 asks it
+// of every homed quantity rather than of `bmi` alone, and two of them are MEASURED in
+// percent: `spo2` and `body-fat` both declare `unit: "%"`. In `Body Fat %` the `%` is
+// the unit, not a percentile marker, and refusing that label would push a body-fat
+// reading out of its own chart's home — the exact defect this change exists to remove,
+// in the other direction. So `foreignStatisticSignifier` reads the slug's declared UNIT
+// alongside its registered names: a signifier the slug's own vocabulary already carries
+// is corroboration, never contradiction. Derived from the registry like everything else
+// here, and it discriminates for free — `%` matches the unit `%`, while `percentile`,
+// `centile`, `z-score` and `SDS` do not, so `Body Fat Percentile` is still refused.
 //
 // PURE: registries and string keys, no DB, no React. The projectors are deliberately
 // NOT imported here — they pull the extraction types in behind them, and the check
@@ -440,89 +469,8 @@ function acronymOverruledBy(slug: TrendMetricSlug, fullHalf: string): boolean {
 }
 
 /**
- * The metric slug that is this analyte's home, or null when nothing charts it.
- *
- * The name is tried as written and — when it is written "Full Name (ABBR)" — as the
- * spellings that derivation yields, so a document's "Body Mass Index (BMI)" and the
- * registry's "Body Mass Index" are one quantity. The bare acronym is the WEAKEST of
- * the three and is tried last, under `acronymOverruledBy`.
- */
-export function trendMetricHomeFor(
-  name: string | null | undefined
-): TrendMetricSlug | null {
-  const raw = (name ?? "").trim();
-  if (!raw) return null;
-  const asWritten = HOME_BY_KEY.get(normalizeCanonicalKey(raw));
-  if (asWritten) return asWritten;
-  const forms = acronymNameForms(raw);
-  if (forms.length === 0) return null;
-  const [full, abbr] = forms;
-  const byFull = HOME_BY_KEY.get(normalizeCanonicalKey(full));
-  if (byFull) return byFull;
-  const byAbbr = HOME_BY_KEY.get(normalizeCanonicalKey(abbr));
-  if (!byAbbr) return null;
-  return acronymOverruledBy(byAbbr, full) ? null : byAbbr;
-}
-
-/** Whether some registered trend metric already charts this quantity. */
-export function hasTrendMetricHome(name: string | null | undefined): boolean {
-  return trendMetricHomeFor(name) !== null;
-}
-
-/**
- * The DERIVED metric an imported reading of this name is the printed RESULT of, or
- * null — i.e. the `derived-inputs` arm, asked at the door (#2646).
- *
- * THE ARM THAT HAD NO INGEST CONSEQUENCE. Every other REACHING variant resolves the
- * imported `medical_records` row: `observations` keeps it (the row IS the chart
- * point), `observation-fold` keeps it (folded onto the stream by identity), and
- * `import-projection` DROPS it, because a `withoutCaptured*` helper wrote the stream
- * row instead. `derived-inputs` did nothing at all: no projector, no destination, no
- * drop — so the row survived, an AI import coined a `canonical_biomarkers` name for
- * it, and `getUsedCanonicalNames` returned it forever as a Coverage candidate for a
- * quantity the app already answers on a chart.
- *
- * The consequence here is a DROP WITH NO PROJECTION, because there is no destination
- * row to move to: the chart is a computation over inputs that arrive in the same
- * document and are themselves projected. It is UNCONDITIONAL. A document that
- * measured the inputs gives the derivation everything it needs, and a document that
- * did NOT is echoing a chart value carried forward from an earlier visit (the #2646
- * evidence: an identical BMI to two decimals six days apart, and a FLAT BMI two
- * months later for a growing toddler) — so a printed result is never independent
- * evidence either way. Same argument shape as EGFR_RACE_BRANCHED: the reported value
- * is superseded by a derivation the app trusts more.
- *
- * Derived from `METRIC_DOCUMENT_REACH` rather than from a second list, so this cannot
- * disagree with the declaration it implements, and a second `derived-inputs` slug
- * gets the ingest arm with no edit at the door.
- *
- * NAME AND CANONICAL ONLY, never LOINC. "Body Mass Index Percentile" (LOINC 59574-4)
- * is a DIFFERENT quantity from BMI (LOINC 39156-5) and shares its stem, so a code
- * axis would need its own negative list; the name axis separates them for free,
- * because a percentile's token set is not a BMI's.
- *
- * AND IT DEMANDS A STRICTER STANDARD THAN THE SHARED RECOGNIZER (#2678). This is the
- * only caller whose consequence is DELETION — every other reader of
- * `trendMetricHomeFor` decides where a kept row is filed or listed, which is cosmetic
- * and recoverable. Consequence must scale with confidence, so on top of Tier 1's
- * structural rule this refuses any label whose ORIGINAL spelling carries a statistic
- * signifier the slug's own registered names lack. It is also the ONLY thing that can
- * catch a bare `BMI%`, where `normalizeCanonicalKey` erases the `%` before any key
- * exists and there is no full half for Tier 1 to consult.
- */
-export function derivedInputsMetricFor(
-  name: string | null | undefined
-): TrendMetricSlug | null {
-  const raw = (name ?? "").trim();
-  const slug = trendMetricHomeFor(raw);
-  if (!slug) return null;
-  if (METRIC_DOCUMENT_REACH[slug].reaches !== "derived-inputs") return null;
-  return foreignStatisticSignifier(slug, raw) ? null : slug;
-}
-
-/**
  * A word or mark that says a label names a STATISTIC OF a quantity rather than the
- * quantity — the Tier-2 list (#2678). Deliberately small and curated, each entry
+ * quantity (#2678, at Tier 1 since #2700). Deliberately small and curated, each entry
  * carrying the reason it earns a place, in the glyph-registry style.
  *
  * Matched against the ORIGINAL spelling, before `normalizeCanonicalKey` folds case,
@@ -572,22 +520,127 @@ export const STATISTIC_SIGNIFIERS: readonly StatisticSignifier[] = [
 ];
 
 /**
- * The first statistic signifier `label` carries that NONE of `slug`'s own registered
- * names carries, or null. The second half is what keeps the list from refusing a
- * quantity that is honestly named after a statistic: if a slug's registry title said
- * "percentile", a label saying so would be agreeing with it, not contradicting it.
+ * The first statistic signifier `label` carries that `slug`'s OWN VOCABULARY does not,
+ * or null. The second half is what keeps the list from refusing a quantity that is
+ * honestly named — or honestly MEASURED — after a statistic: if a slug's registry title
+ * said "percentile", a label saying so would be agreeing with it, not contradicting it.
+ *
+ * The slug's vocabulary is its registered names AND its declared UNIT. The unit half
+ * matters from #2700, when this check started running at Tier 1 for every homed
+ * quantity rather than for `bmi` alone: `spo2` and `body-fat` are MEASURED in percent,
+ * so in "Body Fat %" the `%` is the unit and the label is the quantity. Without it, the
+ * fix for the paediatric percentile would have evicted a body-fat reading from the
+ * chart that plots it — the same findability defect, pointed the other way. It
+ * discriminates for free rather than by exception: `%` matches the unit `%`, while
+ * `percentile`, `centile`, `z-score` and `SDS` match no unit any metric declares, so
+ * "Body Fat Percentile" is still refused.
  */
 function foreignStatisticSignifier(
   slug: TrendMetricSlug,
   label: string
 ): StatisticSignifier | null {
-  const names = registryNamesFor(slug);
+  const vocabulary = [...registryNamesFor(slug), TREND_METRIC_META[slug].unit];
   for (const sig of STATISTIC_SIGNIFIERS) {
     if (!sig.pattern.test(label)) continue;
-    if (names.some((n) => sig.pattern.test(n))) continue;
+    if (vocabulary.some((n) => sig.pattern.test(n))) continue;
     return sig;
   }
   return null;
+}
+
+/**
+ * The metric slug that is this analyte's home, or null when nothing charts it.
+ *
+ * The name is tried as written and — when it is written "Full Name (ABBR)" — as the
+ * spellings that derivation yields, so a document's "Body Mass Index (BMI)" and the
+ * registry's "Body Mass Index" are one quantity. The bare acronym is the WEAKEST of
+ * the three and is tried last, under `acronymOverruledBy`.
+ *
+ * Whichever of the three spellings matched, the ORIGINAL label is then held to
+ * `foreignStatisticSignifier` (#2700): a key match says the tokens agree, and a
+ * signifier the slug's own vocabulary lacks says the label is naming a STATISTIC of
+ * that quantity — which normalization has already thrown away by the time any key
+ * exists. `BMI%` matches the `bmi` key and is still not a BMI.
+ */
+export function trendMetricHomeFor(
+  name: string | null | undefined
+): TrendMetricSlug | null {
+  const raw = (name ?? "").trim();
+  if (!raw) return null;
+  const slug = matchedHomeFor(raw);
+  if (!slug) return null;
+  return foreignStatisticSignifier(slug, raw) ? null : slug;
+}
+
+/** The slug whose registered keys this label MATCHES, before the signifier check. */
+function matchedHomeFor(raw: string): TrendMetricSlug | null {
+  const asWritten = HOME_BY_KEY.get(normalizeCanonicalKey(raw));
+  if (asWritten) return asWritten;
+  const forms = acronymNameForms(raw);
+  if (forms.length === 0) return null;
+  const [full, abbr] = forms;
+  const byFull = HOME_BY_KEY.get(normalizeCanonicalKey(full));
+  if (byFull) return byFull;
+  const byAbbr = HOME_BY_KEY.get(normalizeCanonicalKey(abbr));
+  if (!byAbbr) return null;
+  return acronymOverruledBy(byAbbr, full) ? null : byAbbr;
+}
+
+/** Whether some registered trend metric already charts this quantity. */
+export function hasTrendMetricHome(name: string | null | undefined): boolean {
+  return trendMetricHomeFor(name) !== null;
+}
+
+/**
+ * The DERIVED metric an imported reading of this name is the printed RESULT of, or
+ * null — i.e. the `derived-inputs` arm, asked at the door (#2646).
+ *
+ * THE ARM THAT HAD NO INGEST CONSEQUENCE. Every other REACHING variant resolves the
+ * imported `medical_records` row: `observations` keeps it (the row IS the chart
+ * point), `observation-fold` keeps it (folded onto the stream by identity), and
+ * `import-projection` DROPS it, because a `withoutCaptured*` helper wrote the stream
+ * row instead. `derived-inputs` did nothing at all: no projector, no destination, no
+ * drop — so the row survived, an AI import coined a `canonical_biomarkers` name for
+ * it, and `getUsedCanonicalNames` returned it forever as a Coverage candidate for a
+ * quantity the app already answers on a chart.
+ *
+ * The consequence here is a DROP WITH NO PROJECTION, because there is no destination
+ * row to move to: the chart is a computation over inputs that arrive in the same
+ * document and are themselves projected. It is UNCONDITIONAL. A document that
+ * measured the inputs gives the derivation everything it needs, and a document that
+ * did NOT is echoing a chart value carried forward from an earlier visit (the #2646
+ * evidence: an identical BMI to two decimals six days apart, and a FLAT BMI two
+ * months later for a growing toddler) — so a printed result is never independent
+ * evidence either way. Same argument shape as EGFR_RACE_BRANCHED: the reported value
+ * is superseded by a derivation the app trusts more.
+ *
+ * Derived from `METRIC_DOCUMENT_REACH` rather than from a second list, so this cannot
+ * disagree with the declaration it implements, and a second `derived-inputs` slug
+ * gets the ingest arm with no edit at the door.
+ *
+ * NAME AND CANONICAL ONLY, never LOINC. "Body Mass Index Percentile" (LOINC 59574-4)
+ * is a DIFFERENT quantity from BMI (LOINC 39156-5) and shares its stem, so a code
+ * axis would need its own negative list; the name axis separates them for free,
+ * because a percentile's token set is not a BMI's.
+ *
+ * THE SIGNIFIER REFUSAL IS STATED HERE, AND IS NOW ALSO TIER 1's (#2678, #2700). This
+ * is still the only caller whose consequence is DELETION, so its standard is written at
+ * the delete tier rather than borrowed: the line below is a FLOOR, not an increment.
+ * Since #2700 `trendMetricHomeFor` applies the very same function — the owner's ruling
+ * that hiding a stored row from the flat catalog is a consequence too — so today the
+ * call is satisfied before it is reached, and that is the point. One function means the
+ * two tiers cannot disagree about one label (the standing "one question, one
+ * computation" rule); keeping the call means a future relaxation of the shared
+ * recognizer cannot quietly loosen what gets DELETED, which is #2678's whole argument.
+ */
+export function derivedInputsMetricFor(
+  name: string | null | undefined
+): TrendMetricSlug | null {
+  const raw = (name ?? "").trim();
+  const slug = trendMetricHomeFor(raw);
+  if (!slug) return null;
+  if (METRIC_DOCUMENT_REACH[slug].reaches !== "derived-inputs") return null;
+  return foreignStatisticSignifier(slug, raw) ? null : slug;
 }
 
 /**
