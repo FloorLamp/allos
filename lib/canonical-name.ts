@@ -729,7 +729,9 @@ const DEXA_FAT_REGIONS = [
 
 // The skeletal sites a DEXA report prints a density and a mineral content for.
 // "Total" is absent for the same reason as above: whole-body bone density is what
-// the curated T-score expresses, and a site is not the skeleton.
+// the curated T-score expresses, and a site is not the skeleton. That is a statement
+// about which LIST the total belongs in, not permission to leave the name undeclared
+// — see DEXA_TOTAL_BMD below, and "Bone Mineral Content, Total" in DEXA_SCAN_LEVEL.
 const DEXA_BONE_REGIONS = [
   "Left Arm",
   "Right Arm",
@@ -754,7 +756,28 @@ const DEXA_BONE_REGIONS = [
 // The compartment-mass grid: a region × a tissue compartment, in grams. Reports
 // print the unit inside the name as often as not, and normalizeCanonicalKey keeps
 // "(g)" as a token, so both spellings are declared rather than guessed at.
-const DEXA_MASS_REGIONS = ["Trunk", "Head", "Android", "Gynoid", "Subtotal"];
+//
+// The LIMBS were missing here until #2643, while both sibling lists carried them —
+// which is exactly the failure the cross product was built to prevent, arriving in
+// the one list nobody re-read. `Body Fat Percentage, Left Arm` and `Bone Mineral
+// Density, Left Arm` were declared, `Fat Mass, Left Arm` was not, so one third of a
+// scan's limb rows sat under Data → Coverage → Uncatalogued items forever. A limb's
+// compartment mass is the same decision as its fat percentage, made in the same
+// machine's same table. The `Arms`/`Legs` pair-totals come with them for the same
+// reason they are in the fat and bone lists: a report prints the pair as a row.
+const DEXA_MASS_REGIONS = [
+  "Left Arm",
+  "Right Arm",
+  "Arms",
+  "Left Leg",
+  "Right Leg",
+  "Legs",
+  "Trunk",
+  "Head",
+  "Android",
+  "Gynoid",
+  "Subtotal",
+];
 const DEXA_MASS_COMPARTMENTS = ["Fat", "Lean", "Total"];
 
 // The scan-level rows that aren't per-region: whole-scan mass compartments and the
@@ -770,6 +793,11 @@ const DEXA_MASS_COMPARTMENTS = ["Fat", "Lean", "Total"];
 // "Appendicular Lean Mass Index" has been a curated kg/m2 entry all along. They are
 // curated entries now, so the completeness guard would fail if either name were left
 // declared here as well.
+//
+// "Trunk to Limb Fat Mass Ratio" joined in #2643. It is a second depot ratio beside
+// "Trunk to Legs Fat Ratio" — a different denominator (all four limbs rather than the
+// legs), the same arithmetic over the same scan's segments — and a report that prints
+// one often prints both.
 const DEXA_SCAN_LEVEL = [
   "Total Mass",
   "Total Fat Mass",
@@ -778,7 +806,39 @@ const DEXA_SCAN_LEVEL = [
   "Bone Mineral Density Z-Score",
   "Android/Gynoid Ratio",
   "Trunk to Legs Fat Ratio",
+  "Trunk to Limb Fat Mass Ratio",
 ];
+
+// The whole-body BONE DENSITY a DEXA prints in g/cm², which #2643 found stranded
+// beside the mass limbs — but which is NOT the same decision, and putting it in the
+// list above would have repeated #2322 word for word. DEXA_DECOMPOSITION's reason
+// says "no population reference range exists for them"; whole-body bone density is
+// the ONE DEXA number that has nothing BUT a population reference, because the
+// T-score IS that comparison. The absolute g/cm² is not comparable between scanners,
+// which is why the standardized score is what the app curates and what a clinician
+// reads — so the quantity is tracked, under the other identity. That is precisely
+// what DEXA_BONE_REGIONS' own comment already said ("whole-body bone density is what
+// the curated T-score expresses"); the list simply never emitted a declaration for
+// the name, so the comment protected nothing.
+const DEXA_TOTAL_BMD: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "Bone Mineral Density T-Score",
+  reason:
+    "Whole-body bone mineral density in g/cm² isn’t comparable between scanners, which is why bone density is read as a T-score — the same measurement expressed against the reference population. Allos trends the T-score, so that is where your bone density is tracked.",
+};
+
+// VAT area (cm²) and VAT volume (cm³) are the SAME visceral-fat estimate the curated
+// "Visceral Adipose Tissue" entry carries as a mass — one scan-derived number a
+// report prints in three units, related by an assumed tissue density. So this is the
+// `covered-elsewhere` shape, not the out-of-scope one: there is a real series to
+// point at, and the reason states the unit difference rather than implying the
+// numbers can be compared.
+const DEXA_VAT_ALTERNATE_UNIT: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "Visceral Adipose Tissue",
+  reason:
+    "A DEXA reports visceral fat as an area, a volume and a mass — one estimate printed in three units. Allos tracks the mass form, so the trend is there; the numbers differ in scale because the units do.",
+};
 
 // Expanded rather than hand-listed: the family is a cross product, and writing ~80
 // literal rows is how one region quietly goes missing. The expansion is still just
@@ -862,6 +922,11 @@ const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
   ["Stress Test Maximum Blood Pressure Systolic", STRESS_TEST_PEAK_VITALS],
   ["Stress Test Maximum Blood Pressure Diastolic", STRESS_TEST_PEAK_VITALS],
   ["Stress Test Maximum Heart Rate", STRESS_TEST_PEAK_VITALS],
+  // The two DEXA scan-level names that are covered ELSEWHERE rather than out of
+  // scope (#2643) — they carry an `instead`, so they cannot ride the cross product.
+  ["Bone Mineral Density, Total", DEXA_TOTAL_BMD],
+  ["Visceral Adipose Tissue Area", DEXA_VAT_ALTERNATE_UNIT],
+  ["Visceral Adipose Tissue Volume", DEXA_VAT_ALTERNATE_UNIT],
   ...dexaDecompositionNames().map((name): [string, UncuratedAnalyte] => [
     name,
     DEXA_DECOMPOSITION,

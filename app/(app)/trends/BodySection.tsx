@@ -1012,7 +1012,10 @@ export default async function BodySection({
   // the two BMI charts on a child's body census can't disagree (issue #407).
   const bmiAll = bmiSeriesDatePaired(
     weightSeries.map((w) => ({ date: w.date, value: w.value })),
-    heightPoints
+    heightPoints,
+    // #2646: how stale the paired height may be is a life-stage question, so the
+    // derivation needs the birthdate this page already read.
+    birthdate
   ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
   const bmiChart = filterSeriesByRange(bmiAll, range);
   // Check-in trends (#992, completed by #1408): the daily wellbeing check-ins as

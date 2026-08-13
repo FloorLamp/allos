@@ -44,9 +44,19 @@ want a re-check" are the same arithmetic.
 | Longevity's optimal-biomarker pillar                                        | —                                                                                   | consumes the biomarker adapter above; mints nothing                                                           |
 | Recent labs (`lib/recent-labs.ts`)                                          | the flat `RECENT_LAB_STALE_DAYS` presentation floor (#1216)                         | none — an undatable reading is `not-applicable`, never fresh                                                  |
 | Latest vitals (`lib/vitals-latest.ts`)                                      | the per-quantity presentation floor: resting HR 14 days, blood pressure 180 (#2303) | none — an undatable reading is `not-applicable`, never due                                                    |
+| BMI's paired height (`lib/growth-series.ts`, #2646)                         | `PAIRED_HEIGHT_INTERVAL_DAYS` by LIFE STAGE: 92 days infant, 183 child/adolescent   | adults and older adults, and an unknown birthdate — no clock, so an old height still pairs                    |
 
 A tenant **adapts** onto the shared decision. It does not fork it, and it does
 not re-derive "is this stale" in a component.
+
+The BMI tenant is the one whose reading is an **input** rather than a result.
+`bmiSeriesDatePaired` pairs each weigh-in with the height in effect on or before it
+(#407, so early history is not inflated by a recent height); #2646 bounds how far
+back "in effect" may reach, because BMI is kg/m² and a months-old height turns a
+growing child's growth into apparent fatness — always in that direction. A `due`
+verdict drops the point rather than plotting a wrong one, and `not-applicable` (an
+adult, or an unknown age) is the KEEP case, which is exactly why it must never fold
+into `due`. Age is resolved as of the weigh-in, never today (#2090).
 
 `BiomarkerRetestStatus` is an alias of `FreshnessState`, so biomarker readings
 and fitness tests can be tallied with the same counter.

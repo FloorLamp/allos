@@ -4,7 +4,9 @@ import {
   bmiSeriesDatePaired,
   displayWeightGrowth,
   growthBadge,
+  PAIRED_HEIGHT_INTERVAL_DAYS,
 } from "../growth-series";
+import type { LifeStage } from "../life-stage";
 import { kgTo } from "../units";
 
 describe("buildGrowthProfile degradation", () => {
@@ -186,7 +188,8 @@ describe("bmiSeriesDatePaired (issue #407)", () => {
       [
         { date: "2024-12-01", value: 100 },
         { date: "2025-06-01", value: 105 },
-      ]
+      ],
+      null
     );
     expect(out).toHaveLength(2);
     expect(out[0].value).toBeCloseTo(16, 2);
@@ -196,7 +199,8 @@ describe("bmiSeriesDatePaired (issue #407)", () => {
   it("skips a weigh-in with no prior height (no BMI derivable)", () => {
     const out = bmiSeriesDatePaired(
       [{ date: "2025-01-01", value: 16 }],
-      [{ date: "2025-06-01", value: 100 }]
+      [{ date: "2025-06-01", value: 100 }],
+      null
     );
     expect(out).toEqual([]);
   });
@@ -210,10 +214,164 @@ describe("bmiSeriesDatePaired (issue #407)", () => {
       [
         { date: "2025-06-01", value: 105 },
         { date: "2024-12-01", value: 100 },
-      ]
+      ],
+      null
     );
     expect(out.map((p) => p.date)).toEqual(["2025-01-01", "2025-07-01"]);
     expect(out[0].value).toBeCloseTo(16, 2);
+  });
+});
+
+// #2646 decision 1 — the staleness bound on the height #407 pairs backward.
+//
+// #407's rule ("the height in EFFECT on or before this weigh-in") is right and is
+// asserted unchanged above; what it never said is how far back "in effect" reaches.
+// For an adult that is forever, and must stay forever. For a growing child it is not:
+// BMI is kg/m², so a height that is months out of date understates the denominator
+// and the missing growth arrives on the chart as FATNESS — always in that direction.
+describe("bmiSeriesDatePaired height staleness bound (issue #2646)", () => {
+  // 60 kg at 1.70 m — the paired height is two years old, which for an adult is
+  // simply the truth: adults do not grow, and dropping these points would delete the
+  // BMI history of the population that has the most of it.
+  it("pairs an adult weigh-in with a two-year-old height", () => {
+    const out = bmiSeriesDatePaired(
+      [{ date: "2026-01-01", value: 60 }],
+      [{ date: "2024-01-01", value: 170 }],
+      "1990-03-04"
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].value).toBeCloseTo(60 / 1.7 ** 2, 2);
+  });
+
+  // The same shape for a toddler, and the answer is the opposite one. A length
+  // measured two years ago belongs to a different child; the honest output is NO
+  // point, not a wrong one.
+  it("drops a toddler weigh-in whose only height is two years old", () => {
+    expect(
+      bmiSeriesDatePaired(
+        [{ date: "2026-01-01", value: 12 }],
+        [{ date: "2024-01-01", value: 76 }],
+        "2023-06-01"
+      )
+    ).toEqual([]);
+  });
+
+  // …and keeps the SAME toddler's point when the length was taken at the same visit,
+  // so the bound removes wrong points rather than the metric.
+  it("keeps a toddler weigh-in paired with a same-visit length", () => {
+    const out = bmiSeriesDatePaired(
+      [{ date: "2026-01-01", value: 12 }],
+      [{ date: "2026-01-01", value: 88 }],
+      "2023-06-01"
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].value).toBeCloseTo(12 / 0.88 ** 2, 2);
+  });
+
+  // The bound is per LIFE STAGE, and the stages differ. An infant's clock is a
+  // quarter and a child's is six months, so one height age lands on opposite sides of
+  // the two — which is the whole reason the interval is declared per member rather
+  // than as one number.
+  it("resolves the interval by life stage, not by one global number", () => {
+    const weights = [{ date: "2026-01-01", value: 12 }];
+    const heights = [{ date: "2025-09-01", value: 80 }]; // 122 days earlier
+    // Infant on the weigh-in date (7 months): 122 > 92, so the pairing is refused.
+    expect(bmiSeriesDatePaired(weights, heights, "2025-06-01")).toEqual([]);
+    // Child on the weigh-in date (4 years): 122 <= 183, so it stands.
+    expect(bmiSeriesDatePaired(weights, heights, "2021-06-01")).toHaveLength(1);
+  });
+
+  // Age is resolved AS OF THE WEIGH-IN (#2090), never today. This profile is an adult
+  // now and was an infant at the first weigh-in, and the infant clock is the one that
+  // must apply there — reading age "now" would silently unbind a whole childhood.
+  it("resolves age on the weigh-in date, not on the newest row", () => {
+    const out = bmiSeriesDatePaired(
+      [
+        { date: "2006-01-01", value: 8 }, // infant: height 5 months stale → dropped
+        { date: "2026-01-01", value: 70 }, // adult: same 5-month gap → kept
+      ],
+      [
+        { date: "2005-08-01", value: 66 },
+        { date: "2025-08-01", value: 178 },
+      ],
+      "2005-06-01"
+    );
+    expect(out.map((p) => p.date)).toEqual(["2026-01-01"]);
+  });
+
+  // Boundary, inherited from `freshnessState`: stale STRICTLY after the interval, so
+  // a height exactly one interval old is still current and comes due the next day.
+  it("treats a height exactly one interval old as still usable", () => {
+    const born = "2023-06-01"; // a child throughout
+    const at = (heightDate: string) =>
+      bmiSeriesDatePaired(
+        [{ date: "2026-01-01", value: 15 }],
+        [{ date: heightDate, value: 95 }],
+        born
+      );
+    expect(at("2025-07-02")).toHaveLength(1); // 183 days — current
+    expect(at("2025-07-01")).toEqual([]); // 184 days — due
+  });
+
+  // Unknown birthdate follows lib/life-stage.ts's documented policy: restrict only on
+  // a POSITIVE under-age match, never on missing data. So an unknown-age profile keeps
+  // #407's behaviour exactly, which is what the three tests above this block assert.
+  it("leaves an unknown birthdate unbounded", () => {
+    expect(
+      bmiSeriesDatePaired(
+        [{ date: "2026-01-01", value: 60 }],
+        [{ date: "2020-01-01", value: 170 }],
+        null
+      )
+    ).toHaveLength(1);
+  });
+
+  // Every life stage answers. A stage added to the model without an interval would
+  // otherwise inherit "unbounded" silently — the failure #2643 is about, one registry
+  // over.
+  it("declares an interval for every life stage", () => {
+    const stages: LifeStage[] = [
+      "infant",
+      "child",
+      "adolescent",
+      "adult",
+      "older-adult",
+    ];
+    expect(Object.keys(PAIRED_HEIGHT_INTERVAL_DAYS).sort()).toEqual(
+      [...stages].sort()
+    );
+    // The growing stages are bounded and the grown ones are not — the substantive
+    // claim, spelled out so a future edit that unbounds a child has to say so here.
+    for (const growing of ["infant", "child", "adolescent"] as const) {
+      const days = PAIRED_HEIGHT_INTERVAL_DAYS[growing];
+      expect(days, growing).not.toBeNull();
+      expect(days as number, growing).toBeGreaterThan(0);
+    }
+    for (const grown of ["adult", "older-adult"] as const)
+      expect(PAIRED_HEIGHT_INTERVAL_DAYS[grown], grown).toBeNull();
+  });
+
+  // The shared function moved, so the growth card moves with it — that is the point
+  // of decision 1, and it is asserted through buildGrowthProfile rather than inferred.
+  it("carries the bound into the growth card's BMI trajectory", () => {
+    const common = {
+      sex: "female" as const,
+      birthdate: "2023-06-01",
+      today: "2026-07-01",
+      weights: [{ date: "2026-06-01", value: 14 }],
+    };
+    const stale = buildGrowthProfile({
+      ...common,
+      heights: [{ date: "2024-01-01", value: 80 }],
+    });
+    expect(stale?.metrics.find((m) => m.metric === "bmi")?.points).toEqual([]);
+    const fresh = buildGrowthProfile({
+      ...common,
+      heights: [{ date: "2026-06-01", value: 96 }],
+    });
+    expect(fresh?.metrics.find((m) => m.metric === "bmi")?.points).toHaveLength(
+      1
+    );
   });
 });
 

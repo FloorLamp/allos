@@ -43,6 +43,7 @@ import {
 } from "./condition-attributes";
 import { toFamilyLineage, toFamilyRelationType } from "./family-relation";
 import { normalizeCanonicalKey } from "./canonical-name";
+import { derivedInputsMetricFor } from "./trend-metric-analytes";
 import {
   toAllergyCriticality,
   toAllergyStatus,
@@ -576,6 +577,34 @@ function withoutCapturedWaistCircs(
   });
 }
 
+// THE `derived-inputs` ARM (#2646). The fourth reach variant in
+// METRIC_DOCUMENT_REACH, and until this it was the only reaching one with no ingest
+// consequence at all — so a printed BMI survived as a `medical_records` row, coined
+// an ai vocabulary name, and sat under Data → Coverage → "Uncatalogued items" forever
+// for a quantity `/trends/metric/bmi` already charts from the weight and height that
+// arrived in the same document.
+//
+// A DROP, NOT A PROJECTION — the shape difference from the four `withoutCaptured*`
+// helpers above, and it follows from there being no destination row: the chart is a
+// COMPUTATION (bmiSeriesDatePaired) over inputs that are themselves projected, so
+// there is nothing to move the reading TO. That also makes the drop unconditional
+// rather than conditioned on the inputs having been captured, which is what every
+// helper above checks: a printed derived result is not independent evidence. Either
+// the visit measured the inputs — and the derivation is better, because it is
+// recomputed whenever a correction lands — or it did not, and the number is the EHR
+// echoing a chart value carried forward from an earlier visit.
+//
+// The recognizer is `derivedInputsMetricFor`, which reads the reach registry itself,
+// so a second `derived-inputs` slug is covered here with no edit and this cannot
+// drift from the declaration it implements.
+function withoutDerivedResults(records: PersistRecord[]): PersistRecord[] {
+  return records.filter(
+    (r) =>
+      derivedInputsMetricFor(r.canonical) === null &&
+      derivedInputsMetricFor(r.name) === null
+  );
+}
+
 // Wrap a captured provider/facility NAME (the AI path surfaces these as bare
 // strings) into the provider-neutral ImportedProvider the persist layer resolves
 // into the shared registry. Null name → null (nothing to register).
@@ -788,15 +817,17 @@ export function extractionToPersistInput(
     result.results,
     result.meta.document_date
   );
-  const records = withoutCapturedWaistCircs(
-    withoutCapturedHeadCircs(
-      withoutCapturedHeights(
-        withoutCapturedBodyMetrics(allRecords, bodyMetrics),
-        heights
+  const records = withoutDerivedResults(
+    withoutCapturedWaistCircs(
+      withoutCapturedHeadCircs(
+        withoutCapturedHeights(
+          withoutCapturedBodyMetrics(allRecords, bodyMetrics),
+          heights
+        ),
+        headCircs
       ),
-      headCircs
-    ),
-    waistCircs
+      waistCircs
+    )
   );
 
   // Clinical-narrative domains (parity with the deterministic importer). The AI path
@@ -1256,15 +1287,17 @@ export function healthRecordToPersistInput(
     })),
     docDate
   );
-  const records = withoutCapturedWaistCircs(
-    withoutCapturedHeadCircs(
-      withoutCapturedHeights(
-        withoutCapturedBodyMetrics(allRecords, bodyMetrics),
-        heights
+  const records = withoutDerivedResults(
+    withoutCapturedWaistCircs(
+      withoutCapturedHeadCircs(
+        withoutCapturedHeights(
+          withoutCapturedBodyMetrics(allRecords, bodyMetrics),
+          heights
+        ),
+        headCircs
       ),
-      headCircs
-    ),
-    waistCircs
+      waistCircs
+    )
   );
   return {
     records,
