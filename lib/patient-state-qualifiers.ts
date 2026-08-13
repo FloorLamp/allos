@@ -87,6 +87,25 @@ export const PATIENT_STATE_QUALIFIERS: readonly PatientStateQualifier[] = [
     pattern:
       /\bat[\s-]rest\b|\b(?:post|during)[\s-]?exercise\b|\b(?:post|during)[\s-]?exertion\b/i,
   },
+  {
+    key: "time-of-day",
+    label: "morning / evening draw",
+    // #2526's addition. A diurnal analyte's published band belongs to ONE point in
+    // the rhythm — a morning cortisol tops out near 18 µg/dL and the same person's
+    // evening value is normal at a third of that — so the time of the draw is a
+    // patient-state condition in exactly the sense fasting is: the report either
+    // prints it or it does not, and inferring it selects a band.
+    //
+    // The clock alternative is the tight one a lab actually prints beside an analyte
+    // ("CORTISOL, AM", "8 AM"), not a bare hour. A bare "am" between word boundaries
+    // is essentially always that marker in the short text this sees — a row's printed
+    // name and its section heading — and a false POSITIVE here is the harmless
+    // direction anyway: it only declines to demote a qualifier the model already
+    // chose. The dangerous direction is a false negative, which lands the reading on
+    // the unqualified entry and shows it unflagged, which is the #2338 posture.
+    pattern:
+      /\bmorning\b|\bevening\b|\bmidnight\b|\bbedtime\b|\bdiurnal\b|\ba\.?m\.?\b|\bp\.?m\.?\b/i,
+  },
 ];
 
 // The patient-state conditions a name asserts (usually none, occasionally one).

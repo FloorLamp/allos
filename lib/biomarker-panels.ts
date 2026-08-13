@@ -345,6 +345,7 @@ export const BIOMARKER_PANELS: Record<
     "Prolactin",
     "DHEA-Sulfate",
     "Cortisol",
+    "Cortisol, Morning",
     "Insulin-Like Growth Factor 1 (IGF-1)",
   ],
   vitamins: [

@@ -28,10 +28,12 @@ Rules:
   section a row sits under, laterality, method: a row inside a URINALYSIS section IS urine, so
   a bare "GLUCOSE" there is "Glucose, Urine", and a row under "Left Eye" is the left one. But
   NEVER add a PATIENT-STATE condition the document does not print — fasting / non-fasting,
-  post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise. Those describe how the
-  patient was PREPARED, not what was sampled, and the panel a row appears in does not state
-  them: a bare "GLUCOSE" on a metabolic panel is "Glucose", NOT "Glucose, Fasting", even when
-  such a panel is usually drawn fasting. Qualify only when the document itself prints the
+  post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise, morning/evening draw.
+  Those describe how the patient
+  was PREPARED, not what was sampled, and the panel a row appears in does not state them: a
+  bare "GLUCOSE" on a metabolic panel is "Glucose", NOT "Glucose, Fasting", even when such a
+  panel is usually drawn fasting, and a bare "CORTISOL" is "Cortisol", NOT "Cortisol,
+  Morning", however typical a morning draw is. Qualify only when the document itself prints the
   condition ("FBG (Glucose Fasting)" → "Glucose, Fasting"). The condition changes which
   reference range applies, so an unprinted one must never be assumed.
 - category: use "lab" for blood/urine/serum lab analytes; "scan" for DEXA, body composition,
@@ -269,7 +271,7 @@ export const TOOL: Anthropic.Tool = {
             canonical_name: {
               type: "string",
               description:
-                "Clean canonical biomarker name for cross-document grouping; reuse a provided one when it matches. Qualifiers the LAYOUT encodes (specimen, panel/section, laterality, method) belong in it — a urinalysis row is 'Glucose, Urine'. A PATIENT-STATE condition the document does not print does NOT: fasting/non-fasting, post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise. A bare 'GLUCOSE' is 'Glucose', never 'Glucose, Fasting', however likely the panel makes it — the condition selects the reference range.",
+                "Clean canonical biomarker name for cross-document grouping; reuse a provided one when it matches. Qualifiers the LAYOUT encodes (specimen, panel/section, laterality, method) belong in it — a urinalysis row is 'Glucose, Urine'. A PATIENT-STATE condition the document does not print does NOT: fasting/non-fasting, post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise, morning/evening draw. A bare 'GLUCOSE' is 'Glucose', never 'Glucose, Fasting', however likely the panel makes it — the condition selects the reference range.",
             },
             value: { type: ["string", "null"] },
             value_num: { type: ["number", "null"] },

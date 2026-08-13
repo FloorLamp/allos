@@ -1,5 +1,5 @@
 {
-  "$comment": "Canonical biomarker reference dataset. Committed and HUMAN-REVIEWABLE. Seeded into the canonical_biomarkers table (source='seed') and used as (1) the controlled vocabulary the AI reuses when canonicalizing names, and (2) the reference/optimal bands drawn on biomarker charts. Ranges are general adult values for an unconverted canonical unit. direction: 'higher_better' | 'lower_better' | 'in_range'. ref_* is a lab's standard reference range; optimal_* reflects general longevity literature for adults. Any field may be null (one-sided ranges are fine). Each entry may include 'conversions' (alternate-unit -> factor, where value_in_alt * factor = value in the canonical unit). Regenerate with `npm run gen:biomarkers`. INFORMATIONAL, NOT MEDICAL ADVICE — ranges may be inaccurate and often vary by sex/age.",
+  "$comment": "Canonical biomarker reference dataset. Committed and HUMAN-REVIEWABLE. Seeded into the canonical_biomarkers table (source='seed') and used as (1) the controlled vocabulary the AI reuses when canonicalizing names, and (2) the reference/optimal bands drawn on biomarker charts. Ranges are general adult values for an unconverted canonical unit. direction: 'higher_better' | 'lower_better' | 'in_range'. ref_* is a lab's standard reference range; optimal_* reflects general longevity literature for adults. Any field may be null (one-sided ranges are fine). Each entry may include 'conversions' (alternate-unit -> factor, where value_in_alt * factor = value in the canonical unit). Regenerate with `npm run gen:biomarkers`. Ranges may be inaccurate and often vary by sex/age.",
   "biomarkers": [
     {
       "name": "Total Cholesterol",
@@ -58,7 +58,7 @@
       "optimal_low": null,
       "optimal_high": 80,
       "direction": "lower_better",
-      "note": "Fasting; sensitive to recent carbohydrate intake",
+      "note": "Sensitive to recent fat and carbohydrate intake \u2014 a draw taken within a few hours of a meal reads higher than the same person's fasting value. The band is NOT restated per frame: current lipid guidance measures the panel either way and applies one screening threshold, so unlike glucose and insulin this analyte has no second published band for the frame to select.",
       "conversions": {
         "mmol/L": 88.57
       },
@@ -1392,12 +1392,27 @@
       "name": "Cortisol",
       "category": "lab",
       "unit": "ug/dL",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Serum cortisol drawn at a time of day the report did not state. Cortisol follows a strong diurnal rhythm \u2014 a value near 5 \u00b5g/dL is low for 8 a.m. and entirely normal at 8 p.m. \u2014 so the published band belongs to one point in that rhythm, not to the analyte. The value is shown but not flagged, because either frame would be a guess. A draw the report times to the morning belongs under Cortisol, Morning, which carries the 6\u201318 \u00b5g/dL band.",
+      "conversions": {
+        "nmol/L": 0.03625
+      },
+      "panel": "hormones"
+    },
+    {
+      "name": "Cortisol, Morning",
+      "category": "lab",
+      "unit": "ug/dL",
       "ref_low": 6,
       "ref_high": 18,
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Morning draw; strong diurnal variation",
+      "note": "Morning (roughly 6\u201310 a.m.) serum cortisol \u2014 the frame the standard adult band is defined on, at the peak of the diurnal rhythm. Distinct from a cortisol of unstated timing (Cortisol) and from a late-evening or midnight draw, which is normal several times lower.",
       "conversions": {
         "nmol/L": 0.03625
       },
@@ -2713,7 +2728,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Edinburgh Postnatal Depression Scale total score (0–30), a validated screening instrument for perinatal depression. Bands: 0–9 minimal, 10–12 possible depression, 13–19 probable depression, 20–30 severe. Items 1, 2 and 4 score 0→3; items 3 and 5–10 are reverse-scored. Screening only, NOT a diagnosis. Item 10 asks about thoughts of self-harm. Public domain (Cox, Holden, Sagovsky; Br J Psychiatry 1987;150:782-6).",
+      "note": "Edinburgh Postnatal Depression Scale total score (0–30), a validated screening instrument for perinatal depression. Bands: 0–9 minimal, 10–12 possible depression, 13–19 probable depression, 20–30 severe. Items 1, 2 and 4 score 0→3; items 3 and 5–10 are reverse-scored. Screening only. Item 10 asks about thoughts of self-harm. Public domain (Cox, Holden, Sagovsky; Br J Psychiatry 1987;150:782-6).",
       "panel": "mental-health"
     },
     {
@@ -3647,7 +3662,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Fluid pressure inside the eye (tonometry), eye unspecified. Normal ~10–21 mmHg; above 21 is ocular hypertension, a glaucoma risk factor (not a diagnosis). AAO / Glaucoma Research Foundation.",
+      "note": "Fluid pressure inside the eye (tonometry), eye unspecified. Normal ~10–21 mmHg; above 21 is ocular hypertension, a glaucoma risk factor rather than glaucoma itself. AAO / Glaucoma Research Foundation.",
       "panel": "vision"
     },
     {
@@ -3899,7 +3914,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Patient Health Questionnaire-9 total score (0–27), a validated screening instrument for depression severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–19 moderately severe, 20–27 severe. Screening only, NOT a diagnosis. Item 9 asks about thoughts of self-harm. Public domain (Spitzer, Williams, Kroenke / Pfizer).",
+      "note": "Patient Health Questionnaire-9 total score (0–27), a validated screening instrument for depression severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–19 moderately severe, 20–27 severe. Screening only. Item 9 asks about thoughts of self-harm. Public domain (Spitzer, Williams, Kroenke / Pfizer).",
       "panel": "mental-health"
     },
     {
@@ -3911,7 +3926,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Generalized Anxiety Disorder-7 total score (0–21), a validated screening instrument for anxiety severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–21 severe. Screening only, NOT a diagnosis. Public domain (Spitzer, Kroenke, Williams, Löwe).",
+      "note": "Generalized Anxiety Disorder-7 total score (0–21), a validated screening instrument for anxiety severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–21 severe. Screening only. Public domain (Spitzer, Kroenke, Williams, Löwe).",
       "panel": "mental-health"
     },
     {
@@ -3923,7 +3938,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "AUDIT-C total score (0–12), the 3-item alcohol-use screen (consumption items of the WHO AUDIT). Bands (UK PHE/NHS scoring): 0–4 lower risk, 5–7 increasing risk, 8–10 higher risk, 11–12 possible dependence; a score of 3+ (women) or 4+ (men) is commonly treated as a positive screen. Screening only, NOT a diagnosis. Public domain (Bush et al. 1998, VA).",
+      "note": "AUDIT-C total score (0–12), the 3-item alcohol-use screen (consumption items of the WHO AUDIT). Bands (UK PHE/NHS scoring): 0–4 lower risk, 5–7 increasing risk, 8–10 higher risk, 11–12 possible dependence; a score of 3+ (women) or 4+ (men) is commonly treated as a positive screen. Screening only. Public domain (Bush et al. 1998, VA).",
       "panel": "mental-health"
     },
     {
@@ -3935,7 +3950,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "AUDIT total score (0–40), the WHO 10-item Alcohol Use Disorders Identification Test. Risk zones (WHO manual): 0–7 lower risk, 8–15 increasing risk, 16–19 higher risk, 20–40 possible dependence. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app).",
+      "note": "AUDIT total score (0–40), the WHO 10-item Alcohol Use Disorders Identification Test. Risk zones (WHO manual): 0–7 lower risk, 8–15 increasing risk, 16–19 higher risk, 20–40 possible dependence. Screening only. Recorded as an outside-administered total (item text not reproduced in-app).",
       "panel": "mental-health"
     },
     {
@@ -3947,7 +3962,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Drug Abuse Screening Test (DAST-10) total score (0–10) for non-alcohol drug use in the past 12 months. Bands (Skinner): 0 none reported, 1–2 low, 3–5 moderate, 6–8 substantial, 9–10 severe. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app; © H. A. Skinner / CAMH).",
+      "note": "Drug Abuse Screening Test (DAST-10) total score (0–10) for non-alcohol drug use in the past 12 months. Bands (Skinner): 0 none reported, 1–2 low, 3–5 moderate, 6–8 substantial, 9–10 severe. Screening only. Recorded as an outside-administered total (item text not reproduced in-app; © H. A. Skinner / CAMH).",
       "panel": "mental-health"
     },
     {
@@ -4301,7 +4316,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Prenatal cell-free-DNA screen for trisomy 21 (Down syndrome). A low-/high-risk screen, not a diagnosis — a high-risk result is confirmed by diagnostic testing. No numeric band.",
+      "note": "Prenatal cell-free-DNA screen for trisomy 21 (Down syndrome). A low-/high-risk screen — a high-risk result is confirmed by diagnostic testing. No numeric band.",
       "panel": "prenatal-screening"
     },
     {
@@ -4313,7 +4328,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Prenatal cell-free-DNA screen for trisomy 18 (Edwards syndrome). A low-/high-risk screen, not a diagnosis. No numeric band.",
+      "note": "Prenatal cell-free-DNA screen for trisomy 18 (Edwards syndrome). A low-/high-risk screen. No numeric band.",
       "panel": "prenatal-screening"
     },
     {
@@ -4325,7 +4340,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Prenatal cell-free-DNA screen for trisomy 13 (Patau syndrome). A low-/high-risk screen, not a diagnosis. No numeric band.",
+      "note": "Prenatal cell-free-DNA screen for trisomy 13 (Patau syndrome). A low-/high-risk screen. No numeric band.",
       "panel": "prenatal-screening"
     },
     {
@@ -4397,7 +4412,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "The proportion of your forced vital capacity blown out in the first second, as a percentage. The one spirometry value with a universal cutoff: a post-bronchodilator ratio under 70% is the fixed criterion for persistent airflow obstruction, whatever your height or age. Screening context, not a diagnosis. GOLD / ATS-ERS.",
+      "note": "The proportion of your forced vital capacity blown out in the first second, as a percentage. The one spirometry value with a universal cutoff: a post-bronchodilator ratio under 70% is the fixed criterion for persistent airflow obstruction, whatever your height or age. Read in clinical context. GOLD / ATS-ERS.",
       "panel": "respiratory"
     },
     {

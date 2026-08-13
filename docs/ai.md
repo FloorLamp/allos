@@ -163,7 +163,8 @@ not cosmetic (#2338). A canonical name may carry qualifiers the document encodes
 method — because inferring those RECOVERS what the layout says: a bare `GLUCOSE`
 row inside a urinalysis section really is `Glucose, Urine`. It may not carry a
 **patient-state** condition the document does not print — fasting/non-fasting,
-post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise — because
+post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise,
+morning/evening draw — because
 those describe how the patient was _prepared_, and a report either states one or
 it does not. The qualifier selects the reference band (normal glucose tops out at
 99 fasting and around 140 otherwise), so an inferred one decides whether a
@@ -181,6 +182,12 @@ model judgment that over-qualified the name. Nothing is lost either way:
 `medical_records.name` keeps the printed name and the `fasting` column keeps what
 the report said about the draw. A document that genuinely prints the condition
 ("FBG (Glucose Fasting)") still lands on `Glucose, Fasting`.
+
+The families are a registry, not a fixed list: #2526 added **time of day** to it,
+because a diurnal analyte's band belongs to one point in the rhythm the same way a
+fasting band belongs to one preparation. A bare `CORTISOL` therefore lands on the
+band-less `Cortisol`, and only a report that prints the timing (`CORTISOL, AM`, a
+"Morning Draw" heading) reaches `Cortisol, Morning` and its 6–18 µg/dL band.
 
 The reading's **category** is held to the same standard, and there is **no
 catch-all** (#2479 part 2). The prompt used to end its category list with
