@@ -18,6 +18,31 @@
 // is estimated (see UNKNOWN_WEIGHT_FACTOR), which can only misplace it, never drop
 // it.
 
+/**
+ * Playwright's DEFAULT test-file naming, which is what decides the plan's
+ * universe (`scripts/e2e-shard-plan.ts` walks `testDir` with this).
+ *
+ * The universe only has to be a SUPERSET of what Playwright would run — the
+ * safety property is "every file Playwright runs is in exactly one bucket", and
+ * a file in a bucket that Playwright ignores contributes an empty file to one
+ * command line, not a dropped spec. Exactness buys BALANCE precision only, which
+ * is why enumerating the suite no longer costs a `playwright --list` per shard.
+ *
+ * A superset is guaranteed while every project either takes the default
+ * `testMatch` or narrows it, which is the case today (chromium takes the
+ * default; `mobile` and `demo` narrow it to named `.spec.ts` files) — but that
+ * is an assumption about a config this module cannot see, so it is CHECKED
+ * rather than trusted: `scripts/e2e-shard-plan.ts --verify` diffs this walk
+ * against Playwright's own `--list`, and CI runs it in the `check` job, off the
+ * browser tier's critical path.
+ */
+export const SPEC_FILE_RE = /\.(spec|test)\.[cm]?[jt]sx?$/;
+
+/** Whether `name` is a file Playwright's default `testMatch` would admit. */
+export function isSpecFile(name: string): boolean {
+  return SPEC_FILE_RE.test(name);
+}
+
 /** A spec file's measured wall-clock cost, in seconds. */
 export type DurationMap = Readonly<Record<string, number>>;
 

@@ -1,5 +1,6 @@
 import { ageFromBirthdate } from "./date";
 import { reconciledFlag, qualitativeFlagResolution } from "./reference-range";
+import { isEditLocked } from "./integrations/sync-log";
 import { cyclePhaseOnDate, type CyclePeriod } from "./cycle";
 import type { ReproductiveStatus, Sex } from "./types";
 
@@ -139,6 +140,11 @@ export interface QualitativeFlagRow {
   // hint that overrides the name regexes (#684). Optional: rows without a LOINC
   // fall back to name-based classification.
   loinc?: string | null;
+  // `medical_records.edited` — the #133 hand-edit lock, read through isEditLocked.
+  // Gates the #2687 no-result clear so a flag a person chose in the record editor is
+  // not deleted by the reconcile that runs on the very next line of the same save
+  // (#2712 R3). Optional: a not-yet-persisted record has no lock to read.
+  edited?: number | null;
 }
 
 // The qualitative counterpart of computeFlagReconciliation (issue #549): the numeric
@@ -160,7 +166,8 @@ export function computeQualitativeFlagChanges(
       r.notes,
       r.reference,
       r.flag,
-      r.loinc
+      r.loinc,
+      { editLocked: isEditLocked(r.edited) }
     );
     if (next === undefined) continue;
     out.push({ id: r.id, flag: next });

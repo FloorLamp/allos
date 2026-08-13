@@ -176,6 +176,47 @@ describe("updateResult", () => {
   });
 });
 
+describe("updateResult keeps the flag the user chose (#2712 R3)", () => {
+  // updateResult writes the chosen flag AND `edited = 1`, then calls reconcileFlags on
+  // the very next line. The #2687 no-result clear made that reconcile reach a
+  // qualitative row whose value is a pointer, so the save deleted the flag it had just
+  // stored — silently, with {ok:true}, and repeatably. #133's rule is that a derived
+  // pass never overwrites a hand-edited row; the resolver now reads that lock.
+  it("a qualitative pointer row keeps a hand-set flag across save and re-save", async () => {
+    const { profile } = seedActor();
+    await addResult(
+      fd({
+        date: "2026-01-15",
+        category: "lab",
+        name: "HEPATITIS A Ab/TOTAL",
+        value: "See Note",
+        reference_range: "Negative",
+      })
+    );
+    const id = recordRows(profile.id)[0].id;
+
+    for (const pass of ["first save", "re-save"]) {
+      await updateResult(
+        fd({
+          id,
+          date: "2026-01-15",
+          category: "lab",
+          name: "HEPATITIS A Ab/TOTAL",
+          value: "See Note",
+          reference_range: "Negative",
+          flag: "abnormal",
+        })
+      );
+      const row = db
+        .prepare("SELECT flag, edited FROM medical_records WHERE id = ?")
+        .get(id) as { flag: string | null; edited: number };
+      expect(`${pass}: ${row.flag} edited=${row.edited}`).toBe(
+        `${pass}: abnormal edited=1`
+      );
+    }
+  });
+});
+
 describe("the result lifecycle + collection attributes round-trip (#1404)", () => {
   it("adds a FASTING glucose and keeps its fasting state, specimen and status", async () => {
     const { profile } = seedActor();

@@ -159,7 +159,10 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
   // (#544), clear a blunt "abnormal" on a context-neutral attribute like a blood type
   // (#548 §1) — leaving infection markers + unrecognized values alone. Same profile
   // scoping and optional id filter as the numeric pass.
-  let qsql = `SELECT id, canonical_name, name, value, notes, reference_range, flag, loinc
+  // `edited` rides along for the #2687 no-result clear's hand-edit gate (#2712 R3):
+  // updateResult writes the user's chosen flag AND edited = 1, then calls this on the
+  // very next line, so without it the save silently deletes the flag it just stored.
+  let qsql = `SELECT id, canonical_name, name, value, notes, reference_range, flag, loinc, edited
      FROM medical_records
      WHERE profile_id = ? AND value_num IS NULL AND category IN ('lab','biomarker')`;
   const qargs: number[] = [profileId];
@@ -177,6 +180,7 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
       reference_range: string | null;
       flag: string | null;
       loinc: string | null;
+      edited: number | null;
     }[]
   ).map((r) => ({
     id: r.id,
@@ -186,6 +190,7 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     reference: r.reference_range,
     flag: r.flag,
     loinc: r.loinc,
+    edited: r.edited,
   }));
   const qChanges = computeQualitativeFlagChanges(qrows);
 
