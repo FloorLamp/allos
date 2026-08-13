@@ -307,10 +307,13 @@ export default function TrendMiniCard({
             // `wrap-anywhere`: `anywhere` collapses the title's min-content
             // width to ~one glyph, so a wide value squeezed the flex title to a
             // sliver and shredded "Traini/ng/Volu/me" one syllable per line
-            // (#2719 walkthrough) — `break-word` keeps min-content at the
-            // longest word, so words wrap whole first. Below `sm:` this is
+            // (#2719 walkthrough). `break-word` alone is not enough: `min-w-0`
+            // (needed for the ellipsis path) lets flex shrink the title below
+            // its longest word, so the `sm:min-w-28` floor is what actually
+            // guarantees whole-word wrapping; the value's delta chip wraps
+            // beneath the number when the row runs tight. Below `sm:` this is
             // inert — `white-space: nowrap` leaves nothing to wrap.
-            className="min-w-0 truncate group-hover:underline sm:flex-1 sm:wrap-break-word sm:whitespace-normal sm:text-base sm:font-semibold"
+            className="min-w-0 truncate group-hover:underline sm:min-w-28 sm:flex-1 sm:wrap-break-word sm:whitespace-normal sm:text-base sm:font-semibold"
             title={title}
           >
             {mobileTitle && mobileTitle !== title ? (
