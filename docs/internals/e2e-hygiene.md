@@ -1407,7 +1407,7 @@ rather than of N.
 Each shard now plans its own bucket:
 
 ```
-ARGS=$(npx tsx scripts/e2e-shard-plan.ts "$SHARD" "$TOTAL")
+ARGS=$(./node_modules/.bin/tsx scripts/e2e-shard-plan.ts "$SHARD" "$TOTAL")
 npm run test:e2e -- $ARGS
 ```
 
@@ -1423,6 +1423,24 @@ merely slow; a lossy one is green while running nothing. `planShards`
 rather than returning a plan that would drop or duplicate a spec, and the shard
 fails loudly on that. Its unit tests assert the partition, the determinism, and
 each way the plan can lie.
+
+That property is also what decides how the suite gets ENUMERATED, and the answer
+is not the obvious one. Asking Playwright (`--list`) gives the exact set, and cost
+**8.4s per shard** in CI — 8.4s of critical path twelve times a run — because
+`--list` loads all ~400 spec files through the transform pipeline to learn their
+names, which the run then does again. A directory walk of `testDir` is 2ms.
+
+The walk is sound because a partition of a **superset** still puts every file
+Playwright runs in exactly one bucket; a walked file no project admits costs one
+empty entry on one command line. Exactness only ever bought balance precision, and
+the plan is byte-identical either way today.
+
+"Superset" is a claim about `playwright.config.ts` that the planner cannot see, so
+it is checked, not assumed: `scripts/e2e-shard-plan.ts --verify` diffs the walk
+against `--list` and names any file that would run on no shard. It runs in the
+`check` job, which has ~130s of slack against the browser matrix — the expensive
+half moved off the critical path instead of being dropped. **If the walk ever needs
+widening, widen the walk, never the check.**
 
 Two failure modes it is deliberately built to survive:
 

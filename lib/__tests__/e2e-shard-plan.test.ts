@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertPartition,
+  isSpecFile,
   planShards,
   type DurationMap,
 } from "@/lib/e2e-shard-plan";
@@ -14,6 +15,49 @@ const files = (n: number): string[] =>
     { length: n },
     (_, i) => `e2e/spec-${String(i).padStart(3, "0")}.spec.ts`
   );
+
+describe("isSpecFile", () => {
+  // The planner's universe is a directory walk filtered by this predicate, and
+  // the partition guarantee needs that universe to be a SUPERSET of Playwright's
+  // own resolution. So the predicate must admit everything Playwright's default
+  // testMatch admits — being too GENEROUS is harmless (an extra file costs one
+  // empty command-line entry), being too narrow drops specs onto no shard.
+  // `scripts/e2e-shard-plan.ts --verify` checks the claim against the real
+  // config; these pin the naming rule itself.
+  it("admits every extension Playwright's default testMatch does", () => {
+    for (const name of [
+      "a.spec.ts",
+      "a.spec.tsx",
+      "a.spec.js",
+      "a.spec.jsx",
+      "a.spec.mts",
+      "a.spec.cts",
+      "a.spec.mjs",
+      "a.spec.cjs",
+      "a.test.ts",
+      "a.test.js",
+      "a.mobile.spec.ts",
+    ]) {
+      expect(isSpecFile(name), name).toBe(true);
+    }
+  });
+
+  it("rejects the helper and fixture modules that sit beside the specs", () => {
+    // These are real neighbours in e2e/ — planning one into a bucket would put a
+    // file with no tests on a command line.
+    for (const name of [
+      "helpers.ts",
+      "fixtures.ts",
+      "seed-events.ts",
+      "global-setup.ts",
+      "spec-durations.json",
+      "specs.ts",
+      "a.spec.txt",
+    ]) {
+      expect(isSpecFile(name), name).toBe(false);
+    }
+  });
+});
 
 describe("planShards", () => {
   it("assigns every spec file to exactly one shard", () => {
