@@ -68,6 +68,22 @@ const repoRoot = path.resolve(
   ".."
 );
 
+/**
+ * The MAIN checkout, asked of git rather than inferred from this file's location.
+ *
+ * `repoRoot` above answers "where does this copy of the script live", which stops
+ * being the same question the moment the script runs from anywhere but the main
+ * checkout. `--git-common-dir` resolves to the main checkout's `.git` from every
+ * linked worktree, so its parent is the main checkout wherever the caller sits.
+ * Falls back to `repoRoot` outside a git tree, where nothing else is meaningful.
+ */
+function mainCheckout() {
+  const common = git("rev-parse --path-format=absolute --git-common-dir", {
+    allowFail: true,
+  });
+  return common ? path.resolve(path.dirname(common)) : repoRoot;
+}
+
 // The one state directory both files live in. Matches
 // scripts/orchestrator-checkin.sh's `STATE_DIR=${SCRATCH:-/home/user/scratch}`
 // exactly — if you change one, change the other.
@@ -744,9 +760,19 @@ function cmdAdopt(argv) {
   }
   // `git worktree list` includes the main checkout, and the orchestrator's own
   // branch lives there — adopting it would roster the orchestrator as an agent.
-  if (path.resolve(wtPath) === repoRoot) {
+  //
+  // ASK GIT WHICH CHECKOUT IS THE MAIN ONE, never `repoRoot`. `repoRoot` is derived
+  // from this FILE's path, so it answers "where does this copy of the script live",
+  // which is only the same question when the script is run from the main checkout.
+  // Run a copy from anywhere else — a worktree, a review checkout — and the guard
+  // compares the main checkout against that copy's directory, matches nothing, and
+  // adopts the orchestrator. Measured, not theorised: running this from a review
+  // worktree rostered `/home/user/allos` twice before the guard was re-pointed.
+  // `--git-common-dir` is the main checkout's `.git` from ANY linked worktree, so
+  // its parent is the answer wherever the script sits.
+  if (path.resolve(wtPath) === mainCheckout()) {
     console.error(
-      `${branch} is checked out in the MAIN CHECKOUT (${repoRoot}), where no agent works — nothing to adopt.`
+      `${branch} is checked out in the MAIN CHECKOUT (${mainCheckout()}), where no agent works — nothing to adopt.`
     );
     process.exit(1);
   }
