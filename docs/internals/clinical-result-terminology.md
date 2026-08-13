@@ -123,6 +123,35 @@ interpretation, an audiologic diagnosis. Classified at read time by
 `classifyQualitativeResult` (`lib/reference-range/qualitative.ts`) with
 `qualitativePresence` / `screeningRisk` / `qualitativeFlagResolution`.
 
+A value that **states no result** — `See Note`, `SEE COMMENT`, `QNS`, `Cancelled` —
+is a fourth thing again, and it moves a row on **none** of the three axes. The
+analyte is real, so the row keeps its storage category, its catalog place, its
+canonical name, its series, its Coverage candidacy and its retest clock (a test that
+produced no answer is if anything more worth redrawing). What it cannot carry is a
+**flag**: a flag is a verdict about a value, and there is no value — only a pointer
+to the narrative the document files the finding in. `statesNoResult`
+(`lib/reference-range/qualitative.ts`) is the vocabulary and
+`qualitativeFlagResolution` is its one consumer, which **clears** an out-of-range
+flag there instead of preserving it (#2687). It is deliberately narrower than the
+neighbouring `SCREEN_INDETERMINATE`: `indeterminate` / `inconclusive` / `equivocal` /
+`borderline` are ambiguous **findings**, and overriding a finding is what #549
+forbids. Being non-quantitative is not what withholds identity here either — see the
+crossing table above.
+
+Four conditions gate that clear, and each one exists because dropping it deletes a
+real verdict (#2712). The **value** must be consumed WHOLE by the non-answer
+vocabulary — matching a `see` prefix plus a target word anywhere let `See note:
+POSITIVE` count as stating no result, and the extractor is instructed to copy the
+document's own H/L marker, so the flag beside a printed result is the lab's. The
+**flag** must be out of range: this is one transition, never a promotion. The
+**notes** must assert nothing recognizable — `classifyQualitativeResult` reads notes
+only inside its recognized classes, so an unrecognized analyte's narrative was being
+discarded by the very clear that claims to follow the pointer. And the **row** must
+not be edit-locked (`isEditLocked`, #133): `updateResult` writes the user's chosen
+flag and `edited = 1` and then reconciles on the next line, so without the lock the
+save deletes the flag it just stored. The lock gates this clear only; the older
+#544/#548 transitions are unchanged.
+
 It sits on a **different axis from `Assessment`**, and the map says so explicitly
 because conflating the two is the mistake #2479's body made. A `QualitativeResult`
 is registered, browsable where its category allows, and carries full identity; an

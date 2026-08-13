@@ -163,9 +163,14 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // anti-HAV is a hepatitis marker that reads as an immunity titer — belonging to
 // neither list's author. FLAG_LOGIC_VERSION is again NOT bumped: the derivation logic
 // is unchanged and the dataset half of the signature forces the one re-reconcile.
+// Updated for #2687: FLAG_LOGIC_VERSION bumps to 10 — qualitativeFlagResolution now
+// CLEARS an out-of-range flag on a reading whose value states no result at all ("See
+// Note", "QNS"), where it used to leave the extractor's guess frozen forever. The
+// dataset rows are unchanged; the version bump is the whole change, and it is what
+// makes the boot reconcile revisit the guesses already stored.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "b52823b75ec93baffdd0e521bdb2ba906b27b6c6972a01d91fde2aa82ba99b22"; // phi-scan-ok
+  "3ad36dc36807693c8e2761789c83e9d54f20658f790c33d629690ef7c6a242c0"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

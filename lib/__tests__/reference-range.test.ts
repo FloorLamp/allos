@@ -31,6 +31,7 @@ import {
   selectAgeBand,
   selectCyclePhaseRange,
   selectStatusRange,
+  statesNoResult,
 } from "@/lib/reference-range";
 
 describe("parseReferenceRange", () => {
@@ -1744,5 +1745,438 @@ describe("qualitativeFlagResolution — bad-polarity promotion (#629)", () => {
         null
       )
     ).toBeUndefined();
+  });
+});
+
+describe("statesNoResult (#2687)", () => {
+  it("recognizes a pointer to the narrative, whatever the casing or wrapping", () => {
+    for (const v of [
+      "See Note",
+      "SEE NOTE",
+      "see note",
+      "  See Note  ",
+      "*See Note*",
+      "(see comment)",
+      "See Comment",
+      "see report",
+      "See scanned report",
+      "Please see note below",
+      "See attached",
+      "see interpretation",
+    ])
+      expect(statesNoResult(v)).toBe(true);
+  });
+
+  it("recognizes a statement that the assay produced no answer", () => {
+    for (const v of [
+      "No Result",
+      "Not Reportable",
+      "No Call",
+      "Test Not Performed",
+      "TNP",
+      "Cancelled",
+      "Canceled",
+      "QNS",
+      "Quantity Not Sufficient",
+      "Specimen unsatisfactory",
+      "Unsatisfactory for evaluation",
+      "Pending",
+      "Not Applicable",
+      "N/A",
+    ])
+      expect(statesNoResult(v)).toBe(true);
+  });
+
+  it("a genuine result is not a non-result — including an AMBIGUOUS one", () => {
+    // The assay ran and reported a finding. `indeterminate` / `inconclusive` /
+    // `equivocal` / `borderline` are findings on the #687 screening axis, and
+    // overriding a finding is what #549 forbids. They stay OUT of this class.
+    for (const v of [
+      "Reactive",
+      "Non-Reactive",
+      "Negative",
+      "Positive",
+      "Detected",
+      "Not Detected",
+      "A POSITIVE",
+      "e3/e3",
+      "YELLOW",
+      "Low Risk",
+      "Indeterminate",
+      "Inconclusive",
+      "Equivocal",
+      "Borderline",
+      "12.4",
+      "<0.10",
+      "",
+      null,
+      undefined,
+    ])
+      expect(statesNoResult(v)).toBe(false);
+  });
+
+  it("matches the WHOLE value only — a result that also points at a note is a result", () => {
+    expect(statesNoResult("0.5 (see note)")).toBe(false);
+    expect(statesNoResult("Negative, see comment below")).toBe(false);
+    expect(statesNoResult("Reactive — see note")).toBe(false);
+    // "seen" is not "see".
+    expect(statesNoResult("Seen on report")).toBe(false);
+  });
+});
+
+describe("qualitativeFlagResolution — a value that states no result (#2687)", () => {
+  // The two real rows the issue is about, pinned side by side: same non-result
+  // value, and today they disagree only because of which reference-range shape the
+  // document happened to print. A qualitative reference gave the extractor
+  // something to compare a non-matching value against; a numeric one made its path
+  // bail. Neither is a verdict, so both resolve the same way now.
+  it("clears an out-of-range flag with a QUALITATIVE reference range", () => {
+    expect(
+      qualitativeFlagResolution(
+        "HEPATITIS A Ab/TOTAL",
+        "See Note",
+        null,
+        "Negative",
+        "abnormal"
+      )
+    ).toBeNull();
+  });
+
+  it("clears an out-of-range flag with a NUMERIC reference range", () => {
+    expect(
+      qualitativeFlagResolution(
+        "BUN/CREATININE RATIO",
+        "SEE NOTE",
+        null,
+        "6-22",
+        "abnormal"
+      )
+    ).toBeNull();
+  });
+
+  it("leaves an unflagged non-result alone — there is nothing to clear", () => {
+    for (const flag of [null, undefined, "normal", ""]) {
+      expect(
+        qualitativeFlagResolution(
+          "HEPATITIS A Ab/TOTAL",
+          "See Note",
+          null,
+          "Negative",
+          flag
+        )
+      ).toBeUndefined();
+      expect(
+        qualitativeFlagResolution(
+          "BUN/CREATININE RATIO",
+          "SEE NOTE",
+          null,
+          "6-22",
+          flag
+        )
+      ).toBeUndefined();
+    }
+  });
+
+  it("never PROMOTES a non-result — an infection marker stating nothing is not positive", () => {
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antigen",
+        "See Note",
+        null,
+        "Negative",
+        null
+      )
+    ).toBeUndefined();
+    // …and an out-of-range guess on that same row is cleared, not frozen.
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antigen",
+        "See Note",
+        null,
+        "Negative",
+        "abnormal"
+      )
+    ).toBeNull();
+  });
+
+  it("follows the pointer rather than overruling it — a verdict in the NOTES wins", () => {
+    // Value states no result, but the narrative the value points at was captured on
+    // the row. The classifier reaches a verdict from it, so the no-result branch is
+    // never entered and the verdict stands.
+    expect(
+      qualitativeFlagResolution(
+        "HEPATITIS A Ab/TOTAL",
+        "See Note",
+        "Reactive",
+        "Negative",
+        null
+      )
+    ).toBe("immune");
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antigen",
+        "See Note",
+        "Positive",
+        "Negative",
+        null
+      )
+    ).toBe("abnormal");
+  });
+
+  it("widens nothing: a genuine qualitative result resolves exactly as before", () => {
+    // A real result on the very analyte the issue is about.
+    expect(
+      qualitativeFlagResolution(
+        "HEPATITIS A Ab/TOTAL",
+        "Reactive",
+        null,
+        "Negative",
+        null
+      )
+    ).toBe("immune");
+    // A positive infection marker still flags.
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis C Antibody",
+        "Reactive",
+        null,
+        null,
+        null
+      )
+    ).toBe("abnormal");
+    // An AMBIGUOUS finding on an unrecognized analyte keeps the extractor's flag —
+    // the #549 conservatism this change deliberately does not touch.
+    expect(
+      qualitativeFlagResolution(
+        "Some Novel Assay",
+        "Equivocal",
+        null,
+        null,
+        "abnormal"
+      )
+    ).toBeUndefined();
+    // A value that merely mentions a note is a result, not a non-result.
+    expect(
+      qualitativeFlagResolution(
+        "Some Novel Assay",
+        "Negative, see comment below",
+        null,
+        null,
+        "abnormal"
+      )
+    ).toBeUndefined();
+  });
+
+  it("says nothing about identity: a non-result still carries its retest clock", () => {
+    // The row is a real, dated reading of a real analyte. Only the flag was a
+    // fabrication — the reading keeps its clock (a test that produced no answer is
+    // if anything more worth redrawing), unlike the immutable/QC exemptions.
+    expect(
+      biomarkerRetestStatus("2023-01-01", "lab", "2026-08-13", null, {
+        name: "HEPATITIS A Ab/TOTAL",
+        value: "See Note",
+        reference: "Negative",
+        flag: null,
+      })
+    ).toBe("due");
+  });
+});
+
+// The guard around that transition, re-derived after review (#2712). The mechanism
+// was sound; what was not was WHICH values reached it. Each block below is a value
+// that used to reach the clear and must not.
+describe("statesNoResult — the pointer is consumed WHOLE (#2712 R1)", () => {
+  it("a pointer that states its result right after the pointer is a RESULT", () => {
+    // The first spelling anchored only the opening "see" and left the target word
+    // unanchored, so every one of these counted as stating no result. The flag beside
+    // them is the least likely to be a guess: the extractor is told to copy the
+    // document's own H/L marker, and a value that prints a result corroborates it.
+    for (const v of [
+      "See note: POSITIVE",
+      "See comment - Reactive",
+      "See note: POSITIVE 1:640",
+      "See interpretation: Monoclonal spike present",
+      "See below: 15.2 mg/dL",
+      "See report: 1:320",
+      "See note - ABNORMAL",
+      "see comment: no growth",
+      "See attached report: Detected",
+    ])
+      expect(statesNoResult(v)).toBe(false);
+  });
+
+  it("no finding word and no digit is representable in the pointer vocabulary", () => {
+    // The safety property is a property of the WORD SETS, not of the examples above:
+    // a value that survives consumption cannot be stating a result, because none of
+    // these appear in either set.
+    for (const w of [
+      "positive",
+      "negative",
+      "reactive",
+      "detected",
+      "abnormal",
+      "elevated",
+      "growth",
+      "immune",
+      "1",
+      "640",
+      "e3",
+    ])
+      expect(statesNoResult(`See note ${w}`)).toBe(false);
+  });
+
+  it("still recognizes the pointers it is for", () => {
+    for (const v of [
+      "See Note",
+      "SEE COMMENT",
+      "see scanned report",
+      "Please see note below",
+      "(see comment)",
+      "*See Note*",
+      "See the attached report",
+      "see note for details",
+      "See interpretation",
+      "Refer to note",
+      "refer to the attached report",
+    ])
+      expect(statesNoResult(v)).toBe(true);
+  });
+
+  it("a pointer with nothing to point AT is not a pointer", () => {
+    for (const v of [
+      "See",
+      "see the",
+      "please see",
+      "refer to",
+      "see previous",
+    ])
+      expect(statesNoResult(v)).toBe(false);
+  });
+
+  it("grows the no-answer vocabulary on the spellings review evidenced", () => {
+    for (const v of [
+      "Q.N.S.",
+      "q.n.s",
+      "QNS",
+      "Test canceled by lab",
+      "Cancelled by the laboratory",
+      "Specimen rejected",
+      "Sample rejected",
+      "Specimen not received",
+      "Insufficient sample",
+      "Insufficient specimen",
+    ])
+      expect(statesNoResult(v)).toBe(true);
+  });
+});
+
+describe("qualitativeFlagResolution — a finding in the NOTES is followed (#2712 R2)", () => {
+  // classifyQualitativeResult reads `notes` only INSIDE its recognized-class
+  // branches, and statesNoResult reads only the VALUE. So on an unrecognized analyte
+  // the narrative the pointer points at was being discarded — the exact opposite of
+  // the "the pointer is followed, not overruled" claim the module makes.
+  it("an UNRECOGNIZED analyte whose notes assert a finding keeps its flag", () => {
+    for (const notes of [
+      "REACTIVE",
+      "Positive for M protein",
+      "Abnormal pattern",
+      "Detected",
+      "Growth of a fictional organism",
+      "Indeterminate",
+    ])
+      expect(
+        qualitativeFlagResolution(
+          "Some Novel Assay",
+          "See Note",
+          notes,
+          null,
+          "abnormal"
+        )
+      ).toBeUndefined();
+  });
+
+  it("a RECOGNIZED titer knocked out of its own class by the value keeps its flag", () => {
+    // "See below" trips NEGATIVE_TITER's \bbelow\b, so isImmunePositiveResult says no
+    // and the immunity branch returns null — dropping a recognized analyte into the
+    // unclassified path with its finding still sitting in the notes.
+    expect(
+      qualitativeFlagResolution(
+        "Rubella IgG",
+        "See below",
+        "Reactive",
+        null,
+        "abnormal"
+      )
+    ).toBeUndefined();
+  });
+
+  it("silent notes still clear — the feature is not broken by the guard", () => {
+    for (const notes of [
+      null,
+      "",
+      "Specimen received at the fictional reference laboratory",
+      "Performed by a fictional reference laboratory",
+    ])
+      expect(
+        qualitativeFlagResolution(
+          "Some Novel Assay",
+          "See Note",
+          notes,
+          null,
+          "abnormal"
+        )
+      ).toBeNull();
+  });
+});
+
+describe("qualitativeFlagResolution — a hand-edited row is not overwritten (#2712 R3)", () => {
+  // updateResult writes the user's chosen flag AND edited = 1, then calls
+  // reconcileFlags on the next line. Without this gate the save deletes the flag it
+  // just stored, silently and repeatably. #133's rule is that a derived pass never
+  // overwrites a hand-edited row, and this is a derived pass.
+  it("clears on an untouched row and defers on an edit-locked one", () => {
+    const args = [
+      "HEPATITIS A Ab/TOTAL",
+      "See Note",
+      null,
+      "Negative",
+      "abnormal",
+      null,
+    ] as const;
+    expect(qualitativeFlagResolution(...args)).toBeNull();
+    expect(
+      qualitativeFlagResolution(...args, { editLocked: false })
+    ).toBeNull();
+    expect(
+      qualitativeFlagResolution(...args, { editLocked: true })
+    ).toBeUndefined();
+  });
+
+  it("gates the no-result clear ONLY — the older transitions are unchanged", () => {
+    // #548 §1 clears a blunt "abnormal" on an immutable identity attribute, and #544
+    // promotes an immune titer. Whether THOSE should respect the edit lock is a
+    // separate claim about base behaviour; this change does not make it.
+    expect(
+      qualitativeFlagResolution(
+        "ABO Blood Group",
+        "O Positive",
+        null,
+        null,
+        "abnormal",
+        null,
+        { editLocked: true }
+      )
+    ).toBeNull();
+    expect(
+      qualitativeFlagResolution(
+        "HEPATITIS A Ab/TOTAL",
+        "Reactive",
+        null,
+        "Negative",
+        null,
+        null,
+        { editLocked: true }
+      )
+    ).toBe("immune");
   });
 });

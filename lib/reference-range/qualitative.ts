@@ -224,6 +224,182 @@ const SCREEN_LOW_RISK =
 const SCREEN_HIGH_RISK =
   /\b(high[-\s]?risk|increased risk|at[-\s]?risk|screen(?:ing)?[-\s]?positive|aneuploid|abnormal|detected|positive)\b/i;
 
+// ── A value that STATES NO RESULT (#2687) ───────────────────────────────────
+//
+// "See Note" is not a result. It is a POINTER to the narrative the document files
+// the finding in, and a lab prints it in the value column exactly where a word like
+// "Reactive" would otherwise go. So does "QNS", "Test not performed" and "Cancelled":
+// the row exists, it is dated, its analyte is real — and it reports nothing.
+//
+// This matters because of what the flag resolver does with an unclassifiable value.
+// `classifyQualitativeResult` returns null for these (correctly — the value MEANS
+// nothing, so there is no class), and the resolver's response to null is "leave the
+// existing flag alone", which is right when the extractor's flag encodes a verdict
+// the app cannot re-derive and WRONG here, because there is no verdict: only the
+// extractor's one-shot guess, comparing a non-matching value against a qualitative
+// reference range. That guess is then permanent — no re-reconcile can ever reach it.
+// A stored hepatitis A row carried `flag = 'abnormal'` on a value of "See Note" for
+// exactly that reason, while the same non-value on a numerically-referenced row
+// (`BUN/CREATININE RATIO`, "SEE NOTE", ref `6-22`) carried none. The difference was
+// which reference-range shape the document happened to print.
+//
+// WHAT THIS IS NOT. It is not a claim about the ROW: the reading is real, keeps its
+// analyte identity, its canonical name, its series, its Coverage candidacy and its
+// retest clock — a test that produced no answer is if anything MORE worth redrawing.
+// Nothing here hides or drops anything. Quantitation is not an identity axis
+// (docs/internals/clinical-result-terminology.md); this is a property of the VALUE
+// and its only consequence is the flag.
+//
+// THE LINE. "States no result" is narrower than the #687 SCREEN_INDETERMINATE
+// vocabulary it neighbours, and deliberately excludes that vocabulary's core:
+// `indeterminate` / `inconclusive` / `equivocal` / `borderline` are FINDINGS — the
+// assay ran and reported an ambiguous one — and overriding a finding is the very
+// thing #549 forbids. Only a pointer to a narrative, or a statement that no answer
+// was produced, qualifies. (`no result` / `no call` / `not reportable` sit in both
+// lists honestly: on the screening axis they are one of three risk verdicts, here
+// they are the absence of one.) Grow this list on evidence from real exports, never
+// on a synonym that could be a finding.
+//
+// Matched on the WHOLE value, never as a substring: "0.5 (see note)" states a result
+// AND points at a note, and "Negative, see comment below" is a negative. Only a value
+// that is nothing BUT the non-answer is one.
+//
+// `q.n.s.` is spelled with interior periods often enough to be worth its own
+// alternation — the stripper only removes leading/trailing punctuation, so the dots
+// survive into the match. Everything else here is the plain spelling.
+const NO_RESULT_STATEMENT =
+  /^(?:no results?|not reportable|unable to report|no[-\s]?call|not performed|test not performed|tnp|not done|not tested|(?:test )?cancell?ed(?: by (?:the )?(?:lab|laboratory|client|provider|physician|patient))?|pending|results? pending|in process|q\.?n\.?s|quantity not sufficient|insufficient (?:specimen|quantity|sample)|(?:specimen|sample) (?:unsatisfactory|rejected|not received)|unsatisfactory(?: for evaluation)?|not applicable|n\/a)$/;
+
+// A pointer to where the finding actually lives — "See Note", "SEE COMMENT",
+// "see scanned report", "please see note below", "Refer to note".
+//
+// Matched by CONSUMPTION, not by an anchored opening plus a keyword somewhere
+// (#2712 R1). The first spelling anchored only the "see" and left the target word
+// unanchored, so ANY value beginning with "see" that mentioned a target counted as
+// stating no result — including a value that states its result immediately after the
+// pointer ("See note: POSITIVE", "See below: 15.2 mg/dL"). Those are the rows where
+// the out-of-range flag is least likely to be a guess: the extractor is instructed to
+// copy the document's own H/L marker (lib/medical-extract/prompt.ts), and a value that
+// prints a result beside that marker corroborates it. Clearing there deletes the lab's
+// verdict, which is the one thing this transition must never do.
+//
+// So: EVERY word of the value must come from these sets, the value must OPEN with a
+// pointer verb, and it must NAME something to go and read. The safety property is a
+// property of the vocabulary — no finding word (positive, reactive, detected,
+// abnormal, elevated, growth) and no digit is representable in it, so a value that
+// survives the consumption check cannot be stating a result.
+const POINTER_OPENERS = new Set(["see", "refer", "please", "pls"]);
+// The thing being pointed AT. At least one is required: "see the attached" alone is
+// not a pointer to anything nameable, and neither is a bare "see".
+const POINTER_TARGETS = new Set([
+  "note",
+  "notes",
+  "comment",
+  "comments",
+  "commentary",
+  "report",
+  "reports",
+  "narrative",
+  "interpretation",
+  "interpretive",
+  "text",
+  "addendum",
+  "addenda",
+  "attachment",
+  "attachments",
+  "attached",
+  "image",
+  "images",
+  "scan",
+  "chart",
+  "document",
+  "footnote",
+  "remark",
+  "remarks",
+  "description",
+  "summary",
+  "result",
+  "results",
+  "below",
+  "above",
+]);
+// Words that carry no claim on their own and may appear anywhere in the phrase. The
+// openers are repeated here so the consumption check passes over them too.
+const POINTER_FILLERS = new Set([
+  "see",
+  "refer",
+  "please",
+  "pls",
+  "to",
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "for",
+  "of",
+  "in",
+  "on",
+  "this",
+  "separate",
+  "scanned",
+  "additional",
+  "further",
+  "more",
+  "full",
+  "complete",
+  "detailed",
+  "detail",
+  "details",
+  "section",
+  "page",
+  "previous",
+  "following",
+]);
+
+// Whether a reading's VALUE states no result at all: a pointer to the narrative, or
+// a statement that the assay produced no answer. Case- and punctuation-insensitive
+// ("SEE NOTE", "*See Note*", "(see comment)"), whole-value only.
+export function statesNoResult(value: string | null | undefined): boolean {
+  const s = String(value ?? "")
+    .replace(/[*"'`]/g, "")
+    .replace(/^[\s([{]+|[\s)\]}.,;:!-]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!s || s.length > 48) return false;
+  if (NO_RESULT_STATEMENT.test(s)) return true;
+  // Split on everything that is not a word character, so punctuation cannot hide a
+  // word from the consumption check ("see note:positive" is three words, not two) and
+  // every digit run becomes a token no set contains.
+  const words = s.split(/[^a-z0-9]+/).filter(Boolean);
+  if (!words.length || !POINTER_OPENERS.has(words[0])) return false;
+  if (!words.some((w) => POINTER_TARGETS.has(w))) return false;
+  return words.every((w) => POINTER_TARGETS.has(w) || POINTER_FILLERS.has(w));
+}
+
+// Whether the row's NOTES assert something the app's own vocabulary recognizes —
+// a presence (positive/negative/reactive/no-growth) or a screening/risk call
+// (abnormal, high-risk, indeterminate). #2712 R2.
+//
+// `statesNoResult` reads only the VALUE, and `classifyQualitativeResult` reads the
+// notes only INSIDE its recognized-class branches: an unrecognized analyte returns
+// null whatever its notes say. So on "Some Novel Assay", value "See Note", notes
+// "REACTIVE", the finding was sitting one column over and the clear discarded it —
+// and the same happened to a RECOGNIZED immunity titer whose value "See below" trips
+// NEGATIVE_TITER's `\bbelow\b`, dropping it out of its own class.
+//
+// The rule the module claims is that a pointer is FOLLOWED, not overruled. This is
+// what makes that true: the clear fires only when nothing recognizable is said
+// anywhere on the row. Deliberately over-inclusive — a note saying "negative" or
+// "within normal limits" also defers, though clearing there would have been correct —
+// because a missed clear costs a stale guess and a wrong clear costs a verdict.
+export function notesAssertFinding(notes: string | null | undefined): boolean {
+  const s = (notes ?? "").trim();
+  if (!s) return false;
+  return qualitativePresence(s) !== "neutral" || screeningRisk(s) !== null;
+}
+
 export type ScreeningRisk = "low_risk" | "high_risk" | "indeterminate";
 
 export function screeningRisk(
@@ -388,6 +564,18 @@ export function classifyQualitativeResult(
   return null;
 }
 
+// Facts about the stored ROW that the value/notes cannot tell the resolver (#2712).
+// Optional everywhere: a caller that has no row — the reprocess preview, judging a
+// freshly extracted record that nobody can have edited yet — passes nothing and gets
+// the unlocked answer, which is the right one for a record that does not exist.
+export interface QualitativeFlagContext {
+  // `isEditLocked(medical_records.edited)` — a person has been in this row through
+  // the record editor. Gates the #2687 no-result clear ONLY: the older #548/#549
+  // transitions are unchanged, deliberately, because widening the edit lock to them
+  // is a separate claim about base behaviour and not this change's to make.
+  editLocked?: boolean;
+}
+
 // The stored flag a qualitative reading should carry, given its classifier verdict
 // and current flag (issue #549, routing #544 + #548 §1; #629). The qualitative
 // counterpart of reconciledFlag: "immune" for a good durable-immunity titer,
@@ -401,10 +589,36 @@ export function qualitativeFlagResolution(
   notes: string | null | undefined,
   reference: string | null | undefined,
   currentFlag: string | null | undefined,
-  loinc?: string | null
+  loinc?: string | null,
+  opts?: QualitativeFlagContext
 ): "immune" | "abnormal" | null | undefined {
   const c = classifyQualitativeResult(name, value, notes, reference, loinc);
-  if (!c) return undefined; // unrecognized → leave the extractor/existing flag
+  if (!c) {
+    // No classification. Two different reasons hide behind that, and they deserve
+    // opposite answers (#2687). An UNRECOGNIZED value may still encode a verdict the
+    // app cannot re-derive, so the extractor's flag stays — that conservatism is #549
+    // and it is right. A value that states NO RESULT encodes nothing: there is no
+    // verdict to preserve, only a guess, so an out-of-range flag on it is cleared
+    // rather than frozen forever.
+    //
+    // Four conditions, and all four are load-bearing (#2712):
+    //   • the VALUE is nothing but a non-answer — consumed whole, so it cannot be
+    //     stating the result right after the pointer;
+    //   • the current flag is out of range — this is the only transition, and a
+    //     normal/immune/absent flag is left exactly as it is;
+    //   • the NOTES assert nothing recognizable — the classifier reads notes only
+    //     inside its recognized classes, so this is what makes "the pointer is
+    //     followed, not overruled" true for the unrecognized analytes too;
+    //   • the row is not EDIT-LOCKED — a flag a person chose in the record editor is
+    //     not the extractor's guess, and #133's rule is that a derived pass never
+    //     overwrites a hand-edited row.
+    return statesNoResult(value) &&
+      isOutOfRange(currentFlag) &&
+      !notesAssertFinding(notes) &&
+      !opts?.editLocked
+      ? null
+      : undefined;
+  }
   if (c.polarity === "bad") {
     // A bad-polarity positive (positive HBsAg/HCV/HIV, a positive culture) that the
     // extractor left null/normal would otherwise display as "Normal" and never reach
