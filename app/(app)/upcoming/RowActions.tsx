@@ -289,7 +289,7 @@ export default function UpcomingRowMenu({
       open={open}
       onOpenChange={setOpen}
     >
-      {({ runAction, anchorEl }) => (
+      {({ runAction, anchorRef }) => (
         <>
           <RowActionMenuItems actions={folded} runAction={runAction} />
           {hasPreventive && (
@@ -309,8 +309,9 @@ export default function UpcomingRowMenu({
               // by walking up from the kebab, which is the only part of this menu
               // still standing inside it (the panel is portaled to <body>).
               slideTarget={() =>
-                anchorEl()?.closest<HTMLElement>(`[${DISMISS_ROW_ATTR}]`) ??
-                null
+                anchorRef.current?.closest<HTMLElement>(
+                  `[${DISMISS_ROW_ATTR}]`
+                ) ?? null
               }
             />
           )}
