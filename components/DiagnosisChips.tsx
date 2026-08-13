@@ -7,7 +7,7 @@ import {
   decodeDiagnosisRanks,
   diagnosisRankBadge,
   rankForDiagnosis,
-  spokenDiagnosis,
+  spokenDiagnosisList,
   type VisitDiagnosisRank,
 } from "@/lib/visit-diagnosis-rank";
 
@@ -29,8 +29,17 @@ import {
 // So the two are styled apart on purpose: a filled uppercase pill is a source
 // claim, a hairline-ruled italic fragment is part of a name. And both reach the
 // accessibility tree — the factored pieces are aria-hidden behind full names that
-// CARRY their rank (`spokenDiagnosis`), because a badge visible only to sighted
-// users would be half 2 deleting half 1.
+// CARRY their rank (`spokenDiagnosisList`), because a badge visible only to
+// sighted users would be half 2 deleting half 1.
+//
+// WHAT IS AND IS NOT GUARDED. Every decision this file makes is pure and tested
+// elsewhere — the grouping (lib/diagnosis-chips.ts), the badge vocabulary and the
+// spoken strings (lib/visit-diagnosis-rank.ts). The MARKUP is not: the repo has a
+// decided no-component-tier stance (docs/internals/component-tests.md), so nothing
+// in the pure tier can catch this file being rewired to drop the sr-only span or
+// to style a tail like a badge. That gap is real and is stated in the PR; the
+// `data-testid`s below exist so a browser test can close it without touching this
+// component.
 //
 // Server-renderable: no state, no client hooks, so both surfaces use one copy.
 
@@ -72,20 +81,20 @@ function Chip({
     );
   }
   // The factored form. The visual parts are aria-hidden and the full names — with
-  // their ranks — are spoken instead, so nothing about this layout reaches
-  // assistive technology as an abbreviation. The title carries the same names for
-  // hover.
+  // their ranks, composed by the pure `spokenDiagnosisList` — are spoken instead,
+  // so nothing about this layout reaches assistive technology as an abbreviation.
+  // The title carries the same strings for hover.
+  const spoken = spokenDiagnosisList(
+    group.members.map((m) => m.name),
+    ranks
+  );
   return (
     <span
       className={`${CHIP} flex-wrap gap-x-1 gap-y-0.5`}
       data-testid="diagnosis-chip-group"
-      title={group.members
-        .map((m) => spokenDiagnosis(m.name, ranks))
-        .join("\n")}
+      title={spoken.join("\n")}
     >
-      <span className="sr-only">
-        {group.members.map((m) => spokenDiagnosis(m.name, ranks)).join("; ")}
-      </span>
+      <span className="sr-only">{spoken.join("; ")}</span>
       <span aria-hidden="true">{group.stem}</span>
       {group.members.map((m, i) => (
         <span

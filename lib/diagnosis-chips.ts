@@ -89,13 +89,29 @@ function commonPrefixLength(a: string, b: string): number {
 }
 
 // Cut a raw common prefix back to a point that is a word boundary in EVERY
-// member: either the member ends there, or the next character is not
-// alphanumeric. Without this, "Diabetes mellitus type 1" and "… type 12" would
-// share a stem that ends mid-token.
+// member: either the member ends there, or the next character starts a new
+// grapheme and is not alphanumeric. Without this, "Diabetes mellitus type 1" and
+// "… type 12" would share a stem that ends mid-token.
+//
+// The index is a UTF-16 code unit, so two non-letter cases have to be excluded by
+// hand or the cut lands INSIDE a character: a combining mark (an NFD accent, whose
+// base letter would stay on the stem while its accent went to the tail) and the
+// low half of a surrogate pair (an astral character split down the middle).
+// Neither breaks `stem + tail === name` — the pieces still concatenate — but each
+// renders as a word the record does not contain, which is the one thing this layer
+// must not do.
+function startsNewGrapheme(n: string, k: number): boolean {
+  if (/\p{M}/u.test(n[k])) return false;
+  const unit = n.charCodeAt(k);
+  return !(unit >= 0xdc00 && unit <= 0xdfff);
+}
+
 function boundaryStemLength(names: string[], rawLen: number): number {
   for (let k = rawLen; k > 0; k--) {
     const ok = names.every(
-      (n) => n.length === k || !/[\p{L}\p{N}]/u.test(n[k])
+      (n) =>
+        n.length === k ||
+        (startsNewGrapheme(n, k) && !/[\p{L}\p{N}]/u.test(n[k]))
     );
     if (ok) return k;
   }

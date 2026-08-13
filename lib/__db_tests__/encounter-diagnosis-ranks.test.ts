@@ -20,7 +20,13 @@ import { parseFhirBundle } from "@/lib/fhir";
 import { extractFromCcda } from "@/lib/cda";
 import { healthRecordToPersistInput } from "@/lib/import-shape";
 import { persistDocumentImport } from "@/lib/import-persist";
-import { getEncounter, getEncounters } from "@/lib/queries";
+import {
+  getEncounter,
+  getEncounters,
+  getReprocessSnapshot,
+} from "@/lib/queries";
+import { computeImportDiff, snapshotFromPersistInput } from "@/lib/import-diff";
+import type { PersistInput } from "@/lib/import-shape";
 import { collectFhirExportInput } from "@/lib/export-full";
 import { buildFhirBundle, fhirBundleJson } from "@/lib/fhir-export";
 import { decodeDiagnosisRanks } from "@/lib/visit-diagnosis-rank";
@@ -177,6 +183,41 @@ describe("encounters.diagnosis_ranks (#2589)", () => {
     // the second display name.
     expect(enc.diagnosis_ranks).toBeNull();
     expect(enc.diagnoses).toBe(`${Z_CODE}; ${Z_CODE} - Primary`);
+  });
+
+  it("shows a newly stated rank in the reprocess preview, through the REAL producers", () => {
+    // The pure test in import-diff.test.ts builds EncounterFields literals, so it
+    // pins the field list and not the two things that fill it. This drives both:
+    // the stored-side reader (getReprocessSnapshot) and the extraction-side
+    // projection (snapshotFromPersistInput), against a document that really has
+    // ranks on disk.
+    const docId = newDocument(fhirProfile, "preview.json", "fhir");
+    const input = healthRecordToPersistInput(
+      parseFhirBundle(BUNDLE),
+      "fhir",
+      "FHIR export"
+    );
+    persistDocumentImport(fhirProfile, docId, input);
+
+    const encounterDiff = (next: PersistInput) =>
+      computeImportDiff(
+        getReprocessSnapshot(fhirProfile, docId),
+        snapshotFromPersistInput(next)
+      ).entities.find((e) => e.entity === "encounters");
+
+    // Re-extracting the same bundle changes nothing, ranks included.
+    expect(encounterDiff(input)!.changed).toHaveLength(0);
+
+    // Strip the ranks from the incoming side and the preview must SAY so — the
+    // diagnosis text is byte-identical, so nothing else can carry the difference.
+    const rankless = {
+      ...input,
+      encounters: input.encounters.map((e) => ({
+        ...e,
+        diagnosis_ranks: [],
+      })),
+    };
+    expect(encounterDiff(rankless)!.changed).toHaveLength(1);
   });
 
   it("survives a FHIR export → re-import round-trip", () => {

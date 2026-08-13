@@ -939,6 +939,27 @@ function statedRank(d: any): number | undefined {
 // per diagnosis and stored beside the summary, never folded into it. R5 dropped
 // `rank`, so an R5 bundle yields use codes only; that is an absence, and nothing
 // here infers a rank from a display name.
+//
+// TWO THINGS ARE WITHHELD RATHER THAN GUESSED, and both are narrow:
+//
+//  1. RANK IS PER ROLE. R4 defines it as "ranking of the diagnosis (for each role
+//     type)", so rank 3 among admission diagnoses and rank 1 among discharge
+//     diagnoses are two different statements about one condition, and taking the
+//     lower of them asserts THE primary diagnosis where the source asserted
+//     primary-at-discharge. When the stated ranks for one condition DIFFER, the
+//     rank is withheld and the roles are kept. One stated rank (repeated or not)
+//     is carried with whatever roles came alongside it.
+//  2. THE STORED PAYLOAD IS KEYED BY NAME, because a name is what the card has to
+//     match against. So two conditions the importer CAN tell apart (their
+//     external_ids differ — a code, or an onset date) that nevertheless share a
+//     display name are two statements, and a disagreement between them emits no
+//     rank rather than letting one chip carry the other's. Two TEXT-ONLY
+//     conditions with the same name are NOT told apart here, and deliberately so:
+//     `conditionExternalId` falls back to the name, and `parseFhirBundle` already
+//     collapses them into one imported condition row. To this app they are one
+//     condition, so treating their rank statements as one is consistent rather
+//     than a hole — but it does mean this guard separates only what the importer's
+//     own identity separates. That is the claim, and no larger one.
 function encounterDiagnoses(
   r: any,
   ctx: FhirBundleCtx
@@ -950,13 +971,13 @@ function encounterDiagnoses(
   const out: string[] = [];
   const conditionExternalIds: string[] = [];
   const seen = new Set<string>();
-  // Keyed by the resolved CONDITION, not by its spelling: `external_id` when the
-  // reference resolved to a Condition resource, otherwise the inline concept's own
-  // name (there is no other identity for an inline concept to have). Two entries
-  // for ONE condition — rank 1 with use AD, then use DD — are one statement and
-  // merge; two DIFFERENT conditions that happen to share a display name are two
-  // statements and must not, which is what a name key silently did.
-  const stated = new Map<string, VisitDiagnosisRank>();
+  // Keyed by the resolved CONDITION (its `external_id`), not by its spelling —
+  // with the caveats in the header. Every rank the source stated for that
+  // condition is kept as stated; nothing is combined until the emit pass below.
+  const stated = new Map<
+    string,
+    { name: string; ranks: number[]; use: string[] }
+  >();
   const push = (name: string | null, d: any, identity: string | null) => {
     if (!name) return;
     const k = name.toLowerCase();
@@ -968,13 +989,11 @@ function encounterDiagnoses(
     const use = diagnosisUseCodes(d);
     if (rank === undefined && use.length === 0) return;
     const key = identity ?? `name:${k}`;
-    const prior = stated.get(key) ?? { name };
-    // The strongest rank this ONE condition was given wins (1 beats 2); roles
-    // accumulate, since admission and discharge can both be true of it.
-    if (rank !== undefined)
-      prior.rank = prior.rank === undefined ? rank : Math.min(prior.rank, rank);
-    if (use.length)
-      prior.use = Array.from(new Set([...(prior.use ?? []), ...use]));
+    const prior = stated.get(key) ?? { name, ranks: [], use: [] };
+    if (rank !== undefined) prior.ranks.push(rank);
+    // Roles accumulate: admission and discharge can both be true of one
+    // condition, and unlike rank they do not contradict each other.
+    for (const u of use) if (!prior.use.includes(u)) prior.use.push(u);
     stated.set(key, prior);
   };
   for (const d of Array.isArray(r?.diagnosis) ? r.diagnosis : []) {
@@ -992,18 +1011,27 @@ function encounterDiagnoses(
       push(conceptName(d.condition.concept), d, null);
     }
   }
-  // The stored payload is keyed by NAME, because that is what the card has to
-  // match against. So a name that two DIFFERENT conditions answered to can only be
-  // emitted when those conditions AGREE — otherwise the chip would carry one
-  // condition's rank while standing for both. Disagreement emits nothing: the
-  // names stay, and the badge is an absence rather than a coin flip.
+  // Per condition: one rank only if every rank the source stated for it is the
+  // same number (rank 1 under admission AND under discharge is still rank 1);
+  // differing numbers are per-role statements this shape cannot hold, so the rank
+  // goes and the roles stay.
+  const resolved: VisitDiagnosisRank[] = [];
+  for (const s of stated.values()) {
+    const entry: VisitDiagnosisRank = { name: s.name };
+    if (s.ranks.length > 0 && s.ranks.every((v) => v === s.ranks[0]))
+      entry.rank = s.ranks[0];
+    if (s.use.length) entry.use = [...s.use].sort();
+    if (entry.rank !== undefined || entry.use !== undefined)
+      resolved.push(entry);
+  }
+  // Then per NAME, for the collision described in the header.
   const byName = new Map<string, VisitDiagnosisRank[]>();
-  for (const entry of stated.values()) {
+  for (const entry of resolved) {
     const k = entry.name.toLowerCase();
     byName.set(k, [...(byName.get(k) ?? []), entry]);
   }
   const shape = (e: VisitDiagnosisRank) =>
-    `${e.rank ?? ""}|${[...(e.use ?? [])].sort().join(",")}`;
+    `${e.rank ?? ""}|${(e.use ?? []).join(",")}`;
   const ordered: VisitDiagnosisRank[] = [];
   // Emit in the order the names were kept, so the stored payload reads with the
   // summary.

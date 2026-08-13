@@ -108,6 +108,34 @@ describe("groupDiagnosisChips — what it refuses to touch", () => {
     expect(g.members.map((m) => m.tail)).toEqual([" 1", " 12"]);
   });
 
+  it("never cuts inside a character", () => {
+    // The stem/tail index is a UTF-16 code unit, and the boundary rule looks for a
+    // non-alphanumeric one. A combining mark and the low half of a surrogate pair
+    // are both non-alphanumeric, so without an explicit refusal the cut lands
+    // INSIDE a character: the base letter stays on the stem and its accent goes to
+    // the tail, printing "exacerbacio" — a word the record does not contain.
+    // `stem + tail` still reconstructs; the SCREEN is what lies.
+    const lead = "Enfermedad pulmonar obstructiva cronica con ";
+    const accented = `${lead}exacerbacio\u0301n`; // "exacerbación", decomposed
+    for (const g of groupDiagnosisChips([
+      `${accented}leve`,
+      `${accented}grave`,
+    ])) {
+      if (g.kind !== "shared") continue;
+      expect(/\p{M}/u.test(g.stem.slice(-1))).toBe(false);
+      for (const m of g.members)
+        expect(/\p{M}/u.test(m.tail.slice(0, 1))).toBe(false);
+    }
+
+    const astral = `${lead}exacerbacio\u{1D400}n`; // an astral letter mid-word
+    for (const g of groupDiagnosisChips([`${astral}leve`, `${astral}grave`])) {
+      if (g.kind !== "shared") continue;
+      // A lone surrogate on either side of the cut is a broken character.
+      expect(g.stem).not.toMatch(/[\uD800-\uDBFF]$/);
+      for (const m of g.members) expect(m.tail).not.toMatch(/^[\uDC00-\uDFFF]/);
+    }
+  });
+
   it("refuses a group whose tails outweigh the stem", () => {
     const stem = "Malignant neoplasm of unspecified site of ";
     const names = [

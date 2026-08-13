@@ -578,7 +578,13 @@ describe("FHIR Encounter → ImportedEncounter", () => {
     ]);
   });
 
-  it("merges the rank/use of repeated entries for one diagnosis, and reads the R5 use array (#2589)", () => {
+  it("withholds a rank the source stated PER ROLE, and keeps both roles (#2589)", () => {
+    // R4 defines rank as "ranking of the diagnosis (for each role type)". Rank 2
+    // among admission diagnoses and rank 1 among discharge diagnoses are two
+    // statements about one condition; taking the lower asserts THE primary
+    // diagnosis where the source asserted primary-at-discharge. So the rank goes
+    // and the roles stay — the same withholding this file applies to every other
+    // ambiguity, rather than a claim the source did not make.
     const r = parseFhirBundle(
       bundleWithUrls([
         {
@@ -586,7 +592,10 @@ describe("FHIR Encounter → ImportedEncounter", () => {
           resource: {
             resourceType: "Condition",
             id: "cond-repeat",
-            code: { text: "Community acquired pneumonia" },
+            code: {
+              text: "Community acquired pneumonia",
+              coding: [{ system: "http://snomed.info/sct", code: "385093006" }],
+            },
           },
         },
         {
@@ -600,6 +609,7 @@ describe("FHIR Encounter → ImportedEncounter", () => {
               {
                 condition: { reference: "urn:uuid:cond-repeat" },
                 rank: 2,
+                // R5 shape: use is 0..*
                 use: [
                   {
                     coding: [
@@ -633,10 +643,70 @@ describe("FHIR Encounter → ImportedEncounter", () => {
       ])
     );
     const e = r.encounters![0];
-    // The name dedupe is unchanged; the two entries STATE one diagnosis, so the
-    // strongest rank wins and both roles survive.
+    // The name dedupe is unchanged: the two entries are one condition.
     expect(e.diagnoses).toEqual(["Community acquired pneumonia"]);
     expect(e.diagnosis_ranks).toEqual([
+      { name: "Community acquired pneumonia", use: ["ad", "dd"] },
+    ]);
+  });
+
+  it("keeps one rank stated consistently across roles (#2589)", () => {
+    // Rank 1 at admission AND rank 1 at discharge is still rank 1 — there is
+    // nothing to choose between, so withholding here would lose a fact the source
+    // did state.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-agree",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-agree",
+            code: {
+              text: "Community acquired pneumonia",
+              coding: [{ system: "http://snomed.info/sct", code: "385093006" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-agree",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-agree",
+            status: "finished",
+            period: { start: "2026-04-07" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-agree" },
+                rank: 1,
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "AD",
+                    },
+                  ],
+                },
+              },
+              {
+                condition: { reference: "urn:uuid:cond-agree" },
+                rank: 1,
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "DD",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnosis_ranks).toEqual([
       { name: "Community acquired pneumonia", rank: 1, use: ["ad", "dd"] },
     ]);
   });
@@ -691,6 +761,85 @@ describe("FHIR Encounter → ImportedEncounter", () => {
     const e = r.encounters![0];
     expect(e.diagnoses).toEqual(["Anemia"]);
     expect(e.diagnosis_ranks).toEqual([]);
+  });
+
+  it("treats two TEXT-ONLY same-named Conditions as one, exactly as the importer does (#2589)", () => {
+    // The other side of the guard above, pinned so the claim stays honest. With no
+    // coding and no onset there is nothing to tell these apart:
+    // `conditionExternalId` falls back to the name, and parseFhirBundle collapses
+    // them into ONE imported condition row. To this app they are one condition, so
+    // their rank statements combine like any other repeat — here agreeing on
+    // rank 1, which is therefore kept. The withhold guard separates only what the
+    // importer's own identity separates, and this is that boundary.
+    const textOnly = (id: string) => ({
+      fullUrl: `urn:uuid:${id}`,
+      resource: {
+        resourceType: "Condition",
+        id,
+        code: { text: "Anemia" },
+      },
+    });
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        textOnly("cond-text-a"),
+        textOnly("cond-text-b"),
+        {
+          fullUrl: "urn:uuid:enc-text-anemias",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-text-anemias",
+            status: "finished",
+            period: { start: "2026-04-08" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-text-a" }, rank: 1 },
+              { condition: { reference: "urn:uuid:cond-text-b" }, rank: 1 },
+            ],
+          },
+        },
+      ])
+    );
+    // One condition row for both, which is what makes one rank statement correct.
+    expect(r.conditions!.filter((c) => c.name === "Anemia")).toHaveLength(1);
+    expect(r.encounters![0].diagnoses).toEqual(["Anemia"]);
+    expect(r.encounters![0].diagnosis_ranks).toEqual([
+      { name: "Anemia", rank: 1 },
+    ]);
+  });
+
+  it("withholds the rank when two text-only same-named Conditions disagree (#2589)", () => {
+    // Same shape, differing ranks. They are one condition to this app, so this is
+    // the per-condition disagreement rule doing the work rather than the
+    // per-name one — and the outcome a reader cares about is the same: no badge
+    // rather than a coin flip.
+    const textOnly = (id: string) => ({
+      fullUrl: `urn:uuid:${id}`,
+      resource: {
+        resourceType: "Condition",
+        id,
+        code: { text: "Anemia" },
+      },
+    });
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        textOnly("cond-text-c"),
+        textOnly("cond-text-d"),
+        {
+          fullUrl: "urn:uuid:enc-text-disagree",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-text-disagree",
+            status: "finished",
+            period: { start: "2026-04-09" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-text-c" }, rank: 4 },
+              { condition: { reference: "urn:uuid:cond-text-d" }, rank: 1 },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnoses).toEqual(["Anemia"]);
+    expect(r.encounters![0].diagnosis_ranks).toEqual([]);
   });
 
   it("ignores a diagnosis-role code from another code system (#2589)", () => {

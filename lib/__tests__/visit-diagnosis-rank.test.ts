@@ -6,6 +6,7 @@ import {
   encodeDiagnosisRanks,
   rankForDiagnosis,
   spokenDiagnosis,
+  spokenDiagnosisList,
 } from "../visit-diagnosis-rank";
 
 describe("diagnosisRankBadge", () => {
@@ -127,5 +128,38 @@ describe("spokenDiagnosis", () => {
       "Hyperparathyroidism - Secondary"
     );
     expect(spokenDiagnosis("Acute bronchitis", [])).toBe("Acute bronchitis");
+  });
+});
+
+describe("spokenDiagnosisList — the whole accessible text of a factored chip", () => {
+  const entries = [
+    { name: "Acute bronchitis", rank: 1 },
+    { name: "Essential hypertension", rank: 2 },
+  ];
+
+  it("composes every member's name with the rank the source stated", () => {
+    // This is the string the grouped chip's sr-only span and title render. It
+    // lives here rather than in the component because the repo keeps no component
+    // tier (docs/internals/component-tests.md), so a regression to names-only —
+    // the exact R2 defect — has to be catchable in the pure tier.
+    expect(
+      spokenDiagnosisList(
+        ["Acute bronchitis", "Essential hypertension", "Anemia"],
+        entries
+      )
+    ).toEqual([
+      "Acute bronchitis (Primary)",
+      "Essential hypertension (#2)",
+      "Anemia",
+    ]);
+  });
+
+  it("keeps the members in the order given", () => {
+    expect(
+      spokenDiagnosisList(
+        ["Essential hypertension", "Acute bronchitis"],
+        entries
+      )
+    ).toEqual(["Essential hypertension (#2)", "Acute bronchitis (Primary)"]);
   });
 });

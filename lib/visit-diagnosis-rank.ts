@@ -170,3 +170,15 @@ export function spokenDiagnosis(
   const label = entry ? diagnosisRankBadge(entry) : null;
   return label ? `${name} (${label})` : name;
 }
+
+// The whole accessible text of a factored chip, as one call. The component holds
+// no composition of its own beyond joining these: the repo has a decided
+// no-component-tier stance (docs/internals/component-tests.md), so anything the
+// markup can get WRONG has to live somewhere a pure test can reach it. This is
+// that place for the R2 regression — a grouped chip speaking only names.
+export function spokenDiagnosisList(
+  names: readonly string[],
+  entries: readonly VisitDiagnosisRank[]
+): string[] {
+  return names.map((n) => spokenDiagnosis(n, entries));
+}
