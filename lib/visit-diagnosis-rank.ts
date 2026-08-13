@@ -196,7 +196,9 @@ export function spokenDiagnosis(
 // only names is caught here. That is one half of the contract in
 // docs/internals/component-tests.md and not a substitute for the other: whether
 // the component still calls this, and still hides the visual pieces behind it, is
-// only reachable by a browser test (see the header of components/DiagnosisChips.tsx).
+// only reachable by a browser test — e2e/encounters.spec.ts, "source-stated
+// diagnosis ranks (#2589)", which asserts this list's output as the grouped chip's
+// sr-only text.
 export function spokenDiagnosisList(
   names: readonly string[],
   entries: readonly VisitDiagnosisRank[]

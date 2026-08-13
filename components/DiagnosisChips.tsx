@@ -33,30 +33,34 @@ import {
 // sighted users would be half 2 deleting half 1.
 //
 // WHAT IS AND IS NOT GUARDED — stated plainly, because an earlier draft of this
-// header undersold it. Every DECISION this file makes is pure and tested
-// elsewhere: the grouping (lib/diagnosis-chips.ts), the badge vocabulary and the
-// spoken strings (lib/visit-diagnosis-rank.ts). NONE OF THE MARKUP IN THIS FILE IS
-// GUARDED BY ANY TIER, because nothing renders the component: there is no
-// component tier here (docs/internals/component-tests.md), and no browser spec
-// mounts a visit whose encounter carries `diagnosis_ranks`. Mutation testing
-// confirmed the consequence rather than inferring it — each of these passes the
-// whole suite silently:
+// header undersold it and the draft after that went stale the moment the gap
+// closed. Every DECISION this file makes is pure and tested elsewhere: the
+// grouping (lib/diagnosis-chips.ts), the badge vocabulary and the spoken strings
+// (lib/visit-diagnosis-rank.ts). Whether this file still CALLS any of it is the
+// other half of docs/internals/component-tests.md's contract, and it is now held
+// by e2e/encounters.spec.ts ("source-stated diagnosis ranks (#2589)"), which
+// plants its own encounter carrying `diagnosis_ranks` and asserts the rendered
+// strings on both branches. Each of the mutations that used to pass the whole
+// suite byte-identical was re-run against it and now FAILS:
 //
 //  - deleting <RankBadge/> from the single-chip branch, which is the DOMINANT
-//    path (grouping needs a long shared stem), so the feature disappears from
-//    most visits with every test still green;
-//  - dropping `aria-hidden` from the stem and tail spans, so a screen reader
-//    hears the fragments AND the full names;
-//  - passing `m.tail` instead of `m.name` into `spokenDiagnosisList`, so it
-//    speaks fragments;
-//  - dropping `title=` from the grouped chip, so hover recovers nothing.
+//    path (grouping needs a 40-character shared stem) — guarded by the badge's
+//    count and exact text on the ungrouped chip;
+//  - dropping `aria-hidden` from the stem or tail spans, so a screen reader hears
+//    the fragments AND the full names — guarded per span;
+//  - passing `m.tail` instead of `m.name` into `spokenDiagnosisList`, so it speaks
+//    fragments — guarded by the sr-only text, asserted in full;
+//  - dropping `title=` from the grouped chip, so hover recovers nothing — guarded
+//    by the exact title string;
+//  - deleting <RankBadge/> from a tail, which the spec adds on top of the four
+//    above: the two members carry DIFFERENT source claims, so each tail's badge is
+//    asserted by its own text.
 //
-// That is a gap in this PR, not a property of the repo: docs/internals/component-
-// tests.md's contract is Playwright over seeded fixtures PLUS pure guards, and its
-// escape clause needs logic that can be reached by neither — this can be reached
-// by a browser test. One is in flight (#2589 R2) and the `data-testid`s below
-// exist for it, so it can close this without touching this component. Until it
-// lands, treat every line of JSX here as unverified.
+// What is still unguarded here is presentation the DOM cannot state: which of the
+// two shapes is a filled pill and which a hairline-ruled italic fragment. That
+// distinction is load-bearing (half 1 exists because "a rank" and "a word in a
+// name" are different kinds of statement) and lives only in the class strings
+// below — change them with that in mind.
 //
 // Server-renderable: no state, no client hooks, so both surfaces use one copy.
 
