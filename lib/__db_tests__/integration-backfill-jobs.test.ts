@@ -323,6 +323,73 @@ describe("integration backfill jobs", () => {
     expect("job" in retried && retried.job.active_seconds).toBeGreaterThan(0);
   });
 
+  it("does not re-count an unavailable candidate on every retry (#2672)", async () => {
+    // The combination neither #2195 nor #2196 covers: ONE job holding both an
+    // unavailable candidate (901, deleted upstream — 404 forever) and a retryable one
+    // (902, a transient 503). The unavailable row is credited into `completed_items`
+    // and STAYS in the candidate query, so a resume that adds the raw candidate count
+    // on top of `completed_items` counts it twice — and once 902 keeps failing, every
+    // retry adds it again and `total_items` climbs with no ceiling.
+    addRide(902);
+    const fetchMock = vi.fn(async (url: unknown) => {
+      const path = String(url);
+      if (path.endsWith("/athlete")) return Response.json({ ftp: 250 });
+      if (path.endsWith("/athlete/zones")) return Response.json({});
+      if (path.includes("/activities/901")) {
+        return new Response(null, { status: 404 });
+      }
+      if (path.includes("/activities/902")) {
+        return new Response(null, { status: 503 });
+      }
+      throw new Error(`Unexpected URL ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = queueIntegrationBackfill(profileId, "strava", "ride-details");
+    expect("job" in first && first.job).toMatchObject({
+      total_items: 2,
+      completed_items: 0,
+    });
+    expect(
+      await runIntegrationBackfillJob(profileId, "strava", "ride-details")
+    ).toMatchObject({ status: "failed", total_items: 2, completed_items: 1 });
+
+    // Both rides still match the raw candidate predicate: 901 was never stored, and
+    // no give-up marker is persisted for it on purpose (#2196).
+    expect(countMissingStravaRideDetails(profileId)).toBe(2);
+    const perRunRequests = fetchMock.mock.calls.length;
+
+    // Three retry cycles, each of which re-asks about BOTH rides and resolves neither.
+    // The denominator is the number of candidates, which has not changed, so it may
+    // not move; the numerator credits only what the next run will NOT ask about again
+    // — and 901 is asked about again, so nothing is carried. Before the fix these read
+    // "1 of 3", "2 of 4", "3 of 5".
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const retried = queueIntegrationBackfill(
+        profileId,
+        "strava",
+        "ride-details"
+      );
+      expect("job" in retried && retried.job).toMatchObject({
+        status: "queued",
+        total_items: 2,
+        completed_items: 0,
+      });
+      expect(
+        await runIntegrationBackfillJob(profileId, "strava", "ride-details")
+      ).toMatchObject({
+        status: "failed",
+        total_items: 2,
+        completed_items: 1,
+        failed_items: 2,
+      });
+      // The defect was in the ACCOUNTING alone: each retry still asks about each
+      // candidate exactly once, so the request spend per cycle is flat even while the
+      // old denominator was climbing.
+      expect(fetchMock).toHaveBeenCalledTimes(perRunRequests * (cycle + 1));
+    }
+  });
+
   it("pauses only crash-stranded jobs for automatic recovery", () => {
     // The fixture ages `updated_at` through the SAME writer production uses
     // (utcInstant → 'YYYY-MM-DDTHH:MM:SSZ', #2205). It used to seed SQLite's bare
