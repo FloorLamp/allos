@@ -249,7 +249,8 @@ describe("curated datasets carry no disclaimer copy either (issue #2342)", () =>
     for (const rel of CURATED_COPY_MODULES) {
       const code = stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
       code.split("\n").forEach((line, i) => {
-        if (BANNED.some((re) => re.test(line))) offenders.push(`${rel}:${i + 1}`);
+        if (BANNED.some((re) => re.test(line)))
+          offenders.push(`${rel}:${i + 1}`);
       });
     }
     expect(
