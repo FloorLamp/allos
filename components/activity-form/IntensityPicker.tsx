@@ -30,7 +30,10 @@ export default function IntensityPicker({
               className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${
                 active
                   ? opt.active
-                  : `bg-surface ${opt.cls} hover:bg-slate-50 dark:hover:bg-ink-800`
+                  : // bg-field, matching .input: these buttons sit among the
+                    // form's fields and must read as the SAME control surface
+                    // (entry-ergonomics.spec.ts pins the equality).
+                    `bg-field ${opt.cls} hover:bg-slate-50 dark:hover:bg-ink-800`
               }`}
             >
               {opt.label}
