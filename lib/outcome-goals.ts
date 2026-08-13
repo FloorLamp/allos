@@ -72,6 +72,40 @@ export function outcomeGoalKind(
   return "freeform";
 }
 
+// The subtitle a goal wears on Upcoming (#2615 item 4).
+//
+// Two defects in one line. FIRST, the band mixed vocabularies: every TYPED goal fell
+// through to the generic "Goal deadline" (`categoryLabel` is null for them by
+// construction — it is freeform grouping text), while a freeform goal printed its
+// user-authored word verbatim, so "Goal deadline" and "strength goal" sat in the same
+// list describing the same kind of thing. SECOND, and worse on a training profile: an
+// exercise-linked "Bench Press" goal and a freeform goal someone also titled "Bench
+// Press" were INDISTINGUISHABLE — same title, same generic subtitle — and the
+// subtitle is exactly where the distinguishing attribute belongs.
+//
+// So the subtitle comes from the goal's own STRUCTURAL kind, which is the thing that
+// actually differs, and only a freeform goal keeps its user-authored grouping
+// (capitalized, so the band reads in one voice — the word is still theirs). Total
+// over OutcomeGoalKind: a fifth kind is a compile error here rather than a silent
+// fall-back to "Goal deadline".
+const GOAL_KIND_DETAIL: Record<
+  Exclude<OutcomeGoal["kind"], "freeform">,
+  string
+> = {
+  exercise: "Exercise-linked goal",
+  body: "Body goal",
+  biomarker: "Biomarker goal",
+};
+
+export function goalUpcomingDetail(
+  goal: Pick<OutcomeGoal, "kind" | "categoryLabel">
+): string {
+  if (goal.kind !== "freeform") return GOAL_KIND_DETAIL[goal.kind];
+  const category = goal.categoryLabel?.trim();
+  if (!category) return "Goal deadline";
+  return `${category.charAt(0).toLocaleUpperCase()}${category.slice(1)} goal`;
+}
+
 // The single "what percent complete is this goal?" computation, shared by every
 // surface that renders a goal percentage (the household card via goalHighlights,
 // the dashboard's ActiveGoalsWidget, and the training GoalsManager) so they can

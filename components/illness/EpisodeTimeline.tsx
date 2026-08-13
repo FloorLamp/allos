@@ -29,6 +29,7 @@ import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import NotesText from "@/components/NotesText";
 import SubmitButton from "@/components/SubmitButton";
 import ScrollFade from "@/components/ScrollFade";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
@@ -667,17 +668,26 @@ export default function EpisodeTimeline({
               hideScrollbar
               data-testid="illness-timeline-table-wrap"
             >
-              <table
+              <ResponsiveTable
                 id="illness-history-events"
-                className="block w-full text-left text-sm sm:table sm:table-fixed"
+                className="w-full text-left text-sm sm:table-fixed"
               >
-                <thead className="hidden section-label border-b border-black/10 sm:table-header-group dark:border-white/10">
+                <thead className="border-b border-black/10 dark:border-white/10">
                   <tr>
-                    <th className="w-[15%] pb-1.5 pr-2">Time</th>
-                    <th className="w-[32%] pb-1.5 pr-2">Event</th>
-                    <th className="pb-1.5 pr-2">Details</th>
+                    {/* The shared `.th` typography with this table's own GUTTER. It
+                        is `table-fixed` inside a card, so a 40px actions column cannot
+                        also carry the standard 12px side padding — the trigger would
+                        overflow it. Longhand `pl-`/`pr-` (never `px-`) so the two sides
+                        stay independent of each other and of `.th`'s shorthand. */}
+                    <th className="th w-[15%] pb-1.5! pl-0! pr-2! pt-0!">
+                      Time
+                    </th>
+                    <th className="th w-[32%] pb-1.5! pl-0! pr-2! pt-0!">
+                      Event
+                    </th>
+                    <th className="th pb-1.5! pl-0! pr-2! pt-0!">Details</th>
                     {canEdit && (
-                      <th className="w-10 pb-1.5">
+                      <th className="th w-10 pb-1.5! pl-0! pr-0! pt-0!">
                         <span className="sr-only">Actions</span>
                       </th>
                     )}
@@ -694,12 +704,20 @@ export default function EpisodeTimeline({
                   return (
                     <tbody
                       key={group.date}
+                      // VISIBILITY only — the one axis a `hidden sm:*` pair is still
+                      // for. The card-mode LAYOUT is `.table-cards`'s now, so there is
+                      // no `block sm:table-row-group` twin left to drift; what remains
+                      // is which groups are laid out (the chip, the phone's earlier-days
+                      // fold) and the `print:` undo that brings every one of them back
+                      // for the doctor-visit artifact. `hidden!` because the card-mode
+                      // display rule is an element+class selector and would otherwise
+                      // outrank a bare utility (#2533 item 2).
                       className={
                         filteredOutGroup
-                          ? "hidden print:table-row-group"
+                          ? "hidden! print:table-row-group!"
                           : hiddenEarlierGroup
-                            ? "hidden sm:table-row-group print:table-row-group"
-                            : "block sm:table-row-group"
+                            ? "hidden! sm:table-row-group! print:table-row-group!"
+                            : ""
                       }
                       data-filtered-out={filteredOutGroup ? "true" : "false"}
                       data-mobile-earlier={
@@ -708,14 +726,25 @@ export default function EpisodeTimeline({
                           : "false"
                       }
                     >
-                      <tr className="block sm:table-row">
-                        <th
+                      {/* The day's heading. `table-section-row` is the shared
+                          group-header treatment (#1499): the row drops the card frame
+                          below `sm` and lets its own content own the surface, so one
+                          `<tr>` reads as a header at both viewports. The band's fill
+                          rides an inner element for the same reason ReadingsTable's
+                          does — the row class cannot carry it. */}
+                      <tr className="table-section-row">
+                        <Td
+                          slot="full"
                           colSpan={canEdit ? 4 : 3}
-                          data-testid="illness-timeline-day"
-                          className="block border-b border-black/10 bg-slate-50 px-2 py-1.5 text-left section-label sm:table-cell dark:border-white/10 dark:bg-ink-850"
+                          className="px-0! py-0!"
                         >
-                          {dayLabel(group.date, episode, formatPrefs)}
-                        </th>
+                          <div
+                            data-testid="illness-timeline-day"
+                            className="border-b border-black/10 bg-slate-50 px-2 py-1.5 text-left section-label dark:border-white/10 dark:bg-ink-850"
+                          >
+                            {dayLabel(group.date, episode, formatPrefs)}
+                          </div>
+                        </Td>
                       </tr>
                       {group.events.map((event) => {
                         const key = keyFor(event);
@@ -728,13 +757,19 @@ export default function EpisodeTimeline({
                             <tr
                               data-testid={`illness-event-${event.kind}`}
                               data-filtered-out={filteredOut ? "true" : "false"}
+                              // Visibility only, as on the group above: the chip
+                              // decides what is LAID OUT, print brings it all back.
                               className={
                                 filteredOut
-                                  ? "hidden border-b border-black/5 py-2 print:table-row dark:border-white/5"
-                                  : "grid grid-cols-[4rem_minmax(0,1fr)_auto] gap-x-1.5 border-b border-black/5 py-2 sm:table-row sm:border-0 sm:py-0 dark:border-white/5"
+                                  ? "hidden! print:table-row!"
+                                  : "border-b border-black/5 sm:border-0 dark:border-white/5"
                               }
                             >
-                              <td className="row-span-2 block whitespace-nowrap px-2 align-top text-xs text-slate-500 sm:table-cell sm:px-0 sm:py-2 sm:pr-2 dark:text-slate-400">
+                              <Td
+                                slot="meta"
+                                label="Time"
+                                className="whitespace-nowrap align-top text-xs text-slate-500 sm:pl-0! sm:pr-2! dark:text-slate-400"
+                              >
                                 {/* A dose clock from the record chain is marked in
                                     this document's own voice — "recorded 7:02am" —
                                     never presented as an administration time
@@ -752,34 +787,42 @@ export default function EpisodeTimeline({
                                       formatPrefs.timeFormat,
                                       "—"
                                     )}
-                              </td>
-                              <td className="block min-w-0 pr-1 align-top font-medium wrap-break-word text-slate-700 sm:table-cell sm:py-2 sm:pr-2 dark:text-slate-200">
+                              </Td>
+                              <Td
+                                slot="title"
+                                className="min-w-0 align-top font-medium wrap-break-word text-slate-700 sm:pl-0! sm:pr-2! dark:text-slate-200"
+                              >
                                 {eventLabel(event)}
-                              </td>
-                              <td
+                              </Td>
+                              <Td
+                                slot="value"
                                 className={
                                   event.kind === "temperature" &&
                                   event.flag === "high"
-                                    ? "col-start-2 row-start-2 block min-w-0 pr-1 align-top font-semibold wrap-break-word text-rose-600 sm:table-cell sm:py-2 sm:pr-2 dark:text-rose-400"
-                                    : "col-start-2 row-start-2 block min-w-0 pr-1 align-top wrap-break-word text-slate-600 sm:table-cell sm:py-2 sm:pr-2 dark:text-slate-300"
+                                    ? "min-w-0 align-top font-semibold wrap-break-word text-rose-600 sm:pl-0! sm:pr-2! dark:text-rose-400"
+                                    : "min-w-0 align-top wrap-break-word text-slate-600 sm:pl-0! sm:pr-2! dark:text-slate-300"
                                 }
                               >
                                 {eventDetail(event)}
-                              </td>
+                              </Td>
                               {canEdit && (
-                                <td className="row-span-2 block py-0 align-top sm:table-cell">
+                                <Td
+                                  slot="actions"
+                                  className="align-top sm:pl-0! sm:pr-0! sm:py-0!"
+                                >
                                   {eventMenu(event)}
-                                </td>
+                                </Td>
                               )}
                             </tr>
                             {editing === key && isEpisodeEvent(event) && (
                               <tr data-testid="illness-event-editor">
-                                <td
+                                <Td
+                                  slot="full"
                                   colSpan={canEdit ? 4 : 3}
-                                  className="block bg-slate-50 px-3 py-3 sm:table-cell dark:bg-ink-950/40"
+                                  className="bg-slate-50 p-3! dark:bg-ink-950/40"
                                 >
                                   {eventEditor(event)}
-                                </td>
+                                </Td>
                               </tr>
                             )}
                           </Fragment>
@@ -788,7 +831,7 @@ export default function EpisodeTimeline({
                     </tbody>
                   );
                 })}
-              </table>
+              </ResponsiveTable>
             </ScrollFade>
           )}
         </div>

@@ -381,6 +381,15 @@ adapter (its category grammar and #516/#548/#687 exemptions stay there);
 DECLARES its policy and a completeness test fails an undeclared one. Never
 re-derive staleness in a component, and never fold `not-applicable` into `due`.
 
+A PRESENTATION FLOOR is the other tenancy: not "should this be re-tested?" but
+"may this surface still call this reading your CURRENT value?". Three registries
+declare one — `RECENT_LAB_STALE_DAYS`, `VITAL_PRESENTATION_FLOORS`, and
+`TREND_METRIC_PRESENTATION_FLOORS` (a `Record` over `TrendMetricSlug`, so a new
+metric is a compile error) — and the three quantities two of them share are taken
+BY REFERENCE, never restated. A floor decides FRAMING, never visibility, and never
+mints a Finding, an Upcoming row or a send. How the resulting token READS is one
+shared treatment with a per-surface FORM (`lib/glance-age.ts`).
+
 An aggregate with nothing current may not render current-shaped copy
 (`hasNoCurrentReading`) — the Longevity optimal pillar goes neutral, the Fitness
 check counts fresh rather than measured. Both keep the stale values visible with

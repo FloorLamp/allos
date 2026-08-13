@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
-import { type Browser, type Page } from "@playwright/test";
+import { type Browser, type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_HH_CAREGIVER,
@@ -24,6 +24,22 @@ import { workerDbPath } from "./worker-env";
 // SEEDED caregiver fixtures (e2e/fixture-logins.ts) in fresh contexts — replacing the
 // former runtime member-creation through Settings → Family, whose router.refresh() grant
 // rows went stale under CI load (the #868 create-member census flake).
+
+// A card FOLDS its due-dose list past the shared threshold (#1504/#2615 item 2), so
+// how many rows a card lays out is a property of how many doses that profile happens
+// to have due — a neighbour's business, and never this file's subject. Every spec
+// below reaches its own row through this: open the disclosure if there is one, then
+// assert. It is a plain <details>, so a pure client toggle and never a POST.
+async function revealDoseRows(page: Page, card: Locator): Promise<void> {
+  const aggregate = card.getByTestId("household-dose-aggregate");
+  if ((await aggregate.count()) === 0) return;
+  if (await aggregate.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  await hydratedClick(
+    page,
+    card.getByTestId("household-dose-aggregate-summary")
+  );
+  await expect(aggregate).toHaveJSProperty("open", true);
+}
 
 const SEEDED_PROFILE_2 = "2"; // "Sam Rivers"
 const HOUSEHOLD_DUE_DOSE = "Household Vitamin D";
@@ -184,6 +200,7 @@ test.describe("Household view for members (issue #31)", () => {
       `[data-testid="household-card"][data-profile-id="${SEEDED_PROFILE_2}"]`
     );
     await expect(p2Card).toBeVisible();
+    await revealDoseRows(memberPage, p2Card);
     const doseRow = p2Card
       .getByTestId("household-due-dose")
       .filter({ hasText: HOUSEHOLD_DUE_DOSE });
@@ -229,6 +246,7 @@ test.describe("Household view for members (issue #31)", () => {
     const card = page.locator(
       `[data-testid="household-card"][data-profile-id="${SEEDED_PROFILE_2}"]`
     );
+    await revealDoseRows(page, card);
     const doseRow = card
       .getByTestId("household-due-dose")
       .filter({ hasText: STALE_TAP_ITEM });
@@ -288,6 +306,7 @@ test.describe("Household view for members (issue #31)", () => {
     const p2Card = memberPage.locator(
       `[data-testid="household-card"][data-profile-id="${SEEDED_PROFILE_2}"]`
     );
+    await revealDoseRows(memberPage, p2Card);
     await expect(
       p2Card
         .getByTestId("household-due-dose")

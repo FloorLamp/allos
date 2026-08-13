@@ -68,6 +68,12 @@ import {
   PEAK_FLOW_DAYS,
   E2E_LOGIN_PEAK_FLOW_LOG,
   PEAK_FLOW_LOG_PROFILE,
+  E2E_LOGIN_TRENDS_CURRENCY,
+  TRENDS_CURRENCY_PROFILE,
+  TRENDS_CURRENCY_WEIGH_IN_DAYS,
+  TRENDS_CURRENCY_WEIGH_IN_KG,
+  TRENDS_CURRENCY_BODY_FAT_DAYS,
+  TRENDS_CURRENCY_BODY_FAT_PCT,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -1006,5 +1012,42 @@ export function seedPeakFlow(): void {
 
   console.log(
     `e2e: seeded peak-flow fixtures — profiles ${pid} (${PEAK_FLOW_PROFILE}) + ${logId} (${PEAK_FLOW_LOG_PROFILE}) (#1850)`
+  );
+}
+
+// ── What a chart card may claim about its latest value (issue #2615 item 3) ──
+export function seedTrendsCurrency(): void {
+  // Two body-census cards, two states — see the constants' header in
+  // e2e/logins/trends.ts. Relative dates → never stale; read-only in its spec;
+  // idempotent (it clears its own body_metrics rows first).
+  const pid = fixtureProfileId(TRENDS_CURRENCY_PROFILE);
+  const anchor = today(pid);
+  setProfileBirthdate(pid, shiftDateStr(anchor, -365 * 38));
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(pid);
+
+  const insBm = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, notes)
+     VALUES (?, ?, ?, ?, 'e2e:trends-currency')`
+  );
+  TRENDS_CURRENCY_WEIGH_IN_DAYS.forEach((daysAgo, i) => {
+    insBm.run(
+      pid,
+      shiftDateStr(anchor, -daysAgo),
+      TRENDS_CURRENCY_WEIGH_IN_KG[i],
+      null
+    );
+  });
+  // The lone body-fat reading carries NO weight, so it cannot become a third point
+  // on the weight card and quietly refresh the very headline this fixture ages.
+  insBm.run(
+    pid,
+    shiftDateStr(anchor, -TRENDS_CURRENCY_BODY_FAT_DAYS),
+    null,
+    TRENDS_CURRENCY_BODY_FAT_PCT
+  );
+
+  seedMemberLogin(E2E_LOGIN_TRENDS_CURRENCY, pid, "read");
+  console.log(
+    `e2e: seeded chart-card currency fixture — profile ${pid} (${TRENDS_CURRENCY_PROFILE}) (#2615)`
   );
 }

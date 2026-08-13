@@ -54,6 +54,32 @@ export function sparklineShapeForSeriesKey(key: string): SparklineShape {
   return sparklineShapeForMetric(key.slice(prefix.length));
 }
 
+/**
+ * The ONE point a windowed series has, or null when it has none or more than one
+ * (#2615 item 3).
+ *
+ * A line needs two points to describe a direction, so a series with exactly one gets a
+ * MARKER, not a plot: the tile grammar has drawn it that way since #1485 G ("Single
+ * reading · Jul 13"), while the full chart cards kept plotting it — a 30-day band, empty
+ * apart from one dot half-clipped against the y-axis, which reads as a rendering failure
+ * rather than as "there is one reading here". Same data, same window, the honest mark.
+ *
+ * Counted over NON-NULL values: a densified series (#2258) is mostly holes by
+ * construction, so the number of days the window happens to span says nothing about how
+ * many readings are in it.
+ */
+export function loneReading<T extends { value: number | null }>(
+  data: readonly T[]
+): T | null {
+  let found: T | null = null;
+  for (const point of data) {
+    if (point.value == null) continue;
+    if (found != null) return null;
+    found = point;
+  }
+  return found;
+}
+
 // ── The GAP declaration (issue #2258) ───────────────────────────────────────
 //
 // The MARK follows the data (above); so does the GAP. A day-precision series

@@ -504,7 +504,12 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     const tableScroller = page.getByTestId("illness-timeline-table-wrap");
     await expect(tableScroller).toHaveCSS("overflow-x", "auto");
     await expect(tableScroller).toHaveCSS("scrollbar-width", "none");
-    await expect(medicationRows.last()).toHaveCSS("display", "grid");
+    // The SHARED card mode, not a hand-rolled one (#2533 item 2). This row used to
+    // pin `display: grid` — the bespoke `grid-cols-[4rem_minmax(0,1fr)_auto]` this
+    // file kept for its own phone layout, the last surface still doing that. The
+    // timeline renders through `<ResponsiveTable>` now, so a stacked row is the
+    // primitive's wrapping flex line over the SAME cells every other table uses.
+    await expect(medicationRows.last()).toHaveCSS("display", "flex");
   });
 
   test("a recently resolved illness can be reopened when symptoms return", async ({
