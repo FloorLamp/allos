@@ -198,7 +198,10 @@ export default function ExtractedObservations({
             <EmptyState message={emptyMessage} />
           </div>
         ) : (
-          <div className="mt-3 max-h-[70vh] overflow-auto">
+          <div
+            className="mt-3 max-h-[70vh] overflow-auto"
+            data-testid="extracted-observations-scroll"
+          >
             {/* Stacked cards below `sm` (#1426's shared primitive, adopted here by
                 #2614). The analyte grid is eight columns wide; on a phone that cut
                 the header to "REFER|" and the reference bands to "3.5-5.|" against

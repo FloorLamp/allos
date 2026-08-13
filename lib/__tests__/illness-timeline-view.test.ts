@@ -3,7 +3,10 @@ import type { IllnessTimelineEvent } from "@/lib/illness-episode-format";
 import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import {
   appointmentTimelineLine,
+  availableIllnessTimelineFilters,
+  defaultIllnessTimelineFilter,
   groupIllnessTimelineEvents,
+  ILLNESS_TIMELINE_MIN_CHIPS,
   illnessCareTimelineEvents,
 } from "@/lib/illness-timeline-view";
 
@@ -141,5 +144,110 @@ describe("authenticated illness timeline composition", () => {
       "symptom",
       "encounter",
     ]);
+  });
+});
+
+// #2612: which chip the History OPENS on. The chips are unchanged and nothing is
+// removed — the entry point moves, and only when the window's routine `may` intake
+// would outnumber the illness rows it is read against.
+describe("the History's default chip (#2612)", () => {
+  const symptom = (date: string, key: string): IllnessTimelineEvent => ({
+    kind: "symptom",
+    id: `${key}:${date}`,
+    date,
+    time: null,
+    time24: null,
+    label: key,
+    detail: "Moderate",
+    symptom: key,
+    severity: 2,
+    note: null,
+  });
+  const temperature = (date: string): IllnessTimelineEvent => ({
+    kind: "temperature",
+    id: `t:${date}`,
+    date,
+    time: "08:00",
+    time24: "08:00",
+    label: "Temperature",
+    detail: "101.2",
+    degF: 101.2,
+    flag: "high",
+  });
+  const dose = (date: string, index: number): IllnessTimelineEvent => ({
+    kind: "medication",
+    id: `m:${date}:${index}`,
+    date,
+    time: "07:05",
+    time24: "07:05",
+    timeRecorded: false,
+    label: `Supplement ${index}`,
+    detail: "1 serving",
+    itemId: index,
+    amount: "1 serving",
+  });
+
+  it("offers the union chip only when BOTH of its halves are present", () => {
+    const bothHalves = groupIllnessTimelineEvents([
+      symptom("2026-07-16", "cough"),
+      temperature("2026-07-16"),
+    ]);
+    expect(
+      availableIllnessTimelineFilters(bothHalves).map((o) => o.value)
+    ).toEqual(["all", "illness", "symptoms", "temperature"]);
+    // Symptoms alone: the single chip already IS the illness view, so a second
+    // chip selecting the same rows would be noise.
+    const symptomsOnly = groupIllnessTimelineEvents([
+      symptom("2026-07-16", "cough"),
+    ]);
+    expect(
+      availableIllnessTimelineFilters(symptomsOnly).map((o) => o.value)
+    ).toEqual(["all", "symptoms"]);
+  });
+
+  it("leads with the illness signal when the routine stack outnumbers it", () => {
+    const diluted = groupIllnessTimelineEvents([
+      symptom("2026-07-16", "cough"),
+      temperature("2026-07-16"),
+      ...Array.from({ length: 8 }, (_, index) => dose("2026-07-16", index)),
+    ]);
+    expect(defaultIllnessTimelineFilter(diluted)).toBe("illness");
+  });
+
+  it("stays on All when the doses do NOT outnumber the illness rows", () => {
+    const calm = groupIllnessTimelineEvents([
+      symptom("2026-07-16", "cough"),
+      symptom("2026-07-16", "fatigue"),
+      temperature("2026-07-16"),
+      dose("2026-07-16", 0),
+      dose("2026-07-16", 1),
+    ]);
+    expect(defaultIllnessTimelineFilter(calm)).toBe("all");
+  });
+
+  it("falls back to the narrowest offered chip when one half is missing", () => {
+    const noTemperature = groupIllnessTimelineEvents([
+      symptom("2026-07-16", "cough"),
+      ...Array.from({ length: 4 }, (_, index) => dose("2026-07-16", index)),
+    ]);
+    expect(defaultIllnessTimelineFilter(noTemperature)).toBe("symptoms");
+    const noSymptoms = groupIllnessTimelineEvents([
+      temperature("2026-07-16"),
+      ...Array.from({ length: 4 }, (_, index) => dose("2026-07-16", index)),
+    ]);
+    expect(defaultIllnessTimelineFilter(noSymptoms)).toBe("temperature");
+  });
+
+  it("never narrows below the strip's own render threshold — a default the reader cannot undo is a trap", () => {
+    // Doses alone: the strip would show "All" plus "Meds", which is under
+    // ILLNESS_TIMELINE_MIN_CHIPS, so no chip renders and the default must be All.
+    const dosesOnly = groupIllnessTimelineEvents([
+      dose("2026-07-16", 0),
+      dose("2026-07-16", 1),
+    ]);
+    expect(availableIllnessTimelineFilters(dosesOnly).length).toBeLessThan(
+      ILLNESS_TIMELINE_MIN_CHIPS
+    );
+    expect(defaultIllnessTimelineFilter(dosesOnly)).toBe("all");
   });
 });
