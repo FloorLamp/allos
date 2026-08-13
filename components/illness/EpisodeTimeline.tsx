@@ -227,22 +227,25 @@ export default function EpisodeTimeline({
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The chip the History OPENS on (#2612): "Illness" when the routine `may` intake
-  // logged in the window would outnumber the symptom/temperature rows, "All" as
-  // before otherwise. A pure decision over this episode's own ledger — see
-  // lib/illness-timeline-view.ts for why the entry point moves and the data does
-  // not. Initial state only: a reader's own chip choice is never overwritten.
+  // The chip the History OPENS on (#2612): "Illness" when hiding the routine
+  // supplement doses would remove more rows than it leaves, "All" as before
+  // otherwise. What it hides is the supplement-kind dose rows and ONLY those — the
+  // medicine given for the illness stays on screen, because that is the row a
+  // reader most needs. A pure decision over this episode's own ledger; see
+  // lib/illness-timeline-view.ts for the whole argument. Initial state only: a
+  // reader's own chip choice is never overwritten.
   const [filter, setFilter] = useState<IllnessTimelineFilter>(() =>
     defaultIllnessTimelineFilter(groups)
   );
   const [showEarlierHistory, setShowEarlierHistory] = useState(false);
   const availableFilters = availableIllnessTimelineFilters(groups);
-  // The chip narrows the SCREEN, never the record. Every event stays in the DOM
-  // and a filtered-out row is hidden with `hidden print:table-row` — the same
-  // pattern the mobile earlier-days fold has always used one level up
-  // (`print:table-row-group`), because a printed illness record that silently drops
-  // the medications given is a worse artifact than a long one. Only rows the chip
-  // KEEPS are laid out, so the height the fold is about is genuinely gone.
+  // The chip narrows the SCREEN, never the record. A filtered-out row is HIDDEN,
+  // not removed: it stays in the document under `hidden print:table-row`, comes
+  // back on the next chip tap, and prints — the same pattern the mobile
+  // earlier-days fold has always used one level up (`print:table-row-group`),
+  // because a printed illness record that silently drops the doses given is a worse
+  // artifact than a long one. Only rows the chip KEEPS are laid out, so the height
+  // the fold is about is genuinely gone.
   const shownGroups = groups
     .map((group) => ({
       date: group.date,

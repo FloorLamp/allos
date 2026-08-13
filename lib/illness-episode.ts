@@ -23,6 +23,7 @@ import { getTimezone } from "./settings";
 import { getSymptomDaysInRange } from "./queries/symptoms";
 import { getConditions } from "./queries/clinical";
 import type { Condition } from "./types";
+import type { IntakeItemKind } from "./types/intake";
 import { symptomLabel } from "./symptoms";
 import { VITAL_CANONICAL, storedTempToF } from "./vitals-input";
 import { vitalReadingTime } from "./vitals-day";
@@ -161,7 +162,7 @@ export function assembleIllnessEpisode(
   // linked dose so history still shows the same amount as the Meds logger.
   const admRows = db
     .prepare(
-      `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name,
+      `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name, ii.kind AS kind,
               COALESCE(l.product, ii.product) AS product, l.date AS date,
               l.occurred_at AS occurred_at, l.recorded_at AS recorded_at,
               l.taken_at AS taken_at,
@@ -178,6 +179,7 @@ export function assembleIllnessEpisode(
     id: number;
     item_id: number;
     name: string;
+    kind: IntakeItemKind;
     product: string | null;
     date: string;
     occurred_at: string | null;
@@ -192,6 +194,11 @@ export function assembleIllnessEpisode(
       med = {
         itemId: r.item_id,
         name: r.name,
+        // The clinical kind rides along (#2612) so the History's Illness view can
+        // drop the routine supplement stack without dropping the medicine given
+        // for the illness. The `obligation = 'may'` narrowing above is what makes
+        // the split meaningful: inside a PRN-only set, `medication` reads as care.
+        kind: r.kind,
         product: r.product,
         count: 0,
         administrations: [],

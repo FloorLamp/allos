@@ -15,6 +15,7 @@ import {
   formatCompactRelativeTime,
   type TimeFormat,
 } from "./format-date";
+import type { IntakeItemKind } from "./types/intake";
 import type { TemperatureUnit } from "./settings";
 import { fmtTemp } from "./units";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
@@ -87,6 +88,11 @@ export type IllnessTimelineEvent =
       label: string;
       detail: string;
       itemId: number;
+      // The parent item's clinical kind, carried onto the row so the History's
+      // Illness view can drop the routine supplement stack without dropping the
+      // medicine given for the illness (#2612). `kind` is already this union's own
+      // discriminant, hence the longer name. Absent ⇒ treated as a medication.
+      itemKind?: IntakeItemKind;
       amount: string | null;
     }
   | {
@@ -132,6 +138,7 @@ export function illnessTimelineEvents(
           formatMedicationDoseProduct(a.amount, a.product ?? m.product) ||
           "Amount not recorded",
         itemId: m.itemId,
+        itemKind: m.kind,
         amount: a.amount,
       }))
     ),
@@ -183,6 +190,15 @@ export interface EpisodeMedication {
   itemId: number;
   name: string;
   product?: string | null;
+  // The intake item's CLINICAL identity (#2612). The episode gather is already
+  // narrowed to `obligation = 'may'`, so within this set the split reads as "a PRN
+  // medication taken during the illness" against "the profile's routine supplement
+  // stack, which happens to be filed `may` too" — the distinction the History's
+  // Illness view needs, and the "kind-based" half of what #2612's fix direction
+  // named. It is NOT the fuller episode-relevance model that issue defers.
+  // Optional so a payload assembled before this field existed still types; a
+  // missing kind is treated as a medication, i.e. never hidden.
+  kind?: IntakeItemKind;
   count: number;
   administrations: AdministrationPoint[];
 }
