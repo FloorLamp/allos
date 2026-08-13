@@ -81,11 +81,8 @@ import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Avatar from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
-import UpcomingRowMenu, {
-  DISMISS_ROW_ATTR,
-  RowActionChips,
-  type RowAction,
-} from "./RowActions";
+import UpcomingRowMenu, { RowActionChips, type RowAction } from "./RowActions";
+import { DISMISS_ROW_ATTR } from "./dismiss-row";
 import FoldSummary from "./FoldSummary";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import FollowUpSettleControls from "@/components/FollowUpSettleControls";
@@ -1252,7 +1249,7 @@ function Row({
       // The element a dismissal from this row's kebab travels with (#2654, motion 2).
       // The row is server-rendered and the menu's panel is portaled to <body>, so the
       // menu walks UP from its trigger to this marker; the attribute name is spelled
-      // once, in RowActions.
+      // once, in ./dismiss-row (a plain module, readable from BOTH sides).
       {...{ [DISMISS_ROW_ATTR]: "" }}
       // flex-wrap (#1063): the trailing action/badge chips are nowrap-by-design,
       // so at phone width they must WRAP under the title instead of forcing the

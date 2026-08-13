@@ -22,6 +22,7 @@ import {
   type SnoozeDismissProps,
 } from "@/components/SnoozeDismissMenu";
 import { type AppRoute } from "@/lib/hrefs";
+import { DISMISS_ROW_ATTR } from "./dismiss-row";
 
 // ---------------------------------------------------------------------------
 // The Upcoming row's SECONDARY actions — one model, two presentations (#1446).
@@ -37,11 +38,6 @@ import { type AppRoute } from "@/lib/hrefs";
 // kept in this single file, beside each other — are pure formatters over it.
 // Adding a row action means adding one descriptor; both viewports get it.
 // ---------------------------------------------------------------------------
-
-// The marker the (server-rendered) Upcoming row carries so a dismissal from its
-// portaled kebab can find the element to slide (#2654, motion 2). One name, spelled
-// once, used by the row that sets it and the menu that walks up to it.
-export const DISMISS_ROW_ATTR = "data-dismiss-row";
 
 // Icons can't cross the server/client boundary as component references, so a
 // descriptor names its icon and each presenter resolves it through this map.
