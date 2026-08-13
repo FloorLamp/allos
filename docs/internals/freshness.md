@@ -116,6 +116,72 @@ presented as current.
 Both keep the underlying values visible with their provenance. The fix is what
 the aggregate CLAIMS, never what it hides.
 
+## Dormancy is a third question (#2652)
+
+`lib/domain-dormancy.ts` asks something neither of the above asks: **has this
+domain stopped arriving?** It is a claim about the PIPELINE, not about a reading,
+and it is the only one of the three with a consequence in HEIGHT.
+
+|                    | asks                           | consequence                             |
+| ------------------ | ------------------------------ | --------------------------------------- |
+| Retest clock       | should this be re-tested?      | a finding, a nudge                      |
+| Presentation floor | may this read as my value NOW? | an as-of stamp; the value stays put     |
+| **Dormancy**       | has anything arrived at all?   | the section spends one line, not a card |
+
+Three states, and the third exists so the first two cannot be conflated:
+
+```ts
+type DormancyState = "absent" | "current" | "dormant";
+```
+
+- `absent` — nothing has EVER been recorded. The onboarding case, with its own
+  first-run copy. `not-applicable` from `freshnessState` maps here, never to
+  `dormant`: telling somebody with a year of weigh-ins that they have never
+  weighed themselves is the defect this exists to remove, and the dashboard's
+  weight card did exactly that, because its own render window is 90 days and an
+  empty window read as an empty domain.
+- `current` — something arrived inside the interval.
+- `dormant` — something did arrive, and then stopped.
+
+The DECISION is still `freshnessState`'s, so the boundary is the shared one
+(dormant strictly after the interval). What each domain supplies is its interval
+and the noun its line uses.
+
+**Intervals.** 90 days by owner ruling (2026-08-13), declared per domain with a
+completeness test.
+
+**Where dormancy STOPS, and this is the hard bound.** A presentation floor exists
+precisely so a stale value can stay on screen honestly — "still your latest reading,
+but not a current one" — and the doctrine above says the fix is what an aggregate
+CLAIMS, never what it hides. So a section that is showing a real value under a floor
+may never be collapsed. Dormancy is available only where there is nothing to hide: a
+section whose populated render is **window-bounded**, and which therefore already shows
+nothing once its domain goes quiet. `DormancyDeclaration.renderWindowDays` names that
+window and `dormancyWindowConflicts()` is empty by construction, so a domain cannot be
+added whose interval elapses while its section could still be rendering points.
+
+That is why only **weight** (a 90-day chart) and **sleep** (last night) are domains.
+`recent-labs` and `vitals-latest` render their latest reading at any age and are
+exemptions with that reason written beside them; collapsing either would need a FOLD
+that keeps its rows reachable in place (the #2685 URL-state pattern), not a line.
+
+**What a dormant line may say.** The RECORD, and how long — "No weigh-in recorded
+in 150 days". Never the body, and never a guess at why: a domain is quiet either
+because nothing was logged or because nothing happened, and only the first is
+knowable from here.
+
+**What dormancy may never do.** Change reach. The collapsed line carries the fix and
+everything it replaced is one tap away. Nothing is removed by adaptation. Anything
+carrying an OBLIGATION never collapses: doses, refills and care follow-ups reach the
+dashboard through the pinned attention hero, which is not data-aware and so cannot be
+flagged dormant by construction.
+
+**Tenants.** The dashboard's data-aware widget band (`lib/dashboard-widgets.ts`).
+Every `dataAware` widget either declares a `dormancyDomain` or is named in
+`DORMANCY_EXEMPT_WIDGETS` with its reason. `widgetDisplayState` owns the precedence —
+dormant outranks empty, and a widget that declares neither capability can be flagged
+for neither.
+
 ## Adding a tenant
 
 1. Resolve the interval that applies to your reading, and declare it — a

@@ -396,6 +396,24 @@ check counts fresh rather than measured. Both keep the stale values visible with
 their provenance: the fix is what the aggregate CLAIMS, never what it hides.
 Phrasing stays per surface. See `docs/internals/freshness.md`.
 
+DORMANCY (`lib/domain-dormancy.ts`, #2652) is the THIRD question over the same
+substrate — "has this domain stopped arriving?" — and the only one whose
+consequence is HEIGHT: a section whose domain has recorded and then gone quiet
+spends one line instead of a card. Its states are `absent` / `current` /
+`dormant`, and the first exists so the collapse cannot inherit the onboarding
+copy: `absent` means nothing was EVER recorded, and telling a returning weigh-in
+logger "No weigh-ins yet" is the defect this removes. The decision is still
+`freshnessState`'s. Intervals are 90 days by owner ruling, declared PER DOMAIN with
+a completeness test. The HARD BOUND is that a section still showing a stale VALUE
+under a presentation floor may never collapse — that floor exists so the value can
+stay on screen honestly, and hiding it is the thing the doctrine forbids. So
+dormancy reaches only sections whose render is WINDOW-BOUNDED and therefore already
+showing nothing (`renderWindowDays`; `dormancyWindowConflicts()` is empty by
+construction), which is why `recent-labs` and `vitals-latest` are declared
+exemptions rather than domains. A dormant line names the RECORD and its age — never
+the body, never a reason. Compression changes HEIGHT, never reach: the line carries
+the fix. Anything carrying an OBLIGATION never collapses.
+
 ### Settings and units
 
 Settings have three storage tiers:
