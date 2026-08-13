@@ -109,8 +109,10 @@ function bin(name: string): string {
 async function ensureBuild(): Promise<void> {
   if (process.env.E2E_SKIP_BUILD === "1") return;
   // CI owns its own build step (.github/actions/e2e-setup) — never rebuild there,
-  // but fail loudly rather than boot workers against a missing build.
+  // but fail loudly rather than boot workers against a missing build. The app both
+  // paths serve is identical, so nothing ASSERTED differs between them (#2648).
   if (process.env.CI) {
+    // ci-ok: build orchestration, not an assertion — who runs `npm run build` IS a genuine runner fact
     if (!fs.existsSync(BUILD_ID)) {
       throw new Error(
         "no production build found (.next/BUILD_ID) — CI must run `npm run build` before the e2e suite"

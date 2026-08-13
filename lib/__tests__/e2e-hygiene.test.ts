@@ -117,6 +117,26 @@ const TOPASS_RE = /\.toPass\(/g;
 // is wherever `.toPass(` itself appears — usually the closing `}).toPass({...})`.
 const TOPASS_OK_MARKER = "topass-ok";
 
+// A branch on `process.env.CI` (#2648). The runner is not a property of the app, and
+// three of the four sites this rule was written from were the SAME category error:
+// `process.env.CI` standing in for "is this a production build". It never was one —
+// e2e/fixtures.ts spawns every worker's `next start` with NODE_ENV=production
+// unconditionally, so since #1538 the non-CI arm has been unreachable and the CI arm
+// has been the only thing running. "Both runs stay green" had quietly become "CI
+// stays green", which is an assertion that asserts less than it appears to and gets
+// found out only when the behaviour changes.
+//
+// So the rule is: a line that branches on the runner must SAY which runner-only fact
+// it needs, via a `ci-ok: <why>` comment (the first-ok escape-marker shape). Unlike
+// the other markers this one is accepted on the branch line OR on either line
+// touching it — `if (process.env.CI) {` is too short to carry a reason worth
+// reading, and a marker crammed onto it is how a reason turns into a rubber stamp.
+// There is no per-file allowlist: the honest answer is a written reason or a deleted
+// branch. Prose that merely NAMES the variable (a comment explaining why a branch was
+// removed, like the ones in the specs this rule came from) is not a branch.
+const CI_ENV_RE = /process\.env\.CI\b/;
+const CI_OK_MARKER = "ci-ok";
+
 // The family-create freeze (issue #868, phase-2 create-member hardening). The
 // Settings → Family create/grant controls are onClick Server-Action handlers, NOT
 // form submits, so an inline goto→fill→click sequence flakes on the hydration swallow /
@@ -499,6 +519,35 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `or add a same-line \`first-ok: <why>\` comment for a reviewed, ` +
         `owned-fixture use; see docs/internals/e2e-hygiene.md.`,
     });
+  });
+
+  it("no e2e/*.ts branch on process.env.CI without a written reason (mark ci-ok)", () => {
+    const violations: string[] = [];
+    for (const { name, text } of specFiles()) {
+      const lines = text.split("\n");
+      lines.forEach((line, i) => {
+        if (!CI_ENV_RE.test(line)) return;
+        // The marker may sit on this line or on either line touching it.
+        const window = [lines[i - 1], line, lines[i + 1]];
+        if (window.some((l) => l?.includes(CI_OK_MARKER))) return;
+        // Strip a trailing line comment and a block-comment continuation line, so
+        // PROSE naming the variable (including a note about a branch that was
+        // REMOVED) is not mistaken for a branch. What remains is code.
+        const code = line.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "");
+        if (!CI_ENV_RE.test(code)) return;
+        violations.push(
+          `${name}:${i + 1}: branches on process.env.CI with no written reason. ` +
+            `The harness serves ONE build shape — e2e/fixtures.ts spawns every ` +
+            `worker with NODE_ENV=production — so process.env.CI is NOT a proxy ` +
+            `for "is this a production build" (#2645/#2648): assert what the ` +
+            `harness can actually serve. If the branch really does need a ` +
+            `runner-only fact (an artifact path, a service only the runner has), ` +
+            `add a \`ci-ok: <why>\` comment naming it, on this line or the one ` +
+            `above/below; see docs/internals/e2e-hygiene.md.`
+        );
+      });
+    }
+    expect(violations, violations.join("\n")).toEqual([]);
   });
 
   it("no NEW unmarked .toPass( in an e2e/*.ts (use a settled interaction, or mark topass-ok)", () => {
