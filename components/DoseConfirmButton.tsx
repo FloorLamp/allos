@@ -1,9 +1,17 @@
 "use client";
 
 import SubmitButton from "@/components/SubmitButton";
-import { useToast } from "@/components/Toast";
-import { doseConfirmMessage } from "@/lib/dose-outcome-text";
-import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
+import { useUndoableAction } from "@/components/useUndoableAction";
+import {
+  DOSE_UNDONE_MESSAGE,
+  doseConfirmMessage,
+  doseConfirmUndoable,
+  doseUndoOutcome,
+} from "@/lib/dose-outcome-text";
+import type {
+  DoseConfirmResult,
+  DoseUndoResult,
+} from "@/lib/dose-outcome-text";
 
 // The dose-confirm form for surfaces whose feedback channel is a toast (#2106): the
 // household card's per-member "Confirm" and the dashboard attention hero's "Mark
@@ -18,8 +26,20 @@ import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
 // a refusal — item paused, dose retired, dose standing as skipped — toasts in the
 // error tone and the row stays, because it is still due; a success toasts the
 // outcome's own wording ("Dose logged" / "Already logged as taken").
+//
+// ── Undo (#2642) ──────────────────────────────────────────────────────────────
+// When the parent supplies `undoAction`, a success that this tap actually WROTE also
+// carries an Undo, through the shared act→undo toast. Two things are load-bearing:
+//
+//   • `doseConfirmUndoable` is the gate, not `doseResolved`. An `already-taken` answer
+//     resolves the dose but wrote nothing — the taken row was somebody's earlier confirm
+//     — so no Undo is offered and this tap keeps no power over a write it did not make.
+//   • the undo POSTS ids and re-derives everything server-side. It rebuilds its form from
+//     the same declared `fields` rather than reusing the submitted FormData, so the
+//     inverse can only ever name the dose this button names.
 export default function DoseConfirmButton({
   action,
+  undoAction,
   fields,
   className,
   testid,
@@ -27,6 +47,9 @@ export default function DoseConfirmButton({
   children,
 }: {
   action: (formData: FormData) => Promise<DoseConfirmResult>;
+  // The typed inverse for this surface (#2642). Optional: a surface with no inverse
+  // wired simply offers no Undo, which is the honest default rather than a broken one.
+  undoAction?: (formData: FormData) => Promise<DoseUndoResult>;
   // Hidden form fields posted with the action — ids only, never objects.
   fields: Record<string, string | number>;
   className?: string;
@@ -39,22 +62,50 @@ export default function DoseConfirmButton({
   ariaLabel?: string;
   children: React.ReactNode;
 }) {
-  const toast = useToast();
+  const announce = useUndoableAction();
 
   async function confirm(fd: FormData) {
     let result: DoseConfirmResult;
     try {
       result = await action(fd);
     } catch {
-      toast("Couldn't log that dose. Try again.", { tone: "error" });
+      announce({
+        message: "Couldn't log that dose. Try again.",
+        tone: "error",
+      });
       return;
     }
     if (!result.ok) {
-      toast(result.error, { tone: "error" });
+      announce({ message: result.error, tone: "error" });
       return;
     }
     const { text, tone } = doseConfirmMessage(result.outcome);
-    toast(text, { tone });
+    const undo = undoAction;
+    announce({
+      message: text,
+      tone,
+      undo:
+        undo && doseConfirmUndoable(result.outcome)
+          ? {
+              undoneMessage: DOSE_UNDONE_MESSAGE,
+              run: async () => {
+                const undoFd = new FormData();
+                for (const [name, value] of Object.entries(fields)) {
+                  undoFd.set(name, String(value));
+                }
+                let undone: DoseUndoResult;
+                try {
+                  undone = await undo(undoFd);
+                } catch {
+                  return { ok: false, reason: "failed" };
+                }
+                return undone.ok
+                  ? doseUndoOutcome(undone.outcome)
+                  : { ok: false, reason: "failed" };
+              },
+            }
+          : null,
+    });
   }
 
   return (

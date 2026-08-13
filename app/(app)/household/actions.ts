@@ -9,13 +9,16 @@ import {
   setActiveProfile,
 } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { markDoseTaken, dismissFinding } from "@/lib/queries";
+import { markDoseTaken, undoDoseConfirm, dismissFinding } from "@/lib/queries";
 import { householdSetupForProfile } from "@/lib/queries/household-setup";
 import {
   HOUSEHOLD_SETUP_CHECK_IDS,
   type HouseholdSetupCheckId,
 } from "@/lib/household-setup";
-import type { DoseConfirmResult } from "@/lib/dose-outcome-text";
+import type {
+  DoseConfirmResult,
+  DoseUndoResult,
+} from "@/lib/dose-outcome-text";
 
 // Switch the current session's active profile to the clicked household card and
 // jump to that profile's dashboard — the same "set active profile + navigate" the
@@ -54,6 +57,31 @@ export async function confirmDoseAction(
     return { ok: false, error: "Couldn't find that dose." };
   await requireProfileWriteAccess(profileId);
   const outcome = markDoseTaken(profileId, doseId, null, today(profileId));
+  revalidateRoute("/household");
+  revalidateRoute("/nutrition");
+  revalidateRoute("/medications");
+  revalidateRoute("/");
+  return { ok: true, outcome };
+}
+
+// Take back the card's confirm (#2642) — the inverse behind its Undo toast. The gate is
+// the CONFIRM'S gate, re-run: requireProfileWriteAccess on the profile the form names,
+// never the active one, so a read-only caregiver cannot un-log a member's dose any more
+// than they could log it. undoDoseConfirm is itself profile-scoped through the parent
+// item, so a tampered dose_id from a third profile is dropped past the access gate too.
+//
+// A caregiver's undo is still only their OWN tap being taken back: the inverse refuses
+// the moment the day's ledger is no longer the single taken row that confirm wrote, so a
+// second caregiver's confirm, or a skip recorded in between, is never erased by it.
+export async function undoConfirmDoseAction(
+  formData: FormData
+): Promise<DoseUndoResult> {
+  const profileId = Number(formData.get("profileId"));
+  const doseId = Number(formData.get("dose_id"));
+  if (!profileId || !doseId)
+    return { ok: false, error: "Couldn't find that dose." };
+  await requireProfileWriteAccess(profileId);
+  const outcome = undoDoseConfirm(profileId, doseId, today(profileId));
   revalidateRoute("/household");
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");

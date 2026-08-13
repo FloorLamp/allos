@@ -19,6 +19,7 @@ import DoseConfirmButton from "@/components/DoseConfirmButton";
 import {
   openProfileAction,
   confirmDoseAction,
+  undoConfirmDoseAction,
   openMemberSetupAction,
   dismissMemberSetupAction,
 } from "@/app/(app)/household/actions";
@@ -218,6 +219,11 @@ function DueDoseRow({
           // the row silently re-rendering unchanged.
           <DoseConfirmButton
             action={confirmDoseAction}
+            // Act → toast → Undo (#2642). The undo re-runs this card's OWN gate on the
+            // member's profile and refuses the moment the day's ledger is no longer the
+            // single row this confirm wrote, so a caregiver takes back their own tap and
+            // never a second caregiver's.
+            undoAction={undoConfirmDoseAction}
             fields={{ profileId, dose_id: item.doseId }}
             testid="household-confirm-dose"
             // The visible label stays short; the accessible name carries the same

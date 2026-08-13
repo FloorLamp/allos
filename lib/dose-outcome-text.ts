@@ -1,4 +1,5 @@
-import type { DoseTakenOutcome } from "./types";
+import type { DoseTakenOutcome, DoseUndoOutcome } from "./types";
+import type { UndoOutcome } from "./undo-offer";
 
 // What an IN-APP dose confirm says, per markDoseTaken outcome (issue #1468).
 //
@@ -87,3 +88,49 @@ export function doseResolved(outcome: DoseTakenOutcome): boolean {
     outcome === "already-taken"
   );
 }
+
+// The shape a dose-confirm UNDO Server Action resolves with (#2642) — the mirror of
+// DoseConfirmResult, so the inverse answers in the same currency as the write and can
+// never quietly go back to returning void.
+export type DoseUndoResult =
+  { ok: true; outcome: DoseUndoOutcome } | { ok: false; error: string };
+
+// Whether THIS confirm may offer an Undo.
+//
+// Read against `doseResolved` above, which is a DIFFERENT question and deliberately one
+// member wider. `already-taken` resolves the dose — the row leaves the due list — but the
+// tap that got that answer WROTE NOTHING: a taken log was already standing, put there by
+// an earlier tap, a Telegram button, or the offline replay. Offering "Undo" there would
+// hand this tap the power to erase somebody else's confirm, which is the opposite of
+// taking back what you just did. Only the two outcomes that mean "a new taken row exists
+// BECAUSE of this tap" are undoable.
+//
+// Total over the union with no `default:`, so a new DoseTakenOutcome is a compile error
+// here rather than a silently-undoable one.
+export function doseConfirmUndoable(outcome: DoseTakenOutcome): boolean {
+  switch (outcome) {
+    case "logged":
+    case "logged-off-day":
+      return true;
+    case "already-taken":
+    case "already-skipped":
+    case "skipped":
+    case "inactive":
+    case "stale-dose":
+      return false;
+  }
+}
+
+// What the shared Undo toast should report, per the inverse's typed outcome. Every
+// refusal maps to `changed`, and honestly so: `not-taken`, `changed` and `stale-dose` all
+// say the same thing to a reader — the world moved between the confirm and the Undo, so
+// nothing was written over. The distinctions matter to the core and to the tests, not to
+// the sentence.
+export function doseUndoOutcome(outcome: DoseUndoOutcome): UndoOutcome {
+  return outcome === "undone" ? { ok: true } : { ok: false, reason: "changed" };
+}
+
+// What the Undo toast says when the confirm was actually taken back. Names the
+// CONSEQUENCE, not the mechanism: the row is gone, so the dose is due again and will be
+// reminded about again — which is the fact the reader needs before walking away.
+export const DOSE_UNDONE_MESSAGE = "Dose confirm undone — it’s due again.";
