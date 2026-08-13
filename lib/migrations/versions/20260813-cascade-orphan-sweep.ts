@@ -1,6 +1,10 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
-import { sweepOrphanedCascadeRows } from "../cascade-delete";
+import { createLogger } from "../../log";
+import {
+  sweepOrphanedCascadeRows,
+  type OrphanSweepEffect,
+} from "../cascade-delete";
 
 // Issue #2680 — clear the cascade orphans earlier row-deleting migrations left.
 //
@@ -45,17 +49,53 @@ import { sweepOrphanedCascadeRows } from "../cascade-delete";
 // `medical_record_revisions` joins `medical_records`, so the rows are dead weight
 // rather than visible wrong data. But unreachable is a property of TODAY's
 // readers, and the database is meanwhile left in a state `PRAGMA foreign_key_check`
-// reports as a violation on a healthy install — which is the trap the health
-// endpoint's own rules name: a reason that describes the default deployment
-// posture. Clearing them is what lets a future integrity probe mean something.
+// reports as a violation — one of the kinds it reports (a SET NULL dangler is
+// another, and this sweep deliberately leaves those). Clearing the CASCADE kind is
+// what lets a future integrity probe mean something about the kind a migration
+// creates.
 //
 // Idempotent: a second run finds no orphan and writes nothing.
+//
+// AND IT SAYS WHAT IT DID. This deletes health-record rows at boot, once, with no
+// backup taken by `createDb()` beforehand and no undo. The one scenario in which
+// this migration matters at all is the one where it actually removed something on a
+// real install — so discarding the tally would mean nobody could ever learn what
+// went. The sweep already computes it per link; every run emits one line, including
+// the empty one, because "this ran and found nothing" is the other half of the
+// trail. `up()` is the right place for it rather than the sweep: the sweep is a
+// pure-ish schema operation several callers could have, and the decision to write
+// to the operator's log belongs to the boot-time caller that removes rows.
+
+const log = createLogger("migrate");
+
+function describe(effect: OrphanSweepEffect): string {
+  return (
+    `${effect.table}.${effect.columns.join("+")} → ${effect.parent}: ` +
+    `${effect.rows}`
+  );
+}
 
 export function up(db: Database.Database): void {
+  let effects: OrphanSweepEffect[] = [];
   const run = db.transaction(() => {
-    sweepOrphanedCascadeRows(db);
+    effects = sweepOrphanedCascadeRows(db);
   });
   run.immediate();
+
+  const rows = effects.reduce((n, e) => n + e.rows, 0);
+  if (rows === 0) {
+    log.info(
+      "20260813-cascade-orphan-sweep: no cascade orphans found, nothing removed"
+    );
+    return;
+  }
+  // WARN, not info: rows were deleted from a health database and the operator has
+  // no other record of it.
+  log.warn(
+    `20260813-cascade-orphan-sweep: removed ${rows} orphaned row(s) whose ` +
+      `ON DELETE CASCADE parent was already gone (#2680)`,
+    { rows, links: effects.map(describe) }
+  );
 }
 
 export const migration: Migration = {

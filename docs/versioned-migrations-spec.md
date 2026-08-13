@@ -238,11 +238,39 @@ cascading children without routing through the helper. Migrations 092, 101, 118,
 180 and `20260813-bmi-derived-rows` are frozen entries on that list, each with
 its reason; migration 118 is the one that got it right by hand, long before there
 was a helper. `20260813-cascade-orphan-sweep` clears the orphans the others left
-— every row whose CASCADE parent is missing, which is the only state
-`PRAGMA foreign_key_check` would flag on an otherwise healthy install. `SET NULL`
-links are deliberately not swept: nulling a column on a _surviving_ row rewrites
-live data (`intake_item_logs.notify_message_id` is provenance a feature reads),
-which is a bigger claim than removing a row the schema says cannot exist.
+— every row whose CASCADE parent is missing. `SET NULL` links are deliberately
+not swept: nulling a column on a _surviving_ row rewrites live data
+(`intake_item_logs.notify_message_id` is provenance a feature reads), which is a
+bigger claim than removing a row the schema says cannot exist.
+
+A missing CASCADE parent is **not** the only state `PRAGMA foreign_key_check`
+reports. That pragma flags any dangling non-null reference whatever its
+`ON DELETE` clause, so the `SET NULL` danglers above are reported before the
+sweep and still reported after it. The sweep clears one _kind_ of violation, and
+a future integrity probe over that pragma has to reckon with the rest before it
+can mean anything — which is why turning `foreign_key_check` into a health-endpoint
+reason is a separate decision, not a corollary of this one.
+
+The sweep is a boot-time delete of health-record rows, taken with no backup
+beforehand and no undo, so it **logs what it removed**: one `migrate`-scoped line
+per run, `warn` with the per-link tally when rows went and `info` when none did.
+The empty line is not noise — "this ran and found nothing" is the other half of
+the forensic trail, and the migration runs exactly once per database.
+
+**What the ratchet does not see.** It reads `DELETE` statements. Per statement,
+not per file, and fail-closed: a `DELETE FROM` whose table it cannot resolve to a
+literal identifier is a violation rather than a skip, because a delete it cannot
+read is not a delete it may ignore. What it cannot see is the other way to lose
+rows — a table **rebuild** that copies a filtered subset into `<t>_new`, which
+orphans children identically with no `DELETE` token anywhere. That is out of
+scope here and left deliberately, for a reason worth stating rather than
+discovering: no lexical rule is complete over that class. Sniffing for a `WHERE`
+in the copying `SELECT` would catch two spellings and miss
+`INSERT INTO t_new SELECT * FROM t` followed by a filtering delete on the new
+table (which has no inbound foreign keys, so the `DELETE` guard is blind to it) —
+and a guard that catches some spellings while reading like a guard is the #2444
+defect, not a defence against it. The population is also one: of the 32 shipped
+migrations using the rebuild recipe, exactly one (083) filters rows.
 
 ### Downgrade guard
 

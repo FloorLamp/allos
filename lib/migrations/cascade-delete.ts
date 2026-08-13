@@ -47,8 +47,11 @@ export type InboundDeleteAction = "cascade" | "set-null";
 /**
  * One inbound foreign key a runtime DELETE on `parent` would act on. Column lists
  * are parallel and may hold more than one entry: this schema carries composite
- * keys ((profile_id, account_id) → portal_accounts), and a guard that quietly
- * ignored them would be the #2444 shape one level down.
+ * keys — `portal_identities (portal_id, account_id) → portal_accounts (portal_id,
+ * id)`, and three siblings on the same shape (`pending_portal_identities`,
+ * `portal_run_reports`, `portal_sync_requests`) — and a guard that quietly ignored
+ * them would be the #2444 shape one level down. The parent columns are NOT the
+ * child's: `account_id` references `portal_accounts.id`.
  */
 export interface InboundDeleteLink {
   /** The referencing (child) table. */
@@ -100,7 +103,9 @@ function rowKeyOf(db: Database.Database, table: string): string {
   }[];
   const pk = cols.filter((c) => c.pk > 0);
   // A composite or absent primary key still has an implicit rowid in this schema
-  // (nothing is WITHOUT ROWID), and rowid names the row just as well.
+  // (nothing is WITHOUT ROWID — the DB tier pins that, because this comment is an
+  // assertion about the schema and an unpinned assertion is the #2444 shape), and
+  // rowid names the row just as well.
   return pk.length === 1 ? pk[0].name : "rowid";
 }
 
@@ -108,6 +113,15 @@ function rowKeyOf(db: Database.Database, table: string): string {
  * Every inbound reference to `parent` that a runtime DELETE would act on —
  * CASCADE and SET NULL. NO ACTION links are deliberately absent: those are the
  * `CHILD_LINKS` half, which BLOCKS a delete rather than cleaning up after it.
+ *
+ * The two remaining SQLite actions — `SET DEFAULT` and `RESTRICT` — fall through
+ * the same skip, and that skip is only safe because the schema declares NEITHER.
+ * It is a WORSE unhandled case than the self-referencing cycle this module refuses
+ * loudly: on a `SET DEFAULT` link the helper does not refuse at all, it deletes the
+ * parent and leaves the child pointing at nothing, where the runtime delete would
+ * have ABORTED. So the absence is pinned in the DB tier rather than asserted here —
+ * a `SET DEFAULT` link added to the schema must fail the suite and force this
+ * branch to be written, not discover it in a migration.
  */
 export function inboundDeleteLinks(
   db: Database.Database,
@@ -294,13 +308,22 @@ export interface OrphanSweepEffect {
 
 /**
  * Remove every row whose `ON DELETE CASCADE` parent is GONE — the state a
- * migration's FK-off delete leaves behind (#2680), and the only state
- * `PRAGMA foreign_key_check` would flag on an otherwise healthy install.
+ * migration's FK-off delete leaves behind (#2680).
+ *
+ * This is NOT everything `PRAGMA foreign_key_check` reports. That pragma flags any
+ * dangling non-null reference whatever its `ON DELETE` clause, so a `SET NULL`
+ * dangler (`intake_item_logs.notify_message_id` → `notify_messages`) is reported
+ * before this sweep and still reported after it. The sweep clears one KIND of
+ * violation, deliberately; see the SET NULL note below for why the rest are left.
  *
  * The blast radius is exactly what the schema already declares must not exist: a
  * row whose cascading reference is non-null and matches no parent row. A healthy
  * database loses nothing. Runs to a fixed point, because removing an orphan can
- * orphan its own cascading children.
+ * orphan its own cascading children — and it RETURNS only once it has proven that
+ * fixed point, throwing otherwise, the same way `deleteRowsWithCascade` throws at
+ * its own depth cap. Returning normally on an exhausted budget would be a function
+ * reporting success over a database it left inconsistent, which is the shape this
+ * whole module exists to remove.
  *
  * SET NULL links are deliberately NOT swept. Nulling a column on a SURVIVING row
  * rewrites live data — `intake_item_logs.notify_message_id` is provenance a
@@ -312,7 +335,10 @@ export function sweepOrphanedCascadeRows(
 ): OrphanSweepEffect[] {
   const effects: OrphanSweepEffect[] = [];
   const tables = new Set(userTables(db).map((t) => t.toLowerCase()));
-  for (let pass = 0; pass < MAX_DEPTH; pass++) {
+  // One pass beyond the depth budget, because the pass that PROVES the fixed point
+  // is the one that removes nothing: a chain of depth MAX_DEPTH needs MAX_DEPTH
+  // clearing passes and then one quiet pass to confirm it is done.
+  for (let pass = 0; pass <= MAX_DEPTH; pass++) {
     let removed = 0;
     for (const table of userTables(db)) {
       for (const link of allInboundCascades(db, table)) {
@@ -331,8 +357,16 @@ export function sweepOrphanedCascadeRows(
           .run();
         removed += res.changes;
         if (res.changes === 0) continue;
+        // Keyed per LINK, not per (table, parent): `intake_item_pairs.a_id` and
+        // `.b_id` both cascade off `intake_items`, and merging them would report
+        // one link's columns carrying both links' rows — a wrong line in a report
+        // the migration logs.
+        const key = link.columns.join(",");
         const seen = effects.find(
-          (e) => e.table === table && e.parent === link.parent
+          (e) =>
+            e.table === table &&
+            e.parent === link.parent &&
+            e.columns.join(",") === key
         );
         if (seen) seen.rows += res.changes;
         else
@@ -344,9 +378,12 @@ export function sweepOrphanedCascadeRows(
           });
       }
     }
-    if (removed === 0) break;
+    if (removed === 0) return effects;
   }
-  return effects;
+  throw new Error(
+    `orphan sweep did not reach a fixed point in ${MAX_DEPTH} passes — ` +
+      `the cascade graph is deeper than the budget; resolve it in the migration by hand`
+  );
 }
 
 /** The CASCADE links `table` declares OUTWARD, in `InboundDeleteLink` shape. */
