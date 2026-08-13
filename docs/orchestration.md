@@ -108,7 +108,14 @@ location labels, never the whole story. Three labels route HUMAN attention:
   generated brief asks agents to return OPEN QUESTIONS as a labelled list; the
   orchestrator converts that list to `needs-human` the same day. Distinct
   from `parked` (work not started by decision) — needs-human work is done or
-  in flight, and one answer unblocks it.
+  in flight, and one answer unblocks it. The RESOLUTION half is the
+  `.claude/skills/needs-human` skill, run in an interactive session with the
+  owner: it premise-audits each question against current main, checks
+  ripeness, asks in batched recommendation-first questions, records the
+  ruling on the issue body (superseded prose struck inline), then un-labels,
+  un-assigns, and routes — back to the priority queue, or to merge when the
+  answer was a merge gate. An unanswered question keeps its label; silence is
+  not consent.
 - **`recommend-adopt` / `recommend-hold`** — an evaluation's verdict, with
   the evidence in the eval comment. A verdict closes its own loop (owner,
   2026-08-13): `recommend-hold` pairs with `parked` (revisit trigger in the
