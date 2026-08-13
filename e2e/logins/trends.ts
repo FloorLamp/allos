@@ -278,3 +278,64 @@ export const WAIST_SEEDED_READINGS = 4;
 // writer upserts on its natural key, so a re-run corrects the day rather than
 // stacking a second point.
 export const WAIST_LOG_CM = 91.5;
+
+// ── What a chart card may CLAIM about its latest value (issue #2615 item 3) ──
+// A dedicated ADULT profile whose body census carries exactly the two states the
+// chart cards used to render dishonestly, one per card, so each is observable
+// alone:
+//
+//   • WEIGHT — two weigh-ins, the newer of them past `weight`'s presentation floor
+//     (45 days). The card plots a real line and headlines a real number, and that
+//     number is no longer today's — so the header must stamp the day it was read.
+//     Two readings, not one, so the as-of claim is isolated from the single-reading
+//     degrade below.
+//   • BODY FAT — exactly ONE reading, recent enough that its currency is not in
+//     question. A 90-day band with one dot clipped against the y-axis is the render
+//     this replaces with the tiles' own single-reading mark.
+//
+// Dedicated ON PURPOSE (#868): both states are ABSENCES in disguise — "no second
+// body-fat reading", "no weigh-in since" — and one neighbour's ordinary write
+// destroys either. Read-only in its spec (it navigates only), so --repeat-each stays
+// clean.
+export const E2E_LOGIN_TRENDS_CURRENCY = "e2e_trends_currency";
+export const TRENDS_CURRENCY_PROFILE = "Trends Currency (e2e)";
+// Days back for each seeded reading. The weigh-ins straddle the 45-day floor so the
+// OLDER one is stale too and the newer one decides; both sit inside the 90-day
+// default window, so the card has a line to draw.
+export const TRENDS_CURRENCY_WEIGH_IN_DAYS = [70, 50] as const;
+export const TRENDS_CURRENCY_WEIGH_IN_KG = [80.6, 79.2] as const;
+// The lone body-fat reading, well inside the window and well inside its own floor.
+export const TRENDS_CURRENCY_BODY_FAT_DAYS = 10;
+export const TRENDS_CURRENCY_BODY_FAT_PCT = 21.4;
+
+// ── A series too thin for its stroke (issue #2653, state 5) ──────────────────
+// A dedicated ADULT profile whose body census carries the density states side by
+// side on one page, so the demotion and its CONTROL are observed in the same
+// render and neither can pass by accident:
+//
+//   • WEIGHT — three weigh-ins, five hundred days apart. Over an all-time window
+//     that is a two-metre stroke drawn through three facts; the card demotes the
+//     line to a hint and states the count.
+//   • BODY FAT — twenty consecutive daily readings. Same card grammar, same
+//     window, a genuinely measured series: it keeps its confident stroke and says
+//     nothing. If the floor logic were gutted to "always demote", this card is
+//     what fails.
+//
+// Dedicated ON PURPOSE (#868): the weight state is an ABSENCE — "no weigh-in for
+// a year and a half at a time" — and a single neighbouring write anywhere in that
+// span destroys it. Read-only in its spec (it navigates only), so --repeat-each
+// stays clean.
+export const E2E_LOGIN_TRENDS_SPARSE = "e2e_trends_sparse";
+export const TRENDS_SPARSE_PROFILE = "Trends Sparse (e2e)";
+// Days back for each weigh-in, newest last. Five hundred days apart: past weight's
+// 60-day continuity span by a wide margin, and the 1,001-day inclusive span is what
+// makes the caption read in YEARS.
+export const TRENDS_SPARSE_WEIGH_IN_DAYS = [1000, 500, 0] as const;
+export const TRENDS_SPARSE_WEIGH_IN_KG = [83.4, 81.9, 80.1] as const;
+// The caption the demoted weight plot must state, verbatim.
+export const TRENDS_SPARSE_WEIGHT_CAPTION = "3 readings in 3 years";
+// The dense control: twenty consecutive days of body fat, ending well clear of the
+// newest weigh-in so no two rows share a date.
+export const TRENDS_SPARSE_BODY_FAT_DAYS = 20;
+export const TRENDS_SPARSE_BODY_FAT_OFFSET = 40;
+export const TRENDS_SPARSE_BODY_FAT_PCT = 22.6;

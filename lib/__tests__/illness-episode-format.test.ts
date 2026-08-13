@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  doseLaneRoster,
   episodeDayNumber,
   feverTrend,
   feverTrendLabel,
@@ -303,7 +304,7 @@ describe("episodeLastDoseClause", () => {
       ],
     });
     expect(episodeLastDoseClause(e, "12h")).toBe(
-      "last acetaminophen · 160 mg / 5 mL 4:02 PM"
+      "last acetaminophen (160 mg / 5 mL) 4:02 PM"
     );
     expect(illnessTimelineEvents(e)[0]).toMatchObject({
       detail: "160 mg / 5 mL",
@@ -552,5 +553,56 @@ describe("illnessTimelineEvents", () => {
     expect(relativeEpisodeDateLabel("2026-05-31", "2026-06-04")).toBe(
       "4 days ago"
     );
+  });
+});
+
+// #2612: the fever chart's dose lane gets a LEGEND, not the per-day table again.
+// Bounded by DISTINCT medication and then by summarizeNames' "and N more" tail, so
+// the caption's length is independent of how many doses the window holds.
+describe("doseLaneRoster (#2612)", () => {
+  const med = (name: string, count: number): EpisodeMedication => ({
+    itemId: name.length,
+    name,
+    count,
+    administrations: Array.from({ length: count }, (_, index) => ({
+      id: index,
+      date: "2026-07-16",
+      time: "19:03",
+      time24: "19:03",
+      amount: "200 mg",
+      product: null,
+    })),
+  });
+
+  it("names each medication once, with its dose count", () => {
+    expect(doseLaneRoster([med("Ibuprofen", 5), med("Iron", 2)])).toBe(
+      "Ibuprofen ×5, Iron ×2"
+    );
+  });
+
+  it("orders by dose count so the truncated tail drops the least-used", () => {
+    expect(
+      doseLaneRoster([med("Iron", 2), med("Ibuprofen", 5), med("Whey", 3)])
+    ).toBe("Ibuprofen ×5, Whey ×3, Iron ×2");
+  });
+
+  it("counts the rest rather than growing — 28 doses across 6 items is one line", () => {
+    const stack = [
+      med("Ibuprofen", 5),
+      med("Whey", 5),
+      med("Creatine", 5),
+      med("Iron", 5),
+      med("Calcium", 5),
+      med("Zinc", 3),
+    ];
+    // Ties break by NAME, so the same stack always prints the same line.
+    expect(doseLaneRoster(stack)).toBe(
+      "Calcium ×5, Creatine ×5, Ibuprofen ×5 and 3 more"
+    );
+  });
+
+  it("skips a medication with no administrations, and answers empty for none at all", () => {
+    expect(doseLaneRoster([med("Ibuprofen", 0)])).toBe("");
+    expect(doseLaneRoster([])).toBe("");
   });
 });

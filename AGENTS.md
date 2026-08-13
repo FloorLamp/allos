@@ -381,6 +381,15 @@ adapter (its category grammar and #516/#548/#687 exemptions stay there);
 DECLARES its policy and a completeness test fails an undeclared one. Never
 re-derive staleness in a component, and never fold `not-applicable` into `due`.
 
+A PRESENTATION FLOOR is the other tenancy: not "should this be re-tested?" but
+"may this surface still call this reading your CURRENT value?". Three registries
+declare one — `RECENT_LAB_STALE_DAYS`, `VITAL_PRESENTATION_FLOORS`, and
+`TREND_METRIC_PRESENTATION_FLOORS` (a `Record` over `TrendMetricSlug`, so a new
+metric is a compile error) — and the three quantities two of them share are taken
+BY REFERENCE, never restated. A floor decides FRAMING, never visibility, and never
+mints a Finding, an Upcoming row or a send. How the resulting token READS is one
+shared treatment with a per-surface FORM (`lib/glance-age.ts`).
+
 An aggregate with nothing current may not render current-shaped copy
 (`hasNoCurrentReading`) — the Longevity optimal pillar goes neutral, the Fitness
 check counts fresh rather than measured. Both keep the stale values visible with
@@ -854,6 +863,19 @@ See `docs/internals/e2e-hygiene.md`.
   `0`, and whether the mark bridges it, is a per-SERIES declaration beside the
   mark decision in `lib/trend-sparkline.ts` (`metric:` / `bio:` keys); a surface
   passes `gapFill={{ seriesKey, from, to }}` and never a policy of its own.
+- A STROKE earns its confidence (#2653 state 5). Every series declares a
+  **continuity span** beside its gap — the longest interval between two readings
+  across which the line between them is still a fair interpolation. Past it,
+  `sparseSeriesVerdict` demotes the plot: solid dots lead, the stroke thins,
+  dashes and fades, and a caption states the raw count and span ("3 readings in 3
+  years"). The measure is the MEDIAN interval and never a rate, because a rate
+  cannot tell a thin series from a dense one with an OUTAGE, and those are
+  different states with different treatments. The demotion must be a demotion —
+  raw facts only, no verdict word, no chip, stroke strictly weaker on every axis
+  — or the treated chart reads as more considered and buys the thin line trust it
+  has not earned. A continuity span never sits below that metric's
+  `TREND_METRIC_PRESENTATION_FLOORS` day count: the two registries answer
+  different questions and are pinned consistent rather than merged.
 
 ### Routes and APIs
 
@@ -938,6 +960,19 @@ See `docs/internals/e2e-hygiene.md`.
   guarantees no silent corruption; the audit upgrades refusals into good UX. Do
   not "upgrade" genuinely additive affordances (weight, food servings). See
   `docs/internals/stateful-affordances.md`.
+- **Act, then offer undo** — one lifecycle, not one per surface.
+  `components/useUndoableAction.ts` over the pure `lib/undo-offer.ts` owns the
+  window (`UNDO_TOAST_MS`), the "Undo" label and the refusal wording;
+  `useUndoableDelete` is its delete adapter and the dose confirm its second
+  tenant. A write may offer an undo only when its inverse is COMPLETE (children
+  and side-state included), LOCAL (nothing was sent, published or delivered) and
+  RE-DERIVED server-side — `undoDoseConfirm` proceeds only while the day's ledger
+  is still the single taken row the confirm wrote, because the one core's clear is
+  a `DELETE` by (dose, date). The gate is per OUTCOME, not per action: an
+  `already-taken` tap wrote nothing, so it gets no Undo. **Undo never replaces a
+  consequence-stating confirm** on a hard-to-reverse or outward-facing transition
+  — obligation demotion, retiring a dose with logs, ending an episode, stopping a
+  medication course. See `docs/internals/undo-contract.md`.
 - Findings have an explicit reach policy: care findings may reach Upcoming,
   attention surfaces, and notifications; coaching findings stay in calm,
   hideable surfaces. See `docs/internals/findings.md` — which also holds the **attention doctrine**:

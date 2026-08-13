@@ -66,8 +66,9 @@ import {
 import {
   planRecapSend,
   recapScaleEntry,
-  RECAP_SCALES,
+  REVIEW_CADENCES,
   type RecapScale,
+  type ReviewCadence,
 } from "../recap-scale";
 import type { ActivityType } from "../types/training";
 import { getRecentPeriodRecaps } from "../queries";
@@ -554,10 +555,15 @@ export async function runRecap(
     weekday: weekdayOfDateStr(date),
     weekMode: getWeekMode(profileId),
     weekStart: getWeekStart(profileId),
+    // REVIEW_CADENCES, not every scale (#2179): the year is a scale but not a cadence,
+    // it can never be planned into the recap slot, and it has no send marker to read.
     sentPeriodEnd: Object.fromEntries(
-      RECAP_SCALES.map((e) => [
+      REVIEW_CADENCES.map((e) => [
         e.scale,
-        getProfileSetting(profileId, recapMarkerKey(e.scale)) ?? null,
+        getProfileSetting(
+          profileId,
+          recapMarkerKey(e.scale as ReviewCadence)
+        ) ?? null,
       ])
     ),
     resolveWeek: resolveWeekPeriod,

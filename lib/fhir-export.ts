@@ -1,4 +1,8 @@
 import type { AppointmentKind, AppointmentStatus } from "./types";
+import {
+  DIAGNOSIS_ROLE_SYSTEM,
+  type VisitDiagnosisRank,
+} from "./visit-diagnosis-rank";
 
 // FHIR R4 bundle EXPORT — the inverse of lib/fhir.ts's import mapping (issue #18).
 // Pure: no DB, no network, no filesystem. Given the profile's clinical passport as
@@ -174,6 +178,11 @@ export interface FhirExportEncounter {
   class_code: string | null;
   reason: string | null;
   diagnoses: string[];
+  // The source-stated rank/role captured on import (#2589). Exported back onto
+  // Encounter.diagnosis[].rank / .use so an export → re-import round-trip keeps
+  // it; without this the structured half is silently downgraded to list order by
+  // the act of exporting. Optional: a visit whose source stated none has none.
+  diagnosis_ranks?: VisitDiagnosisRank[];
 }
 
 export interface FhirExportFamilyHistory {
@@ -440,9 +449,22 @@ function encounterResource(e: FhirExportEncounter): Record<string, unknown> {
   if (e.type) r.type = [concept(e.type)];
   if (e.reason) r.reasonCode = [concept(e.reason)];
   if (e.diagnoses.length)
-    r.diagnosis = e.diagnoses.map((d) => ({
-      condition: { concept: concept(d) },
-    }));
+    r.diagnosis = e.diagnoses.map((d) => {
+      const entry = (e.diagnosis_ranks ?? []).find(
+        (x) => x.name.trim().toLowerCase() === d.trim().toLowerCase()
+      );
+      const out: Record<string, unknown> = {
+        condition: { concept: concept(d) },
+      };
+      // Emitted in the shapes the importer reads back (R4 `rank`, and a `use`
+      // coding in the HL7 diagnosis-role system — the only system it accepts).
+      if (entry?.rank !== undefined) out.rank = entry.rank;
+      if (entry?.use?.length)
+        out.use = entry.use.map((code) => ({
+          coding: [{ system: DIAGNOSIS_ROLE_SYSTEM, code }],
+        }));
+      return out;
+    });
   return r;
 }
 

@@ -61,6 +61,9 @@ export function ResponsiveTable({
 }: {
   className?: string;
   children: ReactNode;
+  // A DOM id, for the one table that is the target of an `aria-controls` (the illness
+  // timeline's earlier-days disclosure names the rows it reveals).
+  id?: string;
   "data-testid"?: string;
 }) {
   return (

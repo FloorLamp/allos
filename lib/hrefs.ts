@@ -74,6 +74,15 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 // intake surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
 
+// The annual retrospective (#2179). A QUERY-RULE helper: the year lives in `?year=`,
+// the newest year is the bare path (a link with no year means "the latest one"), and
+// three surfaces build the link — the nav row, the page's own year picker, and the
+// page's fallback when a hand-edited year does not exist. typedRoutes validates the
+// PATH; this function is what keeps the parameter's shape in one place.
+export function retrospectiveHref(year?: number): AppRoute {
+  return year == null ? "/retrospective" : `/retrospective?year=${year}`;
+}
+
 // The household medicine cabinet — the shared supply pools registry (#1374). ONE
 // household-level surface for both kinds (the #746 split is per-ITEM; a shared bottle
 // has no kind of its own), so every shared-bottle chip, pooled low-supply finding, and

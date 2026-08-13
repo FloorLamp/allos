@@ -8,6 +8,7 @@ import {
   dismissUnitMislabel,
 } from "@/app/(app)/data/review-actions";
 import type { UnitMislabelReview as UnitMislabelReviewRow } from "@/lib/queries/medical";
+import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 
 // Data → Review, unit-mislabel cross-check (issue #761). Each card is a numeric lab
 // reading whose stored unit is a probable power-of-ten mislabel of the canonical
@@ -16,9 +17,8 @@ import type { UnitMislabelReview as UnitMislabelReviewRow } from "@/lib/queries/
 // re-derives the flag) and offers an Undo toast; Dismiss records a false positive so
 // the card never re-surfaces. A client component so Apply can offer the reversible
 // Undo toast (the existing useUndoableDelete pattern, bespoke here since the token is
-// the captured prior state, not a deleted-row id).
-
-const UNDO_TOAST_MS = 15000;
+// the captured prior state, not a deleted-row id). The window itself is the shared
+// UNDO_TOAST_MS (#2642), not a local copy.
 
 // "31-37" → "31–37" for display (en dash between the two bounds).
 function prettyRange(s: string): string {

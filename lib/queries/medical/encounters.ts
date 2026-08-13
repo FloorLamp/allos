@@ -1,5 +1,5 @@
 import { encounterTypeKey } from "../../encounter-kind";
-import { db } from "../../db";
+import { db, hoistedStatement } from "../../db";
 import { cache } from "../../request-cache";
 import type { Encounter } from "../../types";
 import { visitContext, type VisitContext } from "../../visit-context";
@@ -17,24 +17,29 @@ export const ENCOUNTER_REPRESENTATIVE_IDS = representativeIds(
   REPRESENTATIVE_SPECS.encounters
 );
 
+// cache() dedups the repeats within ONE request; hoisting (#2110) is the other half,
+// and the household fan-out is why both are wanted — the strip asks a different
+// profileId per member, so every member is a cache MISS and used to recompile this
+// join from scratch. Statement cached per connection, value still per request.
+const ENCOUNTERS_STMT = hoistedStatement(
+  `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
+          e.class_code, e.reason,
+          e.diagnoses, e.diagnosis_ranks,
+          e.provider_id, p.name AS provider_name,
+          e.location_provider_id, l.name AS location_name,
+          l.address AS location_address,
+          e.notes, e.source, e.document_id, e.external_id, e.created_at
+     FROM encounters e
+     LEFT JOIN providers p ON p.id = e.provider_id
+     LEFT JOIN providers l ON l.id = e.location_provider_id
+    WHERE e.profile_id = ? AND e.id IN (${ENCOUNTER_REPRESENTATIVE_IDS})
+    ORDER BY e.date DESC, e.id DESC`
+);
+
 export const getEncounters = cache(function getEncounters(
   profileId: number
 ): Encounter[] {
-  return db
-    .prepare(
-      `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
-              e.class_code, e.reason,
-              e.diagnoses, e.provider_id, p.name AS provider_name,
-              e.location_provider_id, l.name AS location_name,
-              l.address AS location_address,
-              e.notes, e.source, e.document_id, e.external_id, e.created_at
-         FROM encounters e
-         LEFT JOIN providers p ON p.id = e.provider_id
-         LEFT JOIN providers l ON l.id = e.location_provider_id
-        WHERE e.profile_id = ? AND e.id IN (${ENCOUNTER_REPRESENTATIVE_IDS})
-        ORDER BY e.date DESC, e.id DESC`
-    )
-    .all(profileId, profileId) as Encounter[];
+  return ENCOUNTERS_STMT.all(profileId, profileId) as Encounter[];
 });
 
 export function getEncounter(profileId: number, id: number): Encounter | null {
@@ -43,7 +48,8 @@ export function getEncounter(profileId: number, id: number): Encounter | null {
       .prepare(
         `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
                 e.class_code, e.reason,
-                e.diagnoses, e.provider_id, p.name AS provider_name,
+                e.diagnoses, e.diagnosis_ranks,
+                e.provider_id, p.name AS provider_name,
                 e.location_provider_id, l.name AS location_name,
                 l.address AS location_address,
                 e.notes, e.source, e.document_id, e.external_id, e.created_at

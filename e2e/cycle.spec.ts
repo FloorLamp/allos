@@ -241,8 +241,8 @@ test.describe("menstrual cycle (#714)", () => {
     await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible(); // first-ok: asserts a cycle phase chip renders — order-agnostic presence
   });
 
-  // #2613 — the Timeline's default view leaves its upper bound open so future-dated
-  // events are visible, and a goal target date months out opens a day group of its own.
+  // #2613 — the Timeline's window leaves its upper bound open so future-dated events
+  // are visible, and a goal target date months out opens a day group of its own.
   // That group used to carry a bare "Follicular" chip in exactly the factual voice
   // today's uses: cyclePhaseOnDate's open-cycle branch answered with total confidence
   // about a day nobody has lived. The phase there is not uncertain, it is unknowable, so
@@ -250,7 +250,10 @@ test.describe("menstrual cycle (#714)", () => {
   test("a future day group carries no phase chip while a lived-through one still does", async () => {
     seedFutureGoal();
     try {
-      await page.goto("/timeline");
+      // The future FOLDS since #2657 — it is never the feed's opening content — so the
+      // day group this asserts on is reached by opening that fold. What is under test
+      // is unchanged: a day nobody has lived still carries no phase chip.
+      await page.goto("/timeline?open=ahead");
       // Both halves in one assertion set: the fixture's chips are still rendering
       // (otherwise "no chip on the future day" would pass for the wrong reason)…
       await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible(); // first-ok: asserts chips still render at all — order-agnostic presence

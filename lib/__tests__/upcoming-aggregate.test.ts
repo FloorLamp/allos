@@ -10,15 +10,18 @@ import {
   MED_SAFETY_ROLLUP_DOMAINS,
   aggregateKindForDomain,
   aggregateLabel,
+  aggregateNearestDueDate,
   bandShowsDoseProgress,
   doseAggregateLabel,
   foldClassOf,
+  goalAggregateLabel,
   isSafetyPinnedItem,
   medSafetyAggregateLabel,
   planBandRender,
   sumDoseProgress,
   type BandNode,
 } from "../upcoming-aggregate";
+import { signalKey } from "../upcoming-suppress";
 import {
   UPCOMING_DOMAINS,
   groupUpcoming,
@@ -53,13 +56,13 @@ function nodeKinds(nodes: BandNode<UpcomingItem>[]): string[] {
 }
 
 describe("what folds", () => {
-  it("folds the scheduled-dose domain and the interaction+pgx pair, nothing else", () => {
+  it("folds the scheduled-dose domain, the interaction+pgx pair and goals, nothing else", () => {
     const folding = UPCOMING_DOMAINS.filter(
       (d) => aggregateKindForDomain(d) != null
     );
     // The EXACT rollup scope (#1504). A newly added domain lands in this census the
     // moment it gets a rank, so it must choose a side rather than drift in.
-    expect(folding.sort()).toEqual(["dose", "interaction", "pgx"]);
+    expect(folding.sort()).toEqual(["dose", "goal", "interaction", "pgx"]);
     expect([...MED_SAFETY_ROLLUP_DOMAINS].sort()).toEqual([
       "interaction",
       "pgx",
@@ -87,6 +90,157 @@ describe("what folds", () => {
 
   it("never folds the `available` disclosure's items (#1505 — no double-fold)", () => {
     expect(aggregateKindForDomain("available")).toBeNull();
+  });
+
+  it("claims the goal domain and no other dated coaching row (#2579-A)", () => {
+    expect(aggregateKindForDomain("goal")).toBe("goal");
+    // The weekly PACE rows are not goal deadlines: their status column IS the row, and
+    // what to do with them is #2579-E's own decision, not this fold's.
+    for (const domain of [
+      "training",
+      "nutrition-target",
+      "mobility-target",
+      "practice",
+    ] as UpcomingDomain[]) {
+      expect(aggregateKindForDomain(domain)).toBeNull();
+    }
+    // The arranging errands this page IS the primary home of keep their full height —
+    // that is the density rule the goal fold instantiates, not a contradiction of it.
+    for (const domain of [
+      "screening",
+      "appointment",
+      "careplan",
+      "followup",
+      "refill",
+    ] as UpcomingDomain[]) {
+      expect(aggregateKindForDomain(domain)).toBeNull();
+    }
+  });
+});
+
+// #2579-A — the goal fold class, under the SAME #1504 contract as its two siblings.
+describe("the goal fold (#2579-A)", () => {
+  const goal = (n: number, dueDate: string) =>
+    item(`goal:${n}`, "goal", { dueDate, title: `Goal ${n}` });
+
+  it("folds a run of goal deadlines and leaves the arranging errands full-height", () => {
+    // The seeded Later band the charter describes: twelve goal deadlines burying a
+    // colonoscopy to book and a scheduled physical exam. Three goals is the threshold.
+    const nodes = planBandRender([
+      item("screening:colon", "screening", { dueDate: "2026-09-01" }),
+      goal(1, "2026-09-26"),
+      goal(2, "2026-10-04"),
+      goal(3, "2026-11-30"),
+      item("appointment:9", "appointment", { dueDate: "2026-12-02" }),
+    ]);
+    expect(nodeKinds(nodes)).toEqual([
+      "screening:colon",
+      "aggregate:goal(3)",
+      "appointment:9",
+    ]);
+  });
+
+  it("leaves a short run of goals alone, like every other class", () => {
+    const nodes = planBandRender([
+      goal(1, "2026-09-26"),
+      goal(2, "2026-10-04"),
+    ]);
+    expect(nodeKinds(nodes)).toEqual(["goal:1", "goal:2"]);
+  });
+
+  it("folds independently of the dose and med-safety classes", () => {
+    const nodes = planBandRender([
+      dose(1),
+      dose(2),
+      dose(3),
+      goal(1, "2026-09-26"),
+      goal(2, "2026-10-04"),
+      goal(3, "2026-11-30"),
+    ]);
+    expect(nodeKinds(nodes)).toEqual([
+      "aggregate:dose(3)",
+      "aggregate:goal(3)",
+    ]);
+  });
+
+  it("hands back the SAME goal objects, keys and suppressibility untouched (#1496)", () => {
+    const a = goal(1, "2026-09-26");
+    const b = goal(2, "2026-10-04");
+    // The suppression bus keys on `key` (signalKey) and honours `suppressible`; both
+    // must come back out of the fold byte-identical, on the SAME object.
+    const c = { ...goal(3, "2026-11-30"), suppressible: false };
+    const nodes = planBandRender([a, b, c]);
+    const agg = nodes[0];
+    expect(agg.node).toBe("aggregate");
+    if (agg.node !== "aggregate") return;
+    expect(agg.items[0]).toBe(a);
+    expect(agg.items[1]).toBe(b);
+    expect(agg.items[2]).toBe(c);
+    expect(agg.items.map((i) => i.key)).toEqual(["goal:1", "goal:2", "goal:3"]);
+    expect(agg.items.map((i) => signalKey(i))).toEqual([
+      "goal:1",
+      "goal:2",
+      "goal:3",
+    ]);
+    expect(agg.items[2].suppressible).toBe(false);
+  });
+
+  it("is never safety-pinned: a goal deadline is not a safety signal", () => {
+    const g = goal(1, "2026-09-26");
+    expect(isSafetyPinnedItem(g)).toBe(false);
+    expect(foldClassOf(g)).toBe("goal");
+  });
+
+  it("states the count and the nearest deadline, in both states", () => {
+    expect(goalAggregateLabel(12, "Sep 26")).toBe(
+      "12 goal deadlines · nearest Sep 26"
+    );
+    expect(goalAggregateLabel(1, "Sep 26")).toBe(
+      "1 goal deadline · nearest Sep 26"
+    );
+    // No stated date ⇒ the clause is dropped, never invented.
+    expect(goalAggregateLabel(12)).toBe("12 goal deadlines");
+    expect(goalAggregateLabel(12, null)).toBe("12 goal deadlines");
+    expect(aggregateLabel("goal", 12, { nearestLabel: "Sep 26" })).toBe(
+      "12 goal deadlines · nearest Sep 26"
+    );
+  });
+
+  it("gives each kind only its own facts", () => {
+    // A goal fold handed the dose progress ignores it, and vice versa: a second
+    // clause whose numbers don't describe the rows behind it is worse than none.
+    expect(
+      aggregateLabel("goal", 3, { progress: { scheduled: 21, taken: 9 } })
+    ).toBe("3 goal deadlines");
+    expect(aggregateLabel("dose", 3, { nearestLabel: "Sep 26" })).toBe(
+      "3 doses"
+    );
+  });
+});
+
+describe("aggregateNearestDueDate (#2579-A)", () => {
+  it("returns the earliest stated due date whatever order the items arrive in", () => {
+    const items = [
+      item("goal:1", "goal", { dueDate: "2026-11-30" }),
+      item("goal:2", "goal", { dueDate: "2026-09-26" }),
+      item("goal:3", "goal", { dueDate: "2026-10-04" }),
+    ];
+    expect(aggregateNearestDueDate(items)).toBe("2026-09-26");
+    // A MINIMUM, not items[0]: reversing the input must not change the answer.
+    expect(aggregateNearestDueDate([...items].reverse())).toBe("2026-09-26");
+  });
+
+  it("skips items with no due date, and answers null when none state one", () => {
+    expect(
+      aggregateNearestDueDate([
+        item("goal:1", "goal", { dueDate: null }),
+        item("goal:2", "goal", { dueDate: "2026-10-04" }),
+      ])
+    ).toBe("2026-10-04");
+    expect(
+      aggregateNearestDueDate([item("goal:1", "goal", { dueDate: null })])
+    ).toBeNull();
+    expect(aggregateNearestDueDate([])).toBeNull();
   });
 });
 
@@ -301,8 +455,11 @@ describe("the always-present contract (#449 / #1413-B)", () => {
     expect(doseAggregateLabel(12)).toContain("12");
     expect(doseAggregateLabel(12, { scheduled: 21, taken: 9 })).toContain("12");
     expect(medSafetyAggregateLabel(6)).toContain("6");
-    expect(aggregateLabel("dose", 4, null)).toContain("4");
-    expect(aggregateLabel("med-safety", 4, null)).toContain("4");
+    expect(aggregateLabel("dose", 4)).toContain("4");
+    expect(aggregateLabel("med-safety", 4)).toContain("4");
+    expect(goalAggregateLabel(12)).toContain("12");
+    expect(goalAggregateLabel(12, "Sep 26")).toContain("12");
+    expect(aggregateLabel("goal", 4)).toContain("4");
   });
 
   it("prints the taken fraction when the day's progress is known", () => {

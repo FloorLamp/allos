@@ -363,6 +363,43 @@ region is not its total, and pointing a reader at the total would claim their
 left arm is tracked when it isn't. Those totals stay curated; the completeness
 guard fails the day a declaration blurs that line.
 
+The cross product is deliberate and its comment says why: "the family is a cross
+product, and writing ~80 literal rows is how one region quietly goes missing."
+It went missing anyway. `DEXA_MASS_REGIONS` shipped **without the limbs** while
+both sibling lists carried them, so a profile's `Body Fat Percentage, Left Arm`
+and `Bone Mineral Density, Left Arm` were declared and its `Fat Mass, Left Arm`
+was not — sixteen stranded rows on one real profile, out of twenty-three genuine
+candidates left after the declarations ran. **#2643** added the six limb regions
+(the four limbs plus the `Arms`/`Legs` pair-totals both sibling lists carry) and
+the `Trunk to Limb Fat Mass Ratio` scan-level row.
+
+Nothing that already existed could have caught that. The completeness guard walks
+the names the registry **declares**, so a name that was never declared is
+invisible to it by construction, and a list-symmetry guard would be wrong — the
+three lists legitimately differ, because ribs and spine have a bone compartment
+and no fat one. The guard that fits is a **roster fixture**: a whole-body DEXA's
+full set of row labels, asserted to be entirely curated-or-declared. It is driven
+by the shape reports actually have rather than by a symmetry the lists are not
+supposed to satisfy, and it is the `METRIC_KNOWLEDGE` completeness idiom — every
+name states a policy or an explicit exemption, with no third answer.
+
+Two scan-level names #2643 found stranded are **not** the same decision, and
+folding them into the cross product would have repeated #2322 exactly:
+
+- `Bone Mineral Density, Total` is `covered-elsewhere` → `Bone Mineral Density
+T-Score`. Whole-body bone density is the one DEXA number that has nothing _but_
+  a population reference: the T-score **is** that comparison, and the absolute
+  g/cm² is not comparable between scanners, which is why the standardized score is
+  what Allos curates. Declaring it out-of-scope would have told a reader their bone
+  density isn't tracked. `DEXA_BONE_REGIONS`' own comment already said as much
+  ("whole-body bone density is what the curated T-score expresses"); the list
+  simply never emitted a declaration for the name, so the comment protected
+  nothing.
+- `Visceral Adipose Tissue Area` and `… Volume` are one `covered-elsewhere`
+  declaration → the curated `Visceral Adipose Tissue`. A DEXA reports visceral fat
+  as an area, a volume and a mass — one estimate in three units — and Allos tracks
+  the mass form.
+
 `Fat Mass Index` and `Lean Mass Index` were in that expansion and left it in
 **#2322**. They failed the declaration's own test: they divide by the subject's
 **height**, not by a scan segment, which is what makes them comparable between
@@ -372,6 +409,54 @@ false about those two. The dataset was already carrying the counter-example:
 `Appendicular Lean Mass Index` had been a curated `kg/m2` entry the whole time.
 Both are curated entries now, and the completeness guard would fail if either
 name were left declared as well.
+
+#### A quantity the app answers is never a Coverage candidate (#2646)
+
+The registry above declines names one at a time. There is a second way a name gets
+onto **Uncatalogued items** and off it again, and it runs at ingest rather than at
+read: `METRIC_DOCUMENT_REACH` (`lib/trend-metric-analytes.ts`) declares, per trend
+metric, **how a document-imported reading of that quantity reaches its chart**, and a
+metric that answers is what removes its analyte from the flat Biomarkers browser.
+
+Every **reaching** variant must therefore resolve the imported `medical_records` row,
+because a row that leaves the catalog without arriving anywhere is stranded:
+
+| reach               | the imported row                                                |
+| ------------------- | --------------------------------------------------------------- |
+| `observations`      | kept — the row **is** the chart point                           |
+| `observation-fold`  | kept — folded onto the stream by identity                       |
+| `import-projection` | dropped, after a `withoutCaptured*` helper wrote the stream row |
+| `derived-inputs`    | dropped, with **no** projection                                 |
+
+`derived-inputs` had no arm at all until #2646, and BMI — its only member — paid for
+it: the row survived, an AI import coined an `ai` `canonical_biomarkers` name for it,
+and `getUsedCanonicalNames` returned it forever as an outstanding candidate for a
+quantity `/trends/metric/bmi` already charts. Waist circumference escaped the same
+fate only because `import-projection` came with both a drop and migration 180.
+
+The arm is a **drop, not a projection**, and that follows from there being no
+destination row: the chart is a computation (`bmiSeriesDatePaired`) over inputs that
+are themselves projected. It is **unconditional** rather than conditioned on the
+inputs having been captured, which is what every `withoutCaptured*` helper checks.
+The owner's ruling is that a printed derived result is never independent evidence:
+either the visit measured the inputs, in which case the derivation is better (it
+recomputes whenever a correction to either input lands), or it did not, in which case
+the number is the EHR echoing a chart value carried forward — the evidence being an
+identical BMI to two decimals six days apart, and a **flat** BMI two months later for
+a growing toddler. Same argument shape as the race-branched eGFR entries above.
+
+The recognizer is `derivedInputsMetricFor`, derived from `METRIC_DOCUMENT_REACH`
+rather than from a second list, so a future `derived-inputs` slug gets the ingest arm
+with no edit at the door. It matches on **name and canonical name only, never LOINC**:
+`Body Mass Index Percentile` is a different quantity that shares BMI's stem, and the
+name axis separates the two for free where a code axis would need its own negative
+list. Migration `20260813-bmi-derived-rows` retires the rows already on disk and walks
+migration 180's row-ops checklist — the `ai` vocabulary row (never a `seed` one, per
+#2306), the ★, the retest/flag dismissals and the coverage gap — each dropped only
+when no identity-carrying row is left under the name.
+
+One thing #2646 explicitly did **not** do: add a `DERIVED_DEFS` entry.
+`bmiSeriesDatePaired` stays the only BMI derivation there is.
 
 #### The stress test's two halves (#2322)
 

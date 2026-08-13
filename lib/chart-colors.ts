@@ -28,6 +28,8 @@
 //
 // See `docs/internals/charts.md` for the full contract.
 
+import type { ActivityType } from "./types/training"; // type-only: erased, no cycle
+
 // Categorical series palette — pick distinct entries for a multi-series chart.
 // Five slots, in fixed order; a hue is never generated for an Nth series.
 export const chartSeries = {
@@ -205,3 +207,41 @@ export const chartAdherenceState = {
     dark: null,
   },
 } as const;
+
+// ── Activity TYPE, as a categorical block color (#2566's week spine) ─────────
+//
+// The week spine stacks one block per logged session on each day of the week, colored
+// by the session's `ActivityType`. That is a CATEGORICAL job, not a density ramp: the
+// question is "what kind of session", never "how much", so it draws from the validated
+// `chartSeries` set rather than from a same-hue ladder.
+//
+// The three hues a reader already associates with these types are kept — the Training
+// Log's own type badges are violet/rose/sky for strength/cardio/sport — so the band
+// reads against the log beside it instead of teaching a second color language. The two
+// types the badge map never had get the remaining answers rather than a fall-through:
+// mobility takes the brand green (its own surface, #840), and `unclassified` takes the
+// explicitly-labeled NEUTRAL, exactly as `chartSleepStage.awake` does. A slate block
+// says "the source did not say what this was" (#2272) instead of asserting a
+// discipline the row never stated.
+//
+// Exhaustive `Record<ActivityType, …>` by the #2272 tuple discipline: a sixth activity
+// type must declare its block here before the app compiles. Each entry ships the
+// Tailwind class the DOM actually renders AND the hex it equals, so the palette
+// validation has something to check and the two halves cannot drift.
+export interface ActivityTypeBlockColor {
+  /** The class the rendered block carries (theme-neutral mid-shade, as validated). */
+  blockClass: string;
+  /** The same color as a hex — what the CVD/contrast checks read. */
+  hex: string;
+}
+
+export const chartActivityTypeBlock: Record<
+  ActivityType,
+  ActivityTypeBlockColor
+> = {
+  strength: { blockClass: "bg-violet-500", hex: chartSeries.violet },
+  cardio: { blockClass: "bg-rose-600", hex: chartSeries.rose },
+  sport: { blockClass: "bg-sky-600", hex: chartSeries.sky },
+  recovery: { blockClass: "bg-brand-600", hex: chartSeries.brand },
+  unclassified: { blockClass: "bg-slate-500", hex: chartNeutral },
+};

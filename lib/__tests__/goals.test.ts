@@ -9,6 +9,7 @@ import {
   goalPct,
   goalsForExercise,
   goalTargetText,
+  goalUpcomingDetail,
   isOutcomeGoalStatus,
   outcomeGoalKind,
 } from "@/lib/outcome-goals";
@@ -568,5 +569,44 @@ describe("weeklyTargetPaceLine", () => {
 
   it("says nothing at all for a profile with no weekly targets", () => {
     expect(weeklyTargetPaceLine([])).toBeNull();
+  });
+});
+
+describe("goalUpcomingDetail (#2615 item 4)", () => {
+  it("names the structural kind, so a typed goal is not a generic deadline", () => {
+    expect(goalUpcomingDetail({ kind: "exercise", categoryLabel: null })).toBe(
+      "Exercise-linked goal"
+    );
+    expect(goalUpcomingDetail({ kind: "body", categoryLabel: null })).toBe(
+      "Body goal"
+    );
+    expect(goalUpcomingDetail({ kind: "biomarker", categoryLabel: null })).toBe(
+      "Biomarker goal"
+    );
+  });
+
+  it("distinguishes an exercise-linked goal from a freeform one that shares its title", () => {
+    // Two "Bench Press" goals used to carry the same subtitle in one band.
+    expect(
+      goalUpcomingDetail({ kind: "exercise", categoryLabel: null })
+    ).not.toBe(goalUpcomingDetail({ kind: "freeform", categoryLabel: null }));
+  });
+
+  it("keeps a freeform goal's own grouping word, in the band's casing", () => {
+    expect(
+      goalUpcomingDetail({ kind: "freeform", categoryLabel: "strength" })
+    ).toBe("Strength goal");
+    expect(
+      goalUpcomingDetail({ kind: "freeform", categoryLabel: "Wellbeing" })
+    ).toBe("Wellbeing goal");
+  });
+
+  it("falls back to the generic deadline only for an uncategorized freeform goal", () => {
+    expect(goalUpcomingDetail({ kind: "freeform", categoryLabel: null })).toBe(
+      "Goal deadline"
+    );
+    expect(goalUpcomingDetail({ kind: "freeform", categoryLabel: "  " })).toBe(
+      "Goal deadline"
+    );
   });
 });

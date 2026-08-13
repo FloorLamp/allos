@@ -1095,4 +1095,167 @@ describe("deliberately uncurated analytes (#2313)", () => {
     ])
       expect(curatedKeys.has(normalizeCanonicalKey(name)), name).toBe(false);
   });
+
+  // #2643 — THE GUARD THE COMPLETENESS CHECK CANNOT BE.
+  //
+  // Every other assertion in this describe walks the names the registry DECLARES and
+  // checks they hold up. None of them can see a name that was never declared, so a
+  // region missing from one of the three cross-product lists is invisible to them by
+  // construction: `DEXA_MASS_REGIONS` shipped without the four limbs and both sibling
+  // lists had them, and no test could notice.
+  //
+  // A list-symmetry check ("all three region lists agree") would be the WRONG guard:
+  // they legitimately differ, because ribs and spine have a bone compartment and no
+  // fat one, and Android/Gynoid are fat depots with no skeleton. So the guard is
+  // driven from the shape a REPORT has instead — the roster of row labels one whole-
+  // body DEXA prints — and asserts each is either curated or declared. That is the
+  // METRIC_KNOWLEDGE completeness idiom: every name states a policy, or an explicit
+  // exemption, and there is no third answer.
+  //
+  // SYNTHETIC: label text only, in the word orders scanners print. No values, no
+  // subject, no facility — a roster of column headings, not a result.
+  it("leaves no row of a whole-body DEXA roster undecided (#2643)", () => {
+    const roster: string[] = [];
+    // The per-region grid, in the comma-inverted spelling one common vendor prints.
+    for (const region of [
+      "Left Arm",
+      "Right Arm",
+      "Arms",
+      "Left Leg",
+      "Right Leg",
+      "Legs",
+      "Trunk",
+      "Head",
+      "Android",
+      "Gynoid",
+      "Subtotal",
+    ]) {
+      roster.push(`Body Fat Percentage, ${region}`);
+      roster.push(`Fat Mass, ${region}`);
+      roster.push(`Lean Mass, ${region}`);
+      roster.push(`Total Mass, ${region}`);
+    }
+    // …and in the other word order, which normalizeCanonicalKey must fold onto the
+    // same declaration. Both spellings appear in real exports.
+    roster.push("Left Arm Fat Mass", "Right Leg Lean Mass (g)");
+    // The skeletal sites.
+    for (const site of [
+      "Left Arm",
+      "Right Arm",
+      "Arms",
+      "Left Ribs",
+      "Right Ribs",
+      "Ribs",
+      "Thoracic Spine",
+      "Lumbar Spine",
+      "Spine",
+      "Left Pelvis",
+      "Right Pelvis",
+      "Pelvis",
+      "Left Leg",
+      "Right Leg",
+      "Legs",
+      "Trunk",
+      "Head",
+      "Subtotal",
+    ]) {
+      roster.push(`Bone Mineral Density, ${site}`);
+      roster.push(`Bone Mineral Content, ${site}`);
+    }
+    // The scan-level block: whole-body compartments, the totals, the depot ratios,
+    // the visceral-fat trio and the height-normalized indices.
+    roster.push(
+      "Total Mass",
+      "Total Fat Mass",
+      "Total Lean Mass",
+      "Bone Mineral Content, Total",
+      "Bone Mineral Density, Total",
+      "Bone Mineral Density Z-Score",
+      "Android/Gynoid Ratio",
+      "Trunk to Legs Fat Ratio",
+      "Trunk to Limb Fat Mass Ratio",
+      "Visceral Adipose Tissue",
+      "Visceral Adipose Tissue Area",
+      "Visceral Adipose Tissue Volume",
+      "Body Fat Percentage",
+      "Bone Mineral Density T-Score",
+      "Fat Mass Index",
+      "Lean Mass Index",
+      "Appendicular Lean Mass Index"
+    );
+
+    const undecided = roster.filter(
+      (name) =>
+        !curatedKeys.has(normalizeCanonicalKey(name)) &&
+        uncuratedAnalyte(name) === null
+    );
+    expect(
+      undecided,
+      "every row a DEXA prints must be curated or declared — an undecided one is a " +
+        "permanent Coverage candidate for a decision this registry already made"
+    ).toEqual([]);
+
+    // The roster is not vacuously satisfied by curation: the great majority of it is
+    // DECLINED, which is the decision #2319 made and #2643 finished applying.
+    const declined = roster.filter((n) => uncuratedAnalyte(n) !== null);
+    expect(declined.length).toBeGreaterThan(roster.length / 2);
+  });
+
+  // The two scan-level names #2643 declared as covered-elsewhere rather than folding
+  // into the cross product. Both point at a REAL series, and stating that is the
+  // whole difference: an out-of-scope declaration would have told a reader their
+  // bone density and their visceral fat aren't tracked, when both are.
+  it("points whole-body bone density and VAT-in-other-units at their series (#2643)", () => {
+    const bmd = uncuratedAnalyte("Bone Mineral Density, Total");
+    expect(bmd?.kind).toBe("covered-elsewhere");
+    expect(bmd && bmd.kind === "covered-elsewhere" && bmd.instead).toBe(
+      "Bone Mineral Density T-Score"
+    );
+    // Word order folds here too — a report may print "Total Bone Mineral Density".
+    expect(uncuratedAnalyte("Total Bone Mineral Density")).toBe(bmd);
+    // And it is NOT the per-region decision: the reason a user reads must not claim
+    // whole-body bone density has no reference population (the #2322 mistake).
+    expect(bmd?.reason).not.toContain("per-region decomposition");
+
+    // VAT area and volume are ONE decision, pointing at the curated mass entry.
+    const area = uncuratedAnalyte("Visceral Adipose Tissue Area");
+    const volume = uncuratedAnalyte("Visceral Adipose Tissue Volume");
+    expect(area?.kind).toBe("covered-elsewhere");
+    expect(area).toBe(volume);
+    expect(area && area.kind === "covered-elsewhere" && area.instead).toBe(
+      "Visceral Adipose Tissue"
+    );
+    // The mass entry itself stays curated — the registry never speaks about it.
+    expect(uncuratedAnalyte("Visceral Adipose Tissue")).toBeNull();
+  });
+
+  // The limb rows the cross product was missing, asserted as ONE decision with the
+  // rows that were already declared beside them — the property the bug broke.
+  it("declares a limb's compartment mass exactly as its fat percentage (#2643)", () => {
+    const limbRows = [
+      "Fat Mass, Left Arm",
+      "Lean Mass, Right Arm",
+      "Total Mass, Left Leg",
+      "Fat Mass, Right Leg",
+      "Fat Mass, Arms",
+      "Lean Mass, Legs",
+      // The other word order, and the gram-suffixed print form.
+      "Left Arm Fat Mass",
+      "Right Leg Total Mass (g)",
+    ];
+    for (const name of limbRows) {
+      const d = uncuratedAnalyte(name);
+      expect(d?.kind, name).toBe("out-of-scope");
+      expect(d?.reason, name).toContain("per-region decomposition");
+    }
+    // The same declaration object the limb's fat percentage and bone density carry —
+    // one decision for the whole machine's table, which is what went wrong.
+    expect(
+      new Set([
+        ...limbRows.map((n) => uncuratedAnalyte(n)),
+        uncuratedAnalyte("Body Fat Percentage, Left Arm"),
+        uncuratedAnalyte("Bone Mineral Density, Left Arm"),
+      ]).size
+    ).toBe(1);
+  });
 });

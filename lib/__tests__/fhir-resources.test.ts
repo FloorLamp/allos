@@ -520,6 +520,648 @@ describe("FHIR Encounter → ImportedEncounter", () => {
     expect(r2.encounters![0].code_system).toBeNull();
   });
 
+  // #2589 half 1: the source states the rank as DATA, so it is captured as data.
+  // The withdrawn attempts at #2589 tried to read a rank out of the display name;
+  // these assert the opposite discipline — a rank exists only where a source
+  // wrote one in a structured field.
+  it("captures Encounter.diagnosis.rank and .use as structured ranks (#2589)", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-primary",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-primary",
+            code: { text: "Acute bronchitis" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:cond-other",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-other",
+            code: { text: "Essential hypertension" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-ranked",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-ranked",
+            status: "finished",
+            period: { start: "2026-04-01" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-primary" },
+                rank: 1,
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "DD",
+                    },
+                  ],
+                },
+              },
+              { condition: { reference: "urn:uuid:cond-other" }, rank: 2 },
+            ],
+          },
+        },
+      ])
+    );
+    const e = r.encounters![0];
+    expect(e.diagnoses).toEqual(["Acute bronchitis", "Essential hypertension"]);
+    expect(e.diagnosis_ranks).toEqual([
+      { name: "Acute bronchitis", rank: 1, use: ["dd"] },
+      { name: "Essential hypertension", rank: 2 },
+    ]);
+  });
+
+  it("withholds a rank the source stated PER ROLE, and keeps both roles (#2589)", () => {
+    // R4 defines rank as "ranking of the diagnosis (for each role type)". Rank 2
+    // among admission diagnoses and rank 1 among discharge diagnoses are two
+    // statements about one condition; taking the lower asserts THE primary
+    // diagnosis where the source asserted primary-at-discharge. So the rank goes
+    // and the roles stay — the same withholding this file applies to every other
+    // ambiguity, rather than a claim the source did not make.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-repeat",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-repeat",
+            code: {
+              text: "Community acquired pneumonia",
+              coding: [{ system: "http://snomed.info/sct", code: "385093006" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-repeat",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-repeat",
+            status: "finished",
+            period: { start: "2026-04-02" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-repeat" },
+                rank: 2,
+                // R5 shape: use is 0..*
+                use: [
+                  {
+                    coding: [
+                      {
+                        system:
+                          "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                        code: "AD",
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                condition: { reference: "urn:uuid:cond-repeat" },
+                rank: 1,
+                use: [
+                  {
+                    coding: [
+                      {
+                        system:
+                          "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                        code: "DD",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ])
+    );
+    const e = r.encounters![0];
+    // The name dedupe is unchanged: the two entries are one condition.
+    expect(e.diagnoses).toEqual(["Community acquired pneumonia"]);
+    expect(e.diagnosis_ranks).toEqual([
+      { name: "Community acquired pneumonia", use: ["ad", "dd"] },
+    ]);
+  });
+
+  it("keeps one rank stated consistently across roles (#2589)", () => {
+    // Rank 1 at admission AND rank 1 at discharge is still rank 1 — there is
+    // nothing to choose between, so withholding here would lose a fact the source
+    // did state.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-agree",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-agree",
+            code: {
+              text: "Community acquired pneumonia",
+              coding: [{ system: "http://snomed.info/sct", code: "385093006" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-agree",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-agree",
+            status: "finished",
+            period: { start: "2026-04-07" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-agree" },
+                rank: 1,
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "AD",
+                    },
+                  ],
+                },
+              },
+              {
+                condition: { reference: "urn:uuid:cond-agree" },
+                rank: 1,
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "DD",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnosis_ranks).toEqual([
+      { name: "Community acquired pneumonia", rank: 1, use: ["ad", "dd"] },
+    ]);
+  });
+
+  it("keys the merge on the resolved Condition, not on the display name (#2589)", () => {
+    // Two DIFFERENT conditions — a SNOMED entry and an ICD-10 entry — that both
+    // display as "Anemia", stated at different ranks. A name-keyed merge folded
+    // them together and let the surviving chip claim Primary while discarding the
+    // other statement. They are two statements; the names still collapse to one
+    // chip (unchanged behaviour), and the badge is withheld rather than guessed.
+    //
+    // NOTE: two different rules reach `[]` here — see the test below, which is
+    // the one that actually pins the condition key. This fixture is the shape a
+    // reader expects, kept for that, but it cannot distinguish the keyings.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-snomed",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-snomed",
+            code: {
+              text: "Anemia",
+              coding: [{ system: "http://snomed.info/sct", code: "271737000" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:cond-icd",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-icd",
+            code: {
+              text: "Anemia",
+              coding: [
+                { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "D64.9" },
+              ],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-two-anemias",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-two-anemias",
+            status: "finished",
+            period: { start: "2026-04-04" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-snomed" }, rank: 4 },
+              { condition: { reference: "urn:uuid:cond-icd" }, rank: 1 },
+            ],
+          },
+        },
+      ])
+    );
+    const e = r.encounters![0];
+    expect(e.diagnoses).toEqual(["Anemia"]);
+    expect(e.diagnosis_ranks).toEqual([]);
+  });
+
+  it("keys on the Condition where identity-keying and name-keying DISAGREE (#2589)", () => {
+    // The test above is a fixture where the two keyings COINCIDE: identity-keyed,
+    // the per-name shape guard withholds; name-keyed, both ranks land in one
+    // bucket and the per-condition agreement rule withholds. Both routes answer
+    // `[]`, so it cannot tell which key is in use — and the condition key was
+    // therefore unguarded: deleting `identity ?? ` left every pure and DB test
+    // green.
+    //
+    // These two fixtures diverge. Under name-keying the separate statements the
+    // source made about two DIFFERENT conditions fuse into one entry, and the
+    // surviving chip carries a claim no source made about it.
+    const twoAnemias = (snomedDx: object, icdDx: object, encId: string) =>
+      parseFhirBundle(
+        bundleWithUrls([
+          {
+            fullUrl: "urn:uuid:cond-snomed-x",
+            resource: {
+              resourceType: "Condition",
+              id: "cond-snomed-x",
+              code: {
+                text: "Anemia",
+                coding: [
+                  { system: "http://snomed.info/sct", code: "271737000" },
+                ],
+              },
+            },
+          },
+          {
+            fullUrl: "urn:uuid:cond-icd-x",
+            resource: {
+              resourceType: "Condition",
+              id: "cond-icd-x",
+              code: {
+                text: "Anemia",
+                coding: [
+                  {
+                    system: "http://hl7.org/fhir/sid/icd-10-cm",
+                    code: "D64.9",
+                  },
+                ],
+              },
+            },
+          },
+          {
+            fullUrl: `urn:uuid:${encId}`,
+            resource: {
+              resourceType: "Encounter",
+              id: encId,
+              status: "finished",
+              period: { start: "2026-04-10" },
+              diagnosis: [
+                {
+                  condition: { reference: "urn:uuid:cond-snomed-x" },
+                  ...snomedDx,
+                },
+                { condition: { reference: "urn:uuid:cond-icd-x" }, ...icdDx },
+              ],
+            },
+          },
+        ])
+      );
+    const role = (code: string) => ({
+      use: {
+        coding: [
+          {
+            system: "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+            code,
+          },
+        ],
+      },
+    });
+
+    // A RANK about the SNOMED condition beside a ROLE about the ICD-10 one. Fused
+    // by name these read `{ rank: 1, use: ["dd"] }` — one condition's Primary
+    // badge welded to a DIFFERENT condition's discharge role, which is the harm
+    // the condition key exists to prevent. Keyed on the condition they are two
+    // statements of different shapes about one name, so both are withheld.
+    const rankPlusRole = twoAnemias(
+      { rank: 1 },
+      role("DD"),
+      "enc-diverge-rank"
+    );
+    expect(rankPlusRole.encounters![0].diagnoses).toEqual(["Anemia"]);
+    expect(rankPlusRole.encounters![0].diagnosis_ranks).toEqual([]);
+
+    // Two ROLES and no rank anywhere. Fused by name they accumulate into
+    // `{ use: ["ad", "dd"] }` — one chip claiming both roles when each condition
+    // was given exactly one.
+    const rolePlusRole = twoAnemias(
+      role("AD"),
+      role("DD"),
+      "enc-diverge-roles"
+    );
+    expect(rolePlusRole.encounters![0].diagnoses).toEqual(["Anemia"]);
+    expect(rolePlusRole.encounters![0].diagnosis_ranks).toEqual([]);
+  });
+
+  it("withholds the rank when three roles disagree, and keeps all three (#2589)", () => {
+    // Two of the three stated ranks agree. Agreement is not a vote: `every` is the
+    // rule, so one dissenting number is enough to make the rank a per-role
+    // statement this shape cannot hold. The roles do not contradict each other and
+    // all three survive.
+    const roleDx = (code: string, rank?: number) => ({
+      condition: { reference: "urn:uuid:cond-three-roles" },
+      ...(rank === undefined ? {} : { rank }),
+      use: {
+        coding: [
+          {
+            system: "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+            code,
+          },
+        ],
+      },
+    });
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-three-roles",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-three-roles",
+            code: {
+              text: "Community acquired pneumonia",
+              coding: [{ system: "http://snomed.info/sct", code: "385093006" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-three-roles",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-three-roles",
+            status: "finished",
+            period: { start: "2026-04-11" },
+            diagnosis: [roleDx("AD", 1), roleDx("DD", 1), roleDx("CC", 2)],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnosis_ranks).toEqual([
+      { name: "Community acquired pneumonia", use: ["ad", "cc", "dd"] },
+    ]);
+  });
+
+  it("keeps a rank stated under one role beside a rankless second role (#2589)", () => {
+    // Only ONE rank was stated, so there is nothing to disagree with: the rankless
+    // discharge entry is an absence, not a competing number, and treating it as
+    // one would lose a fact the source did state. The roles are kept alongside.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-one-rank",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-one-rank",
+            code: {
+              text: "Community acquired pneumonia",
+              coding: [{ system: "http://snomed.info/sct", code: "385093006" }],
+            },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-one-rank",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-one-rank",
+            status: "finished",
+            period: { start: "2026-04-12" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-one-rank" },
+                rank: 2,
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "AD",
+                    },
+                  ],
+                },
+              },
+              {
+                condition: { reference: "urn:uuid:cond-one-rank" },
+                use: {
+                  coding: [
+                    {
+                      system:
+                        "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                      code: "DD",
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnosis_ranks).toEqual([
+      { name: "Community acquired pneumonia", rank: 2, use: ["ad", "dd"] },
+    ]);
+  });
+
+  it("treats two TEXT-ONLY same-named Conditions as one, exactly as the importer does (#2589)", () => {
+    // The other side of the guard above, pinned so the claim stays honest. With no
+    // coding and no onset there is nothing to tell these apart:
+    // `conditionExternalId` falls back to the name, and parseFhirBundle collapses
+    // them into ONE imported condition row. To this app they are one condition, so
+    // their rank statements combine like any other repeat — here agreeing on
+    // rank 1, which is therefore kept. The withhold guard separates only what the
+    // importer's own identity separates, and this is that boundary.
+    const textOnly = (id: string) => ({
+      fullUrl: `urn:uuid:${id}`,
+      resource: {
+        resourceType: "Condition",
+        id,
+        code: { text: "Anemia" },
+      },
+    });
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        textOnly("cond-text-a"),
+        textOnly("cond-text-b"),
+        {
+          fullUrl: "urn:uuid:enc-text-anemias",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-text-anemias",
+            status: "finished",
+            period: { start: "2026-04-08" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-text-a" }, rank: 1 },
+              { condition: { reference: "urn:uuid:cond-text-b" }, rank: 1 },
+            ],
+          },
+        },
+      ])
+    );
+    // One condition row for both, which is what makes one rank statement correct.
+    expect(r.conditions!.filter((c) => c.name === "Anemia")).toHaveLength(1);
+    expect(r.encounters![0].diagnoses).toEqual(["Anemia"]);
+    expect(r.encounters![0].diagnosis_ranks).toEqual([
+      { name: "Anemia", rank: 1 },
+    ]);
+  });
+
+  it("withholds the rank when two text-only same-named Conditions disagree (#2589)", () => {
+    // Same shape, differing ranks. They are one condition to this app, so this is
+    // the per-condition disagreement rule doing the work rather than the
+    // per-name one — and the outcome a reader cares about is the same: no badge
+    // rather than a coin flip.
+    const textOnly = (id: string) => ({
+      fullUrl: `urn:uuid:${id}`,
+      resource: {
+        resourceType: "Condition",
+        id,
+        code: { text: "Anemia" },
+      },
+    });
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        textOnly("cond-text-c"),
+        textOnly("cond-text-d"),
+        {
+          fullUrl: "urn:uuid:enc-text-disagree",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-text-disagree",
+            status: "finished",
+            period: { start: "2026-04-09" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-text-c" }, rank: 4 },
+              { condition: { reference: "urn:uuid:cond-text-d" }, rank: 1 },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnoses).toEqual(["Anemia"]);
+    expect(r.encounters![0].diagnosis_ranks).toEqual([]);
+  });
+
+  it("ignores a diagnosis-role code from another code system (#2589)", () => {
+    // "AD" in some local system is not HL7's admission role, and this is the one
+    // place an unvalidated source string would become a clinical-sounding English
+    // word on a card.
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-local",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-local",
+            code: { text: "Acute bronchitis" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-local-use",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-local-use",
+            status: "finished",
+            period: { start: "2026-04-05" },
+            diagnosis: [
+              {
+                condition: { reference: "urn:uuid:cond-local" },
+                use: {
+                  coding: [
+                    { system: "http://example.org/local-codes", code: "AD" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnoses).toEqual(["Acute bronchitis"]);
+    expect(r.encounters![0].diagnosis_ranks).toEqual([]);
+  });
+
+  it("drops an out-of-range rank instead of badging it (#2589)", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-huge",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-huge",
+            code: { text: "Acute bronchitis" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-huge-rank",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-huge-rank",
+            status: "finished",
+            period: { start: "2026-04-06" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-huge" }, rank: 1e21 },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.encounters![0].diagnoses).toEqual(["Acute bronchitis"]);
+    expect(r.encounters![0].diagnosis_ranks).toEqual([]);
+  });
+
+  it("never infers a rank from a display name that carries one (#2589)", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:cond-flat-plain",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-flat-plain",
+            code: { text: "Hyperparathyroidism" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:cond-flat-suffix",
+          resource: {
+            resourceType: "Condition",
+            id: "cond-flat-suffix",
+            code: { text: "Hyperparathyroidism - Secondary" },
+          },
+        },
+        {
+          fullUrl: "urn:uuid:enc-flat",
+          resource: {
+            resourceType: "Encounter",
+            id: "enc-flat",
+            status: "finished",
+            period: { start: "2026-04-03" },
+            diagnosis: [
+              { condition: { reference: "urn:uuid:cond-flat-plain" } },
+              { condition: { reference: "urn:uuid:cond-flat-suffix" } },
+            ],
+          },
+        },
+      ])
+    );
+    const e = r.encounters![0];
+    // Both names survive byte-for-byte and neither gains a rank: a source that
+    // spells a qualifier into a name has stated nothing structurally.
+    expect(e.diagnoses).toEqual([
+      "Hyperparathyroidism",
+      "Hyperparathyroidism - Secondary",
+    ]);
+    expect(e.diagnosis_ranks).toEqual([]);
+  });
+
   it("skips entered-in-error and dateless encounters", () => {
     const r = parseFhirBundle(
       bundle([

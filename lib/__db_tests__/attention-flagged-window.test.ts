@@ -17,6 +17,11 @@
 // statement-count pin is the other half — the round-trip is gone, counted rather than
 // claimed.
 //
+// Since #2110 the heavy DEDUP+LATEST pass is HOISTED, so a prepare count no longer
+// measures how often it runs: it compiles once per connection and executes without
+// compiling again. The pin below counts compilations of the retired round-trip (still
+// zero) and proves the heavy pass ran from its OUTPUT.
+//
 // The request-scoped cache() added in the same change is deliberately NOT asserted
 // here: React's cache() has no dispatcher outside a server request, so in this tier it
 // is identity by design (see lib/request-cache.ts). What this file guarantees is that
@@ -139,12 +144,21 @@ describe("flagged-biomarker attention window (#2112)", () => {
   });
 
   it("computes the window start with no DB round-trip", () => {
-    const [nowRead, flaggedCte] = countPrepareSet(NOW_READ, FLAGGED_CTE);
+    // Warm the per-connection statement cache first, so this test does not depend on
+    // whether an earlier test in the file already compiled the heavy pass.
     collectAttentionModel(pWindow, today(pWindow));
+
+    const [nowRead, flaggedCte] = countPrepareSet(NOW_READ, FLAGGED_CTE);
+    const flagged = collectAttentionModel(pWindow, today(pWindow)).filter(
+      (i) => i.domain === "biomarker-flag"
+    );
     // The `SELECT datetime('now', ?)` that used to run once per flaggedInWindow call
     // — i.e. twice per member per /upcoming render — is gone entirely.
     expect(nowRead.calls()).toBe(0);
-    // The heavy pass it feeds still runs, once, for this one gather.
-    expect(flaggedCte.calls()).toBe(1);
+    // The heavy pass it feeds no longer COMPILES per gather either (#2110 hoisted it,
+    // so it compiles once per connection). That it still RUNS is proven by its output
+    // rather than by a compile count — the two stopped being the same measurement.
+    expect(flaggedCte.calls()).toBe(0);
+    expect(flagged.map((i) => i.title).join(" | ")).toContain("Ferritin fw");
   });
 });

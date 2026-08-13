@@ -113,3 +113,59 @@ describe("what a glance card says about a reading's age", () => {
     ).toBe("2022-03-08");
   });
 });
+
+describe("the as-of form (#2615 item 3)", () => {
+  it("states the day, never the age", () => {
+    // "2 weeks ago" beside "99.2 °F" reads as a second quantity. An as-of stamp means a
+    // day, so this form says one at every state — the CARD decides when it has an
+    // occasion to render the token at all.
+    for (const freshness of ["current", "due", "not-applicable"] as const) {
+      expect(
+        glanceAgeToken({
+          date: "2026-07-29",
+          today: TODAY,
+          freshness,
+          form: "as-of",
+          floorLabel: "a week",
+          dateLabel: "Jul 29",
+        }).text
+      ).toBe("as of Jul 29");
+    }
+  });
+
+  it("falls back to the ISO day when the caller states no formatted one", () => {
+    expect(
+      glanceAgeToken({
+        date: "2026-07-29",
+        today: TODAY,
+        freshness: "due",
+        form: "as-of",
+        floorLabel: "a week",
+      }).text
+    ).toBe("as of 2026-07-29");
+  });
+
+  it("takes the same amber treatment and sentence as the two glance cards", () => {
+    // A third FORM, not a third treatment — the whole reason the decision lives here.
+    const chartCard = glanceAgeToken({
+      date: "2026-07-29",
+      today: TODAY,
+      freshness: "due",
+      form: "as-of",
+      floorLabel: "a week",
+      dateLabel: "Jul 29",
+    });
+    const vitals = glanceAgeToken({
+      date: "2022-03-08",
+      today: TODAY,
+      freshness: "due",
+      form: "long",
+      floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
+    });
+    expect(chartCard.className).toBe(vitals.className);
+    expect(chartCard.stale).toBe(true);
+    expect(chartCard.title).toBe(
+      "Older than a week — still your latest reading, but not a current one"
+    );
+  });
+});

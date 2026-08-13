@@ -19,7 +19,15 @@ import {
 } from "@/lib/trend-metrics";
 import { metricSeriesKey } from "@/lib/saved-items";
 import type { DayFillWindow } from "@/lib/day-fill";
-import type { DayFillSpec } from "@/lib/trend-sparkline";
+import { loneReading, type DayFillSpec } from "@/lib/trend-sparkline";
+import SingleReadingMark from "./SingleReadingMark";
+import { useFormatPrefs } from "./FormatPrefsProvider";
+import { formatMonthDay } from "@/lib/format-date";
+import { glanceAgeToken } from "@/lib/glance-age";
+import {
+  TREND_METRIC_PRESENTATION_FLOORS,
+  trendMetricPresentationFreshness,
+} from "@/lib/trend-metric-freshness";
 
 // One body-composition trend chart's props (weight / body-fat / resting-HR),
 // pre-windowed + in display units by the server section.
@@ -103,10 +111,21 @@ export interface TrendStackItem {
 // "what is it now?". Read off the SAME pre-windowed, already-rounded series the plot
 // draws (no second computation, #221); null when the window is empty, so the card
 // falls back to its title alone rather than printing a "—" that means nothing.
-function latestHeadline(chart: TrendChartSpec): string | null {
+//
+// The DAY comes back with it (#2615 item 3). "What is it now?" is a claim about
+// currency, and the card was making it over a reading two weeks old with nothing
+// attached — so the reading's own day travels beside the number and the header decides
+// whether to say it.
+function latestHeadline(
+  chart: TrendChartSpec
+): { text: string; date: string } | null {
   for (let i = chart.data.length - 1; i >= 0; i--) {
-    const v = chart.data[i].value;
-    if (v != null) return `${roundChartValue(v)}${chart.unit}`;
+    const point = chart.data[i];
+    if (point.value != null)
+      return {
+        text: `${roundChartValue(point.value)}${chart.unit}`,
+        date: point.date,
+      };
   }
   return null;
 }
@@ -123,8 +142,16 @@ export default function TrendMetricCharts({
   windows = [],
   singleColumn = false,
   gapWindow,
+  today,
 }: {
   charts?: TrendChartSpec[];
+  // The PROFILE-local day (#1186), against which a card decides whether its headline
+  // may still be presented as the current value (#2615 item 3). One prop for the whole
+  // stack, like `gapWindow`: WHICH floor applies is derived from each card's own key
+  // through `TREND_METRIC_PRESENTATION_FLOORS`, so no call site picks a clock. Omitted
+  // → no card qualifies its headline, which is the previous behaviour and the right
+  // default for a caller with no profile day to measure against.
+  today?: string;
   // The selected date range, so every chart in the stack can densify its series to
   // the CALENDAR (#2258) instead of plotting only the days it has rows for. One
   // prop for the whole stack rather than one per spec: WHICH policy each chart
@@ -154,6 +181,9 @@ export default function TrendMetricCharts({
   const { enabled, onToggle, hoisted } = useAnnotationToggles(presentKinds);
   const shown = filterAnnotationsByKind(annotations, enabled);
   const shownWindows = enabled.protocol ? windows : [];
+  // The login's date format, for the two places a card names a DAY (the as-of stamp and
+  // the one-reading caption). Display prefs belong to the login, never to lib/.
+  const formatPrefs = useFormatPrefs();
 
   // The chart's own gap declaration, resolved from its card id. A non-metric card
   // (growth percentiles, the sleep tile, the intraday `hr-day` swap) maps to no
@@ -167,50 +197,116 @@ export default function TrendMetricCharts({
     };
   };
 
-  const chartCard = (chart: TrendChartSpec) => (
-    <ChartCard
-      key={chart.key}
-      title={chart.title}
-      hideTitle={chart.hideTitle}
-      // The detail page's own chart (#1541 fix 3): its <h1> is this title and
-      // its subtitle is this headline, ~700px apart on a phone — the #1533
-      // double-render shape. Suppressed together, since the card's header row
-      // is not even a tap target there (detailHref is null).
-      headline={chart.hideTitle ? null : latestHeadline(chart)}
-      note={chart.note}
-      anchorId={chart.anchorId}
-      testid={chart.testid}
-      headerAction={chart.headerAction}
-      detailHref={chart.detailHref}
-      footer={
-        chart.projectionNote || chart.footerAction ? (
-          <>
-            {chart.projectionNote && (
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                {chart.projectionNote}
-              </p>
-            )}
-            {chart.footerAction && (
-              <div className="mt-2 flex justify-end">{chart.footerAction}</div>
-            )}
-          </>
-        ) : null
-      }
-    >
-      <LineChartCard
-        data={chart.data}
-        label={chart.title}
-        unit={chart.unit}
-        color={chart.color}
-        annotations={shown}
-        windows={shownWindows}
-        referenceValue={chart.referenceValue ?? null}
-        yDomain={chart.yDomain}
-        groupYTicks={chart.groupYTicks}
-        gapFill={gapFillFor(chart)}
-      />
-    </ChartCard>
-  );
+  // The card's headline, plus the as-of stamp when it may no longer be read as the
+  // current value (#2615 item 3). The floor is per metric and lives in ONE registry;
+  // the verdict is the shared `freshnessState`; the token's colour and hover sentence
+  // are the shared glance-age treatment. All this decides is whether a chart card has
+  // an occasion to spend a line on the day — which is a layout fact about this header,
+  // and the only thing that belongs here.
+  //
+  // A non-registry card (growth percentiles, the mood chart's node, an intraday swap)
+  // declares no floor, so it is left exactly as it was rather than guessed at.
+  const headlineFor = (chart: TrendChartSpec): ReactNode => {
+    if (chart.hideTitle) return null;
+    const latest = latestHeadline(chart);
+    if (!latest) return null;
+    const slug = isTrendMetricSlug(chart.key) ? chart.key : null;
+    const freshness =
+      slug && today
+        ? trendMetricPresentationFreshness(slug, latest.date, today)
+        : "not-applicable";
+    if (!slug || !today || freshness !== "due") return latest.text;
+    const asOf = glanceAgeToken({
+      date: latest.date,
+      today,
+      freshness,
+      form: "as-of",
+      floorLabel: TREND_METRIC_PRESENTATION_FLOORS[slug].label,
+      dateLabel: formatMonthDay(latest.date, formatPrefs),
+    });
+    return (
+      <span className="flex flex-wrap items-baseline gap-x-1.5">
+        {latest.text}
+        <span
+          data-testid="chart-card-headline-asof"
+          className={`text-xs font-normal ${asOf.className}`}
+          title={asOf.title ?? undefined}
+        >
+          {asOf.text}
+        </span>
+      </span>
+    );
+  };
+
+  const chartCard = (chart: TrendChartSpec) => {
+    // ONE reading is a marker, not a plot (#2615 item 3) — the same degrade the
+    // Overview tiles have drawn since #1485 G, over the same predicate, so a tile and
+    // the card it taps through to cannot render the identical situation two ways.
+    const lone = loneReading(chart.data);
+    return (
+      <ChartCard
+        key={chart.key}
+        title={chart.title}
+        hideTitle={chart.hideTitle}
+        // The detail page's own chart (#1541 fix 3): its <h1> is this title and
+        // its subtitle is this headline, ~700px apart on a phone — the #1533
+        // double-render shape. Suppressed together, since the card's header row
+        // is not even a tap target there (detailHref is null).
+        headline={headlineFor(chart)}
+        note={chart.note}
+        anchorId={chart.anchorId}
+        testid={chart.testid}
+        headerAction={chart.headerAction}
+        detailHref={chart.detailHref}
+        footer={
+          chart.projectionNote || chart.footerAction ? (
+            <>
+              {chart.projectionNote && (
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {chart.projectionNote}
+                </p>
+              )}
+              {chart.footerAction && (
+                <div className="mt-2 flex justify-end">
+                  {chart.footerAction}
+                </div>
+              )}
+            </>
+          ) : null
+        }
+      >
+        {lone ? (
+          <SingleReadingMark
+            fill
+            color={chart.color}
+            testid="chart-card-single-reading"
+            readingScope="inside"
+            caption={
+              <>
+                Single reading ·{" "}
+                <time dateTime={lone.date}>
+                  {formatMonthDay(lone.date, formatPrefs)}
+                </time>
+              </>
+            }
+          />
+        ) : (
+          <LineChartCard
+            data={chart.data}
+            label={chart.title}
+            unit={chart.unit}
+            color={chart.color}
+            annotations={shown}
+            windows={shownWindows}
+            referenceValue={chart.referenceValue ?? null}
+            yDomain={chart.yDomain}
+            groupYTicks={chart.groupYTicks}
+            gapFill={gapFillFor(chart)}
+          />
+        )}
+      </ChartCard>
+    );
+  };
 
   const grid = (list: TrendChartSpec[]) => (
     <div

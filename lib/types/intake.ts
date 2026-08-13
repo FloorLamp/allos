@@ -290,6 +290,21 @@ export type DoseStatusTarget = "taken" | "skipped" | "clear";
 // is exactly what keeps a stale reminder button from rewriting a deliberate decision.
 export type DoseStatusOutcome = DoseTakenOutcome | "cleared" | "unchanged";
 
+// Outcome of taking BACK a dose confirm — the inverse the act→undo toast offers (#2642).
+// It is a NARROWER question than "set this dose to clear": the tri-state check-off may
+// clear whatever stands, but an undo may only remove the row THIS tap wrote, so it
+// re-derives the day's ledger under the write lock before delegating to the one core.
+//   undone     — the single taken row the confirm wrote is gone and any supply it
+//                consumed has been handed back; the dose is due again
+//   not-taken  — no log stands for (dose, date) any more; there is nothing to take back,
+//                and writing one would be a write, not an undo
+//   changed    — the day's ledger is no longer the single taken row the confirm wrote
+//                (flipped to skipped, or a second administration landed since), so
+//                clearing it would delete somebody else's fact
+//   stale-dose — the dose is deleted/retired, its item is paused, or it is not this
+//                profile's: the shared core refuses and so does this
+export type DoseUndoOutcome = "undone" | "not-taken" | "changed" | "stale-dose";
+
 // Outcome of logging one PRN (as-needed) ADMINISTRATION (logAdministration, issue
 // #797). Unlike markDoseTaken — which enforces one-per-day for a SCHEDULED dose —
 // a PRN med can be given several times a day, so each successful log is a NEW row.

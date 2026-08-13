@@ -172,6 +172,34 @@ export const CARE_PLAN_CATEGORY_LABELS: Record<CarePlanCategory, string> = {
   activity: "Activity — something to do",
 };
 
+// The SHORT label a category wears on a row (#2615 item 4). CARE_PLAN_CATEGORY_LABELS
+// above is the PICKER's vocabulary — it spends a clause explaining the bucket, which
+// is right beside a radio and far too long for an Upcoming subtitle. What the row was
+// showing instead was the stored value verbatim: "encounter", "observation",
+// "procedure", lowercase FHIR-ish keys handed straight to a reader. This is the same
+// six buckets as a plain noun.
+const CARE_PLAN_CATEGORY_SHORT: Record<CarePlanCategory, string> = {
+  procedure: "Procedure",
+  encounter: "Visit",
+  observation: "Test",
+  medication: "Medication",
+  supply: "Supply",
+  activity: "Activity",
+};
+
+// `care_plan_items.category` is free-form TEXT (importers pass their own vocabulary
+// through), so an unrecognized value is CAPITALIZED and shown rather than dropped or
+// guessed at — the same posture isCarePlanItemOpen takes on an unknown status.
+export function carePlanCategoryLabel(
+  category: string | null | undefined
+): string | null {
+  const raw = category?.trim();
+  if (!raw) return null;
+  const known = CARE_PLAN_CATEGORY_SHORT[raw.toLowerCase() as CarePlanCategory];
+  if (known) return known;
+  return raw.charAt(0).toLocaleUpperCase() + raw.slice(1);
+}
+
 // Map one care-plan item to an Upcoming item. The stable key is `careplan:<id>` —
 // namespaced so it never collides with another domain's key and so a snooze/dismiss
 // follows the row across time. The item links to /care-plan and carries its id for
@@ -182,8 +210,9 @@ export function carePlanItemToUpcomingItem(
   item: CarePlanItemLike
 ): UpcomingItem {
   const detail =
-    [item.category, item.provider_name].filter(Boolean).join(" · ") ||
-    "Planned care";
+    [carePlanCategoryLabel(item.category), item.provider_name]
+      .filter(Boolean)
+      .join(" · ") || "Planned care";
   return {
     key: `careplan:${item.id}`,
     domain: "careplan",

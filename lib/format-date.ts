@@ -195,12 +195,24 @@ export function formatLongDate(
 // run-out chip (#852 item 3). ISO YYYY-MM-DD in, parsed as local midnight so the day
 // doesn't shift; the year is appended only when it isn't the current calendar year.
 // Pref-aware (#964): the DEFAULT "mdy" is byte-identical to the old output ("Aug 3").
+//
+// `opts.today` decides the auto-year against a CALLER-SUPPLIED day instead of the
+// process wall clock (#2579-B). The two agree on a live server, and disagree exactly
+// where it matters: a profile-clock surface (Upcoming's planning dates) asks the
+// question in the profile's today, and a frozen-clock test asks it in the frozen one.
+// Reading `new Date()` there would make the same input render two ways depending on
+// when the render happened — and would rot a pinned expectation the moment the wall
+// year turned over. Only the YEAR decision moves; the date itself is always `iso`.
 export function formatMonthDay(
   iso: string,
-  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
+  opts: { today?: string } = {}
 ): string {
   const d = new Date(iso + "T00:00:00");
   if (Number.isNaN(d.getTime())) return iso;
+  // An unparseable `today` falls back to the wall clock rather than throwing away
+  // the year rule entirely — a bad reference day must not silently drop a year.
+  const refYear = Number(opts.today?.slice(0, 4));
   return formatDateShape(
     prefs.dateFormat,
     d.getFullYear(),
@@ -208,7 +220,9 @@ export function formatMonthDay(
     d.getDate(),
     {
       monthStyle: "short",
-      year: d.getFullYear() !== new Date().getFullYear(),
+      year:
+        d.getFullYear() !==
+        (Number.isFinite(refYear) ? refYear : new Date().getFullYear()),
     }
   );
 }

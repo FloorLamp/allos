@@ -6,6 +6,7 @@
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
 import { db, hoistedStatement, today, writeTx } from "../../db";
+import { readAllForUpdate } from "../../tx";
 import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
@@ -48,6 +49,7 @@ import type {
   DoseStatusOutcome,
   DoseStatusTarget,
   DoseTakenOutcome,
+  DoseUndoOutcome,
   EscalationAckOutcome,
   HistoricalDoseOutcome,
   RedoseWindowAdministrationOutcome,
@@ -482,6 +484,60 @@ export function setDoseStatusCore(
   target: DoseStatusTarget
 ): DoseStatusOutcome {
   return applyDoseStatusCore(profileId, doseId, date, target);
+}
+
+// Take BACK the dose confirm a tap just made (#2642) — the inverse behind the act→undo
+// toast, auth-blind and profileId-first like every other core here.
+//
+// WHY THIS IS NOT JUST `setDoseStatusCore(…, "clear")`. The tri-state check-off states an
+// intent about the DAY ("this dose is clear now") and is right to overwrite whatever
+// stands. An undo makes a much smaller claim — "the row I wrote a moment ago should not
+// exist" — and the only honest way to keep that claim is to RE-DERIVE it: the tap is
+// undoable while, and only while, the day's ledger is still exactly the one taken row the
+// confirm produced. Flipped to skipped meanwhile? A PRN administration landed on the same
+// (dose, date) since? Then clearing would destroy a fact this tap did not create — the
+// core's DELETE is by (dose_id, date), not by row id, so it would take both. It refuses
+// instead, exactly as `logUsualFoodCore` refuses a stale tap rather than logging a second
+// breakfast.
+//
+// The probe runs inside the SAME writeTx as the clear (`readAllForUpdate` demands the
+// token only `writeTx` mints, so a check made outside the transaction cannot typecheck),
+// and the clear itself goes through `applyDoseStatusCore` — the ONE writer of
+// intake_item_logs, which re-verifies ownership and liveness and hands back the supply
+// the taken row consumed. The nested transaction is a SAVEPOINT under the outer IMMEDIATE
+// lock, so probe-then-clear is atomic against the notify sidecar and a second web replica.
+export function undoDoseConfirm(
+  profileId: number,
+  doseId: number,
+  date: string
+): DoseUndoOutcome {
+  return writeTx((tx): DoseUndoOutcome => {
+    // Profile-scoped through the parent item (the child-table rule), and that join IS the
+    // ownership check: a forged dose id belonging to another profile reads zero rows and
+    // is answered without ever reaching the writer.
+    const standing = readAllForUpdate<{ status: DoseStatus }>(
+      tx,
+      db.prepare(
+        `SELECT l.status AS status
+           FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE l.dose_id = ? AND l.date = ? AND s.profile_id = ?`
+      ),
+      doseId,
+      date,
+      profileId
+    );
+    if (standing.length === 0) return "not-taken";
+    if (standing.length > 1) return "changed";
+    if (standing[0].status !== "taken") return "changed";
+    const outcome = applyDoseStatusCore(profileId, doseId, date, "clear");
+    // `cleared` is the only success available once a single taken row is proven to stand;
+    // anything else is the shared core's own refusal (dose retired, item paused between
+    // the probe and the write's re-check) and is passed through rather than dressed up as
+    // a successful undo.
+    return outcome === "cleared" ? "undone" : "stale-dose";
+  });
 }
 
 // ---- PRN (as-needed) administrations ledger (#797) ----

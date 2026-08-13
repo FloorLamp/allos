@@ -876,13 +876,30 @@ describe("per-line scale model (#2178)", () => {
     }
   });
 
-  it("NEVER RE-TOTALS: no scale above the week reports a bare event count", () => {
+  it("NEVER RE-TOTALS: no REVIEW scale above the week reports a bare event count", () => {
     // The pin, by name. "You did 47 workouts" is four weekly lines summed and handed
     // back with an authority none of them had, which is what the rule forbids. The
-    // count lines are declared week-only; the longer scales speak shares, rates and
-    // directions instead.
+    // count lines are declared week-only for every REVIEW cadence; the longer review
+    // scales speak shares, rates and directions instead.
+    //
+    // The year is exempt and only the year (#2179): a retrospective is commemorative
+    // rather than evaluative. The exemption is narrow — a line may only reach a
+    // non-week scale with a bare count if it DECLARED `countsAsRecordAt` for exactly
+    // that scale — and its price is pinned separately below.
     for (const key of ["workouts", "adherence", "zone2"] as RecapLineKey[])
-      expect(RECAP_LINE_MODEL[key].scales, key).toEqual(["week"]);
+      expect(
+        RECAP_LINE_MODEL[key].scales.filter(
+          (sc) => !(RECAP_LINE_MODEL[key].countsAsRecordAt ?? []).includes(sc)
+        ),
+        key
+      ).toEqual(["week"]);
+    // No cadence may ever carry the exemption — it is the retrospective's alone.
+    for (const key of Object.keys(RECAP_LINE_MODEL) as RecapLineKey[])
+      expect(RECAP_LINE_MODEL[key].countsAsRecordAt ?? [], key).toEqual(
+        (RECAP_LINE_MODEL[key].countsAsRecordAt ?? []).filter(
+          (sc) => sc === "year"
+        )
+      );
     const monthOnly = (Object.keys(RECAP_LINE_MODEL) as RecapLineKey[]).filter(
       (k) => !lineSpeaksAt(k, "week")
     );

@@ -6,6 +6,7 @@ import type { ClinicalObservation } from "@/lib/types";
 import { observationNameLink } from "@/lib/import-browser";
 import type { ConfidenceFlag } from "@/lib/extraction-confidence";
 import { Tag, MedicalValue } from "./ui";
+import { Td } from "./ResponsiveTable";
 import { ConfidenceRowNote } from "./ConfidenceBadge";
 import { TRIAGE_FOCUS_ROW } from "./TriageFocus";
 import NotesText from "./NotesText";
@@ -62,7 +63,13 @@ export default function EditableResultRow({
         data-focused={focused ? "true" : undefined}
         className={`${rowBorder} ${focused ? TRIAGE_FOCUS_ROW : ""}`}
       >
-        <td className="td font-medium">
+        {/* Card placement below `sm` (#2614 adopting #1426): the analyte's name is
+            the card's identity, the reading its headline, and the reference band —
+            the column the phone used to cut to "3.5-5.|" — a labelled meta line.
+            Panel and Category claim no card line, the same call #2316 made on the
+            biomarkers table: they are facets worth a narrow desktop column, not a
+            phone line each. */}
+        <Td slot="title" className="font-medium">
           {!showName ? null : nameLink ? (
             <Link
               href={nameLink.href}
@@ -92,24 +99,36 @@ export default function EditableResultRow({
               )}
             </div>
           ) : null}
-        </td>
+        </Td>
         <td className="td text-slate-500 dark:text-slate-400">
           {r.panel ?? "—"}
         </td>
-        <td className="td">
+        <Td slot="value">
           <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
-        </td>
-        <td className="td text-slate-500 dark:text-slate-400">
+        </Td>
+        <Td
+          slot="meta"
+          label="Reference"
+          empty={!r.reference_range}
+          className="text-slate-500 dark:text-slate-400"
+        >
           {r.reference_range ?? "—"}
-        </td>
-        <td className="td text-slate-500 dark:text-slate-400">
+        </Td>
+        <Td
+          slot="meta"
+          label="Notes"
+          empty={!r.notes?.trim()}
+          className="text-slate-500 dark:text-slate-400"
+        >
           <NotesText notes={r.notes} />
-        </td>
+        </Td>
         <td className="td">
           <Tag value={r.category} />
         </td>
-        <td className="td whitespace-nowrap">{r.date}</td>
-        <td className="td">
+        <Td slot="meta" label="Date" className="whitespace-nowrap">
+          {r.date}
+        </Td>
+        <Td slot="actions">
           <div className="flex items-center justify-end">
             <OverflowMenu
               label="Result actions"
@@ -158,7 +177,7 @@ export default function EditableResultRow({
               )}
             </OverflowMenu>
           </div>
-        </td>
+        </Td>
       </tr>
     );
   }
@@ -170,14 +189,16 @@ export default function EditableResultRow({
       id={rowId}
       className="border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60"
     >
-      <td colSpan={8} className="td py-3">
+      {/* `full` — the inline editor replaces the card body below `sm`, exactly as
+          it replaces the row above it. */}
+      <Td slot="full" colSpan={8} className="py-3">
         <ResultForm
           mode="edit"
           observation={r}
           action={updateResult}
           onDone={() => setEditing(false)}
         />
-      </td>
+      </Td>
     </tr>
   );
 }

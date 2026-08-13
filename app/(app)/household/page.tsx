@@ -170,6 +170,7 @@ export default async function HouseholdPage() {
       ),
       rollup,
       today: day,
+      formatPrefs,
       adherence,
       // The pushed tier's state changes (#1505 part 3) — the SAME shared line the
       // morning digest and the weekly recap render, so a caregiver reading the

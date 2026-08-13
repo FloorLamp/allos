@@ -1012,7 +1012,10 @@ export default async function BodySection({
   // the two BMI charts on a child's body census can't disagree (issue #407).
   const bmiAll = bmiSeriesDatePaired(
     weightSeries.map((w) => ({ date: w.date, value: w.value })),
-    heightPoints
+    heightPoints,
+    // #2646: how stale the paired height may be is a life-stage question, so the
+    // derivation needs the birthdate this page already read.
+    birthdate
   ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
   const bmiChart = filterSeriesByRange(bmiAll, range);
   // Check-in trends (#992, completed by #1408): the daily wellbeing check-ins as
@@ -1713,6 +1716,9 @@ export default async function BodySection({
               annotations={annotations}
               windows={protocolWindows}
               gapWindow={dayFillWindow(range)}
+              // The profile-local day each card's headline is aged against
+              // (#2615 item 3), never the server's.
+              today={todayStr}
             />
           ) : (
             <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
@@ -1775,6 +1781,9 @@ export default async function BodySection({
                 annotations={annotations}
                 windows={protocolWindows}
                 gapWindow={dayFillWindow(range)}
+                // The profile-local day each card's headline is aged against
+                // (#2615 item 3), never the server's.
+                today={todayStr}
               />
             ) : (
               <EmptyState message="No body metrics yet. Add a reading with “+ Log” above to see the trend." />

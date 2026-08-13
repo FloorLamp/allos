@@ -11,6 +11,9 @@ import {
   UPCOMING_AGG_SUPPLEMENT,
   UPCOMING_AGG_TAKEN,
   UPCOMING_AGG_PRN,
+  UPCOMING_AGG_GOAL_NEAREST,
+  UPCOMING_AGG_APPOINTMENT,
+  UPCOMING_AGG_APPOINTMENT_SOON,
 } from "./fixture-logins";
 
 // Upcoming display aggregation (#1504).
@@ -230,5 +233,179 @@ test.describe("Upcoming display aggregation (#1504)", () => {
     await expect(suppressed).toBeVisible();
     await suppressed.locator("summary").click();
     await expect(suppressed.getByTestId("suppressed-row")).toHaveCount(1);
+  });
+});
+
+// ── The goal fold and the Later band's calendar dates (#2579-A / #2579-B) ──
+//
+// The charter these two implement: /upcoming is the cross-domain forward LEDGER, and
+// a row earns full height on it only if this page is its primary home. A goal
+// deadline's home is the Training hub; the colonoscopy to book has no other home. On
+// the live page the first buried the second.
+//
+// The date expectations below are formatted HERE, from the target_date the seed
+// actually wrote, by a month table this file owns — never by calling the app's own
+// formatter, which would pass with the feature gutted.
+const MONTHS_SHORT_LOCAL = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+// "Sep 26" for an ISO YYYY-MM-DD. The year clause is deliberately NOT reproduced:
+// assertions below use `toContainText`, so a deadline that crosses the calendar year
+// still matches on the month and day this pins.
+function monthDayLabel(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${MONTHS_SHORT_LOCAL[Number(m) - 1]} ${Number(d)}`;
+}
+
+// The earliest target_date the seed wrote for this profile — the deadline the
+// collapsed summary must name. Read from the store, not recomputed from the seed's
+// offsets, so the spec and the fixture cannot drift apart silently.
+function nearestGoalDate(): string {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const row = db
+      .prepare(
+        `SELECT MIN(g.target_date) AS d
+           FROM goals g
+           JOIN profiles p ON p.id = g.profile_id
+          WHERE p.name = ? AND g.status = 'active' AND g.archived = 0`
+      )
+      .get(UPCOMING_AGG_PROFILE) as { d: string | null };
+    if (!row?.d) throw new Error("fixture has no dated goal");
+    return row.d;
+  } finally {
+    db.close();
+  }
+}
+
+const goalAggregate = (main: Locator) =>
+  main.getByTestId("upcoming-aggregate-goal");
+
+test.describe("the goal fold (#2579-A) and planning dates (#2579-B)", () => {
+  test("Later states the goal count and the nearest deadline while collapsed", async ({
+    browser,
+  }) => {
+    const { main } = await openUpcoming(browser);
+
+    const aggregate = goalAggregate(main);
+    await expect(aggregate).toBeVisible();
+    // Band-scoped, like its two siblings: these are the LATER goals.
+    await expect(aggregate).toHaveAttribute("data-band", "later");
+    // Stateless: collapsed on arrival, every visit.
+    await expect(aggregate).toHaveJSProperty("open", false);
+
+    // ALWAYS PRESENT and PRICED: the count is on screen unexpanded, and so is the
+    // one fact a folded horizon has to answer — is anything about to land?
+    await expect(
+      main.getByTestId("upcoming-aggregate-summary-goal")
+    ).toContainText(
+      `4 goal deadlines · nearest ${monthDayLabel(nearestGoalDate())}`
+    );
+
+    // The individual goal rows really are folded away, not merely restyled. A
+    // collapsed <details> keeps its children in the DOM, so this is a VISIBILITY
+    // claim — a count assertion here would pass with the fold gutted.
+    await expect(
+      main
+        .locator('[data-testid^="upcoming-item-goal:"]')
+        .filter({ hasText: UPCOMING_AGG_GOAL_NEAREST })
+    ).toBeHidden();
+    // …while the arranging errand beside them keeps its full-height row. That is the
+    // whole density rule: this page IS the colonoscopy's home, and is not the goals'.
+    await expect(
+      main
+        .locator('[data-testid^="upcoming-item-appointment:"]')
+        .filter({ hasText: UPCOMING_AGG_APPOINTMENT })
+    ).toBeVisible();
+  });
+
+  test("expanding gives back the real goal rows, each with its own dismiss", async ({
+    browser,
+  }) => {
+    const { page, main } = await openUpcoming(browser);
+    await expandUpcomingAggregates(main, "goal");
+
+    const rows = main.locator('[data-testid^="upcoming-item-goal:"]');
+    await expect(rows).toHaveCount(4);
+    // VISIBLE now, where the collapsed case proved them hidden.
+    await expect(
+      rows.filter({ hasText: UPCOMING_AGG_GOAL_NEAREST })
+    ).toBeVisible();
+
+    // IDENTITY SURVIVES THE FOLD (#1496): the folded row carries its own dedupeKey
+    // and its own per-item dismiss, exactly as an unfolded row would.
+    const row = rows.filter({ hasText: UPCOMING_AGG_GOAL_NEAREST });
+    await expect(row).toBeVisible();
+    const rowTestId = await row.getAttribute("data-testid");
+    await row.getByRole("button", { name: "More actions" }).click();
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: "Dismiss" })
+      .click();
+
+    await expect(main.getByTestId(rowTestId!)).toHaveCount(0, {
+      timeout: RERENDER_MS,
+    });
+    // The count moves with it — the fold summarises the rows, it does not cache them.
+    await expect(
+      main.getByTestId("upcoming-aggregate-summary-goal")
+    ).toContainText("3 goal deadlines", { timeout: RERENDER_MS });
+
+    // And the dismissed goal is in the bus's own complete window, not gone.
+    const suppressed = page.getByTestId("suppressed-section");
+    await expect(suppressed).toBeVisible();
+    await suppressed.locator("summary").click();
+    await expect(suppressed.getByTestId("suppressed-row")).toHaveCount(1);
+  });
+
+  test("a Later row states its calendar date, not a countdown (#2579-B)", async ({
+    browser,
+  }) => {
+    const { main } = await openUpcoming(browser);
+
+    // The appointment is 60 days out: before #2579-B this column read "60 days left",
+    // which is arithmetic standing where the only calendar-ready fact belongs.
+    const appointment = main
+      .locator('[data-testid^="upcoming-item-appointment:"]')
+      .filter({ hasText: UPCOMING_AGG_APPOINTMENT });
+    const status = appointment.getByTestId("upcoming-status");
+    await expect(status).toHaveText(/^[A-Z][a-z]{2} \d{1,2}(, \d{4})?$/);
+    await expect(status).not.toHaveText(/days left/);
+
+    // …and the same rule holds for a row inside the fold, on the exact date the
+    // collapsed summary named.
+    const nearest = monthDayLabel(nearestGoalDate());
+    await expandUpcomingAggregates(main, "goal");
+    const goalRow = main
+      .locator('[data-testid^="upcoming-item-goal:"]')
+      .filter({ hasText: UPCOMING_AGG_GOAL_NEAREST });
+    await expect(goalRow.getByTestId("upcoming-status")).toContainText(nearest);
+  });
+
+  test("This week keeps countdown grammar, where a number still means something", async ({
+    browser,
+  }) => {
+    const { main } = await openUpcoming(browser);
+
+    // The near half of the SAME decision, on the same page and the same domain: two
+    // scheduled appointments differing only in how far out they are. The band
+    // boundary is what switches the grammar — nothing about the row does.
+    const soon = main
+      .locator('[data-testid^="upcoming-item-appointment:"]')
+      .filter({ hasText: UPCOMING_AGG_APPOINTMENT_SOON });
+    await expect(soon.getByTestId("upcoming-status")).toHaveText("3 days left");
   });
 });
