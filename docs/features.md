@@ -194,13 +194,17 @@ content, so the page starts on your own recent history instead of on a goal
 target date months out. The last **14 days** stay event-grained, exactly as
 before: day groups with individual cards. Everything older collapses to one card
 per **calendar month** ("May 2026 · 47 events · 22 days"), expanding in place on
-tap. Nothing is removed — a closed card always states how much is inside it, and
-the **Oldest** jump opens whichever card holds its destination on the way. Which
-folds are open lives in the URL (`?open=2026-05`), so an expanded month is
-shareable, bookmarkable and reachable with the back button. A profile with
-nothing in the last fortnight arrives with its newest month already open. The
-category and date filters compose with all of this; a single-day view is never
-windowed, because a day is already the window.
+tap. A month outside the current calendar year compresses once more, into a
+**year** card ("2025 · 180 events · 3 months") that opens onto its month cards —
+so a long, sparse history is a one-screen spine rather than a stack of sixty
+month headers. Nothing is removed — a closed card always states how much is
+inside it, and the **Oldest** jump opens whichever card holds its destination on
+the way. Which folds are open lives in the URL (`?open=2026-05`, `?open=2025`),
+so an expanded month is shareable, bookmarkable and reachable with the back
+button; a month link opens the year around it, so a link saved before years
+existed still lands. A profile with nothing in the last fortnight arrives with
+its newest month already open. The category and date filters compose with all of
+this; a single-day view is never windowed, because a day is already the window.
 
 A brand-new account sees a Timeline empty state that names the next action —
 links to log an activity, add a body metric, or import a document, the three
