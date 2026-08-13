@@ -134,6 +134,28 @@ while read -r d; do
   r=$(git -C "$REPO" ls-remote --heads origin "$b" 2>/dev/null | cut -c1-7)
   live=0
   printf '%s\n' "$live_branches" | grep -qx -- "$b" && live=1
+
+  # THE READ-ONLY LANE IS NOT A RESCUE TARGET. The adversarial reviewer (#2626)
+  # works in a throwaway worktree checked out at a PR's MERGE ref — detached, on
+  # no branch, never pushed, deliberately disposable, and holding whatever scratch
+  # its attacks wrote. Classified as an agent's branch it reads DIRTY AND NO AGENT
+  # plus NEVER PUSHED, and the second of those is advice that cannot be followed:
+  # a detached HEAD has no branch to push. An alarm you cannot act on is the
+  # canary again, so name the lane instead of alarming on it.
+  #
+  # The exemption is the DECLARED lane only (`wt-refute-*`, detached). A detached
+  # worktree that is NOT the lane still gets said out loud, because commits made
+  # there belong to no branch and are one `worktree remove` from gone — a
+  # different problem from an unpushed branch, and not one to silence.
+  case "$(basename "$d")" in
+    wt-refute-*)
+      if [ "$b" = "HEAD" ]; then
+        printf "  %-16s %-32s %-6s local=%s  (read-only refuter lane — nothing to rescue)\n" \
+          "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
+        continue
+      fi
+      ;;
+  esac
   # "Was this branch ever pushed?" — read the tracking CONFIG, not @{upstream}.
   #
   # The two are not the same thing and the difference is a false alarm. The
@@ -162,7 +184,17 @@ while read -r d; do
     else
       state="DONE"
       [ "$dirty" != "0" ] && { flag="$flag  <<< DIRTY AND NO AGENT: RESCUE NOW"; alarms=1; }
-      [ "$pushed" = "0" ] && { flag="$flag  <<< NEVER PUSHED, NO AGENT: PUSH NOW"; alarms=1; }
+      # Say the ACTIONABLE thing. On a branch, "push it". Detached, there is no
+      # branch to push and the rescue is `git branch -c` first — different advice,
+      # and the generic line would send you to a command that cannot work.
+      if [ "$pushed" = "0" ]; then
+        if [ "$b" = "HEAD" ]; then
+          flag="$flag  <<< DETACHED, NO AGENT: any commit here is on NO BRANCH — name one before removing this tree"
+        else
+          flag="$flag  <<< NEVER PUSHED, NO AGENT: PUSH NOW"
+        fi
+        alarms=1
+      fi
     fi
   fi
   # An unpushed commit under a live agent is the near miss, not the accident:
