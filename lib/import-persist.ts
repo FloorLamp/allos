@@ -23,6 +23,7 @@ import {
   reapplyDocumentCorrections,
 } from "./import-corrections";
 import { clinicalKeyForInput } from "./clinical-content-key";
+import { encodeDiagnosisRanks } from "./visit-diagnosis-rank";
 export {
   applyImportFollowups,
   type ImportFollowupOptions,
@@ -950,9 +951,9 @@ function insertImportRows(
   const insEncounter = db.prepare(
     `INSERT OR IGNORE INTO encounters
        (date, end_date, type, code, code_system, class_code, reason, diagnoses,
-        notes, provider_id, location_provider_id, source, document_id,
-        external_id, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        diagnosis_ranks, notes, provider_id, location_provider_id, source,
+        document_id, external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Procedures + family history. Same idempotency as records/conditions: the
   // per-document delete-set (above) clears this document's prior rows, then INSERT
@@ -1297,6 +1298,10 @@ function insertImportRows(
       e.class_code,
       e.reason,
       e.diagnoses.length ? e.diagnoses.join("; ") : null,
+      // The source's own structured statement of which diagnosis is primary
+      // (#2589) — beside the summary, never inside it. Null for every path that
+      // states no rank, which today is everything except FHIR.
+      encodeDiagnosisRanks(e.diagnosis_ranks),
       e.notes,
       providerIdFor(e.provider),
       providerIdFor(e.location),

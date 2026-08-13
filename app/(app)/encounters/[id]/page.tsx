@@ -37,6 +37,8 @@ import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import NotesText from "@/components/NotesText";
+import DiagnosisChips from "@/components/DiagnosisChips";
+import { diagnosisList } from "@/lib/diagnosis-chips";
 import ProviderName from "@/components/ProviderName";
 import OpenInMaps from "@/components/OpenInMaps";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
@@ -63,14 +65,6 @@ function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
   if (e.end_date && e.end_date !== e.date)
     return `${start} – ${formatRecordDate(e.end_date, "", fmt)}`;
   return start;
-}
-
-function diagnosisList(diagnoses: string | null): string[] {
-  if (!diagnoses) return [];
-  return diagnoses
-    .split(/\s*;\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 // 1 → "1st", 2 → "2nd", 3 → "3rd", 4 → "4th" … (visit-context ordinals).
@@ -276,19 +270,11 @@ export default async function EncounterDetailPage(props: {
 
               {diagnoses.length > 0 ? (
                 <DetailRow label="Diagnoses">
-                  <div
-                    className="flex flex-wrap gap-1.5"
-                    data-testid="encounter-diagnoses"
-                  >
-                    {diagnoses.map((d, i) => (
-                      <span
-                        key={i}
-                        className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                      >
-                        {d}
-                      </span>
-                    ))}
-                  </div>
+                  <DiagnosisChips
+                    diagnoses={encounter.diagnoses}
+                    diagnosisRanks={encounter.diagnosis_ranks}
+                    testId="encounter-diagnoses"
+                  />
                 </DetailRow>
               ) : null}
 

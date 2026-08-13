@@ -24,7 +24,8 @@ export const getEncounters = cache(function getEncounters(
     .prepare(
       `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
               e.class_code, e.reason,
-              e.diagnoses, e.provider_id, p.name AS provider_name,
+              e.diagnoses, e.diagnosis_ranks,
+              e.provider_id, p.name AS provider_name,
               e.location_provider_id, l.name AS location_name,
               l.address AS location_address,
               e.notes, e.source, e.document_id, e.external_id, e.created_at
@@ -43,7 +44,8 @@ export function getEncounter(profileId: number, id: number): Encounter | null {
       .prepare(
         `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
                 e.class_code, e.reason,
-                e.diagnoses, e.provider_id, p.name AS provider_name,
+                e.diagnoses, e.diagnosis_ranks,
+                e.provider_id, p.name AS provider_name,
                 e.location_provider_id, l.name AS location_name,
                 l.address AS location_address,
                 e.notes, e.source, e.document_id, e.external_id, e.created_at

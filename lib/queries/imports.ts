@@ -1056,7 +1056,8 @@ export function getReprocessSnapshot(
 
   const encounters = db
     .prepare(
-      `SELECT date, end_date, type, class_code, reason, diagnoses, external_id
+      `SELECT date, end_date, type, class_code, reason, diagnoses,
+              diagnosis_ranks, external_id
          FROM encounters WHERE profile_id = ? AND document_id = ?`
     )
     .all(profileId, docId) as {
@@ -1066,6 +1067,7 @@ export function getReprocessSnapshot(
     class_code: string | null;
     reason: string | null;
     diagnoses: string | null;
+    diagnosis_ranks: string | null;
     external_id: string | null;
   }[];
   snap.encounters = encounters.map((e) =>
@@ -1076,6 +1078,7 @@ export function getReprocessSnapshot(
       class_code: e.class_code,
       reason: e.reason,
       diagnoses: e.diagnoses ?? "",
+      diagnosis_ranks: e.diagnosis_ranks,
       external_id: unscopeExternalId(e.external_id),
     })
   );
