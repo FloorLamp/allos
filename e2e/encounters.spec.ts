@@ -354,14 +354,25 @@ test.describe("Visit diagnoses — one finding, one chip (#2589)", () => {
   const CARRIER_DX =
     "Encounter of male for testing for genetic disease carrier status for procreative management";
   const CLAUSE_DX = "Type 2 diabetes mellitus - uncontrolled";
+  // Two DIFFERENT diseases whose names happen to end in the rank words. The display rule
+  // runs unconditionally on every stored summary, so if it read the suffix as a rank this
+  // visit would show one chip for two diagnoses — and the edit form, which stores its
+  // textarea verbatim, would disagree with the card.
+  const ETIOLOGY_PRIMARY = "Hyperparathyroidism - Primary";
+  const ETIOLOGY_SECONDARY = "Hyperparathyroidism - Secondary";
   let encounterId: number;
+  let etiologyEncounterId: number;
+
+  const ETIOLOGY_EXTERNAL_ID = "e2e-2589-visit-etiology";
 
   function cleanup() {
     const handle = new Database(DB_PATH);
     try {
-      handle
-        .prepare("DELETE FROM encounters WHERE external_id = ?")
-        .run(DX_EXTERNAL_ID);
+      const del = handle.prepare(
+        "DELETE FROM encounters WHERE external_id = ?"
+      );
+      del.run(DX_EXTERNAL_ID);
+      del.run(ETIOLOGY_EXTERNAL_ID);
     } finally {
       handle.close();
     }
@@ -372,17 +383,24 @@ test.describe("Visit diagnoses — one finding, one chip (#2589)", () => {
     const handle = new Database(DB_PATH);
     try {
       const date = frozenNow().toISOString().slice(0, 10);
-      const row = handle
-        .prepare(
-          `INSERT INTO encounters (profile_id, date, type, diagnoses, source, external_id)
+      const insert = handle.prepare(
+        `INSERT INTO encounters (profile_id, date, type, diagnoses, source, external_id)
            VALUES (1, ?, 'E2E 2589 Visit', ?, 'extracted', ?)`
-        )
-        .run(
+      );
+      encounterId = Number(
+        insert.run(
           date,
           `${CARRIER_DX}; ${CARRIER_DX} - Primary; ${CLAUSE_DX}`,
           DX_EXTERNAL_ID
-        );
-      encounterId = Number(row.lastInsertRowid);
+        ).lastInsertRowid
+      );
+      etiologyEncounterId = Number(
+        insert.run(
+          date,
+          `${ETIOLOGY_PRIMARY}; ${ETIOLOGY_SECONDARY}`,
+          ETIOLOGY_EXTERNAL_ID
+        ).lastInsertRowid
+      );
     } finally {
       handle.close();
     }
@@ -405,5 +423,20 @@ test.describe("Visit diagnoses — one finding, one chip (#2589)", () => {
     await expect(chips.filter({ hasText: "- Primary" })).toHaveCount(0);
     // The clause the closed qualifier list must never eat.
     await expect(chips.filter({ hasText: CLAUSE_DX })).toHaveCount(1);
+  });
+
+  test("two etiologies of one disease stay two chips", async ({ page }) => {
+    await page.goto(`/encounters/${etiologyEncounterId}`);
+    const chips = page
+      .getByRole("main")
+      .getByTestId("encounter-diagnoses")
+      .locator("span");
+
+    // No plain "Hyperparathyroidism" entry exists here, so nothing evidences a rank and
+    // both names must render whole. Collapsing them would tell the reader they have one
+    // condition when the record says two, with different causes and different treatment.
+    await expect(chips).toHaveCount(2);
+    await expect(chips.filter({ hasText: ETIOLOGY_PRIMARY })).toHaveCount(1);
+    await expect(chips.filter({ hasText: ETIOLOGY_SECONDARY })).toHaveCount(1);
   });
 });
