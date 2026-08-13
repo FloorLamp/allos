@@ -17,8 +17,13 @@ import {
   type IllnessTimelineEvent,
 } from "@/lib/illness-episode-format";
 import {
+  availableIllnessTimelineFilters,
+  defaultIllnessTimelineFilter,
   groupIllnessTimelineEvents,
+  ILLNESS_TIMELINE_MIN_CHIPS,
+  matchesIllnessTimelineFilter,
   type IllnessTimelineDisplayEvent,
+  type IllnessTimelineFilter,
 } from "@/lib/illness-timeline-view";
 import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import NotesText from "@/components/NotesText";
@@ -183,29 +188,6 @@ function dayLabel(
     : fmtDate(date, prefs);
 }
 
-type TimelineFilter =
-  "all" | "symptoms" | "temperature" | "medications" | "care";
-
-const TIMELINE_FILTERS: { value: TimelineFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "symptoms", label: "Symptoms" },
-  { value: "temperature", label: "Temperature" },
-  { value: "medications", label: "Meds" },
-  { value: "care", label: "Care" },
-];
-
-function matchesFilter(
-  event: IllnessTimelineDisplayEvent,
-  filter: TimelineFilter
-): boolean {
-  if (filter === "all") return true;
-  if (filter === "symptoms") return event.kind === "symptom";
-  if (filter === "temperature") return event.kind === "temperature";
-  if (filter === "medications")
-    return event.kind === "medication" || event.kind === "course";
-  return ["encounter", "appointment", "document"].includes(event.kind);
-}
-
 export default function EpisodeTimeline({
   episode,
   canEdit = false,
@@ -245,22 +227,40 @@ export default function EpisodeTimeline({
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<TimelineFilter>("all");
-  const [showEarlierHistory, setShowEarlierHistory] = useState(false);
-  const availableFilters = TIMELINE_FILTERS.filter(
-    ({ value }) =>
-      value === "all" ||
-      groups.some((group) =>
-        group.events.some((event) => matchesFilter(event, value))
-      )
+  // The chip the History OPENS on (#2612): "Illness" when hiding the routine
+  // supplement doses would remove more rows than it leaves, "All" as before
+  // otherwise. What it hides is the supplement-kind dose rows and ONLY those — the
+  // medicine given for the illness stays on screen, because that is the row a
+  // reader most needs. A pure decision over this episode's own ledger; see
+  // lib/illness-timeline-view.ts for the whole argument. Initial state only: a
+  // reader's own chip choice is never overwritten.
+  const [filter, setFilter] = useState<IllnessTimelineFilter>(() =>
+    defaultIllnessTimelineFilter(groups)
   );
-  const filteredGroups = groups
+  const [showEarlierHistory, setShowEarlierHistory] = useState(false);
+  const availableFilters = availableIllnessTimelineFilters(groups);
+  // The chip narrows the SCREEN, never the record. A filtered-out row is HIDDEN,
+  // not removed: it stays in the document under `hidden print:table-row`, comes
+  // back on the next chip tap, and prints — the same pattern the mobile
+  // earlier-days fold has always used one level up (`print:table-row-group`),
+  // because a printed illness record that silently drops the doses given is a worse
+  // artifact than a long one. Only rows the chip KEEPS are laid out, so the height
+  // the fold is about is genuinely gone.
+  const shownGroups = groups
     .map((group) => ({
-      ...group,
-      events: group.events.filter((event) => matchesFilter(event, filter)),
+      date: group.date,
+      shown: group.events.filter((event) =>
+        matchesIllnessTimelineFilter(event, filter)
+      ).length,
     }))
-    .filter((group) => group.events.length > 0);
-  const earlierGroupCount = Math.max(0, filteredGroups.length - 2);
+    .filter((group) => group.shown > 0);
+  const shownGroupDates = new Set(shownGroups.map((group) => group.date));
+  // Position among the SHOWN groups, so the "show N earlier days" fold counts the
+  // days the reader can actually see rather than the ones the chip hid.
+  const shownGroupIndex = new Map(
+    shownGroups.map((group, index) => [group.date, index])
+  );
+  const earlierGroupCount = Math.max(0, shownGroups.length - 2);
 
   if (eventCount === 0 && !actions && !tools) return null;
 
@@ -614,7 +614,7 @@ export default function EpisodeTimeline({
             </div>
           )}
 
-          {availableFilters.length > 2 && (
+          {availableFilters.length >= ILLNESS_TIMELINE_MIN_CHIPS && (
             <div
               role="group"
               aria-label="Filter illness history"
@@ -657,7 +657,7 @@ export default function EpisodeTimeline({
             </button>
           )}
 
-          {filteredGroups.length === 0 ? (
+          {shownGroups.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
               No {filter} events were recorded during this episode.
             </p>
@@ -683,19 +683,29 @@ export default function EpisodeTimeline({
                     )}
                   </tr>
                 </thead>
-                {filteredGroups.map((group, groupIndex) => {
+                {groups.map((group) => {
+                  const groupIndex = shownGroupIndex.get(group.date);
+                  // Hidden by the CHIP: still printed, never laid out on screen.
+                  const filteredOutGroup = !shownGroupDates.has(group.date);
                   const hiddenEarlierGroup =
-                    groupIndex < earlierGroupCount && !showEarlierHistory;
+                    groupIndex != null &&
+                    groupIndex < earlierGroupCount &&
+                    !showEarlierHistory;
                   return (
                     <tbody
                       key={group.date}
                       className={
-                        hiddenEarlierGroup
-                          ? "hidden sm:table-row-group print:table-row-group"
-                          : "block sm:table-row-group"
+                        filteredOutGroup
+                          ? "hidden print:table-row-group"
+                          : hiddenEarlierGroup
+                            ? "hidden sm:table-row-group print:table-row-group"
+                            : "block sm:table-row-group"
                       }
+                      data-filtered-out={filteredOutGroup ? "true" : "false"}
                       data-mobile-earlier={
-                        groupIndex < earlierGroupCount ? "true" : "false"
+                        groupIndex != null && groupIndex < earlierGroupCount
+                          ? "true"
+                          : "false"
                       }
                     >
                       <tr className="block sm:table-row">
@@ -709,11 +719,20 @@ export default function EpisodeTimeline({
                       </tr>
                       {group.events.map((event) => {
                         const key = keyFor(event);
+                        const filteredOut = !matchesIllnessTimelineFilter(
+                          event,
+                          filter
+                        );
                         return (
                           <Fragment key={key}>
                             <tr
                               data-testid={`illness-event-${event.kind}`}
-                              className="grid grid-cols-[4rem_minmax(0,1fr)_auto] gap-x-1.5 border-b border-black/5 py-2 sm:table-row sm:border-0 sm:py-0 dark:border-white/5"
+                              data-filtered-out={filteredOut ? "true" : "false"}
+                              className={
+                                filteredOut
+                                  ? "hidden border-b border-black/5 py-2 print:table-row dark:border-white/5"
+                                  : "grid grid-cols-[4rem_minmax(0,1fr)_auto] gap-x-1.5 border-b border-black/5 py-2 sm:table-row sm:border-0 sm:py-0 dark:border-white/5"
+                              }
                             >
                               <td className="row-span-2 block whitespace-nowrap px-2 align-top text-xs text-slate-500 sm:table-cell sm:px-0 sm:py-2 sm:pr-2 dark:text-slate-400">
                                 {/* A dose clock from the record chain is marked in

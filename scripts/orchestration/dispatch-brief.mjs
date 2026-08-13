@@ -458,6 +458,42 @@ function cmdList() {
 // clusters once built theirs OUTSIDE $SCRATCH and were invisible to every
 // path-glob check. `git worktree list --porcelain` knows every worktree this
 // repo has, wherever it is.
+// "Has anybody touched this tree lately?" — the question the dirty check cannot
+// ask. Ten minutes is chosen to be longer than a gate run's quiet stretch (a
+// `next build` writes continuously; the pure tier does not) and far shorter than
+// the stall threshold, so it separates "mid-task and quiet" from "gone".
+//
+// Walks the tree's own files, skipping node_modules and .git — those are hard
+// links from the parent checkout and a shared .git is written by every OTHER
+// worktree's commits, which would make every tree look permanently busy.
+const RECENT_WRITE_MS = 10 * 60_000;
+
+function worktreeIdleMs(dir) {
+  let newest = 0;
+  const walk = (d, depth) => {
+    if (depth > 4) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === "node_modules" || e.name === ".git") continue;
+      const p = path.join(d, e.name);
+      try {
+        const st = fs.statSync(p);
+        if (st.mtimeMs > newest) newest = st.mtimeMs;
+      } catch {
+        continue;
+      }
+      if (e.isDirectory()) walk(p, depth + 1);
+    }
+  };
+  walk(dir, 0);
+  return newest === 0 ? null : Date.now() - newest;
+}
+
 function worktreeForBranch(branch) {
   const out = git("worktree list --porcelain", { allowFail: true });
   if (!out) return null;
@@ -502,6 +538,41 @@ function cmdDone(argv) {
         `REFUSED: ${wtPath} is DIRTY (${dirty.split("\n").length} entries) and nobody would be
 coming back for it after done. Rescue first (commit as explicitly-labelled WIP,
 push), or pass --keep to close the ledger entry without touching the tree.`
+      );
+      process.exit(1);
+    }
+
+    // A CLEAN TREE DOES NOT MEAN THE AGENT IS FINISHED. It means everything is
+    // pushed — which is exactly what a diligent agent's tree looks like in the
+    // middle of its work, right after a checkpoint push.
+    //
+    // I closed a cluster on that inference. Its PR was green, its tree was clean,
+    // its dispatch had tripped the stall threshold, and its report had not
+    // arrived — so I ran `done`, which since #2649 REMOVES the worktree. The
+    // agent was still running: it was isolating a suspected regression, and the
+    // tree went out from under it mid-experiment. Nothing was lost, because
+    // everything was pushed; what was destroyed was work-in-progress state and
+    // about twenty minutes. Then I did it a second time to the fresh worktree it
+    // made to recover.
+    //
+    // The dirty check above cannot catch this — it fires on the OPPOSITE
+    // condition. So ask the question the dirty check does not: has anything in
+    // this tree been WRITTEN recently? A build directory, a test-results dump, a
+    // scratch file. Recent writes mean somebody is still working here, whatever
+    // the ledger's age column says about a stall.
+    //
+    // Refuse rather than warn, for the same reason the port guard refuses: a
+    // warning arrives after the only moment it could have helped. `--keep` still
+    // closes the ledger entry without touching the tree, which is the right
+    // command when an agent is genuinely finished but you want its worktree.
+    const idleMs = worktreeIdleMs(wtPath);
+    if (idleMs !== null && idleMs < RECENT_WRITE_MS) {
+      console.error(
+        `REFUSED: ${wtPath} was written ${Math.round(idleMs / 1000)}s ago, so an agent is
+probably still working in it — a clean tree means "everything is pushed", not
+"nobody is here". Removing it now takes the tree out from under a running agent
+mid-experiment (this has happened). Wait for the agent's report, or pass --keep
+to close the ledger entry and leave the tree alone.`
       );
       process.exit(1);
     }

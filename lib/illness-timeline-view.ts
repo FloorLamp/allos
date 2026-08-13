@@ -61,6 +61,131 @@ export interface IllnessTimelineDayGroup {
   events: IllnessTimelineDisplayEvent[];
 }
 
+// ── The History chips, and which one the page OPENS on (#2612) ───────────────
+//
+// WHAT THIS DOES, PLAINLY. It adds one chip and moves the page's entry point onto
+// it in one narrow case. When it leads, the routine supplement dose rows are
+// HIDDEN — `hidden print:table-row`, still in the document, back after one tap on
+// any other chip, and present in full under print. Hidden-behind-a-tap is a very
+// different thing from removed, but it is not "nothing hidden", and what is hidden
+// has to be the right set.
+//
+// WHAT IS HIDDEN, AND WHY THAT SET. `assembleIllnessEpisode` gathers every
+// `may`-obligation intake logged inside the window — deliberately, since that is
+// where PRN illness care lives. On a profile whose routine stack is ALSO filed
+// `may` (creatine, whey, iron, a calcium tablet) that is 8–10 identically shaped
+// dose rows a day against 2–5 symptom and temperature rows, so the page opened on
+// the routine ledger and the illness story scrolled off the phone.
+//
+// But #2612's complaint is precise: the default "makes Creatine and Whey Protein
+// look like illness care". A 200 mg ibuprofen during a fever IS illness care, and
+// arguably the most important row on the page — so an Illness view that dropped
+// every intake row would throw the medicine out with the stack. The split it uses
+// instead is the item's clinical `kind`, carried onto the row by the gather:
+// supplements are the routine stack, medications are the care. That is the
+// "kind-based" half of what #2612's own fix direction named, it needs no new data,
+// and it is deliberately NOT the fuller episode-relevance model that issue defers
+// to the owner (course overlap, illness-time inference, the chart lane and the
+// share payload all stay untouched).
+//
+// So the Illness view is: symptoms, temperatures, the medicine given, and a
+// medication course started in the window. It hides exactly one thing — the
+// supplement-kind dose rows — and it leads only when hiding them is worth it:
+//
+//   • the chip is offered only when it is genuinely wider than the single chips it
+//     unions, so no episode gets two chips that select the same rows;
+//   • it LEADS only when it would hide more rows than it shows, which is the
+//     dilution the issue measured; otherwise the page opens on "All" as before;
+//   • it never leads when the chip strip is not rendered, because a default the
+//     reader cannot undo is a trap rather than a default;
+//   • there is no single-chip fallback. An episode with no temperature could only
+//     narrow to "Symptoms", which hides the medicine — the exact mistake above —
+//     so it stays on "All" and keeps the legend fix's height win alone.
+export type IllnessTimelineFilter =
+  "all" | "illness" | "symptoms" | "temperature" | "medications" | "care";
+
+export const ILLNESS_TIMELINE_FILTERS: readonly {
+  value: IllnessTimelineFilter;
+  label: string;
+}[] = [
+  { value: "all", label: "All" },
+  { value: "illness", label: "Illness" },
+  { value: "symptoms", label: "Symptoms" },
+  { value: "temperature", label: "Temperature" },
+  { value: "medications", label: "Meds" },
+  { value: "care", label: "Care" },
+];
+
+export function matchesIllnessTimelineFilter(
+  event: IllnessTimelineDisplayEvent,
+  filter: IllnessTimelineFilter
+): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "illness":
+      // Everything the illness story is made of, MINUS the routine supplement
+      // stack. A dose row with no declared kind is kept: the hiding rule has to
+      // fail towards showing the medicine.
+      return (
+        event.kind === "symptom" ||
+        event.kind === "temperature" ||
+        event.kind === "course" ||
+        (event.kind === "medication" && event.itemKind !== "supplement")
+      );
+    case "symptoms":
+      return event.kind === "symptom";
+    case "temperature":
+      return event.kind === "temperature";
+    case "medications":
+      return event.kind === "medication" || event.kind === "course";
+    case "care":
+      return ["encounter", "appointment", "document"].includes(event.kind);
+  }
+}
+
+// The chips this episode's ledger can actually offer. "All" always; a narrowing
+// chip only when it selects something; `illness` only when it is genuinely wider
+// than the single chips it unions — both symptom AND temperature rows present —
+// so no episode gets two chips that select the same rows.
+export function availableIllnessTimelineFilters(
+  groups: readonly IllnessTimelineDayGroup[]
+): { value: IllnessTimelineFilter; label: string }[] {
+  const events = groups.flatMap((group) => group.events);
+  const has = (filter: IllnessTimelineFilter) =>
+    events.some((event) => matchesIllnessTimelineFilter(event, filter));
+  return ILLNESS_TIMELINE_FILTERS.filter(({ value }) => {
+    if (value === "all") return true;
+    if (value === "illness") return has("symptoms") && has("temperature");
+    return has(value);
+  }).map((option) => ({ ...option }));
+}
+
+// Below this many offered chips the strip does not render at all ("All" plus one
+// other chip select the same rows), so there would be no way back from a narrowed
+// default. Shared with the component so the two cannot disagree.
+export const ILLNESS_TIMELINE_MIN_CHIPS = 3;
+
+export function defaultIllnessTimelineFilter(
+  groups: readonly IllnessTimelineDayGroup[]
+): IllnessTimelineFilter {
+  const available = availableIllnessTimelineFilters(groups);
+  if (available.length < ILLNESS_TIMELINE_MIN_CHIPS) return "all";
+  // No single-chip fallback: "Symptoms" or "Temperature" alone would hide the
+  // medicine given for the illness, which is the mistake this whole decision is
+  // about. Only the Illness view is ever led with.
+  if (!available.some((option) => option.value === "illness")) return "all";
+  const events = groups.flatMap((group) => group.events);
+  const shown = events.filter((event) =>
+    matchesIllnessTimelineFilter(event, "illness")
+  ).length;
+  // Lead with it only when it earns the narrowing: it must hide MORE rows than it
+  // shows. On the census profile that is ~38 routine supplement doses against ~27
+  // symptom, temperature and ibuprofen rows; on an episode whose doses are all
+  // care, it hides nothing and the page opens on "All" exactly as before.
+  return events.length - shown > shown ? "illness" : "all";
+}
+
 export function illnessCareTimelineEvents(
   care: EpisodeInRangeEvents
 ): IllnessCareTimelineEvent[] {

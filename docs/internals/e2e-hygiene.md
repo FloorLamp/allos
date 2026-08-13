@@ -115,6 +115,43 @@ mechanically-detectable settle anti-patterns per file and fails a NEW one:
   `topass-ok: <why>` comment on the line where `.toPass(` appears (usually the
   closing `}).toPass({...})`), mirroring `first-ok`. Existing offenders are
   frozen per-file, immutable-downward.
+- a branch on `process.env.CI` with no written reason — frozen at ZERO, no
+  allowlist. See "The runner is not a property of the app" below.
+
+### The runner is not a property of the app (`process.env.CI`, #2645/#2648)
+
+`process.env.CI` reads as _"is this a real run"_, and that reading is what made
+four sites in this suite the same category error: the variable standing in for
+**"is this a production build"**. It never was one. `e2e/fixtures.ts` spawns
+every worker's `next start` with `NODE_ENV: "production"` unconditionally, so
+since #1538 the non-CI arm has been unreachable and the CI arm has been the only
+thing that ever ran. "Both runs stay green" had quietly become "CI stays green",
+which is the silent, asymmetric kind of decay: an assertion that stops holding
+locally costs nothing visible, so it accumulates.
+
+What the four turned out to be:
+
+| site                       | gated                                         | verdict                                                                                                |
+| -------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `security-headers.spec.ts` | a loosened `/no-store\|no-cache/` alternative | production-ness → removed (#2645)                                                                      |
+| `illness-episode.spec.ts`  | the same loosened alternative                 | production-ness → removed (#2648)                                                                      |
+| `emergency-card.spec.ts`   | the whole genuine-offline block               | production-ness (a stale "local `next dev` unregisters the service worker" premise) → un-gated (#2648) |
+| `global-setup.ts`          | whether to run `npm run build`                | genuinely runner-only → kept, marked                                                                   |
+
+A cache header is a property of the RESPONSE. A live service worker is a
+property of the BUILD — and `ServiceWorkerRegister` only unregisters when
+`NODE_ENV !== "production"`, which the harness never is. Neither is a property
+of the runner, so neither may be gated on one.
+
+The rule the scan enforces: a spec (or any `e2e/*.ts`) may branch on
+`process.env.CI` only with a `ci-ok: <why>` comment **naming the runner-only
+fact** — an artifact path, a service only the runner has, who owns a build step.
+Unlike the other escape markers this one is accepted on the branch line or on
+either line touching it, because `if (process.env.CI) {` is too short to carry a
+reason worth reading and a reason crammed onto it becomes a rubber stamp. There
+is no per-file allowlist: the honest answer is a written reason or a deleted
+branch. Prose that merely names the variable — a comment recording why a branch
+was removed — is not a branch and is not counted.
 
 ### The bounded absence-of-effect wait (the one sanctioned `waitForTimeout`)
 
@@ -169,6 +206,22 @@ legitimate — mark that line with a same-line `first-ok: <why>` comment (the
 preferred fix when migrating an offender is an exact locator (testid, unique
 marker text the spec planted) or a dedicated fixture login
 (`e2e/fixture-logins.ts`), not a marker.
+
+**The axis a `first-ok` must argue is the PAGE, not the profile (#2631).**
+`followLink` RE-EVALUATES its locator on every retry, so a locator written as a
+bare name is evaluated against whatever page is loaded at that moment — and
+under contention that can be the DESTINATION, whose first click has landed but
+whose URL has not committed yet. `visit-links.spec.ts` handed it
+`getByRole("link", { name: /sinus infection/i }).first()` justified as _"the
+dedicated fixture profile owns the only sinus-infection episode"_ — true, and
+about the wrong thing. The episode cockpit it navigates TO renders the linked
+encounter as a timeline care event whose link text is the encounter's `reason`
+("Sinus infection"), pointing at `/encounters/<id>`; the retry resolved there
+and the test ended up two pages away, reported as a bare URL mismatch. Pin the
+locator to something that exists only on the page being clicked (here the row's
+`episode-index-row` testid) and write the note about how many elements match
+**on that page**. A justification about which profile owns the fixture answers a
+question no `.first()` was ever asking.
 
 ### The family-create freeze + `e2e/family-helpers.ts` (phase-2 create-member hardening)
 
@@ -568,6 +621,20 @@ a click that fires NO action (a client toggle, an `<a href>` nav) there is no
 POST to await and it times out — that's what `followLink`/`hydratedClick`/`expect`
 are for. Its timeout message says so explicitly, because that timeout almost
 always means the CALL SITE is wrong rather than the app being slow (#1952).
+
+**Opening a menu: wait on the MENU, not on the item (#2632).** `OverflowMenu`
+portals its panel to `<body>` and mounts it only while `open`, so an item inside
+it has no existence until the toggle lands. A helper that clicks the ⋯ trigger
+and then waits for the ITEM therefore cannot tell _"the menu never opened"_ from
+_"the item is slow"_ — both surface as one 30 s `waiting for getByTestId(...)`
+with **no actionability lines after it**, which is precisely how
+`wellness-practices.spec.ts` failed. (That absence is also the diagnosis: a
+covered element logs `intercepts pointer events`; an element that never resolved
+logs nothing. Read the call log before reaching for the `menu-confirm-cancel`
+backdrop bug.) Drive the trigger with `hydratedClick` — it is a toggle, so a
+retry loop would close what it opened — and then assert the menu's OPEN state
+(`page.getByRole("menu")`, reached from the page because the panel is portaled)
+before clicking the item.
 
 ### The pre-hydration ACTION-click swallow (`settledClick`, #2599)
 

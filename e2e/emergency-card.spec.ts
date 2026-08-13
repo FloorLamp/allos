@@ -123,30 +123,36 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   await page.getByTestId("offline-view-emergency").click();
   await expect(page.getByTestId("emergency-card")).toContainText("Peanuts");
 
-  // 4b. Genuine offline render. Only the CI harness boots a production build with a
-  //     live service worker (local `next dev` unregisters it), so gate on CI rather
-  //     than sniffing for a controller — dev SW state is unreliable and would hang
-  //     an offline navigation. Offline, a failed navigation is served the precached
+  // 4b. Genuine offline render. Offline, a failed navigation is served the precached
   //     /offline shell, which reads the cached card from localStorage — no network,
   //     still readable.
-  if (process.env.CI) {
-    await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
-      timeout: 15_000,
-    });
-    await context.setOffline(true);
-    try {
-      await page.goto("/profile");
-      await page.getByTestId("offline-view-emergency").click();
-      await expect(page.getByTestId("emergency-card")).toContainText("Peanuts");
-    } finally {
-      await context.setOffline(false);
-    }
+  //
+  //     This block used to sit behind `if (process.env.CI)`, on the premise that
+  //     "only the CI harness boots a production build with a live service worker
+  //     (local `next dev` unregisters it)". That premise died with #1538: every
+  //     worker's server is `next start` off one shared production build, with
+  //     NODE_ENV=production spawned unconditionally (e2e/fixtures.ts), and
+  //     ServiceWorkerRegister only unregisters when NODE_ENV !== "production". So
+  //     the local harness has the same live worker CI does, and the gate meant the
+  //     single most important assertion in this spec — the card is readable with no
+  //     network — ran nowhere but CI (#2645/#2648). The controller wait below is the
+  //     real precondition, and it states itself.
+  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
+    timeout: 15_000,
+  });
+  await context.setOffline(true);
+  try {
+    await page.goto("/profile");
+    await page.getByTestId("offline-view-emergency").click();
+    await expect(page.getByTestId("emergency-card")).toContainText("Peanuts");
+  } finally {
+    await context.setOffline(false);
   }
 
   // 4c. Toggling OFF on the Passport hides the card AND clears the offline copy on
   //     this device — all without leaving the page (#1087). Re-enable afterward so
   //     the logout-clears-it contract below still starts from a cached copy. Route
-  //     via "/" first: the CI offline block above may leave the document on the
+  //     via "/" first: the offline block above may leave the document on the
   //     /profile offline shell, so a bare goto("/profile#emergency") would be a
   //     hash-only change (no reload) and never fetch the real page + its toggle.
   await page.goto("/");

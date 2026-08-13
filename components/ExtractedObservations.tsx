@@ -8,6 +8,7 @@ import { groupContiguous } from "@/lib/table-sort";
 import { observationNameLink } from "@/lib/import-browser";
 import { triageRowId } from "@/lib/confidence-triage";
 import { EmptyState, MedicalValue } from "./ui";
+import { ResponsiveTable, Td } from "./ResponsiveTable";
 import { ConfidenceRowNote } from "./ConfidenceBadge";
 import { TRIAGE_FOCUS_ROW } from "./TriageFocus";
 import NotesText from "./NotesText";
@@ -47,7 +48,7 @@ function ReadonlyObservationRow({
       data-focused={focused ? "true" : undefined}
       className={`border-b border-black/5 dark:border-white/10 ${focused ? TRIAGE_FOCUS_ROW : ""}`}
     >
-      <td className="td font-medium">
+      <Td slot="title" className="font-medium">
         {nameLink ? (
           <Link
             href={nameLink.href}
@@ -74,14 +75,23 @@ function ReadonlyObservationRow({
             )}
           </div>
         ) : null}
-      </td>
-      <td className="td">
+      </Td>
+      {/* Self-describing headline — a reading with its unit and flag needs no
+          "VALUE" label above it (the Td label rule). */}
+      <Td slot="value">
         <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
-      </td>
-      <td className="td text-slate-500 dark:text-slate-400">
+      </Td>
+      <Td
+        slot="meta"
+        label="Notes"
+        empty={!r.notes?.trim()}
+        className="text-slate-500 dark:text-slate-400"
+      >
         <NotesText notes={r.notes} />
-      </td>
-      <td className="td whitespace-nowrap">{r.date}</td>
+      </Td>
+      <Td slot="meta" label="Date" className="whitespace-nowrap">
+        {r.date}
+      </Td>
     </tr>
   );
 }
@@ -188,8 +198,16 @@ export default function ExtractedObservations({
             <EmptyState message={emptyMessage} />
           </div>
         ) : (
-          <div className="mt-3 max-h-[70vh] overflow-auto">
-            <table className="w-full">
+          <div
+            className="mt-3 max-h-[70vh] overflow-auto"
+            data-testid="extracted-observations-scroll"
+          >
+            {/* Stacked cards below `sm` (#1426's shared primitive, adopted here by
+                #2614). The analyte grid is eight columns wide; on a phone that cut
+                the header to "REFER|" and the reference bands to "3.5-5.|" against
+                the card edge, reachable only by swiping — on the very surface an
+                import is TRIAGED from. Nothing changes at `sm` and up. */}
+            <ResponsiveTable className="w-full">
               <thead>
                 <tr className="border-b border-black/5 dark:border-white/10">
                   <SortableHeader
@@ -259,7 +277,7 @@ export default function ExtractedObservations({
                         />
                       ))}
               </tbody>
-            </table>
+            </ResponsiveTable>
           </div>
         )}
 

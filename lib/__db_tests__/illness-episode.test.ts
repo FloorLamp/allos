@@ -176,6 +176,12 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
       "Children's oral suspension (100 mg / 5 mL)"
     );
     expect(a.medications[0].count).toBe(3);
+    // The item's clinical KIND rides along (#2612). The gather is already narrowed
+    // to `obligation = 'may'`, so inside that set this is what separates "the
+    // medicine given for the illness" from "the routine supplement stack, which is
+    // filed `may` too" — the split the History's Illness view reads to decide what
+    // it may hide. Only the SQL can prove the column is selected and mapped.
+    expect(a.medications[0].kind).toBe("medication");
     expect(a.totalAdministrations).toBe(3);
     expect(a.medications[0].administrations.map((x) => x.amount)).toEqual([
       "200 mg",
