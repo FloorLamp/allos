@@ -1,14 +1,13 @@
 # Orchestrating development on FloorLamp/allos
 
-Status: **living** · process documentation for agent-orchestrated development
-sessions (not app behavior)
+Status: **living** · process rules for agent-orchestrated development sessions
+(not app behavior)
 
-The operational runbook for a session that orchestrates development on this
-repo: triage issues, dispatch coding agents, review every PR, own e2e, merge.
-This file states the RULES; the incidents that bought them live in
-`docs/orchestration-incidents.md` (cited below as _incidents: §section_).
-Nothing here is theory — each rule cost time once, and every session so far has
-held zero reverts.
+Rules only, short bullets — the incidents that bought them live in
+`docs/orchestration-incidents.md` (cited as _incidents: §section_).
+
+`lib/__tests__/runbook-brevity-scan.test.ts` enforces the shape: move any
+narrative to _incidents_ in the same change, never grow a bullet past it.
 
 ## Operating contract
 
@@ -19,70 +18,34 @@ The standing directive (restartable anytime via `/loop`):
 > on e2e; only you run e2e tests; issues that aren't e2e can parallelize more;
 > review all prs
 
-What that means in practice:
-
-- **You never write feature code.** You cluster, dispatch, review, diagnose e2e,
-  merge, and clean up. The only code you write directly is e2e spec fixes —
-  because you own the only local e2e environment.
-- **P0/P1 bugs before features** (owner, 2026-07-26). A P0/P1 bug preempts
-  feature work the moment it appears. P2/P3 bugs are ordinary queue members —
-  cluster them with adjacent work and schedule them against features on value.
-  An audit dump preempts only for its P0/P1 items.
-- **Every PR gets a real review** before merge: full diff read (or focused reads
-  - test-surface verification for >1,500-line refactors), posted as a COMMENT
-    review via REST (APPROVE is rejected for this session type).
-- **NEVER submit `REQUEST_CHANGES`. It is a ONE-WAY DOOR for this session type.**
-  A changes-requested review blocks the merge until it is APPROVED or DISMISSED,
-  and this session can do neither — both come back "not permitted for this
-  session type", through MCP and REST alike. `main`'s ruleset makes it
-  unrecoverable rather than merely awkward: `required_approving_review_count: 0`
-  (so nothing needs approving — the block is purely the outstanding review) and
-  `dismiss_stale_reviews_on_push: false` (so it survives every later commit,
-  including the one that fixes the finding). The author cannot clear it either.
-  Only the human can, by hand, on a PR that is otherwise green and finished.
-  Done on #2692 at 12:15Z: the finding was real and the fix landed, and the PR
-  still sat unmergeable behind a verdict nobody in the loop could lift. Routing
-  around it by flipping the ruleset would be worse — that setting exists to keep
-  a genuine blocking review blocking.
-  A HOLD is expressed the same way every other one is: post the finding as a
-  COMMENT review, apply `parked`, and say plainly at the top that the merge is
-  held pending it. That blocks nothing mechanically, which is correct — holding
-  is the orchestrator's own action, the same rule `recommend-hold` already
-  follows.
-- **Merges are yours**, squash only, via `mcp__github__merge_pull_request` —
-  and once the merge-queue ruleset is applied, via the queue instead (see
-  **The merge queue**). Draft→ready goes through MCP `update_pull_request`
-  (REST PATCH can't flip draft). On a rate-limit rejection, wait out the reset
-  and batch; never retry in a loop.
-- **GraphQL is the scarce bucket, not REST** (measured 2026-08-12). "Prefer
-  REST over MCP" is right but names the wrong limit: MCP _writes_ — reviews,
-  merges, issue edits, issue comments — are GraphQL, and that pool is **5,000**
-  against REST core's **15,000**. A review POST failed mid-session at
-  `graphql 0/5000` while `core` sat untouched at `15000/15000`; roughly twenty
-  merges plus one sweep's ten issue comments drained it inside an hour. So:
-  REST reads are effectively free and agents should use them (briefs already
-  do); GraphQL writes are rationed, and a merge run plus bulk issue commenting
-  is what exhausts them. Check with
-  `curl -sS -H "Authorization: Bearer $TOKEN" https://api.github.com/rate_limit`
-  and read the `graphql` resource, not `core` — `core` will look fine.
+- **You never write feature code** — cluster, dispatch, review, diagnose e2e,
+  merge, clean up. Sole exception: e2e spec fixes (you own the only local e2e
+  environment).
+- **P0/P1 bugs preempt features** (owner, 2026-07-26); P2/P3 are ordinary
+  queue members. An audit dump preempts only for its P0/P1 items.
+- **Every PR gets a real review**: full diff read (focused reads +
+  test-surface verification past ~1,500 lines), posted as a COMMENT review
+  via REST.
+- **Never submit `REQUEST_CHANGES` or `APPROVE`** — the first is unliftable by
+  this session type, the second refused (_incidents: §The REQUEST_CHANGES
+  one-way door_). A hold = COMMENT review + `parked` + a plain statement that
+  the merge waits.
+- **Merges are yours**, squash only, via `mcp__github__merge_pull_request`.
+  Draft→ready via MCP `update_pull_request` (REST PATCH can't flip draft). On
+  a rate-limit rejection, wait out the reset and batch; never retry in a loop.
+- **GraphQL is the scarce bucket** — MCP writes ride a 5,000/h pool; REST
+  reads are effectively free. Check `/rate_limit`'s `graphql` resource, not
+  `core` (_incidents: §GraphQL is the scarce bucket_).
 - **Strategic items wait for the owner** (integrations, mobile shell, IA
-  decisions). Never start them unprompted; list them in status reports.
-- **An idle pipeline with work available is an ERROR, and dispatch is the
-  default state** (owner, 2026-08-12). Never ask permission to relaunch, resume
-  or refill — the queue and the caps already encode what may run. Ask only
-  about things the runbook genuinely does not decide: a product judgement, an
-  owner-authored PR, a scope grown past its brief. At a check-in with nothing
-  to review and a free slot, DISPATCH, then report what you dispatched.
-  "Nothing to do" is a conclusion the orchestrator is almost never entitled to
-  reach while the backlog is non-empty.
+  decisions); list them in status reports, never start them.
+- **Dispatch is the default state** (owner, 2026-08-12): an idle pipeline with
+  work available is an ERROR. Never ask permission to relaunch, resume or
+  refill; ask only what the runbook genuinely does not decide.
 
 ## Tooling — run the script, don't re-derive the rule
 
-Prose rules get walked past (_incidents: §The three signals read literally,
-§Process drift_), and every documented dispatch-template drift was a hand-fill
-error. So every rule in this file that could become a script is one, and when a
-rule has a script, **running the script IS the rule**; if prose and script ever
-disagree, fix the script in the same change, never work around it.
+Every rule that can be a script is one, and **running the script IS the
+rule**; if they disagree, fix the script (_incidents: §Process drift_).
 
 | Script                                               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -98,30 +61,21 @@ disagree, fix the script in the same change, never work around it.
 
 ## Labels — the queue's interface
 
-Every issue carries a domain label and a priority (P0–P3; the semantics live in
-the label descriptions themselves) or `parked`. `lib`/`ui` are secondary
-location labels, never the whole story. Three labels route HUMAN attention:
+Every issue: a domain label plus a priority (P0–P3; semantics live in the
+label descriptions) or `parked`. `lib`/`ui` are secondary location labels.
 
 - **`needs-human`** — an agent left a SPECIFIC question only a human can
-  answer, stated on the issue/PR. Apply the label AND assign the owner: the
-  assignment reaches their inbox, the label makes the set queryable. Every
-  generated brief asks agents to return OPEN QUESTIONS as a labelled list; the
-  orchestrator converts that list to `needs-human` the same day. Distinct
-  from `parked` (work not started by decision) — needs-human work is done or
-  in flight, and one answer unblocks it. The RESOLUTION half is the
-  `.claude/skills/needs-human` skill, run in an interactive session with the
-  owner: it premise-audits each question against current main, checks
-  ripeness, asks in batched recommendation-first questions, records the
-  ruling on the issue body (superseded prose struck inline), then un-labels,
-  un-assigns, and routes — back to the priority queue, or to merge when the
-  answer was a merge gate. An unanswered question keeps its label; silence is
-  not consent.
-- **`recommend-adopt` / `recommend-hold`** — an evaluation's verdict, with
-  the evidence in the eval comment. A verdict closes its own loop (owner,
-  2026-08-13): `recommend-hold` pairs with `parked` (revisit trigger in the
-  comment), `recommend-adopt` means the orchestrator merges through its normal
-  review flow. Neither gets `needs-human` — that pairing is only for an eval
-  that cannot reach a verdict, stated as the specific question.
+  answer, stated on the issue/PR. Apply the label AND assign the owner.
+  Distinct from `parked`: needs-human work is done or in flight, and one
+  answer unblocks it.
+- Briefs require OPEN QUESTIONS as a labelled list; the orchestrator converts
+  it to `needs-human` the same day. Resolution is the
+  `.claude/skills/needs-human` skill, run with the owner present; an
+  unanswered question keeps its label — silence is not consent.
+- **`recommend-adopt` / `recommend-hold`** — an evaluation's verdict, evidence
+  in the eval comment; a verdict closes its own loop (owner, 2026-08-13).
+  Hold pairs with `parked` (revisit trigger in the comment); adopt = the
+  orchestrator merges. `needs-human` only when no verdict was reachable.
 
 ## Environment facts (verify before trusting; the volatile ones say so)
 
@@ -142,42 +96,33 @@ location labels, never the whole story. Three labels route HUMAN attention:
 
 ## Restarts, credentials, and dead-looking agents
 
-Managed containers restart without warning, killing every background task,
-poll and in-flight agent call. Detection is BY STATE, never by liveness — a
-canary process structurally cannot report the restart that kills it
-(_incidents: §The canary that couldn't_). The rules:
+Containers restart without warning, killing every background task and agent
+call. Detect BY STATE, never liveness (_incidents: §The canary that couldn't_).
 
-- **`scripts/orchestrator-checkin.sh` opens every check-in.** It compares the
-  disk-persisted boot-id, classifies worktrees against `$SCRATCH/.roster`
-  (dirty + live agent = in progress; dirty + no agent = rescue NOW), and
-  restamps last. Keep the roster current at dispatch time — the brief
-  generator writes it; it is the only copy of the in-flight roster that
+- **`scripts/orchestrator-checkin.sh` opens every check-in** — boot-id,
+  worktrees vs `$SCRATCH/.roster` (dirty + no live agent = rescue NOW). Keep
+  the roster current at dispatch; it is the only in-flight state that
   outlives you.
-- **"Was it merged" is never `merge-base --is-ancestor`** under squash-merges —
-  the predicate can only answer "no". The signal is whether the branch was
-  ever PUSHED (tracking config survives upstream deletion).
-- **Agents push after every meaningful step** — the brief states the gate as a
-  property of the REMOTE: the branch must exist there at the latest commit.
-  Committing survives the agent; only pushing survives the container.
-- **No background-run + poll inside agents** — a backgrounded gate's completion
-  event dies with the container. Foreground ALL gates; every wait is one
-  blocking Bash call.
-- **The restart drill:** assume every agent is dead; snapshot each worktree;
-  resume each agent via `SendMessage` with a precise state summary; the
-  check-in script restamps. Resumed agents recover cleanly nearly every time —
-  killing and redispatching is almost never necessary.
-- **A restore can time-warp your local view** — checkout, `origin/main` (the
-  git proxy serves a stale mirror), and the task list can all revert together,
-  reading exactly like a force-push. Before concluding ANY rollback:
-  `GET /repos/OWNER/REPO/branches/main` via api.github.com; GitHub is the only
-  authoritative view.
-- **Prove an alarm can still fire** after any change that makes a monitor
-  quieter: create a worktree that deserves the alarm, confirm, delete it.
+- **"Was it merged" is never `merge-base --is-ancestor`** under squash-merges
+  (it can only answer "no"). The signal: was the branch ever PUSHED.
+- **Agents push after every meaningful step** — the gate is a property of the
+  REMOTE: the branch exists there at the latest commit. Only pushing survives
+  the container.
+- **No background-run + poll inside agents** — completion events die with the
+  container. Foreground ALL gates; every wait is one blocking Bash call.
+- **The restart drill**: assume every agent dead; snapshot each worktree;
+  resume each via `SendMessage` with a precise state summary. Resumed agents
+  recover cleanly nearly every time.
+- **A restore can time-warp your local view** — checkout, `origin/main` and
+  task list can revert together (_incidents: §Assorted receipts_). Before
+  concluding rollback: `GET /branches/main` on api.github.com.
+- **Prove an alarm can still fire** after any change that quiets a monitor:
+  create a worktree that deserves it, confirm, delete it.
 
 ### The three agent signals you are forbidden to read literally
 
-Read this before concluding ANYTHING about a running agent (_incidents: §The
-three signals read literally_ — ~27 agent-hours were lost to reading them).
+Read before concluding ANYTHING about a running agent (_incidents: §The three
+signals read literally_).
 
 | Signal                                     | What it looks like       | What it actually means                                                                                                    | REQUIRED action                                                                                                                                           |
 | ------------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -185,14 +130,14 @@ three signals read literally_ — ~27 agent-hours were lost to reading them).
 | Transcript **mtime** is recent             | The agent is working     | **NOTHING.** A blocked agent is appended to like a working one, and a reclaim's own bookkeeping touches the file.         | Never cite mtime as liveness. Compare transcript BYTES and check the worktree.                                                                            |
 | Commits exist in the worktree              | The agent is progressing | **NOTHING on its own.** They can all be from the first ten minutes.                                                       | `git log -1 --pretty=%cr`. Commits older than the last check-in = no progress since.                                                                      |
 
-Two or more agents dying at once, at a similar age, with no owner message, is a
-reclaim — never two coincidental user stops. Transient API errors (529, 5xx)
-kill subagents the same way; same resume drill.
+- Two+ agents dying at once at similar age, no owner message = a reclaim,
+  never coincidental stops. Transient API 5xx kills subagents the same way —
+  same resume drill.
 
 ### The preserve-first drill (BEFORE diagnosing or reporting)
 
-An agent's commits are **not** safe; only pushed refs are. When any agent
-stops, is reclaimed, or is suspected stalled:
+An agent's commits are NOT safe; only pushed refs are. When any agent stops,
+is reclaimed, or is suspected stalled:
 
 ```
 cd $SCRATCH/wt-<x>
@@ -201,16 +146,15 @@ git add -A && git commit -m "WIP checkpoint: ... NOT gate-verified"
 git push -u origin HEAD:<its-branch>
 ```
 
-Push first, ask questions after. Label an orchestrator-made WIP commit as
-**unverified**, and tell whoever resumes that you made it.
+- Push first, ask questions after. Label an orchestrator-made WIP commit
+  **unverified**, and tell whoever resumes that you made it.
 
 ### Credential loss — the one-call fix
 
-A restart can wipe `$GH_TOKEN`/`$GITHUB_TOKEN` AND the git proxy's push
-credentials while everything else keeps working, and it hides well
-(_incidents: §Credential loss_). **The fix is one call**: `add_repo` with
-`access: "push"` — it re-mints even when it answers `already_present`. Verify
-with `git push --dry-run origin <branch>`.
+- A restart can wipe both token vars AND the proxy's push credentials while
+  reads keep working (_incidents: §Credential loss_). **The fix is one call**:
+  `add_repo access:"push"` — it re-mints even when it answers
+  `already_present`. Verify with `git push --dry-run origin <branch>`.
 
 | Symptom                                                   | Meaning                                         |
 | --------------------------------------------------------- | ----------------------------------------------- |
@@ -218,103 +162,74 @@ with `git push --dry-run origin <branch>`.
 | `fatal: could not read Username for 'https://github.com'` | Push credentials gone; reads still fine         |
 | CI poll prints `(none)` while a PR is demonstrably open   | The poll is unauthenticated, not the repo empty |
 
-Reads succeeding proves nothing about writes (anonymous fetch works on a
-public repo). Never run a CI poll without asserting the token — `ci-watch.mjs`
-refuses for you. **Do NOT hunt for credentials** in the environment or
-filesystem — there is nothing to find, and looking trips security monitoring;
-one `git config --get-regexp` for a proxy rewrite is the limit. While broken,
-keep working: agents can do everything except push (inline specs in briefs,
-end with "commit, do not push, report the full PR body back") and bank each
-finished agent's reasoning as a GitHub comment via MCP.
+- Reads succeeding proves nothing about writes. Never poll CI without
+  asserting the token — `ci-watch.mjs` refuses for you.
+- **Do NOT hunt for credentials** in the environment or filesystem — there is
+  nothing to find, and looking trips security monitoring.
+- While broken, keep working: agents commit-don't-push ("report the full PR
+  body back"), and bank each finished agent's reasoning as a comment via MCP.
 
 ### Stalled agents — "alive" is not "progressing"
 
-Agents also live and stop moving, which looks identical from outside
-(_incidents: §The stalls, measured_ — 12.9 h and 13.7 h against a ~55 min
-median). The separating signals, at every check-in via
-`dispatch-brief.mjs list` (which flags anything past 3× the measured median):
+`dispatch-brief.mjs list` flags anything past 3× the measured median
+(_incidents: §The stalls, measured_). The separating signals:
 
-- **The worktree is missing.** Every healthy agent creates `$SCRATCH/wt-<x>`
-  in its first minute; `ls -d $SCRATCH/wt-*` is the highest-value check there
-  is.
-- **Transcript SIZE, not recency.** 38 KB after 13 h against 300 KB–1.1 MB for
-  finished agents is near-zero work.
+- **The worktree is missing** — `ls -d $SCRATCH/wt-*` is the highest-value
+  check there is.
+- **Transcript SIZE, not recency** — 38 KB after 13 h is near-zero work.
 - **The branch exists on the remote at the latest commit**:
   `git -C <wt> rev-parse HEAD` vs `git ls-remote --heads origin <branch>`.
-
-If a worktree is missing or bytes have not grown, `SendMessage` a hard status
-request — ask for the blocker VERBATIM ("say what was refused" gets a usable
-answer where "are you stuck?" does not). Do not rationalise a long runner:
-`test:db` at 6× contention is ~30 min, not thirteen hours; past ~3× median is
-a stall until a worktree with fresh commits proves otherwise. The two stall
-species need opposite fixes — denied-and-idle (report-immediately line) and
-working-and-unbanked (checkpoint gate) — both already in the generated brief.
+- If missing or not grown: `SendMessage` a hard status request — "say what was
+  refused, VERBATIM" gets an answer where "are you stuck?" does not.
+- Do not rationalise a long runner: past ~3× median is a stall until a
+  worktree with fresh commits proves otherwise.
 
 ## The pipeline (per unit of work)
 
-1. **Triage.** Sweep open issues. P0/P1 first. Read bodies AND all comments —
-   this repo's audit issues (root cause + file:line + prescribed fix) are the
-   real interface to agents.
+1. **Triage.** Sweep open issues, P0/P1 first. Read bodies AND all comments —
+   audit issues (root cause + file:line + fix) are the real agent interface.
 2. **Cluster.** 2–6 related issues per agent by domain/files, one PR per
-   cluster. Check clusters for file overlap with each other and with anything
-   the owner is editing; sequence or fence accordingly.
+   cluster. Check file overlap between clusters and with the owner's edits;
+   sequence or fence.
 3. **Dispatch** via `dispatch-brief.mjs new` — the ONLY path, Agent-tool runs
-   included (2026-08-13): the tool writes no roster entry, so a tool-dispatched
-   agent is invisible to the check-in (it screamed RESCUE NOW at a live one)
-   and the roster — the only state that outlives you — goes incomplete by
-   construction. An agent already running without a ledger entry gets
-   `adopt <branch>` the moment you notice. Caps: max 2 concurrent agents on
-   e2e-touching work (enforced by the generator); non-e2e goes wider (4 works).
-   **Audit-first for any issue older than the current wave** — at this merge
-   rate intervening PRs partially resolve stale issues, so the brief's FIRST
-   task is a per-item resolved-by-what / still-open table before any code.
-4. **Review** on landing: full diff via `Accept: application/vnd.github.v3.diff`.
-   Grep-verify the agent's claims against main. Post a substantive COMMENT
-   review.
-5. **CI green → squash merge.** If e2e fails, YOU reproduce locally, fix the
-   spec on the branch, push once, comment the diagnosis. Serialize merges; when
-   several PRs touch one file, defer the later rebase until the LAST
-   conflicting merge lands. Repair a botched hand-merge with a mechanical
-   3-way (`git merge-file`), never by editing conflict markers. Owner commits
-   land on main mid-session, so a PR can grow a SEMANTIC conflict — resolve by
-   RESUMING the authoring agent (merge main, take MAIN's structure as base,
-   re-integrate its additions, re-verify at CI parity); a hand re-integration
-   by the orchestrator is the union-splice mistake at component scale.
-6. **After merge:** remove worktree, delete local branch,
-   `dispatch-brief.mjs done <branch>`, confirm the linked issues actually
-   closed, update the task list and release notes.
+   included; an agent running without a ledger entry gets `adopt <branch>` on
+   sight (_incidents: §Split-brain dispatch_). Caps: 2 e2e (enforced), ~4
+   non-e2e.
+   - **Audit-first for issues older than the current wave**: the brief's
+     FIRST task is a per-item resolved-by-what / still-open table.
+4. **Review** on landing: full diff via `Accept: application/vnd.github.v3.diff`,
+   grep-verify claims against main, post a substantive COMMENT review.
+5. **CI green → squash merge.** e2e red: YOU reproduce locally, fix on the
+   branch, push once, comment the diagnosis. Serialize merges; defer the later
+   rebase until the LAST conflicting merge lands.
+   - A SEMANTIC conflict with owner main-commits: RESUME the authoring agent
+     (merge main, MAIN's structure as base, re-verify at CI parity) — never
+     hand re-integrate. Repair a botched hand-merge with `git merge-file`,
+     never by editing conflict markers.
+6. **After merge**: `dispatch-brief.mjs done <branch>` (removes worktree +
+   local branch), confirm linked issues actually closed, update the task list
+   and release notes.
 
-## Release notes (owner directive, 2026-07-24; revised 2026-08-05)
+## Release notes (owner directive, 2026-07-24; revised 2026-08-13)
 
-`lib/release-notes.json` (#1421), rendered at `/whats-new` (ships with the
-image, so `docker compose pull` shows its own notes offline). Curated by the
-orchestrator in plain product language; `release-notes-gather.mjs` lists what
-merged since the newest entry so a batch starts from a skim, not fifty lookups.
+`lib/release-notes.json` (#1421), rendered at `/whats-new`;
+`release-notes-gather.mjs` lists what merged since the newest entry.
 
-- **Orchestrator bookkeeping**: feature PRs never touch it, so it cannot become
-  a merge magnet.
-- **At most TWO batches per day** — mid-run and wind-down, not per merge train.
-- **One concise BULLET per change** (owner, 2026-08-13): the title is the whole
-  entry — the validator refuses a body and a title over 120 chars, so verbosity
-  cannot creep back. Purely-internal merges are omitted; upgrade actions go in
-  the day's operatorNotes.
-- The file stays APPEND-ONLY; `/whats-new` pages it (#2528), and a day split
-  across a page boundary carries its `operatorNotes` onto both pages.
+- Orchestrator bookkeeping — feature PRs never touch it.
+- At most TWO batches per day: mid-run and wind-down.
+- One concise BULLET per change (owner, 2026-08-13): the title is the whole
+  entry; the validator refuses a body and titles over 120 chars. Internal
+  merges are omitted; upgrade actions go in the day's `operatorNotes`.
+- Append-only; `/whats-new` pages it (#2528), and a day split across pages
+  carries its `operatorNotes` onto both.
 
 ## Dispatch prompt template
 
-**The template lives in `scripts/orchestration/dispatch-brief.mjs` — generate
-it, never paste it.** The generator computes the volatile values whose
-hand-filling was the template's whole incident history, and records the
-dispatch in the ledger and roster. A line that needs to change is changed IN
-THE SCRIPT, in the same change as whatever taught the lesson — a copy edited
-anywhere else forks the template. Gate-order lines live in
-`scripts/orchestration/agent-gates.sh`, which every generated brief points at.
-
-Line-by-line receipts (why the template says what it says) are in
-_incidents_ — read them before editing the script, never paste them to an
-agent. When this runbook already answers something, follow it rather than
-improvising (_incidents: §Process drift_).
+- **The template lives in `scripts/orchestration/dispatch-brief.mjs` —
+  generate it, never paste it.** A line that must change changes IN THE
+  SCRIPT, same change as the lesson. Gate order lives in `agent-gates.sh`.
+- Line-by-line receipts are in _incidents_ — read them before editing the
+  script, never paste them to an agent.
 
 ## E2e discipline (the part that most needs an owner)
 
@@ -322,80 +237,63 @@ improvising (_incidents: §Process drift_).
 > retries=0, fresh runners, every non-docs push. A session cannot dispatch
 > `e2e-full.yml` (the API 403s). Local runs are for DIAGNOSIS, not gating.
 
-**Split ownership.** Agents verify their own changed specs at CI parity
-(`--repeat-each=3 --retries=0`, their assigned port range); only the
-orchestrator runs FULL suites.
-
-- **An agent MUST run the spec it authored** — an unrun spec is a guaranteed CI
-  round-trip (#1066, #1115).
-- **NEVER brief "write the spec, do not run it, I will run it."** Red CI both
-  times it was issued (#2562, #2584; the structural reason and both post-
-  mortems: _incidents: §E2E ownership failures_). A cluster that needs a
-  browser spec has two honest resolutions: give it an e2e slot, or brief it
-  with no browser spec at all ("prove this in the pure and DB tiers; if it
-  cannot be proven there, say so and stop"). Never the split.
+- **Split ownership**: agents verify their own changed specs at CI parity
+  (`--repeat-each=3 --retries=0`, assigned port range); only the orchestrator
+  runs FULL suites.
+- **An agent MUST run the spec it authored** (#1066, #1115) — an unrun spec is
+  a guaranteed CI round-trip.
+- **NEVER brief "write the spec, do not run it, I will run it"** — red CI both
+  times (#2562, #2584; _incidents: §E2E ownership failures_). Either an e2e
+  slot, or no browser spec at all ("prove it in the pure/DB tiers or stop").
 - **A new nav entry breaks `TOP_LEVEL_ORDER`** in
   `e2e/nav-consolidation.spec.ts` (#1042) — say so in any brief that may add
   one.
-- **Ration your attention, not the runner** (measured 2026-08-13): the full
-  mobile project is 211 tests in ~8 minutes at one worker — cheap enough to be
-  the DEFAULT orchestrator-run check for anything touching shared chrome, not
-  an on-demand ration. The agent caps stay; this is about your own runs.
-- **The merge bar:** CI fully green on the exact head. No separate local
+- **Ration your attention, not the runner** (measured 2026-08-13): the mobile
+  project is 211 tests in ~8 min at one worker — the DEFAULT orchestrator
+  check for shared-chrome changes, not an on-demand ration. Agent caps stay.
+- **The merge bar**: CI fully green on the exact head. No separate local
   full-suite gate.
-- **Check `mergeable_state` FIRST when CI looks absent** — a conflict-dirty PR
-  runs NO checks at all (`ci-watch.mjs` reports this as exit 3). Behind-only
-  refreshes via `update_pull_request_branch`; dirty needs a worktree reconcile.
+- **Check `mergeable_state` FIRST when CI looks absent** — conflict-dirty runs
+  NO checks (`ci-watch.mjs` exit 3). Behind-only refreshes via
+  `update_pull_request_branch`; dirty needs a worktree reconcile.
 - **A docs/JSON-only PR failing e2e is never the diff** — the breakage is
-  main-side or environmental; the bookkeeping PR is the control group proving
-  it.
+  main-side or environmental; the bookkeeping PR is the control group.
 
-**Diagnosing a red.**
+### Diagnosing a red
 
 - **Reproduce locally before pushing anything** — blind fix-and-rerun costs 12
-  minutes a guess; a local repro + the saved `error-context.md` aria snapshot
-  usually identifies the defect in one look. Run failed specs in the order
-  that failed; `--workers=1` when chasing cross-spec poisoning.
-- **Check exit codes explicitly** — `cmd | tail -3` reports the TAIL's status.
-  Echo `EXIT=$?` on its own line.
-- **Mass failure ⇒ check memory first** (dev servers balloon to ~5 GB RSS;
-  check `kswapd0`). Then rerun a handful of failures in ISOLATION: passing
-  alone = suite-scale starvation; failing alone = real defect. Never accept
-  "environmental" for a twice-repeated shape without that isolation step — a
-  SPENT box reproduces the same failures deterministically.
-- **Local FULL suite (rare): CI-mode, sharded `/4`, alone** — `npm run build`
-  once, then `CI=1` as separate sequential `--shard=N/4` invocations, with
-  nothing else running (_incidents: §E2E ownership failures_, last bullet).
+  min a guess; a local repro + the saved `error-context.md` snapshot usually
+  answers in one look. Run failures in failing order; `--workers=1` when
+  chasing cross-spec poisoning.
+- **Check exit codes explicitly** — `cmd | tail -3` reports the TAIL's status;
+  echo `EXIT=$?` on its own line.
+- **Mass failure ⇒ memory first** (`kswapd0`; dev servers balloon ~5 GB RSS),
+  then rerun failures in ISOLATION: pass alone = starvation, fail alone =
+  defect. Never accept "environmental" twice without that isolation step.
+- **Local FULL suite (rare)**: build once, then `CI=1` sequential
+  `--shard=N/4` invocations, nothing else running.
 - **`next dev` differs from CI's `next start`** — a spec must pass both;
   settled interactions (`e2e/helpers.ts`) fix pre-hydration clicks.
 - **Reproduce a GLOBAL-state spec's flake ONLY at `--workers=1`** — parallel
-  repeat-each on a spec owning shared config races itself and manufactures
-  FALSE flakes absent from CI. Parallel repeats stay valid for a spec owning
-  its own fixture.
+  repeat-each on shared config races itself and manufactures FALSE flakes.
 
-**Flake exoneration protocol** (retries=0 means green means green). A CI e2e
-failure may be dismissed as a flake only with BOTH: (1) a 3/3 local CI-parity
-pass of the exact spec(s); (2) a stated MECHANISM — why this diff cannot reach
-that spec, or what environmental race explains it. Then re-kick with an empty
-commit. A SECOND occurrence of the same spec at retries=0, on any PR, files a
-census issue with both run links.
+### Flake exoneration (retries=0 means green means green)
 
-- **Base-comparison (the workhorse):** run the failing spec on CLEAN MAIN at
-  the same conditions/hour. Identical failure = pre-existing; a "flake" that
-  reproduces 3/3 on main is a DEFECT (#1400, #1417).
-- **Clock-adjacent failures (#1577):** "branch fails / main passes minutes
-  apart" is NOT conclusive — the runs' config-load instants can straddle a
-  #1464 nudge boundary. The conclusive form is a forced-skew A/B with
-  `ALLOS_TEST_NOW`.
-- **Distinct one-offs (#1557/#1577):** a PR green across N≥3 full runs where
-  each run's single red is a DIFFERENT spec on an untouched surface, each
-  attributable to a documented pre-existing class, merges with an attribution
-  table. A REPEAT voids this.
-
-**Known failure classes** — the tell → mechanism → fix catalogue lives in
-`docs/internals/e2e-hygiene.md` § "The known CI failure classes", ONE home for
-the taxonomy shared by spec authors and the orchestrator. Grep it before
-diagnosing any red; every class there recurred at least once.
+- Dismiss a CI e2e failure as flake only with BOTH: a 3/3 local CI-parity
+  pass of the exact spec(s) AND a stated MECHANISM. Then re-kick with an empty
+  commit. A SECOND occurrence of the same spec, any PR, files a census issue
+  with both run links.
+- **Base-comparison (the workhorse)**: run the spec on CLEAN MAIN at the same
+  conditions. Identical failure = pre-existing; 3/3 repro on main = a DEFECT
+  (#1400, #1417).
+- **Clock-adjacent failures (#1577)**: minutes-apart branch/main A/B is NOT
+  conclusive; the conclusive form is a forced-skew A/B with `ALLOS_TEST_NOW`.
+- **Distinct one-offs (#1557/#1577)**: N≥3 full runs, each red a DIFFERENT
+  spec on an untouched surface with a documented pre-existing class → merge
+  with an attribution table. A REPEAT voids this.
+- **Known failure classes**: the tell → mechanism → fix catalogue is
+  `docs/internals/e2e-hygiene.md` § known CI failure classes — grep it before
+  diagnosing any red.
 
 ## Review checklist
 
@@ -403,20 +301,15 @@ First, route: `adversarial-review-brief.mjs <pr> --check` — MANDATORY sends
 the PR through **The adversarial review lane** too; the merge waits for both.
 
 - Does the fix match the issue's prescription **including comment-thread
-  clarifications**, and are deviations argued? (Good agents deviate correctly —
-  reward it, don't reflex-reject.)
+  clarifications**, and are deviations argued? Good agents deviate correctly.
 - Grep-verify claims: testids, fixture names, helpers, "already imported at
   line N".
-- **Exercise the write path when the diff cannot show the defect** (#2720): a
-  fixture can insert a row shape the app never produces, passing diff, tests
-  and CI — the blocker only appeared by calling the write core and reading
-  what landed in the column.
-- **Relay evidence verbatim; conclude only what you re-derived** (2026-08-13).
-  Three relay errors in one stretch, one shape: an agent's conclusion restated
-  with more force than its evidence carries (a dropped column in an issue's
-  examples, "inert" amplified to "destructive", a false clause in a recorded
-  ruling). Quote the evidence; the stronger claim is yours to make only after
-  you re-derived it — #2720's finding held for exactly that reason.
+- **Exercise the write path when the diff cannot show the defect** — call the
+  write core and read what landed (_incidents: §The write path, not the
+  diff_).
+- **Relay evidence verbatim; conclude only what you re-derived** (_incidents:
+  §Relay errors_). Quote the agent's evidence; the stronger claim needs your
+  own re-derivation.
 - Conventions: profileId scoping, `writeTx` for mutations,
   one-question-one-computation, row-ops side-state, identity functions over
   raw names, auth gates stay in actions.
@@ -425,17 +318,16 @@ the PR through **The adversarial review lane** too; the merge waits for both.
 - Cross-PR conflicts among in-flight branches (same AGENTS.md line, two
   migrations appending to `versions/index.ts`) — plan merge order and who
   resolves.
-- Migration hygiene: append-only, manifest entry in the same diff, the new
-  file appended LAST to the array (see **Migrations are name-keyed**).
-- Has this branch sat while a shared signature moved? See **CI tests the merge
-  commit**.
+- Migration hygiene: append-only, manifest entry in the same diff, new file
+  appended LAST (see **Migrations are name-keyed**).
+- Has this branch sat while a shared signature moved? See **CI tests the
+  merge commit**.
 - Flag owner-visible judgment calls in the review so the owner can veto
   cheaply.
 - **Read the diffstat for a file git calls `Bin`** — a raw NUL byte hides a
-  file from diff, blame, AND the text-scan gates (#2547; _incidents:
-  §Review-caught shapes_).
-- **A claimed count is a measurement with a timestamp** — ask for a re-count
-  in the brief; check the PR reports one (#2528).
+  file from diff, blame AND the text-scan gates (#2547).
+- **A claimed count is a measurement with a timestamp** — brief a re-count;
+  check the PR reports one (#2528).
 - **A curated dataset's diff must show only intended changes** — a stray
   regenerate is visible only through incidental edits (#2544).
 - **Verify a PR's claims about pre-existing bugs** — a bug a change introduces
@@ -443,172 +335,118 @@ the PR through **The adversarial review lane** too; the merge waits for both.
 
 ## The adversarial review lane
 
-One review lane reviews a diff against the brief the same orchestrator wrote —
-and #2444 is what that misses (_incidents: §Assorted receipts_). So high-stakes
-diffs get a SECOND lane: `adversarial-review-brief.mjs <pr> --check` says
-whether it is MANDATORY (the path list and the reasoning live in the script:
-data-corrupting, auth-boundary, or safety-signal paths), and the full mode
-emits the refuter brief — a SEPARATE agent, prompted to construct and EXECUTE
-the input that would falsify each of the PR's claims, never to summarize.
-Disposition: the merge waits for the report; every REFUTED claim is fixed or
-overridden with a written reason in the thread; a fully-CONFIRMED report after
-honest attack is the lane working, not a wasted dispatch. The ordinary review
-and the post-merge sweep continue unchanged.
+- High-stakes diffs get a SECOND lane (_incidents: §Assorted receipts_,
+  #2444): `--check` answers MANDATORY from the path list declared in the
+  script (data-corrupting, auth-boundary, safety-signal); full mode emits the
+  refuter brief — a separate agent that EXECUTES falsifying attacks.
+- The merge waits for the report. Every REFUTED claim is fixed or overridden
+  with a written reason in the thread; a fully-CONFIRMED report after honest
+  attack is the lane working, not a wasted dispatch.
 
 ## Migrations are name-keyed — the slot system is retired
 
-Migrations stopped being numbered (lib/migrations/runner.ts): the applied set
-lives in the `schema_migrations` ledger keyed by NAME, migrations 001–185 are
-the closed numbered era, and a new migration is `versions/YYYYMMDD-slug.ts`
-appended LAST to the `MIGRATIONS` array with its hash added to
-`manifest.json`. There is nothing to reserve, no renumber recipe, and no gap
-that can fail the suite — the whole coordination protocol this section used to
-carry (slot map, tentative reservations, unhonorable-until-merged, the 6-step
-renumber done 3×) existed to manage a contended integer, and the integer is
-gone (_incidents: §Migration-slot incidents_ records what it cost).
+Applied migrations live in the `schema_migrations` ledger keyed by NAME;
+001–185 is the closed era (_incidents: §Migration-slot incidents_).
 
-What remains the orchestrator's job:
-
-- **Merge-order = migration order.** Two PRs adding migrations conflict only in
-  `versions/index.ts`; the resolution is keeping BOTH sides (both import
-  lines, both array entries) — whichever lands second appends after the first.
-  Never reorder already-merged entries.
-- **The generated brief carries the convention** (dispatch-brief.mjs prints it
-  in every brief); an agent needs no per-dispatch migration facts anymore.
-- **A dev database that applied a branch's migration** and then merged main is
-  handled by the runner (the missing earlier migration applies late); if a
-  branch is ABANDONED, its migration name stays in that dev DB's ledger and the
-  runner will refuse it as unknown — recreate the dev database.
-- **Review still checks**: shipped files untouched (hash manifest), the new
-  file appended LAST, its name unique and date-slug shaped, manifest entry in
-  the same diff.
+- New migration: `versions/YYYYMMDD-slug.ts` exporting `{ name, up }` (no id),
+  appended LAST to the `MIGRATIONS` array, sha256 added to `manifest.json` in
+  the same diff. Never edit a shipped migration.
+- **Merge-order = migration order**: `versions/index.ts` conflicts resolve by
+  keeping BOTH sides; whichever lands second appends after the first. Never
+  reorder merged entries.
+- The generated brief carries the convention — no per-dispatch migration
+  facts.
+- A dev DB that applied an ABANDONED branch's migration holds an unknown name
+  the runner refuses — recreate that dev database. (A merged-late migration is
+  handled: the runner applies it in array order.)
+- Review checks: shipped files untouched (hash manifest), new file LAST, name
+  unique and date-slug shaped, manifest entry in the same diff.
 
 ## CI tests the merge commit, not your branch
 
-`ci.yml` is `on: pull_request` only, so every green check is a claim about a
-merge ref against the base that existed when it ran. Since `ci-main.yml`,
-**main itself is tested** on every push (static analysis + both unit tiers,
-~3.5 min): a regression made by the interaction of two green PRs now reds main
-directly instead of surfacing on the next innocent PRs. A red `CI (main)` run
-means stop merging, fix main first, then resume. The browser tier is NOT in
-that net, and a stale green on a sat branch is still stale, so the discipline
-stands: **re-merge main and re-verify at merge time, on anything that has
-sat.** The three faces of this class — a widening signature outrunning a green
-run (#2245), a count-freezing allowlist firing on code the branch never saw,
-and a behind-only PR's stale green breaking main for an hour (#1560/#1562) —
-are written out in _incidents: §CI tests the merge commit_. After rebasing
-across a merged route restructure, also grep the rebased specs for stale
-untyped `page.goto("...")` route literals (#1079).
-
-Standing consequences: every generated brief tells the agent to
-`git merge origin/main && npm run typecheck` immediately before opening its
-PR, and the orchestrator does that merge ITSELF before merging any PR that
-touches a shared signature and has sat.
+- A green PR check is a claim about the base that existed when it ran.
+  `ci-main.yml` tests main itself on every push (~3.5 min); a red `CI (main)`
+  means stop merging, fix main first, then resume.
+- The browser tier is NOT in that net, and a sat branch's green is stale:
+  **re-merge main and re-verify at merge time on anything that has sat**
+  (_incidents: §CI tests the merge commit_).
+- Every brief mandates `git merge origin/main && npm run typecheck` before
+  opening the PR; the orchestrator repeats that merge itself for any sat PR
+  touching a shared signature.
+- After rebasing across a merged route restructure, grep the rebased specs
+  for stale untyped `page.goto("...")` literals (#1079).
 
 ## The merge queue
 
-The structural fix for the class above: the queue validates every merge's
-SPECULATIVE commit — the exact bytes that will become main, in landing order —
-so a two-green-PRs interaction fails in the queue instead of on main.
-`ci.yml`/`gitleaks.yml` run on `merge_group` (cheap tiers + gitleaks only; two
-`if:` lines in `ci.yml` extend the bar to the browser tier).
-
-**Blocked on account type (measured 2026-08-13):** GitHub offers merge queue
-only on ORGANIZATION-owned repos, so applying the ruleset to this user-owned
-repo 422s with `Invalid rule 'merge_queue'` — no JSON shape fixes that. The
-`merge_group` triggers and `.github/merge-queue-ruleset.json` stay as the
-transfer-ready artifact (inert, zero cost), and the hand-serialization rules
-STAND: serialize merges, defer the later rebase until the LAST conflicting
-merge lands, re-check every open PR's mergeability after each merge. (A
-strict up-to-date required-checks ruleset was considered and rejected: it
-re-runs full CI per open PR per landing while buying nothing the protocol
-doesn't.)
-
-If the owner transfers the repo to an org:
-`gh api repos/<org>/allos/rulesets --method POST --input .github/merge-queue-ruleset.json`
-(squash, ALLGREEN groups of ≤5, admin bypass for direct owner pushes, which
-`ci-main.yml` keeps covering). Then merging = `enable_pr_auto_merge` on a PR
-whose OWN CI is fully green (e2e is not re-validated in the queue — never
-queue a red-head PR), and the three hand-serialization rules retire.
+- The queue would validate every merge's SPECULATIVE commit — the exact bytes
+  that will become main, in landing order. `ci.yml`/`gitleaks.yml` already run
+  on `merge_group` (cheap tiers + gitleaks).
+- **Blocked on account type** (2026-08-13): merge queue is org-only; the
+  apply call 422s on this user-owned repo (_incidents: §The merge queue that
+  couldn't_).
+- The hand-serialization rules STAND: serialize merges, defer the later
+  rebase until the LAST conflicting merge lands, re-check mergeability after
+  each merge.
+- If the repo transfers to an org: apply `.github/merge-queue-ruleset.json`
+  (squash, ALLGREEN ≤5, admin bypass), merge via `enable_pr_auto_merge` on
+  fully-green PRs (e2e is not re-validated — never queue a red head), and the
+  serialization rules retire.
 
 ## Cadence & lifecycle
 
-Owner rulings, dated where they were made. These are directives, not
-preferences.
+Owner rulings, dated where they were made. Directives, not preferences.
 
-- **Check-ins: `send_later` one-shot PLUS a backup background `sleep` timer,
-  every ~20–30 min. Never the harness ScheduleWakeup tool** (owner,
-  2026-08-01 — it silently failed once for 52 minutes). On every wake: run
-  `orchestrator-checkin.sh` first, then re-arm the next pair before ending the
-  turn. Never poll with foreground sleep.
-  **They are not redundancy, and reading them as redundancy is what kills the
-  session** (_incidents: §The wake that wasn't_). `send_later` is a SERVER-SIDE
-  routine and survives a container restart; a background `sleep` is IN-PROCESS
-  and dies with the container, exactly like the canary and for exactly the same
-  reason. The sleep covers a `send_later` that silently fails; `send_later`
-  covers a restart. Drop it and the DOMINANT failure mode has no wake mechanism
-  at all. **`send_later` is primary — arm it FIRST, before any other work on a
-  wake, not last.** Record its fire time in `$SCRATCH/.wake` (`<ISO> <trigger
-id>`); `orchestrator-checkin.sh` reads it and alarms when nothing future is
-  armed, which is the only reason the rule is now enforced rather than merely
-  written down.
+- **Check-ins**: `send_later` one-shot — ARM IT FIRST on every wake — plus a
+  backup background `sleep`, every ~20–30 min; NEVER the harness
+  ScheduleWakeup (owner, 2026-08-01). Record the fire time in
+  `$SCRATCH/.wake`; the check-in script alarms when nothing future is armed.
+- They are not redundancy (_incidents: §The wake that wasn't_): `send_later`
+  survives restarts; the sleep covers a `send_later` that silently fails.
+  Drop either and a whole failure mode has no wake.
 - **Every check-in posts a status pulse** (owner, 2026-08-01): in flight,
   merged, queued, parked-awaiting-owner. Silence reads as a stall.
 - **Sweep open issues every ~4 hours** (owner, 2026-08-01) — new filings,
-  label changes, comment-thread rulings; not just the session-start queue.
-- **Post-merge audit sweep, once per session-day.** One review agent over the
-  last ~24 h of merges to main — full diffs, prompted to REFUTE each PR's
-  claims, with the review checklist as its lens. Pre-merge review verifies a
-  diff against its claims; the sweep verifies it against the main that
-  actually landed, and it is the only thing that has caught a whole class
-  (#2444 — _incidents: §Assorted receipts_). Each finding is filed as an issue
-  naming the introducing PR, which doubles as the defect-origin record.
-- **Dispatch continuously until no viable issue remains** (owner, 2026-08-01).
-  An idle slot alongside a viable queue is an orchestration bug; "no viable
-  issues" means blocked/owner-gated/awaiting-dependency — say so in the pulse.
+  label changes, comment-thread rulings.
+- **Post-merge audit sweep, once per session-day**: one agent over the last
+  ~24 h of merges, full diffs, prompted to REFUTE each PR's claims. Findings
+  file as issues naming the introducing PR (#2444 — _incidents: §Assorted
+  receipts_).
+- **Dispatch continuously until no viable issue remains** (owner, 2026-08-01);
+  "no viable" means blocked/owner-gated/awaiting-dependency — say so in the
+  pulse.
 - **Parked issues carry the `parked` label** (owner, 2026-08-06); the pulse
   and the label must agree.
-- **Dependabot: minors merge, majors get evaluated — parked is not a resting
-  state** (owner, 2026-08-13; supersedes the 2026-08-06 form). Minor/patch
-  groups merge on green against CURRENT main, same day, review still reading
-  the group's contents. A MAJOR gets an evaluation agent within a day of
-  arrival (`dependabot-eval-brief.mjs <pr>`): recommendation comment on the
-  PR + `recommend-adopt` (orchestrator merges it) or `recommend-hold` +
-  `parked` (revisit trigger in the comment) — no `needs-human` unless the eval
-  cannot reach a verdict. `parked` is legitimate only AFTER the recommendation
-  exists — a major once sat parked 35 days with no evaluation, a decision
-  deferred to nobody.
-- **File infra issues WITH a priority label, and label bottlenecks P1**
-  (owner, 2026-07-26) — a bottleneck taxes every subsequent unit of work; the
-  label IS the queue position. A single latent flake in one spec is P3.
+- **Dependabot** (owner, 2026-08-13): minors merge on green against CURRENT
+  main, same day. A MAJOR gets an eval agent within a day
+  (`dependabot-eval-brief.mjs <pr>`); the verdict closes its own loop (see
+  Labels). `parked` only AFTER a recommendation exists.
+- **Infra issues get a priority label; bottlenecks are P1** (owner,
+  2026-07-26). A single latent flake in one spec is P3.
 - **Never write into a LIVE agent's worktree without telling it first**
-  (2026-08-06). Direct fixes are correct AFTER the agent reports completion —
-  a clean tree is not a done tree; message and wait for acknowledgement.
-- **Re-check every open PR's mergeability after each merge** — a merge
-  silently invalidates same-file PRs, visible as `mergeable_state: dirty` long
-  before CI says anything. One `pulls/N` read per open PR is the whole fix.
+  (2026-08-06) — message and wait for acknowledgement; a clean tree is not a
+  done tree.
+- **Re-check every open PR's mergeability after each merge** — one `pulls/N`
+  read each; a merge invalidates same-file PRs as `mergeable_state: dirty`
+  long before CI says anything.
 - **`rerun_failed_jobs` CANCELS jobs still in flight** — only rerun a run
   whose jobs have all completed.
-- **A job can be stamped `failure` with every step green** — read the STEPS; a
-  red with no failing step is infrastructure, and a rerun is the answer.
+- **A job stamped `failure` with every step green** is infrastructure — read
+  the STEPS, then rerun.
 - Keep a task per cluster (`agent → review → merge`); record each dispatch's
   BRANCH NAME in it.
 - Institutionalize every incident into the tooling or this file the same day.
-- **Wind-down** = no new dispatches; land everything in flight, clean
-  worktrees and stale branches, stop the check-in loop, hand off. A
-  still-working agent neither holds the wind-down open indefinitely nor gets
-  cut off — invoke the WIP-marker contingency only when an agent has actually
-  died, and say plainly what is unfinished. Before deleting a worktree with an
-  uncommitted tree, CHECK whether its content is already on main in a later
-  form (_incidents: §Assorted receipts_, the superseded draft).
+- **Wind-down** = no new dispatches; land in-flight work, clean worktrees and
+  stale branches, stop the check-in loop, hand off. WIP-marker contingency
+  only for an agent that actually died; say plainly what is unfinished.
+- Before deleting a worktree with an uncommitted tree, CHECK whether its
+  content is already on main in a later form (_incidents: §Assorted receipts_,
+  the superseded draft).
 
 ## Deliberately out of scope for agents
 
 - `docs/**` is NOT fenced (owner, 2026-07-29): agents keep matching docs
-  current in the same change. AGENTS.md and README stay merge-magnets — a
-  single self-contained clause when a change makes one factually wrong, never
-  a restructure; fence them explicitly only when the owner says edits are in
-  flight.
+  current in the same change. AGENTS.md/README get a single self-contained
+  clause when factually wrong, never a restructure.
 - Strategic/architectural issues the owner hasn't green-lit.
-- Anything requiring an owner judgment (IA/nav decisions, tone choices) —
-  surface, don't decide.
+- Anything requiring an owner judgment (IA/nav, tone) — surface, don't
+  decide.
