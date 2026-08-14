@@ -332,6 +332,14 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
     // occurrences, so listing three of them would invent three things to do.
     const firstDose = dosesByItem.get(supp.id)?.[0] ?? null;
     const hint = slotHintBucket(firstDose?.time_of_day ?? null);
+    // The availability QUALIFIER, composed once (#2579-F). `dueText` below is this
+    // fragment behind the word "Available"; the offer CHIP is this fragment behind the
+    // item's own name. Two shapes, one composition — a renderer that split the sentence
+    // back apart would be a second definition of the same phrase.
+    const offerHint =
+      [hint ? TIME_BUCKET_LABELS[hint] : null, cadenceLabel(supp)]
+        .filter(Boolean)
+        .join(" · ") || null;
     items.push({
       key: offeredSignalKey(supp.id),
       domain: "available",
@@ -344,13 +352,8 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
       // offered every day (guaranteed access — a collapsed item must never become
       // indistinguishable from a deleted one), and the phrase only tells the user
       // which days it was meant for.
-      dueText: [
-        "Available",
-        hint ? TIME_BUCKET_LABELS[hint] : null,
-        cadenceLabel(supp),
-      ]
-        .filter(Boolean)
-        .join(" · "),
+      dueText: ["Available", offerHint].filter(Boolean).join(" · "),
+      offerHint,
       // The item's FIRST active dose (#2419), so the row can carry the same one-tap
       // "Mark taken" the due rows already render. Dueness gates NUDGING, never
       // LOGGING: an offered item is by definition not due, and the doctrine still

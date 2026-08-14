@@ -117,6 +117,32 @@ function weeklyTargetIdentity(p: FrequencyTargetProgress) {
   return WEEKLY_TARGET_IDENTITY[p.target.scope_kind as FrequencyScopeKind];
 }
 
+// UNMET, for the planning ledger — ONE predicate, both weekly-target builders
+// (owner ruling, #2579).
+//
+// `trainingItems` filtered `!met`; `practiceItems` filtered `!met && !atCeiling &&
+// pace === "behind"`. The asymmetry was real and undecided: "not met" and "behind
+// pace" are different questions, and nothing said which one the ledger asks. The
+// owner ruled SURFACE ALL UNMET for both, and practice aligns UP to training.
+//
+// The reasoning is the goal fold's, applied consistently: /upcoming is the planning
+// LEDGER and completeness is its charter, so a target that is silently absent because
+// it happens to be on pace reads as missing — the same lie a goal horizon would have
+// told. Rendering it is not nagging: it is a row on a page the user opened.
+//
+// `atCeiling` stays excluded, because met-by-another-name is not unmet: a 3–5×/week
+// range target at 5 is done for the week (#1259's calm "that's plenty"), never a red
+// state. It is implied by `!met` for any well-formed range (ceiling ≥ floor), and
+// stated anyway so the rule reads as one sentence instead of relying on the data.
+//
+// NOT a change to any SEND. #1259's anti-nudge rationale still governs the pace-aware
+// practice reminder, which does its own behind/ceiling gather in
+// lib/notifications/practices.ts and is untouched; `practice` is deliberately absent
+// from the digest's DOMAIN_SEQ, so nothing here is counted into a push either.
+function isUnmetWeeklyTarget(p: FrequencyTargetProgress): boolean {
+  return !p.met && !p.atCeiling;
+}
+
 // The morning digest's weekly-progress line (#1819 item 4): "2 of 3 training targets
 // on pace — behind on Back, Chest", or null for a profile with no weekly TRAINING
 // targets (and for an age-restricted one, mirroring the items).
@@ -149,7 +175,7 @@ export function trainingPaceLine(profileId: number): string | null {
 export function trainingItems(profileId: number): UpcomingItem[] {
   if (isTrainingRestricted(profileId)) return [];
   return weeklyFloorTargets(profileId)
-    .filter((p) => !p.met)
+    .filter(isUnmetWeeklyTarget)
     .map((p) => {
       const identity = weeklyTargetIdentity(p)!;
       return {
@@ -192,18 +218,24 @@ export function outdoorPlanItems(profileId: number): UpcomingItem[] {
   }));
 }
 
-// Wellness-practice weekly targets running BEHIND their floor (#1259). The calm,
-// coaching-tier twin of the Telegram practice nudge — SAME `practice:<id>` key so a
-// dismissal here silences the push (the #227 workout-nudge bus pattern). Only surfaces a
-// target that is behind pace AND not at/above its ceiling: on-track or "that's plenty"
-// weeks stay quiet. A weekly concern, so it sits in the This-week band with a progress
-// due-text (a range shows the ceiling: "2/3–5 this week"). Reuses getFrequencyTargetProgress
-// (one computation); hidden for age-restricted profiles, mirroring the Training surface.
+// Wellness-practice weekly targets that are UNMET (#1259, re-ruled by #2579). The
+// calm, coaching-tier twin of the Telegram practice nudge — SAME `practice:<id>` key
+// so a dismissal here silences the push (the #227 workout-nudge bus pattern).
+//
+// The pace gate is GONE: every unmet practice target renders, exactly as every unmet
+// training target does, through the one shared isUnmetWeeklyTarget above (owner
+// ruling, #2579). An at-or-above-ceiling week is still silent — that is "plenty", not
+// a shortfall. The PUSH is unaffected: the pace-aware reminder keeps its own behind
+// gate in lib/notifications/practices.ts.
+//
+// A weekly concern, so it sits in the This-week band with a progress due-text (a range
+// shows the ceiling: "2/3–5 this week"). Reuses getFrequencyTargetProgress (one
+// computation); hidden for age-restricted profiles, mirroring the Training surface.
 export function practiceItems(profileId: number): UpcomingItem[] {
   if (isTrainingRestricted(profileId)) return [];
   return getFrequencyTargetProgress(profileId)
     .filter((p) => p.target.scope_kind === "practice")
-    .filter((p) => !p.met && !p.atCeiling && p.pace === "behind")
+    .filter(isUnmetWeeklyTarget)
     .map((p) => ({
       key: practiceSignalKey(p.target.id),
       domain: "practice" as const,

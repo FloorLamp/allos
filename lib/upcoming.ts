@@ -323,6 +323,17 @@ export interface UpcomingItem {
   // Explicit due-text override for status-driven signals ("Overdue", "2/3 this
   // week"); date-driven items fall back to a computed countdown label.
   dueText?: string;
+  // The `available` domain only (#1505/#2579-F): the availability qualifier WITHOUT
+  // the leading "Available" — "Bedtime", "Bedtime · Mondays", or absent when the item
+  // states no slot and no cadence.
+  //
+  // It exists because Upcoming renders an offer as a CHIP whose text is the item's own
+  // name, so the chip needs the qualifier as its own fragment ("Magnesium · Bedtime"),
+  // while `dueText` stays the full row phrase ("Available · Bedtime · Mondays") for
+  // every reader that wants a sentence. Both are composed from the same pieces in one
+  // place (offeredItems), which is the point: a renderer must never reconstruct one by
+  // slicing the other.
+  offerHint?: string | null;
   // Optional primary navigation CTA for status-driven items whose next step is
   // clearer than a generic title link (for example Reconnect / Review result).
   // This is presentation data carried on the shared model so Dashboard and
