@@ -7,9 +7,21 @@
 // medication). Each behind practice gets an inline "Done ✅" button that logs a session
 // through the shared write core; the button carries ids only and is consumed on tap.
 //
-// One computation (#221): the behind decision is exactly the Upcoming practiceItems
-// filter — getFrequencyTargetProgress (which folds range semantics via frequencyRangeState)
-// filtered to practice / !met / !atCeiling / pace "behind". The nudge is a formatter over it.
+// One PROGRESS computation (#221): getFrequencyTargetProgress — which folds range
+// semantics via frequencyRangeState — is the single ledger this nudge and the Upcoming
+// row both read, so a shortfall shown on the page and one pushed here can never
+// disagree about the numbers.
+//
+// Their GATES deliberately differ since #2579, and the difference is the doctrine:
+//   • This send: practice / !met / !atCeiling / pace "behind". A push has to be worth
+//     interrupting for, so being under a floor you are still on pace for is not
+//     enough — #1259's anti-nudge rationale, which #2579 explicitly left standing for
+//     sends and coaching surfaces.
+//   • The Upcoming row (practiceItems): practice / !met / !atCeiling. That page is the
+//     planning LEDGER and completeness is its charter, so an on-pace shortfall still
+//     renders there — on a page the user opened, which is not contact.
+// The system may reduce contact unilaterally, never increase it: widening the ledger
+// left this gate exactly where it was.
 //
 // RHYTHM RETIMING (#2188): when a behind practice has an inferred weekly rhythm
 // (inferPracticeSchedule — the workout-schedule shape over practice_logs), the

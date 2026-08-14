@@ -700,3 +700,47 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     expect(getIntakeDoseHistory(p, itemId, day)).toHaveLength(1);
   });
 });
+
+// ---- Part 5 (#2579-F): the offer's own phrase, in both shapes ---------------
+
+describe("#2579-F — an offer states its qualifier for a chip and for a sentence", () => {
+  it("composes the row phrase and the chip fragment from the same pieces", () => {
+    // Upcoming renders an offer as a CHIP whose text is the item's own name, so the
+    // qualifier has to be available WITHOUT the leading "Available" — and the two must
+    // be one composition, not a renderer slicing the other apart. Read against the
+    // real schema because the qualifier is assembled from the item's stored slot and
+    // its cadence.
+    const p = createProfile("Offer Hint (test)");
+    const day = today(p);
+    seedItem(p, "Chamomile (test)", { obligation: "may" });
+
+    const offer = offeredItems(p, day).find(
+      (i) => i.title === "Chamomile (test)"
+    );
+    expect(offer).toBeDefined();
+    // The dose is seeded in the morning slot, so the qualifier is that slot and
+    // nothing else — a daily item states no cadence.
+    expect(offer!.offerHint).toBe("Morning");
+    expect(offer!.dueText).toBe("Available · Morning");
+  });
+
+  it("says nothing rather than something empty when there is no slot to name", () => {
+    // An item with no dose has no slot and no cadence. The chip is then just the
+    // item's name, and the row phrase is just "Available" — never a dangling
+    // separator, which is what a blank-string hint would have produced.
+    const p = createProfile("Offer Hint Bare (test)");
+    const day = today(p);
+    const { itemId } = seedItem(p, "Bare Offer (test)", { obligation: "may" });
+    db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(itemId);
+
+    const offer = offeredItems(p, day).find(
+      (i) => i.title === "Bare Offer (test)"
+    );
+    expect(offer).toBeDefined();
+    expect(offer!.offerHint).toBeNull();
+    expect(offer!.dueText).toBe("Available");
+    // No dose ⇒ nothing to log, so the page renders this one as a plain link chip
+    // rather than dropping it: an offer that vanished would read as a deletion.
+    expect(offer!.doseId).toBeUndefined();
+  });
+});
