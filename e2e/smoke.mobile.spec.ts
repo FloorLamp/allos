@@ -4,14 +4,14 @@ import { followLink, openMobileDrawer } from "./helpers";
 // The `mobile` project's own smoke (issue #1420) — and the reference spec for the
 // `*.mobile.spec.ts` naming convention that opts a file INTO that project
 // (playwright.config.ts). It asserts the phone shell itself, which the desktop
-// projects structurally cannot see: MobileNav's sticky top bar exists, the
-// hamburger mounts the slide-in drawer, the drawer carries the SAME navigation as
+// projects structurally cannot see: MobileNav's sticky top bar exists, dock More
+// mounts the slide-in drawer, the drawer carries the SAME navigation as
 // the desktop sidebar (both render <SidebarContent>), and a drawer link navigates.
 //
 // Deliberately read-only over the shared seed — no writes, no counts of
 // shared-seed rows, so it is repeat-safe and perturbs no neighbor (#868).
 // Everything here is a viewport-conditional surface, so it is exactly the
-// regression class the desktop suite misses: hiding the hamburger (or letting the
+// regression class the desktop suite misses: hiding More (or letting the
 // drawer drift from the shared sidebar content) fails this spec and nothing else.
 
 test("the mobile top bar renders and the desktop sidebar is hidden", async ({
@@ -19,23 +19,22 @@ test("the mobile top bar renders and the desktop sidebar is hidden", async ({
 }) => {
   await page.goto("/");
 
-  // MobileNav's bar (md:hidden) — hamburger + the quick "log activity" entry.
-  // Scoped to the bar itself (the <header> holding the hamburger) so the dashboard's
-  // own "Log activity →" card button can't satisfy either assertion.
+  // MobileNav's bar (md:hidden) is identity + Search only after #2745/#2746.
   const bar = page.locator("header", {
-    has: page.getByRole("button", { name: "Open menu" }),
+    has: page.getByTestId("search-mobile"),
   });
-  await expect(bar.getByRole("button", { name: "Open menu" })).toBeVisible();
-  await expect(
-    bar.getByRole("button", { name: "Log activity", exact: true })
-  ).toBeVisible();
+  await expect(bar.getByTestId("search-mobile")).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Open menu" })).toHaveCount(0);
+  await expect(page.getByTestId("quick-log-primary")).toHaveCount(0);
+  await expect(page.getByTestId("dock-slot-more")).toBeVisible();
+  await expect(page.getByTestId("dock-log-puck")).toBeVisible();
 
   // The desktop sidebar's nav links exist only inside the (unmounted) drawer at
   // this width, so nothing sidebar-ish is on screen before it is opened.
   await expect(page.getByRole("link", { name: /^Data/ })).toHaveCount(0);
 });
 
-test("the hamburger opens the drawer with the shared sidebar navigation", async ({
+test("dock More opens the drawer with the shared sidebar navigation", async ({
   page,
 }) => {
   await page.goto("/");
@@ -68,7 +67,7 @@ test("a drawer nav link navigates and closes the drawer", async ({ page }) => {
     drawer.getByRole("link", { name: "Timeline", exact: true }),
     /\/timeline/
   );
-  // Navigation closes the drawer (MobileNav's pathname effect), leaving the bar.
+  // Navigation closes the drawer, leaving the dock's More route available.
   await expect(drawer).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
+  await expect(page.getByTestId("dock-slot-more")).toBeVisible();
 });

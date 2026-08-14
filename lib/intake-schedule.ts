@@ -65,6 +65,18 @@ export function currentTimeBucket(hhmm: string): TimeBucket {
   return "Before sleep";
 }
 
+// Whether a scheduled bucket has arrived by the profile-local current bucket.
+// "Anytime" is available from the start of the day; otherwise the dose-day order
+// is the clock. Shared by moment-led dose sections and compact "due now" offers so
+// neither can call an evening dose current during the morning.
+export function timeBucketHasArrived(
+  bucket: TimeBucket,
+  currentBucket: TimeBucket
+): boolean {
+  if (bucket === "Anytime") return true;
+  return TIME_BUCKETS.indexOf(bucket) <= TIME_BUCKETS.indexOf(currentBucket);
+}
+
 export const CONDITION_LABELS: Record<IntakeCondition, string> = {
   daily: "Daily",
   pre_workout: "Pre-workout",

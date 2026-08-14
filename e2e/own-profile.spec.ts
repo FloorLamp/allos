@@ -148,10 +148,10 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
     // same overlay (never a hand-mirrored hidden md:* branch).
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
-    // Open the mobile drawer past the pre-hydration hamburger swallow (#500): re-tap
+    // Open the mobile drawer past the pre-hydration More swallow (#500): re-tap
     // until the drawer renders (idempotent — the button only opens). expect.poll, not
     // toPass/waitForTimeout.
-    const openBtn = page.getByRole("button", { name: "Open menu" });
+    const openBtn = page.getByTestId("dock-slot-more");
     const drawer = page.locator("div.fixed.inset-0.z-40");
     await expect
       .poll(

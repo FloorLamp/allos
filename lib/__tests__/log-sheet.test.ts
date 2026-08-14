@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultLogSegment,
+  dueDoseChipLabel,
   habitualLogSegment,
   logSheetSegments,
   openingLogSegment,
@@ -23,6 +24,27 @@ describe("LOG_SEGMENT_CENSUS", () => {
   });
 });
 
+describe("dueDoseChipLabel", () => {
+  it("names the due doses and compacts overflow", () => {
+    expect(dueDoseChipLabel({ count: 1, names: ["Creatine"] })).toBe(
+      "Due: Creatine"
+    );
+    expect(
+      dueDoseChipLabel({
+        count: 3,
+        names: ["Creatine", "Vitamin D", "Magnesium"],
+      })
+    ).toBe("Due: Creatine, Vitamin D +1");
+  });
+
+  it("keeps the count label as the missing-title fallback", () => {
+    expect(dueDoseChipLabel({ count: 0, names: [] })).toBeNull();
+    expect(dueDoseChipLabel({ count: 2, names: ["", " "] })).toBe(
+      "2 doses due"
+    );
+  });
+});
+
 describe("logSheetSegments", () => {
   it("carries exactly the entries quickLogMenu carries, once each", () => {
     for (const [restricted, cycle] of [
@@ -41,8 +63,8 @@ describe("logSheetSegments", () => {
   });
 
   it("drops a segment with no surviving entry rather than disabling it", () => {
-    // Training is the whole of the `train` segment, and an age-restricted profile
-    // has no training surface at all.
+    // Both Training rows are gated, and an age-restricted profile has no
+    // training surface at all.
     expect(logSheetSegments(false, true).map((s) => s.id)).toContain("train");
     expect(logSheetSegments(true, true).map((s) => s.id)).not.toContain(
       "train"

@@ -158,10 +158,12 @@ import {
 } from "./plans";
 export { markCarePlanItemDone } from "./plans";
 import {
+  type DueDoseNowItem,
   contrastItems,
   dentalSafetyItems,
   dietaryLimitItems,
   doseItems,
+  doseItemsNow,
   drugAllergyItems,
   interactionItems,
   medMonitoringItems,
@@ -694,6 +696,20 @@ export interface HouseholdRollup {
   dueDoses: UpcomingItem[];
   lowRefills: UpcomingItem[];
   nextAppointment: UpcomingItem | null;
+}
+
+// Pending scheduled doses whose declared slot has arrived in the profile-local
+// wall clock. This is the one "due right now" collection used by compact logging
+// offers; Household and Upcoming deliberately keep their whole-day views.
+export function collectDueDosesNow(
+  profileId: number,
+  today: string,
+  nowHhmm: string
+): DueDoseNowItem[] {
+  const map = getFindingSuppressions(profileId);
+  return doseItemsNow(profileId, today, nowHhmm).filter(
+    (item) => !isItemSuppressed(map, item, today)
+  );
 }
 
 export function collectHouseholdRollup(

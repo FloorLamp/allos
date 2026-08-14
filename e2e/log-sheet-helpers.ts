@@ -26,9 +26,9 @@ import type { QuickLogId } from "@/lib/quick-log";
 // retired `QuickLogId` fails `tsc` at every call site.
 
 /**
- * Open the quick-log sheet from the top bar's caret and return it.
+ * Open the quick-log sheet from the dock puck and return it (#2745).
  *
- * The caret is a pure CLIENT toggle, so a pre-hydration tap is swallowed with no
+ * The puck is a pure CLIENT toggle, so a pre-hydration tap is swallowed with no
  * POST to settle on and no other awaitable open signal — the visibility-guarded
  * retry is the only honest wait here (#500/#830). Safe to repeat because the
  * trigger only ever sets TRUE.
@@ -37,10 +37,10 @@ export async function openLogSheet(page: Page): Promise<Locator> {
   const sheet = page.getByTestId("quick-log-sheet");
   await expect(async () => {
     if (!(await sheet.isVisible())) {
-      await page.getByTestId("quick-log-more").click();
+      await page.getByTestId("dock-log-puck").click();
     }
     await expect(sheet).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the caret past the pre-hydration swallow — a client toggle with no POST, visibility-guarded so a late tap can't re-close it
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the puck past the pre-hydration swallow — a client toggle with no POST, visibility-guarded so a late tap can't re-close it
   return sheet;
 }
 

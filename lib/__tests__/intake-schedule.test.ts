@@ -11,6 +11,7 @@ import {
   obligationClass,
   spreadDoseTimes,
   timeBucket,
+  timeBucketHasArrived,
   TIME_BUCKET_LABELS,
   workoutDaySubtitleLabel,
   WORKOUT_CONDITIONS,
@@ -71,6 +72,20 @@ describe("timeBucket", () => {
     expect(timeBucket("with food")).toBe("Anytime");
     expect(timeBucket("")).toBe("Anytime");
     expect(timeBucket(null)).toBe("Anytime");
+  });
+});
+
+describe("timeBucketHasArrived", () => {
+  it("keeps future slots ahead while retaining earlier unresolved slots", () => {
+    expect(timeBucketHasArrived("Morning", "Morning")).toBe(true);
+    expect(timeBucketHasArrived("Midday", "Morning")).toBe(false);
+    expect(timeBucketHasArrived("Evening", "Midday")).toBe(false);
+    expect(timeBucketHasArrived("Morning", "Evening")).toBe(true);
+  });
+
+  it("treats Anytime as arrived for the whole day", () => {
+    expect(timeBucketHasArrived("Anytime", "Morning")).toBe(true);
+    expect(timeBucketHasArrived("Anytime", "Before sleep")).toBe(true);
   });
 });
 

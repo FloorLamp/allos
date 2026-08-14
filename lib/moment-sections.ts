@@ -49,7 +49,11 @@
 // expanded one carries a heading and its rows. Nothing here describes a transition, and
 // the caller's disclosure needs no animation for either state to be readable.
 
-import { TIME_BUCKETS, type TimeBucket } from "./intake-schedule";
+import {
+  TIME_BUCKETS,
+  timeBucketHasArrived,
+  type TimeBucket,
+} from "./intake-schedule";
 
 /** One dose, already bucketed and resolved by the caller. `key` is the caller's row id. */
 export interface MomentDose<K = number> {
@@ -123,27 +127,6 @@ export interface MomentSectionsInput<K = number> {
   slotClocks?: Partial<Record<TimeBucket, string>>;
   /** Bucket display names (`TIME_BUCKET_LABELS` at the call site). */
   labels: Record<TimeBucket, string>;
-}
-
-// "Anytime" is owed all day and is never ahead of or behind the clock.
-const ANYTIME: TimeBucket = "Anytime";
-
-function bucketRank(b: TimeBucket): number {
-  return TIME_BUCKETS.indexOf(b);
-}
-
-/**
- * Whether `bucket`'s slot has arrived, given the bucket the clock is in. "Anytime" has
- * arrived from the start of the day. Mirrors the past-due comparison
- * `buildTodayPanelModel` already makes, extended to include the CURRENT slot: a dose in
- * the slot you are standing in is owed now, not later.
- */
-function slotHasArrived(
-  bucket: TimeBucket,
-  currentBucket: TimeBucket
-): boolean {
-  if (bucket === ANYTIME) return true;
-  return bucketRank(bucket) <= bucketRank(currentBucket);
 }
 
 /**
@@ -242,7 +225,7 @@ export function buildMomentSections<K = number>({
     // already finished states its truth in one line as well as any other, and holding it
     // open would spend the moment's height on a wall of checked rows.
     if (bucket === currentBucket && unresolved > 0) state = "moment";
-    else if (unresolved > 0 && slotHasArrived(bucket, currentBucket))
+    else if (unresolved > 0 && timeBucketHasArrived(bucket, currentBucket))
       state = "obligation";
     else if (unresolved === 0) state = "settled";
     else state = "ahead";

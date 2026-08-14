@@ -158,7 +158,7 @@ test("dragging a bottom sheet closed is not a pull, and refreshes nothing", asyn
     await expect(indicator).toHaveAttribute("data-refreshes", "0");
 
     const sheet = page.getByTestId("quick-log-sheet");
-    await hydratedClick(page, page.getByTestId("quick-log-more"));
+    await hydratedClick(page, page.getByTestId("dock-log-puck"));
     await expect(sheet).toBeVisible();
 
     await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {

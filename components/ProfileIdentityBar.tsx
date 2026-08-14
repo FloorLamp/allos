@@ -156,8 +156,8 @@ export default function ProfileIdentityBar({
   if (!view) return null;
 
   // Two homes for one component means two stable hooks for the ROOT — the same
-  // `-mobile` suffix convention the bar's other phone-only controls use
-  // (search-mobile, start-workout-mobile). Both mounts exist in the DOM at every
+  // `-mobile` suffix convention the bar's other phone-only control uses
+  // (search-mobile). Both mounts exist in the DOM at every
   // width (one is `md:hidden`, the other `hidden md:flex`), so a shared testid on
   // the root would be ambiguous rather than convenient. Everything INSIDE the bar
   // is reached by scoping to the root instead of by suffixing again — except the

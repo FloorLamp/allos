@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { IconChartBar } from "@tabler/icons-react";
 import WidgetHeader from "./WidgetHeader";
 import { recapLineAnnotation, recapRangeLabel, type Recap } from "@/lib/recap";
@@ -29,7 +30,19 @@ export default function WeeklyRecapWidget({
   const scale = recapScaleEntry(recap.scale);
   return (
     <div className="card" data-testid="weekly-recap">
-      <WidgetHeader title={scale.label} href="/timeline" />
+      <WidgetHeader
+        title={scale.label}
+        href="/timeline"
+        action={
+          <Link
+            href="/retrospective"
+            data-testid="weekly-recap-retrospective-link"
+            className="text-xs text-brand-600 hover:underline dark:text-brand-400"
+          >
+            See your year
+          </Link>
+        }
+      />
       {recap.isEmpty || recap.lines.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Nothing logged this {scale.noun} — log a workout or a weigh-in to

@@ -197,7 +197,7 @@ test.describe("Unified profile switcher (issue #1801)", () => {
       // The bar took the wordmark's slot: on a multi-profile instance the brand
       // line is gone from the phone bar (home stays one tap away in the drawer).
       const bar = page.locator("header", {
-        has: page.getByRole("button", { name: "Open menu" }),
+        has: page.getByTestId("search-mobile"),
       });
       await expect(
         bar.getByTestId("profile-identity-bar-mobile")
@@ -240,7 +240,7 @@ test.describe("Unified profile switcher (issue #1801)", () => {
     try {
       await page.goto("/");
       const bar = page.locator("header", {
-        has: page.getByRole("button", { name: "Open menu" }),
+        has: page.getByTestId("search-mobile"),
       });
       await expect(bar.getByText("Allos")).toBeVisible();
       await expect(page.getByTestId("profile-identity-bar-mobile")).toHaveCount(

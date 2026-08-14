@@ -11,6 +11,9 @@ describe("intakeShortName", () => {
     expect(intakeShortName("Coenzyme Q10")).toBe("CoQ10");
     expect(intakeShortName("Vitamin D3 + K2")).toBe("D3+K2");
     expect(intakeShortName("Vitamin D3")).toBe("D3");
+    expect(intakeShortName("Vitamin B complex (B6, B12, Folate)")).toBe(
+      "B-Complex"
+    );
     expect(intakeShortName("N-Acetyl Cysteine")).toBe("NAC");
     expect(intakeShortName("Creatine Monohydrate")).toBe("Creatine");
     expect(intakeShortName("P-5-P (Pyridoxal-5-Phosphate)")).toBe("P5P");

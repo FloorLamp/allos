@@ -7,14 +7,17 @@ import {
 } from "../../upcoming-suppress";
 import {
   doseDueOn,
+  currentTimeBucket,
   isDueOn,
   isOfferedOn,
   isPushedIntake,
   slotHintBucket,
   timeBucket,
+  timeBucketHasArrived,
   TIME_BUCKET_LABELS,
 } from "../../intake-schedule";
 import { cadenceLabel } from "../../intake-cadence";
+import { intakeItemShortLabel } from "../../intake-short-name";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
@@ -177,10 +180,39 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 // visible MOVE into a quieter section rather than a disappearance. Obligation, not
 // kind, decides: a medication is here because it is `must`/`should`, not because it
 // is a medication.
+export interface DueDoseNowItem extends UpcomingItem {
+  doseId: number;
+  // Compact CONTROL label only. `title` remains the record's full display name.
+  shortLabel: string;
+}
+
 export function doseItems(profileId: number, today: string): UpcomingItem[] {
   return scheduledDoseRows(profileId, today)
     .filter((row) => !row.taken)
     .map((row) => doseRowToItem(row));
+}
+
+// The pending subset whose declared time bucket has ARRIVED at `nowHhmm` in the
+// profile's local wall clock. Earlier unresolved buckets remain due; later ones do
+// not surface early. The calendar/obligation/situation/taken gates are still the
+// exact scheduledDoseRows evaluation used by the day-wide Upcoming model.
+export function doseItemsNow(
+  profileId: number,
+  today: string,
+  nowHhmm: string
+): DueDoseNowItem[] {
+  const currentBucket = currentTimeBucket(nowHhmm);
+  return scheduledDoseRows(profileId, today)
+    .filter(
+      (row) =>
+        !row.taken &&
+        timeBucketHasArrived(timeBucket(row.dose.time_of_day), currentBucket)
+    )
+    .map((row) => ({
+      ...doseRowToItem(row),
+      doseId: row.dose.id,
+      shortLabel: intakeItemShortLabel(row.item),
+    }));
 }
 
 // One dose the day's schedule asks for, plus whether it is already logged taken.

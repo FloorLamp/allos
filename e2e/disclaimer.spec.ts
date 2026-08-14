@@ -44,7 +44,7 @@ test.describe("consolidated disclaimer surface (issue #1049)", () => {
     // hydration-timed interaction with no POST to await.
     const drawerLink = page.getByRole("link", { name: "Disclaimer" });
     await expect(async () => {
-      await page.getByRole("button", { name: "Open menu" }).click();
+      await page.getByTestId("dock-slot-more").click();
       await expect(drawerLink).toBeVisible({ timeout: 1000 });
     }).toPass({ timeout: 15000, intervals: [300, 700, 1500] }); // topass-ok: opening the mobile drawer is a client-only toggle with no POST/nav to await; retry past the pre-hydration swallow
     // The footer link renders in the drawer (the mobile surface) and points at the

@@ -61,6 +61,7 @@ const SEGMENT_LABELS: Record<LogSegmentId, string> = {
  */
 export const LOG_SEGMENT_CENSUS = {
   "log-activity": "train",
+  "live-workout": "train",
   "log-food": "food",
   // The measurements form is weight + vitals + a minor's growth fields (#1486),
   // and the period offer is the other thing the body itself reports — both are
@@ -97,10 +98,9 @@ export function logSheetSegments(
 
 /**
  * Which segment the track opens on: the one holding the CURRENT ROUTE's promoted
- * log (`primaryQuickLog`, the same rule the top bar's contextual **+** obeys), so
- * opening the puck on Nutrition lands on Food. Falls back to the first surviving
- * segment when that item is gated away for this profile — never to an empty or
- * absent one.
+ * log (`primaryQuickLog`), so opening the puck on Nutrition lands on Food. Falls
+ * back to the first surviving segment when that item is gated away for this
+ * profile — never to an empty or absent one.
  */
 export function defaultLogSegment(
   segments: readonly LogSegment[],
@@ -192,6 +192,9 @@ export type SegmentLogDays = Readonly<Partial<Record<LogSegmentId, number>>>;
  */
 export const LOG_DAY_SOURCES = {
   "log-activity": ["activities"],
+  // A completed live session lands in the same canonical activity store. This
+  // is a second door to the same evidence, not a second source.
+  "live-workout": ["activities"],
   "log-food": ["food_daily_totals"],
   // A vitals sitting is `medical_records` rows by placement (#2032), so Body would
   // under-count a blood-pressure logger without that third store.
@@ -221,6 +224,29 @@ export const LOG_DAY_SOURCES = {
     "A document row is dated by the DOCUMENT rather than by the day it was filed, so its date is not evidence about when its owner logs; the filing day itself exists only as a UTC instant. Doses, practices and mood are the Care segment's daily verbs and carry its evidence."
   ),
 } as const satisfies Record<QuickLogId, readonly string[] | ArguedExclusion>;
+
+/**
+ * The dose context chip names the first two due items, then gives a compact
+ * overflow count. `count` is kept separately so a malformed/missing title can
+ * still fall back to the old honest count label rather than rendering "Due:".
+ */
+export function dueDoseChipLabel({
+  count,
+  names,
+}: {
+  count: number;
+  names: readonly string[];
+}): string | null {
+  if (count <= 0) return null;
+  const usable = names
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (usable.length === 0)
+    return count === 1 ? "1 dose due" : `${count} doses due`;
+  const overflow = Math.max(0, count - usable.length);
+  return `Due: ${usable.join(", ")}${overflow > 0 ? ` +${overflow}` : ""}`;
+}
 
 /**
  * The segment this profile logs in on the most DAYS, or null when no segment

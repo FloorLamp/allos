@@ -86,6 +86,16 @@ test.beforeAll(() => {
 });
 test.afterAll(() => clearYears());
 
+test("Timeline links to the year without spending a permanent nav row (#2762)", async ({
+  page,
+}) => {
+  await page.goto("/timeline");
+  await expect(page.getByTestId("timeline-retrospective-link")).toHaveAttribute(
+    "href",
+    "/retrospective"
+  );
+});
+
 test("the retrospective states the year's count as a record, with no comparison (#2179)", async ({
   page,
 }) => {
@@ -94,6 +104,10 @@ test("the retrospective states the year's count as a record, with no comparison 
   await expect(
     page.getByRole("heading", { name: `${SUBJECT_YEAR} in review` })
   ).toBeVisible();
+  await expect(
+    page.getByText(/the story no single week can tell/i)
+  ).toBeVisible();
+  await expect(page.getByText(/record, not as a verdict/i)).toHaveCount(0);
   await expect(page.getByTestId("retrospective-range")).toContainText(
     String(SUBJECT_YEAR)
   );

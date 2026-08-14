@@ -6,14 +6,13 @@ import {
   primaryQuickLog,
   quickLogItem,
   quickLogMenu,
-  showsActivityShortcuts,
 } from "@/lib/quick-log";
 
-// The mobile bar's contextual primary action + the quick-log sheet's menu
-// (issue #1416, sections B and E).
+// The quick-log sheet's route-aware segment choice and registry (issue #1416,
+// consolidated under the dock puck in #2745).
 
 describe("primaryQuickLog", () => {
-  it("falls back to Log activity — the bar's historical behavior — everywhere", () => {
+  it("falls back to Log activity on opinionless routes", () => {
     for (const path of ["/", "/timeline", "/training", "/settings", "/data"]) {
       expect(primaryQuickLog(path).id).toBe(LOG_ACTIVITY_ID);
     }
@@ -59,19 +58,13 @@ describe("primaryQuickLog", () => {
   });
 });
 
-describe("showsActivityShortcuts", () => {
-  it("shows the live-workout/repeat pair only where the primary IS the editor", () => {
-    expect(showsActivityShortcuts(primaryQuickLog("/"))).toBe(true);
-    expect(showsActivityShortcuts(primaryQuickLog("/nutrition"))).toBe(false);
-    expect(showsActivityShortcuts(primaryQuickLog("/medications"))).toBe(false);
-    expect(showsActivityShortcuts(primaryQuickLog("/trends"))).toBe(false);
-  });
-});
-
 describe("quickLogMenu", () => {
   it("lists every action for a training-capable profile", () => {
     expect(quickLogMenu(false).map((i) => i.id)).toEqual([
       "log-activity",
+      // #2745 — the retired top-bar bolt keeps its user-initiated home beside
+      // Log activity, with Start/Resume resolved by the activity context.
+      "live-workout",
       "log-food",
       "log-dose",
       // ONE measurements row (#1486/#1506): weight and vitals were two sheet rows
@@ -97,6 +90,7 @@ describe("quickLogMenu", () => {
   it("drops the training-only entries for an age-restricted profile", () => {
     const ids = quickLogMenu(true).map((i) => i.id);
     expect(ids).not.toContain(LOG_ACTIVITY_ID);
+    expect(ids).not.toContain("live-workout");
     expect(ids).toEqual([
       "log-food",
       "log-dose",
@@ -116,6 +110,7 @@ describe("quickLogMenu", () => {
     // Nothing else moves — the gate is per-entry, not a mode.
     expect(ids).toEqual([
       LOG_ACTIVITY_ID,
+      "live-workout",
       "log-food",
       "log-dose",
       "log-measurements",
@@ -157,6 +152,8 @@ describe("the registry itself", () => {
     for (const item of QUICK_LOG_ITEMS) {
       if (item.id === LOG_ACTIVITY_ID) {
         expect(item.target.kind).toBe("activity");
+      } else if (item.id === "live-workout") {
+        expect(item.target.kind).toBe("live");
       } else {
         expect(item.target.kind).toBe("overlay");
       }
@@ -198,6 +195,10 @@ describe("the registry itself", () => {
     });
   });
 
+  it("opens the live-workout lifecycle through its own target (#2745)", () => {
+    expect(quickLogItem("live-workout").target).toEqual({ kind: "live" });
+  });
+
   it("falls back to Log activity for an unknown id", () => {
     expect(quickLogItem("nope").id).toBe(LOG_ACTIVITY_ID);
   });
@@ -224,8 +225,8 @@ describe("the registry itself", () => {
 
   it("promotes NEITHER the document nor the practice row on any route (#1525/#1633)", () => {
     // The promotion map stays deliberately short: a page whose own screen already
-    // carries the form buys nothing by spending the bar's one slot on it (the same
-    // reasoning that keeps Nutrition → Supplements from claiming it). Data shows the
+    // carries the form buys nothing by promoting it (the same reasoning that keeps
+    // Nutrition → Supplements from claiming it). Data shows the
     // upload form on arrival; Wellness shows a Log-now button per practice card.
     for (const path of [
       "/",

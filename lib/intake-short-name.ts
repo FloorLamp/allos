@@ -51,6 +51,8 @@ export const INTAKE_SHORT_NAMES: Record<string, string> = {
   "vitamin k2 (mk-4)": "K2 MK-4",
   "vitamin b12": "B12",
   "vitamin b6": "B6",
+  "vitamin b complex": "B-Complex",
+  "vitamin b complex (b6, b12, folate)": "B-Complex",
 
   // Antioxidants / longevity
   "coenzyme q10": "CoQ10",

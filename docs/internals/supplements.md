@@ -683,10 +683,11 @@ never shortened at all — `intakeItemShortLabel` gates on `kind` explicitly,
 because the map's supplement vocabulary contains names that are also drugs
 (ergocalciferol, magnesium citrate) and a shortened drug name is a misread
 risk; the medications-only `/dose` list applies no shortening for the same
-reason. Applied at the BUTTON label boundary only (dose-reminder take buttons,
-post-workout finish, the digest offer tail, the `/dose` list, household-round
-confirms); body lines, toasts and every in-app surface keep the full name — the
-full name is the record, the short name is a control label. When the map misses,
+reason. Applied at the COMPACT CONTROL label boundary only (dose-reminder take
+buttons, post-workout finish, the digest offer tail, the `/dose` list,
+household-round confirms, and the in-app quick-log dose chip); body lines, toasts
+and in-app row content keep the full name — the full name is the record, the short
+name is a control label. When the map misses,
 `intakeItemShortLabel` falls back to a SUPPLEMENT's own `product` when it is
 genuinely shorter than the name — the "name carries the composition, product
 carries the product identity" convention (name "Astaxanthin/Lutein/Zeaxanthin",
