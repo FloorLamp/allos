@@ -11,6 +11,7 @@ import {
   scrubberRelease,
   scrubberScrollTop,
   scrubberTickAt,
+  scrubberTickAtScroll,
   scrubberTickFractions,
   type ScrubberTick,
 } from "@/lib/timeline-scrubber";
@@ -97,6 +98,7 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
   const movedRef = useRef(0);
   const startYRef = useRef(0);
   const rangeRef = useRef(0);
+  const offsetsRef = useRef<number[]>([]);
   const fractionsRef = useRef<number[]>([]);
 
   // The anchors this rail points at, as a value that only changes when the SERVER
@@ -107,16 +109,16 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
   const signature = stops.map((s) => `${s.key}@${s.anchorId}`).join("|");
 
   const measure = useCallback(() => {
-    const range = scrollRangeNow();
-    rangeRef.current = range;
+    rangeRef.current = scrollRangeNow();
     const offsets = stops.map((stop) => {
       const el = document.getElementById(stop.anchorId);
-      // An anchor the feed did not render is a stop that should not exist; clamp01
-      // pins it to the top rather than throwing away the whole measurement.
+      // An anchor the feed did not render is a stop that should not exist; the pure
+      // side falls back to even spacing rather than throwing the measurement away.
       if (!el) return Number.NaN;
       return el.getBoundingClientRect().top + window.scrollY;
     });
-    const next = scrubberTickFractions(offsets, range);
+    offsetsRef.current = offsets;
+    const next = scrubberTickFractions(offsets);
     fractionsRef.current = next;
     setFractions(next);
     // `signature` IS `stops`' value identity — the server hands back a fresh array on
@@ -147,11 +149,9 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
   useEffect(() => {
     const onScroll = () => {
       if (draggingRef.current) return;
-      const range = rangeRef.current;
-      const index = scrubberTickAt(
-        fractionsRef.current,
-        range > 0 ? window.scrollY / range : 0
-      );
+      // Asked of the OFFSETS, not of a strip fraction: the strip's coordinate system
+      // is the span between the stops, and a scroll position is not in it.
+      const index = scrubberTickAtScroll(offsetsRef.current, window.scrollY);
       if (index >= 0 && index !== activeRef.current) {
         activeRef.current = index;
         setActive(index);
@@ -188,7 +188,11 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
         // `instant`: the page must track the finger. A smooth scroll here would
         // queue animations behind a gesture that is already somewhere else.
         window.scrollTo({
-          top: scrubberScrollTop(fraction, rangeRef.current),
+          top: scrubberScrollTop(
+            fraction,
+            offsetsRef.current,
+            rangeRef.current
+          ),
           behavior: "instant",
         });
       }
@@ -231,6 +235,11 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
         ref={stripRef}
         data-testid="timeline-scrubber"
         data-scrubber-dragging={dragging ? "true" : "false"}
+        // The rail cannot answer anything before it has measured the feed's anchors —
+        // the first paint is server HTML with no geometry in it, and a drag landing in
+        // that window would scrub against an empty stop space. Declared rather than
+        // inferred, so a browser test waits on the state instead of on a duration.
+        data-scrubber-ready={fractions.length > 0 ? "true" : "false"}
         role="slider"
         tabIndex={0}
         aria-label="Scrub to a month"
@@ -241,14 +250,25 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
         aria-valuenow={active}
         aria-valuetext={activeStop?.valueText ?? ""}
         // w-11 is the 44px touch floor; `touch-none` stops the browser turning a
-        // scrub into a native page scroll before a pointermove ever arrives.
-        className="fixed right-0 top-20 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 w-11 touch-none select-none outline-none focus-visible:bg-brand-500/5 md:top-44 md:bottom-8 print:hidden"
+        // scrub into a native page scroll before a pointermove ever arrives. The strip
+        // starts below the sticky filter block and runs to just above the mobile dock,
+        // and it deliberately sits ABOVE everything in that column — which is only
+        // safe because the two surfaces it overlaps (the filter block and the feed)
+        // both give up a gutter of exactly this width. Losing the stacking contest
+        // instead would leave the rail with a dead zone at the top of the page, which
+        // is the half-measure this replaced.
+        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-0 top-20 z-20 w-11 touch-none select-none outline-none focus-visible:bg-brand-500/5 md:bottom-8 md:top-44 print:hidden"
         onPointerDown={(event) => {
+          if (fractionsRef.current.length === 0) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           draggingRef.current = true;
           setDragging(true);
           movedRef.current = 0;
           startYRef.current = event.clientY;
+          // Zeroed per gesture, so `beat > 0` means "this drag has crossed a boundary".
+          // The bubble APPEARING is not a crossing and must not beat: the ruling gives
+          // the pulse one meaning, and a beat on arrival would spend it on nothing.
+          setBeat(0);
           trackPointer(event.clientY, true);
         }}
         onPointerMove={(event) => {
@@ -324,7 +344,7 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
         >
           <span
             key={beat}
-            className={`block rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold tracking-wide text-white shadow-lg dark:bg-slate-100 dark:text-slate-900 ${pulsePlan.className}`}
+            className={`block rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold tracking-wide text-white shadow-lg dark:bg-slate-100 dark:text-slate-900 ${beat > 0 ? pulsePlan.className : ""}`}
           >
             {activeStop.label}
           </span>

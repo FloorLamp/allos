@@ -45,27 +45,38 @@
 // line at the very top of the feed, above the first tick, and dragging to the top of
 // the strip still lands on the top of the page — where it is.
 //
-// ── THE MAPPING IS TO SCROLL SPACE, AND THE DOTS PROVE IT ───────────────────
+// ── THE STRIP MAPS THE SPAN BETWEEN THE FIRST STOP AND THE LAST ─────────────
 //
 // "Maps to the current scroll space" could have meant two things, and the difference
-// is a defect. Positioning dots EVENLY and selecting them by nearest-dot makes the
-// strip a menu, and dragging then lies: the finger is a third of the way down, the
-// page jumps to a period that is 80% of the way down. So a dot sits at its anchor's
-// own fraction of the scroll range, and the tick under the finger is the last dot AT
-// OR ABOVE the finger. Dot placement and finger selection read the same array, so
-// "the period I get is the dot I am pointing at" is true by construction rather than
-// by two functions agreeing.
+// is a defect either way round.
 //
-// Fractions are CLAMPED into [0, 1] rather than dropped. An anchor can legitimately
-// sit past the maximum scroll position — the last month's card, with less than a
-// viewport of content under it, can never reach the top of the window — and a tick
-// that no drag can select is a period the rail silently refuses to offer. Clamped, it
-// pins to the bottom of the strip, which is where dragging to the bottom takes you.
+// It cannot mean EVENLY SPACED with nearest-dot selection: that makes the strip a
+// menu, and dragging then lies — the finger a third of the way down, the page 80% of
+// the way down. Dot placement and finger selection have to read the same array.
 //
-// A DOCUMENT THAT DOES NOT SCROLL still gets a rail with usable stops: with no scroll
-// range there is no proportion to honour, so the dots space evenly and every tap still
-// lands. This is the degenerate case (an expanded feed short enough to fit), not a
-// second mapping to keep in sync — `scrubberTickFractions` owns both.
+// But it also cannot mean `offset / (scrollHeight - innerHeight)`, which is what this
+// shipped first and which fails EXACTLY on the pages #2657 created. The windowed feed
+// is a spine of ~70px cards; on a 900px viewport a five-period profile measured a
+// scroll range of 58px against anchors at 458–842px, so every dot clamped to 1, every
+// pointer position answered the same period, and the rail was decoration. The fold
+// made the page short — that was the point — and a rail keyed on how far the page can
+// scroll is worth least precisely where the fold worked best.
+//
+// So the strip's own coordinate system is the SPAN BETWEEN THE STOPS: its top is the
+// first stop's anchor, its bottom is the last stop's, and a dot sits at its anchor's
+// share of that span. Dragging interpolates a document offset inside the span and
+// scrolls as far toward it as the document allows. Both ends stay honest — the dot you
+// point at is the period you get, and the SPACING still reflects how much document
+// each period occupies, so an expanded month visibly pushes its neighbours apart.
+//
+// What the rail gives up is the content ABOVE the first stop (the page header, the
+// ahead fold) and BELOW the last: they are one flick away at either extreme, and
+// trading them for a rail that works on a short page is not close.
+//
+// Fractions are still CLAMPED into [0, 1] rather than dropped, for the degenerate
+// inputs — an anchor the feed did not render measures as `NaN`, and a stop set whose
+// anchors all resolve to one point (or to nothing) falls back to even spacing rather
+// than stacking every dot on one pixel.
 
 import type { TimelineWindowed, WindowableDay } from "./timeline-window";
 import { MONTHS_SHORT } from "./date";
@@ -233,26 +244,24 @@ function clamp01(value: number): number {
 }
 
 /**
- * Where each tick's dot sits on the strip, 0 (top) … 1 (bottom).
+ * Where each tick's dot sits on the strip, 0 (top) … 1 (bottom): its anchor's share of
+ * the span between the FIRST stop's anchor and the LAST. `offsets` are those document
+ * offsets, measured by the component, in the same order as the ticks.
  *
- * `offsets` are the anchors' document offsets, measured by the component, in the same
- * order as the ticks. `scrollRange` is `scrollHeight - innerHeight`: the distance the
- * document can actually travel.
- *
- * With no scroll range there is no proportion to honour, so the stops space evenly —
- * the degenerate case, owned here rather than branched around by the caller.
+ * Even spacing is the fallback, never the design — it is what a span of zero (one
+ * stop, or anchors the feed did not render) gets, so the rail degrades to a usable
+ * menu instead of stacking every dot on one pixel.
  */
-export function scrubberTickFractions(
-  offsets: readonly number[],
-  scrollRange: number
-): number[] {
+export function scrubberTickFractions(offsets: readonly number[]): number[] {
   if (offsets.length === 0) return [];
   if (offsets.length === 1) return [0];
-  if (!(scrollRange > 0)) {
+  const first = offsets[0];
+  const span = offsets[offsets.length - 1] - first;
+  if (!(span > 0)) {
     const last = offsets.length - 1;
     return offsets.map((_, index) => index / last);
   }
-  return offsets.map((offset) => clamp01(offset / scrollRange));
+  return offsets.map((offset) => clamp01((offset - first) / span));
 }
 
 /**
@@ -286,13 +295,41 @@ export function scrubberFraction(
   return clamp01((pointerY - stripTop) / stripHeight);
 }
 
-/** Where a drag at `fraction` puts the document. */
+/**
+ * Where a drag at `fraction` puts the document: the offset that far through the span
+ * between the first stop's anchor and the last, clamped to what the document can
+ * actually reach. A short feed simply stops at its own maximum rather than pretending
+ * the strip's bottom is somewhere the page can go.
+ */
 export function scrubberScrollTop(
   fraction: number,
+  offsets: readonly number[],
   scrollRange: number
 ): number {
-  if (!(scrollRange > 0)) return 0;
-  return clamp01(fraction) * scrollRange;
+  const range = scrollRange > 0 ? scrollRange : 0;
+  if (offsets.length === 0) return clamp01(fraction) * range;
+  const first = offsets[0];
+  const target = first + clamp01(fraction) * (offsets[offsets.length - 1] - first);
+  if (!Number.isFinite(target)) return clamp01(fraction) * range;
+  return Math.min(Math.max(target, 0), range);
+}
+
+/**
+ * The stop the viewport is currently sitting on: the last anchor that has passed the
+ * top of the window. This is the rail's value AT REST, and it is asked of the OFFSETS
+ * rather than of a fraction — the strip's coordinate system is the stop span, and the
+ * scroll position is not in it.
+ */
+export function scrubberTickAtScroll(
+  offsets: readonly number[],
+  scrollTop: number
+): number {
+  if (offsets.length === 0) return -1;
+  let index = 0;
+  for (let i = 0; i < offsets.length; i++) {
+    if (offsets[i] <= scrollTop) index = i;
+  }
+  return index;
 }
 
 /**

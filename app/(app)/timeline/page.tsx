@@ -951,78 +951,90 @@ export default async function TimelinePage(props: {
         id="timeline-controls"
         className="mb-5 md:sticky md:top-0 md:z-20 md:-mx-2 md:bg-slate-50/50 md:px-2 md:py-3 md:backdrop-blur-md md:dark:bg-ink-950/50"
       >
-        <ContextBar
-          idPrefix="timeline-filters"
-          label={contextLabel(
-            category ? timelineCategoryLabel(category) : "All",
-            throughLabel
-          )}
-          controls={
-            <div className="space-y-2 sm:space-y-4">
-              <DateRangeControl
-                basePath="/timeline"
-                range={range}
-                todayStr={todayStr}
-                hiddenParams={{ category }}
-                buildHref={(r) =>
-                  filterHref(category, r, undefined, [...openFolds])
-                }
-                LinkComponent={TimelineFilterLink}
-                idPrefix="timeline"
-                rightSlot={
-                  <>
-                    <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
-                      {throughLabel}
-                    </span>
-                    {latestDay && oldestDay && latestDay !== oldestDay && (
-                      <>
-                        <JumpLink
-                          date={latestDay}
-                          openHref={jumpHref(latestDay)}
-                          label="Latest"
-                        />
-                        <JumpLink
-                          date={oldestDay}
-                          openHref={jumpHref(oldestDay)}
-                          label="Oldest"
-                        />
-                      </>
-                    )}
-                  </>
-                }
-              />
+        {/* The jump rail's gutter, again (#2657 item 4). Its 44px hit strip is fixed
+            to the viewport and overlaps THIS block too — at the top of the page, and
+            at every scroll position below `md` where this block is not sticky. The
+            Latest/Oldest jumps sit at the far right of it (`ml-auto`), so without the
+            gutter an invisible strip would be parked on top of them. An inner wrapper
+            rather than a class on the block itself: this one already sets `md:px-2`,
+            and two padding utilities racing for the same edge is not a thing to leave
+            to stylesheet order. */}
+        <div className={scrubberStops.length > 0 ? "pr-11" : ""}>
+          <ContextBar
+            idPrefix="timeline-filters"
+            label={contextLabel(
+              category ? timelineCategoryLabel(category) : "All",
+              throughLabel
+            )}
+            controls={
+              <div className="space-y-2 sm:space-y-4">
+                <DateRangeControl
+                  basePath="/timeline"
+                  range={range}
+                  todayStr={todayStr}
+                  hiddenParams={{ category }}
+                  buildHref={(r) =>
+                    filterHref(category, r, undefined, [...openFolds])
+                  }
+                  LinkComponent={TimelineFilterLink}
+                  idPrefix="timeline"
+                  rightSlot={
+                    <>
+                      <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+                        {throughLabel}
+                      </span>
+                      {latestDay && oldestDay && latestDay !== oldestDay && (
+                        <>
+                          <JumpLink
+                            date={latestDay}
+                            openHref={jumpHref(latestDay)}
+                            label="Latest"
+                          />
+                          <JumpLink
+                            date={oldestDay}
+                            openHref={jumpHref(oldestDay)}
+                            label="Oldest"
+                          />
+                        </>
+                      )}
+                    </>
+                  }
+                />
 
-              <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-                <TimelineFilterLink
-                  href={filterHref(undefined, range, undefined, [...openFolds])}
-                  className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                    !category
-                      ? "bg-brand-500 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                  }`}
-                >
-                  All
-                </TimelineFilterLink>
-                {visibleCategories.map((c) => {
-                  const active = c === category;
-                  return (
-                    <TimelineFilterLink
-                      key={c}
-                      href={filterHref(c, range, undefined, [...openFolds])}
-                      className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                        active
-                          ? "bg-brand-500 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                      }`}
-                    >
-                      {timelineCategoryLabel(c)}
-                    </TimelineFilterLink>
-                  );
-                })}
+                <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+                  <TimelineFilterLink
+                    href={filterHref(undefined, range, undefined, [
+                      ...openFolds,
+                    ])}
+                    className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
+                      !category
+                        ? "bg-brand-500 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+                    }`}
+                  >
+                    All
+                  </TimelineFilterLink>
+                  {visibleCategories.map((c) => {
+                    const active = c === category;
+                    return (
+                      <TimelineFilterLink
+                        key={c}
+                        href={filterHref(c, range, undefined, [...openFolds])}
+                        className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
+                          active
+                            ? "bg-brand-500 text-white"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+                        }`}
+                      >
+                        {timelineCategoryLabel(c)}
+                      </TimelineFilterLink>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          }
-        />
+            }
+          />
+        </div>
       </div>
 
       {/* Multi-view merged feed: the interleaved | by-person toggle (issue #1327 fix 2,

@@ -8,6 +8,7 @@ import {
   scrubberRelease,
   scrubberScrollTop,
   scrubberTickAt,
+  scrubberTickAtScroll,
   scrubberTickFractions,
   showTimelineScrubber,
   timelineScrubberTicks,
@@ -186,36 +187,55 @@ describe("showTimelineScrubber", () => {
 });
 
 describe("scrubberTickFractions", () => {
-  it("places each dot at its anchor's own share of the scroll range", () => {
+  it("places each dot at its anchor's share of the span between the stops", () => {
     // Proportional, not evenly spaced: an evenly spaced strip makes the drag lie —
     // the finger a third of the way down, the page a long way somewhere else.
-    expect(scrubberTickFractions([0, 500, 1000], 1000)).toEqual([0, 0.5, 1]);
+    expect(scrubberTickFractions([100, 350, 600])).toEqual([0, 0.5, 1]);
   });
 
-  it("clamps an anchor past the last scrollable position to the bottom", () => {
-    // The last month's card, with less than a viewport under it, can never reach the
-    // top of the window. Dropped, it would be a period no drag could select.
-    expect(scrubberTickFractions([0, 900, 4000], 1000)).toEqual([0, 0.9, 1]);
+  it("is keyed on the STOP SPAN, not on how far the page can scroll", () => {
+    // The defect this shipped with, and the reason it is worth a test of its own: the
+    // windowed feed is a spine of ~70px cards, so a five-period profile on a 900px
+    // viewport measured 58px of scroll range against anchors at 458–842. Divided by
+    // the scroll range every dot clamped to 1 and the rail answered one period for
+    // every pointer position. The span is what has structure on a short page.
+    expect(scrubberTickFractions([458, 590, 674, 758, 842])).toEqual([
+      0,
+      (590 - 458) / (842 - 458),
+      (674 - 458) / (842 - 458),
+      (758 - 458) / (842 - 458),
+      1,
+    ]);
   });
 
-  it("spaces evenly when the document cannot scroll at all", () => {
-    expect(scrubberTickFractions([10, 20, 30, 40], 0)).toEqual([
+  it("spreads the dots the way the document does", () => {
+    // An expanded month occupies far more document than its collapsed neighbours, and
+    // the rail says so — its dot is pushed away from theirs.
+    const [a, b, c] = scrubberTickFractions([0, 900, 1000]);
+    expect(a).toBe(0);
+    expect(b).toBeGreaterThan(0.8);
+    expect(c).toBe(1);
+  });
+
+  it("falls back to even spacing when the span has no structure", () => {
+    expect(scrubberTickFractions([200, 200, 200, 200])).toEqual([
       0,
       1 / 3,
       2 / 3,
       1,
     ]);
-    expect(scrubberTickFractions([10, 20], -50)).toEqual([0, 1]);
+    // An anchor the feed did not render measures as NaN, which poisons the span; even
+    // spacing keeps every stop tappable rather than stacking them on one pixel.
+    expect(scrubberTickFractions([Number.NaN, 500, 900])).toEqual([0, 0.5, 1]);
   });
 
   it("handles the degenerate sets without producing NaN", () => {
-    expect(scrubberTickFractions([], 1000)).toEqual([]);
-    expect(scrubberTickFractions([700], 1000)).toEqual([0]);
-    expect(scrubberTickFractions([Number.NaN, 500], 1000)).toEqual([0, 0.5]);
+    expect(scrubberTickFractions([])).toEqual([]);
+    expect(scrubberTickFractions([700])).toEqual([0]);
   });
 
   it("never goes backwards, so the strip reads in feed order", () => {
-    const fractions = scrubberTickFractions([0, 120, 900, 2400, 9000], 2000);
+    const fractions = scrubberTickFractions([0, 120, 900, 2400, 9000]);
     for (let i = 1; i < fractions.length; i++) {
       expect(fractions[i]).toBeGreaterThanOrEqual(fractions[i - 1]);
     }
@@ -251,9 +271,7 @@ describe("scrubberTickAt", () => {
   it("agrees with the dots it was handed, by construction", () => {
     // Placement and selection read the SAME array, so "the period I get is the dot I
     // am pointing at" is a property rather than two functions happening to agree.
-    const offsets = [0, 400, 1600, 3000];
-    const range = 3200;
-    const placed = scrubberTickFractions(offsets, range);
+    const placed = scrubberTickFractions([0, 400, 1600, 3000]);
     placed.forEach((fraction, index) => {
       expect(scrubberTickAt(placed, fraction)).toBe(index);
     });
@@ -278,14 +296,44 @@ describe("scrubberFraction", () => {
 });
 
 describe("scrubberScrollTop", () => {
-  it("maps the strip linearly onto the scroll space", () => {
-    expect(scrubberScrollTop(0, 5000)).toBe(0);
-    expect(scrubberScrollTop(0.5, 5000)).toBe(2500);
-    expect(scrubberScrollTop(1, 5000)).toBe(5000);
+  const offsets = [400, 1200, 2000];
+
+  it("interpolates inside the stop span", () => {
+    expect(scrubberScrollTop(0, offsets, 5000)).toBe(400);
+    expect(scrubberScrollTop(0.5, offsets, 5000)).toBe(1200);
+    expect(scrubberScrollTop(1, offsets, 5000)).toBe(2000);
+  });
+
+  it("stops at what the document can actually reach", () => {
+    // A short feed does not pretend the bottom of the strip is somewhere the page can
+    // go — it goes as far as it can and stays there.
+    expect(scrubberScrollTop(1, offsets, 58)).toBe(58);
+    expect(scrubberScrollTop(0, offsets, 58)).toBe(58);
   });
 
   it("stays put when there is nothing to scroll", () => {
-    expect(scrubberScrollTop(0.7, 0)).toBe(0);
+    expect(scrubberScrollTop(0.7, offsets, 0)).toBe(0);
+  });
+
+  it("degrades to the raw scroll space when the span is unmeasurable", () => {
+    expect(scrubberScrollTop(0.5, [], 5000)).toBe(2500);
+    expect(scrubberScrollTop(0.5, [Number.NaN, 900], 5000)).toBe(2500);
+  });
+});
+
+describe("scrubberTickAtScroll", () => {
+  const offsets = [400, 1200, 2000];
+
+  it("names the last period whose anchor has passed the top of the window", () => {
+    expect(scrubberTickAtScroll(offsets, 0)).toBe(0);
+    expect(scrubberTickAtScroll(offsets, 400)).toBe(0);
+    expect(scrubberTickAtScroll(offsets, 1199)).toBe(0);
+    expect(scrubberTickAtScroll(offsets, 1200)).toBe(1);
+    expect(scrubberTickAtScroll(offsets, 99999)).toBe(2);
+  });
+
+  it("answers -1 for an empty rail", () => {
+    expect(scrubberTickAtScroll([], 500)).toBe(-1);
   });
 });
 
