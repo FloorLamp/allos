@@ -346,7 +346,10 @@ const MULTI_BOX_ALLOW: Record<string, number> = {
   "mobile-ui-polish.spec.ts": 2,
   "muscle-anatomy.spec.ts": 1,
   "saved-star.mobile.spec.ts": 1,
-  "sleep-page.spec.ts": 1,
+  // 1 → 0: the sparse-layout read in the historical-editing test moved onto
+  // settledBoxes (#2839). It was the last unbounded geometry wait in a test that
+  // had been timing out on shard 8, and the file's other measurement already
+  // went through the helper.
   "training-overview-doing.mobile.spec.ts": 4,
   "trends-annotations.spec.ts": 2,
   "trends-body-mobile.spec.ts": 1,

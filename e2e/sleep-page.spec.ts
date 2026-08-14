@@ -884,6 +884,21 @@ test.describe("Sleep and mood log historical editing", () => {
   test("edits historical mood + duration-only sleep while imported sleep stays read-only", async ({
     browser,
   }, testInfo) => {
+    // #2839: this timed out at the 30s DEFAULT on shard 8, three times in a
+    // 45-minute window, with the bare "Test timeout of 30000ms exceeded" and no
+    // failing assertion. The setup is already seeded straight into the worker DB
+    // (createSleepEditFixture), so there is nothing left to move out of the
+    // sequence: what remains is a fixture login, a /sleep navigation, and TWO
+    // overflow-menu → dialog round trips, which is what the test is named for.
+    //
+    // Measured here (4 cores, one worker, CDP CPU throttle standing in for a
+    // loaded runner, 3 trials per rate): 3.0-3.6s unthrottled, 4.9-6.4s at 4x,
+    // 7.7-8.2s at 8x, 15.0-16.2s at 20x, and 28.6-30.0s at 40x — where it starts
+    // failing with exactly the CI signature. The margin at a CI-realistic 20x is
+    // under 2x, on the heaviest spec file in its shard, and the two menu round
+    // trips are what stretches (0.3s idle, ~7s at 20x). Nothing here is
+    // per-assertion slow; the sequence is just longer than one default budget.
+    test.slow();
     const fixture = createSleepEditFixture(testInfo, "edit");
     let page: Page | null = null;
     try {
@@ -897,20 +912,25 @@ test.describe("Sleep and mood log historical editing", () => {
       const sparseDuration = main.getByTestId("sleep-duration-trend");
       const sparseConsistency = main.getByTestId("sleep-consistency");
       await expect(sparseConsistency).toBeVisible();
-      const [sparseDurationBox, sparseConsistencyBox] = await Promise.all([
-        sparseDuration.boundingBox(),
-        sparseConsistency.boundingBox(),
+      // settledBoxes, not two independent boundingBox() reads (#2437) — the
+      // subject is the RELATIONSHIP between the two cards, and the charts size
+      // themselves after mount, so a gap computed across two separate reads can
+      // describe a layout that never existed. The sibling measurement above
+      // already went through the helper; this site was the straggler. It also
+      // bounds the wait: a raw boundingBox() has no ceiling of its own and burns
+      // the whole test budget when a tile is slow to attach.
+      const [sparseDurationBox, sparseConsistencyBox] = await settledBoxes([
+        sparseDuration,
+        sparseConsistency,
       ]);
-      expect(sparseDurationBox).not.toBeNull();
-      expect(sparseConsistencyBox).not.toBeNull();
       await expect(main.getByTestId("sleep-stages")).toHaveCount(0);
       // With neither SRI nor stage data, the two visible cards fill the first
       // row instead of reserving either missing card's grid position.
       expect(
-        Math.abs(sparseDurationBox!.x - sparseConsistencyBox!.x)
+        Math.abs(sparseDurationBox.x - sparseConsistencyBox.x)
       ).toBeGreaterThan(100);
       expect(
-        Math.abs(sparseDurationBox!.y - sparseConsistencyBox!.y)
+        Math.abs(sparseDurationBox.y - sparseConsistencyBox.y)
       ).toBeLessThanOrEqual(1);
 
       const log = page.getByTestId("sleep-mood-log");
