@@ -1681,6 +1681,16 @@ const klorConId = Number(
 medDose.run(klorConId, "10 mEq", "Anytime", "with_food", 0);
 courseIns.run(klorConId, daysAgo(40), null, null, "Ongoing potassium support");
 
+// Derive the Rx flag the way migration 045 backfilled it: a prescriber-bearing
+// med is a prescription. The seed's inserts predate the column, so without this
+// every seeded med — Warfarin included — wore an "OTC" chip on /medications and
+// the printable med list (found by the 2026-08 persona census).
+db.prepare(
+  `UPDATE intake_items SET rx = 1
+   WHERE profile_id = 1 AND kind = 'medication'
+     AND prescriber IS NOT NULL AND TRIM(prescriber) != ''`
+).run();
+
 // Log adherence per dose over the last week.
 const allDoses = db
   .prepare("SELECT id, item_id FROM intake_item_doses")

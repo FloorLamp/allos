@@ -283,10 +283,12 @@ function intakeWriter(ctx: PersonaContext): IntakeWriter {
        (profile_id, name, notes, condition, obligation, brand, product, situation, stack)
      VALUES (?,?,?,?,?,?,NULL,NULL,?)`
   );
+  // rx mirrors the add-medication form's fallback (intake-actions.ts):
+  // a prescriber-bearing med is a prescription, everything else is OTC.
   const medIns = ctx.db.prepare(
     `INSERT INTO intake_items
-       (profile_id, name, notes, condition, obligation, kind, prescriber, active)
-     VALUES (?,?,?,'daily',?,'medication',?,1)`
+       (profile_id, name, notes, condition, obligation, kind, prescriber, rx, active)
+     VALUES (?,?,?,'daily',?,'medication',?,?,1)`
   );
   const doseIns = ctx.db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
@@ -321,7 +323,8 @@ function intakeWriter(ctx: PersonaContext): IntakeWriter {
           m.name,
           m.notes ?? null,
           m.obligation ?? "should",
-          m.prescriber ?? null
+          m.prescriber ?? null,
+          m.prescriber ? 1 : 0
         ).lastInsertRowid
       );
       if (m.rxcui) {
@@ -343,18 +346,25 @@ function intakeWriter(ctx: PersonaContext): IntakeWriter {
 function logAdherence(ctx: PersonaContext): void {
   const doses = ctx.db
     .prepare(
-      `SELECT d.id, d.item_id FROM intake_item_doses d
+      `SELECT d.id, d.item_id, d.amount FROM intake_item_doses d
          JOIN intake_items i ON i.id = d.item_id
        WHERE i.profile_id = ?`
     )
-    .all(ctx.profileId) as { id: number; item_id: number }[];
+    .all(ctx.profileId) as {
+    id: number;
+    item_id: number;
+    amount: string | null;
+  }[];
+  // Amount is snapshotted like the real confirm path (adherence.ts) does, so
+  // the dose-history ledger shows what was taken instead of "—".
   const log = ctx.db.prepare(
-    `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date) VALUES (?,?,?)`
+    `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, amount, status)
+     VALUES (?,?,?,?,'taken')`
   );
   for (let d = 6; d >= 1; d--) {
     for (const row of doses) {
       if ((row.id + d) % 5 === 0) continue; // ~80% adherence, deterministic
-      log.run(row.id, row.item_id, ctx.daysAgo(d));
+      log.run(row.id, row.item_id, ctx.daysAgo(d), row.amount);
     }
   }
 }

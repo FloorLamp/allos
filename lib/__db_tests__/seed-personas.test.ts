@@ -142,14 +142,18 @@ describe("persona seeds against a live schema", () => {
     const profileId = seeded.get("senior-75")!;
     const meds = db
       .prepare(
-        `SELECT name FROM intake_items
+        `SELECT name, rx FROM intake_items
          WHERE profile_id = ? AND kind = 'medication' AND active = 1`
       )
-      .all(profileId) as { name: string }[];
+      .all(profileId) as { name: string; rx: number }[];
     expect(meds.length).toBe(6);
-    const names = meds.map((m) => m.name);
-    expect(names).toContain("Warfarin");
-    expect(names).toContain("Ibuprofen");
+    const byName = new Map(meds.map((m) => [m.name, m]));
+    expect(byName.has("Warfarin")).toBe(true);
+    expect(byName.has("Ibuprofen")).toBe(true);
+    // Prescriber-bearing meds are Rx (the RxOtcBadge reads intake_items.rx);
+    // the self-directed OTC NSAID stays 0.
+    expect(byName.get("Warfarin")!.rx).toBe(1);
+    expect(byName.get("Ibuprofen")!.rx).toBe(0);
   });
 
   it("pregnant: declares the risk attribute and stops cycles at the LMP", () => {
