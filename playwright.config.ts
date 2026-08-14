@@ -138,6 +138,24 @@ export default defineConfig({
     // worker's own server (PORT_BASE + parallelIndex). Nothing should reach the
     // base port unless the fixture failed to load.
     baseURL: `http://localhost:${PORT_BASE}`,
+    // Playwright's defaults here are 0 — UNBOUNDED. An action whose
+    // actionability check never passes (a control unmounted mid-interaction, an
+    // overlay that never clears, a boundingBox on a locator that never attaches)
+    // then silently consumes the WHOLE test budget and dies as a bare
+    // "Test timeout of 30000ms exceeded" naming nothing — #890's causeless
+    // timeout, at the config level. That is exactly how #2839 burned three
+    // investigation rounds: sleep-page's historical-edit test hung to a bare
+    // timeout at 30s AND at 90s (test.slow() tripled the budget and the hang ate
+    // all of it — a stuck wait absorbs any ceiling), with no failing assertion
+    // to read. Bounding every action means a stuck wait fails INSIDE the test
+    // budget, naming its own action and locator ("locator.click: Timeout 15000ms
+    // exceeded … waiting for element to receive pointer events"), which is the
+    // difference between a diagnosis and a shrug. 15s is 3–5× the worst
+    // action/navigation latency the CI duration lines show on a loaded shard;
+    // an assertion that legitimately needs longer declares it (hygiene pitfall
+    // 17) — these bounds are for interactions, not for waits.
+    actionTimeout: 15_000,
+    navigationTimeout: 15_000,
     trace: "on-first-retry",
     ...(executablePath ? { launchOptions: { executablePath } } : {}),
   },

@@ -346,7 +346,10 @@ const MULTI_BOX_ALLOW: Record<string, number> = {
   "mobile-ui-polish.spec.ts": 2,
   "muscle-anatomy.spec.ts": 1,
   "saved-star.mobile.spec.ts": 1,
-  "sleep-page.spec.ts": 1,
+  // 1 → 0: the sparse-layout read in the historical-editing test moved onto
+  // settledBoxes (#2839/#2844) — it was the file's last raw two-read measure,
+  // and the cards it measures grow late (lazy chart mounts), the exact tear
+  // the helper exists for.
   "training-overview-doing.mobile.spec.ts": 4,
   "trends-annotations.spec.ts": 2,
   "trends-body-mobile.spec.ts": 1,

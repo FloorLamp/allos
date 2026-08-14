@@ -901,7 +901,23 @@ export async function settledBoxes(
   const page = locators[0].page();
   let previous: string | null = null;
   for (;;) {
-    const boxes = await Promise.all(locators.map((l) => l.boundingBox()));
+    // Each read is bounded by THIS helper's remaining budget and a never-attaching
+    // locator degrades to null instead of throwing, so the deadline below stays
+    // authoritative: without the bound, `boundingBox()` on a locator that resolves
+    // to nothing waits at the action default and the named diagnosis under it is
+    // never reached (#2839 — the deadline check only ran between reads, so a read
+    // that never returned made the "deadline" a fiction).
+    const remaining = Math.max(100, deadline - Date.now());
+    const boxes = await Promise.all(
+      locators.map((l) =>
+        l.boundingBox({ timeout: remaining }).catch((err: Error) => {
+          // Only the never-attached shape becomes null (the deadline check below
+          // names it); a closed page or crashed target keeps its own error.
+          if (err.name === "TimeoutError") return null;
+          throw err;
+        })
+      )
+    );
     const key = boxes
       .map((b) =>
         b
