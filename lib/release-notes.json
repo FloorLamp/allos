@@ -1,8 +1,197 @@
 {
   "days": [
     {
+      "date": "2026-08-14",
+      "entries": [
+        {
+          "pr": 2773,
+          "title": "Dragging a sheet closed no longer holds the screen dark, and pull-to-refresh stops firing during the drag",
+          "kind": "fix",
+          "issues": [2725]
+        },
+        {
+          "pr": 2779,
+          "title": "The database is copied aside before an upgrade applies migrations, so a bad upgrade can be recovered from",
+          "kind": "feature",
+          "issues": [2702]
+        },
+        {
+          "pr": 2776,
+          "title": "A flag you set by hand on an identity result such as blood type survives the app's flag reconcile",
+          "kind": "fix",
+          "issues": [2715]
+        },
+        {
+          "pr": 2764,
+          "title": "A bone density Z-score is routed to its curated reference instead of being declined for having none",
+          "kind": "fix",
+          "issues": [2679]
+        },
+        {
+          "pr": 2753,
+          "title": "Timeline gains a jump rail: scrub the right edge to reach any month, with the period named as you drag",
+          "kind": "feature",
+          "issues": []
+        }
+      ],
+      "operatorNotes": [
+        "Upgrades now copy the database to data/backups/pre-migration before applying any migration. Two copies are kept and any older than 30 days is removed; set ALLOS_MIGRATION_SNAPSHOT=off to skip it, or ALLOS_MIGRATION_SNAPSHOT_DIR to put it on another volume.",
+        "If that copy cannot be made — most likely a full data volume — the container refuses to start rather than migrate unprotected. Nothing has been applied at that point, so freeing space and starting again is a complete fix. See docs/backups.md."
+      ]
+    },
+    {
       "date": "2026-08-13",
       "entries": [
+        {
+          "pr": 2742,
+          "title": "A dismissed item slides toward the fold that catches it, and that line pulses once as it arrives",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2741,
+          "title": "Timeline rolls earlier years into one card each, so a long history is a spine and not sixty month headers",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2720,
+          "title": "The mobile log puck is offered on every profile, and the dashboard log sheet opens on what you log most",
+          "kind": "fix",
+          "issues": [2709]
+        },
+        {
+          "pr": 2718,
+          "title": "A result labelled only BMI% is listed as its own catalog entry instead of being filed as your BMI",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2713,
+          "title": "A starred biomarker is not counted as measured by a row that states no result, so the sweep leaves it alone",
+          "kind": "fix",
+          "issues": [2673, 2703]
+        },
+        {
+          "pr": 2712,
+          "title": "A result whose value points at a note instead of a number carries no high-or-low flag",
+          "kind": "fix",
+          "issues": [2687]
+        },
+        {
+          "pr": 2711,
+          "title": "A resumed backfill stops inflating its total, so its progress no longer slides backwards on each retry",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2706,
+          "title": "Phones get a bottom dock — Home, Training, Trends and More — with a raised log puck between them",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2705,
+          "title": "Confirmations settle and counters roll when you log, with an instant version under reduced motion",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2692,
+          "title": "Settings → Notifications shows each channel as live, waiting or off instead of inking every box the same",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2696,
+          "title": "An upgrade that removes rows now clears the rows attached to them instead of leaving them orphaned",
+          "kind": "fix",
+          "issues": [2680]
+        },
+        {
+          "pr": 2699,
+          "title": "A BMI percentile from a document is stored instead of silently dropped, and a dropped row leaves a trail",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2697,
+          "title": "The cycle page folds its two rare-use forms behind a button, and the symptom bar says what it is",
+          "kind": "feature",
+          "issues": [2583]
+        },
+        {
+          "pr": 2693,
+          "title": "A dashboard section whose domain has gone quiet collapses to one line naming the last record and its age",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2689,
+          "title": "A chart drawn from a few far-apart readings thins its line and says how many readings it has",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2686,
+          "title": "Confirming a dose can be undone from its toast, on the same lifecycle deletes already use",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2685,
+          "title": "Timeline windows itself: the future folds, the last 14 days stay day-by-day, older months become cards",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2684,
+          "title": "Upcoming folds a run of goal deadlines into one line, and distant items show a calendar date",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2683,
+          "title": "Starring paints your tap at once, and a star the app refuses says so instead of quietly reverting",
+          "kind": "perf",
+          "issues": []
+        },
+        {
+          "pr": 2682,
+          "title": "Training → Overview opens on a week band showing each day's sessions, with the week's counts beneath it",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2681,
+          "title": "The household strip's per-member counts render faster, and each chip keeps the number it had",
+          "kind": "perf",
+          "issues": []
+        },
+        {
+          "pr": 2675,
+          "title": "A BMI, whole-body bone density or visceral fat name from a document is catalogued instead of listed as unknown",
+          "kind": "fix",
+          "issues": [2646, 2643]
+        },
+        {
+          "pr": 2676,
+          "title": "A year-in-health retrospective page collects the year's counts, records and long arcs at year scale",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2661,
+          "title": "A visit diagnosis keeps the primary or secondary rank its source states, and long pairs fit on a phone",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2671,
+          "title": "A chart card stamps the day its headline number was read, and a lone reading is drawn as a point",
+          "kind": "fix",
+          "issues": []
+        },
         {
           "pr": 2658,
           "title": "Total hepatitis A antibody is a catalogued marker instead of an uncatalogued one",
