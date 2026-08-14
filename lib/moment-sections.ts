@@ -266,6 +266,14 @@ export function buildMomentSections<K = number>({
     });
   }
 
+  // A LONE slot never collapses. This rule is about what compression is FOR: height is
+  // spent on the moment at the expense of the slots that are not it. With one slot there
+  // is nothing it is being preferred over — collapsing it would replace the whole panel
+  // with a single line and buy the reader nothing but a tap. The generalization says a
+  // section earns full height when this moment is its moment; when it is the only
+  // section, every moment is.
+  if (sections.length === 1) sections[0].expanded = true;
+
   // A day with nothing owed and nothing happening in this slot would leave every section
   // collapsed. That is right when everything is SETTLED (the panel says "All done today"
   // above it), but wrong when work is merely ahead: some section has to be the one the

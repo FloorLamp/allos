@@ -284,6 +284,21 @@ describe("something always leads", () => {
     expect(byBucket(sections, "Before sleep").expanded).toBe(false);
   });
 
+  it("a LONE slot never collapses — there is nothing it would be preferred over", () => {
+    // Settled, and hours in the past: every other rule would collapse it.
+    const sections = build(
+      [
+        dose("Morning", { taken: true, at: "08:00" }),
+        dose("Morning", { taken: true, at: "08:05" }),
+      ],
+      "22:00"
+    );
+    expect(sections).toHaveLength(1);
+    expect(sections[0].expanded).toBe(true);
+    // …but the line is still computed, so the header states the same truth.
+    expect(sections[0].line).toBe("✓ Morning · 2 of 2 taken · 08:05");
+  });
+
   it("a fully settled day collapses everything — there is nothing to act in", () => {
     const sections = build(
       [
