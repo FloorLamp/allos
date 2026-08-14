@@ -706,8 +706,8 @@ export function seedDayOneAverages(): void {
   const anchor = today(id);
   setProfileBirthdate(id, shiftDateStr(anchor, -365 * 34));
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
-  db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(id);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM protein_daily_totals WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(id);
   seedMemberLogin(E2E_LOGIN_DAY_ONE, id, "write");
   console.log(
     `e2e: seeded day-one averages fixture — profile ${id} (${DAY_ONE_PROFILE}) (#1909/#1917)`

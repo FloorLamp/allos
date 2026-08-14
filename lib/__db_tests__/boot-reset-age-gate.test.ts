@@ -72,7 +72,7 @@ function insertJob(
     db
       .prepare(
         `INSERT INTO import_jobs (profile_id, type, status, updated_at)
-         VALUES (?, 'biomarkers', ?, ?)`
+         VALUES (?, 'clinical-results', ?, ?)`
       )
       .run(profileId, status, ts).lastInsertRowid
   );

@@ -66,7 +66,7 @@ function counterKeyValues(
 const KIND_LABELS: Record<string, string> = {
   activity: "activity",
   "body-metric": "body metric",
-  "biomarker-record": "biomarker record",
+  "clinical-observation": "clinical observation",
   "intake-item": "intake item",
   "wellness-practice": "wellness practice",
   "wellness-practice-history": "wellness practice history",
@@ -115,13 +115,13 @@ function mergeRecreatedSubstanceHistoryRoot(
       return null;
     const live = db
       .prepare(
-        `SELECT id FROM food_log
+        `SELECT id FROM food_daily_totals
          WHERE profile_id = ? AND date = ? AND group_key = ?`
       )
       .get(profileId, row.date, row.group_key) as { id: number } | undefined;
     if (!live) return null;
     db.prepare(
-      `UPDATE food_log
+      `UPDATE food_daily_totals
        SET servings = servings + ?,
            notes = CASE WHEN notes IS NULL OR trim(notes) = '' THEN ? ELSE notes END
        WHERE id = ? AND profile_id = ?`
@@ -143,13 +143,13 @@ function mergeRecreatedSubstanceHistoryRoot(
       return null;
     const live = db
       .prepare(
-        `SELECT id FROM substance_log
+        `SELECT id FROM substance_daily_totals
          WHERE profile_id = ? AND date = ? AND substance = ?`
       )
       .get(profileId, row.date, row.substance) as { id: number } | undefined;
     if (!live) return null;
     db.prepare(
-      `UPDATE substance_log
+      `UPDATE substance_daily_totals
        SET units = units + ?,
            notes = CASE WHEN notes IS NULL OR trim(notes) = '' THEN ? ELSE notes END,
            edited = MAX(edited, ?)

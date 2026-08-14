@@ -1,6 +1,6 @@
 // Auth-blind write core for the non-food substance ledger (issue #1078) — the
-// food-log-write pattern re-instantiated for `substance_log` (nicotine/cannabis;
-// alcohol stays on food_log). Takes profileId first and never imports lib/auth
+// food-log-write pattern re-instantiated for `substance_daily_totals` (nicotine/cannabis;
+// alcohol stays on food_daily_totals). Takes profileId first and never imports lib/auth
 // (#319): the Server Actions in app/(app)/medical/substance-use/actions.ts are the
 // only callers today, and any future surface (a Telegram button, a widget) reuses
 // this same computation. The auth gate stays entirely in the action.
@@ -25,7 +25,7 @@ import { isSubstanceLogged, type Substance } from "./substance-use";
 // The typed result of a unit write (the markDoseTaken contract, #232): the caller
 // answers from what ACTUALLY happened, never unconditionally confirms.
 //   logged            — a use was recorded; `units` is the substance's new daily total.
-//   unknown-substance — not a substance_log-ledger substance; nothing written.
+//   unknown-substance — not a substance_daily_totals-ledger substance; nothing written.
 export type SubstanceLogOutcome =
   | { kind: "logged"; units: number; substance: Substance }
   | { kind: "unknown-substance" };

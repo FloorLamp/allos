@@ -9,16 +9,16 @@ stores (migration 165), wave 2 renamed `intake_item_logs.given_at` → `recorded
 (migration 183). `food_log_events.time_source` is KEPT, by owner ruling on #2205
 (2026-08-08): it distinguishes "nobody stated a time" from "someone stated one and the
 write path refused it", which `occurred_at IS NULL` collapses. Still to come:
-`substance_log.logged_at`, `practice_logs.time`, the window columns
+`substance_daily_totals.logged_at`, `practice_logs.time`, the window columns
 (`start_time`/`end_time` on event tables), the ledger stamps (`at`, `ts`,
 `snapshot_at`), and the remaining bare-instant conversions.)
 
 Two questions look the same and are not:
 
-| question                               | stored as                  | example                                              |
-| -------------------------------------- | -------------------------- | ---------------------------------------------------- |
-| **When did this happen?** (INSTANT)    | UTC, absolute              | `medical_records.occurred_at`, `activities.end_time` |
-| **Which day does it count for?** (DAY) | profile-local `YYYY-MM-DD` | `body_metrics.date`, `food_log.date`, dose adherence |
+| question                               | stored as                  | example                                                       |
+| -------------------------------------- | -------------------------- | ------------------------------------------------------------- |
+| **When did this happen?** (INSTANT)    | UTC, absolute              | `medical_records.occurred_at`, `activities.end_time`          |
+| **Which day does it count for?** (DAY) | profile-local `YYYY-MM-DD` | `body_metrics.date`, `food_daily_totals.date`, dose adherence |
 
 A day is **not** a lesser instant. It is the answer to a different question
 (#94): dose, adherence, cadence and the digest all key on it, and several

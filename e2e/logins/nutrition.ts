@@ -32,7 +32,7 @@ export const PRESENCE_PROFILE = "Workout Presence (e2e)";
 // A dedicated ADULT profile for the protein-grams quick-add spec (#824): a bodyweight
 // (so the adequacy target scales) plus a couple of protein-bearing food-group servings
 // today (so the adequacy card renders over the ESTIMATED basis), and NO integration
-// protein_g and NO protein_log rows. Isolated on purpose — the spec OWNS the protein_log
+// protein_g and NO protein_daily_totals rows. Isolated on purpose — the spec OWNS the protein_daily_totals
 // writes on it, and logging grams flips the adequacy card to the COMBINED basis, which
 // would race protein-adequacy.spec's shared-profile estimated-basis assertions if it ran
 // on profile 1. No birthdate → adult → the food logger + adequacy card render.

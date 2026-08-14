@@ -785,7 +785,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
   function servingsFor(profileId: number, date: string, group: string): number {
     const row = db
       .prepare(
-        "SELECT servings FROM food_log WHERE profile_id = ? AND date = ? AND group_key = ?"
+        "SELECT servings FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = ?"
       )
       .get(profileId, date, group) as { servings: number } | undefined;
     return row?.servings ?? 0;
@@ -1100,7 +1100,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
       (
         db
           .prepare(
-            "SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?"
+            "SELECT grams FROM protein_daily_totals WHERE profile_id = ? AND date = ?"
           )
           .get(profile.id, date) as { grams: number } | undefined
       )?.grams ?? 0;

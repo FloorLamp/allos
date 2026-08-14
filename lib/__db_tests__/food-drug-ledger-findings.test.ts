@@ -2,7 +2,7 @@
 //
 // The gap: the app printed "Avoid all alcohol during treatment and for 3 days after" on a
 // metronidazole row and then watched the user log an alcohol serving in silence, because
-// `matchFoodInteractions` takes an ITEM and never touches `food_log`. These builders are
+// `matchFoodInteractions` takes an ITEM and never touches `food_daily_totals`. These builders are
 // the join, so they carry a DB-tier fixture asserting the END-TO-END output the pure tier
 // cannot see: the SQL gather (items + their dose windows + the food log), the finding, the
 // Upcoming item it becomes, its registered tier, and the shared-bus dismissal.
@@ -76,7 +76,7 @@ function logServing(
   servings = 1
 ) {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
   ).run(profileId, date, group, servings);
 }

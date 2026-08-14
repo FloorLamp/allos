@@ -375,3 +375,14 @@ Deliberately NOT renamed by part 2, on the owner's ruling that `Biomarker` and
 `getBiomarkerSeries()` are the #482 biomarker identity function and the series drawn
 over it. The `Reading` model delegating to them is the word being used correctly, not a
 misdescription — renaming them for uniformity would make the code say less.
+
+## Persisted vocabulary audit (#2740)
+
+The follow-up audit includes schema names, stored discriminators, portable-export
+keys, undo payloads, JSON namespaces, and replay-only compatibility shells. Its
+decisions and removal conditions are recorded in
+`docs/internals/persisted-vocabulary.md`. Migration
+`20260814-persisted-vocabulary` moves established databases atomically; current
+readers and writers expose only the resulting vocabulary. There are no route shims or
+portable-export aliases: retired routes are allowed to stop resolving, and exported
+dataset keys describe the current data model.

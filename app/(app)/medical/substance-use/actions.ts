@@ -165,7 +165,7 @@ export async function recordSubstanceInstrumentAction(
 // (#1078 split-ledger, one computation per substance): alcohol goes through the
 // SAME auth-blind food-log core the Nutrition one-tap bar and the Telegram button
 // use (a standard drink IS one serving of the curated `alcohol` food group,
-// #860/#944); nicotine/cannabis go through the substance_log core. Both answer
+// #860/#944); nicotine/cannabis go through the substance_daily_totals core. Both answer
 // from the typed outcome — never unconditionally confirm.
 export async function logSubstanceUnitAction(
   formData: FormData

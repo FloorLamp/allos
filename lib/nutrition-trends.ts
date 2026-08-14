@@ -53,7 +53,7 @@ const g = (n: number): number => Math.round(n);
 
 // The chart's protein series, composed from BOTH places a day's protein can come from
 // (#2414). The chart used to read only `protein_g` metric samples, so a profile that
-// logs protein through the Food tab's quick-add (`protein_log`, #824) saw the empty
+// logs protein through the Food tab's quick-add (`protein_daily_totals`, #824) saw the empty
 // state at the app's only long-range nutrition chart — blind to the app's own logging.
 //
 // The precedence is not a new rule: it is #824's, applied PER DAY. `proteinIntake` is

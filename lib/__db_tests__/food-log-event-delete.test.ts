@@ -10,7 +10,7 @@
 // The pins here are therefore two:
 //
 //   • THE COUNTER MOVES EXACTLY ONCE with the row, in one transaction, and its row is
-//     DROPPED at zero — `food_log_events` and `food_log` are one fact in two shapes, and
+//     DROPPED at zero — `food_log_events` and `food_daily_totals` are one fact in two shapes, and
 //     the derived reads (the nudge's per-slot counts, the web bar's day/meal tallies, the
 //     #580 weekly frequency-target progress) all recompute live off the two of them.
 //   • THE DELETE TAKES THE ROW IT WAS GIVEN, including in the exact configuration the
@@ -66,12 +66,12 @@ function seed(
   return row.id;
 }
 
-// Every food_log row the profile has, so the counter can be checked against the WHOLE
+// Every food_daily_totals row the profile has, so the counter can be checked against the WHOLE
 // table rather than just the coordinate under test.
 function allCounters(profileId: number) {
   return db
     .prepare(
-      `SELECT date, group_key, servings FROM food_log
+      `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? ORDER BY date, group_key`
     )
     .all(profileId) as { date: string; group_key: string; servings: number }[];
@@ -244,7 +244,7 @@ describe("deleteFoodLogEventCore — typed refusals (#1963)", () => {
     const [eventId] = ledgerIds(profileId);
 
     // Same refusal the correction path answers (#1951/#1934), for the same reason: the
-    // grams in protein_log are the truth, and popping the ranking row would remove the
+    // grams in protein_daily_totals are the truth, and popping the ranking row would remove the
     // ledger event while the grams it stands for silently survived.
     expect(deleteFoodLogEventCore(profileId, eventId)).toEqual({
       kind: "not-deletable",

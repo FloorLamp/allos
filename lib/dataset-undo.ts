@@ -15,22 +15,17 @@
 // (bulk delete permanent, row delete restorable, same rows). Each VALUE is
 // checked to be a kind actually rooted at its key table.
 //
-// What the types cannot see — that a deletable dataset KEY is the same string as
-// its physical table (except `supplements` → intake_items), and that a mapped
-// kind captures ONLY its root row plus FK-cascade children (a 1:1 delete, safe to
-// run per selected row) — is pinned by lib/__tests__/dataset-undo.test.ts and
-// lib/__db_tests__/dataset-undo.test.ts.
+// What the types cannot see — that a mapped kind captures ONLY its root row plus
+// FK-cascade children (a 1:1 delete, safe to run per selected row) — is pinned by
+// lib/__tests__/dataset-undo.test.ts and lib/__db_tests__/dataset-undo.test.ts.
 
 import type { UndoKind, UndoKindRegistry } from "./undo-delete";
 import type { DeletableDatasetKey } from "./export"; // type-only: no db import
 
 type UndoRootTable = UndoKindRegistry[UndoKind]["ownedTable"];
 
-// Deletable dataset keys read as physical tables (the one key/table divergence is
-// `supplements`, whose table is intake_items — pinned at runtime by the db-tier
-// test beside this module).
-type DeletableDatasetTable =
-  Exclude<DeletableDatasetKey, "supplements"> | "intake_items";
+// Deletable dataset keys read as physical tables.
+type DeletableDatasetTable = DeletableDatasetKey;
 
 // Undo-kind root tables whose rows are bulk-deletable on Data → Manage — the set
 // the mapping below must decide about.
@@ -44,16 +39,16 @@ type DeletableUndoRoot = Extract<UndoRootTable, DeletableDatasetTable>;
 //   • frequency_targets — its kind ("wellness-practice") deletes the practice's
 //     WHOLE name-family: every session and its suppression row. Bulk-deleting
 //     target rows must not wipe session history.
-//   • food_log — its kind ("substance-alcohol-history") captures and deletes the
+//   • food_daily_totals — its kind ("substance-alcohol-history") captures and deletes the
 //     day's alcohol tap events beside the selected day row, and only speaks
 //     alcohol; the dataset holds every food group.
 //   • food_log_events — its kind ("food-serving") is one serving = ledger row +
-//     a DECREMENT of the food_log day counter. The dataset's documented contract
+//     a DECREMENT of the food_daily_totals day counter. The dataset's documented contract
 //     (lib/export.ts) is "clear the timing layer, counters untouched"; mapping it
 //     would silently turn that into a servings decrement across a second dataset.
 type ExcludedUndoRoot = Extract<
   DeletableUndoRoot,
-  "frequency_targets" | "food_log" | "food_log_events"
+  "frequency_targets" | "food_daily_totals" | "food_log_events"
 >;
 
 // For a root table, the undo kinds actually rooted there — so a mapping cannot
@@ -65,13 +60,13 @@ type KindsRootedAt<T extends UndoRootTable> = {
 export const DATASET_UNDO_KIND = {
   activities: "activity",
   body_metrics: "body-metric",
-  medical_records: "biomarker-record",
+  medical_records: "clinical-observation",
   intake_items: "intake-item",
   // #2038's 1:1 kinds, mapped by #2125 so the bulk surface matches the row menu.
   // practice_logs deliberately takes "practice-session" (one row), never
   // "wellness-practice-history" (which drags every same-practice sibling along).
   practice_logs: "practice-session",
-  substance_log: "substance-history",
+  substance_daily_totals: "substance-history",
   // #2127: one period row, no children — the row-menu delete and the dataset's bulk
   // delete now speak the same restorable kind (the very hole the type guard exists
   // to keep closed: an undoable root that is a deletable dataset must be decided).

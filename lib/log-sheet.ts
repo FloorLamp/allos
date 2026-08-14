@@ -192,7 +192,7 @@ export type SegmentLogDays = Readonly<Partial<Record<LogSegmentId, number>>>;
  */
 export const LOG_DAY_SOURCES = {
   "log-activity": ["activities"],
-  "log-food": ["food_log"],
+  "log-food": ["food_daily_totals"],
   // A vitals sitting is `medical_records` rows by placement (#2032), so Body would
   // under-count a blood-pressure logger without that third store.
   "log-measurements": ["body_metrics", "metric_samples", "medical_records"],

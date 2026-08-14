@@ -2,7 +2,7 @@
 //
 // The Trends → Nutrition "Macros & fiber" chart reads BOTH protein sources (#2414).
 // It used to read only tracked `protein_g` metric samples, so a profile that logs
-// protein through the Food tab's quick-add (`protein_log`, #824) saw the empty state
+// protein through the Food tab's quick-add (`protein_daily_totals`, #824) saw the empty state
 // at the app's only long-range nutrition chart.
 //
 // This drives the real gather the section calls — getMacroFiberDays — over one day set

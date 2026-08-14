@@ -32,7 +32,7 @@ const DATE = "2026-07-08";
 function rows(profileId: number) {
   return db
     .prepare(
-      "SELECT date, group_key, servings FROM food_log WHERE profile_id = ? ORDER BY group_key"
+      "SELECT date, group_key, servings FROM food_daily_totals WHERE profile_id = ? ORDER BY group_key"
     )
     .all(profileId) as { date: string; group_key: string; servings: number }[];
 }

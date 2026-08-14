@@ -40,7 +40,7 @@ describe("palette create actions", () => {
     expect(matchPaletteActions("gym").map((a) => a.id)).toEqual([
       "log-workout",
     ]);
-    // "lab" is genuinely two intentions — a structured biomarker record and the PDF
+    // "lab" is genuinely two intentions — a structured clinical result and the PDF
     // that reported it — and a SEARCH surface should offer both rather than pick for
     // the user (#1506/#1525). Registry order decides which is listed first.
     expect(matchPaletteActions("LAB").map((a) => a.id)).toEqual([
@@ -115,7 +115,7 @@ describe("palette create actions", () => {
 
   it("navigates ONLY where no drawer form exists (#2184)", () => {
     // The residual navigate set is a product fact, not an accident: appointment,
-    // progress photo, and biomarker record have no quick-entry drawer form (a
+    // progress photo, and clinical result have no quick-entry drawer form (a
     // biomarker quick form would be its own product decision). A new navigate
     // entry showing up here should have to argue it isn't drift.
     const navigate = PALETTE_ACTIONS.filter(

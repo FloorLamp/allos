@@ -23,7 +23,7 @@ async function revealFoodGroup(page: Page, slug: string) {
 // Food-group serving log (issue #579): one-tap logging on /nutrition, the day-view
 // count, and the weekly rollup. Idempotent — logs a serving, asserts it appears in both
 // the day count and the weekly rollup, then undoes it so the fixture is left as found.
-// Uses the shared authenticated storageState (the seeded profile already has food_log
+// Uses the shared authenticated storageState (the seeded profile already has food_daily_totals
 // rows from scripts/seed.ts).
 
 test("logging a serving shows in the day count and the weekly rollup, undo decrements (#579)", async ({

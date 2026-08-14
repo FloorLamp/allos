@@ -74,7 +74,7 @@ const CORRECTION_TIME_ERROR: Record<StatedTimeRefusal, string> = {
 const MAX_PER_WEEK = 21;
 
 // Server write-path for the food-group serving log (issue #579). One-tap logging: a day
-// keeps ONE food_log row per (profile, date, group_key) whose `servings` count the bar
+// keeps ONE food_daily_totals row per (profile, date, group_key) whose `servings` count the bar
 // increments; undo decrements it and drops the row at zero. Both are profile-scoped
 // through requireWriteAccess and idempotent-friendly (the keyed upsert). group_key is
 // validated against the curated catalog so a bad slug can't land.
@@ -396,7 +396,7 @@ function parseProteinFields(
   return { grams, date };
 }
 
-// Add N grams of protein on a day (default today). Upserts the day's protein_log row,
+// Add N grams of protein on a day (default today). Upserts the day's protein_daily_totals row,
 // summing the grams, and records the amount as the last-used preset. The write is the
 // auth-blind lib core (addProteinGramsCore); this action owns the auth gate + validation
 // + revalidation and returns the day's new total for optimistic reconciliation.

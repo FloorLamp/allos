@@ -59,15 +59,16 @@ describe("dataset table → undo kind mapping", () => {
     expect(undoKindForTable("nonexistent")).toBeNull();
     // The argued exclusions stay plain bulk deletes.
     expect(undoKindForTable("frequency_targets")).toBeNull();
-    expect(undoKindForTable("food_log")).toBeNull();
+    expect(undoKindForTable("food_daily_totals")).toBeNull();
     expect(undoKindForTable("food_log_events")).toBeNull();
     expect(undoKindForTable("activities")).toBe("activity");
-    // The supplements dataset resolves through its physical table.
+    // The mixed intake dataset resolves through its physical table.
     expect(undoKindForTable("intake_items")).toBe("intake-item");
-    expect(undoKindForTable("supplements")).toBeNull();
     // #2038's kinds, mapped by #2125.
     expect(undoKindForTable("practice_logs")).toBe("practice-session");
-    expect(undoKindForTable("substance_log")).toBe("substance-history");
+    expect(undoKindForTable("substance_daily_totals")).toBe(
+      "substance-history"
+    );
     // #2127: one period row, same single-entity shape.
     expect(undoKindForTable("cycles")).toBe("cycle");
     // #1847: the clinical passport datasets. `immunizations` had a dedicated

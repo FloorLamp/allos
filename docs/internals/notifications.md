@@ -677,7 +677,7 @@ builder every send, tap-rebuild and reconcile goes through.
 
 That "(n)" was slot-scoped until #2019, and stopped being so with the read-time
 window derivation it depended on. The protein button's count is the one that cannot
-come from the `food_log` day counter — the reserved key never lands there — so it is
+come from the `food_daily_totals` day counter — the reserved key never lands there — so it is
 counted off `food_log_events` (`getProteinTapsOnDate`) and merged into the same map,
 which keeps ONE suffix rule for every button on the keyboard.
 
@@ -895,7 +895,7 @@ re-date falls out of the same computation.
 
 **The two domains differ in exactly one place.** A serving's day is a fact about the
 serving, so a food correction crossing midnight moves the event's `date` AND the
-`food_log` counter row with it, in one `writeTx`. A dose's day is **schedule-owned**
+`food_daily_totals` counter row with it, in one `writeTx`. A dose's day is **schedule-owned**
 (#614), so `dosetime` moves `recorded_at` and nothing else, and the toast says so. The
 dose correction also never re-runs the phantom-dose proximity guard (it runs at
 INSERT time and a correction may legitimately move two administrations together) and
@@ -2122,7 +2122,7 @@ curated food sources, and #2383 gives it a second door in.
   that rounds to zero.
 - **One tap from being acted on.** The chosen group is a slug in
   `lib/datasets/data/food-groups.json`, which is the catalog the one-tap food bar is
-  built from and the vocabulary `food_log.group_key` stores — so the suggestion names
+  built from and the vocabulary `food_daily_totals.group_key` stores — so the suggestion names
   a row the reader can actually log. The per-serving figure comes from that catalog's
   own `protein_g` / `fiber_g`, which is also what makes the offer honest: a group the
   catalog scores at no fibre could not move the number the line just reported.

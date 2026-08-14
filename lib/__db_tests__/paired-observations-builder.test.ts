@@ -45,7 +45,7 @@ function logFood(
   servings: number
 ): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
   ).run(profileId, date, group, servings);
 }

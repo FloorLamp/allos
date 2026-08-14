@@ -62,7 +62,7 @@ function tap(
   extra: { mealSlot?: string; eatenAt?: string } = {}
 ): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT(profile_id, date, group_key)
        DO UPDATE SET servings = servings + 1`
   ).run(profileId, date, group);
@@ -272,7 +272,7 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
     return {
       counters: db
         .prepare(
-          `SELECT group_key, servings FROM food_log
+          `SELECT group_key, servings FROM food_daily_totals
             WHERE profile_id = ? AND date = ? ORDER BY group_key`
         )
         .all(profileId, date),

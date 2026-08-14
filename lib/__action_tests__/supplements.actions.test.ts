@@ -718,7 +718,7 @@ describe("bulk delete sweeps intake markers (#603)", () => {
   const dosesJson = (doses: { amount: string; time_of_day: string }[]) =>
     JSON.stringify(doses.map((d) => ({ ...d, food_timing: "any" })));
 
-  it("deleteDatasetRows('supplements') clears the refill + escalation markers", async () => {
+  it("deleteDatasetRows('intake_items') clears the refill + escalation markers", async () => {
     const { profile } = seedActor();
     await addIntakeItem(
       fd({
@@ -735,7 +735,7 @@ describe("bulk delete sweeps intake markers (#603)", () => {
     setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
     setProfileSetting(profile.id, escalationMarkerKey(doseId), "2026-07-01");
 
-    const res = await deleteDatasetRows("supplements", [id]);
+    const res = await deleteDatasetRows("intake_items", [id]);
     expect(res.ok).toBe(true);
     expect(getIntakeItems(profile.id)).toHaveLength(0);
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();

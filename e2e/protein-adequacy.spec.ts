@@ -30,9 +30,9 @@ function clearTrackedProteinToday(): void {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
-    db.prepare("DELETE FROM protein_log WHERE profile_id = 1 AND date = ?").run(
-      frozenNow().toISOString().slice(0, 10)
-    );
+    db.prepare(
+      "DELETE FROM protein_daily_totals WHERE profile_id = 1 AND date = ?"
+    ).run(frozenNow().toISOString().slice(0, 10));
   } finally {
     db.close();
   }

@@ -69,7 +69,7 @@ function logActivity(pid: number, date: string, type: string): void {
 
 function logFood(pid: number, date: string, group: string, n = 1): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT (profile_id, date, group_key)
        DO UPDATE SET servings = servings + excluded.servings`
   ).run(pid, date, group, n);

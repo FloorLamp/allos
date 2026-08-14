@@ -43,7 +43,7 @@ const log = createLogger("import");
 const AI_DAILY_LIMIT_IMPORT_MESSAGE =
   "Daily AI limit reached — import saved but not auto-extracted. It won't be sent to the model today; retry it tomorrow.";
 
-export type ImportType = "workouts" | "biomarkers";
+export type ImportType = "workouts" | "clinical-results";
 
 // Cap pasted/loaded text so a runaway paste can't blow the request budget.
 const MAX_CHARS = 200_000;
@@ -62,7 +62,7 @@ export type ImportResult =
     }
   | {
       ok: true;
-      type: "biomarkers";
+      type: "clinical-results";
       results: ExtractedResult[];
       immunizations: ExtractedImmunization[];
       meta: ExtractionMeta;
@@ -139,7 +139,7 @@ async function extractImport(
   if (r.status === "done")
     return {
       ok: true,
-      type: "biomarkers",
+      type: "clinical-results",
       results: r.results,
       immunizations: r.immunizations,
       meta: r.meta,
@@ -200,7 +200,7 @@ export async function startImport(
   const input = (text ?? "").slice(0, MAX_CHARS);
   if (!input.trim())
     return { ok: false, error: "Paste or upload some data first." };
-  if (type !== "workouts" && type !== "biomarkers")
+  if (type !== "workouts" && type !== "clinical-results")
     return { ok: false, error: "Unknown import type." };
 
   const info = db
@@ -370,9 +370,9 @@ export async function commitImportJob(
           ? ` Skipped ${skipped} cardio row${skipped === 1 ? "" : "s"} (strength-only import).`
           : "");
     } else {
-      // Biomarkers and any vaccine doses found in the same paste commit together
+      // Clinical results and any vaccine doses found in the same paste commit together
       // in one transaction — so an immunization-only paste still saves, and a
-      // failure can't leave biomarkers committed while a retry re-imports them.
+      // failure can't leave clinical results committed while a retry re-imports them.
       const r = await commitBiomarkers(
         result.results,
         result.meta,

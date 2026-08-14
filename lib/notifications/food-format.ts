@@ -242,9 +242,9 @@ function rowFor(index: number): string {
 // The day-total tally line (#1016): groups with a positive count TODAY, most-logged first
 // (name breaks ties), labeled so a slot-framed message makes clear the tally answers "where
 // am I on the DAY" (the buttons answer "what have I had this SLOT"): "✅ Today: Leafy greens
-// ×2 · Berries ×1". Reads the DAY counter (food_log via getFoodServingsOnDate), never the
+// ×2 · Berries ×1". Reads the DAY counter (food_daily_totals via getFoodServingsOnDate), never the
 // slot counts. Empty string when nothing's been logged yet today (the caller shows the
-// prompt instead). The reserved __protein__ key can't appear (it never lands in food_log),
+// prompt instead). The reserved __protein__ key can't appear (it never lands in food_daily_totals),
 // but is filtered defensively so it can never leak into the food-serving tally (#1073).
 function tallyLine(dayServings: Map<string, number>): MessageBody | null {
   const logged = [...dayServings.entries()]

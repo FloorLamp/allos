@@ -10,7 +10,7 @@ import {
   type FoodGroupTier,
 } from "./food-groups";
 
-// A logged row as the rollup consumes it (the query layer maps food_log rows to this).
+// A logged row as the rollup consumes it (the query layer maps food_daily_totals rows to this).
 export interface FoodDailyServingTotal {
   date: string;
   group_key: string;

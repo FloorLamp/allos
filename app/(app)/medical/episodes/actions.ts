@@ -285,7 +285,7 @@ export async function deleteEpisodeTemperatureAction(
       : null;
   const undoId =
     owned && eventDateInEpisode(owned.date, row!)
-      ? captureDelete("biomarker-record", profileId, id)
+      ? captureDelete("clinical-observation", profileId, id)
       : null;
   revalidateEpisodeEvents();
   return { undoId };

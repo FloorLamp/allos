@@ -15,7 +15,7 @@ import {
 // #1085, incl. its reverse-scored item), outside total-only entry for the AUDIT
 // (its item text isn't shipped), one-tap consumption logging per substance
 // (alcohol on the shared food-log ledger; nicotine/cannabis on the dedicated
-// substance_log ledger, #1078), and per-substance weekly-cap reduction targets
+// substance_daily_totals ledger, #1078), and per-substance weekly-cap reduction targets
 // with their calm progress lines. No streaks, no celebration anywhere.
 // LIFE-STAGE gated (#1174): adult-validated instruments, so the section + its
 // jump-link hide for a known minor and the route re-gates a direct URL.

@@ -88,7 +88,7 @@ describe("trashEntry derivation", () => {
       );
 
     expect(
-      rooted("biomarker-record", "record", {
+      rooted("clinical-observation", "record", {
         id: 1,
         date: "2026-05-02",
         name: "Ferritin",

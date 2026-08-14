@@ -68,7 +68,7 @@ const liveFoodLimits = cache(function liveFoodLimits(
 // the group since the limit became active.
 //
 // Reads the day counter rather than the event ledger: the question is which DAYS carry a
-// serving, which is exactly what one food_log row per (profile, date, group) states, and
+// serving, which is exactly what one food_daily_totals row per (profile, date, group) states, and
 // it is the same counter the tap itself moves. Profile-scoped.
 function daysLoggedSince(
   profileId: number,
@@ -78,7 +78,7 @@ function daysLoggedSince(
 ): number {
   const row = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM food_log
+      `SELECT COUNT(*) AS n FROM food_daily_totals
         WHERE profile_id = ? AND group_key = ?
           AND date >= ? AND date < ? AND servings > 0`
     )

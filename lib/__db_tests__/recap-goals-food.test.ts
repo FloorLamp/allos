@@ -193,7 +193,7 @@ describe("recap food line (#2396)", () => {
   ) =>
     db
       .prepare(
-        "INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
+        "INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
       )
       .run(profileId, date, slug, servings);
 

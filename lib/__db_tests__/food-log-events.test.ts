@@ -39,7 +39,7 @@ function events(profileId: number) {
 function counter(profileId: number, group: string, date: string): number {
   const row = db
     .prepare(
-      `SELECT servings FROM food_log
+      `SELECT servings FROM food_daily_totals
         WHERE profile_id = ? AND date = ? AND group_key = ?`
     )
     .get(profileId, date, group) as { servings: number } | undefined;
@@ -76,7 +76,7 @@ describe("food_log_events ledger atomicity (#950)", () => {
     const { profileId, anchor } = makeProfile("food-events-preledger");
     // Simulate history written BEFORE this migration: a counter row with NO events.
     db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, 'legumes', 2)`
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, 'legumes', 2)`
     ).run(profileId, anchor);
 
     expect(() =>

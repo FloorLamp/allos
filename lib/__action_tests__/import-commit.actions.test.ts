@@ -134,14 +134,14 @@ describe("commitImportJob — save a ready paste import", () => {
     expect(revalidate).toHaveBeenCalledWith("/data");
   });
 
-  it("commits a biomarkers job through the persist core: body-metric, height, and med projections (#418)", async () => {
+  it("commits a clinical-results job through the persist core: body-metric, height, and med projections (#418)", async () => {
     // The SAME extraction output a file upload produces — a weight vital, a height
     // vital, a prescription, and a plain lab. The paste commit must now route each
     // through persistDocumentlessImport: weight → body_metrics, height →
     // metric_samples, prescription → intake_items, lab → medical_records.
     const result: ImportResult = {
       ok: true,
-      type: "biomarkers",
+      type: "clinical-results",
       results: [
         {
           category: "vitals",

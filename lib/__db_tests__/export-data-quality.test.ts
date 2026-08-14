@@ -22,7 +22,7 @@ let medItemId: number;
 beforeAll(() => {
   profileId = newProfile("DQ-EXPORT");
 
-  // A medication with full Rx identity + a supplement, so the supplements dataset
+  // A medication with full Rx identity + a supplement, so the intake_items dataset
   // must distinguish them.
   medItemId = Number(
     db
@@ -95,9 +95,9 @@ describe("intake_log distinguishes skipped from taken (#466)", () => {
   });
 });
 
-describe("supplements dataset keeps medication identity (#466)", () => {
+describe("intake_items dataset keeps medication identity (#466)", () => {
   it("carries kind + prescriber/pharmacy/rx/obligation/critical/quantity", () => {
-    const rows = getDataset("supplements")!.rows(profileId);
+    const rows = getDataset("intake_items")!.rows(profileId);
     const med = rows.find((r) => r.name === "Lisinopril")!;
     expect(med).toMatchObject({
       kind: "medication",
@@ -110,7 +110,7 @@ describe("supplements dataset keeps medication identity (#466)", () => {
     const supp = rows.find((r) => r.name === "Vitamin D")!;
     expect(supp.kind).toBe("supplement");
     for (const col of ["kind", "prescriber", "pharmacy", "rx_number"])
-      expect(getDataset("supplements")!.columns).toContain(col);
+      expect(getDataset("intake_items")!.columns).toContain(col);
   });
 });
 

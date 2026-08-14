@@ -100,7 +100,7 @@ second failure is the dangerous one. So:
 
 ## #998: a limit is a cap
 
-Where a group already carries cap semantics — alcohol, whose `food_log` counter IS the
+Where a group already carries cap semantics — alcohol, whose `food_daily_totals` counter IS the
 substance ledger, or any group under an active cap-direction target — the cap vocabulary
 owns the message and the **dietary** half stays silent. Two systems saying "limit
 alcohol" in two vocabularies is worse than one saying it well.

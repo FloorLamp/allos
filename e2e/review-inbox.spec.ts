@@ -298,7 +298,7 @@ test.describe("Data → Review import inbox", () => {
     await expect(feed.getByText("import failed")).toBeVisible();
 
     // A pasted/CSV job shows in the same feed and points back to the importer.
-    await expect(feed.getByText("Pasted labs")).toBeVisible();
+    await expect(feed.getByText("Pasted clinical results")).toBeVisible();
     await expect(feed.getByText(/review to save/)).toBeVisible();
 
     // The one-off Fitbit Takeout event is an archive import, so its accounting lives

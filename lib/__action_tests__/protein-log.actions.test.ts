@@ -21,7 +21,7 @@ const DATE = "2026-07-08";
 function rows(profileId: number) {
   return db
     .prepare(
-      "SELECT date, grams FROM protein_log WHERE profile_id = ? ORDER BY date"
+      "SELECT date, grams FROM protein_daily_totals WHERE profile_id = ? ORDER BY date"
     )
     .all(profileId) as { date: string; grams: number }[];
 }

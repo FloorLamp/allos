@@ -154,7 +154,7 @@ function chipTokensOf(keyboard: unknown): string[] {
 function dayCount(profileId: number, date: string, group: string): number {
   const row = db
     .prepare(
-      `SELECT servings FROM food_log
+      `SELECT servings FROM food_daily_totals
         WHERE profile_id = ? AND date = ? AND group_key = ?`
     )
     .get(profileId, date, group) as { servings: number } | undefined;

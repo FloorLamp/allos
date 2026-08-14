@@ -7,7 +7,7 @@
 // #2019 changed what the number MEANS — every button's suffix is now the DAY total, since
 // a Telegram tap no longer asserts a meal and "this slot" would have to be re-derived — but
 // not that the protein button carries one. The count still comes off food_log_events, where
-// the reserved __protein__ key lives (it never reaches the food_log day counter), so it is
+// the reserved __protein__ key lives (it never reaches the food_daily_totals day counter), so it is
 // taps rather than grams; the day's grams stay on the nudge's protein line. The clock is
 // FROZEN (ALLOS_TEST_NOW) so the tap lands on a deterministic day.
 

@@ -34,7 +34,7 @@ function logFood(
   servings: number
 ) {
   db.prepare(
-    "INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
+    "INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
   ).run(profileId, date, slug, servings);
 }
 function seedTrackedProtein(profileId: number, date: string, grams: number) {
@@ -131,7 +131,7 @@ describe("getProteinToday (#974)", () => {
   });
 
   // ── The trailing 7-day average (#1917) ────────────────────────────────────────
-  // The gather's job here is ASSEMBLY: per-day parts out of food_log, protein_log
+  // The gather's job here is ASSEMBLY: per-day parts out of food_daily_totals, protein_daily_totals
   // and metric_samples, handed to the pure computation. These pin the seam — the
   // window's shape is pinned in lib/__tests__/protein-trailing.test.ts.
 

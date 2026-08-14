@@ -201,12 +201,12 @@ describe("deleteDatasetRows — undoable datasets capture each row", () => {
     const id = Number(
       db
         .prepare(
-          "INSERT INTO substance_log (profile_id, date, substance, units) VALUES (?, '2026-02-02', 'nicotine', 3)"
+          "INSERT INTO substance_daily_totals (profile_id, date, substance, units) VALUES (?, '2026-02-02', 'nicotine', 3)"
         )
         .run(profile.id).lastInsertRowid
     );
 
-    const res = await deleteDatasetRows("substance_log", [id]);
+    const res = await deleteDatasetRows("substance_daily_totals", [id]);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.deleted).toBe(1);
@@ -216,7 +216,7 @@ describe("deleteDatasetRows — undoable datasets capture each row", () => {
     expect(restoreDeletedRow(profile.id, res.undoIds[0])).toBe(true);
     const row = db
       .prepare(
-        "SELECT substance, units FROM substance_log WHERE profile_id = ? AND date = '2026-02-02'"
+        "SELECT substance, units FROM substance_daily_totals WHERE profile_id = ? AND date = '2026-02-02'"
       )
       .get(profile.id);
     expect(row).toEqual({ substance: "nicotine", units: 3 });

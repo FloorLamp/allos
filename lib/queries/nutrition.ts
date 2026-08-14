@@ -207,7 +207,7 @@ export function getFoodServingsOnDate(
 ): Map<string, number> {
   const rows = db
     .prepare(
-      `SELECT group_key, servings FROM food_log
+      `SELECT group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date = ?`
     )
     .all(profileId, date) as { group_key: string; servings: number }[];
@@ -276,7 +276,7 @@ export function getFoodMealDays(
 
   const totals = db
     .prepare(
-      `SELECT date, group_key, servings FROM food_log
+      `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0`
     )
     .all(profileId, from, to) as {
@@ -347,7 +347,7 @@ export function getFoodDailyServingTotals(
 ): FoodDailyServingTotal[] {
   return db
     .prepare(
-      `SELECT date, group_key, servings FROM food_log
+      `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND servings > 0
         ORDER BY date DESC`
     )
@@ -373,7 +373,7 @@ export function getFoodRollupInRange(
 ): GroupServingTotal[] {
   const rows = db
     .prepare(
-      `SELECT date, group_key, servings FROM food_log
+      `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0
         ORDER BY date DESC`
     )
@@ -392,7 +392,7 @@ export function getFoodDailyServingTotalsInRange(
 ): FoodDailyServingTotal[] {
   return db
     .prepare(
-      `SELECT date, group_key, servings FROM food_log
+      `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0
         ORDER BY date, group_key`
     )
@@ -408,7 +408,7 @@ export function getWeeklyServingsForGroup(
 ): number {
   const row = db
     .prepare(
-      `SELECT COALESCE(SUM(servings), 0) AS n FROM food_log
+      `SELECT COALESCE(SUM(servings), 0) AS n FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND group_key = ?`
     )
     .get(profileId, weekStart, groupKey) as { n: number };
@@ -424,7 +424,7 @@ export function getWeeklyDaysForGroup(
 ): number {
   const row = db
     .prepare(
-      `SELECT COUNT(DISTINCT date) AS n FROM food_log
+      `SELECT COUNT(DISTINCT date) AS n FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND group_key = ? AND servings > 0`
     )
     .get(profileId, weekStart, groupKey) as { n: number };
@@ -458,7 +458,7 @@ export function currentFoodSlot(profileId: number): FoodSlot {
 // button), which is the ONLY difference between them.
 //
 // The order: the profile's staples lead (issue #591, reusing the activity-picker
-// machinery #195) — each food_log row over the trailing recent window weighted by
+// machinery #195) — each food_daily_totals row over the trailing recent window weighted by
 // `servings × decayedWeight` (60-day half-life, lib/decay.ts), so a recent habit outranks
 // a stale one and the curated catalog order breaks ties (and IS the whole order for a
 // fresh profile). SLOT-AWARE (issue #950, by PROXIMITY since #2019): with a `window`,
@@ -473,7 +473,7 @@ export function currentFoodSlot(profileId: number): FoodSlot {
 // reversed (#1980, reversing #1822 item 5).
 //
 // Presentation-only: ranking gates ORDER, never what can be logged (#559). Profile-scoped
-// via the food_log / food_log_events filters.
+// via the food_daily_totals / food_log_events filters.
 export function rankFoodGroups(profileId: number, window?: FoodSlot): string[] {
   const { t, overall, slot } = gatherFoodRankingSignals(profileId, window);
   const curated = curatedFoodRankKeys(profileId);
@@ -531,7 +531,7 @@ export function getFoodBarOrder(
   return { groups, proteinRank };
 }
 
-// The overall (food_log daily counter) + slot (food_log_events ledger) frecency inputs
+// The overall (food_daily_totals daily counter) + slot (food_log_events ledger) frecency inputs
 // blendFoodOrder consumes for a window — gathered ONCE for the one ranking every surface
 // reads (#221/#1980). The slot signal weights each event by PROXIMITY (#2019) between the
 // minute it was EATEN and the window's own anchor, both read at query time, so a schedule
@@ -549,7 +549,7 @@ function gatherFoodRankingSignals(
   const overall = (
     db
       .prepare(
-        `SELECT group_key AS name, date, servings FROM food_log
+        `SELECT group_key AS name, date, servings FROM food_daily_totals
           WHERE profile_id = ? AND date >= ? AND servings > 0`
       )
       .all(profileId, since) as {
@@ -601,14 +601,14 @@ function gatherFoodRankingSignals(
   return { t, overall, slot };
 }
 
-// Whether the profile logs protein (has any protein_log history, or a saved quick-add
+// Whether the profile logs protein (has any protein_daily_totals history, or a saved quick-add
 // scoop preset) — the gate for the "+Xg protein" nudge button (#1073). A non-tracker never
 // sees the reserved __protein__ pseudo-group in the ranked keys. Reads a profile-scoped
-// owned table (protein_log) + the per-profile settings tier.
+// owned table (protein_daily_totals) + the per-profile settings tier.
 export function profileTracksProtein(profileId: number): boolean {
   if (getProteinQuickAddPreset(profileId) != null) return true;
   const row = db
-    .prepare(`SELECT 1 FROM protein_log WHERE profile_id = ? LIMIT 1`)
+    .prepare(`SELECT 1 FROM protein_daily_totals WHERE profile_id = ? LIMIT 1`)
     .get(profileId);
   return !!row;
 }
@@ -634,7 +634,7 @@ function curatedFoodRankKeys(profileId: number): string[] {
 // grouping (getFoodMealDays.slotCounts) and the write cores' placement counts.
 
 // How many PROTEIN taps landed on a day (#1073/#1379). The reserved __protein__ key
-// deliberately never reaches the `food_log` day counter — reserved-key discipline keeps a
+// deliberately never reaches the `food_daily_totals` day counter — reserved-key discipline keeps a
 // shake from becoming a serving — so its "(n)" suffix has to be counted off the ledger it
 // DOES write to. One row per tap, so the count is taps, not grams; the day's grams stay on
 // the nudge's own protein line. Profile-scoped via the food_log_events filter.
@@ -699,7 +699,7 @@ export function getFoodRegularity(profileId: number): FoodRegularity {
 // The food groups whose regularity may be MEASURED but never presented back as an
 // expectation (#2380, applying #998's language). Two memberships, both declared:
 //
-//   • a group whose food_log counter IS a substance ledger — alcohol, whose taps are
+//   • a group whose food_daily_totals counter IS a substance ledger — alcohol, whose taps are
 //     the substance scope's own rows (lib/substance-daily-totals-write.ts). Excluded
 //     unconditionally, target or no target: "you usually have alcohol in the evening"
 //     is a sentence this app does not say, and whether the user has declared a weekly
@@ -763,7 +763,7 @@ export function getHabitualFoodGroups(
 // alcohol" is the sentence #2380 already refused in a shorter window, and a longer one
 // does not make it sayable (#998/#2397).
 //
-// Profile-scoped via the food_log filter inside the rollup read.
+// Profile-scoped via the food_daily_totals filter inside the rollup read.
 export function getFoodPeriodHabits(
   profileId: number,
   from: string,
@@ -968,7 +968,7 @@ export function getFoodCorrectionBursts(
 // this-week progress for the same fixture (#221). Week identity follows the profile's
 // configured week (mode + start), the SAME definition frequencyPace uses — no second
 // "week" (#223). Weeks before a target was created render not-applicable (honest cold
-// start), never as misses. Profile-scoped via the frequency_targets + food_log
+// start), never as misses. Profile-scoped via the frequency_targets + food_daily_totals
 // filters. Empty map when the profile tracks no food habits.
 export function getFoodHabitTrends(
   profileId: number,
@@ -999,7 +999,7 @@ export function getFoodHabitTrends(
   const oldest = weeks[0].start;
   const rows = db
     .prepare(
-      `SELECT group_key, date, servings FROM food_log
+      `SELECT group_key, date, servings FROM food_daily_totals
         WHERE profile_id = ? AND date >= ? AND servings > 0`
     )
     .all(profileId, oldest) as {
@@ -1043,12 +1043,14 @@ export function getFoodHabitTrends(
 // when the profile logged none that day. Profile-scoped.
 export function getProteinDailyGrams(profileId: number, date: string): number {
   const row = db
-    .prepare(`SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`)
+    .prepare(
+      `SELECT grams FROM protein_daily_totals WHERE profile_id = ? AND date = ?`
+    )
     .get(profileId, date) as { grams: number } | undefined;
   return row?.grams ?? 0;
 }
 
-// The profile's protein_log rows on/after `since` (inclusive) — for the per-day logged
+// The profile's protein_daily_totals rows on/after `since` (inclusive) — for the per-day logged
 // average the adequacy gather sums into the floor. Profile-scoped.
 export function getProteinDailyTotals(
   profileId: number,
@@ -1056,7 +1058,7 @@ export function getProteinDailyTotals(
 ): { date: string; grams: number }[] {
   return db
     .prepare(
-      `SELECT date, grams FROM protein_log
+      `SELECT date, grams FROM protein_daily_totals
         WHERE profile_id = ? AND date >= ? AND grams > 0
         ORDER BY date DESC`
     )
@@ -1069,7 +1071,7 @@ export function getProteinDailyTotals(
 //
 // The gather lives here rather than in the section so the composition is ONE thing the
 // DB tier can assert: protein is the #2414 merge of BOTH its sources (a tracked
-// `protein_g` total overrides, the Food tab's hand-logged `protein_log` grams fill the
+// `protein_g` total overrides, the Food tab's hand-logged `protein_daily_totals` grams fill the
 // days it does not cover), carbs/fat/fiber are their tracked daily totals. Windowing is
 // the #2258 §4 precondition of the chart's day-fill; "0000-01-01" is the open lower
 // bound of an all-time range.
@@ -1225,10 +1227,10 @@ function getProteinTrailing(
 function hasProteinSignalBefore(profileId: number, date: string): boolean {
   const row = db
     .prepare(
-      `SELECT 1 AS hit FROM food_log
+      `SELECT 1 AS hit FROM food_daily_totals
          WHERE profile_id = ? AND date < ? AND servings > 0
        UNION ALL
-       SELECT 1 AS hit FROM protein_log
+       SELECT 1 AS hit FROM protein_daily_totals
          WHERE profile_id = ? AND date < ? AND grams > 0
        UNION ALL
        SELECT 1 AS hit FROM metric_samples
@@ -1250,10 +1252,10 @@ function hasProteinSignalBefore(profileId: number, date: string): boolean {
 function hasAnyProteinSignal(profileId: number): boolean {
   const row = db
     .prepare(
-      `SELECT 1 AS hit FROM food_log
+      `SELECT 1 AS hit FROM food_daily_totals
          WHERE profile_id = ? AND servings > 0
        UNION ALL
-       SELECT 1 AS hit FROM protein_log
+       SELECT 1 AS hit FROM protein_daily_totals
          WHERE profile_id = ? AND grams > 0
        UNION ALL
        SELECT 1 AS hit FROM metric_samples

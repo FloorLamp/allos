@@ -266,7 +266,7 @@ export type DeleteInstrumentOutcome =
   { kind: "deleted"; undoId: number | null } | { kind: "not-found" };
 
 // Remove ONE stored score. Goes through the SHARED undo capture (#30) under the
-// existing `biomarker-record` kind — the score IS a medical_records row — so a
+// existing `clinical-observation` kind — the score IS a medical_records row — so a
 // mis-tapped delete is recoverable from the toast, and the capture brings the item
 // answers back with it (the instrument_responses child entity registered in
 // lib/undo-delete.ts). Guarded to instrument-category rows so it can never be pointed
@@ -280,7 +280,7 @@ export function deleteInstrumentScore(
   // #2107: same gate, same answer as update — the row names the instrument, so the
   // refusal cannot depend on which surface reached this core.
   if (adultOnlyRefusal(profileId, resolved)) return { kind: "not-found" };
-  const undoId = captureDelete("biomarker-record", profileId, id);
+  const undoId = captureDelete("clinical-observation", profileId, id);
   return undoId == null ? { kind: "not-found" } : { kind: "deleted", undoId };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  biomarkerOutcomeOption,
+  clinicalResultOutcomeOption,
   outcomeOptionMatches,
   protocolRelevantPanels,
   rankProtocolOutcomeOptions,
@@ -20,8 +20,8 @@ function fixed(key: string, label: string): OutcomeOption {
 
 describe("protocol outcome picker (#1586)", () => {
   it("matches substrings and canonical aliases", () => {
-    const apoB = biomarkerOutcomeOption("Apolipoprotein B (ApoB)");
-    const a1c = biomarkerOutcomeOption("Hemoglobin A1c");
+    const apoB = clinicalResultOutcomeOption("Apolipoprotein B (ApoB)");
+    const a1c = clinicalResultOutcomeOption("Hemoglobin A1c");
 
     expect(outcomeOptionMatches(apoB, "polipoprotein")).toBe(true);
     expect(outcomeOptionMatches(a1c, "HbA1c")).toBe(true);
@@ -30,14 +30,14 @@ describe("protocol outcome picker (#1586)", () => {
 
   it("ranks relevant panels first without dropping or reordering the rest", () => {
     const weight = fixed("metric:weight", "Body weight");
-    const rubella = biomarkerOutcomeOption("Rubella IgG");
-    const vitaminD = biomarkerOutcomeOption("Vitamin D, 25-Hydroxy");
+    const rubella = clinicalResultOutcomeOption("Rubella IgG");
+    const vitaminD = clinicalResultOutcomeOption("Vitamin D, 25-Hydroxy");
     const options = [weight, rubella, vitaminD];
 
     const ranked = rankProtocolOutcomeOptions(
       options,
       protocolRelevantPanels({
-        templateOutcomeKeys: ["biomarker:Vitamin D, 25-Hydroxy"],
+        templateOutcomeKeys: ["result:Vitamin D, 25-Hydroxy"],
       })
     );
 
@@ -70,7 +70,7 @@ describe("protocol outcome picker (#1586)", () => {
       beforeN: 5,
       duringN: 5,
     };
-    const relevant = biomarkerOutcomeOption("Vitamin D, 25-Hydroxy");
+    const relevant = clinicalResultOutcomeOption("Vitamin D, 25-Hydroxy");
 
     expect(
       rankProtocolOutcomeOptions(

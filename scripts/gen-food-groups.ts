@@ -11,7 +11,7 @@
 //   npm run gen:food-groups
 //
 // Each group carries a STABLE slug (the #203 discipline: a rename is display-only, the
-// slug never changes — food_log.group_key and any target/dismissal keyed on it depend
+// slug never changes — food_daily_totals.group_key and any target/dismissal keyed on it depend
 // on it), a display name, a serving description, a `tier` (`encourage` — foods dietary
 // guidance says to eat more of; `limit` — eat less of; `neutral`), the `nutrients` it's
 // a meaningful source of (keyed to the #577 nutrient-food-map entry keys), and an
@@ -47,7 +47,7 @@ const OUT = path.join(
 export type FoodGroupTier = "encourage" | "limit" | "neutral";
 
 export interface FoodGroup {
-  // Stable slug — food_log.group_key. NEVER changes once shipped (renames are display
+  // Stable slug — food_daily_totals.group_key. NEVER changes once shipped (renames are display
   // only). Lowercase snake_case.
   slug: string;
   // Display name for the log button / rollup label.
@@ -291,7 +291,7 @@ export function buildFoodGroups(): FoodGroupsDataset {
     title: "Curated food-group catalog for the serving log",
     description:
       "~24 food groups at the HABIT tier (one serving = one tap) for the serving log " +
-      "(issue #579), each with a stable slug (food_log.group_key), a serving " +
+      "(issue #579), each with a stable slug (food_daily_totals.group_key), a serving " +
       "description, a tier (encourage/limit/neutral), the #577 nutrient-food-map keys " +
       "it's a source of, an optional protein_g the #767 protein-adequacy estimate " +
       "sums as a FLOOR, and an optional fiber_g the #976 fiber-adequacy estimate sums " +

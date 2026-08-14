@@ -68,7 +68,7 @@ export default function FoodGroupIcon({
   className = "h-5 w-5",
   stroke = 1.75,
 }: {
-  // The food-group catalog slug (food_log.group_key).
+  // The food-group catalog slug (food_daily_totals.group_key).
   slug: string;
   className?: string;
   stroke?: number;

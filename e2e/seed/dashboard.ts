@@ -246,7 +246,7 @@ export function seedNowStrip(): void {
       ["eggs", 1],
     ] as const) {
       db.prepare(
-        `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+        `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
          ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
       ).run(nowStripId, nowStripDay, slug, servings);
     }
@@ -519,11 +519,13 @@ export function seedNowStrip(): void {
     `DELETE FROM food_log_events WHERE profile_id = ? AND group_key = 'alcohol'`
   ).run(substanceId);
   db.prepare(
-    `DELETE FROM food_log WHERE profile_id = ? AND group_key = 'alcohol'`
+    `DELETE FROM food_daily_totals WHERE profile_id = ? AND group_key = 'alcohol'`
   ).run(substanceId);
   // The non-food ledger (#1078: nicotine/cannabis one-tap counts) — same empty
   // contract as the alcohol food-log rows above.
-  db.prepare(`DELETE FROM substance_log WHERE profile_id = ?`).run(substanceId);
+  db.prepare(`DELETE FROM substance_daily_totals WHERE profile_id = ?`).run(
+    substanceId
+  );
   db.prepare(
     `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'substance'`
   ).run(substanceId);
@@ -755,9 +757,11 @@ export function seedDailyLoop(): void {
 
     // Food today: a few protein-bearing food-group servings so getProteinToday reads a
     // non-zero floor against the goal band (the Nutrition-today card).
-    db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(dailyId);
+    db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
+      dailyId
+    );
     const insFood = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
     );
     for (const [ago, group, servings] of [
       [0, "legumes", 2],

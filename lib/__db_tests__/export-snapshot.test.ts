@@ -48,13 +48,13 @@ describe("collectExportSnapshot (issue #135 item 1)", () => {
 
   it("is scoped to the asked profile (no cross-profile bleed)", () => {
     const snapA = collectExportSnapshot(a.profileId, "Snap A");
-    const supplements = snapA.datasets.find((d) => d.key === "supplements")!;
-    expect(supplements.rows.length).toBeGreaterThan(0);
+    const intakeItems = snapA.datasets.find((d) => d.key === "intake_items")!;
+    expect(intakeItems.rows.length).toBeGreaterThan(0);
     // Every seeded item name is tag-prefixed, so a leak would surface SNAPB rows.
     expect(
-      supplements.rows.every((r) => String(r.name).startsWith(a.tag))
+      intakeItems.rows.every((r) => String(r.name).startsWith(a.tag))
     ).toBe(true);
-    expect(supplements.rows.some((r) => String(r.name).startsWith(b.tag))).toBe(
+    expect(intakeItems.rows.some((r) => String(r.name).startsWith(b.tag))).toBe(
       false
     );
   });

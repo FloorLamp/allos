@@ -84,7 +84,7 @@ import {
 // DIFFERENT fact, and collapsing any of them into "just use the other column" is the
 // bug class #2205 exists to close.
 export type InstantAbsence =
-  // The table declares no column with that semantic. `substance_log` records when a
+  // The table declares no column with that semantic. `substance_daily_totals` records when a
   // drink was LOGGED and nothing about when it was drunk; asking for its event
   // instant is a question the schema cannot answer, for every row, forever.
   | "not-declared"

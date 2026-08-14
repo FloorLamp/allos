@@ -82,10 +82,10 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
   await page.waitForURL(/\/protocols\/\d+/);
   const detail = page.getByRole("main");
   await expect(
-    detail.getByTestId("protocol-outcome-biomarker:LDL Cholesterol")
+    detail.getByTestId("protocol-outcome-result:LDL Cholesterol")
   ).toBeVisible();
   await expect(
-    detail.getByTestId("protocol-outcome-biomarker:Non-HDL Cholesterol")
+    detail.getByTestId("protocol-outcome-result:Non-HDL Cholesterol")
   ).toBeVisible();
 
   await hydratedClick(

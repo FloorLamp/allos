@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  rewriteBiomarkerOutcomeKeys,
+  rewriteResultOutcomeKeys,
   supersededStoredNames,
   supersededVocabularyRows,
   type CanonicalVocabularyRow,
@@ -176,30 +176,30 @@ describe("supersededStoredNames", () => {
   });
 });
 
-describe("rewriteBiomarkerOutcomeKeys", () => {
+describe("rewriteResultOutcomeKeys", () => {
   it("rewrites the biomarker outcome key and leaves every other key alone", () => {
     expect(
-      rewriteBiomarkerOutcomeKeys(
-        JSON.stringify(["metric:weight", "biomarker:Old Spelling"]),
+      rewriteResultOutcomeKeys(
+        JSON.stringify(["metric:weight", "result:Old Spelling"]),
         "Old Spelling",
         "New Spelling"
       )
-    ).toBe(JSON.stringify(["metric:weight", "biomarker:New Spelling"]));
+    ).toBe(JSON.stringify(["metric:weight", "result:New Spelling"]));
   });
 
   it("collapses onto a target the protocol already selected instead of duplicating", () => {
     expect(
-      rewriteBiomarkerOutcomeKeys(
-        JSON.stringify(["biomarker:New Spelling", "biomarker:Old Spelling"]),
+      rewriteResultOutcomeKeys(
+        JSON.stringify(["result:New Spelling", "result:Old Spelling"]),
         "Old Spelling",
         "New Spelling"
       )
-    ).toBe(JSON.stringify(["biomarker:New Spelling"]));
+    ).toBe(JSON.stringify(["result:New Spelling"]));
   });
 
   it("returns null (no UPDATE) when the row never mentioned the old spelling", () => {
     expect(
-      rewriteBiomarkerOutcomeKeys(
+      rewriteResultOutcomeKeys(
         JSON.stringify(["index:phenoage"]),
         "Old Spelling",
         "New Spelling"
@@ -208,7 +208,7 @@ describe("rewriteBiomarkerOutcomeKeys", () => {
   });
 
   it("returns null for a corrupt or non-array column rather than rewriting it", () => {
-    expect(rewriteBiomarkerOutcomeKeys("{", "a", "b")).toBeNull();
-    expect(rewriteBiomarkerOutcomeKeys('"nope"', "a", "b")).toBeNull();
+    expect(rewriteResultOutcomeKeys("{", "a", "b")).toBeNull();
+    expect(rewriteResultOutcomeKeys('"nope"', "a", "b")).toBeNull();
   });
 });

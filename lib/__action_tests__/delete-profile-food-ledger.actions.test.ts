@@ -2,7 +2,7 @@
 //
 // food_log_events is a profile-OWNED table (lib/owned-tables.ts), so deleteProfile's
 // OWNED_TABLES sweep removes its rows by profile_id (the row-ops side-state rule — the
-// ledger is cleared alongside its food_log counter). This pins that the deleted
+// ledger is cleared alongside its food_daily_totals counter). This pins that the deleted
 // profile's ledger is gone while a bystander's survives.
 
 import { describe, it, expect } from "vitest";

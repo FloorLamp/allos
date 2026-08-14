@@ -6,7 +6,7 @@
 // shipped), validates the outside-total bounds, and gates on requireWriteAccess.
 // The unit log dispatches per substance (#1078): alcohol through the shared
 // food-log core into the `alcohol` group, nicotine/cannabis through the
-// substance_log core; the target actions upsert/clear the substance
+// substance_daily_totals core; the target actions upsert/clear the substance
 // frequency_targets row (cap semantics, one row per substance).
 
 import { describe, expect, it } from "vitest";
@@ -205,7 +205,7 @@ describe("recordSubstanceInstrumentAction", () => {
 });
 
 describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance ledger dispatch", () => {
-  it("alcohol logs into the food_log group and reports the weekly count; undo reverses", async () => {
+  it("alcohol logs into the food_daily_totals group and reports the weekly count; undo reverses", async () => {
     const login = createLogin();
     const profile = createProfile("su-drink", login.id);
     actAs(login, profile);
@@ -218,7 +218,7 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     // The SAME store Nutrition's one-tap bar reads (one ledger, two surfaces).
     const row = db
       .prepare(
-        `SELECT servings FROM food_log WHERE profile_id = ? AND group_key = 'alcohol'`
+        `SELECT servings FROM food_daily_totals WHERE profile_id = ? AND group_key = 'alcohol'`
       )
       .get(profile.id) as { servings: number };
     expect(row.servings).toBe(2);
@@ -230,7 +230,9 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     expect(events.n).toBe(2);
     // Nothing leaked into the non-food ledger.
     const sub = db
-      .prepare(`SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`)
+      .prepare(
+        `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`
+      )
       .get(profile.id) as { n: number };
     expect(sub.n).toBe(0);
 
@@ -238,7 +240,7 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
     expect(undone).toEqual({ ok: true, weekCount: 1 });
   });
 
-  it("nicotine logs into substance_log (#1078) and reports the weekly count; undo reverses", async () => {
+  it("nicotine logs into substance_daily_totals (#1078) and reports the weekly count; undo reverses", async () => {
     const login = createLogin();
     const profile = createProfile("su-nicotine", login.id);
     actAs(login, profile);
@@ -250,13 +252,15 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
 
     const row = db
       .prepare(
-        `SELECT units FROM substance_log WHERE profile_id = ? AND substance = 'nicotine'`
+        `SELECT units FROM substance_daily_totals WHERE profile_id = ? AND substance = 'nicotine'`
       )
       .get(profile.id) as { units: number };
     expect(row.units).toBe(2);
     // The food ledger is untouched — no nutrition pollution (#1078).
     const food = db
-      .prepare(`SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`)
+      .prepare(
+        `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`
+      )
       .get(profile.id) as { n: number };
     expect(food.n).toBe(0);
 
@@ -720,7 +724,9 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
       )
     ).toMatchObject({ kind: "not-found", undoId: null });
     const rows = db
-      .prepare("SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?"
+      )
       .get(profile.id) as { n: number };
     expect(rows.n).toBe(0);
   });

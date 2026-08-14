@@ -24,10 +24,10 @@ import { ownedChildTables } from "@/lib/profile-delete";
 import { FHIR_EXPORT_RESOURCE_TYPES } from "@/lib/fhir-export";
 import { FHIR_IMPORT_RESOURCE_TYPES } from "@/lib/fhir";
 
-describe("intake export compatibility (#2484)", () => {
-  it("keeps the versioned supplements key for the shared intake_items dataset", () => {
+describe("mixed intake export (#2484/#2740)", () => {
+  it("uses the physical intake_items key for the shared dataset", () => {
     expect(
-      DATASETS.find((dataset) => dataset.key === "supplements")
+      DATASETS.find((dataset) => dataset.key === "intake_items")
     ).toMatchObject({
       label: "Supplements & Medications",
       table: "intake_items",
@@ -259,7 +259,7 @@ const FHIR_CHILD_INPUT_TABLES = new Set<string>([
 const CHILD_EXPORT_ALLOWLIST: { table: string; why: string }[] = [
   {
     table: "intake_item_pairs",
-    why: "take-together/apart pairing between two intake_items rows, keyed on instance-local row ids that are meaningless off this instance; both endpoint items export in full via the supplements dataset, and the pair itself is a two-tap re-declaration — no independent clinical payload",
+    why: "take-together/apart pairing between two intake_items rows, keyed on instance-local row ids that are meaningless off this instance; both endpoint items export in full via the intake_items dataset, and the pair itself is a two-tap re-declaration — no independent clinical payload",
   },
   {
     table: "routine_days",

@@ -56,14 +56,14 @@ const pageFor = (
 
 // Issue #113: the Data page reads bounded pages (count + page) instead of the full
 // dataset. These assert the bounded readers agree with the full rows() (same order,
-// same shape, incl. the folded activities/supplements JS), stay profile-scoped, and
+// same shape, incl. the folded activities/intake-items JS), stay profile-scoped, and
 // that count() equals the true row total — the contract DataExport relies on.
 describe("bounded count()/page() readers (issue #113)", () => {
   it("count() equals the full row total, per profile, incl. JOIN datasets", () => {
     for (const key of [
       "medical_records",
       "activities",
-      "supplements",
+      "intake_items",
       "intake_log",
       "hr_minutes",
       "allergies",
@@ -74,7 +74,7 @@ describe("bounded count()/page() readers (issue #113)", () => {
   });
 
   it("page() returns the same window (order + shape) as slicing rows()", () => {
-    for (const key of ["medical_records", "activities", "supplements"]) {
+    for (const key of ["medical_records", "activities", "intake_items"]) {
       const all = rowsFor(key, a.profileId);
       // A window that straddles the data (offset 1, small limit).
       const window = pageFor(key, a.profileId, 2, 1);
@@ -91,8 +91,8 @@ describe("bounded count()/page() readers (issue #113)", () => {
     expect(first[0]).toHaveProperty("exercises");
   });
 
-  it("the supplements page folds the dose schedule like the full export", () => {
-    const page = pageFor("supplements", a.profileId, 50, 0);
+  it("the intake-items page folds the dose schedule like the full export", () => {
+    const page = pageFor("intake_items", a.profileId, 50, 0);
     const vitD = page.find((r) => String(r.name) === "EXPA Vitamin D")!;
     expect(vitD).toBeDefined();
     expect(String(vitD.schedule)).toContain("morning");
@@ -140,9 +140,9 @@ describe("export datasets are profile-scoped", () => {
   it("supplements (with folded dose schedule) + log scope through the intake_items JOIN", () => {
     // The fixture seeds one supplement (Vitamin D) + one medication (Lisinopril),
     // each with a single dose, per profile — a leak would surface the other
-    // profile's items here. The merged `supplements` dataset is one row per item
+    // profile's items here. The merged `intake_items` dataset is one row per item
     // with its dose schedule folded into a `schedule` summary.
-    const items = rowsFor("supplements", a.profileId);
+    const items = rowsFor("intake_items", a.profileId);
     expect(items).toHaveLength(2);
     expect(items.every((r) => String(r.name).startsWith("EXPA"))).toBe(true);
     expect(items.some((r) => String(r.name).startsWith("EXPB"))).toBe(false);
@@ -188,7 +188,7 @@ describe("dataset delete affordance", () => {
     expect(del("hr_minutes")).toBe(false);
     // Undefined (the default) means deletable — the clinical + sample datasets,
     // plus the merged supplements/medications dataset (item-level rows).
-    expect(getDataset("supplements")!.deletable).not.toBe(false);
+    expect(getDataset("intake_items")!.deletable).not.toBe(false);
     expect(getDataset("allergies")!.deletable).not.toBe(false);
     expect(getDataset("conditions")!.deletable).not.toBe(false);
     expect(getDataset("encounters")!.deletable).not.toBe(false);

@@ -49,7 +49,7 @@ export async function createFrequencyTarget(formData: FormData) {
   );
   if (!isValidScope(kind, value) || !Number.isFinite(perWeek)) return;
   // Persist the canonical food-group slug, not the raw input (#883) — downstream habit
-  // progress compares scope_value exactly against the food_log group_key.
+  // progress compares scope_value exactly against the food_daily_totals group_key.
   if (kind === "food_group") {
     const slug = canonicalFoodGroup(value);
     if (!slug) return;

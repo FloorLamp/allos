@@ -153,22 +153,24 @@ describe("pattern 2 — record-only", () => {
     };
     // Not "this row is missing one" — the schema records when a drink was LOGGED and
     // nothing about when it was drunk.
-    expect(eventInstant("substance_log", drink)).toEqual({
+    expect(eventInstant("substance_daily_totals", drink)).toEqual({
       known: false,
       why: "not-declared",
       column: null,
     });
-    expect(recordInstant("substance_log", drink)).toMatchObject({
+    expect(recordInstant("substance_daily_totals", drink)).toMatchObject({
       at: "2026-03-10T23:10:00Z",
       column: "logged_at",
     });
-    expect(bestKnownInstant("substance_log", drink)).toMatchObject({
+    expect(bestKnownInstant("substance_daily_totals", drink)).toMatchObject({
       semantic: "record",
     });
   });
 
   it("reports the record's absence when the table has no event column at all", () => {
-    expect(bestKnownInstant("substance_log", { logged_at: null })).toEqual({
+    expect(
+      bestKnownInstant("substance_daily_totals", { logged_at: null })
+    ).toEqual({
       known: false,
       why: "not-recorded",
       column: "logged_at",

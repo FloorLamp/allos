@@ -74,7 +74,7 @@ describe("isAnxietyScaleRelevant (the #1313 gate resolver)", () => {
     db.prepare(
       `INSERT INTO protocols (profile_id, name, start_date, end_date, outcome_keys)
        VALUES (?, 'Daily meditation', '2026-06-01', NULL, ?)`
-    ).run(p, JSON.stringify(["biomarker:GAD-7"]));
+    ).run(p, JSON.stringify(["result:GAD-7"]));
     expect(isAnxietyScaleRelevant(p)).toBe(true);
   });
 
@@ -83,7 +83,7 @@ describe("isAnxietyScaleRelevant (the #1313 gate resolver)", () => {
     db.prepare(
       `INSERT INTO protocols (profile_id, name, start_date, end_date, outcome_keys)
        VALUES (?, 'Old meditation', '2026-01-01', '2026-03-01', ?)`
-    ).run(p, JSON.stringify(["biomarker:GAD-7"]));
+    ).run(p, JSON.stringify(["result:GAD-7"]));
     expect(isAnxietyScaleRelevant(p)).toBe(false);
   });
 
