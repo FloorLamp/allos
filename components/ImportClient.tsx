@@ -53,8 +53,13 @@ function detectType(text: string): ImportType | null {
     "test",
   ]);
   if (workout === 0 && bio === 0) return null;
-  return workout >= bio ? "workouts" : "biomarkers";
+  return workout >= bio ? "workouts" : "clinical-results";
 }
+
+const IMPORT_TYPE_LABEL: Record<ImportType, string> = {
+  workouts: "Workouts",
+  "clinical-results": "Clinical results",
+};
 
 export default function ImportClient({
   units,
@@ -118,7 +123,7 @@ export default function ImportClient({
       <div>
         <label className="label">What are you importing?</label>
         <div className="grid grid-cols-2 gap-2">
-          {(["workouts", "biomarkers"] as const).map((t) => {
+          {(["workouts", "clinical-results"] as const).map((t) => {
             const active = effectiveType === t;
             return (
               <button
@@ -131,7 +136,7 @@ export default function ImportClient({
                     : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
                 }`}
               >
-                {t}
+                {IMPORT_TYPE_LABEL[t]}
               </button>
             );
           })}
@@ -311,7 +316,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
           {job.result.type === "workouts" ? (
             <WorkoutPreview preview={job.result} unit={unit} />
           ) : (
-            <BiomarkerPreview preview={job.result} />
+            <ClinicalResultPreview preview={job.result} />
           )}
           <div className="flex items-center gap-2 pt-1">
             <button
@@ -406,15 +411,15 @@ function WorkoutPreview({
   );
 }
 
-function BiomarkerPreview({
+function ClinicalResultPreview({
   preview,
 }: {
-  preview: Extract<ImportResult, { type: "biomarkers" }>;
+  preview: Extract<ImportResult, { type: "clinical-results" }>;
 }) {
   if (preview.results.length === 0)
     return (
       <p className="text-sm text-slate-500 dark:text-slate-400">
-        No biomarkers found in that input.
+        No clinical results found in that input.
       </p>
     );
   return (

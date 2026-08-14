@@ -53,7 +53,7 @@ export function seedImportFeed(): void {
   db.prepare(
     `INSERT INTO import_jobs
      (profile_id, type, status, summary, created_at, updated_at)
-   VALUES (?, 'biomarkers', 'ready', 'e2e: 4 readings',
+   VALUES (?, 'clinical-results', 'ready', 'e2e: 4 readings',
            '2026-07-08 11:00:00', '2026-07-08 11:00:00')`
   ).run(PROFILE_ID);
 

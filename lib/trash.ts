@@ -73,8 +73,8 @@ export interface TrashEntry {
 // Captured columns that carry a human title, in priority order. Every registry kind's
 // root table is covered: activities.title, medical_records/intake_items/conditions.name,
 // practice_logs.practice, frequency_targets.scope_value,
-// allergies/substance_log.substance, immunizations.vaccine, skin_lesions.label,
-// food_log(_events).group_key. A root with none (body_metrics) renders by kind + date,
+// allergies/substance_daily_totals.substance, immunizations.vaccine, skin_lesions.label,
+// food_daily_totals(_events).group_key. A root with none (body_metrics) renders by kind + date,
 // which is what its own surfaces do.
 const TITLE_COLUMNS = [
   "title",

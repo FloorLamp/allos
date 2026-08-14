@@ -413,7 +413,7 @@ describe("migration 183 — food_log_events instants renamed and normalized", ()
     // on the same convention as a live one.
     expect(row.recorded_at).toBe("2026-07-18T15:02:31Z");
     expect(row.occurred_at).toBe("2026-07-18T14:45:09Z");
-    // The sibling counter snapshot is a `food_log` row and is left exactly alone.
+    // The sibling counter snapshot is a `food_daily_totals` row and is left exactly alone.
     expect(stored.rows).toHaveProperty("counter");
   });
 

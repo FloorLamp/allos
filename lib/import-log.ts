@@ -93,16 +93,16 @@ export function documentFormatLabel(doc: {
 }
 
 // A human title + format label for a paste/CSV job (type is 'workouts' or
-// 'biomarkers').
+// 'clinical-results').
 export function jobTitle(type: string): string {
   if (type === "workouts") return "Pasted workouts";
-  if (type === "biomarkers") return "Pasted labs";
+  if (type === "clinical-results") return "Pasted clinical results";
   return "Pasted import";
 }
 
 export function jobFormatLabel(type: string): string {
   if (type === "workouts") return "Workouts (paste/CSV)";
-  if (type === "biomarkers") return "Clinical results (paste/CSV)";
+  if (type === "clinical-results") return "Clinical results (paste/CSV)";
   return "Paste/CSV";
 }
 

@@ -16,7 +16,7 @@ const CONSEQUENCE = "Hand-edited — imports will no longer update this row.";
 
 // Shared badge + "Resume sync updates" behavior for a hand-edited imported row
 // (issue #659). Rendered on the surfaces that show an edit-locked row — the body
-// metrics history table, the biomarker record editor, and the activity provenance
+// metrics history table, the clinical-result editor, and the activity provenance
 // footer — so the lock reads consistently and every one offers the same clear path.
 // Clearing warns that the next sync may overwrite the hand-fix (the undo-inverts-
 // side-state convention: resuming sync is a deliberate, reversible-by-re-editing act).

@@ -1,7 +1,7 @@
 // Auth-blind historical correction core for substance consumption (#2009).
 // The public row contract is storage-agnostic; dispatch is decided only from the
-// catalog substance. Alcohol updates its existing food_log counter and reconciles
-// the matching per-tap events, while nicotine/cannabis update substance_log.
+// catalog substance. Alcohol updates its existing food_daily_totals counter and reconciles
+// the matching per-tap events, while nicotine/cannabis update substance_daily_totals.
 
 import { instantNow } from "./clock";
 import { db, today, writeTx } from "./db";
@@ -105,14 +105,14 @@ export function addSubstanceDailyTotalCore(
     if (substanceDef(substance).ledger === "food-log") {
       const existing = db
         .prepare(
-          `SELECT id FROM food_log
+          `SELECT id FROM food_daily_totals
            WHERE profile_id = ? AND group_key = ? AND date = ?`
         )
         .get(profileId, ALCOHOL_FOOD_GROUP, input.date);
       if (existing) return { kind: "date-conflict" as const };
       const info = db
         .prepare(
-          `INSERT INTO food_log
+          `INSERT INTO food_daily_totals
              (profile_id, date, group_key, servings, notes)
            VALUES (?, ?, ?, ?, ?)`
         )
@@ -123,14 +123,14 @@ export function addSubstanceDailyTotalCore(
 
     const existing = db
       .prepare(
-        `SELECT id FROM substance_log
+        `SELECT id FROM substance_daily_totals
          WHERE profile_id = ? AND substance = ? AND date = ?`
       )
       .get(profileId, substance, input.date);
     if (existing) return { kind: "date-conflict" as const };
     const info = db
       .prepare(
-        `INSERT INTO substance_log
+        `INSERT INTO substance_daily_totals
            (profile_id, date, substance, units, logged_at, notes, edited)
          VALUES (?, ?, ?, ?, ?, ?, 1)`
       )
@@ -155,20 +155,20 @@ export function updateSubstanceDailyTotalCore(
     if (substanceDef(substance).ledger === "food-log") {
       const row = db
         .prepare(
-          `SELECT date FROM food_log
+          `SELECT date FROM food_daily_totals
            WHERE id = ? AND profile_id = ? AND group_key = ?`
         )
         .get(id, profileId, ALCOHOL_FOOD_GROUP) as { date: string } | undefined;
       if (!row) return { kind: "not-found" as const };
       const conflict = db
         .prepare(
-          `SELECT 1 FROM food_log
+          `SELECT 1 FROM food_daily_totals
            WHERE profile_id = ? AND group_key = ? AND date = ? AND id != ?`
         )
         .get(profileId, ALCOHOL_FOOD_GROUP, input.date, id);
       if (conflict) return { kind: "date-conflict" as const };
       db.prepare(
-        `UPDATE food_log SET date = ?, servings = ?, notes = ?
+        `UPDATE food_daily_totals SET date = ?, servings = ?, notes = ?
          WHERE id = ? AND profile_id = ? AND group_key = ?`
       ).run(input.date, input.amount, notes, id, profileId, ALCOHOL_FOOD_GROUP);
       reconcileAlcoholEvents(profileId, row.date, input.date, input.amount);
@@ -177,20 +177,20 @@ export function updateSubstanceDailyTotalCore(
 
     const row = db
       .prepare(
-        `SELECT 1 FROM substance_log
+        `SELECT 1 FROM substance_daily_totals
          WHERE id = ? AND profile_id = ? AND substance = ?`
       )
       .get(id, profileId, substance);
     if (!row) return { kind: "not-found" as const };
     const conflict = db
       .prepare(
-        `SELECT 1 FROM substance_log
+        `SELECT 1 FROM substance_daily_totals
          WHERE profile_id = ? AND substance = ? AND date = ? AND id != ?`
       )
       .get(profileId, substance, input.date, id);
     if (conflict) return { kind: "date-conflict" as const };
     db.prepare(
-      `UPDATE substance_log
+      `UPDATE substance_daily_totals
        SET date = ?, units = ?, notes = ?, edited = 1
        WHERE id = ? AND profile_id = ? AND substance = ?`
     ).run(input.date, input.amount, notes, id, profileId, substance);
@@ -208,13 +208,13 @@ export function deleteSubstanceDailyTotalCore(
     substanceDef(substance).ledger === "food-log"
       ? db
           .prepare(
-            `SELECT 1 FROM food_log
+            `SELECT 1 FROM food_daily_totals
              WHERE id = ? AND profile_id = ? AND group_key = ?`
           )
           .get(id, profileId, ALCOHOL_FOOD_GROUP)
       : db
           .prepare(
-            `SELECT 1 FROM substance_log
+            `SELECT 1 FROM substance_daily_totals
              WHERE id = ? AND profile_id = ? AND substance = ?`
           )
           .get(id, profileId, substance);

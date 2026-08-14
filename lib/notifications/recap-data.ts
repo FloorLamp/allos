@@ -183,7 +183,7 @@ function windowAdherence(
 // many of the days that could be POSITIONED landed on their protein and fibre targets.
 //
 // NOT A RE-TOTAL, by construction: nothing here sums servings or grams. Days-logged and
-// variety come from one ranged read of the same `food_log` rows the nutrition card and
+// variety come from one ranged read of the same `food_daily_totals` rows the nutrition card and
 // the Trends rollup use; the nutrient half asks the SAME per-day question the morning
 // digest asks of one day (`getNutritionDay` → `nutritionShortfalls`), so a day the recap
 // counts as short and a day the digest called short can never be different days.

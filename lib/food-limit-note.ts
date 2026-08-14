@@ -50,7 +50,7 @@
 // Nothing here counts consecutive anything, reports a to-go, a pace or a run, or
 // congratulates a day under a limit. Under-cap is a cap's success state and its success
 // state is SILENCE (#998). A group that already carries cap semantics — alcohol,
-// whose food_log counter IS the substance ledger, or any group under an active
+// whose food_daily_totals counter IS the substance ledger, or any group under an active
 // cap-direction frequency target — is refused by `foodLimitTapNote` outright, because
 // two systems saying "limit alcohol" in two vocabularies is worse than one saying it
 // well, and the cap vocabulary got there first.

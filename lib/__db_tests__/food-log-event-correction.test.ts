@@ -5,7 +5,7 @@
 // updateFoodLogEventCore edits the ledger row in place instead.
 //
 // The load-bearing pin here is the COUNTER MOVE. `food_log_events` (the per-tap ledger)
-// and `food_log` (the day counter) are one fact in two shapes, and three different
+// and `food_daily_totals` (the day counter) are one fact in two shapes, and three different
 // derived reads sit on top of them:
 //
 //   • getFoodMealDays           — the web bar's day counts + per-meal tallies
@@ -61,19 +61,19 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
 function counter(profileId: number, group: string, date: string): number {
   const row = db
     .prepare(
-      `SELECT servings FROM food_log
+      `SELECT servings FROM food_daily_totals
         WHERE profile_id = ? AND date = ? AND group_key = ?`
     )
     .get(profileId, date, group) as { servings: number } | undefined;
   return row?.servings ?? 0;
 }
 
-// Every food_log row the profile has, so a move can be checked against the WHOLE
+// Every food_daily_totals row the profile has, so a move can be checked against the WHOLE
 // counter table rather than just the two coordinates under test.
 function allCounters(profileId: number) {
   return db
     .prepare(
-      `SELECT date, group_key, servings FROM food_log
+      `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? ORDER BY date, group_key`
     )
     .all(profileId) as { date: string; group_key: string; servings: number }[];
@@ -154,7 +154,7 @@ describe("updateFoodLogEventCore — meal-slot correction (#1934)", () => {
     expect(perSlot.reduce((a, b) => a + b, 0)).toBe(1);
 
     // The DAY counter is untouched by a slot-only correction: the serving did not
-    // change group or day, so food_log has no move to make.
+    // change group or day, so food_daily_totals has no move to make.
     expect(allCounters(profileId)).toEqual([
       { date: anchor, group_key: "leafy_greens", servings: 1 },
     ]);
@@ -573,7 +573,7 @@ describe("updateFoodLogEventCore — typed refusals (#1934)", () => {
       groupKey: "berries",
     });
     // __protein__ is a ranking participant, not a serving: re-keying it would mint a
-    // food-group serving out of a shake, and its truth lives in protein_log grams.
+    // food-group serving out of a shake, and its truth lives in protein_daily_totals grams.
     expect(outcome).toEqual({ kind: "not-correctable" });
     expect(ledgerRow(profileId, eventId)).toMatchObject({
       group_key: PROTEIN_NUDGE_KEY,

@@ -10,7 +10,7 @@ import { E2E_LOGIN_PROTEIN, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 //
 // Fixture-OWNED per e2e hygiene (#868): runs as E2E_LOGIN_PROTEIN in its OWN cookie
 // context on a dedicated profile (seeded with a bodyweight + poultry/eggs today → the
-// card starts on the ESTIMATED basis, no protein_log rows). The spec drives the grams
+// card starts on the ESTIMATED basis, no protein_daily_totals rows). The spec drives the grams
 // add + undo on that isolated profile, so logging never races the shared protein-adequacy
 // spec. Add→undo leaves the fixture as found; every interaction settles via settledClick.
 

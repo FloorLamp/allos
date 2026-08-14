@@ -56,7 +56,7 @@ function servings(
 ): number | null {
   const row = db
     .prepare(
-      `SELECT servings AS s FROM food_log
+      `SELECT servings AS s FROM food_daily_totals
         WHERE profile_id = ? AND date = ? AND group_key = ?`
     )
     .get(profileId, date, group) as { s: number } | undefined;
@@ -241,7 +241,7 @@ describe("one food serving: delete → undo (#2038)", () => {
     // A note on the day counter proves the RE-INSERT restores the snapshot, not just a
     // bare count.
     db.prepare(
-      `UPDATE food_log SET notes = 'salmon, grilled'
+      `UPDATE food_daily_totals SET notes = 'salmon, grilled'
         WHERE profile_id = ? AND date = ? AND group_key = 'lean_fish'`
     ).run(profileId, date);
     const [only] = eventIds(profileId, date, "lean_fish");
@@ -261,7 +261,7 @@ describe("one food serving: delete → undo (#2038)", () => {
       (
         db
           .prepare(
-            `SELECT notes AS n FROM food_log
+            `SELECT notes AS n FROM food_daily_totals
               WHERE profile_id = ? AND date = ? AND group_key = 'lean_fish'`
           )
           .get(profileId, date) as { n: string | null }

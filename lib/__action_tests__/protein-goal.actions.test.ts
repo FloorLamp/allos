@@ -102,7 +102,7 @@ describe("saveProteinGoal", () => {
       `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, date('now'), 80)`
     ).run(profile.id);
     db.prepare(
-      `INSERT INTO protein_log (profile_id, date, grams) VALUES (?, date('now'), 120)`
+      `INSERT INTO protein_daily_totals (profile_id, date, grams) VALUES (?, date('now'), 120)`
     ).run(profile.id);
 
     await saveProteinGoal(goalForm("cut"));

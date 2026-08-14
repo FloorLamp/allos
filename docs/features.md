@@ -2469,10 +2469,10 @@ preventive **alcohol/drug-use screening** (USPSTF grade B, 2018/2020, both added
 to the curated screenings dataset).
 
 **Consumption** (per substance since #1078): one tap logs a **standard drink**
-into the SAME `food_log`/`food_log_events` ledger as Nutrition's `alcohol` food
+into the SAME `food_daily_totals`/`food_log_events` ledger as Nutrition's `alcohol` food
 group (the group's serving is literally one standard drink — one store, two
 surfaces, no parallel table), and a **nicotine** or **cannabis** use into the
-dedicated non-food `substance_log` counter ledger (migration 096 — they aren't
+dedicated non-food `substance_daily_totals` counter ledger (migration 096 — they aren't
 foods, so they never pollute the nutrition ledger or the one-tap bar; units are
 plain per-use counts — a cigarette/pouch/vape session or a cannabis session —
 deliberately never normalized to mg across product types), each with this-week
@@ -2752,7 +2752,7 @@ better than naming its category.
 
 ## Undo delete
 
-Deleting an activity, body-metrics entry, biomarker record,
+Deleting an activity, body-metrics entry, clinical observation,
 supplement/medication, wellness practice, substance-use history row, **practice
 session**, or **logged food serving** offers a one-tap **Undo** toast; the row
 (and its children) is held and restored intact if you undo, then purged.

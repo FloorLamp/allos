@@ -55,11 +55,11 @@ function cleanup(): void {
       "DELETE FROM upcoming_dismissals WHERE profile_id = 1 AND signal_key = 'food-reduce:ldl-apob'"
     ).run();
     db.prepare(
-      "DELETE FROM food_log WHERE profile_id = 1 AND group_key = ? AND date >= ?"
+      "DELETE FROM food_daily_totals WHERE profile_id = 1 AND group_key = ? AND date >= ?"
     ).run(GROUP, COLLECTED);
     for (const row of priorRows) {
       db.prepare(
-        `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (1, ?, ?, ?)
+        `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (1, ?, ?, ?)
          ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
       ).run(row.date, GROUP, row.servings);
     }
@@ -74,12 +74,12 @@ function seed(): void {
   try {
     priorRows = db
       .prepare(
-        "SELECT date, servings FROM food_log WHERE profile_id = 1 AND group_key = ? AND date >= ?"
+        "SELECT date, servings FROM food_daily_totals WHERE profile_id = 1 AND group_key = ? AND date >= ?"
       )
       .all(GROUP, COLLECTED) as { date: string; servings: number }[];
     // Nothing logged since the reading — the state the note is armed in.
     db.prepare(
-      "DELETE FROM food_log WHERE profile_id = 1 AND group_key = ? AND date >= ?"
+      "DELETE FROM food_daily_totals WHERE profile_id = 1 AND group_key = ? AND date >= ?"
     ).run(GROUP, COLLECTED);
     seededReadingId = Number(
       db

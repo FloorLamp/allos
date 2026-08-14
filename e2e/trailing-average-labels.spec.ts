@@ -59,8 +59,12 @@ function withDb<T>(fn: (db: Database.Database, profileId: number) => T): T {
 function resetToDayOne(): void {
   withDb((db, profileId) => {
     db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(profileId);
-    db.prepare("DELETE FROM protein_log WHERE profile_id = ?").run(profileId);
-    db.prepare("DELETE FROM food_log WHERE profile_id = ?").run(profileId);
+    db.prepare("DELETE FROM protein_daily_totals WHERE profile_id = ?").run(
+      profileId
+    );
+    db.prepare("DELETE FROM food_daily_totals WHERE profile_id = ?").run(
+      profileId
+    );
     db.prepare(
       "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)"
     ).run(profileId, dayStr(0), DAY_ONE_WEIGHT_KG);
@@ -70,7 +74,7 @@ function resetToDayOne(): void {
 function logProtein(daysAgo: number, grams: number): void {
   withDb((db, profileId) => {
     db.prepare(
-      "INSERT INTO protein_log (profile_id, date, grams) VALUES (?, ?, ?)"
+      "INSERT INTO protein_daily_totals (profile_id, date, grams) VALUES (?, ?, ?)"
     ).run(profileId, dayStr(daysAgo), grams);
   });
 }

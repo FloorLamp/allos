@@ -25,9 +25,9 @@ describe("declared day counters (#2037)", () => {
       "protein",
       "substance",
     ]);
-    expect(DAY_COUNTERS.food.table).toBe("food_log");
-    expect(DAY_COUNTERS.substance.table).toBe("substance_log");
-    expect(DAY_COUNTERS.protein.table).toBe("protein_log");
+    expect(DAY_COUNTERS.food.table).toBe("food_daily_totals");
+    expect(DAY_COUNTERS.substance.table).toBe("substance_daily_totals");
+    expect(DAY_COUNTERS.protein.table).toBe("protein_daily_totals");
   });
 
   it("gives every counter an amount column and a key it can address", () => {
@@ -136,7 +136,7 @@ describe("the undo registry's counters are ledger counters (#2037 / #2074)", () 
 
   it("refuses a key with no day in it", () => {
     expect(() =>
-      dayCounterSpecFor("food_log", "servings", ["group_key"])
+      dayCounterSpecFor("food_daily_totals", "servings", ["group_key"])
     ).toThrow(/no date/);
   });
 });

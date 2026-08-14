@@ -255,7 +255,7 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
   },
   {
     id: "add-biomarker",
-    label: "Add biomarker record",
+    label: "Add clinical result",
     keywords: ["lab", "result", "blood", "biomarker", "panel", "test"],
     icon: "chart",
     target: {

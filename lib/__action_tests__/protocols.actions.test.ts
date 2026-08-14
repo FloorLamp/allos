@@ -89,7 +89,7 @@ describe("createProtocol", () => {
         outcome_keys: [
           "metric:weight",
           "metric:weight", // dupe dropped
-          "biomarker:Creatine Kinase",
+          "result:Creatine Kinase",
           "junk", // unparseable dropped
         ],
       })
@@ -105,7 +105,7 @@ describe("createProtocol", () => {
     expect(rows[0].end_date).toBeNull();
     expect(rows[0].outcomeKeys).toEqual([
       "metric:weight",
-      "biomarker:Creatine Kinase",
+      "result:Creatine Kinase",
     ]);
     // Situation activated via the shared situations wiring.
     expect(getActiveSituations(profile.id)).toContain("Creatine loading");
@@ -136,7 +136,7 @@ describe("updateProtocolOutcomes", () => {
         outcome_keys: [
           "metric:resting_hr",
           "metric:resting_hr",
-          "biomarker:Apolipoprotein B",
+          "result:Apolipoprotein B",
           "junk",
         ],
       })
@@ -148,7 +148,7 @@ describe("updateProtocolOutcomes", () => {
       end_date: "2026-05-31",
       notes: "Keep training stable",
       situation: "Creatine loading",
-      outcomeKeys: ["metric:resting_hr", "biomarker:Apolipoprotein B"],
+      outcomeKeys: ["metric:resting_hr", "result:Apolipoprotein B"],
     });
     expect(revalidate).toHaveBeenCalledWith(`/protocols/${original.id}`);
 

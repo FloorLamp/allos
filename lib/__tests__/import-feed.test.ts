@@ -55,7 +55,7 @@ function doc(over: Partial<FeedDocument> = {}): FeedDocument {
 function job(over: Partial<FeedJob> = {}): FeedJob {
   return {
     id: 3,
-    type: "biomarkers",
+    type: "clinical-results",
     status: "ready",
     summary: "5 readings",
     error: null,
@@ -286,11 +286,11 @@ describe("feedItemView — document", () => {
 describe("feedItemView — job", () => {
   it("prompts review on a ready paste job and links back to the importer", () => {
     const v = feedItemView(
-      jobEntry(job({ status: "ready", type: "biomarkers" })),
+      jobEntry(job({ status: "ready", type: "clinical-results" })),
       sourceName
     );
     expect(v.tone).toBe("neutral");
-    expect(v.title).toBe("Pasted labs");
+    expect(v.title).toBe("Pasted clinical results");
     expect(v.href).toBe("/data?section=import#paste-import");
     expect(v.detail).toBe("5 readings · review to save");
   });

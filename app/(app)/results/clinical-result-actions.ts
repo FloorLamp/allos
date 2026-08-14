@@ -255,9 +255,9 @@ export async function deleteResult(
   if (!id) return { undoId: null };
   // Capture into the undo holding table and delete in one transaction (issue #30)
   // so the observation can be restored from the toast.
-  // Compatibility: `biomarker-record` is a persisted undo payload kind, not the
+  // Compatibility: `clinical-observation` is a persisted undo payload kind, not the
   // public model name. Changing it would strand pending undo entries.
-  const undoId = captureDelete("biomarker-record", profileId, id);
+  const undoId = captureDelete("clinical-observation", profileId, id);
   // Deleting the last reading for a saved clinical result would leave the star
   // pointing at nothing (an empty pinned tile), and its `biomarker:<name>` retest
   // snooze pointing at a gone reading — sweep BOTH name-keyed side-stores so

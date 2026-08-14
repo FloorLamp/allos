@@ -181,7 +181,7 @@ export function seedHouseholdRollup(): void {
   db.prepare(
     `INSERT INTO import_jobs
      (profile_id, type, status, summary, created_at, updated_at)
-   VALUES (?, 'biomarkers', 'ready', 'e2e-p2: 3 readings',
+   VALUES (?, 'clinical-results', 'ready', 'e2e-p2: 3 readings',
            '2026-07-07 08:00:00', '2026-07-07 08:00:00')`
   ).run(HOUSEHOLD_PROFILE_ID);
 
@@ -266,7 +266,7 @@ export function seedToasterIsolation(): void {
       db.prepare(
         `INSERT INTO import_jobs
          (profile_id, type, status, summary, created_at, updated_at)
-       VALUES (?, 'biomarkers', 'ready', ?, '2026-07-06 08:00:00', '2026-07-06 08:00:00')`
+       VALUES (?, 'clinical-results', 'ready', ?, '2026-07-06 08:00:00', '2026-07-06 08:00:00')`
       ).run(profileId, `${tag}: readings`);
     };
 

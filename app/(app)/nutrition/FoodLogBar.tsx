@@ -272,7 +272,7 @@ export default function FoodLogBar({
   const [earlierOpen, setEarlierOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   // Optimistic daily totals and meal-slot counts live in the parent date context:
-  // food_log remains the source-of-truth day counter, while food_log_events powers
+  // food_daily_totals remains the source-of-truth day counter, while food_log_events powers
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
   // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());

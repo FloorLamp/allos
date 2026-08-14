@@ -98,7 +98,7 @@ const DIGEST_DEPENDENCIES: readonly DigestDependency[] = [
     select: `COUNT(*) || ':' || COALESCE(MAX(id), 0)`,
     from: `FROM food_log_events
            WHERE profile_id = ? AND date >= ?`,
-    why: "The append-only twin of food_log: every serving logged is an event row, so the counter moves even though food_log itself upserts in place.",
+    why: "The append-only twin of food_daily_totals: every serving logged is an event row, so the counter moves even though food_daily_totals itself upserts in place.",
   },
   {
     table: "symptom_logs",

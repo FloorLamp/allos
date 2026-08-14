@@ -123,7 +123,7 @@ empty transaction and reporting "nothing to log" are the same fact.
 to refuse and asserting the day counter _and_ its ledger events are empty — the
 outcome alone would have passed against the defect.
 
-`food_log` is deliberately _not_ a gated `STATEFUL_WRITE_TABLES` member (a second
+`food_daily_totals` is deliberately _not_ a gated `STATEFUL_WRITE_TABLES` member (a second
 serving is a second serving, #2037), so this discipline lives in the **offer**
 rather than in the counter. Registered in `ONE_TAP_AFFORDANCES` as `food-usual`:
 `idempotent` · `outcome-toast`, excluded from the offline queue with the
@@ -138,7 +138,7 @@ into the ledger it is derived from.
 
 ## Cap-direction groups are excluded, not merely neutral
 
-A group whose `food_log` counter **is** a substance ledger (alcohol,
+A group whose `food_daily_totals` counter **is** a substance ledger (alcohol,
 `lib/substance-daily-totals-write.ts`), or which carries an active **cap-direction**
 frequency target, may be _measured_ — the cadence ledger's own cap reporting is
 entitled to the data — and is never _presented back as an expectation_.

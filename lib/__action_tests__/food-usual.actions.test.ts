@@ -22,7 +22,7 @@ const revalidate = vi.mocked(revalidatePath);
 function servings(profileId: number) {
   return db
     .prepare(
-      `SELECT date, group_key, servings FROM food_log
+      `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? ORDER BY date, group_key`
     )
     .all(profileId) as { date: string; group_key: string; servings: number }[];
@@ -30,7 +30,7 @@ function servings(profileId: number) {
 
 function tap(profileId: number, group: string, date: string, hhmmss: string) {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT(profile_id, date, group_key)
        DO UPDATE SET servings = servings + 1`
   ).run(profileId, date, group);

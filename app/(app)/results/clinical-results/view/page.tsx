@@ -365,7 +365,7 @@ export default async function ClinicalResultDetailPage(props: {
   const openRange = { from: undefined, to: undefined };
   const chartAnnotations = buildTrendAnnotations(profile.id, openRange);
   const protocolWindows = buildProtocolWindows(
-    getProtocolWindowsForOutcome(profile.id, `biomarker:${canonical}`),
+    getProtocolWindowsForOutcome(profile.id, `result:${canonical}`),
     openRange
   );
 

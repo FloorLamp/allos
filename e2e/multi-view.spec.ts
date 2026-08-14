@@ -1235,7 +1235,7 @@ test.describe("Cross-profile Undo round trip (#2104)", () => {
       ).run();
       db.prepare(
         `DELETE FROM deleted_rows
-          WHERE kind = 'biomarker-record' AND payload LIKE '%${UNDO_PROBE_PREFIX}%'`
+          WHERE kind = 'clinical-observation' AND payload LIKE '%${UNDO_PROBE_PREFIX}%'`
       ).run();
       db.prepare(
         `INSERT INTO medical_records

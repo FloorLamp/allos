@@ -1,4 +1,4 @@
-// Medical passport domain types (providers, appointments, lab/biomarker records,
+// Medical passport domain types (providers, appointments, clinical observations,
 // canonical ranges, immunizations, allergies, conditions, encounters, procedures,
 // family history, care plans/goals, documents). Split out of lib/types.ts (#319);
 // the `@/lib/types` barrel re-exports everything here, so import paths are unchanged.

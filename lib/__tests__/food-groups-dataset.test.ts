@@ -111,7 +111,7 @@ describe("food-groups.json dataset", () => {
   it("has no food-group entry representing protein powder / shakes (the one-mechanism rule)", () => {
     // Protein powder is deliberately NOT a food group (#824): a `protein_shake` catalog
     // entry would double-count once someone also logs the milk/eggs in the shake. Its
-    // ONLY home is the protein-grams quick-add (protein_log), which SUMS with the
+    // ONLY home is the protein-grams quick-add (protein_daily_totals), which SUMS with the
     // food-group estimate. The whole-foods catalog must stay whole-foods — guard that no
     // slug or name ever grows into a supplement/shake bucket.
     const BANNED =

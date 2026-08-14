@@ -234,7 +234,7 @@ export function cadenceCounts(
   const needs = new Set<CadenceSource>(
     scopes.map((s) => CADENCE_SCOPES[s.kind].source)
   );
-  // Alcohol rides the food_log ledger (a standard drink IS one serving of the
+  // Alcohol rides the food_daily_totals ledger (a standard drink IS one serving of the
   // curated `alcohol` food group, #860/#944), so a substance scope may need the
   // food gather even when no food_group target exists.
   const substanceValues = scopes
@@ -324,12 +324,12 @@ export function cadenceCounts(
     }
   }
 
-  // ---- food_log → servings (food groups, and the alcohol substance ledger) ------
+  // ---- food_daily_totals → servings (food groups, and the alcohol substance ledger) ------
   const foodWeeks = new Map<string, number[]>();
   if (needs.has("food-servings") || foodLedgerSubstances.length > 0) {
     for (const r of db
       .prepare(
-        `SELECT group_key, date, COALESCE(SUM(servings), 0) AS n FROM food_log
+        `SELECT group_key, date, COALESCE(SUM(servings), 0) AS n FROM food_daily_totals
           WHERE profile_id = ? AND date >= ? AND date <= ?
           GROUP BY group_key, date`
       )
@@ -367,13 +367,13 @@ export function cadenceCounts(
     }
   }
 
-  // ---- substance_log → units (nicotine / cannabis) -----------------------------
+  // ---- substance_daily_totals → units (nicotine / cannabis) -----------------------------
   const substanceWeeks = new Map<string, number[]>();
   if (counterLedgerSubstances.length > 0) {
     const values = [...new Set(counterLedgerSubstances)];
     for (const r of db
       .prepare(
-        `SELECT substance, date, COALESCE(SUM(units), 0) AS n FROM substance_log
+        `SELECT substance, date, COALESCE(SUM(units), 0) AS n FROM substance_daily_totals
           WHERE profile_id = ? AND date >= ? AND date <= ?
             AND substance IN (${values.map(() => "?").join(",")})
           GROUP BY substance, date`

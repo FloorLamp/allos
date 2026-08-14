@@ -484,7 +484,7 @@ the shipped step; a push is a larger decision left to a follow-up.
 ## Food log × food–drug rules (two tiers, #2021)
 
 The food catalog logged `alcohol` and `leafy_greens` as first-class groups while
-`matchFoodInteractions` took an ITEM and never touched `food_log`, so the
+`matchFoodInteractions` took an ITEM and never touched `food_daily_totals`, so the
 medication row printed _"Avoid all alcohol during treatment and for 3 days
 after"_ and then watched the user log an alcohol serving in silence. The join is
 `lib/food-drug-ledger.ts` (pure) behind `lib/food-drug-ledger-findings.ts` (the

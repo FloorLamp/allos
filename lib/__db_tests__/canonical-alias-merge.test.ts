@@ -266,7 +266,7 @@ describe("the rename carries every piece of name-keyed side-state", () => {
     db.prepare(
       `INSERT INTO protocols (profile_id, name, start_date, outcome_keys)
        VALUES (?, 'Fictional protocol', ?, ?)`
-    ).run(profileId, DATE, JSON.stringify([`biomarker:${BLOCKED}`]));
+    ).run(profileId, DATE, JSON.stringify([`result:${BLOCKED}`]));
     mergeSupersededCanonicalNames(db);
     expect(
       (
@@ -276,7 +276,7 @@ describe("the rename carries every piece of name-keyed side-state", () => {
           )
           .get(profileId) as { k: string }
       ).k
-    ).toBe(JSON.stringify([`biomarker:${BLOCKED_TARGET}`]));
+    ).toBe(JSON.stringify([`result:${BLOCKED_TARGET}`]));
   });
 
   it("never crosses the profile boundary", () => {

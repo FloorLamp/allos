@@ -135,7 +135,7 @@ export const TRENDS_PIN_PROFILE = "Trends Pin (e2e)";
 // state no shared fixture can be in for long — one neighbour's weigh-in destroys
 // it — and the spec deliberately drives the profile THROUGH the states either
 // side of day one (a stale reading, then a full week), so it owns every
-// body_metrics / protein_log row on it and re-seeds them at test start.
+// body_metrics / protein_daily_totals row on it and re-seeds them at test start.
 //
 // The same profile carries the nutrition half: every COMPLETE day in the trailing
 // window logs the same protein, so the dashboard card's "7-day average" is one

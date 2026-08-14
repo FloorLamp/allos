@@ -742,7 +742,7 @@ export const DATASETS: ExportDataset[] = [
     // item level preserves the edit/delete model: deleting a row removes the
     // parent intake_items (its doses/logs cascade). The dose schedule is
     // read-only here — dose editing lives on the intake surfaces.
-    key: "supplements",
+    key: "intake_items",
     label: "Supplements & Medications",
     table: "intake_items",
     columns: [
@@ -817,7 +817,7 @@ export const DATASETS: ExportDataset[] = [
     // Dose schedule HISTORY (#1973/#2000): the dueness-relevant schedule of each
     // dose as of every effective_from day, so past adherence keeps being judged by
     // the rule that held then. Undo already preserves these rows; export must not
-    // silently drop them (#2129) — the supplements dataset carries only the
+    // silently drop them (#2129) — the intake_items dataset carries only the
     // CURRENT derived schedule string. A grandchild of intake_items (JOINed
     // through intake_item_doses via ii.profile_id), so browse/export-only.
     key: "dose_schedule_versions",
@@ -1272,21 +1272,21 @@ export const DATASETS: ExportDataset[] = [
   tableDataset({
     // Food-group serving log (#579): one row per (date, group) with a servings count.
     // Fully profile-owned + id-keyed, so it's deletable like the other logged datasets.
-    key: "food_log",
+    key: "food_daily_totals",
     label: "Food log",
-    table: "food_log",
+    table: "food_daily_totals",
     columns: ["date", "group_key", "servings", "notes"],
     select: `SELECT id, date, group_key, servings, notes
-       FROM food_log WHERE profile_id = ? ORDER BY date DESC, group_key`,
-    countSql: `SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`,
+       FROM food_daily_totals WHERE profile_id = ? ORDER BY date DESC, group_key`,
+    countSql: `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
     // Food-log EVENT ledger (#950): one append-only row per serving TAP, carrying the
     // tap `recorded_at` (a UTC instant) beside the food day. It's the timing layer behind
-    // slot-aware button ranking; the food_log counter stays the day's data of record.
+    // slot-aware button ranking; the food_daily_totals counter stays the day's data of record.
     // User-entered health data, so it's in the portable export; id-keyed + owned, so
     // deletable like the other logged datasets (a wipe just degrades ranking to overall
-    // frecency — the food_log counter is untouched).
+    // frecency — the food_daily_totals counter is untouched).
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
@@ -1297,29 +1297,29 @@ export const DATASETS: ExportDataset[] = [
   }),
   tableDataset({
     // Non-food substance consumption ledger (#1078): one row per (date, substance)
-    // with a per-use units count (nicotine/cannabis; alcohol rides food_log above).
+    // with a per-use units count (nicotine/cannabis; alcohol rides food_daily_totals above).
     // User-entered health data, so it's in the portable export; id-keyed + owned,
     // deletable like the other logged datasets.
-    key: "substance_log",
+    key: "substance_daily_totals",
     label: "Substance log",
-    table: "substance_log",
+    table: "substance_daily_totals",
     columns: ["date", "substance", "units", "logged_at", "notes"],
     select: `SELECT id, date, substance, units, logged_at, notes
-       FROM substance_log WHERE profile_id = ? ORDER BY date DESC, substance`,
-    countSql: `SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`,
+       FROM substance_daily_totals WHERE profile_id = ? ORDER BY date DESC, substance`,
+    countSql: `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
     // (protein powder / shakes have no food-group home). User-entered health data, so
     // it's in the portable export; id-keyed + owned, deletable like the other logged
     // datasets.
-    key: "protein_log",
+    key: "protein_daily_totals",
     label: "Protein log",
-    table: "protein_log",
+    table: "protein_daily_totals",
     columns: ["date", "grams"],
     select: `SELECT id, date, grams
-       FROM protein_log WHERE profile_id = ? ORDER BY date DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM protein_log WHERE profile_id = ?`,
+       FROM protein_daily_totals WHERE profile_id = ? ORDER BY date DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM protein_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
     // Day-by-day symptom log (#799): one row per (date, symptom) with a 1–4 severity.
@@ -1462,7 +1462,7 @@ export const DELETE_POLICY = {
   goals: { revalidate: ["/training", "/"] },
   injuries: { revalidate: ["/training", "/timeline", "/"] },
   endurance_plans: { revalidate: ["/training", "/timeline", "/upcoming", "/"] },
-  supplements: { revalidate: ["/nutrition", "/medications", "/"] },
+  intake_items: { revalidate: ["/nutrition", "/medications", "/"] },
   allergies: { revalidate: ["/records", "/"] },
   conditions: { revalidate: ["/records", "/"] },
   encounters: { revalidate: ["/records", "/"] },
@@ -1486,10 +1486,12 @@ export const DELETE_POLICY = {
     cleanupPersonalRecords: true,
   },
   frequency_targets: { revalidate: ["/training", "/"] },
-  food_log: { revalidate: ["/nutrition", "/trends", "/"] },
+  food_daily_totals: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },
-  substance_log: { revalidate: ["/records/specialty/substance-use", "/"] },
-  protein_log: { revalidate: ["/nutrition", "/"] },
+  substance_daily_totals: {
+    revalidate: ["/records/specialty/substance-use", "/"],
+  },
+  protein_daily_totals: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
   cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
   mood_logs: { revalidate: ["/trends", "/"] },
@@ -1497,8 +1499,7 @@ export const DELETE_POLICY = {
 } satisfies Record<string, DatasetDeletePolicy>;
 
 // The closed union of deletable dataset keys — every key equals its dataset's
-// physical table except `supplements` (table intake_items); the db-tier
-// dataset-undo test pins that correspondence at runtime.
+// physical table; the db-tier dataset-undo test pins that correspondence at runtime.
 export type DeletableDatasetKey = keyof typeof DELETE_POLICY;
 
 export function getDataset(key: string): ExportDataset | undefined {

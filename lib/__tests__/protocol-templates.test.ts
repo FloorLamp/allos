@@ -9,11 +9,11 @@ describe("protocol templates", () => {
   it("registers the sun-exposure template with a vitamin-D outcome", () => {
     expect(PROTOCOL_TEMPLATES).toContain(SUN_EXPOSURE_TEMPLATE);
     expect(SUN_EXPOSURE_TEMPLATE.outcomeKeys).toContain(
-      "biomarker:Vitamin D, 25-Hydroxy"
+      "result:Vitamin D, 25-Hydroxy"
     );
-    // Biomarker keys use the protocol-metrics `biomarker:<canonical>` form.
+    // Biomarker keys use the protocol-metrics `result:<canonical>` form.
     for (const k of SUN_EXPOSURE_TEMPLATE.outcomeKeys) {
-      expect(k.startsWith("biomarker:") || k.startsWith("metric:")).toBe(true);
+      expect(k.startsWith("result:") || k.startsWith("metric:")).toBe(true);
     }
   });
 

@@ -737,7 +737,11 @@ export function deleteReadingAt(
       });
     }
     case "medical_records": {
-      const undoId = captureDelete("biomarker-record", profileId, target.id);
+      const undoId = captureDelete(
+        "clinical-observation",
+        profileId,
+        target.id
+      );
       return { ok: undoId != null, undoId };
     }
     case "metric_samples": {

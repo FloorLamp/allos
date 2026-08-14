@@ -42,11 +42,11 @@ function cleanup(): void {
     }
     if (priorAlcohol == null) {
       db.prepare(
-        "DELETE FROM food_log WHERE profile_id = 1 AND date = ? AND group_key = 'alcohol'"
+        "DELETE FROM food_daily_totals WHERE profile_id = 1 AND date = ? AND group_key = 'alcohol'"
       ).run(TODAY);
     } else {
       db.prepare(
-        `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (1, ?, 'alcohol', ?)
+        `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (1, ?, 'alcohol', ?)
          ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
       ).run(TODAY, priorAlcohol);
     }
@@ -60,7 +60,7 @@ function seed(): void {
   try {
     const existing = db
       .prepare(
-        "SELECT servings FROM food_log WHERE profile_id = 1 AND date = ? AND group_key = 'alcohol'"
+        "SELECT servings FROM food_daily_totals WHERE profile_id = 1 AND date = ? AND group_key = 'alcohol'"
       )
       .get(TODAY) as { servings: number } | undefined;
     priorAlcohol = existing?.servings ?? null;
@@ -82,7 +82,7 @@ function seed(): void {
        VALUES (?, '500 mg', 'morning', ?, ?)`
     ).run(itemId, shift(TODAY, -3), shift(TODAY, 3));
     db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (1, ?, 'alcohol', 1)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (1, ?, 'alcohol', 1)
        ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = 1`
     ).run(TODAY);
   } finally {

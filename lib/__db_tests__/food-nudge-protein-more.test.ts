@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — the food-nudge protein "+Xg" button (#1073) and the "Show more"
 // progressive expansion (#1075) driven end-to-end through handleCallbackQuery against the
 // REAL query layer, with only the raw Telegram network surface stubbed (the #454 guarded
-// boundary). Proves a protein tap writes BOTH protein_log grams (via addProteinGramsCore)
+// boundary). Proves a protein tap writes BOTH protein_daily_totals grams (via addProteinGramsCore)
 // and a __protein__ food_log_events ranking row and rebuilds with the refreshed total; a
 // non-protein-tracker's nudge omits the key; "Show more" bumps the visible count by 6 and a
 // food tap AFTER expansion preserves it (rebuilds at the expanded count, not 6).
@@ -106,7 +106,7 @@ beforeAll(() => {
 });
 
 describe("protein '+Xg' tap (#1073)", () => {
-  it("writes protein_log grams AND a __protein__ food_log_events row, and rebuilds with the total", async () => {
+  it("writes protein_daily_totals grams AND a __protein__ food_log_events row, and rebuilds with the total", async () => {
     answerMock.mockClear();
     editTextMock.mockClear();
     await handleCallbackQuery(
@@ -119,10 +119,10 @@ describe("protein '+Xg' tap (#1073)", () => {
         6
       )
     );
-    // protein_log grams recorded.
+    // protein_daily_totals grams recorded.
     const grams = db
       .prepare(
-        `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`
+        `SELECT grams FROM protein_daily_totals WHERE profile_id = ? AND date = ?`
       )
       .get(p.profileId, t) as { grams: number } | undefined;
     expect(grams?.grams).toBe(30);
@@ -160,7 +160,7 @@ describe("protein '+Xg' tap (#1073)", () => {
     );
     const grams = db
       .prepare(
-        `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`
+        `SELECT grams FROM protein_daily_totals WHERE profile_id = ? AND date = ?`
       )
       .get(p.profileId, t) as { grams: number };
     expect(grams.grams).toBe(60);

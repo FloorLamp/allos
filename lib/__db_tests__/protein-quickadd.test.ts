@@ -34,7 +34,7 @@ function logFood(
   servings: number
 ) {
   db.prepare(
-    "INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
+    "INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
   ).run(profileId, date, slug, servings);
 }
 
@@ -118,10 +118,12 @@ describe("protein-grams quick-add end-to-end (#824)", () => {
     const undone = undoProteinGramsCore(p, anchor, 30);
     expect(undone).toEqual({ kind: "undone", grams: 0 });
     expect(getProteinDailyGrams(p, anchor)).toBe(0);
-    // The row is dropped at zero — no stray protein_log row survives.
+    // The row is dropped at zero — no stray protein_daily_totals row survives.
     expect(
       db
-        .prepare("SELECT COUNT(*) AS n FROM protein_log WHERE profile_id = ?")
+        .prepare(
+          "SELECT COUNT(*) AS n FROM protein_daily_totals WHERE profile_id = ?"
+        )
         .get(p)
     ).toEqual({ n: 0 });
 

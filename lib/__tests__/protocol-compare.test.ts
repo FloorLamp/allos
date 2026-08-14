@@ -68,7 +68,7 @@ describe("compareProtocol", () => {
 
   it("sparse labs: falls back to the nearest draw before the start when the baseline window is empty", () => {
     const ldl: OutcomeSeries = {
-      key: "biomarker:LDL Cholesterol",
+      key: "result:LDL Cholesterol",
       label: "LDL Cholesterol",
       unit: "mg/dL",
       direction: "lower_better",
@@ -92,7 +92,7 @@ describe("compareProtocol", () => {
 
   it("sparse labs: without the nearest-before fallback an empty baseline is insufficient", () => {
     const ldl: OutcomeSeries = {
-      key: "biomarker:LDL Cholesterol",
+      key: "result:LDL Cholesterol",
       label: "LDL Cholesterol",
       unit: "mg/dL",
       direction: "lower_better",
@@ -170,8 +170,8 @@ describe("spanLabel", () => {
 
 describe("outcome metric keys", () => {
   it("parses each namespace and rejects garbage", () => {
-    expect(parseOutcomeKey("biomarker:LDL Cholesterol")).toEqual({
-      kind: "biomarker",
+    expect(parseOutcomeKey("result:LDL Cholesterol")).toEqual({
+      kind: "result",
       id: "LDL Cholesterol",
     });
     expect(parseOutcomeKey("metric:resting_hr")).toEqual({
@@ -192,23 +192,23 @@ describe("outcome metric keys", () => {
       normalizeOutcomeKeys([
         "metric:weight",
         " metric:weight ",
-        "biomarker:ApoB",
+        "result:ApoB",
         "junk",
         "",
       ])
-    ).toEqual(["metric:weight", "biomarker:ApoB"]);
+    ).toEqual(["metric:weight", "result:ApoB"]);
   });
 
   it("collapses legacy biomarker aliases onto one logical outcome key", () => {
     expect(
       normalizeOutcomeKeys([
-        "biomarker:Body Weight",
+        "result:Body Weight",
         "metric:weight",
-        "biomarker:Resting Heart Rate",
+        "result:Resting Heart Rate",
         "metric:resting_hr",
-        "biomarker:Body Fat Percentage",
+        "result:Body Fat Percentage",
         "metric:body_fat",
-        "biomarker:PhenoAge",
+        "result:PhenoAge",
         "index:phenoage",
       ])
     ).toEqual([
@@ -221,6 +221,6 @@ describe("outcome metric keys", () => {
 
   it("labels fixed metrics and falls back to the canonical name for biomarkers", () => {
     expect(outcomeMetricLabel("metric:resting_hr")).toBe("Resting heart rate");
-    expect(outcomeMetricLabel("biomarker:ApoB")).toBe("ApoB");
+    expect(outcomeMetricLabel("result:ApoB")).toBe("ApoB");
   });
 });

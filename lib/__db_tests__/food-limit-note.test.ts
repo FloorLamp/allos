@@ -5,7 +5,7 @@
 // therefore cannot see the input layer at all. Everything this file asserts is exactly
 // what the gather adds: which flagged readings reach the engine, the ACTIVATION date the
 // arming gate is measured from (the reading's own collection date, read off real
-// medical_records rows), the food_log read behind "first serving since the limit became
+// medical_records rows), the food_daily_totals read behind "first serving since the limit became
 // active", the cap-direction exclusion pulled out of frequency_targets and the substance
 // catalog, and the shared suppression bus — a `food-reduce:` family dismissed on the
 // biomarker page must not be resurrected by a log tap.
@@ -65,7 +65,7 @@ function logServing(
   servings = 1
 ): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
   ).run(profileId, date, group, servings);
 }
@@ -232,7 +232,7 @@ describe("getFoodLimitTapNote — the dietary half (#2377)", () => {
   it("defers to the cap vocabulary for a cap-governed group (#998)", () => {
     const p = newProfile("limit-tap-cap");
     const t = today(p);
-    // A high urate makes alcohol a curated limit — and alcohol's food_log counter IS the
+    // A high urate makes alcohol a curated limit — and alcohol's food_daily_totals counter IS the
     // substance ledger, so getCapDirectionFoodGroups excludes it unconditionally.
     insertReading(p, {
       name: "Uric Acid",

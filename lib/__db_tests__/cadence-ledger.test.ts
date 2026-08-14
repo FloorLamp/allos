@@ -104,7 +104,7 @@ function logSet(pid: number, date: string, exercise: string): void {
 
 function logFood(pid: number, date: string, group: string, n: number): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
   ).run(pid, date, group, n);
 }
@@ -316,13 +316,13 @@ describe("the cadence ledger (#2034)", () => {
     expect(trend[1]).toMatchObject({ isCurrent: true, count: state.count });
   });
 
-  it("reads a counter-ledger substance from substance_log, per substance", () => {
+  it("reads a counter-ledger substance from substance_daily_totals, per substance", () => {
     const pid = newProfile("cl-cap-units");
     db.prepare(
-      `INSERT INTO substance_log (profile_id, date, substance, units) VALUES (?, ?, 'nicotine', 3)`
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units) VALUES (?, ?, 'nicotine', 3)`
     ).run(pid, dayBack(pid, 2));
     db.prepare(
-      `INSERT INTO substance_log (profile_id, date, substance, units) VALUES (?, ?, 'cannabis', 1)`
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units) VALUES (?, ?, 'cannabis', 1)`
     ).run(pid, dayBack(pid, 2));
     expect(getSubstanceWeekState(pid, "nicotine").count).toBe(3);
     expect(getSubstanceWeekState(pid, "cannabis").count).toBe(1);

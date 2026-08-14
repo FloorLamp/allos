@@ -16,7 +16,7 @@
 //                          an event/record pair — so its event instant is the separate
 //                          `occurred_at` phase 2 wave 1 added, NULL here because this
 //                          dose was confirmed against a schedule and nobody said when
-//   2. record-only       — substance_log (logged_at canonical)
+//   2. record-only       — substance_daily_totals (logged_at canonical)
 //   3. optional event    — practice_logs (a local HH:MM, and a NULL one)
 //   4. window            — metric_samples (start_time / end_time)
 //   5. day-only          — body_metrics (a date, and an `occurred_at` nobody stated)
@@ -83,7 +83,7 @@ beforeAll(() => {
 
   // Pattern 2 — record-only.
   db.prepare(
-    `INSERT INTO substance_log (profile_id, date, substance, units, logged_at)
+    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, logged_at)
      VALUES (?, ?, 'alcohol', 1, ?)`
   ).run(profileId, DAY, "2026-03-10T22:40:00Z");
 
@@ -236,10 +236,10 @@ describe("one ordering across all five patterns", () => {
 
     const drinks = db
       .prepare(
-        "SELECT date, logged_at, created_at FROM substance_log WHERE profile_id = ? AND date = ?"
+        "SELECT date, logged_at, created_at FROM substance_daily_totals WHERE profile_id = ? AND date = ?"
       )
       .all(profileId, DAY) as Record<string, unknown>[];
-    for (const r of drinks) push("drink", "substance_log", r);
+    for (const r of drinks) push("drink", "substance_daily_totals", r);
 
     const practice = db
       .prepare(

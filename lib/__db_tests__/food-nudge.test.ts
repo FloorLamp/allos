@@ -22,7 +22,7 @@ beforeAll(() => {
   t = today(p.profileId);
   // Heavy recent leafy-greens habit at MORNING → it leads the buttons and shows a slot
   // count on the morning nudge; one morning fatty-fish log too. Default UTC tz + 11:00/15:00
-  // boundaries → an 08:00Z tap is Morning. logFoodServingCore writes BOTH the food_log day
+  // boundaries → an 08:00Z tap is Morning. logFoodServingCore writes BOTH the food_daily_totals day
   // counter and the food_log_events ledger the slot count reads.
   for (let i = 0; i < 4; i++)
     logFoodServingCore(p.profileId, "leafy_greens", t, `${t}T08:0${i}:00Z`);

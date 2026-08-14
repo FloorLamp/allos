@@ -74,7 +74,7 @@ const HABIT_DAYS = hoistedStatement(
      SELECT 'train' AS segment, date AS d FROM activities
        WHERE profile_id = @profileId AND source IS NULL AND date >= @from
      UNION ALL
-     SELECT 'food' AS segment, date AS d FROM food_log
+     SELECT 'food' AS segment, date AS d FROM food_daily_totals
        WHERE profile_id = @profileId AND date >= @from
      UNION ALL
      SELECT 'body' AS segment, date AS d FROM body_metrics

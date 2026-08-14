@@ -53,7 +53,7 @@ let t: string;
 
 function logFood(date: string, group: string, n: number) {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
   ).run(p.profileId, date, group, n);
 }
 

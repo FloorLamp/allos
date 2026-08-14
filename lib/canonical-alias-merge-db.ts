@@ -36,7 +36,7 @@ import {
 } from "./dismissal-keys";
 import { biomarkerCoverageKey } from "./coverage-gaps";
 import {
-  rewriteBiomarkerOutcomeKeys,
+  rewriteResultOutcomeKeys,
   supersededStoredNames,
   supersededVocabularyRows,
   type CanonicalMerge,
@@ -114,7 +114,7 @@ function planMerges(db: Database.Database): Plan {
 //   5. coverage_gaps (kind='biomarker') — the tracked "not in the catalog" gap, keyed
 //      by family. Left behind it would be a phantom gap forever: the covered-check
 //      re-derives from the key, and the old key names an analyte nobody now has.
-//   6. protocols.outcome_keys — the JSON `biomarker:<canonical>` outcome links.
+//   6. protocols.outcome_keys — the JSON `result:<canonical>` outcome links.
 //
 // Deliberately NOT carried, with reasons:
 //   • medical_records.name / panel / notes / source — provenance, not identity.
@@ -190,7 +190,7 @@ export function applyCanonicalRename(
     .prepare("SELECT id, outcome_keys FROM protocols WHERE profile_id = ?")
     .all(profileId) as { id: number; outcome_keys: string }[];
   for (const p of protocols) {
-    const next = rewriteBiomarkerOutcomeKeys(p.outcome_keys, from, to);
+    const next = rewriteResultOutcomeKeys(p.outcome_keys, from, to);
     if (next === null) continue;
     db.prepare(
       "UPDATE protocols SET outcome_keys = ? WHERE id = ? AND profile_id = ?"

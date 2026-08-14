@@ -26,7 +26,7 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
 
 function logServing(profileId: number, group: string, date: string) {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
   ).run(profileId, date, group);
 }
@@ -87,7 +87,7 @@ describe("food-habit → protocol loop (#580)", () => {
         .run(
           profileId,
           start,
-          JSON.stringify(["biomarker:Omega-3 Total (OmegaCheck)"]),
+          JSON.stringify(["result:Omega-3 Total (OmegaCheck)"]),
           targetId
         ).lastInsertRowid
     );

@@ -82,11 +82,11 @@ function setFoodHistory(present: boolean): void {
   try {
     const id = profileId(db);
     const insert = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
          ON CONFLICT (profile_id, date, group_key) DO NOTHING`
     );
     const remove = db.prepare(
-      "DELETE FROM food_log WHERE profile_id = ? AND date = ? AND group_key = ?"
+      "DELETE FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = ?"
     );
     for (const date of fixtureDates()) {
       if (present) insert.run(id, date, FIXTURE_GROUP);

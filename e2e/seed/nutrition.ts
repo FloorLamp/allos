@@ -61,7 +61,9 @@ export function seedNutritionTrio(): void {
   {
     const nToday = today(nutritionId);
     // Clear prior fixture data so a reused dev server re-seeds cleanly.
-    db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(nutritionId);
+    db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
+      nutritionId
+    );
     db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(
       nutritionId
     );
@@ -96,7 +98,7 @@ export function seedNutritionTrio(): void {
     const logFood = (date: string, slug: string, servings: number) =>
       db
         .prepare(
-          `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
+          `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
         )
         .run(nutritionId, date, slug, servings);
     for (const [dayOffset, rows] of [
@@ -380,7 +382,7 @@ export function seedFoodSlots(): void {
   // the default slot boundaries are 11:00/15:00, so the 08:00Z / 12:00Z / 18:00Z taps
   // land in Morning / Midday / Evening — whatever slot the e2e wall clock is in, the
   // one-tap bar's lead matches the slot chip. Idempotent: hard-clear the profile's
-  // food_log + food_log_events + food_group targets so a reused server always starts from
+  // food_daily_totals + food_log_events + food_group targets so a reused server always starts from
   // this exact skew.
   const foodSlotId = fixtureProfileId(FOOD_SLOT_PROFILE);
   // Opt this profile OUT of the pinned instance timezone (top of file): its taps
@@ -390,7 +392,9 @@ export function seedFoodSlots(): void {
   // the tap→slot mapping instead of stabilizing anything.
   setFixtureTimezone(db, foodSlotId, "food-slot", "UTC");
   const foodSlotAnchor = today(foodSlotId);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(foodSlotId);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
+    foodSlotId
+  );
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(
     foodSlotId
   );
@@ -399,7 +403,7 @@ export function seedFoodSlots(): void {
   ).run(foodSlotId);
   {
     const fLog = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
     );
     const fEvent = db.prepare(
@@ -456,11 +460,11 @@ export function seedFoodUsual(): void {
   const usualId = fixtureProfileId(FOOD_USUAL_PROFILE);
   setFixtureTimezone(db, usualId, "food-usual", "UTC");
   const usualAnchor = today(usualId);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(usualId);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(usualId);
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(usualId);
   {
     const fLog = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
     );
     const fEvent = db.prepare(
@@ -505,7 +509,9 @@ export function seedRoutineUsual(): void {
   const routineId = fixtureProfileId(ROUTINE_USUAL_PROFILE);
   setFixtureTimezone(db, routineId, "routine-usual", "UTC");
   const routineAnchor = today(routineId);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(routineId);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
+    routineId
+  );
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(routineId);
   db.prepare(
     `DELETE FROM intake_item_logs WHERE dose_id IN
@@ -519,7 +525,7 @@ export function seedRoutineUsual(): void {
   db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(routineId);
   {
     const fLog = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
     );
     const fEvent = db.prepare(
@@ -592,9 +598,11 @@ export function seedFoodPinSplit(): void {
   // into exactly this state.
   const pinId = fixtureProfileId(FOOD_PIN_PROFILE);
   const pinAnchor = today(pinId);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(pinId);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(pinId);
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(pinId);
-  db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(pinId);
+  db.prepare(`DELETE FROM protein_daily_totals WHERE profile_id = ?`).run(
+    pinId
+  );
   db.prepare(`DELETE FROM protocols WHERE profile_id = ?`).run(pinId);
   db.prepare(`DELETE FROM frequency_targets WHERE profile_id = ?`).run(pinId);
   // The preset the bar re-offers, and the tracker bit the ranking reads.

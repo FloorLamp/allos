@@ -339,13 +339,13 @@ export function isSubstance(v: unknown): v is Substance {
 // Per-substance display + ledger facts. The LEDGER split (#1078, the #860/#944
 // reconciliation): a standard drink IS one serving of the curated `alcohol` food
 // group (its dataset serving line is literally "One standard drink…"), so alcohol
-// consumption rides the EXISTING food_log / food_log_events observation store —
+// consumption rides the EXISTING food_daily_totals / food_log_events observation store —
 // one store, two surfaces with Nutrition. Nicotine and cannabis are NOT foods:
-// overloading food_log/food_groups with them would pollute the nutrition ledger
+// overloading food_daily_totals/food_groups with them would pollute the nutrition ledger
 // and the one-tap bar, and none of the other observation stores carries a
 // per-day tap-count semantic (symptom_logs is severity-per-day, metric_samples/
 // body_metrics are measured values, medical_records is result-shaped) — so they
-// ride the dedicated `substance_log` counter ledger (migration 096), the food_log
+// ride the dedicated `substance_daily_totals` counter ledger (migration 096), the food_daily_totals
 // shape re-instantiated for non-food substances. Units are deliberately plain
 // per-use counts (no mg-nicotine normalization across product types — out of
 // scope, low fidelity).
@@ -411,14 +411,14 @@ export function substanceDef(substance: Substance): SubstanceDef {
   return SUBSTANCE_DEFS[substance];
 }
 
-// Whether a value names a substance whose ledger is the dedicated substance_log
-// table (nicotine/cannabis — alcohol stays on food_log). The write core validates
+// Whether a value names a substance whose ledger is the dedicated substance_daily_totals
+// table (nicotine/cannabis — alcohol stays on food_daily_totals). The write core validates
 // through this so a forged/stale key lands nothing.
 export function isSubstanceLogged(v: unknown): v is Substance {
   return isSubstance(v) && SUBSTANCE_DEFS[v].ledger === "substance-log";
 }
 
-// The food_log group_key alcohol consumption is stored under — the ledger identity
+// The food_daily_totals group_key alcohol consumption is stored under — the ledger identity
 // shared with Nutrition's one-tap bar (one store, two surfaces, one computation).
 export const ALCOHOL_FOOD_GROUP = "alcohol";
 

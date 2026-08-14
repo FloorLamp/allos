@@ -4,7 +4,7 @@
 //
 // recordInstrumentScore writes a biomarker-shaped medical_records row (the
 // observation substrate) for AUDIT-C/AUDIT/DAST-10, and consumption rides the
-// EXISTING food_log store (a standard drink = one serving of the `alcohol` group),
+// EXISTING food_daily_totals store (a standard drink = one serving of the `alcohol` group),
 // so this file seeds realistic fixtures and asserts what the pure tier can't see:
 //   • an AUDIT-C score lands as a canonical biomarker reading with per-item 0..4
 //     answers and NO MedicalFlag (the severity band is the on-screen signal — no
@@ -92,7 +92,7 @@ function addCap(
 
 function logDrinks(profileId: number, date: string, n: number): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, 'alcohol', ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, 'alcohol', ?)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
   ).run(profileId, date, n);
 }
@@ -319,7 +319,7 @@ describe("no gamification (#998) — structural exemption + copy guard", () => {
 
 // ---- #1078: the non-food substance ledger (nicotine/cannabis) ---------------
 
-describe("substance_log ledger (#1078) — split-ledger week rollup + trend", () => {
+describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + trend", () => {
   it("one-tap log/undo increments and decrements the (profile, date, substance) row", () => {
     const p = newProfile("SU nic ledger");
     const td = today(p);
@@ -329,10 +329,10 @@ describe("substance_log ledger (#1078) — split-ledger week rollup + trend", ()
     const two = logSubstanceUnitCore(p, "nicotine", td);
     expect(two.kind === "logged" && two.units === 2).toBe(true);
 
-    // One counter row per (profile, date, substance) — the food_log shape.
+    // One counter row per (profile, date, substance) — the food_daily_totals shape.
     const rows = db
       .prepare(
-        `SELECT substance, units FROM substance_log WHERE profile_id = ? AND date = ?`
+        `SELECT substance, units FROM substance_daily_totals WHERE profile_id = ? AND date = ?`
       )
       .all(p, td) as { substance: string; units: number }[];
     expect(rows).toEqual([{ substance: "nicotine", units: 2 }]);
@@ -347,7 +347,9 @@ describe("substance_log ledger (#1078) — split-ledger week rollup + trend", ()
       substance: "nicotine",
     });
     const left = db
-      .prepare(`SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`)
+      .prepare(
+        `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`
+      )
       .get(p) as { n: number };
     expect(left.n).toBe(0);
   });
@@ -361,7 +363,9 @@ describe("substance_log ledger (#1078) — split-ledger week rollup + trend", ()
       kind: "unknown-substance",
     });
     const n = db
-      .prepare(`SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`)
+      .prepare(
+        `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`
+      )
       .get(p) as { n: number };
     expect(n.n).toBe(0);
   });
@@ -369,7 +373,7 @@ describe("substance_log ledger (#1078) — split-ledger week rollup + trend", ()
   it("week state + trend read the substance's OWN ledger — no cross-substance or cross-ledger leaks", () => {
     const p = newProfile("SU split ledgers");
     const td = today(p);
-    logDrinks(p, td, 4); // food_log (alcohol)
+    logDrinks(p, td, 4); // food_daily_totals (alcohol)
     logSubstanceUnitCore(p, "nicotine", td);
     logSubstanceUnitCore(p, "nicotine", td);
     logSubstanceUnitCore(p, "cannabis", td);
@@ -471,7 +475,7 @@ describe("buildSubstanceUseFindings (#1078) — per-substance over-target, coach
 });
 
 describe("no gamification for the new substances (#1078) — structural exemption + copy guard", () => {
-  it("substance_log writes create no activities row and no milestone input", () => {
+  it("substance_daily_totals writes create no activities row and no milestone input", () => {
     const p = newProfile("SU nic exempt");
     const td = today(p);
     for (let i = 0; i < 4; i++) logSubstanceUnitCore(p, "nicotine", td);
@@ -582,7 +586,7 @@ describe("alcohol event reconciliation trims the oldest taps (#2073)", () => {
     ]);
     const servings = db
       .prepare(
-        `SELECT servings FROM food_log
+        `SELECT servings FROM food_daily_totals
          WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
       )
       .get(p, date) as { servings: number };

@@ -727,6 +727,15 @@ const NON_OWNED_PROFILE_ID_TABLES = new Set([
   "profile_settings",
 ]);
 
+// The numbered migration era is immutable, so its CREATE blocks retain the three
+// aggregate names that #2740 later moves in place. Normalize those declarations to
+// their final-schema names before comparing them with the runtime registry.
+const FINAL_OWNED_TABLE_RENAMES = new Map([
+  ["food_log", "food_daily_totals"],
+  ["protein_log", "protein_daily_totals"],
+  ["substance_log", "substance_daily_totals"],
+]);
+
 describe("owned-table set: single source of truth (no drift)", () => {
   it("OWNED_TABLES equals the schema's profile_id tables (minus documented globals)", () => {
     const dbSrc = migrationSources();
@@ -748,6 +757,7 @@ describe("owned-table set: single source of truth (no drift)", () => {
 
     const derivedOwned = [...declared]
       .filter((t) => !NON_OWNED_PROFILE_ID_TABLES.has(t) && !retired.has(t))
+      .map((t) => FINAL_OWNED_TABLE_RENAMES.get(t) ?? t)
       .sort();
     // The schema-derived owned set MUST equal OWNED_TABLES. A new profile_id table
     // added to a migration but forgotten in OWNED_TABLES lands in `derivedOwned`

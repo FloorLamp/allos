@@ -2,7 +2,7 @@
 // printed "Avoid all alcohol during treatment and for 3 days after" on a metronidazole row
 // and then watched the user log an alcohol serving that evening in complete silence. The
 // two datasets sat in one database and were never joined — `matchFoodInteractions` takes an
-// ITEM and never touches `food_log`.
+// ITEM and never touches `food_daily_totals`.
 //
 // This module is the join, and it is deliberately narrow. It fires ONLY on entries whose
 // committed `catalog` mapping says it may (`rule: "event" | "variance"`); every other entry
@@ -63,7 +63,7 @@ export interface LedgerItem {
   hits: readonly FoodInteractionHit[];
 }
 
-// One day's servings of one food group, straight from the food_log day counter.
+// One day's servings of one food group, straight from the food_daily_totals day counter.
 export interface LedgerServing {
   group: string;
   date: string;

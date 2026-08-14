@@ -1,5 +1,5 @@
 // Read-time computation of DERIVED clinical indices (issue #40) as virtual
-// biomarker records. This is the DB-facing seam over the pure lib/derived-biomarkers
+// clinical-result rows. This is the DB-facing seam over the pure lib/derived-biomarkers
 // math: it reads the stored component series (through the already profile-scoped
 // getBiomarkerSeries), resolves demographics from settings, computes the indices,
 // and shapes each result as a read-only ClinicalObservation the clinical results table, the

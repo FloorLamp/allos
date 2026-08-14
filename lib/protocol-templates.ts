@@ -19,7 +19,7 @@ export interface ProtocolTemplate {
   name: string;
   notes: string;
   // Outcome metric keys to pre-select (only those the profile actually tracks will
-  // render as selected chips). Biomarker keys use the `biomarker:<canonical>` form.
+  // render as selected chips). Clinical-result keys use `result:<canonical>`.
   outcomeKeys: string[];
   // Suggested situation label + adherence practice (activity type × N/week).
   situation: string;
@@ -38,7 +38,7 @@ export const SUN_EXPOSURE_TEMPLATE: ProtocolTemplate = {
     "Outcome: 25-hydroxy vitamin D. Observational only — sun exposure is dual-edged " +
     "(vitamin D vs. skin-cancer risk); this tracks the relationship, it doesn't " +
     "prescribe UV. Discuss changes with your clinician.",
-  outcomeKeys: ["biomarker:Vitamin D, 25-Hydroxy"],
+  outcomeKeys: ["result:Vitamin D, 25-Hydroxy"],
   situation: "Daily daylight",
   practiceType: "cardio",
   practicePerWeek: 5,

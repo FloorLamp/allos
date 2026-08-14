@@ -1186,7 +1186,7 @@ for (let i = 0; i < 8; i++) {
   insWaist.run(date, `${date}T07:00:00`, `${date}T07:00:00`, 88 + i * 0.7);
 }
 
-// Non-biomarker records (no optimal range; kept for category variety).
+// Non-analyte clinical observations (no optimal range; kept for category variety).
 const med = db.prepare(
   `INSERT INTO medical_records (profile_id, date, category, name, value, unit, reference_range, notes) VALUES (1,?,?,?,?,?,?,?)`
 );
@@ -2471,7 +2471,7 @@ for (let d = 34; d >= 0; d--) {
 // data, and so a food-habit target (#580) has progress. group_key values are the
 // stable slugs from lib/food-groups.json. Synthetic.
 const foodLog = db.prepare(
-  `INSERT INTO food_log (profile_id, date, group_key, servings)
+  `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
    VALUES (1, ?, ?, ?)
    ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
 );
@@ -2577,7 +2577,7 @@ for (let d = 30; d >= 8; d--) {
   // Nicotine intake section + trend render with data. Cannabis stays empty
   // (sections render regardless — logging starts in-app).
   const suNic = db.prepare(
-    `INSERT INTO substance_log (profile_id, date, substance, units, logged_at)
+    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, logged_at)
      VALUES (1, ?, 'nicotine', ?, ?)`
   );
   for (let d = 20; d >= 0; d -= 1) {

@@ -43,7 +43,7 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
 
 function logFood(profileId: number, date: string, group = "fruit"): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT(profile_id, date, group_key)
        DO UPDATE SET servings = servings + 1`
   ).run(profileId, date, group);

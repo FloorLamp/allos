@@ -10,7 +10,7 @@
 // retired group) lands nothing and is answered honestly by the caller.
 //
 // THE COUNTER ARITHMETIC IS NOT IN THIS FILE ANY MORE (#2037). Logging, undoing,
-// correcting and re-stamping a serving all move the same `food_log` day counter, and
+// correcting and re-stamping a serving all move the same `food_daily_totals` day counter, and
 // this file used to spell the additive upsert / guarded decrement / drop-at-zero /
 // authoritative re-select sequence out once per operation. They now all call the shared
 // day-counter ledger (lib/day-counter-ledger.ts), so "what a serving does to the day's
@@ -287,7 +287,7 @@ export interface FoodEventPlacement {
   date: string;
   groupKey: string;
   mealSlot: FoodSlot;
-  // food_log servings for (profile, date, groupKey) AFTER the write. 0 once the row
+  // food_daily_totals servings for (profile, date, groupKey) AFTER the write. 0 once the row
   // is dropped.
   servings: number;
   // food_log_events count for (profile, date, groupKey) whose derived window is
@@ -309,7 +309,7 @@ export interface FoodEventPlacement {
 //                    own `reason` (#2296) so the surface can say WHICH rule refused it
 //                    rather than blaming the day for a fast device clock.
 //   not-correctable — the row is the reserved `__protein__` ranking event, which is not
-//                    a food-group serving: its truth is the protein_log grams total, and
+//                    a food-group serving: its truth is the protein_daily_totals grams total, and
 //                    re-keying it onto a catalog group would mint a serving from a shake.
 export type FoodEventEditOutcome =
   | {
@@ -347,7 +347,7 @@ function placementOf(
 // a re-log stamps the CURRENT instant and window, so "logged last night's dinner this
 // morning" cannot be repaired faithfully.
 //
-// The event ledger and the food_log day counter are ONE fact in two shapes, so the
+// The event ledger and the food_daily_totals day counter are ONE fact in two shapes, so the
 // counter MOVES with the event in the same IMMEDIATE transaction: a (date, group) change
 // decrements the old counter (dropping the row at zero, the undoFoodServingCore
 // discipline) and increments the new one. Exactly one serving exists throughout — the
@@ -497,7 +497,7 @@ export function updateFoodLogEventCore(
 //                   profile's row — the statements are id + profile_id scoped).
 //   not-deletable — the row is the reserved `__protein__` ranking event. Same refusal
 //                   the correction path answers (#1951), for the same reason: its truth
-//                   is the protein_log grams total, and popping the ledger row would
+//                   is the protein_daily_totals grams total, and popping the ledger row would
 //                   remove the ranking participant while the grams it stands for
 //                   silently survived. Protein is removed from the protein total.
 export type FoodEventDeleteOutcome =
@@ -523,13 +523,13 @@ export type FoodEventDeleteOutcome =
 // this is the removal that honours it. `bump(-1)` is unchanged and stays the quick
 // group-level control.
 //
-// The ledger row and the food_log day counter are ONE fact in two shapes, so the counter
+// The ledger row and the food_daily_totals day counter are ONE fact in two shapes, so the counter
 // moves with the row in the SAME IMMEDIATE transaction and the counter row is dropped at
 // zero — the updateFoodLogEventCore/undoFoodServingCore discipline, not a second pattern.
 //
 // UNDOABLE since #2038. The removal goes through `captureDelete("food-serving")`, which
 // holds the capture, the event delete and the counter decrement in that one transaction;
-// its registry entry declares `food_log.servings` as the day COUNTER this row is one tick
+// its registry entry declares `food_daily_totals.servings` as the day COUNTER this row is one tick
 // of, so undo increments it back — re-creating the counter row from the captured snapshot
 // only when this serving was the day's last. `food_log_events` remains outside
 // STATEFUL_WRITE_TABLES: logging a serving is still the ADDITIVE case that registry's own
@@ -624,7 +624,7 @@ export type FoodRestampOutcome =
 // resolver's floor — see `chipTarget`.
 //
 // CROSS-MIDNIGHT RE-DATING FALLS OUT. `occurred_at` decides the row's calendar day, so a
-// correction that crosses local midnight moves the event's `date` AND the `food_log`
+// correction that crosses local midnight moves the event's `date` AND the `food_daily_totals`
 // counter it belongs to, in the SAME IMMEDIATE transaction — the ledger row and the day
 // counter are one fact in two shapes (the updateFoodLogEventCore discipline), so exactly
 // one serving exists throughout and the day tallies, slot tallies and weekly-target
@@ -632,7 +632,7 @@ export type FoodRestampOutcome =
 // logged after midnight" from a dead end into a tap plus one chip.
 //
 // THE RESERVED `__protein__` ROW is re-stamped but never re-dated. It is a ranking event,
-// not a serving: its truth is the `protein_log` grams total, keyed by DAY, and the ledger
+// not a serving: its truth is the `protein_daily_totals` grams total, keyed by DAY, and the ledger
 // row carries no grams to move with it. So its instant gets corrected — which is what
 // makes protein DISTRIBUTION computable, the actual recommendation — while its day stays
 // where the grams are. Moving one without the other is the corruption; moving neither

@@ -33,7 +33,7 @@ describe("reserved-key discipline (#1073)", () => {
 
   it("does not canonicalize to a food group (a forged food-log token lands nothing)", () => {
     // canonicalFoodGroup is the gate logFoodServingCore runs — null means the serving
-    // write refuses, so the reserved key can never become a food_log serving.
+    // write refuses, so the reserved key can never become a food_daily_totals serving.
     expect(canonicalFoodGroup(PROTEIN_NUDGE_KEY)).toBeNull();
   });
 

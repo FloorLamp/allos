@@ -144,8 +144,8 @@ export const OWNED_TABLES = [
   "protocols",
   "coverage_gaps",
   "situations",
-  "food_log",
-  // Food-log EVENT ledger (#950): per-tap append-only rows beside the food_log
+  "food_daily_totals",
+  // Food-log EVENT ledger (#950): per-tap append-only rows beside the food_daily_totals
   // daily counter, carrying the tap `recorded_at` so button ranking can be slot-aware.
   // Directly owned; deleteProfile clears it by profile_id (the row-ops side-state
   // rule — the ledger is popped/cleared alongside its counter).
@@ -153,13 +153,13 @@ export const OWNED_TABLES = [
   // Protein-grams quick-add log (#824): the direct-grams `logged` protein basis — a
   // single running gram total per day (UNIQUE(profile_id, date)), SUMMED with the
   // food-group estimated floor. Directly owned; deleteProfile clears it by profile_id.
-  "protein_log",
+  "protein_daily_totals",
   // Non-food substance consumption ledger (#1078): one row per (date, substance)
   // with a per-use `units` count — nicotine/cannabis one-tap log/undo (alcohol
-  // stays on food_log; the reconciliation is recorded in lib/substance-use.ts).
+  // stays on food_daily_totals; the reconciliation is recorded in lib/substance-use.ts).
   // Directly owned; nothing FKs into it, so a delete is a plain row delete and
   // deleteProfile clears it by profile_id.
-  "substance_log",
+  "substance_daily_totals",
   // Day-by-day symptom log (#799). Directly owned; UNIQUE(profile_id, date, symptom)
   // keeps one row per symptom-day (worst-severity semantics).
   "symptom_logs",

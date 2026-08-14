@@ -85,7 +85,7 @@ export function buildFoodNudge(
   // "(n)" suffix along with the read-time window derivation it depended on).
   const dayServings = getFoodServingsOnDate(profileId, date);
   // The protein button's own day count (#1379's sibling consistency, on #2019's day
-  // meaning). The reserved key never lands in the food_log counter `dayServings` reads,
+  // meaning). The reserved key never lands in the food_daily_totals counter `dayServings` reads,
   // so its taps are counted off the ledger and merged in here — the renderer then applies
   // ONE suffix rule to every button on the keyboard.
   const proteinTaps = getProteinTapsOnDate(profileId, date);

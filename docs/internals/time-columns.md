@@ -35,7 +35,7 @@ Every reader returns a discriminated union, never a nullable string. `known: fal
 carries a reason, and the reasons are different facts:
 
 - `not-declared` — the table has no column with that semantic, for every row, forever.
-  `substance_log` records when a drink was logged and nothing about when it was drunk.
+  `substance_daily_totals` records when a drink was logged and nothing about when it was drunk.
 - `not-recorded` — the column exists and this row is NULL. Nobody stated an eating time
   (`food_log_events.eaten_at`); the quick practice path recorded no clock
   (`practice_logs.time`). **A real answer, not a gap to fill.**
@@ -201,8 +201,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `fitness_assessment_entries` | `created_at` | record | instant | bare |  |
 | `fitness_assessments` | `date` | day | day | n/a |  |
 | `fitness_assessments` | `created_at` | record | instant | bare |  |
-| `food_log` | `date` | day | day | n/a |  |
-| `food_log` | `created_at` | record | instant | bare |  |
+| `food_daily_totals` | `date` | day | day | n/a |  |
+| `food_daily_totals` | `created_at` | record | instant | bare |  |
 | `food_log_events` | `date` | day | day | n/a |  |
 | `food_log_events` | `recorded_at` | record | instant | canonical | The TAP instant, `logged_at` until migration 183 (#2205 phase 2, the food wave). Migration 056 froze what it means — never backfilled, because the ranking predicts the next TAP — which is the `recorded_at` semantic under a name the table had coined for itself. The same migration normalized the millisecond-shaped values the offline replay had been writing (#2370) and bound every writer to lib/date.ts. |
 | `food_log_events` | `created_at` | bookkeeping | instant | bare |  |
@@ -336,8 +336,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `profiles` | `created_at` | bookkeeping | instant | bare |  |
 | `progress_photos` | `date` | day | day | n/a |  |
 | `progress_photos` | `created_at` | record | instant | bare |  |
-| `protein_log` | `date` | day | day | n/a |  |
-| `protein_log` | `created_at` | record | instant | bare |  |
+| `protein_daily_totals` | `date` | day | day | n/a |  |
+| `protein_daily_totals` | `created_at` | record | instant | bare |  |
 | `protocols` | `start_date` | window-start | day | n/a |  |
 | `protocols` | `end_date` | window-end | day | n/a |  |
 | `protocols` | `created_at` | bookkeeping | instant | bare |  |
@@ -361,9 +361,9 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `stream_frontiers` | `frontier_at` | event | instant | canonical | The newest EVENT instant the stream had reached when ingest last looked — a watermark copied from the stream table's own event column (hr_minutes.ts today), so it carries that column's semantic. NULL while the stream has never delivered a row. Migration 179 (#2341), born canonical. |
 | `stream_frontiers` | `advanced_at` | lifecycle | instant | canonical | When the frontier was last observed to MOVE. A transition in this watermark row's own life, not in the subject's: it is the instant the observation was made, never the instant the data carries. Migration 179 (#2341), born canonical. |
 | `stream_frontiers` | `observed_at` | record | instant | canonical | When ingest last looked at all, advancing or not — the stamp that makes `syncs_since_advance` auditable. Migration 179 (#2341), born canonical. |
-| `substance_log` | `date` | day | day | n/a |  |
-| `substance_log` | `logged_at` | record | instant | canonical |  |
-| `substance_log` | `created_at` | bookkeeping | instant | bare |  |
+| `substance_daily_totals` | `date` | day | day | n/a |  |
+| `substance_daily_totals` | `logged_at` | record | instant | canonical |  |
+| `substance_daily_totals` | `created_at` | bookkeeping | instant | bare |  |
 | `symptom_logs` | `date` | day | day | n/a |  |
 | `symptom_logs` | `created_at` | record | instant | bare |  |
 | `symptom_photos` | `date` | day | day | n/a |  |

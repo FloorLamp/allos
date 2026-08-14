@@ -478,7 +478,7 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
-  food_log: [
+  food_daily_totals: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
       column: "created_at",
@@ -1365,7 +1365,7 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
-  protein_log: [
+  protein_daily_totals: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
       column: "created_at",
@@ -1542,7 +1542,7 @@ export const TIME_COLUMNS = {
       note: "When ingest last looked at all, advancing or not — the stamp that makes `syncs_since_advance` auditable. Migration 179 (#2341), born canonical.",
     },
   ],
-  substance_log: [
+  substance_daily_totals: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
       column: "logged_at",
