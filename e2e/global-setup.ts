@@ -2,6 +2,13 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { FullConfig } from "@playwright/test";
+import {
+  BUILD_INPUT_DIRS,
+  BUILD_INPUT_FILES,
+  NON_BUILD_DIRS,
+  writeBuildRecord,
+} from "./build-inputs.mjs";
+import { seedNextBuild } from "./build-seed.mjs";
 import { stopLeftoverWorkerServers } from "./global-teardown";
 import {
   ADMIN_PASSWORD,
@@ -32,27 +39,12 @@ const REPO_ROOT = process.cwd();
 const BUILD_ID = path.join(REPO_ROOT, ".next", "BUILD_ID");
 const BUILD_HEAP_MB = 4096;
 
-// Sources whose change invalidates the production build. e2e/** is deliberately
-// absent: specs are not compiled into the app, so editing a spec must not trigger
-// a rebuild.
-const BUILD_INPUT_DIRS = ["app", "components", "lib", "public"];
-const BUILD_INPUT_FILES = [
-  "next.config.js",
-  "middleware.ts",
-  "package.json",
-  "package-lock.json",
-  "postcss.config.js",
-  "tsconfig.json",
-];
-
-// Directories under a build-input dir that the BUILD does not read — editing a
-// test must never cost a rebuild.
-const NON_BUILD_DIRS = new Set([
-  "node_modules",
-  "__tests__",
-  "__db_tests__",
-  "__action_tests__",
-]);
+// What invalidates the production build — the declaration lives in
+// ./build-inputs.mjs because the worktree seeding step (#2605) asks a different
+// question of the same set, and two copies of an invalidation rule is the shape
+// that fails by serving a stale bundle rather than by throwing. e2e/** is
+// deliberately absent from it: specs are not compiled into the app, so editing a
+// spec must not trigger a rebuild.
 
 function newestMtime(target: string, newest = 0): number {
   let stat: fs.Stats;
@@ -133,6 +125,27 @@ async function ensureBuild(): Promise<void> {
   }
   if (process.env.E2E_FORCE_BUILD === "1") stale = true;
   if (!stale) return;
+  // A fresh agent worktree has no build at all, and compiling one costs ~200 s
+  // before a single browser assertion runs (#2605). A sibling worktree branched
+  // from the same commit usually has an identical one already; take it rather than
+  // recompile it. Only ever when there is NO build here — a build this agent made
+  // is never replaced — and only against proven-identical build inputs, never a
+  // commit or an mtime. E2E_NO_SEED=1 opts out.
+  if (!built && process.env.E2E_NO_SEED !== "1") {
+    const seeded = seedNextBuild({ to: REPO_ROOT });
+    if (seeded.seed) {
+      console.log(
+        `[e2e] seeded the production build from ${seeded.from} in ${seeded.ms}ms ` +
+          `(proof: ${seeded.proof}) — no build needed (#2605)`
+      );
+      return;
+    }
+    // Refusals are named, never silent: they are the only signal that would show
+    // this guard working, and a quiet fallback is indistinguishable from a bug.
+    for (const attempt of seeded.attempts) {
+      console.log(`[e2e] not seeding from ${attempt.from}: ${attempt.reason}`);
+    }
+  }
   console.log(
     built
       ? "[e2e] production build is stale — rebuilding (set E2E_SKIP_BUILD=1 to skip)"
@@ -152,6 +165,26 @@ async function ensureBuild(): Promise<void> {
       label: "next build",
     }
   );
+  // Record WHAT this build was compiled from, beside the build (#2605). A fresh
+  // agent worktree can then be handed this build instead of paying its own ~200 s
+  // cold one, but only against a recorded fact — never an inference from mtimes,
+  // which the copy destroys. Written only here, only after a build this process
+  // just made, so the record can never describe a build it did not see.
+  //
+  // Advisory: a failure here costs the next worktree a cold build and nothing
+  // else, and must not fail a suite that has already built successfully.
+  try {
+    const record = writeBuildRecord(REPO_ROOT, path.dirname(BUILD_ID));
+    console.log(
+      `[e2e] recorded ${record.fileCount} build inputs for seeding (#2605)`
+    );
+  } catch (err) {
+    console.log(
+      `[e2e] could not record build inputs (harmless): ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
 }
 
 /**

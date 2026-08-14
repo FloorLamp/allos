@@ -8,6 +8,10 @@
   into new worktrees as directed by the generated brief.
 - Create agent worktrees under the shared scratch directory, never inside the
   main checkout. Give every scratch file a branch-unique name.
+- A worktree's `.next` is a real copy, never hard-linked. `node_modules` may
+  share inodes because nothing writes to it; a linked build directory would let
+  one cluster's build corrupt another's. The harness seeds it — see
+  `docs/orchestration/e2e-ci.md`.
 - Concurrent DB gates can run about six times slower. Re-run a timing failure
   alone before treating it as a regression.
 - Use `E2E_PORT`, not `PORT`. The brief generator allocates non-overlapping port
