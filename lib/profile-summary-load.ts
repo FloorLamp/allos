@@ -19,7 +19,7 @@ import {
 } from "./queries/metrics";
 import {
   getClinicalObservations,
-  getSavedBiomarkers,
+  getSavedClinicalResults,
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
@@ -106,24 +106,26 @@ export function getProfileSummary(
     starred: false,
   }));
 
-  // THE SAVE→PASSPORT CONTRACT (#1456). A saved biomarker (the ★ star gesture, now
-  // one row in `saved_items` where kind='biomarker') is the user's answer to "this one
+  // THE SAVE→PASSPORT CONTRACT (#1456). A saved clinical result (the ★ star gesture, now
+  // one row in `saved_items` where kind='clinical-result') is the user's answer to "this one
   // matters to me" — and that answer is deliberately load-bearing HERE: every saved
   // biomarker's latest reading is included in the passport summary's vitals, flagged or
   // not. This was an undocumented side effect of the old starred_biomarkers store;
   // unifying the store promoted it to a stated contract, pinned by
-  // lib/__db_tests__/saved-items.test.ts ("a saved biomarker enters the summary vitals").
+  // lib/__db_tests__/saved-items.test.ts ("a saved clinical result enters the summary vitals").
   // Changing what `saved` means to this function changes what a shared passport shows.
-  const starred: SummaryVital[] = getSavedBiomarkers(profileId).map((s) => ({
-    name: s.canonical_name,
-    value:
-      s.latest_value ??
-      (s.latest_value_num != null ? String(s.latest_value_num) : null),
-    unit: s.latest_unit,
-    flag: s.latest_flag,
-    date: s.latest_date,
-    starred: true,
-  }));
+  const starred: SummaryVital[] = getSavedClinicalResults(profileId).map(
+    (s) => ({
+      name: s.canonical_name,
+      value:
+        s.latest_value ??
+        (s.latest_value_num != null ? String(s.latest_value_num) : null),
+      unit: s.latest_unit,
+      flag: s.latest_flag,
+      date: s.latest_date,
+      starred: true,
+    })
+  );
 
   // Medications: structured medication rows
   // (kind='medication') are the primary source — including the ones now

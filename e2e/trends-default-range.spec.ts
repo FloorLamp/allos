@@ -107,7 +107,7 @@ test("an explicit window in the URL always wins over the default", async ({
   await expect(page).toHaveURL(/from=2026-01-01&to=2026-02-01/);
 });
 
-test("a sparse saved biomarker shows its latest reading and age, not 'No data'", async ({
+test("a sparse saved clinical result shows its latest reading and age, not 'No data'", async ({
   page,
 }) => {
   await page.goto("/trends");
@@ -184,7 +184,7 @@ test("a qualitative reading falls back too, though nothing can plot it", async (
   await expect(fallback).toContainText(/\d+(y|mo|w|d) ago/);
 });
 
-test("a never-measured saved biomarker keeps the plain empty tile", async ({
+test("a never-measured saved clinical result keeps the plain empty tile", async ({
   page,
 }) => {
   // The fallback needs history to fall back TO. The seed stars two analytes that

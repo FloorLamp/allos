@@ -72,7 +72,7 @@ describe("the registry is complete and consistent with its siblings", () => {
     expect(gapLimitDaysForSeriesKey("metric:mood")).toBe(
       METRIC_GAP_LIMIT_DAYS.mood
     );
-    expect(gapLimitDaysForSeriesKey("bio:LDL Cholesterol")).toBe(
+    expect(gapLimitDaysForSeriesKey("result:LDL Cholesterol")).toBe(
       BIO_GAP_LIMIT_DAYS
     );
     expect(gapLimitDaysForSeriesKey("metric:not-a-metric")).toBeNull();

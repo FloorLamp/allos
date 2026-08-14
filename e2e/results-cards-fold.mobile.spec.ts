@@ -57,10 +57,7 @@ async function firstHeaderTop(page: Page): Promise<number> {
 }
 
 function tile(page: Page, n: number): Locator {
-  return page
-    .getByTestId("starred-biomarkers")
-    .getByTestId("starred-tile")
-    .nth(n);
+  return page.getByTestId("starred-results").getByTestId("starred-tile").nth(n);
 }
 
 // Top of an element in document coordinates.
@@ -80,7 +77,7 @@ test("the panel index leads on a phone, inside the first viewport (#1647)", asyn
 
   // This profile is the case the issues measured, not one that dodges it by having
   // nothing around the list: both capped cards render, and so does the warning.
-  await expect(page.getByTestId("starred-biomarkers")).toBeVisible();
+  await expect(page.getByTestId("starred-results")).toBeVisible();
   await expect(page.getByTestId("bio-age-inputs-card")).toBeVisible();
   await expect(page.getByTestId("trajectory-findings")).toBeVisible();
 
@@ -89,7 +86,7 @@ test("the panel index leads on a phone, inside the first viewport (#1647)", asyn
 
   // And it leads because the two glance cards are BELOW it — not because they were
   // hidden. Both are still fully laid out, one scroll away.
-  expect(await topOf(page.getByTestId("starred-biomarkers"))).toBeGreaterThan(
+  expect(await topOf(page.getByTestId("starred-results"))).toBeGreaterThan(
     header
   );
   expect(await topOf(page.getByTestId("bio-age-inputs-card"))).toBeGreaterThan(
@@ -161,7 +158,7 @@ test("the starred card folds its overflow tiles on a phone (#1578)", async ({
   browser,
 }) => {
   const page = await openPhone(browser);
-  const card = page.getByTestId("starred-biomarkers");
+  const card = page.getByTestId("starred-results");
 
   // Six stars, three shown. The heading still counts all six, so the fold hides tiles
   // rather than pretending the reader starred fewer analytes.
@@ -263,19 +260,19 @@ test("desktop renders every card whole, above the index, with no fold controls (
   // the unchanged #1499 section D order, glance first and index below it.
   const header = await firstHeaderTop(page);
   for (const id of [
-    "starred-biomarkers",
+    "starred-results",
     "trajectory-findings",
     "bio-age-inputs-card",
   ])
     expect(await topOf(page.getByTestId(id))).toBeLessThan(header);
-  expect(await topOf(page.getByTestId("starred-biomarkers"))).toBeLessThan(
+  expect(await topOf(page.getByTestId("starred-results"))).toBeLessThan(
     await topOf(page.getByTestId("trajectory-findings"))
   );
   expect(await topOf(page.getByTestId("trajectory-findings"))).toBeLessThan(
     await topOf(page.getByTestId("bio-age-inputs-card"))
   );
 
-  const card = page.getByTestId("starred-biomarkers");
+  const card = page.getByTestId("starred-results");
   for (const t of await card.getByTestId("starred-tile").all())
     await expect(t).toBeVisible();
 

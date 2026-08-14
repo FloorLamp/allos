@@ -34,7 +34,7 @@ import { reorderSaved } from "@/app/(app)/saved-actions";
 // owns motion and order only, so a reorder costs no re-query and the tiles keep
 // their server-side data.
 export interface SavedTileItem {
-  // The Trends series key ("metric:weight" | "bio:ApoB") — the drag id AND the
+  // The Trends series key ("metric:weight" | "result:ApoB") — the drag id AND the
   // vocabulary the persist action speaks.
   key: string;
   // Whether this full-size tile has no reading in the window. It stays reorderable

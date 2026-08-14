@@ -124,7 +124,7 @@ describe("the ★ ↔ Body-card correspondence (#1643)", () => {
 
   it("answers null for a saved ref that names no Body card", () => {
     expect(bodyCardIdForSeriesKey("metric:volume")).toBeNull();
-    expect(bodyCardIdForSeriesKey("bio:ApoB")).toBeNull();
+    expect(bodyCardIdForSeriesKey("result:ApoB")).toBeNull();
     expect(bodyCardIdForSeriesKey("weight")).toBeNull();
     expect(bodyCardIdForSeriesKey("")).toBeNull();
   });

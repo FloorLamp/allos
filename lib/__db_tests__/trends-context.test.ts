@@ -336,7 +336,7 @@ describe("getBodyCardPins — the body census ★ arrangement", () => {
   it("skips saved refs that name no Body card", () => {
     const { profileId } = makeProfile("pins-non-body");
     star(profileId, "volume"); // training volume — a saved metric, not a Body card
-    saveItem(profileId, "biomarker", "ApoB");
+    saveItem(profileId, "clinical-result", "ApoB");
     star(profileId, "steps");
     expect(getBodyCardPins(profileId)).toEqual(["steps"]);
   });

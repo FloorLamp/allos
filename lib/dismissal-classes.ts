@@ -541,7 +541,7 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     keyClass: "name-keyed-open",
     shape: "`<trendSeriesKey>:<direction>`",
     risk:
-      "A series key can embed a biomarker name (`bio:<name>`), which recycles. " +
+      "A series key can embed a biomarker name (`result:<name>`), which recycles. " +
       "Deleting every reading and re-adding the analyte later can re-attach a stale " +
       "chip dismissal. Bounded: a digest chip is calm/coaching-tier, is scoped to one " +
       "DIRECTION (a reversal mints a new key and resurfaces the chip), and only " +
@@ -629,8 +629,8 @@ export const NON_DISMISSAL_PREFIXES: readonly {
     what: "saved_items key namespace for a pinned trend metric (lib/saved-items)",
   },
   {
-    prefix: "bio:",
-    what: "saved_items / digest SERIES key namespace for a biomarker (lib/saved-items); the bus sees it only inside a `digest:` key",
+    prefix: "result:",
+    what: "saved_items / digest SERIES key namespace for a clinical result (lib/saved-items); the bus sees it only inside a `digest:` key",
   },
   {
     prefix: "wellness:",

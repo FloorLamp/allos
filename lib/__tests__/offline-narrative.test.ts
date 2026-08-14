@@ -100,14 +100,14 @@ describe("composeOfflineNarrative", () => {
     const trends: Finding[] = [
       finding({
         domain: "digest",
-        dedupeKey: "digest:bio:HDL:down",
+        dedupeKey: "digest:result:HDL:down",
         title: "HDL",
         detail: "HDL ↓ 5% over 90d",
         tone: "neutral",
       }),
       finding({
         domain: "digest",
-        dedupeKey: "digest:bio:LDL:up",
+        dedupeKey: "digest:result:LDL:up",
         title: "LDL",
         detail: "LDL ↑ into high range",
         tone: "caution",
@@ -175,7 +175,7 @@ describe("composeOfflineNarrative", () => {
         trends: [
           finding({
             domain: "digest",
-            dedupeKey: "digest:bio:LDL:up",
+            dedupeKey: "digest:result:LDL:up",
             title: "LDL",
             detail: "LDL ↑ into high range",
             tone: "caution",
@@ -303,7 +303,7 @@ describe("PR → Finding adapters", () => {
 describe("trend findings feed the narrative", () => {
   it("carries the digest item's text as the finding detail", () => {
     const item = {
-      key: "bio:LDL",
+      key: "result:LDL",
       label: "LDL",
       direction: "up",
       rangeShift: "out-of-range",

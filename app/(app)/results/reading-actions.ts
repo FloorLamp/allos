@@ -258,7 +258,7 @@ export async function deleteResult(
   // Compatibility: `biomarker-record` is a persisted undo payload kind, not the
   // public model name. Changing it would strand pending undo entries.
   const undoId = captureDelete("biomarker-record", profileId, id);
-  // Deleting the last reading for a starred biomarker would leave the star
+  // Deleting the last reading for a saved clinical result would leave the star
   // pointing at nothing (an empty pinned tile), and its `biomarker:<name>` retest
   // snooze pointing at a gone reading — sweep BOTH name-keyed side-stores so
   // re-adding that marker later re-nudges/re-pins instead of being silenced by a

@@ -1,9 +1,9 @@
 // Pure key helpers for the name-keyed suppression stores (upcoming_dismissals)
-// and the starred-biomarker pin, plus the set logic that decides which of those
+// and the starred clinical-result save, plus the set logic that decides which of those
 // name/code-keyed rows have lost their subject (issue #203).
 //
 // Why this exists: `upcoming_dismissals.signal_key` and
-// `saved_items.key` (kind='biomarker') are keyed by REUSABLE strings (a canonical
+// `saved_items.key` (kind='clinical-result') are keyed by REUSABLE strings (a canonical
 // biomarker name, a vaccine code) — not an AUTOINCREMENT id — so when the subject
 // they point at is deleted or renamed, the row can silently re-attach to a
 // DIFFERENT later subject that reuses the same string (AGENTS.md #224: "names and

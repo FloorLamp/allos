@@ -83,7 +83,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("flags a move that goes out of range (into high) even when small", () => {
     const [item] = summarizeTrends([
-      series("bio:LDL", 99, 101, {
+      series("result:LDL", 99, 101, {
         label: "LDL",
         range: { low: null, high: 100 },
       }),
@@ -95,7 +95,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("flags a move that goes below range", () => {
     const [item] = summarizeTrends([
-      series("bio:Iron", 50, -5, { label: "Iron", range }),
+      series("result:Iron", 50, -5, { label: "Iron", range }),
     ]);
     expect(item.rangeShift).toBe("out-of-range");
     expect(item.lastStatus).toBe("below");
@@ -104,7 +104,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("flags a move back into range", () => {
     const [item] = summarizeTrends([
-      series("bio:LDL", 130, 90, { label: "LDL", range }),
+      series("result:LDL", 130, 90, { label: "LDL", range }),
     ]);
     expect(item.rangeShift).toBe("into-range");
     expect(item.text).toContain("— back into range");
@@ -112,7 +112,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("does not flag a move that stays in range", () => {
     const [item] = summarizeTrends([
-      series("bio:LDL", 40, 60, { label: "LDL", range }),
+      series("result:LDL", 40, 60, { label: "LDL", range }),
     ]);
     expect(item.rangeShift).toBeNull();
   });
@@ -122,7 +122,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("flags a full below→above swing as crossing the range (low→high)", () => {
     const [item] = summarizeTrends([
-      series("bio:Iron", 30, 120, { label: "Iron", range: bounded }),
+      series("result:Iron", 30, 120, { label: "Iron", range: bounded }),
     ]);
     expect(item.rangeShift).toBe("through-range");
     expect(item.lastStatus).toBe("above");
@@ -131,7 +131,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("flags a full above→below swing as crossing the range (high→low)", () => {
     const [item] = summarizeTrends([
-      series("bio:Iron", 120, 30, { label: "Iron", range: bounded }),
+      series("result:Iron", 120, 30, { label: "Iron", range: bounded }),
     ]);
     expect(item.rangeShift).toBe("through-range");
     expect(item.lastStatus).toBe("below");
@@ -140,7 +140,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("does NOT flag a move that stays out on the same side (both above)", () => {
     const [item] = summarizeTrends([
-      series("bio:LDL", 110, 130, { label: "LDL", range: bounded }),
+      series("result:LDL", 110, 130, { label: "LDL", range: bounded }),
     ]);
     // Both endpoints above range — only magnitude, no range annotation.
     expect(item.rangeShift).toBeNull();
@@ -149,7 +149,7 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("does NOT flag a move that stays out on the same side (both below)", () => {
     const [item] = summarizeTrends([
-      series("bio:Iron", 30, 20, { label: "Iron", range: bounded }),
+      series("result:Iron", 30, 20, { label: "Iron", range: bounded }),
     ]);
     expect(item.rangeShift).toBeNull();
     expect(item.text).not.toContain("range");
@@ -157,14 +157,14 @@ describe("summarizeTrends — reference-range crossings", () => {
 
   it("ranks a through-range swing above an into-range move but below out-of-range", () => {
     const items = summarizeTrends([
-      series("bio:In", 130, 90, { label: "In", range: bounded }), // into-range (500)
-      series("bio:Through", 30, 120, { label: "Through", range: bounded }), // through (750)
-      series("bio:Out", 90, 130, { label: "Out", range: bounded }), // out-of-range (1000)
+      series("result:In", 130, 90, { label: "In", range: bounded }), // into-range (500)
+      series("result:Through", 30, 120, { label: "Through", range: bounded }), // through (750)
+      series("result:Out", 90, 130, { label: "Out", range: bounded }), // out-of-range (1000)
     ]);
     expect(items.map((i) => i.key)).toEqual([
-      "bio:Out",
-      "bio:Through",
-      "bio:In",
+      "result:Out",
+      "result:Through",
+      "result:In",
     ]);
   });
 });
@@ -173,12 +173,12 @@ describe("summarizeTrends — ranking and limit", () => {
   it("ranks range crossings above ordinary moves", () => {
     const items = summarizeTrends([
       series("weight", 100, 150, { label: "Weight" }), // +50%, no range
-      series("bio:LDL", 99, 101, {
+      series("result:LDL", 99, 101, {
         label: "LDL",
         range: { low: null, high: 100 },
       }), // tiny, but out of range
     ]);
-    expect(items[0].key).toBe("bio:LDL");
+    expect(items[0].key).toBe("result:LDL");
     expect(items[1].key).toBe("weight");
   });
 
@@ -387,7 +387,7 @@ describe("robustSeriesSummary — shared tile/digest core (#398)", () => {
 
   it("honors a reference-range crossing even below the pct bar (parity with the digest)", () => {
     const s: DigestSeries = {
-      key: "bio:LDL",
+      key: "result:LDL",
       label: "LDL",
       minPctChange: 0.5, // absurdly high bar so only the range cross can qualify
       range: { low: null, high: 100 },

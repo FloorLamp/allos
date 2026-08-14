@@ -28,6 +28,7 @@
 
 import type Database from "better-sqlite3";
 import { canonicalResultDefinitionTableForSchema } from "./canonical-result-definition-table";
+import { savedClinicalResultKindForSchema } from "./saved-clinical-result-kind";
 import { buildCanonicalIndex } from "./canonical-name";
 import {
   biomarkerDismissalKey,
@@ -105,7 +106,7 @@ function planMerges(db: Database.Database): Plan {
 //
 //   1. medical_records.canonical_name — the readings themselves. `name` (the printed
 //      lab spelling) is PROVENANCE and is deliberately left alone.
-//   2. saved_items (kind='biomarker') — the ★ pin, keyed by canonical name.
+//   2. saved_items (kind='clinical-result') — the ★ pin, keyed by canonical name.
 //   3. upcoming_dismissals — the retest snooze `biomarker:<retest identity>` and the
 //      flagged-result/trajectory acknowledgment `biomarker-flag:<family>`. Both are
 //      DERIVED keys, so they only move when the derivation actually differs.
@@ -134,6 +135,7 @@ export function applyCanonicalRename(
   profileId: number,
   { from, to }: CanonicalMerge
 ): number {
+  const savedResultKind = savedClinicalResultKindForSchema(db);
   const records = db
     .prepare(
       `UPDATE medical_records SET canonical_name = ?
@@ -143,12 +145,12 @@ export function applyCanonicalRename(
 
   db.prepare(
     `UPDATE OR IGNORE saved_items SET key = ?
-      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
-  ).run(to, profileId, from);
+      WHERE profile_id = ? AND kind = ? AND key = ? COLLATE NOCASE`
+  ).run(to, profileId, savedResultKind, from);
   db.prepare(
     `DELETE FROM saved_items
-      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
-  ).run(profileId, from);
+      WHERE profile_id = ? AND kind = ? AND key = ? COLLATE NOCASE`
+  ).run(profileId, savedResultKind, from);
 
   for (const keyOf of [biomarkerDismissalKey, biomarkerFlagDismissalKey]) {
     const oldKey = keyOf(from);

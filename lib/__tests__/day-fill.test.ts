@@ -234,8 +234,8 @@ describe("applyDayFill — what a chart card resolves", () => {
     ).toBe(true);
   });
 
-  it("leaves an exempt (bio:) series and a spec-less call untouched", () => {
-    const bio = applyDayFill(points, { ...spec, seriesKey: "bio:ApoB" });
+  it("leaves an exempt (result:) series and a spec-less call untouched", () => {
+    const bio = applyDayFill(points, { ...spec, seriesKey: "result:ApoB" });
     expect(bio.data).toEqual(points);
     expect(bio.bridges).toBeNull();
     expect(applyDayFill(points, undefined).data).toEqual(points);

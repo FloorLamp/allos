@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  SAVED_KINDS,
-  isSavedKind,
   savedRefFromSeriesKey,
   seriesKeyOfSavedRef,
   isSeriesKeySaved,
@@ -17,31 +15,20 @@ import {
 
 const ref = (kind: SavedRef["kind"], key: string): SavedRef => ({ kind, key });
 
-describe("kinds", () => {
-  it("knows exactly the two launch kinds", () => {
-    expect([...SAVED_KINDS]).toEqual(["biomarker", "trend-metric"]);
-    expect(isSavedKind("biomarker")).toBe(true);
-    expect(isSavedKind("trend-metric")).toBe(true);
-    // A future kind is a migration (the CHECK constraint), not a free-text write.
-    expect(isSavedKind("provider")).toBe(false);
-    expect(isSavedKind("")).toBe(false);
-  });
-});
-
 describe("savedRefFromSeriesKey", () => {
   it("maps each namespace to its kind, stripping the prefix", () => {
-    expect(savedRefFromSeriesKey("bio:LDL Cholesterol")).toEqual(
-      ref("biomarker", "LDL Cholesterol")
+    expect(savedRefFromSeriesKey("result:LDL Cholesterol")).toEqual(
+      ref("clinical-result", "LDL Cholesterol")
     );
     expect(savedRefFromSeriesKey("metric:weight")).toEqual(
       ref("trend-metric", "weight")
     );
   });
 
-  it("keeps the two namespaces apart so a biomarker can't collide with a metric tile", () => {
+  it("keeps a clinical result from colliding with a metric tile", () => {
     // The whole reason the prefixes exist: an analyte literally named "weight".
-    expect(savedRefFromSeriesKey("bio:weight")).toEqual(
-      ref("biomarker", "weight")
+    expect(savedRefFromSeriesKey("result:weight")).toEqual(
+      ref("clinical-result", "weight")
     );
     expect(savedRefFromSeriesKey("metric:weight")).toEqual(
       ref("trend-metric", "weight")
@@ -51,19 +38,23 @@ describe("savedRefFromSeriesKey", () => {
   it("rejects an unknown namespace or an empty key rather than writing junk", () => {
     expect(savedRefFromSeriesKey("provider:12")).toBeNull();
     expect(savedRefFromSeriesKey("LDL Cholesterol")).toBeNull();
-    expect(savedRefFromSeriesKey("bio:")).toBeNull();
-    expect(savedRefFromSeriesKey("bio:   ")).toBeNull();
+    expect(savedRefFromSeriesKey("result:")).toBeNull();
+    expect(savedRefFromSeriesKey("result:   ")).toBeNull();
     expect(savedRefFromSeriesKey("")).toBeNull();
   });
 
   it("trims the submitted key (a form value carries whitespace)", () => {
-    expect(savedRefFromSeriesKey("  bio: ApoB  ")).toEqual(
-      ref("biomarker", "ApoB")
+    expect(savedRefFromSeriesKey("  result: ApoB  ")).toEqual(
+      ref("clinical-result", "ApoB")
     );
   });
 
   it("round-trips through seriesKeyOfSavedRef", () => {
-    for (const key of ["bio:ApoB", "metric:bodyfat", "bio:Vitamin D, Total"]) {
+    for (const key of [
+      "result:ApoB",
+      "metric:bodyfat",
+      "result:Vitamin D, Total",
+    ]) {
       expect(seriesKeyOfSavedRef(savedRefFromSeriesKey(key)!)).toBe(key);
     }
   });
@@ -71,21 +62,23 @@ describe("savedRefFromSeriesKey", () => {
 
 describe("isSeriesKeySaved", () => {
   const saved = [
-    ref("biomarker", "LDL Cholesterol"),
+    ref("clinical-result", "LDL Cholesterol"),
     ref("trend-metric", "weight"),
   ];
 
   it("matches within a kind and not across kinds", () => {
-    expect(isSeriesKeySaved(saved, "bio:LDL Cholesterol")).toBe(true);
+    expect(isSeriesKeySaved(saved, "result:LDL Cholesterol")).toBe(true);
     expect(isSeriesKeySaved(saved, "metric:weight")).toBe(true);
     // Same spelling, other namespace — a different item entirely.
-    expect(isSeriesKeySaved(saved, "bio:weight")).toBe(false);
+    expect(isSeriesKeySaved(saved, "result:weight")).toBe(false);
     expect(isSeriesKeySaved(saved, "metric:LDL Cholesterol")).toBe(false);
   });
 
   it("is case-insensitive, matching the store's NOCASE key column", () => {
-    expect(isSeriesKeySaved(saved, "bio:ldl cholesterol")).toBe(true);
-    expect(isSeriesKeySaved([ref("biomarker", "apob")], "bio:ApoB")).toBe(true);
+    expect(isSeriesKeySaved(saved, "result:ldl cholesterol")).toBe(true);
+    expect(
+      isSeriesKeySaved([ref("clinical-result", "apob")], "result:ApoB")
+    ).toBe(true);
   });
 
   it("is false for an unparseable key", () => {
@@ -99,7 +92,7 @@ describe("orderSavedRefs", () => {
     position: number | null,
     created_at: string
   ): SavedRef & { position: number | null; created_at: string } => ({
-    kind: "biomarker",
+    kind: "clinical-result",
     key,
     position,
     created_at,

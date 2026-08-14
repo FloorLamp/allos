@@ -588,7 +588,7 @@ export default function ProfilePassport({
                 ))}
               </ul>
             ) : (
-              <Empty>No flagged or starred biomarkers.</Empty>
+              <Empty>No flagged or starred clinical results.</Empty>
             )}
           </Section>
         )}

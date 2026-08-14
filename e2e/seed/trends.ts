@@ -247,7 +247,7 @@ export function seedCuratedOverview(): void {
     insCurate.run(curateId, shiftDateStr(curateToday, -9), 74.2, 57);
     insCurate.run(curateId, shiftDateStr(curateToday, -2), 73.6, 55);
     db.prepare(
-      `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+      `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)`
     ).run(curateId, TRENDS_CURATE_EMPTY_ANALYTE);
     seedMemberLogin(E2E_LOGIN_TRENDS_CURATE, curateId, "write");
     console.log(
@@ -777,7 +777,7 @@ export function seedBiomarkerPickerRank(): void {
   // run (or a reused dev server) can't leave the analyte already saved, which would
   // withdraw it from the picker's options.
   db.prepare(
-    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'`
+    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result'`
   ).run(pid);
 }
 

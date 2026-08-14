@@ -107,7 +107,7 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
        VALUES (?, ?, 'lab', 'Glucose', ?, 'mg/dL', 'Glucose', ?, 'Metabolic')`
     ).run(profileId, todayStr, String(glucoseValueNum), glucoseValueNum);
     db.prepare(
-      `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Glucose')`
+      `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', 'Glucose')`
     ).run(profileId);
     const documentId = Number(
       db

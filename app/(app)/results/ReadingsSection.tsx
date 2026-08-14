@@ -3,7 +3,7 @@ import { today } from "@/lib/db";
 import { EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
 import { type ProfileScope } from "@/lib/scope";
-import StarredBiomarkers from "@/components/StarredBiomarkers";
+import StarredResults from "@/components/StarredResults";
 import BioAgeInputsCard from "./BioAgeInputsCard";
 import TrajectoryFindings from "./TrajectoryFindings";
 import ReadingsTable from "@/components/ReadingsTable";
@@ -104,14 +104,14 @@ export default function ReadingsSection({
               scope.profiles
                 .filter((p) => ids.includes(p.id))
                 .map((p) => (
-                  <StarredBiomarkers
+                  <StarredResults
                     key={p.id}
                     profileId={p.id}
                     subjectLabel={p.name}
                   />
                 ))
             ) : (
-              <StarredBiomarkers />
+              <StarredResults />
             )}
           </div>
 

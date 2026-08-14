@@ -162,7 +162,7 @@ describe("logical outcome identity", () => {
       "metric:resting_hr"
     );
     expect(options.biomarkers.map((option) => option.key)).not.toContain(
-      "bio:Resting Heart Rate"
+      "result:Resting Heart Rate"
     );
 
     const digest = buildDigestSeries(profileId, 1, {}, false);

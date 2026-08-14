@@ -66,7 +66,7 @@ export interface Finding {
   domain: string;
   // Stable identity for suppression + React keys. Domain-prefixed and collision-
   // free across engines; this is exactly the string stored as a suppression row's
-  // signal_key (e.g. "dose:12", "coaching:rest-sleep", "digest:bio:LDL:up").
+  // signal_key (e.g. "dose:12", "coaching:rest-sleep", "digest:result:LDL:up").
   dedupeKey: string;
   // A LEGACY (pre-#436, episode-less) dedupeKey this finding ALSO honors for
   // suppression. The behavioral engines grew an episode anchor on their keys (#436)

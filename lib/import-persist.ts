@@ -110,7 +110,7 @@ function footprintScope(t: ImportFootprintTable): string {
 //
 // Caller-specific deletes stay OUT of here: the reprocess path's cross-document
 // social-smoking supersession (it deletes OTHER documents' smoking rows) and
-// deleteMedicalDocument's medical_documents-row drop + starred-biomarker cleanup.
+// deleteMedicalDocument's medical_documents-row drop + saved-result cleanup.
 // A document's OWN social-smoking condition carries its document_id, so the
 // conditions delete below removes it on document delete without the supersession.
 export function clearImportedDocumentRows(
@@ -308,7 +308,7 @@ export function documentImmunizationVaccines(
 // move counterpart of clearImportedDocumentRows, iterating the SAME
 // IMPORT_FOOTPRINT_TABLES list so a delete and a reassign can never disagree about
 // which tables a document owns (#201). Runs inside reassignDocument's transaction;
-// the parent medical_documents row + the starred-biomarker cleanup stay with the
+// the parent medical_documents row + the saved-result cleanup stay with the
 // caller. Every UPDATE is scoped to the SOURCE profile so no other profile's rows
 // can be touched; child rows (intake_item_doses/_logs/_pairs, medication_courses,
 // side effects) carry no profile_id and follow their parent intake_items row.

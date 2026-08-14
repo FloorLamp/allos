@@ -6,7 +6,7 @@
 //   2. The #203 name-keyed lifecycle — a canonical RENAME re-keys the save (and never
 //      touches a `trend-metric` save that happens to share the name), a delete
 //      de-orphans it, and the orphan sweep is kind-scoped.
-//   3. THE SAVE→PASSPORT CONTRACT — a saved biomarker enters the profile summary's
+//   3. THE SAVE→PASSPORT CONTRACT — a saved clinical result enters the profile summary's
 //      vitals. This was an undocumented side effect of `starred_biomarkers`; the fold
 //      promoted it to a stated contract (lib/profile-summary-load.ts), so it is pinned
 //      here.
@@ -17,12 +17,12 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import {
-  getSavedBiomarkers,
-  isBiomarkerSaved,
-  saveBiomarker,
-  unsaveBiomarkerFamily,
-  toggleBiomarkerSaved,
-  cleanupOrphanSavedBiomarkers,
+  getSavedClinicalResults,
+  isClinicalResultSaved,
+  saveClinicalResult,
+  unsaveClinicalResultFamily,
+  toggleClinicalResultSaved,
+  cleanupOrphanSavedClinicalResults,
   migrateRenamedBiomarker,
   getSavedItems,
   setSavedOrder,
@@ -71,57 +71,57 @@ function savedKeys(profileId: number): string[] {
     db
       .prepare(
         `SELECT key FROM saved_items
-          WHERE profile_id = ? AND kind = 'biomarker' ORDER BY key`
+          WHERE profile_id = ? AND kind = 'clinical-result' ORDER BY key`
       )
       .all(profileId) as { key: string }[]
   ).map((r) => r.key);
 }
 
-describe("biomarker saves are #482 family-keyed", () => {
+describe("clinical-result saves are #482 family-keyed", () => {
   it("a save on one member reads as saved for every member", () => {
     const p = newProfile("Family Save");
     addReading(p, "Vitamin D, 25-Hydroxy", { unit: "ng/mL" });
-    saveBiomarker(p, "Vitamin D, 25-Hydroxy");
+    saveClinicalResult(p, "Vitamin D, 25-Hydroxy");
 
-    expect(isBiomarkerSaved(p, "Vitamin D, 25-Hydroxy")).toBe(true);
+    expect(isClinicalResultSaved(p, "Vitamin D, 25-Hydroxy")).toBe(true);
     // A sibling spelling of the SAME analyte family lights the same star.
-    expect(isBiomarkerSaved(p, "Vitamin D, Total")).toBe(true);
+    expect(isClinicalResultSaved(p, "Vitamin D, Total")).toBe(true);
     // An unrelated analyte does not.
-    expect(isBiomarkerSaved(p, "ApoB")).toBe(false);
+    expect(isClinicalResultSaved(p, "ApoB")).toBe(false);
   });
 
   it("respects the family EXCLUSION discipline (a D3 fraction is its own analyte)", () => {
     // #1193 deliberately keeps the D2/D3 fractions OUT of the 25-OH total's family,
     // so a save must not collapse them — an over-collapse grants a wrong all-clear.
     const p = newProfile("Family Exclusion");
-    saveBiomarker(p, "Vitamin D, Total");
-    expect(isBiomarkerSaved(p, "Vitamin D3")).toBe(false);
+    saveClinicalResult(p, "Vitamin D, Total");
+    expect(isClinicalResultSaved(p, "Vitamin D3")).toBe(false);
   });
 
   it("un-saving clears the whole family, so the toggle can't stick", () => {
     const p = newProfile("Family Unsave");
-    saveBiomarker(p, "Vitamin D, Total");
-    saveBiomarker(p, "25-OH Vitamin D");
+    saveClinicalResult(p, "Vitamin D, Total");
+    saveClinicalResult(p, "25-OH Vitamin D");
     expect(savedKeys(p).length).toBe(2);
 
-    unsaveBiomarkerFamily(p, "Vitamin D, 25-Hydroxy");
+    unsaveClinicalResultFamily(p, "Vitamin D, 25-Hydroxy");
 
     expect(savedKeys(p)).toEqual([]);
-    expect(isBiomarkerSaved(p, "25-OH Vitamin D")).toBe(false);
+    expect(isClinicalResultSaved(p, "25-OH Vitamin D")).toBe(false);
   });
 
-  it("toggleBiomarkerSaved round-trips through the family", () => {
+  it("toggleClinicalResultSaved round-trips through the family", () => {
     const p = newProfile("Family Toggle");
-    expect(toggleBiomarkerSaved(p, "Vitamin D, Total")).toBe(true);
+    expect(toggleClinicalResultSaved(p, "Vitamin D, Total")).toBe(true);
     // Toggling a SIBLING off clears the family (it read as saved).
-    expect(toggleBiomarkerSaved(p, "25-OH Vitamin D")).toBe(false);
+    expect(toggleClinicalResultSaved(p, "25-OH Vitamin D")).toBe(false);
     expect(savedKeys(p)).toEqual([]);
   });
 
   it("stores the name the user starred, not the family key", () => {
     // The row stays a real, human-readable analyte name that a rename can re-key.
     const p = newProfile("Family Storage");
-    saveBiomarker(p, "25-OH Vitamin D");
+    saveClinicalResult(p, "25-OH Vitamin D");
     expect(savedKeys(p)).toEqual(["25-OH Vitamin D"]);
   });
 });
@@ -129,7 +129,7 @@ describe("biomarker saves are #482 family-keyed", () => {
 describe("name-keyed lifecycle (#203)", () => {
   it("a canonical rename re-keys the save", () => {
     const p = newProfile("Rename Save");
-    saveBiomarker(p, "RDW");
+    saveClinicalResult(p, "RDW");
 
     migrateRenamedBiomarker(p, "RDW", "Red Cell Distribution Width (RDW)");
 
@@ -138,8 +138,8 @@ describe("name-keyed lifecycle (#203)", () => {
 
   it("a rename that COLLIDES with an existing save collapses to one row", () => {
     const p = newProfile("Rename Collision");
-    saveBiomarker(p, "RDW");
-    saveBiomarker(p, "Red Cell Distribution Width (RDW)");
+    saveClinicalResult(p, "RDW");
+    saveClinicalResult(p, "Red Cell Distribution Width (RDW)");
 
     migrateRenamedBiomarker(p, "RDW", "Red Cell Distribution Width (RDW)");
 
@@ -150,7 +150,7 @@ describe("name-keyed lifecycle (#203)", () => {
   it("a rename never touches a trend-metric save sharing the name", () => {
     // The generic store's hazard: `kind` is what keeps the two key spaces apart.
     const p = newProfile("Rename Kind Scope");
-    saveBiomarker(p, "weight");
+    saveClinicalResult(p, "weight");
     toggleItemSaved(p, "trend-metric", "weight");
 
     migrateRenamedBiomarker(p, "weight", "Body Weight (lab)");
@@ -164,13 +164,13 @@ describe("name-keyed lifecycle (#203)", () => {
   it("the orphan sweep drops a save whose family lost every reading", () => {
     const p = newProfile("Orphan Sweep");
     addReading(p, "ApoB");
-    saveBiomarker(p, "ApoB");
+    saveClinicalResult(p, "ApoB");
 
     // The star was backed when it was placed, so losing every reading IS
     // orphanhood — the #203/#283 case, where the reusable name would otherwise
     // re-attach this save to whatever later recycles it.
     deleteReadings(p, "ApoB");
-    cleanupOrphanSavedBiomarkers(p);
+    cleanupOrphanSavedClinicalResults(p);
 
     expect(savedKeys(p)).toEqual([]);
   });
@@ -182,32 +182,32 @@ describe("name-keyed lifecycle (#203)", () => {
   // and the system does not get to un-tap it.
   it("the orphan sweep keeps a save that has never had a reading", () => {
     const p = newProfile("Watch Star");
-    saveBiomarker(p, "Ferritin"); // never measured — a watch, not an orphan
+    saveClinicalResult(p, "Ferritin"); // never measured — a watch, not an orphan
 
-    cleanupOrphanSavedBiomarkers(p);
+    cleanupOrphanSavedClinicalResults(p);
 
     expect(savedKeys(p)).toEqual(["Ferritin"]);
   });
 
   it("a watch that gains then loses a reading becomes sweepable", () => {
     const p = newProfile("Watch Promoted");
-    saveBiomarker(p, "Ferritin"); // watch first...
+    saveClinicalResult(p, "Ferritin"); // watch first...
     addReading(p, "Ferritin"); // ...then measured
-    cleanupOrphanSavedBiomarkers(p); // promotes it to backed
+    cleanupOrphanSavedClinicalResults(p); // promotes it to backed
     expect(savedKeys(p)).toEqual(["Ferritin"]);
 
     // Now its readings ARE gone, which is genuine orphanhood.
     deleteReadings(p, "Ferritin");
-    cleanupOrphanSavedBiomarkers(p);
+    cleanupOrphanSavedClinicalResults(p);
     expect(savedKeys(p)).toEqual([]);
   });
 
   it("the orphan sweep keeps a save backed by ANY family member's reading", () => {
     const p = newProfile("Orphan Family");
     addReading(p, "25-OH Vitamin D", { unit: "ng/mL" });
-    saveBiomarker(p, "Vitamin D, 25-Hydroxy");
+    saveClinicalResult(p, "Vitamin D, 25-Hydroxy");
 
-    cleanupOrphanSavedBiomarkers(p);
+    cleanupOrphanSavedClinicalResults(p);
 
     expect(savedKeys(p)).toEqual(["Vitamin D, 25-Hydroxy"]);
   });
@@ -217,7 +217,7 @@ describe("name-keyed lifecycle (#203)", () => {
     const p = newProfile("Orphan Kind Scope");
     toggleItemSaved(p, "trend-metric", "weight");
 
-    cleanupOrphanSavedBiomarkers(p);
+    cleanupOrphanSavedClinicalResults(p);
 
     expect(getSavedItems(p, "trend-metric").map((r) => r.key)).toEqual([
       "weight",
@@ -228,8 +228,8 @@ describe("name-keyed lifecycle (#203)", () => {
 describe("saved order", () => {
   it("reads positioned rows first, then newest saves", () => {
     const p = newProfile("Saved Order");
-    saveBiomarker(p, "ApoB");
-    saveBiomarker(p, "Ferritin");
+    saveClinicalResult(p, "ApoB");
+    saveClinicalResult(p, "Ferritin");
     toggleItemSaved(p, "trend-metric", "weight");
     // Nothing positioned yet — a plain star leaves position NULL.
     expect(getSavedItems(p).every((r) => r.position == null)).toBe(true);
@@ -251,8 +251,8 @@ describe("saved order", () => {
     // The stale-client case: a star landed on another device since the grid
     // rendered. Omitting it must reorder, never unsave.
     const p = newProfile("Saved Order Partial");
-    saveBiomarker(p, "ApoB");
-    saveBiomarker(p, "Ferritin");
+    saveClinicalResult(p, "ApoB");
+    saveClinicalResult(p, "Ferritin");
     toggleItemSaved(p, "trend-metric", "weight");
     const before = getSavedItems(p);
 
@@ -268,28 +268,28 @@ describe("saved order", () => {
 
   it("ignores a ref the profile has not saved", () => {
     const p = newProfile("Saved Order Unknown");
-    saveBiomarker(p, "ApoB");
+    saveClinicalResult(p, "ApoB");
     const before = getSavedItems(p).map((r) => r.key);
 
     setSavedOrder(p, [
-      { kind: "biomarker", key: "Ferritin" },
-      { kind: "biomarker", key: "ApoB" },
+      { kind: "clinical-result", key: "Ferritin" },
+      { kind: "clinical-result", key: "ApoB" },
     ]);
 
     expect(getSavedItems(p).map((r) => r.key)).toEqual(before);
   });
 
-  it("getSavedBiomarkers honours that same order", () => {
-    const p = newProfile("Saved Biomarker Order");
+  it("getSavedClinicalResults honours that same order", () => {
+    const p = newProfile("Saved Result Order");
     addReading(p, "ApoB");
     addReading(p, "Ferritin", { unit: "ng/mL" });
-    saveBiomarker(p, "ApoB");
-    saveBiomarker(p, "Ferritin");
+    saveClinicalResult(p, "ApoB");
+    saveClinicalResult(p, "Ferritin");
     db.prepare(
       `UPDATE saved_items SET position = 0 WHERE profile_id = ? AND key = 'Ferritin'`
     ).run(p);
 
-    expect(getSavedBiomarkers(p).map((s) => s.canonical_name)).toEqual([
+    expect(getSavedClinicalResults(p).map((s) => s.canonical_name)).toEqual([
       "Ferritin",
       "ApoB",
     ]);
@@ -297,7 +297,7 @@ describe("saved order", () => {
 });
 
 describe("the save→passport contract (#1456)", () => {
-  it("a saved biomarker enters the profile summary's vitals", () => {
+  it("a saved clinical result enters the profile summary's vitals", () => {
     const p = newProfile("Passport Contract");
     // An UNFLAGGED, in-range reading: it reaches the passport ONLY because it is
     // saved (the flagged list would never carry it).
@@ -311,7 +311,7 @@ describe("the save→passport contract (#1456)", () => {
     const before = getProfileSummary(p, "Passport Contract");
     expect(before.vitals.some((v) => v.name === "Ferritin")).toBe(false);
 
-    saveBiomarker(p, "Ferritin");
+    saveClinicalResult(p, "Ferritin");
 
     const after = getProfileSummary(p, "Passport Contract");
     const vital = after.vitals.find((v) => v.name === "Ferritin");
@@ -321,7 +321,7 @@ describe("the save→passport contract (#1456)", () => {
     expect(vital?.date).toBe("2026-04-01");
 
     // …and un-starring removes it again: membership IS the contract.
-    unsaveBiomarkerFamily(p, "Ferritin");
+    unsaveClinicalResultFamily(p, "Ferritin");
     expect(
       getProfileSummary(p, "Passport Contract").vitals.some(
         (v) => v.name === "Ferritin"

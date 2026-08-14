@@ -13,7 +13,7 @@ import {
   getFoodSuggestions,
   getCuratedSupplementSuggestions,
   getRevisionsByObservation,
-  isBiomarkerSaved,
+  isClinicalResultSaved,
 } from "@/lib/queries";
 import {
   fastingLabel,
@@ -84,7 +84,7 @@ import { getProtocolWindowsForOutcome } from "@/lib/queries";
 import { buildProtocolWindows } from "@/lib/trend-annotations";
 import { buildTrendAnnotations } from "@/lib/trends-series";
 import StarButton from "@/components/StarButton";
-import { bioSeriesKey } from "@/lib/saved-items";
+import { resultSeriesKey } from "@/lib/saved-items";
 import ScrollFade from "@/components/ScrollFade";
 import {
   FitnessPercentileCard,
@@ -186,7 +186,7 @@ export default async function ReadingDetailPage(props: {
   // labs, not measured. Surface the formula so the value is transparent. Newest
   // derived reading carries the most representative substituted formula.
   const derivedReading = [...series].reverse().find((r) => r.derived);
-  const starred = isBiomarkerSaved(profile.id, canonical);
+  const starred = isClinicalResultSaved(profile.id, canonical);
   // Effective reference range and optimal band for the user's sex + age
   // (age band, then sex-specific override, else the generic band). Drive the chart
   // bands, the displayed ranges, and the badge. For an age-banded biomarker the
@@ -609,7 +609,7 @@ export default async function ReadingDetailPage(props: {
         subtitle={`${series.length} reading${series.length === 1 ? "" : "s"}`}
         action={
           <StarButton
-            itemKey={bioSeriesKey(canonical)}
+            itemKey={resultSeriesKey(canonical)}
             saved={starred}
             label={canonical}
           />

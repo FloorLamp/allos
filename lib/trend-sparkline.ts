@@ -12,7 +12,7 @@
 // Bars say the true thing: each day is its own quantity, and the gaps are the rest
 // days. Same data, same window, a mark that matches the job.
 //
-// ONE COMPUTATION, keyed on the SERIES KEY — the same `metric:<id>` / `bio:<name>`
+// ONE COMPUTATION, keyed on the SERIES KEY — the same `metric:<id>` / `result:<name>`
 // vocabulary the saved store, the compare picker and the tile grid already share
 // (lib/saved-items.ts) — so every surface that renders a tile asks this one
 // question instead of re-deciding per grid. The mark VARIANT itself lives in the
@@ -44,7 +44,7 @@ export function sparklineShapeForMetric(id: string): SparklineShape {
 
 /**
  * The mark for any trend series, by its full key (`"metric:volume"`,
- * `"bio:LDL Cholesterol"`). A biomarker is always a level — an analyte has a value
+ * `"result:LDL Cholesterol"`). A biomarker is always a level — an analyte has a value
  * on the days between draws — so it is always a line; an unrecognized key falls
  * back to the line too, which is the safe default (a level drawn as bars merely
  * looks odd; a quantity drawn as a line asserts something false).
@@ -88,7 +88,7 @@ export function loneReading<T extends { value: number | null }>(
 // row is not on the axis at all and a multi-day outage COMPRESSES AWAY — four
 // missed nights render identically to four consecutive ones. `lib/day-fill.ts`
 // densifies the series to the calendar; what a densified day CARRIES is decided
-// here, once per series, on the same `metric:` / `bio:` vocabulary — because it is
+// here, once per series, on the same `metric:` / `result:` vocabulary — because it is
 // a property of the QUANTITY, not of the surface drawing it. A per-surface prop is
 // exactly how the body census, the tile grid and the detail page would come to
 // disagree about whether a missing steps day is a zero.
@@ -124,7 +124,7 @@ export function loneReading<T extends { value: number | null }>(
 //     threshold quietly bolted onto "bridge" (owner call 2, 2026-08-13): a
 //     declared policy is never silently changed, so a series that wants
 //     hole-past-threshold behaviour says so by name.
-//   • "exempt" — no densification at all. Every `bio:` series: lab draws are
+//   • "exempt" — no densification at all. Every `result:` series: lab draws are
 //     sparse BY NATURE, and expanding a 1-year window around three draws into 365
 //     mostly-null categories degrades the tile for no honesty gain (the biomarker
 //     DETAIL chart already answers the spacing question properly, on a numeric
@@ -234,7 +234,7 @@ export function seriesGapForMetric(id: string): SeriesGap {
 }
 
 /**
- * The gap policy for any trend series, by its full key. `bio:` is exempt (see the
+ * The gap policy for any trend series, by its full key. `result:` is exempt (see the
  * header); an unrecognized namespace is exempt too — densifying a series whose
  * grain we cannot name is how a per-event axis would silently acquire calendar
  * holes.
@@ -295,7 +295,7 @@ export function gapBreaksPastLimit(gap: SeriesGap): boolean {
 // and three facts, with nothing distinguishing them.
 //
 // THE DECISION, in the same shape as the gap above: one number per series, on the
-// same `metric:` / `bio:` vocabulary, because it is a property of the QUANTITY and
+// same `metric:` / `result:` vocabulary, because it is a property of the QUANTITY and
 // not of the surface drawing it. `CONTINUITY_DAYS` is the longest interval between
 // two consecutive readings across which this quantity's stroke is still a fair
 // interpolation. Past it, the presentation demotes (see chart-scaffold's
@@ -346,7 +346,7 @@ const SLOW_CONTINUITY = 730;
 
 /** A lab draw. An annual-to-semiannual panel is the ordinary cadence, so the
  *  stroke is fair across it; past ~18 months it spans more unobserved time
- *  than observed. Open vocabulary (`bio:<name>`), so one number for the
+ *  than observed. Open vocabulary (`result:<name>`), so one number for the
  *  namespace rather than a row per analyte. */
 export const BIO_CONTINUITY_DAYS = 540;
 
@@ -408,7 +408,7 @@ export const METRIC_CONTINUITY_DAYS: Readonly<Record<string, number>> = {
  * caption about days it does not plot.
  */
 export function continuityDaysForSeriesKey(key: string): number | null {
-  if (key.startsWith("bio:")) return BIO_CONTINUITY_DAYS;
+  if (key.startsWith("result:")) return BIO_CONTINUITY_DAYS;
   const prefix = "metric:";
   if (!key.startsWith(prefix)) return null;
   return METRIC_CONTINUITY_DAYS[key.slice(prefix.length)] ?? null;
@@ -577,7 +577,7 @@ export function applyDayFillRows<
 // SILENT FOR A WHILE, and the chart knows exactly how long.
 //
 // THE DECLARATION, in the same shape as the gap and the continuity span: one
-// number per series, on the same `metric:` / `bio:` vocabulary, because how long
+// number per series, on the same `metric:` / `result:` vocabulary, because how long
 // a silence has to run before it is worth naming is a property of the QUANTITY.
 // A daily check-in going quiet for three days is news; a tape measure going quiet
 // for three days is a Tuesday.
@@ -675,7 +675,7 @@ export const METRIC_GAP_LIMIT_DAYS: Readonly<Record<string, number>> = {
  * it does not plot.
  */
 export function gapLimitDaysForSeriesKey(key: string): number | null {
-  if (key.startsWith("bio:")) return BIO_GAP_LIMIT_DAYS;
+  if (key.startsWith("result:")) return BIO_GAP_LIMIT_DAYS;
   const prefix = "metric:";
   if (!key.startsWith(prefix)) return null;
   return METRIC_GAP_LIMIT_DAYS[key.slice(prefix.length)] ?? null;

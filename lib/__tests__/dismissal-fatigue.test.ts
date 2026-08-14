@@ -129,7 +129,7 @@ describe("findingEpisodeFamily", () => {
   it("has no family without a supersedes stem", () => {
     expect(
       findingEpisodeFamily({
-        dedupeKey: digestDedupeKey({ key: "bio:ldl", direction: "up" }),
+        dedupeKey: digestDedupeKey({ key: "result:ldl", direction: "up" }),
       })
     ).toBeNull();
   });

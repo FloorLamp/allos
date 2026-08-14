@@ -11,19 +11,19 @@ describe("series picker options (#1675)", () => {
     const rows = seriesPickerOptions([
       { key: "metric:weight", label: "Weight", kind: "metric" },
       {
-        key: "bio:Albumin",
+        key: "result:Albumin",
         label: "Albumin",
         kind: "biomarker",
         group: "all-biomarkers",
       },
       {
-        key: "bio:Ferritin",
+        key: "result:Ferritin",
         label: "Ferritin",
         kind: "biomarker",
         group: "your-markers",
       },
       {
-        key: "bio:Hemoglobin A1c",
+        key: "result:Hemoglobin A1c",
         label: "Hemoglobin A1c",
         kind: "biomarker",
         group: "due-relevant",
@@ -31,10 +31,10 @@ describe("series picker options (#1675)", () => {
     ]);
 
     expect(rows.map((r) => r.key)).toEqual([
-      "bio:Hemoglobin A1c",
+      "result:Hemoglobin A1c",
       "metric:weight",
-      "bio:Ferritin",
-      "bio:Albumin",
+      "result:Ferritin",
+      "result:Albumin",
     ]);
     expect(rows.map((r) => r.group)).toEqual(SERIES_PICKER_GROUP_ORDER);
   });
@@ -42,13 +42,13 @@ describe("series picker options (#1675)", () => {
   it("preserves the ranked order the query layer computed within a group", () => {
     const rows = seriesPickerOptions([
       {
-        key: "bio:Zzz",
+        key: "result:Zzz",
         label: "Zzz",
         kind: "biomarker",
         group: "your-markers",
       },
       {
-        key: "bio:Aaa",
+        key: "result:Aaa",
         label: "Aaa",
         kind: "biomarker",
         group: "your-markers",
@@ -56,12 +56,12 @@ describe("series picker options (#1675)", () => {
     ]);
     // NOT re-alphabetized: the rank already decided, and re-sorting here would be a
     // second, silently disagreeing ordering.
-    expect(rows.map((r) => r.key)).toEqual(["bio:Zzz", "bio:Aaa"]);
+    expect(rows.map((r) => r.key)).toEqual(["result:Zzz", "result:Aaa"]);
   });
 
   it("treats an untagged biomarker as the A–Z body and a metric as Metrics", () => {
     const rows = seriesPickerOptions([
-      { key: "bio:Albumin", label: "Albumin", kind: "biomarker" },
+      { key: "result:Albumin", label: "Albumin", kind: "biomarker" },
       { key: "metric:sleep", label: "Sleep", kind: "metric" },
     ]);
     expect(rows.map((r) => r.group)).toEqual([
@@ -73,7 +73,7 @@ describe("series picker options (#1675)", () => {
   it("disambiguates two rows that would otherwise read identically (#531)", () => {
     const rows = seriesPickerOptions([
       { key: "metric:weight", label: "Weight", kind: "metric" },
-      { key: "bio:Weight", label: "Weight", kind: "biomarker" },
+      { key: "result:Weight", label: "Weight", kind: "biomarker" },
     ]);
     expect(rows.map((r) => r.label)).toEqual([
       "Weight (metric)",
@@ -85,13 +85,13 @@ describe("series picker options (#1675)", () => {
 
   it("falls back to the key when even the kind does not distinguish two rows", () => {
     const rows = seriesPickerOptions([
-      { key: "bio:Iron", label: "Iron", kind: "biomarker" },
-      { key: "bio:Iron, Total", label: "Iron", kind: "biomarker" },
+      { key: "result:Iron", label: "Iron", kind: "biomarker" },
+      { key: "result:Iron, Total", label: "Iron", kind: "biomarker" },
     ]);
     expect(new Set(rows.map((r) => r.label)).size).toBe(2);
     expect(rows.map((r) => r.label)).toEqual([
       "Iron (biomarker)",
-      "Iron (bio:Iron, Total)",
+      "Iron (result:Iron, Total)",
     ]);
   });
 

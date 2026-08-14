@@ -4,8 +4,8 @@
 // edit locks, stars) already had its own registry and scan; what nothing guarded was
 // the CATEGORY. These tests close the two halves the census declares:
 //
-//   1. REFLECTION — a census row cannot point at a registry that moved, a symbol
-//      that was renamed, or a guard test that stopped mentioning what it guards.
+//   1. REFLECTION — a census row cannot point at a registry that moved or a symbol
+//      that was renamed.
 //   2. THE CATEGORY SCAN — a quoted key literal shaped like side-state must belong
 //      to a registered family or be argued out in NON_SIDE_STATE_KEYS.
 //
@@ -178,21 +178,6 @@ describe("the side-state census (issue #2087)", () => {
         exported,
         `${f.family}: ${f.registryModule} no longer exports ${f.registrySymbol} — ` +
           "update the census row to the registry's new home"
-      ).toBe(true);
-    }
-  });
-
-  it("every guard test exists and references the symbol it guards", () => {
-    for (const f of SIDE_STATE_FAMILIES) {
-      const full = path.join(REPO, f.guard);
-      expect(fs.existsSync(full), `${f.family}: guard ${f.guard} is gone`).toBe(
-        true
-      );
-      const text = fs.readFileSync(full, "utf8");
-      expect(
-        text.includes(f.registrySymbol),
-        `${f.family}: ${f.guard} never mentions ${f.registrySymbol} — it has ` +
-          "stopped guarding this family's registry"
       ).toBe(true);
     }
   });

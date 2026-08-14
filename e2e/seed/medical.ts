@@ -78,7 +78,7 @@ export function seedPassportSmalls(): void {
   // canonical name has no canonical_result_definitions row, so before the fix the pinned
   // tile judged staleness on the (null) canonical category and mislabelled a
   // genotype "stale"; after the fix it judges on the RECORD's 'genomics' category
-  // (never stale). The starred-biomarker-stale spec asserts the tile shows no
+  // (never stale). The starred-result-stale spec asserts the tile shows no
   // "stale" note.
   const APOE_MARKER = "E2E APOE Genotype";
   db.prepare(
@@ -90,10 +90,10 @@ export function seedPassportSmalls(): void {
    VALUES (?, '2023-05-01', 'genomics', ?, 'e3/e4', ?, 'manual')`
   ).run(PROFILE_ID, APOE_MARKER, APOE_MARKER);
   db.prepare(
-    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' AND key = ?`
+    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result' AND key = ?`
   ).run(PROFILE_ID, APOE_MARKER);
   db.prepare(
-    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)`
   ).run(PROFILE_ID, APOE_MARKER);
 
   // #516 — a positive durable-immunity antibody titer whose only reading is ~2 years
@@ -1024,7 +1024,7 @@ export function seedPanelIndex(): void {
   const pid = fixtureProfileId(PANEL_INDEX_PROFILE);
   db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(pid);
   db.prepare(
-    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'`
+    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result'`
   ).run(pid);
   db.prepare(
     `DELETE FROM profile_settings WHERE profile_id = ? AND key IN ('sex', 'birthdate')`
@@ -1115,7 +1115,7 @@ export function seedPanelIndex(): void {
     "Thyroid-Stimulating Hormone (TSH)",
   ];
   const star = db.prepare(
-    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)`
   );
   for (const name of starred) star.run(pid, name);
 

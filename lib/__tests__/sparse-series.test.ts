@@ -86,9 +86,9 @@ describe("continuityDaysForSeriesKey", () => {
     expect(continuityDaysForSeriesKey("metric:systolic")).toBe(365);
   });
 
-  it("answers the whole bio: namespace with one number", () => {
-    expect(continuityDaysForSeriesKey("bio:ApoB")).toBe(BIO_CONTINUITY_DAYS);
-    expect(continuityDaysForSeriesKey("bio:LDL Cholesterol")).toBe(540);
+  it("answers the whole result: namespace with one number", () => {
+    expect(continuityDaysForSeriesKey("result:ApoB")).toBe(BIO_CONTINUITY_DAYS);
+    expect(continuityDaysForSeriesKey("result:LDL Cholesterol")).toBe(540);
   });
 
   it("declines an unregistered id and an unknown namespace", () => {
@@ -170,7 +170,7 @@ describe("sparseSeriesVerdict", () => {
   it("holds a lab panel to the lab cadence, not the body cadence", () => {
     // Two draws a year apart is an ordinary panel cadence and keeps its stroke…
     expect(
-      sparseSeriesVerdict("bio:ApoB", everyNDays("2024-01-01", 365, 3))
+      sparseSeriesVerdict("result:ApoB", everyNDays("2024-01-01", 365, 3))
     ).toBeNull();
     // …while the same spacing on a bathroom scale is three facts, not a line.
     expect(

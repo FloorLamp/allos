@@ -18,12 +18,12 @@
 //      a manual/integration/other-document row keyed differently must survive,
 //   6. (Finding B) drive the real deleteMedicalDocument to prove the FK-ordering
 //      invariant (extracted meds dropped before the medical_documents row) and the
-//      starred-biomarker cleanup hold end to end.
+//      saved-result cleanup hold end to end.
 
 import { beforeAll, describe, expect, it } from "vitest";
 import { toKg } from "@/lib/units";
 import { db } from "@/lib/db";
-import { saveBiomarker } from "@/lib/queries";
+import { saveClinicalResult } from "@/lib/queries";
 import {
   persistDocumentImport,
   clearImportedDocumentRows,
@@ -510,19 +510,19 @@ describe("clearImportedDocumentRows never touches same-profile survivors", () =>
 // helper-only tests never drop the document row, so they'd pass even if a future
 // edit reordered the drop ahead of the helper. Driving the real action (with a
 // mocked session from the action-test harness) exercises the ordering + the
-// starred-biomarker cleanup end to end.
+// saved-result cleanup end to end.
 describe("deleteMedicalDocument (full action path)", () => {
   it("deletes the document, its extracted med, and its orphaned star without an FK error", async () => {
     const { profile } = seedActor();
     const docId = newDocument(profile.id, "delete-me.ccd");
     persistDocumentImport(profile.id, docId, makeInput());
     // Star Glucose — its only record is in this document, so the delete's
-    // starred-biomarker cleanup should drop the star too.
-    // Through the product path: saveBiomarker stamps `backed` from the reading
+    // saved-result cleanup should drop the star too.
+    // Through the product path: saveClinicalResult stamps `backed` from the reading
     // this document just imported, which is what makes the star sweepable once
     // the document (and its only reading) is gone. A raw insert would read as a
     // never-measured watch and correctly survive.
-    saveBiomarker(profile.id, "Glucose");
+    saveClinicalResult(profile.id, "Glucose");
 
     // Sanity: the extracted med + document + star all exist first.
     expect(
@@ -560,7 +560,7 @@ describe("deleteMedicalDocument (full action path)", () => {
       (
         db
           .prepare(
-            "SELECT COUNT(*) n FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' AND key = 'Glucose'"
+            "SELECT COUNT(*) n FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result' AND key = 'Glucose'"
           )
           .get(profile.id) as { n: number }
       ).n

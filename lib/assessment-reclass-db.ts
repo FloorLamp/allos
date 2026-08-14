@@ -49,7 +49,7 @@
 //   2. canonical_result_definitions — the ai-coined vocabulary row. Checked GLOBALLY (the
 //      table is a global reference table) and only ever `source = 'ai'`; a curated
 //      row is untouchable, exactly as in the #2306 pass.
-//   3. saved_items (kind='biomarker') — the ★ pin on a name that can no longer chart.
+//   3. saved_items (kind='clinical-result') — the ★ pin on a name that can no longer chart.
 //   4. upcoming_dismissals — the retest snooze `biomarker:<family>` and the
 //      flagged-result acknowledgment `biomarker-flag:<family>`. Both are FAMILY keys,
 //      so one is dropped only when no surviving identity-carrying name of that
@@ -72,6 +72,7 @@
 
 import type Database from "better-sqlite3";
 import { canonicalResultDefinitionTableForSchema } from "./canonical-result-definition-table";
+import { savedClinicalResultKindForSchema } from "./saved-clinical-result-kind";
 import { biomarkerCoverageKey } from "./coverage-gaps";
 import {
   biomarkerDismissalKey,
@@ -162,6 +163,7 @@ export function reclassifyNonAnalyteObservations(
   db: Database.Database
 ): AssessmentReclassReport {
   const definitionTable = canonicalResultDefinitionTableForSchema(db);
+  const savedResultKind = savedClinicalResultKindForSchema(db);
   const report: AssessmentReclassReport = {
     records: 0,
     vocabulary: [],
@@ -176,7 +178,7 @@ export function reclassifyNonAnalyteObservations(
   );
   const dropSaved = db.prepare(
     `DELETE FROM saved_items
-      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
+      WHERE profile_id = ? AND kind = ? AND key = ? COLLATE NOCASE`
   );
   const dropGap = db.prepare(
     `DELETE FROM coverage_gaps
@@ -230,7 +232,11 @@ export function reclassifyNonAnalyteObservations(
     for (const name of names) {
       if (survivingLower.has(name.toLowerCase())) continue;
       orphaned.add(name);
-      report.savedItems += dropSaved.run(profileId, name).changes;
+      report.savedItems += dropSaved.run(
+        profileId,
+        savedResultKind,
+        name
+      ).changes;
       const gapKey = biomarkerCoverageKey(name);
       if (gapKey && !liveGapKeys.has(gapKey))
         report.coverageGaps += dropGap.run(profileId, gapKey).changes;

@@ -6,7 +6,7 @@ import { expandTimelineFilters } from "./timeline-chrome";
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9
 // screens on chrome before the first chart: the always-open From/To card, a
 // quick-range row carrying a duplicate range chip, a second full row of saved
-// views, then seven mover pills and the StarredBiomarkers status card. All four
+// views, then seven mover pills and the StarredResults status card. All four
 // are layout-only changes — no store, no schema, no query touched — so the only
 // tier that can see them is a browser at phone width.
 //
@@ -125,17 +125,17 @@ test.describe("Overview leads with charts (B)", () => {
     await expect(tile).toBeInViewport();
   });
 
-  test("the StarredBiomarkers status card is gone from Trends but stays on Results → Biomarkers", async ({
+  test("the StarredResults status card is gone from Trends but stays on Results → Biomarkers", async ({
     page,
   }) => {
     await page.goto("/trends");
     await expect(page.getByTestId("trend-mini-card").first()).toBeVisible(); // first-ok: any tile proves the Overview grid rendered before asserting an absence
-    await expect(page.getByTestId("starred-biomarkers")).toHaveCount(0);
+    await expect(page.getByTestId("starred-results")).toHaveCount(0);
 
     // Its one remaining card surface still renders it — the store and the lens are
     // untouched, only this page's layout changed.
     await page.goto("/results/readings");
-    await expect(page.getByTestId("starred-biomarkers")).toBeVisible();
+    await expect(page.getByTestId("starred-results")).toBeVisible();
   });
 
   test("the compact movers row leads with the top few behind a show-all disclosure", async ({
