@@ -70,6 +70,19 @@ import { describe, expect, it } from "vitest";
 // stated calibrations rather than a number anyone can nudge to make a failure go
 // away.
 //
+// WHICH GENRE A NEW FILE GETS is decidable without asking anyone, which is the
+// point: a per-genre cap nobody can predict is worse than a wrong single number,
+// because the gate stops being a rule and becomes a surprise. The boundary is
+// `docs/orchestration*` and nothing else — that is the operational runbook, read
+// mid-task under time pressure — and the census below pins that membership in
+// BOTH directions, so the genre cannot spread by drift. Everything else is
+// `prose`, including a file that does not obviously belong to either. The
+// default is deliberately the looser cap: the FILE budget still bounds the
+// document, so guessing wrong costs one line of paragraph rather than an
+// uncapped file. Wanting `runbook` for something outside `docs/orchestration/`
+// means claiming a second operational surface — a real design question, and it
+// fails the census until someone answers it.
+//
 // Two things deliberately NOT done, recorded so they are not rediscovered.
 // `proseWrap: "always"` stays rejected on #2771's measurement — 54 of 60 Markdown
 // files, ~10k lines — and should not be re-proposed without new information. And
