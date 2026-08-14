@@ -300,6 +300,29 @@ ${nodeLine}
   a failure it did not have.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
+- PREMISE-AUDIT AGAINST main BEFORE WRITING ANYTHING. An issue describes the tree it
+  was FILED against; the brief was written from the issue. Grep for the modules and
+  symbols it says are missing and confirm they still are. If the work is already done
+  or partly done, SAY SO FIRST and build the remainder — do not re-implement it, and
+  do not assume the brief checked. #2657 was briefed as untouched when its fold and
+  month rollup had shipped hours earlier in #2685; the agent found it, and only
+  because it looked.
+- $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
+  this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
+  from another cluster's worktree, and do not write to /tmp instead.
+- CI ARTIFACTS ARE UNREACHABLE from this container: \`*.blob.core.windows.net\` returns
+  403 CONNECT through the agent proxy, so a playwright-report zip or an
+  error-context.md from a real CI run CANNOT be downloaded. Job LOGS are fine via the
+  API. If a brief (mine included) tells you to fetch an artifact, that instruction is
+  wrong — say so and reproduce locally instead.
+- DIAGNOSING A CI-ONLY FAILURE: it may be TIMING rather than co-residency. A tap that
+  lands pre-hydration is swallowed with no error — Playwright's actionability checks
+  pass, because the element is fine — and the next assertion fails as "element(s) not
+  found". Reproduce it by making the box slow, not by changing neighbours: a CDP
+  \`Emulation.setCPUThrottlingRate\` spanning the suspect navigation. Run it FIVE times
+  and ALWAYS against a base-tree control — the verdict is the comparison, and one run
+  proves nothing in either direction. Recipe and the #2742 receipt are in
+  docs/internals/e2e-hygiene.md.
 ${issueLines}
 ${MIGRATION_LINES}
 - Immediately before opening the PR: git merge origin/main && npm run typecheck.
